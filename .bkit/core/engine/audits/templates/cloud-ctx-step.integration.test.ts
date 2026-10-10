@@ -43,9 +43,7 @@ const hasTools =
 
 // ---------------------------------------------------------------------------
 // Extraction — pull the "Resolve phase + brief context" `run: |` block out of
-// the raw template. occurrence 0 = claude job, 1 = opencode job (both bodies
-// are byte-identical per the SHARED-DERIV contract asserted elsewhere —
-// install/modules/index.integration.test.ts T2.7 — so tests run against occurrence 0).
+// the raw template. The step lives once, in the shared `context` job.
 // ---------------------------------------------------------------------------
 function extractCtxStepScript(yaml: string, occurrence: number): string {
   const marker = "- name: Resolve phase + brief context";

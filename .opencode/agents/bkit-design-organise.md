@@ -36,29 +36,25 @@ reasoningEffort: max
 
 **Process:**
 
-1. Copy prior versioned design body stripped of existing verdict header to **Create** path:
+1. Seed **Create** from the prior versioned design, its verdict header stripped, under a `Verdict: PENDING` header:
    ```bash
-   awk '/<!-- verdict:end -->/{found=1; next} found' <Read> > <Create>
+   "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" steps stub --from="<Read>" --to="<Create>" --strip-header
    ```
-2. Prepend verdict placeholder header to output in **Create** path:
-   ```bash
-   T=$(mktemp); { printf 'Verdict: PENDING\n<!-- verdict:end -->\n\n'; cat <Create>; } > "$T" && mv "$T" <Create>
-   ```
-3. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
-4. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-5. Identify decomposition boundaries: domain boundaries, organisational structure, chronological dependencies. Do NOT use token / context-window size as factor.
-6. Group design work into workstreams at identified boundaries. No workstream target count; granularity follows logical seams.
-7. Per workstream: assign stable ID `WS-{N}`; identify `Requires` (other workstream IDs). `Requires` mandatory; empty `[]` only for root workstream without upstream prerequisites.
-8. Append workstream sections to **Create** output via `Edit` at end of file.
-9. Self-verify (mandatory before verdict; max 2 fix iterations, **If** still failing → `FAIL`):
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Identify decomposition boundaries: domain boundaries, organisational structure, chronological dependencies. Do NOT use token / context-window size as factor.
+5. Group design work into workstreams at identified boundaries. No workstream target count; granularity follows logical seams.
+6. Per workstream: assign stable ID `WS-{N}`; identify `Requires` (other workstream IDs). `Requires` mandatory; empty `[]` only for root workstream without upstream prerequisites.
+7. Append workstream sections to **Create** output via `Edit` at end of file.
+8. Self-verify (mandatory before verdict; max 2 fix iterations, **If** still failing → `FAIL`):
    - Extract all major design elements: Architecture components, data model entities, component / flow items, decisions, open questions.
    - Confirm every element addressed in at least one workstream scope. **If** gap → assign to appropriate workstream and recheck.
    - Confirm every `Requires` ID refers to existing workstream. **If** dangling reference → fix and recheck.
    - Confirm no cycles: per workstream → `Requires` chain does NOT loop back to itself. **If** loop detected → `FAIL`.
-10. Update **Create** — set `Verdict` via `Edit`; mapping:
-    - `PASS` = all elements covered, all references valid, clean DAG.
-    - `CONCERNS` = workable decomposition but structural ambiguities (tightly coupled workstreams, fuzzy scope boundaries).
-    - `FAIL` = cycle detected (any workstream `Requires` chain loops back to itself) or failed self-verify.
+9. Update **Create** — set `Verdict` via `Edit`; mapping:
+   - `PASS` = all elements covered, all references valid, clean DAG.
+   - `CONCERNS` = workable decomposition but structural ambiguities (tightly coupled workstreams, fuzzy scope boundaries).
+   - `FAIL` = cycle detected (any workstream `Requires` chain loops back to itself) or failed self-verify.
 
 **Output format:**
 

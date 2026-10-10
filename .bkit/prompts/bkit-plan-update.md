@@ -36,29 +36,25 @@ maxTurns: 100
 
 **Process:**
 
-1. Copy prior versioned plan verbatim to **Create** path:
+1. Seed **Create** from the prior versioned plan, verbatim under a `Verdict: PENDING` header:
    ```bash
-   cp <prior-versioned-plan-from-Read> <Create>
+   "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" steps stub --from="<prior-versioned-plan-from-Read>" --to="<Create>"
    ```
-2. Prepend verdict placeholder header to **Create** path:
-   ```bash
-   T=$(mktemp); { printf 'Verdict: PENDING\n<!-- verdict:end -->\n\n'; cat <Create>; } > "$T" && mv "$T" <Create>
-   ```
-3. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
-4. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-5. Update **Create** — apply findings via `Edit` as content becomes available.
-6. Every `Agent Execution Runbook` task's `Done when` MUST survive merge intact. Critique may edit surrounding task text; `Done when` may ONLY tighten testability / codebase-verifiability — NEVER remove or weaken.
-7. Human-confirmation checkboxes MUST survive merge as found — NEVER tick, NEVER clear.
-8. `CRITICAL` items MUST be applied; no consensus required. **If** conflict across findings → prefer stricter wording.
-9. OPTIONAL items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
-10. **If** input carries `Suggested Scope Expansion` → write candidates into plan's `Suggested Scope Expansion` per `docs/templates/bkit-plan.md` § `Suggested Scope Expansion`.
-11. Applied findings add `Out of Scope` `Exempt` rows → mirror each to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. NEVER append `Suggested Scope Expansion` candidates. **If** `reason` scope-declared → `references` must contain plan item declaring it out of scope (row is NOT that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
-12. **If** applied findings add / reword open questions under `Open Questions & Assumptions` → shape each per `docs/templates/bkit-plan.md` § `Open Questions & Assumptions`. Questions in regions no finding touches stay verbatim.
-13. Update **Create** — set `Verdict` via `Edit`; mapping:
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — apply findings via `Edit` as content becomes available.
+5. Every `Agent Execution Runbook` task's `Done when` MUST survive merge intact. Critique may edit surrounding task text; `Done when` may ONLY tighten testability / codebase-verifiability — NEVER remove or weaken.
+6. Human-confirmation checkboxes MUST survive merge as found — NEVER tick, NEVER clear.
+7. `CRITICAL` items MUST be applied; no consensus required. **If** conflict across findings → prefer stricter wording.
+8. OPTIONAL items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
+9. **If** input carries `Suggested Scope Expansion` → write candidates into plan's `Suggested Scope Expansion` per `docs/templates/bkit-plan.md` § `Suggested Scope Expansion`.
+10. Applied findings add `Out of Scope` `Exempt` rows → mirror each to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. NEVER append `Suggested Scope Expansion` candidates. **If** `reason` scope-declared → `references` must contain plan item declaring it out of scope (row is NOT that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
+11. **If** applied findings add / reword open questions under `Open Questions & Assumptions` → shape each per `docs/templates/bkit-plan.md` § `Open Questions & Assumptions`. Questions in regions no finding touches stay verbatim.
+12. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = all `CRITICAL` applied; OPTIONAL applied on merit.
     - `CONCERNS` = some OPTIONAL skipped.
     - `FAIL` = findings contradictory and unresolvable, plan unanimously rejected by all lenses.
-14. Re-read **Create** → assert template structure intact per `docs/templates/bkit-plan.md`. **If** NOT intact → set `Verdict` = `FAIL` via `Edit`.
+13. Re-read **Create** → assert template structure intact per `docs/templates/bkit-plan.md`. **If** NOT intact → set `Verdict` = `FAIL` via `Edit`.
 
 **Output format:**
 

@@ -65,10 +65,22 @@ if [[ "$(uname)" == "Darwin" ]]; then
   fi
 fi
 
+# --- Linear guard: identical in the Claude and Cursor preflight hooks (bkit renders it
+# from one source). Pure bash + python3 + curl, no bkit runtime. Needs `emit_context`,
+# which the host's code above defines in that host's output shape.
+
 # BKIT_LINEAR_API_KEY required to call the Linear GraphQL API.
 if [[ -z "${BKIT_LINEAR_API_KEY:-}" ]]; then
-  echo "Guard pre-check: FAIL — BKIT_LINEAR_API_KEY not set; cannot validate ${LINEAR_ISSUE_ID}." >&2
-  emit_context "Guard pre-check: FAIL — BKIT_LINEAR_API_KEY missing for ${LINEAR_ISSUE_ID}. HARD STOP: refuse any Linear-related work, report the failure to the user, and stop."
+  echo "Guard pre-check: FAIL — BKIT_LINEAR_API_KEY not set; cannot validate ${LINEAR_ISSUE_ID:-(unset)}." >&2
+  emit_context "Guard pre-check: FAIL — BKIT_LINEAR_API_KEY missing for ${LINEAR_ISSUE_ID:-(unset)}. HARD STOP: refuse any Linear-related work, report the failure to the user, and stop."
+  exit 1
+fi
+
+# LINEAR_ISSUE_ID required (Claude's trigger above already demands it; a Cursor Cloud
+# Agent sets it from workflow context).
+if [[ -z "${LINEAR_ISSUE_ID:-}" ]]; then
+  echo "Guard pre-check: FAIL — LINEAR_ISSUE_ID not set." >&2
+  emit_context "Guard pre-check: FAIL — LINEAR_ISSUE_ID not set. HARD STOP: refuse any Linear-related work, report the failure to the user, and stop."
   exit 1
 fi
 

@@ -1,8 +1,9 @@
 /**
  * audits/workflows/counter-prose-audit.test.ts
  *
- * Attempt counters are derived from status.jsonl by `bkit counters derive|run|rows`
- * and compared to their cap by `bkit counters route`; what those commands
+ * Attempt counters are derived from status.jsonl by `bkit counters derive|run|rows`,
+ * by `bkit steps finish --attempt=next|--attempt-of=<step>:<pos>|--count-field=`, and
+ * by `bkit counters route --of=<step>:<pos>`, which also compares them to their cap; what those commands
  * compute (positions, de-dupe, run boundaries, a resume keeping its run number,
  * the MAX_* values) is pinned in commands/workflow/counters.test.ts. This audit
  * pins the WIRING the commands cannot see — every rule below is a way a
@@ -17,7 +18,8 @@
  *      its `parentSha` advances and the next attempt counts as distinct), or is
  *      on an explicit exemption list.
  *   4. Completeness: every fenced block that reads `$COUNTER` (to route on it
- *      or write it) derives it in the same block through a command — shell
+ *      or write it) derives it in the same block through a command (or lets
+ *      the routing / writing command derive it with `--of` / `--attempt-of`) — shell
  *      state does not survive between orchestrator Bash calls, so a variable
  *      used without being set in-block is model-authored. No counter is
  *      derived by raw jq over status.jsonl. Routing and writing
@@ -82,20 +84,35 @@ const realFiles = () =>
 
 type Corpus = Array<{ path: string; content: string }>;
 
-/** `NAME=$("$BKIT" counters derive|run|rows ...)` — the in-block derive of NAME. */
+/** `NAME=$("{BKIT}" counters derive|run|rows ...)` — the in-block derive of NAME. */
 const deriveAssign = (name: string) =>
-  new RegExp(`\\b${name}=\\$\\(\\s*"\\$BKIT" counters (?:derive|run|rows)\\b`);
+  new RegExp(`\\b${name}=\\$\\(\\s*"\\{BKIT\\}" counters (?:derive|run|rows)\\b`);
 
-/** Step names a `bkit counters derive` call reads, in a block or file. */
+/**
+ * Step names whose attempts a call counts, in a block or file: `counters derive --step=`,
+ * `--attempt-of=<step>:`, `--of=<step>:`, `--count-field=<key>=<step>:`, and the row
+ * step itself on a `steps done|finish` line with `--attempt=next`.
+ */
 function derivedSteps(text: string): string[] {
-  return [...text.matchAll(/\bcounters derive\b[^\n]*?--step="?([\w-]+)"?/g)].map((m) => m[1]!);
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    for (const m of line.matchAll(/\bcounters derive\b[^\n]*?--step="?([\w-]+)"?/g))
+      out.push(m[1]!);
+    for (const m of line.matchAll(/--(?:attempt-of|of|count-field=\w+)=([\w-]+):/g))
+      out.push(m[1]!);
+    if (/\bsteps (?:done|finish)\b/.test(line) && /--attempt=next\b/.test(line)) {
+      const m = /--step="?([\w-]+)"?/.exec(line);
+      if (m) out.push(m[1]!);
+    }
+  }
+  return out;
 }
 
-/** The `bkit steps done` call lines in a block, each with the step it writes. */
+/** The `bkit steps done|finish` call lines in a block, each with the step it writes. */
 function stepDoneLines(block: string): Array<{ step: string; line: string }> {
   return block
     .split("\n")
-    .filter((l) => /\bsteps done\b/.test(l))
+    .filter((l) => /\bsteps (?:done|finish)\b/.test(l))
     .flatMap((line) => {
       const m = /--step="?([\w-]+)"?/.exec(line);
       return m ? [{ step: m[1]!, line }] : [];
@@ -252,26 +269,23 @@ const TRANSITIVE_EXEMPTIONS: ExemptionEntry[] = [
   {
     step: "ship-merge-pr",
     reason:
-      "#384: ship-merge-pr integrates via `gh pr merge --squash` (server-side); the squash commit IS the integration. No local `git commit` — the PR merge is the advancement.",
+      "#384: ship-merge-pr integrates via `bkit prs merge` (server-side squash); the squash commit IS the integration. No local `git commit` — the PR merge is the advancement.",
   },
 ];
 
-/** Steps whose attempts are counted: read by `counters derive`, or written with `--attempt=next`. */
+/** Steps whose attempts are counted (see `derivedSteps`). */
 function countedSteps(files: Corpus): Set<string> {
   const steps = new Set<string>();
   for (const f of files) {
-    for (const s of derivedSteps(f.content)) steps.add(s);
     for (const { block } of fencedBlocks(f.content)) {
-      for (const { step, line } of stepDoneLines(block)) {
-        if (/--attempt=next\b/.test(line)) steps.add(step);
-      }
+      for (const s of derivedSteps(block)) steps.add(s);
     }
   }
   return steps;
 }
 
 /**
- * For a step, whether its row-writing block commits: the `steps done` call
+ * For a step, whether its row-writing block commits: the `steps done|finish` call
  * commits by default unless `--commit=none`, or the block runs `git commit`.
  * null when no row-writing block for the step exists.
  */
@@ -345,8 +359,7 @@ describe("3. commit cadence — every counted step commits in-block or is explic
   it("RED-PROOF: a fake counted step with --commit=none and no exemption reds the audit", () => {
     const fakeBlock = [
       "```bash",
-      'N=$("$BKIT" counters derive --file="$STATUS" --workflow=build --step=fake-counted-step --position=next | jq -er .value) || exit 2',
-      '"$BKIT" steps done --file="$STATUS" --workflow=build --step=fake-counted-step --attempt="$N" --commit=none',
+      '"{BKIT}" steps finish --file="{STATUS}" --workflow=build --step=fake-counted-step --attempt=next --commit=none',
       "```",
     ].join("\n");
     const violations = auditCountedSteps(
@@ -368,7 +381,7 @@ function counterNames(files: Corpus): string[] {
     for (const m of f.content.matchAll(/\bcounters route --name=([A-Z][A-Z0-9_]*)/g))
       names.add(m[1]!);
     for (const m of f.content.matchAll(
-      /\b([A-Z][A-Z0-9_]*)=\$\(\s*"\$BKIT" counters (?:derive|run|rows)\b/g,
+      /\b([A-Z][A-Z0-9_]*)=\$\(\s*"\{BKIT\}" counters (?:derive|run|rows)\b/g,
     ))
       names.add(m[1]!);
   }
@@ -402,7 +415,8 @@ function findIncompleteBlocks(files: Corpus, names: string[]): CompletenessViola
       // A routing or row-writing flag fed a held placeholder: the model
       // transcribed the value instead of a command deriving it here.
       for (const line of block.split("\n")) {
-        if (!/\bcounters route\b|\bsteps (?:done|gate)\b|\bworkflows fail\b/.test(line)) continue;
+        if (!/\bcounters route\b|\bsteps (?:done|finish|gate)\b|\bworkflows fail\b/.test(line))
+          continue;
         const held = /--(?:value|attempt)="?\{([A-Z][A-Z0-9_]*)\}/.exec(line);
         if (held) {
           violations.push({
@@ -440,7 +454,7 @@ describe("4. completeness — every block that routes on or writes a counter der
     const blocks = files.flatMap((f) => fencedBlocks(f.content).map((b) => b.block));
     expect(
       blocks.some((b) =>
-        /\bREVALIDATE_ATTEMPT=\$\("\$BKIT" counters rows [^\n]*--type=ship-revalidate-dispatch --position=next \| jq -er \.value\) \|\| exit 2/.test(
+        /\bREVALIDATE_ATTEMPT=\$\("\{BKIT\}" counters rows [^\n]*--type=ship-revalidate-dispatch --position=next \| jq -er \.value\) \|\| exit 2/.test(
           b,
         ),
       ),
@@ -462,7 +476,7 @@ describe("4. completeness — every block that routes on or writes a counter der
     const injected = [
       "```bash",
       `REVALIDATE_ATTEMPT=$(jq -s '[.[] | select(.type=="ship-revalidate-dispatch")] | length + 1' "$STATUS" 2>/dev/null)`,
-      '"$BKIT" counters route --name=REVALIDATE_ATTEMPT --value="$REVALIDATE_ATTEMPT" --limit=MAX_REVALIDATE_ATTEMPT',
+      '"{BKIT}" counters route --name=REVALIDATE_ATTEMPT --value="$REVALIDATE_ATTEMPT" --limit=MAX_REVALIDATE_ATTEMPT',
       "```",
     ].join("\n");
     const v = findIncompleteBlocks([{ path: "synthetic.md", content: injected }], names);
@@ -473,8 +487,8 @@ describe("4. completeness — every block that routes on or writes a counter der
     'echo "$TEST_ATTEMPT"',
     "echo $TEST_ATTEMPT",
     'echo "${TEST_ATTEMPT}"',
-    '"$BKIT" steps done --step=build-run-tests --attempt="${TEST_ATTEMPT}"',
-    '"$BKIT" counters route --name=TEST_ATTEMPT --value=$TEST_ATTEMPT --limit=MAX_TEST_ATTEMPT',
+    '"{BKIT}" steps finish --step=build-run-tests --attempt="${TEST_ATTEMPT}"',
+    '"{BKIT}" counters route --name=TEST_ATTEMPT --value=$TEST_ATTEMPT --limit=MAX_TEST_ATTEMPT',
   ];
   for (const line of injectionShapes) {
     it(`RED-PROOF (shape): ${line} reds the rule in a non-deriving block`, () => {
@@ -486,8 +500,9 @@ describe("4. completeness — every block that routes on or writes a counter der
 
   it("RED-PROOF: a held placeholder on a routing or row-writing flag reds the rule", () => {
     for (const line of [
-      '"$BKIT" counters route --name=TEST_ATTEMPT --value="{TEST_ATTEMPT}" --limit=MAX_TEST_ATTEMPT',
-      '"$BKIT" steps done --step=build-run-tests --attempt={TEST_ATTEMPT} --commit=none',
+      '"{BKIT}" counters route --name=TEST_ATTEMPT --value="{TEST_ATTEMPT}" --limit=MAX_TEST_ATTEMPT',
+      '"{BKIT}" steps finish --step=build-run-tests --attempt={TEST_ATTEMPT} --commit=none',
+      '"{BKIT}" steps gate --step=context-fetch --attempt={DEBUG_ATTEMPT}',
     ]) {
       const injected = ["```bash", line, "```"].join("\n");
       const v = findIncompleteBlocks([{ path: "synthetic.md", content: injected }], names);
@@ -498,8 +513,8 @@ describe("4. completeness — every block that routes on or writes a counter der
   it("RED-PROOF: deriving a DIFFERENT counter does not excuse a bare read", () => {
     const injected = [
       "```bash",
-      'VERIFY_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=build --step=build-plan-verify --position=next | jq -er .value) || exit 2',
-      '"$BKIT" steps done --step=build-run-tests --attempt="$TEST_ATTEMPT"',
+      'VERIFY_ATTEMPT=$("{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-plan-verify --position=next | jq -er .value) || exit 2',
+      '"{BKIT}" steps finish --step=build-run-tests --attempt="$TEST_ATTEMPT"',
       "```",
     ].join("\n");
     const v = findIncompleteBlocks([{ path: "synthetic.md", content: injected }], names);
@@ -510,8 +525,8 @@ describe("4. completeness — every block that routes on or writes a counter der
   it("does not flag a block deriving THEN reading its own counter, nor a $MAX_ reference", () => {
     const ok = [
       "```bash",
-      'TEST_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=build --step=build-run-tests --position=current | jq -er .value) || exit 2',
-      '"$BKIT" counters route --name=TEST_ATTEMPT --value="$TEST_ATTEMPT" --max="$MAX_TEST_ATTEMPT"',
+      'TEST_ATTEMPT=$("{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-run-tests --position=current | jq -er .value) || exit 2',
+      '"{BKIT}" counters route --name=TEST_ATTEMPT --value="$TEST_ATTEMPT" --max="$MAX_TEST_ATTEMPT"',
       "```",
     ].join("\n");
     expect(findIncompleteBlocks([{ path: "synthetic.md", content: ok }], names)).toEqual([]);
@@ -555,9 +570,9 @@ describe("5. no $(( )) arithmetic on a counter — positions are the command's j
 // ---------------------------------------------------------------------------
 // 6. Mapping — each block derives the RIGHT counter for its row
 //
-// For every block that BOTH writes a step-done row AND derives a counter, the
-// derive's step must be within COUNTER_STEP_MAP[row's step]. A deriving block
-// whose row-step is absent from the map reds. It PINS the mapping; the derived NUMBER
+// For every step-done row written with a derived counter, the derived step
+// must be within COUNTER_STEP_MAP[row's step]. A deriving row whose step is
+// absent from the map reds. It PINS the mapping; the derived NUMBER
 // is pinned per position in counters.test.ts.
 // ---------------------------------------------------------------------------
 
@@ -571,6 +586,7 @@ const COUNTER_STEP_MAP: Record<string, string[]> = {
   "build-run-tests": ["build-run-tests"],
   "build-failure-diagnose": ["build-run-tests"],
   "build-failure-remediate": ["build-run-tests"],
+  "debug-run-tests": ["debug-run-tests"],
   "debug-failure-diagnose": ["debug-run-tests"],
   "debug-failure-remediate": ["debug-run-tests"],
   "debug-failure-soak": ["debug-run-tests", "debug-failure-soak"],
@@ -586,15 +602,22 @@ interface MappingViolation {
   reason: string;
 }
 
-/** Blocks that write a step-done row and derive a counter: [row step, derived steps]. */
+/**
+ * Rows written with a derived counter: [row step, derived steps]. A row line's own
+ * `--attempt=next` / `--attempt-of` / `--count-field` count, and so does a
+ * `counters derive` elsewhere in its block.
+ */
 function derivingRowBlocks(files: Corpus) {
   const out: Array<{ file: string; rowStep: string; derived: string[] }> = [];
   for (const f of files) {
     for (const { block } of fencedBlocks(f.content)) {
-      const rows = stepDoneLines(block);
-      const derived = derivedSteps(block);
-      if (rows.length === 0 || derived.length === 0) continue;
-      for (const { step } of rows) out.push({ file: f.path, rowStep: step, derived });
+      const inBlock = [...block.matchAll(/\bcounters derive\b[^\n]*?--step="?([\w-]+)"?/g)].map(
+        (m) => m[1]!,
+      );
+      for (const { step, line } of stepDoneLines(block)) {
+        const derived = [...new Set([...derivedSteps(line), ...inBlock])];
+        if (derived.length > 0) out.push({ file: f.path, rowStep: step, derived });
+      }
     }
   }
   return out;
@@ -637,8 +660,7 @@ describe("6. mapping — each block derives the RIGHT counter, not merely a coun
   it("RED-PROOF: a derive pointed at the wrong step reds the rule", () => {
     const misMapped = [
       "```bash",
-      'N=$("$BKIT" counters derive --file="$STATUS" --workflow=build --step=build-plan-verify --position=next | jq -er .value) || exit 2',
-      '"$BKIT" steps done --file="$STATUS" --workflow=build --step=build-run-tests --attempt="$N" --message=x',
+      '"{BKIT}" steps finish --file="{STATUS}" --workflow=build --step=build-run-tests --attempt-of=build-plan-verify:next --message=x',
       "```",
     ].join("\n");
     expect(
@@ -649,8 +671,7 @@ describe("6. mapping — each block derives the RIGHT counter, not merely a coun
   it("RED-PROOF: a deriving block whose row-step is absent from the map reds the rule", () => {
     const block = [
       "```bash",
-      'N=$("$BKIT" counters derive --file="$STATUS" --workflow=build --step=some-new-step --position=next | jq -er .value) || exit 2',
-      '"$BKIT" steps done --file="$STATUS" --workflow=build --step=some-new-row --attempt="$N" --message=x',
+      '"{BKIT}" steps finish --file="{STATUS}" --workflow=build --step=some-new-row --attempt-of=some-new-step:next --message=x',
       "```",
     ].join("\n");
     const v = findMappingViolations([{ path: "s.md", content: block }], COUNTER_STEP_MAP);
@@ -735,9 +756,9 @@ describe.each([
     it(`${file}: every fence expanding $${name} assigns it from status route`, () => {
       const uses = new RegExp(`\\$${name}\\b`);
       const assigned = new RegExp(
-        `\\b${name}=\\$\\((?:"\\$BKIT" status route|printf '%s' "\\$ROUTE")`,
+        `\\b${name}=\\$\\((?:"\\{BKIT\\}" status route|printf '%s' "\\$ROUTE")`,
       );
-      const required = new RegExp(`"\\$BKIT" status route\\b[^\\n]*--require=${field}`);
+      const required = new RegExp(`"\\{BKIT\\}" status route\\b[^\\n]*--require=${field}`);
       for (const { block } of fencedBlocks(readRepo(file))) {
         if (!uses.test(block)) continue;
         expect(

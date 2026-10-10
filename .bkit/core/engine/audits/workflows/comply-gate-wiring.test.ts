@@ -1,18 +1,17 @@
 // audits/workflows/comply-gate-wiring.test.ts — close-gate wiring audit.
 //
 // Contract:
-//   - Every phase workflow (design, plan, build, debug, ship) grades itself at
-//     close with exactly one `"$BKIT" comply --phase=<wf>` call, carrying the
-//     fail-open guard on the same line:
-//     `|| echo "[bkit-comply] grader unavailable, skipping"`.
-//   - No comply call sits unguarded under `set -e`.
-//   - The grader runs in the close block BEFORE `bkit workflows close` (whose
-//     report reads the compliance rows) and before that block's commit — comply
-//     appends `kind:"compliance"` rows to `.bkit/stats.jsonl`, and rows written
-//     after the commit never land.
-//   - Close telemetry is written once: one `bkit workflows close` per workflow,
-//     and the tracker close comment embeds the `report` it printed (via
-//     `close-telemetry.md`); no writer re-runs after the push.
+//   - `bkit workflows close` grades the run itself (`gradeCompliance`, fail-open)
+//     BEFORE it writes the close report and before its commit, so the report
+//     carries this run's grade and the `kind:"compliance"` rows land in the close
+//     commit. That ordering is pinned in commands/workflow/workflows.test.ts.
+//   - So every phase workflow (design, plan, build, debug, ship) closes through
+//     exactly one `workflows close --workflow=<wf>` call, which commits in the
+//     same call (`--message=` or ship's `--flush`), and never calls `bkit comply`
+//     itself — a second grader run would double the compliance rows.
+//   - Close telemetry is written once (`--outbox` writes `close-telemetry.md`),
+//     and the tracker close comment embeds it: the close call's own `--number`
+//     comment, `workflows links --outbox`, or an `issues comment` Telemetry section.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -29,63 +28,33 @@ function readWorkflow(name: string): string {
 const bashBlocks = (content: string) =>
   [...content.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]!);
 
-/**
- * A comply line inside a `set -e` region without a same-line `||` guard: the
- * grader's non-zero exit would abort the close.
- */
-function unguardedComplyUnderSetE(content: string): string | null {
-  const lines = content.split("\n");
-  let inSetE = false;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!.trim();
-    if (/^set\s+-[a-z]*e[a-z]*\s*$/.test(line)) inSetE = true;
-    if (line === "set +e") inSetE = false;
-    if (/\bcomply --phase=/.test(line) && !line.includes("||") && inSetE) {
-      return `Line ${i + 1}: unguarded comply under set -e: ${lines[i]}`;
-    }
-  }
-  return null;
-}
-
-describe("every phase workflow grades itself at close through bkit comply", () => {
+describe("every phase workflow grades itself at close through bkit workflows close", () => {
   for (const phase of PHASES) {
     const content = readWorkflow(`bkit-${phase}.md`);
-    const complyLines = content.split("\n").filter((l) => /\bcomply --phase=/.test(l));
+    const closeLines = bashBlocks(content)
+      .flatMap((b) => b.split("\n"))
+      .filter((l) => l.includes(`"{BKIT}" workflows close --workflow=${phase}`));
 
-    it(`bkit-${phase}.md calls "$BKIT" comply --phase=${phase} exactly once`, () => {
-      expect(complyLines).toHaveLength(1);
-      expect(complyLines[0]).toContain(`"$BKIT" comply --phase=${phase} `);
+    it(`bkit-${phase}.md closes through exactly one workflows close call`, () => {
+      expect(closeLines).toHaveLength(1);
+    });
+
+    it(`bkit-${phase}.md never runs the grader itself`, () => {
+      expect(content).not.toMatch(/\bcomply --phase=/);
       expect(content).not.toContain("pnpm bkit comply");
     });
 
-    it(`bkit-${phase}.md: the comply call carries the [bkit-comply] fail-open guard on the same line`, () => {
-      expect(complyLines[0]).toMatch(/\|\| echo "\[bkit-comply\][^"]*"/);
-      expect(unguardedComplyUnderSetE(content)).toBeNull();
+    it(`bkit-${phase}.md: the close call commits what it graded`, () => {
+      expect(closeLines[0]).toMatch(/--message="[^"]+"|--flush\b/);
     });
 
-    it(`bkit-${phase}.md: comply runs in the close block, beside workflows close and before its commit`, () => {
-      const block = bashBlocks(content).find((b) => /\bcomply --phase=/.test(b));
-      expect(block, "comply sits inside a bash block").toBeDefined();
-      const close = block!.indexOf(`workflows close --workflow=${phase}`);
-      const comply = block!.search(/\bcomply --phase=/);
-      expect(close, "the close block also runs bkit workflows close").toBeGreaterThan(-1);
-      const commit = block!.slice(comply).search(/\bgit commit\b|\bledgers commit\b/);
-      expect(commit, "a commit follows the grader in the same block").toBeGreaterThan(-1);
-    });
-
-    it(`bkit-${phase}.md: comply grades before workflows close, so the close report carries this run's grade`, () => {
-      const block = bashBlocks(content).find((b) => /\bcomply --phase=/.test(b))!;
-      expect(block.search(/\bcomply --phase=/)).toBeLessThan(
-        block.indexOf(`workflows close --workflow=${phase}`),
-      );
-    });
-
-    it(`bkit-${phase}.md writes close telemetry once and embeds its report in the close comment`, () => {
-      expect(content.split(`workflows close --workflow=${phase}`).length - 1).toBe(1);
-      expect(content).toMatch(/\.report \| join\("\\n"\)'? > "[^"]*close-telemetry\.md"/);
-      expect(content).toMatch(
-        /issues comment [^\n]*--section="Telemetry=[^"]*close-telemetry\.md"/,
-      );
+    it(`bkit-${phase}.md writes close telemetry once and embeds it in the close comment`, () => {
+      expect(closeLines[0]).toContain('--outbox="{OUTBOX}"');
+      const embedded =
+        /--number=\d+/.test(closeLines[0]!) ||
+        /workflows links [^\n]*--outbox="\{OUTBOX\}"/.test(content) ||
+        /issues comment [^\n]*--section="Telemetry=\{OUTBOX\}\/close-telemetry\.md"/.test(content);
+      expect(embedded, "the close comment carries the telemetry report").toBe(true);
     });
   }
 });

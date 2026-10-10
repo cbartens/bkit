@@ -40,6 +40,7 @@
 | Technology | Config | Usage |
 | --- | --- | --- |
 | `tsc` (TypeScript compiler) | `tsconfig.json` | Compiles `.bkit/core/engine/**/*.ts` → `dist/**/*.js` (same folders); committed `dist/` is the published artifact |
+| `tsc` (test files) | `tsconfig.test.json` | Type-checks the engine including `*.test.ts` with Vitest's bundler resolution, no emit (`pnpm bkit:typecheck:tests`, run by `pnpm typecheck`) |
 | `bkit:check:dist` npm script | `bkit-tests-static` lane ("Assert Dist Freshness") + source-repo pre-push | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale. Source-repo only; not in the consumer `ci.yml` template |
 | Runtime `dependencies` | none in `package.json` | bkit ships with no runtime dependency. Anything reachable from `dist/` at consumer runtime belongs in `dependencies`, never `devDependencies` |
 
@@ -63,6 +64,7 @@ OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `
 | --- | --- | --- |
 | Vitest | `^4.1.7` | Unit (`*.test.ts`) and integration (`*.integration.test.ts`) test runner |
 | `@vitest/coverage-v8` | `^4.1.7` | Per-tier coverage; branch-threshold gate on the unit run (`test:coverage:unit`) |
+| `yaml` | `^2.9` | Test-only YAML parsing (template workflows parsed in-process; no python / ruby) |
 | bats | via `npx --yes bats` (no devDep) | Shell tier — `tests/*.bats`, for logic that lives in shell (the cloud-bootstrap hook's `gh` preflight, the `gh` stub harness) |
 | Real-filesystem fixtures | `os.tmpdir()` scratch dirs | Integration tests spawn `bkit` against temporary consumer directories — no mock `fs` |
 
@@ -74,7 +76,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Technology | Config | Usage |
 | --- | --- | --- |
 | Prettier | `^3.5`, `.prettierrc.json` | Code and markdown formatting (`pnpm format:check` in CI) |
-| Vale | `3.9.1`, system-installed locally; CI installs a sha256-verified pinned tarball | Prose linting of `.agents/`, `.bkit/`, `docs/` and root markdown (`pnpm lint:prose`). Skips only when the vale binary is absent; a missing `.vale/styles/write-good` (gitignored, so absent in fresh checkouts and worktrees) self-heals by copying from the main worktree, else `vale sync`, and warns loudly on stderr if neither works. CI installs both so it always enforces there |
+| Vale | `3.9.1`, system-installed locally; CI installs a sha256-verified pinned tarball | Prose linting of `.agents/`, `.bkit/`, `docs/` and root markdown (`pnpm lint:prose` → `bkit ci prose --glob=…`). Skips only when the vale binary is absent; a missing `.vale/styles/write-good` (gitignored, so absent in fresh checkouts and worktrees) self-heals by copying from the main worktree, else `vale sync`, and warns loudly on stderr if neither works. CI installs both so it always enforces there |
 | actionlint | `1.7.12`, downloaded in-lane (SHA-pinned script) | GitHub-Actions-aware lint of `.github/workflows/*` — expression syntax + shellcheck on `run:` bodies. `pnpm bkit:lint:workflows` guard-skips locally when absent |
 | slop-scan | `^0.3`, `slop-scan.config.json` | Detects code-shaped slop in source — empty catches, over-fragmentation, pass-through wrappers. `pnpm lint:slop` reports (never fails); `pnpm slop:delta` is the gate that fails on net-new findings vs the base |
 

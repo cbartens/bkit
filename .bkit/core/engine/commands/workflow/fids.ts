@@ -1,5 +1,6 @@
-// bkit fids check|parse — feature-id format per tracker, and recovering a FID
-// from a branch name or a PR-body marker.
+// bkit fids check|parse|find — feature-id format per tracker, recovering a FID
+// from a branch name or a PR-body marker, and finding the feature already logged
+// for an issue.
 //
 // A FID names the branch (`feat/{FID}`), the log folder and every artifact, so
 // it is checked before first use. Its shape follows the tracker that minted it:
@@ -8,10 +9,11 @@
 //   none    any slug             ^[a-z0-9][a-z0-9-]*$        (no tracker shape; still path-safe)
 //   any     github or linear     ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$  (auto's CI_DEV allowlist)
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { parseIssueTracker, type IssueTracker } from "../../install/manifest.js";
-import { CommandError, EXIT, git, type CommandSpec, type FlagSpec } from "../lib.js";
+import { CommandError, EXIT, git, repoRoot, type CommandSpec, type FlagSpec } from "../lib.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { str } from "./status.js";
 
@@ -29,6 +31,27 @@ const SLUG = FID_PATTERNS.none;
 
 /** Exit code: no FID could be recovered from the marker or the branch. */
 export const EXIT_NO_FID = 3;
+/** Exit code (find): more than one feature is logged for the issue. */
+export const EXIT_SEVERAL = 4;
+
+/**
+ * Features already logged for an issue: every `docs/plans/{YYYYMM}/logs/{issue}-*`
+ * folder, the issue id lowercased (a Linear FID carries it lowercased). Sorted, unique.
+ */
+export function logged(root: string, issue: string): string[] {
+  const key = `${issue.replace(/^#/, "").toLowerCase()}-`;
+  const plans = path.join(root, "docs", "plans");
+  if (!fs.existsSync(plans)) return [];
+  const found = new Set<string>();
+  for (const month of fs.readdirSync(plans).filter((m) => /^[0-9]{6}$/.test(m))) {
+    const logs = path.join(plans, month, "logs");
+    if (!fs.existsSync(logs)) continue;
+    for (const fid of fs.readdirSync(logs)) {
+      if (fid.startsWith(key) && fs.statSync(path.join(logs, fid)).isDirectory()) found.add(fid);
+    }
+  }
+  return [...found].sort();
+}
 
 /** `package.json` `bkit.issueTracker` at the main checkout (cwd outside git); default `none`. */
 export function readIssueTracker(cwd: string): IssueTracker {
@@ -189,6 +212,31 @@ export const fidsCommand: CommandSpec = {
         }
         ctx.emit({ ...viaBranch.parsed, tracker });
         return EXIT.OK;
+      },
+    },
+    find: {
+      summary: "The feature already logged for an issue: exit 0 one, exit 1 none, exit 4 several.",
+      flags: [
+        {
+          name: "issue",
+          type: "string",
+          required: true,
+          help: "tracker issue id (github: 123 or #123; linear: ABC-123)",
+        },
+      ],
+      output: {
+        fid: "the one FID logged for the issue, or null",
+        fids: "every FID logged for the issue (docs/plans/*/logs/{issue}-*)",
+      },
+      exitCodes: { [EXIT_SEVERAL]: "several features are logged for the issue — name one" },
+      run: (ctx) => {
+        const fids = logged(repoRoot(ctx.cwd), String(ctx.flags.issue));
+        ctx.emit({ fid: fids.length === 1 ? fids[0] : null, fids });
+        if (fids.length > 1) {
+          ctx.log(`several features logged for ${String(ctx.flags.issue)}: ${fids.join(", ")}`);
+          return EXIT_SEVERAL;
+        }
+        return fids.length === 1 ? EXIT.OK : EXIT.NO;
       },
     },
   },

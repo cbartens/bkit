@@ -10,7 +10,7 @@
 //            0 is a legal answer (that step simply has not run).
 
 import { activeDoneSteps, runNumber } from "../../ledgers/status.js";
-import { CommandError, EXIT, type CommandSpec, type FlagValue } from "../lib.js";
+import { CommandError, EXIT, type CommandSpec, type FlagValue, type RunContext } from "../lib.js";
 import {
   EXIT_NO_STATUS,
   FILE_FLAG,
@@ -56,6 +56,27 @@ const nonNegativeInt = (v: FlagValue, flag: string): number => {
   }
   return Number(s);
 };
+
+/** `--of=<step>:<position>` over `--file` / `--workflow`: the counter at that position. */
+function derivedOf(ctx: RunContext): number {
+  const [step, position] = String(ctx.flags.of).split(":");
+  if (!step || !["next", "current", "count"].includes(position ?? ""))
+    throw new CommandError(EXIT.USAGE, "--of must be <step>:<next|current|count>");
+  if (ctx.flags.file === undefined || ctx.flags.workflow === undefined)
+    throw new CommandError(EXIT.USAGE, "--of needs --file and --workflow");
+  const count = activeDoneSteps(
+    readRuns(statusFile(ctx)),
+    String(ctx.flags.workflow),
+    { step, subPlan: positiveInt(ctx.flags.subPlan, "sub-plan") },
+    str(ctx.flags.since),
+  ).length;
+  if (position === "current" && count === 0)
+    throw new CommandError(
+      EXIT_NO_OWN_ROW,
+      `${step}: no DONE row in the active run — the step's own row is missing`,
+    );
+  return position === "next" ? count + 1 : count;
+}
 
 function threshold(name: string): number {
   const value = THRESHOLDS[name];
@@ -134,8 +155,20 @@ export const countersCommand: CommandSpec = {
         {
           name: "value",
           type: "string",
-          required: true,
-          help: "counter value (non-negative integer)",
+          help: "counter value (non-negative integer), or derive it with --of",
+        },
+        {
+          name: "of",
+          type: "string",
+          help: "<step>:<next|current|count> — derive the value from --file (active run)",
+        },
+        { ...FILE_FLAG, required: false, help: "status.jsonl, with --of" },
+        { ...WORKFLOW_FLAG, required: false, help: "workflow, with --of" },
+        { ...SUB_PLAN_FLAG, help: "with --of: only rows for this sub-plan" },
+        {
+          name: "since",
+          type: "string",
+          help: "with --of: run field holding a timestamp; only rows after it count (soakEntryAt)",
         },
         { name: "max", type: "string", help: "max as a number (or use --limit)" },
         { name: "limit", type: "string", help: "max as a threshold name, e.g. MAX_VERIFY_ATTEMPT" },
@@ -143,13 +176,21 @@ export const countersCommand: CommandSpec = {
         { name: "exceeded", type: "string", help: "step to go to when value > max" },
       ],
       output: {
+        value: "the counter compared",
         exceeded: "true when value > max",
         next: "--continue or --exceeded step, whichever applies (null when not given)",
         max: "the max compared against",
       },
+      exitCodes: {
+        [EXIT_NO_STATUS]: "--of: status.jsonl missing, unreadable, or not valid NDJSON",
+        [EXIT_NO_OWN_ROW]: "--of=<step>:current counted 0: the step's own row is missing",
+      },
       run: (ctx) => {
         const name = String(ctx.flags.name);
-        const value = nonNegativeInt(ctx.flags.value, "value");
+        if ((ctx.flags.value === undefined) === (ctx.flags.of === undefined))
+          throw new CommandError(EXIT.USAGE, "give exactly one of --value or --of");
+        const value =
+          ctx.flags.of !== undefined ? derivedOf(ctx) : nonNegativeInt(ctx.flags.value, "value");
         if ((ctx.flags.max === undefined) === (ctx.flags.limit === undefined)) {
           throw new CommandError(EXIT.USAGE, "give exactly one of --max or --limit");
         }
@@ -160,6 +201,7 @@ export const countersCommand: CommandSpec = {
         const exceeded = value > max;
         if (exceeded) ctx.log(`counter ${name} exceeded max=${max} (value=${value})`);
         ctx.emit({
+          value,
           exceeded,
           next: str(exceeded ? ctx.flags.exceeded : ctx.flags.continue) ?? null,
           max,

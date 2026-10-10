@@ -8,6 +8,7 @@
 //   getTemplatesRoot      — from shared/package-roots.ts (templates root resolver, no cycle)
 //   templateRelPath       — from shared/package-roots.ts (dest → template path, the dotfile remap)
 //   parseIssueTracker     — from install/manifest.ts (pure data, no cycle)
+//   readTemplate          — from render/parts.ts (template with its shared parts spliced in)
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -16,6 +17,7 @@ import type { ModuleFlag } from "../../cli.js";
 import { readBkitVersion } from "../../install/version-file.js";
 import { deepContains, type JsonValue } from "../../install/write.js";
 import { extractManagedBlock, stripManagedBlock } from "../../install/managed-block.js";
+import { readTemplate } from "../../render/parts.js";
 import { getPkgRoot, getTemplatesRoot, templateRelPath } from "../../shared/package-roots.js";
 import {
   parseIssueTracker,
@@ -714,7 +716,7 @@ export function detectTier2TextDrift(cwd: string, relPath: string): PreflightFin
   const templatePath = path.join(getTemplatesRoot(), templateRelPath(relPath));
   if (!fs.existsSync(absPath) || !fs.existsSync(templatePath)) return null;
 
-  const templateBlock = extractManagedBlock(fs.readFileSync(templatePath, "utf-8"));
+  const templateBlock = extractManagedBlock(readTemplate(templatePath));
   if (templateBlock === null) return null;
   const consumerBlock = extractManagedBlock(fs.readFileSync(absPath, "utf-8"));
   if (consumerBlock === null) return null;

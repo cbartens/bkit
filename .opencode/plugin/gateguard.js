@@ -52,6 +52,9 @@ import * as path from "node:path";
 // `bash` is NOT in this list.
 const EDIT_TOOLS = new Set(["write", "edit", "patch"]);
 
+// --- GateGuard engine: identical in every host's hook (bkit renders it from one source).
+// Needs `fs`, `os` and `path` in scope; the host's own code above declares them.
+
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
 // A matching path gets the gate-config advisory instead of the first-touch checklist.
 const GATE_CONFIG_PATTERNS = [
@@ -122,17 +125,6 @@ function reuseChecklist(filePath) {
   );
 }
 
-function configAdvisory(filePath) {
-  const base = path.basename(filePath);
-  return (
-    `[bkit GateGuard] \`${base}\` quality-gate config (lint / format / types / test / slop):\n` +
-    `- Prefer FIXING code over weakening any gates.\n` +
-    `- If changes genuinely warranted, use targeted per-file / per-rule opt-outs over blanket disable.\n` +
-    `- ALWAYS get explicit human sign-off for any quality-gate config changes.\n` +
-    `Set BKIT_ALLOW_CONFIG_EDIT=1 to silence this. Advisory — proceed once satisfied.`
-  );
-}
-
 // docs/*.md authoring contract — appended to whichever base advisory applies
 // (first-touch / new-file / gate-config). Matches a `docs/` path segment, not a
 // basename. Excludes docs/plans/ and non-.md files.
@@ -156,6 +148,17 @@ function docAuthoringAdvisory() {
   );
 }
 
+function configAdvisory(filePath) {
+  const base = path.basename(filePath);
+  return (
+    `[bkit GateGuard] \`${base}\` quality-gate config (lint / format / types / test / slop):\n` +
+    `- Prefer FIXING code over weakening any gates.\n` +
+    `- If changes genuinely warranted, use targeted per-file / per-rule opt-outs over blanket disable.\n` +
+    `- ALWAYS get explicit human sign-off for any quality-gate config changes.\n` +
+    `Set BKIT_ALLOW_CONFIG_EDIT=1 to silence this. Advisory — proceed once satisfied.`
+  );
+}
+
 function stateDir() {
   return path.join(os.tmpdir(), "bkit-gateguard");
 }
@@ -165,6 +168,9 @@ function stateFile(sessionId) {
   return path.join(stateDir(), safe + ".json");
 }
 
+// Returns the per-session warned-file map. Absent state file is the NORMAL
+// first-touch case (guarded, no throw); a corrupt file throws to the top-level
+// fail-open boundary and that one call no-ops.
 function readState(sessionId) {
   const file = stateFile(sessionId);
   if (!fs.existsSync(file)) return { files: {} };
@@ -201,14 +207,12 @@ function gcOldState() {
   }
 }
 
-// Pure: takes the tool name, the already-extracted file path, and the session id;
-// returns the advisory to emit or null. Never touches opencode's client, stderr,
-// or the throw path — the driver below owns all three, so it can fold in its own
-// checks without bkit's block needing to change.
-function bkitGateguard(toolName, filePath, sessionId) {
+// The advisory for the first touch of `filePath` this session, or null when GateGuard
+// is off, the path is unusable, or this session was already warned about it. Records
+// the touch. `isNewFile` picks the reuse checklist over the read-this-file checklist.
+function firstTouchAdvice(filePath, sessionId, isNewFile) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off") return null;
-  if (!EDIT_TOOLS.has(toolName)) return null;
   if (!filePath || typeof filePath !== "string") return null;
 
   const sid = typeof sessionId === "string" ? sessionId : "no-session";
@@ -217,8 +221,6 @@ function bkitGateguard(toolName, filePath, sessionId) {
   if (alreadyWarned(sid, filePath)) return null;
 
   const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
-  // A write to a not-yet-existing path is a NEW file and gets the reuse checklist.
-  const isNewFile = toolName === "write" && !fs.existsSync(filePath);
   const baseContext = gated
     ? configAdvisory(filePath)
     : isNewFile
@@ -232,6 +234,18 @@ function bkitGateguard(toolName, filePath, sessionId) {
   gcOldState();
 
   return { mode: mode === "deny" ? "deny" : "advisory", context };
+}
+
+// Pure: takes the tool name, the already-extracted file path, and the session id;
+// returns the advisory to emit or null. Never touches opencode's client, stderr,
+// or the throw path — the driver below owns all three, so it can fold in its own
+// checks without bkit's block needing to change.
+function bkitGateguard(toolName, filePath, sessionId) {
+  if (!EDIT_TOOLS.has(toolName)) return null;
+  // A write to a not-yet-existing path is a NEW file and gets the reuse checklist.
+  const isNewFile =
+    toolName === "write" && typeof filePath === "string" && !fs.existsSync(filePath);
+  return firstTouchAdvice(filePath, sessionId, isNewFile);
 }
 
 // bkit:end

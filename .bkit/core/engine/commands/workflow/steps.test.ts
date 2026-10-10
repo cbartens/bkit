@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
-import { ROW_FIELDS, placeholderLines, promptVerdicts, readHeader } from "./steps";
+import { ROW_FIELDS, placeholderLines, promptHeader, promptVerdicts, readHeader } from "./steps";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 
@@ -459,19 +459,30 @@ describe("bkit steps gate checks attempt / strategy / scope where the step write
     expect((await rowThenGate("build", "build-branch-sync", [])).code).toBe(0);
   });
 
-  it("ROW_FIELDS lists exactly the fields each workflow's `steps done` call writes", () => {
+  it("ROW_FIELDS lists exactly the fields each workflow's `steps done|finish` call writes", () => {
     const dir = path.join(REPO_ROOT, ".bkit", "workflows");
     const written: Record<string, string[]> = {};
+    /** A finish call's `--agent` writes `strategy` when its prompt's header declares one. */
+    const agentWritesStrategy = (line: string) =>
+      [...line.matchAll(/--agent=([a-z0-9-]+)/g)].some((m) =>
+        promptHeader(m[1]!).fields.some((f) => f.name === "Strategy"),
+      );
     for (const name of fs.readdirSync(dir).filter((n) => /^bkit-.*\.md$/.test(n))) {
       const text = fs.readFileSync(path.join(dir, name), "utf-8").replace(/\\\n\s*/g, " ");
-      for (const line of text.split("\n").filter((l) => l.includes("steps done"))) {
+      for (const line of text.split("\n")) {
+        // `context finalise --record` writes the context-fetch row with this run's attempt.
+        if (/"\{BKIT\}" context finalise\b.*--record\b/.test(line)) {
+          written["debug/context-fetch"] = ["attempt"];
+          continue;
+        }
+        if (!/"\{BKIT\}" steps (done|finish)\b/.test(line)) continue;
         const workflow = /--workflow=([a-z]+)/.exec(line)?.[1];
         const step = /--step=([a-z0-9-]+)/.exec(line)?.[1];
         if (!workflow || !step) continue;
         const fields = [
-          /--attempt[= ]/.test(line) ? "attempt" : "",
-          /--strategy=/.test(line) ? "strategy" : "",
-          /--field="?scope=/.test(line) ? "scope" : "",
+          /--attempt(-of)?[= ]/.test(line) ? "attempt" : "",
+          /--strategy=/.test(line) || agentWritesStrategy(line) ? "strategy" : "",
+          /--field="?scope=|--scope=/.test(line) ? "scope" : "",
         ].filter(Boolean);
         if (fields.length) written[`${workflow}/${step}`] = fields;
       }
@@ -488,5 +499,293 @@ describe("placeholderLines", () => {
     const f = path.join(d, "a.md");
     fs.writeFileSync(f, "Scope: PENDING\nPENDING\n[PENDING]\nThe PENDING rows were cleared.\n");
     expect(placeholderLines(f)).toEqual([1, 2, 3]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("bkit steps finish", () => {
+  const FINISH = ["steps", "finish", "--file=logs/status.jsonl", "--workflow=build"];
+
+  it("reads the agent's header, derives the attempt, writes and commits the row, prints the comment", async () => {
+    const cwd = repo();
+    const before = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, [
+      ...FINISH,
+      "--step=build-plan-verify",
+      "--sub-plan=1",
+      "--attempt-of=build-plan-verify:next",
+      "--agent=bkit-build-plan-verify",
+      "--artifact=logs/verify-<attempt>.md",
+      "--message=chore(1-x): plan-verify attempt <attempt>",
+      "--number=7",
+      "--title=Plan Verify",
+      "--sub-plan-count=2",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ verdict: "FAIL", failures: 2, attempt: 1, pass: true });
+    expect(r.json.row).toMatchObject({
+      step: "build-plan-verify",
+      verdict: "FAIL",
+      failures: 2,
+      attempt: 1,
+      subPlan: 1,
+      parentSha: before,
+      artifacts: ["logs/verify-1.md"],
+    });
+    expect(git(cwd, "log", "-1", "--format=%s")).toBe("chore(1-x): plan-verify attempt 1");
+    expect(r.json.comment).toContain(
+      "### Step 7 — Plan Verify - Verdict: FAIL - Failures: 2 - Sub-plan: 1/2 - Attempt: 1",
+    );
+  });
+
+  it("re-asks on a PENDING header (exit 5) and writes nothing", async () => {
+    const cwd = repo();
+    write(cwd, "logs/verify-1.md", "Verdict: PENDING\nFailures: 0\n<!-- verdict:end -->\n");
+    const r = await run(cwd, [
+      ...FINISH,
+      "--step=build-plan-verify",
+      "--attempt=1",
+      "--agent=bkit-build-plan-verify",
+      "--artifact=logs/verify-1.md",
+      "--commit=none",
+    ]);
+    expect(r.code).toBe(5);
+    expect(r.json.reask).toEqual({ agent: "bkit-build-plan-verify", artifact: "logs/verify-1.md" });
+    expect(fs.existsSync(path.join(cwd, "logs/status.jsonl"))).toBe(false);
+  });
+
+  it("re-asks (exit 6) when a field the prompt declares is missing", async () => {
+    const cwd = repo();
+    write(cwd, "logs/verify-1.md", "Verdict: PASS\n<!-- verdict:end -->\n");
+    const r = await run(cwd, [
+      ...FINISH,
+      "--step=build-plan-verify",
+      "--attempt=1",
+      "--agent=bkit-build-plan-verify",
+      "--artifact=logs/verify-1.md",
+      "--commit=none",
+    ]);
+    expect(r.code).toBe(6);
+    expect(r.json.problem).toContain("Failures");
+  });
+
+  it("refuses (exit 1) a row that would miss a field its gate requires, writing nothing", async () => {
+    const cwd = repo();
+    const r = await run(cwd, [
+      ...FINISH,
+      "--step=build-plan-verify",
+      "--agent=bkit-build-plan-verify",
+      "--artifact=logs/verify-1.md",
+      "--commit=none",
+    ]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("row would miss attempt");
+    expect(fs.existsSync(path.join(cwd, "logs/status.jsonl"))).toBe(false);
+  });
+
+  it("pairs agents with artifacts by position: worst verdict, failures summed", async () => {
+    const cwd = repo();
+    write(cwd, "logs/c1.md", "Verdict: CONCERNS\nFailures: 1\n<!-- verdict:end -->\n");
+    write(cwd, "logs/c2.md", "Verdict: PASS\nFailures: 0\n<!-- verdict:end -->\n");
+    const r = await run(cwd, [
+      ...FINISH,
+      "--step=build-challenge",
+      "--attempt=0",
+      "--agent=bkit-build-challenge-1",
+      "--agent=bkit-build-challenge-2",
+      "--artifact=logs/c1.md",
+      "--artifact=logs/c2.md",
+      "--commit=none",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json.row).toMatchObject({ verdict: "CONCERNS", failures: 1, attempt: 0 });
+  });
+
+  it("records the header's Strategy on the row", async () => {
+    const cwd = repo();
+    write(cwd, "logs/rem.md", "Verdict: PASS\nStrategy: PIVOT\n<!-- verdict:end -->\n");
+    const r = await run(cwd, [
+      "steps",
+      "finish",
+      "--file=logs/status.jsonl",
+      "--workflow=debug",
+      "--step=debug-failure-remediate",
+      "--attempt=2",
+      "--agent=bkit-debug-failure-remediate",
+      "--artifact=logs/rem.md",
+      "--commit=none",
+      "--number=6",
+      "--title=Failure Remediate",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json.row).toMatchObject({ strategy: "PIVOT", attempt: 2 });
+    expect(r.json.fields).toEqual({});
+    expect(r.json.comment).toContain("Strategy: PIVOT");
+    // A given --attempt is not derived, so the comment names no Attempt.
+    expect(r.json.comment).not.toContain("Attempt:");
+  });
+
+  it("--attempt=next counts this step's DONE rows; --count-field derives another counter", async () => {
+    const cwd = repo();
+    const args = (n: number) => [
+      "steps",
+      "finish",
+      "--file=logs/status.jsonl",
+      "--workflow=debug",
+      "--step=debug-failure-soak",
+      "--attempt=next",
+      "--count-field=soakAttempt=debug-failure-soak:next",
+      "--verdict=PASS",
+      "--commit=none",
+      `--field=n=${n}`,
+    ];
+    const first = await run(cwd, args(1));
+    const second = await run(cwd, args(2));
+    expect(first.json.row).toMatchObject({ attempt: 1, soakAttempt: 1 });
+    expect(second.json.row).toMatchObject({ attempt: 2, soakAttempt: 2 });
+  });
+
+  it("fills <done> from the artifact's first DONE line, else the fallback", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      "logs/exec.md",
+      "Verdict: PASS\n<!-- verdict:end -->\nDONE — Task 1: add the export — ok\n",
+    );
+    const r = await run(cwd, [
+      ...FINISH,
+      "--step=build-branch-sync",
+      "--verdict=PASS",
+      "--artifact=logs/exec.md",
+      "--message=chore(1-x): <done>",
+      "--done-fallback=plan-execute",
+    ]);
+    expect(r.code).toBe(0);
+    expect(git(cwd, "log", "-1", "--format=%s")).toBe("chore(1-x): add the export");
+  });
+
+  it("rejects --attempt with --attempt-of, and --agent with --verdict", async () => {
+    const cwd = repo();
+    const base = [...FINISH, "--step=build-branch-sync", "--commit=none"];
+    expect((await run(cwd, [...base, "--attempt=1", "--attempt-of=x:next"])).code).toBe(2);
+    expect(
+      (
+        await run(cwd, [
+          ...base,
+          "--agent=bkit-build-plan-verify",
+          "--artifact=logs/verify-1.md",
+          "--verdict=PASS",
+        ])
+      ).code,
+    ).toBe(2);
+  });
+
+  it("--docs-only refuses a step that wrote outside docs/plans/ (exit 9)", async () => {
+    const cwd = repo();
+    write(cwd, "src.ts", "export {};\n");
+    const r = await run(cwd, [
+      ...FINISH,
+      "--step=build-branch-sync",
+      "--artifact=logs/verify-1.md",
+      "--docs-only",
+      "--message=m",
+    ]);
+    expect(r.code).toBe(9);
+    expect(r.json.outside).toContain("src.ts");
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("bkit steps stub", () => {
+  it("copies the prior version under a PENDING header", async () => {
+    const cwd = repo();
+    write(cwd, "logs/v1.md", "# Design\n\nBody.\n");
+    const r = await run(cwd, ["steps", "stub", "--from=logs/v1.md", "--to=logs/v2.md"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ file: "logs/v2.md", stripped: false });
+    expect(fs.readFileSync(path.join(cwd, "logs/v2.md"), "utf-8")).toBe(
+      "Verdict: PENDING\n<!-- verdict:end -->\n\n# Design\n\nBody.\n",
+    );
+  });
+
+  it("--strip-header drops the prior version's own header", async () => {
+    const cwd = repo();
+    await run(cwd, [
+      "steps",
+      "stub",
+      "--from=logs/verify-1.md",
+      "--to=logs/v2.md",
+      "--strip-header",
+    ]);
+    const text = fs.readFileSync(path.join(cwd, "logs/v2.md"), "utf-8");
+    expect(text.startsWith("Verdict: PENDING\n<!-- verdict:end -->\n\n")).toBe(true);
+    expect(text).not.toContain("Verdict: FAIL");
+    expect(text).toContain("# Verify");
+  });
+
+  it("exits 4 when the prior version is missing or empty", async () => {
+    const cwd = repo();
+    write(cwd, "logs/empty.md", "");
+    expect((await run(cwd, ["steps", "stub", "--from=logs/none.md", "--to=logs/v2.md"])).code).toBe(
+      4,
+    );
+    expect(
+      (await run(cwd, ["steps", "stub", "--from=logs/empty.md", "--to=logs/v2.md"])).code,
+    ).toBe(4);
+    expect(fs.existsSync(path.join(cwd, "logs/v2.md"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("bkit steps gate — placeholders, FID, derived attempt", () => {
+  it("checks held placeholders without a status file (Step 1)", async () => {
+    const cwd = repo();
+    const gate = (...p: string[]) =>
+      run(cwd, ["steps", "gate", "--workflow=ship", "--step=ship-start-workflow", ...p]);
+    expect((await gate("--placeholder=BRANCH=feat/1-x", "--placeholder=OWNER_REPO=o/r")).code).toBe(
+      0,
+    );
+    const empty = await gate("--placeholder=BRANCH=", "--placeholder=OWNER_REPO=o/r");
+    expect(empty.code).toBe(1);
+    expect(empty.err).toContain("placeholder BRANCH: empty");
+    expect((await gate("--placeholder=BRANCH")).code).toBe(2);
+    expect((await gate("--placeholder=BRANCH={BRANCH}")).code).toBe(2);
+  });
+
+  it("checks the FID's shape for the wired tracker", async () => {
+    const cwd = repo();
+    const gate = (fid: string) =>
+      run(cwd, [
+        "steps",
+        "gate",
+        "--workflow=design",
+        "--step=design-start-workflow",
+        `--fid=${fid}`,
+      ]);
+    expect((await gate("1-export-csv")).code).toBe(0);
+    expect((await gate("../escape")).code).toBe(1);
+  });
+
+  it("--attempt-of checks the row carries the derived counter", async () => {
+    const cwd = repo();
+    await run(cwd, doneArgs("--attempt=next"));
+    const gate = (spec: string) =>
+      run(cwd, [
+        "steps",
+        "gate",
+        ...STEP,
+        "--sub-plan=1",
+        `--attempt-of=${spec}`,
+        "--artifact=logs/verify-<attempt>.md",
+      ]);
+    expect((await gate("build-plan-verify:current")).code).toBe(0);
+    expect((await gate("build-plan-verify:next")).code).toBe(1);
+    expect(
+      (await run(cwd, ["steps", "gate", "--workflow=build", "--step=x", "--attempt-of=x:next"]))
+        .code,
+    ).toBe(2);
   });
 });

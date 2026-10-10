@@ -1,8 +1,9 @@
-// bkit branches sync|push|rebase|switch|anchor-stamp|anchor-read — the branch
-// mechanics every phase workflow repeated inline: bring a feature branch up to
-// date with dev, push it the one safe way for its kind, auto-resolve the rebase
-// conflicts that lose nothing, return the main checkout to dev after a merge,
-// and stamp / read the base commit a design or plan doc was written against.
+// bkit branches sync|push|rebase|switch|land|anchor-stamp|anchor-read — the
+// branch mechanics every phase workflow repeated inline: bring a feature branch
+// up to date with dev, push it the one safe way for its kind, auto-resolve the
+// rebase conflicts that lose nothing, return the main checkout to dev after a
+// merge, land a design / plan close on dev, and stamp / read the base commit a
+// design or plan doc was written against.
 //
 // Every verb works on `origin` and the integration branch `dev`, as the
 // workflows do. A push is always EXACTLY ONE `git push`: `dev` / `main` get a
@@ -13,9 +14,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { gitEnv } from "../../ledgers/telemetry.js";
-import { CommandError, EXIT, git, parseJson, repoRoot, runGit, SKIP_CI_TOKEN, } from "../lib.js";
+import { bodySkipToken, CommandError, EXIT, git, parseJson, repoRoot, runGit, SKIP_CI_TOKEN, } from "../lib.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
-import { acquireDevLock, releaseLock } from "./locks.js";
+import { commitBookkeeping } from "./ledgers.js";
+import { acquireDevLock, lockRoot, releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
+import { closeTransportRow, crossCheckFile, mergePr, openPrFor, probePr } from "./prs.js";
+import { appendFeature } from "./roadmap.js";
+import { detect } from "./runtime.js";
+import { readStatusRows } from "./status.js";
+import { removeWorktree } from "./worktrees.js";
 import { COULD_NOT_RUN_EXIT_CODES, LOCKFILE_REGENERATE, installCommand, } from "../../shared/package-manager.js";
 import { str } from "./status.js";
 const REMOTE = "origin";
@@ -37,6 +44,9 @@ export const EXIT_NO_FILE = 13;
 export const EXIT_PULL_FAILED = 14;
 export const EXIT_RUNTIME_REFUSED = 15;
 export const EXIT_INSTALL_FAILED = 16;
+export const EXIT_LAND_STOPPED = 17;
+export const EXIT_LANDED_UNVERIFIED = 18;
+export const EXIT_LOCK_LEFT = 19;
 // ---------------------------------------------------------------------------
 // Process helpers
 // ---------------------------------------------------------------------------
@@ -396,79 +406,98 @@ function rebaseVerb(ctx) {
     });
     return result.ok ? EXIT.OK : EXIT_REFUSED;
 }
-function pushVerb(ctx) {
-    const mode = String(ctx.flags.mode);
-    if (!["feature", "abort", "dev"].includes(mode)) {
-        throw new CommandError(EXIT.USAGE, "--mode must be feature, abort, or dev");
-    }
-    const openPrFlag = str(ctx.flags.openPr);
+/**
+ * Push the current branch with exactly one `git push`: plain for dev / main,
+ * `--force-with-lease` otherwise. `abort` never pushes into an open PR (`openPr`:
+ * the answer MCP gave; undefined asks gh, which throws EXIT.USE_MCP when it cannot).
+ */
+export function pushBranch(cwd, o, log) {
+    const { mode, openPr: openPrFlag } = o;
     if (openPrFlag !== undefined && openPrFlag !== "none" && !/^[1-9][0-9]*$/.test(openPrFlag)) {
         throw new CommandError(EXIT.USAGE, `--open-pr must be a PR number or none, got "${openPrFlag}"`);
     }
-    const branch = currentBranch(ctx.cwd);
-    const notPushed = (extra) => ctx.emit({
-        pushed: false,
-        ref: null,
-        sha: null,
-        forced: false,
-        skipped: null,
-        prNumber: null,
-        ...extra,
+    const branch = currentBranch(cwd);
+    const notPushed = (code, extra = {}) => ({
+        code,
+        out: {
+            pushed: false,
+            ref: null,
+            sha: null,
+            forced: false,
+            skipped: null,
+            prNumber: null,
+            ...extra,
+        },
     });
     if (branch === "") {
-        ctx.log("no branch checked out (detached HEAD) — refusing to push");
-        return EXIT_DETACHED;
+        log("no branch checked out (detached HEAD) — refusing to push");
+        return notPushed(EXIT_DETACHED);
     }
     if (mode === "dev" && branch !== DEV) {
-        ctx.log(`--mode=dev pushes ${DEV}, but the checkout is on ${branch}`);
-        return EXIT_NOT_DEV;
+        log(`--mode=dev pushes ${DEV}, but the checkout is on ${branch}`);
+        return notPushed(EXIT_NOT_DEV);
     }
-    if (ctx.flags.requireCi === true) {
-        const message = git(ctx.cwd, ["log", "-1", "--pretty=%B"]) ?? "";
+    if (o.requireCi === true) {
+        const message = git(cwd, ["log", "-1", "--pretty=%B"]) ?? "";
         if (SKIP_CI_TOKEN.test(message)) {
-            ctx.log(`HEAD message on ${branch} carries a CI-suppressing token, and this push needs a CI run — refusing`);
-            notPushed({ skipped: "skip-ci" });
-            return EXIT_SKIP_CI;
+            log(`HEAD message on ${branch} carries a CI-suppressing token, and this push needs a CI run — refusing`);
+            return notPushed(EXIT_SKIP_CI, { skipped: "skip-ci" });
         }
     }
     const shared = SHARED_BRANCHES.has(branch);
     if (mode === "abort" && !shared) {
         const pr = openPrFlag === undefined
-            ? openPrNumber(ctx.cwd, branch)
+            ? openPrNumber(cwd, branch)
             : openPrFlag === "none"
                 ? null
                 : Number(openPrFlag);
         if (pr !== null) {
             // CI and the cloud router would run on an abort commit pushed into an open
             // PR; the last validated remote HEAD is kept instead.
-            ctx.log(`open PR #${pr} on ${branch} — preserving the last validated remote HEAD (no push)`);
-            notPushed({ skipped: "open-pr", prNumber: pr });
-            return EXIT_OPEN_PR;
+            log(`open PR #${pr} on ${branch} — preserving the last validated remote HEAD (no push)`);
+            return notPushed(EXIT_OPEN_PR, { skipped: "open-pr", prNumber: pr });
         }
     }
     const args = [
         "push",
-        ...(ctx.flags.setUpstream === true ? ["-u"] : []),
+        ...(o.setUpstream === true ? ["-u"] : []),
         ...(shared ? [] : ["--force-with-lease"]),
         REMOTE,
         branch,
     ];
-    const res = runGit(ctx.cwd, args);
+    const res = runGit(cwd, args);
     if (!res.ok) {
-        ctx.log(`git ${args.join(" ")} failed: ${res.stderr}`);
-        notPushed({});
-        return EXIT_PUSH_FAILED;
+        log(`git ${args.join(" ")} failed: ${res.stderr}`);
+        return notPushed(EXIT_PUSH_FAILED);
     }
-    ctx.log(`pushed ${branch}${shared ? "" : " (--force-with-lease)"}`);
-    ctx.emit({
-        pushed: true,
-        ref: branch,
-        sha: git(ctx.cwd, ["rev-parse", "HEAD"]),
-        forced: !shared,
-        skipped: null,
-        prNumber: null,
-    });
-    return EXIT.OK;
+    log(`pushed ${branch}${shared ? "" : " (--force-with-lease)"}`);
+    return {
+        code: EXIT.OK,
+        out: {
+            pushed: true,
+            ref: branch,
+            sha: git(cwd, ["rev-parse", "HEAD"]),
+            forced: !shared,
+            skipped: null,
+            prNumber: null,
+        },
+    };
+}
+function pushVerb(ctx) {
+    const mode = String(ctx.flags.mode);
+    if (!["feature", "abort", "dev"].includes(mode)) {
+        throw new CommandError(EXIT.USAGE, "--mode must be feature, abort, or dev");
+    }
+    const r = pushBranch(ctx.cwd, {
+        mode: mode,
+        setUpstream: ctx.flags.setUpstream === true,
+        requireCi: ctx.flags.requireCi === true,
+        openPr: str(ctx.flags.openPr),
+    }, ctx.log);
+    // A detached HEAD and a wrong checkout print nothing, as the push never got to run.
+    if (r.code !== EXIT_DETACHED && r.code !== EXIT_NOT_DEV)
+        ctx.emit(r.out);
+    return r.code;
 }
 /** Resolve sync's docs-merge conflicts: ledgers by union, other `docs/` paths take dev's side. */
 function resolveDocsMerge(top) {
@@ -662,6 +691,251 @@ function install(ctx, root) {
         ? `${argv.join(" ")} could not run — dependencies not installed`
         : `${argv.join(" ")} exited ${String(res.status)} — dependency install failed`);
     return false;
+}
+// ---------------------------------------------------------------------------
+// land (design / plan close)
+// ---------------------------------------------------------------------------
+/** What a design / plan close may bring to dev: docs and ledgers, nothing else. */
+const CLOSE_DOCS = /^docs\/plans\/|^docs\/roadmap\.md$|^docs\/[^/]+\.jsonl$|^\.bkit\/[^/]+\.jsonl$/;
+/** The canonical docs `ref` carries for the feature: design, or plan plus sub-plans. */
+function canonicalDocs(root, ref, workflow, month, fid) {
+    const re = workflow === "plan"
+        ? new RegExp(`^docs/plans/${month}/${fid}-plan(-[0-9]+)?\\.md$`)
+        : new RegExp(`^docs/plans/${month}/${fid}-design\\.md$`);
+    return (git(root, ["ls-tree", "-r", "--name-only", ref, "--", `docs/plans/${month}/`]) ?? "")
+        .split("\n")
+        .filter((f) => re.test(f));
+}
+/** Whether this runtime pushes dev: the run's runtime-resolved row, else a fresh detect. */
+function devPushesOf(root, status, log) {
+    const row = fs.existsSync(status)
+        ? readStatusRows(status)
+            .filter((r) => r.type === "runtime-resolved")
+            .at(-1)
+        : undefined;
+    if (typeof row?.runtimeDevPushes === "boolean")
+        return row.runtimeDevPushes;
+    return detect(root, root, log).runtimeDevPushes;
+}
+class Stop extends CommandError {
+}
+/**
+ * The local close: under the dev lock, squash `feat/{fid}` into dev in the main
+ * checkout, check the staged canonical docs are the branch's, commit the
+ * bookkeeping plus what the squash brought, push dev, remove the worktree.
+ */
+async function landLocal(ctx, root, o) {
+    const feat = `feat/${o.fid}`;
+    const lock = await acquireDevLock({
+        cwd: root,
+        workflow: o.workflow,
+        fid: o.fid,
+        deadlineS: TIMEOUTS.SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S,
+        log: ctx.log,
+    });
+    try {
+        runGit(root, ["checkout", DEV]);
+        const on = currentBranch(root);
+        if (on !== DEV)
+            throw new Stop(EXIT_NOT_DEV, `not on dev after checkout (on '${on}') — aborting dev ops`);
+        const stray = (git(root, ["status", "--porcelain", "-uall", "--", `docs/plans/${o.month}/logs/${o.fid}/`]) ??
+            "")
+            .split("\n")
+            .filter((l) => l.startsWith("??"));
+        if (stray.length) {
+            throw new Stop(EXIT_LAND_STOPPED, `${o.fid} artifacts written to the main checkout instead of the worktree:\n${stray.join("\n")}\nMove them under .worktrees/${o.fid}/ or delete them, then re-run.`);
+        }
+        if (!runGit(root, ["pull", "--ff-only", REMOTE, DEV]).ok)
+            throw new Stop(EXIT_PULL_FAILED, "dev fast-forward failed");
+        const squash = runGit(root, ["merge", "--squash", "-X", "ours", feat]);
+        if (!squash.ok) {
+            throw new Stop(EXIT_LAND_STOPPED, `squash of ${feat} into dev failed — nothing committed or pushed; ${feat} and its worktree kept. Clear what git names from the main checkout, then re-run: ${squash.stderr}`);
+        }
+        const staged = (git(root, ["diff", "--cached", "--name-only"]) ?? "")
+            .split("\n")
+            .filter((p) => p !== "" && !CLOSE_DOCS.test(p));
+        if (staged.length)
+            throw new Stop(EXIT_LAND_STOPPED, `${o.workflow} close staged non-doc files:\n${staged.join("\n")}`);
+        const docs = canonicalDocs(root, feat, o.workflow, o.month, o.fid);
+        const main = `docs/plans/${o.month}/${o.fid}-${o.workflow}.md`;
+        if (!docs.includes(main))
+            throw new Stop(EXIT_LAND_STOPPED, `${feat} carries no ${main} — nothing committed or pushed; ${feat} kept`);
+        const unlanded = docs.filter((d) => git(root, ["rev-parse", "-q", "--verify", `:${d}`]) !==
+            git(root, ["rev-parse", `${feat}:${d}`]));
+        if (unlanded.length) {
+            throw new Stop(EXIT_LAND_STOPPED, `squash did not stage the ${feat} copy of:\n${unlanded.join("\n")}\nnothing committed or pushed; ${feat} kept; the main checkout index still holds the squash`);
+        }
+        appendFeature(root, { workflow: o.workflow, fid: o.fid }, ctx.log);
+        commitBookkeeping({
+            root,
+            month: o.month,
+            fid: o.fid,
+            scope: "core",
+            mode: "commit-allow-empty",
+            squashOf: feat,
+            message: `docs(${o.fid}): ${o.workflow} DONE bkit [skip ci]`,
+        }, ctx.log);
+        if (!runGit(root, ["push", REMOTE, DEV]).ok)
+            throw new Stop(EXIT_PUSH_FAILED, "dev push failed");
+        const sha = git(root, ["rev-parse", "HEAD"]) ?? "";
+        let worktree = null;
+        try {
+            worktree = { ...removeWorktree(root, o.fid, feat, ctx.log) };
+        }
+        catch (err) {
+            // The close landed; a leftover worktree is a human's to remove.
+            ctx.log(`worktree removal failed — remove .worktrees/${o.fid} by hand: ${err.message}`);
+        }
+        return { shape: "local", transport: "git", sha, canonicalRef: DEV, prNumber: null, worktree };
+    }
+    finally {
+        releaseLock(lock.path, { workflow: o.workflow, fid: o.fid, token: lock.token });
+    }
+}
+/**
+ * The PR close (a runtime that cannot push dev): commit the roadmap row on the
+ * branch, push it, open or reuse the PR, squash-merge it with an empty body. gh
+ * missing → EXIT.USE_MCP with what to create / merge; re-run with `--pr` (and
+ * `--merged-sha` once merged).
+ */
+function landPr(ctx, o) {
+    const tree = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+    let prNumber = o.pr;
+    if (prNumber === undefined) {
+        runGit(tree, ["fetch", REMOTE, DEV, o.branch]);
+        appendFeature(tree, { workflow: o.workflow, fid: o.fid }, ctx.log);
+        commitBookkeeping({
+            root: tree,
+            month: o.month,
+            fid: o.fid,
+            scope: "core",
+            mode: "commit-allow-empty",
+            message: `docs(${o.fid}): ${o.workflow} roadmap update bkit [skip ci]`,
+        }, ctx.log);
+        const stray = (git(tree, ["diff", "--name-only", `${UPSTREAM}...${o.branch}`]) ?? "")
+            .split("\n")
+            .filter((p) => p !== "" && !CLOSE_DOCS.test(p));
+        if (stray.length)
+            throw new Stop(EXIT_LAND_STOPPED, `${o.workflow} close diff carries non-doc files:\n${stray.join("\n")}`);
+        const pushed = pushBranch(tree, { mode: "feature" }, ctx.log);
+        if (pushed.code !== EXIT.OK)
+            throw new Stop(EXIT_PUSH_FAILED, "close-commit push failed — the PR would not carry the roadmap row or the close status rows");
+        const opened = openPrFor(tree, {
+            fid: o.fid,
+            title: `docs(${o.fid}): ${o.workflow} DONE`,
+            issue: o.issue,
+            head: o.branch,
+            existing: "reuse",
+        }, ctx.log);
+        if (opened.code === EXIT.USE_MCP) {
+            ctx.emit({ stage: "open", ...opened.out });
+            return EXIT.USE_MCP;
+        }
+        if (opened.code !== EXIT.OK || !opened.out?.number)
+            throw new Stop(EXIT_LAND_STOPPED, `could not open or reuse a PR for ${o.branch} to dev`);
+        prNumber = String(opened.out.number);
+    }
+    const subject = `docs(${o.fid}): ${o.workflow} DONE bkit [skip ci]`;
+    let sha = o.mergedSha ?? "";
+    let transport = o.mergedSha === undefined ? "gh" : "mcp";
+    if (o.mergedSha === undefined) {
+        const merged = mergePr(tree, { number: prNumber, subject }, ctx.log);
+        if (merged.code === EXIT.USE_MCP) {
+            ctx.emit({ stage: "merge", prNumber: Number(prNumber), subject, body: "" });
+            return EXIT.USE_MCP;
+        }
+        if (!merged.out.merged)
+            throw new Stop(EXIT_LAND_STOPPED, `PR ${prNumber} did not reach MERGED (state=${merged.out.state ?? "unread"})`);
+        sha = merged.out.mergeCommitOid ?? "";
+        transport = "gh";
+    }
+    else {
+        const back = probePr(tree, { number: prNumber, state: "open" });
+        if (back.kind === "ok" && back.pr && back.pr.state !== "MERGED")
+            throw new Stop(EXIT_LAND_STOPPED, `PR ${prNumber} is ${back.pr.state}, not MERGED`);
+    }
+    if (sha === "")
+        throw new Stop(EXIT_LAND_STOPPED, `could not resolve the landed SHA for PR ${prNumber}`);
+    if (!runGit(tree, ["fetch", REMOTE, DEV]).ok)
+        throw new Stop(EXIT_LAND_STOPPED, "fetch of origin/dev after the merge failed");
+    return {
+        shape: "pr",
+        transport,
+        sha,
+        canonicalRef: UPSTREAM,
+        prNumber: Number(prNumber),
+        worktree: null,
+    };
+}
+async function landVerb(ctx) {
+    const workflow = String(ctx.flags.workflow);
+    if (!["design", "plan"].includes(workflow))
+        throw new CommandError(EXIT.USAGE, "--workflow must be design or plan");
+    const fid = String(ctx.flags.fid);
+    const root = repoRoot(ctx.cwd);
+    const month = resolveMonth(root, fid, str(ctx.flags.month));
+    // `bkit install` can leave core.bare=true on the main checkout, which breaks every checkout below.
+    if (git(root, ["config", "--get", "core.bare"]) === "true" &&
+        fs.statSync(path.join(root, ".git"), { throwIfNoEntry: false })?.isDirectory()) {
+        runGit(root, ["config", "core.bare", "false"]);
+    }
+    const worktreeStatus = path.join(git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root, "docs", "plans", month, "logs", fid, "status.jsonl");
+    try {
+        const devPushes = devPushesOf(root, worktreeStatus, ctx.log);
+        const landed = devPushes
+            ? await landLocal(ctx, root, { workflow, fid, month })
+            : landPr(ctx, {
+                workflow,
+                fid,
+                month,
+                issue: str(ctx.flags.issue) || undefined,
+                branch: String(ctx.flags.branch ?? currentBranch(ctx.cwd)),
+                pr: str(ctx.flags.pr),
+                mergedSha: str(ctx.flags.mergedSha),
+            });
+        if (typeof landed === "number")
+            return landed;
+        // The audit: canonical docs on dev, the landed body clean, the transport recorded.
+        const docs = canonicalDocs(root, landed.sha, workflow, month, fid);
+        const main = `docs/plans/${month}/${fid}-${workflow}.md`;
+        const missing = [main, ...docs].filter((d) => !runGit(root, ["cat-file", "-e", `${landed.canonicalRef}:${d}`]).ok);
+        const status = path.join(root, "docs", "plans", month, "logs", fid, "status.jsonl");
+        runGit(root, ["fetch", REMOTE, DEV]);
+        const token = bodySkipToken(root, landed.sha);
+        if (token === undefined)
+            throw new Stop(EXIT_LANDED_UNVERIFIED, `post-close body scan errored on ${landed.sha}`);
+        const scanResult = token ? "skip-token-found" : "clean";
+        if (!crossCheckFile(status, landed.transport, ctx.log).ok)
+            throw new Stop(EXIT_LANDED_UNVERIFIED, "close transport cross-check failed");
+        closeTransportRow(status, { shape: landed.shape, sha: landed.sha, scanResult });
+        if (token)
+            throw new Stop(EXIT_LANDED_UNVERIFIED, `landed commit ${landed.sha} inherited a CI-suppression token in its body`);
+        if (missing.length)
+            throw new Stop(EXIT_LANDED_UNVERIFIED, `canonical ${workflow} missing on dev: ${missing.join(", ")}`);
+        const released = releaseLock(workflowLockPath(lockRoot(root, workflow, false), month, fid), {
+            workflow,
+            fid,
+            token: str(ctx.flags.token),
+        });
+        if (released.removeFailed)
+            throw new Stop(EXIT_LOCK_LEFT, "Lock removal failed");
+        ctx.emit({
+            shape: landed.shape,
+            transport: landed.transport,
+            landedSha: landed.sha,
+            prNumber: landed.prNumber,
+            canonicalRef: landed.canonicalRef,
+            scanResult,
+            worktree: landed.worktree,
+        });
+        return EXIT.OK;
+    }
+    catch (err) {
+        if (!(err instanceof Stop))
+            throw err;
+        ctx.log(err.message);
+        return err.code;
+    }
 }
 function anchorStampVerb(ctx) {
     const rel = String(ctx.flags.file);
@@ -882,6 +1156,54 @@ export const branchesCommand = {
                 [EXIT_INSTALL_FAILED]: "dependency install failed or the package manager could not run",
             },
             run: switchVerb,
+        },
+        land: {
+            summary: "Design / plan close: land feat/{fid} on dev — the local squash under the dev lock, or the PR squash-merge — then audit it and release the lock.",
+            flags: [
+                { name: "workflow", type: "string", required: true, help: "design | plan" },
+                { name: "fid", type: "string", required: true, help: "feature id" },
+                {
+                    name: "month",
+                    type: "string",
+                    help: "month bucket YYYYMM (default: the feature's bucket)",
+                },
+                { name: "token", type: "string", help: "the workflow lock token to release once landed" },
+                { name: "issue", type: "string", help: "PR close: the issue id for the PR-body marker" },
+                {
+                    name: "branch",
+                    type: "string",
+                    help: "PR close: the head branch (default: the current branch)",
+                },
+                {
+                    name: "pr",
+                    type: "string",
+                    help: "PR close re-entry: the PR MCP created (after exit 80 at stage open)",
+                },
+                {
+                    name: "merged-sha",
+                    type: "string",
+                    help: "PR close re-entry: the squash commit MCP's merge returned (after exit 80 at stage merge)",
+                },
+            ],
+            output: {
+                shape: "local | pr",
+                transport: "git | gh | mcp",
+                landedSha: "the commit that landed on dev",
+                prNumber: "the PR (pr shape), else null",
+                canonicalRef: "dev (local) | origin/dev (pr) — where the canonical docs were verified",
+                scanResult: "the landed commit body's scan: clean",
+                worktree: "the worktree removal result (local), else null",
+                stage: "exit 80 only: open (create the PR via MCP with title / body / base / head) | merge (merge via MCP with subject, empty body)",
+            },
+            exitCodes: {
+                [EXIT_PUSH_FAILED]: "the dev or branch push failed",
+                [EXIT_NOT_DEV]: "the main checkout is not on dev after checkout",
+                [EXIT_PULL_FAILED]: "dev could not fast-forward",
+                [EXIT_LAND_STOPPED]: "a guard stopped the land: stray files, failed squash, staged non-doc files, canonical blob mismatch, PR not opened / merged (nothing landed)",
+                [EXIT_LANDED_UNVERIFIED]: "landed, but the body scan, transport cross-check or canonical-on-dev check failed",
+                [EXIT_LOCK_LEFT]: "landed and audited, but the workflow lock file survived removal",
+            },
+            run: landVerb,
         },
         "anchor-stamp": {
             summary: "Put a <!-- bkit:anchor --> block recording the base commit on top of a design/plan doc (idempotent).",

@@ -1,12 +1,19 @@
-// bkit ci slop — the enforcing slop gate (`slop:delta`).
+// bkit ci — the gates CI and the git hooks run.
 //
-// `lint:slop` (`slop-scan scan`) only reports. This gate checks the base ref out as
-// a detached worktree, runs `slop-scan delta` against the working tree, and fails
-// when the change makes the repo worse on NET: more findings, or a higher score.
-// It gates on the net figures, not on "added": slop-scan's delta is keyed by
-// position, so editing above a pre-existing finding reports it as resolved at the
-// old line and added at the new one, netting to zero. The pre-existing baseline is
-// never the change's to fix.
+// `slop` — the enforcing slop gate (`slop:delta`). `lint:slop` (`slop-scan scan`) only
+// reports. This gate checks the base ref out as a detached worktree, runs
+// `slop-scan delta` against the working tree, and fails when the change makes the repo
+// worse on NET: more findings, or a higher score. It gates on the net figures, not on
+// "added": slop-scan's delta is keyed by position, so editing above a pre-existing
+// finding reports it as resolved at the old line and added at the new one, netting to
+// zero. The pre-existing baseline is never the change's to fix.
+//
+// `prose` — the prose gate (`lint:prose`): Vale over the markdown files the globs
+// select. Skips with a log line when vale is not installed; restores the gitignored
+// write-good package from the main worktree (else `vale sync`) when it is missing.
+//
+// `skip-token` — whether a commit message carries a GitHub skip-CI token
+// (`SKIP_CI_TOKEN`), for the `.husky/pre-push` CI-suppressor guard.
 
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import * as fs from "node:fs";
@@ -15,9 +22,12 @@ import * as path from "node:path";
 
 import {
   CommandError,
+  commitMessage,
   EXIT,
+  git,
   parseJson,
   runGit,
+  SKIP_CI_TOKEN,
   type CommandSpec,
   type RunContext,
 } from "../lib.js";
@@ -28,6 +38,8 @@ export const EXIT_SLOP_UNAVAILABLE = 3;
 export const EXIT_SLOP_FAILED = 4;
 /** Exit code: the base ref could not be checked out as a worktree. */
 export const EXIT_NO_WORKTREE = 5;
+/** Exit code: vale could not run, or ended with a runtime error (its exit 2). */
+export const EXIT_VALE_FAILED = 6;
 
 /** Branches whose merge-base with HEAD is the default base, in order. */
 const BASE_CANDIDATES = ["origin/dev", "origin/main"];
@@ -77,8 +89,12 @@ export function resolveBaseRef(cwd: string, given: string | undefined): string {
  * locally installed package through npx; `--no-install` never reaches the network.
  */
 export function slopScanArgv(env: NodeJS.ProcessEnv = process.env): string[] {
-  const onPath = spawnSync("/bin/sh", ["-c", "command -v slop-scan"], { env }).status === 0;
-  return onPath ? ["slop-scan"] : ["npx", "--no-install", "slop-scan"];
+  return onPath("slop-scan", env) ? ["slop-scan"] : ["npx", "--no-install", "slop-scan"];
+}
+
+/** Whether `bin` resolves on PATH (`command -v`). */
+function onPath(bin: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  return spawnSync("/bin/sh", ["-c", `command -v ${bin}`], { env }).status === 0;
 }
 
 /** The gate's figures from `slop-scan delta --json`, or the first field it lacks. */
@@ -237,9 +253,161 @@ function slop(ctx: RunContext): Promise<number> | number {
   }, removeWorktree);
 }
 
+// ---------------------------------------------------------------------------
+// prose
+// ---------------------------------------------------------------------------
+
+/** What `bkit ci prose` lints when no `--glob` is given. */
+export const DEFAULT_PROSE_GLOBS = ["**/*.md"];
+
+/** Folders the file walk never enters. */
+const WALK_SKIP = new Set(["node_modules", ".git"]);
+
+/** Vale's write-good package: gitignored, so absent in every fresh checkout and worktree. */
+const WRITE_GOOD = path.join(".vale", "styles", "write-good");
+
+/** A `/`-separated glob (`*`, `**`, `?`) as an anchored regex over `/`-separated paths. */
+export function globToRegExp(glob: string): RegExp {
+  let re = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i]!;
+    if (c === "*" && glob[i + 1] === "*") {
+      const slash = glob[i + 2] === "/";
+      re += slash ? "(?:.*/)?" : ".*";
+      i += slash ? 2 : 1;
+    } else if (c === "*") re += "[^/]*";
+    else if (c === "?") re += "[^/]";
+    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${re}$`);
+}
+
+/**
+ * Where a glob's walk starts — its literal leading folders, `.` when it starts with a
+ * wildcard — and how many levels below that it can match (unbounded with `**`).
+ */
+function globWalk(glob: string): { root: string; depth: number } {
+  const parts = glob.split("/");
+  const literal: string[] = [];
+  for (const part of parts.slice(0, -1)) {
+    if (/[*?]/.test(part)) break;
+    literal.push(part);
+  }
+  return {
+    root: literal.length > 0 ? literal.join("/") : ".",
+    depth: glob.includes("**") ? Infinity : parts.length - literal.length,
+  };
+}
+
+/**
+ * Every file under `root` down to `depth` levels (relative to `cwd`, `/`-separated).
+ * Skips WALK_SKIP folders and never follows a symlinked folder.
+ */
+function walkFiles(cwd: string, root: string, depth: number): string[] {
+  const out: string[] = [];
+  const visit = (rel: string, level: number) => {
+    const abs = path.join(cwd, rel);
+    if (!fs.existsSync(abs)) return;
+    for (const ent of fs.readdirSync(abs, { withFileTypes: true })) {
+      const child = rel === "." ? ent.name : `${rel}/${ent.name}`;
+      if (ent.isDirectory()) {
+        if (level < depth && !WALK_SKIP.has(ent.name)) visit(child, level + 1);
+      } else if (ent.isFile() || ent.isSymbolicLink()) {
+        out.push(child);
+      }
+    }
+  };
+  visit(root, 1);
+  return out;
+}
+
+/** The files the globs select under `cwd`, `/`-separated, sorted, each once. */
+export function proseFiles(cwd: string, globs: readonly string[]): string[] {
+  const files = new Set<string>();
+  for (const given of globs) {
+    const glob = given.replace(/^\.\//, "");
+    const re = globToRegExp(glob);
+    const { root, depth } = globWalk(glob);
+    for (const rel of walkFiles(cwd, root, depth)) {
+      if (re.test(rel)) files.add(rel);
+    }
+  }
+  return [...files].sort();
+}
+
+/**
+ * Put write-good back when it is missing: copy it from the main worktree (no network),
+ * else `vale sync`. True when it is present afterwards.
+ */
+function restoreWriteGood(ctx: RunContext): boolean {
+  const target = path.join(ctx.cwd, WRITE_GOOD);
+  if (fs.existsSync(target)) return true;
+  ctx.log(".vale/styles/write-good absent (fresh checkout or worktree) - restoring");
+  const common = git(ctx.cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const main = common ? path.join(path.dirname(common), WRITE_GOOD) : null;
+  if (main && path.resolve(main) !== path.resolve(target) && fs.existsSync(main)) {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.cpSync(main, target, { recursive: true });
+    return true;
+  }
+  // vale's own report goes to stderr: stdout carries this command's one JSON object.
+  spawnSync("vale", ["sync"], { cwd: ctx.cwd, stdio: ["ignore", 2, 2] });
+  return fs.existsSync(target);
+}
+
+function prose(ctx: RunContext): number {
+  const given = ctx.flags.glob;
+  const globs = Array.isArray(given) && given.length > 0 ? given : DEFAULT_PROSE_GLOBS;
+  const skip = (skipped: string, message: string) => {
+    ctx.log(message);
+    ctx.emit({ passed: true, skipped, files: 0 });
+    return EXIT.OK;
+  };
+  if (!onPath("vale")) {
+    return skip(
+      "vale-missing",
+      "vale not installed - skipping prose lint (install vale, then run vale sync, to enable)",
+    );
+  }
+  if (!restoreWriteGood(ctx)) {
+    return skip(
+      "write-good-missing",
+      "WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync",
+    );
+  }
+  const files = proseFiles(ctx.cwd, globs);
+  if (files.length === 0) {
+    return skip("no-files", `no files match ${globs.join(" ")} - nothing to lint`);
+  }
+  const res = spawnSync("vale", files, { cwd: ctx.cwd, stdio: ["ignore", 2, 2] });
+  if (res.error || (res.status !== 0 && res.status !== 1)) {
+    ctx.log(`vale failed (${res.error?.message ?? `exit ${res.status ?? res.signal}`})`);
+    return EXIT_VALE_FAILED;
+  }
+  const passed = res.status === 0;
+  ctx.emit({ passed, skipped: null, files: files.length });
+  return passed ? EXIT.OK : EXIT.NO;
+}
+
+// ---------------------------------------------------------------------------
+// skip-token
+// ---------------------------------------------------------------------------
+
+function skipToken(ctx: RunContext): number {
+  const ref = typeof ctx.flags.ref === "string" && ctx.flags.ref !== "" ? ctx.flags.ref : "HEAD";
+  const sha = git(ctx.cwd, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  const message = sha ? commitMessage(ctx.cwd, sha) : null;
+  if (!sha || message === null) {
+    throw new CommandError(EXIT.USAGE, `cannot read commit '${ref}' in ${ctx.cwd}`);
+  }
+  const token = SKIP_CI_TOKEN.exec(message)?.[0] ?? null;
+  ctx.emit({ ref, sha, token });
+  return token === null ? EXIT.NO : EXIT.OK;
+}
+
 export const ciCommand: CommandSpec = {
   noun: "ci",
-  summary: "Gates CI and the pre-push hook run.",
+  summary: "Gates CI and the git hooks run.",
   verbs: {
     slop: {
       summary: "Fail when the working tree adds or worsens slop on net against a base ref.",
@@ -268,6 +436,37 @@ export const ciCommand: CommandSpec = {
         [EXIT_NO_WORKTREE]: "the base ref could not be checked out as a worktree",
       },
       run: slop,
+    },
+    prose: {
+      summary:
+        "Run Vale over the markdown files the globs select; skip when vale is not installed.",
+      flags: [
+        {
+          name: "glob",
+          type: "string",
+          repeatable: true,
+          help: "files to lint, relative to the working directory (`*`, `**`, `?`; node_modules skipped; default `**/*.md`)",
+        },
+      ],
+      output: {
+        passed: "false when vale reported alerts",
+        skipped: "vale-missing | write-good-missing | no-files when nothing was linted, else null",
+        files: "how many files vale linted",
+      },
+      exitCodes: {
+        [EXIT_VALE_FAILED]: "vale could not run, or ended with a runtime error",
+      },
+      run: prose,
+    },
+    "skip-token": {
+      summary: "Whether a commit message carries a GitHub skip-CI token ([skip ci] and kin).",
+      flags: [{ name: "ref", type: "string", help: "commit to read (default HEAD)" }],
+      output: {
+        ref: "the ref read",
+        sha: "its commit SHA",
+        token: "the first skip-CI token in the message, else null",
+      },
+      run: skipToken,
     },
   },
 };

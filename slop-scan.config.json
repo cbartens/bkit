@@ -93,6 +93,8 @@
         ".bkit/templates/.cursor/hooks/gateguard.cjs",
         ".bkit/templates/.codex/hooks/gateguard.cjs",
         ".bkit/templates/.opencode/plugin/gateguard.js",
+        ".bkit/core/hook-parts/gateguard-engine.js",
+        ".bkit/core/hook-parts/gateguard-edit-payload.js",
         "**/.claude/hooks/gateguard.cjs",
         "**/.cursor/hooks/gateguard.cjs",
         "**/.codex/hooks/gateguard.cjs",
@@ -109,6 +111,8 @@
         ".bkit/templates/.claude/hooks/guardrails.cjs",
         ".bkit/templates/.cursor/hooks/guardrails.cjs",
         ".bkit/templates/.codex/hooks/guardrails.cjs",
+        ".bkit/core/hook-parts/guardrails-shell.js",
+        ".bkit/core/hook-parts/guardrails-tiers.js",
         "**/.claude/hooks/guardrails.cjs",
         "**/.cursor/hooks/guardrails.cjs",
         "**/.codex/hooks/guardrails.cjs"

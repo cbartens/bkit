@@ -21,6 +21,7 @@ import {
   readBkitVersion,
   type BkitVersion,
 } from "../../install/version-file";
+import { getTemplatesRoot } from "../../shared/package-roots";
 
 let tmpDir: string;
 
@@ -430,6 +431,25 @@ describe("runUpgrade — markered-text (#422)", () => {
     const onDisk = fs.readFileSync(path.join(tmpDir, REL), "utf-8");
     expect(onDisk).toContain("consumer content, no markers");
     expect(onDisk).toContain("// bkit:start");
+  });
+
+  it("the shipped hook template upgrades to its generated form: shared parts spliced into the block", () => {
+    writeFile(REL, "// bkit:start\nold engine\n// bkit:end\n// consumer driver\n");
+    writeBkitVersionInDir(makeVersion({}));
+    const templatePath = path.join(getTemplatesRoot(), ".claude", "hooks", "gateguard.cjs");
+
+    const result = runUpgrade([{ relPath: REL, templatePath, format: "markered-text" }], {
+      nonInteractive: false,
+      dryRun: false,
+      cwd: tmpDir,
+    });
+
+    expect(result.updated).toContain(REL);
+    const onDisk = fs.readFileSync(path.join(tmpDir, REL), "utf-8");
+    expect(onDisk).toContain("function firstTouchAdvice(");
+    expect(onDisk).not.toContain("{{BKIT_PART");
+    expect(onDisk).not.toContain("old engine");
+    expect(onDisk.endsWith("// consumer driver\n")).toBe(true);
   });
 });
 

@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { ownershipMarker, worktreeDir, worktreesCommand } from "./worktrees";
@@ -407,5 +407,39 @@ describe("bkit worktrees remove", () => {
       expect(r.code).toBe(2);
       expect(r.err).toContain(`refusing to delete branch ${branch}`);
     });
+  });
+});
+
+describe("bkit worktrees setup --detect", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("refuses --detect with --worktrees", async () => {
+    const r = await setup(repo("claude/session"), "build", "--detect", "--worktrees");
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("give --worktrees or --detect, not both");
+  });
+
+  it("a runtime that cannot mint worktrees adopts the checkout in place", async () => {
+    vi.stubEnv("BKIT_RUNTIME", "CLOUD_CLAUDE");
+    const cwd = repo("claude/session");
+    const r = await setup(cwd, "build", "--detect");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ mode: "adopted", worktreePath: cwd });
+  });
+
+  it("a runtime that mints worktrees resumes .worktrees/{fid}; one that cannot adopts", async () => {
+    // With a registered worktree and no origin: minting resumes it and fails the
+    // rebase fetch (exit 4); adopting refuses to work in place on dev (exit 7).
+    const fixture = () => {
+      const cwd = repo("dev");
+      linked(cwd);
+      return cwd;
+    };
+    vi.stubEnv("BKIT_RUNTIME", "LOCAL");
+    expect((await setup(fixture(), "build", "--detect")).code).toBe(4);
+    vi.stubEnv("BKIT_RUNTIME", "CLOUD_CLAUDE");
+    expect((await setup(fixture(), "build", "--detect")).code).toBe(7);
   });
 });

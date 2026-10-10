@@ -252,9 +252,10 @@ export function renderCorepackLine(cwd) {
  * Extract the bash body of every `context-fetch:provision <name>` block the consumer
  * enabled below `<!-- bkit:end -->` in `.agents/context.md`. Stack-agnostic: bkit
  * hardcodes no CLI names — the install recipe lives in the consumer's context.md,
- * co-located with the fetch block that needs the CLI. Mirrors the awk parser in
- * `.claude/hooks/cloud-bootstrap.sh`; the web setup-script snapshot and the per-session
- * hook provision the same CLIs. Returns one string per block (bash body).
+ * co-located with the fetch block that needs the CLI. `bkit context list-blocks` returns
+ * the same list as `provision`, which `.claude/hooks/cloud-bootstrap.sh` runs, so the web
+ * setup-script snapshot and the per-session hook provision the same CLIs. Returns one
+ * string per block (bash body).
  */
 export function extractContextFetchProvisionRecipes(cwd) {
     const filePath = path.join(cwd, ".agents", "context.md");

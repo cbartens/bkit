@@ -24,6 +24,7 @@ import * as path from "node:path";
 import * as readline from "node:readline";
 import { type JsonValue, type WriteSet } from "../../install/write.js";
 import { stripManagedBlock, detectMarkerStyle } from "../../install/managed-block.js";
+import { readTemplate } from "../../render/parts.js";
 import {
   getInstallManifest,
   type ManifestEntry,
@@ -640,7 +641,7 @@ export async function runUninstall(
               let isBkitOnlyScaffold = false;
               const markeredTemplatePath = path.join(getTemplatesRoot(), summary.file);
               if (fs.existsSync(markeredTemplatePath)) {
-                const templateContent = fs.readFileSync(markeredTemplatePath, "utf-8");
+                const templateContent = readTemplate(markeredTemplatePath);
                 const templateStripped = stripManagedBlock(
                   templateContent,
                   detectMarkerStyle(templateContent) ?? style,

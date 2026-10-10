@@ -143,7 +143,7 @@ describe("live ledgers are machine-readable", () => {
       const { events } = parse(raw);
       const everUnjustified = new Set(
         events
-          .filter((e) => (e as Record<string, unknown>)["reason"] === UNJUSTIFIED_REASON)
+          .filter((e) => e.kind === "deferral" && e.reason === UNJUSTIFIED_REASON)
           .map((e) => identity(e)),
       );
       const dropped = entities()

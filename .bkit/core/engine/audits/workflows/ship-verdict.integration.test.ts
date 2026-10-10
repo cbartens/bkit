@@ -1,13 +1,13 @@
 /**
  * audits/workflows/ship-verdict.integration.test.ts
  *
- * Boundary: real bash + real jq + real fs + the built `bkit roadmap feature`
- * (dist/, no mocks for the happy path). Runs the EXACT Step 6 block shipped in
- * `.bkit/workflows/bkit-ship.md` — the SHIPPED row append and the
- * `DOCS_VERDICT` it derives from the command's output.
+ * Boundary: real bash + real fs + the built `bkit roadmap feature` (dist/, no
+ * mocks for the happy path). Runs the EXACT Step 6 `roadmap feature --strict`
+ * line shipped in `.bkit/workflows/bkit-ship.md` — the SHIPPED row append, and
+ * the exit that stops the step when the row did not land.
  */
 
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -18,20 +18,18 @@ const SHIP_MD = path.join(REPO_ROOT, ".bkit", "workflows", "bkit-ship.md");
 const BKIT_BIN = path.join(REPO_ROOT, "dist", "cli.js");
 const FID = "412-export-csv";
 
-/** The Step 6 fenced block that calls `bkit roadmap feature`, minus its `BKIT=` line. */
-function extractStep6Block(): string {
+/** The Step 6 `roadmap feature` line (the step's row writes need a status log and are not run). */
+function extractStep6Line(): string {
   const content = fs.readFileSync(SHIP_MD, "utf-8");
   const start = content.search(/^## .*Step 6 —/m);
   expect(start, "bkit-ship.md Step 6 heading not found").toBeGreaterThan(-1);
   const step6 = content.slice(start, content.indexOf("### ", start));
-  const block = [...step6.matchAll(/^[ \t]*```bash\n([\s\S]*?)^[ \t]*```/gm)]
-    .map((m) => m[1]!)
-    .find((b) => /"\$BKIT" roadmap feature\b/.test(b));
-  expect(block, "Step 6 bkit roadmap feature block not found").toBeDefined();
-  return block!
+  const line = step6
     .split("\n")
-    .filter((l) => !/^\s*BKIT=/.test(l))
-    .join("\n");
+    .map((l) => l.trim())
+    .find((l) => l.startsWith('"{BKIT}" roadmap feature '));
+  expect(line, "Step 6 bkit roadmap feature line not found").toBeDefined();
+  return line!;
 }
 
 let tmpDir: string;
@@ -48,15 +46,15 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-/** Run the shipped block with `$BKIT` = `bkit` (a path to an executable), from an unrelated cwd. */
-function runStep6(bkit: string): string {
-  const snippet = extractStep6Block()
-    .replace(/\{WORKTREE_PATH\}/g, worktree)
-    .replace(/\{FID\}/g, FID);
+/** Run the shipped line with `{BKIT}` = `bkit` (a path to an executable), from an unrelated cwd; its exit code. */
+function runStep6(bkit: string): number {
+  const snippet = extractStep6Line()
+    .replaceAll("{BKIT}", bkit)
+    .replaceAll("{WORKTREE_PATH}", worktree)
+    .replaceAll("{FID}", FID);
   const otherDir = fs.mkdtempSync(path.join(tmpDir, "cwd-"));
-  const script = `cd "${otherDir}" && BKIT="${bkit}"\n${snippet}\necho "VERDICT=$DOCS_VERDICT"`;
-  const out = execSync(script, { shell: "/bin/bash", encoding: "utf-8", stdio: "pipe" });
-  return /VERDICT=(\w*)/.exec(out)?.[1] ?? "";
+  const res = spawnSync("bash", ["-c", `cd "${otherDir}"\n${snippet}`], { encoding: "utf-8" });
+  return res.status ?? -1;
 }
 
 /** An executable `bkit` stand-in that prints `stdout` and exits `code`. */
@@ -74,10 +72,10 @@ function realBkit(): string {
   return file;
 }
 
-describe("DOCS_VERDICT — Step 6 SHIPPED row via bkit roadmap feature (#380, matrix row 10)", () => {
-  it("PASS, and the SHIPPED row lands in the worktree ledger (not the cwd)", () => {
+describe("Step 6 SHIPPED row via bkit roadmap feature --strict (#380, matrix row 10)", () => {
+  it("exits 0, and the SHIPPED row lands in the worktree ledger (not the cwd)", () => {
     expect(fs.existsSync(BKIT_BIN), "dist/cli.js missing — run the build").toBe(true);
-    expect(runStep6(realBkit())).toBe("PASS");
+    expect(runStep6(realBkit())).toBe(0);
     const rows = fs
       .readFileSync(path.join(worktree, ".bkit", "issues.jsonl"), "utf-8")
       .trim()
@@ -93,21 +91,13 @@ describe("DOCS_VERDICT — Step 6 SHIPPED row via bkit roadmap feature (#380, ma
     });
   });
 
-  it("FAIL when the ledger could not be written (fail-open append, appended=false)", () => {
+  it("stops the step when the ledger could not be written (fail-open append, appended=false)", () => {
     fs.mkdirSync(path.join(worktree, ".bkit", "issues.jsonl"));
-    expect(runStep6(realBkit())).toBe("FAIL");
+    expect(runStep6(realBkit())).not.toBe(0);
   });
 
-  it("FAIL when the appended row is not SHIPPED (green-with-omission guard)", () => {
-    const out = JSON.stringify({
-      row: { kind: "feature", key: FID, status: "BUILT" },
-      appended: true,
-    });
-    expect(runStep6(stub(out))).toBe("FAIL");
-  });
-
-  it("FAIL when the command printed no JSON (crashed or usage error)", () => {
-    expect(runStep6(stub("", 2))).toBe("FAIL");
-    expect(runStep6(stub("not json"))).toBe("FAIL");
+  it("stops the step when the command crashed or was misused", () => {
+    expect(runStep6(stub("", 2))).not.toBe(0);
+    expect(runStep6(stub("not json", 1))).not.toBe(0);
   });
 });

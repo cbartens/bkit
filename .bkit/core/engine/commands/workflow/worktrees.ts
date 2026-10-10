@@ -18,6 +18,7 @@ import { gitEnv } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
 import { CommandError, EXIT, git, repoRoot, runGit, type CommandSpec } from "../lib.js";
+import { detect } from "./runtime.js";
 import { WORKFLOW_FLAG } from "./status.js";
 
 const WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
@@ -227,6 +228,62 @@ function deleteBranch(
   };
 }
 
+export interface RemoveResult {
+  removed: boolean;
+  reason: string | null;
+  worktreePath: string;
+  repoRoot: string;
+  branchDeleted: boolean | null;
+  remoteDeleted: boolean | null;
+  branchBlockedBy: string | null;
+}
+
+/**
+ * Remove `.worktrees/{fid}` when a workflow created it (the ownership marker),
+ * prune stale entries, then delete `branch` locally and on origin unless another
+ * worktree holds it. Throws EXIT_REMOVE when `git worktree remove` fails.
+ */
+export function removeWorktree(
+  cwd: string,
+  fid: string,
+  branch: string | undefined,
+  log: (m: string) => void,
+): RemoveResult {
+  if (branch !== undefined && (branch === DEV || branch === "main")) {
+    throw new CommandError(EXIT.USAGE, `refusing to delete branch ${branch}`);
+  }
+  const root = repoRoot(cwd);
+  const wt = worktreeDir(root, fid);
+  const marker = ownershipMarker(root, fid);
+  const result = (removed: boolean, reason: string | null): RemoveResult => {
+    const cleanup = branch === undefined ? null : deleteBranch(root, branch, log);
+    return {
+      removed,
+      reason,
+      worktreePath: wt,
+      repoRoot: root,
+      branchDeleted: cleanup?.branchDeleted ?? null,
+      remoteDeleted: cleanup?.remoteDeleted ?? null,
+      branchBlockedBy: cleanup?.branchBlockedBy ?? null,
+    };
+  };
+  if (!fs.existsSync(wt)) {
+    runGit(root, ["worktree", "prune"]);
+    return result(false, "absent");
+  }
+  if (!fs.existsSync(marker)) {
+    log(`${wt} exists but has no ownership marker (${marker}) — not ours, left in place`);
+    return result(false, "not-owned");
+  }
+  const inside = !path.relative(real(wt), real(cwd)).startsWith("..");
+  const res = runGit(root, ["worktree", "remove", "--force", wt]);
+  if (!res.ok) throw new CommandError(EXIT_REMOVE, `git worktree remove failed: ${res.stderr}`);
+  runGit(root, ["worktree", "prune"]);
+  fs.rmSync(marker, { force: true });
+  if (inside) log(`the working directory was inside ${wt} — cd to ${root}`);
+  return result(true, null);
+}
+
 // ---------------------------------------------------------------------------
 // Command
 // ---------------------------------------------------------------------------
@@ -245,6 +302,11 @@ export const worktreesCommand: CommandSpec = {
           name: "worktrees",
           type: "boolean",
           help: "this runtime mints worktrees (runtimeWorktrees=true); absent = adopt the current branch in place",
+        },
+        {
+          name: "detect",
+          type: "boolean",
+          help: "detect runtimeWorktrees here (`bkit runtime detect`) instead of passing --worktrees",
         },
         {
           name: "branch",
@@ -312,7 +374,13 @@ export const worktreesCommand: CommandSpec = {
 
         // Ship mints only when the session is not already on the branch it ships:
         // that branch cannot be checked out in two places.
-        const mint = f.worktrees === true && !(workflow === "ship" && session === target);
+        if (f.worktrees === true && f.detect === true)
+          throw new CommandError(EXIT.USAGE, "give --worktrees or --detect, not both");
+        const worktrees =
+          f.detect === true
+            ? detect(ctx.cwd, root, ctx.log).runtimeWorktrees
+            : f.worktrees === true;
+        const mint = worktrees && !(workflow === "ship" && session === target);
         const wtDir = worktreeDir(root, fid);
         let mode: "created" | "resumed" | "adopted" = "adopted";
         if (mint) {
@@ -457,43 +525,9 @@ export const worktreesCommand: CommandSpec = {
       },
       exitCodes: { [EXIT_REMOVE]: "git worktree remove failed" },
       run: (ctx) => {
-        const fid = fidOf(ctx.flags.fid);
         const branch = ctx.flags.branch === undefined ? undefined : String(ctx.flags.branch);
-        if (branch !== undefined && (branch === DEV || branch === "main")) {
-          throw new CommandError(EXIT.USAGE, `refusing to delete branch ${branch}`);
-        }
-        const root = repoRoot(ctx.cwd);
-        const wt = worktreeDir(root, fid);
-        const marker = ownershipMarker(root, fid);
-        const result = (removed: boolean, reason: string | null) => {
-          const cleanup = branch === undefined ? null : deleteBranch(root, branch, ctx.log);
-          ctx.emit({
-            removed,
-            reason,
-            worktreePath: wt,
-            repoRoot: root,
-            branchDeleted: cleanup?.branchDeleted ?? null,
-            remoteDeleted: cleanup?.remoteDeleted ?? null,
-            branchBlockedBy: cleanup?.branchBlockedBy ?? null,
-          });
-          return EXIT.OK;
-        };
-        if (!fs.existsSync(wt)) {
-          runGit(root, ["worktree", "prune"]);
-          return result(false, "absent");
-        }
-        if (!fs.existsSync(marker)) {
-          ctx.log(`${wt} exists but has no ownership marker (${marker}) — not ours, left in place`);
-          return result(false, "not-owned");
-        }
-        const inside = !path.relative(real(wt), real(ctx.cwd)).startsWith("..");
-        const res = runGit(root, ["worktree", "remove", "--force", wt]);
-        if (!res.ok)
-          throw new CommandError(EXIT_REMOVE, `git worktree remove failed: ${res.stderr}`);
-        runGit(root, ["worktree", "prune"]);
-        fs.rmSync(marker, { force: true });
-        if (inside) ctx.log(`the working directory was inside ${wt} — cd to ${root}`);
-        return result(true, null);
+        ctx.emit({ ...removeWorktree(ctx.cwd, fidOf(ctx.flags.fid), branch, ctx.log) });
+        return EXIT.OK;
       },
     },
   },

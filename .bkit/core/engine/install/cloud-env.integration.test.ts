@@ -36,7 +36,7 @@ const read = (rel: string) => fs.readFileSync(path.join(tmpDir, rel), "utf-8");
 
 describe("T4 — the derived egress set reaches all five surfaces", () => {
   it("cloud paste, cursor allowlist, claude WebFetch and opencode bash globs all name it", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "fanout", version: "1.0.0", packageManager: "pnpm@10.34.3" }, null, 2),
@@ -108,7 +108,7 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
 // with and without the provenance record.
 describe("T14 — the provenance field contributes no bkit check drift", () => {
   it("check reports the same write set with and without claudeAllowDerived present", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "drift", version: "1.0.0", packageManager: "pnpm@10.34.3" }, null, 2),

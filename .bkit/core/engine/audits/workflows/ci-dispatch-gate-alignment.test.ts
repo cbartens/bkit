@@ -3,17 +3,17 @@
 //
 // The gate itself — poll, one clean re-trigger, the four outcomes, every
 // unresolved sub-reason (retrigger-suppressed, ci-declared-no-run,
-// gh-error), the agent turn-loop hand-off, the capstone
-// namespace, and "nothing is pushed after the verdict" — is `bkit runs
-// dispatch`, covered in commands/workflow/runs.test.ts. What stays here is
-// what the workflows must do around it:
-//   - build and debug each run it after their last push, with the auto-route
-//     suffix read from the tracker in the same block;
-//   - the verdict is recorded as a local step-done row and never committed or
-//     pushed (KN-11);
-//   - a hand-off (80 / 81) records nothing;
-//   - ship stays out of the gate and re-validates with a probe-first,
-//     bounded poll.
+// gh-error), the agent turn-loop hand-off, the capstone namespace, the
+// auto-route suffix from `--label`, the local verdict row, and "nothing is
+// pushed after the verdict" — is `bkit runs dispatch`, covered in
+// commands/workflow/runs.test.ts. Ship's probe-first re-validate is `bkit runs
+// revalidate`, covered there too. What stays here is what the workflows must
+// do around them:
+//   - build and debug each run the gate after their last push, with labels
+//     re-read from the tracker and the row's file and step named;
+//   - nothing is committed or pushed after the gate in its block (KN-11);
+//   - ship stays out of the gate, re-validates through `runs revalidate`, and
+//     bounds a gate-refusal re-entry.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -37,7 +37,8 @@ function fences(content: string): string[] {
   );
 }
 
-const dispatchFences = (md: string) => fences(md).filter((f) => /"\$BKIT" runs dispatch\b/.test(f));
+const dispatchFences = (md: string) =>
+  fences(md).filter((f) => /"\{BKIT\}" runs dispatch\b/.test(f));
 
 // ---------------------------------------------------------------------------
 // 1. Build and debug run the gate, once each, and record its verdict locally
@@ -51,44 +52,31 @@ describe.each([
     expect(dispatchFences(md)).toHaveLength(1);
   });
 
-  it("derives the auto-route suffix from the held labels in the same block", () => {
+  it("passes the re-read labels, so the re-trigger subject carries the auto-route suffix", () => {
     const f = dispatchFences(md)[0]!;
-    const derive = f.search(
-      /AUTO_ROUTE_SUFFIX=\$\("\$BKIT" issues labels \{LABEL_FLAGS\} \| jq -er \.autoRouteSuffix\) \|\| exit 2/,
-    );
-    const call = f.search(/"\$BKIT" runs dispatch .*--auto-route-suffix="\$AUTO_ROUTE_SUFFIX"/);
-    expect(derive, `${name}: AUTO_ROUTE_SUFFIX not derived in the dispatch block`).toBeGreaterThan(
-      -1,
-    );
-    expect(call, `${name}: runs dispatch does not take the derived suffix`).toBeGreaterThan(derive);
+    expect(f, name).toMatch(/"\{BKIT\}" runs dispatch [^\n]*\{LABEL_FLAGS\}/);
+    expect(f).not.toContain("--auto-route-suffix");
   });
 
   it("passes the held PR number, so a runtime without gh never needs it to find the PR", () => {
     // Without --pr, runs dispatch asks gh for the PR and exits 80 before it
     // reads the turn loop's --poll-result, so every re-entry exits 80 again.
     const f = dispatchFences(md)[0]!;
-    expect(f).toMatch(/"\$BKIT" runs dispatch [^\n]*--pr="?\{PR_NUMBER\}"?/);
+    expect(f).toMatch(/"\{BKIT\}" runs dispatch [^\n]*--pr="?\{PR_NUMBER\}"?/);
   });
 
-  it("records the ciDispatch verdict as a local step-done row, after a hand-off exit is passed out", () => {
+  it("names the status file and the step whose row records the ciDispatch verdict", () => {
     const f = dispatchFences(md)[0]!;
-    const call = f.indexOf('"$BKIT" runs dispatch');
-    const record = f.search(/"\$BKIT" steps done [^\n]*--field=?"?ciDispatch=/);
-    expect(record, `${name}: no steps done --field=ciDispatch after the gate`).toBeGreaterThan(
-      call,
-    );
-    expect(f.slice(record)).toMatch(/^[^\n]*--commit=none/);
-    // 80 / 81 (hand the poll to the agent's turn loop) leave before the row is
-    // written; the block is re-run with the turn loop's result.
-    const between = f.slice(call, record);
-    expect(between).toMatch(/case "\$RC" in [^\n]*\bexit "\$RC"/);
+    expect(f).toMatch(/"\{BKIT\}" runs dispatch [^\n]*--file="\{STATUS\}"/);
+    expect(f).toMatch(/"\{BKIT\}" runs dispatch [^\n]*(--step=[a-z-]+|\{DISPATCH_ROW\})/);
+    expect(f).not.toMatch(/steps done [^\n]*ciDispatch/);
   });
 
   it("never commits or pushes after the gate — the verdict stays local (KN-11)", () => {
     const f = dispatchFences(md)[0]!;
-    const after = f.slice(f.indexOf('"$BKIT" runs dispatch'));
+    const after = f.slice(f.indexOf('"{BKIT}" runs dispatch'));
     expect(after).not.toMatch(/\bgit\s+(-C\s+"[^"]+"\s+)?(push|commit)\b/);
-    expect(after).not.toMatch(/"\$BKIT" (branches push|ledgers commit)\b/);
+    expect(after).not.toMatch(/"\{BKIT\}" (branches push|ledgers commit)\b/);
     expect(after).not.toMatch(/--commit=(?!none)/);
   });
 
@@ -96,7 +84,7 @@ describe.each([
     // A `[skip ci]` HEAD would fire no run, so the gate would only ever see
     // its own suppression.
     expect(
-      fences(md).some((f) => /"\$BKIT" branches push --mode=feature [^\n]*--require-ci/.test(f)),
+      fences(md).some((f) => /"\{BKIT\}" branches push --mode=feature [^\n]*--require-ci/.test(f)),
     ).toBe(true);
   });
 });
@@ -106,54 +94,43 @@ describe.each([
 // ---------------------------------------------------------------------------
 describe("bkit-ship.md — no CI-Dispatch gate", () => {
   it("never calls bkit runs dispatch", () => {
-    expect(shipMd).not.toMatch(/"\$BKIT" runs dispatch\b/);
+    expect(shipMd).not.toMatch(/"\{BKIT\}" runs dispatch\b/);
   });
 });
 
 // ---------------------------------------------------------------------------
-// 3. Ship Step 9 probes before dispatching (no duplicate CI run)
+// 3. Ship Step 9 re-validates through `bkit runs revalidate`
 //
-// Step 9 re-validate can FOLLOW a head move (Path B `gh pr update-branch`) that
-// already fired a `pull_request` run at that same SHA; dispatching
-// unconditionally produced a second, redundant run every time. The probe
-// targets VALIDATED_HEAD, not the PR head — the PR head is ship's own
-// `[skip ci]` bookkeeping commit, which never gets a run. `bkit runs wait
-// --dispatch-if-absent` owns probe-then-dispatch (commands/workflow/runs.test.ts);
-// the probe is never a pass condition — the completion poll and `bkit runs gate`
-// at Step 10 own the verdict.
+// Step 9 can FOLLOW a head move (Path B `gh pr update-branch`) that already
+// fired a run at that SHA, so the command probes first and dispatches only when
+// none is present; it probes at VALIDATED_HEAD, not the PR head (ship's own
+// `[skip ci]` bookkeeping commit never gets a run). All of that is pinned in
+// commands/workflow/runs.test.ts; here: the workflow hands it what it needs.
 // ---------------------------------------------------------------------------
-describe("bkit-ship.md — Step 9 probes before dispatching (no duplicate CI run)", () => {
-  const step9 = fences(shipMd).find((f) => /"\$BKIT" runs wait [^\n]*--dispatch-if-absent/.test(f));
+describe("bkit-ship.md — Step 9 re-validates through runs revalidate", () => {
+  const step9 = fences(shipMd).find((f) => /"\{BKIT\}" runs revalidate\b/.test(f));
 
-  it("dispatches only through the probe — no hand-rolled gh workflow run anywhere", () => {
-    expect(step9, "Step 9 probe-then-dispatch block not found").toBeDefined();
+  it("runs it once, with the entry head, the code head, the branch and the status file", () => {
+    expect(step9, "Step 9 runs revalidate block not found").toBeDefined();
+    for (const flag of [
+      '--pr="{PR_NUMBER}"',
+      '--entry-head="{ENTRY_HEAD}"',
+      '--code-head="{CODE_HEAD}"',
+      '--branch="{SHIP_BRANCH}"',
+      '--file="{STATUS}"',
+      '--reason="{REVALIDATE_REASON}"',
+    ]) {
+      expect(step9!).toContain(flag);
+    }
+    expect(fences(shipMd).filter((f) => /"\{BKIT\}" runs revalidate\b/.test(f))).toHaveLength(1);
+  });
+
+  it("dispatches only through the command — no hand-rolled gh workflow run anywhere", () => {
     expect(shipMd).not.toMatch(/gh workflow run\b/);
   });
 
   it("never names a hard-coded ci.yml (the CI file comes from bkit.ciWorkflow)", () => {
     expect(shipMd).not.toMatch(/\bci\.yml\b/);
-  });
-
-  it("probes for a run at VALIDATED_HEAD, then polls completion at the same head", () => {
-    const probe = step9!.search(
-      /"\$BKIT" runs wait --head="\$VALIDATED_HEAD" [^\n]*--until=present [^\n]*--dispatch-if-absent/,
-    );
-    const poll = step9!.search(
-      /"\$BKIT" runs wait --head="\$VALIDATED_HEAD" [^\n]*--until=completed/,
-    );
-    expect(probe).toBeGreaterThan(-1);
-    expect(poll).toBeGreaterThan(probe);
-  });
-
-  it("records the probe outcome in a ship-revalidate-dispatch row through bkit status row", () => {
-    const row = step9!
-      .split("\n")
-      .find((l) => /"\$BKIT" status row [^\n]*--type=ship-revalidate-dispatch\b/.test(l));
-    expect(row, "ship-revalidate-dispatch status row not found").toBeDefined();
-    for (const field of ["head", "probe", "reason", "dispatched", "attempts"]) {
-      expect(row!).toMatch(new RegExp(`--field=${field}=`));
-    }
-    expect(step9!).toMatch(/PROBE_DISPATCHED=\$\(printf '%s' "\$PROBE" \| jq -r \.dispatched\)/);
   });
 
   it("keeps ship free of the gate's outcome vocabulary (probe is never a pass condition)", () => {
@@ -165,16 +142,13 @@ describe("bkit-ship.md — Step 9 probes before dispatching (no duplicate CI run
 // ---------------------------------------------------------------------------
 // 4. Step 10 gate refusal re-enters Step 9 as a POLL, and is bounded.
 //
-// Codes 10/11/14/17 route back to Step 9. Before this, the poll was gated on
-// `CURRENT_HEAD != ENTRY_HEAD` alone, so a refusal at an UNCHANGED head skipped
-// the poll entirely — for code 10 an unbounded loop with nothing in it able to
-// change the gate's answer.
+// Codes 10/11/14/17 route back to Step 9 with REVALIDATE_REASON = gate-refusal,
+// which makes `runs revalidate` poll even at an unchanged head — for code 10 an
+// unbounded loop otherwise, with nothing in it able to change the gate's answer.
 // ---------------------------------------------------------------------------
 describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () => {
-  it("Step 9 also polls on a gate-refusal re-entry, not head movement alone", () => {
-    expect(shipMd).toContain(
-      'if [ "$VALIDATED_HEAD" != "$ENTRY_HEAD" ] || [ "$REVALIDATE_REASON" = "gate-refusal" ]; then',
-    );
+  it("a refusal re-enters Step 9 as gate-refusal", () => {
+    expect(shipMd).toContain("set `{REVALIDATE_REASON}` = `gate-refusal` → Step 9");
   });
 
   it("re-validate sits after the deferred sweep and the bookkeeping commit, before the merge gate", () => {
@@ -196,7 +170,7 @@ describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () 
 
   it("bounds the re-entry by MAX_REVALIDATE_ATTEMPT through bkit counters route, never a local value", () => {
     expect(shipMd).toMatch(
-      /"\$BKIT" counters route --name=REVALIDATE_ATTEMPT --value="\$REVALIDATE_ATTEMPT" --limit=MAX_REVALIDATE_ATTEMPT --continue=step-9 --exceeded=failure-path/,
+      /"\{BKIT\}" counters route --name=REVALIDATE_ATTEMPT --value="\$REVALIDATE_ATTEMPT" --limit=MAX_REVALIDATE_ATTEMPT --continue=step-9 --exceeded=failure-path/,
     );
     // The value lives in `bkit counters max` (commands/workflow/counters.ts).
     expect(shipMd).not.toMatch(/^\s*MAX_REVALIDATE_ATTEMPT=/m);
@@ -206,11 +180,11 @@ describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () 
     // Run scoping (a resumed run does not inherit a prior run's rows) is
     // pinned in commands/workflow/counters.test.ts 'bkit counters rows'.
     const block = fences(shipMd).find((f) =>
-      /"\$BKIT" counters route --name=REVALIDATE_ATTEMPT\b/.test(f),
+      /"\{BKIT\}" counters route --name=REVALIDATE_ATTEMPT\b/.test(f),
     );
     expect(block, "REVALIDATE_ATTEMPT routing block not found").toBeDefined();
     expect(block!).toContain(
-      'REVALIDATE_ATTEMPT=$("$BKIT" counters rows --file="$STATUS" --workflow=ship --type=ship-revalidate-dispatch --position=next | jq -er .value) || exit 2',
+      'REVALIDATE_ATTEMPT=$("{BKIT}" counters rows --file="{STATUS}" --workflow=ship --type=ship-revalidate-dispatch --position=next | jq -er .value) || exit 2',
     );
     expect(block!).not.toMatch(/REVALIDATE_ATTEMPT=\$\(jq\b/);
   });

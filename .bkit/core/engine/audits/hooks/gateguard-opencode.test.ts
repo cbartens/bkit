@@ -16,21 +16,29 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { pathToFileURL } from "node:url";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { readTemplate } from "../../render/parts";
 
 // ---------------------------------------------------------------------------
 // Load plugin (ES module import)
 // ---------------------------------------------------------------------------
 
+// The plugin as install generates it (shared parts spliced in). `.mjs`: it is an ES
+// module, and the temp dir has no package.json saying so.
+const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gg-opencode-"));
+afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
+const PLUGIN_PATH = path.join(GENERATED, "gateguard.mjs");
+fs.writeFileSync(
+  PLUGIN_PATH,
+  readTemplate(path.resolve(".bkit/templates/.opencode/plugin/gateguard.js")),
+);
+
 // Dynamic import used to allow env var injection before the module runs.
 // The plugin is a pure function of its input — it reads env vars at call time.
-const PLUGIN_PATH = path.resolve(".bkit/templates/.opencode/plugin/gateguard.js");
-
-// Resolve relative to cwd (repo root when run via pnpm test)
 async function loadPlugin() {
-  // Bust module cache by appending a dummy query so each test gets a fresh import
-  // when needed. In practice we can reuse the same import within one test run.
-  const { default: plugin } = await import(PLUGIN_PATH);
+  const { default: plugin } = await import(pathToFileURL(PLUGIN_PATH).href);
   return plugin;
 }
 
@@ -584,9 +592,8 @@ describe("gateguard plugin — docs/*.md density advisory (#422)", () => {
   });
 
   it("twin parity: isDocsPath + docAuthoringAdvisory are byte-identical between the two hooks", () => {
-    const CJS_PATH = path.resolve(".bkit/templates/.claude/hooks/gateguard.cjs");
     const jsSrc = fs.readFileSync(PLUGIN_PATH, "utf-8");
-    const cjsSrc = fs.readFileSync(CJS_PATH, "utf-8");
+    const cjsSrc = readTemplate(path.resolve(".bkit/templates/.claude/hooks/gateguard.cjs"));
 
     const extract = (src: string, fnStart: string) => {
       const start = src.indexOf(fnStart);

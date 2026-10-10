@@ -62,6 +62,9 @@ function parseApplyPatchTargets(command, cwd) {
   return out;
 }
 
+// --- GateGuard engine: identical in every host's hook (bkit renders it from one source).
+// Needs `fs`, `os` and `path` in scope; the host's own code above declares them.
+
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
 // A matching path gets the gate-config advisory instead of the first-touch checklist.
 const GATE_CONFIG_PATTERNS = [
@@ -214,30 +217,20 @@ function gcOldState() {
   }
 }
 
-// Pure: takes the already-parsed hook payload, returns the advisory to emit or
-// null. Never touches process.stdin / process.stdout — the driver below owns both.
-function bkitGateguard(payload) {
+// The advisory for the first touch of `filePath` this session, or null when GateGuard
+// is off, the path is unusable, or this session was already warned about it. Records
+// the touch. `isNewFile` picks the reuse checklist over the read-this-file checklist.
+function firstTouchAdvice(filePath, sessionId, isNewFile) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off") return null;
+  if (!filePath || typeof filePath !== "string") return null;
 
-  // Subagents are NOT exempt. Dedup is per (session, file) and a subagent carries its
-  // own session id, so it gets the checklist once for a file the orchestrator already
-  // touched.
-  if (!EDIT_TOOLS.has(payload.tool_name)) return null;
+  const sid = typeof sessionId === "string" ? sessionId : "no-session";
 
-  const input = payload.tool_input || {};
-  const cwd = typeof payload.cwd === "string" ? payload.cwd : "";
-  // One patch can touch several files. Advises on the first not-yet-warned target, so a
-  // new file after an already-warned one still gets its advisory.
-  const targets = parseApplyPatchTargets(input.command, cwd);
-  const sessionId = typeof payload.session_id === "string" ? payload.session_id : "no-session";
-  const target = targets.find((t) => !alreadyWarned(sessionId, t.file));
-  if (!target) return null;
-  const filePath = target.file;
+  // Warn once per (session, file).
+  if (alreadyWarned(sid, filePath)) return null;
 
   const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
-  // `*** Add File:` IS the new-file signal; no existence probe.
-  const isNewFile = target.isNew;
   const baseContext = gated
     ? configAdvisory(filePath)
     : isNewFile
@@ -247,10 +240,32 @@ function bkitGateguard(payload) {
     ? `${baseContext}\n\n${docAuthoringAdvisory()}`
     : baseContext;
 
-  markWarned(sessionId, filePath);
+  markWarned(sid, filePath);
   gcOldState();
 
   return { mode: mode === "deny" ? "deny" : "advisory", context };
+}
+
+// Pure: takes the already-parsed hook payload, returns the advisory to emit or
+// null. Never touches process.stdin / process.stdout — the driver below owns both.
+// Subagents are NOT exempt: dedup is per (session, file) and a subagent carries its
+// own session id, so it gets the checklist once for a file the orchestrator already
+// touched.
+function bkitGateguard(payload) {
+  if (process.env.BKIT_GATEGUARD === "off") return null;
+  if (!EDIT_TOOLS.has(payload.tool_name)) return null;
+
+  const input = payload.tool_input || {};
+  const cwd = typeof payload.cwd === "string" ? payload.cwd : "";
+  const sessionId = typeof payload.session_id === "string" ? payload.session_id : "no-session";
+  // One patch can touch several files. Advises on the first not-yet-warned target, so a
+  // new file after an already-warned one still gets its advisory.
+  const target = parseApplyPatchTargets(input.command, cwd).find(
+    (t) => !alreadyWarned(sessionId, t.file),
+  );
+  if (!target) return null;
+  // `*** Add File:` IS the new-file signal; no existence probe.
+  return firstTouchAdvice(target.file, sessionId, target.isNew);
 }
 
 // bkit:end

@@ -284,6 +284,12 @@ export const statusCommand: CommandSpec = {
           repeatable: true,
           help: `fail unless this field is present and valid: ${ROUTE_FIELDS.join(", ")}`,
         },
+        {
+          name: "expect",
+          type: "string",
+          repeatable: true,
+          help: "field=value — fail (exit 4) unless the field holds this value, e.g. debugMode=NORMAL",
+        },
       ],
       output: {
         verdict: "PASS|CONCERNS|FAIL of the step's last DONE row in the active run, or null",
@@ -296,11 +302,26 @@ export const statusCommand: CommandSpec = {
       },
       exitCodes: {
         [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON",
-        [EXIT_ROUTE_MISSING]: "a --require'd field is missing or invalid",
+        [EXIT_ROUTE_MISSING]:
+          "a --require'd field is missing or invalid, or an --expect'ed value differs",
       },
       run: (ctx) => {
         const step = str(ctx.flags.step);
-        const required = (ctx.flags.require as string[] | undefined) ?? [];
+        const expected = ((ctx.flags.expect as string[] | undefined) ?? []).map((e) => {
+          const eq = e.indexOf("=");
+          if (eq <= 0 || !(ROUTE_FIELDS as readonly string[]).includes(e.slice(0, eq)))
+            throw new CommandError(
+              EXIT.USAGE,
+              `--expect ${e}: must be <${ROUTE_FIELDS.join("|")}>=<value>`,
+            );
+          return [e.slice(0, eq), e.slice(eq + 1)] as const;
+        });
+        const required = [
+          ...new Set([
+            ...((ctx.flags.require as string[] | undefined) ?? []),
+            ...expected.map(([k]) => k),
+          ]),
+        ];
         for (const r of required) {
           if (!(ROUTE_FIELDS as readonly string[]).includes(r)) {
             throw new CommandError(
@@ -322,7 +343,14 @@ export const statusCommand: CommandSpec = {
         ctx.emit(out);
         const failed = required.filter((r) => problems[r as RouteField] !== undefined);
         for (const r of failed) ctx.log(problems[r as RouteField]!);
-        return failed.length === 0 ? EXIT.OK : EXIT_ROUTE_MISSING;
+        const differ = expected.filter(
+          ([k, v]) =>
+            problems[k as RouteField] === undefined &&
+            String((out as Record<string, unknown>)[k]) !== v,
+        );
+        for (const [k, v] of differ)
+          ctx.log(`${k} is ${String((out as Record<string, unknown>)[k])}, expected ${v}`);
+        return failed.length === 0 && differ.length === 0 ? EXIT.OK : EXIT_ROUTE_MISSING;
       },
     },
     meta: {

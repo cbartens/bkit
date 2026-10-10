@@ -1,23 +1,36 @@
 // audits/hooks/gateguard-parity.integration.test.ts — one GateGuard behaviour table, every host.
 //
-// The three hooks share a byte-identical managed block but reach the model by three
+// bkit generates the four hooks at install from one shared engine
+// (`.bkit/core/hook-parts/`) plus per-host parts, and they reach the model by
 // different routes: Claude writes `hookSpecificOutput.additionalContext` to stdout,
 // Cursor writes `additional_context` with `permission: "allow"`, opencode writes to
-// stderr (and throws to block).
+// stderr (and throws to block), Codex is Claude-shaped.
 //
-// Every row runs against every host through an adapter that normalises the delivery
-// mechanism away. A behaviour that cannot hold on some host is stated here as an
-// explicit exception.
+// Every row runs against every host's GENERATED hook (the template as install renders
+// it) through an adapter that normalises the delivery mechanism away. A behaviour that
+// cannot hold on some host is stated here as an explicit exception.
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { pathToFileURL } from "node:url";
+import { afterAll, describe, expect, it } from "vitest";
 
-const CLAUDE_HOOK = path.resolve(".bkit/templates/.claude/hooks/gateguard.cjs");
-const CURSOR_HOOK = path.resolve(".bkit/templates/.cursor/hooks/gateguard.cjs");
-const OPENCODE_PLUGIN = path.resolve(".bkit/templates/.opencode/plugin/gateguard.js");
-const CODEX_HOOK = path.resolve(".bkit/templates/.codex/hooks/gateguard.cjs");
+import { readTemplate } from "../../render/parts";
+
+const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gg-parity-"));
+afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
+const [CLAUDE_HOOK, CURSOR_HOOK, OPENCODE_PLUGIN, CODEX_HOOK] = [
+  [".claude/hooks/gateguard.cjs", "claude.cjs"],
+  [".cursor/hooks/gateguard.cjs", "cursor.cjs"],
+  // `.mjs`: the plugin is an ES module, and the temp dir has no package.json saying so.
+  [".opencode/plugin/gateguard.js", "opencode.mjs"],
+  [".codex/hooks/gateguard.cjs", "codex.cjs"],
+].map(([rel, name]) => {
+  const out = path.join(GENERATED, name);
+  fs.writeFileSync(out, readTemplate(path.resolve(".bkit/templates", rel)));
+  return out;
+});
 
 /** Normalised result — what the model ends up seeing, and whether it was stopped. */
 interface Outcome {
@@ -105,7 +118,7 @@ async function runOpencode(c: Call): Promise<Outcome> {
   let blocked = false;
   let thrownMessage = "";
   try {
-    const { default: plugin } = await import(OPENCODE_PLUGIN);
+    const { default: plugin } = await import(pathToFileURL(OPENCODE_PLUGIN).href);
     const hooks = plugin({
       client: { session: { get: async () => ({ parentID: "", agentID: "a" }) } },
     });
@@ -362,6 +375,13 @@ describe("gateguard structural parity", () => {
 
   it("claude and cursor blocks are byte-identical", () => {
     expect(block(CLAUDE_HOOK)).toBe(block(CURSOR_HOOK));
+  });
+
+  it("every host's generated block carries the shared engine verbatim", () => {
+    const engine = fs
+      .readFileSync(path.resolve(".bkit/core/hook-parts/gateguard-engine.js"), "utf-8")
+      .trimEnd();
+    for (const host of HOSTS) expect(block(FILES[host]), host).toContain(engine);
   });
 
   // Documented deviation, same class as opencode's. Codex shares Claude's stdin/stdout

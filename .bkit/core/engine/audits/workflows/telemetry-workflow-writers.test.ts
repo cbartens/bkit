@@ -1,8 +1,9 @@
 /**
  * Workflow telemetry writers — the wiring half.
  *
- * Telemetry rows (`counter`, `outcome`) are written by `bkit workflows close`,
- * and `compliance` rows by `bkit comply`. Those commands stamp the A2-mandatory
+ * Telemetry rows (`counter`, `outcome`) and `compliance` rows are written by
+ * `bkit workflows close` (which grades the run through `bkit comply`'s grader
+ * before its report). Those commands stamp the A2-mandatory
  * envelope (ts/kind/repo/bkitVersion/step), validate each row against the stats
  * schema, compute ship's size fields, and fail open with
  * `[bkit-telemetry] append failed` — all pinned in
@@ -41,7 +42,7 @@ describe("workflows never write telemetry rows themselves", () => {
   for (const name of WORKFLOW_FILES) {
     const content = fs.readFileSync(path.join(WORKFLOWS_DIR, name), "utf-8");
 
-    it(`${name}: no bash block names .bkit/stats.jsonl — rows go through bkit workflows close / bkit comply`, () => {
+    it(`${name}: no bash block names .bkit/stats.jsonl — rows go through bkit workflows close`, () => {
       const writers = bashBlocks(content)
         .flatMap((b) => b.split("\n"))
         .filter((l) => /stats\.jsonl|>>\s*"?\$STATS\b/.test(l));

@@ -32,6 +32,7 @@ import { writeTier2, writeTier2JsonContained, type WriteSet } from "../../instal
 import { detectMarkerStyle } from "../../install/managed-block.js";
 import { applyTokens, type TokenMap } from "../../install/placeholders.js";
 import type { ManifestEntry } from "../../install/manifest.js";
+import { readTemplate } from "../../render/parts.js";
 import { TEMPLATE_COPIES_DIR } from "../../shared/package-roots.js";
 
 /** Zero-value token map — markered-text templates managed on upgrade are token-free. */
@@ -253,7 +254,7 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
     const absolutePath = path.join(cwd, relPath);
     // `contentOverride` (e.g. the rendered opencode.json) wins over the raw
     // template so upgrade emits the same bytes install would.
-    const templateContent = contentOverride ?? fs.readFileSync(templatePath, "utf-8");
+    const templateContent = contentOverride ?? readTemplate(templatePath);
 
     // Resolve the write strategy the SAME way `bkit install` does:
     //

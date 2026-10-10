@@ -1,5 +1,6 @@
-// bkit roadmap fold — rewrite the generated region of docs/roadmap.md from
-// .bkit/issues.jsonl, its SOLE input.
+// bkit roadmap fold|feature|mirror — rewrite the generated region of
+// docs/roadmap.md from .bkit/issues.jsonl, its SOLE input; append a feature's
+// row; and copy a build / debug close's row to dev under the dev lock.
 //
 // The status block is a pure projection of the ledger, re-rendered in full, so
 // a close never parses the board back. The two `## Notes` blocks and the
@@ -19,7 +20,17 @@ import * as path from "node:path";
 
 import { compareTs, parse, resolveRepoSlug, validate } from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
-import { CommandError, EXIT, parseJson, type CommandSpec, type RunContext } from "../lib.js";
+import {
+  CommandError,
+  EXIT,
+  git,
+  parseJson,
+  repoRoot,
+  runGit,
+  type CommandSpec,
+  type RunContext,
+} from "../lib.js";
+import { acquireDevLock, releaseLock } from "./locks.js";
 import { str } from "./status.js";
 
 /** Roadmap status each workflow's close moves the feature to. */
@@ -340,38 +351,133 @@ function appendLedgerRow(root: string, row: Record<string, unknown>): string | u
   }
 }
 
-function feature(ctx: RunContext): number {
-  const root = path.resolve(ctx.cwd, str(ctx.flags.root) ?? ".");
-  const given = str(ctx.flags.row);
+export interface FeatureResult {
+  row: Record<string, unknown>;
+  appended: boolean;
+  written: boolean;
+  path: string;
+}
+
+/**
+ * Append the feature's roadmap row (built from `workflow` / `fid`, or `row` as
+ * given) under `root`, then re-render the board. Fail-open: a failed append or
+ * render is logged and reported, never thrown.
+ */
+export function appendFeature(
+  root: string,
+  o: { workflow?: string; fid?: string; status?: string; step?: string; row?: string },
+  log: (m: string) => void,
+): FeatureResult {
   let row: Record<string, unknown>;
-  if (given !== undefined) {
-    const parsed = parseJson(given);
+  if (o.row !== undefined) {
+    const parsed = parseJson(o.row);
     if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null) {
       throw new CommandError(EXIT.USAGE, "--row must be one JSON object");
     }
     row = parsed.value as Record<string, unknown>;
   } else {
-    const workflow = str(ctx.flags.workflow);
-    const fid = str(ctx.flags.fid);
-    if (!workflow || !fid)
+    if (!o.workflow || !o.fid)
       throw new CommandError(EXIT.USAGE, "give --row, or --workflow and --fid");
-    const status = str(ctx.flags.status) ?? FEATURE_STATUS[workflow];
+    const status = o.status ?? FEATURE_STATUS[o.workflow];
     if (!status)
-      throw new CommandError(EXIT.USAGE, `--status is required for workflow ${workflow}`);
+      throw new CommandError(EXIT.USAGE, `--status is required for workflow ${o.workflow}`);
     row = featureRow(root, {
-      workflow,
-      fid,
+      workflow: o.workflow,
+      fid: o.fid,
       status,
-      step: str(ctx.flags.step) ?? `${workflow}-close-workflow`,
+      step: o.step ?? `${o.workflow}-close-workflow`,
     });
   }
   const check = validate(row);
   if (!check.ok) throw new CommandError(EXIT.USAGE, `not a valid feature row: ${check.reason}`);
   const problem = appendLedgerRow(root, row);
-  if (problem) ctx.log(`append failed: ${path.join(root, ".bkit", "issues.jsonl")} — ${problem}`);
-  const board = foldRoadmap(root, ctx.log);
-  ctx.emit({ row, appended: problem === undefined, written: board.written, path: board.path });
-  return EXIT.OK;
+  if (problem) log(`append failed: ${path.join(root, ".bkit", "issues.jsonl")} — ${problem}`);
+  const board = foldRoadmap(root, log);
+  return { row, appended: problem === undefined, written: board.written, path: board.path };
+}
+
+function feature(ctx: RunContext): number {
+  const r = appendFeature(
+    path.resolve(ctx.cwd, str(ctx.flags.root) ?? "."),
+    {
+      workflow: str(ctx.flags.workflow),
+      fid: str(ctx.flags.fid),
+      status: str(ctx.flags.status),
+      step: str(ctx.flags.step),
+      row: str(ctx.flags.row),
+    },
+    ctx.log,
+  );
+  ctx.emit({ ...r });
+  return ctx.flags.strict === true && !r.appended ? EXIT.NO : EXIT.OK;
+}
+
+/** Seconds the mirror waits for a busy dev lock before skipping. */
+export const MIRROR_DEV_LOCK_DEADLINE_S = 60;
+
+const ROADMAP_FILES = [".bkit/issues.jsonl", "docs/roadmap.md"];
+
+/**
+ * Build / debug close: append the feature row in the worktree, then copy the
+ * SAME row to `dev` in the main checkout under the dev lock — checkout dev,
+ * fast-forward, append, commit the two roadmap files, push, return to the prior
+ * branch. Skipped in adopt mode (the worktree IS the main checkout) and when the
+ * dev lock stays busy. Fail-open throughout: the feat-side row is already written.
+ */
+async function mirror(ctx: RunContext): Promise<number> {
+  const workflow = String(ctx.flags.workflow);
+  const fid = String(ctx.flags.fid);
+  const wt = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+  const root = repoRoot(ctx.cwd);
+  const feat = appendFeature(wt, { workflow, fid }, ctx.log);
+  const done = (mirrored: boolean, skipped: string | null) => {
+    if (skipped)
+      ctx.log(`skipping the dev-side roadmap mirror — ${skipped} (feat-side row already written)`);
+    ctx.emit({ row: feat.row, appended: feat.appended, mirrored, skipped });
+    return EXIT.OK;
+  };
+  if (path.resolve(wt) === path.resolve(root)) return done(false, "adopt mode");
+
+  let lock: { path: string; token: string };
+  try {
+    lock = await acquireDevLock({
+      cwd: root,
+      workflow,
+      fid,
+      deadlineS: MIRROR_DEV_LOCK_DEADLINE_S,
+      log: ctx.log,
+    });
+  } catch (err) {
+    // A busy lock skips the mirror; it never fails the close.
+    return done(false, `dev lock busy: ${(err as Error).message}`);
+  }
+  try {
+    const prior = git(root, ["branch", "--show-current"]) ?? "";
+    if (
+      !runGit(root, ["checkout", "dev"]).ok ||
+      !runGit(root, ["pull", "--ff-only", "origin", "dev"]).ok
+    ) {
+      if (prior) runGit(root, ["checkout", prior]);
+      return done(false, "dev checkout / pull failed");
+    }
+    const onDev = appendFeature(root, { row: JSON.stringify(feat.row) }, ctx.log);
+    if (!onDev.appended) ctx.log("roadmap row skipped on dev");
+    runGit(root, ["add", "--", ...ROADMAP_FILES]);
+    runGit(root, [
+      "commit",
+      "--allow-empty",
+      "-m",
+      `docs(${fid}): ${workflow} roadmap update bkit [skip ci]`,
+      "--",
+      ...ROADMAP_FILES,
+    ]);
+    const pushed = runGit(root, ["push", "origin", "dev"]).ok;
+    if (!pushed) ctx.log("dev push failed — feat-side row already written");
+    if (prior) runGit(root, ["checkout", prior]);
+    return done(pushed, pushed ? null : "dev push failed");
+  } finally {
+    releaseLock(lock.path, { workflow, fid, token: lock.token });
+  }
 }
 
 function writeBoard(md: string, board: string): string | undefined {
@@ -435,6 +541,11 @@ export const roadmapCommand: CommandSpec = {
           type: "string",
           help: "append this row as given (a row an earlier call printed), instead of building one",
         },
+        {
+          name: "strict",
+          type: "boolean",
+          help: "exit 1 when the row could not be appended (default: fail-open, exit 0)",
+        },
       ],
       output: {
         row: "the row appended",
@@ -443,6 +554,22 @@ export const roadmapCommand: CommandSpec = {
         path: "docs/roadmap.md, absolute",
       },
       run: (ctx) => feature(ctx),
+    },
+    mirror: {
+      summary:
+        "Build / debug close: append the feature row in the worktree, then the same row on dev under the dev lock (fail-open).",
+      flags: [
+        { name: "workflow", type: "string", required: true, help: "build | debug" },
+        { name: "fid", type: "string", required: true, help: "feature id (the row's key)" },
+      ],
+      output: {
+        row: "the row appended (worktree and dev)",
+        appended: "false when the worktree ledger could not be written",
+        mirrored: "the row was committed and pushed on dev",
+        skipped:
+          "why the dev side was skipped: adopt mode | dev lock busy | dev checkout / pull failed | dev push failed (null when mirrored)",
+      },
+      run: (ctx) => mirror(ctx),
     },
   },
 };

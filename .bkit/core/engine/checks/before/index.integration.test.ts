@@ -54,7 +54,7 @@ function runCheckWithTrackerSwitch(dir: string): string {
 
 describe("preflight tracker resolution order — integration", () => {
   it("grades --tracker=github, not the linear value still on disk", () => {
-    if (!fs.existsSync(tsxBin)) return; // skip if tsx not available (CI without devDeps)
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     seedLinearConsumer(tmpDir);
     const output = runCheckWithTrackerSwitch(tmpDir);
@@ -67,7 +67,7 @@ describe("preflight tracker resolution order — integration", () => {
   });
 
   it("names the tracker being installed in the advisory text", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     seedLinearConsumer(tmpDir);
     const output = runCheckWithTrackerSwitch(tmpDir);

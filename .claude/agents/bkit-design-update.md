@@ -38,27 +38,23 @@ maxTurns: 100
 
 **Process:**
 
-1. Copy prior versioned design verbatim to **Create** path:
+1. Seed **Create** from the prior versioned design, verbatim under a `Verdict: PENDING` header:
    ```bash
-   cp <prior-versioned-design-from-Read> <Create>
+   "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" steps stub --from="<prior-versioned-design-from-Read>" --to="<Create>"
    ```
-2. Prepend verdict placeholder header to output in **Create** path:
-   ```bash
-   T=$(mktemp); { printf 'Verdict: PENDING\n<!-- verdict:end -->\n\n'; cat <Create>; } > "$T" && mv "$T" <Create>
-   ```
-3. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
-4. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-5. Update **Create** — apply findings via `Edit` as content becomes available.
-6. Identify all `CRITICAL` items — MUST be applied; no consensus required. **If** conflict across findings → resolve by preferring stricter wording.
-7. Identify OPTIONAL items — apply each on individual merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
-8. **If** a spike input is supplied → revise every design element its `Design Impact` names as invalidated, to what the recorded evidence supports; record `Unsettled` claims as open questions under `Risks & Open Questions`.
-9. **If** applied findings add / reword open questions under `Risks & Open Questions` → each MUST carry 2-3 concrete options with trade-offs, a `Recommended` option with one-line rationale, and a `Default if unanswered`; bare questions are NOT acceptable output. Questions in regions no finding touches stay verbatim.
-10. Update **Create** — set `Verdict` via `Edit`; mapping:
-    - `PASS` = all `CRITICAL` items applied; OPTIONAL items applied on merit.
-    - `CONCERNS` = some OPTIONAL items skipped.
-    - `FAIL` = findings contradictory and unresolvable, design unanimously rejected by all lenses.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — apply findings via `Edit` as content becomes available.
+5. Identify all `CRITICAL` items — MUST be applied; no consensus required. **If** conflict across findings → resolve by preferring stricter wording.
+6. Identify OPTIONAL items — apply each on individual merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
+7. **If** a spike input is supplied → revise every design element its `Design Impact` names as invalidated, to what the recorded evidence supports; record `Unsettled` claims as open questions under `Risks & Open Questions`.
+8. **If** applied findings add / reword open questions under `Risks & Open Questions` → each MUST carry 2-3 concrete options with trade-offs, a `Recommended` option with one-line rationale, and a `Default if unanswered`; bare questions are NOT acceptable output. Questions in regions no finding touches stay verbatim.
+9. Update **Create** — set `Verdict` via `Edit`; mapping:
+   - `PASS` = all `CRITICAL` items applied; OPTIONAL items applied on merit.
+   - `CONCERNS` = some OPTIONAL items skipped.
+   - `FAIL` = findings contradictory and unresolvable, design unanimously rejected by all lenses.
 
-11. Re-read **Create** output → assert design structure intact. **If** NOT intact → set `Verdict` = `FAIL` via `Edit`.
+10. Re-read **Create** output → assert design structure intact. **If** NOT intact → set `Verdict` = `FAIL` via `Edit`.
 
 **Output format:**
 

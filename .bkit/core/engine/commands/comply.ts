@@ -19,7 +19,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getPkgRoot } from "../shared/package-roots.js";
 import { isMirrorPath } from "../shared/protected-paths.js";
-import { type TelemetryEnvelope, type CompliancePayload } from "../ledgers/telemetry.js";
+import {
+  resolveGitSha,
+  resolveRepoSlug,
+  type TelemetryEnvelope,
+  type CompliancePayload,
+} from "../ledgers/telemetry.js";
 
 // ---------------------------------------------------------------------------
 // Rule IDs
@@ -260,6 +265,48 @@ export function appendComplianceRows(rows: ComplianceRow[], statsPath: string): 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[bkit-comply] append failed: ${statsPath} — ${msg}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// One grading pass, as `bkit workflows close` runs it before its report
+// ---------------------------------------------------------------------------
+
+/**
+ * Grade `phase` over HEAD~1..HEAD (HEAD alone in a one-commit repo) and append
+ * its compliance rows to `<cwd>/.bkit/stats.jsonl`. Fail-open: any error is
+ * logged and returns null, so a close never stops on the grader.
+ */
+export function gradeCompliance(
+  cwd: string,
+  phase: string,
+  log: (m: string) => void,
+): Violation[] | null {
+  try {
+    const parentSha = resolveGitSha("HEAD~1", cwd) || resolveGitSha("HEAD", cwd);
+    if (!parentSha) {
+      log("[bkit-comply] cannot resolve a parent SHA (no commits?) — skipping grade");
+      return null;
+    }
+    const violations = runGrader({ parentSha, phase, cwd });
+    const rows = buildComplianceRows({
+      violations,
+      phase,
+      parentSha,
+      repo: resolveRepoSlug(cwd) || "unknown/repo",
+      bkitVersion: readBkitVersion(),
+    });
+    appendComplianceRows(rows, path.join(cwd, ".bkit", "stats.jsonl"));
+    log(
+      violations.length > 0
+        ? `[bkit-comply] Compliance violations found:\n${formatComplianceSummary(violations)}`
+        : "[bkit-comply] All rules pass.",
+    );
+    return violations;
+  } catch (err) {
+    // Fail-open: the grader is advisory and never gates a close.
+    log(`[bkit-comply] grader error (fail-open): ${(err as Error).message}`);
+    return null;
   }
 }
 

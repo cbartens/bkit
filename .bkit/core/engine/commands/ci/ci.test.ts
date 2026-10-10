@@ -6,7 +6,16 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { ciCommand, gateFails, readSummary, resolveBaseRef, slopScanArgv } from "./ci";
+import {
+  ciCommand,
+  EXIT_VALE_FAILED,
+  gateFails,
+  globToRegExp,
+  proseFiles,
+  readSummary,
+  resolveBaseRef,
+  slopScanArgv,
+} from "./ci";
 
 const REPO = path.resolve(__dirname, "../../../../..");
 const REPO_BIN = path.join(REPO, "node_modules", ".bin");
@@ -19,6 +28,9 @@ const ENV_KEYS = [
   "FAKE_SLOP_JSON",
   "FAKE_SLOP_EXIT",
   "FAKE_SLOP_LOG",
+  "FAKE_VALE_EXIT",
+  "FAKE_VALE_LOG",
+  "FAKE_VALE_SYNC",
 ];
 let savedEnv: Record<string, string | undefined> = {};
 let tmpRoot = "";
@@ -118,10 +130,10 @@ const summary = (over: Record<string, number> = {}) => ({
   ...over,
 });
 
-async function run(cwd: string, argv: string[]) {
+async function run(cwd: string, argv: string[], verb = "slop") {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["ci", "slop", ...argv], [ciCommand], {
+  const code = await runCommand(["ci", verb, ...argv], [ciCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -434,4 +446,199 @@ describe("bkit ci slop — interrupted", () => {
     expect(res.status === 143 || res.signal === "SIGTERM").toBe(true);
     expectCleaned(cwd);
   }, 30_000);
+});
+
+// ---------------------------------------------------------------------------
+// bkit ci prose
+// ---------------------------------------------------------------------------
+
+/**
+ * Put a fake `vale` first on PATH. It logs each argv line to `$FAKE_VALE_LOG`, exits
+ * `$FAKE_VALE_EXIT`, and on `vale sync` creates write-good when `$FAKE_VALE_SYNC=1`.
+ */
+function fakeVale(exit = 0, sync = false) {
+  const bin = mkdir("bkit-ci-vale-");
+  const log = path.join(bin, "calls.log");
+  fs.writeFileSync(
+    path.join(bin, "vale"),
+    [
+      "#!/bin/sh",
+      'echo "$*" >> "$FAKE_VALE_LOG"',
+      'if [ "$1" = "sync" ]; then',
+      '  [ "$FAKE_VALE_SYNC" = "1" ] && mkdir -p .vale/styles/write-good',
+      "  exit 0",
+      "fi",
+      'exit "${FAKE_VALE_EXIT:-0}"',
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  process.env.PATH = `${bin}${path.delimiter}${savedEnv.PATH ?? ""}`;
+  process.env.FAKE_VALE_LOG = log;
+  process.env.FAKE_VALE_EXIT = String(exit);
+  process.env.FAKE_VALE_SYNC = sync ? "1" : "0";
+  return { calls: () => (fs.existsSync(log) ? fs.readFileSync(log, "utf-8").trim() : "") };
+}
+
+/** A repo with markdown at several depths, one under node_modules, and write-good synced. */
+function proseRepo(writeGood = true) {
+  const cwd = mkdir("bkit-ci-prose-");
+  git(cwd, "init", "-q", "-b", "dev");
+  for (const rel of [
+    "README.md",
+    "docs/a.md",
+    "docs/plans/p.md",
+    ".agents/rules.md",
+    "node_modules/pkg/README.md",
+    "src/x.ts",
+  ]) {
+    write(cwd, rel, "text\n");
+  }
+  if (writeGood) fs.mkdirSync(path.join(cwd, ".vale/styles/write-good"), { recursive: true });
+  commit(cwd, "init");
+  return cwd;
+}
+
+describe("bkit ci prose — file selection", () => {
+  it("defaults to every markdown file outside node_modules", () => {
+    expect(proseFiles(proseRepo(), ["**/*.md"])).toEqual([
+      ".agents/rules.md",
+      "README.md",
+      "docs/a.md",
+      "docs/plans/p.md",
+    ]);
+  });
+
+  it("a one-level glob does not descend; ** does; each file once across globs", () => {
+    const cwd = proseRepo();
+    expect(proseFiles(cwd, ["docs/*.md", "*.md", "./docs/a.md"])).toEqual([
+      "README.md",
+      "docs/a.md",
+    ]);
+    expect(proseFiles(cwd, ["docs/**/*.md"])).toEqual(["docs/a.md", "docs/plans/p.md"]);
+  });
+
+  it("globToRegExp: * and ? stay within one folder, **/ spans zero or more", () => {
+    const re = globToRegExp("**/*.md");
+    expect(re.test("a.md")).toBe(true);
+    expect(re.test("x/y/a.md")).toBe(true);
+    expect(re.test("a.mdx")).toBe(false);
+    expect(globToRegExp("docs/*.md").test("docs/plans/p.md")).toBe(false);
+    expect(globToRegExp("doc?/a.md").test("docs/a.md")).toBe(true);
+    expect(globToRegExp("a+b/(c).md").test("a+b/(c).md")).toBe(true);
+  });
+});
+
+describe("bkit ci prose — gate", () => {
+  it("skips with exit 0 when vale is not installed", async () => {
+    const cwd = proseRepo();
+    process.env.PATH = `${mkdir("bkit-ci-novale-")}${path.delimiter}/usr/bin${path.delimiter}/bin`;
+    const r = await run(cwd, [], "prose");
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ passed: true, skipped: "vale-missing", files: 0 });
+    expect(r.err).toContain("vale not installed");
+  });
+
+  it("runs vale on exactly the selected files and passes on its exit 0", async () => {
+    const cwd = proseRepo();
+    const vale = fakeVale(0);
+    const r = await run(cwd, ["--glob=docs/*.md", "--glob=*.md"], "prose");
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ passed: true, skipped: null, files: 2 });
+    expect(vale.calls()).toBe("README.md docs/a.md");
+  });
+
+  it("fails (exit 1) when vale reports alerts", async () => {
+    const cwd = proseRepo();
+    fakeVale(1);
+    const r = await run(cwd, [], "prose");
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ passed: false, skipped: null, files: 4 });
+  });
+
+  it("exits 6 on a vale runtime error", async () => {
+    const cwd = proseRepo();
+    fakeVale(2);
+    const r = await run(cwd, [], "prose");
+    expect(r.code).toBe(EXIT_VALE_FAILED);
+    expect(r.json).toBeUndefined();
+  });
+
+  it("skips with exit 0 when no file matches", async () => {
+    const cwd = proseRepo();
+    const vale = fakeVale(0);
+    const r = await run(cwd, ["--glob=missing/*.md"], "prose");
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ passed: true, skipped: "no-files", files: 0 });
+    expect(vale.calls()).toBe("");
+  });
+});
+
+describe("bkit ci prose — write-good restore", () => {
+  it("copies write-good from the main worktree into a linked one, without vale sync", async () => {
+    const main = proseRepo();
+    fs.writeFileSync(path.join(main, ".vale/styles/write-good/rule.yml"), "x\n");
+    const linked = path.join(mkdir("bkit-ci-linked-"), "wt");
+    git(main, "worktree", "add", "-q", "--detach", linked);
+    const vale = fakeVale(0);
+    const r = await run(linked, ["--glob=*.md"], "prose");
+    expect(r.code).toBe(0);
+    expect(fs.readFileSync(path.join(linked, ".vale/styles/write-good/rule.yml"), "utf-8")).toBe(
+      "x\n",
+    );
+    expect(vale.calls()).toBe("README.md");
+    expect(r.err).toContain("restoring");
+  });
+
+  it("falls back to vale sync when the main worktree has none", async () => {
+    const cwd = proseRepo(false);
+    const vale = fakeVale(0, true);
+    const r = await run(cwd, ["--glob=*.md"], "prose");
+    expect(r.code).toBe(0);
+    expect(vale.calls().split("\n")).toEqual(["sync", "README.md"]);
+  });
+
+  it("skips loudly with exit 0 when vale sync cannot restore it either", async () => {
+    const cwd = proseRepo(false);
+    fakeVale(0, false);
+    const r = await run(cwd, [], "prose");
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ passed: true, skipped: "write-good-missing", files: 0 });
+    expect(r.err).toContain("PROSE LINT SKIPPED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bkit ci skip-token
+// ---------------------------------------------------------------------------
+
+describe("bkit ci skip-token", () => {
+  it("exits 0 with the token when HEAD's message carries one, in subject or body", async () => {
+    const { cwd } = repo();
+    git(cwd, "commit", "-q", "--allow-empty", "-m", "docs(1): x bkit [skip ci]");
+    expect((await run(cwd, [], "skip-token")).json).toMatchObject({
+      ref: "HEAD",
+      token: "[skip ci]",
+    });
+    git(cwd, "commit", "-q", "--allow-empty", "-m", "feat(1): x", "-m", "* chore: y [CI SKIP]");
+    const r = await run(cwd, [], "skip-token");
+    expect(r.code).toBe(0);
+    expect(r.json.token).toBe("[CI SKIP]");
+    expect(r.json.sha).toBe(git(cwd, "rev-parse", "HEAD"));
+  });
+
+  it("exits 1 with a null token when the message carries none; --ref reads another commit", async () => {
+    const { cwd, base } = repo();
+    git(cwd, "commit", "-q", "--allow-empty", "-m", "chore: [skip ci]");
+    const r = await run(cwd, [`--ref=${base}`], "skip-token");
+    expect(r.code).toBe(1);
+    expect(r.json).toEqual({ ref: base, sha: base, token: null });
+  });
+
+  it("is a usage error when the commit cannot be read", async () => {
+    const { cwd } = repo();
+    const r = await run(cwd, ["--ref=no-such-ref"], "skip-token");
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("cannot read commit 'no-such-ref'");
+  });
 });

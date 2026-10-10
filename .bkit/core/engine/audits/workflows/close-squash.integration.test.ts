@@ -1,10 +1,10 @@
-// Executes the local (RUNTIME_DEVPUSHES=true) close path of bkit-design.md and
-// bkit-plan.md against a real repo, remote and worktree. The block is
-// extracted from the workflow and run as written — the test does not keep a
-// second copy of the squash / commit / cleanup logic. The `bkit` commands the
-// block calls (dev lock, roadmap fold, ledgers commit, dev push, worktree
-// removal) run from the repo's built dist/, linked into the fixture at the
-// path the block resolves.
+// Executes the local (runtime pushes dev) close of bkit-design.md and
+// bkit-plan.md against a real repo, remote and worktree. The `branches land`
+// line is extracted from the workflow's Close Workflow block and run as
+// written, with its placeholders filled — the test does not keep a second copy
+// of the squash / commit / cleanup logic. `bkit branches land` (dev lock,
+// squash, roadmap row, ledgers commit, dev push, worktree removal) runs from
+// the repo's built dist/, linked into the fixture at the path Step 1 resolves.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -37,19 +37,14 @@ function write(file: string, content: string): void {
   fs.writeFileSync(file, content);
 }
 
-function localCloseBlock(workflow: "design" | "plan"): string {
+function landLine(workflow: "design" | "plan"): string {
   const md = fs.readFileSync(path.resolve(`.bkit/workflows/bkit-${workflow}.md`), "utf-8");
-  const fence = [...md.matchAll(/```bash\n([\s\S]*?)```/g)]
-    .map((m) => m[1])
-    .find((body) => body.includes('git merge --squash -X ours "feat/{FID}"'));
-  expect(fence, `${workflow} close squash fence not found`).toBeTruthy();
-  // The `if` that tests the runtime's runtimeDevPushes, up to its `else`.
-  const open = /^ {3}if \[ .*runtimeDevPushes.*= "true" \]; then\n/m.exec(fence!);
-  expect(open, "local close branch not found").toBeTruthy();
-  const start = open!.index + open![0].length;
-  const end = fence!.indexOf("\n   else\n", start);
-  expect(end, "local close branch end not found").toBeGreaterThan(start);
-  return fence!.slice(start, end).replaceAll("{FID}", FID).replaceAll("{YYYYMM}", MONTH);
+  const line = md
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.startsWith('cd "{REPO_ROOT}" && "{BKIT}" branches land '));
+  expect(line, `${workflow} close branches land line not found`).toBeTruthy();
+  return line!;
 }
 
 interface Fixture {
@@ -105,17 +100,21 @@ function runClose(
   workflow: "design" | "plan",
   repo: string,
 ): { status: number | null; stderr: string } {
-  // What the fence sets before its runtime branch: the binary, the main
-  // checkout, and the ledger row's repo / version fields.
-  const preamble = [
-    'BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"',
-    `REPO_ROOT="${repo}"`,
-    'cd "$REPO_ROOT"',
-    'REPO_SLUG="test/repo"',
-    'BKIT_VER="0.0.0"',
-  ].join("\n");
-  const script = `${preamble}\n${localCloseBlock(workflow)}`;
-  const res = spawnSync("bash", ["-c", script], { cwd: repo, encoding: "utf-8" });
+  const script = landLine(workflow)
+    .replaceAll("{REPO_ROOT}", repo)
+    .replaceAll("{BKIT}", path.join(repo, "node_modules/.bin/bkit"))
+    .replaceAll("{FID}", FID)
+    .replaceAll("{YYYYMM}", MONTH)
+    .replaceAll("{LOCK_TOKEN}", "no-lock-held")
+    .replaceAll("{ISSUE_ID}", "999")
+    .replaceAll("{BRANCH}", `feat/${FID}`);
+  expect(script).not.toMatch(/\{[A-Z_]+\}/);
+  // The worktree is the cwd the orchestrator runs the close from; the line cds to the main checkout.
+  const res = spawnSync("bash", ["-c", script], {
+    cwd: path.join(repo, ".worktrees", FID),
+    encoding: "utf-8",
+    env: { ...process.env, BKIT_RUNTIME: "LOCAL" },
+  });
   return { status: res.status, stderr: res.stderr };
 }
 

@@ -1,6 +1,6 @@
-// Executes the Step 14 worktree-removal fence from bkit-ship.md against a real
-// git worktree. The fence is extracted from the workflow and run as written,
-// with the repo's built `bkit` linked in at the path the fence resolves — so
+// Executes the Step 14 worktree-removal line from bkit-ship.md against a real
+// git worktree. The line is extracted from the workflow and run as written,
+// with the repo's built `bkit` linked in at the path Step 1 resolves — so
 // the test fails if ship ever stops scoping removal to worktrees a workflow
 // created. The marker logic itself is covered in commands/workflow/worktrees.test.ts.
 
@@ -22,16 +22,22 @@ afterEach(() => {
   }
 });
 
-function cleanupRemoveFence(fid: string): string {
+/** The Step 14 `worktrees remove` line, placeholders filled; the step's row write is not run. */
+function cleanupRemoveLine(fid: string, repo: string): string {
   const ship = fs.readFileSync(SHIP_MD, "utf-8");
   const lines = ship.split("\n");
   const start = lines.findIndex((line) => /^## .*Step 14 — Worktree Cleanup/.test(line));
   expect(start, "Step 14 section not found").toBeGreaterThanOrEqual(0);
   const end = lines.findIndex((line, index) => index > start && /^---$/.test(line));
-  const section = lines.slice(start, end + 1).join("\n");
-  const fence = section.match(/```bash\n([\s\S]*?)```/);
-  expect(fence, "Step 14 ownership fence not found").toBeTruthy();
-  return fence![1].replaceAll("{FID}", fid).replaceAll("{SHIP_BRANCH}", `feat/${fid}`);
+  const line = lines
+    .slice(start, end + 1)
+    .map((l) => l.trim())
+    .find((l) => l.startsWith('"{BKIT}" worktrees remove '));
+  expect(line, "Step 14 worktrees remove line not found").toBeTruthy();
+  return line!
+    .replaceAll("{BKIT}", path.join(repo, "node_modules/.bin/bkit"))
+    .replaceAll("{FID}", fid)
+    .replaceAll("{SHIP_BRANCH}", `feat/${fid}`);
 }
 
 function initRepo(): { tmp: string; repo: string } {
@@ -61,7 +67,7 @@ function markerPath(repo: string): string {
 }
 
 function runFence(repo: string): Record<string, unknown> {
-  const out = execFileSync("bash", ["-c", cleanupRemoveFence(FID)], {
+  const out = execFileSync("bash", ["-c", cleanupRemoveLine(FID, repo)], {
     cwd: repo,
     encoding: "utf-8",
   });

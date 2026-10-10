@@ -42,7 +42,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 | --- | --- | --- | --- |
 | `{{DEFAULT_BRANCH}}` | `ci.yml` (`on.push` / `on.pull_request` branches; stub comments) | your default branch | `origin/HEAD`, else `main` |
 | `{{NODE_VERSION}}` | `ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
-| `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, both jobs) | a runner label | `ubuntu-latest` |
+| `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
 - **What changed on upgrade.** `bkit upgrade` lists changed / added / removed template paths. For each one you adopted: `diff .bkit/templates/<path> <path>`, merge what you want (placeholder lines differ by design). `git diff .bkit/templates` in the upgrade commit = the package change.
@@ -118,7 +118,7 @@ bkit seeds only the `bkit:gate:*` / `bkit:deps:*` names (add-if-missing). The to
   "typecheck": "tsc --noEmit",
   "lint": "bash -c 'if [ -f eslint.config.js ] || [ -f eslint.config.mjs ] || [ -f .eslintrc.json ]; then npx eslint .; else echo \"[bkit] no eslint config - skipping lint (bkit typechecks with tsc and scans with slop-scan)\"; fi'",
   "format:check": "prettier --check .",
-  "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then if [ ! -d .vale/styles/write-good ]; then echo \"[bkit] .vale/styles/write-good absent (fresh checkout or worktree) - restoring\" >&2; G=$(git rev-parse --git-common-dir 2>/dev/null) && M=$(dirname \"$(cd \"$G\" && pwd)\") && [ -d \"$M/.vale/styles/write-good\" ] && mkdir -p .vale/styles && cp -R \"$M/.vale/styles/write-good\" .vale/styles/ || vale sync || true; fi; if [ -d .vale/styles/write-good ]; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync\" >&2; fi; else echo \"[bkit] vale not installed - skipping prose lint (install vale, then run vale sync, to enable)\"; fi'",
+  "lint:prose": "bkit ci prose",
   "lint:slop": "slop-scan scan .",
   "slop:delta": "bkit ci slop",
   "prepare": "husky"
@@ -132,6 +132,7 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 - `lint` must exist: with no `lint` script, `pnpm lint` falls through to any `lint` binary on `PATH` and the gate goes green through the wrong program. No eslint config → the value above prints a skip line.
 - No `tsconfig.json` → `"typecheck": "echo \"[bkit] typecheck: no tsconfig.json — skipping\" >&2"`.
 - `slop:delta` runs `bkit ci slop` (bkit devDep on `PATH` through the package script). CI passes the base sha as its one bare argument.
+- `lint:prose` runs `bkit ci prose`: Vale over every `*.md` outside `node_modules/`. Narrow it with repeatable `--glob=<pattern>` (`*`, `**`, `?`, relative to the repo root), e.g. `bkit ci prose --glob='docs/*.md' --glob='.agents/*.md'`.
 - Non-Node stack → point each gate at your own commands; keep the gate names.
 
 ## CI workflow — `ci.yml`
@@ -148,11 +149,11 @@ Parallel lanes `bkit-tests-static` (typecheck, prettier, Vale, slop, actionlint,
 
 ## Cloud-agent workflow — `bkit-cloud.yml`
 
-Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; failed `dev` CI → `/bkit-debug {FID}`; `workflow_dispatch` runs any phase. Two jobs, each a no-op without its secret: `claude` (`claude-code-action`, https://github.com/anthropics/claude-code-action) and `opencode` (`opencode run`, https://opencode.ai/docs/github/). Runs bkit workflows; `bkit install --auto=claude|opencode` points at it. Full recipe: `.bkit/cloud.md` § Post-CI auto-routing.
+Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; failed `dev` CI → `/bkit-debug {FID}`; `workflow_dispatch` runs any phase. A `context` job resolves phase + arg once, then two runner jobs, each skipped without its secret: `claude` (`claude-code-action`, https://github.com/anthropics/claude-code-action) and `opencode` (`opencode run`, https://opencode.ai/docs/github/). Runs bkit workflows; `bkit install --auto=claude|opencode` points at it. Full recipe: `.bkit/cloud.md` § Post-CI auto-routing.
 
 - Install: `bkit install --auto=claude` (writes `.claude/hooks/cloud-bootstrap.sh`) or `--auto=opencode` (needs `--opencode=<provider>` first). Both need `--tracker=github`.
 - Secrets: `ANTHROPIC_API_KEY` + the Claude GitHub App (`/install-github-app`) for `claude`; `OPENCODE_PROVIDER_KEY` for `opencode`. Repo Actions permissions: read and write, PR creation allowed.
-- Adapt: `{{CLOUD_RUNNER}}` in both jobs.
+- Adapt: `{{CLOUD_RUNNER}}` in all three jobs.
 - Traps: the file runs bkit by command name, so a changed invocation reaches you only as a changed template path on `bkit upgrade` — diff it on every upgrade. The opencode install version is a plain argument no updater bumps. Keep the file out of updater `ignorePaths` so action pins refresh.
 
 ## Git hooks — Husky
@@ -191,7 +192,7 @@ pnpm add -D lint-staged@^17.0.0 prettier@^3.5.3
 
 ## Vale — prose lint, with House styles
 
-`lint:prose` (in `bkit:gate:static`) runs Vale with the `write-good` package and bkit's House styles (`Filler`, `Hedging`, `LLMSlop`, `Verbose`) on `.agents/**`. Workflows reach Vale only through the gate. Reference: https://vale.sh/docs/install.
+`lint:prose` (`bkit ci prose`, in `bkit:gate:static`) runs Vale with the `write-good` package and bkit's House styles (`Filler`, `Hedging`, `LLMSlop`, `Verbose`) on `.agents/**`. Workflows reach Vale only through the gate. Reference: https://vale.sh/docs/install.
 
 ```bash
 brew install vale
@@ -202,7 +203,7 @@ vale sync
 - `.gitignore`: `.vale/styles/write-good` (`vale sync` downloads it; the House styles stay tracked).
 - CI: the `ci.yml` template installs a pinned Vale and runs `vale sync`. Cursor: the `Dockerfile` template installs it.
 - Adapt: add `[glob]` scope blocks for your own docs; turn rules off per path, not globally.
-- Traps: no Vale on `PATH`, or `write-good` not synced → `lint:prose` prints a skip line and the prose gate is not enforcing. Keep the `.bkit/templates/**` block (rules off for the copies).
+- Traps: no Vale on `PATH` → `lint:prose` prints a skip line and the prose gate is not enforcing. A missing `write-good` is copied from the main worktree, else `vale sync` runs; when both fail it prints a loud skip warning. Keep the `.bkit/templates/**` block (rules off for the copies).
 
 ## slop-scan — `slop-scan.config.json`
 

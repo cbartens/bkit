@@ -1,7 +1,7 @@
 // audits/hooks/gateguard-claude.integration.test.ts — behavioural tests for the shipped GateGuard
-// PreToolUse hook (.bkit/templates/.claude/hooks/gateguard.cjs). Spawns the real
-// script with node, feeds a PreToolUse payload on stdin, and asserts the stdout
-// contract:
+// PreToolUse hook (.bkit/templates/.claude/hooks/gateguard.cjs). Spawns the hook as
+// install generates it (shared parts spliced in) with node, feeds a PreToolUse payload
+// on stdin, and asserts the stdout contract:
 //   - advisory by default (additionalContext, no permissionDecision)
 //   - fail-open / no-op on disabled, subagent, non-edit, malformed/empty input
 //   - dedup once per (session, file)
@@ -11,11 +11,18 @@
 // The hook must NEVER exit non-zero (advisory; fail-open) — every case asserts
 // status 0.
 
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
-const HOOK = path.resolve(".bkit/templates/.claude/hooks/gateguard.cjs");
+import { readTemplate } from "../../render/parts";
+
+const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gg-claude-"));
+afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
+const HOOK = path.join(GENERATED, "gateguard.cjs");
+fs.writeFileSync(HOOK, readTemplate(path.resolve(".bkit/templates/.claude/hooks/gateguard.cjs")));
 
 let sessionCounter = 0;
 // Unique per test + per run (pid) so the OS-temp dedup state never bleeds across

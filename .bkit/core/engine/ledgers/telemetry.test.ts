@@ -30,6 +30,9 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** The event row of one `kind`. */
+type EventOf<K extends TelemetryEvent["kind"]> = Extract<TelemetryEvent, { kind: K }>;
+
 function baseEnvelope(
   kind: TelemetryEvent["kind"],
   overrides: Partial<TelemetryEvent> = {},
@@ -45,7 +48,7 @@ function baseEnvelope(
   return { ...base, ...overrides } as TelemetryEvent;
 }
 
-function complianceEvent(overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+function complianceEvent(overrides: Partial<TelemetryEvent> = {}): EventOf<"compliance"> {
   return {
     ...baseEnvelope("compliance"),
     rule: "no-mirror-edit",
@@ -53,10 +56,10 @@ function complianceEvent(overrides: Partial<TelemetryEvent> = {}): TelemetryEven
     phase: "build",
     parentSha: "abc123",
     ...overrides,
-  } as TelemetryEvent;
+  } as EventOf<"compliance">;
 }
 
-function outcomeEvent(overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+function outcomeEvent(overrides: Partial<TelemetryEvent> = {}): EventOf<"outcome"> {
   return {
     ...baseEnvelope("outcome"),
     prNumber: 42,
@@ -69,7 +72,7 @@ function outcomeEvent(overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
     deferrals: 0,
     failures: 0,
     ...overrides,
-  } as TelemetryEvent;
+  } as EventOf<"outcome">;
 }
 
 function counterEvent(overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
@@ -83,7 +86,7 @@ function counterEvent(overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
   } as TelemetryEvent;
 }
 
-function frictionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+function frictionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): EventOf<"friction"> {
   return {
     ...baseEnvelope("friction"),
     key,
@@ -92,10 +95,10 @@ function frictionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Te
     severity: "MEDIUM" as const,
     description: "agent reworked step 3",
     ...overrides,
-  } as TelemetryEvent;
+  } as EventOf<"friction">;
 }
 
-function deferralEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+function deferralEvent(key: string, overrides: Partial<TelemetryEvent> = {}): EventOf<"deferral"> {
   return {
     ...baseEnvelope("deferral"),
     key,
@@ -105,7 +108,7 @@ function deferralEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Te
     description: "deferred for later",
     reason: "scope-declared" as const,
     ...overrides,
-  } as TelemetryEvent;
+  } as EventOf<"deferral">;
 }
 
 function failureEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
@@ -315,7 +318,7 @@ describe("severity — per-kind requirement + closed enum", () => {
   });
 
   it("rejects a deferral row with reason missing", () => {
-    const { reason: _dropped, ...withoutReason } = deferralEvent("k") as Record<string, unknown>;
+    const { reason: _dropped, ...withoutReason } = deferralEvent("k");
     const r = validate(withoutReason);
     expect(r.ok).toBe(false);
     expect(r.reason).toContain("reason");

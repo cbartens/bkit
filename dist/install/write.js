@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { updateManagedBlock } from "../commands/install/install.js";
 import { extractFullManagedBlock, extractManagedBlock, findLineAnchoredMarkers, selectMarkers, } from "./managed-block.js";
+import { readTemplate } from "../render/parts.js";
 import { applyTokens } from "./placeholders.js";
 export function deepContains(template, consumer, pathPrefix = "") {
     const missing = [];
@@ -202,7 +203,7 @@ export function ensureDir(dir) {
 // If dst exists with identical content, no-op (no double-count in WriteSet).
 // ---------------------------------------------------------------------------
 export function writeTier1(srcPath, dstPath, tokens, dryRun, ws) {
-    const srcRaw = fs.readFileSync(srcPath, "utf-8");
+    const srcRaw = readTemplate(srcPath);
     const srcContent = applyTokens(srcRaw, tokens);
     if (fs.existsSync(dstPath)) {
         const existing = fs.readFileSync(dstPath, "utf-8");
@@ -230,7 +231,7 @@ export function writeTier1(srcPath, dstPath, tokens, dryRun, ws) {
 // "slash-comment" for JS.
 // ---------------------------------------------------------------------------
 export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws) {
-    const srcRaw = fs.readFileSync(srcPath, "utf-8");
+    const srcRaw = readTemplate(srcPath);
     if (!fs.existsSync(dstPath)) {
         // dest missing → write whole template (with tokens applied)
         const content = applyTokens(srcRaw, tokens);

@@ -1,6 +1,6 @@
 // audits/workflows/workflow-archive-snippet.integration.test.ts — the supersede-and-archive step
-// in the design / plan Close Workflow blocks. Spawns real bash to execute the extracted
-// block against a fabricated tree.
+// in the design / plan Close Workflow blocks (`bkit workflows promote`). Spawns real bash to
+// execute the extracted line against a fabricated tree.
 //
 // Before writing the canonical document, the close step moves any existing canonical
 // into `docs/plans/{YYYYMM}/archive/{TIMESTAMP}-{FID}-...md`.
@@ -29,10 +29,9 @@ afterEach(() => {
   while (roots.length) fs.rmSync(roots.pop()!, { recursive: true, force: true });
 });
 
-// The extracted close-workflow block resolves `bkit` through
-// `git rev-parse --git-common-dir`, so `root` must be a real git repo. Its
-// status log carries a resolved runtime row with no base SHA, so the block's
-// anchor stamp (covered by the branches command tests) is skipped and the
+// `bkit` resolves the repo through git, so `root` must be a real git repo. Its
+// status log carries a resolved runtime row with no base SHA, so promote's
+// anchor stamp (covered by the workflows command tests) is skipped and the
 // archive logic runs alone.
 function makeRoot(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-archive-"));
@@ -59,23 +58,22 @@ function makeRoot(): string {
   return dir;
 }
 
-// Pull the fenced bash block that follows a numbered step heading, stripping the
-// 3-space markdown indent so it runs as written.
-function extractBashBlock(workflow: string, headingSnippet: string): string {
+// The `workflows promote` line of a workflow's Close Workflow step, placeholders filled.
+function promoteLine(workflow: string, root: string): string {
   const content = fs.readFileSync(path.join(WORKFLOWS_DIR, workflow), "utf-8");
-  const idx = content.indexOf(headingSnippet);
-  expect(idx, `heading not found in ${workflow}: ${headingSnippet}`).toBeGreaterThan(-1);
-  const fenceStart = content.indexOf("```bash", idx);
-  const bodyStart = content.indexOf("\n", fenceStart) + 1;
-  const fenceEnd = content.indexOf("```", bodyStart);
-  return content
-    .slice(bodyStart, fenceEnd)
+  const close = content.slice(content.search(/^## .*Close Workflow/m));
+  const line = close
     .split("\n")
-    .map((l) => l.replace(/^ {3}/, ""))
-    .join("\n")
+    .map((l) => l.trim())
+    .find((l) => l.startsWith('"{BKIT}" workflows promote ') && l.includes('--file="{STATUS}"'));
+  expect(line, `promote line not found in ${workflow}`).toBeTruthy();
+  const filled = line!
+    .replaceAll("{BKIT}", path.join(root, "node_modules/.bin/bkit"))
     .replaceAll("{FID}", FID)
     .replaceAll("{YYYYMM}", MONTH)
     .replaceAll("{STATUS}", STATUS);
+  expect(filled).not.toMatch(/\{[A-Z_]+\}/);
+  return filled;
 }
 
 function run(block: string, root: string): void {
@@ -101,10 +99,7 @@ function archiveNames(root: string): string[] {
 }
 
 describe("design close: archive before overwrite", () => {
-  const block = () =>
-    // Anchor on the shortest unique prefix of the step heading, not the whole
-    // sentence — the trailing clause is prose and gets reworded.
-    extractBashBlock("bkit-design.md", "Archive any superseded design");
+  const block = (root: string) => promoteLine("bkit-design.md", root);
 
   it("moves an existing canonical design into archive/ and writes the new one", () => {
     const root = makeRoot();
@@ -112,7 +107,7 @@ describe("design close: archive before overwrite", () => {
     write(root, `docs/plans/${MONTH}/logs/${FID}/design-v2-reviewed.md`, "V2 REVIEWED\n");
     write(root, `docs/plans/${MONTH}/${FID}-design.md`, "THE OLD DESIGN\n");
 
-    run(block(), root);
+    run(block(root), root);
 
     expect(read(root, `docs/plans/${MONTH}/${FID}-design.md`)).toBe("V2 REVIEWED\n");
     const archived = archiveNames(root);
@@ -125,7 +120,7 @@ describe("design close: archive before overwrite", () => {
     const root = makeRoot();
     write(root, `docs/plans/${MONTH}/logs/${FID}/design-v1-draft.md`, "V1\n");
 
-    run(block(), root);
+    run(block(root), root);
 
     expect(read(root, `docs/plans/${MONTH}/${FID}-design.md`)).toBe("V1\n");
     expect(archiveNames(root)).toHaveLength(0);
@@ -136,7 +131,7 @@ describe("design close: archive before overwrite", () => {
     write(root, `docs/plans/${MONTH}/logs/${FID}/design-v1-draft.md`, "SAME\n");
     write(root, `docs/plans/${MONTH}/${FID}-design.md`, "SAME\n");
 
-    run(block(), root);
+    run(block(root), root);
 
     expect(archiveNames(root)).toHaveLength(0);
   });
@@ -148,7 +143,7 @@ describe("design close: archive before overwrite", () => {
     write(root, `docs/plans/${MONTH}/logs/${FID}/design-v1-draft.md`, "V1\n");
     write(root, `docs/plans/${MONTH}/${FID}-design.md`, "OLD\n");
 
-    run(block(), root);
+    run(block(root), root);
 
     expect(fs.existsSync(path.join(root, "docs", "plans", MONTH, "archive"))).toBe(true);
     expect(read(root, `docs/plans/${MONTH}/${FID}-design.md`)).toBe("V1\n");
@@ -156,7 +151,7 @@ describe("design close: archive before overwrite", () => {
 });
 
 describe("plan close: archive the whole superseded set", () => {
-  const block = () => extractBashBlock("bkit-plan.md", "Archive any superseded plan");
+  const block = (root: string) => promoteLine("bkit-plan.md", root);
 
   // The agent's Bash tool runs zsh on macOS, where an unmatched glob (an unsplit
   // plan has no plan-v4-N.md) aborts the whole block with "no matches found".
@@ -167,7 +162,10 @@ describe("plan close: archive the whole superseded set", () => {
       write(root, `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`, "NEW PLAN\n");
       write(root, `docs/plans/${MONTH}/${FID}-plan.md`, "OLD PLAN\n");
 
-      execFileSync("zsh", ["-c", `cd "${root}"\n${block()}`], { encoding: "utf-8", stdio: "pipe" });
+      execFileSync("zsh", ["-c", `cd "${root}"\n${block(root)}`], {
+        encoding: "utf-8",
+        stdio: "pipe",
+      });
 
       expect(read(root, `docs/plans/${MONTH}/${FID}-plan.md`)).toBe("NEW PLAN\n");
       expect(archiveNames(root)).toHaveLength(1);
@@ -181,7 +179,7 @@ describe("plan close: archive the whole superseded set", () => {
     write(root, `docs/plans/${MONTH}/${FID}-plan-1.md`, "OLD SUB 1\n");
     write(root, `docs/plans/${MONTH}/${FID}-plan-2.md`, "OLD SUB 2\n");
 
-    run(block(), root);
+    run(block(root), root);
 
     expect(read(root, `docs/plans/${MONTH}/${FID}-plan.md`)).toBe("NEW PLAN\n");
     const archived = archiveNames(root);
@@ -203,7 +201,7 @@ describe("plan close: archive the whole superseded set", () => {
     write(root, `docs/plans/${MONTH}/${FID}-plan-1.md`, "OLD SUB 1\n");
     write(root, `docs/plans/${MONTH}/${FID}-plan-2.md`, "OLD SUB 2\n");
 
-    run(block(), root);
+    run(block(root), root);
 
     const live = fs
       .readdirSync(path.join(root, "docs", "plans", MONTH))
@@ -217,7 +215,7 @@ describe("plan close: archive the whole superseded set", () => {
     write(root, `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`, "SAME\n");
     write(root, `docs/plans/${MONTH}/${FID}-plan.md`, "SAME\n");
 
-    run(block(), root);
+    run(block(root), root);
 
     expect(archiveNames(root)).toHaveLength(0);
   });
@@ -234,10 +232,6 @@ describe("archive/ is unreachable from the lookups that read these artefacts", (
     {
       name: "bkit-ship.md plan presence",
       cmd: `find docs/plans/${MONTH} -maxdepth 1 -type f -name '${FID}-plan*.md'`,
-    },
-    {
-      name: "bkit-ship.md logs sweep",
-      cmd: `find docs/plans/${MONTH}/logs/${FID} -maxdepth 1 -type f -name '*.md'`,
     },
   ];
 

@@ -315,15 +315,18 @@ function headerFields(ctx) {
                 const eq = f.indexOf("=");
                 if (eq <= 0)
                     throw new CommandError(EXIT.USAGE, `--field "${f}" must be Name=value`);
-                out.push(`${f.slice(0, eq)}: ${f.slice(eq + 1)}`);
+                out.push([f.slice(0, eq), f.slice(eq + 1)]);
             }
         }
         else if (key === "subPlan") {
             const count = str(ctx.flags.subPlanCount);
-            out.push(`Sub-plan: ${String(ctx.flags.subPlan)}${count === undefined ? "" : `/${count}`}`);
+            out.push([
+                "Sub-plan",
+                `${String(ctx.flags.subPlan)}${count === undefined ? "" : `/${count}`}`,
+            ]);
         }
         else if (FIELD_LABELS[key] !== undefined) {
-            out.push(`${FIELD_LABELS[key]}: ${String(ctx.flags[key])}`);
+            out.push([FIELD_LABELS[key], String(ctx.flags[key])]);
         }
     }
     return out;
@@ -335,29 +338,26 @@ function fenced(text) {
     const fence = "`".repeat(Math.max(3, longest + 1));
     return `${fence}text\n${text}\n${fence}`;
 }
-function links(ctx) {
-    const ownerRepo = str(ctx.flags.ownerRepo);
-    const tree = str(ctx.flags.tree);
-    const prNumber = str(ctx.flags.prNumber);
-    const runId = str(ctx.flags.runId);
-    const artifacts = ctx.flags.artifact ?? [];
-    const wantsLinks = tree ?? prNumber ?? runId ?? artifacts[0];
+function links(o) {
+    const artifacts = o.artifacts ?? [];
+    const wantsLinks = o.tree ?? o.prNumber ?? o.runId ?? artifacts[0];
     if (wantsLinks === undefined)
         return [];
+    const ownerRepo = o.ownerRepo;
     if (ownerRepo === undefined || !/^[^/\s]+\/[^/\s]+$/.test(ownerRepo)) {
         throw new CommandError(EXIT.USAGE, "links need --owner-repo=<owner>/<repo>");
     }
     const gh = `https://github.com/${ownerRepo}`;
     const out = [];
-    if (tree !== undefined)
-        out.push(`[${ownerRepo}/tree/${tree}](${gh}/tree/${tree})`);
-    if (prNumber !== undefined) {
-        out.push(`[${ownerRepo}/pull/${prNumber}](${str(ctx.flags.prUrl) ?? `${gh}/pull/${prNumber}`})`);
+    if (o.tree !== undefined)
+        out.push(`[${ownerRepo}/tree/${o.tree}](${gh}/tree/${o.tree})`);
+    if (o.prNumber !== undefined) {
+        out.push(`[${ownerRepo}/pull/${o.prNumber}](${o.prUrl ?? `${gh}/pull/${o.prNumber}`})`);
     }
-    if (runId !== undefined)
-        out.push(`[${ownerRepo}/actions/run/${runId}](${gh}/actions/runs/${runId})`);
+    if (o.runId !== undefined)
+        out.push(`[${ownerRepo}/actions/run/${o.runId}](${gh}/actions/runs/${o.runId})`);
     if (artifacts.length) {
-        const ref = str(ctx.flags.ref) ?? tree;
+        const ref = o.ref ?? o.tree;
         if (ref === undefined)
             throw new CommandError(EXIT.USAGE, "--artifact needs --ref (or --tree)");
         for (const a of artifacts)
@@ -366,44 +366,42 @@ function links(ctx) {
     return out;
 }
 const KINDS = ["step", "failure", "handover"];
-export function commentBody(ctx) {
-    const kind = str(ctx.flags.kind) ?? "step";
+/** The exact comment body; files (`bodyFile`, `sections`, `stderrFile`, `errorFile`) resolve against `cwd`. */
+export function buildComment(cwd, o) {
+    const kind = o.kind ?? "step";
     if (!KINDS.includes(kind))
         throw new CommandError(EXIT.USAGE, `--kind must be ${KINDS.join(", ")}`);
     const lines = [GENERATED_MARKER];
-    if (ctx.flags.workflowHeading === true) {
-        const heading = WORKFLOW_HEADINGS[String(ctx.flags.workflow ?? "")];
+    if (o.workflowHeading === true) {
+        const heading = WORKFLOW_HEADINGS[o.workflow ?? ""];
         if (heading === undefined) {
             throw new CommandError(EXIT.USAGE, `--workflow-heading needs --workflow=${Object.keys(WORKFLOW_HEADINGS).join("|")}`);
         }
         lines.push(`## ${heading}`);
     }
-    const number = str(ctx.flags.stepNumber);
-    const title = str(ctx.flags.stepTitle);
+    const number = o.stepNumber;
+    const title = o.stepTitle;
     if (number !== undefined && !/^[0-9]+[a-z]?$/.test(number)) {
         throw new CommandError(EXIT.USAGE, `--step-number "${number}" is not a step number`);
-    }
-    if (ctx.flags.subPlanCount !== undefined && ctx.flags.subPlan === undefined) {
-        throw new CommandError(EXIT.USAGE, "--sub-plan-count needs --sub-plan");
     }
     if (kind === "step") {
         if (number === undefined || title === undefined) {
             throw new CommandError(EXIT.USAGE, "--kind=step needs --step-number and --step-title");
         }
-        lines.push([`### Step ${number} — ${title}`, ...headerFields(ctx)].join(" - "));
+        lines.push([`### Step ${number} — ${title}`, ...(o.fields ?? []).map(([k, v]) => `${k}: ${v}`)].join(" - "));
     }
     else if (kind === "failure") {
-        const error = str(ctx.flags.error);
+        const error = o.errorFile !== undefined
+            ? readInput(cwd, o.errorFile, "error-file").replace(/\n+$/, "")
+            : o.error;
         if (number === undefined || title === undefined || error === undefined) {
-            throw new CommandError(EXIT.USAGE, "--kind=failure needs --step-number, --step-title and --error");
+            throw new CommandError(EXIT.USAGE, "--kind=failure needs --step-number, --step-title and --error (or --error-file)");
         }
-        const subStep = str(ctx.flags.subStep);
         lines.push("### Workflow Failure");
-        lines.push(`Step: ${number} — ${title}${subStep === undefined ? "" : `; Sub-step: ${subStep}`}`);
+        lines.push(`Step: ${number} — ${title}${o.subStep === undefined ? "" : `; Sub-step: ${o.subStep}`}`);
         lines.push(`Error: ${error}`);
-        const stderrFile = str(ctx.flags.stderrFile);
-        if (stderrFile !== undefined) {
-            const captured = tail(readInput(ctx.cwd, stderrFile, "stderr-file"), 20);
+        if (o.stderrFile !== undefined) {
+            const captured = tail(readInput(cwd, o.stderrFile, "stderr-file"), 20);
             if (captured.trim() !== "")
                 lines.push("Stderr:", fenced(captured));
         }
@@ -411,17 +409,16 @@ export function commentBody(ctx) {
     else {
         lines.push("### Workflow Handover");
     }
-    lines.push(...links(ctx));
-    lines.push(...(ctx.flags.line ?? []));
-    const bodyFile = str(ctx.flags.bodyFile);
-    if (bodyFile !== undefined)
-        lines.push(readInput(ctx.cwd, bodyFile, "body-file").replace(/\n+$/, ""));
-    for (const s of ctx.flags.section ?? []) {
+    lines.push(...links(o));
+    lines.push(...(o.lines ?? []));
+    if (o.bodyFile !== undefined)
+        lines.push(readInput(cwd, o.bodyFile, "body-file").replace(/\n+$/, ""));
+    for (const s of o.sections ?? []) {
         const eq = s.indexOf("=");
         if (eq <= 0)
             throw new CommandError(EXIT.USAGE, `--section "${s}" must be Title=path`);
         lines.push(`#### ${s.slice(0, eq)}`);
-        lines.push(readInput(ctx.cwd, s.slice(eq + 1), "section").replace(/\n+$/, ""));
+        lines.push(readInput(cwd, s.slice(eq + 1), "section").replace(/\n+$/, ""));
     }
     // A whole-line cut marker copied in from an artifact would fire on the next
     // run's issue text; inline, it is only a mention.
@@ -430,6 +427,35 @@ export function commentBody(ctx) {
         .split("\n")
         .map((l) => (CUT_LINE.test(l) ? `\`${CUT_MARKER}\`` : l))
         .join("\n");
+}
+/** `bkit issues comment`'s flags as a `CommentInput`. */
+export function commentBody(ctx) {
+    const kind = str(ctx.flags.kind) ?? "step";
+    if (ctx.flags.subPlanCount !== undefined && ctx.flags.subPlan === undefined) {
+        throw new CommandError(EXIT.USAGE, "--sub-plan-count needs --sub-plan");
+    }
+    return buildComment(ctx.cwd, {
+        kind: kind,
+        workflow: str(ctx.flags.workflow),
+        workflowHeading: ctx.flags.workflowHeading === true,
+        stepNumber: str(ctx.flags.stepNumber),
+        stepTitle: str(ctx.flags.stepTitle),
+        fields: kind === "step" ? headerFields(ctx) : [],
+        subStep: str(ctx.flags.subStep),
+        error: str(ctx.flags.error),
+        errorFile: str(ctx.flags.errorFile),
+        stderrFile: str(ctx.flags.stderrFile),
+        ownerRepo: str(ctx.flags.ownerRepo),
+        tree: str(ctx.flags.tree),
+        prNumber: str(ctx.flags.prNumber),
+        prUrl: str(ctx.flags.prUrl),
+        runId: str(ctx.flags.runId),
+        artifacts: ctx.flags.artifact ?? [],
+        ref: str(ctx.flags.ref),
+        lines: ctx.flags.line ?? [],
+        bodyFile: str(ctx.flags.bodyFile),
+        sections: ctx.flags.section ?? [],
+    });
 }
 // ---------------------------------------------------------------------------
 // Command
@@ -536,15 +562,22 @@ export const issuesCommand = {
                 { name: "sub-step", type: "string", help: "failure: the sub-step that failed" },
                 { name: "error", type: "string", help: "failure: the error message or tool response" },
                 {
+                    name: "error-file",
+                    type: "string",
+                    help: "failure: file holding the error message (instead of --error)",
+                },
+                {
                     name: "stderr-file",
                     type: "string",
                     help: "failure: captured stderr (last 20 lines kept)",
                 },
             ],
-            output: { body: "the comment body" },
-            exitCodes: { [EXIT_BAD_INPUT]: "a --body-file / --section / --stderr-file file is missing" },
+            output: { comment: "the comment body" },
+            exitCodes: {
+                [EXIT_BAD_INPUT]: "a --body-file / --section / --stderr-file / --error-file file is missing",
+            },
             run: (ctx) => {
-                ctx.emit({ body: commentBody(ctx) });
+                ctx.emit({ comment: commentBody(ctx) });
                 return EXIT.OK;
             },
         },

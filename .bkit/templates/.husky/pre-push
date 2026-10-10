@@ -52,11 +52,12 @@ esac
 # token while the branch has an OPEN PR (that token silences GitHub's pull_request
 # trigger). Covers manual pushes (rebase + force-push, post-close commits). No open PR
 # -> allowed ([skip ci] pushes for mid-loop status, abort handover). dev/main exempt;
-# gh absent -> allow.
+# gh absent -> allow. `bkit ci skip-token` exits 0 when HEAD's message carries one of
+# the tokens GitHub honours; bkit owns that list.
 case "$BRANCH" in
   dev|main) ;;
   *)
-    if git log -1 --pretty=%B | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+    if pnpm -s bkit ci skip-token < /dev/null > /dev/null; then
       if command -v gh >/dev/null 2>&1; then
         # strip hook-injected GIT_DIR/GIT_WORK_TREE so gh resolves the repo from cwd (worktree-safe)
         OPEN_PR=$(env -u GIT_DIR -u GIT_WORK_TREE gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")

@@ -432,7 +432,9 @@ describe("#440: the detector itself works", () => {
       }
     }
     expect(shell).toBeGreaterThan(100);
-    expect(refs).toBeGreaterThan(500);
+    // Most blocks hold model values as `{VAR}` and run `"{BKIT}"`, so shell
+    // expansions are few; the ones left must still be reached.
+    expect(refs).toBeGreaterThan(20);
   });
 
   it("still fires when a real shipped block loses its assignment", () => {
@@ -441,9 +443,9 @@ describe("#440: the detector itself works", () => {
     expect(auditContent(rel, content)).toEqual([]);
 
     // Drop one real in-block assignment; the reference below it must now fail.
-    const broken = content.replace(/^(\s*)BOOK_ROOT="\{BOOK_ROOT\}"\n/m, "");
+    const broken = content.replace(/^(\s*)B=\$\(git branch --show-current\)\n/m, "");
     expect(broken).not.toBe(content);
-    expect(auditContent(rel, broken).map((h) => h.name)).toContain("BOOK_ROOT");
+    expect(auditContent(rel, broken).map((h) => h.name)).toContain("B");
   });
 });
 

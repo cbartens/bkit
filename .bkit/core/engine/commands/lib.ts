@@ -111,10 +111,25 @@ export interface CommandSpec {
 
 const camel = (kebab: string) => kebab.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase());
 
+/** An orchestrator placeholder (`{FID}`, `{STATUS}`) the workflow should have substituted. */
+const PLACEHOLDER = /\{[A-Z][A-Z0-9_]*\}/;
+
+/** Refuse a flag value still carrying a literal `{UPPER}` placeholder. */
+function refuseUnsubstituted(flag: string, value: string): void {
+  const hit = PLACEHOLDER.exec(value);
+  if (hit) {
+    throw new CommandError(
+      EXIT.USAGE,
+      `--${flag} carries the unsubstituted placeholder ${hit[0]} — substitute it before running`,
+    );
+  }
+}
+
 /**
  * Parse `--flag=value` / `--flag value` / `--bool` against the verb's spec. Keys
  * are filled in argv order, so a verb may render repeated or free-form flags in
- * the order the caller gave them.
+ * the order the caller gave them. A value holding a literal `{UPPER}` placeholder
+ * is refused (exit 2): the workflow passed it through unsubstituted.
  */
 export function parseFlags(argv: string[], specs: FlagSpec[]): Record<string, FlagValue> {
   const byName = new Map(specs.map((s) => [s.name, s]));
@@ -130,6 +145,7 @@ export function parseFlags(argv: string[], specs: FlagSpec[]): Record<string, Fl
           `unexpected argument "${arg}" — commands take flags only`,
         );
       }
+      refuseUnsubstituted(positional.name, arg);
       out[key] = arg;
       continue;
     }
@@ -151,6 +167,7 @@ export function parseFlags(argv: string[], specs: FlagSpec[]): Record<string, Fl
       value = next;
       i++;
     }
+    if (typeof value === "string") refuseUnsubstituted(name, value);
     const key = camel(name);
     if (spec.repeatable) {
       const prior = out[key];

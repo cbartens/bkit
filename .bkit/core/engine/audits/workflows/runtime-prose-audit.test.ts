@@ -66,16 +66,21 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
       expect(corpus).not.toMatch(/RUNTIME_GITHUBCLI/);
     });
 
-    it("every workflow carries the same gh MCP fallback line, and its transport-row call passes --file", () => {
-      const lines = WORKFLOW_FILES.map((f) =>
+    it("auto has no gh MCP fallback: its one gh read (`runs context`) routes exit 80 to the Failure Path", () => {
+      const auto = readWorkflow("bkit-auto.md");
+      expect(auto).not.toContain("**gh MCP fallback:**");
+      expect(auto).toMatch(/^> - \*\*External tools:\*\* [^\n]*exit 80\) → \*\*Failure Path\*\*/m);
+    });
+
+    it("every phase workflow carries the same gh MCP fallback line, and its transport-row call passes --file", () => {
+      const phases = WORKFLOW_FILES.filter((f) => f !== "bkit-auto.md");
+      const lines = phases.map((f) =>
         readWorkflow(f)
           .split("\n")
           .filter((l) => l.startsWith("> - **gh MCP fallback:**")),
       );
       for (const [i, found] of lines.entries()) {
-        expect(found, `${WORKFLOW_FILES[i]} carries exactly one gh MCP fallback line`).toHaveLength(
-          1,
-        );
+        expect(found, `${phases[i]} carries exactly one gh MCP fallback line`).toHaveLength(1);
       }
       expect(new Set(lines.map((l) => l[0])).size, "gh MCP fallback lines differ").toBe(1);
       // `bkit prs transport-row` requires --file (commands/workflow/status.ts FILE_FLAG).
@@ -89,7 +94,7 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
       expect(corpus).toContain("runtime-resolved");
       for (const workflow of ["design", "plan", "build", "debug", "ship"] as const) {
         const content = readWorkflow(`bkit-${workflow}.md`);
-        const row = content.indexOf(`"$BKIT" runtime row --workflow=${workflow} `);
+        const row = content.indexOf(`"{BKIT}" runtime row --workflow=${workflow} `);
         expect(row, `bkit-${workflow}.md emits the runtime-resolved row`).toBeGreaterThan(-1);
         expect(row).toBeLessThan(content.indexOf("runtime assert"));
       }

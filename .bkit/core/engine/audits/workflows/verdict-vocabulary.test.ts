@@ -1,23 +1,24 @@
 /**
  * audits/workflows/verdict-vocabulary.test.ts
  *
- * Every verdict vocabulary is declared TWICE, in two files that must agree:
+ * A verdict vocabulary is declared ONCE, in the producing agent's output template
+ * (`.bkit/prompts/<agent>.md`):
  *
- *   1. the producing agent's output template, in `.bkit/prompts/<agent>.md`:
- *          Verdict: PASS | CONCERNS | FAIL
- *   2. the consuming workflow's gate checklist, in `.bkit/workflows/<wf>.md`:
- *          - [ ] `Verdict` extracted and valid (`DIAGNOSE_VERDICT` in `PASS|CONCERNS|FAIL`)
+ *     Verdict: PASS | CONCERNS | FAIL
  *
- * The linkage is recovered from the files themselves (no hand-maintained vocabulary
- * list):
+ * `bkit steps finish --agent=<agent> --artifact=<file>` reads that line and refuses a
+ * header outside it (commands/workflow/steps.test.ts). What the workflow can still get
+ * wrong, and this audit checks from the files themselves (no hand-maintained list):
  *
- *   variable --(workflow "extract `Verdict` ... as `VAR`")--> artifact
- *   artifact --(workflow "Invoke `@agent`" + "Create:")-------> agent
- *   agent    --(prompt "Verdict:" line)----------------------> declared set
+ *   1. finish pairs each `--agent` with the `--artifact` in the same position — that
+ *      artifact must be the one the agent's `Invoke `@agent`` block Creates / Updates,
+ *      and the agent must declare a `Verdict:` line;
+ *   2. a verdict held from finish (`Hold `verdict` as `VAR``) is only ever compared, in
+ *      routes and gates, against values its agent can emit.
  *
- * Verdict variables computed in bash rather than read from an artifact (ship's
- * `DOCS_VERDICT`, `MERGE_VERDICT`, debug's `TEST_VERDICT`) have no producing
- * agent and are skipped — EXEMPT_COMPUTED names them; any other unlinked variable fails.
+ * Verdict variables computed by a command or an exit code rather than read from an
+ * artifact (ship's `MERGE_VERDICT`, build/debug's `TEST_VERDICT`, …) have no producing
+ * agent — EXEMPT_COMPUTED names them; any other gated variable with no agent fails.
  */
 
 import * as fs from "node:fs";
@@ -29,16 +30,15 @@ const WORKFLOW_DIR = ".bkit/workflows";
 const PROMPT_DIR = ".bkit/prompts";
 
 /**
- * Verdict variables the workflow computes itself (bash, exit codes, or a
- * fold over status.jsonl) rather than extracting from a subagent artifact.
+ * Verdict variables the workflow computes itself (exit codes, a command's
+ * outcome, a fold over status.jsonl) rather than reading from a subagent artifact.
  * These have no prompt-side declaration.
  */
 const EXEMPT_COMPUTED = new Set([
-  "DOCS_VERDICT", // ship derives it from a `jq` SHIPPED-row assertion on .bkit/issues.jsonl
-  "MERGE_VERDICT", // ship derives it from the merge outcome
+  "MERGE_VERDICT", // ship: `bkit prs merge` from the merge outcome
   "TEST_VERDICT", // build/debug derive it from the test-run exit code
   "BOUNDARY_VERDICT", // build derives it from the sub-plan boundary gate's exit code
-  "FETCH_VERDICT", // debug derives it from context-fetch block outcomes
+  "FETCH_VERDICT", // debug: `bkit context finalise` from context-fetch block outcomes
   "DEBUG_MODE", // routing mode, not an artifact verdict
   "DIAGNOSE_MODE",
   "PUSH_MODE",
@@ -58,9 +58,12 @@ function listMd(dir: string): string[] {
     .map((f) => `${dir}/${f}`);
 }
 
-/** Strip `-{PLACEHOLDER}` segments and a trailing `-log` from an artifact stem. */
+/** Strip `-{PLACEHOLDER}` / `-<attempt>` segments and a trailing `-log` from an artifact stem. */
 function normaliseArtifact(stem: string): string {
-  return stem.replace(/-?\{[A-Z_]+\}/g, "").replace(/-log$/, "");
+  return stem
+    .replace(/-?\{[A-Z_]+\}/g, "")
+    .replace(/-?<attempt>/g, "")
+    .replace(/-log$/, "");
 }
 
 /** Levenshtein distance — two verdict names one edit apart are a typo hazard. */
@@ -99,9 +102,9 @@ export function promptDeclarations(): Map<string, Set<string>> {
   return out;
 }
 
-/** artifact stem -> the agent whose dispatch block Creates/Updates it. */
-export function artifactProducers(): Map<string, string> {
-  const out = new Map<string, string>();
+/** artifact stem -> the agents whose dispatch blocks Create / Update it. */
+export function artifactProducers(): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
   for (const rel of listMd(WORKFLOW_DIR)) {
     let current: string | null = null;
     for (const line of read(rel).split("\n")) {
@@ -110,7 +113,48 @@ export function artifactProducers(): Map<string, string> {
       if (!current) continue;
       for (const m of line.matchAll(/(?:Create|Update):[^\n]*?([a-zA-Z0-9{}_-]+)\.md/g)) {
         const stem = normaliseArtifact(m[1]);
-        if (!out.has(stem)) out.set(stem, current);
+        if (!out.has(stem)) out.set(stem, new Set());
+        out.get(stem)!.add(current);
+      }
+    }
+  }
+  return out;
+}
+
+export interface FinishPair {
+  workflow: string;
+  agent: string;
+  artifact: string;
+}
+
+/** Every `steps finish` `--agent` with the `--artifact` in the same position. */
+export function finishPairs(): FinishPair[] {
+  const out: FinishPair[] = [];
+  for (const rel of listMd(WORKFLOW_DIR)) {
+    for (const line of read(rel).split("\n")) {
+      if (!/"\{BKIT\}" steps finish\b/.test(line)) continue;
+      const agents = [...line.matchAll(/--agent=([a-z0-9-]+)/g)].map((m) => m[1]!);
+      const artifacts = [...line.matchAll(/--artifact="?([^"\s]+)"?/g)].map((m) => m[1]!);
+      agents.forEach((agent, i) => {
+        const file = artifacts[i] ?? "";
+        const stem = /([a-zA-Z0-9{}<>_-]+)\.md$/.exec(file)?.[1] ?? file;
+        out.push({ workflow: rel, agent, artifact: normaliseArtifact(stem) });
+      });
+    }
+  }
+  return out;
+}
+
+/** verdict variable -> the agent of the `steps finish` it is held from, per workflow. */
+export function heldVerdicts(): Map<string, { workflow: string; agent: string | null }> {
+  const out = new Map<string, { workflow: string; agent: string | null }>();
+  for (const rel of listMd(WORKFLOW_DIR)) {
+    let agent: string | null = null;
+    for (const line of read(rel).split("\n")) {
+      if (/"\{BKIT\}" steps finish\b/.test(line))
+        agent = /--agent=([a-z0-9-]+)/.exec(line)?.[1] ?? null;
+      for (const m of line.matchAll(/[Hh]old `verdict` as `\{?([A-Z][A-Z0-9_]*)\}?`/g)) {
+        out.set(m[1]!, { workflow: rel, agent });
       }
     }
   }
@@ -136,98 +180,66 @@ export function gateDeclarations(): GateDecl[] {
   return out;
 }
 
-/** verdict variable -> artifact stem it is extracted from. */
-export function variableSources(): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const rel of listMd(WORKFLOW_DIR)) {
-    for (const m of read(rel).matchAll(
-      // `[^`\n]*?` admits a directory prefix inside the backticks
-      // (`.bkit/.roadmap-refresh-on-demand.md`) while still capturing the bare
-      // stem, matching how artifactProducers' lazy prefix behaves.
-      /`[^`\n]*?([a-zA-Z0-9{}_-]+)\.md`[^\n]{0,400}?extract `Verdict`[^\n]{0,220}?(?:as|compute) `([A-Z][A-Z0-9_]*)`/g,
-    )) {
-      out.set(m[2], normaliseArtifact(m[1]));
-    }
-  }
-  return out;
-}
-
-/**
- * Variables read straight off a subagent's RETURNED MESSAGE rather than an
- * artifact file. Maps variable -> agent directly, skipping the artifact hop,
- * so the prompt-side vocabulary is still checked. Used where the subagent
- * writes no report of its own (`/bkit-roadmap`, whose only durable outputs are
- * docs/roadmap.md, .bkit/issues.jsonl and docs/tracker.jsonl).
- */
-function messageVariableAgents(): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const rel of listMd(WORKFLOW_DIR)) {
-    const text = read(rel);
-    for (const m of text.matchAll(
-      /Invoke `@([a-z0-9-]+)`[\s\S]{0,2000}?Extract `Verdict` from the subagent's returned message as `([A-Z][A-Z0-9_]*)`/g,
-    )) {
-      out.set(m[2], m[1]);
-    }
-  }
-  return out;
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("verdict vocabulary: extraction reaches the real corpus", () => {
-  it("finds prompt declarations, gate declarations, and producers", () => {
+  it("finds prompt declarations, finish pairs, producers and held verdicts", () => {
     expect(promptDeclarations().size).toBeGreaterThan(25);
-    expect(gateDeclarations().length).toBeGreaterThan(25);
+    expect(finishPairs().length).toBeGreaterThan(25);
     expect(artifactProducers().size).toBeGreaterThan(20);
-    expect(variableSources().size).toBeGreaterThan(10);
+    expect(heldVerdicts().size).toBeGreaterThan(5);
   });
 });
 
-describe("verdict vocabulary: workflow gate agrees with the producing agent", () => {
+describe("verdict vocabulary: steps finish reads the right agent's artifact", () => {
   const prompts = promptDeclarations();
   const producers = artifactProducers();
-  const sources = variableSources();
-  const messageAgents = messageVariableAgents();
+  for (const pair of finishPairs()) {
+    it(`${pair.workflow} — --agent=${pair.agent} --artifact=…${pair.artifact}.md`, () => {
+      expect(prompts.get(pair.agent), `${pair.agent}.md declares no "Verdict:" line`).toBeTruthy();
+      const made = producers.get(pair.artifact);
+      expect(made, `no agent Creates ${pair.artifact}.md`).toBeTruthy();
+      expect([...made!], `${pair.artifact}.md is not ${pair.agent}'s artifact`).toContain(
+        pair.agent,
+      );
+    });
+  }
+});
+
+describe("verdict vocabulary: held verdicts are compared only against emittable values", () => {
+  const prompts = promptDeclarations();
+  const held = heldVerdicts();
+
+  for (const [variable, { workflow, agent }] of held) {
+    if (EXEMPT_COMPUTED.has(variable) || agent === null) continue;
+    it(`${workflow} — \`${variable}\` (${agent})`, () => {
+      const declared = prompts.get(agent)!;
+      const text = read(workflow);
+      const used = [
+        ...text.matchAll(new RegExp(`\`${variable}\`\\s*!?=\\s*\`?([A-Z][A-Z_]+)\`?`, "g")),
+      ].map((m) => m[1]!);
+      const stray = used.filter((v) => !declared.has(v));
+      expect(stray, `${agent} never emits ${stray.join(", ")}`).toEqual([]);
+    });
+  }
 
   for (const gate of gateDeclarations()) {
-    const label = `${gate.workflow} — \`${gate.variable}\` in \`${gate.union}\``;
-    it(label, () => {
+    it(`${gate.workflow} — gate \`${gate.variable}\` in \`${gate.union}\``, () => {
       if (EXEMPT_COMPUTED.has(gate.variable)) return;
-
-      const artifact = sources.get(gate.variable);
-      const messageAgent = messageAgents.get(gate.variable);
+      const source = held.get(gate.variable);
       expect(
-        artifact ?? messageAgent,
-        `${gate.variable} is gated but never extracted from an artifact or a ` +
-          `subagent's returned message. Either add the "extract \`Verdict\` ... as ` +
-          `\`${gate.variable}\`" line, or add it to EXEMPT_COMPUTED if the workflow computes it.`,
+        source?.agent,
+        `${gate.variable} is gated but held from no agent's steps finish — add it to ` +
+          `EXEMPT_COMPUTED if the workflow computes it.`,
       ).toBeTruthy();
-
-      const agent = artifact ? producers.get(artifact) : messageAgent;
-      expect(
-        agent,
-        artifact
-          ? `no agent Creates ${artifact}.md — cannot check its vocabulary`
-          : `no agent resolved for ${gate.variable} — cannot check its vocabulary`,
-      ).toBeTruthy();
-
-      const declared = prompts.get(agent!);
-      expect(
-        declared,
-        `${agent}.md declares no "Verdict:" line, but ${gate.workflow} gates it`,
-      ).toBeTruthy();
-
+      const declared = prompts.get(source!.agent!)!;
       const gated = members(gate.union);
-      const missing = [...declared!].filter((v) => !gated.has(v));
-      const extra = [...gated].filter((v) => !declared!.has(v));
-      expect(
-        { missing, extra },
-        `${agent} can emit {${[...declared!].join("|")}} but ${gate.workflow} gates {${gate.union}}. ` +
-          (missing.length ? `Emittable but rejected: ${missing.join(", ")}. ` : "") +
-          (extra.length ? `Gated but never emittable: ${extra.join(", ")}.` : ""),
-      ).toEqual({ missing: [], extra: [] });
+      expect({
+        missing: [...declared].filter((v) => !gated.has(v)),
+        extra: [...gated].filter((v) => !declared.has(v)),
+      }).toEqual({ missing: [], extra: [] });
     });
   }
 });
@@ -321,15 +333,7 @@ describe("verdict vocabulary: variable names match their step", () => {
   /**
    * Every multi-word name must EARN its extra word: dropping any one word has
    * to produce a name that already exists in the same workflow, is claimed by a
-   * sibling, or lands within one edit of a live name. Audited as of this test:
-   *
-   *   APPLY_REVIEW_VERDICT / APPLY_SCOPE_VERDICT  both shorten to APPLY_VERDICT
-   *                                               and co-occur in bkit-plan.md
-   *   CHALLENGE_REMEDIATE_VERDICT                 -> REMEDIATE_VERDICT and
-   *                                               CHALLENGE_VERDICT both live
-   *                                               in bkit-build.md
-   *   CHALLENGE_TESTS_VERDICT                     -> TESTS_VERDICT is one edit
-   *                                               from TEST_VERDICT, same file
+   * sibling, or lands within one edit of a live name.
    */
   it("every multi-word verdict name has no conflict-free shortening", () => {
     const all = new Set<string>();

@@ -1241,3 +1241,98 @@ describe("branches switch", { timeout: GIT_TIMEOUT }, () => {
 });
 
 const currentBranchOf = (cwd: string) => git(cwd, "branch", "--show-current").out;
+
+describe("branches land", { timeout: GIT_TIMEOUT }, () => {
+  const FID = "12-x";
+  const M = "202610";
+  /** A main checkout on dev with a bare remote, feat/12-x carrying this run's design. */
+  function fixture() {
+    const remote = tmp("land-remote");
+    const repo = tmp("land-repo");
+    git(remote, "init", "-q", "--bare", "-b", "dev");
+    git(repo, "init", "-q", "-b", "dev");
+    git(repo, "config", "user.email", "t@t");
+    git(repo, "config", "user.name", "t");
+    write(repo, ".gitignore", ".bkit/.dev.lock\ndocs/plans/*/logs/**/.lock\n");
+    write(repo, "docs/roadmap.md", "# Roadmap\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-qm", "init");
+    git(repo, "remote", "add", "origin", remote);
+    git(repo, "push", "-q", "origin", "dev");
+    git(repo, "checkout", "-q", "-b", `feat/${FID}`);
+    write(repo, `docs/plans/${M}/${FID}-design.md`, "# design\n");
+    write(
+      repo,
+      `docs/plans/${M}/logs/${FID}/status.jsonl`,
+      '{"type":"workflow-started","workflow":"design"}\n',
+    );
+    git(repo, "add", "-A");
+    git(repo, "commit", "-qm", "design");
+    return { repo, remote };
+  }
+  const land = (cwd: string, env: Record<string, string>, ...extra: string[]) =>
+    run(cwd, ["land", "--workflow=design", `--fid=${FID}`, `--month=${M}`, ...extra], env);
+
+  it("refuses a workflow other than design or plan", async () => {
+    const { repo } = fixture();
+    expect(
+      (await run(repo, ["land", "--workflow=build", `--fid=${FID}`, `--month=${M}`])).code,
+    ).toBe(2);
+  });
+
+  it("local: stops (17) when this run's artifacts were written to the main checkout, untracked", async () => {
+    const { repo } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    write(repo, `docs/plans/${M}/logs/${FID}/stray.md`, "oops\n");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(17);
+    expect(r.err).toContain("written to the main checkout instead of the worktree");
+  });
+
+  it("local: squashes feat/{fid} into dev, commits `design DONE`, pushes, and audits the landed commit", async () => {
+    const { repo, remote } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      shape: "local",
+      transport: "git",
+      canonicalRef: "dev",
+      scanResult: "clean",
+    });
+    expect(git(remote, "log", "-1", "--format=%s", "dev").out).toBe(
+      `docs(${FID}): design DONE bkit [skip ci]`,
+    );
+    expect(git(remote, "show", `dev:docs/plans/${M}/${FID}-design.md`).out).toBe("# design");
+    expect(read(repo, `docs/plans/${M}/logs/${FID}/status.jsonl`)).toContain(
+      '"type":"close-transport"',
+    );
+  });
+
+  it("local: stops (17) when the squash would bring non-doc files to dev", async () => {
+    const { repo } = fixture();
+    write(repo, "src/app.ts", "export {};\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-qm", "code on a design branch");
+    git(repo, "checkout", "-q", "dev");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(17);
+    expect(r.err).toContain("close staged non-doc files");
+  });
+
+  it("PR shape: pushes the roadmap commit, then hands PR creation to MCP (80, stage open) without gh", async () => {
+    const { repo, remote } = fixture();
+    const bin = stubBin({ gh: "exit 4" });
+    const r = await land(
+      repo,
+      { BKIT_RUNTIME: "CLOUD_CLAUDE", PATH: withBin(bin) },
+      "--issue=12",
+      `--branch=feat/${FID}`,
+    );
+    expect(r.code).toBe(80);
+    expect(r.json).toMatchObject({ stage: "open" });
+    expect(git(remote, "log", "-1", "--format=%s", `feat/${FID}`).out).toBe(
+      `docs(${FID}): design roadmap update bkit [skip ci]`,
+    );
+  });
+});

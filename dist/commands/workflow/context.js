@@ -17,9 +17,14 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { CONTEXT_FETCH_CONTEXTS, parseContextFetchStart } from "../../checks/before/index.js";
+import { extractContextFetchProvisionRecipes } from "../../install/cloud-env.js";
+import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { lastRun } from "../../ledgers/status.js";
-import { CommandError, EXIT, git, parseJson, } from "../lib.js";
+import { CommandError, EXIT, git, } from "../lib.js";
+import { resolveRepoSlug } from "../../ledgers/telemetry.js";
+import { buildComment } from "./issues.js";
 import { EXIT_NO_STATUS, positiveInt, readRuns, str } from "./status.js";
+import { EXIT_COMMIT, writeStepRow } from "./steps.js";
 /** Exit code: the artifact to clamp is missing, unreadable, or could not be replaced. */
 export const EXIT_ARTIFACT = 4;
 // ---------------------------------------------------------------------------
@@ -334,29 +339,9 @@ function replaceFile(file, tmp, content) {
 // Clamp log — records cross the gap between the block that writes an artifact
 // and the block that records the step's status row.
 // ---------------------------------------------------------------------------
-/** Run-scoped log under gitignored `tmp/`: `tmp/bkit-clamp-{fid}-{step}[-{attempt}].jsonl`. */
-export function clampLogPath(cwd, fid, step, attempt) {
-    const top = git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
-    return path.join(top, "tmp", `bkit-clamp-${fid}-${step}${attempt ? `-${attempt}` : ""}.jsonl`);
-}
 export function appendRecord(log, record) {
     fs.mkdirSync(path.dirname(log), { recursive: true });
     fs.appendFileSync(log, `${JSON.stringify(record)}\n`);
-}
-/** Every record in the log; reading never drains it, so a retried status block sees the same array. */
-export function readRecords(log, onBad = () => undefined) {
-    if (!fs.existsSync(log))
-        return [];
-    return fs
-        .readFileSync(log, "utf-8")
-        .split("\n")
-        .filter((l) => l.trim() !== "")
-        .flatMap((l) => {
-        const parsed = parseJson(l);
-        if (!parsed.ok)
-            onBad(l);
-        return parsed.ok ? [parsed.value] : [];
-    });
 }
 const LOG_FLAGS = [
     {
@@ -636,6 +621,7 @@ export const contextCommand = {
                 blocks: "[{idx, context, name, known, prefix, suffix, body}] in file order",
                 coverage: "blocks per context (runtime, ci, diff, e2e, web)",
                 contextsConfigured: "contexts with at least one block, in narration order",
+                provision: "bash body of each context-fetch:provision block below bkit:end, in file order (cloud-bootstrap.sh runs them)",
             },
             run: (ctx) => {
                 const blocks = fetchBlocks(consumerSection(readContextMd(ctx) ?? ""));
@@ -655,6 +641,7 @@ export const contextCommand = {
                     blocks,
                     coverage,
                     contextsConfigured: CONTEXT_FETCH_CONTEXTS.filter((c) => coverage[c] > 0),
+                    provision: extractContextFetchProvisionRecipes(ctx.cwd),
                 });
                 return EXIT.OK;
             },
@@ -687,16 +674,38 @@ export const contextCommand = {
             run: (ctx) => runBlock(ctx),
         },
         finalise: {
-            summary: "The context-fetch status row's fields: verdict, artifacts, contexts configured, clamped.",
-            flags: [FID_FLAG, MONTH_FLAG, ...ATTEMPT_FLAGS],
+            summary: "The context-fetch status row's fields: verdict, artifacts, contexts configured, clamped; --record writes and commits the row and prints the step comment.",
+            flags: [
+                FID_FLAG,
+                MONTH_FLAG,
+                ...ATTEMPT_FLAGS,
+                {
+                    name: "record",
+                    type: "boolean",
+                    help: "write the context-fetch step-done row to --file and commit it (needs --message)",
+                },
+                { name: "message", type: "string", help: "--record: the commit message" },
+                { name: "number", type: "string", help: "step number: print the step's tracker comment" },
+                { name: "title", type: "string", help: "step title for the comment heading" },
+                { name: "link-ref", type: "string", help: "link the artifacts at this ref in the comment" },
+                {
+                    name: "owner-repo",
+                    type: "string",
+                    help: "owner/repo for the links (default: the origin remote)",
+                },
+            ],
             output: {
                 verdict: "PASS when any non-empty context-*-{attempt}.md exists, else FAIL",
                 artifacts: "those artifacts, relative to the working directory",
                 contextsConfigured: "contexts with at least one block",
                 clamped: "this attempt's clamp records",
+                row: "--record: the step-done row written, else null",
+                commit: "--record: the new commit's sha, else null",
+                comment: "the step comment (with --number): verdict, contexts, artifact links, a NOT CONFIGURED line per context with no block; else null",
             },
             exitCodes: {
                 [EXIT_NO_STATUS]: "--file: status.jsonl missing, unreadable, or not valid NDJSON",
+                [EXIT_COMMIT]: "--record: the row was written but the commit failed",
             },
             run: (ctx) => {
                 const attempt = debugAttempt(ctx);
@@ -713,13 +722,60 @@ export const contextCommand = {
                     return st.isFile() && st.size > 0;
                 });
                 const blocks = fetchBlocks(consumerSection(readContextMd(ctx) ?? ""));
+                const contextsConfigured = CONTEXT_FETCH_CONTEXTS.filter((c) => blocks.some((b) => b.context === c));
+                const clamped = readRecords(clampLogPath(ctx.cwd, fid, "context-fetch", attempt), (l) => ctx.log(`skipping a malformed clamp record: ${l}`));
+                const verdict = artifacts.length > 0 ? "PASS" : "FAIL";
+                let written = {
+                    row: {},
+                    commit: null,
+                    code: EXIT.OK,
+                };
+                const record = ctx.flags.record === true;
+                if (record) {
+                    const file = str(ctx.flags.file);
+                    if (file === undefined)
+                        throw new CommandError(EXIT.USAGE, "--record needs --file");
+                    written = writeStepRow(ctx.cwd, {
+                        file: path.resolve(ctx.cwd, file),
+                        workflow: "debug",
+                        step: "context-fetch",
+                        verdict,
+                        attempt,
+                        artifacts,
+                        extras: { contextsConfigured, clamped },
+                        commit: "auto",
+                        message: str(ctx.flags.message),
+                    }, ctx.log);
+                }
+                let comment = null;
+                const number = str(ctx.flags.number);
+                if (number !== undefined) {
+                    const linkRef = str(ctx.flags.linkRef);
+                    comment = buildComment(ctx.cwd, {
+                        stepNumber: number,
+                        stepTitle: str(ctx.flags.title) ?? "Fetch Context",
+                        fields: [
+                            ["Verdict", verdict],
+                            ["Contexts", JSON.stringify(contextsConfigured)],
+                        ],
+                        ownerRepo: linkRef === undefined
+                            ? undefined
+                            : (str(ctx.flags.ownerRepo) ?? resolveRepoSlug(ctx.cwd)),
+                        artifacts: linkRef === undefined ? [] : artifacts,
+                        ref: linkRef,
+                        lines: CONTEXT_FETCH_CONTEXTS.filter((c) => !contextsConfigured.includes(c)).map((c) => `context=${c} NOT CONFIGURED — that evidence was not checked this attempt`),
+                    });
+                }
                 ctx.emit({
-                    verdict: artifacts.length > 0 ? "PASS" : "FAIL",
+                    verdict,
                     artifacts,
-                    contextsConfigured: CONTEXT_FETCH_CONTEXTS.filter((c) => blocks.some((b) => b.context === c)),
-                    clamped: readRecords(clampLogPath(ctx.cwd, fid, "context-fetch", attempt), (l) => ctx.log(`skipping a malformed clamp record: ${l}`)),
+                    contextsConfigured,
+                    clamped,
+                    row: record ? written.row : null,
+                    commit: written.commit,
+                    comment,
                 });
-                return EXIT.OK;
+                return written.code;
             },
         },
     },

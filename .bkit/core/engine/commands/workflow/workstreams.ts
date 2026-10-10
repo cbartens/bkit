@@ -147,7 +147,7 @@ export const workstreamsCommand: CommandSpec = {
           help: "owner/repo for the design doc link",
         },
       ],
-      output: { body: "the comment body", workstreams: "the parsed workstreams" },
+      output: { comment: "the comment body", workstreams: "the parsed workstreams" },
       exitCodes: { [EXIT_NONE]: "no workstream parsed (Failure Path)" },
       run: (ctx) => {
         const workstreams = read(ctx);
@@ -156,7 +156,7 @@ export const workstreamsCommand: CommandSpec = {
           month: String(ctx.flags.month),
           fid: String(ctx.flags.fid),
         });
-        ctx.emit({ body, workstreams });
+        ctx.emit({ comment: body, workstreams });
         return EXIT.OK;
       },
     },

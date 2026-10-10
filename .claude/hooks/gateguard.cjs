@@ -48,7 +48,8 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit"]);
+// --- GateGuard engine: identical in every host's hook (bkit renders it from one source).
+// Needs `fs`, `os` and `path` in scope; the host's own code above declares them.
 
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
 // A matching path gets the gate-config advisory instead of the first-touch checklist.
@@ -202,29 +203,20 @@ function gcOldState() {
   }
 }
 
-// Pure: takes the already-parsed hook payload, returns the advisory to emit or
-// null. Never touches process.stdin / process.stdout — the driver below owns both.
-function bkitGateguard(payload) {
+// The advisory for the first touch of `filePath` this session, or null when GateGuard
+// is off, the path is unusable, or this session was already warned about it. Records
+// the touch. `isNewFile` picks the reuse checklist over the read-this-file checklist.
+function firstTouchAdvice(filePath, sessionId, isNewFile) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off") return null;
-
-  // Subagents are NOT exempt. Dedup is per (session, file) and a subagent carries its
-  // own session id, so it gets the checklist once for a file the orchestrator already
-  // touched.
-  if (!EDIT_TOOLS.has(payload.tool_name)) return null;
-
-  const input = payload.tool_input || {};
-  const filePath = input.file_path || input.path;
   if (!filePath || typeof filePath !== "string") return null;
 
-  const sessionId = typeof payload.session_id === "string" ? payload.session_id : "no-session";
+  const sid = typeof sessionId === "string" ? sessionId : "no-session";
 
   // Warn once per (session, file).
-  if (alreadyWarned(sessionId, filePath)) return null;
+  if (alreadyWarned(sid, filePath)) return null;
 
   const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
-  // A Write to a not-yet-existing path is a NEW file and gets the reuse checklist.
-  const isNewFile = payload.tool_name === "Write" && !fs.existsSync(filePath);
   const baseContext = gated
     ? configAdvisory(filePath)
     : isNewFile
@@ -234,10 +226,29 @@ function bkitGateguard(payload) {
     ? `${baseContext}\n\n${docAuthoringAdvisory()}`
     : baseContext;
 
-  markWarned(sessionId, filePath);
+  markWarned(sid, filePath);
   gcOldState();
 
   return { mode: mode === "deny" ? "deny" : "advisory", context };
+}
+
+// Edit / Write / MultiEdit payload adapter, shared by the Claude Code and Cursor hooks:
+// `{ tool_name, tool_input: { file_path | path }, session_id }`.
+const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit"]);
+
+// Pure: takes the already-parsed hook payload, returns the advisory to emit or
+// null. Never touches process.stdin / process.stdout — the driver below owns both.
+// Subagents are NOT exempt: dedup is per (session, file) and a subagent carries its
+// own session id, so it gets the checklist once for a file the orchestrator already
+// touched.
+function bkitGateguard(payload) {
+  if (!EDIT_TOOLS.has(payload.tool_name)) return null;
+  const input = payload.tool_input || {};
+  const filePath = input.file_path || input.path;
+  // A Write to a not-yet-existing path is a NEW file and gets the reuse checklist.
+  const isNewFile =
+    payload.tool_name === "Write" && typeof filePath === "string" && !fs.existsSync(filePath);
+  return firstTouchAdvice(filePath, payload.session_id, isNewFile);
 }
 
 // bkit:end

@@ -8,6 +8,7 @@ import {
   selectMarkers,
   type MarkerStyle,
 } from "./managed-block.js";
+import { readTemplate } from "../render/parts.js";
 import { applyTokens, type TokenMap } from "./placeholders.js";
 
 export type { WriteSet };
@@ -284,7 +285,7 @@ export function writeTier1(
   dryRun: boolean,
   ws: WriteSet,
 ): void {
-  const srcRaw = fs.readFileSync(srcPath, "utf-8");
+  const srcRaw = readTemplate(srcPath);
   const srcContent = applyTokens(srcRaw, tokens);
 
   if (fs.existsSync(dstPath)) {
@@ -323,7 +324,7 @@ export function writeTier2(
   dryRun: boolean,
   ws: WriteSet,
 ): void {
-  const srcRaw = fs.readFileSync(srcPath, "utf-8");
+  const srcRaw = readTemplate(srcPath);
 
   if (!fs.existsSync(dstPath)) {
     // dest missing → write whole template (with tokens applied)

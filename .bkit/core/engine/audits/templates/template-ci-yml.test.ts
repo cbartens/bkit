@@ -3,8 +3,8 @@
  * `.bkit/templates.md` tells a consumer to, is a valid workflow, and the ship gate finds
  * its capstone by the job names it actually declares.
  *
- * YAML is read with whichever of python3 + PyYAML or ruby + psych the machine has (one
- * of them must exist). The actionlint half is skipped where actionlint is not installed.
+ * YAML is read with the `yaml` devDependency. The actionlint half is skipped where
+ * actionlint is not installed.
  */
 
 import { spawnSync } from "node:child_process";
@@ -13,6 +13,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { parse as parseYamlText } from "yaml";
 
 import { runCommand } from "../../commands/lib";
 import { runsCommand } from "../../commands/workflow/runs";
@@ -46,28 +47,9 @@ function filledTemplate(): string {
 
 const has = (cmd: string, args: string[]) => spawnSync(cmd, args, { stdio: "ignore" }).status === 0;
 
-/** Parse a YAML file to plain data with the first parser the machine has. */
+/** Parse a YAML file to plain data. */
 function parseYaml(file: string): Record<string, unknown> {
-  const parsers: Array<[string, string[]]> = [
-    [
-      "python3",
-      ["-c", "import json,sys,yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1]))))", file],
-    ],
-    [
-      "ruby",
-      ["-ryaml", "-rjson", "-e", "puts JSON.generate(YAML.safe_load(File.read(ARGV[0])))", file],
-    ],
-  ];
-  const available = parsers.filter(([cmd]) =>
-    cmd === "python3" ? has("python3", ["-c", "import yaml"]) : has("ruby", ["-ryaml", "-e", "0"]),
-  );
-  expect(available.length, "no YAML parser: install PyYAML for python3, or ruby").toBeGreaterThan(
-    0,
-  );
-  const [cmd, args] = available[0]!;
-  const r = spawnSync(cmd, args, { encoding: "utf-8" });
-  expect(r.status, r.stderr).toBe(0);
-  return JSON.parse(r.stdout) as Record<string, unknown>;
+  return parseYamlText(fs.readFileSync(file, "utf-8")) as Record<string, unknown>;
 }
 
 interface Job {

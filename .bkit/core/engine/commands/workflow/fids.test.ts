@@ -207,12 +207,13 @@ describe("issueIdOf", () => {
 // Trust), and {FID} flows into filesystem paths (docs/plans/{YYYYMM}/logs/{FID}/…,
 // .worktrees/{FID}) and downstream /bkit-* dispatch.
 //
-// The allowlist lives in `bkit fids` (commands/workflow/fids.ts). This audit asserts BOTH
+// The allowlists live in `bkit fids` (commands/workflow/fids.ts). This audit asserts BOTH
 // halves of the guard:
-//   (i)  every FID entry point in bkit-auto.md goes through the command — the
-//        CI_DEV argument through `bkit fids check --tracker=any`, the PR-body
-//        marker and branch fallback through `bkit fids parse` — and no block
-//        recovers a FID from the marker by hand;
+//   (i)  every FID entry point in bkit-auto.md goes through a command — `bkit runs
+//        context`, which checks a CI_DEV argument against the `any` allowlist and
+//        recovers a PR's FID through the same `fromMarker` / `fromBranch` as `bkit fids
+//        parse` (its refusals are pinned in runs.test.ts) — and no block recovers a
+//        FID from the marker by hand;
 //   (ii) the command's allowlists actually REJECT path-traversal / shell-
 //        metacharacter FIDs (including inside a PR-body marker) and ACCEPT
 //        the well-formed FID each tracker mints.
@@ -241,22 +242,12 @@ describe("auto-fid-guard", () => {
   ] as const;
 
   describe("bkit-auto FID slug guard (#341 F4 — path-traversal rejection)", () => {
-    describe("(i) every FID entry point goes through bkit fids", () => {
-      it("the CI_DEV FID argument is checked by `bkit fids check --tracker=any` before use", () => {
-        const block = BASH_BLOCKS.find((b) => b.includes("MODE=CI_DEV"));
-        expect(block, "the CI / CI_DEV discrimination block").toBeDefined();
-        const check = block!.indexOf('fids check --fid="$ARG" --tracker=any');
-        expect(check).toBeGreaterThan(-1);
-        // The check runs before the CI_DEV mode line is printed, and a failed
-        // check exits the block (never falls through to CI_DEV).
-        expect(check).toBeLessThan(block!.indexOf("MODE=CI_DEV"));
-        expect(block!.slice(check).split("\n")[0]).toMatch(/\|\|\s*\{[^}]*exit 1;\s*\}/);
-      });
-
-      it("the PR-body marker and the branch fallback are resolved by `bkit fids parse`", () => {
-        const block = BASH_BLOCKS.find((b) => b.includes("fids parse"));
-        expect(block, "the FID recovery block").toBeDefined();
-        expect(block).toMatch(/fids parse --marker="\$MARKER" --branch="\{BRANCH\}"/);
+    describe("(i) every FID entry point goes through a bkit command", () => {
+      it("phase, CI_DEV slug check and PR FID recovery all run in `bkit runs context`", () => {
+        const block = BASH_BLOCKS.find((b) => b.includes("runs context"));
+        expect(block, "the runs context block").toBeDefined();
+        expect(block).toMatch(/"\{BKIT\}" runs context --phase="\{PHASE\}" --arg="\{ARG\}"/);
+        expect(AUTO).toContain("`fid` as `{FID}`");
       });
 
       it("no bash block recovers a FID from the marker by hand (sed/grep/jq on bkit:fid=)", () => {
@@ -297,5 +288,48 @@ describe("auto-fid-guard", () => {
         expect(FID_PATTERNS.any.test("bar-341-three-runtimes")).toBe(true);
       });
     });
+  });
+});
+
+describe("bkit fids find", () => {
+  /** A git repo with the given `docs/plans/<month>/logs/<fid>` folders. */
+  function logged(...rels: string[]) {
+    const d = project();
+    spawnSync("git", ["init", "-q"], { cwd: d });
+    for (const rel of rels) fs.mkdirSync(path.join(d, "docs", "plans", rel), { recursive: true });
+    return d;
+  }
+
+  it("names the one feature logged for the issue (exit 0), never a longer issue number", async () => {
+    const d = logged("202605/logs/68-agent-mvp", "202608/logs/680-longer", "202608/logs/70-other");
+    expect(await run(d, ["find", "--issue=68"])).toMatchObject({
+      code: 0,
+      json: { fid: "68-agent-mvp", fids: ["68-agent-mvp"] },
+    });
+    expect((await run(d, ["find", "--issue=#68"])).json.fid).toBe("68-agent-mvp");
+  });
+
+  it("matches a Linear issue case-insensitively", async () => {
+    const d = logged("202605/logs/abc-12-thing");
+    expect((await run(d, ["find", "--issue=ABC-12"])).json.fid).toBe("abc-12-thing");
+  });
+
+  it("lists every feature when several are logged (exit 4)", async () => {
+    const d = logged("202605/logs/68-first", "202606/logs/68-second");
+    const r = await run(d, ["find", "--issue=68"]);
+    expect(r.code).toBe(4);
+    expect(r.json).toEqual({ fid: null, fids: ["68-first", "68-second"] });
+  });
+
+  it("exits 1 when nothing is logged, or docs/plans does not exist", async () => {
+    expect((await run(logged("202605/logs/12-x"), ["find", "--issue=99"])).code).toBe(1);
+    expect((await run(logged(), ["find", "--issue=99"])).code).toBe(1);
+  });
+
+  it("ignores a non-month folder and a file named like a feature", async () => {
+    const d = logged("archive/logs/68-old");
+    fs.mkdirSync(path.join(d, "docs/plans/202605/logs"), { recursive: true });
+    fs.writeFileSync(path.join(d, "docs/plans/202605/logs/68-file"), "");
+    expect((await run(d, ["find", "--issue=68"])).code).toBe(1);
   });
 });

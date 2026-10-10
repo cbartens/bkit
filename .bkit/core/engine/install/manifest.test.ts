@@ -345,49 +345,27 @@ describe("KN-19-for-opencode — writeTier2JsonContained throws on malformed .op
 // lint:prose — shipped prose-gate contract
 //
 // The value `.bkit/templates.md` § Gate tool scripts hands consumers; it runs in their
-// pre-push hooks. These assert its embedding and guard invariants.
+// pre-push hooks. The behaviour (skip, write-good restore, vale exit) lives in
+// `bkit ci prose` and is tested in commands/ci/ci.test.ts.
 // ---------------------------------------------------------------------------
 
-const LINT_PROSE_SCRIPT = ((): string => {
+const GATE_TOOL_SCRIPTS = ((): Record<string, string> => {
   const doc = fs.readFileSync(path.resolve(".bkit/templates.md"), "utf-8");
   const block = /```json\n([\s\S]*?)\n```/.exec(doc.slice(doc.indexOf("## Gate tool scripts")));
-  return (JSON.parse(block?.[1] ?? "{}") as Record<string, string>)["lint:prose"] ?? "";
+  return JSON.parse(block?.[1] ?? "{}") as Record<string, string>;
 })();
 
-describe("lint:prose template value", () => {
-  const body = LINT_PROSE_SCRIPT.replace(/^bash -c '/, "").replace(/'$/, "");
-
-  it("is wrapped in bash -c with no single quotes in the body", () => {
-    // No inner single quote (the script is wrapped in `bash -c '...'`).
-    expect(LINT_PROSE_SCRIPT.startsWith("bash -c '")).toBe(true);
-    expect(LINT_PROSE_SCRIPT.endsWith("'")).toBe(true);
-    expect(body).not.toContain("'");
+describe("gate tool script template values", () => {
+  it("lint:prose and slop:delta call their bkit ci gates", () => {
+    expect(GATE_TOOL_SCRIPTS["lint:prose"]).toBe("bkit ci prose");
+    expect(GATE_TOOL_SCRIPTS["slop:delta"]).toBe("bkit ci slop");
   });
 
-  it("contains no backticks", () => {
-    // Inside a DOUBLE-quoted echo a backtick command-substitutes instead of printing.
-    expect(body).not.toContain("`");
-  });
-
-  it("soft-skips instead of failing when the vale binary is absent", () => {
-    expect(body).toContain("command -v vale");
-    expect(body).toContain("vale not installed");
-  });
-
-  it("self-heals a missing write-good from the main worktree before falling back to sync", () => {
-    // The worktree hole: .vale/styles/write-good is gitignored, so it is absent in
-    // every fresh checkout and every `git worktree add`. --git-common-dir resolves
-    // the main worktree from inside a linked one, making this a zero-network copy.
-    expect(body).toContain("git rev-parse --git-common-dir");
-    expect(body).toContain("cp -R");
-    expect(body).toContain("vale sync");
-    expect(body.indexOf("git rev-parse --git-common-dir")).toBeLessThan(body.indexOf("vale sync"));
-  });
-
-  it("announces loudly on stderr when vale is present but self-heal failed", () => {
-    // A failed self-heal with vale present is loud on stderr.
-    expect(body).toContain("PROSE LINT SKIPPED");
-    expect(body).toContain(">&2");
+  it("this repo's lint:prose calls the same gate", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts["lint:prose"]).toMatch(/^bkit ci prose(?: --glob='[^']+')+$/);
   });
 });
 

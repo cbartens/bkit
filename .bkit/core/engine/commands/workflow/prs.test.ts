@@ -37,6 +37,8 @@ case "$verb" in
       shift
     done
     echo "https://github.com/o/r/pull/7" ;;
+  merge) if [ -f "$d/view-after.json" ]; then cp "$d/view-after.json" "$d/view.json"; fi ;;
+  edit) ;;
   *) exit 1 ;;
 esac
 `;
@@ -59,6 +61,9 @@ afterEach(() => {
 const gh = {
   list: (prs: object[]) => fs.writeFileSync(path.join(fake, "list.json"), JSON.stringify(prs)),
   view: (pr: object) => fs.writeFileSync(path.join(fake, "view.json"), JSON.stringify(pr)),
+  /** What `pr view` prints once `pr merge` has run. */
+  viewAfterMerge: (pr: object) =>
+    fs.writeFileSync(path.join(fake, "view-after.json"), JSON.stringify(pr)),
   exit: (verb: string, code: number) =>
     fs.writeFileSync(path.join(fake, `${verb}-exit`), String(code)),
   createFails: (n: number) => fs.writeFileSync(path.join(fake, "create-fails"), String(n)),
@@ -560,5 +565,177 @@ describe("bkit prs transport-row", () => {
       (await row(file, "--kind=close", "--shape=pr", "--sha=x", "--scan-result=clean")).code,
     ).toBe(3);
     expect(fs.existsSync(file)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// merge
+// ---------------------------------------------------------------------------
+
+describe("bkit prs merge", () => {
+  const merge = (...extra: string[]) => run(repo(), ["prs", "merge", "--number=7", ...extra]);
+  const mergeCall = () => gh.calls().find((c) => c.startsWith("pr merge")) ?? "";
+
+  it("squash-merges with an empty body and the title subject, then reads MERGED back", async () => {
+    gh.view(pr());
+    gh.viewAfterMerge(pr({ state: "MERGED", mergeCommit: { oid: "squash1" } }));
+    const r = await merge("--match-head=abc", "--delete-branch");
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      merged: true,
+      alreadyMerged: false,
+      state: "MERGED",
+      mergeCommitOid: "squash1",
+      subject: "feat(12-x): thing (#7)",
+      verdict: "PASS",
+      failures: 0,
+    });
+    expect(mergeCall()).toContain("pr merge 7 --squash --subject feat(12-x): thing (#7) --body");
+    expect(mergeCall()).toContain("--delete-branch --match-head-commit abc");
+  });
+
+  it("appends the auto-route marker on an exact bkit:auto label only", async () => {
+    gh.view(pr());
+    gh.viewAfterMerge(pr({ state: "MERGED" }));
+    expect((await merge("--label=bkit:ship", "--label=bkit:auto")).json.subject).toBe(
+      "feat(12-x): thing (#7) bkit [auto route]",
+    );
+    gh.view(pr());
+    expect((await merge("--label=bkit:auto-paused")).json.subject).toBe("feat(12-x): thing (#7)");
+  });
+
+  it("takes an explicit --subject", async () => {
+    gh.view(pr());
+    gh.viewAfterMerge(pr({ state: "MERGED" }));
+    expect((await merge("--subject=docs(12-x): ship DONE bkit [skip ci]")).json.subject).toBe(
+      "docs(12-x): ship DONE bkit [skip ci]",
+    );
+  });
+
+  it("runs no merge when the PR is already MERGED", async () => {
+    gh.view(pr({ state: "MERGED", mergeCommit: { oid: "s" } }));
+    const r = await merge();
+    expect(r.json).toMatchObject({ merged: true, alreadyMerged: true, verdict: "PASS" });
+    expect(mergeCall()).toBe("");
+  });
+
+  it("reports a merge that did not land as FAIL, and --expect-merged exits 7", async () => {
+    gh.view(pr());
+    const r = await merge();
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ merged: false, state: "OPEN", verdict: "FAIL", failures: 1 });
+    gh.view(pr());
+    expect((await merge("--expect-merged")).code).toBe(7);
+  });
+
+  it("exits 80 when gh needs auth, and 2 on a bad --number", async () => {
+    gh.exit("view", 4);
+    expect((await merge()).code).toBe(80);
+    expect((await run(repo(), ["prs", "merge", "--number=x"])).code).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// verbose-ci
+// ---------------------------------------------------------------------------
+
+describe("bkit prs verbose-ci", () => {
+  const verbose = (state: string) =>
+    run(repo(), ["prs", "verbose-ci", "--number=7", `--state=${state}`]);
+  const editCall = () => gh.calls().find((c) => c.startsWith("pr edit")) ?? "";
+
+  it("adds the marker to the title", async () => {
+    gh.view(pr());
+    const r = await verbose("on");
+    expect(r.json).toEqual({ title: "feat(12-x): thing bkit [verbose ci]", changed: true });
+    expect(editCall()).toBe("pr edit 7 --title feat(12-x): thing bkit [verbose ci]");
+  });
+
+  it("is a no-op when the title already says so", async () => {
+    gh.view(pr({ title: "feat(12-x): thing bkit [verbose ci]" }));
+    expect((await verbose("on")).json.changed).toBe(false);
+    expect(editCall()).toBe("");
+  });
+
+  it("strips the marker, with or without its bkit prefix", async () => {
+    gh.view(pr({ title: "feat(12-x): thing bkit [verbose ci]" }));
+    expect((await verbose("off")).json.title).toBe("feat(12-x): thing");
+    gh.view(pr({ title: "feat(12-x): thing [verbose ci]" }));
+    expect((await verbose("off")).json.title).toBe("feat(12-x): thing");
+  });
+
+  it("exits 5 when gh cannot edit, 80 when it needs auth, 2 on a bad --state", async () => {
+    gh.view(pr());
+    gh.exit("edit", 1);
+    expect((await verbose("on")).code).toBe(5);
+    gh.exit("view", 4);
+    expect((await verbose("on")).code).toBe(80);
+    expect((await verbose("maybe")).code).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// transport-row --scan / --cross-check
+// ---------------------------------------------------------------------------
+
+describe("bkit prs transport-row --kind=close --scan", () => {
+  function landed(...messages: string[]) {
+    const cwd = repo("dev");
+    git(cwd, "commit", "-q", "--allow-empty", ...messages.flatMap((m) => ["-m", m]));
+    const file = path.join(cwd, "status.jsonl");
+    fs.writeFileSync(file, "");
+    return { cwd, file, sha: git(cwd, "rev-parse", "HEAD") };
+  }
+  const audit = (cwd: string, file: string, sha: string, ...extra: string[]) =>
+    run(cwd, [
+      "prs",
+      "transport-row",
+      `--file=${file}`,
+      "--kind=close",
+      "--shape=push",
+      `--sha=${sha}`,
+      ...extra,
+    ]);
+
+  it("scans a clean landed body and records the close-transport row", async () => {
+    const { cwd, file, sha } = landed("chore(1-x): close-workflow");
+    const r = await audit(cwd, file, sha, "--scan");
+    expect(r.code).toBe(0);
+    expect(r.json.row).toMatchObject({
+      type: "close-transport",
+      shape: "push",
+      sha,
+      scanResult: "clean",
+    });
+  });
+
+  it("records a skip token found in the body, then exits 1", async () => {
+    const { cwd, file, sha } = landed("docs(1-x): close", "* chore: setup bkit [skip ci]");
+    const r = await audit(cwd, file, sha, "--scan");
+    expect(r.code).toBe(1);
+    expect(r.json.row.scanResult).toBe("skip-token-found");
+    expect(fs.readFileSync(file, "utf-8")).toContain("skip-token-found");
+  });
+
+  it("exits 8 on an unreadable commit, writing nothing", async () => {
+    const { cwd, file } = landed("x");
+    expect(
+      (await audit(cwd, file, "0123456789abcdef0123456789abcdef01234567", "--scan")).code,
+    ).toBe(8);
+    expect(fs.readFileSync(file, "utf-8")).toBe("");
+  });
+
+  it("--cross-check refuses an mcp close the runtime row says needed a fallback, unrecorded", async () => {
+    const { cwd, file, sha } = landed("x");
+    fs.writeFileSync(file, `${JSON.stringify(resolved(true, true, false))}\n`);
+    const r = await audit(cwd, file, sha, "--scan", "--cross-check=mcp");
+    expect(r.code).toBe(1);
+    expect(fs.readFileSync(file, "utf-8")).not.toContain("close-transport");
+    expect((await audit(cwd, file, sha, "--scan", "--cross-check=gh")).code).toBe(0);
+  });
+
+  it("needs --scan or --scan-result", async () => {
+    const { cwd, file, sha } = landed("x");
+    expect((await audit(cwd, file, sha, "--cross-check=gh")).code).toBe(2);
   });
 });

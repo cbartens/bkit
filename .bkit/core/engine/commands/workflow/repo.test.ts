@@ -156,3 +156,31 @@ describe("bkit repo info", () => {
     expect(failed.err).toContain("git fetch origin dev failed");
   });
 });
+
+describe("bkit repo info — where bkit, the repo root and the outbox live", () => {
+  it("prints the main checkout, the bkit binary there, and the outbox in the git common dir", async () => {
+    git(cwd, "remote", "add", "origin", "https://github.com/o/r.git");
+    const r = await run([]);
+    expect(r.code).toBe(0);
+    expect(r.json.repoRoot).toBe(cwd);
+    expect(r.json.bkit).toBe(path.join(cwd, "node_modules", ".bin", "bkit"));
+    expect(r.json.outboxRoot).toBe(path.join(cwd, ".git", "bkit-outbox"));
+  });
+
+  it("from a worktree, still names the main checkout and its outbox", async () => {
+    git(cwd, "remote", "add", "origin", "https://github.com/o/r.git");
+    const wt = path.join(cwd, ".worktrees", "1-x");
+    git(cwd, "worktree", "add", "-q", wt, "-b", "feat/1-y");
+    const out: string[] = [];
+    const code = await runCommand(["repo", "info"], [repoCommand], {
+      classicVerbs: new Set(),
+      cwd: wt,
+      io: { stdout: (t) => out.push(t), stderr: () => undefined },
+    });
+    expect(code).toBe(0);
+    const json = JSON.parse(out.join(""));
+    expect(json.repoRoot).toBe(cwd);
+    expect(json.bkit).toBe(path.join(cwd, "node_modules", ".bin", "bkit"));
+    expect(json.outboxRoot).toBe(path.join(cwd, ".git", "bkit-outbox"));
+  });
+});

@@ -1,12 +1,18 @@
 // audits/hooks/guardrails-cursor.integration.test.ts — Cursor destructive-op / secret-exposure
-// hook parity with Claude permissions + OpenCode permission map.
+// hook parity with Claude permissions + OpenCode permission map. Runs the hook as install
+// generates it (shared parts spliced in).
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { applyTokens } from "../../install/placeholders";
+import { readTemplate } from "../../render/parts";
 
-const HOOK = path.resolve(".bkit/templates/.cursor/hooks/guardrails.cjs");
+const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gr-cursor-"));
+afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
+const HOOK = path.join(GENERATED, "guardrails.cjs");
+fs.writeFileSync(HOOK, readTemplate(path.resolve(".bkit/templates/.cursor/hooks/guardrails.cjs")));
 
 function run(payload: unknown): {
   status: number | null;
@@ -145,8 +151,9 @@ describe("cursor guardrails.cjs — managed-block boundary", () => {
 // T6 — template <-> installed-mirror byte parity for the guardrails hooks.
 //
 // The hook is shipped per host as a self-contained file, so each host's mirror is its
-// template as install renders it (managed-version marker resolved). Same shape as
-// audits/hooks/gateguard-dogfood.integration.test.ts for gateguard.cjs.
+// template as install renders it (shared parts spliced in, managed-version marker
+// resolved). Same shape as audits/hooks/gateguard-dogfood.integration.test.ts for
+// gateguard.cjs.
 describe("T6 — guardrails.cjs installed mirror is its rendered template", () => {
   const PAIRS: ReadonlyArray<readonly [string, string, string]> = [
     ["cursor", ".bkit/templates/.cursor/hooks/guardrails.cjs", ".cursor/hooks/guardrails.cjs"],
@@ -162,7 +169,7 @@ describe("T6 — guardrails.cjs installed mirror is its rendered template", () =
         fs.readFileSync(mirror, "utf-8"),
         `${mirror} is stale — run \`pnpm bkit install\``,
       ).toBe(
-        applyTokens(fs.readFileSync(template, "utf-8"), {
+        applyTokens(readTemplate(template), {
           DEFAULT_BRANCH: "",
           PROJECT_NAME: "",
           REPO_SLUG: "",
@@ -174,7 +181,7 @@ describe("T6 — guardrails.cjs installed mirror is its rendered template", () =
   it("no host embeds its own copy of the shipped host list", () => {
     // The allowlist artifact is the only source; no hook carries a literal list.
     for (const [, template, mirror] of PAIRS) {
-      expect(fs.readFileSync(template, "utf-8")).not.toContain("SHIPPED_NETWORK_BASES");
+      expect(readTemplate(template)).not.toContain("SHIPPED_NETWORK_BASES");
       if (fs.existsSync(mirror)) {
         expect(fs.readFileSync(mirror, "utf-8")).not.toContain("SHIPPED_NETWORK_BASES");
       }

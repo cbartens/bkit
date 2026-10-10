@@ -1,4 +1,5 @@
-// bkit runs wait|dispatch|gate|mirror|declared — CI runs on GitHub Actions.
+// bkit runs wait|dispatch|revalidate|gate|mirror|declared|context — CI runs on
+// GitHub Actions, and the context an auto-routed run starts from.
 //
 // Three questions, answered against `gh`, never against prose:
 //   wait      has a CI run appeared (or finished) yet? Bounded poll; a runtime
@@ -8,8 +9,11 @@
 //   gate      may ship merge? The capstone job must be present and green at the
 //             head — one exit code per refusal reason, never collapsed. Ship's
 //             post-merge check (`--capstone-only`) reads the capstone job alone.
-// `mirror` is `gate` in a loop, for a release PR that copies the dev push run's
-// verdict; `declared` says whether the repo has a CI workflow file at all.
+// `revalidate` is ship's re-validation before the merge gate: pick the head CI must
+// pass at, probe for a run there, dispatch only when none, wait for it. `mirror` is
+// `gate` in a loop, for a release PR that copies the dev push run's verdict;
+// `declared` says whether the repo has a CI workflow file at all; `context` is
+// `/bkit-auto` Step 1.
 //
 // The CI workflow file and the capstone job come from `package.json` `bkit`
 // (`shared/settings.ts`). The "did CI dispatch" probe matches the capstone's lane
@@ -21,8 +25,13 @@ import { statusTimestamp } from "../../ledgers/status.js";
 import { bodySkipToken, commitMessage, CommandError, EXIT, git, parseJson, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
+import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } from "./fids.js";
+import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { checkOnlyBookkeeping } from "./ledgers.js";
-import { str } from "./status.js";
+import { closeTransportRow, crossCheckFile, probePr } from "./prs.js";
+import { resolveOwnerRepo, splitSlug } from "./repo.js";
+import { extraField, str } from "./status.js";
+import { writeStepRow } from "./steps.js";
 const GH_MISSING = "gh is not on PATH — use the mapped GitHub MCP tool instead";
 /** Not JSON reads as undefined: every caller treats that as an API error, distinct from an empty answer. */
 function jsonOrUndefined(raw) {
@@ -310,6 +319,8 @@ export const GATE = {
     LANE_SKIPPED: 16,
     /** --validated is not an ancestor of the head plus bookkeeping-only commits. */
     NOT_BOOKKEEPING: 17,
+    /** --pr: the PR title carries a CI-suppressing token (its squash would skip CI on dev). */
+    TITLE_SKIP: 18,
     /** API error, rate limit, or auth — distinct from "no run". */
     API_ERROR: 20,
 };
@@ -756,11 +767,9 @@ const WAIT_DEFAULTS = {
         intervalS: TIMEOUTS.SHIP_POLL_INTERVAL_S,
     },
 };
-async function runWait(ctx) {
-    const f = ctx.flags;
-    const pr = str(f.pr);
-    const head = str(f.head);
-    const branch = str(f.branch);
+/** One bounded wait (`runs wait`), its exit code and printed object. */
+async function waitFor(cwd, i, d) {
+    const { pr, head, branch } = i;
     if (pr === "" || head === "")
         throw new CommandError(EXIT.USAGE, "--pr / --head must not be empty");
     if ((pr === undefined) === (head === undefined)) {
@@ -768,16 +777,16 @@ async function runWait(ctx) {
     }
     if (head !== undefined && !branch)
         throw new CommandError(EXIT.USAGE, "--head needs --branch");
-    const until = str(f.until) ?? "present";
+    const until = i.until ?? "present";
     if (until !== "present" && until !== "completed") {
         throw new CommandError(EXIT.USAGE, "--until must be present or completed");
     }
     const kind = `${pr !== undefined ? "pr" : "run"}-${until}`;
-    if (f.dispatchIfAbsent && (kind !== "run-present" || f.once === true)) {
+    if (i.dispatchIfAbsent && (kind !== "run-present" || i.once === true)) {
         // One turn-loop poll is not a probe: dispatching on it would duplicate a run still registering.
         throw new CommandError(EXIT.USAGE, "--dispatch-if-absent needs --head --branch --until=present, without --once");
     }
-    const cfg = readBkitConfig(checkoutRoot(ctx.cwd));
+    const cfg = readBkitConfig(checkoutRoot(cwd));
     const ciWorkflow = cfg.ciWorkflow;
     const target = {
         kind,
@@ -787,34 +796,47 @@ async function runWait(ctx) {
         ciWorkflow,
         namespace: checkNamespace(cfg.capstoneJob),
     };
-    const budgetS = wholeNumber(f.budgetS, "budget-s", WAIT_DEFAULTS[kind].budgetS);
-    const intervalS = wholeNumber(f.intervalS, "interval-s", WAIT_DEFAULTS[kind].intervalS, 1);
-    const d = deps(ctx);
-    const w = await waitLoop({ budgetS, intervalS, once: f.once === true }, () => pollOnce(target, d.gh), d.sleep, ctx.log);
+    const budgetS = wholeNumber(i.budgetS, "budget-s", WAIT_DEFAULTS[kind].budgetS);
+    const intervalS = wholeNumber(i.intervalS, "interval-s", WAIT_DEFAULTS[kind].intervalS, 1);
+    const w = await waitLoop({ budgetS, intervalS, once: i.once === true }, () => pollOnce(target, d.gh), d.sleep, d.log);
     let dispatched = false;
-    if (f.dispatchIfAbsent && w.result !== "found" && !w.blocked && !w.ghMissing) {
-        ctx.log(`no run at ${head} after ${w.attempts} probes (probe=${w.result}) — dispatching ${ciWorkflow} on ${branch}`);
+    if (i.dispatchIfAbsent && w.result !== "found" && !w.blocked && !w.ghMissing) {
+        d.log(`no run at ${head} after ${w.attempts} probes (probe=${w.result}) — dispatching ${ciWorkflow} on ${branch}`);
         const run = d.gh(["workflow", "run", ciWorkflow, "--ref", String(branch)]);
         if (run.missing)
             w.ghMissing = true;
         else if (!run.ok) {
-            ctx.log(`gh workflow run failed (403 = actions:write scope): ${run.stderr.trim()}`);
-            ctx.emit({ ...waitOutput(w, kind), dispatched });
-            return EXIT_TRIGGER_FAILED;
+            d.log(`gh workflow run failed (403 = actions:write scope): ${run.stderr.trim()}`);
+            return { code: EXIT_TRIGGER_FAILED, out: { ...waitOutput(w, kind), dispatched } };
         }
         else
             dispatched = true;
     }
-    ctx.emit({ ...waitOutput(w, kind), dispatched });
+    const out = { ...waitOutput(w, kind), dispatched };
     if (w.ghMissing) {
-        ctx.log(GH_MISSING);
-        return EXIT.USE_MCP;
+        d.log(GH_MISSING);
+        return { code: EXIT.USE_MCP, out };
     }
     if (w.result === "found" || dispatched)
-        return EXIT.OK;
-    if (w.blocked || f.once === true)
-        return EXIT.AGENT_WAIT;
-    return EXIT.NO;
+        return { code: EXIT.OK, out };
+    if (w.blocked || i.once === true)
+        return { code: EXIT.AGENT_WAIT, out };
+    return { code: EXIT.NO, out };
+}
+async function runWait(ctx) {
+    const f = ctx.flags;
+    const r = await waitFor(ctx.cwd, {
+        pr: str(f.pr),
+        head: str(f.head),
+        branch: str(f.branch),
+        until: str(f.until),
+        budgetS: f.budgetS,
+        intervalS: f.intervalS,
+        once: f.once === true,
+        dispatchIfAbsent: f.dispatchIfAbsent === true,
+    }, deps(ctx));
+    ctx.emit(r.out);
+    return r.code;
 }
 const waitOutput = (w, kind) => ({
     result: w.result,
@@ -850,7 +872,9 @@ async function runDispatch(ctx) {
         cwd: ctx.cwd,
         pr,
         fid: String(f.fid),
-        autoRouteSuffix: str(f.autoRouteSuffix) ?? "",
+        autoRouteSuffix: (f.label ?? []).includes(AUTO_LABEL)
+            ? AUTO_ROUTE_SUFFIX
+            : "",
         budgetS: wholeNumber(f.budgetS, "budget-s", 60),
         intervalS: wholeNumber(f.intervalS, "interval-s", 10, 1),
         supplied: pollResult === undefined
@@ -863,6 +887,53 @@ async function runDispatch(ctx) {
         retriggered: f.retriggered === true,
     }, d);
     const scanResult = r.ciDispatch && r.ciDispatch.outcome !== "unresolved" ? scanBody(ctx.cwd, r.head) : null;
+    // With --file / --step: the verdict lands on the step's row, and a passed one is
+    // cross-checked and recorded as the close transport.
+    const file = str(f.file);
+    const step = str(f.step);
+    if ((file === undefined) !== (step === undefined))
+        throw new CommandError(EXIT.USAGE, "--file and --step go together");
+    let row = null;
+    let transport = null;
+    const code = dispatchCode(r, pr, scanResult, ctx.log);
+    if (file !== undefined && r.ciDispatch !== null) {
+        const status = path.resolve(ctx.cwd, file);
+        row = writeStepRow(ctx.cwd, {
+            file: status,
+            workflow: String(f.workflow ?? "build"),
+            step: step,
+            artifacts: f.artifact ?? [],
+            extras: {
+                ...Object.fromEntries((f.field ?? []).map(extraField)),
+                ciDispatch: r.ciDispatch,
+            },
+            commit: "none",
+        }, ctx.log).row;
+        if (code === EXIT.OK || code === EXIT_SKIP_TOKEN) {
+            const check = crossCheckFile(status, "gh", ctx.log);
+            if (!check.ok) {
+                ctx.log("close transport cross-check failed");
+                ctx.emit({
+                    ciDispatch: r.ciDispatch,
+                    phase: r.phase,
+                    pr,
+                    head: r.head,
+                    attempts: r.attempts,
+                    retrigger: r.retrigger,
+                    scanResult,
+                    ciWorkflow: r.ciWorkflow,
+                    row,
+                    transport,
+                });
+                return EXIT.NO;
+            }
+            transport = closeTransportRow(status, {
+                shape: "push",
+                sha: r.head,
+                scanResult: scanResult ?? "clean",
+            });
+        }
+    }
     ctx.emit({
         ciDispatch: r.ciDispatch,
         phase: r.phase,
@@ -872,45 +943,398 @@ async function runDispatch(ctx) {
         retrigger: r.retrigger,
         scanResult,
         ciWorkflow: r.ciWorkflow,
+        row,
+        transport,
     });
+    return code;
+}
+/** The dispatch verdict as an exit code, with its log line. */
+function dispatchCode(r, pr, scanResult, log) {
     if (r.handoff === EXIT.AGENT_WAIT || r.handoff === EXIT.USE_MCP) {
         const again = r.phase === "repoll" ? " --retriggered" : "";
-        ctx.log(`${r.handoff === EXIT.USE_MCP ? GH_MISSING : "this runtime cannot wait"}: resolve the ${r.phase} each turn with \`bkit runs wait --pr=${pr ?? "<n>"} --once\`, then re-run with --poll-result=<found|none|err> --attempts=<total>${again}`);
+        log(`${r.handoff === EXIT.USE_MCP ? GH_MISSING : "this runtime cannot wait"}: resolve the ${r.phase} each turn with \`bkit runs wait --pr=${pr ?? "<n>"} --once\`, then re-run with --poll-result=<found|none|err> --attempts=<total>${again}`);
         return r.handoff;
     }
     if (r.handoff !== 0)
         return r.handoff;
     if (r.ciDispatch?.outcome === "unresolved") {
-        ctx.log("unresolved verdict — record it, then route to the Failure Path");
+        log("unresolved verdict — recorded; route to the Failure Path");
         return EXIT.NO;
     }
     if (scanResult === "error") {
-        ctx.log(`post-close body scan could not read ${r.head}`);
+        log(`post-close body scan could not read ${r.head}`);
         return EXIT_SCAN_ERROR;
     }
     if (scanResult === "skip-token-found") {
-        ctx.log(`landed commit ${r.head} inherited a CI-suppression token in its body`);
+        log(`landed commit ${r.head} inherited a CI-suppression token in its body`);
         return EXIT_SKIP_TOKEN;
     }
     return EXIT.OK;
 }
+/** Append one typed audit row (ship's gate refusal / merge CI / re-validate rows). */
+function auditRow(file, type, fields) {
+    if (!fs.existsSync(file))
+        throw new CommandError(EXIT.USAGE, `${file} does not exist`);
+    fs.appendFileSync(file, `${JSON.stringify({ type, workflow: "ship", at: statusTimestamp(), ...fields })}\n`);
+}
 function runGate(ctx) {
     const f = ctx.flags;
-    const r = shipGate({
-        root: checkoutRoot(ctx.cwd),
-        head: String(f.head),
-        validated: str(f.validated),
-        month: str(f.month),
-        fid: str(f.fid),
-        repo: str(f.repo),
-        branch: str(f.branch),
-        event: str(f.event),
-        capstoneOnly: f.capstoneOnly === true,
-        override: process.env.BKIT_SHIP_GATE_OVERRIDE || undefined,
-        statusFile: f.file === undefined ? undefined : path.resolve(ctx.cwd, String(f.file)),
-    }, (args) => runGh(ctx.cwd, args), ctx.log);
+    const given = [f.head, f.pr, f.squashOf].filter((v) => v !== undefined).length;
+    if (given !== 1)
+        throw new CommandError(EXIT.USAGE, "give exactly one of --head, --pr, --squash-of");
+    const root = checkoutRoot(ctx.cwd);
+    const gh = (args) => runGh(ctx.cwd, args);
+    const record = str(f.record);
+    const recordFile = record === undefined ? undefined : path.resolve(ctx.cwd, record);
+    const prNumber = str(f.pr) ?? str(f.squashOf);
+    // The head: given, the PR's current head, or the PR's squash commit.
+    let head = str(f.head) ?? "";
+    let pr;
+    if (prNumber !== undefined) {
+        if (!/^[1-9][0-9]*$/.test(prNumber))
+            throw new CommandError(EXIT.USAGE, "--pr / --squash-of take a PR number");
+        pr = probePr(ctx.cwd, { number: prNumber, state: "open" });
+        if (pr.kind === "unavailable") {
+            ctx.log(pr.message);
+            return EXIT.USE_MCP;
+        }
+        const info = pr.kind === "ok" ? pr.pr : undefined;
+        head = (f.squashOf !== undefined ? info?.mergeCommit?.oid : info?.headRefOid) ?? "";
+        if (head === "") {
+            ctx.log(`cannot read the ${f.squashOf !== undefined ? "squash commit" : "head"} of PR ${prNumber}`);
+            ctx.emit({
+                code: GATE.API_ERROR,
+                passed: false,
+                head: null,
+                mergeHead: null,
+                reason: "PR unreadable",
+            });
+            return GATE.API_ERROR;
+        }
+    }
+    if (head === "")
+        throw new CommandError(EXIT.USAGE, "--head must not be empty");
+    // The pre-merge snapshot, written BEFORE the gate decides.
+    const snapshot = str(f.snapshot);
+    if (snapshot !== undefined) {
+        const info = pr?.kind === "ok" ? pr.pr : undefined;
+        const dev = git(ctx.cwd, ["rev-parse", "origin/dev"]) ?? "";
+        const ancestor = runGit(ctx.cwd, ["merge-base", "--is-ancestor", "origin/dev", head]).ok;
+        const ciWorkflow = readBkitConfig(root).ciWorkflow;
+        const runs = gh([
+            "run",
+            "list",
+            "--branch",
+            String(f.branch ?? info?.headRefName ?? ""),
+            "--workflow",
+            ciWorkflow,
+            "--limit",
+            "1",
+            "--json",
+            "databaseId,url",
+        ]);
+        const capstone = obj(arr(runs.ok ? jsonOrUndefined(runs.stdout) : undefined)[0]);
+        const file = path.resolve(ctx.cwd, snapshot);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.appendFileSync(file, `${JSON.stringify({
+            type: "ship-pre-merge-snapshot",
+            workflow: "ship",
+            gateHead: head,
+            validatedHead: str(f.validated) ?? "",
+            devSha: dev,
+            ancestor: String(ancestor),
+            capstone,
+            mergeable: info?.mergeable ?? "",
+        })}\n`);
+    }
+    // A title carrying a skip token would squash into a dev commit CI never runs on.
+    const title = pr?.kind === "ok" ? (pr.pr?.title ?? "") : "";
+    const titleToken = f.pr !== undefined ? SKIP_CI_TOKEN.exec(title)?.[0] : undefined;
+    const r = titleToken !== undefined
+        ? {
+            code: GATE.TITLE_SKIP,
+            passed: false,
+            overridden: false,
+            head,
+            mergeHead: head,
+            testedHead: null,
+            runId: null,
+            runUrl: null,
+            conclusion: null,
+            capstone: "",
+            ciWorkflow: "",
+            repo: str(f.repo) ?? null,
+            skippedLanes: [],
+            nonBookkeepingPaths: [],
+            reason: `PR title '${title}' contains the CI-suppressing token ${titleToken}`,
+        }
+        : shipGate({
+            root,
+            head,
+            validated: str(f.validated),
+            month: str(f.month),
+            fid: str(f.fid),
+            repo: str(f.repo),
+            branch: str(f.branch),
+            event: str(f.event),
+            capstoneOnly: f.capstoneOnly === true,
+            override: process.env.BKIT_SHIP_GATE_OVERRIDE || undefined,
+            statusFile: f.file === undefined ? undefined : path.resolve(ctx.cwd, String(f.file)),
+        }, gh, ctx.log);
+    if (titleToken !== undefined)
+        ctx.log(r.reason);
+    if (recordFile !== undefined && r.code !== EXIT.USE_MCP) {
+        if (f.capstoneOnly === true) {
+            const verdict = r.code === EXIT.OK ? "PASS" : "FAIL";
+            auditRow(recordFile, "ship-merge-ci", {
+                sha: head,
+                run: String(r.runId ?? ""),
+                verdict,
+                reason: verdict === "PASS" ? "" : r.reason,
+            });
+        }
+        else if (r.code !== EXIT.OK) {
+            auditRow(recordFile, "ship-gate-refusal", { exitCode: r.code, head: r.mergeHead });
+        }
+    }
     ctx.emit({ ...r });
     return r.code;
+}
+// ---------------------------------------------------------------------------
+// revalidate
+// ---------------------------------------------------------------------------
+/** Whether dev demands status checks (ruleset or branch protection): CI must then pass at the PR head. */
+function devRequiresChecks(gh, repo) {
+    const rules = gh(["api", `repos/${repo}/rules/branches/dev`]);
+    const list = rules.ok ? arr(jsonOrUndefined(rules.stdout)) : [];
+    if (list.some((r) => obj(r).type === "required_status_checks"))
+        return true;
+    return gh(["api", `repos/${repo}/branches/dev/protection/required_status_checks`]).ok;
+}
+async function runRevalidate(ctx) {
+    const f = ctx.flags;
+    const d = deps(ctx);
+    const branch = String(f.branch);
+    const entry = String(f.entryHead);
+    const codeHead = String(f.codeHead);
+    const reason = str(f.reason) || "head-move";
+    if (!["head-move", "gate-refusal"].includes(reason))
+        throw new CommandError(EXIT.USAGE, "--reason must be head-move or gate-refusal");
+    const status = path.resolve(ctx.cwd, String(f.file));
+    runGit(ctx.cwd, ["fetch", "origin", branch]);
+    const pr = probePr(ctx.cwd, { number: String(f.pr), state: "open" });
+    if (pr.kind === "unavailable") {
+        ctx.log(pr.message);
+        return EXIT.USE_MCP;
+    }
+    const current = pr.kind === "ok" ? (pr.pr?.headRefOid ?? "") : "";
+    if (current === "") {
+        ctx.log("cannot read the PR head — query failed (403 = PAT scope)");
+        return EXIT.NO;
+    }
+    // CI must pass at the code head while the PR head adds bookkeeping only and dev
+    // demands no status checks; otherwise at the PR head.
+    let validated = codeHead;
+    const book = onlyBookkeeping(checkoutRoot(ctx.cwd), {
+        month: String(f.month),
+        fid: String(f.fid),
+        from: codeHead,
+        to: current,
+    });
+    if (!book.ok)
+        validated = current;
+    const repo = str(f.repo) ?? resolveOwnerRepo(ctx.cwd)?.ownerRepo;
+    if (repo !== undefined && devRequiresChecks(d.gh, repo)) {
+        ctx.log(`dev requires status checks — validating at the PR head ${current}`);
+        validated = current;
+    }
+    const out = {
+        validatedHead: validated,
+        currentHead: current,
+        revalidated: false,
+        probe: null,
+        dispatched: false,
+        wait: null,
+    };
+    if (validated !== entry || reason === "gate-refusal") {
+        out.revalidated = true;
+        // Probe first: a run may already exist at this head; dispatch only on none.
+        const probe = await waitFor(ctx.cwd, { head: validated, branch, until: "present", dispatchIfAbsent: true }, d);
+        if (probe.code !== EXIT.OK) {
+            ctx.emit({ ...out, probe: probe.out });
+            return probe.code;
+        }
+        if (probe.out.dispatched === true) {
+            validated = current;
+            ctx.log(`no run at the validated head — dispatched at ${current}`);
+        }
+        else {
+            ctx.log(`run already present at ${validated} — not dispatching a duplicate`);
+        }
+        auditRow(status, "ship-revalidate-dispatch", {
+            head: validated,
+            probe: probe.out.result,
+            reason,
+            dispatched: probe.out.dispatched,
+            attempts: probe.out.attempts,
+        });
+        const wait = await waitFor(ctx.cwd, { head: validated, branch, until: "completed" }, d);
+        if (wait.code === EXIT.NO) {
+            auditRow(status, "ship-revalidate-timeout", {
+                attempt: wait.out.attempts,
+                timeout_s: wait.out.elapsedS,
+            });
+            ctx.log(`CI did not complete at ${validated}`);
+        }
+        Object.assign(out, {
+            validatedHead: validated,
+            probe: probe.out,
+            dispatched: probe.out.dispatched,
+            wait: wait.out,
+        });
+        if (wait.code !== EXIT.OK) {
+            ctx.emit(out);
+            return wait.code;
+        }
+    }
+    ctx.emit(out);
+    return EXIT.OK;
+}
+// ---------------------------------------------------------------------------
+// context (/bkit-auto Step 1)
+// ---------------------------------------------------------------------------
+/** `{PHASE}` as dispatched: CI verdict words map onto ship / debug. */
+const PHASES = {
+    ship: { phase: "ship", mode: "CI" },
+    success: { phase: "ship", mode: "CI" },
+    pass: { phase: "ship", mode: "CI" },
+    debug: { phase: "debug", mode: "CI" },
+    failure: { phase: "debug", mode: "CI" },
+    fail: { phase: "debug", mode: "CI" },
+    design: { phase: "design", mode: "BRIEF" },
+    plan: { phase: "plan", mode: "BRIEF" },
+    build: { phase: "build", mode: "BRIEF" },
+};
+/** Exit code (context): the phase word is not one bkit dispatches. */
+export const EXIT_UNKNOWN_PHASE = 3;
+/** Exit code (context): the CI PR is not OPEN. */
+export const EXIT_PR_NOT_OPEN = 7;
+/** Exit code (context): no CI run at the PR head. */
+export const EXIT_NO_RUN_ID = 8;
+/** Exit code (context): no FID from the marker, the branch, or the slug. */
+export const EXIT_NO_FID = 9;
+async function runContext(ctx) {
+    const phaseArg = String(ctx.flags.phase);
+    const arg = String(ctx.flags.arg);
+    const chosen = PHASES[phaseArg.toLowerCase()];
+    if (!chosen) {
+        ctx.log(`Unrecognised PHASE: ${phaseArg}`);
+        return EXIT_UNKNOWN_PHASE;
+    }
+    const resolved = resolveOwnerRepo(ctx.cwd);
+    const slug = resolved ? splitSlug(resolved.ownerRepo) : null;
+    if (!resolved || !slug) {
+        ctx.log("could not resolve owner/repo from gh or the origin remote");
+        return EXIT.USAGE;
+    }
+    const out = {
+        phase: chosen.phase,
+        mode: chosen.mode,
+        ownerRepo: resolved.ownerRepo,
+        owner: slug.owner,
+        repo: slug.repo,
+        issueId: null,
+        fid: null,
+        prNumber: null,
+        branch: null,
+        headSha: null,
+        prUrl: null,
+        prState: null,
+        runId: null,
+    };
+    if (chosen.mode === "BRIEF") {
+        ctx.emit({ ...out, issueId: arg });
+        return EXIT.OK;
+    }
+    const tracker = readIssueTracker(ctx.cwd);
+    if (!/^[0-9]+$/.test(arg)) {
+        // CI_DEV: a post-merge dev failure names the FID slug; checked before any path sees it.
+        if (!FID_PATTERNS.any.test(arg)) {
+            ctx.log(`Invalid CI_DEV FID: ${arg}`);
+            return EXIT_NO_FID;
+        }
+        ctx.emit({
+            ...out,
+            mode: "CI_DEV",
+            fid: arg,
+            issueId: tracker === "none" ? null : issueIdOf(arg, "any"),
+            branch: "dev",
+            headSha: git(ctx.cwd, ["rev-parse", "origin/dev"]) ?? "",
+        });
+        return EXIT.OK;
+    }
+    const view = runGh(ctx.cwd, [
+        "pr",
+        "view",
+        arg,
+        "--json",
+        "headRefName,headRefOid,state,url,body",
+    ]);
+    if (view.missing || view.status === 4) {
+        ctx.log(GH_MISSING);
+        return EXIT.USE_MCP;
+    }
+    const pr = obj(view.ok ? jsonOrUndefined(view.stdout) : undefined);
+    const branch = text(pr.headRefName);
+    const headSha = text(pr.headRefOid);
+    Object.assign(out, {
+        prNumber: arg,
+        branch,
+        headSha,
+        prUrl: text(pr.url),
+        prState: text(pr.state).toUpperCase(),
+    });
+    if (!branch || !headSha || !text(pr.url)) {
+        ctx.log(`could not read PR ${arg}`);
+        ctx.emit(out);
+        return EXIT.NO;
+    }
+    if (out.prState !== "OPEN") {
+        ctx.log(`PR ${arg} is ${String(out.prState)}, not OPEN`);
+        ctx.emit(out);
+        return EXIT_PR_NOT_OPEN;
+    }
+    const runs = runGh(ctx.cwd, [
+        "run",
+        "list",
+        "--branch",
+        branch,
+        "--limit",
+        "5",
+        "--json",
+        "databaseId,headSha",
+    ]);
+    const run = arr(runs.ok ? jsonOrUndefined(runs.stdout) : undefined)
+        .map(obj)
+        .find((r) => r.headSha === headSha);
+    out.runId = run?.databaseId === undefined ? null : String(run.databaseId);
+    if (out.runId === null) {
+        ctx.log(`no CI run at ${headSha} on ${branch}`);
+        ctx.emit(out);
+        return EXIT_NO_RUN_ID;
+    }
+    // The PR-body marker first, the feat/{FID} branch as the fallback.
+    const markerTracker = tracker;
+    const viaMarker = fromMarker(str(ctx.flags.marker) ?? text(pr.body), markerTracker);
+    const viaBranch = viaMarker ? null : fromBranch(branch, markerTracker);
+    const parsed = viaMarker ?? (viaBranch?.ok ? viaBranch.parsed : null);
+    if (!parsed) {
+        ctx.log(viaBranch && !viaBranch.ok ? viaBranch.why : "no FID in the PR-body marker or the branch");
+        ctx.emit(out);
+        return EXIT_NO_FID;
+    }
+    ctx.emit({ ...out, fid: parsed.fid, issueId: parsed.issueId });
+    return EXIT.OK;
 }
 async function runMirror(ctx) {
     const f = ctx.flags;
@@ -948,7 +1372,7 @@ async function runMirror(ctx) {
 }
 export const runsCommand = {
     noun: "runs",
-    summary: "CI runs: wait for one, prove one was dispatched, gate a merge on one.",
+    summary: "CI runs: wait for one, prove one was dispatched, re-validate and gate a merge on one; auto's start context.",
     verbs: {
         wait: {
             summary: "Bounded poll for a CI check on a PR (--pr) or a CI run at a head (--head --branch), present or completed.",
@@ -1003,9 +1427,29 @@ export const runsCommand = {
                     help: "feature id, for the re-trigger commit subject",
                 },
                 {
-                    name: "auto-route-suffix",
+                    name: "label",
                     type: "string",
-                    help: 'suffix the issue\'s bkit:auto label gives (" bkit [auto route]" or empty): `autoRouteSuffix` of `bkit issues labels`',
+                    repeatable: true,
+                    help: "a label the issue carries now (as the tracker MCP read returned it): bkit:auto adds ` bkit [auto route]` to the re-trigger subject",
+                },
+                {
+                    name: "file",
+                    type: "string",
+                    help: "status.jsonl: write the --step row carrying ciDispatch once a verdict exists; a passed verdict is cross-checked and recorded as the close transport",
+                },
+                { name: "workflow", type: "string", help: "with --file: build | debug (default build)" },
+                { name: "step", type: "string", help: "with --file: the step the row records" },
+                {
+                    name: "artifact",
+                    type: "string",
+                    repeatable: true,
+                    help: "with --file: an artifact on the row (the created PR's URL)",
+                },
+                {
+                    name: "field",
+                    type: "string",
+                    repeatable: true,
+                    help: "with --file: an extra row field key=value",
                 },
                 { ...BUDGET_FLAG, help: "poll budget in seconds (default 60)" },
                 { ...INTERVAL_FLAG, help: "seconds between polls (default 10)" },
@@ -1035,6 +1479,8 @@ export const runsCommand = {
                 retrigger: "a re-trigger commit was pushed",
                 scanResult: "clean | skip-token-found | error — the pushed head's BODY scan; null when unresolved",
                 ciWorkflow: "the CI workflow file the no-ci check looked for",
+                row: "--file: the step-done row written (null on a hand-off)",
+                transport: "--file: the close-transport row written for a passed verdict, else null",
             },
             exitCodes: {
                 [EXIT_SKIP_TOKEN]: "the pushed head's body carries a CI-suppression token",
@@ -1046,7 +1492,27 @@ export const runsCommand = {
         gate: {
             summary: "Ship merge gate: the capstone job present and green at the head (exit 0), or why not.",
             flags: [
-                { ...HEAD_FLAG, required: true, help: "the PR head to merge" },
+                { ...HEAD_FLAG, help: "the PR head to merge (or --pr / --squash-of)" },
+                {
+                    name: "pr",
+                    type: "string",
+                    help: "the PR number: gate its current head, refusing a title that carries a skip token (18)",
+                },
+                {
+                    name: "squash-of",
+                    type: "string",
+                    help: "the merged PR number: gate its squash commit (ship's post-merge check, with --capstone-only)",
+                },
+                {
+                    name: "snapshot",
+                    type: "string",
+                    help: "with --pr: append the pre-merge snapshot row to this file before gating",
+                },
+                {
+                    name: "record",
+                    type: "string",
+                    help: "status.jsonl: append ship-gate-refusal on a refusal, or ship-merge-ci with --capstone-only",
+                },
                 {
                     name: "validated",
                     type: "string",
@@ -1102,9 +1568,58 @@ export const runsCommand = {
                 [GATE.CANCELLED]: "selected run was cancelled",
                 [GATE.LANE_SKIPPED]: "a required lane concluded skipped",
                 [GATE.NOT_BOOKKEEPING]: "non-bookkeeping change past --validated, or not its descendant",
-                [GATE.API_ERROR]: "API error / rate limit / auth",
+                [GATE.TITLE_SKIP]: "--pr: the PR title carries a CI-suppressing token",
+                [GATE.API_ERROR]: "API error / rate limit / auth, or the PR head / squash commit unreadable",
             },
             run: runGate,
+        },
+        revalidate: {
+            summary: "Ship: pick the head CI must pass at, probe for a run there, dispatch only when none, wait for it to complete.",
+            flags: [
+                { name: "pr", type: "string", required: true, help: "the PR number" },
+                { name: "entry-head", type: "string", required: true, help: "the PR head read at Step 2" },
+                {
+                    name: "code-head",
+                    type: "string",
+                    required: true,
+                    help: "the head before ship's bookkeeping commit (Step 8)",
+                },
+                { name: "branch", type: "string", required: true, help: "the PR branch" },
+                {
+                    name: "month",
+                    type: "string",
+                    required: true,
+                    help: "YYYYMM, for the bookkeeping allow-list",
+                },
+                {
+                    name: "fid",
+                    type: "string",
+                    required: true,
+                    help: "feature id, for the bookkeeping allow-list",
+                },
+                {
+                    name: "file",
+                    type: "string",
+                    required: true,
+                    help: "status.jsonl for the ship-revalidate-dispatch / -timeout rows",
+                },
+                {
+                    name: "reason",
+                    type: "string",
+                    help: "head-move (default) | gate-refusal (re-validate even when the head did not move)",
+                },
+                REPO_FLAG,
+            ],
+            output: {
+                validatedHead: "the head CI was (or must be) checked at",
+                currentHead: "the PR head now",
+                revalidated: "a probe / wait ran (the head moved, or a gate refusal re-entered)",
+                probe: "the presence probe's wait result, or null",
+                dispatched: "the probe found no run and dispatched one",
+                wait: "the completion wait's result, or null",
+            },
+            exitCodes: { [EXIT_TRIGGER_FAILED]: "no run and gh workflow run failed" },
+            run: runRevalidate,
         },
         mirror: {
             summary: "Release PR: wait for the branch's push run at the head and copy its capstone verdict.",
@@ -1139,6 +1654,50 @@ export const runsCommand = {
                 [MIRROR.API_ERRORS]: "three GitHub API errors in a row",
             },
             run: runMirror,
+        },
+        context: {
+            summary: "/bkit-auto Step 1: the phase and mode, the repo, and the issue / FID / PR / run the dispatch carries.",
+            flags: [
+                {
+                    name: "phase",
+                    type: "string",
+                    required: true,
+                    help: "ship | success | pass | debug | failure | fail | design | plan | build",
+                },
+                {
+                    name: "arg",
+                    type: "string",
+                    required: true,
+                    help: "CI: the PR number, or (CI_DEV) the FID slug; BRIEF: the issue",
+                },
+                {
+                    name: "marker",
+                    type: "string",
+                    help: "the PR body (default: read with gh) — its bkit:fid marker names the FID",
+                },
+            ],
+            output: {
+                phase: "ship | debug | design | plan | build",
+                mode: "CI | CI_DEV | BRIEF",
+                ownerRepo: "owner/repo",
+                owner: "owner half",
+                repo: "repo half",
+                issueId: "the issue (BRIEF: the arg; CI: from the marker or branch; null under no tracker)",
+                fid: "the FID (CI / CI_DEV), else null",
+                prNumber: "the PR (CI), else null",
+                branch: "the PR head branch (CI), dev (CI_DEV), else null",
+                headSha: "the PR head (CI) or origin/dev (CI_DEV), else null",
+                prUrl: "the PR URL (CI), else null",
+                prState: "the PR state (CI), else null",
+                runId: "the CI run at the PR head (CI), else null",
+            },
+            exitCodes: {
+                [EXIT_UNKNOWN_PHASE]: "the phase word is not one bkit dispatches",
+                [EXIT_PR_NOT_OPEN]: "the PR is not OPEN",
+                [EXIT_NO_RUN_ID]: "no CI run at the PR head",
+                [EXIT_NO_FID]: "no valid FID (CI_DEV slug off the allowlist, or no marker / feat/{FID} branch)",
+            },
+            run: runContext,
         },
         declared: {
             summary: "Whether the repo declares a CI workflow: .github/workflows/<bkit.ciWorkflow> exists (exit 0) or not (exit 1).",

@@ -2,7 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { readTemplate } from "../../render/parts";
 import type { WriteSet } from "../write";
 import {
   parseModelLookup,
@@ -559,9 +560,22 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
     );
   });
 
-  it("both jobs' runs-on are the {{CLOUD_RUNNER}} placeholder the consumer fills in", () => {
+  it("every job's runs-on is the {{CLOUD_RUNNER}} placeholder the consumer fills in", () => {
     const runsOn = [...yml.matchAll(/^ {4}runs-on: (.+)$/gm)].map((m) => m[1]);
-    expect(runsOn).toEqual(["{{CLOUD_RUNNER}}", "{{CLOUD_RUNNER}}"]);
+    expect(runsOn).toEqual(["{{CLOUD_RUNNER}}", "{{CLOUD_RUNNER}}", "{{CLOUD_RUNNER}}"]);
+  });
+
+  it("one context job resolves phase + arg; both runner jobs need it and read its outputs", () => {
+    expect(yml.match(/- name: Resolve phase \+ brief context/g)).toHaveLength(1);
+    expect(yml.match(/^ {4}needs: context$/gm)).toHaveLength(2);
+    expect(yml).toContain(
+      "if: needs.context.outputs.claude == 'true' && needs.context.outputs.skip != 'true'",
+    );
+    expect(yml).toContain(
+      "if: needs.context.outputs.opencode == 'true' && needs.context.outputs.skip != 'true'",
+    );
+    expect(yml).toContain("BKIT_PHASE: ${{ needs.context.outputs.phase }}");
+    expect(yml).toContain("BKIT_ARG: ${{ needs.context.outputs.arg }}");
   });
 
   it("header states App required and the bkit:auto label (no bare Auto)", () => {
@@ -668,11 +682,12 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     expect(out).toContain(
       "contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')",
     );
-    // The dispatch step must exist and fire when skip != 'true' (compound condition includes gate check).
-    expect(out).toContain("steps.ctx.outputs.skip != 'true'");
+    // The runner jobs run only when the context job's skip != 'true' (compound condition
+    // includes the secret check).
+    expect(out).toContain("needs.context.outputs.skip != 'true'");
     // The dispatch step must invoke the /bkit-auto orchestrator.
     expect(out).toContain(
-      'prompt: "/bkit-auto ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"',
+      'prompt: "/bkit-auto ${{ needs.context.outputs.phase }} ${{ needs.context.outputs.arg }}"',
     );
   });
 
@@ -709,14 +724,15 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     expect(ghIssueViewPos).toBeGreaterThan(sharedDerivStart);
   });
 
-  it("(c) each job's free-tier marker check lives in its job-level if: gate", () => {
+  it("(c) the free-tier marker check lives in the context job's if: gate, which both runner jobs need", () => {
     const containsExpr =
       "contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')";
     const gates = [...rawTemplate.matchAll(/^ {4}if: >-\n([\s\S]*?)^ {4}runs-on:/gm)].map(
       (m) => m[1],
     );
-    expect(gates).toHaveLength(2);
-    for (const gate of gates) expect(gate).toContain(containsExpr);
+    expect(gates).toHaveLength(1);
+    expect(gates[0]).toContain(containsExpr);
+    expect(rawTemplate).toMatch(/^ {2}context:\n {4}name: context[^\n]*\n {4}if: >-\n/m);
   });
 });
 
@@ -1012,6 +1028,7 @@ describe("C1 regression: .bkit-version JSON format → pinnedVersion extraction"
     writeBkitVersion(versionFile, {
       pinnedVersion: "0.7.3",
       canonicalHashes: {},
+      claudeAllowDerived: [],
     });
 
     const parsed = readBkitVersion(versionFile);
@@ -1029,6 +1046,7 @@ describe("C1 regression: .bkit-version JSON format → pinnedVersion extraction"
     writeBkitVersion(versionFile, {
       pinnedVersion: "0.8.0",
       canonicalHashes: {},
+      claudeAllowDerived: [],
     });
 
     const parsed = readBkitVersion(versionFile);
@@ -1138,6 +1156,7 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
     writeBkitVersion(versionFile, {
       pinnedVersion: "0.5.0",
       canonicalHashes: {},
+      claudeAllowDerived: [],
     });
 
     // Verify the file is JSON format (not plain-text)
@@ -1190,6 +1209,7 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
     writeBkitVersion(versionFile, {
       pinnedVersion: "0.7.0",
       canonicalHashes: {},
+      claudeAllowDerived: [],
     });
 
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
@@ -1612,6 +1632,78 @@ describe(".husky/pre-push delete-only push", () => {
 
     it(`${hook}: empty stdin → gates still run`, () => {
       expect(runHook(hook, "").gated).toBe(true);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// .husky/pre-push CI-suppressor guard — the skip-CI token comes from `bkit ci
+// skip-token` (the built CLI), not a regex in the hook. Stub `pnpm` routes that one
+// call to dist/cli.js and records every other call; stub `gh` reports PR #7 open.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push CI-suppressor guard", () => {
+  const REPO = process.cwd();
+  const SHA = "a".repeat(40);
+  let tmp: string;
+
+  const gitIn = (cwd: string, ...args: string[]) =>
+    spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+      cwd,
+      encoding: "utf-8",
+    });
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-skip-")));
+    const bin = path.join(tmp, "bin");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(
+      path.join(bin, "pnpm"),
+      [
+        "#!/bin/sh",
+        'if [ "$*" = "-s bkit ci skip-token" ]; then',
+        `  exec node ${JSON.stringify(path.join(REPO, "dist", "cli.js"))} ci skip-token`,
+        "fi",
+        `echo "$*" >> "${tmp}/pnpm.log"`,
+        "exit 0",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(path.join(bin, "gh"), "#!/bin/sh\necho 7\n", { mode: 0o755 });
+    gitIn(tmp, "init", "-q", "-b", "feat/1-x");
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  const pushWithHead = (hook: string, message: string) => {
+    gitIn(tmp, "commit", "-q", "--allow-empty", "-m", message);
+    const result = spawnSync("sh", [path.join(REPO, hook)], {
+      cwd: tmp,
+      input: `refs/heads/feat/1-x ${SHA} refs/heads/feat/1-x ${"0".repeat(40)}\n`,
+      encoding: "utf-8",
+      timeout: 20_000,
+      env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
+    });
+    const log = path.join(tmp, "pnpm.log");
+    return {
+      status: result.status,
+      stderr: result.stderr,
+      gates: fs.existsSync(log) ? fs.readFileSync(log, "utf-8") : "",
+    };
+  };
+
+  for (const hook of [".bkit/templates/.husky/pre-push", ".husky/pre-push"]) {
+    it(`${hook}: HEAD carrying [skip ci] with an open PR → blocked before any gate`, () => {
+      const r = pushWithHead(hook, "docs(1): status bkit [skip ci]");
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("PR #7 is open");
+      expect(r.gates).toBe("");
+    });
+
+    it(`${hook}: HEAD without a token → the gates run`, () => {
+      const r = pushWithHead(hook, "feat(1): change");
+      expect(r.stderr).not.toContain("BLOCKED");
+      expect(r.gates).toContain("bkit:gate:static-unit");
     });
   }
 });
@@ -2579,6 +2671,38 @@ describe("gateguard.cjs / gateguard.js markered-text — install engine (#422)",
     expect(js).toContain("// bkit:start");
     expect(js).toContain("// bkit:end");
   });
+
+  it("install generates each hook from its template plus the shared hook parts", () => {
+    runClaudeModule(makeCtx());
+    runOpencodeModule(makeOpencodeCtx());
+    const read = (rel: string) => fs.readFileSync(path.join(tmpDir, rel), "utf-8");
+    for (const rel of [
+      CJS_REL,
+      JS_REL,
+      path.join(".claude", "hooks", "guardrails.cjs"),
+      path.join(".claude", "hooks", "preflight.sh"),
+    ]) {
+      expect(read(rel), rel).not.toContain("{{BKIT_PART");
+    }
+    expect(read(CJS_REL)).toContain("function firstTouchAdvice(");
+    expect(read(JS_REL)).toContain("function firstTouchAdvice(");
+    expect(read(path.join(".claude", "hooks", "guardrails.cjs"))).toContain(
+      "function shellEditTargets(",
+    );
+    expect(read(path.join(".claude", "hooks", "preflight.sh"))).toContain("api.linear.app/graphql");
+  });
+
+  it("an existing hook gets the shared parts in its managed block; the driver below it stays", () => {
+    const dst = path.join(tmpDir, CJS_REL);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.writeFileSync(dst, "// bkit:start\nold engine\n// bkit:end\n// my driver\n", "utf-8");
+    runClaudeModule(makeCtx());
+    const text = fs.readFileSync(dst, "utf-8");
+    expect(text).toContain("function firstTouchAdvice(");
+    expect(text).not.toContain("old engine");
+    expect(text).not.toContain("{{BKIT_PART");
+    expect(text.endsWith("// my driver\n")).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2799,8 +2923,19 @@ describe("modules-upgrade", () => {
 describe("permissions-parity", () => {
   const CLAUDE_SETTINGS = ".bkit/templates/.claude/settings.json";
   const OPENCODE_JSON = ".bkit/templates/.opencode/opencode.json";
-  const GUARDRAILS = path.resolve(".bkit/templates/.cursor/hooks/guardrails.cjs");
-  const CODEX_GUARDRAILS = path.resolve(".bkit/templates/.codex/hooks/guardrails.cjs");
+  // Each host's hook as install generates it (shared parts spliced in).
+  const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-perm-parity-"));
+  afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
+  const [GUARDRAILS, CODEX_GUARDRAILS, CLAUDE_GUARDRAILS] = ["cursor", "codex", "claude"].map(
+    (host) => {
+      const out = path.join(GENERATED, `${host}.cjs`);
+      fs.writeFileSync(
+        out,
+        readTemplate(path.resolve(`.bkit/templates/.${host}/hooks/guardrails.cjs`)),
+      );
+      return out;
+    },
+  );
 
   type Verdict = "deny" | "ask" | "allow";
 
@@ -2972,7 +3107,6 @@ describe("permissions-parity", () => {
   //
   // opencode is absent — a glob-keyed table cannot parse a redirect target. Tracked in
   // docs/deferrals.jsonl → `opencode-has-no-script-hook-so-two-gates-are-inexpressible-there`.
-  const CLAUDE_GUARDRAILS = path.resolve(".bkit/templates/.claude/hooks/guardrails.cjs");
 
   function advisoryText(host: "claude" | "codex" | "cursor", cmd: string): string {
     const script = { claude: CLAUDE_GUARDRAILS, codex: CODEX_GUARDRAILS, cursor: GUARDRAILS }[host];
@@ -3039,15 +3173,11 @@ describe("permissions-parity", () => {
       });
     }
 
-    it("the sanctioned bulk rewrite in bkit-plan.md is advised but NOT blocked", () => {
-      const planCmd = fs
-        .readFileSync(".bkit/workflows/bkit-plan.md", "utf-8")
-        .split("\n")
-        .find((l) => l.includes("sed -i"));
-      expect(planCmd, "bkit-plan.md no longer contains the sed -i this test pins").toBeDefined();
+    it("a sanctioned bulk rewrite (sed -i over a file list) is advised but NOT blocked", () => {
+      const bulkCmd = `sed -i.bak -E 's|plan-v[0-9]+-split\\.md|99-x-plan.md|g' "$f"`;
       for (const host of HOSTS) {
         // advisoryText asserts "never blocks" internally for each host.
-        expect({ host, advised: advisoryText(host, planCmd!.trim()).length > 0 }).toEqual({
+        expect({ host, advised: advisoryText(host, bulkCmd).length > 0 }).toEqual({
           host,
           advised: true,
         });

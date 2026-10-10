@@ -326,7 +326,7 @@ describe("bkit issues labels", () => {
 describe("bkit issues comment", () => {
   const comment = async (cwd: string, ...args: string[]) => {
     const r = await run(cwd, ["issues", "comment", ...args]);
-    return { ...r, body: r.json?.body as string | undefined };
+    return { ...r, body: r.json?.comment as string | undefined };
   };
 
   it("Step 1 with the workflow heading and the tree link", async () => {
@@ -516,6 +516,30 @@ describe("bkit issues comment", () => {
     expect(bare.body).toBe(
       "###### bkit:generated\n### Workflow Failure\nStep: 2 — Worktree Setup\nError: x",
     );
+  });
+
+  it("failure: --error-file carries the error text, trailing newlines dropped; a missing file exits 3", async () => {
+    const cwd = dir();
+    write(cwd, "error.md", "gh pr merge refused: head moved\n\n");
+    const r = await comment(
+      cwd,
+      "--kind=failure",
+      "--step-number=10",
+      "--step-title=Merge",
+      "--error-file=error.md",
+    );
+    expect(r.body).toBe(
+      "###### bkit:generated\n### Workflow Failure\nStep: 10 — Merge\nError: gh pr merge refused: head moved",
+    );
+    const missing = await run(cwd, [
+      "issues",
+      "comment",
+      "--kind=failure",
+      "--step-number=1",
+      "--step-title=S",
+      "--error-file=none.md",
+    ]);
+    expect(missing.code).toBe(3);
   });
 
   it("a stderr capture holding backticks cannot close its fence", async () => {

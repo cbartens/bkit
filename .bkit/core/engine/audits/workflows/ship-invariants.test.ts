@@ -4,10 +4,11 @@
 // underneath: which steps may push the feature branch (and which may force),
 // that every bookkeeping stage goes through `bkit ledgers` and stops the step
 // on failure, that every status write targets the one resolved `{STATUS}`,
-// that the merge gate runs before `gh pr merge` on the same head, and the
+// that the merge gate runs before `bkit prs merge` on the same head, and the
 // Failure Path's single-write contract. What the commands do internally
-// (allow-lists, lock files, row shapes, rebase handling) is covered by their
-// own tests in commands/workflow/*.test.ts, not here.
+// (allow-lists, lock files, row shapes, rebase handling, the dev-lock windows of
+// `branches switch`, `workflows close --flush` and `workflows handover --flush`)
+// is covered by their own tests in commands/workflow/*.test.ts, not here.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -57,7 +58,9 @@ function ledgersBlocks(ship: string): string[] {
     }
     if (current) current.push(line);
   }
-  return blocks.map((block) => block.join("\n")).filter((block) => /"\$BKIT" ledgers /.test(block));
+  return blocks
+    .map((block) => block.join("\n"))
+    .filter((block) => /"\{BKIT\}" ledgers /.test(block));
 }
 
 /** Fenced bash bodies, `\`-continuations joined so one command is one line. */
@@ -125,18 +128,15 @@ export const CANONICAL_SHIP_STEP_KEYS: readonly string[] = [
 
 describe("bkit-ship.md — staging hygiene (banned patterns)", () => {
   it("has no `git add -A` anywhere (full content)", () => {
-    const ship = readShip();
-    // The literal `git add -A` must not appear in ANY step's fenced shell —
     // Finding 6 (commit staging whatever build/debug left dirty).
-    expect(ship).not.toMatch(/\bgit\s+add\s+-A\b/);
+    expect(readShip()).not.toMatch(/\bgit\s+add\s+-A\b/);
   });
 
-  it("has no blanket `git add -- docs/` (path-scoped staging only)", () => {
-    const ship = readShip();
-    // A bare `git add docs/...` stages whatever drifted under docs/ —
-    // Finding 6's docs-tree analogue.
-    expect(ship).not.toMatch(/\bgit\s+add\s+--?\s+docs\/?\s*$/m);
-    expect(ship).not.toMatch(/\bgit\s+add\s+docs\/(?!(plans\/\{YYYYMM\}\/logs\/\{FID\}))/);
+  it("has no literal `git add` anywhere — every stage goes through bkit ledgers", () => {
+    const violations = readShip()
+      .split("\n")
+      .filter((line) => /\bgit\s+add\b/.test(line));
+    expect(violations).toEqual([]);
   });
 });
 
@@ -151,11 +151,10 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
   // Push Bookkeeping) that carries docs, summaries, ledgers and skill removals
   // onto the PR so the merge lands them on `dev`. Only B2 may force (with
   // lease): `bkit branches push --mode=feature` pushes a feature branch with
-  // --force-with-lease. Worktree Cleanup's post-merge `git push origin
-  // --delete` carries no commit, so it is not a push this invariant covers.
+  // --force-with-lease.
   const isPush = (line: string) =>
     !/--delete\b/.test(line) &&
-    (/\bgit\s+(-C\s+"[^"]+"\s+)?push\b/.test(line) || /"\$BKIT" branches push\b/.test(line));
+    (/\bgit\s+(-C\s+"[^"]+"\s+)?push\b/.test(line) || /"\{BKIT\}" branches push\b/.test(line));
   const isFeaturePush = (line: string) =>
     isPush(line) &&
     (/\{SHIP_BRANCH\}/.test(line) || /"\$B"/.test(line) || /--mode=feature\b/.test(line));
@@ -198,7 +197,7 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
   it("the pre-merge bookkeeping commit stages through bkit ledgers --scope=pr, after the step-done row", () => {
     const step = section(readShip(), /^## .*Step \d+ — Commit \+ Push Bookkeeping/, /^---$/);
     expect(step, "Commit + Push Bookkeeping section not found").not.toBe("");
-    const commit = step.indexOf('"$BKIT" ledgers commit');
+    const commit = step.indexOf('"{BKIT}" ledgers commit');
     expect(commit, "no bkit ledgers commit in Commit + Push Bookkeeping").toBeGreaterThan(-1);
     expect(step.slice(commit).split("\n")[0]).toMatch(/--scope=pr --mode=commit /);
     // The step-done row is written BEFORE the commit so it rides the PR.
@@ -211,7 +210,7 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
     // The user's own commits, never ship bookkeeping, and never forced. A
     // branch with nothing ahead of dev is "nothing to ship".
     const lines = readShip().split("\n");
-    const openIdx = lines.findIndex((l) => /"\$BKIT" prs open\b/.test(l));
+    const openIdx = lines.findIndex((l) => /"\{BKIT\}" prs open\b/.test(l));
     expect(openIdx, "Step 2 open-PR `bkit prs open` not found").toBeGreaterThan(-1);
     const block = lines.slice(Math.max(0, openIdx - 8), openIdx + 1).join("\n");
     expect(block).toMatch(/git push -u origin "\$B"/);
@@ -233,69 +232,53 @@ describe("bkit-ship.md — bookkeeping and status writes", () => {
     expect(version).not.toContain("docs/completed.md");
   });
 
-  it("no literal `git add` anywhere — every stage goes through bkit ledgers", () => {
-    const violations = readShip()
-      .split("\n")
-      .filter((line) => /\bgit\s+add\b/.test(line));
-    expect(violations).toEqual([]);
-  });
-
   it("Step 1 resolves the status log through bkit status path, with --dev-pushes only when the runtime pushes dev", () => {
     // Finding 4: one variable resolving to two trees. `bkit status path`
     // picks the book root (main checkout with --dev-pushes, else the current
     // worktree — commands/lib.test.ts statusLocation); ship must pass the
     // runtime's answer, not guess.
-    const step1 = section(readShip(), /^## .*Step 1 —/, /^### .*Gate 1/);
-    const block = fences(step1).find((f) => /"\$BKIT" status path\b/.test(f));
+    const ship = readShip();
+    const step1 = section(ship, /^## .*Step 1 —/, /^### .*Gate 1/);
+    const block = fences(step1).find((f) => /"\{BKIT\}" status path\b/.test(f));
     expect(block, "Step 1 bkit status path block not found").toBeDefined();
-    expect(block!).toMatch(
-      /DEVP="";\s*\[ "\$RUNTIME_DEVPUSHES" = "true" \] && DEVP="--dev-pushes"/,
-    );
-    expect(block!).toMatch(/"\$BKIT" status path --workflow=ship .*\$DEVP/);
-    expect(block!).toMatch(/STATUS=\$\(printf '%s' "\$WHERE" \| jq -r \.path\)/);
+    expect(block!).toMatch(/"\{BKIT\}" status path --workflow=ship [^\n]*--dev-pushes/);
+    expect(step1).toContain("hold `path` as `{STATUS}`");
+    expect(ship).toContain("`--dev-pushes` goes on a call only when `RUNTIME_DEVPUSHES` = true.");
   });
 
-  it("every other STATUS assignment takes the resolved {STATUS}", () => {
-    const assignments = fences(readShip())
-      .flatMap((f) => f.split("\n"))
-      .map((l) => l.trim())
-      .filter((l) => /^STATUS=/.test(l));
-    expect(assignments.length).toBeGreaterThan(1);
-    const stray = assignments.filter(
-      (l) => l !== 'STATUS="{STATUS}"' && !/^STATUS=\$\(printf '%s' "\$WHERE"/.test(l),
-    );
-    expect(stray).toEqual([]);
-  });
-
-  it("every status row and every steps done targets that status log", () => {
+  it("no fence reassigns STATUS — every status write takes the resolved {STATUS}", () => {
     const lines = fencedLinesByStep(readShip()).map((l) => l.line);
-    const rows = lines.filter((l) => /"\$BKIT" status row\b/.test(l));
-    expect(rows.length).toBeGreaterThan(0);
-    for (const l of rows) {
-      expect(l, `status row writes elsewhere: ${l}`).toMatch(/--file="\$STATUS" --workflow=ship\b/);
+    expect(lines.filter((l) => /^STATUS=/.test(l))).toEqual([]);
+    const writers = lines.filter((l) =>
+      /"\{BKIT\}" (status (row|meta)|steps (done|finish)|runs revalidate|workflows (start|close))\b/.test(
+        l,
+      ),
+    );
+    expect(writers.length).toBeGreaterThan(10);
+    for (const l of writers) {
+      expect(l, `status write elsewhere: ${l}`).toMatch(/--file="\{STATUS\}"/);
     }
-    for (const type of [
-      "ship-merged-on-entry",
-      "ship-revalidate-dispatch",
-      "ship-revalidate-timeout",
-      "ship-gate-refusal",
-      "ship-merge-ci",
-    ]) {
-      expect(
-        rows.some((l) => l.includes(`--type=${type} `) || l.endsWith(`--type=${type}`)),
-        `no bkit status row writes ${type}`,
-      ).toBe(true);
-    }
+  });
+
+  it("every ship audit row is written through a command, into {STATUS}", () => {
+    const lines = fencedLinesByStep(readShip()).map((l) => l.line);
+    // ship-merged-on-entry: bkit status row.
+    expect(
+      lines.some((l) => /"\{BKIT\}" status row [^\n]*--type=ship-merged-on-entry\b/.test(l)),
+    ).toBe(true);
+    // ship-revalidate-dispatch / -timeout: bkit runs revalidate --file.
+    expect(lines.some((l) => /"\{BKIT\}" runs revalidate [^\n]*--file="\{STATUS\}"/.test(l))).toBe(
+      true,
+    );
+    // ship-gate-refusal (merge gate) and ship-merge-ci (capstone): bkit runs gate --record.
+    const recorded = lines.filter((l) =>
+      /"\{BKIT\}" runs gate [^\n]*--record="\{STATUS\}"/.test(l),
+    );
+    expect(recorded).toHaveLength(2);
+    expect(recorded.some((l) => /--capstone-only/.test(l))).toBe(true);
     // A hand-built jq row may only land in an outbox file, never status.jsonl.
     const handBuilt = lines.filter((l) => />>\s*"/.test(l) && /type:"/.test(l));
-    for (const l of handBuilt) {
-      expect(l, `hand-built row appended outside {OUTBOX}: ${l}`).toMatch(/>>\s*"\$OUTBOX\/[^"]+"/);
-    }
-    const stepsDone = lines.filter((l) => /"\$BKIT" steps done\b/.test(l));
-    expect(stepsDone.length).toBeGreaterThan(0);
-    for (const l of stepsDone) {
-      expect(l, `steps done writes elsewhere: ${l}`).toMatch(/--file="(\{STATUS\}|\$STATUS)"/);
-    }
+    expect(handBuilt).toEqual([]);
   });
 });
 
@@ -315,7 +298,7 @@ describe("every workflow writes its own workflow-started row (#492)", () => {
         "utf-8",
       );
       const calls = fences(content).filter((f) =>
-        new RegExp(`"\\$BKIT" workflows start --workflow=${workflow}\\b`).test(f),
+        new RegExp(`"\\{BKIT\\}" workflows start --workflow=${workflow}\\b`).test(f),
       );
       expect(calls, `no bkit workflows start for "${workflow}"`).toHaveLength(1);
     });
@@ -327,7 +310,7 @@ describe("every workflow writes its own workflow-started row (#492)", () => {
 // ---------------------------------------------------------------------------
 
 describe("no workflow bash block appends to status.jsonl or .bkit/issues.jsonl with >> (#467)", () => {
-  // Status rows go through `bkit status row` / `steps done` / `workflows *` /
+  // Status rows go through `bkit status row` / `steps done|finish` / `workflows *` /
   // `status meta`; feature rows through `bkit roadmap feature`. A raw `>>`
   // bypasses the row shape and the fail-open contract those commands own.
   const TARGET =
@@ -351,6 +334,7 @@ describe("no workflow bash block appends to status.jsonl or .bkit/issues.jsonl w
       `printf '%s\\n' "$ROADMAP_LINE" >> .bkit/issues.jsonl`,
       `printf '%s\\n' "$ROADMAP_LINE" >> "$WT/.bkit/issues.jsonl"`,
       `jq -nc '{}' >> "$ISSUES_JSONL"`,
+      `jq -nc '{}' >> "{STATUS}"`,
     ]) {
       expect(TARGET.test(line), line).toBe(true);
     }
@@ -358,15 +342,14 @@ describe("no workflow bash block appends to status.jsonl or .bkit/issues.jsonl w
   });
 });
 
-describe("bkit-ship.md — Step 6 SHIPPED row and docs verdict come from bkit roadmap feature (#380)", () => {
+describe("bkit-ship.md — Step 6 SHIPPED row comes from bkit roadmap feature --strict (#380)", () => {
   const step6 = () => section(readShip(), /^## .*Step 6 —/, /^### .*Gate 6/);
 
   it("appends the SHIPPED row mechanically into the worktree ledger, not through the update-docs prompt", () => {
-    const block = fences(step6()).find((f) => /"\$BKIT" roadmap feature\b/.test(f));
+    const block = fences(step6()).find((f) => /"\{BKIT\}" roadmap feature\b/.test(f));
     expect(block, "Step 6 bkit roadmap feature block not found").toBeDefined();
-    expect(block!).toMatch(/WT="\{WORKTREE_PATH\}"/);
-    expect(block!).toMatch(
-      /ROADMAP=\$\("\$BKIT" roadmap feature --root="\$WT" --workflow=ship --fid="\{FID\}" --step=ship-update-docs\)/,
+    expect(block!).toContain(
+      '"{BKIT}" roadmap feature --root="{WORKTREE_PATH}" --workflow=ship --fid="{FID}" --step=ship-update-docs --strict',
     );
     const prompt = fs.readFileSync(
       path.join(REPO_ROOT, ".bkit/prompts/bkit-ship-update-docs.md"),
@@ -375,14 +358,12 @@ describe("bkit-ship.md — Step 6 SHIPPED row and docs verdict come from bkit ro
     expect(prompt).not.toMatch(/issues\.jsonl/);
   });
 
-  it("DOCS_VERDICT is PASS only when the command appended a SHIPPED row — no re-grep of the ledger", () => {
-    // A BUILT row from the build close must not green it, and a failed append
-    // (fail-open, `appended: false`) must not either.
-    const block = fences(step6()).find((f) => /"\$BKIT" roadmap feature\b/.test(f))!;
-    expect(block).toMatch(
-      /jq -e '\.appended == true and \.row\.status == "SHIPPED"'[^\n]*then DOCS_VERDICT=PASS; else DOCS_VERDICT=FAIL; fi/,
-    );
-    expect(block).not.toMatch(/SHIPPED_HIT|issues\.jsonl|roadmap fold/);
+  it("a row that did not land stops the step — no re-grep of the ledger", () => {
+    // `--strict` exits 1 when nothing was appended (commands/workflow/roadmap.test.ts),
+    // so a BUILT row from the build close cannot green it, nor a failed append.
+    const block = fences(step6()).find((f) => /"\{BKIT\}" roadmap feature\b/.test(f))!;
+    expect(block).toMatch(/--strict >\/dev\/null \|\| exit 1/);
+    expect(block).not.toMatch(/SHIPPED_HIT|issues\.jsonl|roadmap fold|DOCS_VERDICT/);
   });
 });
 
@@ -393,222 +374,164 @@ describe("bkit-ship.md — Step 6 SHIPPED row and docs verdict come from bkit ro
 describe("bkit-ship.md — canonical 15 ship-* step-key set", () => {
   it("publishes the canonical 15 ship-* step-key set (no invented names)", () => {
     // Finding 7: agents invent step names. Every canonical key is written, and
-    // nothing else is.
-    // Each key must be written by a `bkit steps done --step=<key>` call.
+    // nothing else is. `ship-close-workflow` is written by `workflows close --flush`
+    // (commands/workflow/workflows.test.ts); every other key by a
+    // `bkit steps done|finish --step=<key>` call.
+    const lines = fencedLinesByStep(readShip()).map((l) => l.line);
     const written = new Set(
-      fencedLinesByStep(readShip())
-        .map((l) => /"\$BKIT" steps done\b.*--step=(ship-[a-z-]+)/.exec(l.line)?.[1])
+      lines
+        .map((l) => /"\{BKIT\}" steps (?:done|finish)\b.*--step=(ship-[a-z-]+)/.exec(l)?.[1])
         .filter((k): k is string => k !== undefined),
     );
+    if (lines.some((l) => /"\{BKIT\}" workflows close --workflow=ship\b.*--flush\b/.test(l)))
+      written.add("ship-close-workflow");
     expect(CANONICAL_SHIP_STEP_KEYS.filter((k) => !written.has(k))).toEqual([]);
     expect([...written].filter((k) => !CANONICAL_SHIP_STEP_KEYS.includes(k))).toEqual([]);
+    // Nothing anywhere names a ship step outside the set.
+    const named = [...readShip().matchAll(/--step=(ship-[a-z-]+)/g)].map((m) => m[1]!);
+    expect(named.filter((k) => !CANONICAL_SHIP_STEP_KEYS.includes(k))).toEqual([]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// POSITIVE — gh pr merge always carries --match-head-commit
+// POSITIVE — the merge is pinned to the gated head
 // ---------------------------------------------------------------------------
 
-describe("bkit-ship.md — gh pr merge carries --match-head-commit", () => {
-  it("every `gh pr merge` carries --match-head-commit (no SHA drift on merge)", () => {
-    const ship = readShip();
-    // SC 1: the merge call refuses a head other than the validated one.
-    const lines = ship.split("\n");
-    const violations: string[] = [];
-    for (const line of lines) {
-      if (!/gh\s+pr\s+merge\b/.test(line)) continue;
-      if (!/--match-head-commit/.test(line)) {
-        violations.push(line.trim());
-      }
-    }
-    expect(violations).toEqual([]);
+describe("bkit-ship.md — the merge is pinned to the head the gate passed", () => {
+  it("never merges through raw gh pr merge", () => {
+    expect(readShip()).not.toMatch(/gh\s+pr\s+merge\b/);
   });
 
-  it("the merge gate runs before gh pr merge, at the head the merge is pinned to", () => {
+  it("the merge gate runs before bkit prs merge, which is pinned to the gate's head", () => {
     const step = section(readShip(), /^## .*Step \d+ — Merge Gate \+ Merge PR/, /^### .*Gate/);
     expect(step, "Merge Gate + Merge PR section not found").not.toBe("");
-    const gate = step.indexOf('"$BKIT" runs gate --head="{GATE_HEAD}"');
-    const merge = step.indexOf("gh pr merge {PR_NUMBER}");
-    expect(gate, "bkit runs gate at {GATE_HEAD} not found").toBeGreaterThan(-1);
-    expect(merge, "gh pr merge {PR_NUMBER} not found").toBeGreaterThan(-1);
+    const gate = step.indexOf('"{BKIT}" runs gate --pr="{PR_NUMBER}"');
+    const merge = step.indexOf('"{BKIT}" prs merge --number="{PR_NUMBER}"');
+    expect(gate, "bkit runs gate --pr not found").toBeGreaterThan(-1);
+    expect(merge, "bkit prs merge not found").toBeGreaterThan(-1);
     expect(gate).toBeLessThan(merge);
-    const mergeBlock = fences(step).find((f) => f.includes("gh pr merge {PR_NUMBER}"))!;
-    expect(mergeBlock).toMatch(/GATE_HEAD="\{GATE_HEAD\}"/);
-    expect(mergeBlock).toMatch(/--match-head-commit "\$GATE_HEAD"/);
+    expect(step).toContain("hold `mergeHead` as `{GATE_HEAD}`");
+    expect(step).toMatch(
+      /"\{BKIT\}" prs merge [^\n]*--match-head="\{GATE_HEAD\}"[^\n]*--expect-merged/,
+    );
+  });
+
+  it("F4a: the merge gate is handed the run's status log, and snapshots before deciding", () => {
+    const gate = fencedLinesByStep(readShip()).find((l) =>
+      /"\{BKIT\}" runs gate --pr="\{PR_NUMBER\}"/.test(l.line),
+    );
+    expect(gate, "merge gate invocation not found").toBeDefined();
+    expect(gate!.line).toMatch(/--file="\{STATUS\}"/);
+    expect(gate!.line).toMatch(/--snapshot="\{OUTBOX\}\/pre-merge-snapshot\.jsonl"/);
   });
 });
 
 // ---------------------------------------------------------------------------
-// POSITIVE — every dev-lock window releases on exit
+// POSITIVE — dev-lock windows live in commands
 // ---------------------------------------------------------------------------
 
-describe("bkit-ship.md — every dev-lock window releases on exit", () => {
-  it("every fence that takes the dev lock releases it via trap ... EXIT", () => {
-    // The lock file and its staleness rules live in `bkit locks`
-    // (commands/workflow/locks.test.ts).
-    const windows = fences(readShip()).filter((f) => /"\$BKIT" locks acquire --kind=dev\b/.test(f));
-    expect(windows.length).toBeGreaterThan(0);
-    for (const f of windows) {
-      expect(f).toMatch(/trap '"\$BKIT" locks release --kind=dev\b[^']*' EXIT/);
-    }
+describe("bkit-ship.md — dev-lock windows live in commands", () => {
+  it("no fence takes the dev lock by hand; switch, close and flush hold it", () => {
+    const ship = readShip();
+    expect(ship).not.toMatch(/locks acquire --kind=dev\b/);
+    expect(ship).not.toMatch(/\btrap\b/);
+    const lines = fencedLinesByStep(ship).map((l) => l.line);
+    expect(lines.some((l) => /"\{BKIT\}" branches switch\b/.test(l))).toBe(true);
+    expect(
+      lines.some((l) => /"\{BKIT\}" workflows close --workflow=ship\b.*--flush\b/.test(l)),
+    ).toBe(true);
+    expect(
+      lines.some((l) => /"\{BKIT\}" workflows handover --workflow=ship\b.*--flush\b/.test(l)),
+    ).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
 // Workflow-markdown invariants of the merge path
 // ---------------------------------------------------------------------------
-//
-// The merge gate's own behaviour is covered in commands/workflow/runs.test.ts
-// (bkit runs gate). The gate call stands alone in its fence and the orchestrator
-// routes on its exit code.
 
 describe("bkit-ship.md — build-challenge remediation regressions", () => {
   // B2 stages tracked modifications (`--stage-tracked-updates`, `git add -u` inside
   // `bkit ledgers commit`) before the single commit, including the resolved source files
   // the conflict-resolve subagent wrote.
   it("F1: B2 conflict-resolve stages tracked source modifications before its commit and push", () => {
-    const b2 = fences(readShip()).find((f) => /"\$BKIT" branches push --mode=feature\b/.test(f));
+    const b2 = fences(readShip()).find((f) => /"\{BKIT\}" branches push --mode=feature\b/.test(f));
     expect(b2, "B2 conflict-resolve push block not found").toBeDefined();
     const stage = b2!.search(
-      /"\$BKIT" ledgers commit [^\n]*--mode=stage [^\n]*--stage-tracked-updates/,
+      /"\{BKIT\}" ledgers commit [^\n]*--mode=stage [^\n]*--stage-tracked-updates/,
     );
     const commit = b2!.indexOf("git commit ");
-    const push = b2!.indexOf('"$BKIT" branches push --mode=feature');
+    const push = b2!.indexOf('"{BKIT}" branches push --mode=feature');
     expect(stage, "B2 does not stage tracked updates through bkit ledgers").toBeGreaterThan(-1);
     expect(stage).toBeLessThan(commit);
     expect(commit).toBeLessThan(push);
   });
 
-  // Finding 2 (HIGH): jq rejects a single-quoted program containing
-  // `${SHIP_CI_WAIT_TIMEOUT_S:-1800}` (shell does not expand inside single quotes,
-  // and `${` is a jq syntax error), so the row is never written. Values reach jq
-  // programs through --arg / --argjson or stdin.
+  // Finding 2 (HIGH): jq rejects a single-quoted program containing a shell
+  // `${...}` (shell does not expand inside single quotes, and `${` is a jq
+  // syntax error), so the row is never written.
   it("F2: no single-quoted jq program carries a shell ${...} expansion", () => {
     const programs = fences(readShip())
       .flatMap((f) => f.split("\n"))
       .filter((l) => /\bjq\b/.test(l))
       .flatMap((l) => [...l.matchAll(/'([^']*)'/g)].map((m) => m[1]!));
-    expect(programs.length).toBeGreaterThan(5);
     expect(programs.filter((p) => p.includes("${"))).toEqual([]);
   });
 
   // `gh pr update-branch` carries an `|| { echo ...; exit 1; }` guard that routes a
   // 403/network/protection failure to Failure Path.
   it("F3: every fenced 'gh pr update-branch' call carries an error guard", () => {
-    const ship = readShip();
-    const lines = ship.split("\n");
-    let inFence = false;
-    const violations: string[] = [];
-    for (const line of lines) {
-      // Fenced blocks in this workflow are indented under list items, so
-      // allow leading whitespace before the fence marker.
-      if (/^\s*```/.test(line)) {
-        inFence = !inFence;
-        continue;
-      }
-      if (!inFence) continue;
-      if (!/gh\s+pr\s+update-branch\b/.test(line)) continue;
-      // Every fenced update-branch call must be guarded with || { ...; exit 1; }.
-      if (!/\|\|\s*\{/.test(line)) {
-        violations.push(line.trim());
-      }
-    }
-    expect(violations).toEqual([]);
-  });
-
-  // Finding 4a (MEDIUM): if the status path never reaches the gate, its override
-  // audit row lands in a literal-brace junk path. The gate takes the run's status
-  // log explicitly.
-  it("F4a: the merge gate is handed the run's status log", () => {
-    const gate = fencedLinesByStep(readShip()).find((l) =>
-      /"\$BKIT" runs gate --head="\{GATE_HEAD\}"/.test(l.line),
+    const calls = fencedLinesByStep(readShip()).filter((l) =>
+      /gh\s+pr\s+update-branch\b/.test(l.line),
     );
-    expect(gate, "merge gate invocation not found").toBeDefined();
-    expect(gate!.line).toMatch(/--file="\{STATUS\}"/);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.filter((l) => !/\|\|\s*\{/.test(l.line)).map((l) => l.line)).toEqual([]);
   });
 
   // Finding 5 (MEDIUM): gate code 11 (in progress — poll) must route to the poll
   // step alongside the other poll-able codes, not fall through to Failure Path.
   it("F5: gate code 11 (poll) routes to Step 9 alongside codes 10, 14 and 17", () => {
-    const ship = readShip();
-    const lines = ship.split("\n");
-    // One lead-in lists all four poll-able codes; the counter routing block it
-    // introduces continues to step-9.
-    const idx = lines.findIndex((l) => /code\s+11/.test(l));
+    const lines = readShip().split("\n");
+    const idx = lines.findIndex((l) => /\bexit 11\b/.test(l));
     expect(idx, "code 11 must have a routing lead-in").toBeGreaterThan(-1);
     expect(lines[idx]).toMatch(/\b14\b/);
     expect(lines[idx]).toMatch(/\b10\b/);
     expect(lines[idx]).toMatch(/\b17\b/);
     const block = lines.slice(idx, idx + 12).join("\n");
     expect(block, "codes 10/11/14/17 must route to Step 9, not Failure Path").toMatch(
-      /"\$BKIT" counters route --name=REVALIDATE_ATTEMPT .*--continue=step-9 /,
+      /"\{BKIT\}" counters route --name=REVALIDATE_ATTEMPT .*--continue=step-9 /,
     );
   });
 });
 
 // ---------------------------------------------------------------------------
-// The `AUTO_ROUTE_SUFFIX` handoff
+// The auto-route marker
 // ---------------------------------------------------------------------------
 //
-// The squash-merge `--subject` carries `bkit [auto route]`, which admits a post-merge
-// `dev` CI run through bkit-cloud.yml's free-tier gate. `{LABELS}` is an MCP-derived
-// TEMPLATE value, never a shell variable, and `$GITHUB_ENV` applies only BETWEEN
-// workflow steps. The merge step re-derives the label from the tracker in the SAME
-// fence that consumes it (docs/knowledge.jsonl, key
-// `363-workflow-md-shell-var-does-not-survive-bash-tool-call-boundary`, idiom 1).
-// Shape-level guards only — the behavioural check (execute the fence against a `gh`
-// stub, assert the rendered `--subject`) lives in audits/templates/auto-route-marker.integration.test.ts.
-describe("bkit-ship.md — #363 build-challenge H2 regression: the auto-route marker is derived where it is used", () => {
+// The squash subject carries `bkit [auto route]` when the issue holds `bkit:auto`,
+// which admits a post-merge `dev` CI run through bkit-cloud.yml's free-tier gate.
+// `{LABELS}` is an MCP-derived value, never a shell variable, and `$GITHUB_ENV`
+// applies only BETWEEN workflow steps. Step 10 re-reads the labels from the tracker
+// right before the merge and hands them to `bkit prs merge --label=`, which appends
+// the suffix itself (commands/workflow/prs.test.ts); the behavioural check lives in
+// audits/templates/auto-route-marker.integration.test.ts.
+describe("bkit-ship.md — #363: the auto-route marker comes from labels re-read at the merge", () => {
   it("no cross-Bash-tool-call handoff survives anywhere in the workflow", () => {
     const ship = readShip();
-    // $GITHUB_ENV does not bridge Bash tool calls inside one Action step, and
-    // a mktemp path published through it is inert.
     expect(ship).not.toContain("BKIT_AUTO_ROUTE_FILE");
     expect(ship).not.toMatch(/>>\s*"\$GITHUB_ENV"/);
+    expect(ship).not.toMatch(/\$\{LABELS:-\}/);
+    expect(ship).not.toContain("gh issue view");
   });
 
-  it("the marker is never derived from the dead ${LABELS:-} shell read", () => {
-    const ship = readShip();
-    // Prose may *explain* the trap; no executable fence may re-introduce it.
-    const fences = ship.match(/```bash\n([\s\S]*?)```/g) ?? [];
-    const offenders = fences.filter((f) =>
-      /^\s*[^#\n]*\$\{LABELS:-\}/m.test(f.replace(/```bash\n|```/g, "")),
-    );
-    expect(offenders, "a fenced block still reads ${LABELS:-}").toEqual([]);
-  });
-
-  it("Step 5 derives AUTO_ROUTE_SUFFIX from the tracker, exact-matched, in the subject's own fence", () => {
-    const ship = readShip();
-    const lines = ship.split("\n");
-    let inFence = false;
-    let fenceLines: string[] = [];
-    let target: string[] | undefined;
-    for (const line of lines) {
-      if (/^\s*```/.test(line)) {
-        if (!inFence) {
-          inFence = true;
-          fenceLines = [];
-        } else {
-          inFence = false;
-          if (fenceLines.some((l) => l.includes("--subject") && l.includes("AUTO_ROUTE_SUFFIX"))) {
-            target = fenceLines;
-          }
-        }
-        continue;
-      }
-      if (inFence) fenceLines.push(line);
-    }
-    expect(target, "no single fenced block derives AND consumes AUTO_ROUTE_SUFFIX").toBeDefined();
-    const block = target!.join("\n");
-    // Derived here from the labels Step 10 sub-step 5 re-read through the
-    // tracker MCP; `bkit issues labels` exact-matches `bkit:auto` (mirrors
-    // bkit-cloud.yml's kill switch), pinned in commands/workflow/issues.test.ts.
-    expect(block).toMatch(
-      /AUTO_ROUTE_SUFFIX=\$\("\$BKIT" issues labels \{LABEL_FLAGS\} \| jq -er \.autoRouteSuffix\)/,
-    );
-    expect(block).not.toContain("gh issue view");
-    // ...and the suffix actually reaches the squash subject.
-    expect(block).toContain("${AUTO_ROUTE_SUFFIX}");
+  it("Step 10 re-reads the labels through the tracker and passes them to the merge", () => {
+    const step = section(readShip(), /^## .*Step \d+ — Merge Gate \+ Merge PR/, /^### .*Gate/);
+    const reread = step.search(/mcp__github__issue_read\(\{ method: "get"/);
+    const merge = step.indexOf('"{BKIT}" prs merge');
+    expect(reread, "no tracker re-read in Step 10").toBeGreaterThan(-1);
+    expect(reread).toBeLessThan(merge);
+    expect(step).toMatch(/"\{BKIT\}" prs merge [^\n]*\{LABEL_FLAGS\}/);
+    expect(step).toContain("NEVER carried forward from Step 1's `{LABELS}`");
   });
 });
 
@@ -618,26 +541,37 @@ describe("bkit-ship.md — #363 build-challenge H2 regression: the auto-route ma
 
 describe("bkit-ship.md — Failure Path single-write contract", () => {
   // The state half (workflow-failed row, rebase abort, lock release, sentinel
-  // clearing) is `bkit workflows fail` — commands/workflow/workflows.test.ts.
+  // clearing) is `bkit workflows fail`; the one-commit, one-push flush (reconcile
+  // into the book root, dev lock, RUNTIME_DEVPUSHES-conditional target, refusing
+  // an empty target, asserting the checkout is on dev) is `bkit workflows handover
+  // --flush` — both in commands/workflow/workflows.test.ts.
   it("records the failure through bkit workflows fail, booked where the runtime books", () => {
     const fence = fences(failurePathBlock(readShip())).find((f) =>
-      /"\$BKIT" workflows fail --workflow=ship\b/.test(f),
+      /"\{BKIT\}" workflows fail --workflow=ship\b/.test(f),
     );
     expect(fence, "no bkit workflows fail in the Failure Path").toBeDefined();
-    expect(fence!).toMatch(
-      /DEVP="";\s*\[ "\$RUNTIME_DEVPUSHES" = "true" \] && DEVP="--dev-pushes"/,
+    expect(fence!).toMatch(/workflows fail .*--token=\{LOCK_TOKEN\}.*--dev-pushes/);
+  });
+
+  it("flushes through bkit workflows handover --flush, once", () => {
+    const calls = fences(failurePathBlock(readShip())).filter((f) =>
+      /"\{BKIT\}" workflows handover --workflow=ship [^\n]*--flush/.test(f),
     );
-    expect(fence!).toMatch(/workflows fail .*--token="\{LOCK_TOKEN\}".*\$DEVP/);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatch(/--dev-pushes/);
+    expect(calls[0]).toMatch(/--worktree="\{WORKTREE_PATH\}"/);
   });
 
-  it("resolves BOOK_ROOT from RUNTIME_DEVPUSHES inside the Failure Path", () => {
+  it("runs no git push, commit or second write of its own", () => {
     const block = failurePathBlock(readShip());
-    expect(block).toContain("BOOK_ROOT");
-    expect(block).toContain("RUNTIME_DEVPUSHES");
+    expect(countLines(block, /git (-C "[^"]+" )?(push|commit)\b/)).toBe(0);
+    expect(countLines(block, /ledgers (commit|union)\b/)).toBe(0);
+    expect(countLines(block, /ship aborted/)).toBe(0);
+    expect(countLines(block, /2>\/dev\/null \|\| true/)).toBe(0);
   });
 
-  it("has no '2>/dev/null || true' silencing inside the Failure Path", () => {
-    expect(countLines(failurePathBlock(readShip()), /2>\/dev\/null \|\| true/)).toBe(0);
+  it("does not route any step back into the Failure Path", () => {
+    expect(countLines(failurePathBlock(readShip()), /→ \*\*Failure Path\*\*/)).toBe(0);
   });
 
   it("writes .deferred-blocked with touch under BOOK_ROOT", () => {
@@ -645,45 +579,7 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
       .split("\n")
       .find((line) => /touch.*\.deferred-blocked/.test(line));
     expect(writer, "no 'touch ... .deferred-blocked' writer").toBeTruthy();
-    expect(writer).toContain("BOOK_ROOT");
-  });
-
-  it("contains exactly one git push", () => {
-    expect(countLines(failurePathBlock(readShip()), /git (-C "[^"]+" )?push/)).toBe(1);
-  });
-
-  it("contains exactly one bookkeeping commit (--mode=commit --message)", () => {
-    expect(countLines(failurePathBlock(readShip()), /--mode=commit --message/)).toBe(1);
-  });
-
-  it("makes no 'ship aborted' second commit", () => {
-    expect(countLines(failurePathBlock(readShip()), /ship aborted/)).toBe(0);
-  });
-
-  it("makes the push target RUNTIME_DEVPUSHES-conditional", () => {
-    const block = failurePathBlock(readShip());
-    expect(block).toContain('if [ "$RUNTIME_DEVPUSHES" = "true" ]');
-    expect(block).toContain('push origin "$TARGET"');
-  });
-
-  it("refuses an empty push target", () => {
-    expect(failurePathBlock(readShip())).toContain('[ -n "$TARGET" ]');
-  });
-
-  it("asserts the checkout is actually on dev before dev ops", () => {
-    const block = failurePathBlock(readShip());
-    expect(block).toContain("checkout dev");
-    expect(block).toContain('branch --show-current)" = "dev"');
-  });
-
-  it("does not route any step back into the Failure Path", () => {
-    expect(countLines(failurePathBlock(readShip()), /→ \*\*Failure Path\*\*/)).toBe(0);
-  });
-
-  it("reconciles branch-side artifacts into BOOK_ROOT before staging", () => {
-    const block = failurePathBlock(readShip());
-    expect(block).toContain("SRC_WT");
-    expect(block).toContain("LOGDIR_REL");
+    expect(writer).toContain("{BOOK_ROOT}");
   });
 
   it("gitignores routing sentinels in the rendered file and the template source", () => {
@@ -694,26 +590,25 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
     }
   });
 
-  it("has no fenced bash block that stages via raw 'git add $BOOK_PATHS'", () => {
-    expect(countLines(readShip(), /git .*add \$\{?BOOK_PATHS\}?/)).toBe(0);
+  it("wires bkit ledgers into exactly 2 bash regions", () => {
+    // B2 stage, Commit + Push Bookkeeping. The Failure Path flush, the
+    // re-validate bookkeeping check and the close flush run inside commands.
+    expect(ledgersBlocks(readShip())).toHaveLength(2);
   });
 
-  it("wires bkit ledgers into exactly 5 bash regions", () => {
-    // Failure Path flush + union, B2 stage, Commit + Push Bookkeeping,
-    // Re-validate's only-bookkeeping check, Close flush + close-worktree union.
-    expect(ledgersBlocks(readShip())).toHaveLength(5);
-  });
-
-  it("guards every bkit ledgers stage / commit / union so a non-zero exit stops the step", () => {
-    // `only-bookkeeping` is exempt: its non-zero exit is an answer ("code
-    // moved"), which falls back to validating at the PR head.
-    const calls = fencedLinesByStep(readShip())
-      .map((l) => l.line)
-      .filter((l) => /"\$BKIT" ledgers (commit|union)\b/.test(l));
-    expect(calls.length).toBeGreaterThanOrEqual(5);
-    const unguarded = calls.filter(
-      (l) => !/\|\|\s*\{[^}]*exit 1;?\s*\}/.test(l) && !/^if "\$BKIT" ledgers /.test(l),
-    );
-    expect(unguarded).toEqual([]);
+  it("every bkit ledgers stage / commit stops the step on a non-zero exit", () => {
+    // Guarded with `|| { ...; exit 1; }`, or the fence's last command, whose
+    // exit is the block's.
+    for (const f of fences(readShip())) {
+      const lines = f
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      lines.forEach((l, i) => {
+        if (!/"\{BKIT\}" ledgers (commit|union)\b/.test(l)) return;
+        const guarded = /\|\|\s*\{[^}]*exit 1;?\s*\}/.test(l) || i === lines.length - 1;
+        expect(guarded, `unguarded: ${l}`).toBe(true);
+      });
+    }
   });
 });

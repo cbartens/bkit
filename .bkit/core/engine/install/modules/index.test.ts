@@ -6,12 +6,8 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as os from "node:os";
-import {
-  guardTemplatesRoot,
-  enrichClaudeSettingsAllows,
-  removeOrphans,
-  type WriteSet,
-} from "./index";
+import { guardTemplatesRoot, enrichClaudeSettingsAllows, removeOrphans } from "./index";
+import type { WriteSet } from "../write";
 import { resolveNetworkAllowlist } from "../cloud-env";
 import type { PreflightFinding } from "../../checks/before/index";
 

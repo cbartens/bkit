@@ -87,8 +87,7 @@ describe("Scenario 1 — blocker: no package.json → exit 1, zero writes", () =
       "../../../../../node_modules/.bin/tsx",
     );
 
-    // Skip subprocess test if tsx is not available (CI without devDeps installed)
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     const result = spawnSync(
       tsxBin,
@@ -360,7 +359,7 @@ describe("Scenario 5 — full install smoke against scratch consumer", () => {
       path.dirname(new URL(import.meta.url).pathname),
       "../../../../../node_modules/.bin/tsx",
     );
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     const result = spawnSync(
       tsxBin,
@@ -406,7 +405,7 @@ describe("Scenario 5b — docs/roadmap.md is consumer-owned: bkit install never 
       path.dirname(new URL(import.meta.url).pathname),
       "../../../../../node_modules/.bin/tsx",
     );
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     const installResult = spawnSync(
       tsxBin,
@@ -534,7 +533,7 @@ describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.
       path.dirname(new URL(import.meta.url).pathname),
       "../../../../../node_modules/.bin/tsx",
     );
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--typescript"], {
       cwd: tmpDir,
@@ -596,7 +595,7 @@ describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (
       path.dirname(new URL(import.meta.url).pathname),
       "../../../../../node_modules/.bin/tsx",
     );
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     // Capture pre-install state: .bkit/version must not exist
     const versionFilePath = path.join(tmpDir, ".bkit", "version");
@@ -651,7 +650,7 @@ describe("MCP config — fresh install and a consumer's own file", () => {
       path.dirname(new URL(import.meta.url).pathname),
       "../../../../../node_modules/.bin/tsx",
     );
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     const result = spawnSync(
       tsxBin,
@@ -708,7 +707,7 @@ describe("MCP config — fresh install and a consumer's own file", () => {
       path.dirname(new URL(import.meta.url).pathname),
       "../../../../../node_modules/.bin/tsx",
     );
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     const result = spawnSync(
       tsxBin,
@@ -789,7 +788,7 @@ describe("MCP config — fresh install and a consumer's own file", () => {
       path.dirname(new URL(import.meta.url).pathname),
       "../../../../../node_modules/.bin/tsx",
     );
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     const result = spawnSync(
       tsxBin,
@@ -840,7 +839,7 @@ describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => 
       path.dirname(new URL(import.meta.url).pathname),
       "../../../../../node_modules/.bin/tsx",
     );
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     const result = spawnSync(tsxBin, [bkitInstallPath, "check"], {
       cwd: tmpDir,
@@ -871,7 +870,7 @@ describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () =>
   function runStaleCheck(branchEnv: Record<string, string>): {
     combined: string;
     status: number | null;
-  } | null {
+  } {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "x", devDependencies: {} }),
@@ -886,7 +885,7 @@ describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () =>
     const dir = path.dirname(new URL(import.meta.url).pathname);
     const bkitInstallPath = path.resolve(dir, "../../cli.ts");
     const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
-    if (!fs.existsSync(tsxBin)) return null;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     // Force the branch deterministically: clear any ambient CI branch env first.
     const env: NodeJS.ProcessEnv = { ...process.env, NODE_NO_WARNINGS: "1" };
@@ -905,7 +904,6 @@ describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () =>
 
   it("on main: hard-fails (exit 1) and names the bkit-managed-stale BLOCKER", () => {
     const r = runStaleCheck({ GITHUB_REF_NAME: "main" });
-    if (!r) return;
     expect(r.combined, r.combined).toContain("[blocker] bkit-managed-stale");
     expect(r.combined).toContain("bkit-managed files are stale (managed-version marker drift)");
     expect(r.status, `expected exit 1, got ${r.status}:\n${r.combined}`).toBe(1);
@@ -913,7 +911,6 @@ describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () =>
 
   it("on a feature branch: surfaces a non-blocking ADVISORY, no marker-drift hard-fail line", () => {
     const r = runStaleCheck({ GITHUB_REF_NAME: "feat/296-file-upload" });
-    if (!r) return;
     expect(r.combined, r.combined).toContain("[advisory] bkit-managed-stale");
     expect(r.combined).toContain("non-blocking on this feature branch");
     // The blocker-only stderr drift line is gated on severity===blocker, so it must
@@ -939,7 +936,7 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
     const dir = path.dirname(new URL(import.meta.url).pathname);
     const bkitInstallPath = path.resolve(dir, "../../cli.ts");
     const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     // Target a version far above the installed one so it's always a "bump", never a noop.
     const result = spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"], {
@@ -971,7 +968,7 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
     const dir = path.dirname(new URL(import.meta.url).pathname);
     const bkitInstallPath = path.resolve(dir, "../../cli.ts");
     const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     const result = spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"], {
       cwd: tmpDir,
@@ -989,7 +986,7 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
     const dir = path.dirname(new URL(import.meta.url).pathname);
     const bkitInstallPath = path.resolve(dir, "../../cli.ts");
     const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     const result = spawnSync(
       tsxBin,
       [bkitInstallPath, "upgrade", "--to=4.2.0", "--latest", "--dry-run"],
@@ -1176,7 +1173,7 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
   it("--tracker=github --auto=cursor exits non-zero (constraint mismatch)", () => {
     // Finding 3 (a): the mismatch must be a hard error — exit 1 every time.
     const tsxBin = getTsxBin();
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     const initialPkg = { name: "constraint-test", version: "0.0.0" };
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify(initialPkg), "utf-8");
@@ -1210,7 +1207,7 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
     // The pre-remediation code wrote issueTracker BEFORE the constraint check,
     // meaning package.json was mutated even on a failed install.
     const tsxBin = getTsxBin();
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     const initialPkg = { name: "constraint-test", version: "0.0.0" };
     const initialPkgJson = JSON.stringify(initialPkg);
@@ -1238,7 +1235,7 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
   it("--tracker=linear --auto=cursor exits 0 and writes bkit.issueTracker=linear (matching pair)", () => {
     // Complementary positive case: the matching pair must succeed and persist state.
     const tsxBin = getTsxBin();
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     const initialPkg = { name: "constraint-test", version: "0.0.0" };
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify(initialPkg), "utf-8");
@@ -1543,7 +1540,7 @@ describe("T10 — claudeAllowDerived survives a real install", () => {
 
   it("records the resolved grant set, then updates it when allowed-domains shrinks", () => {
     const { bkitInstallPath, tsxBin } = paths();
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "t10", version: "1.0.0", packageManager: "pnpm@10.34.3" }, null, 2),

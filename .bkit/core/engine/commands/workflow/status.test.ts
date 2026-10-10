@@ -336,6 +336,50 @@ describe("bkit status route", () => {
   });
 });
 
+describe("bkit status route --expect", () => {
+  const file = () =>
+    log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      {
+        type: "workflow-meta",
+        workflow: "debug",
+        at: "2026-10-01T00:00:01Z",
+        debugMode: "NORMAL",
+        pushMode: "PR",
+      },
+      done("debug", "debug-failure-diagnose", "2026-10-01T00:01:00Z", {
+        verdict: "PASS",
+        strategy: "STANDARD",
+      }),
+    ]);
+  const route = (f: string, ...extra: string[]) =>
+    run(["status", "route", `--file=${f}`, "--workflow=debug", ...extra]);
+
+  it("passes when every field holds the expected value", async () => {
+    const r = await route(file(), "--expect=debugMode=NORMAL", "--expect=pushMode=PR");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ debugMode: "NORMAL", pushMode: "PR" });
+  });
+
+  it("exits 4 naming a field that holds another value", async () => {
+    const r = await route(file(), "--expect=debugMode=SOAK");
+    expect(r.code).toBe(4);
+    expect(r.err).toContain("debugMode is NORMAL, expected SOAK");
+  });
+
+  it("an expected field is also required: missing exits 4", async () => {
+    const f = log([started("debug", "2026-10-01T00:00:00Z")]);
+    expect((await route(f, "--expect=pushMode=PR")).code).toBe(4);
+  });
+
+  it("checks a step field with --step, and refuses an unknown field", async () => {
+    const f = file();
+    expect((await route(f, "--step=debug-failure-diagnose", "--expect=verdict=PASS")).code).toBe(0);
+    expect((await route(f, "--expect=colour=red")).code).toBe(2);
+    expect((await route(f, "--expect=verdict")).code).toBe(2);
+  });
+});
+
 describe("bkit status meta", () => {
   it("appends a workflow-meta row the route read then sees", async () => {
     const file = log([started("debug", "2026-10-01T00:00:00Z")]);

@@ -25,102 +25,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-function allow() {
-  return { permission: "allow" };
-}
-
-function ask(userMessage, agentMessage) {
-  return {
-    permission: "ask",
-    user_message: userMessage,
-    agent_message: agentMessage ?? userMessage,
-  };
-}
-
-function deny(userMessage, agentMessage) {
-  return {
-    permission: "deny",
-    user_message: userMessage,
-    agent_message: agentMessage ?? userMessage,
-  };
-}
-
-/** @param {string} cmd */
-function decideShell(cmd) {
-  const c = cmd.trim();
-  if (!c) return allow();
-
-  // Deny — matches Claude deny + OpenCode bash deny
-  // Check --force-with-lease BEFORE bare --force (substring otherwise matches).
-  const isForceWithLease = /\bgit\s+push\b[\s\S]*--force-with-lease\b/.test(c);
-  if (
-    !isForceWithLease &&
-    (/\bgit\s+push\b[\s\S]*--force\b/.test(c) || /\bgit\s+push\b[\s\S]*\s-f\b/.test(c))
-  ) {
-    return deny(
-      "Blocked: git force-push is denied by bkit Cursor guardrails.",
-      "Do not force-push. Use a normal push or --force-with-lease only when the user explicitly requests it on a personal branch.",
-    );
-  }
-  if (/\brm\s+-rf\s+(\/(?:\s|$|\*)|~\/\*|\$HOME\/\*)/.test(c)) {
-    return deny(
-      "Blocked: recursive delete of filesystem roots is denied by bkit Cursor guardrails.",
-      "Do not run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
-    );
-  }
-  if (/\bchmod\s+-R\s+777\s+\//.test(c)) {
-    return deny(
-      "Blocked: chmod -R 777 / is denied by bkit Cursor guardrails.",
-      "Do not world-writable-chmod the filesystem root.",
-    );
-  }
-
-  // Ask — privileged / destructive shell. curl/wget: ask UNLESS the URL host is
-  // on the shared network allowlist (shipped defaults + `.cursor/allowlist.json`).
-  const askPatterns = [
-    /\bsudo\b/,
-    /\bbrew\s+install\b/,
-    /\b(pnpm|npm|bun)\s+publish\b/,
-    /\bgit\s+reset\s+--hard\b/,
-    /\bgit\s+clean\s+-fdx?\b/,
-    /\bgit\s+filter-branch\b/,
-    /\bgit\s+checkout\s+--\s+\./,
-    /\bgit\s+restore\s+\./,
-    /\bgit\s+stash\s+drop\b/,
-    /\bgit\s+rebase\s+-i\b/,
-    /\bgh\s+repo\s+delete\b/,
-    /\bgh\s+pr\s+close\b/,
-    /\bgh\s+release\s+delete\b/,
-  ];
-  for (const re of askPatterns) {
-    if (re.test(c)) {
-      return ask(
-        "bkit Cursor guardrails: confirm this destructive / privileged shell command.",
-        `Command requires confirmation: ${c}`,
-      );
-    }
-  }
-
-  if (usesFetch(c)) {
-    if (curlWgetHostAllowed(c)) return allow();
-    return ask(
-      "bkit Cursor guardrails: confirm outbound curl/wget (host not on network allowlist).",
-      `Command requires confirmation: ${c}`,
-    );
-  }
-
-  // Shell-as-edit-channel: ADVISORY, never a block — allow plus an `agent_message`
-  // naming the edited paths.
-  const edits = shellEditTargets(c);
-  if (edits.length > 0) {
-    return {
-      permission: "allow",
-      agent_message: shellEditAdvisory(edits),
-    };
-  }
-
-  return allow();
-}
+// --- Shell detection: identical in every host's guardrails hook (bkit renders it from
+// one source). Needs `fs` and `path` in scope; the host's own code above declares them.
 
 /** Wrappers that precede the real command; skipped when finding a segment's head. */
 const CMD_WRAPPERS = new Set(["sudo", "env", "time", "nohup", "nice", "command", "exec", "xargs"]);
@@ -160,7 +66,8 @@ function usesFetch(cmd) {
 }
 
 /** Source-ish extensions: a redirect into one of these is plausibly a file edit. */
-const SOURCE_EXT_RE = /\.(ts|tsx|js|jsx|cjs|mjs|json|md|sh|bash|py|rb|go|rs|java|css|scss|html|ya?ml|toml|sql)$/i;
+const SOURCE_EXT_RE =
+  /\.(ts|tsx|js|jsx|cjs|mjs|json|md|sh|bash|py|rb|go|rs|java|css|scss|html|ya?ml|toml|sql)$/i;
 
 /**
  * Detect a shell command being used as an edit channel. Returns a list of human
@@ -207,9 +114,10 @@ function shellEditAdvisory(hits) {
 }
 
 /**
- * Hosts come from `.cursor/allowlist.json`, which `bkit install` and `bkit upgrade`
- * write from the shipped egress registry union the consumer's `allowed-domains`.
- * There is NO hardcoded fallback list. With no artifact, this returns empty and every
+ * Hosts come from `.cursor/allowlist.json`, the one install-written artifact carrying
+ * the resolved network allowlist (the shipped egress registry union the consumer's
+ * `allowed-domains`); every host's hook reads it. There is NO hardcoded fallback list:
+ * absent (cursor module not installed) or unreadable, this returns empty and every
  * host is treated as unknown.
  */
 function loadNetworkAllowlistBases() {
@@ -220,9 +128,7 @@ function loadNetworkAllowlistBases() {
       const doc = JSON.parse(fs.readFileSync(p, "utf8"));
       const domains = Array.isArray(doc.domains) ? doc.domains : [];
       for (const d of domains) {
-        const b = String(d)
-          .replace(/^\*\./, "")
-          .trim();
+        const b = String(d).replace(/^\*\./, "").trim();
         if (b) bases.add(b);
       }
     }
@@ -262,16 +168,130 @@ function hostMatchesBase(host, base) {
 }
 
 /**
- * Allow curl/wget only when EVERY URL in the command targets an allowlisted host.
+ * True when EVERY URL in the command targets an allowlisted host.
  *
  * Only each URL's host is consulted, never the rest of the command string (query
- * params, headers). No parseable URL, or any host off the list → ask.
+ * params, headers). No parseable URL, or any host off the list → false.
  */
 function curlWgetHostAllowed(cmd) {
   const hosts = extractUrlHosts(cmd);
   if (hosts.length === 0) return false;
   const bases = loadNetworkAllowlistBases();
   return hosts.every((h) => [...bases].some((b) => hostMatchesBase(h, b)));
+}
+
+// --- Shell tiers: identical in the Cursor and Codex guardrails hooks (bkit renders them
+// from one source). Each host maps a tier to its own output shape and wording.
+
+/**
+ * Deny tier — matches Claude's settings.json deny rows and OpenCode's bash deny map.
+ * `{ what, fix }` for a blocked command, else null.
+ */
+function denyRule(c) {
+  // Check --force-with-lease BEFORE bare --force (substring otherwise matches).
+  const isForceWithLease = /\bgit\s+push\b[\s\S]*--force-with-lease\b/.test(c);
+  if (
+    !isForceWithLease &&
+    (/\bgit\s+push\b[\s\S]*--force\b/.test(c) || /\bgit\s+push\b[\s\S]*\s-f\b/.test(c))
+  ) {
+    return {
+      what: "git force-push",
+      fix: "Do not force-push. Use a normal push, or --force-with-lease only when the user explicitly asks for it on a personal branch.",
+    };
+  }
+  if (/\brm\s+-rf\s+(\/(?:\s|$|\*)|~\/\*|\$HOME\/\*)/.test(c)) {
+    return {
+      what: "recursive delete of a filesystem root",
+      fix: "Do not run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
+    };
+  }
+  if (/\bchmod\s+-R\s+777\s+\//.test(c)) {
+    return {
+      what: "chmod -R 777 on the filesystem root",
+      fix: "Do not world-writable-chmod the filesystem root.",
+    };
+  }
+  return null;
+}
+
+/** Ask tier — destructive or privileged shell. */
+const ASK_PATTERNS = [
+  /\bsudo\b/,
+  /\bbrew\s+install\b/,
+  /\b(pnpm|npm|bun)\s+publish\b/,
+  /\bgit\s+reset\s+--hard\b/,
+  /\bgit\s+clean\s+-fdx?\b/,
+  /\bgit\s+filter-branch\b/,
+  /\bgit\s+checkout\s+--\s+\./,
+  /\bgit\s+restore\s+\./,
+  /\bgit\s+stash\s+drop\b/,
+  /\bgit\s+rebase\s+-i\b/,
+  /\bgh\s+repo\s+delete\b/,
+  /\bgh\s+pr\s+close\b/,
+  /\bgh\s+release\s+delete\b/,
+];
+
+/**
+ * The tier a trimmed command falls in, first match wins:
+ *   `{ tier: "deny", what, fix }` — blocked on every host;
+ *   `{ tier: "ask" }`             — a destructive / privileged command;
+ *   `{ tier: "fetch" }`           — curl / wget to a host off the network allowlist;
+ *   `{ tier: "edit", edits }`     — the shell used as an edit channel (advisory only);
+ *   null                          — nothing to say.
+ */
+function classifyShell(c) {
+  if (!c) return null;
+  const denied = denyRule(c);
+  if (denied) return { tier: "deny", ...denied };
+  if (ASK_PATTERNS.some((re) => re.test(c))) return { tier: "ask" };
+  if (usesFetch(c)) return curlWgetHostAllowed(c) ? null : { tier: "fetch" };
+  const edits = shellEditTargets(c);
+  return edits.length > 0 ? { tier: "edit", edits } : null;
+}
+
+function allow() {
+  return { permission: "allow" };
+}
+
+function ask(userMessage, agentMessage) {
+  return {
+    permission: "ask",
+    user_message: userMessage,
+    agent_message: agentMessage ?? userMessage,
+  };
+}
+
+function deny(userMessage, agentMessage) {
+  return {
+    permission: "deny",
+    user_message: userMessage,
+    agent_message: agentMessage ?? userMessage,
+  };
+}
+
+/** @param {string} cmd */
+function decideShell(cmd) {
+  const c = cmd.trim();
+  const v = classifyShell(c);
+  if (!v) return allow();
+  switch (v.tier) {
+    case "deny":
+      return deny(`Blocked: ${v.what} is denied by bkit Cursor guardrails.`, v.fix);
+    case "ask":
+      return ask(
+        "bkit Cursor guardrails: confirm this destructive / privileged shell command.",
+        `Command requires confirmation: ${c}`,
+      );
+    case "fetch":
+      return ask(
+        "bkit Cursor guardrails: confirm outbound curl/wget (host not on network allowlist).",
+        `Command requires confirmation: ${c}`,
+      );
+    default:
+      // Shell-as-edit-channel: ADVISORY, never a block — allow plus an `agent_message`
+      // naming the edited paths.
+      return { permission: "allow", agent_message: shellEditAdvisory(v.edits) };
+  }
 }
 
 /** @param {string} filePath */

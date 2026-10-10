@@ -307,7 +307,6 @@ bkit checks preconditions and known advisory patterns before touching any file. 
 | --- | --- |
 | Blocker | `package.json` absent or unparseable JSON |
 | Blocker | core install requested but `.git/` absent (not a git repository) |
-| Advisory | `lint:prose` script lacks the write-good guard (`[ -d .vale/styles/write-good ]`) |
 | Advisory | On-disk `.bkit/version` major > installing major (downgrade) |
 | Advisory | `node_modules/@cbartens/bkit` version > `.bkit/version` (stale pin) |
 

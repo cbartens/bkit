@@ -5,6 +5,7 @@
 //   - Unit test asserts each rule's pass/fail.
 //   - Every emitted `kind:"compliance"` row carries `bkitVersion`.
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -17,6 +18,7 @@ import {
   appendComplianceRows,
   formatComplianceSummary,
   readBkitVersion,
+  gradeCompliance,
   type GraderInput,
   type GitAdapter,
   type ComplianceRow,
@@ -533,5 +535,59 @@ describe("readBkitVersion", () => {
   it("returns '0.0.0' when package.json contains invalid JSON (fail-open)", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), "not valid json{{{");
     expect(readBkitVersion(tmpDir)).toBe("0.0.0");
+  });
+});
+
+describe("gradeCompliance — the grade bkit workflows close runs before its report", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+  const git = (cwd: string, ...args: string[]) =>
+    spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+      cwd,
+      encoding: "utf-8",
+    });
+  function repo(...subjects: string[]) {
+    const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-grade-")));
+    dirs.push(d);
+    git(d, "init", "-q");
+    for (const s of subjects) git(d, "commit", "-q", "--allow-empty", "-m", s);
+    fs.mkdirSync(path.join(d, ".bkit"));
+    return d;
+  }
+  const statsRows = (d: string) =>
+    fs
+      .readFileSync(path.join(d, ".bkit", "stats.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+  it("appends one compliance row per rule and returns the violations", () => {
+    const d = repo("base", "docs(1-x): ship DONE bkit [skip ci]");
+    const log: string[] = [];
+    const v = gradeCompliance(d, "ship", (m) => log.push(m));
+    expect(v?.map((x) => x.ruleId)).toEqual(["skip-ci-not-head"]);
+    const rows = statsRows(d);
+    expect(rows.map((r) => r.kind)).toEqual(["compliance", "compliance"]);
+    expect(rows.find((r) => r.rule === "skip-ci-not-head")?.result).toBe("fail");
+    expect(log.join("\n")).toContain("Compliance violations found");
+  });
+
+  it("passes every rule on a clean head", () => {
+    const d = repo("base", "feat(1-x): work");
+    expect(gradeCompliance(d, "build", () => undefined)).toEqual([]);
+    expect(statsRows(d).every((r) => r.result === "pass")).toBe(true);
+  });
+
+  it("is fail-open: no commits returns null; an unwritable stats file is reported, never thrown", () => {
+    expect(gradeCompliance(repo(), "build", () => undefined)).toBeNull();
+    const d = repo("base", "x");
+    fs.rmSync(path.join(d, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(d, ".bkit"), "");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(gradeCompliance(d, "build", () => undefined)).toEqual([]);
+    expect(errors.mock.calls.flat().join("\n")).toContain("[bkit-comply] append failed");
+    errors.mockRestore();
   });
 });

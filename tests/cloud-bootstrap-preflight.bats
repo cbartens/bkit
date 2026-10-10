@@ -40,13 +40,24 @@ exit 1
 EOF
   chmod +x "$FAKE_BIN/gh"
 
+  # The hook probes gh through `bkit runtime detect` (and reads it with jq), so the
+  # workdir is a git repo carrying bkit where `pnpm install` leaves it: here a shim to
+  # the repo's built CLI. node and jq are linked into FAKE_BIN so PATH needs no host dirs.
+  git -C "$WORKDIR" init -q
+  mkdir -p "$WORKDIR/node_modules/.bin"
+  printf '#!/bin/sh\nexec node "%s/dist/cli.js" "$@"\n' "$REPO_ROOT" >"$WORKDIR/node_modules/.bin/bkit"
+  chmod +x "$WORKDIR/node_modules/.bin/bkit"
+  for tool in node jq; do
+    ln -s "$(command -v "$tool")" "$FAKE_BIN/$tool"
+  done
+
   # A tools-only PATH that is guaranteed NOT to contain gh, for the absent-gh
   # case. Naming real system dirs there is host-dependent and silently wrong on
   # GitHub-hosted runners, where gh ships as /usr/bin/gh next to the interpreter
   # and coreutils the hook itself needs — so the hook found gh and the assertion
   # failed in CI while passing on a machine with gh in /opt/homebrew/bin.
   NO_GH_BIN="$(mktemp -d)"
-  for tool in bash cat awk; do
+  for tool in bash sh cat node jq git; do
     ln -s "$(command -v "$tool")" "$NO_GH_BIN/$tool"
   done
 }
@@ -58,7 +69,7 @@ teardown() {
 run_bootstrap() {
   # WORKDIR has no pnpm-lock.yaml / .vale.ini / .agents/context.md, so the
   # baseline-install / vale-sync / context-fetch-provision blocks self-skip —
-  # isolating the gh-preflight block under test.
+  # isolating the gh-preflight block under test. dist/cli.js must be built.
   printf '' | env -i PATH="$FAKE_BIN:/usr/bin:/bin" CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$WORKDIR" "$@" bash "$BOOTSTRAP_SH"
 }
 
@@ -140,4 +151,36 @@ run_bootstrap() {
 @test "the hook never hard-stops the session (always exits 0) even on the dual-lane warning path" {
   run run_bootstrap env FAKE_GH_AUTH_OK=0
   [ "$status" -eq 0 ]
+}
+
+# --- bkit-backed blocks -------------------------------------------------------
+
+@test "without bkit installed, gh preflight and provisioning are skipped loudly, never silently" {
+  rm "$WORKDIR/node_modules/.bin/bkit"
+  run run_bootstrap env FAKE_GH_AUTH_OK=1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"gh-preflight: SKIPPED"* ]]
+  [[ "$output" != *"RUNTIME_GITHUBCLI="* ]]
+}
+
+@test "runs each context-fetch:provision recipe bkit context list-blocks returns, and only those below bkit:end" {
+  mkdir -p "$WORKDIR/.agents"
+  cat >"$WORKDIR/.agents/context.md" <<'EOF'
+<!-- context-fetch:provision managed-example -->
+```bash
+echo "PROVISIONED-managed-example" >&2
+```
+<!-- context-fetch:end -->
+<!-- bkit:end -->
+<!-- context-fetch:provision mycli -->
+```bash
+echo "PROVISIONED-mycli" >&2
+```
+<!-- context-fetch:end -->
+EOF
+  run run_bootstrap env FAKE_GH_AUTH_OK=1 HOME="$WORKDIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"provisioning context-fetch CLIs"* ]]
+  [[ "$output" == *"PROVISIONED-mycli"* ]]
+  [[ "$output" != *"PROVISIONED-managed-example"* ]]
 }

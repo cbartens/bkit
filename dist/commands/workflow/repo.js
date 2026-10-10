@@ -2,10 +2,12 @@
 //
 // `owner/repo` comes from `gh repo view`; when gh is missing, unauthed, or
 // answers nothing, from the `origin` remote URL instead (the MCP fallback the
-// workflows already describe: "parse git remote"). The current branch, and how
-// far it trails `origin/dev`, ride along so Step 1 is one call.
+// workflows already describe: "parse git remote"). The current branch, how far it
+// trails `origin/dev`, the main checkout, and the bkit binary every later block
+// calls ride along so Step 1 is one call.
+import * as path from "node:path";
 import { parseRemoteUrlToSlug } from "../../ledgers/telemetry.js";
-import { EXIT, git, runGit, runTool } from "../lib.js";
+import { EXIT, git, repoRoot, runGit, runTool } from "../lib.js";
 /** Exit code: neither gh nor the origin remote named an owner/repo. */
 export const EXIT_NO_REPO = 3;
 /** Exit code: HEAD is detached, so there is no current branch (and --allow-detached was not given). */
@@ -62,6 +64,9 @@ export const repoCommand = {
                 branch: "current branch (null on a detached HEAD)",
                 behindDev: "commits on origin/dev not in HEAD (null when origin/dev is unknown locally)",
                 divergedAgo: "age of the merge-base with origin/dev, e.g. '3 days ago' (null when unknown)",
+                repoRoot: "the main checkout (the same from any worktree)",
+                bkit: "the bkit binary the workflow blocks call: <repoRoot>/node_modules/.bin/bkit",
+                outboxRoot: "<git common dir>/bkit-outbox: per-run scratch files, never committed",
             },
             exitCodes: {
                 [EXIT_NO_REPO]: "neither gh nor the origin remote named an owner/repo",
@@ -89,7 +94,18 @@ export const repoCommand = {
                 else {
                     ctx.log(`branch is ${behind.behindDev} commits behind dev / ${behind.divergedAgo ?? "unknown"} since divergence`);
                 }
-                ctx.emit({ ...resolved, owner, repo, branch, ...behind });
+                const root = repoRoot(ctx.cwd);
+                const common = git(ctx.cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+                ctx.emit({
+                    ...resolved,
+                    owner,
+                    repo,
+                    branch,
+                    ...behind,
+                    repoRoot: root,
+                    bkit: path.join(root, "node_modules", ".bin", "bkit"),
+                    outboxRoot: path.join(common ?? path.join(root, ".git"), "bkit-outbox"),
+                });
                 if (branch === null && ctx.flags.allowDetached !== true) {
                     ctx.log("HEAD is detached — no current branch");
                     return EXIT_DETACHED;

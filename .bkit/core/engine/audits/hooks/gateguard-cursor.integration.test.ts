@@ -10,10 +10,20 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const HOOK = path.resolve(".bkit/templates/.cursor/hooks/gateguard.cjs");
-const CLAUDE_HOOK = path.resolve(".bkit/templates/.claude/hooks/gateguard.cjs");
+import { readTemplate } from "../../render/parts";
+
+// Both hooks as install generates them (shared parts spliced in).
+const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gg-cursor-"));
+afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
+const HOOK = path.join(GENERATED, "cursor.cjs");
+const CLAUDE_HOOK = path.join(GENERATED, "claude.cjs");
+fs.writeFileSync(HOOK, readTemplate(path.resolve(".bkit/templates/.cursor/hooks/gateguard.cjs")));
+fs.writeFileSync(
+  CLAUDE_HOOK,
+  readTemplate(path.resolve(".bkit/templates/.claude/hooks/gateguard.cjs")),
+);
 
 let workspace: string;
 

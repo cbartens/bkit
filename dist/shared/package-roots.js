@@ -95,6 +95,11 @@ export function getPromptsRoot() {
 // (cloud/IDEs/prompts/trackers/workflows/README.md) are ALSO force-overwritten
 // into the consumer's own `.bkit/` on install — a readable mirror — by
 // runBkitDocs (install/modules/index.ts); engine data and core/engine/ stay package-only.
+// Shared hook code spliced into each host's hook template at render time
+// (render/parts.ts). Package-only: never copied into a consumer.
+export function getHookPartsRoot() {
+    return path.join(getPkgRoot(), ".bkit", "core", "hook-parts");
+}
 export function getBkitDocsRoot() {
     return path.join(getPkgRoot(), ".bkit");
 }

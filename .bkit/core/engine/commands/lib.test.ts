@@ -96,6 +96,39 @@ describe("parseFlags", () => {
   it("fills keys in argv order", () => {
     expect(Object.keys(parseFlags(["--sub-plan=2", "--fid=1"], FLAGS))).toEqual(["subPlan", "fid"]);
   });
+
+  it.each([
+    [
+      ["--fid={FID}"],
+      "--fid carries the unsubstituted placeholder {FID} — substitute it before running",
+    ],
+    [
+      ["--fid=1", "--artifact=docs/plans/{YYYYMM}/x.md"],
+      "--artifact carries the unsubstituted placeholder {YYYYMM} — substitute it before running",
+    ],
+    [
+      ["--fid", "{LOCK_TOKEN}"],
+      "--fid carries the unsubstituted placeholder {LOCK_TOKEN} — substitute it before running",
+    ],
+  ])("refuses a literal workflow placeholder in %j (exit 2)", (argv, message) => {
+    expect(usage(() => parseFlags(argv, FLAGS))).toBe(message);
+  });
+
+  it("refuses a placeholder in a positional argument", () => {
+    const specs: FlagSpec[] = [{ name: "base", type: "string", positional: true, help: "ref" }];
+    expect(usage(() => parseFlags(["{BASE_SHA}"], specs))).toBe(
+      "--base carries the unsubstituted placeholder {BASE_SHA} — substitute it before running",
+    );
+  });
+
+  it("lets through braces that are not an upper-case placeholder", () => {
+    expect(
+      parseFlags(["--fid=1", "--artifact={}", "--artifact={fid}", "--artifact=<attempt>"], FLAGS),
+    ).toEqual({
+      fid: "1",
+      artifact: ["{}", "{fid}", "<attempt>"],
+    });
+  });
 });
 
 const CMD: CommandSpec = {

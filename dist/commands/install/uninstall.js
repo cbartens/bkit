@@ -22,6 +22,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
 import { stripManagedBlock, detectMarkerStyle } from "../../install/managed-block.js";
+import { readTemplate } from "../../render/parts.js";
 import { getInstallManifest, } from "../../install/manifest.js";
 import { isConsumerModified, readBkitVersion } from "../../install/version-file.js";
 import { getPkgRoot, getTemplatesRoot, TEMPLATE_COPIES_DIR } from "../../shared/package-roots.js";
@@ -519,7 +520,7 @@ export async function runUninstall(modules, ctx) {
                             let isBkitOnlyScaffold = false;
                             const markeredTemplatePath = path.join(getTemplatesRoot(), summary.file);
                             if (fs.existsSync(markeredTemplatePath)) {
-                                const templateContent = fs.readFileSync(markeredTemplatePath, "utf-8");
+                                const templateContent = readTemplate(markeredTemplatePath);
                                 const templateStripped = stripManagedBlock(templateContent, detectMarkerStyle(templateContent) ?? style);
                                 isBkitOnlyScaffold = normResidual(stripped) === normResidual(templateStripped);
                             }

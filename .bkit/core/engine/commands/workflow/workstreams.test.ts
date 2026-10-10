@@ -131,7 +131,7 @@ describe("bkit workstreams comment", () => {
       ORGANISED,
     );
     expect(r.code).toBe(0);
-    expect(r.json.body).toBe(
+    expect(r.json.comment).toBe(
       [
         "###### bkit:generated",
         "### Step 10 — Suggested Workstreams",

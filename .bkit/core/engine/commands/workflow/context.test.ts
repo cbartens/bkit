@@ -628,7 +628,40 @@ describe("bkit context list-blocks", () => {
   it("says loudly when nothing is configured", async () => {
     const r = await run(["list-blocks"], fs.mkdtempSync(path.join(tmpDir, "empty-")));
     expect(r.json.blocks).toEqual([]);
+    expect(r.json.provision).toEqual([]);
     expect(r.err).toContain("NO BLOCKS CONFIGURED");
+  });
+
+  it("emits each provision block's bash body below bkit:end, in file order, and no fetch body", async () => {
+    write(
+      "prov/.agents/context.md",
+      [
+        "<!-- context-fetch:provision managed-example -->",
+        "```bash",
+        "never",
+        "```",
+        "<!-- context-fetch:end -->",
+        "<!-- bkit:end -->",
+        "<!-- context-fetch:start a context=ci -->",
+        "```bash",
+        "fetch-body",
+        "```",
+        "<!-- context-fetch:end -->",
+        "<!-- context-fetch:provision a -->",
+        "```bash",
+        "command -v a || install-a",
+        "```",
+        "<!-- context-fetch:end -->",
+        "<!-- context-fetch:provision b -->",
+        "```bash",
+        "command -v b || install-b",
+        "```",
+        "<!-- context-fetch:end -->",
+      ].join("\n"),
+    );
+    const r = await run(["list-blocks"], path.join(tmpDir, "prov"));
+    expect(r.json.provision).toEqual(["command -v a || install-a", "command -v b || install-b"]);
+    expect(r.json.blocks).toHaveLength(1);
   });
 });
 
@@ -842,6 +875,54 @@ describe("bkit context run-block / finalise (#427 T4)", () => {
     const dir = workspace();
     const r = await run(["finalise", ...base], dir);
     expect(r.json).toMatchObject({ verdict: "FAIL", artifacts: [], clamped: [] });
+  });
+
+  it("finalise --record writes and commits the context-fetch row, and prints the step comment", async () => {
+    const dir = workspace();
+    const g = (...args: string[]) =>
+      spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+        cwd: dir,
+        encoding: "utf-8",
+      }).stdout.trim();
+    spawnSync("git", ["config", "user.email", "t@t"], { cwd: dir });
+    spawnSync("git", ["config", "user.name", "t"], { cwd: dir });
+    g("commit", "-q", "--allow-empty", "-m", "base");
+    await run(["run-block", "--idx=1", script(dir, "echo ci"), ...base], dir);
+    const status = "docs/plans/202608/logs/427-x/status.jsonl";
+    fs.writeFileSync(
+      path.join(dir, status),
+      `${JSON.stringify({ type: "workflow-started", workflow: "debug", at: "2026-08-01T00:00:00Z" })}\n`,
+    );
+    const r = await run(
+      [
+        "finalise",
+        ...base,
+        `--file=${status}`,
+        "--record",
+        "--message=chore(427-x): fetch-context attempt 1",
+        "--number=4",
+        "--title=Fetch Context",
+      ],
+      dir,
+    );
+    expect(r.code).toBe(0);
+    expect(r.json.row).toMatchObject({
+      type: "step-done",
+      workflow: "debug",
+      step: "context-fetch",
+      verdict: "PASS",
+      attempt: 1,
+      artifacts: ["docs/plans/202608/logs/427-x/context-ci-github-1-1.md"],
+      contextsConfigured: ["runtime", "ci", "web"],
+    });
+    expect(r.json.commit).toBe(g("rev-parse", "HEAD"));
+    expect(g("log", "-1", "--format=%s")).toBe("chore(427-x): fetch-context attempt 1");
+    expect(r.json.comment).toContain("Step 4 — Fetch Context");
+    expect(r.json.comment).toContain("Verdict: PASS");
+  });
+
+  it("finalise --record needs --file", async () => {
+    expect((await run(["finalise", ...base, "--record", "--message=m"], workspace())).code).toBe(2);
   });
 });
 

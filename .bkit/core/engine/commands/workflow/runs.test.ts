@@ -1387,3 +1387,386 @@ describe("scanBody", () => {
     expect(scanBody(cwd, "no-such-ref")).toBe("error");
   });
 });
+
+// ---------------------------------------------------------------------------
+// bkit runs gate --pr / --squash-of / --snapshot / --record
+// ---------------------------------------------------------------------------
+
+/** `gh pr view` answers `pr` (or fails when null); every other call goes to the fixture stub. */
+function prThenFixtureGh(pr: Record<string, unknown> | null) {
+  const dir = tmp("bkit-pr-gh-");
+  if (pr) fs.writeFileSync(path.join(dir, "pr.json"), JSON.stringify(pr));
+  fs.writeFileSync(
+    path.join(dir, "gh"),
+    [
+      "#!/bin/sh",
+      'if [ "$1 $2" = "pr view" ]; then',
+      `  [ -f "${dir}/pr.json" ] || exit 1`,
+      `  cat "${dir}/pr.json"; exit 0`,
+      "fi",
+      `exec "${FIXTURE_GH}" "$@"`,
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  env({ PATH: `${dir}:${process.env.PATH}` });
+}
+
+const openPr = (extra: Record<string, unknown> = {}) => ({
+  number: 7,
+  url: "https://github.com/example/example/pull/7",
+  state: "OPEN",
+  baseRefName: "dev",
+  headRefName: "feat/7-x",
+  headRefOid: "green-capstone",
+  title: "feat(7-x): thing",
+  mergeCommit: null,
+  mergeable: "MERGEABLE",
+  ...extra,
+});
+
+describe("bkit runs gate — PR heads, snapshot and audit rows", () => {
+  const statusFile = () => {
+    const file = path.join(tmp(), "status.jsonl");
+    fs.writeFileSync(file, "");
+    return file;
+  };
+  const rowsOf = (file: string) =>
+    fs
+      .readFileSync(file, "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+  it("--pr gates the PR's current head", async () => {
+    prThenFixtureGh(openPr());
+    const r = await gate(tmp(), "--pr=7");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ passed: true, head: "green-capstone" });
+  });
+
+  it("--pr refuses a title carrying a skip token (18) and --record writes the refusal row", async () => {
+    prThenFixtureGh(openPr({ title: "feat(7-x): thing [skip ci]" }));
+    const file = statusFile();
+    const r = await gate(tmp(), "--pr=7", `--record=${file}`);
+    expect(r.code).toBe(18);
+    expect(r.json.reason).toContain("CI-suppressing token");
+    expect(rowsOf(file)).toEqual([
+      expect.objectContaining({
+        type: "ship-gate-refusal",
+        workflow: "ship",
+        exitCode: 18,
+        head: "green-capstone",
+      }),
+    ]);
+  });
+
+  it("--snapshot appends the pre-merge snapshot before the gate decides", async () => {
+    prThenFixtureGh(openPr({ headRefOid: "failed" }));
+    const snap = path.join(tmp(), "outbox", "pre-merge-snapshot.jsonl");
+    const r = await gate(tmp(), "--pr=7", `--snapshot=${snap}`);
+    expect(r.code).toBe(12);
+    expect(rowsOf(snap)).toEqual([
+      expect.objectContaining({
+        type: "ship-pre-merge-snapshot",
+        gateHead: "failed",
+        validatedHead: "",
+        mergeable: "MERGEABLE",
+      }),
+    ]);
+  });
+
+  it("--squash-of gates the PR's squash commit; --capstone-only --record writes ship-merge-ci", async () => {
+    prThenFixtureGh(openPr({ state: "MERGED", mergeCommit: { oid: "green-capstone" } }));
+    const file = statusFile();
+    const r = await gate(tmp(), "--squash-of=7", "--capstone-only", `--record=${file}`);
+    expect(r.code).toBe(0);
+    expect(r.json.head).toBe("green-capstone");
+    expect(rowsOf(file)).toEqual([
+      expect.objectContaining({
+        type: "ship-merge-ci",
+        sha: "green-capstone",
+        run: "1001",
+        verdict: "PASS",
+        reason: "",
+      }),
+    ]);
+  });
+
+  it("a refused capstone records FAIL with its reason", async () => {
+    prThenFixtureGh(openPr({ state: "MERGED", mergeCommit: { oid: "no-capstone" } }));
+    const file = statusFile();
+    const r = await gate(tmp(), "--squash-of=7", "--capstone-only", `--record=${file}`);
+    expect(r.code).not.toBe(0);
+    const row = rowsOf(file)[0]!;
+    expect(row).toMatchObject({ type: "ship-merge-ci", verdict: "FAIL" });
+    expect(String(row.reason)).not.toBe("");
+  });
+
+  it("an unreadable PR is an API error (20) with no head", async () => {
+    prThenFixtureGh(null);
+    const r = await gate(tmp(), "--pr=7");
+    expect(r.code).toBe(20);
+    expect(r.json).toMatchObject({ passed: false, head: null });
+  });
+
+  it("takes exactly one of --head, --pr, --squash-of", async () => {
+    expect((await gate(tmp())).code).toBe(2);
+    expect((await gate(tmp(), "--head=x", "--pr=7")).code).toBe(2);
+    expect((await gate(tmp(), "--pr=x")).code).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bkit runs revalidate
+// ---------------------------------------------------------------------------
+
+describe("bkit runs revalidate", () => {
+  function shipRepo() {
+    const cwd = tmp();
+    gitIn(cwd, "init", "-q", "-b", "feat/7-x");
+    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "code");
+    const code = gitIn(cwd, "rev-parse", "HEAD");
+    const file = path.join(cwd, "status.jsonl");
+    fs.writeFileSync(file, "");
+    return { cwd, code, file };
+  }
+  const revalidate = (cwd: string, ...extra: string[]) =>
+    cli(cwd, [
+      "revalidate",
+      "--pr=7",
+      "--branch=feat/7-x",
+      "--month=202610",
+      "--fid=7-x",
+      "--repo=example/example",
+      ...extra,
+    ]);
+
+  it("an unmoved head needs no CI wait: validated at the code head, nothing dispatched", async () => {
+    const { cwd, code, file } = shipRepo();
+    prThenFixtureGh(openPr({ headRefOid: code }));
+    const r = await revalidate(
+      cwd,
+      `--entry-head=${code}`,
+      `--code-head=${code}`,
+      `--file=${file}`,
+    );
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      validatedHead: code,
+      currentHead: code,
+      revalidated: false,
+      dispatched: false,
+      probe: null,
+    });
+    expect(fs.readFileSync(file, "utf-8")).toBe("");
+  });
+
+  it("exits 1 when the PR head cannot be read, 80 when gh needs auth", async () => {
+    const { cwd, code, file } = shipRepo();
+    prThenFixtureGh(null);
+    expect(
+      (await revalidate(cwd, `--entry-head=${code}`, `--code-head=${code}`, `--file=${file}`)).code,
+    ).toBe(1);
+    fakeGhBin({ "pr-view": "EXIT:4" });
+    expect(
+      (await revalidate(cwd, `--entry-head=${code}`, `--code-head=${code}`, `--file=${file}`)).code,
+    ).toBe(80);
+  });
+
+  it("refuses an unknown --reason", async () => {
+    const { cwd, code, file } = shipRepo();
+    expect(
+      (
+        await revalidate(
+          cwd,
+          `--entry-head=${code}`,
+          `--code-head=${code}`,
+          `--file=${file}`,
+          "--reason=because",
+        )
+      ).code,
+    ).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bkit runs context (/bkit-auto Step 1)
+// ---------------------------------------------------------------------------
+
+describe("bkit runs context", () => {
+  function autoRepo() {
+    const cwd = tmp();
+    gitIn(cwd, "init", "-q", "-b", "dev");
+    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "base");
+    gitIn(cwd, "remote", "add", "origin", "https://github.com/o/r.git");
+    gitIn(cwd, "update-ref", "refs/remotes/origin/dev", "HEAD");
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ bkit: { issueTracker: "github" } }),
+    );
+    // No real gh: owner/repo comes from the origin remote, never the network.
+    fakeGhBin({});
+    return cwd;
+  }
+  const context = (cwd: string, phase: string, arg: string) =>
+    cli(cwd, ["context", `--phase=${phase}`, `--arg=${arg}`]);
+  const prJson = (extra: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      headRefName: "feat/12-x",
+      headRefOid: "sha12",
+      state: "OPEN",
+      url: "https://github.com/o/r/pull/42",
+      body: "<!-- bkit:issue=#12 bkit:fid=12-x -->\n",
+      ...extra,
+    });
+
+  it("BRIEF phases take the argument as the issue", async () => {
+    const r = await context(autoRepo(), "Design", "12");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      phase: "design",
+      mode: "BRIEF",
+      issueId: "12",
+      ownerRepo: "o/r",
+      owner: "o",
+      repo: "r",
+    });
+  });
+
+  it("CI_DEV: a slug argument is the FID, on dev at origin/dev", async () => {
+    const cwd = autoRepo();
+    const r = await context(cwd, "failure", "12-export-csv");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      phase: "debug",
+      mode: "CI_DEV",
+      fid: "12-export-csv",
+      issueId: "12",
+      branch: "dev",
+      headSha: gitIn(cwd, "rev-parse", "HEAD"),
+    });
+  });
+
+  it.each([["../../etc"], ["12;rm -rf"], ["a/b"]])(
+    "CI_DEV refuses the slug %j (exit 9)",
+    async (arg) => {
+      expect((await context(autoRepo(), "ship", arg)).code).toBe(9);
+    },
+  );
+
+  it("CI: the open PR, the CI run at its head, and the FID from the PR-body marker", async () => {
+    const cwd = autoRepo();
+    fakeGhBin({
+      "pr-view": prJson(),
+      "run-list": JSON.stringify([{ databaseId: 99, headSha: "sha12" }]),
+    });
+    const r = await context(cwd, "success", "42");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      phase: "ship",
+      mode: "CI",
+      prNumber: "42",
+      branch: "feat/12-x",
+      headSha: "sha12",
+      prUrl: "https://github.com/o/r/pull/42",
+      runId: "99",
+      fid: "12-x",
+      issueId: "12",
+    });
+  });
+
+  it("CI falls back to the feat/{FID} branch when the body has no marker", async () => {
+    const cwd = autoRepo();
+    fakeGhBin({
+      "pr-view": prJson({ body: "" }),
+      "run-list": JSON.stringify([{ databaseId: 1, headSha: "sha12" }]),
+    });
+    expect((await context(cwd, "ship", "42")).json.fid).toBe("12-x");
+  });
+
+  it("CI refuses a PR that is not open (7) and a head with no CI run (8)", async () => {
+    const cwd = autoRepo();
+    fakeGhBin({ "pr-view": prJson({ state: "MERGED" }) });
+    expect((await context(cwd, "ship", "42")).code).toBe(7);
+    fakeGhBin({
+      "pr-view": prJson(),
+      "run-list": JSON.stringify([{ databaseId: 1, headSha: "other" }]),
+    });
+    expect((await context(cwd, "ship", "42")).code).toBe(8);
+  });
+
+  it("an unknown phase exits 3; gh needing auth exits 80", async () => {
+    const cwd = autoRepo();
+    expect((await context(cwd, "deploy", "1")).code).toBe(3);
+    fakeGhBin({ "pr-view": "EXIT:4" });
+    expect((await context(cwd, "ship", "42")).code).toBe(80);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bkit runs dispatch --file / --step / --label
+// ---------------------------------------------------------------------------
+
+describe(
+  "bkit runs dispatch — the verdict row and the close transport",
+  { timeout: 20_000 },
+  () => {
+    function pushedRepo() {
+      const root = tmp();
+      const remote = path.join(root, "remote.git");
+      const cwd = path.join(root, "work");
+      gitIn(root, "init", "-q", "--bare", remote);
+      gitIn(root, "init", "-q", "-b", "feat/1-x", cwd);
+      gitIn(cwd, "config", "user.email", "t@t");
+      gitIn(cwd, "config", "user.name", "t");
+      gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "chore(1-x): close-workflow");
+      gitIn(cwd, "remote", "add", "origin", remote);
+      gitIn(cwd, "push", "-q", "-u", "origin", "feat/1-x");
+      const file = path.join(cwd, "status.jsonl");
+      fs.writeFileSync(file, "");
+      return { cwd, file };
+    }
+    const rowsOf = (file: string) =>
+      fs
+        .readFileSync(file, "utf-8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+    it("writes the step's row with its ciDispatch verdict, then the close-transport row", async () => {
+      const { cwd, file } = pushedRepo();
+      fakeGhBin({ "pr-view": ROLLUP_FOUND, "pr-list": '[{"number":7}]' });
+      const r = await cli(cwd, [
+        "dispatch",
+        "--fid=1-x",
+        "--pr=7",
+        `--file=${file}`,
+        "--workflow=build",
+        "--step=build-close-workflow",
+        "--label=bkit:auto",
+      ]);
+      expect(r.code).toBe(0);
+      const rows = rowsOf(file);
+      expect(rows[0]).toMatchObject({
+        type: "step-done",
+        workflow: "build",
+        step: "build-close-workflow",
+        ciDispatch: { outcome: "dispatched" },
+      });
+      expect(rows[1]).toMatchObject({
+        type: "close-transport",
+        shape: "push",
+        scanResult: "clean",
+      });
+      expect(r.json.row).toEqual(rows[0]);
+    });
+
+    it("--file and --step go together", async () => {
+      const { cwd, file } = pushedRepo();
+      fakeGhBin({ "pr-view": ROLLUP_FOUND });
+      expect((await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", `--file=${file}`])).code).toBe(2);
+    });
+  },
+);

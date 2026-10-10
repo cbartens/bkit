@@ -232,7 +232,7 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 
 **Managed-version marker.** Every non-JSON file bkit writes carries `bkit:managed vX.Y.Z` — first line inside the `bkit:start` block, or near the top of a whole file — in its comment syntax: `<!-- … -->` (markdown), `# <!-- … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, TOML), `// …` (JS). Install and upgrade restamp it; `bkit check` reports `bkit-managed-stale` for a marker that differs from the installed version (blocker on `main` / `dev`, advisory on feature branches). Templates carry no marker and no block.
 
-**Hook scripts.** bkit's block in `.claude/hooks/gateguard.cjs`, `.cursor/hooks/gateguard.cjs`, `.opencode/plugin/gateguard.js` and the `guardrails.cjs` hooks is a pure advisory engine — no stdin read, no stdout write, no top-level call — so it cannot collide with a consumer's own emitter. A consumer file with no markers gets the block appended; wire its exported function into your driver.
+**Hook scripts.** Install generates each host's `preflight.sh`, `gateguard` and `guardrails` hook from its template plus the code the hosts share (`.bkit/core/hook-parts/`, `.bkit/providers.md` § Hooks). bkit's block in `.claude/hooks/gateguard.cjs`, `.cursor/hooks/gateguard.cjs`, `.opencode/plugin/gateguard.js` and the `guardrails.cjs` hooks is a pure advisory engine — no stdin read, no stdout write, no top-level call — so it cannot collide with a consumer's own emitter. A consumer file with no markers gets the block appended; wire its exported function into your driver.
 
 ### What install writes
 

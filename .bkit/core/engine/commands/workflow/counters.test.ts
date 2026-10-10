@@ -279,24 +279,29 @@ describe("bkit counters route", () => {
     ]);
 
   it("continues at the cap and below", async () => {
-    expect((await route("3", "3")).json).toEqual({ exceeded: false, next: "step-8", max: 3 });
+    expect((await route("3", "3")).json).toEqual({
+      value: 3,
+      exceeded: false,
+      next: "step-8",
+      max: 3,
+    });
     expect((await route("1", "3")).code).toBe(0);
   });
 
   it("exits 1 one over the cap, naming the counter on stderr", async () => {
     const r = await route("4", "3");
     expect(r.code).toBe(1);
-    expect(r.json).toEqual({ exceeded: true, next: "failure-path", max: 3 });
+    expect(r.json).toEqual({ value: 4, exceeded: true, next: "failure-path", max: 3 });
     expect(r.err).toContain("counter VERIFY_ATTEMPT exceeded max=3 (value=4)");
   });
 
   it("a max of 0 lets value 0 through and stops value 1", async () => {
     const first = await route("0", "0");
     expect(first.code).toBe(0);
-    expect(first.json).toEqual({ exceeded: false, next: "step-8", max: 0 });
+    expect(first.json).toEqual({ value: 0, exceeded: false, next: "step-8", max: 0 });
     const over = await route("1", "0");
     expect(over.code).toBe(1);
-    expect(over.json).toEqual({ exceeded: true, next: "failure-path", max: 0 });
+    expect(over.json).toEqual({ value: 1, exceeded: true, next: "failure-path", max: 0 });
     expect(over.err).toContain("counter VERIFY_ATTEMPT exceeded max=0 (value=1)");
   });
 
@@ -326,7 +331,7 @@ describe("bkit counters route", () => {
       "--limit=MAX_VERIFY_ATTEMPT",
     ]);
     expect(r.code).toBe(1);
-    expect(r.json).toEqual({ exceeded: true, next: null, max: 3 });
+    expect(r.json).toEqual({ value: 4, exceeded: true, next: null, max: 3 });
   });
 
   it("needs exactly one of --max and --limit", async () => {
@@ -346,6 +351,61 @@ describe("bkit counters route", () => {
     expect(
       (await run(["counters", "route", "--name=x", "--value=1", "--limit=MAX_NOPE"])).code,
     ).toBe(2);
+  });
+});
+
+describe("bkit counters route --of", () => {
+  const rows = () =>
+    log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "build-run-tests", "2026-10-01T00:01:00Z", { attempt: 1 }),
+      done("build", "build-run-tests", "2026-10-01T00:02:00Z", { attempt: 2 }),
+      done("build", "build-plan-verify", "2026-10-01T00:03:00Z", { subPlan: 2, attempt: 1 }),
+    ]);
+  const route = (file: string, of: string, max: string, ...extra: string[]) =>
+    run([
+      "counters",
+      "route",
+      "--name=TEST_ATTEMPT",
+      `--of=${of}`,
+      `--file=${file}`,
+      "--workflow=build",
+      `--max=${max}`,
+      "--continue=step-15",
+      "--exceeded=failure-path",
+      ...extra,
+    ]);
+
+  it("derives the value from the active run's DONE rows of the step", async () => {
+    const file = rows();
+    expect((await route(file, "build-run-tests:current", "2")).json).toEqual({
+      value: 2,
+      exceeded: false,
+      next: "step-15",
+      max: 2,
+    });
+    const next = await route(file, "build-run-tests:next", "2");
+    expect(next.code).toBe(1);
+    expect(next.json).toMatchObject({ value: 3, exceeded: true, next: "failure-path" });
+  });
+
+  it("counts one sub-plan's rows with --sub-plan", async () => {
+    const file = rows();
+    expect((await route(file, "build-plan-verify:count", "3", "--sub-plan=2")).json.value).toBe(1);
+    expect((await route(file, "build-plan-verify:count", "3", "--sub-plan=1")).json.value).toBe(0);
+  });
+
+  it("exits 4 when :current finds the step's own row missing", async () => {
+    expect((await route(rows(), "build-failure-diagnose:current", "3")).code).toBe(4);
+  });
+
+  it("needs exactly one of --value and --of, and --file with --workflow for --of", async () => {
+    const file = rows();
+    expect((await route(file, "build-run-tests:next", "3", "--value=1")).code).toBe(2);
+    expect(
+      (await run(["counters", "route", "--name=X", "--of=build-run-tests:next", "--max=3"])).code,
+    ).toBe(2);
+    expect((await route(file, "build-run-tests", "3")).code).toBe(2);
   });
 });
 

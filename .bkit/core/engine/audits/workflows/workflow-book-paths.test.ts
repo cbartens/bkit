@@ -61,11 +61,12 @@ describe("workflow bookkeeping pathspec — no BOOK_PATHS regression (#446)", ()
       .map((file) => fs.readFileSync(file, "utf-8"))
       .reduce(
         (n, content) =>
-          n + (content.match(/"\$BKIT" ledgers (commit|union|only-bookkeeping)\b/g) ?? []).length,
+          n + (content.match(/"\{BKIT\}" ledgers (commit|union|only-bookkeeping)\b/g) ?? []).length,
         0,
       );
-    // The bookkeeping call sites across bkit-ship.md, bkit-design.md, bkit-plan.md
-    // and bkit-build.md (stage / commit shapes plus ship's ledger union).
-    expect(totalCalls).toBeGreaterThanOrEqual(8);
+    // The bookkeeping call sites left in the markdown: the three pre-worktree
+    // commits (design, plan, build) and ship's B2 stage and bookkeeping commit.
+    // The land, close, flush and re-validate bookkeeping runs inside commands.
+    expect(totalCalls).toBeGreaterThanOrEqual(5);
   });
 });

@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import {
   applyT1,
   applyT2,
@@ -1042,7 +1042,7 @@ describe("parseEffortMap", () => {
   // Below-target providers ceiling out, never downshift: a provider that scores under the
   // Claude tier target spends MORE thinking, not less.
   it("opencode columns ceiling out above low (never below the Default rung)", () => {
-    const RANK = { none: 0, low: 1, medium: 2, high: 3, xhigh: 4, max: 5 };
+    const RANK: Record<string, number> = { none: 0, low: 1, medium: 2, high: 3, xhigh: 4, max: 5 };
     expect(lookupEffort(effortMap, "opencode", "low")).toBe("none");
     for (const e of ["medium", "high", "xhigh", "max"]) {
       expect(RANK[lookupEffort(effortMap, "opencode", e)]).toBeGreaterThanOrEqual(RANK[e]);
@@ -1588,7 +1588,7 @@ describe("getInstallingVersion — bkit's own version, best-effort", () => {
 
 describe("runStatus — read-only host/provider status", () => {
   let cwd: string;
-  let logSpy: ReturnType<typeof vi.spyOn>;
+  let logSpy: MockInstance<typeof console.log>;
   beforeEach(() => {
     cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-status-"));
     logSpy = vi.spyOn(console, "log").mockImplementation(() => {});

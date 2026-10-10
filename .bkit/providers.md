@@ -252,7 +252,18 @@ Both hosts: `/<filename-without-ext>` (`/bkit-build`, `/bkit-plan`, etc.). Ident
 | Stop hook config | `Stop` array | `stop[].loop_limit` (controls iteration cap; `null` = unlimited) |
 | Telemetry | Not part of host (custom in script) | Not part of host (custom in script — see `postflight.sh` log-drain pattern) |
 
-**Install behaviour:** hook scripts = **template drops** (per-host, NOT from `.agents/`). Semantic differences (blocking, stdin, output JSON) prevent single canonical script. Two parallel implementations under `bkit/templates/<host>/hooks/`. Functionally equivalent.
+**Install behaviour:** hook scripts are **generated at install** (per host, NOT from `.agents/`). Semantic differences (blocking, stdin, output JSON) prevent one script for every host, so each host keeps a small template (`.bkit/templates/<host>/hooks/`, `.bkit/templates/.opencode/plugin/`) holding only its module syntax, payload adapter and output shape. Code every host shares lives once in `.bkit/core/hook-parts/`; install splices it in wherever a template line reads `// {{BKIT_PART <file>}}` / `# {{BKIT_PART <file>}}` (`.bkit/core/engine/render/parts.ts`). The generated file is plain JS / bash with no runtime call into bkit, so it works without `node_modules`.
+
+<!-- prettier-ignore -->
+| Part | Shared by | Holds |
+| --- | --- | --- |
+| `gateguard-engine.js` | Claude, Cursor, Codex, opencode `gateguard` | gate-config table, checklists, docs advisory, dedup state, `firstTouchAdvice` |
+| `gateguard-edit-payload.js` | Claude, Cursor `gateguard` | `Edit` / `Write` / `MultiEdit` payload adapter `bkitGateguard(payload)` |
+| `guardrails-shell.js` | Claude, Cursor, Codex `guardrails` | segment parsing, curl / wget host allowlist, shell-as-edit-channel detection |
+| `guardrails-tiers.js` | Cursor, Codex `guardrails` | deny rules, ask patterns, `classifyShell` precedence |
+| `preflight-linear.sh` | Claude, Cursor `preflight` | Linear key / issue checks, GraphQL query, `bkit:auto` + terminal-state guards |
+
+Per host, outside the parts: Claude `gateguard` / `guardrails` — `require` + `hookSpecificOutput` driver, guardrails advisory-only; Cursor — `{ permission }` output, guardrails read gate (`.pem` / `.env`), gateguard workspace-relative path resolve; Codex — `apply_patch` envelope parser, ask tier emitted as advisory; opencode — ES module, `write` / `edit` / `patch` vocabulary, stderr advisory + throw to block; `preflight` — trigger (Claude `LINEAR_ISSUE_ID`, Cursor `is_background_agent` + `.bkit/.runtime-cursor` marker), Claude-only Darwin brew check, `emit_context` shape.
 
 ### GateGuard
 
@@ -263,7 +274,7 @@ Pre-edit advisory hook, on all four hosts (Claude Code, Cursor, Codex, opencode)
 | --- | --- | --- | --- |
 | Claude Code | `gateguard.cjs` (CJS) | `.claude/hooks/gateguard.cjs` | `.claude/settings.json` → `hooks.PreToolUse` on `Edit\|Write\|MultiEdit` |
 | opencode | `gateguard.js` (ESM) | `.opencode/plugin/gateguard.js` | `.opencode/opencode.json` → `plugin` array (opencode plugin spec — the key is `plugin`, singular; `plugins` is silently ignored and disables GateGuard) |
-| Cursor | `gateguard.cjs` (CJS) — managed block byte-identical to the Claude twin | `.cursor/hooks/gateguard.cjs` | `.cursor/hooks.json` → `preToolUse` (matcher `Write`), no `failClosed` — an advisory hook that fails closed would block the edit it only meant to comment on |
+| Cursor | `gateguard.cjs` (CJS) — managed block generated from the same parts as the Claude twin, so byte-identical | `.cursor/hooks/gateguard.cjs` | `.cursor/hooks.json` → `preToolUse` (matcher `Write`), no `failClosed` — an advisory hook that fails closed would block the edit it only meant to comment on |
 | Codex | `gateguard.cjs` (CJS) — Claude's stdin/stdout contract; parses the `apply_patch` envelope for target paths | `.codex/hooks/gateguard.cjs` | `.codex/hooks.json` → `hooks.PreToolUse` on `apply_patch` |
 | Cursor | `guardrails.cjs` (CJS) — destructive-op / secret-exposure gates, the Cursor equivalent of Claude's `permissions` and opencode's `permission` map | `.cursor/hooks/guardrails.cjs` | `.cursor/hooks.json` → `beforeShellExecution` + `preToolUse` (`Read\|TabRead`), both `failClosed` |
 
@@ -275,7 +286,7 @@ Pre-edit advisory hook, on all four hosts (Claude Code, Cursor, Codex, opencode)
 
 **Deny mode, per host:** Claude and Codex `permissionDecision: "deny"` with the checklist as `permissionDecisionReason`; Cursor `permission: "deny"` with the checklist as `agent_message` (`user_message` goes to the human, not the model); opencode throws — `tool.execute.before` is block-or-allow only, so the throw path is the block and stderr is the advisory channel. Same behaviour, three delivery mechanisms across four hosts; asserted uniformly in `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`.
 
-**Divergence budget:** the Claude and Cursor managed blocks are byte-identical (test-asserted). opencode's differs only where the runtime forces it — ES module rather than CJS, tool vocabulary `write`/`edit`/`patch` rather than `Edit`/`Write`/`MultiEdit`. Codex's differs only in its payload — every edit arrives as `apply_patch` with a V4A envelope and no file path, so its block carries the envelope parser. Every advisory string, gate-config pattern and docs-path rule is identical across all four.
+**Divergence budget:** every host's block carries `hook-parts/gateguard-engine.js` verbatim, and the Claude and Cursor blocks are byte-identical (both test-asserted on the generated hooks). opencode's differs only where the runtime forces it — ES module rather than CJS, tool vocabulary `write`/`edit`/`patch` rather than `Edit`/`Write`/`MultiEdit`. Codex's differs only in its payload — every edit arrives as `apply_patch` with a V4A envelope and no file path, so its block carries the envelope parser. Every advisory string, gate-config pattern and docs-path rule is identical across all four.
 
 ---
 

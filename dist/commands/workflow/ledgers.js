@@ -204,43 +204,39 @@ export const ledgersCommand = {
         },
     },
 };
-function commit(ctx) {
-    const f = ctx.flags;
-    const month = required(ctx, "month");
-    const fid = required(ctx, "fid");
-    const scope = String(f.scope);
+/**
+ * Stage (and commit) the bookkeeping allow-list for one feature. Throws a
+ * CommandError with EXIT_ROOT / EXIT_STAGE / EXIT_COMMIT / EXIT_EMPTY.
+ */
+export function commitBookkeeping(o, log) {
+    const { root, month, fid, scope, mode, message, squashOf } = o;
     if (!SCOPES.includes(scope)) {
         throw new CommandError(EXIT.USAGE, `--scope must be core, full, or pr (got '${scope}')`);
     }
-    const mode = String(f.mode);
     if (!MODES.includes(mode)) {
         throw new CommandError(EXIT.USAGE, `--mode must be stage, commit, or commit-allow-empty (got '${mode}')`);
     }
-    const message = str(f.message);
     if (mode !== "stage" && !message)
         throw new CommandError(EXIT.USAGE, `--message is required for --mode=${mode}`);
-    const squashOf = str(f.squashOf);
     if (mode === "stage" && squashOf !== undefined) {
         throw new CommandError(EXIT.USAGE, "--squash-of applies to commit modes only");
     }
-    const root = rootOf(ctx);
     requireRepo(root);
     if (squashOf !== undefined &&
         gitRaw(root, ["rev-parse", "-q", "--verify", `${squashOf}^{commit}`]).status !== 0) {
         throw new CommandError(EXIT_ROOT, `--squash-of: unknown commit: ${squashOf}`);
     }
     requireGitVersion();
-    if (f.onlyIfDirtyTracked === true) {
+    if (o.onlyIfDirtyTracked === true) {
         const dirty = dirtyTracked(root);
         if (dirty.length === 0) {
-            ctx.log("no tracked file has uncommitted changes — nothing to commit");
-            ctx.emit({ outcome: "clean", commit: null, paths: [], squashPaths: [] });
-            return EXIT.OK;
+            log("no tracked file has uncommitted changes — nothing to commit");
+            return { outcome: "clean", commit: null, paths: [], squashPaths: [] };
         }
         for (const line of dirty)
-            ctx.log(line);
+            log(line);
     }
-    if (f.stageTrackedUpdates === true) {
+    if (o.stageTrackedUpdates === true) {
         const res = gitRaw(root, ["add", "-u"]);
         if (res.status !== 0)
             throw new CommandError(EXIT_STAGE, `'git add -u' failed: ${res.stderr}`);
@@ -271,10 +267,9 @@ function commit(ctx) {
         // The pre-worktree commit records only bookkeeping; a dirty tree with none
         // of it (a fresh consumer repo) has nothing of ours to commit, and stopping
         // here never reaches `git commit`.
-        if (f.onlyIfDirtyTracked === true) {
-            ctx.log(`no bookkeeping under scope=${scope} in ${root} — nothing to commit`);
-            ctx.emit({ outcome: "nothing-to-commit", commit: null, paths, squashPaths });
-            return EXIT.OK;
+        if (o.onlyIfDirtyTracked === true) {
+            log(`no bookkeeping under scope=${scope} in ${root} — nothing to commit`);
+            return { outcome: "nothing-to-commit", commit: null, paths, squashPaths };
         }
         throw new CommandError(EXIT_EMPTY, `empty pathspec list — refusing to commit (nothing under scope=${scope} matched in ${root})`);
     }
@@ -288,15 +283,13 @@ function commit(ctx) {
         if (add.status !== 0)
             throw new CommandError(EXIT_STAGE, `'git add' failed: ${add.stderr}`);
         if (mode === "stage") {
-            ctx.log(`staged (scope=${scope})`);
-            ctx.emit({ outcome: "staged", commit: null, paths, squashPaths });
-            return EXIT.OK;
+            log(`staged (scope=${scope})`);
+            return { outcome: "staged", commit: null, paths, squashPaths };
         }
         if (mode === "commit" &&
             gitRaw(root, ["diff", "--cached", "--quiet", "--", ...specs, ...squashPaths]).status === 0) {
-            ctx.log("nothing to commit");
-            ctx.emit({ outcome: "nothing-to-commit", commit: null, paths, squashPaths });
-            return EXIT.OK;
+            log("nothing to commit");
+            return { outcome: "nothing-to-commit", commit: null, paths, squashPaths };
         }
         const made = gitRaw(root, [
             "commit",
@@ -309,23 +302,41 @@ function commit(ctx) {
         if (made.status !== 0) {
             throw new CommandError(EXIT_COMMIT, `'git commit' failed: ${made.stderr || made.stdout.trim()}`);
         }
-        ctx.emit({
+        return {
             outcome: "committed",
             commit: gitRaw(root, ["rev-parse", "HEAD"]).stdout.trim(),
             paths,
             squashPaths,
-        });
-        return EXIT.OK;
+        };
     }
     finally {
         fs.rmSync(tmp, { recursive: true, force: true });
     }
 }
+function commit(ctx) {
+    const f = ctx.flags;
+    ctx.emit({
+        ...commitBookkeeping({
+            root: rootOf(ctx),
+            month: required(ctx, "month"),
+            fid: required(ctx, "fid"),
+            scope: String(f.scope),
+            mode: String(f.mode),
+            message: str(f.message),
+            stageTrackedUpdates: f.stageTrackedUpdates === true,
+            squashOf: str(f.squashOf),
+            onlyIfDirtyTracked: f.onlyIfDirtyTracked === true,
+        }, ctx.log),
+    });
+    return EXIT.OK;
+}
 /** Lines as `grep` reads them: a final newline ends the last line, it does not start an empty one. */
 const fileLines = (text) => (text === "" ? [] : text.replace(/\n$/, "").split("\n"));
-function union(ctx) {
-    const src = path.resolve(ctx.cwd, String(ctx.flags.src));
-    const dst = path.resolve(ctx.cwd, String(ctx.flags.dst));
+/**
+ * Append a worktree's new ledger rows into another checkout (never
+ * .bkit/issues.jsonl). Throws EXIT_ROOT / EXIT_STAGE.
+ */
+export function unionLedgers(src, dst) {
     if (!fs.existsSync(src) || !fs.statSync(src).isDirectory()) {
         throw new CommandError(EXIT_ROOT, `src not a directory: ${src}`);
     }
@@ -368,6 +379,12 @@ function union(ctx) {
         }
         files.push(rel);
     }
+    return files;
+}
+function union(ctx) {
+    const src = path.resolve(ctx.cwd, String(ctx.flags.src));
+    const dst = path.resolve(ctx.cwd, String(ctx.flags.dst));
+    const files = unionLedgers(src, dst);
     ctx.log(`swept ${files.length} ledger(s) from ${src} into ${dst}`);
     ctx.emit({ unioned: files.length, files });
     return EXIT.OK;
