@@ -63,7 +63,7 @@ import {
   linearState,
   transitionLabels,
 } from "./issues.js";
-import { commitBookkeeping, unionLedgers } from "./ledgers.js";
+import { EXIT_EMPTY, commitBookkeeping, unionLedgers } from "./ledgers.js";
 import {
   EXIT_REMOVE_FAILED,
   EXIT_SPLIT_BUCKET,
@@ -386,6 +386,10 @@ async function shipFlush(
         ctx.log,
       );
     } catch (err) {
+      if (err instanceof CommandError && err.code === EXIT_EMPTY) {
+        ctx.log("no bookkeeping delta to record — nothing committed, nothing pushed");
+        return { code: EXIT.OK, pushed: false, ref: null, skipped: "nothing-to-commit" };
+      }
       ctx.log(
         `bookkeeping commit failed — FAILED bookkeeping left uncommitted in ${wt}: ${(err as Error).message}`,
       );

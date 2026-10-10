@@ -156,10 +156,16 @@ describe("bkit workflows start", () => {
 
   it("refuses when the lock is live, writing no row", async () => {
     const cwd = repo();
+    const at = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    const log = jsonl([
+      { type: "workflow-started", workflow: "design", at },
+      { type: "step-done", workflow: "design", step: "design-context", status: "DONE", at },
+    ]);
+    write(cwd, `${REL}/status.jsonl`, log);
     write(cwd, `${REL}/.lock`, "2026-07-01T00:00:00Z design\n");
     const r = await run(cwd, wf("start", "build"));
     expect(r.code).toBe(1);
-    expect(fs.existsSync(statusOf(cwd))).toBe(false);
+    expect(fs.readFileSync(statusOf(cwd), "utf-8")).toBe(log);
   });
 
   it("--lock-held checks the lock is ours", async () => {

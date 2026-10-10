@@ -104,7 +104,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count its findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Detect:** Find error tracker, runtime logs, or both. **Done when:** evidence in `Checked`, or `N/A` and STOP.
 - [ ] **Step 3 — Board:** Same figures every run for comparison. Window = since previous report; also trailing-30-day when that is tracker default:
   - Unresolved count, and issue short ids.

@@ -393,6 +393,7 @@ describe("status row field names", () => {
 
   it("the ship timeout row keeps its snake_case timeout_s key", async () => {
     const cwd = repo();
+    write(cwd, "logs/status.jsonl", "");
     const r = await run(cwd, [
       "status",
       "row",

@@ -10,7 +10,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildMcpJson } from "../../install/modules/index.js";
+import { buildMcpJson } from "../../install/modules/claude.js";
 import { getPkgRoot } from "../../shared/package-roots.js";
 
 const pkgRoot = getPkgRoot();

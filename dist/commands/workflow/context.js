@@ -16,7 +16,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { CONTEXT_FETCH_CONTEXTS, parseContextFetchStart } from "../../checks/before/index.js";
+import { CONTEXT_FETCH_CONTEXTS, parseContextFetchStart, } from "../../checks/before/context-fetch.js";
 import { extractContextFetchProvisionRecipes } from "../../install/cloud-env.js";
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { lastRun } from "../../ledgers/status.js";

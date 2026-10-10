@@ -251,11 +251,8 @@ function listFilesRecursive(dir: string): string[] {
 // BAR-167 Phase 1 — doctor surfaces the tier2-json-drift advisory
 // ---------------------------------------------------------------------------
 
-import {
-  detectDirenvMissing,
-  detectDirenvNotAllowed,
-  runPreflight,
-} from "../../checks/before/index";
+import { detectDirenvMissing, detectDirenvNotAllowed } from "../../checks/before/env";
+import { runPreflight } from "../../checks/before/index";
 import { runPostInstallCheck } from "../../checks/after/index";
 
 describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {

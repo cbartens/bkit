@@ -13,7 +13,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseModelLookupForColumn } from "../../commands/install/install";
+import { parseModelLookupForColumn } from "../../render/models";
 
 const PROMPTS_DIR = path.resolve(".bkit/prompts");
 const PROMPTS_MD = path.resolve(".bkit/prompts.md");

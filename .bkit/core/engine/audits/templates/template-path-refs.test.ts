@@ -13,8 +13,8 @@ import * as path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { listFilesRecursive, remapTemplateDest } from "../../commands/install/install";
-import { isTemplate } from "../../install/modules/index";
+import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
+import { isTemplate } from "../../install/template-copies";
 import { getTemplatesRoot } from "../../shared/package-roots";
 
 const repo = path.resolve(__dirname, "../../../../..");

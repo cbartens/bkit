@@ -4,6 +4,7 @@
 // the internal module names (--core, --lint, --cloud) are unknown flags.
 // comply verb: --phase=<design|plan|build|debug|ship>.
 // telemetry verb: `bkit telemetry summary`.
+
 import { describe, expect, it, vi } from "vitest";
 import {
   parseArgs,
@@ -14,7 +15,9 @@ import {
   parseTelemetrySubverb,
   TELEMETRY_SUBVERBS,
   type ModuleFlag,
+  validateModuleFlagsForVerb,
 } from "./cli";
+import type { Verb } from "./cli";
 
 /** Run `fn`, asserting it triggers process.exit(1); returns the joined console.error text. */
 function expectExit(fn: () => void): string {
@@ -840,5 +843,44 @@ describe("parseTelemetrySubverb", () => {
 
   it("TELEMETRY_SUBVERBS is exactly summary", () => {
     expect([...TELEMETRY_SUBVERBS]).toEqual(["summary"]);
+  });
+});
+
+describe("validateModuleFlagsForVerb — #252 Step 2/3 verb/module-flag validation", () => {
+  const flags = (mods: ModuleFlag[] = []) => new Set<ModuleFlag>(mods);
+
+  it("errors when install is given zero module flags", () => {
+    const err = validateModuleFlagsForVerb("install", flags());
+    expect(err).not.toBeNull();
+    expect(err).toContain("`bkit install` requires at least one module flag");
+  });
+
+  it("passes when install is given at least one module flag", () => {
+    expect(validateModuleFlagsForVerb("install", flags(["claude"]))).toBeNull();
+  });
+
+  it("errors when check is given a module flag", () => {
+    const err = validateModuleFlagsForVerb("check", flags(["claude"]));
+    expect(err).not.toBeNull();
+    expect(err).toContain("`bkit check` takes no module flags");
+  });
+
+  it("errors when upgrade is given a module flag", () => {
+    const err = validateModuleFlagsForVerb("upgrade", flags(["cursor"]));
+    expect(err).not.toBeNull();
+    expect(err).toContain("`bkit upgrade` takes no module flags");
+  });
+
+  it("passes when check/upgrade are given zero module flags", () => {
+    expect(validateModuleFlagsForVerb("check", flags())).toBeNull();
+    expect(validateModuleFlagsForVerb("upgrade", flags())).toBeNull();
+  });
+
+  it("does not constrain other verbs (uninstall, doctor, help, ...)", () => {
+    const otherVerbs: Verb[] = ["uninstall", "doctor", "help", "status", "harvest"];
+    for (const verb of otherVerbs) {
+      expect(validateModuleFlagsForVerb(verb, flags())).toBeNull();
+      expect(validateModuleFlagsForVerb(verb, flags(["claude", "cursor"]))).toBeNull();
+    }
   });
 });

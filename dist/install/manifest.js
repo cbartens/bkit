@@ -4,6 +4,12 @@
 //
 // Design: pure data — no fs access, no side effects. Re-exported as a public
 // contract consumed by uninstall and upgrade.
+/**
+ * Opt-in modules: never installed implicitly; each requires an explicit flag
+ * (`--auto=`, `--opencode=`). A bare/full `uninstall` DOES remove them (zero footprint).
+ * Dependency-updater files are not modules — bkit never writes or removes them.
+ */
+export const OPTIN_MODULES = new Set(["cloud", "opencode", "codex"]);
 // ---------------------------------------------------------------------------
 // Issue tracker
 // ---------------------------------------------------------------------------

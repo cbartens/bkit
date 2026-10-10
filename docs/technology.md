@@ -55,7 +55,7 @@ bkit renders agent payload for three IDE/agent-host runtimes. Hosts additive —
 | Cursor (`.cursor/`) | always-on (no flag) | Cursor IDE agent runtime |
 | opencode (`.opencode/`) | `--opencode=<provider>` | sst/opencode universal agent host; four allowlisted providers (`OPENCODE_PROVIDERS`, strict — no arbitrary-endpoint fallback): `openrouter`, `ollama`, `opencode-zen`, `opencode-go` |
 
-OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `opencode-go` = OpenCode built-in gateways (models.dev ids `opencode` / `opencode-go`), auth via `BKIT_OPENCODE_API_KEY` — minimal `provider.<id>` + `{env:BKIT_OPENCODE_API_KEY}` (no npm/`baseURL`; OpenCode routes per-model). Allowlist duplicated in three places MUST move together: `OPENCODE_PROVIDERS` (`.bkit/core/engine/cli.ts`), `OPENCODE_PROVIDER_DEFAULTS` (`.bkit/core/engine/install/modules/index.ts`), `OPENCODE_PROVIDER_COLUMN` (`.bkit/core/engine/commands/install/install.ts`). Per-agent model pins: `.bkit/prompts.md` § Models, one column per provider.
+OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `opencode-go` = OpenCode built-in gateways (models.dev ids `opencode` / `opencode-go`), auth via `BKIT_OPENCODE_API_KEY` — minimal `provider.<id>` + `{env:BKIT_OPENCODE_API_KEY}` (no npm/`baseURL`; OpenCode routes per-model). Allowlist duplicated in three places MUST move together: `OPENCODE_PROVIDERS` and `OPENCODE_PROVIDER_DEFAULTS` (`.bkit/core/engine/shared/egress.ts`), `GATEWAY_COLUMN` (`.bkit/core/engine/render/models.ts`). Per-agent model pins: `.bkit/prompts.md` § Models, one column per provider.
 
 ## Testing
 

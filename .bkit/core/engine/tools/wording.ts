@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import { findLineAnchoredMarkers, selectMarkers } from "../install/managed-block.js";
 
-export type Surface = "prompt" | "workflow" | "rules";
+export type Surface = "prompt" | "workflow" | "rules" | "audit";
 export type Mode =
   "required" | "where-used" | "repeatable" | "forbidden" | "if-verdict" | "if-bash";
 export type Position = "first" | "header" | "last";
@@ -54,10 +54,19 @@ export interface Finding {
 
 /** Near-copy threshold: a sentence this similar to a clause but not equal to it is drift. */
 export const NEAR_COPY = 0.8;
-/** Cut-off: a sentence shared by this many prompts belongs in the wording file. */
-export const SHARED_MIN = 5;
+/** Cut-off per surface: a sentence shared by this many files of one surface belongs in the wording file. */
+export const SHARED_MIN: Partial<Record<Surface, number>> = { prompt: 5, workflow: 3, audit: 5 };
 
-const SURFACES: readonly Surface[] = ["prompt", "workflow", "rules"];
+const SURFACES: readonly Surface[] = ["prompt", "workflow", "rules", "audit"];
+/** Surfaces whose files open with the CAUTION header that positioned clauses order. */
+const HEADED: readonly Surface[] = ["prompt", "workflow"];
+/** Surfaces checked inside the `bkit:start` / `bkit:end` block only. */
+const MANAGED: readonly Surface[] = ["rules", "audit"];
+const NOUN: Partial<Record<Surface, string>> = {
+  prompt: "prompts",
+  workflow: "workflows",
+  audit: "audit templates",
+};
 const MODES: readonly Mode[] = [
   "required",
   "where-used",
@@ -70,6 +79,8 @@ const POSITIONS: readonly Position[] = ["first", "header", "last"];
 const VERDICT_END = "<!-- verdict:end -->";
 const SLOT = /\{\{([A-Za-z][\w-]*)(\?)?\}\}/g;
 const LABEL = /^\*\*[^*]+:\*\* /;
+/** Structure, not sentences: headings, HTML comments, table rows. Never counted toward the cut-off. */
+const STRUCTURE = /^(?:#{1,6} |<!--|\|)/;
 
 // ---------------------------------------------------------------------------
 // Wording file
@@ -129,6 +140,9 @@ export function parseWording(md: string): Clause[] {
 // ---------------------------------------------------------------------------
 
 const RULES_FILES = [".bkit/templates/.agents/rules.md", ".agents/rules.md"];
+/** Audit templates, then the repo's adopted copies (same basenames, same managed block). */
+const AUDIT_DIRS = [".bkit/templates/docs/templates", "docs/templates"];
+const AUDIT_FILE = /^bkit-audit-.+\.md$/;
 
 /** Every file the wording file governs, read from `root`. */
 export function loadCorpus(root: string): WordingFile[] {
@@ -150,6 +164,21 @@ export function loadCorpus(root: string): WordingFile[] {
       });
     }
   }
+  for (const dir of AUDIT_DIRS) {
+    if (!fs.existsSync(path.join(root, dir))) continue;
+    for (const f of fs
+      .readdirSync(path.join(root, dir))
+      .filter((n) => AUDIT_FILE.test(n))
+      .sort()) {
+      const id = path.join(dir, f);
+      files.push({
+        surface: "audit",
+        id,
+        name: f.slice(0, -3),
+        content: fs.readFileSync(path.join(root, id), "utf-8"),
+      });
+    }
+  }
   for (const id of RULES_FILES) {
     if (!fs.existsSync(path.join(root, id))) continue;
     files.push({
@@ -165,14 +194,15 @@ export function loadCorpus(root: string): WordingFile[] {
 /**
  * Indexes of the lines that are prose the clauses govern. Prompts and workflows:
  * everything but front matter and fenced blocks (a fenced example is
- * documentation, not instruction). Rules: only the bkit-managed block — the
- * consumer-owned part below `bkit:end` is never bkit's to check or rewrite.
+ * documentation, not instruction). Rules and audit templates: only the
+ * bkit-managed block — the consumer-owned part below `bkit:end` is never bkit's
+ * to check or rewrite.
  */
 export function proseLineIndexes(file: WordingFile): number[] {
   const lines = file.content.split("\n");
   let from = 0;
   let to = lines.length;
-  if (file.surface === "rules") {
+  if (MANAGED.includes(file.surface)) {
     const [startMarker, endMarker] = selectMarkers("html-comment");
     const starts = findLineAnchoredMarkers(file.content, startMarker);
     const ends = findLineAnchoredMarkers(file.content, endMarker);
@@ -269,9 +299,9 @@ export function compileText(text: string): Compiled {
 
 const countIn = (line: string, c: Compiled) => [...line.matchAll(c.re)].length;
 
-/** Drop the blockquote, list marker, or step number in front of a line's text. */
+/** Drop the blockquote, list marker, step number, or checkbox in front of a line's text. */
 export const stripLinePrefix = (line: string) =>
-  line.replace(/^[ \t]*(?:>[ \t]?)?(?:[ \t]*(?:[-*]|\d+\.)[ \t]+)?/, "");
+  line.replace(/^[ \t]*(?:>[ \t]?)?(?:[ \t]*(?:[-*]|\d+\.)[ \t]+)?(?:\[[ xX]\][ \t]+)?/, "");
 
 /** Split after `.` or `;` (bold close allowed between), never after `e.g.`; the punctuation stays on the sentence. */
 export const splitSentences = (s: string) =>
@@ -313,6 +343,60 @@ interface NearCopy {
   canonical: string;
 }
 
+const siblingCache = new WeakMap<Set<string>, Map<string, string[]>>();
+const lineCache = new Map<string, { sentences: string[]; words: Map<string, number> }>();
+
+const wordCounts = (words: string[]) => {
+  const counts = new Map<string, number>();
+  for (const w of words) counts.set(w, (counts.get(w) ?? 0) + 1);
+  return counts;
+};
+
+const canonicalCache = new Map<
+  string,
+  { sentences: number; words: string[]; counts: Map<string, number> }
+>();
+
+/** A clause wording's sentence count, words, and word counts; memoised like `lineParts`. */
+function canonicalParts(canonical: string) {
+  let hit = canonicalCache.get(canonical);
+  if (!hit) {
+    const words = canonical.split(/\s+/);
+    hit = { sentences: splitSentences(canonical).length, words, counts: wordCounts(words) };
+    canonicalCache.set(canonical, hit);
+  }
+  return hit;
+}
+
+/** A line's sentences and word counts, prefix dropped; memoised, since every clause scans every line. */
+function lineParts(line: string) {
+  let hit = lineCache.get(line);
+  if (!hit) {
+    if (lineCache.size > 50_000) lineCache.clear();
+    const rest = stripLinePrefix(line);
+    hit = { sentences: splitSentences(rest), words: wordCounts(rest.split(/\s+/)) };
+    lineCache.set(line, hit);
+  }
+  return hit;
+}
+
+/** Other unslotted clause wordings near enough to `canonical` to read as its near-copy. */
+function siblingsOf(canonical: string, allTexts: Set<string>): string[] {
+  let byText = siblingCache.get(allTexts);
+  if (!byText) {
+    byText = new Map();
+    siblingCache.set(allTexts, byText);
+  }
+  let hit = byText.get(canonical);
+  if (!hit) {
+    hit = [...allTexts].filter(
+      (t) => t !== canonical && !compileText(t).slotted && similarity(t, canonical) >= NEAR_COPY,
+    );
+    byText.set(canonical, hit);
+  }
+  return hit;
+}
+
 /** Sentence windows in a line that are near, but not equal to, an unslotted clause wording. */
 function nearCopies(
   clause: Clause,
@@ -321,12 +405,18 @@ function nearCopies(
   allTexts: Set<string>,
 ): NearCopy[] {
   if (clause.texts.some((t) => countIn(line, compileText(t)) > 0)) return [];
-  const sentences = splitSentences(stripLinePrefix(line));
+  const { sentences, words: lineWords } = lineParts(line);
   const out: NearCopy[] = [];
   for (const canonical of clause.texts) {
     if (compileText(canonical).slotted) continue;
-    const k = splitSentences(canonical).length;
-    const cw = canonical.split(/\s+/).length;
+    // A line carrying a sibling clause verbatim (`Gate 2` beside `Gate 3`) is that clause, not drift of this one.
+    if (siblingsOf(canonical, allTexts).some((t) => countIn(line, compileText(t)) > 0)) continue;
+    const { sentences: k, words: canonicalWords, counts } = canonicalParts(canonical);
+    const cw = canonicalWords.length;
+    // Every window is drawn from the line's words: too few of the clause's words anywhere → no near-copy.
+    let shared = 0;
+    for (const [w, n] of counts) shared += Math.min(n, lineWords.get(w) ?? 0);
+    if (shared < Math.ceil(NEAR_COPY * cw)) continue;
     // A drift can add or drop a sentence break (`;` turned into `,`): try one sentence fewer and more.
     for (let i = 0; i < sentences.length;) {
       let best: { found: string; size: number; score: number } | undefined;
@@ -342,7 +432,7 @@ function nearCopies(
           if (n > 0 && n < words.length) candidates.push(words.slice(-n).join(" "));
         }
         for (const found of candidates) {
-          if (allTexts.has(found)) continue;
+          if (allTexts.has(found) || !nearCandidate(found.split(/\s+/), canonicalWords)) continue;
           const score = similarity(found, canonical);
           if (score >= NEAR_COPY && (!best || score > best.score)) best = { found, size, score };
         }
@@ -392,8 +482,9 @@ export function checkWording(clauses: Clause[], files: WordingFile[]): Finding[]
   for (const file of files) {
     const lines = file.content.split("\n");
     const prose = proseLineIndexes(file);
-    const labels = file.surface === "rules" ? [] : headerLabels(file.content);
-    const header = new Set(file.surface === "rules" ? [] : headerLines(file.content));
+    const headed = HEADED.includes(file.surface);
+    const labels = headed ? headerLabels(file.content) : [];
+    const header = new Set(headed ? headerLines(file.content) : []);
     const positioned: { clause: Clause; line: number }[] = [];
     const at = (i: number | undefined) => (i === undefined ? undefined : i + 1);
     for (const clause of clauses) {
@@ -464,7 +555,7 @@ export function checkWording(clauses: Clause[], files: WordingFile[]): Finding[]
         }
       }
 
-      if (clause.position && count > 0 && file.surface !== "rules") {
+      if (clause.position && count > 0 && headed) {
         positioned.push({ clause, line: hits[0]! });
         const label = clause.texts[0]!.match(/^\*\*([^*]+):\*\*/)?.[1];
         const edge = clause.position === "first" ? labels[0] : labels[labels.length - 1];
@@ -523,31 +614,49 @@ function nearCandidate(a: string[], b: string[]): boolean {
 }
 
 /**
- * Sentences shared by SHARED_MIN or more prompts that no clause covers. The cut-off
- * is the rule for what belongs in the wording file. A sentence ending its line and
+ * Sentences shared by a surface's SHARED_MIN or more files that no clause covers.
+ * The cut-off is the rule for what belongs in the wording file. Files count by
+ * basename, so an adopted copy never counts twice. Headings, HTML comments, and
+ * table rows are structure and never count. A sentence ending its line and
  * the same sentence continued with `;` count as one. Near-copies count toward the
- * cut-off, so one drifted copy cannot hide a sentence the other prompts share.
+ * cut-off, so one drifted copy cannot hide a sentence the other files share.
  */
 export function unlistedShared(clauses: Clause[], files: WordingFile[]): Finding[] {
   const forms = clauses.flatMap((c) => c.texts.map(compileText));
-  const seen = new Map<string, Set<string>>();
-  for (const file of files.filter((f) => f.surface === "prompt")) {
-    const lines = file.content.split("\n");
-    for (const i of proseLineIndexes(file)) {
-      let rest = stripLinePrefix(lines[i]!);
-      for (const c of forms) rest = rest.replace(c.re, "\u0000");
-      for (const sentence of splitSentences(rest)) {
-        const s = sentence.replace(/[.;]$/, "");
-        if (s.includes("\u0000") || s.split(/\s+/).length < 3) continue;
-        if (!seen.has(s)) seen.set(s, new Set());
-        seen.get(s)!.add(file.id);
+  const findings: Finding[] = [];
+  for (const surface of SURFACES) {
+    const min = SHARED_MIN[surface];
+    if (min === undefined) continue;
+    const seen = new Map<string, Map<string, string>>();
+    for (const file of files.filter((f) => f.surface === surface)) {
+      const lines = file.content.split("\n");
+      for (const i of proseLineIndexes(file)) {
+        let rest = stripLinePrefix(lines[i]!);
+        if (STRUCTURE.test(rest)) continue;
+        for (const c of forms) rest = rest.replace(c.re, "\u0000");
+        for (const sentence of splitSentences(rest)) {
+          const s = sentence.replace(/[.;]$/, "");
+          if (s.includes("\u0000") || s.split(/\s+/).length < 3) continue;
+          if (!seen.has(s)) seen.set(s, new Map());
+          if (!seen.get(s)!.has(file.name)) seen.get(s)!.set(file.name, file.id);
+        }
       }
     }
+    findings.push(...sharedGroups(seen, min, NOUN[surface]!));
   }
+  return findings;
+}
+
+/** Group each sentence with its near-copies; report every group reaching `min` files. */
+function sharedGroups(
+  seen: Map<string, Map<string, string>>,
+  min: number,
+  noun: string,
+): Finding[] {
   const words = new Map([...seen.keys()].map((s) => [s, s.split(/\s+/)]));
   const reported = new Set<string>();
   const findings: Finding[] = [];
-  // Seeds: sentences in 2+ prompts, widest first, so a group is reported once under its most-copied wording.
+  // Seeds: sentences in 2+ files, widest first, so a group is reported once under its most-copied wording.
   const seeds = [...seen].filter(([, ids]) => ids.size >= 2).sort((a, b) => b[1].size - a[1].size);
   for (const [seed, ids] of seeds) {
     if (reported.has(seed)) continue;
@@ -558,14 +667,14 @@ export function unlistedShared(clauses: Clause[], files: WordingFile[]): Finding
         nearCandidate(words.get(seed)!, words.get(s)!) &&
         similarity(seed, s) >= NEAR_COPY,
     );
-    const group = new Set([...ids, ...near.flatMap((s) => [...seen.get(s)!])]);
-    if (group.size < SHARED_MIN) continue;
+    const group = new Set([...ids.keys(), ...near.flatMap((s) => [...seen.get(s)!.keys()])]);
+    if (group.size < min) continue;
     for (const s of [seed, ...near]) reported.add(s);
     const drifted = near.length > 0 ? `, ${group.size - ids.size} as near-copies` : "";
     findings.push({
-      file: [...ids][0]!,
+      file: [...ids.values()][0]!,
       clause: "(none)",
-      problem: `shared by ${group.size} prompts${drifted} but not in .bkit/wording.md: "${seed}"`,
+      problem: `shared by ${group.size} ${noun}${drifted} but not in .bkit/wording.md: "${seed}"`,
     });
   }
   return findings;

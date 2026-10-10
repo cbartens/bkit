@@ -260,7 +260,11 @@ describe("bkit prs open", () => {
       head: "feat/12-x",
     });
 
-    process.env.PATH = tmp("bkit-prs-empty-path-");
+    // `gh` off PATH but `git` still present: openPrFor resolves the repo root with git first.
+    const noGh = tmp("bkit-prs-no-gh-");
+    const gitBin = spawnSync("which", ["git"], { encoding: "utf-8" }).stdout.trim();
+    fs.symlinkSync(gitBin, path.join(noGh, "git"));
+    process.env.PATH = noGh;
     const missing = await open(cwd, "--issue=12", "--head=feat/12-x");
     expect(missing.code).toBe(80);
     expect(missing.json.useMcp).toBe(true);

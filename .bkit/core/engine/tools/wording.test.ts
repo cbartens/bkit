@@ -31,9 +31,11 @@ import {
   proseLineIndexes,
   similarity,
   splitSentences,
+  stripLinePrefix,
   syncWording,
   toolsOf,
   type Clause,
+  type Surface,
   type WordingFile,
 } from "./wording";
 
@@ -41,6 +43,9 @@ const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const WORDING = fs.readFileSync(path.join(REPO_ROOT, ".bkit/wording.md"), "utf-8");
 const CLAUSES = parseWording(WORDING);
 const CORPUS = loadCorpus(REPO_ROOT);
+const PROMPT_MIN = SHARED_MIN.prompt!;
+const WORKFLOW_MIN = SHARED_MIN.workflow!;
+const AUDIT_MIN = SHARED_MIN.audit!;
 
 const clause = (name: string) => {
   const c = CLAUSES.find((x) => x.name === name);
@@ -55,6 +60,25 @@ const prompt = (name: string, content: string): WordingFile => ({
   content,
 });
 
+const workflowFile = (name: string, content: string): WordingFile => ({
+  surface: "workflow",
+  id: `.bkit/workflows/${name}.md`,
+  name,
+  content,
+});
+
+/** An audit template (or, with `dir`, its adopted copy): checked inside the managed block only. */
+const auditFile = (
+  name: string,
+  managed: string,
+  dir = ".bkit/templates/docs/templates",
+): WordingFile => ({
+  surface: "audit",
+  id: `${dir}/${name}.md`,
+  name,
+  content: `<!-- note -->\n\n<!-- bkit:start -->\n\n${managed}\n<!-- bkit:end -->\n\n## Project Instructions\n`,
+});
+
 /** One synthetic clause, so the checker's mechanics are tested apart from the real corpus. */
 const synthetic = (over: Partial<Clause> & Pick<Clause, "texts">): Clause => ({
   name: "c",
@@ -66,12 +90,17 @@ const synthetic = (over: Partial<Clause> & Pick<Clause, "texts">): Clause => ({
 });
 
 describe("the corpus matches the wording file", () => {
-  it("finds prompts, workflows, and both rules files", () => {
+  it("finds prompts, workflows, both rules files, and every audit template with its adopted copy", () => {
     // Asserted before any loop: an empty glob would otherwise pass everything.
     const by = (s: string) => CORPUS.filter((f) => f.surface === s).length;
     expect(by("prompt")).toBeGreaterThan(0);
     expect(by("workflow")).toBeGreaterThan(0);
     expect(by("rules")).toBe(2);
+    const audits = CORPUS.filter((f) => f.surface === "audit");
+    const templates = audits.filter((f) => f.id.startsWith(".bkit/templates/")).map((f) => f.name);
+    const adopted = audits.filter((f) => f.id.startsWith("docs/templates/")).map((f) => f.name);
+    expect(templates.length).toBeGreaterThan(0);
+    expect(adopted).toEqual(templates);
   });
 
   it("has no findings", () => {
@@ -88,19 +117,30 @@ describe("the corpus matches the wording file", () => {
     expect([...syncWording(CLAUSES, CORPUS).keys()]).toEqual([]);
   });
 
-  it(`every clause is used by ${SHARED_MIN}+ files`, () => {
+  it("every clause reaches the cut-off of one surface it applies to", () => {
     // The cut-off works both ways: a clause used by fewer files belongs back in
-    // those files, not in the wording file.
+    // those files, not in the wording file. Files count by basename, so an
+    // adopted audit copy never counts twice.
     const prose = CORPUS.map((f) => {
       const lines = f.content.split("\n");
-      return proseLineIndexes(f).map((i) => lines[i]!);
+      return { file: f, lines: proseLineIndexes(f).map((i) => lines[i]!) };
     });
     const underused = CLAUSES.filter((c) => {
       const forms = c.texts.map(compileText);
-      const users = prose.filter((lines) =>
-        lines.some((line) => forms.some((r) => [...line.matchAll(r.re)].length > 0)),
+      const users = (s: Surface) =>
+        new Set(
+          prose
+            .filter(
+              ({ file, lines }) =>
+                file.surface === s &&
+                lines.some((line) => forms.some((r) => [...line.matchAll(r.re)].length > 0)),
+            )
+            .map(({ file }) => file.name),
+        ).size;
+      return !(Object.keys(c.modes) as Surface[]).some(
+        (s) =>
+          c.modes[s] !== "forbidden" && SHARED_MIN[s] !== undefined && users(s) >= SHARED_MIN[s]!,
       );
-      return users.length < SHARED_MIN;
     }).map((c) => c.name);
     expect(underused).toEqual([]);
   });
@@ -250,21 +290,21 @@ describe("the checker rejects what it should", () => {
     expect(checkWording([c], [rules])).toEqual([]);
   });
 
-  it(`a sentence shared by ${SHARED_MIN} prompts but not listed fails`, () => {
+  it(`a sentence shared by ${PROMPT_MIN} prompts but not listed fails`, () => {
     const shared = "Always cite the exact line you changed";
-    const files = Array.from({ length: SHARED_MIN }, (_, n) => prompt(`p${n}`, shared + ".\n"));
+    const files = Array.from({ length: PROMPT_MIN }, (_, n) => prompt(`p${n}`, shared + ".\n"));
     expect(checkWording([], files).map((x) => x.problem)).toEqual([
-      `shared by ${SHARED_MIN} prompts but not in .bkit/wording.md: "${shared}"`,
+      `shared by ${PROMPT_MIN} prompts but not in .bkit/wording.md: "${shared}"`,
     ]);
   });
 
   it("a sentence ending its line and the same sentence continued with ; count as one", () => {
     const shared = "Always cite the exact line you changed";
-    const files = Array.from({ length: SHARED_MIN }, (_, n) =>
+    const files = Array.from({ length: PROMPT_MIN }, (_, n) =>
       prompt(`p${n}`, n % 2 === 0 ? `${shared}.\n` : `${shared}; keep it short.\n`),
     );
     expect(checkWording([], files).map((x) => x.problem)).toEqual([
-      `shared by ${SHARED_MIN} prompts but not in .bkit/wording.md: "${shared}"`,
+      `shared by ${PROMPT_MIN} prompts but not in .bkit/wording.md: "${shared}"`,
     ]);
   });
 
@@ -273,21 +313,144 @@ describe("the checker rejects what it should", () => {
     const drifted = "Always cite the exact file and line you edited";
     expect(similarity(shared, drifted)).toBeGreaterThanOrEqual(NEAR_COPY);
     const files = [
-      ...Array.from({ length: SHARED_MIN - 1 }, (_, n) => prompt(`p${n}`, `${shared}.\n`)),
+      ...Array.from({ length: PROMPT_MIN - 1 }, (_, n) => prompt(`p${n}`, `${shared}.\n`)),
       prompt("drift", `${drifted}.\n`),
     ];
     expect(checkWording([], files).map((x) => x.problem)).toEqual([
-      `shared by ${SHARED_MIN} prompts, 1 as near-copies but not in .bkit/wording.md: "${shared}"`,
+      `shared by ${PROMPT_MIN} prompts, 1 as near-copies but not in .bkit/wording.md: "${shared}"`,
     ]);
   });
 
   it("a fragment after ; is its own sentence for the cut-off", () => {
-    const files = Array.from({ length: SHARED_MIN }, (_, n) =>
+    const files = Array.from({ length: PROMPT_MIN }, (_, n) =>
       prompt(`p${n}`, `Local task number ${n}; do NOT stop halfway.\n`),
     );
     expect(checkWording([], files).map((x) => x.problem)).toEqual([
-      `shared by ${SHARED_MIN} prompts but not in .bkit/wording.md: "do NOT stop halfway"`,
+      `shared by ${PROMPT_MIN} prompts but not in .bkit/wording.md: "do NOT stop halfway"`,
     ]);
+  });
+
+  it(`a sentence shared by ${WORKFLOW_MIN} workflows but not listed fails; one workflow fewer passes`, () => {
+    const shared = "Hold the lock until the close step ends";
+    const files = (n: number) =>
+      Array.from({ length: n }, (_, i) => workflowFile(`w${i}`, `> - **Locks:** ${shared}.\n`));
+    expect(checkWording([], files(WORKFLOW_MIN)).map((x) => x.problem)).toEqual([
+      `shared by ${WORKFLOW_MIN} workflows but not in .bkit/wording.md: "**Locks:** ${shared}"`,
+    ]);
+    expect(checkWording([], files(WORKFLOW_MIN - 1))).toEqual([]);
+  });
+
+  it("each surface keeps its own cut-off: prompts and workflows never pool", () => {
+    const shared = "Hold the lock until the close step ends";
+    const files = [
+      ...Array.from({ length: WORKFLOW_MIN - 1 }, (_, i) => workflowFile(`w${i}`, `${shared}.\n`)),
+      ...Array.from({ length: PROMPT_MIN - 1 }, (_, i) => prompt(`p${i}`, `${shared}.\n`)),
+    ];
+    expect(checkWording([], files)).toEqual([]);
+  });
+
+  it("headings, HTML comments, and table rows never count toward the cut-off", () => {
+    const body =
+      "## Failure Path\n\n<!-- bkit:tracker github start -->\n\n| ID | Severity | Location |\n";
+    const files = Array.from({ length: WORKFLOW_MIN }, (_, i) => workflowFile(`w${i}`, body));
+    expect(checkWording([], files)).toEqual([]);
+  });
+});
+
+describe("audit templates", () => {
+  const RULE = "Read-only audit; NEVER edit code, config, or data.";
+  const c = synthetic({ texts: [RULE], modes: { audit: "required" } });
+
+  it("the wording file accepts an audit mode", () => {
+    const md = "# W\n\n## Clauses\n\n### c\n\n- audit: where-used\n\n```text\nX.\n```\n";
+    expect(parseWording(md)[0]!.modes).toEqual({ audit: "where-used" });
+  });
+
+  it("a required clause is checked inside the managed block only", () => {
+    const outside: WordingFile = {
+      ...auditFile("bkit-audit-x", "Body.\n"),
+      content: `<!-- bkit:start -->\n\nBody.\n\n<!-- bkit:end -->\n\n${RULE}\n`,
+    };
+    expect(checkWording([c], [outside]).map((x) => x.problem)).toEqual([`missing; add: ${RULE}`]);
+    expect(checkWording([c], [auditFile("bkit-audit-x", `> - ${RULE}\n`)])).toEqual([]);
+  });
+
+  it("a near-copy in an audit template is flagged and sync rewrites the template and its adopted copy alike", () => {
+    const drifted = "Read-only audit; NEVER edit code, config or data.";
+    expect(similarity(drifted, RULE)).toBeGreaterThanOrEqual(NEAR_COPY);
+    const files = [
+      auditFile("bkit-audit-x", `> - ${drifted}\n`),
+      auditFile("bkit-audit-x", `> - ${drifted}\n`, "docs/templates"),
+    ];
+    expect(checkWording([c], files).map((x) => x.problem)).toContain(
+      `near-copy (run pnpm wording:sync): "${drifted}"`,
+    );
+    const out = syncWording([c], files);
+    expect(out.get(".bkit/templates/docs/templates/bkit-audit-x.md")).toContain(`> - ${RULE}\n`);
+    expect(out.get("docs/templates/bkit-audit-x.md")).toBe(
+      out.get(".bkit/templates/docs/templates/bkit-audit-x.md"),
+    );
+  });
+
+  it(`a sentence shared by ${AUDIT_MIN} audit templates but not listed fails`, () => {
+    const shared = "Record each probe's exit code in the report";
+    const files = Array.from({ length: AUDIT_MIN }, (_, i) =>
+      auditFile(`bkit-audit-a${i}`, `${shared}.\n`),
+    );
+    expect(checkWording([], files).map((x) => x.problem)).toEqual([
+      `shared by ${AUDIT_MIN} audit templates but not in .bkit/wording.md: "${shared}"`,
+    ]);
+  });
+
+  it("an adopted copy never counts twice toward the cut-off", () => {
+    const shared = "Record each probe's exit code in the report";
+    const files = Array.from({ length: AUDIT_MIN - 1 }, (_, i) => [
+      auditFile(`bkit-audit-a${i}`, `${shared}.\n`),
+      auditFile(`bkit-audit-a${i}`, `${shared}.\n`, "docs/templates"),
+    ]).flat();
+    expect(checkWording([], files)).toEqual([]);
+  });
+
+  it("text below `bkit:end` never counts toward the cut-off", () => {
+    const shared = "Record each probe's exit code in the report";
+    const files = Array.from({ length: AUDIT_MIN }, (_, i) => ({
+      ...auditFile(`bkit-audit-a${i}`, "Body.\n"),
+      content: `<!-- bkit:start -->\n\nBody.\n\n<!-- bkit:end -->\n\n${shared}.\n`,
+    }));
+    expect(checkWording([], files)).toEqual([]);
+  });
+});
+
+describe("checkboxes and sibling clauses", () => {
+  it("a gate checkbox is a line prefix, like a list marker", () => {
+    expect(stripLinePrefix("- [ ] **Evidence:** cites the tool.")).toBe(
+      "**Evidence:** cites the tool.",
+    );
+    expect(stripLinePrefix("  - [x] Done.")).toBe("Done.");
+  });
+
+  it("a drifted gate item behind a checkbox is a near-copy", () => {
+    const text =
+      "**Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.";
+    const drifted =
+      "**Steps complete:** every step `[x]`, or explicit skip with evidence surface absent.";
+    const f = checkWording([synthetic({ texts: [text] })], [prompt("p", `- [ ] ${drifted}\n`)]);
+    expect(f.map((x) => x.problem)).toContain(`near-copy (run pnpm wording:sync): "${drifted}"`);
+  });
+
+  it("a line carrying one clause verbatim is not a near-copy of its sibling", () => {
+    const gate2 =
+      "**Gate 2 - Verified:** Every checkbox above independently verified and checked off.";
+    const gate3 =
+      "**Gate 3 - Verified:** Every checkbox above independently verified and checked off.";
+    expect(similarity(gate2, gate3)).toBeGreaterThanOrEqual(NEAR_COPY);
+    const clauses = [
+      synthetic({ name: "g2", texts: [gate2] }),
+      synthetic({ name: "g3", texts: [gate3] }),
+    ];
+    const f = prompt("p", `- [ ] ${gate2}\n- [ ] ${gate3}\n`);
+    expect(checkWording(clauses, [f])).toEqual([]);
+    expect(syncWording(clauses, [f]).size).toBe(0);
   });
 });
 

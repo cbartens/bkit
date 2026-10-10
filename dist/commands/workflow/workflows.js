@@ -27,7 +27,7 @@ import { gradeCompliance } from "../comply.js";
 import { CommandError, EXIT, git, parseJson, repoRoot, runGh, runGit, statusLocation, statusRelPath, } from "../lib.js";
 import { pushBranch, readAnchor, stampAnchor } from "./branches.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX, buildComment, linearState, transitionLabels, } from "./issues.js";
-import { commitBookkeeping, unionLedgers } from "./ledgers.js";
+import { EXIT_EMPTY, commitBookkeeping, unionLedgers } from "./ledgers.js";
 import { EXIT_REMOVE_FAILED, EXIT_SPLIT_BUCKET, acquireDevLock, acquireWorkflowLock, lockRoot, owns, readHolder, releaseLock, resolveMonth, workflowLockPath, } from "./locks.js";
 import { mergePr, probePr } from "./prs.js";
 import { FEATURE_STATUS } from "./roadmap.js";
@@ -292,6 +292,10 @@ async function shipFlush(ctx, o) {
             }, ctx.log);
         }
         catch (err) {
+            if (err instanceof CommandError && err.code === EXIT_EMPTY) {
+                ctx.log("no bookkeeping delta to record — nothing committed, nothing pushed");
+                return { code: EXIT.OK, pushed: false, ref: null, skipped: "nothing-to-commit" };
+            }
             ctx.log(`bookkeeping commit failed — FAILED bookkeeping left uncommitted in ${wt}: ${err.message}`);
             return { code: EXIT_FLUSH_FAILED, pushed: false, ref: null, skipped: null };
         }

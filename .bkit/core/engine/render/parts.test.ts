@@ -5,7 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { listFilesRecursive } from "../commands/install/install";
+import { listFilesRecursive } from "../install/template-copies";
 import { getHookPartsRoot, getTemplatesRoot } from "../shared/package-roots";
 import { readTemplate, renderParts } from "./parts";
 

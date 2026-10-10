@@ -156,7 +156,7 @@ Verify only when applicable.
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Findings`.
 
-- [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence surface absent. Monthly clock pass → Steps 7, 8, 9, and 10 explicit skip; Step 2 membership only.
+- [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent. Monthly clock pass → Steps 7, 8, 9, and 10 explicit skip; Step 2 membership only.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **Membership:** open-issue list read separately from board; every off-board issue, stale card listed.
 - [ ] **Links:** parent, milestone, blocked-by recorded per open issue; blocked-by from all three Step 4 sources.

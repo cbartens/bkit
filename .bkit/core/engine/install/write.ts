@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { updateManagedBlock, type WriteSet } from "../commands/install/install.js";
 import {
+  updateManagedBlock,
   extractFullManagedBlock,
   extractManagedBlock,
   findLineAnchoredMarkers,
@@ -10,8 +10,6 @@ import {
 } from "./managed-block.js";
 import { readTemplate } from "../render/parts.js";
 import { applyTokens, type TokenMap } from "./placeholders.js";
-
-export type { WriteSet };
 
 // ---------------------------------------------------------------------------
 // JsonValue — generic JSON type used throughout Tier-2 JSON helpers
@@ -455,4 +453,15 @@ export function ensurePackageJsonScripts(
     }
   }
   return { added, preserved, missingPkg: false, malformed: false };
+}
+
+// Shared WriteSet accumulator — both check and install paths populate this identically,
+// ensuring parity by construction (eliminates future dry-run divergence).
+export interface WriteEntry {
+  path: string;
+  action: "write" | "update" | "append";
+}
+
+export interface WriteSet {
+  writes: WriteEntry[];
 }

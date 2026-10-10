@@ -13,7 +13,7 @@ import * as path from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import { isTemplate, syncTemplateCopies } from "../../install/modules/index";
+import { isTemplate, syncTemplateCopies } from "../../install/template-copies";
 import { getTemplatesRoot } from "../../shared/package-roots";
 import type { WriteSet } from "../../install/write";
 

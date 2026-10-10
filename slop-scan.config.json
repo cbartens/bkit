@@ -171,7 +171,7 @@
     },
     {
       "files": [".bkit/core/engine/install/cloud-env.ts"],
-      "_reason": "networkAllowlistBases() is a one-line apex-collapse over expandAllowedDomains output, called once from .bkit/core/engine/install/modules/index.ts. Inlining at the call site would move these branches out of .bkit/core/engine/install/cloud-env.ts (the unit-lane's measured file) into .bkit/core/engine/install/modules/index.ts (covered by the integration lane only) and silently erode the unit coverage floor \u2014 verified by CI red on the first inline attempt. Kept as a named export for coverage accounting; same shape as expandAllowedDomains above it.",
+      "_reason": "networkAllowlistBases() is a one-line apex-collapse over expandAllowedDomains output, called from cloud-env.ts itself and .bkit/core/engine/install/modules/opencode.ts (the integration lane's file). Inlining it at the opencode call site would move these branches out of .bkit/core/engine/install/cloud-env.ts (the unit-lane's measured file) into .bkit/core/engine/install/modules/opencode.ts (covered by the integration lane only) and silently erode the unit coverage floor \u2014 verified by CI red on the first inline attempt. Kept as a named export for coverage accounting; same shape as expandAllowedDomains above it.",
       "rules": {
         "structure.pass-through-wrappers": {
           "enabled": false
@@ -188,8 +188,13 @@
       }
     },
     {
-      "files": [".bkit/core/engine/install/modules/index.ts"],
-      "_reason": "Fail-open catches on consumer-authored JSON: package.json (setConsumerBkitField, detectGateAdvisories, detectOpencodeYmlProviderDrift), .claude/settings.json and .cursor/hooks.json (the v2 envelope migrations, enrichClaudeSettingsAllows, pruneRetiredClaudeAskRules), and the parse-or-sentinel reads in reconcileOpencodeJson / removeOpencodeProviderBlock / reconcileMcpJson. install must NOT crash on a consumer's corrupt file; slop-scan's log+rethrow shape would abort install/upgrade on consumer input we cannot fix from here. Each catch carries a comment naming its fallback. Scoped per-rule to this file.",
+      "files": [
+        ".bkit/core/engine/install/modules/claude.ts",
+        ".bkit/core/engine/install/modules/cloud.ts",
+        ".bkit/core/engine/install/modules/core.ts",
+        ".bkit/core/engine/install/modules/opencode.ts"
+      ],
+      "_reason": "Fail-open catches on consumer-authored JSON and version files: package.json (setConsumerBkitField in cloud.ts, detectGateAdvisories / detectNoopGates in core.ts), .bkit/version (readInstallingVersion in core.ts), .claude/settings.json (enrichClaudeSettingsAllows in claude.ts), .mcp.json and .cursor/mcp.json (reconcileMcpJson in claude.ts), and .opencode/opencode.json plus opencode.yml (detectOpencodeYmlProviderDrift, renderOpencodeJson, reconcileOpencodeJson, removeOpencodeProviderBlock in opencode.ts). install must NOT crash on a consumer's corrupt file; slop-scan's log+rethrow shape would abort install/upgrade on consumer input we cannot fix from here. Each catch carries a comment naming its fallback. Scoped per-rule to these files.",
       "rules": {
         "defensive.empty-catch": {
           "enabled": false

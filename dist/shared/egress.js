@@ -1,5 +1,21 @@
 // Egress registry leaf. Pure data: zero imports, zero control flow. All branching lives
 // in install/cloud-env.ts.
+/**
+ * Providers bkit supports for the opencode host. `--opencode=<provider>` accepts
+ * ONLY these — anything else is rejected (no generic/arbitrary-endpoint fallback).
+ * Keep in sync with OPENCODE_PROVIDER_DEFAULTS (below) and
+ * GATEWAY_COLUMN (render/models.ts § Models lookup).
+ */
+export const OPENCODE_PROVIDERS = [
+    // OpenAI-compatible npm driver — endpoint + key per provider.
+    "openrouter",
+    "ollama",
+    // opencode-native gateways — two DISTINCT models.dev providers with separate catalogs.
+    // CLI: opencode-zen / opencode-go. Agent model pins: opencode/<id> (Zen built-in id) and
+    // opencode-go/<id>. Both auth via BKIT_OPENCODE_API_KEY. See providers.md § Models.
+    "opencode-zen",
+    "opencode-go",
+];
 // Per-provider provider key name + base URL + env var suggestions.
 // These are sane defaults; consumers tune after install.
 // npmPackage: set for custom OpenAI-compatible providers that use npm-based AI SDK driver.

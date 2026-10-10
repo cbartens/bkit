@@ -33,7 +33,9 @@ cbartens/bkit (this repo)
 ├── .bkit/core/engine/       # TypeScript source for the bkit CLI
 │   ├── cli.ts                   # entry point (the `bkit` bin); CLI verb + module-flag parsing (install | check | doctor | status | uninstall | upgrade | cursor | opencode | comply | harvest | analysis | telemetry | help)
 │   ├── commands/                # what you type: one file or folder per verb / noun
-│   │   ├── install/install.ts   # main() dispatch; orchestrates phases 1–3 + staging primitives
+│   │   ├── install/install.ts   # `bkit install`; orchestrates phases 1–3 + staging primitives (dispatch in cli.ts)
+│   │   ├── install/check.ts     # `bkit check` — replays phase 1 + phase 3, writes the advisories artifact
+│   │   ├── install/doctor.ts    # `bkit doctor` + `bkit status` verbs
 │   │   ├── install/upgrade.ts   # `bkit upgrade` diff engine + canonicalHashes drift detection
 │   │   ├── install/uninstall.ts # `bkit uninstall` orchestrator — surgical format-aware removal
 │   │   ├── launch.ts            # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
@@ -43,18 +45,23 @@ cbartens/bkit (this repo)
 │   │   └── workflow/ ci/ setup/ # `bkit <noun> <verb>` workflow commands
 │   ├── install/                 # what gets written into a consumer repo, and how
 │   │   ├── modules/index.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
+│   │   ├── template-copies.ts   # Template detection (isTemplate) + copy/delete sync (syncTemplateCopies)
 │   │   ├── write.ts             # Format-aware file-write primitives (fully-managed / markered-text) + deepContains/writeTier2JsonContained
 │   │   ├── placeholders.ts      # Token resolver (default branch, project name, managed-version marker)
 │   │   ├── version-file.ts      # .bkit/version JSON schema (pinnedVersion, canonicalHashes, claudeAllowDerived)
 │   │   ├── manifest.ts          # Per-module install-write manifest (drives uninstall + the upgrade walk)
 │   │   └── cloud-env.ts         # Resolves the `.claude/cloud.md` + `.cursor/cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds BKIT_LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-independent
 │   ├── render/                  # workflow and prompt sources → host agent and command copies
+│   │   ├── hosts.ts             # Host transforms (T1/T2/T3, frontmatter, agent/command/skill renders)
+│   │   ├── models.ts            # Model lookup, overrides, effort map and the gateway columns
 │   │   └── trackers.ts          # Tracker-provider substitution engine (github / linear / none)
 │   ├── checks/                  # detection before and after writes
-│   │   ├── before/index.ts      # Phase 1 — read-only blocker + advisory detectors
-│   │   └── after/index.ts       # Phase 3 — post-install re-detection + checklist formatter
+│   │   ├── before/              # Phase 1 — index.ts runs one file per group of findings (repo, version,
+│   │   │                        #   context-fetch, mcp, env, files)
+│   │   └── after/               # Phase 3 — index.ts runs one file per group of findings (auth, github,
+│   │                            #   vercel, ci-yml, tools, managed); checklist formatter
 │   ├── ledgers/                 # JSONL ledger codecs
-│   │   ├── status.ts            # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in commands/install/install.ts)
+│   │   ├── status.ts            # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in commands/install/doctor.ts)
 │   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine (#234 WS-1)
 │   ├── shared/                  # helpers every folder uses
 │   │   ├── package-roots.ts     # Single resolver seam — getTemplatesRoot / getPkgRoot / isDogfood

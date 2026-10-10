@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { updateManagedBlock } from "../commands/install/install.js";
-import { extractFullManagedBlock, extractManagedBlock, findLineAnchoredMarkers, selectMarkers, } from "./managed-block.js";
+import { updateManagedBlock, extractFullManagedBlock, extractManagedBlock, findLineAnchoredMarkers, selectMarkers, } from "./managed-block.js";
 import { readTemplate } from "../render/parts.js";
 import { applyTokens } from "./placeholders.js";
 export function deepContains(template, consumer, pathPrefix = "") {

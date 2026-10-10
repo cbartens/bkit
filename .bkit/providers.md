@@ -60,7 +60,7 @@ Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-
 
 **Additive multi-provider install:** `bkit install --opencode=<provider>` additive — second provider ADDS block to `opencode.json`, keeps first. Agent frontmatter (`model:`) re-renders to last-installed (active) provider; other blocks stay for interactive switch/overrides. Installed providers → `bkit.opencodeProviders: string[]` in `package.json`; active → `bkit.opencodeProvider`. `bkit status` lists all, marks active; `bkit doctor` checks all credentials. Remove one: `bkit uninstall --opencode=<provider>` (surgical — block + array; if active removed, re-point via `bkit install --opencode=<new>` or `bkit upgrade`). `bkit uninstall --opencode` (bare) tears down entire opencode host.
 
-New host — row above + `run<Host>Module` (`.bkit/core/engine/install/modules/index.ts`) + manifest block (`.bkit/core/engine/install/manifest.ts`) + `.bkit/templates/<dir>/` + GateGuard case in `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`. New provider ALSO needs `GATEWAY_COLUMN` (`.bkit/core/engine/commands/install/install.ts`) + a curated `prompts.md` § Models column.
+New host — row above + `run<Host>Module` (`.bkit/core/engine/install/modules/<host>.ts`) + manifest block (`.bkit/core/engine/install/manifest.ts`) + `.bkit/templates/<dir>/` + GateGuard case in `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`. New provider ALSO needs `GATEWAY_COLUMN` (`.bkit/core/engine/render/models.ts`) + a curated `prompts.md` § Models column.
 
 ---
 
@@ -204,7 +204,7 @@ Dashboard label-based routing.
 
 **Decision:** Cursor **never emits `readonly:`**. Subagents write directly on both hosts, matching canonical Claude command shape. Cursor subagents have full tool access: Cursor CLI 2026.10.01 ignores the `tools:` allowlist (measured).
 
-**Implementation:** T3 in `.bkit/core/engine/commands/install/install.ts` emits only `name` / `description` / `model` — no `readonly:`. Generated `.cursor/agents/*.md` confirm zero `readonly:` lines.
+**Implementation:** T3 in `.bkit/core/engine/render/hosts.ts` emits only `name` / `description` / `model` — no `readonly:`. Generated `.cursor/agents/*.md` confirm zero `readonly:` lines.
 
 **Trade-off accepted:** Cursor per-agent runtime safety → tool-allowlist sandboxing once `tools:` lands. Canonical command bodies byte-identical-shape; outputs identical.
 
@@ -395,7 +395,7 @@ Installed provider catalog changes. Look up model IDs before pinning in `.openco
 
 **Model ID format:** opencode provider-prefixed frontmatter: `<provider>/<model-id>` (e.g. `openrouter/moonshotai/kimi-k3`, `ollama/kimi-k2.7-code`). Pins = `prompts.md` § Models — **one column per provider** (`OpenRouter`, `Ollama`, `OpenCode Zen`, `OpenCode Go`). Gateways: `opencode/<id>` Zen, `opencode-go/<id>` Go. CLI keys `opencode-zen` / `opencode-go`.
 
-**Lookup mechanic (install pin resolution).** `bkit install --opencode=<provider>` → `buildOpencodeModelLookup(promptsMdPath, provider)` (`.bkit/core/engine/commands/install/install.ts`):
+**Lookup mechanic (install pin resolution).** `bkit install --opencode=<provider>` → `buildOpencodeModelLookup(promptsMdPath, provider)` (`.bkit/core/engine/render/models.ts`):
 
 1. Provider key → `prompts.md` column via `OPENCODE_PROVIDER_COLUMN` (`openrouter`→`OpenRouter`, `ollama`→`Ollama`, `opencode-zen`→`OpenCode Zen`, `opencode-go`→`OpenCode Go`).
 2. Parse column → seed `.opencode/agents/<name>.md` `model:` verbatim.
@@ -422,7 +422,7 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 2. Pull every source; stamp the date. LiveBench `table_<date>.csv` name ≠ freshness.
 3. Slug live? § Per-provider live model lookup. OpenRouter: also `GET /api/v1/models/{slug}/endpoints`.
 4. Shortlist 1–2 / tier. Reject single-endpoint + `cache_control` hosts (Anthropic, Alibaba) unless no alternative.
-5. Apply: `prompts.md` § Models + this board + `.bkit/core/engine/commands/install/install.test.ts` OpenRouter tests + `bkit install`. Stamp `prompts.md` § Live model-ID verification.
+5. Apply: `prompts.md` § Models + this board + `.bkit/core/engine/render/models.test.ts` OpenRouter tests + `bkit install`. Stamp `prompts.md` § Live model-ID verification.
 
 **Sources — check all.**
 

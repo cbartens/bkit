@@ -1395,7 +1395,7 @@ function runGate(ctx: RunContext): number {
       return GATE.API_ERROR;
     }
   }
-  if (head === "") throw new CommandError(EXIT.USAGE, "--head must not be empty");
+  if (head === "") throw new CommandError(EXIT.USAGE, "--head needs a non-empty value");
 
   // The pre-merge snapshot, written BEFORE the gate decides.
   const snapshot = str(f.snapshot);

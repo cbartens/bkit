@@ -9,14 +9,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  dispatchModules,
-  formatTemplateChanges,
-  isTemplate,
-  syncTemplateCopies,
-  type ModuleContext,
-} from "./modules/index";
-import { listFilesRecursive, remapTemplateDest } from "../commands/install/install";
+import { dispatchModules, type ModuleContext } from "./modules/index";
+import { formatTemplateChanges, isTemplate, syncTemplateCopies } from "./template-copies";
+import { listFilesRecursive, remapTemplateDest } from "./template-copies";
 import { getPkgRoot, getTemplatesRoot } from "../shared/package-roots";
 import { readBkitVersion } from "./version-file";
 import { runUninstall } from "../commands/install/uninstall";

@@ -8,9 +8,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import { getPkgRoot, getTemplatesRoot, ENGINE_SUBPATH } from "../shared/package-roots";
-import { guardTemplatesRoot } from "./modules/index";
+import { guardTemplatesRoot } from "./modules/core";
+import { remapTemplateDest } from "./template-copies";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -168,5 +168,37 @@ describe("guardTemplatesRoot — additional edge cases", () => {
     // templates directory was never installed; a file at that path is a separate anomaly.
     expect(() => guardTemplatesRoot(existingFilePath)).not.toThrow();
     expect(exitSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// remapTemplateDest — the single shared dotfile remap used by BOTH the module
+// install pass and the `bkit upgrade` template walk. Only the names npm strips
+// from packed tarballs (.gitignore, .npmignore) are stored dot-less and remapped;
+// every other dotfile (.gitattributes, .prettierignore, …) is stored with its dot
+// and must pass through unchanged.
+// ---------------------------------------------------------------------------
+
+describe("remapTemplateDest", () => {
+  it("maps npm-stripped basenames to their dotted dest", () => {
+    expect(remapTemplateDest("gitignore")).toBe(".gitignore");
+    expect(remapTemplateDest("npmignore")).toBe(".npmignore");
+  });
+
+  it("maps npm-stripped basenames in nested paths", () => {
+    expect(remapTemplateDest(path.join("packages", "app", "gitignore"))).toBe(
+      path.join("packages", "app", ".gitignore"),
+    );
+  });
+
+  it("does NOT remap .gitattributes — npm does not strip it, so it is stored dotted", () => {
+    expect(remapTemplateDest(".gitattributes")).toBe(".gitattributes");
+  });
+
+  it("passes through any other (already-dotted or plain) name unchanged", () => {
+    expect(remapTemplateDest(".prettierignore")).toBe(".prettierignore");
+    expect(remapTemplateDest(".mcp.json")).toBe(".mcp.json");
+    expect(remapTemplateDest("AGENTS.md")).toBe("AGENTS.md");
+    expect(remapTemplateDest(path.join("docs", "setup.md"))).toBe(path.join("docs", "setup.md"));
   });
 });

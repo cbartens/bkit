@@ -11,8 +11,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { isTemplate } from "../../install/modules/index";
-import { listFilesRecursive, remapTemplateDest } from "../../commands/install/install";
+import { isTemplate } from "../../install/template-copies";
+import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
 import { getPkgRoot, getTemplatesRoot } from "../../shared/package-roots";
 
 type Kind = "placeholder" | "adapt" | "bkit-only";

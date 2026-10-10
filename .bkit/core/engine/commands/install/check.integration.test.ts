@@ -17,14 +17,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { afterAll, beforeAll } from "vitest";
-import { findMissingOwnedHooks, detectOwnedHookMissing } from "../../checks/after/index";
-import { type ModuleFlag } from "../../cli";
+import { afterEach, beforeEach, describe, expect, it, afterAll, beforeAll } from "vitest";
+import { findMissingOwnedHooks, detectOwnedHookMissing } from "../../checks/after/managed";
+import type { ModuleFlag, CloudVariant } from "../../cli";
 import { dispatchModules, type ModuleContext } from "../../install/modules/index";
-import { parseModelLookup, buildOpencodeModelLookup, parseEffortMap } from "./install";
-import { type WriteSet } from "../../install/write";
-import { type CloudVariant } from "../../cli";
+import { parseModelLookup, buildOpencodeModelLookup, parseEffortMap } from "../../render/models";
+import type { WriteSet } from "../../install/write";
 
 let tmpDir: string;
 let originalCwd: string;
@@ -646,5 +644,110 @@ describe("dry-run-parity", () => {
         true,
       );
     });
+  });
+});
+
+describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => {
+  it("bkit check with stale consumer prompts.md does not emit Missing model lookup", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", devDependencies: {} }),
+    );
+    // Mark as a git repo to satisfy not-git-repo blocker (--core requires it).
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    // Stale consumer .agents/prompts.md — empty Models table (the worst-case
+    // version of the v0.4.x → v0.5.0 skew that triggered the original bug).
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", "prompts.md"),
+      "# Stale\n\n## Models\n\n| Name | Cursor model | Claude model |\n| --- | --- | --- |\n",
+    );
+
+    const bkitInstallPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../cli.ts",
+    );
+    const tsxBin = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../../../../node_modules/.bin/tsx",
+    );
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "check"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 30_000,
+    });
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(combined).not.toContain("Missing model lookup");
+    // Positive signal that the binary reached dispatch (past parse).
+    expect(combined).toMatch(/\[bkit-(check|install)\]/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario: managed-version marker gate, branch-scoped
+// `bkit check` hard-fails (exit 1) on main/dev when a stamped file's (here a rendered
+// mirror's) managed-version marker is older than the installing bkit version. On a feature
+// branch the same drift is a NON-blocking advisory — see isOnProtectedBranch.
+// ---------------------------------------------------------------------------
+
+describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () => {
+  // Build a scratch consumer with one old claude mirror marker (the
+  // installing version under tsx is the repo's package.json version, far newer)
+  // and run `bkit check`, forcing the effective branch via GH Actions env.
+  // Returns null when tsx is unavailable (skip).
+  function runStaleCheck(branchEnv: Record<string, string>): {
+    combined: string;
+    status: number | null;
+  } {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".claude", "agents", "bkit-foo.md"),
+      "---\nname: bkit-foo\n---\n<!-- bkit:managed v0.0.1 — do NOT edit; run `bkit upgrade` to refresh -->\n\nbody\n",
+    );
+
+    const dir = path.dirname(new URL(import.meta.url).pathname);
+    const bkitInstallPath = path.resolve(dir, "../../cli.ts");
+    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
+
+    // Force the branch deterministically: clear any ambient CI branch env first.
+    const env: NodeJS.ProcessEnv = { ...process.env, NODE_NO_WARNINGS: "1" };
+    delete env.GITHUB_BASE_REF;
+    delete env.GITHUB_REF_NAME;
+    Object.assign(env, branchEnv);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "check"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env,
+      timeout: 60_000,
+    });
+    return { combined: `${result.stdout ?? ""}\n${result.stderr ?? ""}`, status: result.status };
+  }
+
+  it("on main: hard-fails (exit 1) and names the bkit-managed-stale BLOCKER", () => {
+    const r = runStaleCheck({ GITHUB_REF_NAME: "main" });
+    expect(r.combined, r.combined).toContain("[blocker] bkit-managed-stale");
+    expect(r.combined).toContain("bkit-managed files are stale (managed-version marker drift)");
+    expect(r.status, `expected exit 1, got ${r.status}:\n${r.combined}`).toBe(1);
+  });
+
+  it("on a feature branch: surfaces a non-blocking ADVISORY, no marker-drift hard-fail line", () => {
+    const r = runStaleCheck({ GITHUB_REF_NAME: "feat/296-file-upload" });
+    expect(r.combined, r.combined).toContain("[advisory] bkit-managed-stale");
+    expect(r.combined).toContain("non-blocking on this feature branch");
+    // The blocker-only stderr drift line is gated on severity===blocker, so it must
+    // NOT appear here even though other writes may still flag generic drift.
+    expect(r.combined).not.toContain("bkit-managed files are stale (managed-version marker drift)");
   });
 });

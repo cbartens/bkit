@@ -427,3 +427,33 @@ export function consumerPathToSlug(consumerPath: string): string {
   );
   return fallback;
 }
+
+// harvest — cross-repo harvest CLI.
+// Copies consumer .bkit/stats.jsonl and MOVES .bkit/friction.jsonl into harvest/;
+// COUNT-ONLY for docs/{deferrals,failures}.jsonl. Friction rows are pruned from the
+// consumer only after they are fsync'd + read back from the store. Fail-open: exits 0.
+// See DE-34 for the shared-entrypoint + crash-isolation contract.
+export function runHarvestCommand(): void {
+  try {
+    const cwd = process.cwd();
+    console.log("[bkit-harvest] Starting cross-repo harvest...");
+    const result = runHarvest(cwd);
+    console.log(
+      `[bkit-harvest] Harvest complete — consumers: ${result.consumers.length}, rows copied: ${result.totalCopiedRows}, entities after fold: ${result.dedupedRows}, pruned from consumers: ${result.totalPrunedRows}`,
+    );
+    const countOnlyEntries = Object.entries(result.totalCountOnly);
+    if (countOnlyEntries.length > 0) {
+      for (const [file, count] of countOnlyEntries) {
+        console.log(`[bkit-harvest] count-only ${file}: ${count} rows (not copied)`);
+      }
+    }
+    if (result.totalPrunedRows > 0) {
+      console.log(
+        `[bkit-harvest] ${result.totalPrunedRows} friction row(s) were REMOVED from consumers and now exist only in ${HARVEST_DEST_DIR}/ — commit it.`,
+      );
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[bkit-harvest] harvest error (fail-open): ${msg}`);
+  }
+}

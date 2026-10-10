@@ -22,9 +22,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runUpgrade } from "./upgrade";
-import { listFilesRecursive, remapTemplateDest } from "./install";
-import { isTemplate, listStampedFiles, readInstallingVersion } from "../../install/modules/index";
+import { runUpgrade, updateCanonicalHashesAfterUpgrade, type UpgradeCandidate } from "./upgrade";
+import { listFilesRecursive, remapTemplateDest, isTemplate } from "../../install/template-copies";
+import { listStampedFiles } from "../../install/modules/index";
+import { readInstallingVersion } from "../../install/modules/core";
 import { getTemplatesRoot } from "../../shared/package-roots";
 import {
   detectMarkerStyle,
@@ -38,7 +39,6 @@ import {
   readManagedVersion,
   type BkitVersion,
 } from "../../install/version-file";
-import { updateCanonicalHashesAfterUpgrade, type UpgradeCandidate } from "./upgrade";
 
 let tmpDir: string;
 let originalCwd: string;
@@ -1684,5 +1684,89 @@ describe("upgrade-render", () => {
       expect(fs.readFileSync(abs, "utf-8")).toContain("// consumer edit");
       expect(recordedHash(), "upgrade must not re-record the consumer's content").toBe(before);
     }, 180_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario: `bkit upgrade --to=<v>` atomic self-bump (#1) — dry-run preview
+// A dry-run bump reports the plan and exits 0 WITHOUT shelling out to pnpm or
+// re-rendering (runSelfBump returns before any IO), so this stays offline.
+// ---------------------------------------------------------------------------
+
+describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
+  it("previews the bump (pnpm add + re-render) and exits 0 without mutating", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const dir = path.dirname(new URL(import.meta.url).pathname);
+    const bkitInstallPath = path.resolve(dir, "../../cli.ts");
+    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
+
+    // Target a version far above the installed one so it's always a "bump", never a noop.
+    const result = spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(combined, combined).toContain("[dry-run] would bump @cbartens/bkit");
+    expect(combined).toContain("99.0.0");
+    expect(combined).toContain("pnpm add -D @cbartens/bkit@99.0.0");
+    expect(result.status, `expected exit 0, got ${result.status}:\n${combined}`).toBe(0);
+    // Dry-run must not have touched the consumer's package.json.
+    const pkg = fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8");
+    expect(pkg).not.toContain("99.0.0");
+  });
+
+  // In a pnpm workspace root, `pnpm add` refuses without -w (ERR_PNPM_ADDING_TO_ROOT),
+  // so the self-bump passes -w. A pnpm-workspace.yaml at cwd is the workspace signal.
+  it("passes -w when the consumer is a pnpm workspace root", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", devDependencies: {} }),
+    );
+    fs.writeFileSync(path.join(tmpDir, "pnpm-workspace.yaml"), "packages:\n  - 'apps/*'\n");
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const dir = path.dirname(new URL(import.meta.url).pathname);
+    const bkitInstallPath = path.resolve(dir, "../../cli.ts");
+    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(combined, combined).toContain("pnpm add -D -w @cbartens/bkit@99.0.0");
+    expect(result.status, `expected exit 0, got ${result.status}:\n${combined}`).toBe(0);
+  });
+
+  it("rejects --to=<version> with --latest (mutually exclusive) at exit 1", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }));
+    const dir = path.dirname(new URL(import.meta.url).pathname);
+    const bkitInstallPath = path.resolve(dir, "../../cli.ts");
+    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
+    const result = spawnSync(
+      tsxBin,
+      [bkitInstallPath, "upgrade", "--to=4.2.0", "--latest", "--dry-run"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(combined, combined).toContain("mutually exclusive");
+    expect(result.status).toBe(1);
   });
 });

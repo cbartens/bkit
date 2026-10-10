@@ -6,7 +6,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getPkgRoot, ENGINE_SUBPATH, getTemplatesRoot, isDogfood } from "./package-roots";
 
 // ---------------------------------------------------------------------------
@@ -114,5 +114,47 @@ describe("getTemplatesRoot()", () => {
 describe("isDogfood()", () => {
   it("returns a boolean", () => {
     expect(typeof isDogfood()).toBe("boolean");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dogfood-noop
+// ---------------------------------------------------------------------------
+// dogfood-noop — dogfood detection inside the bkit repo itself.
+describe("dogfood-noop", () => {
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  let originalCwd: string;
+
+  beforeEach(() => {
+    originalCwd = process.cwd();
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Dogfood detection
+  // ---------------------------------------------------------------------------
+
+  describe("isDogfood() — in-repo detection", () => {
+    it("returns true when CWD equals the package root (tsx-from-source context)", () => {
+      // In the tsx-from-source run context, getPkgRoot() resolves to the repo root.
+      // Change CWD to the repo root so isDogfood() returns true.
+      const pkgRoot = getPkgRoot();
+      process.chdir(pkgRoot);
+      expect(isDogfood()).toBe(true);
+    });
+
+    it("returns false when CWD is a different directory", () => {
+      // Change CWD to a parent of pkgRoot — guaranteed to be different.
+      const pkgRoot = getPkgRoot();
+      const parent = path.dirname(pkgRoot);
+      process.chdir(parent);
+      expect(isDogfood()).toBe(false);
+    });
   });
 });

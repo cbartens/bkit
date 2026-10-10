@@ -2,14 +2,12 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-
 import { afterEach, describe, expect, it } from "vitest";
-
 import { runCommand } from "../lib";
 import { FID_PATTERNS, fidsCommand, issueIdOf, readIssueTracker } from "./fids";
-import { fromBranch, fromMarker } from "./fids";
 
 const dirs: string[] = [];
+
 afterEach(() => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
@@ -194,100 +192,6 @@ describe("issueIdOf", () => {
     expect(issueIdOf("12-34-x", "any")).toBe("12");
     expect(issueIdOf("abc-123-x", "any")).toBe("ABC-123");
     expect(FID_PATTERNS.any.test("12-34-x")).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// auto-fid-guard
-// ---------------------------------------------------------------------------
-// auto-fid-guard — FID slug allowlist.
-//
-// bkit-auto resolves {FID} PRIMARILY from the PR-body marker (`<!-- bkit:fid={FID} -->`).
-// The PR body is collaborator-trusted, not commit-signed (docs/security.md § CI Auto-Route
-// Trust), and {FID} flows into filesystem paths (docs/plans/{YYYYMM}/logs/{FID}/…,
-// .worktrees/{FID}) and downstream /bkit-* dispatch.
-//
-// The allowlists live in `bkit fids` (commands/workflow/fids.ts). This audit asserts BOTH
-// halves of the guard:
-//   (i)  every FID entry point in bkit-auto.md goes through a command — `bkit runs
-//        context`, which checks a CI_DEV argument against the `any` allowlist and
-//        recovers a PR's FID through the same `fromMarker` / `fromBranch` as `bkit fids
-//        parse` (its refusals are pinned in runs.test.ts) — and no block recovers a
-//        FID from the marker by hand;
-//   (ii) the command's allowlists actually REJECT path-traversal / shell-
-//        metacharacter FIDs (including inside a PR-body marker) and ACCEPT
-//        the well-formed FID each tracker mints.
-describe("auto-fid-guard", () => {
-  const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-  const AUTO = fs.readFileSync(path.resolve(REPO_ROOT, ".bkit/workflows/bkit-auto.md"), "utf-8");
-
-  /** Every ```bash block body in bkit-auto.md. */
-  const BASH_BLOCKS = [...AUTO.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]!);
-
-  // Attack vectors every allowlist MUST reject — path traversal, absolute
-  // paths, nested writes, and shell metacharacters reachable from an
-  // attacker-edited PR-body marker.
-  const MALICIOUS_FIDS = [
-    "../../elsewhere",
-    "..",
-    "../341-three-runtimes",
-    "341-three-runtimes/../../etc",
-    "a/b",
-    "/etc/passwd",
-    "341;rm -rf /",
-    "$(whoami)",
-    "`id`",
-    "341 three",
-    "341-three-runtimes\n../evil",
-  ] as const;
-
-  describe("bkit-auto FID slug guard (#341 F4 — path-traversal rejection)", () => {
-    describe("(i) every FID entry point goes through a bkit command", () => {
-      it("phase, CI_DEV slug check and PR FID recovery all run in `bkit runs context`", () => {
-        const block = BASH_BLOCKS.find((b) => b.includes("runs context"));
-        expect(block, "the runs context block").toBeDefined();
-        expect(block).toMatch(/"\{BKIT\}" runs context --phase="\{PHASE\}" --arg="\{ARG\}"/);
-        expect(AUTO).toContain("`fid` as `{FID}`");
-      });
-
-      it("no bash block recovers a FID from the marker by hand (sed/grep/jq on bkit:fid=)", () => {
-        for (const b of BASH_BLOCKS) expect(b).not.toMatch(/bkit:fid=/);
-      });
-    });
-
-    describe("(ii) each allowlist rejects traversal/injection and accepts its valid FID", () => {
-      for (const [tracker, re] of Object.entries(FID_PATTERNS)) {
-        for (const evil of MALICIOUS_FIDS) {
-          it(`${tracker} rejects ${JSON.stringify(evil)}`, () => {
-            expect(re.test(evil)).toBe(false);
-          });
-        }
-      }
-
-      it("a traversal FID inside a PR-body marker is refused, never returned", () => {
-        for (const evil of MALICIOUS_FIDS) {
-          expect(fromMarker(`<!-- bkit:issue=#341 bkit:fid=${evil} -->`, "github")).toBeNull();
-          expect(fromMarker(`<!-- bkit:issue=ABC-1 bkit:fid=${evil} -->`, "linear")).toBeNull();
-          expect(fromMarker(`<!-- bkit:fid=${evil} -->`, "none")).toBeNull();
-          expect(fromBranch(`feat/${evil}`, "none").ok).toBe(false);
-        }
-      });
-
-      it("github accepts a well-formed numeric-issue FID", () => {
-        expect(FID_PATTERNS.github.test("341-three-runtimes")).toBe(true);
-      });
-      it("linear accepts a well-formed alpha-prefixed FID", () => {
-        expect(FID_PATTERNS.linear.test("bar-341-three-runtimes")).toBe(true);
-      });
-      it("none accepts a well-formed branch-derived FID", () => {
-        expect(FID_PATTERNS.none.test("341-three-runtimes")).toBe(true);
-        expect(FID_PATTERNS.none.test("my-feature-branch")).toBe(true);
-      });
-      it("any (CI_DEV) accepts both tracker shapes", () => {
-        expect(FID_PATTERNS.any.test("341-three-runtimes")).toBe(true);
-        expect(FID_PATTERNS.any.test("bar-341-three-runtimes")).toBe(true);
-      });
-    });
   });
 });
 

@@ -266,3 +266,45 @@ export function readBkitVersion(searchFrom) {
     }
     return "0.0.0";
 }
+// comply — compliance grader (advisory, never gating, fail-open).
+// Runs `runGrader` over `git diff parentSha..HEAD`, appends `kind:"compliance"`
+// rows to `.bkit/stats.jsonl`, and logs violations.  Always exits 0 (fail-open);
+// callers MUST use the pinned idiom:
+//   `pnpm bkit comply --phase=<phase> || echo "[bkit-comply] grader unavailable, skipping"`
+// See DE-34 for the shared-entrypoint + crash-isolation contract.
+export function runComplyCommand(complyPhase) {
+    try {
+        const cwd = process.cwd();
+        const phase = complyPhase ?? "unknown";
+        const logPrefix = "[bkit-comply]";
+        // parentSha MUST be a resolved hex SHA: diffPaths returns [] for anything not
+        // matching /^[0-9a-f]{7,40}$/, and parentSha is part of the compliance identity().
+        // Resolves HEAD~1, else HEAD; neither → skip the grade.
+        const statsPath = path.join(cwd, ".bkit", "stats.jsonl");
+        const parentSha = resolveGitSha("HEAD~1", cwd) || resolveGitSha("HEAD", cwd);
+        if (!parentSha) {
+            console.log(`${logPrefix} cannot resolve a parent SHA (no commits?) — skipping grade`);
+            return;
+        }
+        console.log(`${logPrefix} Running compliance grader (phase=${phase}, parentSha=${parentSha})`);
+        const violations = runGrader({ parentSha, phase, cwd });
+        // The origin remote's owner/repo, the same slug every other telemetry writer uses.
+        const repo = resolveRepoSlug(cwd) || "unknown/repo";
+        const bkitVersion = readBkitVersion();
+        const rows = buildComplianceRows({ violations, phase, parentSha, repo, bkitVersion });
+        appendComplianceRows(rows, statsPath);
+        if (violations.length > 0) {
+            const summary = formatComplianceSummary(violations);
+            console.log(`${logPrefix} Compliance violations found:\n${summary}`);
+        }
+        else {
+            console.log(`${logPrefix} All rules pass.`);
+        }
+        console.log(`${logPrefix} Appended ${rows.length} compliance row(s) to .bkit/stats.jsonl (advisory — not gating).`);
+    }
+    catch (err) {
+        // Fail-open: any unexpected error in the dispatch body must not gate the workflow.
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[bkit-comply] grader error (fail-open): ${msg}`);
+    }
+}

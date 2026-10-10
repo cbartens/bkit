@@ -5,6 +5,9 @@
 // wording sync. Pure string functions only — file IO and logging stay with the
 // caller, so each caller keeps its own log context.
 
+import * as fs from "node:fs";
+import { LOG_PREFIX } from "../shared/log-prefix.js";
+
 const START_MARKER = "<!-- bkit:start -->";
 const END_MARKER = "<!-- bkit:end -->";
 const SLASH_START_MARKER = "// bkit:start";
@@ -181,4 +184,29 @@ export function stripManagedBlock(
   const beforeTrimmed = before.replace(/\n\n$/, "\n");
 
   return beforeTrimmed + afterTrimmed;
+}
+
+// Managed-block writer: update content between markers in a file on disk.
+// No-op (warn + skip) when markers absent, duplicated, or inverted.
+export function updateManagedBlock(
+  filePath: string,
+  newContent: string,
+  dryRun = false,
+  markerStyle: MarkerStyle = "html-comment",
+): boolean {
+  if (!fs.existsSync(filePath)) return false;
+  const existing = fs.readFileSync(filePath, "utf-8");
+  const result = replaceManagedBlock(existing, newContent, markerStyle);
+  if (!result.ok) {
+    const reason = {
+      absent: `Managed block markers absent in ${filePath} — skipping`,
+      multiple: `Multiple managed-block markers in ${filePath} — skipping (expected exactly one of each)`,
+      inverted: `Inverted managed-block markers in ${filePath} (end before start) — skipping`,
+    }[result.problem];
+    console.warn(`${LOG_PREFIX} ${reason}`);
+    return false;
+  }
+  if (result.content === existing) return false;
+  if (!dryRun) fs.writeFileSync(filePath, result.content, "utf-8");
+  return true;
 }

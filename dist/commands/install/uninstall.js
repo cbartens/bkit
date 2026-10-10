@@ -26,8 +26,10 @@ import { readTemplate } from "../../render/parts.js";
 import { getInstallManifest, } from "../../install/manifest.js";
 import { isConsumerModified, readBkitVersion } from "../../install/version-file.js";
 import { getPkgRoot, getTemplatesRoot, TEMPLATE_COPIES_DIR } from "../../shared/package-roots.js";
-import { isTemplate, removeOpencodeProviderBlock, renderOpencodeJson, } from "../../install/modules/index.js";
+import { isTemplate } from "../../install/template-copies.js";
+import { removeOpencodeProviderBlock, renderOpencodeJson } from "../../install/modules/opencode.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, resolveClaudeDerivedAllows, } from "../../install/cloud-env.js";
+import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
 // ---------------------------------------------------------------------------
 // stripTier2JsonScope — remove bkit-owned JSON scope from consumer doc (BAR-167 Phase 1)
 //
@@ -795,5 +797,35 @@ export async function runSurgicalOpencodeUninstall(providerKey, dryRun, cwd) {
     if (wasActive && newActive !== null) {
         console.log(`${LOG_PREFIX}${tag} active provider switched to "${newActive}". ` +
             `Run \`bkit install --opencode=${newActive}\` or \`bkit upgrade\` to re-render agent frontmatter.`);
+    }
+}
+export async function runUninstallCommand(modules, opencodeProvider, uninstallFlags) {
+    setLogPrefix("[bkit-uninstall]");
+    // Surgical single-provider removal: `uninstall --opencode=<provider>`
+    if (modules.has("opencode") && opencodeProvider !== null) {
+        const tag = uninstallFlags.dryRun ? " (dry-run)" : "";
+        console.log(`${LOG_PREFIX} Surgical opencode uninstall: removing provider "${opencodeProvider}"${tag}...`);
+        await runSurgicalOpencodeUninstall(opencodeProvider, uninstallFlags.dryRun, process.cwd());
+        return;
+    }
+    const uninstallCtx = {
+        cwd: process.cwd(),
+        dryRun: uninstallFlags.dryRun,
+        force: uninstallFlags.force,
+        nuke: uninstallFlags.nuke,
+        yes: uninstallFlags.yes,
+        logPrefix: LOG_PREFIX,
+    };
+    const moduleList = [...modules];
+    console.log(`${LOG_PREFIX} Running uninstall${uninstallCtx.dryRun ? " (dry-run)" : ""}...`);
+    const result = await runUninstall(moduleList, uninstallCtx);
+    const totalDeleted = result.deleted.length;
+    const totalStripped = result.stripped.length;
+    const totalPreserved = result.preserved.length;
+    if (uninstallCtx.dryRun) {
+        console.log(`${LOG_PREFIX} [dry-run] Would delete: ${totalDeleted}, strip: ${totalStripped}, preserve: ${totalPreserved}`);
+    }
+    else {
+        console.log(`${LOG_PREFIX} Done. Deleted: ${totalDeleted}, stripped: ${totalStripped}, preserved: ${totalPreserved}`);
     }
 }

@@ -11,10 +11,8 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { parse as parseYamlText } from "yaml";
-
 import { runCommand } from "../../commands/lib";
 import { runsCommand } from "../../commands/workflow/runs";
 import { readBkitConfig } from "../../shared/settings";
@@ -151,5 +149,100 @@ describe("ship gate against the template's job names", () => {
     const r = await gate("template-ci-red");
     expect(r.code).toBe(12);
     expect(r.err).toContain("capstone 'bkit-tests-check' concluded 'failure'");
+  });
+});
+
+// Every `uses: cbartens/bkit/...@<ref>` line in a workflow.
+function scanForeignBkitUses(content: string): string[] {
+  const matches: string[] = [];
+  const re = /^\s*-?\s*uses:\s*(cbartens\/bkit\/[^\s@]+@\S+)\s*$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    matches.push(m[1]!);
+  }
+  return matches;
+}
+
+describe("BAR-164 — canonical CI template has no cross-org private `uses:` references", () => {
+  it("scanForeignBkitUses flags `uses: cbartens/bkit/...@<ref>` lines", () => {
+    const sample = `
+jobs:
+  job:
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cbartens/bkit/.github/actions/setup-auth@v1
+        with:
+          token: \${{ secrets.BKIT_GH_TOKEN_INSTALL }}
+      - uses: cbartens/bkit/.github/actions/setup-auth@v1.0.2
+`;
+    expect(scanForeignBkitUses(sample)).toEqual([
+      "cbartens/bkit/.github/actions/setup-auth@v1",
+      "cbartens/bkit/.github/actions/setup-auth@v1.0.2",
+    ]);
+  });
+
+  it("scanForeignBkitUses returns empty for the env-var pattern (no foreign uses)", () => {
+    const sample = `
+jobs:
+  job:
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          BKIT_GH_TOKEN_INSTALL: \${{ secrets.BKIT_GH_TOKEN_INSTALL }}
+`;
+    expect(scanForeignBkitUses(sample)).toEqual([]);
+  });
+
+  it("canonical CI template has zero foreign `cbartens/bkit/...` uses", () => {
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
+    const content = fs.readFileSync(templatePath, "utf-8");
+    expect(scanForeignBkitUses(content)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 6.1 — ci.yml template registry-auth assertion (BAR-138)
+// ---------------------------------------------------------------------------
+
+describe("ci.yml template registry-auth assertion (Task 6.1 — BAR-138)", () => {
+  // BAR-138: The consumer CI template uses GitHub Packages registry auth
+  // (.npmrc + BKIT_GH_TOKEN_INSTALL env var), not a git auth-shim
+  // (git config --global url.insteadOf).
+
+  it("ci.yml template exists", () => {
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
+    expect(fs.existsSync(templatePath), `template must exist at ${templatePath}`).toBe(true);
+  });
+
+  it("ci.yml template does NOT contain a git auth-shim (BAR-138)", () => {
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
+    const content = fs.readFileSync(templatePath, "utf-8");
+    // Auth-shim strings must be absent
+    expect(content).not.toContain("git config --global url.");
+    expect(content).not.toContain("insteadOf");
+    expect(content).not.toContain("Configure private-repo auth");
+  });
+
+  it("ci.yml template install step carries env: BKIT_GH_TOKEN_INSTALL for registry auth (BAR-138)", () => {
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
+    const content = fs.readFileSync(templatePath, "utf-8");
+    // BKIT_GH_TOKEN_INSTALL must be present as the env var for registry auth
+    expect(content).toContain("BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}");
+    // BKIT_GH_TOKEN_INSTALL is declared at job-level too (so non-install pnpm steps
+    // don't emit ".npmrc env substitution failed" warnings). Locate the step-
+    // level declaration adjacent to the install command, skipping any earlier
+    // job-level occurrence.
+    const lines = content.split("\n");
+    const installLine = lines.findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
+    const envTokenLine = lines.findIndex(
+      (l, i) =>
+        i > installLine &&
+        l.includes("BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}"),
+    );
+    expect(installLine).toBeGreaterThan(-1);
+    expect(envTokenLine).toBeGreaterThan(installLine);
   });
 });

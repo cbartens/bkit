@@ -359,7 +359,7 @@ describe("detectMarkerStyle", () => {
     for (const content of [
       "a\n<!-- bkit:start -->\nx\n<!-- bkit:end -->\nb\n",
       "a\n# <!-- bkit:start -->\nx\n# <!-- bkit:end -->\nb\n",
-      "a\n# bkit:start\nx\n# bkit:end\nb\n",
+      "a\n// <!-- bkit:start -->\nx\n// <!-- bkit:end -->\nb\n",
       "a\n// bkit:start\nx\n// bkit:end\nb\n",
     ]) {
       const style = detectMarkerStyle(content);

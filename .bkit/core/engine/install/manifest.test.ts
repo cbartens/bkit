@@ -1,4 +1,5 @@
 // install/manifest.test.ts — P2.T1 — snapshot + contract tests.
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -13,7 +14,7 @@ import {
   parseCloudAgents,
   type ModuleName,
 } from "./manifest";
-import { isTemplate } from "./modules/index";
+import { isTemplate } from "./template-copies";
 
 // ---------------------------------------------------------------------------
 // CLAUDE.md is owned by the claude module, not core
@@ -387,6 +388,42 @@ describe("telemetry data files — absent from manifest format entries", () => {
     for (const dataFile of DATA_FILES) {
       const entry = manifest.find((e) => e.path === dataFile);
       expect(entry, `${dataFile} must NOT be a manifest format entry`).toBeUndefined();
+    }
+  });
+});
+
+describe("install/manifest: single dispatch on entry.format", () => {
+  it("json entries: settings.json and hooks.json use format json", () => {
+    const allEntries = getInstallManifest([]);
+    const jsonEntries = allEntries.filter((e) => e.format === "json");
+    const paths = jsonEntries.map((e) => e.path);
+    expect(paths).toContain(".claude/settings.json");
+    expect(paths).toContain(".cursor/hooks.json");
+  });
+
+  it("markered-text entries: AGENTS.md, CLAUDE.md, .gitignore use format markered-text", () => {
+    const allEntries = getInstallManifest([]);
+    const markedEntries = allEntries.filter((e) => e.format === "markered-text");
+    const paths = markedEntries.map((e) => e.path);
+    expect(paths).toContain("AGENTS.md");
+    expect(paths).toContain("CLAUDE.md");
+    expect(paths).toContain(".gitignore");
+  });
+
+  it("byte-equal-text entries: the owned .bkit files use format byte-equal-text", () => {
+    const allEntries = getInstallManifest([]);
+    const byteEqualEntries = allEntries.filter((e) => e.format === "byte-equal-text");
+    const paths = byteEqualEntries.map((e) => e.path);
+    expect(paths).toContain(".bkit/version");
+    expect(paths).toContain(".bkit/.env.example");
+    expect(paths).toContain(".bkit/scripts/bkit-slop-type-suppression.mjs");
+  });
+
+  it("every entry has a valid format value", () => {
+    const allEntries = getInstallManifest([]);
+    const validFormats = new Set(["json", "markered-text", "byte-equal-text"]);
+    for (const entry of allEntries) {
+      expect(validFormats.has(entry.format)).toBe(true);
     }
   });
 });

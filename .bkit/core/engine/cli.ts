@@ -1,12 +1,24 @@
 #!/usr/bin/env node
-// cli.ts — the `bkit` bin: parseArgs + printUsage for the v4-3 module-flag CLI surface,
-// consumed by commands/install/install.ts main(), which this file runs when executed.
+// cli.ts — the `bkit` bin: parseArgs + printUsage for the v4-3 module-flag CLI surface, and
+// main(), which dispatches each verb to its command and runs when this file is executed.
 
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { ISSUE_TRACKERS, type IssueTracker, parseIssueTracker } from "./install/manifest.js";
 import { COMMANDS } from "./commands/registry.js";
-import { LOG_PREFIX, main } from "./commands/install/install.js";
+import { LOG_PREFIX, setLogPrefix } from "./shared/log-prefix.js";
+import { runCommand } from "./commands/lib.js";
+import { launchApp } from "./commands/launch.js";
+import { runStatus, runDoctor } from "./commands/install/doctor.js";
+import { runComplyCommand } from "./commands/comply.js";
+import { runHarvestCommand } from "./commands/harvest.js";
+import { runAnalysisCommand } from "./commands/analysis.js";
+import { runTelemetryCommand } from "./commands/telemetry.js";
+import { runUpgradeCommand } from "./commands/install/upgrade.js";
+import { runUninstallCommand } from "./commands/install/uninstall.js";
+import { runInstall } from "./commands/install/install.js";
+import { OPTIN_MODULES } from "./install/manifest.js";
+import { OPENCODE_PROVIDERS } from "./shared/egress.js";
 
 export type ModuleFlag =
   | "core"
@@ -23,23 +35,6 @@ export type ModuleFlag =
 /** Cloud-agent variant chosen via `--auto=<variant>`. */
 export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"] as const;
 export type CloudVariant = (typeof CLOUD_VARIANTS)[number];
-
-/**
- * Providers bkit supports for the opencode host. `--opencode=<provider>` accepts
- * ONLY these — anything else is rejected (no generic/arbitrary-endpoint fallback).
- * Keep in sync with OPENCODE_PROVIDER_DEFAULTS (shared/egress.ts) and
- * GATEWAY_COLUMN (commands/install/install.ts § Models lookup).
- */
-export const OPENCODE_PROVIDERS = [
-  // OpenAI-compatible npm driver — endpoint + key per provider.
-  "openrouter",
-  "ollama",
-  // opencode-native gateways — two DISTINCT models.dev providers with separate catalogs.
-  // CLI: opencode-zen / opencode-go. Agent model pins: opencode/<id> (Zen built-in id) and
-  // opencode-go/<id>. Both auth via BKIT_OPENCODE_API_KEY. See providers.md § Models.
-  "opencode-zen",
-  "opencode-go",
-] as const;
 
 /** Narrow an unknown string to `CloudVariant` or return `null` if invalid. */
 export function parseCloudVariant(value: unknown): CloudVariant | null {
@@ -190,13 +185,6 @@ const MODULE_FLAGS = new Set<ModuleFlag>(["claude", "cursor", "opencode", "codex
 // ALL_MODULES — every non-opt-in module, core first. Used to expand a bare/full
 // uninstall (which additionally pulls in the opt-in add-ons below for zero footprint).
 const ALL_MODULES: ModuleFlag[] = ["core", "claude", "cursor", "lint"];
-
-/**
- * Opt-in modules: never installed implicitly; each requires an explicit flag
- * (`--auto=`, `--opencode=`). A bare/full `uninstall` DOES remove them (zero footprint).
- * Dependency-updater files are not modules — bkit never writes or removes them.
- */
-export const OPTIN_MODULES = new Set<ModuleFlag>(["cloud", "opencode", "codex"]);
 
 /**
  * Resolve the explicit module-flag set into the concrete module set to dispatch.
@@ -756,6 +744,133 @@ function commandsUsage(): string {
     "Workflow commands (bkit <noun> <verb> --flags; JSON on stdout; bkit <noun> --help):",
     ...COMMANDS.map((c) => `  bkit ${c.noun.padEnd(width)}  ${c.summary}`),
   ].join("\n");
+}
+
+/**
+ * Validate the verb/module-flag combination before any dispatch
+ * work runs. `install` requires >=1 module flag (bare install errors);
+ * `check` / `upgrade` take NO module flags — they
+ * operate on everything already installed, so a stray flag is a hard error
+ * pointing at the no-flag form. Returns the error message to print, or `null`
+ * when the combination is valid.
+ */
+export function validateModuleFlagsForVerb(
+  verb: Verb,
+  moduleFlags: Set<ModuleFlag>,
+): string | null {
+  if (verb === "install" && moduleFlags.size === 0) {
+    return (
+      "[bkit] `bkit install` requires at least one module flag. Name what to install: " +
+      "--claude, --cursor, --codex, --opencode=<provider>, --typescript (plus opt-in " +
+      "--auto=<claude|cursor>). Run `bkit help` for usage."
+    );
+  }
+  if ((verb === "check" || verb === "upgrade") && moduleFlags.size > 0) {
+    return (
+      `[bkit] \`bkit ${verb}\` takes no module flags — it operates on everything already ` +
+      `installed. Re-run as \`bkit ${verb}\` (no module flags). Run \`bkit help\` for usage.`
+    );
+  }
+  return null;
+}
+
+// The CLI entrypoint, run only when this file is executed and driven by real
+// argv/fs/process.exit side effects; install.integration.test.ts exercises it through
+// spawned processes. Pure decision logic lives in exported functions
+// (validateModuleFlagsForVerb above, validateCloudTrackerMatch in commands/install/install.ts)
+// for unit coverage.
+export async function main() {
+  const commandExit = await runCommand(process.argv.slice(2), COMMANDS, {
+    classicVerbs: CLASSIC_VERBS,
+  });
+  if (commandExit !== null) {
+    process.exitCode = commandExit;
+    return;
+  }
+
+  const {
+    verb,
+    modules,
+    moduleFlags,
+    uninstallFlags,
+    upgradeFlags,
+    tracker,
+    cloudVariant,
+    opencodeProvider,
+    complyPhase,
+    telemetrySubverb,
+  } = parseArgs(process.argv.slice(2));
+
+  // A bare `bkit` (no arguments) means no command was given: print usage and exit non-zero
+  // (2 = usage error), distinct from an explicit `bkit help` / `--help` (verb "help"), which
+  // prints the same usage and exits 0. parseArgs still defaults no-args to the "help" verb.
+  if (process.argv.slice(2).length === 0) {
+    printUsage();
+    process.exit(2);
+  }
+
+  if (verb === "help") {
+    printUsage();
+    return;
+  }
+
+  if (verb === "comply") {
+    runComplyCommand(complyPhase);
+    return;
+  }
+
+  if (verb === "harvest") {
+    runHarvestCommand();
+    return;
+  }
+
+  if (verb === "analysis") {
+    runAnalysisCommand();
+    return;
+  }
+
+  if (verb === "telemetry") {
+    runTelemetryCommand(telemetrySubverb, complyPhase);
+    return;
+  }
+
+  // Launcher verbs — exec the GUI app binary with .bkit/.env merged into the env
+  // so that MCP token placeholders (BKIT_GH_TOKEN, BKIT_OPENCODE_API_KEY, …) resolve correctly
+  // even when launched from the Dock/Finder (macOS GUI-isolation).
+  if (verb === "cursor" || verb === "opencode") {
+    await launchApp(verb, process.cwd());
+    return;
+  }
+
+  // install requires >=1 module flag; check/upgrade take NONE (validateModuleFlagsForVerb).
+  const moduleFlagsError = validateModuleFlagsForVerb(verb, moduleFlags);
+  if (moduleFlagsError) {
+    console.error(moduleFlagsError);
+    process.exit(1);
+  }
+
+  if (verb === "doctor") {
+    await runDoctor(modules, opencodeProvider);
+    return;
+  }
+
+  if (verb === "status") {
+    setLogPrefix("[bkit-status]");
+    runStatus(process.cwd(), LOG_PREFIX);
+    return;
+  }
+
+  if (verb === "upgrade") {
+    await runUpgradeCommand(upgradeFlags);
+    return;
+  }
+
+  if (verb === "uninstall") {
+    await runUninstallCommand(modules, opencodeProvider, uninstallFlags);
+    return;
+  }
+
+  await runInstall({ verb, modules, tracker, cloudVariant, opencodeProvider, uninstallFlags });
 }
 
 function isMainScript(): boolean {
