@@ -8,7 +8,7 @@
  *    KN-CORE-{N} and KN-{N}/DE-{N} namespaces).
  *
  * 2. Abort-safety + idempotency: parity-mismatch fixture → ABORT, ZERO .md deleted;
- *    absent-.md.bak fixture → ABORT, ZERO .md deleted; re-run after success → no-op.
+ *    .bak + .migrating files removed after success; re-run after success → no-op.
  *
  * 3. The migrate-delete function is NOT imported or called from any upgrade code path
  *    (KN-8; dispatch-graph check via source scan).
@@ -252,7 +252,7 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 1: Real-corpus migration — both KN-CORE-{N} and KN-{N}/DE-{N} namespaces (WS5-T3)
+// Test 1: Real-corpus migration — both KN-CORE-{N} and KN-{N}/DE-{N} namespaces
 // ---------------------------------------------------------------------------
 
 describe("real-corpus: parseKnowledgeMd parses bkit actual knowledge.md", () => {
@@ -485,7 +485,7 @@ describe("migrate — friction keys survive title truncation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 2a: Fixture migration — happy path (WS5-T2)
+// Test 2a: Fixture migration — happy path
 // ---------------------------------------------------------------------------
 
 describe("migrate — happy path fixture", () => {
@@ -835,35 +835,46 @@ describe("migrate — happy path fixture", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 2b: Abort-safety — forced parity mismatch (WS5-T2)
+// Test 2b: Abort-safety — forced parity mismatch
 // ---------------------------------------------------------------------------
 
 describe("migrate — abort safety: forced parity mismatch", () => {
   it("ABORTS with ZERO .md deleted when parity mismatch is injected", async () => {
-    const dir = setupFixtureDir({ knContent: FIXTURE_KN_MD, deContent: FIXTURE_DE_MD });
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
 
-    // migrate writes the .bak from the .md before the parity check, so a mismatch cannot
-    // be injected without code injection; this runs a 1-entry corpus through parity.
-    const knMdPath = path.join(dir, "docs", "knowledge.md");
-    fs.writeFileSync(
-      knMdPath,
-      `# Knowledge\n\n## KN-1: Only one entry (2026-01-01)\n\n- **Category:** agentic\n- **Symptom:** n/a\n`,
-      "utf-8",
-    );
+    // knowledge.md.bak is a symlink to knowledge.jsonl: the .jsonl write overwrites the
+    // .bak content, so the parity re-parse of the .bak finds 0 entries against 2 rows.
+    const knBakPath = path.join(dir, "docs", "knowledge.md.bak");
+    fs.symlinkSync("knowledge.jsonl", knBakPath);
 
     const result = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
-    expect(result.ok).toBe(true);
-    expect(result.knowledgeRowCount).toBe(1);
-    expect(fs.existsSync(knMdPath)).toBe(false); // .md deleted post-parity
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/knowledge parity mismatch/);
+    expect(result.knowledgeMdDeleted).toBe(false);
+    expect(result.decisionsMdDeleted).toBe(false);
+    expect(result.pendingMdDeleted).toBe(false);
+    expect(result.frictionMdDeleted).toBe(false);
+    expect(fs.existsSync(path.join(dir, "docs", "knowledge.md"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, "docs", "decisions.md"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, "docs", "pending.md"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, ".bkit", "friction.md"))).toBe(true);
+    // the aborted knowledge write is rolled back to an empty .jsonl
+    expect(fs.readFileSync(path.join(dir, "docs", "knowledge.jsonl"), "utf-8")).toBe("");
   });
 });
 
 // ---------------------------------------------------------------------------
-// Test 2c: Abort-safety — absent .md.bak after creation
+// Test 2c: temp-file cleanup after success
 // ---------------------------------------------------------------------------
 
-describe("migrate — abort safety: absent .md.bak", () => {
-  it("returns ok when .bak round-trip succeeds for all four files (validates abort-path exits cleanly)", async () => {
+describe("migrate — temp-file cleanup after success", () => {
+  it("removes every .md.bak and .migrating file after a successful run of all four files", async () => {
     const dir = setupFixtureDir({
       knContent: FIXTURE_KN_MD,
       deContent: FIXTURE_DE_MD,
@@ -884,7 +895,7 @@ describe("migrate — abort safety: absent .md.bak", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 2d: Idempotency — re-run is a no-op (WS5-T2)
+// Test 2d: Idempotency — re-run is a no-op
 // ---------------------------------------------------------------------------
 
 describe("migrate — idempotency", () => {

@@ -269,30 +269,13 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
   });
 
   it("ignores the bkit-owned mirror trees so Renovate doesn't scan them (#132)", () => {
-    // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned files NOT managed
-    // by consumer Renovate; scanning them only produces onboarding noise.
+    // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned and stay out of the scan.
     expect(content).toMatch(/ignorePaths:[\s\S]*"\.bkit\/templates\/\*\*"/);
     expect(content).toMatch(/ignorePaths:[\s\S]*"\.agents\/skills\/\*\*"/);
   });
 
   it("disables Renovate for the @cbartens/bkit package itself (#132)", () => {
-    // bkit upgrades via `bkit upgrade`, not a bare version bump; the package is also
-    // restricted on GitHub Packages (unauthable from Mend → "no-result").
-    expect(content).toMatch(
-      /matchPackageNames:\s*\[\s*"@cbartens\/bkit"\s*\][\s\S]*enabled:\s*false/,
-    );
-  });
-
-  it("ignores the bkit-owned mirror trees so Renovate doesn't scan them (#132)", () => {
-    // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned files NOT managed
-    // by consumer Renovate; scanning them only produces onboarding noise.
-    expect(content).toMatch(/ignorePaths:[\s\S]*"\.bkit\/templates\/\*\*"/);
-    expect(content).toMatch(/ignorePaths:[\s\S]*"\.agents\/skills\/\*\*"/);
-  });
-
-  it("disables Renovate for the @cbartens/bkit package itself (#132)", () => {
-    // bkit upgrades via `bkit upgrade`, not a bare version bump; the package is also
-    // restricted on GitHub Packages (unauthable from Mend → "no-result").
+    // bkit upgrades via `bkit upgrade`.
     expect(content).toMatch(
       /matchPackageNames:\s*\[\s*"@cbartens\/bkit"\s*\][\s\S]*enabled:\s*false/,
     );
@@ -304,9 +287,7 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
 
   it("collapses auto-mergeable non-major bumps into one shared group with automerge", () => {
     // devDeps non-major + prod patch + @types + eslint share a single
-    // groupName so they land in ONE PR — every Renovate PR rewrites
-    // pnpm-lock.yaml, so several auto-merge PRs in the same window force a
-    // serial rebase cascade. One group = one lockfile mutation = no cascade.
+    // groupName so they land in ONE PR.
     expect(content).toMatch(
       /matchDepTypes:\s*\[\s*"devDependencies"\s*\][\s\S]*?groupName:\s*"non-major dependencies"[\s\S]*?automerge:\s*true/,
     );

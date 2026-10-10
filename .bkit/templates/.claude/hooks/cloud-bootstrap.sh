@@ -93,7 +93,7 @@ elif [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
   # `export` does not reach the agent's later Bash processes (cloud env vars are set
   # in the dashboard; see cloud.md). Logs the fault and its fix; the workflow-level
   # Step-1 preflight fails the run closed onto the MCP lane.
-  log "gh-preflight: WARNING — GH_TOKEN/GITHUB_TOKEN is set but does NOT authenticate (placeholder or expired). It takes precedence over any stored 'gh auth login' credential, so gh cannot be repaired from this hook. Fix it where it is defined — the cloud environment's Environment variables — by setting a valid token or removing the variable so BKIT_GH_TOKEN can be used instead. Until then gh stays down and workflows fall back to the GitHub MCP lane. See issue #341 §2/§6a."
+  log "gh-preflight: WARNING — GH_TOKEN/GITHUB_TOKEN is set but does NOT authenticate (placeholder or expired). It takes precedence over any stored 'gh auth login' credential, so gh cannot be repaired from this hook. Fix it where it is defined — the cloud environment's Environment variables — by setting a valid token or removing the variable so BKIT_GH_TOKEN can be used instead. Until then gh stays down and workflows fall back to the GitHub MCP lane. See .bkit/cloud.md § Environment variables."
 elif [ -n "${BKIT_GH_TOKEN:-}" ]; then
   log "gh auth login --with-token"
   printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token || log "gh auth login failed (non-blocking)"
@@ -116,7 +116,7 @@ log "gh-preflight: RUNTIME_GITHUBCLI=${RUNTIME_GITHUBCLI}"
 # Loud, non-blocking (see above); the workflow-level Step-1 preflight is what
 # actually fails the run closed.
 if [ "$RUNTIME_GITHUBCLI" = "false" ] && [ -z "${BKIT_GH_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ]; then
-  log "DUAL-LANE WARNING: neither gh nor the GitHub MCP server can authenticate — BKIT_GH_TOKEN/GH_TOKEN/GITHUB_TOKEN are all unset. Both lanes read the same credential; the workflow's Step-1 preflight will fail closed. Non-blocking signal only (SessionStart hooks cannot abort the session) — see issue #341 §2/§6a."
+  log "DUAL-LANE WARNING: neither gh nor the GitHub MCP server can authenticate — BKIT_GH_TOKEN/GH_TOKEN/GITHUB_TOKEN are all unset. Both lanes read the same credential; the workflow's Step-1 preflight will fail closed. Non-blocking signal only (SessionStart hooks cannot abort the session) — see .bkit/cloud.md § MCP issue-tracker integration."
 fi
 
 # Provision context-fetch CLIs the consumer declared in .agents/context.md. Stack-agnostic:

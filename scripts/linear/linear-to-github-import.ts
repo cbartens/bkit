@@ -70,8 +70,8 @@ if (!BKIT_LINEAR_API_KEY) die("BKIT_LINEAR_API_KEY missing — load .bkit/.env v
 
 function resolveGhToken(): string {
   if (process.env.GH_PROJECT_TOKEN) return process.env.GH_PROJECT_TOKEN;
-  // Prefer the keyring token — it typically has `project` scope while
-  // env-loaded fine-grained PATs often don't.
+  // Then the keyring token (`--secure-storage`), then whatever `gh auth token`
+  // resolves. The token needs `project` and `repo` scopes.
   for (const cmd of ["gh auth token --secure-storage", "gh auth token"]) {
     try {
       const tok = execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -104,7 +104,7 @@ const PRIORITY_MAP: Record<string, string | null> = {
   "No priority": null,
 };
 
-// Labels we don't port (Linear project-as-label is redundant with the GH board).
+// Labels not ported: the Linear project label (the GH board holds the project).
 const LABEL_SKIPLIST = new Set(["cbartens/bkit"]);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -587,8 +587,8 @@ function rewriteBarRefs(
   out = out.replace(/<issue\s+id="[^"]+">(BAR-\d+)<\/issue>/g, (m, barId) => sub(barId, m, barId));
   out = out.replace(/(?<![/\w])(BAR-\d+)(?!\w)/g, (m, barId) => sub(barId, m));
 
-  // Collapse `#N (#N)` introduced by older meta-line format (e.g. legacy
-  // "**Parent:** #80 (BAR-199)" → "#80 (#80)" after rewrite). One-shot.
+  // Collapse `#N (#N)` (e.g. "**Parent:** #80 (BAR-199)" → "#80 (#80)" after
+  // rewrite) to `#N`.
   out = out.replace(/#(\d+)\s*\(\s*#\1\s*\)/g, "#$1");
 
   out = out.replace(/\x00M(\d+)\x00/g, (_, i) => masks[Number(i)]);
@@ -755,9 +755,8 @@ async function main(): Promise<void> {
   const csvText = await readFile(CSV_PATH, "utf8");
   const allRows = csvToObjects(parseCsv(csvText));
   // Linear CSV exports leave Project blank on sub-issues that inherit their
-  // project from a parent. Walk the parent chain so any descendant of a
-  // LINEAR_PROJECT issue is included too (otherwise the children silently
-  // drop out of the import).
+  // project from a parent. Walks the parent chain so every descendant of a
+  // LINEAR_PROJECT issue is included.
   const includedIds = new Set<string>(
     allRows.filter((r) => r.Project === LINEAR_PROJECT).map((r) => r.ID),
   );

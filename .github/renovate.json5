@@ -11,9 +11,8 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
 
-  // Extend Renovate's curated baseline. `config:recommended` enables the
-  // sensible defaults (timezone-aware schedules, dependency-dashboard, etc.).
-  // Repo-specific rules go in this file. You own it.
+  // `config:recommended` is Renovate's curated baseline (timezone-aware schedules,
+  // dependency dashboard, etc.). Repo-specific rules go in this file.
   // A `local>` preset with no `#` is read from the default branch. `useBaseBranchConfig`
   // does not change that fetch. Append the branch `baseBranchPatterns` names — a branch
   // after `#` works (branch, tag, or commit SHA):
@@ -25,62 +24,41 @@
     ":dependencyDashboard",
   ],
 
-  // bkit consumers gate `main` to PRs-from-`dev`-only. Renovate must open
-  // PRs against `dev`, not the default branch.
+  // Renovate opens PRs against `dev`, not the default branch. `main` accepts
+  // PRs from `dev` only.
   baseBranchPatterns: ["dev"],
 
-  // Renovate reads its config ONLY from the repository's default branch (`main`).
-  // With `baseBranchPatterns: ["dev"]` and this unset, edits to `renovate.json5` on `dev`
-  // are invisible to Renovate — every config change would otherwise need a release
-  // to `main` to take effect. `merge` layers `dev`'s config over `main`'s for the
-  // dev-targeted runs, so ongoing config edits can live on `dev`. Bootstrap caveat:
-  // this option is itself read from `main`, so it needs ONE merge to `main` before
-  // dev-side config edits are honored. See docs/deployments.md § Dependency updaters.
+  // Renovate reads its config from the default branch (`main`). `merge` layers
+  // `dev`'s config over `main`'s for dev-targeted runs, so config edits on `dev`
+  // apply to them. This option is itself read from `main`, so it needs one merge
+  // to `main` before dev-side config edits apply.
+  // See docs/deployments.md § Dependency updaters.
   useBaseBranchConfig: "merge",
 
-  // Weekly batched runs — keeps PR noise low. CVE-driven updates fire
-  // immediately regardless of schedule via `osvVulnerabilityAlerts`.
+  // Weekly batched runs. CVE-driven updates are not held to this schedule
+  // (`osvVulnerabilityAlerts` below).
   schedule: ["before 6am on Monday"],
   timezone: "UTC",
 
-  // CVE alerts → Renovate opens a PR immediately, bypassing the weekly schedule.
-  // Equivalent to Dependabot's `automated-security-fixes` but routed to `dev`
-  // (via baseBranchPatterns above) so bkit branch protection accepts them.
+  // CVE alerts → Renovate opens a PR immediately, outside the weekly schedule.
+  // These PRs target `dev` (baseBranchPatterns above).
   osvVulnerabilityAlerts: true,
 
-  // Conventional-commit prefix to match the rest of the repo history.
+  // Conventional-commit prefix.
   commitMessagePrefix: "chore(deps):",
 
   // ─────────────────────────────────────────────────────────────────────
-  // pnpm 11 supply-chain freshness + Renovate-runner memory ceiling.
+  // pnpm 11 release-age freshness + Renovate-runner memory ceiling.
   //
-  // On a large pnpm-11 monorepo, `pnpm update --lockfile-only` — especially
-  // alongside a pnpm-level `minimumReleaseAge` gate verifying publish
-  // timestamps for every lockfile entry — can exceed the physical memory of
-  // Mend's hosted microvm and fail the job with `kernel-out-of-memory` (a
-  // physical OOM, not a V8 heap limit), blocking every dependency PR. CI and
-  // Vercel pass because those runners have far more RAM. Two layered
-  // mitigations, both scoped to Renovate:
+  // `env` caps pnpm's worker pool at 1 in Renovate's runner only; CI, Vercel
+  // and local installs are untouched. PNPM_WORKERS / PNPM_MAX_WORKERS are on
+  // Mend's `global:safeEnv` allow-list, so no admin `allowedEnv` change is needed.
   //
-  // (A) Cap pnpm's worker pool so peak memory stays bounded. PNPM_WORKERS /
-  //     PNPM_MAX_WORKERS are allow-listed by Mend's `global:safeEnv` preset, so
-  //     no admin `allowedEnv` change is needed; `env` scopes to Renovate's
-  //     runner only (CI/Vercel/local installs are untouched). Cheap and
-  //     reversible, but may NOT clear a metadata-driven OOM on its own —
-  //     `--lockfile-only` barely engages the worker pool.
-  //
-  // (B) Enforce release-age freshness in Renovate itself rather than the
-  //     per-install pnpm gate. `minimumReleaseAge: "1 day"` holds any dep
-  //     younger than 24h out of PRs, with NO per-install timestamp
-  //     verification — removing the memory spike at the source and speeding
-  //     every CI/Vercel build. Security / osvVulnerabilityAlerts PRs bypass
-  //     this by design, so CVE fixes are never delayed. To actually clear the
-  //     OOM the consumer must also set `minimumReleaseAge: 0` in
-  //     pnpm-workspace.yaml — pnpm 11 defaults the gate to 1440, so DELETING the
-  //     key leaves it active (and drops the @cbartens/* exclusion, breaking
-  //     same-day bkit upgrades); only 0 short-circuits the per-entry check. It
-  //     trades away pnpm-level defense against manual/transitive fresh installs.
-  //     See docs/deployments.md § Renovate pnpm-11 freshness gate & microvm memory.
+  // `minimumReleaseAge: "1 day"` holds any dependency younger than 24h out of
+  // PRs. Security / osvVulnerabilityAlerts PRs are exempt. With this set, set
+  // `minimumReleaseAge: 0` in pnpm-workspace.yaml: pnpm 11 defaults the
+  // per-install gate to 1440 when the key is absent, and only 0 turns it off.
+  // See docs/deployments.md § Renovate pnpm-11 freshness gate & microvm memory.
   // ─────────────────────────────────────────────────────────────────────
   env: {
     PNPM_WORKERS: "1",
@@ -96,8 +74,8 @@
   },
 
   // Respect ignore paths from .gitignore + add common monorepo cruft.
-  // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned. Scanning them
-  // produces onboarding noise. To keep Renovate off a file entirely, list it here:
+  // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned and stay out of
+  // the scan. To keep Renovate off a file entirely, list it here:
   // a packageRule `enabled: false` suppresses version bumps, but the github-actions
   // manager still scans the file and applies tag->SHA pinDigests. Workflows you
   // copied from `.bkit/templates/` (ci.yml, bkit-cloud.yml, renovate.yml) are yours —
@@ -111,8 +89,8 @@
   ],
 
   // Private-registry read auth for `@cbartens/bkit` on npm.pkg.github.com.
-  // Renovate resolves the whole workspace to regenerate the lockfile. Without a
-  // read token, regen 401s and CI fails `pnpm install --frozen-lockfile`.
+  // Renovate resolves the whole workspace to regenerate the lockfile and needs
+  // a read token for this host to do so.
   // Mend: uncomment `token` and add BKIT_GH_TOKEN_INSTALL as a Mend repository
   // secret with "used during the scan as an environment variable" ticked.
   // Self-hosted: leave `token` commented; the example workflow injects
@@ -125,18 +103,15 @@
   //   },
   // ],
 
-  // Cap concurrent PRs so a major-version flood doesn't drown the repo.
+  // Caps on open and hourly PRs.
   prConcurrentLimit: 10,
   prHourlyLimit: 4,
 
   packageRules: [
     // ─────────────────────────────────────────────────────────────────────
-    // The bkit package itself — DO NOT BUMP via Renovate.
-    // bkit upgrades via `pnpm bkit upgrade --latest`, which bumps the pin and
-    // re-syncs bkit's files and `.bkit/templates/` in one step. A bare
-    // version bump skips that and leaves the consumer split-brain. The package
-    // also lives on GitHub Packages (restricted), which Mend's hosted runner has
-    // no token for — so Renovate only ever logs a "no-result" lookup.
+    // The bkit package itself — Renovate does not bump it.
+    // Upgrade with `pnpm bkit upgrade --latest`, which bumps the pin and
+    // re-syncs bkit's files and `.bkit/templates/` in one step.
     // ─────────────────────────────────────────────────────────────────────
     {
       matchPackageNames: ["@cbartens/bkit"],
@@ -144,12 +119,9 @@
     },
 
     // ─────────────────────────────────────────────────────────────────────
-    // Collapse every auto-mergeable non-major npm bump into ONE PR.
-    // Each Renovate PR rewrites pnpm-lock.yaml, so several firing in the same
-    // window force serial rebases and stall platformAutomerge. Sharing one
-    // groupName across the auto-merge rules below means a single weekly
-    // lockfile mutation, one merge, and no rebase cascade. Manual-review
-    // groups (prod minor, tanstack, vitest, playwright, majors) stay separate.
+    // Every auto-mergeable non-major npm bump lands in ONE PR: the auto-merge
+    // rules below share one groupName. Manual-review groups (prod minor,
+    // tanstack, vitest, playwright, majors) stay separate.
     // ─────────────────────────────────────────────────────────────────────
     {
       matchManagers: ["npm"],
@@ -174,14 +146,12 @@
       matchUpdateTypes: ["minor"],
       matchDepTypes: ["dependencies"],
       groupName: "minor dependencies",
-      // Minor prod bumps ship new behavior to users — review manually.
-      // Explicit (not just absent) so the policy is greppable and can't be
-      // silently flipped true by an earlier automerge rule.
+      // Minor prod bumps are reviewed manually. `false` is explicit so it
+      // overrides any earlier matching automerge rule.
       automerge: false,
     },
 
-    // Major bumps — always separate, never auto-merged. A human reads the
-    // changelog.
+    // Major bumps — always separate, never auto-merged.
     {
       matchUpdateTypes: ["major"],
       automerge: false,
@@ -189,9 +159,8 @@
     },
 
     // @types/* and the eslint family fold into the unified non-major
-    // auto-merge PR above. Scoped to non-major so a major bump falls to the
-    // majors rule (own PR, no auto-merge) instead of poisoning the group's
-    // auto-merge — these pattern rules carry no updateType filter otherwise.
+    // auto-merge PR above. Scoped to minor/patch; a major bump falls to the
+    // majors rule (own PR, no auto-merge).
     {
       matchPackageNames: ["@types/**"],
       matchUpdateTypes: ["minor", "patch"],
@@ -208,12 +177,9 @@
     },
 
     // Multi-package ecosystems. NON-major bumps fold into the unified
-    // auto-merge PR above (peer-deps still move together inside that one PR).
-    // Only MAJOR bumps get a dedicated lockstep PR — a coordinated breaking
-    // bump (e.g. @tanstack/react-query + @tanstack/query-core, or vitest +
-    // @vitest/*) must land together and is reviewed, never auto-merged.
-    // Without the major scope each would split into a separate per-package PR
-    // and the halves would fail CI against each other.
+    // auto-merge PR above. A MAJOR bump of each ecosystem (e.g.
+    // @tanstack/react-query + @tanstack/query-core, or vitest + @vitest/*)
+    // lands as one lockstep PR, reviewed, never auto-merged.
     {
       matchPackageNames: ["@tanstack/**"],
       matchUpdateTypes: ["major"],
@@ -243,8 +209,7 @@
       groupName: "github-actions",
       // Pin to SHA + tag comment; Renovate maintains the tag comment.
       pinDigests: true,
-      // Reviewed manually — a workflow action bump can change CI behavior.
-      // Explicit false for the same greppability reason as the prod-minor rule.
+      // Reviewed manually. `false` is explicit, as in the prod-minor rule.
       automerge: false,
     },
 
@@ -254,7 +219,7 @@
     // image-digest pinning in docs/deployments.md § GitHub Actions pinning).
     // The tag must stay INLINE (`ubuntu:26.04@sha256:...`), not in a trailing
     // comment, or the dockerfile manager can't map the digest to its tag.
-    // Reviewed manually — a base-image bump can shift the build toolchain.
+    // Reviewed manually.
     // NOTE: version+checksum-paired installer fetches (e.g. the Vale tarball
     // sha256, the pinned actionlint download-script SHA in ci.yml) are NOT
     // Renovate-managed — it cannot recompute a tarball checksum — so bump those
@@ -267,14 +232,12 @@
     },
 
     // ─────────────────────────────────────────────────────────────────────
-    // bkit repo only — majors held back on purpose. Minor and patch stay
+    // bkit repo only — vite and pnpm majors are not bumped. Minor and patch stay
     // enabled.
-    // vite is pinned to ^6 via root `pnpm.overrides`: vite 8 swapped its default
-    // transformer to oxc, which fails transforming the bkit integration tests.
-    // Revisit when vitest supports vite 8.
-    // pnpm 11 is a config migration, not a drop-in bump: it ignores
-    // `pnpm.overrides` in package.json (must move to pnpm-workspace.yaml) and
-    // blocks esbuild's build script by default (needs onlyBuiltDependencies).
+    // vite stays on ^6 via root `pnpm.overrides`.
+    // pnpm 11 ignores `pnpm.overrides` in package.json (they move to
+    // pnpm-workspace.yaml) and blocks esbuild's build script unless it is listed
+    // in onlyBuiltDependencies.
     // ─────────────────────────────────────────────────────────────────────
     { matchPackageNames: ["vite"], matchUpdateTypes: ["major"], enabled: false },
     { matchPackageNames: ["pnpm"], matchUpdateTypes: ["major"], enabled: false },

@@ -63,4 +63,4 @@ pnpm exec tsx scripts/linear/linear-to-github-import.ts \
 ## Gotchas (already handled, don't "fix")
 
 - If the board's "Auto-close issue" workflow is enabled, the script's close-PATCH may 422 because the workflow already closed the issue. Script catches this and verifies state — don't add retries.
-- `gh auth token` (no flag) may return an env-loaded fine-grained PAT that lacks `project` scope. The script uses `--secure-storage` first to get the keyring token.
+- The script reads `gh auth token --secure-storage` (keyring) before `gh auth token` (no flag). Keep that order.

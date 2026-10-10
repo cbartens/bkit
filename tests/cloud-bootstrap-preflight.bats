@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # cloud-bootstrap-preflight.bats — Unit tests for the gh-preflight block in
-# cloud-bootstrap.sh (#341 T5 / C2, Derived Test Matrix row 13).
+# cloud-bootstrap.sh.
 #
 # Covers: prefers the sanctioned GH_TOKEN env var over `--with-token`;
 # records RUNTIME_GITHUBCLI loudly (always, not just on failure); emits a loud
@@ -80,11 +80,9 @@ run_bootstrap() {
 }
 
 # --- placeholder/expired sanctioned token (regression) ----------------------
-# #341 §2's documented mode-3 failure: the platform sets a GH_TOKEN that does
-# NOT authenticate. It outranks any stored credential, so `--with-token` cannot
-# win. A skip keyed on the variable being merely SET would print only "trusting
-# it over --with-token" — reassuring, wrong, and with no pointer to the actual
-# remedy. The branch keys on the probe.
+# The platform sets a GH_TOKEN that does NOT authenticate. It outranks any
+# stored credential, so `--with-token` cannot win. The hook branches on the
+# `gh auth status` probe and logs the fault with its fix.
 
 @test "a PRESENT but non-authenticating GH_TOKEN is diagnosed, not silently trusted (regression)" {
   run run_bootstrap env GH_TOKEN=placeholder BKIT_GH_TOKEN=bkit-token FAKE_GH_AUTH_OK=0
