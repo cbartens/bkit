@@ -1,13 +1,14 @@
-// shared/package-roots.ts — Shared path utilities.
+// shared/package-roots.ts — resolves the bkit package root and the roots under it
+// (templates, workflows, prompts, the `.bkit/` docs) from wherever the engine runs.
 // Imports allowed: node:path, node:url, node:fs only.
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 // ---------------------------------------------------------------------------
-// BKIT_SRC_SUBPATH — the package-relative sub-path that contains bkit's engine
+// ENGINE_SUBPATH — the package-relative sub-path that contains bkit's engine
 // source files. All three run-contexts derive their suffix check from this
 // constant so a single edit flips every resolver.
 // ---------------------------------------------------------------------------
-export const BKIT_SRC_SUBPATH = path.join(".bkit", "core", "engine");
+export const ENGINE_SUBPATH = path.join(".bkit", "core", "engine");
 // ---------------------------------------------------------------------------
 // getPkgRoot — resolve the bkit package root at runtime
 //
@@ -32,7 +33,7 @@ export const BKIT_SRC_SUBPATH = path.join(".bkit", "core", "engine");
 // ---------------------------------------------------------------------------
 export function getPkgRoot() {
     const engineDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    return engineDir.endsWith(BKIT_SRC_SUBPATH)
+    return engineDir.endsWith(ENGINE_SUBPATH)
         ? path.resolve(engineDir, "..", "..", "..")
         : path.resolve(engineDir, "..");
 }

@@ -94,6 +94,7 @@ describe("bkit skills prune", () => {
       removed: ["react-forms", "stale-lock-only"],
       kept: ["bkit-build", "find-skills"],
       failed: [],
+      skipped: null,
     });
     expect(called()).toEqual(["skills remove react-forms -y", "skills remove stale-lock-only -y"]);
     expect(fs.existsSync(path.join(cwd, ".agents/skills/react-forms"))).toBe(false);
@@ -112,12 +113,14 @@ describe("bkit skills prune", () => {
     expect((await prune(cwd)).json.removed).toEqual(["a.b"]);
   });
 
-  it("refuses to run without .agents/skills.md rather than uninstall everything", async () => {
+  it("skips the prune with a warning without .agents/skills.md, uninstalling nothing (exit 0)", async () => {
     const cwd = checkout({ folders: ["find-skills"], registry: null });
     const r = await prune(cwd);
-    expect(r.code).toBe(2);
-    expect(r.err).toContain("refusing to prune every skill");
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ removed: [], kept: [], failed: [], skipped: "no-registry" });
+    expect(r.err).toContain("WARNING .agents/skills.md missing — skill prune skipped");
     expect(called()).toEqual([]);
+    expect(fs.existsSync(path.join(cwd, ".agents/skills/find-skills"))).toBe(true);
   });
 
   it("prunes by folders alone when skills-lock.json is unreadable, and says so", async () => {
@@ -128,21 +131,23 @@ describe("bkit skills prune", () => {
     expect(r.err).toContain("not valid JSON");
   });
 
-  it("reports a skill the CLI failed to uninstall and carries on with the rest", async () => {
+  it("reports a skill the CLI failed to uninstall, carries on with the rest, and exits 0", async () => {
     const cwd = checkout({ folders: ["a-skill", "b-skill"] });
     process.env.STUB_FAIL = "a-skill";
     const r = await prune(cwd);
-    expect(r.code).toBe(3);
+    expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ removed: ["b-skill"], failed: ["a-skill"] });
     expect(r.err).toContain("boom");
+    expect(r.err).toContain("WARNING could not uninstall a-skill");
   });
 
   it("stops calling a CLI that could not run (127) and lists what is left installed", async () => {
     const cwd = checkout({ folders: ["a-skill", "b-skill"] });
     process.env.STUB_EXIT = "127";
     const r = await prune(cwd);
-    expect(r.code).toBe(4);
+    expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ removed: [], failed: ["a-skill", "b-skill"] });
+    expect(r.err).toContain("could not run");
     expect(called()).toHaveLength(1);
   });
 
@@ -156,7 +161,7 @@ describe("bkit skills prune", () => {
 
   it("does nothing when no skills are installed", async () => {
     const r = await prune(checkout({}));
-    expect(r.json).toEqual({ removed: [], kept: [], failed: [] });
+    expect(r.json).toEqual({ removed: [], kept: [], failed: [], skipped: null });
   });
 
   it("keeps bkit-* skills, from folders or the lock, even when .agents/skills.md does not list them", async () => {
@@ -167,7 +172,12 @@ describe("bkit skills prune", () => {
     });
     const r = await prune(cwd);
     expect(r.code).toBe(0);
-    expect(r.json).toEqual({ removed: ["x-skill"], kept: ["bkit-build", "bkit-ship"], failed: [] });
+    expect(r.json).toEqual({
+      removed: ["x-skill"],
+      kept: ["bkit-build", "bkit-ship"],
+      failed: [],
+      skipped: null,
+    });
     expect(called()).toEqual(["skills remove x-skill -y"]);
   });
 });

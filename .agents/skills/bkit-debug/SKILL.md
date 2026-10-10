@@ -26,7 +26,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`); `debugAttempt` is carried by a `workflow-meta` event. **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
-> - **Locks:** Step 1 takes `docs/plans/{YYYYMM}/logs/{FID}/.lock` once `FID` is resolved; Close Workflow and Failure Path release it and exit non-zero while it is still present. An existing lock blocks (**Failure Path**) while its holder's folded status.jsonl shows `IN_PROGRESS` with a step <30min ago; an idle or `DONE` / `FAILED` holder's lock is reclaimed only once it is at least 30 minutes old.
+> - **Locks:** Step 1 takes `docs/plans/{YYYYMM}/logs/{FID}/.lock` once `FID` is resolved; Close Workflow and Failure Path release it and exit non-zero while it is still present. An existing lock blocks (**Failure Path**) while its holder's folded status.jsonl shows `IN_PROGRESS` with a step <30min ago; an idle or `DONE` / `FAILED` holder's lock is reclaimed.
 > - **Status branch:** status.jsonl committed on the adopted branch `{BRANCH}` (`{STATUS}`, held from Step 2); per-step commits, NO pushes.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return; do NOT assume success.
@@ -916,7 +916,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      set -- --step=debug-close-workflow
      echo "$TEST_SCOPE" | grep -qw live || set -- "$@" --field=testsLiveSkipped="No live tests ran, runtime-only defects not gated (not declared or opted out)."
    else
-     set -- --step=debug-create-pr --field=prUrl="$PR_URL"
+     set -- --step=debug-create-pr --artifact="$PR_URL"
    fi
    "$BKIT" steps done --file="$STATUS" --workflow=debug "$@" --field=ciDispatch="$CI_DISPATCH" --commit=none >/dev/null || exit $?
    [ "$RC" -eq 0 ] || [ "$RC" -eq 4 ] || exit "$RC"
@@ -976,7 +976,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 
 - [ ] Trigger-PR determined (`TRIGGER_PR`)
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
-- [ ] If PR created workflow status updated (step `debug-create-pr` recorded with `prUrl`, `ciDispatch` verdict)
+- [ ] If PR created workflow status updated (step `debug-create-pr` recorded with the PR URL in `artifacts`, `ciDispatch` verdict)
 - [ ] If PR created, changes pushed to `feat/{FID}`
 - [ ] CI-Dispatch gate ran (step `debug-close-workflow` / `debug-create-pr` recorded with `ciDispatch`)
 - [ ] Workflow status updated (`debug` `DONE`, step `debug-close-workflow` recorded with `testsLiveSkipped` if no live test, `ciDispatch` verdict if PR-mode)

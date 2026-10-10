@@ -140,7 +140,7 @@ if [ -f .agents/context.md ]; then
     log "provisioning context-fetch CLIs from .agents/context.md"
     # pnpm refuses `add -g` unless its global-bin dir is on PATH (corepack pnpm skips
     # `pnpm setup`); export it so `pnpm add -g` provision recipes don't self-skip. Mirrors
-    # the web setup script's provision region (.bkit/core/engine/install/cloud-env.ts).
+    # the web setup script's provision region, which bkit's install engine renders.
     export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
     export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"
     printf '%s\n' "$PROVISION" | bash || log "context-fetch CLI provisioning failed (non-blocking)"

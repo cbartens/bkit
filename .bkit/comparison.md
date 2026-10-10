@@ -118,35 +118,17 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 
 ### CI test scaffold (runs on every PR + push)
 
-The seeded `ci.yml` runs a flat, wide pipeline — a planner fans out to every lane in parallel, a capstone joins them and is the single branch-protection check. "CI is green" means every planned tier actually ran and passed; partial / cached / light runs cannot pass as validated.
+The template `ci.yml` (copied into `.bkit/templates/`, adopted and owned by the consumer) is static: two lanes run in parallel and the `bkit-tests-check` capstone joins them as the single branch-protection check. No planner. The capstone fails unless both lanes concluded `success`, and fails a unit lane that reports zero executed tests.
 
 ```
-bkit-tests-scope  (planner — one marker parse, last-green push base, run_level, tenant_target)
+bkit-tests-static   (typecheck, format, prose lint, slop, actionlint, bkit check)
+bkit-tests-unit     (unit tests; writes the executed-test count)
         │
-        ├── bkit-tests-static
-        ├── bkit-tests-unit
-        ├── bkit-tests-build-web     (compile, or this SHA's un-promoted deployment)
-        ├── bkit-tests-build-ios / bkit-tests-build-android   (optional)
-        ├── bkit-tests-integration
-        ├── bkit-tests-migration     (always-on; replay + remote push on dev/main)
-        └── bkit-tests-reset         (lease; skip when no shared resource)
-                │
-                ├── bkit-tests-e2e-web
-                ├── bkit-tests-live-web          (push / dispatch only)
-                ├── bkit-tests-e2e-ios           (optional)
-                └── bkit-tests-e2e-android       (optional)
-                        │
-                        ▼
-                bkit-tests-cleanup
-                        │
-                        ▼
-                bkit-tests-check     (sole required check)
-                        │
-                        ▼
-                bkit-tests-deploy    (default-branch push; promotes that deployment id; not required)
+        ▼
+bkit-tests-check    (capstone: needs both lanes; sole required check)
 ```
 
-Adopt only the lanes the repo has. Device lanes, the logging probe, and the health workflow are optional. A planned `bkit-tests-live-web` failure reds the capstone. Full tier rules: `docs/testing.md`.
+Add the lanes the repo has (integration, E2E, migration, live) as further `needs:` of the capstone. Full tier rules: `docs/testing.md`.
 
 Hard stops after Design, Plan, and Ship (production merge needs explicit human approval). Shared subagents cross-invoked: `bkit-debug-failure-diagnose` / `bkit-debug-failure-remediate` run inside Build and Ship failure paths as well as the Debug phase.
 

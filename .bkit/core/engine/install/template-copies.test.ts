@@ -9,7 +9,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getPkgRoot, getTemplatesRoot, BKIT_SRC_SUBPATH } from "../shared/package-roots";
+import { getPkgRoot, getTemplatesRoot, ENGINE_SUBPATH } from "../shared/package-roots";
 import { guardTemplatesRoot } from "./modules/index";
 
 // ---------------------------------------------------------------------------
@@ -74,7 +74,7 @@ describe("getTemplatesRoot() — context resolution regression tests", () => {
   it("simulated dist/ arm: non-.bkit/core/engine suffix resolves one level up (same as getPkgRoot)", () => {
     // Replicate the resolver logic for the dist/ arm.
     const fakeDistDir = path.join("/pkg", "dist");
-    const result = fakeDistDir.endsWith(BKIT_SRC_SUBPATH)
+    const result = fakeDistDir.endsWith(ENGINE_SUBPATH)
       ? path.resolve(fakeDistDir, "..", "..", "..")
       : path.resolve(fakeDistDir, "..");
     // getTemplatesRoot() for a dist/ pkg root would be:
@@ -85,8 +85,8 @@ describe("getTemplatesRoot() — context resolution regression tests", () => {
   });
 
   it("simulated tsx-from-source arm: .bkit/core/engine suffix resolves three levels up", () => {
-    const fakeSrcDir = path.join("/pkg") + path.sep + BKIT_SRC_SUBPATH;
-    const result = fakeSrcDir.endsWith(BKIT_SRC_SUBPATH)
+    const fakeSrcDir = path.join("/pkg") + path.sep + ENGINE_SUBPATH;
+    const result = fakeSrcDir.endsWith(ENGINE_SUBPATH)
       ? path.resolve(fakeSrcDir, "..", "..", "..")
       : path.resolve(fakeSrcDir, "..");
     const expectedTemplates = path.join(result, ".bkit", "templates");

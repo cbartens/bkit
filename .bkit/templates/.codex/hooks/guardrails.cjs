@@ -9,8 +9,8 @@
 //   1. NO `ask`. Codex parses `permissionDecision: "ask"` but does not implement it —
 //      an attempt is recorded as an error and the tool call proceeds anyway. The ask
 //      tier is emitted as `additionalContext`: an advisory the model reads, the command
-//      still runs. The deny tier is a real block. Asserted in
-//      `.bkit/core/engine/install/modules/index.integration.test.ts`; see providers.md.
+//      still runs. The deny tier is a real block. Asserted in bkit's hook parity
+//      tests; see providers.md.
 //   2. ENVELOPE. Codex is the Claude-family hook contract (stdin `tool_name` /
 //      `tool_input`, stdout `hookSpecificOutput`), not Cursor's `beforeShellExecution`
 //      + `{ permission }` shape.
@@ -165,8 +165,8 @@ const SOURCE_EXT_RE =
  * Only a redirect whose target both looks like a repo path AND carries a source
  * extension is reported.
  *
- * Byte-identical to the Cursor twin; behavioural parity is asserted in
- * .bkit/core/engine/install/modules/index.integration.test.ts.
+ * Byte-identical to the Cursor twin; bkit's hook parity tests assert the behaviour
+ * matches.
  */
 function shellEditTargets(cmd) {
   const hits = [];

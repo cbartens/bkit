@@ -63,14 +63,23 @@ export function extraField(spec) {
         throw new CommandError(EXIT.USAGE, `--field ${spec}: expected key=value`);
     const key = spec.slice(0, eq);
     const raw = spec.slice(eq + 1);
-    if (!/^[a-z][a-zA-Z0-9]*$/.test(key))
-        throw new CommandError(EXIT.USAGE, `--field key ${key} is not camelCase`);
+    if (!/^[a-z][a-zA-Z0-9_]*$/.test(key))
+        throw new CommandError(EXIT.USAGE, `--field key ${key} is not camelCase or snake_case`);
     return [key, parseJsonOrString(raw)];
 }
 /** Not JSON: a plain-text value, kept as written. */
 function parseJsonOrString(raw) {
     const parsed = parseJson(raw);
     return parsed.ok ? parsed.value : raw;
+}
+/** A non-negative-integer flag (0 allowed), or undefined when absent. */
+export function nonNegativeInt(value, flag) {
+    if (value === undefined)
+        return undefined;
+    const s = String(value);
+    if (!/^(0|[1-9][0-9]*)$/.test(s))
+        throw new CommandError(EXIT.USAGE, `--${flag} must be a non-negative integer, got "${s}"`);
+    return Number(s);
 }
 /** A positive-integer flag, or undefined when absent. */
 export function positiveInt(value, flag) {

@@ -27,6 +27,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { getWorkflowsRoot } from "../shared/package-roots.js";
+
 // ---------------------------------------------------------------------------
 // Canonical ship step order (mirrors audits/workflows/ship-invariants.test.ts
 // CANONICAL_SHIP_STEP_KEYS — the frozen schema). The detector cross-checks its
@@ -385,7 +387,7 @@ export function auditStatusJsonl(statusJsonl: string, shipMd: string): HoleRepor
 
 export function formatAdvisoryReport(report: HoleReport): string {
   const lines: string[] = [];
-  lines.push("[bkit-status-hole-detector] ADVISORY — fail-open (exit 0 regardless)");
+  lines.push("[bkit-status-holes] ADVISORY — fail-open (exit 0 regardless)");
   lines.push(`  path: ${report.path}`);
   lines.push(`  observed: ${report.observed.length} step(s)`);
 
@@ -434,24 +436,17 @@ export function main(argv: string[]): void {
   // a whole corpus can be swept in one advisory CI step.
   const statusPaths = args.filter((a, i) => !consumed.has(i) && !a.startsWith("--"));
   if (statusPaths.length === 0) {
-    process.stdout.write(
-      "[bkit-status-hole-detector] no status.jsonl path given — skipping (advisory)\n",
-    );
+    process.stdout.write("[bkit-status-holes] no status.jsonl path given — skipping (advisory)\n");
     return; // exit 0
   }
 
-  // Resolve ship md path — derive script dir from import.meta.url (ESM-safe)
-  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-  const defaultShipMd = path.resolve(scriptDir, "../../../workflows/bkit-ship.md");
-  const shipMdPath = shipMdOverride || defaultShipMd;
+  const shipMdPath = shipMdOverride || path.join(getWorkflowsRoot(), "bkit-ship.md");
 
   let shipMd = "";
   try {
     shipMd = fs.readFileSync(shipMdPath, "utf-8");
   } catch {
-    process.stdout.write(
-      `[bkit-status-hole-detector] ${shipMdPath} not found — skipping (advisory)\n`,
-    );
+    process.stdout.write(`[bkit-status-holes] ${shipMdPath} not found — skipping (advisory)\n`);
     return; // exit 0
   }
 
@@ -461,9 +456,7 @@ export function main(argv: string[]): void {
     try {
       statusJsonl = fs.readFileSync(statusPath, "utf-8");
     } catch {
-      process.stdout.write(
-        `[bkit-status-hole-detector] ${statusPath} not found — skipping (advisory)\n`,
-      );
+      process.stdout.write(`[bkit-status-holes] ${statusPath} not found — skipping (advisory)\n`);
       continue; // exit 0
     }
 

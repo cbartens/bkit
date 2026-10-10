@@ -267,42 +267,44 @@ describe("paths", () => {
 
 describe("bkit worktrees remove", () => {
   it("answers absent when there is no worktree", async () => {
-    const r = await remove(repo(), "--owned-only");
+    const r = await remove(repo());
     expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ removed: false, reason: "absent" });
+    expect(r.json).toMatchObject({ removed: false, reason: "absent", branchBlockedBy: null });
   });
 
-  it("--owned-only leaves a worktree without the marker in place", async () => {
+  it("leaves a worktree without the marker in place", async () => {
     const cwd = repo();
     const wt = linked(cwd);
-    const r = await remove(cwd, "--owned-only");
+    const r = await remove(cwd);
     expect(r.json).toMatchObject({ removed: false, reason: "not-owned" });
     expect(r.err).toContain("not ours");
     expect(fs.existsSync(wt)).toBe(true);
   });
 
-  it("--owned-only removes a marked worktree with uncommitted changes and clears the marker", async () => {
+  it("removes a marked worktree with uncommitted changes and clears the marker", async () => {
     const cwd = repo();
     const wt = linked(cwd, FID, true);
     fs.writeFileSync(path.join(wt, "dirty.txt"), "x\n");
-    const r = await remove(cwd, "--owned-only");
-    expect(r.json).toEqual({ removed: true, reason: null, worktreePath: wt, repoRoot: cwd });
+    const r = await remove(cwd);
+    expect(r.json).toEqual({
+      removed: true,
+      reason: null,
+      worktreePath: wt,
+      repoRoot: cwd,
+      branchDeleted: null,
+      remoteDeleted: null,
+      branchBlockedBy: null,
+    });
     expect(fs.existsSync(wt)).toBe(false);
     expect(fs.existsSync(ownershipMarker(cwd, FID))).toBe(false);
     expect(git(cwd, "worktree", "list")).not.toContain(".worktrees");
     expect(git(cwd, "branch", "--list", `feat/${FID}`)).toContain(`feat/${FID}`);
   });
 
-  it("without --owned-only removes any worktree at the path", async () => {
-    const cwd = repo();
-    linked(cwd);
-    expect((await remove(cwd)).json.removed).toBe(true);
-  });
-
   it("keeps the marker when the worktree directory was deleted by hand, and prunes its entry", async () => {
     const cwd = repo();
     fs.rmSync(linked(cwd, FID, true), { recursive: true, force: true });
-    const r = await remove(cwd, "--owned-only");
+    const r = await remove(cwd);
     expect(r.json.reason).toBe("absent");
     expect(fs.existsSync(ownershipMarker(cwd, FID))).toBe(true);
     expect(git(cwd, "worktree", "list")).not.toContain(".worktrees");
@@ -311,14 +313,99 @@ describe("bkit worktrees remove", () => {
   it("tells a caller inside the removed worktree where to cd", async () => {
     const cwd = repo();
     const wt = linked(cwd, FID, true);
-    const r = await remove(wt, "--owned-only");
+    const r = await remove(wt);
     expect(r.json.removed).toBe(true);
     expect(r.err).toContain(`cd to ${cwd}`);
   });
 
-  it("fails with its own exit code when git cannot remove it", async () => {
+  it("fails with its own exit code when git cannot remove a marked path", async () => {
     const cwd = repo();
     fs.mkdirSync(worktreeDir(cwd, FID), { recursive: true });
+    const marker = ownershipMarker(cwd, FID);
+    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    fs.writeFileSync(marker, "");
     expect((await remove(cwd)).code).toBe(11);
+  });
+
+  describe("--branch", () => {
+    /** A bare origin the repo pushes feat/{fid} to. */
+    function withOrigin(cwd: string) {
+      const origin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-wt-origin-")));
+      dirs.push(origin);
+      git(origin, "init", "-q", "--bare");
+      git(cwd, "remote", "add", "origin", origin);
+      return origin;
+    }
+    const remoteHas = (origin: string) =>
+      git(origin, "branch", "--list", `feat/${FID}`).includes(`feat/${FID}`);
+
+    it("deletes the local and remote branch once the marked worktree is gone", async () => {
+      const cwd = repo();
+      const origin = withOrigin(cwd);
+      linked(cwd, FID, true);
+      git(cwd, "push", "-q", "origin", `feat/${FID}`);
+      expect(remoteHas(origin)).toBe(true);
+      const r = await remove(cwd, `--branch=feat/${FID}`);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({
+        removed: true,
+        branchDeleted: true,
+        remoteDeleted: true,
+        branchBlockedBy: null,
+      });
+      expect(git(cwd, "branch", "--list", `feat/${FID}`)).toBe("");
+      expect(remoteHas(origin)).toBe(false);
+    });
+
+    it("an unmarked worktree holding the branch blocks BOTH deletes and is named", async () => {
+      const cwd = repo();
+      const origin = withOrigin(cwd);
+      const wt = linked(cwd);
+      git(cwd, "push", "-q", "origin", `feat/${FID}`);
+      const r = await remove(cwd, `--branch=feat/${FID}`);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({
+        removed: false,
+        reason: "not-owned",
+        branchDeleted: false,
+        remoteDeleted: false,
+        branchBlockedBy: wt,
+      });
+      expect(r.err).toContain(`feat/${FID} is checked out in ${wt}`);
+      expect(git(cwd, "branch", "--list", `feat/${FID}`)).toContain(`feat/${FID}`);
+      expect(remoteHas(origin)).toBe(true);
+    });
+
+    it("an unmarked worktree elsewhere holding the branch blocks the deletes too", async () => {
+      const cwd = repo();
+      const origin = withOrigin(cwd);
+      const elsewhere = path.join(cwd, "..", `${path.basename(cwd)}-other`);
+      dirs.push(elsewhere);
+      git(cwd, "worktree", "add", "-q", elsewhere, "-b", `feat/${FID}`);
+      git(cwd, "push", "-q", "origin", `feat/${FID}`);
+      const r = await remove(cwd, `--branch=feat/${FID}`);
+      expect(r.json).toMatchObject({
+        reason: "absent",
+        branchBlockedBy: fs.realpathSync(elsewhere),
+      });
+      expect(remoteHas(origin)).toBe(true);
+    });
+
+    it("a branch already gone everywhere is reported deleted", async () => {
+      const cwd = repo();
+      withOrigin(cwd);
+      const r = await remove(cwd, `--branch=feat/${FID}`);
+      expect(r.json).toMatchObject({
+        branchDeleted: true,
+        remoteDeleted: false,
+        branchBlockedBy: null,
+      });
+    });
+
+    it.each(["dev", "main"])("refuses to delete %s (2)", async (branch) => {
+      const r = await remove(repo(), `--branch=${branch}`);
+      expect(r.code).toBe(2);
+      expect(r.err).toContain(`refusing to delete branch ${branch}`);
+    });
   });
 });

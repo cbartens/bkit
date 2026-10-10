@@ -172,12 +172,20 @@ describe("bkit worktrees setup — mint (create)", () => {
     expect(installCalls()).toBe("");
   });
 
-  it.each(["design", "plan"])("%s never installs dependencies", async (workflow) => {
+  it.each(["design", "plan"])("%s installs dependencies like build and debug", async (workflow) => {
     const f = fixture();
     const r = await setup(f.repo, workflow, "--worktrees");
     expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ mode: "created", owned: true, installed: false });
-    expect(installCalls()).toBe("");
+    expect(r.json).toMatchObject({ mode: "created", owned: true, installed: true });
+    expect(installCalls()).toBe(`${wtOf(f)} install --frozen-lockfile`);
+  });
+
+  it.each(["design", "plan"])("%s stops on a failed install (5)", async (workflow) => {
+    const f = fixture();
+    process.env.STUB_EXIT = "1";
+    const r = await setup(f.repo, workflow, "--worktrees");
+    expect(r.code).toBe(5);
+    expect(r.json).toMatchObject({ mode: "created", installed: false });
   });
 
   it("adds the existing local feat/{fid} rather than cutting a new one", async () => {
@@ -346,11 +354,11 @@ describe("bkit worktrees setup — ship", () => {
 });
 
 describe("bkit worktrees remove", () => {
-  it("--owned-only removes a worktree setup created, uncommitted changes and all, and clears the marker", async () => {
+  it("removes a worktree setup created, uncommitted changes and all, and clears the marker", async () => {
     const f = fixture();
     await setup(f.repo, "design", "--worktrees");
     fs.writeFileSync(path.join(wtOf(f), "dirty.txt"), "x\n");
-    const r = await run(f.repo, ["remove", `--fid=${FID}`, "--owned-only"]);
+    const r = await run(f.repo, ["remove", `--fid=${FID}`]);
     expect(r.json).toMatchObject({ removed: true, reason: null, repoRoot: f.repo });
     expect(fs.existsSync(wtOf(f))).toBe(false);
     expect(fs.existsSync(marker(f))).toBe(false);

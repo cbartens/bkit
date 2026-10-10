@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { getPkgRoot, BKIT_SRC_SUBPATH, getTemplatesRoot, isDogfood } from "./package-roots";
+import { getPkgRoot, ENGINE_SUBPATH, getTemplatesRoot, isDogfood } from "./package-roots";
 
 // ---------------------------------------------------------------------------
 // Context 1 — dist/ (compiled; what consumers run)
@@ -20,21 +20,21 @@ describe("getPkgRoot() — context 1: dist/ arm (consumer context)", () => {
     // Simulate the dist/ run-context by constructing a fake scriptDir that ends
     // with path.sep + "dist" and calling the same resolver logic.
     // We cannot call import.meta.url directly from a dist/ path in this test, so
-    // we verify the arm logic using the BKIT_SRC_SUBPATH sentinel and explicit
+    // we verify the arm logic using the ENGINE_SUBPATH sentinel and explicit
     // suffix matching — this is exactly what getPkgRoot() does internally.
     const fakeDistDir = path.join("/some", "pkg", "dist");
-    // Arm 1: does NOT end with BKIT_SRC_SUBPATH → resolves one level up.
+    // Arm 1: does NOT end with ENGINE_SUBPATH → resolves one level up.
     const expectedPkgRoot = path.resolve(fakeDistDir, "..");
-    const result = fakeDistDir.endsWith(BKIT_SRC_SUBPATH)
+    const result = fakeDistDir.endsWith(ENGINE_SUBPATH)
       ? path.resolve(fakeDistDir, "..", "..", "..")
       : path.resolve(fakeDistDir, "..");
     expect(result).toBe(expectedPkgRoot);
     expect(result).toBe(path.join("/some", "pkg"));
   });
 
-  it("BKIT_SRC_SUBPATH does NOT match dist/ suffix (so dist uses the one-level arm)", () => {
+  it("ENGINE_SUBPATH does NOT match dist/ suffix (so dist uses the one-level arm)", () => {
     const distSuffix = `${path.sep}dist`;
-    expect(distSuffix.endsWith(BKIT_SRC_SUBPATH)).toBe(false);
+    expect(distSuffix.endsWith(ENGINE_SUBPATH)).toBe(false);
   });
 });
 
@@ -45,19 +45,19 @@ describe("getPkgRoot() — context 1: dist/ arm (consumer context)", () => {
 // ---------------------------------------------------------------------------
 
 describe("getPkgRoot() — context 2: tsx-from-source arm (dev/test context)", () => {
-  it("resolves three levels above a simulated engine dir matching BKIT_SRC_SUBPATH", () => {
-    // Construct a fake scriptDir whose suffix equals BKIT_SRC_SUBPATH.
-    const fakeSrcDir = path.join("/some", "pkg") + path.sep + BKIT_SRC_SUBPATH;
+  it("resolves three levels above a simulated engine dir matching ENGINE_SUBPATH", () => {
+    // Construct a fake scriptDir whose suffix equals ENGINE_SUBPATH.
+    const fakeSrcDir = path.join("/some", "pkg") + path.sep + ENGINE_SUBPATH;
     const expectedPkgRoot = path.resolve(fakeSrcDir, "..", "..", "..");
-    const result = fakeSrcDir.endsWith(BKIT_SRC_SUBPATH)
+    const result = fakeSrcDir.endsWith(ENGINE_SUBPATH)
       ? path.resolve(fakeSrcDir, "..", "..", "..")
       : path.resolve(fakeSrcDir, "..");
     expect(result).toBe(expectedPkgRoot);
     expect(result).toBe(path.join("/some", "pkg"));
   });
 
-  it("BKIT_SRC_SUBPATH matches the .bkit/core/engine suffix", () => {
-    expect(BKIT_SRC_SUBPATH).toBe(path.join(".bkit", "core", "engine"));
+  it("ENGINE_SUBPATH matches the .bkit/core/engine suffix", () => {
+    expect(ENGINE_SUBPATH).toBe(path.join(".bkit", "core", "engine"));
   });
 
   it("getPkgRoot() returns the repo root when running in tsx-from-source context", () => {
@@ -81,9 +81,9 @@ describe("getPkgRoot() — context 3: packed-tarball arm (node_modules layout)",
   it("resolves one level above a simulated node_modules dist/ __dirname", () => {
     // node_modules/@cbartens/bkit/dist — the dist/ arm applies here too.
     const fakeNmDistDir = path.join("/consumer", "node_modules", "@cbartens", "bkit", "dist");
-    // Arm 1: does NOT end with BKIT_SRC_SUBPATH → one level up.
+    // Arm 1: does NOT end with ENGINE_SUBPATH → one level up.
     const expectedPkgRoot = path.resolve(fakeNmDistDir, "..");
-    const result = fakeNmDistDir.endsWith(BKIT_SRC_SUBPATH)
+    const result = fakeNmDistDir.endsWith(ENGINE_SUBPATH)
       ? path.resolve(fakeNmDistDir, "..", "..", "..")
       : path.resolve(fakeNmDistDir, "..");
     expect(result).toBe(expectedPkgRoot);

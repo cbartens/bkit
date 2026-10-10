@@ -150,7 +150,7 @@ describe("bkit locks acquire --kind=workflow — a lock already there", () => {
     expect(fs.readFileSync(lock, "utf-8")).toBe("2026-10-01T00:00:00Z design\n");
   });
 
-  it("reclaims an IN_PROGRESS run idle 30+ minutes whose lock is also old", async () => {
+  it("reclaims an IN_PROGRESS run idle 30+ minutes", async () => {
     const cwd = repo();
     writeStatus(cwd, M, [started("design", 90 * MIN), step("design", 31 * MIN)]);
     writeLock(cwd, M, "2026-10-01T00:00:00Z design", WORKFLOW_LOCK_IDLE_S + 60);
@@ -174,34 +174,35 @@ describe("bkit locks acquire --kind=workflow — a lock already there", () => {
     }
   });
 
-  it("refuses a fresh lock over a finished run: the holder has not written its first row yet", async () => {
+  it("reclaims a fresh lock over a finished run: the lock file's age is not checked", async () => {
     const cwd = repo();
     writeStatus(cwd, M, [
       started("design", 90 * MIN),
       { type: "workflow-done", workflow: "design", at: iso(80 * MIN) },
     ]);
-    writeLock(cwd, M, "x plan", 60);
+    writeLock(cwd, M, "x design", 60);
     const r = await run(cwd, acquire());
-    expect(r.code).toBe(1);
-    expect(r.err).toMatch(/lock age \d+s/);
+    expect(r.code).toBe(0);
+    expect(r.json.reclaimed).toEqual({ holder: "x design", reason: "finished" });
   });
 
-  it("refuses a fresh lock over an IN_PROGRESS run idle 30+ minutes (a resume just took it)", async () => {
+  it("reclaims a fresh lock over an IN_PROGRESS run idle 30+ minutes", async () => {
     const cwd = repo();
     writeStatus(cwd, M, [started("design", 90 * MIN), step("design", 60 * MIN)]);
     writeLock(cwd, M, "x design", 60);
-    expect((await run(cwd, acquire())).code).toBe(1);
+    const r = await run(cwd, acquire());
+    expect(r.code).toBe(0);
+    expect(r.json.reclaimed.reason).toBe("stale");
   });
 
-  it("with no status log, the lock age alone decides", async () => {
-    const fresh = repo();
-    writeLock(fresh, M, "x design", 60);
-    expect((await run(fresh, acquire())).code).toBe(1);
-    const old = repo();
-    writeLock(old, M, "x design", WORKFLOW_LOCK_IDLE_S + 60);
-    const r = await run(old, acquire());
-    expect(r.code).toBe(0);
-    expect(r.json.reclaimed.reason).toBe("orphaned");
+  it("with no status log, a lock of any age is reclaimed as orphaned", async () => {
+    for (const age of [60, WORKFLOW_LOCK_IDLE_S + 60]) {
+      const cwd = repo();
+      writeLock(cwd, M, "x design", age);
+      const r = await run(cwd, acquire());
+      expect(r.code, `age ${age}`).toBe(0);
+      expect(r.json.reclaimed.reason).toBe("orphaned");
+    }
   });
 
   it("reads the feature worktree's status copy before the main checkout's", async () => {

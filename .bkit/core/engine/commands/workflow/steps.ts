@@ -20,6 +20,7 @@ import {
   SUB_PLAN_FLAG,
   WORKFLOW_FLAG,
   extraField,
+  nonNegativeInt,
   positiveInt,
   readRuns,
   statusFile,
@@ -147,8 +148,12 @@ function allowedVerdicts(flags: Record<string, unknown>): string[] {
 // Artifacts and row rules
 // ---------------------------------------------------------------------------
 
+/** An `https://` artifact (a PR URL) is recorded as given; it is not a file. */
+const isUrl = (artifact: string) => /^https:\/\//.test(artifact);
+
 /** Problems with an artifact path: missing, empty, or outside the working directory. */
 function artifactProblem(cwd: string, rel: string): string | undefined {
+  if (isUrl(rel)) return undefined;
   const abs = path.resolve(cwd, rel);
   const inside = path.relative(cwd, abs);
   if (inside.startsWith("..") || path.isAbsolute(inside)) return `${rel} is outside ${cwd}`;
@@ -166,6 +171,70 @@ export function failuresProblem(
   if (verdict === "PASS" && failures !== 0) return `PASS needs failures=0, got ${failures}`;
   if (verdict === "FAIL" && failures <= 0) return `FAIL needs failures>0, got ${failures}`;
   return undefined;
+}
+
+/** Fields a gate requires on a step's row, wherever that step writes them. */
+type RowField = "attempt" | "strategy" | "scope";
+
+/**
+ * The steps whose `steps done` call writes `--attempt`, `--strategy` or a
+ * `scope` field, keyed `workflow/step`. `steps gate` fails a row missing one;
+ * `steps.test.ts` holds this table to the workflows' `steps done` calls.
+ */
+export const ROW_FIELDS: Record<string, readonly RowField[]> = {
+  "design/design-brainstorm-ideate": ["attempt"],
+  "design/design-generate": ["attempt"],
+  "design/design-review": ["attempt"],
+  "design/design-spike": ["attempt"],
+  "design/design-apply-review": ["attempt"],
+  "design/design-organise": ["attempt"],
+  "design/design-summary": ["attempt"],
+  "plan/plan-generate": ["attempt"],
+  "plan/plan-fetch-context": ["attempt"],
+  "plan/plan-review": ["attempt"],
+  "plan/plan-apply-review": ["attempt"],
+  "plan/plan-scope-check": ["attempt"],
+  "plan/plan-apply-scope": ["attempt"],
+  "plan/plan-complexity-check": ["attempt"],
+  "plan/plan-complexity-split": ["attempt"],
+  "plan/plan-summary": ["attempt"],
+  "build/build-plan-current": ["attempt"],
+  "build/build-install-skills": ["attempt"],
+  "build/build-plan-execute": ["attempt"],
+  "build/build-plan-verify": ["attempt"],
+  "build/build-subplan-gate": ["attempt", "scope"],
+  "build/build-plan-gaps-remediate": ["attempt", "strategy"],
+  "build/build-plan-verify-holistic": ["attempt"],
+  "build/build-challenge": ["attempt"],
+  "build/build-challenge-reconcile": ["attempt"],
+  "build/build-challenge-remediate": ["attempt"],
+  "build/build-challenge-tests": ["attempt"],
+  "build/build-run-tests": ["attempt", "scope"],
+  "build/build-failure-diagnose": ["attempt", "strategy"],
+  "build/build-failure-remediate": ["attempt"],
+  "build/build-summary": ["attempt"],
+  "debug/debug-run-tests": ["attempt", "scope"],
+  "debug/context-fetch": ["attempt"],
+  "debug/debug-failure-diagnose": ["attempt", "strategy"],
+  "debug/debug-failure-remediate": ["attempt"],
+  "debug/debug-failure-soak": ["attempt"],
+  "debug/debug-push-remediation": ["attempt"],
+  "debug/debug-summary": ["attempt"],
+  "ship/ship-summary": ["attempt"],
+  "ship/ship-merge-pr": ["attempt"],
+  "ship/ship-failure-diagnose": ["attempt"],
+  "ship/ship-failure-remediate": ["attempt", "strategy"],
+};
+
+/** The required fields missing (absent or empty) from a row. */
+export function missingRowFields(
+  workflow: string,
+  step: string,
+  row: Record<string, unknown>,
+): RowField[] {
+  return (ROW_FIELDS[`${workflow}/${step}`] ?? []).filter(
+    (k) => row[k] === undefined || row[k] === null || row[k] === "",
+  );
 }
 
 const CORE_ROW_KEYS = new Set([
@@ -198,7 +267,12 @@ export const stepsCommand: CommandSpec = {
         WORKFLOW_FLAG,
         STEP_FLAG,
         { name: "status", type: "string", help: "DONE (default) or FAILED" },
-        { name: "verdict", type: "string", help: "PASS|CONCERNS|FAIL" },
+        {
+          name: "verdict",
+          type: "string",
+          help: "PASS|CONCERNS|FAIL, or the set --agent / --allowed gives",
+        },
+        ...ALLOWED_FLAGS,
         {
           name: "failures",
           type: "string",
@@ -207,7 +281,7 @@ export const stepsCommand: CommandSpec = {
         {
           name: "attempt",
           type: "string",
-          help: "positive integer, or `next` to derive it from the log",
+          help: "non-negative integer (0 included), or `next` to derive it from the log",
         },
         SUB_PLAN_FLAG,
         { name: "strategy", type: "string", help: "STANDARD|PIVOT|FINAL" },
@@ -215,7 +289,7 @@ export const stepsCommand: CommandSpec = {
           name: "artifact",
           type: "string",
           repeatable: true,
-          help: "file the step produced, relative to the working directory",
+          help: "file the step produced, relative to the working directory, or an https:// URL (a PR)",
         },
         {
           name: "field",
@@ -249,8 +323,9 @@ export const stepsCommand: CommandSpec = {
         if (!["DONE", "FAILED"].includes(status))
           throw new CommandError(EXIT.USAGE, "--status must be DONE or FAILED");
         const verdict = str(f.verdict);
-        if (verdict !== undefined && !DEFAULT_VERDICTS.includes(verdict)) {
-          throw new CommandError(EXIT.USAGE, "--verdict must be PASS|CONCERNS|FAIL");
+        const allowed = allowedVerdicts(f);
+        if (verdict !== undefined && !allowed.includes(verdict)) {
+          throw new CommandError(EXIT.USAGE, `--verdict must be ${allowed.join("|")}`);
         }
         const failures =
           f.failures === undefined ? undefined : Number(nonNegative(String(f.failures)));
@@ -278,7 +353,7 @@ export const stepsCommand: CommandSpec = {
             ? activeDoneSteps(readRuns(file), workflow, { step, subPlan }).length + 1
             : 1;
         } else {
-          attempt = positiveInt(f.attempt, "attempt");
+          attempt = nonNegativeInt(f.attempt, "attempt");
         }
 
         const extras = Object.fromEntries(
@@ -362,13 +437,18 @@ export const stepsCommand: CommandSpec = {
       },
     },
     gate: {
-      summary: "Mechanical gate checks for one step: artifacts, placeholders, verdict, status row.",
+      summary:
+        "Mechanical gate checks for one step: artifacts, placeholders, verdict, status row (with its attempt / strategy / scope where the step writes them).",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
         STEP_FLAG,
         SUB_PLAN_FLAG,
-        { name: "attempt", type: "string", help: "the row must carry this attempt" },
+        {
+          name: "attempt",
+          type: "string",
+          help: "the row must carry this attempt (non-negative integer)",
+        },
         {
           name: "artifact",
           type: "string",
@@ -394,6 +474,7 @@ export const stepsCommand: CommandSpec = {
         const allowed = allowedVerdicts(f);
 
         for (const a of artifacts) {
+          if (isUrl(a)) continue;
           const problem = artifactProblem(ctx.cwd, a);
           add(`artifact ${a}`, problem, "present and non-empty");
           if (problem) continue;
@@ -422,7 +503,7 @@ export const stepsCommand: CommandSpec = {
         }
 
         const subPlan = positiveInt(f.subPlan, "sub-plan");
-        const attempt = positiveInt(f.attempt, "attempt");
+        const attempt = nonNegativeInt(f.attempt, "attempt");
         const rows = activeDoneSteps(readRuns(statusFile(ctx)), String(f.workflow), {
           step: String(f.step),
           subPlan,
@@ -431,7 +512,7 @@ export const stepsCommand: CommandSpec = {
         const rowProblems: string[] = [];
         if (!row) {
           rowProblems.push(
-            `no DONE ${String(f.step)} row in the active run${attempt ? ` with attempt ${attempt}` : ""}`,
+            `no DONE ${String(f.step)} row in the active run${attempt === undefined ? "" : ` with attempt ${attempt}`}`,
           );
         } else {
           if (!/^[0-9a-f]{40}$/.test(row.parentSha ?? ""))
@@ -441,6 +522,8 @@ export const stepsCommand: CommandSpec = {
             if (!recorded.has(path.normalize(a))) rowProblems.push(`row does not list ${a}`);
           const mismatch = failuresProblem(row.verdict, row.failures);
           if (mismatch) rowProblems.push(mismatch);
+          const missing = missingRowFields(String(f.workflow), String(f.step), row);
+          if (missing.length) rowProblems.push(`row is missing ${missing.join(", ")}`);
           if (verdictRequired && !allowed.includes(String(row.verdict))) {
             rowProblems.push(
               `row verdict "${String(row.verdict ?? "")}" is not ${allowed.join("|")}`,

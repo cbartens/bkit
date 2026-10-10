@@ -40,7 +40,7 @@ console.error("[bkit-telemetry] {Message}", {payload})
 
 `[{Context}]` brackets are load-bearing — consumer CI log-drain / grep alerting depends on this pattern. NEVER drop the brackets.
 
-One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-roadmap]`. Workflow commands log as `[bkit-<noun>]` on stderr (`[bkit-locks]`, `[bkit-worktrees]`, `[bkit-runs]`, `[bkit-ledgers]`, …); their stdout is one JSON object, never a log line. New prefix only alongside new module or command noun; else reuse owning module's prefix.
+One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-placeholders]` · `[bkit-status-holes]` · `[bkit-wording]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-roadmap]`. Workflow commands log as `[bkit-<noun>]` on stderr (`[bkit-locks]`, `[bkit-worktrees]`, `[bkit-runs]`, `[bkit-ledgers]`, …); their stdout is one JSON object, never a log line. New prefix only alongside new module or command noun; else reuse owning module's prefix.
 
 ### `[bkit-comply]` prefix
 

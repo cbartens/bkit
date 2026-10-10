@@ -1,9 +1,13 @@
 // checks/before/index.test.ts — Unit tests for Phase 1 preflight detectors (BAR-141).
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { serializeBkitVersion } from "../../install/version-file";
+import { getTemplatesRoot } from "../../shared/package-roots";
 import {
   stripBkitBlock,
   detectNoPackageJson,
@@ -26,6 +30,7 @@ import {
   detectDirenvMissing,
   detectDirenvNotAllowed,
   detectBkitNotOnPath,
+  detectTier2TextDrift,
   runPreflight,
 } from "./index";
 import { detectVercelEnv, detectVercelProject } from "../after/index";
@@ -251,6 +256,37 @@ describe("runPreflight", () => {
     expect(allIds).toEqual(uniqueIds);
   });
 
+  it("reads the installing version from the package root when run from dist/ (no false downgrade)", () => {
+    const pkgRoot = path.resolve(__dirname, "../../../../..");
+    const built = path.join(pkgRoot, "dist", "checks", "before", "index.js");
+    expect(fs.existsSync(built), `${built} missing — run pnpm build`).toBe(true);
+    const version = (
+      JSON.parse(fs.readFileSync(path.join(pkgRoot, "package.json"), "utf-8")) as {
+        version: string;
+      }
+    ).version;
+    fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".bkit", "version"),
+      serializeBkitVersion({ pinnedVersion: version, canonicalHashes: {}, claudeAllowDerived: [] }),
+      "utf-8",
+    );
+    const r = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `import { runPreflight } from ${JSON.stringify(pathToFileURL(built).href)};` +
+          ` const { advisories } = runPreflight(new Set(["core"]), process.cwd());` +
+          ` process.stdout.write(JSON.stringify(advisories.map((f) => f.id)));`,
+      ],
+      { cwd: tmpDir, encoding: "utf-8" },
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout)).not.toContain("bkit-version-major-downgrade");
+  });
+
   it("not-git-repo does NOT fire when --core is not requested", () => {
     // No package.json, no .git, but no --core either — not-git-repo should not fire
     fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");
@@ -344,6 +380,57 @@ describe("templates are never drift-checked", () => {
 // ---------------------------------------------------------------------------
 // detectGitignoreBlockDuplicates — Detector C (BAR-141 iter 2)
 // ---------------------------------------------------------------------------
+
+describe("detectTier2TextDrift — .gitignore", () => {
+  /** The shipped `gitignore` template (stored dot-less), its managed block and the lines after it. */
+  const template = () => fs.readFileSync(path.join(getTemplatesRoot(), "gitignore"), "utf-8");
+  const significant = (text: string) =>
+    text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l !== "" && !l.startsWith("#") && !l.startsWith("<!--"));
+
+  it("flags a .gitignore whose bkit block dropped a template line (the template is named gitignore)", () => {
+    const shipped = template();
+    const dropped = significant(
+      shipped.slice(shipped.indexOf("bkit:start"), shipped.indexOf("bkit:end")),
+    )[1]!;
+    expect(dropped).toBeTruthy();
+    const drifted = shipped
+      .split("\n")
+      .filter((l) => l.trim() !== dropped)
+      .join("\n");
+    fs.writeFileSync(path.join(tmpDir, ".gitignore"), drifted);
+    const finding = detectTier2TextDrift(tmpDir, ".gitignore");
+    expect(finding).toMatchObject({ id: "tier2-text-drift", severity: "advisory" });
+    expect(finding!.detect).toContain(".gitignore has a bkit-managed block missing 1 line(s)");
+    expect(finding!.action).toContain(".bkit/templates/gitignore");
+  });
+
+  it("stays quiet on a .gitignore carrying the whole block, with consumer lines outside it", () => {
+    fs.writeFileSync(path.join(tmpDir, ".gitignore"), `${template()}\nmy-own-dir/\n`);
+    expect(detectTier2TextDrift(tmpDir, ".gitignore")).toBeNull();
+  });
+
+  it("runPreflight reports the drifted .gitignore", () => {
+    const shipped = template();
+    const dropped = significant(
+      shipped.slice(shipped.indexOf("bkit:start"), shipped.indexOf("bkit:end")),
+    )[1]!;
+    fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".gitignore"),
+      shipped
+        .split("\n")
+        .filter((l) => l.trim() !== dropped)
+        .join("\n"),
+    );
+    const { advisories } = runPreflight(makeModules("core"), tmpDir);
+    expect(
+      advisories.some((f) => f.id === "tier2-text-drift" && f.detect.includes(".gitignore")),
+    ).toBe(true);
+  });
+});
 
 describe("detectGitignoreBlockDuplicates", () => {
   it("flags when .worktrees/ appears outside the bkit block", () => {

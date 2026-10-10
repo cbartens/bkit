@@ -21,11 +21,12 @@ export type Step = {
   at: string;
   parentSha: string;
   artifacts: string[];
-  verdict?: "PASS" | "FAIL" | "CONCERNS";
+  verdict?: "PASS" | "FAIL" | "CONCERNS" | "SINGLE" | "SPLIT";
   attempt?: number;
   subPlan?: number;
   failures?: number;
   strategy?: "STANDARD" | "PIVOT" | "FINAL";
+  scope?: string;
 };
 
 export type WorkflowRun = {

@@ -16,7 +16,7 @@ import type { ModuleFlag } from "../../cli.js";
 import { readBkitVersion } from "../../install/version-file.js";
 import { deepContains, type JsonValue } from "../../install/write.js";
 import { extractManagedBlock, stripManagedBlock } from "../../install/managed-block.js";
-import { getTemplatesRoot, templateRelPath } from "../../shared/package-roots.js";
+import { getPkgRoot, getTemplatesRoot, templateRelPath } from "../../shared/package-roots.js";
 import {
   parseIssueTracker,
   DEFAULT_ISSUE_TRACKER,
@@ -1172,9 +1172,7 @@ export function runPreflight(
   let version = installingVersion;
   if (!version) {
     try {
-      // Walk up from this script's location to find the package.json
-      const scriptDir = new URL(".", import.meta.url).pathname;
-      const pkgJsonPath = path.resolve(scriptDir, "..", "..", "..", "..", "..", "package.json");
+      const pkgJsonPath = path.join(getPkgRoot(), "package.json");
       if (fs.existsSync(pkgJsonPath)) {
         const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8")) as { version?: string };
         version = pkg.version ?? "0.0.0";

@@ -17,7 +17,7 @@ export interface BkitConfig {
   capstoneJob: string;
   /** Files copied from the main checkout into a new worktree. */
   worktreeCopy: string[];
-  /** Whether worktree setup installs dependencies (design and plan never do: they run no project code). */
+  /** Whether worktree setup installs dependencies in a created or resumed worktree. */
   worktreeInstall: boolean;
   /** Which tracker issues live in: github, linear or none. */
   issueTracker: IssueTracker;

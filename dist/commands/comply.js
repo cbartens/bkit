@@ -16,6 +16,7 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { getPkgRoot } from "../shared/package-roots.js";
 import { isMirrorPath } from "../shared/protected-paths.js";
 /** SHA charset guard — only raw hex SHAs from the ledger are accepted. */
 const SHA_RE = /^[0-9a-f]{7,40}$/;
@@ -204,14 +205,13 @@ export function formatComplianceSummary(violations) {
 // bkitVersion reader (used by CLI dispatch and tests)
 // ---------------------------------------------------------------------------
 /**
- * Read the bkit version from the package.json nearest to `searchFrom`.
- * Returns "0.0.0" on any read/parse error (fail-open).
+ * Read the bkit version from the package.json nearest to `searchFrom` (default: the
+ * running bkit package's root). Returns "0.0.0" on any read/parse error (fail-open).
  */
 export function readBkitVersion(searchFrom) {
     try {
-        // Walk up from searchFrom (or __dirname) looking for package.json with a
-        // `version` field.  We stop at the filesystem root.
-        let dir = path.resolve(searchFrom ?? path.join(__dirname, "../../../../.."));
+        // Walk up looking for a package.json with a `version` field; stop at the filesystem root.
+        let dir = path.resolve(searchFrom ?? getPkgRoot());
         for (let i = 0; i < 8; i++) {
             const candidate = path.join(dir, "package.json");
             if (fs.existsSync(candidate)) {

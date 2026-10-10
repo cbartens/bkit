@@ -24,6 +24,8 @@ import {
   opencodeProviderId,
   dispatchModules,
   detectGateAdvisories,
+  detectNoopGates,
+  isNoopScript,
   isTemplate,
   listStampedFiles,
   readInstallingVersion,
@@ -584,7 +586,7 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
 //   - dispatch path  keys on inputs.issue          (bkit-auto-141)
 //   - CI-completion  keys on head_branch            (bkit-auto-feat/141-cloud-app)
 // Cross-boundary dispatch-vs-auto-ship race is handled by the orchestrator stale-run
-// guard + status.json lock, not the concurrency key.
+// guard + the per-feature workflow lock, not the concurrency key.
 // ---------------------------------------------------------------------------
 
 describe("T3.1 — concurrency.group intra-surface serialisation (D3 race prevention)", () => {
@@ -820,6 +822,72 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
     expect(detectGateAdvisories(tmpDir)).toEqual([]);
     fs.writeFileSync(path.join(tmpDir, "package.json"), "{ nope", "utf-8");
     expect(detectGateAdvisories(tmpDir)).toEqual([]);
+  });
+});
+
+describe("detectNoopGates — bkit check warns on a gate that checks nothing", () => {
+  function writeScripts(scripts: Record<string, string>): void {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", scripts }, null, 2) + "\n",
+      "utf-8",
+    );
+  }
+
+  it.each([
+    "",
+    "   ",
+    "true",
+    ":",
+    "exit 0",
+    "echo ok",
+    'echo "skipped"',
+    "echo ok && true",
+    "true; :",
+  ])("%j is a no-op", (value) => {
+    expect(isNoopScript(value)).toBe(true);
+  });
+
+  it.each(["pnpm test", "echo start && pnpm test", "exit 1", "false", "tsc"])(
+    "%j can fail",
+    (value) => {
+      expect(isNoopScript(value)).toBe(false);
+    },
+  );
+
+  it("names every empty or no-op bkit:gate script, and only those", () => {
+    writeScripts({
+      ...BKIT_GATE_SCRIPTS,
+      "bkit:gate:static": "echo ok",
+      "bkit:gate:static-unit-integration": "",
+      lint: "true",
+    });
+    const findings = detectNoopGates(tmpDir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ id: "gate-noop", severity: "advisory" });
+    expect(findings[0]!.detect).toContain("`bkit:gate:static` (`echo ok`)");
+    expect(findings[0]!.detect).toContain("`bkit:gate:static-unit-integration` (`empty`)");
+    expect(findings[0]!.detect).not.toContain("`lint`");
+    expect(findings[0]!.detect).not.toContain("bkit:gate:format");
+  });
+
+  it("is silent when every gate runs something, and for an absent or malformed package.json", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS });
+    expect(detectNoopGates(tmpDir)).toEqual([]);
+    fs.rmSync(path.join(tmpDir, "package.json"));
+    expect(detectNoopGates(tmpDir)).toEqual([]);
+    fs.writeFileSync(path.join(tmpDir, "package.json"), "{ nope", "utf-8");
+    expect(detectNoopGates(tmpDir)).toEqual([]);
+  });
+
+  it("runs in check (dry run) as well as install, as an advisory", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS, "bkit:gate:static": "true" });
+    for (const dryRun of [true, false]) {
+      const ctx = makeCtx({ dryRun });
+      runCoreModule(ctx);
+      const finding = ctx.advisories.find((f) => f.id === "gate-noop");
+      expect(finding, `dryRun=${dryRun}`).toMatchObject({ severity: "advisory" });
+    }
   });
 });
 

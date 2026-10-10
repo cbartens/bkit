@@ -1,11 +1,9 @@
 // bkit locks acquire|release — the per-feature workflow lock and the dev lock.
 //
 // workflow  `docs/plans/{month}/logs/{fid}/.lock`: one phase workflow per feature
-//           at a time. A lock left behind is reclaimed only when nothing shows its
-//           holder is alive: no step in the last 30 minutes AND the lock itself
-//           older than 30 minutes. The lock-age half covers the window between a
-//           run taking the lock and writing its first row, when the log still
-//           shows the previous, finished run.
+//           at a time. A lock left behind is reclaimed as soon as its holder is
+//           idle: its run is not IN_PROGRESS, or stepped no sooner than 30 minutes
+//           ago. The lock file's own age is not checked.
 // dev       `.bkit/.dev.lock` in the main checkout: held across every checkout /
 //           commit / push of `dev` there. Acquire waits a bounded time; the shell
 //           releases it from `trap ... EXIT`.
@@ -126,16 +124,13 @@ function liveReason(root, bookRoot, month, fid, holder, now) {
         if (idle < WORKFLOW_LOCK_IDLE_S)
             return { live: `idle ${idle}s` };
     }
-    const lockAge = ageSeconds(workflowLockPath(bookRoot, month, fid), now) ?? 0;
-    if (lockAge < WORKFLOW_LOCK_IDLE_S)
-        return { live: `lock age ${lockAge}s` };
     if (run === undefined)
         return { reason: "orphaned" };
     return { reason: run.status === "IN_PROGRESS" ? "stale" : "finished" };
 }
 /**
  * Fold a status log for the lock cross-check. A missing or malformed log shows no
- * run: there is no evidence the holder is alive, so the lock age alone decides.
+ * run: there is no evidence the holder is alive, so the lock is reclaimed.
  */
 function readRunsLenient(file) {
     if (!fs.existsSync(file))

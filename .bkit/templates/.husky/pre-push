@@ -84,7 +84,7 @@ else
 fi
 
 # bkit mirror-drift gate — fails fast if `.agents/*` was edited without `bkit install`
-# regenerating the `.claude/*`/`.cursor/*`/`.husky/*` mirrors (same check CI runs).
+# regenerating the `.claude/*`/`.cursor/*` mirrors (same check CI runs).
 # Outside the gate scripts: it validates the bkit install, not your source.
 # Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
 pnpm bkit check < /dev/null

@@ -31,7 +31,7 @@ function cleanupRemoveFence(fid: string): string {
   const section = lines.slice(start, end + 1).join("\n");
   const fence = section.match(/```bash\n([\s\S]*?)```/);
   expect(fence, "Step 14 ownership fence not found").toBeTruthy();
-  return fence![1].replaceAll("{FID}", fid);
+  return fence![1].replaceAll("{FID}", fid).replaceAll("{SHIP_BRANCH}", `feat/${fid}`);
 }
 
 function initRepo(): { tmp: string; repo: string } {
@@ -60,18 +60,28 @@ function markerPath(repo: string): string {
   return path.join(common, "bkit-outbox", FID, ".worktree-owned");
 }
 
-function runFence(repo: string): void {
-  execFileSync("bash", ["-c", cleanupRemoveFence(FID)], {
+function runFence(repo: string): Record<string, unknown> {
+  const out = execFileSync("bash", ["-c", cleanupRemoveFence(FID)], {
     cwd: repo,
     encoding: "utf-8",
   });
+  return JSON.parse(out) as Record<string, unknown>;
 }
 
+const hasBranch = (repo: string) =>
+  execFileSync("git", ["-C", repo, "branch", "--list", `feat/${FID}`], {
+    encoding: "utf-8",
+  }).trim() !== "";
+
 describe("bkit-ship.md Step 14 worktree removal is ownership-scoped", () => {
-  it("leaves the worktree in place when the ownership marker is absent", () => {
+  it("leaves the worktree AND its branch in place when the ownership marker is absent, naming the worktree", () => {
     const { repo } = initRepo();
-    runFence(repo);
+    const r = runFence(repo);
     expect(fs.existsSync(path.join(repo, ".worktrees", FID))).toBe(true);
+    expect(hasBranch(repo)).toBe(true);
+    expect(fs.realpathSync(String(r.branchBlockedBy))).toBe(
+      fs.realpathSync(path.join(repo, ".worktrees", FID)),
+    );
   });
 
   it("removes the worktree when the ownership marker is present", () => {
@@ -79,7 +89,9 @@ describe("bkit-ship.md Step 14 worktree removal is ownership-scoped", () => {
     const marker = markerPath(repo);
     fs.mkdirSync(path.dirname(marker), { recursive: true });
     fs.writeFileSync(marker, "");
-    runFence(repo);
+    const r = runFence(repo);
     expect(fs.existsSync(path.join(repo, ".worktrees", FID))).toBe(false);
+    expect(hasBranch(repo)).toBe(false);
+    expect(r).toMatchObject({ removed: true, branchDeleted: true, branchBlockedBy: null });
   });
 });

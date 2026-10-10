@@ -1307,7 +1307,7 @@ export async function main() {
       // The origin remote's owner/repo, the same slug every other telemetry writer uses.
       const repo = resolveRepoSlug(cwd) || "unknown/repo";
 
-      const bkitVersion = readBkitVersion(cwd);
+      const bkitVersion = readBkitVersion();
 
       const rows = buildComplianceRows({ violations, phase, parentSha, repo, bkitVersion });
       appendComplianceRows(rows, statsPath);

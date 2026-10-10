@@ -195,6 +195,74 @@ describe("buildDecisionTable — markered-text format", () => {
     }
   });
 
+  describe("docs/", () => {
+    const marker = "<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->";
+    const block = `<!-- bkit:start -->\n\n${marker}\n\n# Testing\n\nbkit doctrine\n\n<!-- bkit:end -->\n`;
+
+    it("strips bkit's block, managed marker included, from docs/*.md and keeps the consumer's content", async () => {
+      const consumer = "## Project Testing\n\nour own notes\n";
+      writeFile("docs/testing.md", `${block}${consumer}`);
+      writeFile("docs/security.md", `${block}`);
+      const table = buildDecisionTable(["core"], makeCtx());
+      expect(table.find((r) => r.file === "docs/testing.md")?.decision).toBe("strip-block");
+      const r = await runUninstall(["core"], makeCtx());
+      expect(readFile("docs/testing.md")).toBe(consumer);
+      expect(readFile("docs/testing.md")).not.toContain("bkit:managed");
+      // Nothing but bkit's block → the file goes.
+      expect(fileExists("docs/security.md")).toBe(false);
+      expect(r.stripped).toContain("docs/testing.md");
+      expect(r.deleted).toContain("docs/security.md");
+    });
+
+    it("deletes the owned docs/templates/bkit-*.md and keeps the consumer's own templates", async () => {
+      writeFile("docs/templates/bkit-plan.md", `${block}`);
+      writeFile("docs/templates/bkit-audit-security.md", `${block}our edits below\n`);
+      writeFile("docs/templates/our-template.md", "ours\n");
+      const table = buildDecisionTable(["core"], makeCtx());
+      expect(table.find((r) => r.file === "docs/templates/bkit-plan.md")?.decision).toBe("delete");
+      await runUninstall(["core"], makeCtx());
+      expect(fileExists("docs/templates/bkit-plan.md")).toBe(false);
+      expect(fileExists("docs/templates/bkit-audit-security.md")).toBe(false);
+      expect(readFile("docs/templates/our-template.md")).toBe("ours\n");
+    });
+
+    it("prunes docs/templates when only bkit's files were in it", async () => {
+      writeFile("docs/templates/bkit-plan.md", `${block}`);
+      writeFile("docs/roadmap.md", "# Roadmap\n");
+      await runUninstall(["core"], makeCtx());
+      expect(fileExists("docs/templates")).toBe(false);
+      expect(readFile("docs/roadmap.md")).toBe("# Roadmap\n");
+    });
+
+    it("leaves docs/ alone on a targeted (non-core) uninstall, and on a dry run", async () => {
+      writeFile("docs/testing.md", `${block}`);
+      writeFile("docs/templates/bkit-plan.md", `${block}`);
+      const targeted = buildDecisionTable(["claude"], makeCtx());
+      expect(targeted.some((r) => r.file.startsWith("docs/"))).toBe(false);
+      await runUninstall(["core"], makeCtx({ dryRun: true }));
+      expect(readFile("docs/testing.md")).toBe(block);
+      expect(fileExists("docs/templates/bkit-plan.md")).toBe(true);
+    });
+
+    it("never touches docs/capabilities.md, which is a template bkit does not install", () => {
+      writeFile("docs/capabilities.md", `${block}`);
+      const table = buildDecisionTable(["core"], makeCtx());
+      expect(table.some((r) => r.file === "docs/capabilities.md")).toBe(false);
+    });
+
+    it("covers every docs/*.md the templates ship", () => {
+      const shipped = fs
+        .readdirSync(path.join(getTemplatesRoot(), "docs"))
+        .filter((f) => f.endsWith(".md") && f !== "capabilities.md");
+      expect(shipped.length).toBeGreaterThan(0);
+      for (const f of shipped) writeFile(path.join("docs", f), block);
+      const table = buildDecisionTable(["core"], makeCtx());
+      for (const f of shipped) {
+        expect(table.find((r) => r.file === path.join("docs", f))?.decision, f).toBe("strip-block");
+      }
+    });
+  });
+
   it("core .agents/ doctrine files are NOT swept by a targeted (non-core) uninstall", () => {
     // Core-gated: a `uninstall --claude` (no core) must leave the .agents/ doctrine untouched,
     // symmetric with how the core templates pass installs them.

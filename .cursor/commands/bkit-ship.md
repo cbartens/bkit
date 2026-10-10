@@ -25,7 +25,7 @@ Ship Feature — Autonomous merge and archive
 > - **Commands:** Mechanical work runs as `"$BKIT" <noun> <verb> --flag=value`; every block calling one starts with the `BKIT=` line shown. Stdout is one JSON object — hold the named keys as `{VAR}`. Exit 80 → do that call through the mapped MCP tool (**gh MCP fallback**). Exit 81 → end the turn, then re-run the block.
 > - **Resume:** On start, fold `$BOOK_ROOT/.../status.jsonl` — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$BOOK_ROOT/.../status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
-> - **Locks:** Step 1 takes `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` via `bkit locks acquire` (hold `token`); Step 15 releases it via `bkit locks release --token=`, the **Failure Path** via `bkit workflows fail --token=`. **If** existing lock — its holder's folded `status.jsonl` decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, stale) is reclaimed only once the lock is at least 30 minutes old. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire via `bkit locks acquire --kind=dev`, release via `trap` running `bkit locks release --kind=dev --token=` on `EXIT`.
+> - **Locks:** Step 1 takes `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` via `bkit locks acquire` (hold `token`); Step 15 releases it via `bkit locks release --token=`, the **Failure Path** via `bkit workflows fail --token=`. **If** existing lock — its holder's folded `status.jsonl` decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, stale) is reclaimed. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire via `bkit locks acquire --kind=dev`, release via `trap` running `bkit locks release --kind=dev --token=` on `EXIT`.
 > - **Status branch:** All steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`{STATUS}`). **If** `RUNTIME_DEVPUSHES` = true → `BOOK_ROOT` = `$REPO_ROOT`, **else** current working branch tree. Stage path-scoped via `bkit ledgers commit`; NEVER stage all files (`-A`) or blanket `docs/`. ONE commit per flush block: Commit + Push Bookkeeping → `docs({FID}): ship bookkeeping bkit [skip ci]` → push `{SHIP_BRANCH}` (pre-merge: docs, logs, ledgers, skill removals); Close Workflow → `docs({FID}): ship DONE bkit [skip ci]` → push `dev`, refused → close PR; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` → **If** `RUNTIME_DEVPUSHES` = true → push `dev`, **else** current branch; NEVER both.
 > - **Subagents:** Invoke using `/name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return; do NOT assume success.
@@ -187,13 +187,12 @@ Ship Feature — Autonomous merge and archive
       ```
       One line → that `FID`. Several → **Failure Path** listing them (name the `FID` in the session prompt to pick one). None → next.
    4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`.
-      Check the format:
-      ```bash
-      BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-      "$BKIT" fids check --fid="{FID}"
-      ```
-      → hold `fid` as `{FID}`. **If** exit non-zero → **Failure Path**.
-      One `FID` for all artifacts once set.
+   One `FID` for all artifacts once set. Check its format for the wired tracker:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" fids check --fid="{FID}"
+   ```
+   → hold `fid` as `{FID}`. **If** exit non-zero → **Failure Path**.
 5. Detect the runtime:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -252,6 +251,7 @@ Ship Feature — Autonomous merge and archive
 - [ ] Runtime resolved (`RUNTIME_DEVPUSHES`, `RUNTIME_WORKTREES`)
 - [ ] Outbox created (`{OUTBOX}`)
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
+- [ ] FID format checked (`bkit fids check` exit 0)
 - [ ] Lock acquired (`LOCK_TOKEN` held; `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 - [ ] Stale sentinels cleared (`.deferred-blocked`, `.rebase-failed`)
 - [ ] Run number set (`{RUN}`)
@@ -582,12 +582,12 @@ Ship Feature — Autonomous merge and archive
 
 ## 🤖 Step 7 — Prune Skills
 
-1. Prune feature-specific skills — uninstall any skill not listed in `.agents/skills.md`:
+1. Prune feature-specific skills — uninstall any skill not listed in `.agents/skills.md`; a missing registry skips the prune, a failed uninstall is warned and listed in `failed`:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" skills prune
    ```
-   **If** exit non-zero → **Failure Path**.
+   **If** exit non-zero → **Failure Path**. **If** `skipped` non-null **or** `failed` non-empty → narrate the warning → continue.
 2. Update status (bookkeeping to `$BOOK_ROOT`):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -604,7 +604,7 @@ Ship Feature — Autonomous merge and archive
 
 ### 🔒 Gate 7 — Prune Skills
 
-- [ ] Feature-specific skills pruned
+- [ ] Feature-specific skills pruned, or the skip / failed uninstalls narrated (`skipped`, `failed`)
 - [ ] Logs at `docs/plans/{YYYYMM}/logs/{FID}/` retained for manual cleanup
 - [ ] Workflow status updated (step `ship-prune-skills` recorded with `parentSha`)
 
@@ -689,7 +689,7 @@ Ship Feature — Autonomous merge and archive
      if [ "$WAIT_EXIT" = 1 ]; then
        WAIT_ATTEMPTS=$(printf '%s' "$WAIT" | jq -r .attempts)
        WAIT_ELAPSED_S=$(printf '%s' "$WAIT" | jq -r .elapsedS)
-       "$BKIT" status row --file="$STATUS" --workflow=ship --type=ship-revalidate-timeout --field=attempt="$WAIT_ATTEMPTS" --field=timeoutS="$WAIT_ELAPSED_S" >/dev/null
+       "$BKIT" status row --file="$STATUS" --workflow=ship --type=ship-revalidate-timeout --field=attempt="$WAIT_ATTEMPTS" --field=timeout_s="$WAIT_ELAPSED_S" >/dev/null
        echo "[bkit-ship] CI did not complete at $VALIDATED_HEAD" >&2
      fi
      [ "$WAIT_EXIT" = 0 ] || exit "$WAIT_EXIT"
@@ -974,28 +974,19 @@ Ship Feature — Autonomous merge and archive
 
 **Run only if** `state` = MERGED.
 
-1. Remove the feature worktree (ownership-scoped — only worktrees a workflow created):
+1. Remove the feature worktree (only one a workflow created), then delete the local and remote feature branch unless another worktree holds it:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" worktrees remove --fid="{FID}" --owned-only
+   "$BKIT" worktrees remove --fid="{FID}" --branch="{SHIP_BRANCH}"
    ```
    **If** exit non-zero → **Failure Path**.
-2. Delete local feature branch:
-   ```bash
-   case "{SHIP_BRANCH}" in dev|main|"") echo "[bkit-ship] refusing to delete branch '{SHIP_BRANCH}'" >&2 ;; *) git branch -D "{SHIP_BRANCH}" 2>/dev/null || true ;; esac
-   ```
-3. Delete remote feature branch and prune tracking ref:
-   ```bash
-   case "{SHIP_BRANCH}" in dev|main|"") echo "[bkit-ship] refusing to delete branch '{SHIP_BRANCH}'" >&2 ;; *) git push origin --delete "{SHIP_BRANCH}" 2>/dev/null || true ;; esac
-   git fetch --prune origin 2>/dev/null || true
-   ```
-4. Update status (bookkeeping to `$BOOK_ROOT`):
+2. Update status (bookkeeping to `$BOOK_ROOT`):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps done --workflow=ship --step=ship-worktree-cleanup --file="{STATUS}" --commit=none
    ```
    **If** exit non-zero → **Failure Path**.
-5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = `body` from:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -1006,8 +997,7 @@ Ship Feature — Autonomous merge and archive
 
 - [ ] Worktree removed (`.worktrees/{FID}`, or was already absent, or ownership marker absent → skipped)
 - [ ] Worktree prune executed (`bkit worktrees remove`)
-- [ ] Local `{SHIP_BRANCH}` branch deleted (or already absent)
-- [ ] Remote `origin/{SHIP_BRANCH}` branch deleted (or already absent)
+- [ ] Local and remote `{SHIP_BRANCH}` branch deleted or already absent (`branchDeleted`), or both kept and the holding worktree named (`branchBlockedBy`)
 - [ ] Workflow status updated (step `ship-worktree-cleanup` recorded with `parentSha`)
 
 
@@ -1025,7 +1015,7 @@ Ship Feature — Autonomous merge and archive
    SQUASH_SHA=$("$BKIT" prs probe --number="{PR_NUMBER}" | jq -r '.mergeCommitOid // empty')
    [ -n "$SQUASH_SHA" ] || { echo "[bkit-ship] cannot read the squash commit of PR {PR_NUMBER}" >&2; exit 1; }
    CI_EXIT=0
-   CI=$("$BKIT" runs gate --head="$SQUASH_SHA" --repo="{OWNER_REPO}") || CI_EXIT=$?
+   CI=$("$BKIT" runs gate --head="$SQUASH_SHA" --repo="{OWNER_REPO}" --capstone-only) || CI_EXIT=$?
    if [ "$CI_EXIT" = 0 ]; then CI_VERDICT=PASS; else CI_VERDICT=FAIL; fi
    CI_RUN=$(printf '%s' "$CI" | jq -c '(.runId // "") | tostring')
    CI_REASON=$(printf '%s' "$CI" | jq -c --arg v "$CI_VERDICT" 'if $v == "PASS" then "" else (.reason // "") end')
@@ -1130,7 +1120,7 @@ Ship Feature — Autonomous merge and archive
 - [ ] Logs retained at `docs/plans/{YYYYMM}/logs/{FID}/` for manual cleanup
 - [ ] Worktree cleaned up
 - [ ] Squash-merge CI verdict recorded before routing (row `ship-merge-ci` with `verdict`, `reason`)
-- [ ] Squash-merge CI capstone green (`bkit runs gate` exit 0 at `SQUASH_SHA`)
+- [ ] Squash-merge CI capstone green (`bkit runs gate --capstone-only` exit 0 at `SQUASH_SHA`)
 - [ ] Workflow status updated (`ship` `DONE`, step `ship-close-workflow` recorded with `parentSha`)
 - [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
 - [ ] Single path-scoped `[skip ci]` close commit pushed to `dev`, refused push published through a close PR (`RUNTIME_DEVPUSHES`, `ship-close/{FID}`)

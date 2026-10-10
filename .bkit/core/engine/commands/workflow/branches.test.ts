@@ -279,6 +279,28 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     expect(read(dir, "src.txt")).toBe("code v0\nfeat\n");
   });
 
+  it("a refused rebase whose --abort itself fails: aborted false, exit 3, ABORT FAILED in the log", async () => {
+    const dir = makeRepo("abort-fails");
+    diverge(dir, { "src.txt": "feat\n" }, { "src.txt": "main\n" });
+    const bin = stubBin({
+      git: `case "$*" in *"rebase --abort"*) echo "fatal: abort blocked" >&2; exit 1 ;; esac\nexec "${REAL_GIT}" "$@"`,
+    });
+    const r = await run(
+      dir,
+      ["rebase", "--sentinel=logs/.rebase-failed", "--log-file=logs/rebase-resolve-log.md"],
+      { PATH: withBin(bin) },
+    );
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({ outcome: "refused", refused: "src.txt", aborted: false });
+    expect(r.err).toContain("ABORT FAILED");
+    expect(read(dir, "logs/rebase-resolve-log.md")).toContain(
+      "[bkit-rebase] ABORT FAILED — git rebase --abort: fatal: abort blocked",
+    );
+    expect(read(dir, "logs/.rebase-failed")).toBe("");
+    // Nothing aborted it, so the rebase is still in progress for a human.
+    expect(inRebase(dir)).toBe(true);
+  });
+
   it("refuses a mixed set without mutating the resolvable ledger in it", async () => {
     const dir = makeRepo("mixed");
     diverge(
@@ -1197,7 +1219,7 @@ describe("branches switch", { timeout: GIT_TIMEOUT }, () => {
     expect(git(clone, "config", "--get", "core.bare").out).toBe("false");
   });
 
-  it("installs dependencies when there is a package.json, and only warns when that fails", async () => {
+  it("installs dependencies when there is a package.json, and a failed install stops ship (16)", async () => {
     const ok = shipped("switch-install");
     write(ok.clone, "package.json", "{}\n");
     const good = await run(ok.clone, ARGS, {
@@ -1210,9 +1232,11 @@ describe("branches switch", { timeout: GIT_TIMEOUT }, () => {
     const failed = await run(bad.clone, ARGS, {
       PATH: withBin(stubBin({ [PACKAGE_RUNNER]: "exit 1" })),
     });
-    expect(failed.code).toBe(0);
+    expect(failed.code).toBe(16);
     expect(failed.json).toMatchObject({ switched: true, installed: false });
-    expect(failed.err).toContain("WARNING");
+    expect(failed.err).toContain("dependency install failed");
+    // The dev lock is released on the failure exit too.
+    expect(fs.existsSync(path.join(bad.clone, ".bkit", ".dev.lock"))).toBe(false);
   });
 });
 

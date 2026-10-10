@@ -24,7 +24,7 @@ description: "Build Feature — Autonomous implementation"
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `subPlan`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
-> - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step (`bkit locks acquire`, hold `token`); release in last step and Failure Path with that token; assert lock released before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed only once the lock file is at least 30 minutes old, younger → **Failure Path**.
+> - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step (`bkit locks acquire`, hold `token`); release in last step and Failure Path with that token; assert lock released before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
 > - **Status branch:** status.jsonl committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO pushes.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return; do NOT assume success.
@@ -177,13 +177,12 @@ description: "Build Feature — Autonomous implementation"
       <!-- bkit:tracker false start -->
       `ISSUE_ID` unset → `{branch-suffix}-{slug}`.
       <!-- bkit:tracker false end -->
-      Assert format:
-      ```bash
-      BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-      "$BKIT" fids check --fid={FID}
-      ```
-      **If** exit non-zero → **Failure Path**. Hold `fid` as `{FID}`.
-      One `FID` for all artifacts once set.
+   One `FID` for all artifacts once set. Check its format for the wired tracker:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" fids check --fid="{FID}"
+   ```
+   → hold `fid` as `{FID}`. **If** exit non-zero → **Failure Path**.
 6. Acquire concurrency lock:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -229,6 +228,7 @@ description: "Build Feature — Autonomous implementation"
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`, `YYYYMM`)
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
+- [ ] FID format checked (`bkit fids check` exit 0)
 - [ ] Lock acquired (`LOCK_TOKEN` non-empty)
 - [ ] Long-branch advisory emitted
 
@@ -855,10 +855,9 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
    CHALLENGE_REMEDIATE_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=build --step=build-challenge-remediate --position=count | jq -er .value) || exit 2
-   ATTEMPT_FLAG=""; [ "$CHALLENGE_REMEDIATE_ATTEMPT" -gt 0 ] && ATTEMPT_FLAG="--attempt=$CHALLENGE_REMEDIATE_ATTEMPT"
-   "$BKIT" steps done --workflow=build --step=build-challenge --file="$STATUS" --verdict={CHALLENGE_VERDICT} --failures={CHALLENGE_FAILURES} $ATTEMPT_FLAG --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md --message="chore({FID}): build-challenge attempt ${CHALLENGE_REMEDIATE_ATTEMPT}"
+   "$BKIT" steps done --workflow=build --step=build-challenge --file="$STATUS" --verdict={CHALLENGE_VERDICT} --failures={CHALLENGE_FAILURES} --attempt="$CHALLENGE_REMEDIATE_ATTEMPT" --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md --message="chore({FID}): build-challenge attempt ${CHALLENGE_REMEDIATE_ATTEMPT}"
    ```
-   **If** exit non-zero → **Failure Path**. Hold `row.attempt` as `{CHALLENGE_REMEDIATE_ATTEMPT}` (0 when absent).
+   **If** exit non-zero → **Failure Path**. Hold `row.attempt` as `{CHALLENGE_REMEDIATE_ATTEMPT}`.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -911,10 +910,9 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
    CHALLENGE_REMEDIATE_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=build --step=build-challenge-remediate --position=count | jq -er .value) || exit 2
-   ATTEMPT_FLAG=""; [ "$CHALLENGE_REMEDIATE_ATTEMPT" -gt 0 ] && ATTEMPT_FLAG="--attempt=$CHALLENGE_REMEDIATE_ATTEMPT"
-   "$BKIT" steps done --workflow=build --step=build-challenge-reconcile --file="$STATUS" --verdict={CHALLENGE_VERDICT} --failures={CHALLENGE_FAILURES} $ATTEMPT_FLAG --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md --message="chore({FID}): build-challenge-reconcile attempt ${CHALLENGE_REMEDIATE_ATTEMPT}"
+   "$BKIT" steps done --workflow=build --step=build-challenge-reconcile --file="$STATUS" --verdict={CHALLENGE_VERDICT} --failures={CHALLENGE_FAILURES} --attempt="$CHALLENGE_REMEDIATE_ATTEMPT" --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md --message="chore({FID}): build-challenge-reconcile attempt ${CHALLENGE_REMEDIATE_ATTEMPT}"
    ```
-   **If** exit non-zero → **Failure Path**. Hold `row.attempt` as `{CHALLENGE_REMEDIATE_ATTEMPT}` (0 when absent).
+   **If** exit non-zero → **Failure Path**. Hold `row.attempt` as `{CHALLENGE_REMEDIATE_ATTEMPT}`.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -1106,10 +1104,17 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    "$BKIT" counters derive --file="{STATUS}" --workflow=build --step=build-run-tests --position=next
    ```
    **If** exit non-zero → **Failure Path**. Hold `value` as `{TEST_ATTEMPT}`.
-2. Run verbatim:
+2. Run verbatim, then copy the log, clamped, next to the run's other artifacts:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   TEST_LOG="docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md"
    "$BKIT" tests run --gate=bkit:gate:static-unit-integration --gate=bkit:gate:static-unit --log="{OUTBOX}/run-tests-{TEST_ATTEMPT}.log"
+   TEST_EXIT=$?
+   [ "$TEST_EXIT" -le 1 ] || exit "$TEST_EXIT"
+   cp "{OUTBOX}/run-tests-{TEST_ATTEMPT}.log" "$TEST_LOG" || exit 2
+   "$BKIT" context clamp-log --reset --fid="{FID}" --step=build-run-tests --attempt="{TEST_ATTEMPT}" >/dev/null || exit 2
+   "$BKIT" context clamp --artifact="$TEST_LOG" --profile=debug-evidence --fid="{FID}" --step=build-run-tests --attempt="{TEST_ATTEMPT}" >/dev/null || exit 2
+   exit "$TEST_EXIT"
    ```
 3. Decide `TEST_VERDICT` and `TEST_FAILURES` from exit code:
    - **If** exit 0 → `TEST_VERDICT` = PASS, `TEST_FAILURES` = 0.
@@ -1121,7 +1126,8 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
    TEST_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=build --step=build-run-tests --position=next | jq -er .value) || exit 2
-   "$BKIT" steps done --workflow=build --step=build-run-tests --file="$STATUS" --verdict={TEST_VERDICT} --failures={TEST_FAILURES} --field="scope={TEST_SCOPE}" --attempt="$TEST_ATTEMPT" --message="chore({FID}): run-tests attempt ${TEST_ATTEMPT}"
+   CLAMPED=$("$BKIT" context clamp-log --fid="{FID}" --step=build-run-tests --attempt="$TEST_ATTEMPT" | jq -ec .records) || exit 2
+   "$BKIT" steps done --workflow=build --step=build-run-tests --file="$STATUS" --verdict={TEST_VERDICT} --failures={TEST_FAILURES} --field="scope={TEST_SCOPE}" --field="clamped=$CLAMPED" --attempt="$TEST_ATTEMPT" --artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-${TEST_ATTEMPT}.md" --message="chore({FID}): run-tests attempt ${TEST_ATTEMPT}"
    ```
    **If** exit non-zero → **Failure Path**.
 6. <!-- bkit:tracker github start -->
@@ -1154,13 +1160,14 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 
 ```bash
 BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-"$BKIT" steps gate --workflow=build --step=build-run-tests --file="{STATUS}"
+"$BKIT" steps gate --workflow=build --step=build-run-tests --file="{STATUS}" --artifact=docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md
 ```
 
 **If** exit non-zero → **Failure Path**.
 
 - [ ] Test attempt derived (active run)
 - [ ] Tests executed (deepest declared of `bkit:gate:static-unit-integration`, `bkit:gate:static-unit`; exit 0)
+- [ ] Test log committed, clamped (`run-tests-{TEST_ATTEMPT}.md` in the log dir, row `artifacts` and `clamped`)
 - [ ] Test results extracted (`TEST_VERDICT`, `TEST_FAILURES`, `TEST_SCOPE`)
 
 <!-- bkit:tracker true start -->
@@ -1183,7 +1190,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    **If** exit non-zero → **Failure Path**. Hold `nextStrategy` as `{STRATEGY}`.
 2. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. `Strategy`: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `{OUTBOX}/run-tests-{TEST_ATTEMPT}.log`, `docs/plans/{YYYYMM}/logs/{FID}/build-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
 3. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 4. Read `build-failure-diagnose-{TEST_ATTEMPT}.md` header — extract `Verdict` (`verdict`) as `DIAGNOSE_VERDICT`:
@@ -1452,7 +1459,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 6. Record `build-create-pr`:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" steps done --workflow=build --step=build-create-pr --file="{STATUS}" --field=prUrl={PR_URL} --commit=none
+   "$BKIT" steps done --workflow=build --step=build-create-pr --file="{STATUS}" --artifact={PR_URL} --commit=none
    ```
    **If** exit non-zero → **Failure Path**.
 7. Run the CI-Dispatch Gate and record `build-close-workflow` in one block — `{LABEL_FLAGS}` = one `--label=<name>` per `LABELS` entry re-read in sub-step 3, empty when no tracker is wired; **If** re-entering from **CI wait turn-loop** → append its flags to `runs dispatch`:
@@ -1558,7 +1565,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 
 - [ ] PR-title Assertion passed
 - [ ] CI-Dispatch gate ran (step `build-close-workflow` recorded with `ciDispatch`)
-- [ ] Workflow status updated (`build` `DONE`, step `build-create-pr` recorded with `prUrl`, step `build-close-workflow` recorded with `parentSha` and `ciDispatch` verdict)
+- [ ] Workflow status updated (`build` `DONE`, step `build-create-pr` recorded with the PR URL in `artifacts`, step `build-close-workflow` recorded with `parentSha` and `ciDispatch` verdict)
 - [ ] Final return displayed (`build-summary.md` content verbatim)
 
 <!-- bkit:tracker true start -->

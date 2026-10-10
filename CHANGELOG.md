@@ -16,6 +16,9 @@ bkit owns only what a workflow step runs or parses (#489). Everything a person o
 - **`bkit upgrade` lists the templates that changed.** One line per changed, added or removed path under `.bkit/templates/`, then a pointer to `.bkit/templates.md`. Diff each against the adopted copy and merge what you want; `git diff .bkit/templates` in the upgrade commit is the package change. `bkit check` fails on a stale copy.
 - **Context-fetch blocks, one template file per provider.** `.bkit/templates/context/` holds `github` (`context=ci` and `context=diff`), `expo`, `maestro` (iOS and Android lanes), `playwright`, `tavily`, `sentry`, `vercel`, `supabase`, `stripe`, `resend`, `inngest`, `cloudrun` and `serena`. Each file carries that provider's fetch blocks, its `context-fetch:provision` block where a stack CLI is needed, its env vars, the `allowed-domains` lines bkit's egress registry does not already cover, and its `mcp-servers` names. Names, slugs and ids are placeholders. Every fetch block self-skips (`exit 0` plus a `skipped —` line on stderr) when its env vars are unset. Copy the blocks you use below `<!-- bkit:end -->` in `.agents/context.md`.
 - **Managed-version marker on every file bkit writes.** Each owned file and owned block carries `bkit:managed v<version>` in the file's comment syntax; JSON carries none. `bkit check` reports `bkit-managed-stale` for any marker that differs from the installed version — a blocker on `main` / `dev`, an advisory on a feature branch. It replaces `bkit-rendered-prompts-stale` and `bkit-managed-docs-stale`.
+- **`bkit check` warns about a gate that checks nothing.** `gate-noop` names every `bkit:gate:*` script that is empty or cannot fail (`true`, `:`, `exit 0`, `echo …`). Advisory only, on every branch.
+- **`bkit runs gate --capstone-only`.** Passes or fails on the capstone job's result alone; the run's conclusion and other jobs (deploys, notifications) do not count. Ship's post-merge check uses it.
+- **`bkit worktrees remove --branch=<name>`** deletes the feature branch locally and on `origin` once the worktree is gone. A worktree still holding the branch blocks both deletes and is named in `branchBlockedBy`.
 - **`bkit check` fails when an owned hook file is missing.** The hook commands bkit wires skip a missing file, so a deleted `guardrails.cjs` turned its guard off silently. `owned-hook-missing` names each missing file and the install flag that restores it, for every installed host (Claude, Cursor, Codex, opencode) and for `.claude/hooks/cloud-bootstrap.sh` when `bkit.cloudAgents` is `claude`.
 
 ### Changed
@@ -26,7 +29,15 @@ bkit owns only what a workflow step runs or parses (#489). Everything a person o
 - **`package.json`: bkit adds only the `bkit:gate:*` and `bkit:deps:*` names that are missing.** A name already present is never rewritten, whatever its value. The tool scripts those gates call (`typecheck`, `lint`, `format:check`, `lint:prose`, `lint:slop`, `slop:delta`) and their devDependencies are the consumer's; `.bkit/templates.md` § Gate tool scripts lists them, and `gate-missing-called-scripts` names any a default gate value calls that is missing. Uninstall leaves `package.json` scripts and devDependencies alone.
 - **`--typescript` writes only the slop-scan plugin** (`.bkit/scripts/bkit-slop-type-suppression.mjs`).
 - **`.bkit/.env.example` is an owned file**, overwritten on install and upgrade like the other owned files.
-- **`bkit uninstall` removes `.bkit/templates/` whole and keeps every file adopted from a template.** It also keeps `docs/`, everything below `bkit:end` in a shared file, and any owned file the consumer edited (hash mismatch); `--nuke` removes the edited owned files too.
+- **`bkit uninstall` removes `.bkit/templates/` whole and keeps every file adopted from a template.** It also keeps everything below `bkit:end` in a shared file and any owned file the consumer edited (hash mismatch); `--nuke` removes the edited owned files too.
+- **Design and plan worktrees install dependencies**, like build and debug, so the git hooks run there. A failed install stops every workflow, ship included: `bkit branches switch` exits 16 when the install after the merge fails.
+- **A stale workflow lock is reclaimed as soon as its holder is idle.** The lock file's age is no longer checked.
+- **Every phase workflow checks the `FID` at Step 1**, with or without a tracker.
+- **Ship's skill prune warns and carries on.** A missing `.agents/skills.md` skips the prune; a failed uninstall is listed in `failed`; `bkit skills prune` exits 0 in both cases.
+- **Design skips a related issue whose comments do not parse** and names it in `related-issues.md`.
+- **Status rows:** the complexity check records `verdict` (`SINGLE` / `SPLIT`), ship's timeout row `timeout_s`, a counted step always writes `attempt` (0 included), and a create-PR row records the PR URL in `artifacts`. `bkit steps gate` fails a row missing the `attempt`, `strategy` or `scope` its step writes.
+- **Build commits its test-run log**, clamped, as `docs/plans/{YYYYMM}/logs/{FID}/run-tests-{N}.md`; the failure-diagnose agent reads that copy.
+- **`bkit uninstall` cleans up `docs/`.** A full uninstall strips bkit's block, managed marker included, from every `docs/*.md` bkit installed (a file holding nothing else is deleted) and deletes the owned `docs/templates/bkit-*.md`. Your own content in those files, and your own files in `docs/templates/`, stay.
 
 ### Removed
 
@@ -35,7 +46,16 @@ bkit owns only what a workflow step runs or parses (#489). Everything a person o
 - **BREAKING — `bkit uninstall --package`, `--keep-tooling` and `--keep-npmrc`.**
 - **`.bkitignore`, the seed-or-print merge instructions and the template upgrade conflicts.** Nothing bkit writes needs them: an owned file is overwritten, a template is copied.
 - **The create-if-missing file group.** No file is written once and left: bkit either keeps a file current or leaves it to the consumer.
+- **`bkit worktrees remove --owned-only`.** Removal is always limited to a worktree a workflow created.
 - **The `bkit codex` verb, `bkit prs guard-checkout`, `bkit branches rebase --onto` / `--abort` and `bkit runs dispatch --retrigger-suffix`.** No workflow called them.
+- **BREAKING — all upgrade and migration code.** An install written by an older bkit is no longer converted; fix it by hand. Gone:
+  - `bkit telemetry migrate`, `bkit telemetry validate` and `bkit telemetry normalise` (`bkit telemetry summary` stays).
+  - The retired-file cleanup: install and upgrade no longer delete files an older bkit wrote and this one does not. Delete them yourself.
+  - The `.agents/config.md` → `.agents/context.md` migration. Move a remaining `config.md` by hand.
+  - The `tier3Hashes` fold: `.bkit/version` is read only in its current form, with `canonicalHashes`.
+  - The `# bkit:start` / `# bkit:end` marker style. Managed blocks use the file's comment syntax as bkit writes it today; a block in the old style is not recognised.
+  - The opencode provider aliases. `bkit.opencodeProvider` and `--opencode=` take only `openrouter`, `ollama`, `opencode-zen` or `opencode-go`.
+  - Flags and verbs only tests used: `bkit runs wait|gate --capstone`, `--ci-workflow` and `--required-lanes` (set `package.json` `bkit.capstoneJob`, `bkit.ciWorkflow`, `bkit.shipGateRequiredLanes`), `--tracker` on `bkit prs open` and `bkit issues labels`, `bkit runtime row --at`, `bkit branches switch --lock-wait`, `--context-file`, and `bkit status fold`.
 
 ---
 

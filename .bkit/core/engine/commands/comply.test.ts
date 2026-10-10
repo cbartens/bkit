@@ -513,6 +513,23 @@ describe("readBkitVersion", () => {
     expect(readBkitVersion(sub)).toBe("6.6.6");
   });
 
+  it("defaults to the running bkit package's own version, whatever the working directory", () => {
+    const pkgRoot = path.resolve(__dirname, "../../../..");
+    const own = (
+      JSON.parse(fs.readFileSync(path.join(pkgRoot, "package.json"), "utf-8")) as {
+        version: string;
+      }
+    ).version;
+    const cwd = process.cwd();
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ version: "1.2.3" }));
+    try {
+      process.chdir(tmpDir);
+      expect(readBkitVersion()).toBe(own);
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
   it("returns '0.0.0' when package.json contains invalid JSON (fail-open)", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), "not valid json{{{");
     expect(readBkitVersion(tmpDir)).toBe("0.0.0");

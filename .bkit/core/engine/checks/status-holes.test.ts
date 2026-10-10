@@ -13,7 +13,9 @@
 //   4. Advisory / fail-open: CLI exits 0 on a known-holey fixture.
 //   5. Aborted runs: pre-abort holes detected, post-abort absences ignored.
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -649,6 +651,23 @@ describe("CLI main() — advisory exit 0", () => {
     expect(captured).toContain("ADVISORY");
     expect(captured).toContain("ship-regression-guard"); // the hole surfaced
     // No explicit exit code assertion — main() returning = exit 0 (no process.exit)
+  });
+
+  it("finds bkit-ship.md from the built dist/ layout, not only from source", () => {
+    const pkgRoot = path.resolve(__dirname, "../../../..");
+    const built = path.join(pkgRoot, "dist", "checks", "status-holes.js");
+    expect(fs.existsSync(built), `${built} missing — run pnpm build`).toBe(true);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-shd-dist-"));
+    try {
+      const status = path.join(dir, "status.jsonl");
+      fs.writeFileSync(status, [row("ship-start-workflow"), row("ship-close-workflow")].join("\n"));
+      const r = spawnSync(process.execPath, [built, status], { cwd: dir, encoding: "utf-8" });
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).not.toContain("not found");
+      expect(r.stdout).toContain("ADVISORY");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("main() with no args writes skip message and returns (exit 0)", () => {

@@ -1099,7 +1099,7 @@ export async function main() {
             const violations = runGrader({ parentSha, phase, cwd });
             // The origin remote's owner/repo, the same slug every other telemetry writer uses.
             const repo = resolveRepoSlug(cwd) || "unknown/repo";
-            const bkitVersion = readBkitVersion(cwd);
+            const bkitVersion = readBkitVersion();
             const rows = buildComplianceRows({ violations, phase, parentSha, repo, bkitVersion });
             appendComplianceRows(rows, statsPath);
             if (violations.length > 0) {

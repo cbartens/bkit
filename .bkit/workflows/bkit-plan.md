@@ -23,7 +23,7 @@ description: "Plan Feature — Autonomous plan generation"
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{PARENT_FID}`, `{PARENT_YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
-> - **Locks:** Acquire `docs/plans/{YYYYMM}/logs/{FID}/.lock` in Step 1 with `bkit locks acquire`; release in last step and Failure Path; a release that leaves the lock file → **Failure Path** with `Lock removal failed`. **If** existing lock — holder `IN_PROGRESS` and last step <30min idle → **Failure Path**; a DONE / FAILED (or idle `IN_PROGRESS`) holder's lock is reclaimed only once it is at least 30 minutes old, younger → **Failure Path**. **Dev lock:** hold `.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout) with `bkit locks acquire --kind=dev`; release via `trap ... EXIT`.
+> - **Locks:** Acquire `docs/plans/{YYYYMM}/logs/{FID}/.lock` in Step 1 with `bkit locks acquire`; release in last step and Failure Path; a release that leaves the lock file → **Failure Path** with `Lock removal failed`. **If** existing lock — holder `IN_PROGRESS` and last step <30min idle → **Failure Path**; a DONE / FAILED (or idle `IN_PROGRESS`) holder's lock is reclaimed. **Dev lock:** hold `.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout) with `bkit locks acquire --kind=dev`; release via `trap ... EXIT`.
 > - **Status branch:** status.jsonl committed on `{BRANCH}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO mid-lifecycle pushes. **If** `runtimeDevPushes` = true → state reaches `dev` once in Close Workflow by local squash-merge, **else** by PR squash-merge.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return; do NOT assume success.
@@ -132,13 +132,17 @@ description: "Plan Feature — Autonomous plan generation"
       find "$REPO_ROOT/docs/plans" -mindepth 3 -maxdepth 3 -type d -path "*/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/$ISSUE_KEY-*" 2>/dev/null | awk -F/ '{print $(NF)}' | sort -u
       ```
       One line → that `FID`. Several → **Failure Path** listing them (name the `FID` in the session prompt to pick one). None → next.
-   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`; `ISSUE_ID` unset → `{branch-suffix}-{slug}`. Assert format:
-      ```bash
-      BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-      "$BKIT" fids check --fid="{FID}"
-      ```
-      **If** exit non-zero → **Failure Path**. Hold `fid` as `{FID}`.
-      One `FID` for all artifacts once set.
+   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`; `ISSUE_ID` unset → `{branch-suffix}-{slug}`.
+
+   One `FID` for all artifacts once set. Check its format for the wired tracker:
+
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" fids check --fid="{FID}"
+   ```
+
+   → hold `fid` as `{FID}`. **If** exit non-zero → **Failure Path**.
+
 5. Acquire concurrency lock:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -186,6 +190,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`)
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
+- [ ] FID format checked (`bkit fids check` exit 0)
 - [ ] Lock acquired (`LOCK_TOKEN`, `YYYYMM`)
 - [ ] Parent FID extraction attempted (`PARENT_FID`, from issue description)
 - [ ] Audit report paths extracted (`AUDIT_PATHS`, from issue description and session prompt)
@@ -204,7 +209,7 @@ description: "Plan Feature — Autonomous plan generation"
 1. Commit any uncommitted changes before new worktree branch — NEVER push:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" ledgers commit --only-if-dirty-tracked --scope=core --mode=commit --month={YYYYMM} --fid={FID} --message="chore({FID}): pre-worktree uncommitted changes bkit [skip ci]"
+   "$BKIT" ledgers commit --root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")" --only-if-dirty-tracked --scope=core --mode=commit --month={YYYYMM} --fid={FID} --message="chore({FID}): pre-worktree uncommitted changes bkit [skip ci]"
    ```
    **If** exit non-zero → **Failure Path**. **If** primary checkout dirty / unpushed → NOT blocker; do NOT stash, clean, or route to **Failure Path** → create `feat/{FID}` branch off `origin/dev` instead (never `main` / current branch).
 2. Create / resume worktree, or adopt current branch in place, then record the runtime:
@@ -425,12 +430,15 @@ ISSUES_ARTIFACT=""; [ -f docs/plans/{YYYYMM}/logs/{FID}/related-issues.md ] && I
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`.
 2. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-3. Read `plan-review-1.md`, `plan-review-2.md`, and `plan-review-3.md` headers — extract `Verdict` (`verdict`) and `Failures` (`fields.Failures`) from each → compute `REVIEW_VERDICT` = worst of the three (`FAIL > CONCERNS > PASS`) and `REVIEW_FAILURES` = sum of failures:
+3. Read `plan-review-1.md`, `plan-review-2.md`, and `plan-review-3.md` headers — extract `Verdict` (`verdict`) and `Failures` (`fields.Failures`) from each, running the block once per `{N}` in 1, 2, 3 → compute `REVIEW_VERDICT` = worst of the three (`FAIL > CONCERNS > PASS`) and `REVIEW_FAILURES` = sum of failures:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   for N in 1 2 3; do "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-review-$N.md --agent=bkit-plan-review-$N --field=Failures || exit $?; done
+   "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-review-{N}.md --agent=bkit-plan-review-{N} --field=Failures
    ```
-   **If** exit non-zero → **Failure Path**.
+   Route per review:
+   - **If** exit 0 → hold `verdict` and `fields.Failures`.
+   - **If** exit 5 **or** 6 → invoke offending subagent again with `"Your prior output 'plan-review-{N}.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + 'Failures: <count>' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run its block → **If** still non-zero → **Failure Path**.
+   - **Else** → **Failure Path**.
 4. Update status and commit:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -536,12 +544,15 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md`.
 2. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-3. Read `plan-scope-check-1.md` and `plan-scope-check-2.md` headers — extract `Verdict` (`verdict`) and `Failures` (`fields.Failures`) from each → compute `SCOPE_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`) and `SCOPE_FAILURES` = sum of failures:
+3. Read `plan-scope-check-1.md` and `plan-scope-check-2.md` headers — extract `Verdict` (`verdict`) and `Failures` (`fields.Failures`) from each, running the block once per `{N}` in 1, 2 → compute `SCOPE_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`) and `SCOPE_FAILURES` = sum of failures:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   for N in 1 2; do "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-$N.md --agent=bkit-plan-scope-check-$N --field=Failures || exit $?; done
+   "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-{N}.md --agent=bkit-plan-scope-check-{N} --field=Failures
    ```
-   **If** exit non-zero → **Failure Path**.
+   Route per scope check:
+   - **If** exit 0 → hold `verdict` and `fields.Failures`.
+   - **If** exit 5 **or** 6 → invoke offending subagent again with `"Your prior output 'plan-scope-check-{N}.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + 'Failures: <count>' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run its block → **If** still non-zero → **Failure Path**.
+   - **Else** → **Failure Path**.
 4. Update status and commit:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -648,11 +659,14 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md --agent=bkit-plan-complexity-check
    ```
-   **If** exit non-zero → **Failure Path**. Hold `verdict` as `COMPLEXITY_VERDICT`.
+   Route:
+   - **If** exit 0 → hold `verdict` as `COMPLEXITY_VERDICT`.
+   - **If** exit 5 **or** 6 → invoke offending subagent again with `"Your prior output 'plan-complexity-check.md' has an invalid verdict. Re-emit ONLY 'Verdict: SINGLE|SPLIT' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+   - **Else** → **Failure Path**.
 4. Update status and commit:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-complexity-check --field=complexity={COMPLEXITY_VERDICT} --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md --message="chore({FID}): complexity-check"
+   "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-complexity-check --verdict={COMPLEXITY_VERDICT} --agent=bkit-plan-complexity-check --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md --message="chore({FID}): complexity-check"
    ```
    **If** exit non-zero → **Failure Path**.
 5. <!-- bkit:tracker github start -->
@@ -673,12 +687,12 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 
 ```bash
 BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-"$BKIT" steps gate --file="{STATUS}" --workflow=plan --step=plan-complexity-check --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md
+"$BKIT" steps gate --file="{STATUS}" --workflow=plan --step=plan-complexity-check --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md --verdict-required --agent=bkit-plan-complexity-check
 ```
 
 - [ ] Subagent invoked (`@bkit-plan-complexity-check`, no inline work)
 - [ ] `Verdict` extracted and valid (`COMPLEXITY_VERDICT` in `SINGLE|SPLIT`)
-- [ ] Mechanical checks passed (`steps gate` exit 0: `plan-complexity-check.md` non-empty, step `plan-complexity-check` recorded with `parentSha`, `complexity`)
+- [ ] Mechanical checks passed (`steps gate` exit 0: `plan-complexity-check.md` non-empty, step `plan-complexity-check` recorded with `parentSha`, `verdict`)
 
 <!-- bkit:tracker true start -->
 
@@ -702,7 +716,10 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md --agent=bkit-plan-complexity-split
    ```
-   **If** exit non-zero → **Failure Path**. Hold `verdict` as `SPLIT_VERDICT`.
+   Route:
+   - **If** exit 0 → hold `verdict` as `SPLIT_VERDICT`.
+   - **If** exit 5 **or** 6 → invoke offending subagent again with `"Your prior output 'plan-v4-split.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+   - **Else** → **Failure Path**.
 4. Update status and commit:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -748,7 +765,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 
 ## 🧠 Step 11 — Summary
 
-1. Resolve highest plan version: `PLAN_FINAL=$(ls docs/plans/{YYYYMM}/logs/{FID}/plan-v*.md 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)`. **If** empty → **Failure Path**.
+1. Resolve highest plan version: `PLAN_FINAL=$(find docs/plans/{YYYYMM}/logs/{FID} -maxdepth 1 -type f -name 'plan-v*.md' 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)`. **If** empty → **Failure Path**.
 2. **Subagent:** Invoke `@bkit-plan-summary` using `Agent` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `{PLAN_FINAL}` (highest v{N}), glob `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-*.md` (children if SPLIT), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/plan-*.md`.
@@ -759,7 +776,10 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md --agent=bkit-plan-summary
    ```
-   **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`.
+   Route:
+   - **If** exit 0 → hold `verdict` as `SUMMARY_VERDICT`.
+   - **If** exit 5 **or** 6 → invoke offending subagent again with `"Your prior output 'plan-summary.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+   - **Else** → **Failure Path**.
 5. Update status and commit:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -884,9 +904,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      CLOSE_TRANSPORT="git"
      LANDED_SHA=$(git rev-parse HEAD)
      CANONICAL_REF="dev"
-     "$BKIT" worktrees remove --fid={FID} --owned-only || echo "[bkit-worktrees] could not remove .worktrees/{FID} — remove it by hand" >&2
-     git branch -D "feat/{FID}" 2>/dev/null || true
-     git push origin --delete "feat/{FID}" 2>/dev/null || true
+     "$BKIT" worktrees remove --fid={FID} --branch="feat/{FID}" || echo "[bkit-worktrees] could not remove .worktrees/{FID} — remove it by hand" >&2
    else
      git fetch origin dev "{BRANCH}"
      "$BKIT" roadmap feature --root=. --workflow=plan --fid={FID}
@@ -977,7 +995,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 - [ ] Squash exited 0 and staged `{FID}-plan.md` (and sub-plans) matched `feat/{FID}` before commit (if `runtimeDevPushes` = true)
 - [ ] Changes merged to `dev`
 - [ ] Post-close body scan clean, transport cross-check passed, `close-transport` row recorded
-- [ ] Worktree removed and feature branch deleted (workflow-created worktree only)
+- [ ] Worktree removed and feature branch deleted (workflow-created worktree only; branch kept when another worktree holds it, `branchBlockedBy`)
 - [ ] Lock released (`locks release` exit 0)
 - [ ] Final return displayed (`plan-summary.md` content verbatim)
 

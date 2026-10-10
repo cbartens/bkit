@@ -4,7 +4,7 @@
 node_modules/
 dist/
 .agents/skills/
-# Canonical-overwrite content (CANONICAL_OVERWRITE_RELPATHS in .bkit/core/engine/install/modules/index.ts):
+# Canonical-overwrite content (CANONICAL_OVERWRITE_RELPATHS in bkit's install engine):
 # bkit force-overwrites these on every install, so consumer prettier must not
 # lint them. Width-sensitive rewrites would be reverted next install. The
 # .opencode agent + command mirrors are force-overwritten just like .claude /

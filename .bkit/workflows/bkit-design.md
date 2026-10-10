@@ -23,7 +23,7 @@ description: "Design Feature — Autonomous design phase"
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
-> - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step with `bkit locks acquire --kind=workflow`; release in last step with `bkit locks release` and in Failure Path with `bkit workflows fail`; release exit non-zero → **Failure Path** with `Lock removal failed`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed only once the lock file is at least 30 minutes old, younger → **Failure Path**. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `bkit locks acquire --kind=dev`, release with `bkit locks release --kind=dev` via `trap ... EXIT`.
+> - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step with `bkit locks acquire --kind=workflow`; release in last step with `bkit locks release` and in Failure Path with `bkit workflows fail`; release exit non-zero → **Failure Path** with `Lock removal failed`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `bkit locks acquire --kind=dev`, release with `bkit locks release --kind=dev` via `trap ... EXIT`.
 > - **Status branch:** status.jsonl committed on `{BRANCH}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO mid-lifecycle pushes. **If** `runtimeDevPushes` = true → state reaches `dev` once in Close Workflow by local squash-merge, **else** by PR squash-merge.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return; do NOT assume success.
@@ -132,18 +132,15 @@ description: "Design Feature — Autonomous design phase"
       ```
       One line → that `FID`. Several → **Failure Path** listing them (name the `FID` in the session prompt to pick one). None → next.
    4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`.
-      <!-- bkit:tracker true start -->
-      Assert format:
-      ```bash
-      BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-      "$BKIT" fids check --fid={FID}
-      ```
-      **If** exit non-zero → **Failure Path**. Hold `fid` as `{FID}`.
-      <!-- bkit:tracker true end -->
       <!-- bkit:tracker false start -->
-      `ISSUE_ID` unset → `{branch-suffix}-{slug}`. No strict regex assert.
+      `ISSUE_ID` unset → `{branch-suffix}-{slug}`.
       <!-- bkit:tracker false end -->
-   One `FID` for all artifacts once set.
+   One `FID` for all artifacts once set. Check its format for the wired tracker:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" fids check --fid="{FID}"
+   ```
+   → hold `fid` as `{FID}`. **If** exit non-zero → **Failure Path**.
 5. Acquire concurrency lock:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -187,6 +184,7 @@ description: "Design Feature — Autonomous design phase"
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`)
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
+- [ ] FID format checked (`bkit fids check` exit 0)
 - [ ] Lock acquired (`LOCK_TOKEN`, `YYYYMM` held)
 
 <!-- bkit:tracker true start -->
@@ -203,7 +201,7 @@ description: "Design Feature — Autonomous design phase"
 1. Commit any uncommitted changes before new worktree branch — NEVER push:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" ledgers commit --only-if-dirty-tracked --scope=core --mode=commit --month={YYYYMM} --fid={FID} --message="chore({FID}): pre-worktree uncommitted changes bkit [skip ci]"
+   "$BKIT" ledgers commit --root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")" --only-if-dirty-tracked --scope=core --mode=commit --month={YYYYMM} --fid={FID} --message="chore({FID}): pre-worktree uncommitted changes bkit [skip ci]"
    ```
    **If** exit non-zero → **Failure Path**.
    **If** primary checkout dirty / unpushed → NOT blocker; do NOT stash, clean, or route to **Failure Path** → create `feat/{FID}` branch off `origin/dev` instead (never `main` / current branch).
@@ -285,7 +283,7 @@ description: "Design Feature — Autonomous design phase"
    `{QUERY_NL}` = ONE natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`; NEVER a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })` → top 15 `items` in RANK ORDER; pass NO sort parameter, NEVER re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
    - `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `body` to `{OUTBOX}/related-description.md`.
    - `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → sort oldest to newest → write JSON to `{OUTBOX}/related-comments.json`.
-   - Run the related-text block below → `text` → `RELATED_ISSUE_TEXT`. **If** exit non-zero → **Failure Path**.
+   - Run the related-text block below → `text` → `RELATED_ISSUE_TEXT`. **If** exit non-zero → append `## #{number} — {title} ({state})` heading plus `Skipped: comments did not parse.` to `RELATED_ISSUES` → next hit.
    - Append `## #{number} — {title} ({state})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker github end -->
@@ -293,7 +291,7 @@ description: "Design Feature — Autonomous design phase"
    `{QUERY_NL}` = ONE natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`; NEVER a keyword list → `mcp__linear__list_issues({ query: "{QUERY_NL}", team: "{LINEAR_TEAM}", limit: 15 })` → results in RANK ORDER; pass NO `orderBy`, NEVER re-sort, drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
    - Write `description` to `{OUTBOX}/related-description.md`.
    - `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → write JSON to `{OUTBOX}/related-comments.json`.
-   - Run the related-text block below → `text` → `RELATED_ISSUE_TEXT`. **If** exit non-zero → **Failure Path**.
+   - Run the related-text block below → `text` → `RELATED_ISSUE_TEXT`. **If** exit non-zero → append `## {identifier} — {title} ({state.name})` heading plus `Skipped: comments did not parse.` to `RELATED_ISSUES` → next hit.
    - Append `## {identifier} — {title} ({state.name})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker linear end -->
@@ -350,7 +348,7 @@ description: "Design Feature — Autonomous design phase"
 
 <!-- bkit:tracker true start -->
 
-- [ ] Related-issues search attempted
+- [ ] Related-issues search attempted (a hit whose comments do not parse skipped and named in `related-issues.md`)
 - [ ] Issue comment attempted (`Step 3` section)
 
 <!-- bkit:tracker true end -->
@@ -639,7 +637,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 
 ## 🧠 Step 9 — Summary
 
-1. Resolve highest design version: `DESIGN_FINAL=$(ls docs/plans/{YYYYMM}/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)`. **If** empty → **Failure Path**.
+1. Resolve highest design version: `DESIGN_FINAL=$(find docs/plans/{YYYYMM}/logs/{FID} -maxdepth 1 -type f -name 'design-v*.md' 2>/dev/null | sort -V | tail -1)`. **If** empty → **Failure Path**.
 2. **Subagent:** Invoke `@bkit-design-summary` using `Agent` tool:
    Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `{DESIGN_FINAL}` (highest v{N}), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/design-*.md`.
@@ -650,7 +648,10 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/design-summary.md --agent=bkit-design-summary
    ```
-   **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`.
+   Route:
+   - **If** exit 0 → hold `verdict` as `SUMMARY_VERDICT`.
+   - **If** exit 5 **or** 6 → invoke offending subagent again with `"Your prior output 'design-summary.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+   - **Else** → **Failure Path**.
 5. Update status and commit:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -813,9 +814,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      CLOSE_SHAPE="local"
      LANDED_SHA=$(git rev-parse HEAD)
      CLOSE_TRANSPORT="git"
-     "$BKIT" worktrees remove --fid={FID} --owned-only >/dev/null || echo "[bkit-worktrees] worktree removal failed" >&2
-     git branch -D "feat/{FID}" 2>/dev/null || true
-     git push origin --delete "feat/{FID}" 2>/dev/null || true
+     "$BKIT" worktrees remove --fid={FID} --branch="feat/{FID}" >/dev/null || echo "[bkit-worktrees] worktree removal failed" >&2
    else
      git fetch origin dev "{BRANCH}"
      "$BKIT" roadmap feature --root=. --workflow=design --fid={FID} >/dev/null
@@ -892,7 +891,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 - [ ] Squash exited 0 and staged `{FID}-design.md` matched `feat/{FID}` before commit (if `runtimeDevPushes` = true)
 - [ ] Changes merged to `dev`
 - [ ] Post-close body scan clean, transport cross-check passed, `close-transport` row recorded
-- [ ] Worktree removed and feature branch deleted (mint mode only)
+- [ ] Worktree removed and feature branch deleted (workflow-created worktree only; branch kept when another worktree holds it, `branchBlockedBy`)
 - [ ] Final return displayed (`design-summary.md` content verbatim)
 
 <!-- bkit:tracker true start -->

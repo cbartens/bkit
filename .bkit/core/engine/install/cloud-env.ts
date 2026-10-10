@@ -8,9 +8,8 @@
 // bkit hardcodes NO stack-specific key lists — the stack knowledge lives in the
 // consumer's `.envrc`, keeping bkit's shipped surface stack-independent.
 //
-// Faithful to app-gether's `scripts/generate-claude-cloud.sh` by construction: its
-// EXCLUDE_KEYS are exactly the vars `.envrc` unsets, and its REVIEW_KEYS is
-// BKIT_ANTHROPIC_API_KEY — both reproduced here without a bespoke key list.
+// Excluded keys are exactly the vars `.envrc` unsets, and the review key is
+// BKIT_ANTHROPIC_API_KEY — both derived here without a bespoke key list.
 
 import * as fs from "node:fs";
 import * as path from "node:path";

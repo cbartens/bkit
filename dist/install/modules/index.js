@@ -850,6 +850,46 @@ export function detectGateAdvisories(cwd) {
     }
     return findings;
 }
+/** One command that cannot fail: `true`, `:`, `exit 0`, or an `echo`. */
+const NOOP_COMMAND = /^(?:true|:|exit 0|echo(?:\s.*)?)$/;
+/** Whether a script value checks nothing: empty, or only no-op commands chained. */
+export function isNoopScript(value) {
+    return value
+        .split(/&&|\|\||;|\n/)
+        .map((part) => part.trim())
+        .every((part) => part === "" || NOOP_COMMAND.test(part));
+}
+/**
+ * Advisory for every `bkit:gate:*` script that is empty or a no-op: it checks nothing,
+ * so every agent run and push passes it. Warn-only, at install and `bkit check`, on
+ * every branch. Read-only; an absent or unparseable package.json yields none.
+ */
+export function detectNoopGates(cwd) {
+    let declared;
+    try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8"));
+        declared = pkg.scripts ?? {};
+    }
+    catch {
+        // Absent or malformed package.json — preflight's blockers already report it.
+        return [];
+    }
+    const noop = Object.entries(declared)
+        .filter(([name, value]) => name.startsWith("bkit:gate:") && typeof value === "string")
+        .filter(([, value]) => isNoopScript(value))
+        .map(([name, value]) => `\`${name}\` (\`${String(value).trim() || "empty"}\`)`)
+        .sort();
+    if (noop.length === 0)
+        return [];
+    return [
+        {
+            id: "gate-noop",
+            severity: "advisory",
+            detect: `These bkit:gate scripts are empty or cannot fail, so they check nothing: ${noop.join(", ")}.`,
+            action: 'Every bkit workflow and the pre-push hook trust a green `bkit:gate*` script, so a no-op gate passes every agent run and push. Point each at the checks it should run (e.g. `"bkit:gate:static": "pnpm typecheck && pnpm lint"`), or delete it from package.json and run `bkit upgrade` to get bkit\'s default back.',
+        },
+    ];
+}
 export function runCoreModule(ctx) {
     const { dryRun, ws, advisories, logPrefix, postDispatch } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
@@ -908,6 +948,7 @@ export function runCoreModule(ctx) {
     seedCorePackageJsonScripts(ctx);
     if (!dryRun)
         advisories.push(...detectGateAdvisories(cwd));
+    advisories.push(...detectNoopGates(cwd));
     // 4. .bkit/version write — deferred to postDispatch so it only persists when ALL modules succeed.
     // This ensures a mid-install crash in a subsequent module does not suppress the first-install
     // banner on retry (MED-4).

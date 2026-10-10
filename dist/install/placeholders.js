@@ -41,7 +41,7 @@ function resolveDefaultBranch(cwd) {
 function readPackageJson(cwd) {
     const pkgPath = path.join(cwd, "package.json");
     if (!fs.existsSync(pkgPath)) {
-        throw new Error(`[bkit-tokens] package.json not found at ${pkgPath}`);
+        throw new Error(`[bkit-placeholders] package.json not found at ${pkgPath}`);
     }
     const raw = fs.readFileSync(pkgPath, "utf-8");
     return JSON.parse(raw);
@@ -52,7 +52,7 @@ export async function resolveTokens(cwd) {
     const pkg = readPackageJson(cwd);
     const name = pkg["name"];
     if (typeof name !== "string" || name.trim() === "") {
-        throw new Error(`[bkit-tokens] package.json.name is required but missing or empty in ${cwd}`);
+        throw new Error(`[bkit-placeholders] package.json.name is required but missing or empty in ${cwd}`);
     }
     return {
         DEFAULT_BRANCH: resolveDefaultBranch(cwd),

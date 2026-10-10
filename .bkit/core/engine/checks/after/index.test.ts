@@ -3,6 +3,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dedupeById, type PreflightFinding } from "../before/index";
 import {
@@ -1814,6 +1815,43 @@ describe("readChangelogVersionDelta", () => {
     expect(result).not.toBeNull();
     expect(result).toContain("0.6.0");
     expect(result).toContain("[bkit]");
+  });
+
+  it("reads the package's CHANGELOG.md whatever the working directory", () => {
+    const cwd = process.cwd();
+    const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-changelog-cwd-"));
+    try {
+      process.chdir(elsewhere);
+      expect(readChangelogVersionDelta("0.6.0")).toContain("0.6.0");
+    } finally {
+      process.chdir(cwd);
+      fs.rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves CHANGELOG.md from the built dist/ layout", async () => {
+    // node:child_process is mocked in this file; the built module needs a real node.
+    const real = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+    const pkgRoot = path.resolve(__dirname, "../../../../..");
+    const built = path.join(pkgRoot, "dist", "checks", "after", "index.js");
+    expect(fs.existsSync(built), `${built} missing — run pnpm build`).toBe(true);
+    const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-changelog-dist-"));
+    try {
+      const r = real.spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `import { readChangelogVersionDelta } from ${JSON.stringify(pathToFileURL(built).href)};` +
+            ` process.stdout.write(String(readChangelogVersionDelta("0.6.0")));`,
+        ],
+        { cwd: elsewhere, encoding: "utf-8" },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain("What's new in v0.6.0");
+    } finally {
+      fs.rmSync(elsewhere, { recursive: true, force: true });
+    }
   });
 
   it("returns null when version is not found in CHANGELOG.md", () => {

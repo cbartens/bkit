@@ -223,3 +223,61 @@ describe("compliance grader — skip-ci-not-head boundary", () => {
     expect(violations.find((v) => v.ruleId === "skip-ci-not-head")).toBeUndefined();
   });
 });
+
+describe("bkit comply — row labels", () => {
+  const pkgRoot = path.resolve(__dirname, "../../../..");
+  const cli = path.join(pkgRoot, ".bkit", "core", "engine", "cli.ts");
+  const tsxBin = path.join(pkgRoot, "node_modules", ".bin", "tsx");
+
+  function comply(cwd: string): Array<Record<string, unknown>> {
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
+    const env: NodeJS.ProcessEnv = { ...process.env, NODE_NO_WARNINGS: "1" };
+    for (const key of Object.keys(env)) if (key.startsWith("GIT_")) delete env[key];
+    const r = childProcess.spawnSync(tsxBin, [cli, "comply", "--phase=build"], {
+      cwd,
+      env,
+      encoding: "utf-8",
+      timeout: 60_000,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    const stats = path.join(cwd, ".bkit", "stats.jsonl");
+    expect(fs.existsSync(stats), r.stdout).toBe(true);
+    return fs
+      .readFileSync(stats, "utf-8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+  }
+
+  function repoWithTwoCommits(): void {
+    gitInit(tmpDir);
+    // A package.json `bkit.repoSlug` is not a source for the label.
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "widgets", version: "1.2.3", bkit: { repoSlug: "wrong/slug" } }),
+    );
+    commit(tmpDir, "init");
+    fs.writeFileSync(path.join(tmpDir, "file.ts"), "// change\n");
+    commit(tmpDir, "feat: change");
+  }
+
+  it("labels rows with the origin remote's owner/repo (resolveRepoSlug) and bkit's own version", () => {
+    repoWithTwoCommits();
+    run("git remote add origin https://github.com/acme/widgets.git", tmpDir);
+    const rows = comply(tmpDir);
+    expect(rows.length).toBeGreaterThan(0);
+    const own = (
+      JSON.parse(fs.readFileSync(path.join(pkgRoot, "package.json"), "utf-8")) as {
+        version: string;
+      }
+    ).version;
+    for (const row of rows) {
+      expect(row).toMatchObject({ kind: "compliance", repo: "acme/widgets", bkitVersion: own });
+    }
+  });
+
+  it("falls back to unknown/repo without an origin remote, never to bkit.repoSlug", () => {
+    repoWithTwoCommits();
+    for (const row of comply(tmpDir)) expect(row.repo).toBe("unknown/repo");
+  });
+});

@@ -1907,21 +1907,8 @@ export function writeAdvisoriesArtifact(findings, opts) {
  */
 export function readChangelogVersionDelta(version) {
     try {
-        // Locate CHANGELOG.md relative to this script's location (package root)
-        const scriptDir = new URL(".", import.meta.url).pathname;
-        const candidates = [
-            path.resolve(scriptDir, "..", "..", "..", "..", "..", "CHANGELOG.md"), // consumer: pkg/CHANGELOG.md
-            path.resolve(scriptDir, "..", "..", "CHANGELOG.md"), // dist/ layout
-            path.resolve("CHANGELOG.md"), // CWD fallback (producer / test)
-        ];
-        let changelogPath = null;
-        for (const p of candidates) {
-            if (fs.existsSync(p)) {
-                changelogPath = p;
-                break;
-            }
-        }
-        if (!changelogPath)
+        const changelogPath = path.join(getPkgRoot(), "CHANGELOG.md");
+        if (!fs.existsSync(changelogPath))
             return null;
         const content = fs.readFileSync(changelogPath, "utf-8");
         // Find the header for this version

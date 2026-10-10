@@ -6,12 +6,13 @@
 //   dispatch  after build / debug's last push, did CI start on the pushed head?
 //             The CI-Dispatch Gate: poll, one clean re-trigger, a named verdict.
 //   gate      may ship merge? The capstone job must be present and green at the
-//             head — one exit code per refusal reason, never collapsed.
+//             head — one exit code per refusal reason, never collapsed. Ship's
+//             post-merge check (`--capstone-only`) reads the capstone job alone.
 // `mirror` is `gate` in a loop, for a release PR that copies the dev push run's
 // verdict; `declared` says whether the repo has a CI workflow file at all.
 //
 // The CI workflow file and the capstone job come from `package.json` `bkit`
-// (`shared/config.ts`). The "did CI dispatch" probe matches the capstone's lane
+// (`shared/settings.ts`). The "did CI dispatch" probe matches the capstone's lane
 // namespace (`bkit-tests-check` -> any check containing `bkit-tests`), not one lane
 // name and not "any check".
 import * as fs from "node:fs";
@@ -437,6 +438,54 @@ export function shipGate(o, gh, log) {
         log(GH_MISSING);
         return r;
     };
+    /** The run's jobs, or the refusal. `--slurp` turns --paginate's one-document-per-page
+     * stream into one array; without it a run with more than 100 jobs hides every page but the first. */
+    const readJobs = (run) => {
+        const jobsRes = gh([
+            "api",
+            `/repos/${r.repo}/actions/runs/${run.id}/jobs`,
+            "--paginate",
+            "--slurp",
+        ]);
+        if (jobsRes.missing)
+            return ghMissing();
+        if (!jobsRes.ok) {
+            return apiError(`jobs query failed for run ${run.id} — API error (distinct from 'no capstone')`, run.html_url);
+        }
+        const jobsJson = jsonOrUndefined(jobsRes.stdout);
+        if (jobsJson === undefined) {
+            return refuse(GATE.API_ERROR, `jobs response for run ${run.id} is not valid JSON`, run.html_url);
+        }
+        const pages = Array.isArray(jobsJson) ? jobsJson : [jobsJson];
+        return pages.flatMap((p) => arr(obj(p).jobs).map(obj));
+    };
+    /** Capstone-only verdict: the capstone job's own result, whatever the run and its other jobs did. */
+    const capstoneVerdict = (run) => {
+        const url = run.html_url;
+        const jobs = readJobs(run);
+        if (!Array.isArray(jobs))
+            return jobs;
+        const capstone = jobs.find((j) => j.name === r.capstone);
+        if (!capstone && run.status !== "completed") {
+            return refuse(GATE.IN_PROGRESS, `run ${run.id} at head ${r.head} is ${run.status || "unknown"} and has no capstone job yet — caller may poll`, url);
+        }
+        if (!capstone) {
+            return refuse(GATE.NO_CAPSTONE, `capstone job '${r.capstone}' ABSENT from run ${run.id} at head ${r.head} — never vacuous pass`, url);
+        }
+        if (text(capstone.status) !== "completed") {
+            return refuse(GATE.IN_PROGRESS, `capstone '${r.capstone}' is ${text(capstone.status) || "unknown"} at head ${r.head} — caller may poll`, url);
+        }
+        if (capstone.conclusion === "cancelled") {
+            return refuse(GATE.CANCELLED, `capstone '${r.capstone}' was CANCELLED at head ${r.head}`, url);
+        }
+        if (capstone.conclusion !== "success") {
+            return refuse(GATE.FAILED, `capstone '${r.capstone}' concluded '${text(capstone.conclusion)}' (not success) at head ${r.head}`, url);
+        }
+        r.passed = true;
+        r.reason = `capstone ${r.capstone}=success at head ${r.head} (run ${run.id}, ${url}); other jobs not checked`;
+        log(r.reason);
+        return r;
+    };
     if (!r.repo) {
         const view = gh(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]);
         if (view.missing)
@@ -505,8 +554,11 @@ export function shipGate(o, gh, log) {
         return refuse(GATE.NO_RUN, `no run of ${r.ciWorkflow}${eventLabel} exists at head ${r.head} (total_count=0)`);
     }
     // 2. The most recent COMPLETED run at the head: a re-dispatch still in flight
-    // is newer, and must not mask a run that has in fact completed here.
-    const selected = latest(runs.filter((x) => x.head_sha === r.head && x.status === "completed"));
+    // is newer, and must not mask a run that has in fact completed here. Capstone-only
+    // falls back to the run in flight, whose capstone may already have concluded.
+    const atHead = runs.filter((x) => x.head_sha === r.head);
+    const completed = latest(atHead.filter((x) => x.status === "completed"));
+    const selected = completed ?? (o.capstoneOnly ? latest(atHead) : undefined);
     if (!selected) {
         const inFlight = latest(runs);
         return refuse(GATE.IN_PROGRESS, `runs exist at head ${r.head} but none completed (status=${inFlight?.status || "unknown"}) — caller may poll`, inFlight?.html_url);
@@ -516,6 +568,8 @@ export function shipGate(o, gh, log) {
     r.conclusion = selected.conclusion || null;
     r.testedHead = selected.head_sha || null;
     const url = selected.html_url;
+    if (o.capstoneOnly)
+        return capstoneVerdict(selected);
     if (selected.conclusion === "failure") {
         return refuse(GATE.FAILED, `selected run concluded FAILURE at head ${r.head}`, url);
     }
@@ -525,25 +579,11 @@ export function shipGate(o, gh, log) {
     if (selected.conclusion !== "success") {
         return refuse(GATE.FAILED, `selected run concluded '${selected.conclusion}' at head ${r.head} — not validated`, url);
     }
-    // 3. Capstone. `--slurp` turns --paginate's one-document-per-page stream into one
-    // array; without it a run with more than 100 jobs hides every page but the first.
-    const jobsRes = gh([
-        "api",
-        `/repos/${r.repo}/actions/runs/${selected.id}/jobs`,
-        "--paginate",
-        "--slurp",
-    ]);
-    if (jobsRes.missing)
-        return ghMissing();
-    if (!jobsRes.ok) {
-        return apiError(`jobs query failed for run ${selected.id} — API error (distinct from 'no capstone')`, url);
-    }
-    const jobsJson = jsonOrUndefined(jobsRes.stdout);
-    if (jobsJson === undefined) {
-        return refuse(GATE.API_ERROR, `jobs response for run ${selected.id} is not valid JSON`, url);
-    }
-    const pages = Array.isArray(jobsJson) ? jobsJson : [jobsJson];
-    const jobs = pages.flatMap((p) => arr(obj(p).jobs).map(obj));
+    // 3. Capstone.
+    const listedJobs = readJobs(selected);
+    if (!Array.isArray(listedJobs))
+        return listedJobs;
+    const jobs = listedJobs;
     const capstone = jobs.find((j) => j.name === r.capstone);
     if (!capstone) {
         return refuse(GATE.NO_CAPSTONE, `capstone job '${r.capstone}' ABSENT from run ${selected.id} at head ${r.head} — never vacuous pass`, url);
@@ -865,6 +905,7 @@ function runGate(ctx) {
         repo: str(f.repo),
         branch: str(f.branch),
         event: str(f.event),
+        capstoneOnly: f.capstoneOnly === true,
         override: process.env.BKIT_SHIP_GATE_OVERRIDE || undefined,
         statusFile: f.file === undefined ? undefined : path.resolve(ctx.cwd, String(f.file)),
     }, (args) => runGh(ctx.cwd, args), ctx.log);
@@ -1029,6 +1070,11 @@ export const runsCommand = {
                     type: "string",
                     help: "status.jsonl for the BKIT_SHIP_GATE_OVERRIDE audit row (stderr when absent or unwritable)",
                 },
+                {
+                    name: "capstone-only",
+                    type: "boolean",
+                    help: "pass or fail on the capstone job's result alone; the run's conclusion, other jobs and required lanes do not count (ship post-merge)",
+                },
             ],
             output: {
                 code: "the exit code",
@@ -1049,8 +1095,8 @@ export const runsCommand = {
             },
             exitCodes: {
                 [GATE.NO_RUN]: "no run of the CI workflow at the head",
-                [GATE.IN_PROGRESS]: "runs at the head, none completed (poll)",
-                [GATE.FAILED]: "selected run or its capstone did not conclude success",
+                [GATE.IN_PROGRESS]: "runs at the head, none completed; --capstone-only: capstone not completed (poll)",
+                [GATE.FAILED]: "selected run or its capstone did not conclude success (--capstone-only: the capstone)",
                 [GATE.NO_CAPSTONE]: "selected run has no capstone job",
                 [GATE.SUPERSEDED]: "green run only at a superseded head (needs --branch)",
                 [GATE.CANCELLED]: "selected run was cancelled",

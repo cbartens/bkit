@@ -465,6 +465,113 @@ describe("bkit runs gate", () => {
     });
   });
 
+  describe("--capstone-only (ship post-merge)", () => {
+    type Job = { name: string; status: string; conclusion: string | null };
+    /** A fixture root holding one run at `sha` with the given status / conclusion and jobs. */
+    function fixtureRun(
+      sha: string,
+      run: { status: string; conclusion: string | null },
+      jobs: Job[],
+    ): void {
+      const root = tmp();
+      fs.cpSync(FIXTURES, root, { recursive: true });
+      const id = 1900;
+      fs.writeFileSync(
+        path.join(root, "runs", `${sha}.json`),
+        JSON.stringify({
+          total_count: 1,
+          workflow_runs: [
+            {
+              id,
+              head_sha: sha,
+              ...run,
+              event: "push",
+              html_url: `https://github.com/example/example/actions/runs/${id}`,
+              updated_at: "2026-10-10T10:00:00Z",
+            },
+          ],
+        }),
+      );
+      fs.writeFileSync(
+        path.join(root, "jobs", `${id}.json`),
+        JSON.stringify({ total_count: jobs.length, jobs }),
+      );
+      env({ BKIT_FAKE_GH_FIXTURE_ROOT: root });
+    }
+    const capstone = (status: string, conclusion: string | null): Job => ({
+      name: "bkit-tests-check",
+      status,
+      conclusion,
+    });
+    const deployFailed: Job = { name: "deploy", status: "completed", conclusion: "failure" };
+
+    it("a failed run whose capstone passed passes: other jobs do not count", async () => {
+      fixtureGh();
+      fixtureRun("deploy-red", { status: "completed", conclusion: "failure" }, [
+        capstone("completed", "success"),
+        deployFailed,
+      ]);
+      const r = await gate(tmp(), "--head=deploy-red", "--capstone-only");
+      expect(r.code).toBe(0);
+      expect(r.json.passed).toBe(true);
+      expect(r.err).toContain("capstone bkit-tests-check=success at head deploy-red");
+      // Without the flag the same run refuses on its conclusion.
+      expect((await gate(tmp(), "--head=deploy-red")).code).toBe(12);
+    });
+
+    it("a run still in progress whose capstone already passed passes", async () => {
+      fixtureGh();
+      fixtureRun("deploy-running", { status: "in_progress", conclusion: null }, [
+        capstone("completed", "success"),
+        { name: "deploy", status: "in_progress", conclusion: null },
+      ]);
+      expect((await gate(tmp(), "--head=deploy-running", "--capstone-only")).code).toBe(0);
+      expect((await gate(tmp(), "--head=deploy-running")).code).toBe(11);
+    });
+
+    it("a capstone still running is in progress (11)", async () => {
+      fixtureGh();
+      fixtureRun("cap-running", { status: "in_progress", conclusion: null }, [
+        capstone("in_progress", null),
+      ]);
+      const r = await gate(tmp(), "--head=cap-running", "--capstone-only");
+      expect(r.code).toBe(11);
+      expect(r.err).toContain("capstone 'bkit-tests-check' is in_progress");
+    });
+
+    it("a failed capstone fails (12) even when every other job passed", async () => {
+      fixtureGh();
+      fixtureRun("cap-red", { status: "completed", conclusion: "failure" }, [
+        capstone("completed", "failure"),
+        { name: "deploy", status: "completed", conclusion: "success" },
+      ]);
+      const r = await gate(tmp(), "--head=cap-red", "--capstone-only");
+      expect(r.code).toBe(12);
+      expect(r.err).toContain("concluded 'failure' (not success)");
+    });
+
+    it("a cancelled capstone is 15; a completed run without the capstone is 13", async () => {
+      fixtureGh();
+      fixtureRun("cap-cancel", { status: "completed", conclusion: "cancelled" }, [
+        capstone("completed", "cancelled"),
+      ]);
+      expect((await gate(tmp(), "--head=cap-cancel", "--capstone-only")).code).toBe(15);
+      fixtureRun("cap-absent", { status: "completed", conclusion: "success" }, [deployFailed]);
+      expect((await gate(tmp(), "--head=cap-absent", "--capstone-only")).code).toBe(13);
+    });
+
+    it("a required lane that was skipped does not refuse: the capstone alone decides", async () => {
+      fixtureGh();
+      const d = tmp();
+      fs.writeFileSync(
+        path.join(d, "package.json"),
+        JSON.stringify({ name: "x", bkit: { shipGateRequiredLanes: ["test"] } }),
+      );
+      expect((await gate(d, "--head=skipped-lane", "--capstone-only")).code).toBe(0);
+      expect((await gate(d, "--head=skipped-lane")).code).toBe(16);
+    });
+  });
+
   describe("--validated carry-forward (17)", { timeout: 20_000 }, () => {
     /** Tags double as fixture SHAs: green-capstone / failed are the validated commit. */
     function carryRepo() {
@@ -670,6 +777,28 @@ describe("bkit runs mirror", () => {
     expect(r.code).toBe(1);
     expect(r.json.passed).toBe(false);
     expect(calls()).toContain("runs?head_sha=release-push-red-pr-green&event=push");
+  });
+
+  it("asks the gate for the push run on dev at the PR head, in the named repo", async () => {
+    const calls = recordingGh();
+    const r = await cli(tmp(), [
+      "mirror",
+      "--head=release-pr-only",
+      "--repo=example/example",
+      "--interval-s=0",
+      "--absent-minutes=0",
+    ]);
+    expect(r.code).toBe(3);
+    const log = calls();
+    // Head, event and repo reach the run query; no run at the head sends the
+    // superseded-head probe to the default branch, dev.
+    expect(log).toContain(
+      "api /repos/example/example/actions/workflows/ci.yml/runs?head_sha=release-pr-only&event=push",
+    );
+    expect(log).toContain(
+      "api /repos/example/example/actions/workflows/ci.yml/runs?branch=dev&status=success&per_page=1&event=push",
+    );
+    expect(log).not.toContain("repo view");
   });
 
   it("e2e: green push run beside the PR's own in-flight run -> 0", async () => {

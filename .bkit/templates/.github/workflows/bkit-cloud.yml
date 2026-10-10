@@ -63,8 +63,9 @@ concurrency:
   #   - dispatch path  keys on inputs.issue     (e.g. bkit-auto-141)
   #   - CI-completion  keys on head_branch       (e.g. bkit-auto-feat/141-cloud-app)
   # The two keys never match for one FID, so a dispatched build and the auto-ship it
-  # triggers do not share a group; the orchestrator stale-run guard + status.json lock
-  # handle that race (not this concurrency key).
+  # triggers do not share a group; the orchestrator stale-run guard + the per-feature
+  # workflow lock (`bkit locks acquire`, `logs/{FID}/.lock`) handle that race (not this
+  # concurrency key).
   group: bkit-auto-${{ inputs.issue || github.event.workflow_run.head_branch }}
   # dev: queue, not cancel. With cancel-in-progress: false, GHA queues at most one
   # pending run per group (older pendings are cancelled as newer ones arrive); the

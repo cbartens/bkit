@@ -5,9 +5,10 @@
 // `--worktrees`). A command cannot change its caller's directory, so it reports
 // `worktreePath` for the workflow to `cd` into. A resume rebase that stops on a
 // conflict is left in progress for `bkit branches rebase`; this command only
-// reports it. `remove` is the close / cleanup half: `--owned-only` keeps it to
-// worktrees a workflow created, marked in the git common dir's outbox so the
-// marker outlives the worktree it describes.
+// reports it. `remove` is the close / cleanup half: it removes only a worktree a
+// workflow created, marked in the git common dir's outbox so the marker outlives
+// the worktree it describes, and with `--branch` deletes the feature branch
+// unless another worktree still holds it.
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -17,8 +18,6 @@ import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-m
 import { CommandError, EXIT, git, repoRoot, runGit } from "../lib.js";
 import { WORKFLOW_FLAG } from "./status.js";
 const WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
-/** Design and plan run no project code, so their worktrees get no dependencies. */
-const INSTALLS = new Set(["build", "debug", "ship"]);
 const DEV = "dev";
 const ORIGIN_DEV = `origin/${DEV}`;
 export const EXIT_REBASE_CONFLICT = 3;
@@ -167,6 +166,47 @@ function install(wt, log) {
             log(line);
     }
     return status;
+}
+// ---------------------------------------------------------------------------
+// Branch cleanup
+// ---------------------------------------------------------------------------
+/** The worktree (main checkout included) with `branch` checked out, else null. */
+export function worktreeHolding(root, branch) {
+    const list = git(root, ["worktree", "list", "--porcelain"]) ?? "";
+    let current = null;
+    for (const line of list.split("\n")) {
+        if (line.startsWith("worktree "))
+            current = line.slice("worktree ".length);
+        else if (line === `branch refs/heads/${branch}` && current !== null)
+            return current;
+    }
+    return null;
+}
+/**
+ * Delete `branch` locally and on origin. A worktree still holding it blocks
+ * both deletes: the local one would fail, and the remote one would strand that
+ * worktree's branch without its upstream.
+ */
+function deleteBranch(root, branch, log) {
+    const holder = worktreeHolding(root, branch);
+    if (holder !== null) {
+        log(`${branch} is checked out in ${holder} (not a workflow worktree) — local and remote branch left in place`);
+        return { branchDeleted: false, remoteDeleted: false, branchBlockedBy: holder };
+    }
+    if (hasLocal(root, branch)) {
+        const del = runGit(root, ["branch", "-D", branch]);
+        if (!del.ok)
+            log(`git branch -D ${branch} failed: ${del.stderr}`);
+    }
+    const remote = runGit(root, ["push", "origin", "--delete", branch]);
+    if (!remote.ok)
+        log(`git push origin --delete ${branch} failed or it was already gone`);
+    runGit(root, ["fetch", "--prune", "origin"]);
+    return {
+        branchDeleted: !hasLocal(root, branch),
+        remoteDeleted: remote.ok,
+        branchBlockedBy: null,
+    };
 }
 // ---------------------------------------------------------------------------
 // Command
@@ -321,7 +361,7 @@ export const worktreesCommand = {
                 const { copied, copyMissing } = done
                     ? copyListed(root, wt, config.worktreeCopy, ctx.log)
                     : { copied: [], copyMissing: [] };
-                const wantInstall = done && config.worktreeInstall && INSTALLS.has(workflow);
+                const wantInstall = done && config.worktreeInstall;
                 const installStatus = wantInstall ? install(wt, ctx.log) : 0;
                 ctx.emit({
                     worktreePath: wt,
@@ -351,36 +391,52 @@ export const worktreesCommand = {
             },
         },
         remove: {
-            summary: "Remove .worktrees/{fid} and prune stale worktree entries.",
+            summary: "Remove .worktrees/{fid} when a workflow created it, prune stale entries, and delete the feature branch.",
             flags: [
                 FID_FLAG,
                 {
-                    name: "owned-only",
-                    type: "boolean",
-                    help: "remove only a worktree carrying the .worktree-owned marker (one a workflow created)",
+                    name: "branch",
+                    type: "string",
+                    help: "feature branch to delete locally and on origin once the worktree is gone; skipped when another worktree still holds it",
                 },
             ],
             output: {
                 removed: "the worktree was removed",
-                reason: "why it was not: absent | not-owned; null when removed",
+                reason: "why it was not: absent | not-owned (no .worktree-owned marker); null when removed",
                 worktreePath: "the worktree's path",
                 repoRoot: "the main checkout — cd here if the shell was inside the removed worktree",
+                branchDeleted: "--branch: the local branch is gone (deleted or already absent); null without --branch",
+                remoteDeleted: "--branch: git push origin --delete succeeded; false when it failed or was already gone; null without --branch",
+                branchBlockedBy: "--branch: the worktree still holding the branch, so neither the local nor the remote branch was deleted; null when none",
             },
             exitCodes: { [EXIT_REMOVE]: "git worktree remove failed" },
             run: (ctx) => {
                 const fid = fidOf(ctx.flags.fid);
+                const branch = ctx.flags.branch === undefined ? undefined : String(ctx.flags.branch);
+                if (branch !== undefined && (branch === DEV || branch === "main")) {
+                    throw new CommandError(EXIT.USAGE, `refusing to delete branch ${branch}`);
+                }
                 const root = repoRoot(ctx.cwd);
                 const wt = worktreeDir(root, fid);
                 const marker = ownershipMarker(root, fid);
                 const result = (removed, reason) => {
-                    ctx.emit({ removed, reason, worktreePath: wt, repoRoot: root });
+                    const cleanup = branch === undefined ? null : deleteBranch(root, branch, ctx.log);
+                    ctx.emit({
+                        removed,
+                        reason,
+                        worktreePath: wt,
+                        repoRoot: root,
+                        branchDeleted: cleanup?.branchDeleted ?? null,
+                        remoteDeleted: cleanup?.remoteDeleted ?? null,
+                        branchBlockedBy: cleanup?.branchBlockedBy ?? null,
+                    });
                     return EXIT.OK;
                 };
                 if (!fs.existsSync(wt)) {
                     runGit(root, ["worktree", "prune"]);
                     return result(false, "absent");
                 }
-                if (ctx.flags.ownedOnly === true && !fs.existsSync(marker)) {
+                if (!fs.existsSync(marker)) {
                     ctx.log(`${wt} exists but has no ownership marker (${marker}) — not ours, left in place`);
                     return result(false, "not-owned");
                 }

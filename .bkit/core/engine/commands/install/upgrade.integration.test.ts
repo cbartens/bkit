@@ -307,7 +307,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   }
 
   it("does not create .github/renovate.json5 or .github/dependabot.yml for a non-opted-in consumer", () => {
-    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     // Minimal consumer: package.json + .bkit-version, no opt-in configs present.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -334,7 +334,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   });
 
   it("install --typescript does not write Serena or graphify examples", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "consumer" }),
@@ -360,7 +360,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   });
 
   it("upgrade does not rewrite a consumer-owned bkit-graphify.sh", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "consumer" }),
@@ -383,7 +383,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   });
 
   it("does not rewrite a consumer-owned .github/renovate.json5", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({
@@ -411,7 +411,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   });
 
   it("preserves consumer prose after bkit:end in docs/*.md through a real `bkit upgrade` (#129 §1/§6)", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "consumer" }),
@@ -474,7 +474,7 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
   }
 
   it("present, unmodified .mcp.json + .cursor/mcp.json → same-version upgrade leaves them byte-identical", () => {
-    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     setup();
     expect(runCli(["install", "--claude", "--cursor", "--tracker=github"]).status).toBe(0);
     const mcpBefore = fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8");
@@ -489,7 +489,7 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
   });
 
   it("upgrade restores bkit's edited entry, keeps a consumer server, and check is then clean", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     setup();
     expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
     const mcpPath = path.join(tmpDir, ".mcp.json");
@@ -524,7 +524,7 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
   });
 
   it("malformed .mcp.json fails install instead of being overwritten", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     setup();
     fs.writeFileSync(path.join(tmpDir, ".mcp.json"), "{ not json", "utf-8");
     const install = runCli(["install", "--claude", "--tracker=github"]);
@@ -820,7 +820,7 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
   }
 
   it("claude-only install → upgrade seeds no cursor/lint files or templates, and check stays clean", () => {
-    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -860,7 +860,7 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
   });
 
   it("upgrade seeds missing bkit:gate:* names, so check stays clean (#489)", () => {
-    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     const pkgPath = path.join(tmpDir, "package.json");
     fs.writeFileSync(
@@ -923,7 +923,7 @@ describe("#281 Task 3 — upgrade re-renders all installed provider blocks", () 
   }
 
   it("upgrade reconverges ALL provider blocks — openrouter (active) + ollama (secondary)", () => {
-    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1005,7 +1005,7 @@ describe("#281 AC — bkit check exits 0 with multiple providers installed", () 
   }
 
   it("bkit check exits 0 after installing two providers (openrouter + ollama)", () => {
-    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1049,7 +1049,7 @@ describe("#422 — gateguard markered-text upgrade round-trip (site-9 regression
   }
 
   it("install, tamper outside the block AND stale the block content, upgrade: outside survives, block is refreshed", () => {
-    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1489,7 +1489,7 @@ describe("upgrade-render", () => {
   describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => {
     it("restores tampered agents + docs and refreshes the prompts.md block while preserving consumer overrides", () => {
       const tsxBin = getTsxBin();
-      if (!fs.existsSync(tsxBin)) return; // tsx not available — skip (matches sibling suites)
+      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
       // --- Install: core + claude + opencode host (gives .claude/agents, .opencode/agents,
       //     .claude/commands, .opencode/commands, and the .bkit/*.md docs). ---
@@ -1565,7 +1565,7 @@ describe("upgrade-render", () => {
 
     it("upgrade renders opencode.json with provider/tracker sentinels resolved (no raw @@…@@ leak, #245)", () => {
       const tsxBin = getTsxBin();
-      if (!fs.existsSync(tsxBin)) return; // tsx not available — skip (matches sibling suites)
+      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
       // Install the opencode host (openrouter) — opencode.json is templated with @@OPENCODE_*@@
       // sentinels that renderOpencodeJson resolves on install.
@@ -1602,7 +1602,7 @@ describe("upgrade-render", () => {
 
     it("opencode-go gateway: install records the manifest provider; upgrade re-renders the opencode-go block (no ollama fallback)", () => {
       const tsxBin = getTsxBin();
-      if (!fs.existsSync(tsxBin)) return; // tsx not available — skip (matches sibling suites)
+      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
       type OpencodeDoc = {
         provider?: Record<string, { npm?: string; options?: Record<string, unknown> }>;
@@ -1656,7 +1656,7 @@ describe("upgrade-render", () => {
   describe("#459 — bkit upgrade keeps bkit's recorded hash for a consumer-edited whole-file", () => {
     it("a no-op upgrade does not re-record a hand-edited canonical file as bkit's content", () => {
       const tsxBin = getTsxBin();
-      if (!fs.existsSync(tsxBin)) return; // tsx not available — skip (matches sibling suites)
+      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
       const install = runBkit(["install", "--claude", "--typescript"]);
       expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);

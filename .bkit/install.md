@@ -341,6 +341,7 @@ After writes, bkit re-runs token-surface and environment checks — some only ac
 | `opencode-setup` | opencode host installed (`--opencode=<provider>`) — names the provider key to set (e.g. `BKIT_OPENROUTER_API_KEY`; `BKIT_OPENCODE_API_KEY` for `opencode-zen` / `opencode-go`), confirms the pre-seeded base URL, and notes all four providers ship curated per-agent pins (re-pin via `.bkit/prompts.md` § Model Overrides). Verify with `bkit doctor` + `bkit status`. |
 | `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
 | `gate-missing-called-scripts` | A `bkit:gate:*` script still at bkit's default chains a script `package.json` does not declare (e.g. `typecheck`, `format:check`, `test`). Add it (`.bkit/templates.md` lists the tool scripts and devDeps) or rewrite the gate. |
+| `gate-noop` | A `bkit:gate:*` script is empty or cannot fail (`true`, `:`, `exit 0`, `echo …`), so every agent run and push passes it. Warn-only, at install and `bkit check`, on every branch. Point it at real checks, or delete it and run `bkit upgrade` to restore bkit's default. |
 | `gate-tier-not-wired` | `package.json` declares a deeper test tier (`test:integration`, `test:e2e`, `test:live`) that no `bkit:gate:*` script runs; the advisory prints the gate line to add. |
 
 Phase 1 and Phase 3 findings merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection more accurate post-write). Zero findings → no banner.
@@ -462,7 +463,7 @@ Running `bkit uninstall` twice is safe — subsequent runs skip absent files and
 
 ### What a full uninstall preserves
 
-Bare uninstall removes bkit-managed files and strips bkit-managed blocks, but **not** guaranteed zero-footprint wipe. Deliberately leaves: `docs/` reference payload (consumer-editable, often customised); everything below `bkit:end` in `.agents/context.md`, `.agents/skills.md` and the other managed-block files; every file you copied from `.bkit/templates/`; any owned whole-file the consumer modified (hash mismatch → preserved); generated artefacts not manifest-tracked (`.bkit/advisories.md`, `.bkit/friction.jsonl`). Use `--nuke` to force-remove every manifest-listed bkit file regardless of consumer modifications; generated artefacts and `docs/` still yours to delete by hand.
+Bare uninstall removes bkit-managed files and strips bkit-managed blocks, but **not** guaranteed zero-footprint wipe. `docs/`: bkit's block (managed marker included) is stripped from every installed `docs/*.md` — a file holding nothing else is deleted — and the owned `docs/templates/bkit-*.md` are deleted. Deliberately leaves: everything outside `bkit:start` / `bkit:end` in `docs/*.md`, `.agents/context.md`, `.agents/skills.md` and the other managed-block files; your own files in `docs/` and `docs/templates/`; every file you copied from `.bkit/templates/`; any owned whole-file the consumer modified (hash mismatch → preserved); generated artefacts not manifest-tracked (`.bkit/advisories.md`, `.bkit/friction.jsonl`). Use `--nuke` to force-remove every manifest-listed bkit file regardless of consumer modifications; generated artefacts still yours to delete by hand.
 
 ## Phase 3 exit-1 and recovery
 

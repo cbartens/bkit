@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
-import { placeholderLines, promptVerdicts, readHeader } from "./steps";
+import { ROW_FIELDS, placeholderLines, promptVerdicts, readHeader } from "./steps";
+
+const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -318,6 +320,164 @@ describe("bkit steps gate", () => {
     expect((await gate(cwd)).err).toContain(
       "artifact logs/verify-1.md: logs/verify-1.md does not exist",
     );
+  });
+});
+
+describe("status row field names", () => {
+  it("writes attempt 0 rather than dropping it", async () => {
+    const cwd = repo();
+    const r = await run(cwd, doneArgs("--attempt=0"));
+    expect(r.code).toBe(0);
+    expect(r.json.row.attempt).toBe(0);
+    expect(JSON.parse(fs.readFileSync(path.join(cwd, "logs/status.jsonl"), "utf-8")).attempt).toBe(
+      0,
+    );
+  });
+
+  it("refuses a negative or non-integer attempt (2)", async () => {
+    const cwd = repo();
+    expect((await run(cwd, doneArgs("--attempt=-1"))).code).toBe(2);
+    expect((await run(cwd, doneArgs("--attempt=1.5"))).code).toBe(2);
+  });
+
+  it("records the complexity verdict as `verdict`, from the agent's own verdict set", async () => {
+    const cwd = repo();
+    write(cwd, "logs/complexity.md", "Verdict: SPLIT\n\n<!-- verdict:end -->\n");
+    const args = [
+      "steps",
+      "done",
+      "--file=logs/status.jsonl",
+      "--workflow=plan",
+      "--step=plan-complexity-check",
+      "--verdict=SPLIT",
+      "--attempt=1",
+      "--artifact=logs/complexity.md",
+      "--commit=none",
+    ];
+    const r = await run(cwd, [...args, "--agent=bkit-plan-complexity-check"]);
+    expect(r.code).toBe(0);
+    expect(r.json.row).toMatchObject({ verdict: "SPLIT" });
+    expect(r.json.row).not.toHaveProperty("complexity");
+    // Without the agent the default PASS|CONCERNS|FAIL set refuses it.
+    expect((await run(cwd, args)).code).toBe(2);
+    const g = await run(cwd, [
+      "steps",
+      "gate",
+      "--file=logs/status.jsonl",
+      "--workflow=plan",
+      "--step=plan-complexity-check",
+      "--attempt=1",
+      "--artifact=logs/complexity.md",
+      "--verdict-required",
+      "--agent=bkit-plan-complexity-check",
+    ]);
+    expect(g.code).toBe(0);
+  });
+
+  it("records a create-PR row's URL in artifacts, not a prUrl field", async () => {
+    const cwd = repo();
+    const url = "https://github.com/o/r/pull/7";
+    const r = await run(cwd, [
+      "steps",
+      "done",
+      "--file=logs/status.jsonl",
+      "--workflow=build",
+      "--step=build-create-pr",
+      `--artifact=${url}`,
+      "--commit=none",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json.row.artifacts).toEqual([url]);
+    expect(r.json.row).not.toHaveProperty("prUrl");
+  });
+
+  it("the ship timeout row keeps its snake_case timeout_s key", async () => {
+    const cwd = repo();
+    const r = await run(cwd, [
+      "status",
+      "row",
+      "--file=logs/status.jsonl",
+      "--workflow=ship",
+      "--type=ship-revalidate-timeout",
+      "--field=attempt=0",
+      "--field=timeout_s=600",
+    ]);
+    expect(r.code).toBe(0);
+    const row = JSON.parse(fs.readFileSync(path.join(cwd, "logs/status.jsonl"), "utf-8").trim());
+    expect(row).toMatchObject({ attempt: 0, timeout_s: 600 });
+    expect(row).not.toHaveProperty("timeoutS");
+  });
+});
+
+describe("bkit steps gate checks attempt / strategy / scope where the step writes them", () => {
+  /** Write a row with `steps done --commit=none`, then gate it. */
+  async function rowThenGate(workflow: string, step: string, done: string[], gate: string[] = []) {
+    const cwd = repo();
+    const base = ["--file=logs/status.jsonl", `--workflow=${workflow}`, `--step=${step}`];
+    expect((await run(cwd, ["steps", "done", ...base, ...done, "--commit=none"])).code).toBe(0);
+    return run(cwd, ["steps", "gate", ...base, ...gate]);
+  }
+
+  it("fails a row missing its attempt", async () => {
+    const r = await rowThenGate("build", "build-plan-verify", ["--sub-plan=1"], ["--sub-plan=1"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("row is missing attempt");
+  });
+
+  it("passes attempt 0, and gate --attempt=0 matches it", async () => {
+    const r = await rowThenGate("build", "build-challenge", ["--attempt=0"], ["--attempt=0"]);
+    expect(r.code).toBe(0);
+  });
+
+  it("fails a diagnose row missing its strategy, passes with it", async () => {
+    const without = await rowThenGate("build", "build-failure-diagnose", ["--attempt=1"]);
+    expect(without.code).toBe(1);
+    expect(without.err).toContain("row is missing strategy");
+    const withIt = await rowThenGate("build", "build-failure-diagnose", [
+      "--attempt=1",
+      "--strategy=PIVOT",
+    ]);
+    expect(withIt.code).toBe(0);
+  });
+
+  it("fails a run-tests row missing its scope, and an empty scope", async () => {
+    const without = await rowThenGate("build", "build-run-tests", ["--attempt=1"]);
+    expect(without.err).toContain("row is missing scope");
+    const empty = await rowThenGate("debug", "debug-run-tests", ["--attempt=1", "--field=scope="]);
+    expect(empty.code).toBe(1);
+    expect(empty.err).toContain("row is missing scope");
+    const ok = await rowThenGate("build", "build-run-tests", ["--attempt=1", "--field=scope=unit"]);
+    expect(ok.code).toBe(0);
+  });
+
+  it("names every missing field at once", async () => {
+    const r = await rowThenGate("ship", "ship-failure-remediate", []);
+    expect(r.err).toContain("row is missing attempt, strategy");
+  });
+
+  it("asks nothing of a step that writes none of them", async () => {
+    expect((await rowThenGate("build", "build-branch-sync", [])).code).toBe(0);
+  });
+
+  it("ROW_FIELDS lists exactly the fields each workflow's `steps done` call writes", () => {
+    const dir = path.join(REPO_ROOT, ".bkit", "workflows");
+    const written: Record<string, string[]> = {};
+    for (const name of fs.readdirSync(dir).filter((n) => /^bkit-.*\.md$/.test(n))) {
+      const text = fs.readFileSync(path.join(dir, name), "utf-8").replace(/\\\n\s*/g, " ");
+      for (const line of text.split("\n").filter((l) => l.includes("steps done"))) {
+        const workflow = /--workflow=([a-z]+)/.exec(line)?.[1];
+        const step = /--step=([a-z0-9-]+)/.exec(line)?.[1];
+        if (!workflow || !step) continue;
+        const fields = [
+          /--attempt[= ]/.test(line) ? "attempt" : "",
+          /--strategy=/.test(line) ? "strategy" : "",
+          /--field="?scope=/.test(line) ? "scope" : "",
+        ].filter(Boolean);
+        if (fields.length) written[`${workflow}/${step}`] = fields;
+      }
+    }
+    const table = Object.fromEntries(Object.entries(ROW_FIELDS).map(([k, v]) => [k, [...v]]));
+    expect(written).toEqual(table);
   });
 });
 

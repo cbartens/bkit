@@ -150,8 +150,8 @@ const SOURCE_EXT_RE = /\.(ts|tsx|js|jsx|cjs|mjs|json|md|sh|bash|py|rb|go|rs|java
  * Only a redirect whose target both looks like a repo path AND carries a source
  * extension is reported.
  *
- * Byte-identical to the Cursor and Codex twins; behavioural parity is asserted in
- * .bkit/core/engine/install/modules/index.integration.test.ts.
+ * Byte-identical to the Cursor and Codex twins; bkit's hook parity tests assert the
+ * behaviour matches.
  */
 function shellEditTargets(cmd) {
   const hits = [];

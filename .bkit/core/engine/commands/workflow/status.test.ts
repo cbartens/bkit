@@ -5,8 +5,9 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { runCommand } from "../lib";
+import { CommandError, runCommand } from "../lib";
 import { COMMANDS } from "../registry";
+import { readRuns } from "./status";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -66,6 +67,51 @@ describe("bkit status path", () => {
     expect(
       (await run(["status", "path", "--workflow=plan", "--fid=x", "--month=2026-10"])).code,
     ).toBe(2);
+  });
+});
+
+describe("the status fold", () => {
+  it("skips a row it does not model (no type, an unknown type) and folds the rest", () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      { workflow: "build", at: "2026-10-01T00:00:30Z" },
+      { type: "runtime-resolved", workflow: "build", at: "2026-10-01T00:00:40Z", runtime: "LOCAL" },
+      { type: 7, workflow: "build", at: "2026-10-01T00:00:50Z" },
+      done("build", "build-plan-verify", "2026-10-01T00:01:00Z"),
+    ]);
+    const runs = readRuns(file);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.workflow).toBe("build");
+    expect(runs[0]!.steps.map((s) => s.step)).toEqual(["build-plan-verify"]);
+  });
+
+  it("refuses a line that is not JSON rather than folding around it (exit 3)", () => {
+    const file = log([started("build", "2026-10-01T00:00:00Z")]);
+    fs.appendFileSync(file, "{not json\n");
+    let thrown: unknown;
+    try {
+      readRuns(file);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(CommandError);
+    expect((thrown as CommandError).code).toBe(3);
+    expect((thrown as CommandError).message).toContain("line 2 is not JSON");
+  });
+
+  it("a command reading the log reports the malformed line with exit 3", async () => {
+    const file = log([started("build", "2026-10-01T00:00:00Z")]);
+    fs.appendFileSync(file, "{not json\n");
+    const r = await run([
+      "counters",
+      "derive",
+      `--file=${file}`,
+      "--workflow=build",
+      "--step=build-plan-verify",
+      "--position=next",
+    ]);
+    expect(r.code).toBe(3);
+    expect(r.err).toContain("line 2 is not JSON");
   });
 });
 

@@ -124,6 +124,25 @@ describe("bkit counters derive", () => {
     expect((await derive(file, "soak", "count", "--since=neverSet")).json.value).toBe(2);
   });
 
+  it("two soakEntryAt markers in the same second fold to one marker", async () => {
+    const marker = {
+      type: "workflow-meta",
+      workflow: "build",
+      at: "2026-10-01T00:02:00Z",
+      soakEntryAt: "2026-10-01T00:02:00Z",
+    };
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "soak", "2026-10-01T00:01:00Z", { parentSha: "s1" }),
+      marker,
+      marker,
+      done("build", "soak", "2026-10-01T00:03:00Z", { parentSha: "s2" }),
+    ]);
+    expect((await derive(file, "soak", "count", "--since=soakEntryAt")).json.value).toBe(1);
+    expect((await derive(file, "soak", "next", "--since=soakEntryAt")).json.value).toBe(2);
+    expect((await derive(file, "soak", "count")).json.value).toBe(2);
+  });
+
   it("de-dupes: distinct parentSha = two attempts, byte-identical replay = one", async () => {
     const a = done("build", "verify", "2026-10-01T00:01:00Z", { parentSha: "p1" });
     const b = done("build", "verify", "2026-10-01T00:01:00Z", { parentSha: "p2" });
@@ -156,6 +175,23 @@ describe("bkit counters derive", () => {
       done("build", "remediate", "2026-10-01T00:01:00Z", { status: "FAILED" }),
     ]);
     expect((await derive(onlyFailed, "remediate", "current")).code).toBe(4);
+  });
+
+  it("a build resumed after an interleaved finished debug run opens a fresh run: its budget resets", async () => {
+    const before = [
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "run-tests", "2026-10-01T00:01:00Z", { parentSha: "b1" }),
+      done("build", "run-tests", "2026-10-01T00:02:00Z", { parentSha: "b2" }),
+      started("debug", "2026-10-01T00:03:00Z"),
+      finished("debug", "2026-10-01T00:04:00Z"),
+    ];
+    // The paused run, before the resume writes anything, still counts both rows.
+    expect((await derive(log(before), "run-tests", "next")).json).toEqual({ value: 3, count: 2 });
+    // `counters run` reads the paused build as finished, so the resume starts a new run.
+    const runs = await run(["counters", "run", `--file=${log(before)}`, "--workflow=build"]);
+    expect(runs.json.run).toBe(2);
+    const resumed = log([...before, started("build", "2026-10-01T00:05:00Z")]);
+    expect((await derive(resumed, "run-tests", "next")).json).toEqual({ value: 1, count: 0 });
   });
 
   it("a paused run keeps counting after another workflow's run interleaves", async () => {
@@ -255,8 +291,13 @@ describe("bkit counters route", () => {
   });
 
   it("a max of 0 lets value 0 through and stops value 1", async () => {
-    expect((await route("0", "0")).code).toBe(0);
-    expect((await route("1", "0")).code).toBe(1);
+    const first = await route("0", "0");
+    expect(first.code).toBe(0);
+    expect(first.json).toEqual({ exceeded: false, next: "step-8", max: 0 });
+    const over = await route("1", "0");
+    expect(over.code).toBe(1);
+    expect(over.json).toEqual({ exceeded: true, next: "failure-path", max: 0 });
+    expect(over.err).toContain("counter VERIFY_ATTEMPT exceeded max=0 (value=1)");
   });
 
   it.each([[""], ["abc"], ["1.5"], ["-1"]])(
