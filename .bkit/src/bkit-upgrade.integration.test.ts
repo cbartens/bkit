@@ -24,6 +24,9 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runUpgrade } from "./bkit-upgrade";
+import { listFilesRecursive, remapTemplateDest } from "./bkit-install";
+import { isTemplate } from "./bkit-modules";
+import { getTemplatesRoot } from "./bkit-paths";
 import { sha256, writeBkitVersion, readBkitVersion, type BkitVersion } from "./bkit-version";
 
 let tmpDir: string;
@@ -535,11 +538,12 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
 });
 
 // ---------------------------------------------------------------------------
-// #489 — upgrade never touches an adopted template copy or a create-if-missing file, and
-// refreshes only the managed block of .agents/context.md
+// #489 — install writes no template outside .bkit/templates/, upgrade never touches an
+// adopted template copy or a create-if-missing file, and refreshes only the managed
+// block of .agents/context.md
 // ---------------------------------------------------------------------------
 
-describe("#489 — upgrade leaves the consumer's own files byte-identical", () => {
+describe("#489 — install and upgrade leave the consumer's own files alone", () => {
   const bkitInstallPath = path.resolve(
     path.dirname(new URL(import.meta.url).pathname),
     "bkit-install.ts",
@@ -558,7 +562,16 @@ describe("#489 — upgrade leaves the consumer's own files byte-identical", () =
     });
   }
 
-  it("adopted ci.yml, .husky/pre-push, .envrc and an edited .agents/skills.md survive upgrade and check", () => {
+  // Every template the package ships, at the path a consumer would adopt it to.
+  function templatePaths(): string[] {
+    const root = getTemplatesRoot();
+    return listFilesRecursive(root)
+      .map((abs) => remapTemplateDest(path.relative(root, abs)))
+      .filter((rel) => isTemplate(rel))
+      .sort();
+  }
+
+  it("an install with every host and cloud lane creates no template outside .bkit/templates/", () => {
     if (!fs.existsSync(tsxBin)) return;
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
@@ -566,17 +579,37 @@ describe("#489 — upgrade leaves the consumer's own files byte-identical", () =
       JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
       "utf-8",
     );
-    expect(runCli(["install", "--claude", "--typescript"]).status).toBe(0);
+    const hosts = ["--claude", "--cursor", "--codex", "--opencode=openrouter", "--typescript"];
+    // --auto=cursor needs the Linear tracker.
+    for (const lane of ["--auto=claude", "--auto=cursor", "--auto=opencode"]) {
+      const tracker = lane === "--auto=cursor" ? "--tracker=linear" : "--tracker=github";
+      const install = runCli(["install", ...hosts, lane, tracker]);
+      expect(install.status, `${lane}\n${install.stdout}\n${install.stderr}`).toBe(0);
+    }
+
+    const templates = templatePaths();
+    expect(templates.length).toBeGreaterThan(0);
+    expect(templates.filter((rel) => fs.existsSync(path.join(tmpDir, rel)))).toEqual([]);
+    const copies = path.join(tmpDir, ".bkit", "templates");
+    expect(listFilesRecursive(copies).length).toBe(templates.length);
+  });
+
+  it("an adopted copy of every template and an edited .agents/skills.md survive upgrade and check", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude", "--cursor", "--typescript"]).status).toBe(0);
     // skills.md was written once by install.
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills.md"))).toBe(true);
 
     const owned: Record<string, string> = {
-      [path.join(".github", "workflows", "ci.yml")]: "name: my ci\non: push\n",
-      [path.join(".husky", "pre-push")]: "#!/bin/sh\npnpm test\n",
-      // A pre-.bkit/ directive an older bkit wrote: it is the consumer's line.
-      ".envrc": "dotenv_if_exists .agents/.env\n",
       [path.join(".agents", "skills.md")]: "<!-- bkit:start -->\nstale\n<!-- bkit:end -->\nmine\n",
     };
+    for (const rel of templatePaths()) owned[rel] = `consumer's own ${rel}\n`;
     for (const [rel, content] of Object.entries(owned)) {
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
       fs.writeFileSync(path.join(tmpDir, rel), content, "utf-8");
@@ -586,6 +619,7 @@ describe("#489 — upgrade leaves the consumer's own files byte-identical", () =
     expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
     const check = runCli(["check"]);
     expect(check.status, `${check.stdout}\n${check.stderr}`).toBe(0);
+    expect(check.stdout).toContain("0 write(s) would occur");
 
     for (const [rel, content] of Object.entries(owned)) {
       expect(fs.readFileSync(path.join(tmpDir, rel), "utf-8"), rel).toBe(content);
@@ -713,8 +747,18 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
       "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
     };
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+    const workflow = path.join(tmpDir, ".github", "workflows", "own.yml");
+    fs.mkdirSync(path.dirname(workflow), { recursive: true });
+    fs.writeFileSync(workflow, "steps:\n  - run: bash .bkit/scripts/bkit-slop-delta.sh\n", "utf-8");
 
-    expect(runCli(["upgrade", "--auto-apply"]).status).toBe(0);
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
+    // The retired-caller checklist reads the files after the re-point: the consumer's
+    // workflow line is still named, the re-pointed package.json line is not.
+    expect(upgrade.stdout).toContain(
+      `retired-file-caller:${path.join(".github", "workflows", "own.yml")}:2`,
+    );
+    expect(upgrade.stdout).not.toContain("retired-file-caller:package.json");
 
     const scripts = (
       JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as { scripts: Record<string, string> }

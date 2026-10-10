@@ -2006,14 +2006,12 @@ async function main() {
     // (.agents/workflows, .agents/prompts, ...). No-op when absent / in dogfood.
     runPayload(upgradeFlags.dryRun);
 
-    // Retired bkit files: delete unedited copies, then name every edited copy and
-    // every consumer CI / package.json line that still calls one.
+    // Retired bkit files: delete unedited copies. The checklist of edited copies and
+    // callers prints once the upgrade has re-pointed package.json scripts.
     retireOwnedFiles(process.cwd(), {
       dryRun: upgradeFlags.dryRun,
       log: (line) => console.log(`${LOG_PREFIX} ${line}`),
     });
-    const retiredBanner = formatChecklist(detectRetiredOwnedFiles(process.cwd()));
-    if (retiredBanner) console.log(retiredBanner);
 
     // Collect bkit-managed template candidates from the package.
     // Templates live in .bkit/templates/ — walk the directory for all files.
@@ -2431,6 +2429,10 @@ async function main() {
     console.log(
       `${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}, re-rendered: ${rendered.length}`,
     );
+
+    // Every edited retired copy, and every consumer CI / package.json line that still calls one.
+    const retiredBanner = formatChecklist(detectRetiredOwnedFiles(process.cwd()));
+    if (retiredBanner) console.log(retiredBanner);
 
     // Non-interactive mode: exit non-zero on conflicts
     if (upgradeFlags.nonInteractive && result.conflicts.length > 0) {

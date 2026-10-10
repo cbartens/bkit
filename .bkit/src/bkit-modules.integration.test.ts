@@ -145,10 +145,10 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #489 — templates are the consumer's: install writes none outside .bkit/templates/
+// #489 — templates are the consumer's: install leaves an adopted copy alone
 // ---------------------------------------------------------------------------
 
-describe("install writes no template path outside .bkit/templates/", () => {
+describe("install never writes or flags an adopted template copy", () => {
   const ALL = new Set<import("./bkit-cli").ModuleFlag>([
     "core",
     "claude",
@@ -174,18 +174,6 @@ describe("install writes no template path outside .bkit/templates/", () => {
       .map((abs) => remapTemplateDest(path.relative(root, abs)))
       .filter((rel) => isTemplate(rel));
   };
-
-  it("a fresh install of every module (cloud=claude, then cursor) creates none of them", () => {
-    for (const cloudVariant of ["claude", "cursor"] as const) {
-      dispatchModules(ALL, hostCtx({ cloudVariant, issueTracker: "github" }));
-    }
-    const present = templatePaths().filter((rel) => fs.existsSync(path.join(tmpDir, rel)));
-    expect(present).toEqual([]);
-    // ...while their copies sit under .bkit/templates/.
-    expect(
-      fs.existsSync(path.join(tmpDir, ".bkit", "templates", ".github", "workflows", "ci.yml")),
-    ).toBe(true);
-  });
 
   it("an adopted copy of every template stays byte-identical, with no write and no advisory for it", () => {
     const adopted = templatePaths();
