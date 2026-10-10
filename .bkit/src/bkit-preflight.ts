@@ -6,9 +6,8 @@
 //   deepContains          — from bkit-tiers.ts (JSON containment primitive)
 //   extractManagedBlock   — from bkit-markers.ts (marker block extraction)
 //   getTemplatesRoot      — from bkit-paths.ts (templates root resolver, no cycle)
+//   templateRelPath       — from bkit-paths.ts (dest → template path, the dotfile remap)
 //   parseIssueTracker     — from bkit-manifest.ts (pure data, no cycle)
-//   LINT_PROSE_SCRIPT     — from bkit-manifest.ts (pure data, no cycle) — the F9
-//                           remedy text must quote the SAME string install seeds
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -16,15 +15,9 @@ import { spawnSync } from "node:child_process";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { readBkitVersion } from "./bkit-version.js";
 import { deepContains, type JsonValue } from "./bkit-tiers.js";
-import { detectRetiredOwnedFiles } from "./bkit-retire.js";
 import { extractManagedBlock, stripManagedBlock } from "./bkit-markers.js";
-import { getTemplatesRoot } from "./bkit-paths.js";
-import {
-  parseIssueTracker,
-  DEFAULT_ISSUE_TRACKER,
-  LINT_PROSE_SCRIPT,
-  type IssueTracker,
-} from "./bkit-manifest.js";
+import { getTemplatesRoot, templateRelPath } from "./bkit-paths.js";
+import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, type IssueTracker } from "./bkit-manifest.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -52,20 +45,14 @@ export function dedupeById(findings: PreflightFinding[]): PreflightFinding[] {
 }
 
 /**
- * Strip out content inside bkit-managed block markers (HTML, hash, and slash style).
+ * Strip out content inside bkit-managed block markers (HTML and slash style).
  * Used by detectors that need to inspect only consumer-owned content.
  *
- * Uses line-anchored marker detection (via stripManagedBlock from bkit-tiers.ts; KN-8).
- * Applies all marker styles sequentially: `<!-- bkit:start -->`, `# bkit:start`, and
- * `// bkit:start`.
+ * Uses line-anchored marker detection (via stripManagedBlock from bkit-markers.ts; KN-8).
+ * Applies both marker styles sequentially: `<!-- bkit:start -->` and `// bkit:start`.
  */
 export function stripBkitBlock(content: string): string {
-  // Strip html-comment markers first, then hash-comment, then slash-comment
-  // (line-anchored, KN-8 safe).
-  return stripManagedBlock(
-    stripManagedBlock(stripManagedBlock(content, "html-comment"), "hash-comment"),
-    "slash-comment",
-  );
+  return stripManagedBlock(stripManagedBlock(content, "html-comment"), "slash-comment");
 }
 
 // ---------------------------------------------------------------------------
@@ -116,55 +103,12 @@ export function detectNotGitRepo(cwd: string, modules: Set<ModuleFlag>): Preflig
 // Advisory detectors
 // ---------------------------------------------------------------------------
 
-/**
- * Advisory: `docs/completed.md` still present — the consumer has not yet run
- * `bkit telemetry migrate` (which ports it to `.bkit/issues.jsonl` as
- * `kind:"feature"` rows and performs the bootstrap seed). Advisory only, never a
- * blocker (DE-39: the migrator is never wired to `bkit upgrade`); an unmigrated repo
- * gets an empty `docs/roadmap.md` board.
- */
-export function detectCompletedMdUnmigrated(cwd: string): PreflightFinding | null {
-  const filePath = path.join(cwd, "docs", "completed.md");
-  if (!fs.existsSync(filePath)) return null;
-  return {
-    id: "completed-md-unmigrated",
-    severity: "advisory",
-    detect: "docs/completed.md still present — not yet migrated to .bkit/issues.jsonl (#380).",
-    action:
-      'Run `bkit telemetry migrate` to port docs/completed.md entries to .bkit/issues.jsonl (kind:"feature", status:"SHIPPED") and seed in-flight FIDs from docs/plans/**. Until then docs/roadmap.md\'s board is empty, not wrong.',
-  };
-}
-
-export function detectLintProseF9Vulnerable(cwd: string): PreflightFinding | null {
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return null;
-  let pkg: Record<string, unknown>;
-  try {
-    pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-  const scripts = pkg.scripts as Record<string, string> | undefined;
-  if (!scripts || !scripts["lint:prose"]) return null;
-  const scriptVal = scripts["lint:prose"];
-  if (scriptVal.includes("[ -d .vale/styles/write-good ]")) return null;
-  return {
-    id: "lint-prose-f9-vulnerable",
-    severity: "advisory",
-    detect:
-      "package.json#scripts.lint:prose exists but lacks the `[ -d .vale/styles/write-good ]` guard (F9 — BAR-138).",
-    action: `Update lint:prose to the guarded form: ${LINT_PROSE_SCRIPT}`,
-  };
-}
-
 export function detectBkitVersionMajorDowngrade(
   cwd: string,
   installingVersion: string,
 ): PreflightFinding | null {
-  const versionFile = path.join(cwd, ".bkit", "version");
-  if (!fs.existsSync(versionFile)) return null;
-  const onDisk = fs.readFileSync(versionFile, "utf-8").trim();
-  if (!onDisk) return null; // empty/whitespace file — guard against parseInt("") = NaN
+  const onDisk = readBkitVersion(path.join(cwd, ".bkit", "version"))?.pinnedVersion ?? "";
+  if (!onDisk) return null; // absent / unparseable / no pin — guard against parseInt("") = NaN
   const onDiskMajor = parseInt(onDisk.split(".")[0] ?? "0", 10);
   const installingMajor = parseInt(installingVersion.split(".")[0] ?? "0", 10);
   if (Number.isNaN(onDiskMajor) || Number.isNaN(installingMajor)) return null; // malformed version strings — no false advisory
@@ -172,7 +116,7 @@ export function detectBkitVersionMajorDowngrade(
   return {
     id: "bkit-version-major-downgrade",
     severity: "advisory",
-    detect: `On-disk .bkit-version major (${onDiskMajor}) is greater than the installing version major (${installingMajor}). This is a major-version downgrade.`,
+    detect: `On-disk .bkit/version major (${onDiskMajor}) is greater than the installing version major (${installingMajor}). This is a major-version downgrade.`,
     action: `If this is intentional, proceed. Otherwise, check your @cbartens/bkit version pin in package.json and ensure you're installing the intended version. Current on-disk: ${onDisk}, installing: ${installingVersion}.`,
   };
 }
@@ -181,7 +125,7 @@ export function detectBkitVersionPinStale(cwd: string): PreflightFinding | null 
   const installedPkgPath = path.join(cwd, "node_modules", "@cbartens", "bkit", "package.json");
   const versionFile = path.join(cwd, ".bkit", "version");
 
-  if (!fs.existsSync(installedPkgPath) || !fs.existsSync(versionFile)) return null;
+  if (!fs.existsSync(installedPkgPath)) return null;
 
   let installedVersion: string;
   try {
@@ -193,7 +137,7 @@ export function detectBkitVersionPinStale(cwd: string): PreflightFinding | null 
     return null;
   }
 
-  const onDiskVersion = fs.readFileSync(versionFile, "utf-8").trim();
+  const onDiskVersion = readBkitVersion(versionFile)?.pinnedVersion ?? "";
 
   if (!installedVersion || !onDiskVersion) return null;
 
@@ -301,9 +245,9 @@ export function detectPlaywrightReporterHostile(cwd: string): PreflightFinding |
 const CONTEXT_FETCH_NONE_RE = /^<!-- context-fetch:none(?: [^>]*)? -->$/m;
 
 /**
- * Every `context=` a `context-fetch` block may declare. `runtime` is the default when
- * the attribute is absent. Mirrors the `case "$CONTEXT"` arms in `.bkit/workflows/bkit-debug.md`
- * Step 4; `bkit-context-fetchs.test.ts` fails when the two drift.
+ * Every `context=` a `context-fetch` block may declare, in the order coverage is
+ * narrated. `runtime` is the default when the attribute is absent. The one list: the
+ * `bkit context` runner (commands/workflow/context.ts) and these advisories both read it.
  */
 export const CONTEXT_FETCH_CONTEXTS: readonly string[] = ["runtime", "ci", "diff", "e2e", "web"];
 
@@ -346,11 +290,9 @@ function contextFetchDismissesAll(consumer: string): boolean {
 /**
  * Parse a `<!-- context-fetch:start [name] [context=<context>] -->` line. Attribute order
  * is free and both parts are optional: a bare `context-fetch:start` is an unnamed
- * `runtime` block (the pre-context form). Returns `null` for non-matching lines.
- *
- * Kept in step with the awk parser in `.bkit/workflows/bkit-debug.md` Step 4, which
- * executes the blocks this function reports. That parser strips `[ \t]*` and splits on
- * `[ \t]+`, so this one accepts runs of spaces and tabs too.
+ * `runtime` block. Runs of spaces and tabs separate tokens; the last name token wins.
+ * Returns `null` for non-matching lines. The one parser: the `bkit context` runner
+ * (commands/workflow/context.ts) and these advisories both read it.
  */
 export function parseContextFetchStart(line: string): { name: string; context: string } | null {
   const m = /^<!-- context-fetch:start((?:[ \t]+[\w.=-]+)*)[ \t]*-->$/.exec(line);
@@ -722,30 +664,6 @@ export function detectContextFetchProvisionMissing(cwd: string): PreflightFindin
 }
 
 /**
- * Advisory: detect __bkit__ envelope at top-level of a JSON file.
- * Fires when consumer has not yet run `bkit upgrade` to v2.0.0.
- * Action: run `pnpm bkit upgrade`.
- */
-export function detectLegacyBkitEnvelope(cwd: string, relPath: string): PreflightFinding | null {
-  const absPath = path.join(cwd, relPath);
-  if (!fs.existsSync(absPath)) return null;
-  let doc: Record<string, unknown>;
-  try {
-    doc = JSON.parse(fs.readFileSync(absPath, "utf-8")) as Record<string, unknown>;
-  } catch {
-    return null; // malformed JSON — separate advisory
-  }
-  if (!("__bkit__" in doc)) return null;
-  return {
-    id: "legacy-bkit-envelope-detected",
-    severity: "advisory",
-    detect: `${relPath} contains a __bkit__ envelope from bkit <= v1.1.1.`,
-    action:
-      "Run `pnpm bkit upgrade` to strip the __bkit__ envelope and migrate to v2.0.0 deep-containment schema. The upgrade is idempotent and preserves all consumer-owned keys.",
-  };
-}
-
-/**
  * Advisory: detect when a JSON file is missing content the template owns.
  * Runs deepContains(template, consumerFile) — fires when ok=false.
  * Severity: advisory.
@@ -789,7 +707,7 @@ export function detectTier2JsonDrift(cwd: string, relPath: string): PreflightFin
  */
 export function detectTier2TextDrift(cwd: string, relPath: string): PreflightFinding | null {
   const absPath = path.join(cwd, relPath);
-  const templatePath = path.join(getTemplatesRoot(), relPath);
+  const templatePath = path.join(getTemplatesRoot(), templateRelPath(relPath));
   if (!fs.existsSync(absPath) || !fs.existsSync(templatePath)) return null;
 
   const templateBlock = extractManagedBlock(fs.readFileSync(templatePath, "utf-8"));
@@ -827,7 +745,7 @@ export function detectTier2TextDrift(cwd: string, relPath: string): PreflightFin
     severity: "advisory",
     detect: `${relPath} has a bkit-managed block missing ${dropped.length} line(s) of the shipped template.`,
     action:
-      `Re-sync the bkit-managed block in ${relPath} from .bkit/templates/${relPath} ` +
+      `Re-sync the bkit-managed block in ${relPath} from .bkit/templates/${templateRelPath(relPath)} ` +
       "(run `pnpm bkit install`, or copy the block between its `bkit:start`/`bkit:end` markers). " +
       "Content outside the markers is preserved.",
   };
@@ -843,57 +761,6 @@ export const MARKERED_TEXT_DRIFT_PATHS: readonly string[] = [
   "CLAUDE.md",
   ".gitignore",
 ];
-
-/**
- * Blocker: consumer's .bkit-version pinnedVersion < 0.8.0 AND no __bkit__ envelope.
- * This means the consumer is on a pre-envelope Tier-1 install and must route
- * through bkit v1.x before upgrading directly to v2.0.0.
- */
-export function detectPreEnvelopeBkitVersion(cwd: string): PreflightFinding | null {
-  const versionFilePath = path.join(cwd, ".bkit", "version");
-  const bkitVer = readBkitVersion(versionFilePath);
-  if (!bkitVer?.pinnedVersion) return null;
-
-  const pinnedVersion = bkitVer.pinnedVersion;
-  // semverLt: pinnedVersion < 0.8.0
-  if (!semverLt(pinnedVersion, "0.8.0")) return null;
-
-  // Check that neither JSON file has __bkit__ (confirms pre-envelope install)
-  const jsonFiles = [".claude/settings.json", ".cursor/hooks.json"];
-  const hasEnvelope = jsonFiles.some((relPath) => {
-    const absPath = path.join(cwd, relPath);
-    if (!fs.existsSync(absPath)) return false;
-    try {
-      const doc = JSON.parse(fs.readFileSync(absPath, "utf-8")) as Record<string, unknown>;
-      return "__bkit__" in doc;
-    } catch {
-      return false;
-    }
-  });
-
-  if (hasEnvelope) return null; // consumer already has envelope — not a pre-envelope install
-
-  return {
-    id: "pre-envelope-bkit-version-detected",
-    severity: "blocker",
-    detect: `On-disk pinnedVersion (${pinnedVersion}) is < 0.8.0 and no __bkit__ envelope found. Direct upgrade to v2.0.0 is not supported from pre-v0.8.0.`,
-    action:
-      "Route through bkit v1.x first: bump `@cbartens/bkit` to `^1.1.1`, run `pnpm install && pnpm bkit upgrade`, then bump to `^2.0.0` and run again.",
-  };
-}
-
-/** Returns true if semver versionA < versionB (basic semver, no pre-release). */
-function semverLt(a: string, b: string): boolean {
-  const pa = a.replace(/^v/, "").split(".").map(Number);
-  const pb = b.replace(/^v/, "").split(".").map(Number);
-  for (let i = 0; i < 3; i++) {
-    const av = pa[i] ?? 0;
-    const bv = pb[i] ?? 0;
-    if (av < bv) return true;
-    if (av > bv) return false;
-  }
-  return false;
-}
 
 // ---------------------------------------------------------------------------
 // Internal semver comparison helper
@@ -1333,17 +1200,7 @@ export function runPreflight(
   const notGitRepo = detectNotGitRepo(cwd, modules);
   if (notGitRepo) blockers.push(notGitRepo);
 
-  // Phase 1: pre-envelope blocker (must upgrade through v1.x first)
-  const preEnvelope = detectPreEnvelopeBkitVersion(cwd);
-  if (preEnvelope) blockers.push(preEnvelope);
-
   // --- Advisory detectors ---
-  // Phase 1: legacy envelope advisory (fires before JSON drift)
-  for (const relPath of [".claude/settings.json", ".cursor/hooks.json"]) {
-    const envelopeAdvisory = detectLegacyBkitEnvelope(cwd, relPath);
-    if (envelopeAdvisory) advisories.push(envelopeAdvisory);
-  }
-
   // Phase 1: JSON containment drift advisory
   for (const relPath of [".claude/settings.json", ".cursor/hooks.json"]) {
     const driftAdvisory = detectTier2JsonDrift(cwd, relPath);
@@ -1358,15 +1215,6 @@ export function runPreflight(
 
   const gitignoreDup = detectGitignoreBlockDuplicates(cwd);
   if (gitignoreDup) advisories.push(gitignoreDup);
-
-  advisories.push(...detectRetiredOwnedFiles(cwd));
-
-  // docs/completed.md still present -> not yet migrated
-  const completedMdUnmigrated = detectCompletedMdUnmigrated(cwd);
-  if (completedMdUnmigrated) advisories.push(completedMdUnmigrated);
-
-  const lintProse = detectLintProseF9Vulnerable(cwd);
-  if (lintProse) advisories.push(lintProse);
 
   const versionMajorDowngrade = detectBkitVersionMajorDowngrade(cwd, version);
   if (versionMajorDowngrade) advisories.push(versionMajorDowngrade);

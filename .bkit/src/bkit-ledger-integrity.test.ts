@@ -5,8 +5,7 @@
  * One invalid line (e.g. a `ts` that is a literal, unexpanded `$(date +%s)000`) makes
  * `jq` reject the WHOLE file. A row with no `kind` cannot be routed to its ledger.
  *
- * `bkit-telemetry-lint.test.ts` covers the codec against fixtures; this file asserts
- * the real files on disk.
+ * This file asserts the real files on disk.
  */
 
 import * as fs from "node:fs";

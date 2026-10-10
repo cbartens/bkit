@@ -182,8 +182,8 @@ Test 4 carries the weight: genuine deferral declared out of scope BEFORE work st
 
 `shippedAt` OPTIONAL on `feature`, absent elsewhere. Unix ms the feature shipped. `docs/roadmap.md` § Shipped ranks on `shippedAt // ts`.
 
-- Set ONLY on `status:"SHIPPED"` rows, and ONLY when the ship predates the append — a backfill or migration. Live phase close: OMIT, `ts` already IS the ship time.
-- MAY be a literal (unlike `ts`, § Write Idiom) — it is not row identity. Source it: issue `closed_at`, migrated `docs/completed.md` entry date, merge-commit date.
+- Set ONLY on `status:"SHIPPED"` rows, and ONLY when the ship predates the append — a backfill. Live phase close: OMIT, `ts` already IS the ship time.
+- MAY be a literal (unlike `ts`, § Write Idiom) — it is not row identity. Source it: issue `closed_at`, merge-commit date.
 - NEVER a guess. No defensible source = omit and accept `ts` ordering.
 
 ## Categories
@@ -277,7 +277,7 @@ Identity tuple, NOT bare `ts`:
 | Kind | Identity tuple |
 | --- | --- |
 | `compliance` | `(repo, workflow, parentSha, rule)` |
-| `outcome` | `(repo, workflow, parentSha)` — `prNumber` / `ts` fallback on legacy rows |
+| `outcome` | `(repo, workflow, parentSha)` — `prNumber` / `ts` fallback on rows without `parentSha` |
 | `counter` | `(repo, workflow, parentSha, counterName)` |
 | `friction` \| `deferral` \| `failure` \| `knowledge` \| `decision` | `(kind, repo, key)` |
 

@@ -174,14 +174,6 @@ describe("check ≡ install writeset parity — cloud=opencode (dry-run parity, 
 });
 
 // ---------------------------------------------------------------------------
-// MED-8 — runPayload WriteSet threading (DEFERRED placeholder)
-// ---------------------------------------------------------------------------
-
-it.todo(
-  "MED-8: WriteSet records core/payload writes once copyAdditive+runPayload are merged — see docs/pending.md MED-8",
-);
-
-// ---------------------------------------------------------------------------
 // --opencode dry-run parity (Task 2.2 "Done when" — bkit-dry-run-parity)
 // ---------------------------------------------------------------------------
 

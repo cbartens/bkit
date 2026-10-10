@@ -4,10 +4,9 @@ import * as path from "node:path";
 import { execSync, execFileSync, spawnSync } from "node:child_process";
 import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, dedupeById, } from "./bkit-preflight.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseCloudAgents, DEFAULT_CLOUD_AGENTS, getModuleManifest, CLOUD_MANIFEST_CLAUDE, } from "./bkit-manifest.js";
-import { readBkitVersion, readManagedVersion } from "./bkit-version.js";
+import { readManagedVersion } from "./bkit-version.js";
 import { getPkgRoot } from "./bkit-paths.js";
 import { detectMarkerStyle, findLineAnchoredMarkers, selectMarkers } from "./bkit-markers.js";
-import { lintLedgers } from "./bkit-telemetry-lint.js";
 import { detectOpencodeYmlProviderDrift, listStampedFiles, TEMPLATES_POINTER, } from "./bkit-modules.js";
 /**
  * Detect whether BKIT_GH_TOKEN_INSTALL is set in the shell environment.
@@ -74,8 +73,8 @@ export function hasGithubMcpServer(cwd) {
  * - "missing"  → .npmrc exists but lacks the registry mapping (emit advisory)
  * - "unknown"  → .npmrc is absent (silent skip — absence alone is not misconfiguration)
  *
- * A residual project-.npmrc auth-token line (`//npm.pkg.github.com/:_authToken=…`) is
- * neither required nor flagged here; detectNpmrcLegacyAuthToken nudges its removal.
+ * A project-.npmrc auth-token line (`//npm.pkg.github.com/:_authToken=…`) is neither
+ * required nor flagged here; detectNpmrcAuthTokenLine flags it.
  */
 export function detectNpmrcAuth(cwd) {
     const npmrcPath = path.join(cwd, ".npmrc");
@@ -85,13 +84,12 @@ export function detectNpmrcAuth(cwd) {
     return content.includes("@cbartens:registry=") ? "present" : "missing";
 }
 /**
- * Detect a legacy project-.npmrc auth-token line (`//npm.pkg.github.com/:_authToken=`).
+ * Detect a project-.npmrc auth-token line (`//npm.pkg.github.com/:_authToken=`).
  * On pnpm >=10.34.3 this line breaks installs: pnpm 401s on download
  * and, via config precedence (project .npmrc > user config), it shadows the user-level
- * token written by `pnpm config set`. Returns true when present; a migration advisory
- * nudges its removal.
+ * token written by `pnpm config set`. Returns true when present.
  */
-export function detectNpmrcLegacyAuthToken(cwd) {
+export function detectNpmrcAuthTokenLine(cwd) {
     const npmrcPath = path.join(cwd, ".npmrc");
     if (!fs.existsSync(npmrcPath))
         return false;
@@ -269,7 +267,7 @@ export function detectVercelInstallCommandMissingAuth(cwd) {
  *   (2) the `BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}` env mapping that feeds it.
  * Either missing → the next install 401s on download. Severity is "blocker" when the
  * project .npmrc shows the repo authenticates to GH Packages (registry mapping or a
- * legacy ${BKIT_GH_TOKEN_INSTALL} ref); otherwise "advisory". Phase 3 does not exit-1
+ * ${BKIT_GH_TOKEN_INSTALL} ref); otherwise "advisory". Phase 3 does not exit-1
  * (writes already happened).
  */
 export function detectCiYmlMissingTokenEnv(cwd) {
@@ -285,7 +283,7 @@ export function detectCiYmlMissingTokenEnv(cwd) {
     const hasTokenEnv = /BKIT_GH_TOKEN_INSTALL\s*:\s*["']?\$\{\{\s*secrets\.BKIT_GH_TOKEN_INSTALL\s*\}\}["']?/.test(content);
     // User-level auth step: `pnpm config set "//npm.pkg.github.com/:_authToken=…"`.
     const hasConfigSet = /pnpm\s+config\s+set\s+["']?\/\/npm\.pkg\.github\.com\/:_authToken=/.test(content);
-    // Correctly wired for the new shape → no finding.
+    // Correctly wired → no finding.
     if (hasTokenEnv && hasConfigSet)
         return null;
     // Blocker when .npmrc shows the repo authenticates to GH Packages — next run 401s.
@@ -481,11 +479,11 @@ export function detectCiYmlRunInjection(cwd) {
  * Detect drift of the consumer's `bkit-tests-check` capstone from bkit's canonical
  * CI contract. ci.yml is the consumer's copy of a template; bkit never rewrites it.
  * WARNING-ONLY presence check: flags the ABSENCE of a known-good fragment, never
- * "differs from canonical". Fires only when the consumer opted into the capstone
- * scaffold (an uncommented bkit-tests-check job).
+ * "differs from canonical". Fires when ci.yml defines a bkit-tests-check job (the
+ * template ships one).
  *
- * Every check reads `code` (full-line comments stripped): the template's commented-out
- * stubs name `bkit-tests-check`, `!cancelled()` and `live_ran`.
+ * Every check reads `code` (full-line comments stripped): the template's commented
+ * scaffold reference names `bkit-tests-check`, `!cancelled()` and `live_ran`.
  */
 export function detectCiYmlCapstoneContractDrift(cwd) {
     const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
@@ -497,7 +495,7 @@ export function detectCiYmlCapstoneContractDrift(cwd) {
         .filter((line) => !/^\s*#/.test(line))
         .join("\n");
     if (!/^\s+bkit-tests-check:/m.test(code))
-        return null; // capstone scaffold not in use
+        return null; // no capstone job
     const missing = [];
     // 1. Capstone must run on !cancelled() (NOT always()) — else a concurrency-cancel
     //    stamps a bogus failure on the required check and blocks release PRs.
@@ -762,6 +760,15 @@ export function detectValePackageNotSynced(cwd) {
     }
     if (fs.existsSync(path.join(cwd, ".vale", "styles", "write-good")))
         return null;
+    // `vale sync` reads `Packages` from .vale.ini; without one it has nothing to download.
+    if (!fs.existsSync(path.join(cwd, ".vale.ini"))) {
+        return {
+            id: "vale-package-not-synced",
+            severity: "advisory",
+            detect: "vale is on PATH but the repo has no .vale.ini and .vale/styles/write-good/ is absent — prose linting does not run.",
+            action: "Adopt bkit's Vale template first: copy .bkit/templates/.vale.ini to .vale.ini and .bkit/templates/.vale/styles/House/*.yml to .vale/styles/House/. Then run `vale sync` (one-time per repo) to download the write-good package the copied .vale.ini names. `vale sync` reads its package list from .vale.ini, so it cannot fetch write-good before that file exists.",
+        };
+    }
     return {
         id: "vale-package-not-synced",
         severity: "advisory",
@@ -860,7 +867,7 @@ const BKIT_STUBS = [
     {
         id: "bkit-tests-scope",
         file: ".github/workflows/ci.yml",
-        description: "Promote run-level detection into a standalone always-on `bkit-tests-scope` job that emits ONE bkit-test-plan JSON (run_level / web_affected / run_e2e / run_live / run_migration), consumed by every tier via `fromJSON(needs.bkit-tests-scope.outputs.plan).<field>`. `run_migration` (#385) gates migration-lane HEAVY replay steps only — the migration job itself stays always-on so e2e/live can `needs:` it. This is the foundation of the scaffold that makes 'CI green' mean 'the planned tests actually ran'. bkit ships a single-package (no affected-graph) version in its OWN .github/workflows/ci.yml — copy from there if you are not a monorepo. NAME: this job was called `bkit-decide` before; keep the name inside the bkit-tests-* namespace so bkit's CI-Dispatch Gate (which polls for any bkit-tests-* check on the pushed HEAD) can see it. NAMESPACE TRAP: it is the PLANNER, not a test lane — any capstone/guard that treats every bkit-tests-* job as a lane must exempt it BY NAME and assert its result explicitly, or a scope failure goes unasserted and the capstone stays green.",
+        description: "Promote run-level detection into a standalone always-on `bkit-tests-scope` job that emits ONE bkit-test-plan JSON (run_level / web_affected / run_e2e / run_live / run_migration), consumed by every tier via `fromJSON(needs.bkit-tests-scope.outputs.plan).<field>`. `run_migration` (#385) gates migration-lane HEAVY replay steps only — the migration job itself stays always-on so e2e/live can `needs:` it. This is the foundation of the scaffold that makes 'CI green' mean 'the planned tests actually ran'. The FULL CI SCAFFOLD REFERENCE (JOB 1) in `.bkit/templates/.github/workflows/ci.yml` lays the job out step by step (a single-package repo drops the [M] steps; the plan then comes from the commit markers and the event alone); `.bkit/templates.md` § CI workflow covers the `bkit-tests-check` capstone it feeds. Add the planner to the capstone's `needs:` and gate each lane on `run_level != 'none'`. NAME: keep it inside the bkit-tests-* namespace so bkit's CI-Dispatch Gate (which polls for any bkit-tests-* check on the pushed HEAD) can see it. NAMESPACE TRAP: it is the PLANNER, not a test lane — any capstone/guard that treats every bkit-tests-* job as a lane must exempt it BY NAME and assert its result explicitly, or a scope failure goes unasserted and the capstone stays green.",
     },
     {
         id: "affected-graph",
@@ -871,11 +878,6 @@ const BKIT_STUBS = [
         id: "bkit-tests-live-web",
         file: ".github/workflows/ci.yml",
         description: "Add push-only `bkit-tests-live-web` running the @live tier against the deployed URL. Omit the job if you have no deploy. needs: [bkit-tests-scope, bkit-tests-migration, bkit-tests-reset, bkit-tests-build-web], each with result != 'failure' except scope (success) and the lane's own run_live gate. Do NOT also needs: static/unit/integration/e2e. A planned failure reds the capstone. /bkit-ship still filters a job named bkit-tests-live; this name does not match.",
-    },
-    {
-        id: "bkit-tests-check",
-        file: ".github/workflows/ci.yml",
-        description: "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `bkit setup protect-main` (it requires `package.json` `bkit.capstoneJob`, default bkit-tests-check), NOT bkit-tests-scope (which is always green). With one lane per tier (recommended), `needs:` EVERY test lane and assert each lane's `result` + its `<tier>_ran` count > 0 when planned (see bkit's own bkit-tests-check assert_ran); a repo that keeps tiers as steps asserts via `steps.<tier>.outcome` + step-emitted counts instead. ALSO assert bkit-tests-scope's own `result` explicitly: it sits in `needs:` and in the bkit-tests-* namespace but is NOT a test lane, so a per-lane loop skips it and a scope failure would leave the capstone green.",
     },
     {
         id: "bkit-tests-migration",
@@ -994,31 +996,6 @@ export function detectBkitStubs(cwd) {
     // is still present (still disabled).
     const ciContent = readOnce(".github/workflows/ci.yml");
     if (ciContent) {
-        // Legacy scaffold job names. `bkit-decide` sits outside the bkit-tests-* namespace that
-        // bkit's CI-Dispatch Gate polls the pushed HEAD for (it matches only via the gate's legacy
-        // `decide` alternation). Detected on the uncommented job key; the commented scaffold
-        // reference does not fire this.
-        const hasLegacyJob = (jobName) => new RegExp(`(^|\\n)\\s{2}${jobName}:\\s*(\\n|$)`).test(ciContent);
-        const legacyJobs = ["bkit-decide", "bkit-tests-migrate"].filter(hasLegacyJob);
-        if (legacyJobs.length > 0) {
-            // docs/testing.md is bkit-managed and refreshes on every upgrade, so it already names
-            // the CURRENT jobs (bkit-tests-scope / bkit-tests-migration) while this ci.yml —
-            // the consumer's file, which upgrade never rewrites — still names the legacy ones. The
-            // finding states that docs-vs-CI skew when the managed docs are present and already
-            // migrated. readOnce reuses the cache + baseline read-guard.
-            const testingDoc = readOnce("docs/testing.md");
-            const docsSkew = !!testingDoc &&
-                (testingDoc.includes("bkit-tests-scope") || testingDoc.includes("bkit-tests-migration"));
-            findings.push({
-                id: "ci-legacy-scaffold-job-names",
-                severity: "advisory",
-                detect: `.github/workflows/ci.yml defines the legacy scaffold job${legacyJobs.length > 1 ? "s" : ""} ${legacyJobs.join(" + ")} — the current scaffold uses bkit-tests-scope / bkit-tests-migration.` +
-                    (docsSkew
-                        ? " docs/testing.md (bkit-managed, refreshed on upgrade) already names the current jobs, so docs and ci.yml now describe DIFFERENT job names — an agent reading the docs will not find the jobs they reference."
-                        : ""),
-                action: "Rename `bkit-decide` -> `bkit-tests-scope` and `bkit-tests-migrate` -> `bkit-tests-migration` (job key, `name:`, and every `needs:` / `fromJSON(needs.<job>.outputs.plan)` reference). ALSO rename the planner's plan-emitting step `id: decide` -> `id: scope` and its `steps.decide.outputs.plan` reader in the job's `outputs:` block — the id is job-local, so this is a self-contained edit with no cross-job fan-out. WHY: every scaffold job then shares the bkit-tests-* namespace that bkit's CI-Dispatch Gate polls to confirm CI dispatched for a pushed HEAD. THEN: bkit-tests-scope is the planner, NOT a test lane, but it now lives in the lane namespace — make sure your capstone still asserts its `result` explicitly and that any guard looping over bkit-tests-* jobs exempts it by name, or a scope failure leaves the capstone green. Branch protection is unaffected (the required check stays bkit-tests-check).",
-            });
-        }
         // Match a YAML step name uncommented (leading `- name:` not preceded by `#`).
         const isStepEnabled = (stepName) => {
             const re = new RegExp(`(^|\\n)\\s*- name:\\s*${stepName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
@@ -1170,7 +1147,7 @@ export function detectTestIntegrationEnv(cwd) {
         id: "test-integration-env-not-asserted",
         severity: "advisory",
         detect: "`package.json#scripts.test:integration` exists, but no real-service env gating (TEST_REAL_APIS, SUPABASE_SERVICE_ROLE, service-role URL, or a `supabase start` chain) was found in the script, the CI workflow lane that runs it, or the vitest integration config.",
-        action: "Confirm integration tests actually exercise real services — otherwise the seeded ci.yml integration step is a no-op (KN-23 false-confidence loop). Provision the real-service env at ANY one of these layers (all are recognised):\n\n" +
+        action: "Confirm integration tests actually exercise real services — otherwise the CI integration step (your own, or the one in bkit's ci.yml template once adopted) is a no-op (KN-23 false-confidence loop). Provision the real-service env at ANY one of these layers (all are recognised):\n\n" +
             '  - script: "test:integration": "TEST_REAL_APIS=true SUPABASE_URL=$SUPABASE_DEV_URL vitest run --config=vitest.integration.config.ts"\n' +
             "  - CI lane: set `TEST_REAL_APIS` / export the service-role URL / chain `supabase start` around `turbo run test:integration` in the `.github/workflows/*.yml` job that runs it (keeps local `pnpm test:integration` env-agnostic)\n" +
             "  - vitest integration config: document/enforce the per-file `TEST_REAL_APIS` guard in the config the script `--config`s to.",
@@ -1179,25 +1156,18 @@ export function detectTestIntegrationEnv(cwd) {
 /**
  * Detect whether `.github/workflows/<file>.yml` uses floating action tag
  * references (`uses: <owner>/<repo>@v\d+`) without SHA pinning. KN-3 mandates
- * SHA pins for any workflow that runs with elevated permissions.
- *
- * bkit-owned workflow files (those tracked in `.bkit/version` `canonicalHashes`)
- * are exempt — bkit owns their pins and `bkit install` rewrites them.
+ * SHA pins for any workflow that runs with elevated permissions. Every workflow file
+ * is the consumer's (bkit ships workflows as templates only), so every one is scanned.
  */
 export function detectGhaFloatingTags(cwd) {
     const workflowsDir = path.join(cwd, ".github", "workflows");
     if (!fs.existsSync(workflowsDir) || !fs.statSync(workflowsDir).isDirectory())
         return null;
-    const bkitVersion = readBkitVersion(path.join(cwd, ".bkit", "version"));
-    const canonicalPaths = new Set(Object.keys(bkitVersion?.canonicalHashes ?? {}));
     const floatingByFile = new Map();
     for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
         if (!entry.isFile())
             continue;
         if (!/\.ya?ml$/.test(entry.name))
-            continue;
-        const relPath = `.github/workflows/${entry.name}`;
-        if (canonicalPaths.has(relPath))
             continue;
         const content = fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8");
         // Matches `uses: org/repo@v1`, `uses: org/repo@v1.2.3`, but NOT `uses: org/repo@<40-char-sha>`.
@@ -1250,8 +1220,6 @@ export function detectRunLevelsNotComposed(cwd) {
     const readTokens = [
         "steps.detect.outputs.should_force_build",
         "steps.detect.outputs.should_run_full",
-        // Legacy output an older template emitted; matched too.
-        "steps.detect.outputs.should_run_e2e",
     ];
     const composesRunLevels = (content) => content
         .split("\n")
@@ -1472,7 +1440,7 @@ export function buildGithubProjectAdvisory(cwd) {
             "the option ids (quoted strings). `gh project field-list`'s `id` is the GraphQL node id (`PVTSSF_…`) " +
             "and must NOT be used for `statusFieldId` — `projects_write` rejects it with " +
             "`updated_field.id: value must be a number`.\n\n" +
-            "2. Ensure the root `.mcp.json` github server enables the `projects` toolset (older installs predate it):\n\n" +
+            "2. Ensure the root `.mcp.json` github server enables the `projects` toolset:\n\n" +
             '       "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects"\n\n' +
             "3. The `BKIT_GH_TOKEN` PAT needs organization-scoped Projects read & write (repo scope is not enough).\n\n" +
             "To opt out and silence this advisory, set `bkit.githubProject` to `false` in package.json.",
@@ -1558,8 +1526,8 @@ function updaterConfigPaths(cwd) {
             : null;
     return { renovate, dependabot };
 }
-/** Legacy `bkit.depUpdater: "none"` still silences the missing-updater suggestion. Other values are ignored. */
-function legacyDepUpdaterOptOut(cwd) {
+/** `bkit.depUpdater: "none"` silences the missing-updater suggestion. Other values are ignored. */
+function depUpdaterOptOut(cwd) {
     const pkgPath = path.join(cwd, "package.json");
     if (!fs.existsSync(pkgPath))
         return false;
@@ -1576,7 +1544,7 @@ function legacyDepUpdaterOptOut(cwd) {
  * Read-only dependency-updater check.
  *
  * - Both Renovate and Dependabot configs → they open competing PRs.
- * - No updater config, workflows exist, and the legacy opt-out is unset → point
+ * - No updater config, workflows exist, and the opt-out is unset → point
  *   at the example templates.
  */
 export function buildDepUpdaterSetupAdvisory(cwd) {
@@ -1591,7 +1559,7 @@ export function buildDepUpdaterSetupAdvisory(cwd) {
     }
     if (renovate || dependabot)
         return null;
-    if (legacyDepUpdaterOptOut(cwd))
+    if (depUpdaterOptOut(cwd))
         return null;
     if (!fs.existsSync(path.join(cwd, ".github", "workflows")))
         return null;
@@ -1602,36 +1570,6 @@ export function buildDepUpdaterSetupAdvisory(cwd) {
         action: "Copy one example and own it:\n\n" +
             `  ${UPDATER_EXAMPLE_PATHS}\n\n` +
             'Use one updater, not both. To silence this advisory, set `bkit.depUpdater` to `"none"` in package.json. See .bkit/templates.md.',
-    };
-}
-/**
- * One-time migration nudge for the BKIT_-prefixed GitHub token names. bkit uses:
- *   - `BKIT_GH_TOKEN_INSTALL` — classic `read:packages` PAT for GitHub Packages install /
- *     lockfile auth (widely distributed: local, CI, Vercel, Renovate hostRules).
- *   - `BKIT_GH_TOKEN` — the general fine-grained WRITE PAT (GitHub MCP server +, when
- *     enabled, self-hosted Renovate platform auth).
- * Retired names: `GH_BKIT_TOKEN_INSTALL`, `GH_BKIT_TOKEN`, `GH_MCP_TOKEN`. Fires when
- * `.bkit/.env` still shows a retired name, so an un-migrated consumer is not left with a
- * bare "BKIT_GH_TOKEN_INSTALL missing" and no rename hint.
- */
-export function buildTokenRenameMigrationAdvisory(cwd) {
-    const envPath = path.join(cwd, ".bkit", ".env");
-    if (!fs.existsSync(envPath))
-        return null;
-    const content = fs.readFileSync(envPath, "utf-8");
-    const hasMcp = /^\s*GH_MCP_TOKEN\s*=/m.test(content);
-    const hasLegacyGhBkit = /^\s*GH_BKIT_TOKEN(?:_INSTALL)?\s*=/m.test(content);
-    if (!hasMcp && !hasLegacyGhBkit)
-        return null;
-    return {
-        id: "gh-token-scheme-rename",
-        severity: "advisory",
-        detect: "`.bkit/.env` uses a retired GitHub token name. bkit prefixes direnv-loaded keys with `BKIT_`: `BKIT_GH_TOKEN_INSTALL` (classic `read:packages`, for GitHub Packages install / lockfile auth) and `BKIT_GH_TOKEN` (the general fine-grained WRITE token — GitHub MCP + self-hosted Renovate platform auth). The prefix keeps them from colliding with `GH_TOKEN` or other direnv exports.",
-        action: "Rename the keys wherever the token is set — the VALUES do not change:\n\n" +
-            "  1. `.bkit/.env`: rename `GH_BKIT_TOKEN_INSTALL` -> `BKIT_GH_TOKEN_INSTALL`, `GH_BKIT_TOKEN` -> `BKIT_GH_TOKEN`, and `GH_MCP_TOKEN` -> `BKIT_GH_TOKEN`. Then `direnv allow` and restart your editor.\n" +
-            "  2. Everywhere else the classic install token lives, rename `GH_BKIT_TOKEN_INSTALL` -> `BKIT_GH_TOKEN_INSTALL`: the CI Actions secret (`gh secret set BKIT_GH_TOKEN_INSTALL`), Vercel env (preview + production), the `pnpm config set` auth line, and — if you use Mend-hosted Renovate — the Mend dashboard secret.\n" +
-            "  3. If you run the example self-hosted Renovate workflow, `BKIT_GH_TOKEN` is also its platform secret — add it as a repo Actions secret.\n\n" +
-            "Detail: docs/deployments.md § `BKIT_GH_TOKEN_INSTALL` — presence matrix.",
     };
 }
 /**
@@ -1690,8 +1628,8 @@ export function buildCloudSetupAdvisory(cwd) {
     const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
     if (fs.existsSync(routerPath)) {
         // Config-consistency assertion: cloud=claude requires id-token: write.
-        // If the recorded variant is "claude" (or back-compat legacy "enabled" mapped to claude)
-        // and the workflow file lacks id-token: write, surface a consistency finding.
+        // If the recorded variant is "claude" and the workflow file lacks id-token: write,
+        // surface a consistency finding.
         const recordedVariant = readConsumerCloudAgents(cwd);
         if (recordedVariant === "claude") {
             const workflowContent = fs.readFileSync(routerPath, "utf-8");
@@ -1769,7 +1707,7 @@ export function buildCloudDashboardsAdvisory(cwd) {
             ghSetLines +
             "2. **Cursor Cloud Agents** (used by Cursor's cloud agent runner): open `https://cursor.com/dashboard/cloud-agents` → your environment → **Secrets** tab. Add each secret as a **Runtime Secret** (loaded as an env var, redacted from the agent's transcript). Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but secrets come from this dashboard only; the resolved paste-ready values are in `.cursor/cloud.md` (gitignored).\n\n" +
             "3. **Claude Code (web)** (used by Claude.ai's cloud agent runner): open `https://claude.ai/code` → Settings → Setup → Environment Variables. Add each secret. Claude reads its setup script from the dashboard, NOT from the repo, so changes here do not require a commit.\n\n" +
-            "**Debug-fetch (`/bkit-debug` in the cloud):** if you run the debug workflow in these cloud agents, the observability creds your `.agents/context.md` context-fetch blocks use (e.g. `VERCEL_TOKEN`, `SUPABASE_ACCESS_TOKEN`) must ALSO be set in the same dashboards above — non-interactively, since headless agents cannot `vercel login`. These are operator/observability READ creds, not app-runtime secrets. Commit the non-secret selectors (team scope / project ref / `--environment`) in your copied block so they need no dashboard entry. The CLIs those blocks call install automatically in the cloud from each block's `context-fetch:provision` sibling — no manual setup.\n\n" +
+            "**Context-fetch (`/bkit-debug` in the cloud):** if you run the debug workflow in these cloud agents, the observability creds your `.agents/context.md` context-fetch blocks use (e.g. `VERCEL_TOKEN`, `SUPABASE_ACCESS_TOKEN`) must ALSO be set in the same dashboards above — non-interactively, since headless agents cannot `vercel login`. These are operator/observability READ creds, not app-runtime secrets. Commit the non-secret selectors (team scope / project ref / `--environment`) in your copied block so they need no dashboard entry. The CLIs those blocks call install automatically in the cloud from each block's `context-fetch:provision` sibling — no manual setup.\n\n" +
             "Same VALUE in all places. BKIT_GH_TOKEN_INSTALL must be a PAT with `read:packages` (classic) or `Packages: read` (fine-grained) scope. " +
             vendorNote,
     };
@@ -1821,7 +1759,7 @@ const AGENT_INLINE_SOURCE_GUIDANCE = "AGENT NOTE — if you are an AI coding age
     '    echo "len=${#BKIT_GH_TOKEN_INSTALL}"';
 const BKIT_GH_TOKEN_INSTALL_MISSING_ACTION = "Add the @cbartens registry mapping to .npmrc at the repo root (the token is NOT stored here):\n\n" +
     "    @cbartens:registry=https://npm.pkg.github.com\n\n" +
-    "Write the token into pnpm's user-level config (run once locally; the CI install step does this automatically):\n\n" +
+    "Write the token into pnpm's user-level config (run once locally; CI does this in its install step, shown below):\n\n" +
     '    pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n\n' +
     "Then set the BKIT_GH_TOKEN_INSTALL secret on this repo. The token must be a GitHub PAT (classic or fine-grained) with read:packages scope (classic) OR Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens\n\n" +
     "Run ONE of these to set it:\n\n" +
@@ -1836,8 +1774,8 @@ const BKIT_GH_TOKEN_INSTALL_MISSING_ACTION = "Add the @cbartens registry mapping
     "IMPORTANT — pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution and 401s on download (ERR_PNPM_FETCH_401), so the token must be set via `pnpm config set` — the shell expands $BKIT_GH_TOKEN_INSTALL to the literal token before pnpm stores it in user-level config, version-proof across pnpm 10.x and 11.x. Metadata calls (pnpm view) can still resolve, so the failure only shows on a real install.\n\n" +
     "Verify secret set: gh secret list | grep BKIT_GH_TOKEN_INSTALL";
 const BKIT_GH_TOKEN_INSTALL_UNKNOWN_ACTION = "Could not auto-check BKIT_GH_TOKEN_INSTALL secret (gh CLI unavailable, unauthenticated, or this isn't a GitHub repo yet).\n\n" +
-    "Manually verify the BKIT_GH_TOKEN_INSTALL secret exists on the consumer's GitHub repo. It is required for the seeded ci.yml install step (`pnpm config set` + `pnpm install`) to authenticate against the GitHub Packages npm registry when installing @cbartens/bkit.\n\n" +
-    "IMPORTANT — pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution and 401s on download (ERR_PNPM_FETCH_401). The seeded install step writes the token via `pnpm config set` (the shell expands $BKIT_GH_TOKEN_INSTALL to the literal token before pnpm stores it in user-level config); if BKIT_GH_TOKEN_INSTALL is unset there, that write is empty and the install 401s.\n\n" +
+    "Manually verify the BKIT_GH_TOKEN_INSTALL secret exists on the consumer's GitHub repo. It is required for the CI install step (`pnpm config set` + `pnpm install`) to authenticate against the GitHub Packages npm registry when installing @cbartens/bkit. bkit's ci.yml template (.bkit/templates/.github/workflows/ci.yml) carries that step; copy it into your own .github/workflows/ci.yml when you adopt the template.\n\n" +
+    "IMPORTANT — pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution and 401s on download (ERR_PNPM_FETCH_401). The template's install step writes the token via `pnpm config set` (the shell expands $BKIT_GH_TOKEN_INSTALL to the literal token before pnpm stores it in user-level config); if BKIT_GH_TOKEN_INSTALL is unset there, that write is empty and the install 401s.\n\n" +
     "Once `gh` is installed and authenticated, get your token and export it:\n\n" +
     "    export BKIT_GH_TOKEN_INSTALL=$(gh auth token)\n\n" +
     "Then verify the secret is set on the repo:\n\n" +
@@ -1847,7 +1785,7 @@ const BKIT_GH_TOKEN_INSTALL_UNKNOWN_ACTION = "Could not auto-check BKIT_GH_TOKEN
 const VERCEL_MISSING_ACTION = "Add the @cbartens registry mapping to .npmrc at the repo root (the token is NOT stored here):\n\n" +
     "    @cbartens:registry=https://npm.pkg.github.com\n\n" +
     "Commit this .npmrc — Vercel reads it during its build.\n\n" +
-    "Vercel runs pnpm install in a fresh container and cannot run a pre-install shell step, so write the auth token via an installCommand in vercel.json (remove any legacy git-shim installCommand first):\n\n" +
+    "Vercel runs pnpm install in a fresh container and cannot run a pre-install shell step, so write the auth token via an installCommand in vercel.json:\n\n" +
     '    "installCommand": "pnpm config set //npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL && pnpm install"\n\n' +
     "Set BKIT_GH_TOKEN_INSTALL as a Vercel environment variable for each environment:\n\n" +
     "    vercel env add BKIT_GH_TOKEN_INSTALL preview\n" +
@@ -2186,28 +2124,6 @@ export function detectOwnedHookMissing(missing) {
 // runPostInstallCheck — main Phase 3 entry point
 // ---------------------------------------------------------------------------
 /**
- * DE-<n>/KN-<n> alias collisions in the key-bearing ledgers — one number claimed
- * by more than one unrelated row (ids minted by "scan-highest-and-increment" under
- * concurrent workflows, joined by `merge=union`). Advisory, never a blocker; the fix is
- * `bkit telemetry normalise`. Read-only fs scan.
- */
-export function detectLedgerAliasCollisions(cwd) {
-    const { collisions } = lintLedgers(cwd);
-    if (collisions.length === 0)
-        return null;
-    const sample = collisions
-        .slice(0, 5)
-        .map((c) => `${c.id} (${c.keys.length} rows)`)
-        .join(", ");
-    const more = collisions.length > 5 ? `, and ${collisions.length - 5} more` : "";
-    return {
-        id: "ledger-alias-collisions",
-        severity: "advisory",
-        detect: `${collisions.length} DE-<n>/KN-<n> alias collision(s) in docs/decisions.jsonl / docs/knowledge.jsonl — one id claimed by unrelated rows, so a bare citation is ambiguous: ${sample}${more}.`,
-        action: "Run `bkit telemetry normalise` to demote each number to references[] and re-key the colliding rows (parity-gated + idempotent), then cite the slug `key` (not the bare number) going forward. Verify first with `bkit telemetry validate`.",
-    };
-}
-/**
  * Re-run token-surface + ci.yml + vale-sync detectors after writes.
  *
  * - Intra-phase dedup: Phase 3 findings are deduped by id (first occurrence wins).
@@ -2234,7 +2150,7 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd()) {
             id: "gh-bkit-token-unset-shell",
             severity: "advisory",
             detect: "BKIT_GH_TOKEN_INSTALL is not set in the shell environment (undefined).",
-            action: "Set BKIT_GH_TOKEN_INSTALL in .bkit/.env (canonical local-secrets file, gitignored), then have direnv auto-load it on cd:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set BKIT_GH_TOKEN_INSTALL=<classic PAT, read:packages scope>\n    direnv allow                                 # one-time per repo; requires `brew install direnv` + shell hook\n\nThen restart your editor (Claude Code / Cursor) so the new env reaches MCP servers. Generate the PAT at: https://github.com/settings/tokens (Tokens (classic)). Fine-grained PATs are rejected by GitHub Packages with HTTP 403 — must be classic.\n\nLegacy fallback (if direnv unavailable): export BKIT_GH_TOKEN_INSTALL=<your-pat> in ~/.zshrc / ~/.bashrc.\n\n" +
+            action: "Set BKIT_GH_TOKEN_INSTALL in .bkit/.env (canonical local-secrets file, gitignored), then have direnv auto-load it on cd:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set BKIT_GH_TOKEN_INSTALL=<classic PAT, read:packages scope>\n    direnv allow                                 # one-time per repo; requires `brew install direnv` + shell hook\n\nThen restart your editor (Claude Code / Cursor) so the new env reaches MCP servers. Generate the PAT at: https://github.com/settings/tokens (Tokens (classic)). Fine-grained PATs are rejected by GitHub Packages with HTTP 403 — must be classic.\n\nFallback (if direnv unavailable): export BKIT_GH_TOKEN_INSTALL=<your-pat> in ~/.zshrc / ~/.bashrc.\n\n" +
                 AGENT_INLINE_SOURCE_GUIDANCE,
         });
     }
@@ -2285,14 +2201,14 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd()) {
         });
     }
     // "unknown" (absent) → silent skip per spec
-    // .npmrc legacy auth-token line — migration nudge. The committed project .npmrc must
-    // NOT carry `//npm.pkg.github.com/:_authToken=…`: pnpm >=10.34.3 401s on it AND it
-    // shadows the user-level token written by `pnpm config set` (project config wins).
-    if (detectNpmrcLegacyAuthToken(cwd)) {
+    // .npmrc auth-token line. The committed project .npmrc must NOT carry
+    // `//npm.pkg.github.com/:_authToken=…`: pnpm >=10.34.3 401s on it AND it shadows the
+    // user-level token written by `pnpm config set` (project config wins).
+    if (detectNpmrcAuthTokenLine(cwd)) {
         phase3.push({
-            id: "npmrc-legacy-authtoken",
+            id: "npmrc-authtoken-line",
             severity: "advisory",
-            detect: ".npmrc carries a legacy `//npm.pkg.github.com/:_authToken=…` line. pnpm >=10.34.3 401s on a project-.npmrc auth token (ERR_PNPM_FETCH_401), and via config precedence (project > user) it shadows the token written by `pnpm config set`.",
+            detect: ".npmrc carries a `//npm.pkg.github.com/:_authToken=…` line. pnpm >=10.34.3 401s on a project-.npmrc auth token (ERR_PNPM_FETCH_401), and via config precedence (project > user) it shadows the token written by `pnpm config set`.",
             action: "Remove the `//npm.pkg.github.com/:_authToken=…` line from .npmrc — keep ONLY the registry mapping:\n\n" +
                 "    @cbartens:registry=https://npm.pkg.github.com\n\n" +
                 "Then write the token into pnpm's user-level config instead (CI does this in its install step):\n\n" +
@@ -2393,10 +2309,6 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd()) {
     const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
     if (depUpdaterSetup)
         phase3.push(depUpdaterSetup);
-    // One-time GitHub-token scheme rename (BKIT_GH_TOKEN split into _INSTALL + general).
-    const tokenRename = buildTokenRenameMigrationAdvisory(cwd);
-    if (tokenRename)
-        phase3.push(tokenRename);
     const cloudSetup = buildCloudSetupAdvisory(cwd);
     if (cloudSetup)
         phase3.push(cloudSetup);
@@ -2481,11 +2393,6 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd()) {
     const wfLintTools = detectWorkflowLintToolsMissing(cwd);
     if (wfLintTools)
         phase3.push(wfLintTools);
-    // DE-<n>/KN-<n> alias collisions in the key-bearing ledgers (silent duplicate ids
-    // from scan-highest-and-increment minting in older ledgers). Read-only fs scan.
-    const ledgerCollisions = detectLedgerAliasCollisions(cwd);
-    if (ledgerCollisions)
-        phase3.push(ledgerCollisions);
     // [mcp-env] direnv + .bkit/.env advisories.
     // Wired here in Phase 3 — the .bkit/.env.example scaffold only exists after
     // writes, so Phase 1 cannot see it on first install.

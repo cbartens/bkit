@@ -7,25 +7,18 @@
 
 const START_MARKER = "<!-- bkit:start -->";
 const END_MARKER = "<!-- bkit:end -->";
-const HASH_START_MARKER = "# bkit:start";
-const HASH_END_MARKER = "# bkit:end";
 const SLASH_START_MARKER = "// bkit:start";
 const SLASH_END_MARKER = "// bkit:end";
 
-// Marker style selector: html-comment (default, backward-compat), hash-comment (YAML/INI/shell),
-// or slash-comment (JS/TS ES modules, where HTML comments are a syntax error).
-export type MarkerStyle = "html-comment" | "hash-comment" | "slash-comment";
+// Marker style selector: html-comment (default; markdown, and shell / `.gitignore` behind a
+// `# ` prefix) or slash-comment (JS/TS ES modules, where HTML comments are a syntax error).
+export type MarkerStyle = "html-comment" | "slash-comment";
 
 // Select marker pair based on markerStyle.
 export function selectMarkers(markerStyle: MarkerStyle): [string, string] {
-  switch (markerStyle) {
-    case "hash-comment":
-      return [HASH_START_MARKER, HASH_END_MARKER];
-    case "slash-comment":
-      return [SLASH_START_MARKER, SLASH_END_MARKER];
-    default:
-      return [START_MARKER, END_MARKER];
-  }
+  return markerStyle === "slash-comment"
+    ? [SLASH_START_MARKER, SLASH_END_MARKER]
+    : [START_MARKER, END_MARKER];
 }
 
 // Recognised line-comment prefixes — bare, shell (#), JS/TS (//).
@@ -136,7 +129,7 @@ export function extractFullManagedBlock(
 // always one stripManagedBlock acts on: a marker alone on its line, bare or behind
 // a `# ` / `// ` prefix. Labelled, indented, or prose-quoted markers do not count.
 export function detectMarkerStyle(content: string): MarkerStyle | null {
-  for (const style of ["html-comment", "hash-comment", "slash-comment"] as const) {
+  for (const style of ["html-comment", "slash-comment"] as const) {
     const [startMarker] = selectMarkers(style);
     if (findLineAnchoredMarkers(content, startMarker).length > 0) return style;
   }

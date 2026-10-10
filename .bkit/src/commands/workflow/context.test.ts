@@ -14,8 +14,8 @@ import {
   contextCommand,
   fetchBlocks,
   humanBytes,
-  parseMarker,
 } from "./context";
+import { parseContextFetchStart } from "../../bkit-preflight";
 
 const FOOTER_2 = "> Dropped content was NOT read. Its absence is not evidence.";
 
@@ -547,23 +547,26 @@ const CONTEXT_MD = [
   "",
 ].join("\n");
 
-describe("context-fetch block parsing (debug Step 4 awk parsers)", () => {
+describe("context-fetch block parsing", () => {
   it("parses name and context, last token winning, context defaulting to runtime", () => {
-    expect(parseMarker("<!-- context-fetch:start github context=ci -->")).toEqual({
+    expect(parseContextFetchStart("<!-- context-fetch:start github context=ci -->")).toEqual({
       context: "ci",
       name: "github",
     });
-    expect(parseMarker("<!-- context-fetch:start -->")).toEqual({ context: "runtime", name: "" });
-    expect(parseMarker("<!-- context-fetch:start\ta  b context=e2e -->")).toEqual({
+    expect(parseContextFetchStart("<!-- context-fetch:start -->")).toEqual({
+      context: "runtime",
+      name: "",
+    });
+    expect(parseContextFetchStart("<!-- context-fetch:start\ta  b context=e2e -->")).toEqual({
       context: "e2e",
       name: "b",
     });
     // glued close: the marker parser strips `-->` first
-    expect(parseMarker("<!-- context-fetch:start x context=ci-->")).toEqual({
+    expect(parseContextFetchStart("<!-- context-fetch:start x context=ci-->")).toEqual({
       context: "ci",
       name: "x",
     });
-    expect(parseMarker("<!-- context-fetch:start   vercel   -->")).toEqual({
+    expect(parseContextFetchStart("<!-- context-fetch:start   vercel   -->")).toEqual({
       context: "runtime",
       name: "vercel",
     });
@@ -623,7 +626,7 @@ describe("bkit context list-blocks", () => {
   });
 
   it("says loudly when nothing is configured", async () => {
-    const r = await run(["list-blocks", "--context-file=missing.md"]);
+    const r = await run(["list-blocks"], fs.mkdtempSync(path.join(tmpDir, "empty-")));
     expect(r.json.blocks).toEqual([]);
     expect(r.err).toContain("NO BLOCKS CONFIGURED");
   });

@@ -14,7 +14,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
 const WORKFLOWS_DIR = path.resolve(".bkit/workflows");
@@ -158,6 +158,22 @@ describe("design close: archive before overwrite", () => {
 describe("plan close: archive the whole superseded set", () => {
   const block = () => extractBashBlock("bkit-plan.md", "Archive any superseded plan");
 
+  // The agent's Bash tool runs zsh on macOS, where an unmatched glob (an unsplit
+  // plan has no plan-v4-N.md) aborts the whole block with "no matches found".
+  it.skipIf(spawnSync("zsh", ["-c", "true"]).status !== 0)(
+    "runs under zsh for an unsplit plan with a superseded canonical",
+    () => {
+      const root = makeRoot();
+      write(root, `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`, "NEW PLAN\n");
+      write(root, `docs/plans/${MONTH}/${FID}-plan.md`, "OLD PLAN\n");
+
+      execFileSync("zsh", ["-c", `cd "${root}"\n${block()}`], { encoding: "utf-8", stdio: "pipe" });
+
+      expect(read(root, `docs/plans/${MONTH}/${FID}-plan.md`)).toBe("NEW PLAN\n");
+      expect(archiveNames(root)).toHaveLength(1);
+    },
+  );
+
   it("archives the main plan and every sub-plan under one timestamp", () => {
     const root = makeRoot();
     write(root, `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`, "NEW PLAN\n");
@@ -207,16 +223,25 @@ describe("plan close: archive the whole superseded set", () => {
   });
 });
 
-describe("archive/ is unreachable from the globs that read these artefacts", () => {
-  // Archived files are invisible to the workflows' globs. Each glob below is the real
-  // one from the workflow it names.
-  const cases: Array<{ name: string; glob: string }> = [
-    { name: "bkit-build.md sub-plan count", glob: `docs/plans/${MONTH}/${FID}-plan-*.md` },
-    { name: "bkit-ship.md plan presence", glob: `docs/plans/${MONTH}/${FID}-plan*.md` },
-    { name: "bkit-ship.md logs sweep", glob: `docs/plans/${MONTH}/logs/${FID}/*.md` },
+describe("archive/ is unreachable from the lookups that read these artefacts", () => {
+  // Archived files are invisible to the workflows' non-recursive `find` lookups.
+  // Each command below is the real one from the workflow it names.
+  const cases: Array<{ name: string; cmd: string }> = [
+    {
+      name: "bkit-build.md sub-plan count",
+      cmd: `find docs/plans/${MONTH} -maxdepth 1 -type f -name '${FID}-plan-*.md'`,
+    },
+    {
+      name: "bkit-ship.md plan presence",
+      cmd: `find docs/plans/${MONTH} -maxdepth 1 -type f -name '${FID}-plan*.md'`,
+    },
+    {
+      name: "bkit-ship.md logs sweep",
+      cmd: `find docs/plans/${MONTH}/logs/${FID} -maxdepth 1 -type f -name '*.md'`,
+    },
   ];
 
-  it.each(cases)("$name does not match archived files", ({ glob }) => {
+  it.each(cases)("$name does not match archived files", ({ cmd }) => {
     const root = makeRoot();
     write(root, `docs/plans/${MONTH}/${FID}-plan.md`, "LIVE\n");
     write(root, `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`, "DRAFT\n");
@@ -224,9 +249,10 @@ describe("archive/ is unreachable from the globs that read these artefacts", () 
     write(root, `docs/plans/${MONTH}/archive/20260801T134500Z-${FID}-plan-1.md`, "OLD SUB\n");
     write(root, `docs/plans/${MONTH}/archive/20260801T134500Z-${FID}-design.md`, "OLD DESIGN\n");
 
-    const out = execFileSync("bash", ["-c", `cd "${root}"\nls -1 ${glob} 2>/dev/null || true`], {
+    const out = execFileSync("bash", ["-c", `cd "${root}"\n${cmd} 2>/dev/null || true`], {
       encoding: "utf-8",
     });
+    expect(out).toContain(".md");
     expect(out).not.toContain("archive/");
   });
 });

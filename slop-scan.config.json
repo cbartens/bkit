@@ -166,22 +166,6 @@
       }
     },
     {
-      "files": [".bkit/src/bkit-telemetry-migrate.integration.test.ts"],
-      "rules": {
-        "defensive.empty-catch": {
-          "enabled": false
-        }
-      }
-    },
-    {
-      "files": [".bkit/src/bkit-telemetry-migrate.ts"],
-      "rules": {
-        "structure.pass-through-wrappers": {
-          "enabled": false
-        }
-      }
-    },
-    {
       "files": [".bkit/src/bkit-cloud-env.ts"],
       "_reason": "networkAllowlistBases() is a one-line apex-collapse over expandAllowedDomains output, called once from bkit-modules.ts. Inlining at the call site would move these branches out of bkit-cloud-env.ts (the unit-lane's measured file) into bkit-modules.ts (covered by the integration lane only) and silently erode the unit coverage floor \u2014 verified by CI red on the first inline attempt. Kept as a named export for coverage accounting; same shape as expandAllowedDomains above it.",
       "rules": {

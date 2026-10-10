@@ -66,19 +66,6 @@ vale sync                                                               # one-of
 
 Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude --cursor --typescript` (not the dogfood call).
 
-## Roadmap ledger migration
-
-One-time, per repo carrying a legacy `docs/completed.md`. `.bkit/issues.jsonl` is the canonical feature ledger; `docs/roadmap.md` is its generated board.
-
-```bash
-pnpm bkit telemetry migrate --dry-run   # preview, no writes
-pnpm bkit telemetry migrate             # ports entries + seeds in-flight FIDs, then DELETES docs/completed.md
-```
-
-- Parity-gated and destructive: a row-count mismatch aborts with zero `.md` deleted. Re-run is an idempotent no-op.
-- NOT auto-run by `bkit upgrade`. `bkit install` / `bkit check` raise the `completed-md-unmigrated` advisory while the `.md` remains.
-- Until it runs the board is EMPTY, not wrong — no `completed.md` fallback reader exists, and the fold prints a `[bkit-roadmap]` hint naming the command.
-
 ## Verify
 
 Single package — no turbo / affected-graph. Run scripts directly:

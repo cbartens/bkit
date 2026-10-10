@@ -14,7 +14,7 @@ import {
   buildGithubProjectAdvisory,
   detectGithubProjectFieldIdFormat,
   detectNpmrcAuth,
-  detectNpmrcLegacyAuthToken,
+  detectNpmrcAuthTokenLine,
   detectGhSecret,
   detectMainBranchProtection,
   detectVercelProject,
@@ -23,7 +23,6 @@ import {
   detectCiYmlMissingTokenEnv,
   detectValePackageNotSynced,
   detectWorkflowLintToolsMissing,
-  detectLedgerAliasCollisions,
   detectBkitStubs,
   detectTurboIntegrationInputs,
   detectTestIntegrationEnv,
@@ -37,7 +36,6 @@ import {
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
   buildDepUpdaterSetupAdvisory,
-  buildTokenRenameMigrationAdvisory,
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
   detectManagedStale,
@@ -437,8 +435,8 @@ describe("detectNpmrcAuth", () => {
     expect(detectNpmrcAuth(tmpDir)).toBe("present");
   });
 
-  it("returns 'present' when .npmrc has the registry mapping plus a legacy authToken line", () => {
-    // Still 'present' for the registry check; the legacy line is flagged separately.
+  it("returns 'present' when .npmrc has the registry mapping plus an authToken line", () => {
+    // Still 'present' for the registry check; the authToken line is flagged separately.
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
       "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
@@ -471,17 +469,17 @@ describe("detectNpmrcAuth", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectNpmrcLegacyAuthToken
+// detectNpmrcAuthTokenLine
 // ---------------------------------------------------------------------------
 
-describe("detectNpmrcLegacyAuthToken", () => {
-  it("returns true when .npmrc carries a legacy GH Packages auth-token line", () => {
+describe("detectNpmrcAuthTokenLine", () => {
+  it("returns true when .npmrc carries a GH Packages auth-token line", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
       "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
       "utf-8",
     );
-    expect(detectNpmrcLegacyAuthToken(tmpDir)).toBe(true);
+    expect(detectNpmrcAuthTokenLine(tmpDir)).toBe(true);
   });
 
   it("returns false for a registry-only .npmrc (the correct shape)", () => {
@@ -490,11 +488,11 @@ describe("detectNpmrcLegacyAuthToken", () => {
       "@cbartens:registry=https://npm.pkg.github.com\n",
       "utf-8",
     );
-    expect(detectNpmrcLegacyAuthToken(tmpDir)).toBe(false);
+    expect(detectNpmrcAuthTokenLine(tmpDir)).toBe(false);
   });
 
   it("returns false when .npmrc is absent", () => {
-    expect(detectNpmrcLegacyAuthToken(tmpDir)).toBe(false);
+    expect(detectNpmrcAuthTokenLine(tmpDir)).toBe(false);
   });
 });
 
@@ -777,7 +775,7 @@ describe("detectCiYmlMissingTokenEnv", () => {
     expect(result!.detect).toContain("401");
   });
 
-  it("elevates to blocker when .npmrc carries a legacy ${BKIT_GH_TOKEN_INSTALL} ref and wiring is incomplete", () => {
+  it("elevates to blocker when .npmrc carries a ${BKIT_GH_TOKEN_INSTALL} ref and wiring is incomplete", () => {
     writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
@@ -822,11 +820,24 @@ describe("detectValePackageNotSynced", () => {
 
   it("returns finding when vale is on PATH but write-good styles are absent", () => {
     execSync.mockReturnValue("vale version 3.0.0\n");
+    fs.writeFileSync(path.join(tmpDir, ".vale.ini"), "Packages = write-good\n");
     // No .vale/styles/write-good directory
     const result = detectValePackageNotSynced(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("vale-package-not-synced");
     expect(result!.severity).toBe("advisory");
+    expect(result!.action).toContain("vale sync");
+    expect(result!.action).not.toContain(".bkit/templates/.vale.ini");
+  });
+
+  it("points at the .vale.ini template before vale sync when the repo has no .vale.ini", () => {
+    execSync.mockReturnValue("vale version 3.0.0\n");
+    const result = detectValePackageNotSynced(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("vale-package-not-synced");
+    const action = result!.action;
+    expect(action).toContain(".bkit/templates/.vale.ini");
+    expect(action.indexOf(".bkit/templates/.vale.ini")).toBeLessThan(action.indexOf("vale sync"));
   });
 });
 
@@ -958,62 +969,6 @@ describe("detectBkitStubs", () => {
     );
     const ids = detectBkitStubs(tmpDir).map((f) => f.id);
     expect(ids).toContain("bkit-stub-pair-e2e-without-vercel");
-  });
-
-  // Legacy scaffold job names. A consumer whose planner is still `bkit-decide` is outside the
-  // bkit-tests-* namespace that the CI-Dispatch Gate polls, so it must be nudged to rename.
-  const writeCi = (body: string) => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), body);
-  };
-
-  it("flags a ci.yml still defining the legacy bkit-decide / bkit-tests-migrate jobs", () => {
-    writeCi(
-      "jobs:\n  bkit-decide:\n    runs-on: ubuntu-latest\n  bkit-tests-migrate:\n    runs-on: ubuntu-latest\n",
-    );
-    const finding = detectBkitStubs(tmpDir).find((f) => f.id === "ci-legacy-scaffold-job-names");
-    expect(finding).toBeDefined();
-    // Both legacy names must be named in the detect string, not just the first one found.
-    expect(finding!.detect).toContain("bkit-decide");
-    expect(finding!.detect).toContain("bkit-tests-migrate");
-    // The action must also cover the job-local step id, not just the job name.
-    expect(finding!.action).toContain("id: decide` -> `id: scope");
-  });
-
-  it("surfaces the docs-vs-ci skew when managed docs already name the current jobs", () => {
-    writeCi("jobs:\n  bkit-decide:\n    runs-on: ubuntu-latest\n");
-    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, "docs", "testing.md"),
-      "The bkit-tests-scope planner emits the run plan.\n",
-    );
-    const finding = detectBkitStubs(tmpDir).find((f) => f.id === "ci-legacy-scaffold-job-names");
-    expect(finding).toBeDefined();
-    expect(finding!.detect).toContain("docs/testing.md");
-    expect(finding!.detect).toMatch(/DIFFERENT job names/);
-  });
-
-  it("omits the docs-skew clause when docs/testing.md is absent", () => {
-    writeCi("jobs:\n  bkit-decide:\n    runs-on: ubuntu-latest\n");
-    const finding = detectBkitStubs(tmpDir).find((f) => f.id === "ci-legacy-scaffold-job-names");
-    expect(finding).toBeDefined();
-    expect(finding!.detect).not.toContain("docs/testing.md");
-  });
-
-  it("does NOT flag a ci.yml already on the current scaffold job names", () => {
-    writeCi(
-      "jobs:\n  bkit-tests-scope:\n    runs-on: ubuntu-latest\n  bkit-tests-migration:\n    runs-on: ubuntu-latest\n",
-    );
-    const ids = detectBkitStubs(tmpDir).map((f) => f.id);
-    expect(ids).not.toContain("ci-legacy-scaffold-job-names");
-  });
-
-  it("does NOT flag the commented scaffold reference (job key must be uncommented)", () => {
-    // The shipped template mentions bkit-decide only inside comments; a repo carrying the
-    // scaffold reference has not defined the legacy job and must stay silent.
-    writeCi("jobs:\n  # bkit-decide:\n  #   runs-on: ubuntu-latest\n");
-    const ids = detectBkitStubs(tmpDir).map((f) => f.id);
-    expect(ids).not.toContain("ci-legacy-scaffold-job-names");
   });
 });
 
@@ -1190,68 +1145,6 @@ describe("detectGhaFloatingTags", () => {
     expect(result!.detect).toContain("ci.yml");
     expect(result!.detect).toContain("release.yml");
   });
-
-  // bkit-canonical workflow files (listed in `.bkit-version`) carry bkit-owned pins
-  // (the shipped `renovate.json5` excludes them via `matchFileNames`). The
-  // floating-tag advisory skips them.
-  it("skips workflow files listed in .bkit-version canonicalHashes (issue #124)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "      - uses: actions/checkout@v4\n",
-    );
-    fs.writeFileSync(
-      path.join(tmpDir, ".bkit", "version"),
-      JSON.stringify({
-        pinnedVersion: "2.3.1",
-        canonicalHashes: { ".github/workflows/bkit-cloud.yml": "deadbeef" },
-      }),
-    );
-    expect(detectGhaFloatingTags(tmpDir)).toBeNull();
-  });
-
-  it("skips workflow files a legacy .bkit/version lists under tier3Hashes (issue #124)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "      - uses: actions/checkout@v4\n",
-    );
-    fs.writeFileSync(
-      path.join(tmpDir, ".bkit", "version"),
-      JSON.stringify({
-        pinnedVersion: "2.3.1",
-        tier3Hashes: { ".github/workflows/bkit-cloud.yml": "deadbeef" },
-        canonicalHashes: {},
-      }),
-    );
-    expect(detectGhaFloatingTags(tmpDir)).toBeNull();
-  });
-
-  it("still flags consumer-managed workflow files even when canonical files coexist", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "      - uses: actions/checkout@v4\n",
-    );
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
-      "      - uses: actions/checkout@v4\n",
-    );
-    fs.writeFileSync(
-      path.join(tmpDir, ".bkit", "version"),
-      JSON.stringify({
-        pinnedVersion: "2.3.1",
-        canonicalHashes: { ".github/workflows/bkit-cloud.yml": "deadbeef" },
-      }),
-    );
-    const result = detectGhaFloatingTags(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.detect).toContain("ci.yml");
-    expect(result!.detect).not.toContain("bkit-cloud.yml");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1299,7 +1192,7 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });
 
-  it("a legacy bkit.depUpdater value other than none does not install or silence", () => {
+  it("a bkit.depUpdater value other than none does not silence", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1319,39 +1212,6 @@ describe("buildDepUpdaterSetupAdvisory", () => {
       JSON.stringify({ name: "x", bkit: { depUpdater: "none" } }),
     );
     expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildTokenRenameMigrationAdvisory — BKIT_GH_TOKEN scheme split migration
-// ---------------------------------------------------------------------------
-
-describe("buildTokenRenameMigrationAdvisory", () => {
-  const writeEnv = (body: string) => {
-    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), body, "utf-8");
-  };
-
-  it("fires when .bkit/.env still has GH_MCP_TOKEN (old scheme)", () => {
-    writeEnv("BKIT_GH_TOKEN_INSTALL=x\nGH_MCP_TOKEN=y\n");
-    const r = buildTokenRenameMigrationAdvisory(tmpDir);
-    expect(r).not.toBeNull();
-    expect(r!.id).toBe("gh-token-scheme-rename");
-    expect(r!.action).toMatch(/GH_MCP_TOKEN.*->.*BKIT_GH_TOKEN/);
-  });
-
-  it("fires when GH_BKIT_TOKEN_INSTALL / GH_BKIT_TOKEN still present (pre-BKIT_ prefix)", () => {
-    writeEnv("GH_BKIT_TOKEN_INSTALL=x\nGH_BKIT_TOKEN=y\n");
-    expect(buildTokenRenameMigrationAdvisory(tmpDir)?.id).toBe("gh-token-scheme-rename");
-  });
-
-  it("null for the new scheme (BKIT_GH_TOKEN_INSTALL present, no retired names)", () => {
-    writeEnv("BKIT_GH_TOKEN_INSTALL=x\nBKIT_GH_TOKEN=y\n");
-    expect(buildTokenRenameMigrationAdvisory(tmpDir)).toBeNull();
-  });
-
-  it("null when there is no .bkit/.env", () => {
-    expect(buildTokenRenameMigrationAdvisory(tmpDir)).toBeNull();
   });
 });
 
@@ -1526,17 +1386,6 @@ describe("detectRunLevelsNotComposed", () => {
       "      - name: Detect Direct Push\n" +
         "      - name: Run E2E Tests\n" +
         "        if: steps.detect.outputs.should_run_full == 'true'\n",
-    );
-    expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
-  });
-
-  it("returns null for a legacy gate on the pre-#291 should_run_e2e output (backward-compat)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
-      "      - name: Detect Direct Push\n" +
-        "      - name: Run E2E Tests\n" +
-        "        if: steps.detect.outputs.should_run_e2e == 'true'\n",
     );
     expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
   });
@@ -2584,53 +2433,6 @@ describe("isOnProtectedBranch", () => {
     // tmpDir is a fresh mkdtemp dir, not a git work tree → git HEAD resolution
     // fails → null → treated as protected so an unknown env never downgrades.
     expect(isOnProtectedBranch(tmpDir)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectLedgerAliasCollisions — DE-<n>/KN-<n> silent-duplicate-id advisory
-// (fs-only; no child_process, so it runs under the mocked module unchanged)
-// ---------------------------------------------------------------------------
-
-describe("detectLedgerAliasCollisions", () => {
-  function writeDecisions(rows: object[]): void {
-    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, "docs", "decisions.jsonl"),
-      rows.map((r) => JSON.stringify(r)).join("\n") + "\n",
-    );
-  }
-  const base = {
-    ts: 1,
-    kind: "decision",
-    repo: "acme/app",
-    workflow: "plan",
-    bkitVersion: "4.5.0",
-  };
-
-  it("advisory when one DE-<n> is claimed by unrelated rows", () => {
-    writeDecisions([
-      { ...base, key: "de-114-sentry", aliases: ["DE-114"] },
-      { ...base, key: "de-114-e2e-parallelism", aliases: ["DE-114"] },
-    ]);
-    const f = detectLedgerAliasCollisions(tmpDir);
-    expect(f).not.toBeNull();
-    expect(f?.id).toBe("ledger-alias-collisions");
-    expect(f?.severity).toBe("advisory");
-    expect(f?.detect).toContain("DE-114");
-    expect(f?.action).toContain("bkit telemetry normalise");
-  });
-
-  it("null when the ledgers are clean (no collisions)", () => {
-    writeDecisions([
-      { ...base, key: "de-3-distribution", workflow: "migrate" },
-      { ...base, key: "content-slug-decision" },
-    ]);
-    expect(detectLedgerAliasCollisions(tmpDir)).toBeNull();
-  });
-
-  it("null when no ledgers exist", () => {
-    expect(detectLedgerAliasCollisions(tmpDir)).toBeNull();
   });
 });
 

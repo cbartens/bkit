@@ -563,7 +563,7 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
   }
 
   it("an install with every host and cloud lane creates no template outside .bkit/templates/", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -586,7 +586,7 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
   });
 
   it("an adopted copy of every template survives upgrade and check", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -625,7 +625,7 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
   ])(
     "check flags a stale %s block; upgrade refreshes it and keeps the consumer's content",
     (rel, consumer) => {
-      if (!fs.existsSync(tsxBin)) return;
+      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
       fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
       fs.writeFileSync(
         path.join(tmpDir, "package.json"),
@@ -726,7 +726,7 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
   }
 
   it("every written file carries a marker at the installing version, and check derives the same set", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     installEverything();
     const version = readInstallingVersion();
     const written = writtenFiles();
@@ -748,7 +748,7 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
   });
 
   it("check flags an old marker; upgrade restamps every marker with no conflict; check is then clean", () => {
-    if (!fs.existsSync(tsxBin)) return;
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     installEverything();
     const version = readInstallingVersion();
     const written = writtenFiles();
@@ -854,7 +854,7 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     expect(check.stdout).toContain("0 write(s) would occur");
   });
 
-  it("upgrade seeds missing bkit:gate:* names and re-points a legacy slop:delta, so check stays clean (#489)", () => {
+  it("upgrade seeds missing bkit:gate:* names, so check stays clean (#489)", () => {
     if (!fs.existsSync(tsxBin)) return; // CI without devDeps
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     const pkgPath = path.join(tmpDir, "package.json");
@@ -865,28 +865,15 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     );
     expect(runCli(["install", "--claude"]).status).toBe(0);
 
-    // A consumer from before core seeded the gates: no gate names, one custom gate,
-    // and the slop:delta value an older bkit wrote.
+    // A consumer missing the gate names, with one custom gate of its own.
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
       scripts: Record<string, string>;
     };
-    pkg.scripts = {
-      "bkit:gate:static": "ruff check .",
-      "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
-    };
+    pkg.scripts = { "bkit:gate:static": "ruff check ." };
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
-    const workflow = path.join(tmpDir, ".github", "workflows", "own.yml");
-    fs.mkdirSync(path.dirname(workflow), { recursive: true });
-    fs.writeFileSync(workflow, "steps:\n  - run: bash .bkit/scripts/bkit-slop-delta.sh\n", "utf-8");
 
     const upgrade = runCli(["upgrade", "--auto-apply"]);
     expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
-    // The retired-caller checklist reads the files after the re-point: the consumer's
-    // workflow line is still named, the re-pointed package.json line is not.
-    expect(upgrade.stdout).toContain(
-      `retired-file-caller:${path.join(".github", "workflows", "own.yml")}:2`,
-    );
-    expect(upgrade.stdout).not.toContain("retired-file-caller:package.json");
 
     const scripts = (
       JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as { scripts: Record<string, string> }
@@ -894,7 +881,7 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     expect(scripts["bkit:gate:static"]).toBe("ruff check .");
     expect(scripts["bkit:gate:static-unit"]).toBe("pnpm bkit:gate:static && pnpm test");
     expect(scripts["bkit:deps:audit"]).toBe("pnpm audit");
-    expect(scripts["slop:delta"]).toBe("bkit ci slop");
+    expect(scripts["slop:delta"]).toBeUndefined();
     expect(scripts.typecheck).toBeUndefined();
 
     const check = runCli(["check"]);
@@ -1028,70 +1015,6 @@ describe("#281 AC — bkit check exits 0 with multiple providers installed", () 
     // `bkit check --opencode` must exit 0 (no drift) — both provider blocks are already present
     const check = runCli(["check"]);
     expect(check.status, `bkit check failed:\n${check.stdout}\n${check.stderr}`).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// `bkit upgrade` auto-migrates context-fetch blocks observability.md → context.md
-//
-// install and upgrade are SEPARATE engines; the migration is wired into runCoreModule
-// (install) AND the upgrade dispatch. End-to-end via a real `bkit upgrade --auto-apply`.
-// ---------------------------------------------------------------------------
-
-describe("#334 — bkit upgrade migrates context-fetch blocks observability.md → .agents/context.md", () => {
-  const bkitInstallPath = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "bkit-install.ts",
-  );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../node_modules/.bin/tsx",
-  );
-
-  function runBkitUpgrade() {
-    return spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--auto-apply"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 60_000,
-    });
-  }
-
-  it("moves a consumer context-fetch block out of observability.md into .agents/context.md", () => {
-    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "consumer" }),
-      "utf-8",
-    );
-    writeVersionFile();
-
-    // Old layout: consumer copied a context-fetch block into observability.md's consumer
-    // section (after bkit:end), alongside unrelated project prose.
-    const obs =
-      "<!-- bkit:start -->\n# Observability\n\n<!-- bkit:end -->\n\n" +
-      "## Our runtime notes — MUST SURVIVE\n\n" +
-      "<!-- context-fetch:start vercel -->\n```bash\nvercel logs --json\n```\n<!-- context-fetch:end -->\n";
-    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, "docs", "observability.md"), obs, "utf-8");
-
-    const result = runBkitUpgrade();
-    expect(result.status, `upgrade failed:\n${result.stdout}\n${result.stderr}`).toBe(0);
-
-    // Block moved OUT of observability.md; unrelated consumer prose kept.
-    const obsAfter = fs.readFileSync(path.join(tmpDir, "docs", "observability.md"), "utf-8");
-    expect(obsAfter).not.toContain("context-fetch:start vercel");
-    expect(obsAfter).toContain("## Our runtime notes — MUST SURVIVE");
-
-    // Block moved INTO .agents/context.md (created by the upgrade render, then appended to).
-    const contextAfter = fs.readFileSync(path.join(tmpDir, ".agents", "context.md"), "utf-8");
-    expect(contextAfter).toContain("context-fetch:start vercel");
-    expect(contextAfter).toContain("vercel logs --json");
-
-    // The migration surfaced its log line.
-    expect(result.stdout + result.stderr).toContain(
-      "migrated 1 context-fetch block(s) docs/observability.md → .agents/context.md",
-    );
   });
 });
 

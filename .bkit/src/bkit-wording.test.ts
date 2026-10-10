@@ -30,7 +30,9 @@ import {
   parseWording,
   proseLineIndexes,
   similarity,
+  splitSentences,
   syncWording,
+  toolsOf,
   type Clause,
   type WordingFile,
 } from "./bkit-wording";
@@ -249,11 +251,183 @@ describe("the checker rejects what it should", () => {
   });
 
   it(`a sentence shared by ${SHARED_MIN} prompts but not listed fails`, () => {
-    const shared = "Always cite the exact line you changed.";
-    const files = Array.from({ length: SHARED_MIN }, (_, n) => prompt(`p${n}`, shared + "\n"));
+    const shared = "Always cite the exact line you changed";
+    const files = Array.from({ length: SHARED_MIN }, (_, n) => prompt(`p${n}`, shared + ".\n"));
     expect(checkWording([], files).map((x) => x.problem)).toEqual([
       `shared by ${SHARED_MIN} prompts but not in .bkit/wording.md: "${shared}"`,
     ]);
+  });
+
+  it("a sentence ending its line and the same sentence continued with ; count as one", () => {
+    const shared = "Always cite the exact line you changed";
+    const files = Array.from({ length: SHARED_MIN }, (_, n) =>
+      prompt(`p${n}`, n % 2 === 0 ? `${shared}.\n` : `${shared}; keep it short.\n`),
+    );
+    expect(checkWording([], files).map((x) => x.problem)).toEqual([
+      `shared by ${SHARED_MIN} prompts but not in .bkit/wording.md: "${shared}"`,
+    ]);
+  });
+
+  it("one drifted copy does not hide a sentence the other prompts share", () => {
+    const shared = "Always cite the exact file and line you changed";
+    const drifted = "Always cite the exact file and line you edited";
+    expect(similarity(shared, drifted)).toBeGreaterThanOrEqual(NEAR_COPY);
+    const files = [
+      ...Array.from({ length: SHARED_MIN - 1 }, (_, n) => prompt(`p${n}`, `${shared}.\n`)),
+      prompt("drift", `${drifted}.\n`),
+    ];
+    expect(checkWording([], files).map((x) => x.problem)).toEqual([
+      `shared by ${SHARED_MIN} prompts, 1 as near-copies but not in .bkit/wording.md: "${shared}"`,
+    ]);
+  });
+
+  it("a fragment after ; is its own sentence for the cut-off", () => {
+    const files = Array.from({ length: SHARED_MIN }, (_, n) =>
+      prompt(`p${n}`, `Local task number ${n}; do NOT stop halfway.\n`),
+    );
+    expect(checkWording([], files).map((x) => x.problem)).toEqual([
+      `shared by ${SHARED_MIN} prompts but not in .bkit/wording.md: "do NOT stop halfway"`,
+    ]);
+  });
+});
+
+describe("sentence splitting", () => {
+  it("splits after . and ;, keeps the punctuation, and never splits after e.g.", () => {
+    expect(splitSentences("Do one; do two. Use e.g. this. **Bold.** Next")).toEqual([
+      "Do one;",
+      "do two.",
+      "Use e.g. this.",
+      "**Bold.**",
+      "Next",
+    ]);
+  });
+
+  it("a clause ending in . matches a line that continues it with ;", () => {
+    const c = synthetic({ texts: ["Initialise the stub."] });
+    expect(
+      checkWording([c], [prompt("p", "1. Initialise the stub; do NOT copy inputs.\n")]),
+    ).toEqual([]);
+  });
+
+  it("a drift that turns the clause's ; into , is still a near-copy", () => {
+    const text = "Verify every return; do NOT assume success.";
+    const drifted = "Verify every return, do NOT assume success.";
+    const f = checkWording([synthetic({ texts: [text] })], [prompt("p", `> - ${drifted}\n`)]);
+    expect(f.map((x) => x.problem)).toContain(`near-copy (run pnpm wording:sync): "${drifted}"`);
+  });
+});
+
+describe("modes", () => {
+  const RULE = "**No commits:** Do NOT run `git commit` (caller does).";
+  const withTools = (tools: string[], body: string, inline = false) =>
+    prompt(
+      "p",
+      `---\nname: p\ntools:${inline ? ` [${tools.join(", ")}]` : tools.map((t) => `\n  - ${t}`).join("")}\nmodel: m\n---\n\n${body}`,
+    );
+
+  it("reads the tools list in block and inline form, skipping comment lines", () => {
+    expect(toolsOf("---\ntools:\n  - Read\n  # note\n  - Bash\nmodel: m\n---\nBody\n")).toEqual([
+      "Read",
+      "Bash",
+    ]);
+    expect(toolsOf("---\ntools: [Read, Bash]\n---\n")).toEqual(["Read", "Bash"]);
+    expect(toolsOf("No front matter\n")).toEqual([]);
+  });
+
+  it("if-bash is required with Bash in the tools list and forbidden without", () => {
+    const c = synthetic({ texts: [RULE], modes: { prompt: "if-bash" } });
+    const problems = (f: WordingFile) => checkWording([c], [f]).map((x) => x.problem);
+    expect(problems(withTools(["Read", "Bash"], "Body.\n"))).toEqual([`missing; add: ${RULE}`]);
+    expect(problems(withTools(["Read", "Bash"], `${RULE}\n`, true))).toEqual([]);
+    expect(problems(withTools(["Read", "Edit"], `${RULE}\n`))).toEqual([
+      "present where it must not be",
+    ]);
+    expect(problems(withTools(["Read", "Edit"], "Body.\n"))).toEqual([]);
+  });
+
+  it("repeatable allows any number of copies but still flags near-copies", () => {
+    const text = "set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.";
+    const c = synthetic({ texts: [text], modes: { prompt: "repeatable" } });
+    expect(checkWording([c], [prompt("p", `**If** a → ${text}\n**If** b → ${text}\n`)])).toEqual(
+      [],
+    );
+    const drifted = "set `Verdict` = `FAIL` via `Edit` now; do NOT defer to final pass.";
+    expect(
+      checkWording([c], [prompt("p", `**If** a → ${drifted}\n`)]).map((x) => x.problem),
+    ).toEqual([`near-copy (run pnpm wording:sync): "${drifted}"`]);
+  });
+});
+
+describe("templates", () => {
+  const MANDATE = [
+    "**Mandate:** {{task}}; do NOT build, install, or write code.",
+    "**Mandate:** {{task}}; do NOT just analyse.",
+  ];
+  const c = synthetic({ texts: MANDATE, modes: { prompt: "where-used" }, anchored: true });
+  const problems = (body: string) => checkWording([c], [prompt("p", body)]).map((x) => x.problem);
+
+  it("an anchored line may match any one of several templates", () => {
+    expect(problems("- **Mandate:** Review plan; do NOT build, install, or write code.\n")).toEqual(
+      [],
+    );
+    expect(problems("- **Mandate:** Fix gaps; do NOT just analyse; ONLY listed gaps.\n")).toEqual(
+      [],
+    );
+  });
+
+  it("a drifted anchored line fails", () => {
+    expect(problems("- **Mandate:** Summarise; do NOT build or write code.\n")).toEqual([
+      `does not match the templates: ${MANDATE.join(" | ")}`,
+    ]);
+  });
+
+  it("a line two overlapping templates both fit counts once", () => {
+    expect(
+      problems(
+        "- **Mandate:** Update plan; do NOT just analyse; do NOT build, install, or write code.\n",
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("header order", () => {
+  const clauses = [
+    synthetic({ name: "rules", texts: ["**Rules:** Read rules."], position: "first" }),
+    synthetic({ name: "order", texts: ["**Order:** In order."], position: "header" }),
+    synthetic({ name: "improv", texts: ["**No improv:** None."], position: "header" }),
+    synthetic({ name: "input", texts: ["**External input:** Data."], position: "last" }),
+  ];
+  const body = (lines: string[], after = "") =>
+    `> [!CAUTION]\n> **EXECUTION PROTOCOL:** Strict.\n>\n${lines.map((l) => `> - ${l}`).join("\n")}\n\n**Contract:**\n\n${after}`;
+  const RULES = "**Rules:** Read rules.";
+  const ORDER = "**Order:** In order.";
+  const IMPROV = "**No improv:** None.";
+  const INPUT = "**External input:** Data.";
+
+  it("the header in wording-file order passes, local lines in between allowed", () => {
+    const f = prompt("p", body([RULES, ORDER, "**Gates:** Local.", IMPROV, INPUT]));
+    expect(checkWording(clauses, [f])).toEqual([]);
+  });
+
+  it("two swapped middle lines fail", () => {
+    const f = prompt("p", body([RULES, IMPROV, ORDER, INPUT]));
+    expect(checkWording(clauses, [f]).map((x) => `${x.clause}: ${x.problem}`)).toEqual([
+      "improv: header order: must come after order",
+    ]);
+  });
+
+  it("a positioned clause in the body fails", () => {
+    const f = prompt("p", body([RULES, ORDER, INPUT], `1. ${IMPROV}\n`));
+    expect(checkWording(clauses, [f]).map((x) => `${x.clause}: ${x.problem}`)).toEqual([
+      "improv: must be a header line",
+    ]);
+  });
+
+  it("the wording file accepts position: header and rejects an unknown position", () => {
+    const md = (position: string) =>
+      `# W\n\n## Clauses\n\n### c\n\n- prompt: required\n- position: ${position}\n\n\`\`\`text\nX.\n\`\`\`\n`;
+    expect(parseWording(md("header"))[0]!.position).toBe("header");
+    expect(() => parseWording(md("middle"))).toThrow(/position must be first, header, or last/);
   });
 });
 
@@ -292,6 +466,20 @@ describe("sync", () => {
     expect(out.get(".bkit/prompts/p.md")).toBe(
       "- **Mandate:** Review plan; do NOT build or write code.\n",
     );
+  });
+
+  it("rewrites a near-copy that closes a sentence opened by local text", () => {
+    const text = "set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.";
+    const drifted = "set `Verdict` = `FAIL` via `Edit` now; do NOT defer to final pass.";
+    const c = synthetic({ texts: [text], modes: { prompt: "repeatable" } });
+    const out = syncWording([c], [prompt("p", `3. **If** any \`CRITICAL\` → ${drifted}\n`)]);
+    expect(out.get(".bkit/prompts/p.md")).toBe(`3. **If** any \`CRITICAL\` → ${text}\n`);
+  });
+
+  it("rewrites retired wording continued with ; and keeps the ;", () => {
+    const c = synthetic({ texts: ["New wording here."], retired: ["Old wording here."] });
+    const out = syncWording([c], [prompt("p", "1. Old wording here; local tail.\n")]);
+    expect(out.get(".bkit/prompts/p.md")).toBe("1. New wording here; local tail.\n");
   });
 
   it("is idempotent and leaves fenced examples alone", () => {

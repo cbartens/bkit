@@ -292,8 +292,6 @@ Vercel runs own `pnpm install` in fresh build container — cannot run pre-insta
    }
    ```
 
-   If legacy git-shim `installCommand` present (`git config --global url."https://x-access-token:$BKIT_GH_TOKEN_INSTALL@github.com/cbartens/bkit/".insteadOf …`), remove it — `pnpm config set` line replaces it entirely. (Registry-auth shim, not obsolete git-auth shim; see `docs/decisions.jsonl` DE-31.)
-
 3. **Trigger redeploy** (push commit) and watch Vercel build log for `pnpm install` resolving `@cbartens/bkit` from `npm.pkg.github.com`.
 
 ## Install lifecycle
@@ -326,7 +324,7 @@ After writes, bkit re-runs token-surface and environment checks — some only ac
 | --- | --- |
 | `gh-bkit-token-unset-shell` / `gh-bkit-token-empty-shell` | `BKIT_GH_TOKEN_INSTALL` unset (or set but empty) in shell |
 | `npmrc-missing-gh-packages` | `.npmrc` exists but lacks the `@cbartens` registry mapping |
-| `npmrc-legacy-authtoken` | `.npmrc` still carries a legacy `//npm.pkg.github.com/:_authToken=…` line (401s on pnpm >=10.34.3; move it to pnpm user-level config) |
+| `npmrc-authtoken-line` | `.npmrc` carries a `//npm.pkg.github.com/:_authToken=…` line (401s on pnpm >=10.34.3; move it to pnpm user-level config) |
 | `gh-bkit-token-secret-missing` | `gh secret list` confirms secret absent |
 | `gh-bkit-token-secret-unknown` | `gh` CLI unavailable/unauthenticated |
 | `gh-mcp-token-unset-shell` / `gh-mcp-token-empty-shell` | `BKIT_GH_TOKEN` (GitHub MCP auth) unset/empty in shell while a `github` MCP server is configured — the whole tracker/PR/board MCP surface fails to connect. Suppressed in CI. |

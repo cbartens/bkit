@@ -20,21 +20,6 @@ export const OPENCODE_PROVIDERS = [
     "opencode-zen",
     "opencode-go",
 ];
-/**
- * Hidden backward-compat aliases for `--opencode=<provider>` values (not exposed in
- * help text). Normalises legacy provider keys stored in package.json or passed on the
- * CLI to the current canonical key before allowlist validation.
- */
-export const OPENCODE_PROVIDER_ALIASES = {
-    // Legacy bare `opencode` means the Zen gateway → map to opencode-zen.
-    opencode: "opencode-zen",
-    zen: "opencode-zen",
-    go: "opencode-go",
-};
-/** Normalise an `--opencode=` value through OPENCODE_PROVIDER_ALIASES (identity if no alias). */
-export function normalizeOpencodeProvider(value) {
-    return OPENCODE_PROVIDER_ALIASES[value] ?? value;
-}
 /** Narrow an unknown string to `CloudVariant` or return `null` if invalid. */
 export function parseCloudVariant(value) {
     return typeof value === "string" && CLOUD_VARIANTS.includes(value)
@@ -64,7 +49,7 @@ export const CLASSIC_VERBS = new Set([
 // telemetry — sub-verb for bkit telemetry <subverb>
 // ---------------------------------------------------------------------------
 /** Valid sub-verbs accepted by `bkit telemetry <subverb>`. */
-export const TELEMETRY_SUBVERBS = ["migrate", "summary", "validate", "normalise"];
+export const TELEMETRY_SUBVERBS = ["summary"];
 /** Narrow an unknown string to `TelemetrySubverb` or return null if invalid. */
 export function parseTelemetrySubverb(value) {
     return typeof value === "string" && TELEMETRY_SUBVERBS.includes(value)
@@ -208,7 +193,6 @@ export function parseArgs(argv) {
     let opencodeProvider = null;
     let complyPhase = null;
     let telemetrySubverb = null;
-    const telemetryMigrateFlags = { dryRun: false };
     // For `telemetry` verb: extract the sub-verb from the first remaining positional arg
     if (verb === "telemetry") {
         const subVerbArg = args[0];
@@ -313,14 +297,11 @@ export function parseArgs(argv) {
                     console.error(`[bkit] --opencode= requires a provider value (e.g. --opencode=opencode-zen). Run \`bkit help\` for usage.`);
                     process.exit(1);
                 }
-                // Normalise legacy aliases before the allowlist check so both spellings
-                // resolve to the canonical provider key recorded in package.json.
-                const value = normalizeOpencodeProvider(rawValue);
-                if (!OPENCODE_PROVIDERS.includes(value)) {
+                if (!OPENCODE_PROVIDERS.includes(rawValue)) {
                     console.error(`[bkit] --opencode= unsupported provider ${JSON.stringify(rawValue)}. Supported: ${OPENCODE_PROVIDERS.join(", ")}.`);
                     process.exit(1);
                 }
-                opencodeProvider = value;
+                opencodeProvider = rawValue;
                 moduleFlags.add("opencode");
                 continue;
             }
@@ -328,7 +309,6 @@ export function parseArgs(argv) {
             if (flag === "dry-run") {
                 uninstallFlags.dryRun = true;
                 upgradeFlags.dryRun = true;
-                telemetryMigrateFlags.dryRun = true;
                 continue;
             }
             if (flag === "force") {
@@ -415,7 +395,6 @@ export function parseArgs(argv) {
         opencodeProvider,
         complyPhase,
         telemetrySubverb,
-        telemetryMigrateFlags,
     };
 }
 export function printUsage() {
@@ -480,26 +459,6 @@ Usage:
                                  as it is the only record of pruned rows. Never commits
                                  in any repo. Deduplicates by per-kind composite
                                  identity. Advisory + fail-open: exits 0.
-  bkit telemetry migrate [--dry-run]
-                                 Migrate docs/knowledge.md + docs/decisions.md +
-                                 docs/pending.md + .bkit/friction.md + docs/completed.md
-                                 (fifth pair, #380) to docs/knowledge.jsonl +
-                                 docs/decisions.jsonl + docs/deferrals.jsonl +
-                                 .bkit/friction.jsonl + .bkit/issues.jsonl (kind:"knowledge",
-                                 "decision", "deferral", "friction", and "feature" —
-                                 status:"SHIPPED" — rows). Parity-gated + destructive: ports
-                                 each entry with its KN-N/DE-N id + legacy Related:
-                                 graph in references[], its Severity and its
-                                 Description prose, verifies
-                                 row-count parity against a transient .md.bak, then DELETES
-                                 the .md ONLY after parity is confirmed (idempotent: re-run
-                                 is a no-op if migration already completed). A parity mismatch
-                                 or absent .md.bak ABORTS with ZERO .md deleted. Same run also
-                                 performs the #380 bootstrap seed: scans docs/plans/** for
-                                 in-flight FIDs and appends one .bkit/issues.jsonl row per FID
-                                 at its detected phase, skipping FIDs already in the ledger.
-                                 NEVER called from bkit upgrade — only via this explicit invocation.
-                                 --dry-run: show what would be migrated without writing.
   bkit telemetry summary [--phase=<workflow>]
                                  Per-workflow telemetry report: THIS run's metrics
                                  (duration, size, friction/deferrals/failures added,
@@ -509,19 +468,6 @@ Usage:
                                  --phase=<workflow>: the workflow to report
                                  (design|plan|build|debug|ship). Without it, prints the
                                  ledger-health line only. Read-only: exits 0.
-  bkit telemetry validate        Scan docs/decisions.jsonl + docs/knowledge.jsonl for
-                                 DE-<n>/KN-<n> alias collisions — one number claimed by
-                                 more than one row, which a bare citation resolves to
-                                 ambiguously. Read-only. Exits 1 on a collision (the loud
-                                 signal the merge=union append never surfaces); also WARNs
-                                 on sequential keys minted outside the one-shot migration.
-  bkit telemetry normalise [--dry-run]
-                                 Normalise those ledgers off sequential aliases:
-                                 move the legacy aliases[] field into
-                                 references[], keep ts as the id, and re-key only the
-                                 colliding rows (strip the shared number, preserve it as a
-                                 references[] pointer). Parity-gated + idempotent: a re-run
-                                 changes nothing. --dry-run: report without writing.
   bkit analysis                 Cross-repo analysis — reports counts/rates/elapsed-time,
                                  #183 size↔outcome regression, dispatch-size threshold,
                                  counterSource trust labelling, per-rule compliance
@@ -552,7 +498,7 @@ Module flags (composable; symmetric install ↔ uninstall):
                   opencode.json; agent defaults track the last-installed (active) provider.
                   Provider value is REQUIRED. Supported: openrouter, ollama,
                   opencode-zen, opencode-go (opencode-native gateways;
-                  auth via BKIT_OPENCODE_API_KEY; legacy alias \`opencode\` → opencode-zen).
+                  auth via BKIT_OPENCODE_API_KEY).
                   Ships .opencode/** (agents, commands, opencode.json, gateguard).
                   Configure your provider key; verify with \`bkit doctor\`. All installed
                   providers tracked in bkit.opencodeProviders.

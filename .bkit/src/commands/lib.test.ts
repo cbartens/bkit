@@ -62,8 +62,23 @@ describe("parseFlags", () => {
     [["--fid", "--dry-run"], "--fid needs a value"],
     [["--fid=1", "--dry-run=yes"], "--dry-run takes no value"],
     [["467"], 'unexpected argument "467" — commands take flags only'],
+    [["--fid="], "required flag --fid needs a non-empty value"],
+    [["--fid", ""], "required flag --fid needs a non-empty value"],
   ])("%j is a usage error", (argv, message) => {
     expect(usage(() => parseFlags(argv, FLAGS))).toBe(message);
+  });
+
+  it("rejects an empty entry of a required repeatable flag", () => {
+    const specs: FlagSpec[] = [
+      { name: "artifact", type: "string", required: true, repeatable: true, help: "path" },
+    ];
+    expect(usage(() => parseFlags(["--artifact=a", "--artifact="], specs))).toBe(
+      "required flag --artifact needs a non-empty value",
+    );
+  });
+
+  it("keeps an empty value for an optional string flag", () => {
+    expect(parseFlags(["--fid=1", "--sub-plan="], FLAGS)).toEqual({ fid: "1", subPlan: "" });
   });
 
   it("fills a positional flag from one bare argument, and only once", () => {

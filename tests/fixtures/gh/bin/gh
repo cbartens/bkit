@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # tests/fixtures/gh/bin/gh — PATH-shimmed `gh` stub for bats suites.
 #
-# Extends the existing PATH-shim idiom from tests/bkit-runtime.bats:44-58
-# (write fake `gh` to FAKE_BIN, chmod +x, prepend to PATH) with fixture-file
-# dispatch: argv URL → JSON file under tests/fixtures/gh/.
+# A suite prepends tests/fixtures/gh/bin to PATH; the stub dispatches by
+# fixture file: argv URL → JSON file under tests/fixtures/gh/.
 #
 # Recognised calls (mirrors `bkit runs gate`'s `gh api` boundary):
 #
@@ -37,8 +36,8 @@
 #                                capture merges this into stdout and corrupts
 #                                jq parsing.
 #
-# Anything else: exit 1 (matches the FAKE_BIN/gh precedent — fail loudly on
-# unrecognised calls so a missing boundary surfaces in the test).
+# Anything else: exit 1 — fail loudly on unrecognised calls so a missing
+# boundary surfaces in the test.
 
 set -u
 
@@ -47,8 +46,7 @@ RUNS_DIR="$FIXTURE_ROOT/runs"
 JOBS_DIR="$FIXTURE_ROOT/jobs"
 RATELIMIT_DIR="$FIXTURE_ROOT/ratelimit"
 
-# Not `gh api` → fall back to a generic non-zero (matches the bkit-runtime.bats
-# fake-gh idiom — only the calls we care about are wired).
+# Not `gh api` → a generic non-zero; only the calls the suites use are wired.
 if [ "$#" -lt 2 ] || [ "$1" != "api" ]; then
   exit 1
 fi

@@ -1,4 +1,4 @@
-// bkit-version.test.ts — P2.T3 — schema + backward-compat tests.
+// bkit-version.test.ts — P2.T3 — schema tests.
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// parseBkitVersion — backward-compat parser
+// parseBkitVersion
 // ---------------------------------------------------------------------------
 
 describe("parseBkitVersion", () => {
@@ -46,47 +46,14 @@ describe("parseBkitVersion", () => {
     });
   });
 
-  it("parses old plain-text format (v0.6.x backward-compat)", () => {
-    const result = parseBkitVersion("0.6.1\n");
-    expect(result).not.toBeNull();
-    expect(result!.pinnedVersion).toBe("0.6.1");
-    expect(result!.canonicalHashes).toEqual({});
-  });
-
   it("returns null for empty content", () => {
     expect(parseBkitVersion("")).toBeNull();
     expect(parseBkitVersion("   \n  ")).toBeNull();
   });
 
-  it("handles plain-text without trailing newline", () => {
-    const result = parseBkitVersion("0.5.0");
-    expect(result).not.toBeNull();
-    expect(result!.pinnedVersion).toBe("0.5.0");
-    expect(result!.canonicalHashes).toEqual({});
-  });
-
-  it("folds a legacy tier3Hashes map into canonicalHashes, canonical entry winning", () => {
-    const json = JSON.stringify({
-      pinnedVersion: "4.0.0",
-      tier3Hashes: { ".bkit/.env.example": "seeded", ".bkit/README.md": "stale" },
-      canonicalHashes: { ".bkit/README.md": "current" },
-    });
-    const result = parseBkitVersion(json);
-    expect(result!.canonicalHashes).toEqual({
-      ".bkit/.env.example": "seeded",
-      ".bkit/README.md": "current",
-    });
-    expect(result!.legacyTier3Hashes).toBe(true);
-  });
-
-  it("v0.7.x JSON (tier3Hashes only) → canonicalHashes is the tier3 map", () => {
-    const json = JSON.stringify({ pinnedVersion: "0.7.0", tier3Hashes: { "a.yml": "h" } });
-    expect(parseBkitVersion(json)!.canonicalHashes).toEqual({ "a.yml": "h" });
-  });
-
-  it("does not flag a file without the legacy field", () => {
-    const json = JSON.stringify({ pinnedVersion: "5.0.0", canonicalHashes: {} });
-    expect(parseBkitVersion(json)!.legacyTier3Hashes).toBeUndefined();
+  it("returns null for content that is not a JSON object", () => {
+    expect(parseBkitVersion("0.5.0")).toBeNull();
+    expect(parseBkitVersion("{ not json")).toBeNull();
   });
 });
 
@@ -108,15 +75,6 @@ describe("readBkitVersion", () => {
     expect(result).not.toBeNull();
     expect(result!.pinnedVersion).toBe("0.7.0");
   });
-
-  it("reads and parses plain-text file (backward-compat)", () => {
-    const versionFile = path.join(tmpDir, ".bkit-version");
-    fs.writeFileSync(versionFile, "0.6.1\n", "utf-8");
-    const result = readBkitVersion(versionFile);
-    expect(result).not.toBeNull();
-    expect(result!.pinnedVersion).toBe("0.6.1");
-    expect(result!.canonicalHashes).toEqual({});
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -129,19 +87,6 @@ describe("serializeBkitVersion", () => {
     const result = serializeBkitVersion(v);
     expect(result.endsWith("\n")).toBe(true);
     expect(JSON.parse(result).pinnedVersion).toBe("0.7.0");
-  });
-
-  it("never writes tier3Hashes, even when the record was parsed from a legacy file", () => {
-    const parsed = parseBkitVersion(
-      JSON.stringify({ pinnedVersion: "4.0.0", tier3Hashes: { "a.yml": "h" } }),
-    )!;
-    const written = JSON.parse(serializeBkitVersion(parsed)) as Record<string, unknown>;
-    expect(Object.keys(written).sort()).toEqual([
-      "canonicalHashes",
-      "claudeAllowDerived",
-      "pinnedVersion",
-    ]);
-    expect(written.canonicalHashes).toEqual({ "a.yml": "h" });
   });
 
   it("round-trips through parseBkitVersion", () => {
@@ -190,17 +135,11 @@ describe("hashFile", () => {
 });
 
 // ---------------------------------------------------------------------------
-// P4.T4 — canonicalHashes: backward-compat read + isConsumerModified
+// P4.T4 — canonicalHashes read + isConsumerModified
 // ---------------------------------------------------------------------------
 
-describe("P4.T4 — canonicalHashes backward-compat + isConsumerModified", () => {
-  it("parseBkitVersion v0.6.x plain-text → canonicalHashes defaults to empty object", () => {
-    const result = parseBkitVersion("0.6.1\n");
-    expect(result).not.toBeNull();
-    expect(result!.canonicalHashes).toEqual({});
-  });
-
-  it("parseBkitVersion v0.9.x JSON with canonicalHashes → reads correctly", () => {
+describe("P4.T4 — canonicalHashes + isConsumerModified", () => {
+  it("parseBkitVersion JSON with canonicalHashes → reads correctly", () => {
     const json = JSON.stringify({
       pinnedVersion: "0.9.0",
       canonicalHashes: { ".claude/agents/bkit-foo.md": "abc123" },
@@ -240,9 +179,8 @@ describe("P4.T4 — canonicalHashes backward-compat + isConsumerModified", () =>
     expect(isConsumerModified(".claude/agents/bkit-foo.md", filePath, hashes)).toBe(true);
   });
 
-  it("backward-compat: old payload without canonicalHashes → isConsumerModified returns true for all files (blocks silent overwrites)", () => {
-    // Simulates a consumer with v0.7.x .bkit-version (no canonicalHashes field).
-    const json = JSON.stringify({ pinnedVersion: "0.7.0", tier3Hashes: {} });
+  it("a record without canonicalHashes → isConsumerModified returns true for all files (blocks silent overwrites)", () => {
+    const json = JSON.stringify({ pinnedVersion: "0.7.0" });
     const parsed = parseBkitVersion(json);
     expect(parsed).not.toBeNull();
     const filePath = path.join(tmpDir, "ci.yml");
@@ -362,16 +300,7 @@ describe("stampManagedVersion", () => {
 
 describe("claudeAllowDerived provenance field (T16)", () => {
   it("defaults to [] at the JSON return when the key is absent", () => {
-    const v = parseBkitVersion(
-      JSON.stringify({ pinnedVersion: "4.12.0", tier3Hashes: {}, canonicalHashes: {} }),
-    );
-    expect(v?.claudeAllowDerived).toEqual([]);
-  });
-
-  it("defaults to [] at the plain-text fallback return, a separate code path", () => {
-    // v0.6.x payload: a bare semver string, never JSON — exercises the other return
-    const v = parseBkitVersion("4.12.0");
-    expect(v?.pinnedVersion).toBe("4.12.0");
+    const v = parseBkitVersion(JSON.stringify({ pinnedVersion: "4.12.0", canonicalHashes: {} }));
     expect(v?.claudeAllowDerived).toEqual([]);
   });
 
@@ -387,20 +316,11 @@ describe("claudeAllowDerived provenance field (T16)", () => {
     const parsed = parseBkitVersion(
       JSON.stringify({
         pinnedVersion: "4.12.0",
-        tier3Hashes: {},
         canonicalHashes: {},
         claudeAllowDerived: rows,
       }),
     );
     expect(parsed?.claudeAllowDerived).toEqual(rows);
     expect(parseBkitVersion(serializeBkitVersion(parsed!))?.claudeAllowDerived).toEqual(rows);
-  });
-
-  it("reads a record written under the former key, webFetchDerived", () => {
-    // A `.bkit/version` carrying `webFetchDerived` keeps its provenance.
-    const rows = ["WebFetch(domain:models.dev)"];
-    const v = parseBkitVersion(JSON.stringify({ pinnedVersion: "4.12.0", webFetchDerived: rows }));
-    expect(v?.claudeAllowDerived).toEqual(rows);
-    expect(serializeBkitVersion(v!)).not.toContain("webFetchDerived");
   });
 });

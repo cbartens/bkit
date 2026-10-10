@@ -9,8 +9,6 @@ import {
   detectNoPackageJson,
   detectMalformedPackageJson,
   detectNotGitRepo,
-  detectCompletedMdUnmigrated,
-  detectLintProseF9Vulnerable,
   detectBkitVersionMajorDowngrade,
   detectBkitVersionPinStale,
   detectGitignoreBlockDuplicates,
@@ -123,82 +121,16 @@ describe("detectNotGitRepo", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectCompletedMdUnmigrated
-// ---------------------------------------------------------------------------
-
-describe("detectCompletedMdUnmigrated", () => {
-  it("returns an advisory when docs/completed.md is present", () => {
-    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, "docs", "completed.md"), "# Completed\n", "utf-8");
-    const result = detectCompletedMdUnmigrated(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("completed-md-unmigrated");
-    expect(result!.severity).toBe("advisory");
-    expect(result!.action).toContain("bkit telemetry migrate");
-  });
-
-  it("returns null when docs/completed.md is absent (already migrated)", () => {
-    expect(detectCompletedMdUnmigrated(tmpDir)).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectLintProseF9Vulnerable
-// ---------------------------------------------------------------------------
-
-describe("detectLintProseF9Vulnerable", () => {
-  it("returns finding when lint:prose script exists but lacks write-good guard", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({
-        name: "test",
-        scripts: { "lint:prose": "vale $(find . -name '*.md')" },
-      }),
-      "utf-8",
-    );
-    const result = detectLintProseF9Vulnerable(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("lint-prose-f9-vulnerable");
-    expect(result!.severity).toBe("advisory");
-  });
-
-  it("returns null when lint:prose script includes the write-good guard", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({
-        name: "test",
-        scripts: {
-          "lint:prose":
-            "bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale ...; fi'",
-        },
-      }),
-      "utf-8",
-    );
-    expect(detectLintProseF9Vulnerable(tmpDir)).toBeNull();
-  });
-
-  it("returns null when lint:prose script is absent", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "test", scripts: { build: "tsc" } }),
-      "utf-8",
-    );
-    expect(detectLintProseF9Vulnerable(tmpDir)).toBeNull();
-  });
-
-  it("returns null when package.json is absent", () => {
-    expect(detectLintProseF9Vulnerable(tmpDir)).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
 // detectBkitVersionMajorDowngrade
 // ---------------------------------------------------------------------------
 
 describe("detectBkitVersionMajorDowngrade", () => {
   it("returns finding when on-disk major is greater than installing major", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "2.0.0\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".bkit", "version"),
+      JSON.stringify({ pinnedVersion: "2.0.0" }),
+    );
     const result = detectBkitVersionMajorDowngrade(tmpDir, "1.5.0");
     expect(result).not.toBeNull();
     expect(result!.id).toBe("bkit-version-major-downgrade");
@@ -207,17 +139,23 @@ describe("detectBkitVersionMajorDowngrade", () => {
 
   it("returns null when on-disk major equals installing major", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "1.2.0\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".bkit", "version"),
+      JSON.stringify({ pinnedVersion: "1.2.0" }),
+    );
     expect(detectBkitVersionMajorDowngrade(tmpDir, "1.5.0")).toBeNull();
   });
 
   it("returns null when on-disk major is less than installing major (upgrade)", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "1.0.0\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".bkit", "version"),
+      JSON.stringify({ pinnedVersion: "1.0.0" }),
+    );
     expect(detectBkitVersionMajorDowngrade(tmpDir, "2.0.0")).toBeNull();
   });
 
-  it("returns null when .bkit-version is absent", () => {
+  it("returns null when .bkit/version is absent", () => {
     expect(detectBkitVersionMajorDowngrade(tmpDir, "1.0.0")).toBeNull();
   });
 });
@@ -235,7 +173,10 @@ describe("detectBkitVersionPinStale", () => {
 
   function writeOnDiskVersion(version: string): void {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), version + "\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".bkit", "version"),
+      JSON.stringify({ pinnedVersion: version }),
+    );
   }
 
   it("(a) returns finding when installed version > on-disk version", () => {
@@ -322,13 +263,6 @@ describe("runPreflight", () => {
 // ---------------------------------------------------------------------------
 
 describe("stripBkitBlock", () => {
-  it("removes hash-style bkit block content", () => {
-    const input = "before\n# bkit:start\ninside\n# bkit:end\nafter";
-    expect(stripBkitBlock(input)).toContain("before");
-    expect(stripBkitBlock(input)).toContain("after");
-    expect(stripBkitBlock(input)).not.toContain("inside");
-  });
-
   it("removes HTML-comment-style bkit block content", () => {
     const input = "before\n<!-- bkit:start -->\ninside\n<!-- bkit:end -->\nafter";
     expect(stripBkitBlock(input)).toContain("before");
@@ -427,7 +361,7 @@ describe("detectGitignoreBlockDuplicates", () => {
   it("does NOT flag when bkit lines appear only inside the block", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".gitignore"),
-      "node_modules/\n# bkit:start\n.worktrees/\n.husky/_\n# bkit:end\n",
+      "node_modules/\n# <!-- bkit:start -->\n.worktrees/\n.husky/_\n# <!-- bkit:end -->\n",
       "utf-8",
     );
     const f = detectGitignoreBlockDuplicates(tmpDir);
@@ -940,8 +874,8 @@ describe("B4 — detectShellToken differentiates unset from empty-string", () =>
 // Advisory text must prescribe the user-level auth shape
 //   `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"`
 // and must NOT prescribe committing an `_authToken=${BKIT_GH_TOKEN_INSTALL}` line in the project
-// .npmrc as the auth mechanism — pnpm >=10.34.3 401s on that env-substitution (the legacy
-// line is flagged for removal by detectNpmrcLegacyAuthToken, never prescribed).
+// .npmrc as the auth mechanism — pnpm >=10.34.3 401s on that env-substitution (the
+// line is flagged for removal by detectNpmrcAuthTokenLine, never prescribed).
 //
 // The POSIX-fallback `${VAR:-default}` form never appears (pnpm cannot parse it).
 // ---------------------------------------------------------------------------

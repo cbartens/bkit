@@ -184,7 +184,7 @@ export const worktreesCommand = {
                 {
                     name: "worktrees",
                     type: "boolean",
-                    help: "this runtime mints worktrees (RUNTIME_WORKTREES=true); absent = adopt the current branch in place",
+                    help: "this runtime mints worktrees (runtimeWorktrees=true); absent = adopt the current branch in place",
                 },
                 {
                     name: "branch",

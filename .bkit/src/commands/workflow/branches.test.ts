@@ -3,11 +3,18 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { LOCKFILE_REGENERATE, PACKAGE_RUNNER } from "../shared/package-manager";
 import { LEDGERS, branchesCommand, classifyConflict, readAnchor, stampAnchor } from "./branches";
+
+// `branches switch` contends for the dev lock for SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S; a held
+// lock must answer at once here.
+vi.mock("../shared/timeouts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../shared/timeouts")>();
+  return { TIMEOUTS: { ...actual.TIMEOUTS, SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S: 0 } };
+});
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const GITATTRIBUTES = path.join(REPO_ROOT, ".bkit/templates/.gitattributes");
@@ -258,15 +265,18 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     expect(r.err).toContain("COMPLETE");
   });
 
-  it("refuses a code conflict and leaves the rebase in progress for the caller", async () => {
+  it("refuses a code conflict and aborts the rebase on the spot", async () => {
     const dir = makeRepo("code");
     diverge(dir, { "src.txt": "feat\n" }, { "src.txt": "main\n" });
     const r = await run(dir, ["rebase"]);
     expect(r.code).toBe(3);
-    expect(r.json).toMatchObject({ outcome: "refused", refused: "src.txt" });
+    expect(r.json).toMatchObject({ outcome: "refused", refused: "src.txt", aborted: true });
     expect(r.err).toContain("REFUSE src.txt");
-    expect(git(dir, "status", "--porcelain").out).toContain("src.txt");
-    expect(inRebase(dir)).toBe(true);
+    expect(r.err).toContain("ABORTED");
+    expect(inRebase(dir)).toBe(false);
+    expect(git(dir, "status", "--porcelain").out).toBe("");
+    expect(git(dir, "branch", "--show-current").out).toBe("feat");
+    expect(read(dir, "src.txt")).toBe("code v0\nfeat\n");
   });
 
   it("refuses a mixed set without mutating the resolvable ledger in it", async () => {
@@ -276,8 +286,10 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
       { "src.txt": "feat\n", "docs/knowledge.jsonl": '{"key":"B","ts":2}\n' },
       { "src.txt": "main\n", "docs/knowledge.jsonl": '{"key":"C","ts":3}\n' },
     );
-    expect((await run(dir, ["rebase"])).code).toBe(3);
-    expect(read(dir, "docs/knowledge.jsonl")).toContain("<<<<<<<");
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({ refused: "src.txt", resolved: [], aborted: true });
+    expect(read(dir, "docs/knowledge.jsonl")).toBe('{"key":"A","ts":1}\n{"key":"B","ts":2}\n');
   });
 
   it("produces byte-identical output to merge=union", async () => {
@@ -365,7 +377,7 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     const r = await run(dir, ["rebase"]);
     expect(r.code).toBe(3);
     expect(r.json).toMatchObject({ refused: "docs/knowledge.jsonl", reason: "resolution failed" });
-    expect(inRebase(dir)).toBe(true);
+    expect(inRebase(dir)).toBe(false);
   });
 
   it("unions docs/roadmap.md without de-duplicating its repeated lines", async () => {
@@ -410,7 +422,7 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json).toMatchObject({ refused: lockfile, reason: "resolution failed" });
   });
 
-  it("--sentinel and --log-file record a refusal; the rebase stays in progress", async () => {
+  it("--sentinel and --log-file record a refusal and survive the abort", async () => {
     const dir = makeRepo("sentinel-write");
     diverge(dir, { "src.txt": "feat\n" }, { "src.txt": "main\n" });
     write(dir, "logs/.rebase-failed", "stale");
@@ -421,9 +433,10 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     ]);
     expect(r.code).toBe(3);
     expect(r.json).toMatchObject({ outcome: "refused", sentinel: "logs/.rebase-failed" });
-    expect(inRebase(dir)).toBe(true);
+    expect(inRebase(dir)).toBe(false);
     expect(read(dir, "logs/.rebase-failed")).toBe("");
     expect(read(dir, "logs/rebase-resolve-log.md")).toMatch(/^\[bkit-rebase\] REFUSE src\.txt/);
+    expect(read(dir, "logs/rebase-resolve-log.md")).toContain("[bkit-rebase] ABORTED");
   });
 
   it("removes a stale sentinel when the rebase succeeds", async () => {
@@ -1079,7 +1092,7 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
 // ---------------------------------------------------------------------------
 
 describe("branches switch", { timeout: GIT_TIMEOUT }, () => {
-  const ARGS = ["switch", "--fid=1-x", "--dev-pushes=true", "--worktrees=true", "--lock-wait=0"];
+  const ARGS = ["switch", "--fid=1-x", "--dev-pushes=true", "--worktrees=true"];
 
   function shipped(name: string) {
     const { origin, clone } = withOrigin(name);

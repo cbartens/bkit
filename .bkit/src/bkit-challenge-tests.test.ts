@@ -100,7 +100,11 @@ describe("detectBkitVersionMajorDowngrade — NaN-guard edge cases", () => {
   it("still emits an advisory when .bkit-version is valid and major is higher", () => {
     // A real downgrade still fires
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "3.0.0\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".bkit", "version"),
+      JSON.stringify({ pinnedVersion: "3.0.0" }),
+      "utf-8",
+    );
     const result = detectBkitVersionMajorDowngrade(tmpDir, "1.0.0");
     expect(result).not.toBeNull();
     expect(result!.id).toBe("bkit-version-major-downgrade");

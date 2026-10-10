@@ -10,7 +10,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { parseIssueTracker, type IssueTracker } from "../../bkit-manifest.js";
+import type { IssueTracker } from "../../bkit-manifest.js";
 import { readBkitConfig } from "../shared/config.js";
 import { appendLine, statusTimestamp, type StatusRow } from "../../bkit-status.js";
 import {
@@ -184,13 +184,10 @@ export const EXIT_GH_FAILED = 5;
 export const EXIT_WRONG_BASE = 6;
 
 function openPr(ctx: RunContext): number {
-  const tracker = str(ctx.flags.tracker) ?? readBkitConfig(repoRoot(ctx.cwd)).issueTracker;
-  if (parseIssueTracker(tracker) === null) {
-    throw new CommandError(EXIT.USAGE, "--tracker must be github, linear, or none");
-  }
+  const tracker = readBkitConfig(repoRoot(ctx.cwd)).issueTracker;
   const issue = str(ctx.flags.issue);
   if (tracker === "none" && issue !== undefined) ctx.log("--issue ignored: no tracker wired");
-  const marker = prMarker(tracker as IssueTracker, String(ctx.flags.fid), issue);
+  const marker = prMarker(tracker, String(ctx.flags.fid), issue);
 
   const title = String(ctx.flags.title);
   if (title.trim() === "") throw new CommandError(EXIT.USAGE, "--title must be non-empty");
@@ -438,11 +435,6 @@ export const prsCommand: CommandSpec = {
           type: "string",
           help: "issue id for the marker (github: 123 or #123; linear: ABC-123)",
         },
-        {
-          name: "tracker",
-          type: "string",
-          help: "github | linear | none (default: package.json bkit.issueTracker)",
-        },
         BASE_FLAG,
         HEAD_FLAG,
         { name: "plan", type: "string", help: "plan path named in the body, when the file exists" },
@@ -565,7 +557,7 @@ export const prsCommand: CommandSpec = {
         { name: "kind", type: "string", required: true, help: "fallback | close" },
         { name: "from", type: "string", help: "fallback: the gh command that was unavailable" },
         { name: "to", type: "string", help: "fallback: the MCP tool used instead" },
-        { name: "reason", type: "string", help: "fallback: why, e.g. RUNTIME_GITHUBCLI=false" },
+        { name: "reason", type: "string", help: "fallback: why, e.g. runtimeGithubCli=false" },
         {
           name: "asserted-by",
           type: "string",

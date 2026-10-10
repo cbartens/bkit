@@ -162,6 +162,7 @@ describe("bkit issues labels", () => {
       remove: ["bkit:design"],
       labels: ["bug", "bkit:auto", "bkit:failed", "bkit:plan"],
       changed: true,
+      autoRouteSuffix: " bkit [auto route]",
       linearState: "In Progress",
       board: null,
       boardSkipped: null,
@@ -214,6 +215,16 @@ describe("bkit issues labels", () => {
       linearState: "In Review",
     });
     expect((await labels(dir(), "--phase=merged", "--failed=on")).code).toBe(2);
+  });
+
+  it("autoRouteSuffix follows an exact bkit:auto label, with or without a transition", async () => {
+    expect((await labels(dir(), "--label=bkit:build", "--label=bkit:auto")).json).toMatchObject({
+      changed: false,
+      autoRouteSuffix: " bkit [auto route]",
+    });
+    expect((await labels(dir(), "--label=bkit:build")).json.autoRouteSuffix).toBe("");
+    expect((await labels(dir(), "--label=bkit:automatic")).json.autoRouteSuffix).toBe("");
+    expect((await labels(dir())).json.autoRouteSuffix).toBe("");
   });
 
   it("refuses an unknown phase or on/off value", async () => {

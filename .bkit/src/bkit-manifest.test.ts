@@ -11,8 +11,6 @@ import {
   CLOUD_MANIFEST_OPENCODE,
   OPENCODE_MANIFEST,
   parseCloudAgents,
-  LINT_PROSE_SCRIPT,
-  LEGACY_LINT_PROSE_SCRIPTS,
   type ModuleName,
 } from "./bkit-manifest";
 import { isTemplate } from "./bkit-modules";
@@ -46,8 +44,6 @@ describe(".claude/hooks/gateguard.cjs ownership (markered-text: consumer owns th
     expect(entry).toBeDefined();
     expect(entry!.module).toBe("claude");
     expect(entry!.format).toBe("markered-text");
-    // opts in to the no-marker migration policy (pre-markers consumer installs)
-    expect(entry!.noMarkerMigration).toBeTruthy();
   });
 });
 
@@ -110,11 +106,8 @@ describe("parseCloudAgents — value space and back-compat", () => {
     expect(parseCloudAgents("none")).toBe("none");
   });
 
-  it("back-compat: legacy 'enabled' → 'claude' (DECISION-C AMENDED)", () => {
-    expect(parseCloudAgents("enabled")).toBe("claude");
-  });
-
   it("returns null for unknown values", () => {
+    expect(parseCloudAgents("enabled")).toBeNull();
     expect(parseCloudAgents("linear")).toBeNull();
     expect(parseCloudAgents("github")).toBeNull();
     expect(parseCloudAgents("")).toBeNull();
@@ -251,8 +244,6 @@ describe("OPENCODE_MANIFEST — round-trip and format contracts", () => {
     expect(entry).toBeDefined();
     expect(entry!.format).toBe("markered-text");
     expect(entry!.module).toBe("opencode");
-    // opts in to the no-marker migration policy (pre-markers consumer installs)
-    expect(entry!.noMarkerMigration).toBeTruthy();
   });
 
   it("all OPENCODE_MANIFEST entries have module=opencode", () => {
@@ -351,13 +342,19 @@ describe("KN-19-for-opencode — writeTier2JsonContained throws on malformed .op
 });
 
 // ---------------------------------------------------------------------------
-// LINT_PROSE_SCRIPT — shipped prose-gate contract
+// lint:prose — shipped prose-gate contract
 //
-// The value bkit re-points a superseded lint:prose at; it runs in consumers' pre-push
-// hooks. These assert its embedding and guard invariants.
+// The value `.bkit/templates.md` § Gate tool scripts hands consumers; it runs in their
+// pre-push hooks. These assert its embedding and guard invariants.
 // ---------------------------------------------------------------------------
 
-describe("LINT_PROSE_SCRIPT", () => {
+const LINT_PROSE_SCRIPT = ((): string => {
+  const doc = fs.readFileSync(path.resolve(".bkit/templates.md"), "utf-8");
+  const block = /```json\n([\s\S]*?)\n```/.exec(doc.slice(doc.indexOf("## Gate tool scripts")));
+  return (JSON.parse(block?.[1] ?? "{}") as Record<string, string>)["lint:prose"] ?? "";
+})();
+
+describe("lint:prose template value", () => {
   const body = LINT_PROSE_SCRIPT.replace(/^bash -c '/, "").replace(/'$/, "");
 
   it("is wrapped in bash -c with no single quotes in the body", () => {
@@ -370,11 +367,6 @@ describe("LINT_PROSE_SCRIPT", () => {
   it("contains no backticks", () => {
     // Inside a DOUBLE-quoted echo a backtick command-substitutes instead of printing.
     expect(body).not.toContain("`");
-  });
-
-  it("carries the F9 guard substring that bkit-preflight.ts greps for", () => {
-    // detectLintProseF9Vulnerable does a literal substring match on this exact form.
-    expect(LINT_PROSE_SCRIPT).toContain("[ -d .vale/styles/write-good ]");
   });
 
   it("soft-skips instead of failing when the vale binary is absent", () => {
@@ -396,19 +388,6 @@ describe("LINT_PROSE_SCRIPT", () => {
     // A failed self-heal with vale present is loud on stderr.
     expect(body).toContain("PROSE LINT SKIPPED");
     expect(body).toContain(">&2");
-  });
-
-  it("is not itself listed as a legacy value", () => {
-    expect(LEGACY_LINT_PROSE_SCRIPTS).not.toContain(LINT_PROSE_SCRIPT);
-  });
-
-  it("lists the previous shipped default as legacy so existing installs get re-pointed", () => {
-    expect(LEGACY_LINT_PROSE_SCRIPTS.length).toBeGreaterThan(0);
-    // The default an older bkit wrote, verbatim. Must byte-match or those installs
-    // are never re-pointed.
-    expect(LEGACY_LINT_PROSE_SCRIPTS).toContain(
-      'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
-    );
   });
 });
 

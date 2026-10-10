@@ -1,7 +1,6 @@
-// bkit-templates-root.test.ts — Templates-root resolution + orphan-cleanup regression tests.
+// bkit-templates-root.test.ts — Templates-root resolution regression tests.
 //
 // Coverage targets:
-//   removeOrphanTemplatesDir sentinel guard (consumer-owned dir must survive)
 //   getTemplatesRoot() three-context resolution
 //   guardTemplatesRoot() empty-string / falsy-root edge case
 
@@ -10,7 +9,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { removeOrphanTemplatesDir } from "./bkit-install";
 import { getPkgRoot, getTemplatesRoot, BKIT_SRC_SUBPATH } from "./bkit-paths";
 import { guardTemplatesRoot } from "./bkit-modules";
 
@@ -27,154 +25,6 @@ beforeEach(() => {
 afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
   vi.restoreAllMocks();
-});
-
-// ---------------------------------------------------------------------------
-// removeOrphanTemplatesDir sentinel guard
-//
-// The function deletes .agents/templates/ only when at least one known bkit basename
-// exists inside it; a consumer-owned directory survives.
-// ---------------------------------------------------------------------------
-
-describe("removeOrphanTemplatesDir — sentinel guard (F1 MEDIUM fix)", () => {
-  it("DELETES .agents/templates/ when a known sentinel (AGENTS.md) is present", () => {
-    const orphanDir = path.join(tmpDir, ".agents", "templates");
-    fs.mkdirSync(orphanDir, { recursive: true });
-    fs.writeFileSync(path.join(orphanDir, "AGENTS.md"), "# bkit-managed content", "utf-8");
-
-    removeOrphanTemplatesDir(tmpDir, /* dryRun */ false);
-
-    expect(fs.existsSync(orphanDir)).toBe(false);
-  });
-
-  it("DELETES .agents/templates/ when a known sentinel (CLAUDE.md) is present", () => {
-    const orphanDir = path.join(tmpDir, ".agents", "templates");
-    fs.mkdirSync(orphanDir, { recursive: true });
-    fs.writeFileSync(path.join(orphanDir, "CLAUDE.md"), "# bkit-managed content", "utf-8");
-
-    removeOrphanTemplatesDir(tmpDir, /* dryRun */ false);
-
-    expect(fs.existsSync(orphanDir)).toBe(false);
-  });
-
-  it("DELETES .agents/templates/ when sentinel gitignore is present", () => {
-    const orphanDir = path.join(tmpDir, ".agents", "templates");
-    fs.mkdirSync(orphanDir, { recursive: true });
-    fs.writeFileSync(path.join(orphanDir, "gitignore"), "node_modules/\n", "utf-8");
-
-    removeOrphanTemplatesDir(tmpDir, /* dryRun */ false);
-
-    expect(fs.existsSync(orphanDir)).toBe(false);
-  });
-
-  it("DELETES .agents/templates/ when sentinel .vale.ini is present", () => {
-    const orphanDir = path.join(tmpDir, ".agents", "templates");
-    fs.mkdirSync(orphanDir, { recursive: true });
-    fs.writeFileSync(path.join(orphanDir, ".vale.ini"), "[vale]\n", "utf-8");
-
-    removeOrphanTemplatesDir(tmpDir, /* dryRun */ false);
-
-    expect(fs.existsSync(orphanDir)).toBe(false);
-  });
-
-  it("DELETES .agents/templates/ when sentinel .github/workflows dir is present", () => {
-    const orphanDir = path.join(tmpDir, ".agents", "templates");
-    const workflowsDir = path.join(orphanDir, ".github", "workflows");
-    fs.mkdirSync(workflowsDir, { recursive: true });
-    fs.writeFileSync(path.join(workflowsDir, "ci.yml"), "name: CI\n", "utf-8");
-
-    removeOrphanTemplatesDir(tmpDir, /* dryRun */ false);
-
-    expect(fs.existsSync(orphanDir)).toBe(false);
-  });
-
-  it("SKIPS deletion when NO known bkit sentinel exists (consumer-owned dir)", () => {
-    const orphanDir = path.join(tmpDir, ".agents", "templates");
-    fs.mkdirSync(orphanDir, { recursive: true });
-    // Only consumer-owned content; no bkit sentinels
-    fs.writeFileSync(path.join(orphanDir, "my-consumer-template.md"), "consumer content", "utf-8");
-    fs.writeFileSync(
-      path.join(orphanDir, "another-template.txt"),
-      "more consumer content",
-      "utf-8",
-    );
-
-    removeOrphanTemplatesDir(tmpDir, /* dryRun */ false);
-
-    // Directory must survive — it is consumer-owned
-    expect(fs.existsSync(orphanDir)).toBe(true);
-    expect(fs.readFileSync(path.join(orphanDir, "my-consumer-template.md"), "utf-8")).toBe(
-      "consumer content",
-    );
-  });
-
-  it("SKIPS deletion when .agents/templates/ is empty (no sentinel files)", () => {
-    const orphanDir = path.join(tmpDir, ".agents", "templates");
-    fs.mkdirSync(orphanDir, { recursive: true });
-    // Empty directory — no sentinels
-
-    removeOrphanTemplatesDir(tmpDir, /* dryRun */ false);
-
-    // Empty dir with no sentinels is treated as consumer-owned — must survive
-    expect(fs.existsSync(orphanDir)).toBe(true);
-  });
-
-  it("is a no-op (no throw) when .agents/templates/ does not exist", () => {
-    // Pre-condition: directory absent
-    const orphanDir = path.join(tmpDir, ".agents", "templates");
-    expect(fs.existsSync(orphanDir)).toBe(false);
-
-    expect(() => removeOrphanTemplatesDir(tmpDir, /* dryRun */ false)).not.toThrow();
-  });
-
-  it("is a no-op when .agents/ does not exist at all", () => {
-    // .agents/ itself absent
-    expect(fs.existsSync(path.join(tmpDir, ".agents"))).toBe(false);
-
-    expect(() => removeOrphanTemplatesDir(tmpDir, /* dryRun */ false)).not.toThrow();
-  });
-
-  it("dryRun: true logs but does NOT delete when sentinel is present", () => {
-    const orphanDir = path.join(tmpDir, ".agents", "templates");
-    fs.mkdirSync(orphanDir, { recursive: true });
-    fs.writeFileSync(path.join(orphanDir, "AGENTS.md"), "# bkit content", "utf-8");
-
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-    removeOrphanTemplatesDir(tmpDir, /* dryRun */ true);
-
-    // Directory must still exist — dryRun blocks the write
-    expect(fs.existsSync(orphanDir)).toBe(true);
-    // Log must have been called (the function logs the dry-run action)
-    expect(logSpy).toHaveBeenCalled();
-    const loggedMessages = logSpy.mock.calls.map((c) => String(c[0]));
-    const hasDryRunLog = loggedMessages.some(
-      (m) => m.includes("[dry-run]") || m.includes("dry-run"),
-    );
-    expect(hasDryRunLog).toBe(true);
-  });
-
-  it("dryRun: true no-op when .agents/templates/ is absent", () => {
-    // Dry-run on absent directory must not throw and must not create anything
-    expect(() => removeOrphanTemplatesDir(tmpDir, /* dryRun */ true)).not.toThrow();
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "templates"))).toBe(false);
-  });
-
-  it("skipping consumer-owned dir logs a notice (not silently ignoring)", () => {
-    const orphanDir = path.join(tmpDir, ".agents", "templates");
-    fs.mkdirSync(orphanDir, { recursive: true });
-    fs.writeFileSync(path.join(orphanDir, "my-content.md"), "consumer", "utf-8");
-
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-    removeOrphanTemplatesDir(tmpDir, /* dryRun */ false);
-
-    // Must emit a log message explaining the skip decision
-    expect(logSpy).toHaveBeenCalled();
-    const loggedMessages = logSpy.mock.calls.map((c) => String(c[0]));
-    const hasSkipNotice = loggedMessages.some((m) => m.includes("consumer-owned"));
-    expect(hasSkipNotice).toBe(true);
-  });
 });
 
 // ---------------------------------------------------------------------------

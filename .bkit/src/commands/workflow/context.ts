@@ -18,6 +18,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { CONTEXT_FETCH_CONTEXTS, parseContextFetchStart } from "../../bkit-preflight.js";
 import { lastRun } from "../../bkit-status.js";
 import {
   CommandError,
@@ -490,10 +491,6 @@ export function ledgerScan(source: string | undefined, terms: string): LedgerSca
 // context-fetch blocks in .agents/context.md
 // ---------------------------------------------------------------------------
 
-/** Evidence contexts, in the order coverage is narrated. */
-export const CONTEXTS = ["runtime", "ci", "diff", "e2e", "web"] as const;
-
-const START = "<!-- context-fetch:start";
 const END_LINE = "<!-- context-fetch:end -->";
 
 export interface FetchBlock {
@@ -501,7 +498,7 @@ export interface FetchBlock {
   idx: number;
   context: string;
   name: string;
-  /** context is one of CONTEXTS; an unknown one is never run. */
+  /** context is one of CONTEXT_FETCH_CONTEXTS; an unknown one is never run. */
   known: boolean;
   /** Artifact name stem: `{prefix}-{suffix}{attempt}.md`. */
   prefix: string | null;
@@ -517,25 +514,14 @@ export function consumerSection(md: string): string[] {
   return at === -1 ? [] : lines.slice(at);
 }
 
-/** `<!-- context-fetch:start [name] [context=<c>] -->`; context defaults to runtime, last token wins. */
-export function parseMarker(line: string): { context: string; name: string } {
-  const inner = line.replace(/^<!-- context-fetch:start[ \t]*/, "").replace(/[ \t]*-->$/, "");
-  let context = "runtime";
-  let name = "";
-  for (const token of inner.split(/[ \t]+/)) {
-    if (token.startsWith("context=")) context = token.slice("context=".length);
-    else if (token !== "") name = token;
-  }
-  return { context, name };
-}
-
 export function fetchBlocks(section: string[]): FetchBlock[] {
   const blocks: Array<Omit<FetchBlock, "suffix"> & { lines: string[] }> = [];
   let current: (typeof blocks)[number] | undefined;
   for (const line of section) {
-    if (line.startsWith(START)) {
-      const { context, name } = parseMarker(line);
-      const known = (CONTEXTS as readonly string[]).includes(context);
+    const start = parseContextFetchStart(line);
+    if (start) {
+      const { context, name } = start;
+      const known = CONTEXT_FETCH_CONTEXTS.includes(context);
       current = {
         idx: blocks.length + 1,
         context,
@@ -579,14 +565,8 @@ function fencedBody(lines: string[]): string {
 }
 
 const readContextMd = (ctx: RunContext): string | undefined => {
-  const file = path.resolve(ctx.cwd, str(ctx.flags.contextFile) ?? ".agents/context.md");
+  const file = path.resolve(ctx.cwd, ".agents/context.md");
   return fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : undefined;
-};
-
-const CONTEXT_FILE_FLAG: FlagSpec = {
-  name: "context-file",
-  type: "string",
-  help: "consumer context file (default .agents/context.md)",
 };
 const MONTH_FLAG: FlagSpec = {
   name: "month",
@@ -733,7 +713,7 @@ export const contextCommand: CommandSpec = {
     },
     "list-blocks": {
       summary: "Enumerate the consumer's context-fetch blocks and narrate coverage per context.",
-      flags: [CONTEXT_FILE_FLAG],
+      flags: [],
       output: {
         blocks: "[{idx, context, name, known, prefix, suffix, body}] in file order",
         coverage: "blocks per context (runtime, ci, diff, e2e, web)",
@@ -742,14 +722,14 @@ export const contextCommand: CommandSpec = {
       run: (ctx) => {
         const blocks = fetchBlocks(consumerSection(readContextMd(ctx) ?? ""));
         const coverage = Object.fromEntries(
-          CONTEXTS.map((c) => [c, blocks.filter((b) => b.context === c).length]),
+          CONTEXT_FETCH_CONTEXTS.map((c) => [c, blocks.filter((b) => b.context === c).length]),
         );
         if (blocks.length === 0) {
           ctx.log(
             "context-fetch: NO BLOCKS CONFIGURED (.agents/context.md has none enabled) — CI, e2e and runtime evidence are ALL unfetched this attempt; their absence is UNCHECKED, not confirmed clean",
           );
         }
-        for (const c of CONTEXTS) {
+        for (const c of CONTEXT_FETCH_CONTEXTS) {
           ctx.log(
             coverage[c]
               ? `context-fetch context=${c} CONFIGURED (${coverage[c]} block(s))`
@@ -764,7 +744,7 @@ export const contextCommand: CommandSpec = {
         ctx.emit({
           blocks,
           coverage,
-          contextsConfigured: CONTEXTS.filter((c) => coverage[c]! > 0),
+          contextsConfigured: CONTEXT_FETCH_CONTEXTS.filter((c) => coverage[c]! > 0),
         });
         return EXIT.OK;
       },
@@ -783,7 +763,6 @@ export const contextCommand: CommandSpec = {
         FID_FLAG,
         MONTH_FLAG,
         ...ATTEMPT_FLAGS,
-        CONTEXT_FILE_FLAG,
       ],
       output: {
         outcome:
@@ -802,7 +781,7 @@ export const contextCommand: CommandSpec = {
     finalise: {
       summary:
         "The context-fetch status row's fields: verdict, artifacts, contexts configured, clamped.",
-      flags: [FID_FLAG, MONTH_FLAG, ...ATTEMPT_FLAGS, CONTEXT_FILE_FLAG],
+      flags: [FID_FLAG, MONTH_FLAG, ...ATTEMPT_FLAGS],
       output: {
         verdict: "PASS when any non-empty context-*-{attempt}.md exists, else FAIL",
         artifacts: "those artifacts, relative to the working directory",
@@ -830,7 +809,9 @@ export const contextCommand: CommandSpec = {
         ctx.emit({
           verdict: artifacts.length > 0 ? "PASS" : "FAIL",
           artifacts,
-          contextsConfigured: CONTEXTS.filter((c) => blocks.some((b) => b.context === c)),
+          contextsConfigured: CONTEXT_FETCH_CONTEXTS.filter((c) =>
+            blocks.some((b) => b.context === c),
+          ),
           clamped: readRecords(clampLogPath(ctx.cwd, fid, "context-fetch", attempt), (l) =>
             ctx.log(`skipping a malformed clamp record: ${l}`),
           ),

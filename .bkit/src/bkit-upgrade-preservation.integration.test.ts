@@ -13,8 +13,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   runUpgrade,
   updateCanonicalHashesAfterUpgrade,
-  migrateStrayGitattributes,
-  migrateWarningsToNoise,
   type UpgradeCandidate,
 } from "./bkit-upgrade";
 import { sha256, writeBkitVersion, readBkitVersion, type BkitVersion } from "./bkit-version";
@@ -92,27 +90,6 @@ describe("upgrade preserves consumer content outside the bkit block (markered-te
     // Classified as an applied update, never a conflict/skip.
     expect(result.updated).toContain(".gitignore");
     expect(result.conflicts).toHaveLength(0);
-  });
-
-  it(".prettierignore — hash-comment markers; consumer ignores survive", () => {
-    const consumer =
-      "# Consumer prettier ignores — MUST survive\ncoverage/\nplaywright-report/\n*.generated.ts\n\n# bkit:start\nnode_modules/\nSTALE/\n# bkit:end\n";
-    writeAbs(".prettierignore", consumer);
-    seedVersion({ ".prettierignore": sha256(consumer) });
-
-    const templatePath = writeTemplate(
-      "prettierignore",
-      "# bkit:start\nnode_modules/\ndist/\n# bkit:end\n",
-    );
-
-    upgrade([{ relPath: ".prettierignore", templatePath, format: "markered-text" }]);
-
-    const after = fs.readFileSync(path.join(tmpDir, ".prettierignore"), "utf-8");
-    expect(after).toContain("coverage/");
-    expect(after).toContain("playwright-report/");
-    expect(after).toContain("*.generated.ts");
-    expect(after).toContain("dist/"); // new block content applied
-    expect(after).not.toContain("STALE/");
   });
 
   it(".gitattributes — consumer custom attributes outside the block survive", () => {
@@ -253,108 +230,6 @@ describe("upgrade is idempotent for block-merge formats", () => {
     expect(second.updated).not.toContain(".gitignore");
     expect(second.skipped).toContain(".gitignore");
     expect(fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8")).toBe(merged);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// migrateStrayGitattributes — repair a stray no-dot gitattributes file
-// ---------------------------------------------------------------------------
-
-describe("migrateStrayGitattributes", () => {
-  it("renames a stray dot-less `gitattributes` to `.gitattributes` and drops the bogus hash key", () => {
-    writeAbs("gitattributes", "docs/pending.md merge=union\n");
-    seedVersion({ gitattributes: sha256("docs/pending.md merge=union\n") });
-
-    migrateStrayGitattributes(tmpDir, false);
-
-    expect(fs.existsSync(path.join(tmpDir, ".gitattributes"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, "gitattributes"))).toBe(false);
-    expect(fs.readFileSync(path.join(tmpDir, ".gitattributes"), "utf-8")).toBe(
-      "docs/pending.md merge=union\n",
-    );
-    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
-    expect(v!.canonicalHashes.gitattributes).toBeUndefined();
-  });
-
-  it("does NOT clobber an existing `.gitattributes` (leaves the stray for manual removal)", () => {
-    writeAbs("gitattributes", "stray\n");
-    writeAbs(".gitattributes", "real consumer content\n");
-    seedVersion();
-
-    migrateStrayGitattributes(tmpDir, false);
-
-    expect(fs.readFileSync(path.join(tmpDir, ".gitattributes"), "utf-8")).toBe(
-      "real consumer content\n",
-    );
-  });
-
-  it("dry-run does not move the file", () => {
-    writeAbs("gitattributes", "x\n");
-    seedVersion();
-
-    migrateStrayGitattributes(tmpDir, true);
-
-    expect(fs.existsSync(path.join(tmpDir, "gitattributes"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".gitattributes"))).toBe(false);
-  });
-
-  it("is a no-op when there is no stray file", () => {
-    seedVersion();
-    expect(() => migrateStrayGitattributes(tmpDir, false)).not.toThrow();
-    expect(fs.existsSync(path.join(tmpDir, ".gitattributes"))).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// migrateWarningsToNoise — docs/warnings.md → docs/noise.md rename
-// ---------------------------------------------------------------------------
-
-describe("migrateWarningsToNoise", () => {
-  const CONSUMER_DOC =
-    "<!-- bkit:start -->\n\n# Warnings\n\n<!-- bkit:end -->\n\n" +
-    "| `src/poll.ts:42` | error -> warn | upstream 429 on cold start |\n";
-
-  it("moves docs/warnings.md to docs/noise.md with consumer entries intact and drops the stale hash key", () => {
-    writeAbs("docs/warnings.md", CONSUMER_DOC);
-    seedVersion({ "docs/warnings.md": sha256(CONSUMER_DOC) });
-
-    migrateWarningsToNoise(tmpDir, false);
-
-    expect(fs.existsSync(path.join(tmpDir, "docs", "warnings.md"))).toBe(false);
-    expect(fs.readFileSync(path.join(tmpDir, "docs", "noise.md"), "utf-8")).toBe(CONSUMER_DOC);
-    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
-    expect(v!.canonicalHashes["docs/warnings.md"]).toBeUndefined();
-  });
-
-  it("does NOT clobber an existing docs/noise.md (leaves the old file for a manual merge)", () => {
-    writeAbs("docs/warnings.md", CONSUMER_DOC);
-    writeAbs("docs/noise.md", "real consumer noise registry\n");
-    seedVersion();
-
-    migrateWarningsToNoise(tmpDir, false);
-
-    expect(fs.readFileSync(path.join(tmpDir, "docs", "noise.md"), "utf-8")).toBe(
-      "real consumer noise registry\n",
-    );
-    expect(fs.existsSync(path.join(tmpDir, "docs", "warnings.md"))).toBe(true);
-  });
-
-  it("dry-run does not move the file or touch the hash key", () => {
-    writeAbs("docs/warnings.md", CONSUMER_DOC);
-    seedVersion({ "docs/warnings.md": sha256(CONSUMER_DOC) });
-
-    migrateWarningsToNoise(tmpDir, true);
-
-    expect(fs.existsSync(path.join(tmpDir, "docs", "warnings.md"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, "docs", "noise.md"))).toBe(false);
-    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
-    expect(v!.canonicalHashes["docs/warnings.md"]).toBe(sha256(CONSUMER_DOC));
-  });
-
-  it("is a no-op for a fresh install / already-migrated consumer", () => {
-    seedVersion();
-    expect(() => migrateWarningsToNoise(tmpDir, false)).not.toThrow();
-    expect(fs.existsSync(path.join(tmpDir, "docs", "noise.md"))).toBe(false);
   });
 });
 

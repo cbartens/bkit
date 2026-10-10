@@ -259,20 +259,6 @@ export function foldBoard(p: Projection, current: string | undefined, now: strin
   return { board: `${board}\n`, log };
 }
 
-/** Whether docs/plans holds a `.md` within two levels — in-flight work the ledger should know about. */
-function plansHaveMarkdown(root: string): boolean {
-  const plans = path.join(root, "docs", "plans");
-  if (!fs.existsSync(plans) || !fs.statSync(plans).isDirectory()) return false;
-  return fs
-    .readdirSync(plans, { withFileTypes: true })
-    .some(
-      (e) =>
-        e.name.endsWith(".md") ||
-        (e.isDirectory() &&
-          fs.readdirSync(path.join(plans, e.name)).some((f) => f.endsWith(".md"))),
-    );
-}
-
 const EMPTY: Projection = { designed: [], planned: [], built: [], debugged: [], shipped: [] };
 
 export interface RoadmapFold {
@@ -294,11 +280,6 @@ export function foldRoadmap(root: string, log: (m: string) => void): RoadmapFold
     fs.existsSync(ledger) && fs.statSync(ledger).isFile() ? fs.readFileSync(ledger, "utf-8") : "";
   if (raw === "") {
     log(".bkit/issues.jsonl absent or empty — status board will be empty (never blocked)");
-    if (plansHaveMarkdown(root)) {
-      log(
-        "docs/plans/** has in-flight artifacts but the ledger is empty — run 'bkit telemetry migrate' to bootstrap-seed it",
-      );
-    }
   } else {
     const parsed = parse(raw);
     malformed = parsed.malformedLineCount;

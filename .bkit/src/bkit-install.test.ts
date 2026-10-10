@@ -547,72 +547,6 @@ describe("remapTemplateDest", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Task 2.1a — Hash-comment marker round-trip (YAML / INI / shell)
-// ---------------------------------------------------------------------------
-
-describe("hash-comment marker round-trip (markerStyle: 'hash-comment')", () => {
-  let tmpFile: string;
-
-  beforeEach(() => {
-    tmpFile = path.join(os.tmpdir(), `bkit-test-hash-${Date.now()}.yml`);
-  });
-
-  afterEach(() => {
-    if (fs.existsSync(tmpFile)) fs.rmSync(tmpFile);
-  });
-
-  it("extractManagedBlock with hash-comment extracts inner content from YAML", () => {
-    const yaml = `name: CI\n# bkit:start\nold-step: true\n# bkit:end\n`;
-    expect(extractManagedBlock(yaml, "hash-comment")).toBe("old-step: true");
-  });
-
-  it("extractManagedBlock with hash-comment extracts inner content from INI", () => {
-    const ini = `[section]\nkey=val\n# bkit:start\nbkit-key=bkit-val\n# bkit:end\n`;
-    expect(extractManagedBlock(ini, "hash-comment")).toBe("bkit-key=bkit-val");
-  });
-
-  it("extractManagedBlock with hash-comment extracts inner content from shell", () => {
-    const shell = `#!/bin/sh\n# header\n# bkit:start\nset -e\nbody\n# bkit:end\n`;
-    expect(extractManagedBlock(shell, "hash-comment")).toBe("set -e\nbody");
-  });
-
-  it("extractFullManagedBlock with hash-comment includes marker lines", () => {
-    const yaml = `# bkit:start\nstep: true\n# bkit:end\n`;
-    const full = extractFullManagedBlock(yaml, "hash-comment");
-    expect(full).not.toBeNull();
-    expect(full).toContain("# bkit:start");
-    expect(full).toContain("# bkit:end");
-    expect(full).toContain("step: true");
-  });
-
-  it("updateManagedBlock with hash-comment round-trips on YAML content", () => {
-    fs.writeFileSync(tmpFile, "# bkit:start\nold: true\n# bkit:end\n", "utf-8");
-    const changed = updateManagedBlock(tmpFile, "new: true", false, "hash-comment");
-    expect(changed).toBe(true);
-    const after = fs.readFileSync(tmpFile, "utf-8");
-    expect(after).toContain("new: true");
-    expect(after).not.toContain("old: true");
-    expect(after).toContain("# bkit:start");
-    expect(after).toContain("# bkit:end");
-  });
-
-  it("updateManagedBlock with hash-comment is idempotent on second run", () => {
-    fs.writeFileSync(tmpFile, "# bkit:start\nold: true\n# bkit:end\n", "utf-8");
-    updateManagedBlock(tmpFile, "stable: true", false, "hash-comment");
-    const afterFirst = fs.readFileSync(tmpFile, "utf-8");
-    const secondChanged = updateManagedBlock(tmpFile, "stable: true", false, "hash-comment");
-    expect(secondChanged).toBe(false);
-    expect(fs.readFileSync(tmpFile, "utf-8")).toBe(afterFirst);
-  });
-
-  it("updateManagedBlock with hash-comment no-op when markers absent", () => {
-    fs.writeFileSync(tmpFile, "no: markers\n", "utf-8");
-    const changed = updateManagedBlock(tmpFile, "content", false, "hash-comment");
-    expect(changed).toBe(false);
-  });
-});
-
 describe("slash-comment marker round-trip (markerStyle: 'slash-comment')", () => {
   let tmpFile: string;
 
@@ -674,7 +608,7 @@ describe("slash-comment marker round-trip (markerStyle: 'slash-comment')", () =>
     expect(findLineAnchoredMarkers(js, "// bkit:start")).toEqual([js.indexOf("// bkit:start")]);
   });
 
-  it("hash-comment markers are NOT matched when markerStyle is slash-comment", () => {
+  it("a bare `# bkit:start` line is not a slash-comment marker", () => {
     const yaml = `# bkit:start\nstep: true\n# bkit:end\n`;
     expect(extractManagedBlock(yaml, "slash-comment")).toBeNull();
   });
@@ -724,7 +658,7 @@ describe("html-comment marker round-trip + default-arg backward compat", () => {
     expect(result).toContain("<!-- bkit:end -->");
   });
 
-  it("hash-comment markers are NOT matched when markerStyle defaults to html-comment", () => {
+  it("a bare `# bkit:start` line is not an html-comment marker", () => {
     const yaml = `# bkit:start\nstep: true\n# bkit:end\n`;
     // Default arg = html-comment → should NOT find the hash markers
     expect(extractManagedBlock(yaml)).toBeNull();
@@ -1590,8 +1524,14 @@ describe("detectOpencodeProvider — provider resolution (manifest-first)", () =
     expect(detectOpencodeProvider(cwd)).toBe("openrouter");
   });
 
-  it("normalizes a legacy provider key (zen → opencode-zen)", () => {
+  it("rejects a provider key outside the allowlist (zen is not opencode-zen)", () => {
     writePkg({ opencodeProvider: "zen" });
+    expect(detectOpencodeProvider(cwd)).toBeNull();
+  });
+
+  it("maps Zen's opencode.json block key `opencode` to opencode-zen", () => {
+    writePkg({});
+    writeOpencodeJson({ provider: { opencode: {} } });
     expect(detectOpencodeProvider(cwd)).toBe("opencode-zen");
   });
 
@@ -1627,18 +1567,13 @@ describe("detectOpencodeProviders — all installed providers", () => {
     expect(detectOpencodeProviders(cwd)).toEqual([]);
   });
 
-  it("reads and allowlist-filters bkit.opencodeProviders, normalizing legacy keys", () => {
-    writePkg({ opencodeProviders: ["openrouter", "zen", "bogus"] });
+  it("reads and allowlist-filters bkit.opencodeProviders", () => {
+    writePkg({ opencodeProviders: ["openrouter", "zen", "opencode-zen", "bogus"] });
     expect(detectOpencodeProviders(cwd)).toEqual(["openrouter", "opencode-zen"]);
   });
 
-  it("falls back to the single bkit.opencodeProvider for legacy installs", () => {
+  it("returns [] when bkit.opencodeProviders is absent, whatever bkit.opencodeProvider says", () => {
     writePkg({ opencodeProvider: "openrouter" });
-    expect(detectOpencodeProviders(cwd)).toEqual(["openrouter"]);
-  });
-
-  it("returns [] when neither a providers array nor a single provider is present", () => {
-    writePkg({});
     expect(detectOpencodeProviders(cwd)).toEqual([]);
   });
 });

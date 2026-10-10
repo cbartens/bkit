@@ -3,7 +3,7 @@
 // Narrow: PRESENCE, not BEHAVIOUR (whether prose rules honour the detected
 // capabilities needs a real live-mode run).
 //
-//   (i)  every `RUNTIME_*` capability flag has >=1 reader somewhere in
+//   (i)  every `runtime*` capability key has >=1 reader somewhere in
 //        `.bkit/workflows/*.md`, and every phase workflow emits the
 //        `runtime-resolved` row those readers depend on, through `bkit runtime row`.
 //   (ii) no workflow sleeps in the foreground. Every wait lives in a command:
@@ -36,13 +36,14 @@ function readAllWorkflows(): string {
   return WORKFLOW_FILES.map(readWorkflow).join("\n");
 }
 
-// (i) every RUNTIME_* capability flag must have >=1 reader across the workflow corpus.
-// Whether the runtime can sleep is measured inside `bkit runs wait|dispatch`,
-// not predicted by a capability row.
-const RUNTIME_FLAGS = ["RUNTIME_WORKTREES", "RUNTIME_DEVPUSHES", "RUNTIME_GITHUBCLI"] as const;
+// (i) every runtime capability key of the `runtime-resolved` row must have >=1
+// reader across the workflow corpus, spelled as the row spells it. Whether the
+// runtime can sleep is measured inside `bkit runs wait|dispatch`, not predicted
+// by a capability row.
+const RUNTIME_FLAGS = ["runtimeWorktrees", "runtimeDevPushes", "runtimeGithubCli"] as const;
 
 describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
-  describe("(i) every RUNTIME_* flag has >=1 reader in .bkit/workflows/", () => {
+  describe("(i) every runtime capability key has >=1 reader in .bkit/workflows/", () => {
     const corpus = readAllWorkflows();
 
     for (const flag of RUNTIME_FLAGS) {
@@ -61,8 +62,28 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
       expect(corpus).not.toContain("CAN_SLEEP");
     });
 
-    it("RUNTIME_GITHUBCLI's reader chain includes the runtime-resolved row it is durably read back from", () => {
-      // RUNTIME_GITHUBCLI: BOTH halves present — the reader (the gh->MCP fallback rule,
+    it("no workflow names runtimeGithubCli by an upper-case spelling the row never carries", () => {
+      expect(corpus).not.toMatch(/RUNTIME_GITHUBCLI/);
+    });
+
+    it("every workflow carries the same gh MCP fallback line, and its transport-row call passes --file", () => {
+      const lines = WORKFLOW_FILES.map((f) =>
+        readWorkflow(f)
+          .split("\n")
+          .filter((l) => l.startsWith("> - **gh MCP fallback:**")),
+      );
+      for (const [i, found] of lines.entries()) {
+        expect(found, `${WORKFLOW_FILES[i]} carries exactly one gh MCP fallback line`).toHaveLength(
+          1,
+        );
+      }
+      expect(new Set(lines.map((l) => l[0])).size, "gh MCP fallback lines differ").toBe(1);
+      // `bkit prs transport-row` requires --file (commands/workflow/status.ts FILE_FLAG).
+      expect(lines[0]![0]).toMatch(/`bkit prs transport-row --file=\{STATUS\} --kind=fallback /);
+    });
+
+    it("runtimeGithubCli's reader chain includes the runtime-resolved row it is durably read back from", () => {
+      // runtimeGithubCli: BOTH halves present — the reader (the gh->MCP fallback rule,
       // close-guard) and the emission call site, which runs before the first
       // `bkit runtime assert` that reads the row back.
       expect(corpus).toContain("runtime-resolved");

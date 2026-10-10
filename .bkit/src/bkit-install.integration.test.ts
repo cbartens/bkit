@@ -13,7 +13,7 @@ import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runPreflight } from "./bkit-preflight";
 import { formatChecklist, runPostInstallCheck } from "./bkit-postinstall";
-import { runPayload, detectOpencodeProviders } from "./bkit-install";
+import { detectOpencodeProviders } from "./bkit-install";
 import type { WriteSet } from "./bkit-tiers";
 import type { ModuleFlag } from "./bkit-cli";
 import { resolveNetworkAllowlist } from "./bkit-cloud-env";
@@ -119,19 +119,13 @@ describe("Scenario 1 — blocker: no package.json → exit 1, zero writes", () =
 
 describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist rendered", () => {
   beforeEach(() => {
-    // Seed: valid package.json (no lint:prose, no advisories from pkg)
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({
-        name: "test-consumer",
-        version: "0.1.0",
-        scripts: {
-          // F9-vulnerable lint:prose — triggers lint-prose-f9-vulnerable advisory
-          "lint:prose": "vale $(find . -name '*.md')",
-        },
-      }),
+      JSON.stringify({ name: "test-consumer", version: "0.1.0" }),
       "utf-8",
     );
+    // A bkit .gitignore line outside any bkit block — triggers gitignore-block-duplicates
+    fs.writeFileSync(path.join(tmpDir, ".gitignore"), ".worktrees/\n", "utf-8");
     // .git dir — so not-git-repo does NOT fire
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
   });
@@ -140,7 +134,7 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     const { blockers, advisories } = runPreflight(makeModules("core", "lint"), tmpDir);
     expect(blockers).toHaveLength(0);
     const ids = advisories.map((f) => f.id);
-    expect(ids).toContain("lint-prose-f9-vulnerable");
+    expect(ids).toContain("gitignore-block-duplicates");
   });
 
   it("formatChecklist renders a numbered checklist for multiple advisories", () => {
@@ -194,13 +188,13 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
 
     // Phase 1 findings should be present in the combined output
     const ids = postFindings.map((f) => f.id);
-    expect(ids).toContain("lint-prose-f9-vulnerable");
+    expect(ids).toContain("gitignore-block-duplicates");
     // Phase 3 shell token finding should also be present
     expect(ids).toContain("gh-bkit-token-unset-shell");
 
     const banner = formatChecklist(postFindings);
     expect(banner).toBeTruthy();
-    expect(banner).toContain("lint-prose-f9-vulnerable");
+    expect(banner).toContain("gitignore-block-duplicates");
     expect(banner).toContain("gh-bkit-token-unset-shell");
   });
 
@@ -226,12 +220,10 @@ describe("Scenario 3 — bkit check: Phase 3 detectors run for parity with insta
   beforeEach(() => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({
-        name: "test-consumer",
-        scripts: { "lint:prose": "vale $(find . -name '*.md')" },
-      }),
+      JSON.stringify({ name: "test-consumer" }),
       "utf-8",
     );
+    fs.writeFileSync(path.join(tmpDir, ".gitignore"), ".worktrees/\n", "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".husky", "pre-commit"), "#!/bin/sh\npnpm test\n", "utf-8");
@@ -257,7 +249,7 @@ describe("Scenario 3 — bkit check: Phase 3 detectors run for parity with insta
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
     const banner = formatChecklist(preflightAdvisories);
     expect(banner).toBeTruthy();
-    expect(banner).toContain("lint-prose-f9-vulnerable");
+    expect(banner).toContain("gitignore-block-duplicates");
   });
 
   it("formatChecklist([]) returns empty string — no banner emitted on zero advisories", () => {
@@ -1162,20 +1154,6 @@ describe("Scenario: .bkit/.env.example (owned) and .envrc (template)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Scenario: runPayload never touches .envrc — it is the consumer's file, even when it
-// still carries the pre-.bkit/ `dotenv_if_exists .agents/.env` directive.
-// ---------------------------------------------------------------------------
-
-describe("Scenario: runPayload leaves .envrc alone", () => {
-  it("a stale .agents/.env directive stays byte-identical", () => {
-    const stale = "dotenv_if_exists .agents/.env\n";
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), stale, "utf-8");
-    runPayload(false);
-    expect(fs.readFileSync(path.join(tmpDir, ".envrc"), "utf-8")).toBe(stale);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Constraint-before-write: the cloud/tracker constraint check runs BEFORE the
 // package.json write, so a hard error writes no state.
 //
@@ -1285,108 +1263,6 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
     expect(afterPkg.bkit?.issueTracker).toBe("linear");
     expect(afterPkg.bkit?.cloudAgents).toBe("cursor");
   });
-});
-
-// ---------------------------------------------------------------------------
-// Scenario P1-A — Orphan cleanup gate: bkit-auto.yml removal is gated on
-// bkit-cloud.yml being present.
-//
-// Two cases:
-//   B) bkit-auto.yml exists, bkit-cloud.yml already present on disk → deleted.
-//   C) bkit-auto.yml exists, bkit-cloud.yml absent → NOT deleted.
-// ---------------------------------------------------------------------------
-
-describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when bkit-cloud.yml present", () => {
-  const getInstallPath = () =>
-    path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts");
-  const getTsxBin = () =>
-    path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../node_modules/.bin/tsx");
-
-  function seedUpgradeConsumer(withCloudYml: boolean): void {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({
-        name: "orphan-gate-consumer",
-        version: "0.0.0",
-        devDependencies: {},
-        bkit: { pinnedVersion: "0.0.0" },
-      }),
-      "utf-8",
-    );
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    // Seed bkit-auto.yml (the orphan to be cleaned)
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"),
-      "# old auto workflow\n",
-      "utf-8",
-    );
-    if (withCloudYml) {
-      // Seed bkit-cloud.yml already present on disk
-      fs.writeFileSync(
-        path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-        "# cloud workflow placeholder\n",
-        "utf-8",
-      );
-    }
-  }
-
-  it("Case B: bkit-auto.yml IS deleted when bkit-cloud.yml is already on disk (subprocess upgrade)", () => {
-    const tsxBin = getTsxBin();
-    if (!fs.existsSync(tsxBin)) return;
-
-    seedUpgradeConsumer(true); // bkit-cloud.yml already present
-
-    const oldAutoPath = path.join(tmpDir, ".github", "workflows", "bkit-auto.yml");
-    expect(fs.existsSync(oldAutoPath), "bkit-auto.yml must exist before upgrade").toBe(true);
-
-    const result = spawnSync(tsxBin, [getInstallPath(), "upgrade", "--auto-apply"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 60_000,
-    });
-
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-    // Upgrade may exit non-zero on conflicts — that's OK; we only care about file removal
-    // The log must mention the orphan removal
-    expect(combined).toContain("bkit-auto.yml");
-    // bkit-auto.yml must be removed when bkit-cloud.yml is present
-    expect(
-      fs.existsSync(oldAutoPath),
-      `bkit-auto.yml should be deleted when bkit-cloud.yml is present.\ncombined: ${combined}`,
-    ).toBe(false);
-  }, 90_000);
-
-  it("Case C: bkit-auto.yml is NOT deleted when bkit-cloud.yml absent (dry-run gate verification)", () => {
-    const tsxBin = getTsxBin();
-    if (!fs.existsSync(tsxBin)) return;
-
-    seedUpgradeConsumer(false); // bkit-cloud.yml absent
-
-    const oldAutoPath = path.join(tmpDir, ".github", "workflows", "bkit-auto.yml");
-    expect(fs.existsSync(oldAutoPath), "bkit-auto.yml must exist before upgrade").toBe(true);
-
-    // Run upgrade --dry-run — even in dry-run mode the gate logic executes
-    // (the log line appears but no FS write occurs). Since bkit-cloud.yml is absent,
-    // the orphan removal code must NOT log the removal message.
-    const result = spawnSync(tsxBin, [getInstallPath(), "upgrade", "--auto-apply", "--dry-run"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 60_000,
-    });
-
-    // bkit-auto.yml must still exist — removal was not triggered
-    expect(
-      fs.existsSync(oldAutoPath),
-      "bkit-auto.yml must NOT be deleted when bkit-cloud.yml absent",
-    ).toBe(true);
-
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-    // The removal log must NOT appear (gate not triggered)
-    expect(combined).not.toContain("removing orphan .github/workflows/bkit-auto.yml");
-  }, 90_000);
 });
 
 // ---------------------------------------------------------------------------
@@ -1532,16 +1408,6 @@ describe("detectOpencodeProviders — multi-provider tracking (issue #281 Task 2
     expect(providers).toEqual(["openrouter", "openrouter"]);
   });
 
-  it("falls back to [opencodeProvider] for legacy single-string installs", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { opencodeProvider: "openrouter" } }),
-      "utf-8",
-    );
-    const providers = detectOpencodeProviders(tmpDir);
-    expect(providers).toEqual(["openrouter"]);
-  });
-
   it("returns [] when no bkit opencode fields present", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
     const providers = detectOpencodeProviders(tmpDir);
@@ -1569,11 +1435,11 @@ describe("detectOpencodeProviders — multi-provider tracking (issue #281 Task 2
 });
 
 // ---------------------------------------------------------------------------
-// opencodeProviders persist block — two sequential installs + legacy migration
+// opencodeProviders persist block — two sequential installs
 
 // ---------------------------------------------------------------------------
 
-describe("opencodeProviders persist block — sequential installs + legacy migration (issue #281 Task 2)", () => {
+describe("opencodeProviders persist block — sequential installs (issue #281 Task 2)", () => {
   let tmp: string;
   const installPath = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts");
@@ -1622,31 +1488,6 @@ describe("opencodeProviders persist block — sequential installs + legacy migra
     expect(pkg2.bkit?.opencodeProviders).toContain("openrouter");
     expect(pkg2.bkit?.opencodeProviders).toContain("ollama");
     expect(pkg2.bkit?.opencodeProviders).toHaveLength(2);
-  });
-
-  it("legacy single-string install migrates to opencodeProviders array on next install", () => {
-    if (!fs.existsSync(tsxPath())) return;
-    // Simulate a legacy install: only bkit.opencodeProvider, no opencodeProviders
-    fs.writeFileSync(
-      path.join(tmp, "package.json"),
-      JSON.stringify(
-        { name: "consumer", version: "0.0.0", bkit: { opencodeProvider: "openrouter" } },
-        null,
-        2,
-      ),
-    );
-
-    // Run a new install with ollama — should migrate openrouter into the array
-    const r = run(["install", "--opencode=ollama"]);
-    expect(r.status, `install failed:\n${r.stdout}\n${r.stderr}`).toBe(0);
-
-    const pkg = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8")) as {
-      bkit?: { opencodeProvider?: string; opencodeProviders?: string[] };
-    };
-    expect(pkg.bkit?.opencodeProvider).toBe("ollama");
-    expect(pkg.bkit?.opencodeProviders).toContain("openrouter");
-    expect(pkg.bkit?.opencodeProviders).toContain("ollama");
-    expect(pkg.bkit?.opencodeProviders).toHaveLength(2);
   });
 });
 

@@ -33,7 +33,7 @@ function toStep(e) {
     const { type: _t, workflow: _w, ...step } = e;
     return step;
 }
-// Fold the event log into the run array (legacy `status.json` shape). De-dupes
+// Fold the event log into the run array. De-dupes
 // (keeping first occurrence), then orders by `at` (stable), then reduces.
 export function fold(events) {
     const seen = new Set();

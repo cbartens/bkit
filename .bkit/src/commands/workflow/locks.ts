@@ -10,10 +10,9 @@
 //           commit / push of `dev` there. Acquire waits a bounded time; the shell
 //           releases it from `trap ... EXIT`.
 //
-// Both write one line, `{at} {workflow} {fid} {token}`. The workflow name stays the
-// second field, which older shell readers take with `awk '{print $2}'`. Release
-// removes only a lock this caller owns (same token, else same workflow and
-// feature), so a Failure Path that never got the lock cannot delete the holder's.
+// Both write one line, `{at} {workflow} {fid} {token}`. Release removes only a lock
+// this caller owns (same token, else same workflow and feature), so a Failure Path
+// that never got the lock cannot delete the holder's.
 
 import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
@@ -189,12 +188,8 @@ function liveReason(
   const rel = statusRelPath(month, fid);
   const worktreeCopy = path.join(root, ".worktrees", fid, rel);
   const own = fs.existsSync(worktreeCopy) ? worktreeCopy : path.join(bookRoot, rel);
-  const legacy = path.join(path.dirname(own), "status.json");
-  const src = fs.existsSync(own) ? own : fs.existsSync(legacy) ? legacy : undefined;
   const run =
-    src === undefined || holder.workflow === undefined
-      ? undefined
-      : lastRun(readRunsLenient(src), holder.workflow);
+    holder.workflow === undefined ? undefined : lastRun(readRunsLenient(own), holder.workflow);
   const lastAt = run?.steps.at(-1)?.at;
   if (run?.status === "IN_PROGRESS" && lastAt) {
     const idle = Math.floor((now - Date.parse(lastAt)) / 1000);
@@ -213,11 +208,6 @@ function liveReason(
 function readRunsLenient(file: string): WorkflowRun[] {
   if (!fs.existsSync(file)) return [];
   const raw = fs.readFileSync(file, "utf-8").trim();
-  if (raw.startsWith("[")) {
-    // Legacy status.json: already the folded run array.
-    const legacy = parseJson(raw);
-    return legacy.ok && Array.isArray(legacy.value) ? (legacy.value as WorkflowRun[]) : [];
-  }
   const events: StatusEvent[] = [];
   for (const line of raw.split("\n").map((l) => l.trim())) {
     if (line === "") continue;

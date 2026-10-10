@@ -22,8 +22,8 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{PHASE}`, `{ARG}`, `{FID}`, `{ISSUE_ID}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls (`{ISSUE_ID}` only when tracker wired — empty under `none`). **Else** → **Failure Path**. `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1.
 > - **Tools:** Verify every return; do NOT assume success.
-> - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
-> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh repo view --json nameWithOwner` → `get_me` and parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --kind=fallback --from= --to= --reason= --asserted-by= --file=`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
+> - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
+> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `gh pr create` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit branches push --mode=abort` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`; `--match-head-commit` SHA as `sha`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `bkit runs wait` / `bkit runs dispatch` / `bkit runs gate` / `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 <!-- bkit:tracker github start -->
 
@@ -73,7 +73,8 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 1. Read invocation arguments `{PHASE}` and `{ARG}`. Assert both non-empty. **Else** → **Failure Path**.
 2. Normalise `PHASE`, determine `MODE`:
    ```bash
-   case "$(echo "$PHASE" | tr '[:upper:]' '[:lower:]')" in
+   PHASE="{PHASE}"
+   case "$(printf '%s' "$PHASE" | tr '[:upper:]' '[:lower:]')" in
      ship|success|pass)  PHASE=ship;   MODE=CI ;;
      debug|failure|fail) PHASE=debug;  MODE=CI ;;
      design)             PHASE=design; MODE=BRIEF ;;
@@ -81,8 +82,9 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
      build)              PHASE=build;  MODE=BRIEF ;;
      *) echo "Unrecognised PHASE: $PHASE" >&2; exit 1 ;;
    esac
+   printf 'PHASE=%s MODE=%s\n' "$PHASE" "$MODE"
    ```
-   **If** exit branch fires → **Failure Path**.
+   **If** exit non-zero → **Failure Path**. Hold printed `PHASE` as `{PHASE}`, `MODE`.
 3. Resolve repo:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -94,12 +96,13 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    ARG="{ARG}"
-   if [[ "$ARG" =~ ^[0-9]+$ ]]; then
-     printf 'MODE=CI PR_NUMBER=%s\n' "$ARG"
-   else
-     "$BKIT" fids check --fid="$ARG" --tracker=any || { echo "Invalid CI_DEV FID: $ARG" >&2; exit 1; }
-     printf 'MODE=CI_DEV BRANCH=dev HEAD_SHA=%s\n' "$(git rev-parse origin/dev 2>/dev/null || echo "")"
-   fi
+   case "$ARG" in
+     ''|*[!0-9]*)
+       "$BKIT" fids check --fid="$ARG" --tracker=any || { echo "Invalid CI_DEV FID: $ARG" >&2; exit 1; }
+       printf 'MODE=CI_DEV BRANCH=dev HEAD_SHA=%s\n' "$(git rev-parse origin/dev 2>/dev/null || echo "")"
+       ;;
+     *) printf 'MODE=CI PR_NUMBER=%s\n' "$ARG" ;;
+   esac
    ```
    **If** exit non-zero → **Failure Path**.
    Route:
@@ -120,8 +123,9 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    BRANCH="{BRANCH}"
    HEAD_SHA="{HEAD_SHA}"
    RUN_ID=$(gh run list --branch "$BRANCH" --limit 5 --json databaseId,headSha --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | .[0].databaseId")
+   printf 'RUN_ID=%s\n' "$RUN_ID"
    ```
-   Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
+   Hold printed `RUN_ID` as `{RUN_ID}`. Assert `RUN_ID` non-empty **and** != null. **Else** → **Failure Path**.
 9. Read PR body via `pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → whole line starting `<!-- bkit:` → `{MARKER}`; empty when absent.
 10. Recover `FID` and `ISSUE_ID` — marker first, `feat/{FID}` branch as fallback:
     ```bash

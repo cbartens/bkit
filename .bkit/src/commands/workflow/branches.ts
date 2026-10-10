@@ -244,7 +244,7 @@ export interface RebaseResult {
  * Drive an in-progress rebase to completion, auto-resolving each stop. Loops
  * because `--continue` replays the next commit, which can conflict in turn; the
  * bound is a runaway guard. Never aborts: on refusal the rebase is left in
- * progress so the caller decides between diagnosis and `git rebase --abort`.
+ * progress and `branches rebase` aborts it.
  */
 export function resolveRebase(
   top: string,
@@ -454,6 +454,17 @@ function rebaseVerb(ctx: RunContext): number {
     return EXIT_NO_REBASE;
   }
   const result = resolveRebase(top, (line) => ctx.log(line));
+  let aborted = false;
+  if (!result.ok) {
+    // Abort before the log and sentinel writes: the abort resets tracked files.
+    const abort = runGit(top, ["rebase", "--abort"]);
+    aborted = abort.ok;
+    const line = abort.ok
+      ? "ABORTED — git rebase --abort restored the branch"
+      : `ABORT FAILED — git rebase --abort: ${abort.stderr}`;
+    result.log.push(line);
+    ctx.log(line);
+  }
   appendLog(ctx, str(ctx.flags.logFile), result.log);
   if (!result.ok && sentinelPath) {
     fs.mkdirSync(path.dirname(sentinelPath), { recursive: true });
@@ -466,6 +477,7 @@ function rebaseVerb(ctx: RunContext): number {
     rounds: result.rounds,
     refused: result.refused,
     reason: result.reason,
+    aborted,
     sentinel: !result.ok && sentinel !== undefined ? sentinel : null,
   });
   return result.ok ? EXIT.OK : EXIT_REFUSED;
@@ -658,9 +670,6 @@ function syncVerb(ctx: RunContext): number {
 async function switchVerb(ctx: RunContext): Promise<number> {
   const devPushes = boolString(ctx.flags.devPushes, "dev-pushes");
   const worktrees = boolString(ctx.flags.worktrees, "worktrees");
-  const waitS = str(ctx.flags.lockWait) ?? String(TIMEOUTS.SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S);
-  if (!/^[0-9]+$/.test(waitS))
-    throw new CommandError(EXIT.USAGE, `--lock-wait must be whole seconds, got "${waitS}"`);
   const root = repoRoot(ctx.cwd);
   // `bkit install` can leave core.bare=true on the main checkout, which breaks every checkout below.
   if (
@@ -696,7 +705,7 @@ async function switchVerb(ctx: RunContext): Promise<number> {
     cwd: root,
     workflow: "ship",
     fid,
-    deadlineS: Number(waitS),
+    deadlineS: TIMEOUTS.SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S,
     log: ctx.log,
   });
   try {
@@ -927,7 +936,7 @@ export const branchesCommand: CommandSpec = {
     },
     rebase: {
       summary:
-        "Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse anything else.",
+        "Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse and abort on anything else.",
       flags: [
         {
           name: "log-file",
@@ -941,12 +950,13 @@ export const branchesCommand: CommandSpec = {
         },
       ],
       output: {
-        outcome: "resolved | refused (the rebase is left in progress for diagnosis)",
+        outcome: "resolved | refused (a refused rebase is aborted)",
         resolved: "conflicts resolved: [{path, how: union|lockfile}]",
         skippedCommits: "commits skipped because resolution emptied them",
         rounds: "resolve rounds run",
         refused: "the path that stopped resolution (null when none, or not path-specific)",
         reason: "why resolution refused (null on success)",
+        aborted: "a refused rebase was aborted (false on success, or when the abort failed)",
         sentinel: "the sentinel written on refusal (null otherwise)",
       },
       exitCodes: {
@@ -969,18 +979,13 @@ export const branchesCommand: CommandSpec = {
           name: "dev-pushes",
           type: "string",
           required: true,
-          help: "true | false — RUNTIME_DEVPUSHES; false skips the switch",
+          help: "true | false — runtimeDevPushes; false skips the switch",
         },
         {
           name: "worktrees",
           type: "string",
           required: true,
-          help: "true | false — RUNTIME_WORKTREES; a local dev checkout needs true",
-        },
-        {
-          name: "lock-wait",
-          type: "string",
-          help: `seconds to wait for the dev lock (default ${TIMEOUTS.SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S})`,
+          help: "true | false — runtimeWorktrees; a local dev checkout needs true",
         },
       ],
       output: {

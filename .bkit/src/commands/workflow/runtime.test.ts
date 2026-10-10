@@ -247,18 +247,16 @@ describe("bkit runtime detect — worktree path and contract", () => {
 });
 
 describe("bkit runtime row", () => {
-  const AT = "2026-07-24T00:00:00Z";
-
   it("builds the runtime-resolved row; runtimeGithubCli round-trips through it", async () => {
     vi.stubEnv("FAKE_GH_AUTH_OK", "0");
     vi.stubEnv("CLAUDE_CODE_REMOTE", "true");
-    const r = await run(["row", "--workflow=build", `--at=${AT}`]);
+    const r = await run(["row", "--workflow=build"]);
     expect(r.code).toBe(0);
     expect(r.json.file).toBeNull();
     expect(r.json.row).toEqual({
       type: "runtime-resolved",
       workflow: "build",
-      at: AT,
+      at: expect.stringMatching(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/),
       runtime: "CLOUD_CLAUDE",
       runtimeWorktrees: false,
       runtimeDevPushes: false,
@@ -269,17 +267,14 @@ describe("bkit runtime row", () => {
     });
   });
 
-  it("carries --base-sha; defaults --at to now in whole UTC seconds", async () => {
+  it("carries --base-sha; stamps the row now in whole UTC seconds", async () => {
     const r = await run(["row", "--workflow=design", "--base-sha=deadbeef1234"]);
     expect(r.json.row.baseSha).toBe("deadbeef1234");
     expect(r.json.row.at).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
   });
 
   it("fails closed (exit 2, nothing on stdout) when --workflow is empty or missing", async () => {
-    for (const argv of [
-      ["row", "--workflow=", `--at=${AT}`],
-      ["row", `--at=${AT}`],
-    ]) {
+    for (const argv of [["row", "--workflow="], ["row"]]) {
       const r = await run(argv);
       expect(r.code).toBe(2);
       expect(r.json).toBeUndefined();
@@ -289,15 +284,15 @@ describe("bkit runtime row", () => {
   it("a backslash or quote in the gh error stays valid JSON, verbatim (regression)", async () => {
     vi.stubEnv("FAKE_GH_AUTH_OK", "0");
     vi.stubEnv("FAKE_GH_ERR", 'x509: cert C:\\Users\\ca "quoted"');
-    const r = await run(["row", "--workflow=build", `--at=${AT}`, "--file=status.jsonl"]);
+    const r = await run(["row", "--workflow=build", "--file=status.jsonl"]);
     const line = fs.readFileSync(path.join(cwd, "status.jsonl"), "utf-8");
     expect(JSON.parse(line).runtimeGithubCliErr).toBe('x509: cert C:\\Users\\ca "quoted"');
     expect(r.json.row.runtimeGithubCliErr).toBe('x509: cert C:\\Users\\ca "quoted"');
   });
 
   it("--file appends one line per call, so the ledger stays NDJSON", async () => {
-    await run(["row", "--workflow=build", `--at=${AT}`, "--file=status.jsonl"]);
-    const r = await run(["row", "--workflow=ship", `--at=${AT}`, "--file=status.jsonl"]);
+    await run(["row", "--workflow=build", "--file=status.jsonl"]);
+    const r = await run(["row", "--workflow=ship", "--file=status.jsonl"]);
     expect(r.json.file).toBe(path.join(cwd, "status.jsonl"));
     const lines = fs.readFileSync(path.join(cwd, "status.jsonl"), "utf-8").trimEnd().split("\n");
     expect(lines.map((l) => JSON.parse(l).workflow)).toEqual(["build", "ship"]);

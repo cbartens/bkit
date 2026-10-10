@@ -39,9 +39,7 @@ export function getPkgRoot() {
 // ---------------------------------------------------------------------------
 // getTemplatesRoot — canonical templates root resolver.
 // The ONLY place in the codebase that encodes the templates sub-path literal.
-//
-// WS-1 (pre-move): resolves to <pkgRoot>/.agents/templates
-// WS-3 (post-move): resolves to <pkgRoot>/.bkit/templates
+// Resolves to <pkgRoot>/.bkit/templates.
 //
 // The consumer keeps its copies of the template set at the same relative path,
 // TEMPLATE_COPIES_DIR (bkit-modules.ts syncTemplateCopies). In dogfood the two are
@@ -50,6 +48,31 @@ export function getPkgRoot() {
 export const TEMPLATE_COPIES_DIR = path.join(".bkit", "templates");
 export function getTemplatesRoot() {
     return path.join(getPkgRoot(), TEMPLATE_COPIES_DIR);
+}
+// npm hard-excludes files literally named `.gitignore` and `.npmignore` from
+// packed tarballs (by basename, anywhere in the tree), regardless of the `files`
+// field. Those — and ONLY those — are stored without the leading dot in
+// `.bkit/templates/` and remapped to their dotted dest at install/upgrade time.
+//
+// Any OTHER dotfile (`.gitattributes`, `.prettierignore`, `.mcp.json`, …) packs
+// fine with its dot, so it is stored dotted in the template tree and needs NO
+// remap. Do not add such names here — store the template with its real name.
+//
+// Template basename → dest basename. The single source of truth for the dotfile
+// remap: remapTemplateDest (bkit-install.ts) reads it forward, templateRelPath
+// below reads it backward.
+export const NPM_STRIP_REMAP = {
+    gitignore: ".gitignore",
+    npmignore: ".npmignore",
+};
+/** The template path, relative to the templates root, a consumer-relative dest is written from. */
+export function templateRelPath(dest) {
+    const base = path.basename(dest);
+    const src = Object.keys(NPM_STRIP_REMAP).find((k) => NPM_STRIP_REMAP[k] === base);
+    if (src === undefined)
+        return dest;
+    const dir = path.dirname(dest);
+    return dir === "." ? src : path.join(dir, src);
 }
 // ---------------------------------------------------------------------------
 // Mirror-source roots. `.bkit/workflows` and `.bkit/prompts` are the canonical

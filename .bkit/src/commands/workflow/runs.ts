@@ -498,7 +498,6 @@ export interface GateOptions {
   repo?: string;
   branch?: string;
   event?: string;
-  requiredLanes?: string[];
   /** BKIT_SHIP_GATE_OVERRIDE: honoured only when it equals the refused head. */
   override?: string;
   /** status.jsonl for the override audit row. */
@@ -579,7 +578,7 @@ export function shipGate(o: GateOptions, gh: Gh, log: (m: string) => void): Gate
     nonBookkeepingPaths: [],
     reason: "",
   };
-  const requiredLanes = o.requiredLanes ?? readBkitConfig(o.root).shipGateRequiredLanes;
+  const requiredLanes = cfg.shipGateRequiredLanes;
 
   const refuse = (code: number, reason: string, runUrl?: string): GateResult => {
     log(reason);
@@ -823,9 +822,7 @@ export function shipGate(o: GateOptions, gh: Gh, log: (m: string) => void): Gate
     );
     const required = r.skippedLanes.filter((l) => requiredLanes.includes(l));
     if (required.length) {
-      log(
-        `declared in bkit.shipGateRequiredLanes (or --required-lanes): ${requiredLanes.join(",")}`,
-      );
+      log(`declared in bkit.shipGateRequiredLanes: ${requiredLanes.join(",")}`);
       return refuse(
         GATE.LANE_SKIPPED,
         `required lane(s) concluded 'skipped' at head ${r.head} — vacuous green: ${required.join(", ")}`,
@@ -1049,16 +1046,15 @@ async function runWait(ctx: RunContext): Promise<number> {
       "--dispatch-if-absent needs --head --branch --until=present, without --once",
     );
   }
-  const root = checkoutRoot(ctx.cwd);
-  const cfg = readBkitConfig(root);
-  const ciWorkflow = str(f.ciWorkflow) ?? cfg.ciWorkflow;
+  const cfg = readBkitConfig(checkoutRoot(ctx.cwd));
+  const ciWorkflow = cfg.ciWorkflow;
   const target: WaitTarget = {
     kind,
     pr,
     head,
     branch,
     ciWorkflow,
-    namespace: checkNamespace(str(f.capstone) ?? cfg.capstoneJob),
+    namespace: checkNamespace(cfg.capstoneJob),
   };
   const budgetS = wholeNumber(f.budgetS, "budget-s", WAIT_DEFAULTS[kind].budgetS);
   const intervalS = wholeNumber(f.intervalS, "interval-s", WAIT_DEFAULTS[kind].intervalS, 1);
@@ -1180,7 +1176,6 @@ async function runDispatch(ctx: RunContext): Promise<number> {
 
 function runGate(ctx: RunContext): number {
   const f = ctx.flags;
-  const lanes = str(f.requiredLanes);
   const r = shipGate(
     {
       root: checkoutRoot(ctx.cwd),
@@ -1188,12 +1183,9 @@ function runGate(ctx: RunContext): number {
       validated: str(f.validated),
       month: str(f.month),
       fid: str(f.fid),
-      capstone: str(f.capstone),
-      ciWorkflow: str(f.ciWorkflow),
       repo: str(f.repo),
       branch: str(f.branch),
       event: str(f.event),
-      requiredLanes: lanes === undefined ? undefined : lanes.split(",").filter(Boolean),
       override: process.env.BKIT_SHIP_GATE_OVERRIDE || undefined,
       statusFile: f.file === undefined ? undefined : path.resolve(ctx.cwd, String(f.file)),
     },
@@ -1271,8 +1263,6 @@ export const runsCommand: CommandSpec = {
           type: "boolean",
           help: "with --head --until=present: no run after the budget -> gh workflow run <ciWorkflow> --ref <branch>",
         },
-        CI_WORKFLOW_FLAG,
-        CAPSTONE_FLAG,
       ],
       output: {
         result: "found | none | err (err: every poll errored, gh absent, or the sleep was blocked)",
@@ -1306,7 +1296,7 @@ export const runsCommand: CommandSpec = {
         {
           name: "auto-route-suffix",
           type: "string",
-          help: 'suffix the issue\'s bkit:auto label gives (" bkit [auto route]" or empty), read in this block',
+          help: 'suffix the issue\'s bkit:auto label gives (" bkit [auto route]" or empty): `autoRouteSuffix` of `bkit issues labels`',
         },
         { ...BUDGET_FLAG, help: "poll budget in seconds (default 60)" },
         { ...INTERVAL_FLAG, help: "seconds between polls (default 10)" },
@@ -1358,8 +1348,6 @@ export const runsCommand: CommandSpec = {
         },
         { name: "month", type: "string", help: "YYYYMM, for the bookkeeping allow-list" },
         { name: "fid", type: "string", help: "feature id, for the bookkeeping allow-list" },
-        CAPSTONE_FLAG,
-        CI_WORKFLOW_FLAG,
         REPO_FLAG,
         {
           name: "branch",
@@ -1370,11 +1358,6 @@ export const runsCommand: CommandSpec = {
           name: "event",
           type: "string",
           help: "count only runs fired by this event (push, pull_request)",
-        },
-        {
-          name: "required-lanes",
-          type: "string",
-          help: "comma-separated lanes whose skip refuses (default: package.json bkit.shipGateRequiredLanes)",
         },
         {
           name: "file",

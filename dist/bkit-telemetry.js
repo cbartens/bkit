@@ -32,8 +32,8 @@ export const MAX_ROWS_BEFORE_ROLLUP = 5000;
 //
 // NOT package.json `name` — that is an npm package name, not a slug
 // (`@cbartens/bkit` vs `cbartens/bkit`). NOT the filesystem path — that makes the
-// "owner" a folder on whoever's laptop ran the tool (`GitHub/app-gether-life`,
-// or `code/app-gether-life` after they reorganise).
+// "owner" a folder on whoever's laptop ran the tool (`GitHub/my-app`, or
+// `code/my-app` after they reorganise).
 // ---------------------------------------------------------------------------
 /**
  * Parse `owner/repo` out of a git remote URL. Pure — the fiddly half, kept
@@ -174,8 +174,8 @@ export function identity(event) {
             return `compliance ${event.repo} ${event.workflow} ${event.parentSha} ${event.rule}`;
         case "outcome": {
             // One run row per workflow run: keyed by (repo, workflow, parentSha).
-            // Back-compat: pre-generalization ship rows carry no parentSha, so fall
-            // back to prNumber (then ts) — old ship rows stay uniquely keyed per PR.
+            // A ship row with no parentSha falls back to prNumber (then ts), so it stays
+            // uniquely keyed per PR.
             const anchor = event.parentSha ?? (event.prNumber !== undefined ? `pr${event.prNumber}` : `ts${event.ts}`);
             return `outcome ${event.repo} ${event.workflow} ${anchor}`;
         }
@@ -244,7 +244,7 @@ export function validate(event) {
     }
     // status — triage ladder on the SEVERITY_KINDS trio, ACTIVE/SUPERSEDED lifecycle on
     // decision and knowledge, absent elsewhere. Optional: absent = ACTIVE on that lifecycle.
-    // Enforced on write only; `parse` stays tolerant so legacy free-text statuses still read.
+    // Enforced on write only; `parse` stays tolerant so a free-text status row still reads.
     if (SEVERITY_KINDS.has(kind)) {
         if (e["status"] !== undefined && !TRIAGE_STATUSES.has(e["status"])) {
             return {
@@ -318,7 +318,7 @@ export function validate(event) {
         if (e["prNumber"] !== undefined && typeof e["prNumber"] !== "number") {
             return { ok: false, reason: "outcome prNumber must be a number when present" };
         }
-        // parentSha — the run's identity anchor; optional (absent on legacy ship rows).
+        // parentSha — the run's identity anchor; optional (absent on some ship rows).
         if (e["parentSha"] !== undefined && typeof e["parentSha"] !== "string") {
             return { ok: false, reason: "outcome parentSha must be a string when present" };
         }
@@ -408,7 +408,7 @@ export function parse(raw) {
     return result;
 }
 /**
- * `ts` as a sortable number. Legacy rows carry an ISO-string `ts` or none at all:
+ * `ts` as a sortable number. A row may carry an ISO-string `ts` or none at all:
  * ISO strings parse; anything else sorts oldest.
  */
 function tsOrder(ts) {
@@ -421,7 +421,7 @@ function tsOrder(ts) {
     }
     return Number.NEGATIVE_INFINITY;
 }
-/** Ascending `ts` comparator that stays consistent on legacy rows. Ties keep input order. */
+/** Ascending `ts` comparator that stays consistent on string-`ts` and `ts`-less rows. Ties keep input order. */
 export function compareTs(a, b) {
     const x = tsOrder(a.ts);
     const y = tsOrder(b.ts);

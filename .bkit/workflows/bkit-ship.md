@@ -29,9 +29,9 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Status branch:** All steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`{STATUS}`). **If** `RUNTIME_DEVPUSHES` = true → `BOOK_ROOT` = `$REPO_ROOT`, **else** current working branch tree. Stage path-scoped via `bkit ledgers commit`; NEVER stage all files (`-A`) or blanket `docs/`. ONE commit per flush block: Commit + Push Bookkeeping → `docs({FID}): ship bookkeeping bkit [skip ci]` → push `{SHIP_BRANCH}` (pre-merge: docs, logs, ledgers, skill removals); Close Workflow → `docs({FID}): ship DONE bkit [skip ci]` → push `dev`, refused → close PR; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` → **If** `RUNTIME_DEVPUSHES` = true → push `dev`, **else** current branch; NEVER both.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return; do NOT assume success.
-> - **Worktrees:** **If** `RUNTIME_WORKTREES=true` (mint mode) → Step 2 `cd`s into `.worktrees/{FID}`, **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
-> - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 4 B2 (conflict-resolve) companion: `bkit branches push --mode=feature` (`--force-with-lease`) to the personal `{SHIP_BRANCH}` feature branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch. Standalone push steps MUST run EXACTLY ONE `git push`; NEVER put multiple push forms in one shell invocation.
-> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `$BOOK_ROOT/.../status.jsonl` **or** a command exits 80 → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit repo info` → `get_me` and parse `git remote`; `bkit prs open` → `create_pull_request` with its printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` → `list_pull_requests`; `gh pr merge {N} --squash --match-head-commit` → `merge_pull_request` (explicit skip-token-free `commit_message`; pass validated head SHA); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `bkit runs wait` / `bkit runs gate` → `actions_list` / `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from= --to= --reason= --asserted-by=`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
+> - **Worktrees:** **If** `runtimeWorktrees` = true (mint mode) → Step 2 `cd`s into `.worktrees/{FID}`, **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
+> - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 4 B2 (conflict-resolve) companion: `bkit branches push --mode=feature` (`--force-with-lease`) to the personal `{SHIP_BRANCH}` feature branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch. Standalone push steps MUST run EXACTLY ONE `git push`; NEVER put multiple push forms in one shell invocation.
+> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `gh pr create` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit branches push --mode=abort` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`; `--match-head-commit` SHA as `sha`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `bkit runs wait` / `bkit runs dispatch` / `bkit runs gate` / `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 <!-- bkit:tracker github start -->
 
@@ -132,8 +132,7 @@ description: "Ship Feature — Autonomous merge and archive"
    [ -n "$SRC_WT" ] || SRC_WT="$REPO_ROOT/.worktrees/{FID}"
    if [ -d "$SRC_WT/$LOGDIR_REL" ] && [ "$SRC_WT" != "$BOOK_ROOT" ]; then
      mkdir -p "$BOOK_ROOT/$LOGDIR_REL"
-     for f in "$SRC_WT/$LOGDIR_REL"/*.md; do
-       [ -f "$f" ] || continue
+     find "$SRC_WT/$LOGDIR_REL" -maxdepth 1 -type f -name '*.md' | while IFS= read -r f; do
        [ -e "$BOOK_ROOT/$LOGDIR_REL/$(basename "$f")" ] || cp "$f" "$BOOK_ROOT/$LOGDIR_REL/"
      done
      "$BKIT" ledgers union --src="$SRC_WT" --dst="$BOOK_ROOT" || { echo "[bkit-ship] ledger union failed ($SRC_WT -> $BOOK_ROOT)" >&2; exit 1; }
@@ -230,7 +229,7 @@ description: "Ship Feature — Autonomous merge and archive"
       ```bash
       REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
       ISSUE_KEY=$(printf '%s' "{ISSUE_ID}" | tr '[:upper:]' '[:lower:]')
-      ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/"$ISSUE_KEY"-*/ 2>/dev/null | awk -F/ '{print $(NF-1)}' | sort -u
+      find "$REPO_ROOT/docs/plans" -mindepth 3 -maxdepth 3 -type d -path "*/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/$ISSUE_KEY-*" 2>/dev/null | awk -F/ '{print $(NF)}' | sort -u
       ```
       One line → that `FID`. Several → **Failure Path** listing them (name the `FID` in the session prompt to pick one). None → next.
    4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`.
@@ -264,11 +263,11 @@ description: "Ship Feature — Autonomous merge and archive"
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" issues labels --phase=ship --board=progress --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
    ```
-   → hold `labels` as `{LABELS}`, `board`, `boardSkipped`.
+   → hold `labels` as `{LABELS}`, `board` as `{BOARD}`, `boardSkipped`.
    <!-- bkit:tracker true end -->
    <!-- bkit:tracker github start -->
    `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   **If** `board` null → log `boardSkipped` → skip. **Else** `mcp__github__projects_write(board.addItem)` → `mcp__github__projects_list(board.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → `mcp__github__projects_write(board.updateItem + { item_id: {ITEM_ID} })`.
+   **If** `BOARD` = null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
    `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
@@ -543,7 +542,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
-   if ! ls "{WORKTREE_PATH}"/docs/plans/{YYYYMM}/{FID}-plan*.md >/dev/null 2>&1; then
+   if [ -z "$(find "{WORKTREE_PATH}/docs/plans/{YYYYMM}" -maxdepth 1 -type f -name '{FID}-plan*.md' 2>/dev/null)" ]; then
      echo "[bkit-ship] WARNING no plan at docs/plans/{YYYYMM}/{FID}-plan*.md — sweeping best-effort against ship-input-{RUN}.md"
      "$BKIT" status meta --file="$STATUS" --workflow=ship --plan-source=brief >/dev/null || exit $?
    fi
@@ -892,12 +891,17 @@ description: "Ship Feature — Autonomous merge and archive"
      - **If** exit 1 (`next` = `failure-path`) → `{MAX_EXCEEDED}` = true → **Failure Path**.
      - **If** any other exit → **Failure Path**.
    - Any other refusal (12/13/15/16/20) → **Failure Path**.
-5. Merge with empty body and `--match-head-commit` (server refuses if head moved). Re-read `bkit:auto` from the tracker (exact-match) and thread `AUTO_ROUTE_SUFFIX` onto the squash `--subject` in one block — NEVER carried forward from Step 1's `{LABELS}`:
+5. Merge with empty body and `--match-head-commit` (server refuses if head moved). Re-read labels from the tracker and thread `AUTO_ROUTE_SUFFIX` onto the squash `--subject` in one block — NEVER carried forward from Step 1's `{LABELS}`; `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired:
+   <!-- bkit:tracker github start -->
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `labels` → `LABELS`.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `labels[].name` → `LABELS`.
+   <!-- bkit:tracker linear end -->
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    GATE_HEAD="{GATE_HEAD}"
-   AUTO_ROUTE_SUFFIX=""
-   gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   AUTO_ROUTE_SUFFIX=$("$BKIT" issues labels {LABEL_FLAGS} | jq -er .autoRouteSuffix) || exit 2
    PR=$("$BKIT" prs probe --number="{PR_NUMBER}")
    if [ "$(printf '%s' "$PR" | jq -r '.state // empty')" != "MERGED" ]; then
      gh pr merge {PR_NUMBER} --squash --delete-branch --match-head-commit "$GATE_HEAD" \
@@ -1028,7 +1032,7 @@ description: "Ship Feature — Autonomous merge and archive"
 1. Derive the next strategy rung from `$BOOK_ROOT/.../status.jsonl`:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" status route --file="{STATUS}" --workflow=ship --step=ship-failure-remediate
+   "$BKIT" status route --file="{STATUS}" --workflow=ship --step=ship-failure-remediate --require=strategy
    ```
    → hold `nextStrategy` as `{STRATEGY}`. **If** exit non-zero → **Failure Path**.
 2. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Agent` tool:
@@ -1278,11 +1282,11 @@ description: "Ship Feature — Autonomous merge and archive"
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" issues labels --phase=merged --board=review --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
    ```
-   → hold `labels` as `{LABELS}`, `board`, `boardSkipped`.
+   → hold `labels` as `{LABELS}`, `board` as `{BOARD}`, `boardSkipped`.
    <!-- bkit:tracker true end -->
    <!-- bkit:tracker github start -->
    `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do NOT close the issue.
-   **If** `board` null → log `boardSkipped` → skip. **Else** `mcp__github__projects_write(board.addItem)` → `mcp__github__projects_list(board.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → `mcp__github__projects_write(board.updateItem + { item_id: {ITEM_ID} })`.
+   **If** `BOARD` = null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
    `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`. Do NOT set Done.

@@ -2,7 +2,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { detectRetiredOwnedFiles, retireOwnedFiles } from "./bkit-retire.js";
 import { runCommand } from "./commands/lib.js";
 import { COMMANDS } from "./commands/registry.js";
 import {
@@ -11,7 +10,6 @@ import {
   printUsage,
   OPTIN_MODULES,
   OPENCODE_PROVIDERS,
-  normalizeOpencodeProvider,
   type ModuleFlag,
   type CloudVariant,
   type UpgradeFlags,
@@ -24,25 +22,23 @@ import {
   formatComplianceSummary,
   readBkitVersion,
 } from "./bkit-comply.js";
-import { resolveGitSha } from "./bkit-telemetry.js";
+import { resolveGitSha, resolveRepoSlug } from "./bkit-telemetry.js";
 import { launchApp } from "./bkit-launch.js";
 import {
   dispatchModules,
   getPkgRoot,
-  listMdFiles,
   renderOpencodeJson,
   reconcileOpencodeJson,
   reconcileMcpJson,
   renderManagedOutputs,
   enrichClaudeSettingsAllows,
-  pruneRetiredClaudeAskRules,
   opencodeProviderId,
   isTemplate,
   syncTemplateCopies,
   formatTemplateChanges,
   type ModuleContext,
 } from "./bkit-modules.js";
-import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
+import { getTemplatesRoot, getBkitDocsRoot, NPM_STRIP_REMAP } from "./bkit-paths.js";
 import {
   findLineAnchoredMarkers,
   replaceManagedBlock,
@@ -59,7 +55,6 @@ import {
   writeCursorCliPermissionsArtifact,
   parseDotenv,
 } from "./bkit-cloud-env.js";
-import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
 import { runPreflight } from "./bkit-preflight.js";
 import {
   runPostInstallCheck,
@@ -78,8 +73,6 @@ import {
 import {
   runUpgrade,
   updateCanonicalHashesAfterUpgrade,
-  migrateStrayGitattributes,
-  migrateWarningsToNoise,
   planSelfBump,
   type UpgradeCandidate,
 } from "./bkit-upgrade.js";
@@ -116,10 +109,6 @@ export function discardAllStaging(cwd = process.cwd()): void {
     fs.rmSync(stagingRoot, { recursive: true, force: true });
   }
 }
-
-// Bkit-prefix filter — files not starting with this prefix are project-managed
-// and never removed by payload cleanup.
-const BKIT_PREFIX = "bkit-";
 
 // Log prefix — mutated by main() to "[bkit-check]" when verb === "check"
 // so log scanners can tell which verb actually ran.
@@ -839,153 +828,15 @@ export function listFilesRecursive(dir: string): string[] {
   return out;
 }
 
-// npm hard-excludes files literally named `.gitignore` and `.npmignore` from
-// packed tarballs (by basename, anywhere in the tree), regardless of the `files`
-// field. Those — and ONLY those — are stored without the leading dot in
-// `.bkit/templates/` and remapped to their dotted dest at install/upgrade time.
-//
-// Any OTHER dotfile (`.gitattributes`, `.prettierignore`, `.mcp.json`, …) packs
-// fine with its dot, so it is stored dotted in the template tree and needs NO
-// remap. Do not add such names here — store the template with its real name.
-//
-// This is the single source of truth for the dotfile remap; the module install
-// pass (bkit-modules.ts) and the `bkit upgrade` template walk both call it, so
-// they can never disagree about how a template basename maps to its dest path.
-const NPM_STRIP_REMAP: Record<string, string> = {
-  gitignore: ".gitignore",
-  npmignore: ".npmignore",
-};
-
+// The dotfile remap: the one table lives in bkit-paths.ts (NPM_STRIP_REMAP); the
+// module install pass (bkit-modules.ts) and the `bkit upgrade` template walk both
+// call this, so they never disagree about how a template basename maps to its dest.
 export function remapTemplateDest(rel: string): string {
   const dir = path.dirname(rel);
   const base = path.basename(rel);
   const mapped = NPM_STRIP_REMAP[base];
   if (mapped === undefined) return rel;
   return dir === "." ? mapped : path.join(dir, mapped);
-}
-
-// Payload pass: remove bkit files an older layout left in <cwd>/.agents/.
-// Mirror sources (`.bkit/workflows`, `.bkit/prompts`) and bkit-authoring docs
-// (`.bkit/*.md`) live package-side and are read directly from there at runtime
-// (see getWorkflowsRoot / getPromptsRoot / getBkitDocsRoot). The reference docs
-// are ALSO mirrored into the consumer's own `.bkit/` by runBkitDocs — at
-// `.bkit/`, never `.agents/`. `runPayload` removes copies under `.agents/`.
-// (`.agents/rules.md` stays at `.agents/` — a consumer-shipped Tier-2 file;
-// AGENTS.md/CLAUDE.md reference it.)
-//
-// `runPayload` only does orphan cleanup. Never touches the bkit repo's own tree
-// (isDogfood guard).
-const RELOCATED_AGENTS_FILES = [
-  "trackers.md",
-  "workflows.md",
-  "cloud.md",
-  "prompts.md",
-  "providers.md",
-] as const;
-
-// Files whose old path is under `.agents/` and current path under `.bkit/`, and that
-// carry consumer-owned or stateful content (version pin, secrets, friction log) — MOVED,
-// never deleted. [oldRel, newRel]. `.env.example` is owned (the claude module overwrites
-// it at the new path); the move removes the old path.
-const MIGRATED_AGENTS_FILES: ReadonlyArray<readonly [string, string]> = [
-  [path.join(".agents", ".bkit-version"), path.join(".bkit", "version")],
-  [path.join(".agents", ".env"), path.join(".bkit", ".env")],
-  [path.join(".agents", ".env.example"), path.join(".bkit", ".env.example")],
-  [path.join(".agents", "friction.md"), path.join(".bkit", "friction.md")],
-];
-
-export function runPayload(dryRun: boolean): { deletes: number } {
-  let deletes = 0;
-  const tag = dryRun ? "[dry-run] " : "";
-
-  if (isDogfood()) return { deletes: 0 };
-
-  // 1. Relocated mirror-source dirs: remove bkit-prefix files, then the dir if empty.
-  for (const subdir of ["workflows", "prompts"] as const) {
-    const dstDir = path.join(".agents", subdir);
-    if (!fs.existsSync(dstDir)) continue;
-    for (const f of listMdFiles(dstDir, BKIT_PREFIX)) {
-      const target = path.join(dstDir, f);
-      console.log(`${LOG_PREFIX} ${tag}payload cleanup: removing relocated ${target}`);
-      deletes++;
-      if (!dryRun) fs.rmSync(target, { force: true });
-    }
-    if (!dryRun && fs.readdirSync(dstDir).length === 0) fs.rmdirSync(dstDir);
-  }
-
-  // 2. Relocated single files (bkit-authoring docs).
-  for (const name of RELOCATED_AGENTS_FILES) {
-    const target = path.join(".agents", name);
-    if (!fs.existsSync(target)) continue;
-    console.log(`${LOG_PREFIX} ${tag}payload cleanup: removing relocated ${target}`);
-    deletes++;
-    if (!dryRun) fs.rmSync(target, { force: true });
-  }
-
-  // 3. Migrate stateful/consumer-owned files .agents/ → .bkit/ (move, content-preserving).
-  //    Only when the old path exists and the new one does not, so a re-run is a no-op
-  //    and an already-migrated consumer is never clobbered.
-  for (const [oldRel, newRel] of MIGRATED_AGENTS_FILES) {
-    if (!fs.existsSync(oldRel)) continue;
-    if (fs.existsSync(newRel)) {
-      // Already migrated (or freshly seeded) — drop the stale .agents/ copy.
-      console.log(`${LOG_PREFIX} ${tag}payload cleanup: removing superseded ${oldRel}`);
-      deletes++;
-      if (!dryRun) fs.rmSync(oldRel, { force: true });
-      continue;
-    }
-    console.log(`${LOG_PREFIX} ${tag}payload migrate: ${oldRel} → ${newRel}`);
-    if (!dryRun) {
-      fs.mkdirSync(path.dirname(newRel), { recursive: true });
-      fs.renameSync(oldRel, newRel);
-    }
-  }
-  // `.agents/advisories.md` — dropped (bkit writes .bkit/advisories.md).
-  {
-    const oldAdvisories = path.join(".agents", "advisories.md");
-    if (fs.existsSync(oldAdvisories)) {
-      console.log(`${LOG_PREFIX} ${tag}payload cleanup: removing superseded ${oldAdvisories}`);
-      deletes++;
-      if (!dryRun) fs.rmSync(oldAdvisories, { force: true });
-    }
-  }
-
-  return { deletes };
-}
-
-// ---------------------------------------------------------------------------
-// Upgrade orphan-removal
-//
-// Removes an `.agents/templates/` directory the package does not ship. No-op when
-// absent. Dry-run aware: logs only, no FS write.
-// ---------------------------------------------------------------------------
-
-export function removeOrphanTemplatesDir(cwd: string, dryRun: boolean): void {
-  const orphanDir = path.join(cwd, ".agents", "templates");
-  if (!fs.existsSync(orphanDir)) return;
-  // Deletes only when at least one known bkit-managed path exists inside the directory;
-  // a consumer-owned .agents/templates/ that bkit never wrote is left alone.
-  const BKIT_SENTINELS = [
-    "AGENTS.md",
-    "CLAUDE.md",
-    path.join(".github", "workflows"),
-    path.join(".github", "renovate.json5"),
-    path.join(".github", "dependabot.yml"),
-    "gitignore",
-    ".vale.ini",
-  ];
-  const isBkitOrigin = BKIT_SENTINELS.some((s) => fs.existsSync(path.join(orphanDir, s)));
-  if (!isBkitOrigin) {
-    console.log(
-      `${LOG_PREFIX} upgrade: skipping .agents/templates/ removal — no bkit-origin sentinel found; directory appears consumer-owned`,
-    );
-    return;
-  }
-  const tag = dryRun ? "[dry-run] " : "";
-  console.log(`${LOG_PREFIX} ${tag}upgrade: removing orphan .agents/templates/ (D1 auto-clean)`);
-  if (!dryRun) {
-    fs.rmSync(orphanDir, { recursive: true, force: true });
-  }
 }
 
 /**
@@ -1239,10 +1090,7 @@ export function detectOpencodeProvider(cwd: string): string | null {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
         bkit?: { opencodeProvider?: unknown };
       };
-      const rawStored = pkg.bkit?.opencodeProvider;
-      // Normalize renamed keys (e.g. "zen" → "opencode") before allowlist check.
-      const stored =
-        typeof rawStored === "string" ? normalizeOpencodeProvider(rawStored) : rawStored;
+      const stored = pkg.bkit?.opencodeProvider;
       if (
         typeof stored === "string" &&
         (OPENCODE_PROVIDERS as readonly string[]).includes(stored)
@@ -1263,7 +1111,7 @@ export function detectOpencodeProvider(cwd: string): string | null {
       const first = Object.keys(cfg.provider)[0];
       if (!first) return null;
       // Zen's opencode.json block is keyed by the built-in id `opencode`, not the CLI key.
-      return normalizeOpencodeProvider(first === "opencode" ? "opencode-zen" : first);
+      return first === "opencode" ? "opencode-zen" : first;
     }
   } catch {
     return null; // unparseable opencode.json — fall back to the default provider
@@ -1272,29 +1120,23 @@ export function detectOpencodeProvider(cwd: string): string | null {
 }
 
 /**
- * Returns all bkit-installed opencode providers from the consumer package.json.
- * Reads `bkit.opencodeProviders` array; falls back to `[bkit.opencodeProvider]` for
- * single-provider installs (migrated on the next install run).
- * Filters to valid OPENCODE_PROVIDERS entries; returns [] when neither field exists.
+ * Returns all bkit-installed opencode providers from the consumer package.json
+ * `bkit.opencodeProviders` array, filtered to valid OPENCODE_PROVIDERS entries; [] when
+ * the field is absent.
  */
 export function detectOpencodeProviders(cwd: string): string[] {
   const pkgPath = path.join(cwd, "package.json");
   if (!fs.existsSync(pkgPath)) return [];
   try {
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
-      bkit?: { opencodeProviders?: unknown; opencodeProvider?: unknown };
+      bkit?: { opencodeProviders?: unknown };
     };
     const arr = pkg.bkit?.opencodeProviders;
     if (Array.isArray(arr)) {
-      return arr
-        .filter((v): v is string => typeof v === "string")
-        .map((v) => normalizeOpencodeProvider(v)) // renamed keys (e.g. "zen" → "opencode")
-        .filter((v) => (OPENCODE_PROVIDERS as readonly string[]).includes(v));
-    }
-    // Fallback: detectOpencodeProvider checks both package.json and opencode.json
-    const single = detectOpencodeProvider(cwd);
-    if (single !== null) {
-      return [single];
+      return arr.filter(
+        (v): v is string =>
+          typeof v === "string" && (OPENCODE_PROVIDERS as readonly string[]).includes(v),
+      );
     }
   } catch {
     // unparseable — return empty
@@ -1425,7 +1267,6 @@ async function main() {
     opencodeProvider,
     complyPhase,
     telemetrySubverb,
-    telemetryMigrateFlags,
   } = parseArgs(process.argv.slice(2));
 
   // A bare `bkit` (no arguments) means no command was given: print usage and exit non-zero
@@ -1469,17 +1310,8 @@ async function main() {
 
       const violations = runGrader({ parentSha, phase, cwd });
 
-      // Resolve repo slug from package.json (best-effort).
-      let repo = "unknown";
-      try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf8")) as {
-          name?: string;
-          bkit?: { repoSlug?: string };
-        };
-        repo = pkg.bkit?.repoSlug ?? pkg.name ?? "unknown";
-      } catch {
-        // package.json absent/unparseable
-      }
+      // The origin remote's owner/repo, the same slug every other telemetry writer uses.
+      const repo = resolveRepoSlug(cwd) || "unknown/repo";
 
       const bkitVersion = readBkitVersion(cwd);
 
@@ -1579,13 +1411,10 @@ async function main() {
     return;
   }
 
-  // telemetry — sub-verb dispatcher.
-  // `bkit telemetry migrate` ports docs/knowledge.md + docs/decisions.md to .jsonl.
-  // Destructive (parity-gated) and NEVER reachable from `bkit upgrade` — see DE-39.
-  // Advisory: exits 0 on failure after printing error (fail-open pattern).
+  // telemetry — sub-verb dispatcher. Advisory: exits 0 on failure after printing the
+  // error (fail-open pattern).
   if (verb === "telemetry") {
     try {
-      const { runMigrate } = await import("./bkit-telemetry-migrate.js");
       // `bkit telemetry summary [--phase <workflow>]` — THE telemetry summary, for
       // every workflow's close step.
       if (telemetrySubverb === "summary") {
@@ -1597,59 +1426,8 @@ async function main() {
         }
         const summary = workflowTelemetry(foldFrom([statsPath]), complyPhase ?? undefined);
         for (const line of summary.lines) console.log(line);
-        return;
-      }
-      // `bkit telemetry validate` — read-only alias-collision scan. Exits 1 on a
-      // collision (one DE-<n>/KN-<n> claimed by unrelated rows) — the loud signal
-      // the merge=union append never surfaces. WARNs (exit 0) on minted keys.
-      if (telemetrySubverb === "validate") {
-        const { lintLedgers } = await import("./bkit-telemetry-lint.js");
-        const result = lintLedgers(process.cwd());
-        for (const line of result.lines) console.log(line);
-        if (!result.ok) process.exitCode = 1;
-        return;
-      }
-      // `bkit telemetry normalise [--dry-run]` — one-shot, idempotent rewrite off
-      // sequential aliases (parity-gated; original untouched on abort).
-      if (telemetrySubverb === "normalise") {
-        const { runNormalise } = await import("./bkit-telemetry-normalise.js");
-        const result = await runNormalise({
-          cwd: process.cwd(),
-          dryRun: telemetryMigrateFlags.dryRun,
-        });
-        for (const line of result.lines) console.log(line);
-        if (!result.ok && result.error) {
-          console.error(`[bkit-telemetry] normalise failed: ${result.error}`);
-          process.exitCode = 1;
-        }
-        return;
-      }
-      if (telemetrySubverb === "migrate") {
-        const pkgPath = path.join(process.cwd(), "package.json");
-        let bkitVersion = "unknown";
-        if (fs.existsSync(pkgPath)) {
-          try {
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-            if (typeof pkg["version"] === "string") bkitVersion = pkg["version"] as string;
-          } catch {
-            // ignore
-          }
-        }
-        const result = await runMigrate({
-          cwd: process.cwd(),
-          bkitVersion,
-          dryRun: telemetryMigrateFlags.dryRun,
-        });
-        for (const line of result.lines) {
-          console.log(line);
-        }
-        if (!result.ok && result.error) {
-          console.error(`[bkit-telemetry] migrate failed: ${result.error}`);
-        }
       } else {
-        console.error(
-          `[bkit] \`bkit telemetry\` requires a sub-verb. Valid values: migrate, summary, validate, normalise`,
-        );
+        console.error(`[bkit] \`bkit telemetry\` requires a sub-verb. Valid values: summary`);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1823,31 +1601,6 @@ async function main() {
       `${LOG_PREFIX} Running upgrade${upgradeFlags.dryRun ? " (dry-run)" : ""}${upgradeFlags.nonInteractive ? " (non-interactive)" : ""}`,
     );
 
-    // 2.5.0 migration: that release wrote `.gitattributes` to a file literally
-    // named `gitattributes` (no dot), which git never reads. Rename it and drop
-    // the bogus dot-less canonicalHashes key before the walk reseeds the dotted one.
-    migrateStrayGitattributes(process.cwd(), upgradeFlags.dryRun);
-
-    // docs/warnings.md → docs/noise.md: move the consumer's file
-    // (their entries live below the managed block) before the walk reseeds it.
-    migrateWarningsToNoise(process.cwd(), upgradeFlags.dryRun);
-
-    // Orphan-removal: removes an `.agents/templates/` directory the package does not
-    // ship. No-op when absent. Dry-run aware: log only, no FS write.
-    removeOrphanTemplatesDir(process.cwd(), upgradeFlags.dryRun);
-
-    // Relocated-orphan removal: mirror sources and the bkit-authoring docs live in
-    // `.bkit/`. Strip any copies a consumer carries under `.agents/`
-    // (.agents/workflows, .agents/prompts, ...). No-op when absent / in dogfood.
-    runPayload(upgradeFlags.dryRun);
-
-    // Retired bkit files: delete unedited copies. The checklist of edited copies and
-    // callers prints once the upgrade has re-pointed package.json scripts.
-    retireOwnedFiles(process.cwd(), {
-      dryRun: upgradeFlags.dryRun,
-      log: (line) => console.log(`${LOG_PREFIX} ${line}`),
-    });
-
     // Collect bkit-managed template candidates from the package.
     // Templates live in .bkit/templates/ — walk the directory for all files.
     const tplRoot = getTemplatesRoot();
@@ -1951,26 +1704,11 @@ async function main() {
               templatePath: entAbs,
               format: entry?.format,
               contentOverride,
-              noMarkerMigration: entry?.noMarkerMigration,
             });
           }
         }
       };
       collectTemplates(tplRoot, "");
-    }
-
-    // Upgrade orphan: bkit-auto.yml is the old name of bkit-cloud.yml. Removed only when
-    // bkit-cloud.yml is present.
-    const oldAutoWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-auto.yml");
-    const newCloudWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-cloud.yml");
-    if (fs.existsSync(oldAutoWorkflow) && fs.existsSync(newCloudWorkflow)) {
-      const tag = upgradeFlags.dryRun ? "[dry-run] " : "";
-      console.log(
-        `${LOG_PREFIX} ${tag}upgrade: removing orphan .github/workflows/bkit-auto.yml (legacy name of bkit-cloud.yml)`,
-      );
-      if (!upgradeFlags.dryRun) {
-        fs.rmSync(oldAutoWorkflow, { force: true });
-      }
     }
 
     // Markered-text templates managed on upgrade are token-free, but resolve real
@@ -2020,25 +1758,11 @@ async function main() {
       }
     }
 
-    // Auto-migrate consumer context-fetch config onto .agents/context.md. Install runs both of
-    // these in runCoreModule (after ITS templates pass); upgrade is a separate render engine, so
-    // mirror them here — AFTER runUpgrade (re)wrote context.md's managed block, and BEFORE
-    // writeClaudeCloudDoc (so the cloud.md provision injection sees the moved blocks) and the
-    // canonicalHashes refresh (so the moved files are re-hashed → drift-clean).
-    //
-    // The config.md retirement runs first (it retires .agents/config.md and renames the
-    // markers), so the observability.md move below appends into the file that survives.
-    const migratedConfigMd = migrateConfigMdToContext(process.cwd(), upgradeFlags.dryRun);
-    if (migratedConfigMd) console.log(`${LOG_PREFIX} ${migratedConfigMd}`);
-
-    const migratedContextFetch = migrateContextFetchToContext(process.cwd(), upgradeFlags.dryRun);
-    if (migratedContextFetch) console.log(`${LOG_PREFIX} ${migratedContextFetch}`);
-
     // The template walk above only covers `.bkit/templates/` config. Re-render the
     // bkit-managed OUTPUT files install also produces but that are NOT templates — host
     // agents/commands (source-rendered from .bkit/prompts + .bkit/workflows), the
     // `.bkit/*.md` canonical docs (runBkitDocs) and core's package.json scripts (the
-    // bkit:gate:* names, add-if-missing, and the legacy script re-point). These are
+    // bkit:gate:* names, add-if-missing). These are
     // bkit-owned, force-overwritten output. Only the hosts the consumer installed are
     // re-rendered (detected by their agents dir). `.bkit/prompts.md` is markered → runBkitDocs
     // block-merges it: managed block refreshed, consumer `## Model Overrides` below bkit:end
@@ -2189,17 +1913,6 @@ async function main() {
             `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${w.path} (WebFetch + MCP derived allows)`,
           );
         }
-        // Retired-rule prune. Upgrade does not dispatch modules, so without this the
-        // install-side call never runs for `bkit upgrade --latest` — the path the
-        // README points consumers at — and the row survives every upgrade.
-        const prunedAsk = pruneRetiredClaudeAskRules(".claude/settings.json", upgradeFlags.dryRun, {
-          writes: [],
-        });
-        if (prunedAsk) {
-          console.log(
-            `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${prunedAsk}`,
-          );
-        }
       }
     }
 
@@ -2222,17 +1935,10 @@ async function main() {
       );
       updateCanonicalHashesAfterUpgrade(
         {
-          // Include the migrated docs so their post-migration on-disk hashes are
-          // recorded (both migrations mutate context.md, and the observability move also
-          // mutates observability.md, AFTER runUpgrade hashed them).
           updated: [
             ...result.updated,
             ...renderedDocPaths,
             ...mcpWs.writes.map((w) => path.relative(process.cwd(), w.path)),
-            ...(migratedConfigMd || migratedContextFetch
-              ? [path.join(".agents", "context.md")]
-              : []),
-            ...(migratedContextFetch ? [path.join("docs", "observability.md")] : []),
           ],
           skipped: result.skipped,
           skippedSeedable: result.skippedSeedable,
@@ -2250,10 +1956,6 @@ async function main() {
     console.log(
       `${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}, re-rendered: ${rendered.length}`,
     );
-
-    // Every edited retired copy, and every consumer CI / package.json line that still calls one.
-    const retiredBanner = formatChecklist(detectRetiredOwnedFiles(process.cwd()));
-    if (retiredBanner) console.log(retiredBanner);
 
     // Non-interactive mode: exit non-zero on conflicts
     if (upgradeFlags.nonInteractive && result.conflicts.length > 0) {
@@ -2457,16 +2159,11 @@ async function main() {
         const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
         if (persistTracker) bkit.issueTracker = tracker;
         if (persistProvider) {
-          // Save the single-string value BEFORE overwriting
-          const prevProvider =
-            typeof bkit.opencodeProvider === "string" ? bkit.opencodeProvider : null;
           bkit.opencodeProvider = opencodeProvider; // active (drives agent frontmatter)
-          // Update providers array (deduped). If only the single string existed, seed the array.
+          // Update providers array (deduped).
           const existingArr: string[] = Array.isArray(bkit.opencodeProviders)
             ? [...(bkit.opencodeProviders as string[])]
-            : prevProvider && (OPENCODE_PROVIDERS as readonly string[]).includes(prevProvider)
-              ? [prevProvider]
-              : [];
+            : [];
           if (!existingArr.includes(opencodeProvider!)) {
             existingArr.push(opencodeProvider!);
           }
@@ -2616,7 +2313,7 @@ async function main() {
       const uninstallCtx: UninstallContext = {
         cwd: process.cwd(),
         dryRun: false,
-        // force: true — auto-revert must delete byte-equal-text files (e.g. .bkit-version)
+        // force: true — auto-revert must delete byte-equal-text files (e.g. .bkit/version)
         // that were just written in this install run. Without force, the hash guard keeps
         // any of them whose hash `.bkit/version` does not record.
         force: true,

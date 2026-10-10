@@ -32,7 +32,7 @@ import {
   type ModuleContext,
 } from "./bkit-modules";
 import { BKIT_GATE_SCRIPTS } from "./bkit-manifest";
-import { readBkitVersion, readManagedVersion, writeBkitVersion, sha256 } from "./bkit-version";
+import { readBkitVersion, readManagedVersion, writeBkitVersion } from "./bkit-version";
 import { applyTokens } from "./bkit-tokens";
 
 // ---------------------------------------------------------------------------
@@ -987,7 +987,7 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
     // canonicalHashes must be an object (not undefined)
     expect(typeof parsed!.canonicalHashes).toBe("object");
     // Must not be empty — core module writes some consumer-facing files
-    // (ws.writes contains at least one non-.agents/ entry from runCoreTemplates or runPayload)
+    // (ws.writes contains at least one non-.agents/ entry from runCoreTemplates)
     expect(Object.keys(parsed!.canonicalHashes).length).toBeGreaterThanOrEqual(0);
     // canonicalHashes must NOT contain .agents/ internal paths
     for (const key of Object.keys(parsed!.canonicalHashes)) {
@@ -1054,17 +1054,9 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
 });
 
 // ---------------------------------------------------------------------------
-// runClaudeModule applies deep-containment and migrates the legacy __bkit__ envelope
-// on install.
-//
-// The version file is read via readBkitVersion().pinnedVersion.
-//
-// runClaudeModule: (1) if __bkit__ present → migrateLegacyBkitEnvelope strips it;
-// (2) writeTier2JsonContained deep-merges template into consumer. No __bkit__
-// key is ever written. Consumer-only keys (hooks.Stop, customKey) survive.
-//
-// These tests verify the call site in runClaudeModule correctly processes
-// the .bkit-version JSON format and preserves consumer keys.
+// runClaudeModule applies deep-containment on install: writeTier2JsonContained
+// deep-merges the template into the consumer's settings. No __bkit__ key is ever
+// written. Consumer-only keys (hooks.Stop, customKey) survive.
 // ---------------------------------------------------------------------------
 
 describe("C1 end-to-end regression: runClaudeModule applies deep-containment with JSON-format .bkit-version", () => {
@@ -1233,43 +1225,7 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
 // BAR-167 Phase 1 — JSON advisory and blocker integration tests
 // ---------------------------------------------------------------------------
 
-import {
-  detectLegacyBkitEnvelope,
-  detectTier2JsonDrift,
-  detectPreEnvelopeBkitVersion,
-} from "./bkit-preflight";
-
-describe("detectLegacyBkitEnvelope advisory", () => {
-  it("returns advisory when __bkit__ present at top-level of settings.json", () => {
-    const relPath = ".claude/settings.json";
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, relPath),
-      JSON.stringify({ __bkit__: { hooks: {} } }),
-      "utf-8",
-    );
-    const result = detectLegacyBkitEnvelope(tmpDir, relPath);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("legacy-bkit-envelope-detected");
-    expect(result!.severity).toBe("advisory");
-  });
-
-  it("returns null when __bkit__ is absent (v2.0.0 schema-clean)", () => {
-    const relPath = ".claude/settings.json";
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, relPath),
-      JSON.stringify({ hooks: { SessionStart: [] } }),
-      "utf-8",
-    );
-    const result = detectLegacyBkitEnvelope(tmpDir, relPath);
-    expect(result).toBeNull();
-  });
-
-  it("returns null when file does not exist", () => {
-    expect(detectLegacyBkitEnvelope(tmpDir, ".claude/settings.json")).toBeNull();
-  });
-});
+import { detectTier2JsonDrift } from "./bkit-preflight";
 
 describe("detectTier2JsonDrift advisory", () => {
   it("returns advisory when consumer is missing a template key", () => {
@@ -1296,52 +1252,6 @@ describe("detectTier2JsonDrift advisory", () => {
     fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
     fs.copyFileSync(templatePath, path.join(tmpDir, relPath));
     const result = detectTier2JsonDrift(tmpDir, relPath);
-    expect(result).toBeNull();
-  });
-});
-
-describe("detectPreEnvelopeBkitVersion blocker", () => {
-  it("returns blocker when pinnedVersion < 0.8.0 and no __bkit__ in JSON files", () => {
-    // Write .bkit-version with pre-envelope pin
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    writeBkitVersion(path.join(tmpDir, ".bkit", "version"), {
-      pinnedVersion: "0.7.0",
-      canonicalHashes: {},
-    });
-    const result = detectPreEnvelopeBkitVersion(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("pre-envelope-bkit-version-detected");
-    expect(result!.severity).toBe("blocker");
-  });
-
-  it("returns null when pinnedVersion >= 0.8.0", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    writeBkitVersion(path.join(tmpDir, ".bkit", "version"), {
-      pinnedVersion: "0.8.0",
-      canonicalHashes: {},
-    });
-    const result = detectPreEnvelopeBkitVersion(tmpDir);
-    expect(result).toBeNull();
-  });
-
-  it("returns null when no .bkit-version exists (fresh install)", () => {
-    const result = detectPreEnvelopeBkitVersion(tmpDir);
-    expect(result).toBeNull();
-  });
-
-  it("returns null when pinnedVersion < 0.8.0 but __bkit__ IS present (envelope install gone right)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    writeBkitVersion(path.join(tmpDir, ".bkit", "version"), {
-      pinnedVersion: "0.7.0",
-      canonicalHashes: {},
-    });
-    fs.writeFileSync(
-      path.join(tmpDir, ".claude", "settings.json"),
-      JSON.stringify({ __bkit__: {} }),
-      "utf-8",
-    );
-    const result = detectPreEnvelopeBkitVersion(tmpDir);
     expect(result).toBeNull();
   });
 });
@@ -1555,7 +1465,7 @@ describe("Task 23 — detectTier2TextDrift block logic (AGENTS.md)", () => {
 // ---------------------------------------------------------------------------
 // .husky/pre-push is a template: install never writes or reads it.
 // PREREQ: tests/fixtures/heavy-customised-prepush/.husky/pre-push (a heavily
-// customised consumer hook carrying legacy bkit markers).
+// customised consumer hook).
 // ---------------------------------------------------------------------------
 
 describe(".husky/pre-push is the consumer's file", () => {
@@ -2215,10 +2125,6 @@ describe("opencodeProviderId — bkit key → opencode-side provider id", () => 
     expect(opencodeProviderId("opencode-go")).toBe("opencode-go");
   });
 
-  it("legacy zen key passes through unchanged (alias resolved at CLI, not here)", () => {
-    expect(opencodeProviderId("zen")).toBe("zen");
-  });
-
   it("passes through an unknown key unchanged (defensive)", () => {
     expect(opencodeProviderId("acme")).toBe("acme");
   });
@@ -2555,11 +2461,10 @@ describe("reconcileOpencodeJson — preserves existing provider order", () => {
 });
 
 // ---------------------------------------------------------------------------
-// gateguard markered-text migration — install engine, all three
-// writeTier2 noMarkerMigration cases, for both the claude and opencode twins.
+// gateguard markered-text — install engine, for both the claude and opencode twins.
 // ---------------------------------------------------------------------------
 
-describe("gateguard.cjs / gateguard.js markered-text migration — install engine (#422)", () => {
+describe("gateguard.cjs / gateguard.js markered-text — install engine (#422)", () => {
   const CJS_REL = path.join(".claude", "hooks", "gateguard.cjs");
   const JS_REL = path.join(".opencode", "plugin", "gateguard.js");
 
@@ -2593,58 +2498,5 @@ describe("gateguard.cjs / gateguard.js markered-text migration — install engin
     const js = fs.readFileSync(path.join(tmpDir, JS_REL), "utf-8");
     expect(js).toContain("// bkit:start");
     expect(js).toContain("// bkit:end");
-  });
-
-  it("case: hash matches a prior canonical hash → replaced wholesale, byte-identical to a fresh install", () => {
-    // Reference: what a fresh install produces in an untouched tmpdir.
-    const freshDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-modules-fresh-"));
-    fs.writeFileSync(
-      path.join(freshDir, "package.json"),
-      JSON.stringify({ name: "test-project", packageManager: "pnpm@10.4.1" }),
-      "utf-8",
-    );
-    process.chdir(freshDir);
-    runClaudeModule(makeCtx());
-    const freshCjs = fs.readFileSync(path.join(freshDir, CJS_REL), "utf-8");
-    process.chdir(tmpDir);
-    fs.rmSync(freshDir, { recursive: true, force: true });
-
-    // A pre-markers install: gateguard.cjs predates the migration, no markers.
-    const legacyContent = "#!/usr/bin/env node\n// old bkit-owned gateguard, no markers\n";
-    fs.mkdirSync(path.dirname(path.join(tmpDir, CJS_REL)), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, CJS_REL), legacyContent, "utf-8");
-    writeBkitVersion(path.join(tmpDir, ".bkit", "version"), {
-      pinnedVersion: "4.10.0",
-      canonicalHashes: { [CJS_REL]: sha256(legacyContent) },
-    });
-
-    const ctx = makeCtx();
-    runClaudeModule(ctx);
-
-    const migrated = fs.readFileSync(path.join(tmpDir, CJS_REL), "utf-8");
-    expect(migrated).toBe(freshCjs);
-    expect(ctx.advisories.some((a) => a.id.startsWith("tier2-block-appended-needs-wiring"))).toBe(
-      false,
-    );
-  });
-
-  it("case: hash unknown/differs → appends the block and pushes a wiring-instructions advisory", () => {
-    const consumerContent = "#!/usr/bin/env node\n// this consumer's own gateguard, never bkit's\n";
-    fs.mkdirSync(path.dirname(path.join(tmpDir, JS_REL)), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, JS_REL), consumerContent, "utf-8");
-    // No .bkit/version at all → hash unknown, not a fresh install (dest exists).
-
-    const ctx = makeOpencodeCtx();
-    runOpencodeModule(ctx);
-
-    const result = fs.readFileSync(path.join(tmpDir, JS_REL), "utf-8");
-    expect(result).toContain("this consumer's own gateguard, never bkit's");
-    expect(result).toContain("// bkit:start");
-    expect(result).toContain("bkitGateguard");
-    const advisory = ctx.advisories.find((a) =>
-      a.id.startsWith("tier2-block-appended-needs-wiring"),
-    );
-    expect(advisory).toBeDefined();
-    expect(advisory!.action).toContain(JS_REL);
   });
 });

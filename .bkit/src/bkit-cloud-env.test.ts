@@ -375,7 +375,7 @@ describe("writeClaudeCloudDoc — end-to-end render (real template)", () => {
 });
 
 describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllowlist", () => {
-  it("returns [] when config.md is absent or has no allowed-domains block", () => {
+  it("returns [] when context.md is absent or has no allowed-domains block", () => {
     expect(extractAllowedDomains(tmpDir)).toEqual([]);
     write(".agents/context.md", "<!-- bkit:end -->\nno domains here\n");
     expect(extractAllowedDomains(tmpDir)).toEqual([]);

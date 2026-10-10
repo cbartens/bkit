@@ -19,7 +19,6 @@ import {
 import { listFilesRecursive, remapTemplateDest } from "./bkit-install";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths";
 import { readBkitVersion } from "./bkit-version";
-import { updateCanonicalHashesAfterUpgrade } from "./bkit-upgrade";
 import { runUninstall } from "./bkit-uninstall";
 import type { WriteSet } from "./bkit-tiers";
 
@@ -186,74 +185,6 @@ describe("formatTemplateChanges", () => {
 
   it("is empty when nothing changed", () => {
     expect(formatTemplateChanges({ changed: [], added: [], removed: [] })).toBe("");
-  });
-});
-
-describe("hashes for paths that became templates are dropped once", () => {
-  const RETIRED = {
-    ".github/workflows/ci.yml": "a".repeat(64),
-    ".envrc": "b".repeat(64),
-    ".vale/styles/House/Filler.yml": "c".repeat(64),
-  };
-
-  // Written raw so the record also carries the retired tier3Hashes field an older
-  // install left behind.
-  function seedRetiredKeys(): void {
-    const file = path.join(tmpDir, ".bkit", "version");
-    const v = readBkitVersion(file)!;
-    fs.writeFileSync(
-      file,
-      JSON.stringify({
-        ...v,
-        canonicalHashes: { ...v.canonicalHashes, ...RETIRED },
-        tier3Hashes: { ".envrc": RETIRED[".envrc"] },
-      }),
-      "utf-8",
-    );
-  }
-
-  function retiredKeysLeft(): string[] {
-    const raw = fs.readFileSync(path.join(tmpDir, ".bkit", "version"), "utf-8");
-    const v = JSON.parse(raw) as { canonicalHashes: object; tier3Hashes?: object };
-    return [...Object.keys(v.canonicalHashes), ...Object.keys(v.tier3Hashes ?? {})].filter(
-      (k) => k in RETIRED,
-    );
-  }
-
-  it("install drops them once, then a check writes nothing", () => {
-    runCore();
-    runCore();
-    seedRetiredKeys();
-
-    const dropping = runCore();
-    expect(dropping.writes.map((w) => path.relative(tmpDir, path.resolve(w.path)))).toEqual([
-      path.join(".bkit", "version"),
-    ]);
-    expect(retiredKeysLeft()).toEqual([]);
-
-    expect(runCore(true).writes).toEqual([]);
-  });
-
-  it("the upgrade writer drops them too, so a clean upgrade is followed by a zero-write check", () => {
-    runCore();
-    runCore();
-    seedRetiredKeys();
-    const pinned = readBkitVersion(path.join(tmpDir, ".bkit", "version"))!.pinnedVersion;
-
-    updateCanonicalHashesAfterUpgrade(
-      {
-        updated: [path.join(COPIES, ".envrc")],
-        skipped: [],
-        skippedSeedable: [],
-        conflicts: [],
-      },
-      { dryRun: false, cwd: tmpDir, pinnedVersion: pinned },
-    );
-    expect(retiredKeysLeft()).toEqual([]);
-    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"))!;
-    expect(Object.keys(v.canonicalHashes)).not.toContain(path.join(COPIES, ".envrc"));
-
-    expect(runCore(true).writes).toEqual([]);
   });
 });
 

@@ -42,21 +42,16 @@ cbartens/bkit (this repo)
 │   ├── bkit-manifest.ts    # Per-module install-write manifest (drives uninstall + the upgrade walk)
 │   ├── bkit-uninstall.ts   # `bkit uninstall` orchestrator — surgical format-aware removal
 │   ├── bkit-upgrade.ts     # `bkit upgrade` diff engine + canonicalHashes drift detection
-│   ├── bkit-package-json.ts # repointLegacyScripts (superseded bkit lint:prose / slop:delta values)
 │   ├── bkit-paths.ts       # Single resolver seam — getTemplatesRoot / getPkgRoot / isDogfood
 │   ├── bkit-paths-policy.ts # Single protected-path table (mirror prefixes + gate-config basenames); source of truth for the grader AND the committed generated .cjs
 │   ├── bkit-launch.ts      # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
 │   ├── bkit-cloud-env.ts   # Resolves the `.claude/cloud.md` + `.cursor/cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds BKIT_LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-independent
-│   ├── bkit-context-migrate.ts # Content-preserving relocation of consumer context-fetch blocks docs/observability.md -> .agents/context.md (#334). MOVE, never transform; wired into BOTH install and upgrade (separate engines)
 │   ├── bkit-trackers.ts    # Tracker-provider substitution engine (github / linear / none)
 │   ├── bkit-status.ts      # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in bkit-install.ts)
 │   ├── bkit-telemetry.ts   # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine (#234 WS-1)
 │   ├── bkit-comply.ts      # Compliance grader (#234 WS-2) — no-mirror-edit + skip-ci-not-head rules; emits kind:"compliance" rows; `bkit comply --phase <p>` (fail-open)
 │   ├── bkit-harvest.ts     # Cross-repo harvest CLI (#234 WS-4, #343) — COPIES consumer .bkit/stats.jsonl (never modified); MOVES .bkit/friction.jsonl into harvest/ at repo root, pruning drained rows from the consumer; COUNT-ONLY for docs/{deferrals,failures}.jsonl; store keeps every distinct row, deduped by content (never rewritten from the fold); prune gated on byte-for-byte content (NOT identity — fold collapses colliding rows) after copy→fsync→read-back; store accumulates, never cleared; never commits in any repo; `bkit harvest`
-│   ├── bkit-analysis.ts    # Analysis CLI (#234 WS-4) — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counterSource trust labelling, per-rule compliance rate over kind:"compliance" rows; `bkit analysis`
-│   ├── bkit-telemetry-migrate.ts # Legacy .md → .jsonl migration CLI (#234 WS-5, #380) — parity-gated destructive migration of docs/knowledge.md, docs/decisions.md, docs/pending.md → deferrals.jsonl, .bkit/friction.md, docs/completed.md → .bkit/issues.jsonl (fifth pair, plus the in-flight bootstrap seed); KN-/DE- ids + legacy Related: graph preserved in references[]; Severity mapped onto CRITICAL|HIGH|MEDIUM|LOW; Description prose → description (title → summary); Discarded: → alternatives; friction Workflow:/Step: preserved as the envelope workflow/step (where it happened, not the migrate transport); `bkit telemetry migrate [--dry-run]`
-│   ├── bkit-telemetry-lint.ts # Read-only alias-collision scan (#361) — flags one DE-<n>/KN-<n> claimed by >1 slug key + minted keys written outside the one-shot migrate; `bkit telemetry validate` (exit 1 on collision); shared by the postinstall advisory + the normaliser
-│   └── bkit-telemetry-normalise.ts # One-shot idempotent normaliser (#361) — folds an `aliases[]` field into references[], keeps ts, re-keys ONLY colliding rows (strip the shared number, preserve it as a references[] pointer); parity-gated (.bak + row-count), original untouched on abort; `bkit telemetry normalise [--dry-run]`
+│   └── bkit-analysis.ts    # Analysis CLI (#234 WS-4) — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counterSource trust labelling, per-rule compliance rate over kind:"compliance" rows; `bkit analysis`
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .bkit/workflows/      # Workflow markdown files (bkit-design, plan, build, debug, ship, auto)
 ├── .bkit/prompts/        # Subagent prompt files
@@ -108,7 +103,7 @@ CLI verbs:
 - `pnpm bkit comply --phase <p>` (#234 WS-2) — grader over `git diff parentSha..HEAD`; advisory-only, fail-open.
 - `pnpm bkit harvest` (#234 WS-4, #343) — bkit-repo only; COPIES `stats.jsonl`, MOVES `friction.jsonl` (prunes consumer), count-only `docs/{deferrals,failures}.jsonl`. Never commits.
 - `pnpm bkit analysis` (#234 WS-4) — harvested store counts/rates; size↔outcome regression, per-rule compliance.
-- `pnpm bkit telemetry <migrate|summary|validate|normalise>` (#234 WS-5, #361) — `migrate`: one-time parity-gated `.md` → `.jsonl` (`--dry-run`); `validate`: alias collision scan, exit 1; `normalise`: idempotent fix (`aliases[]` → `references[]`, re-key collisions, parity-gated, `--dry-run`).
+- `pnpm bkit telemetry summary [--phase=<workflow>]` (#234 WS-5) — per-workflow telemetry report against the median of the previous 5 runs; read-only.
 - `pnpm bkit cursor` / `pnpm bkit opencode` — launch host with `.bkit/.env` merged (macOS GUI apps skip login-shell/direnv env).
 
 ## Consumer Integration Model
@@ -162,25 +157,20 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 
 ## Knowledge/Decisions JSONL Ledgers (#234 WS-5)
 
-`docs/knowledge.jsonl` (`kind:"knowledge"`) + `docs/decisions.jsonl` (`kind:"decision"`) = NDJSON ledgers. Consumer-inherited (`.gitattributes` managed block, `merge=union`), populated by `bkit telemetry migrate`.
+`docs/knowledge.jsonl` (`kind:"knowledge"`) + `docs/decisions.jsonl` (`kind:"decision"`) = NDJSON ledgers. Consumer-inherited (`.gitattributes` managed block, `merge=union`).
 
-**Migration (one-time, destructive per A5):** `bkit telemetry migrate [--dry-run]` ports markdown → NDJSON, preserves `KN-N`/`KN-CORE-N`/`DE-N` + legacy `**Related:**` graph in `references[]`, DELETES `.md` only after row-count parity vs transient `.md.bak`. Mismatch or missing `.bak` → ABORT, zero `.md` deleted. Re-run idempotent. Destructive delete unreachable from `bkit upgrade` (boundary test, KN-8/DE-39).
+**Data topology:** shared `TelemetryEnvelope` (ts, kind, repo, bkitVersion, workflow, step, key, references[]) + kind payloads (`KnowledgePayload`/`DecisionPayload`) in `bkit-telemetry.ts`.
 
-**Data topology:** shared `TelemetryEnvelope` (ts, kind, repo, bkitVersion, workflow, step, key, references[]) + kind payloads (`KnowledgePayload`/`DecisionPayload`) in `bkit-telemetry.ts`. Agents read JSONL post-migration.
-
-`references[]` = single cross-entry pointer for EVERY kind (envelope, not payload) — feature ids, tracker ids, PRs, SHAs, paths, sibling `ts`, legacy `KN-N`/`DE-N`. No separate identity field. `ts` = id; `references[]` = pointers. Contract: `.bkit/jsonl.md` § Key & References.
-
-Legacy consumer ledgers (`de-<n>-…` keys + `aliases:["DE-<n>"]`) can claim one `DE-<n>` from several keys (#361). Detect via `bkit telemetry validate` (exit 1 on `DE-<n>`/`KN-<n>` claimed by >1 slug `key`; postinstall advisory) ; fix via `bkit telemetry normalise` (drops `aliases[]` → `references[]`, keeps `ts`, re-keys colliding rows only). Cite slug `key`, never bare number.
+`references[]` = single cross-entry pointer for EVERY kind (envelope, not payload) — feature ids, tracker ids, PRs, SHAs, paths, sibling `ts`, `KN-N`/`DE-N` ids. No separate identity field. `ts` = id; `references[]` = pointers. Contract: `.bkit/jsonl.md` § Key & References. Cite slug `key`, never bare number.
 
 ## Roadmap Ledger & Board
 
-`.bkit/issues.jsonl` (`kind:"feature"`) = canonical feature-state ledger, appended at every phase close. `docs/roadmap.md` = generated board, a pure projection of it. Consumer-inherited (`.gitattributes` managed block, `merge=union`). A legacy `docs/completed.md` is deleted by the migration; nothing reads it.
+`.bkit/issues.jsonl` (`kind:"feature"`) = canonical feature-state ledger, appended at every phase close. `docs/roadmap.md` = generated board, a pure projection of it. Consumer-inherited (`.gitattributes` managed block, `merge=union`).
 
 **Components:**
 
 - `bkit roadmap fold` (`.bkit/src/commands/workflow/roadmap.ts`) — deterministic status tier, fail-open. It rewrites the whole generated region of `docs/roadmap.md` in one pass: the `bkit:roadmap-status` block from `.bkit/issues.jsonl`, the `bkit:roadmap-analysis` block carried through verbatim, and two consumer `## Notes` blocks carried through verbatim. Every phase close calls it. No tracker table is rendered — a wired tracker already shows its own issues, and a regenerated copy can only go stale. Everything above the first marker is preserved. `roadmap-notes-post` is last.
 - `.bkit/prompts/bkit-utility-update-roadmap.md` (`@bkit-utility-update-roadmap`) — the only writer of the `roadmap-analysis` block. Runs `bkit roadmap fold` itself, then ranks from the board, in-flight `docs/plans/**` artifacts, open deferrals/failures, and — when a tracker is wired — its OPEN issues (read-only, never comments). Always names the next milestone and the next distinct umbrella; includes a child only when it is open, unblocked, and able to start now. Those two stay visible; the list stays priority order, one row per container. Length is `package.json` `bkit.roadmapNext` (positive integer; absent or invalid → 25). Due audits (`docs/templates/bkit-audit-*.md` cadence vs newest `docs/audits/` report) compete by priority (risk covered first, then how overdue) for at most 3 rows. The length hint sits in the generated `roadmap-status` header.
-- `bkit-telemetry-migrate.ts` fifth pair — `docs/completed.md` → `.bkit/issues.jsonl` at `status:"SHIPPED"`, plus the bootstrap seed (one row per in-flight FID from `docs/plans/**`). Unreachable from `bkit upgrade`; the `completed-md-unmigrated` preflight advisory names the command (`docs/setup.md` § Roadmap ledger migration).
 
 **Ownership boundary:** `docs/roadmap.md` is consumer-owned — `bkit install` never creates or overwrites it and `bkit check` drift stays clean. bkit rewrites only the mechanical `roadmap-status` tables; the two `## Notes` blocks and `roadmap-analysis` are carried through. `roadmap-notes-post` is last. `roadmap-analysis` is written ONLY by `@bkit-utility-update-roadmap`; the fold carries it through untouched, so a phase close never blanks it. Ship stages both roadmap paths through the frozen `BOOK_PATHS` allow-list.
 

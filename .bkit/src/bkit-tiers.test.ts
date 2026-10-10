@@ -1,14 +1,11 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PreflightFinding } from "./bkit-preflight";
-import { sha256 } from "./bkit-version";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   writeTier1,
   writeTier2,
   writeTier2JsonContained,
-  migrateLegacyBkitEnvelope,
   deepContains,
   deepMergeJson,
   ensurePackageJsonScripts,
@@ -204,154 +201,6 @@ describe("writeTier2 — html-comment markers", () => {
   });
 });
 
-describe("writeTier2 — hash-comment markers", () => {
-  it("appends block at EOF of existing YAML file with no markers (consumer jobs preserved)", () => {
-    const src = path.join(tmpDir, "ci.yml");
-    const dst = path.join(tmpDir, "ci-out.yml");
-    const templateBlock = "# bkit:start\nbkit-gates:\n  steps: []\n# bkit:end\n";
-    fs.writeFileSync(src, templateBlock, "utf-8");
-    fs.writeFileSync(
-      dst,
-      "on: push\njobs:\n  consumer-job:\n    runs-on: ubuntu-latest\n    steps: []\n",
-      "utf-8",
-    );
-    const ws = makeWriteSet();
-
-    writeTier2(src, dst, TOKENS, "hash-comment", false, ws);
-
-    const result = fs.readFileSync(dst, "utf-8");
-    expect(result).toContain("consumer-job:");
-    expect(result).toContain("# bkit:start");
-    expect(result).toContain("bkit-gates:");
-    expect(result).toContain("# bkit:end");
-    expect(ws.writes).toHaveLength(1);
-  });
-
-  it("updates bkit block when dest YAML already has hash-comment markers", () => {
-    const src = path.join(tmpDir, "ci.yml");
-    const dst = path.join(tmpDir, "ci-out.yml");
-    fs.writeFileSync(src, "# bkit:start\nnew-step: true\n# bkit:end\n", "utf-8");
-    fs.writeFileSync(dst, "# bkit:start\nold-step: true\n# bkit:end\n", "utf-8");
-    const ws = makeWriteSet();
-
-    writeTier2(src, dst, TOKENS, "hash-comment", false, ws);
-
-    const result = fs.readFileSync(dst, "utf-8");
-    expect(result).toContain("new-step: true");
-    expect(result).not.toContain("old-step: true");
-    expect(ws.writes).toHaveLength(1);
-  });
-
-  it("substitutes tokens inside the appended block", () => {
-    const src = path.join(tmpDir, "ci.yml");
-    const dst = path.join(tmpDir, "ci-out.yml");
-    fs.writeFileSync(src, "# bkit:start\nbranch: {{DEFAULT_BRANCH}}\n# bkit:end\n", "utf-8");
-    fs.writeFileSync(dst, "# existing yaml\n", "utf-8");
-    const ws = makeWriteSet();
-
-    writeTier2(src, dst, TOKENS, "hash-comment", false, ws);
-
-    const result = fs.readFileSync(dst, "utf-8");
-    expect(result).toContain("branch: main");
-    expect(result).not.toContain("{{DEFAULT_BRANCH}}");
-  });
-});
-
-describe("writeTier2 — noMarkerMigration policy (#422)", () => {
-  const templateSrc = () => {
-    const src = path.join(tmpDir, "gateguard.tpl.js");
-    fs.writeFileSync(
-      src,
-      "#!/usr/bin/env node\n// bkit:start\nfunction bkitGateguard() {}\n// bkit:end\nrest of driver\n",
-      "utf-8",
-    );
-    return src;
-  };
-
-  it("hash matches a prior canonical hash → replaces wholesale (case: ours, unmodified)", () => {
-    const src = templateSrc();
-    const dst = path.join(tmpDir, "gateguard.js");
-    const priorContent = "#!/usr/bin/env node\nold bkit-owned content, no markers\n";
-    fs.writeFileSync(dst, priorContent, "utf-8");
-    const ws = makeWriteSet();
-
-    writeTier2(src, dst, TOKENS, "slash-comment", false, ws, {
-      relPath: "gateguard.js",
-      canonicalHashes: { "gateguard.js": sha256(priorContent) },
-      wiringMessage: "wire {{PATH}} yourself",
-    });
-
-    const result = fs.readFileSync(dst, "utf-8");
-    expect(result).toBe(fs.readFileSync(src, "utf-8"));
-    expect(ws.writes).toHaveLength(1);
-    expect(ws.writes[0]!.action).toBe("update");
-  });
-
-  it("hash unknown → appends the block and prints wiring instructions (case: consumer's own file)", () => {
-    const src = templateSrc();
-    const dst = path.join(tmpDir, "gateguard.js");
-    fs.writeFileSync(dst, "#!/usr/bin/env node\nconsumer's own driver code\n", "utf-8");
-    const ws = makeWriteSet();
-    const advisories: PreflightFinding[] = [];
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    writeTier2(src, dst, TOKENS, "slash-comment", false, ws, {
-      relPath: "gateguard.js",
-      canonicalHashes: {}, // unknown — no recorded hash
-      wiringMessage: "wire {{PATH}} yourself",
-      advisories,
-    });
-
-    const result = fs.readFileSync(dst, "utf-8");
-    expect(result).toContain("consumer's own driver code");
-    expect(result).toContain("// bkit:start");
-    expect(result).toContain("bkitGateguard");
-    expect(ws.writes).toHaveLength(1);
-    expect(ws.writes[0]!.action).toBe("append");
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(`wire ${dst} yourself`));
-    expect(advisories).toHaveLength(1);
-    expect(advisories[0]!.action).toContain(`wire ${dst} yourself`);
-
-    warnSpy.mockRestore();
-  });
-
-  it("hash differs from canonical → appends the block, does not replace (case: consumer modified)", () => {
-    const src = templateSrc();
-    const dst = path.join(tmpDir, "gateguard.js");
-    fs.writeFileSync(dst, "#!/usr/bin/env node\nconsumer edited this bkit file\n", "utf-8");
-    const ws = makeWriteSet();
-
-    writeTier2(src, dst, TOKENS, "slash-comment", false, ws, {
-      relPath: "gateguard.js",
-      canonicalHashes: { "gateguard.js": "deadbeef".repeat(8) }, // does not match on-disk content
-      wiringMessage: "wire {{PATH}} yourself",
-    });
-
-    const result = fs.readFileSync(dst, "utf-8");
-    expect(result).toContain("consumer edited this bkit file");
-    expect(result).toContain("// bkit:start");
-    expect(ws.writes[0]!.action).toBe("append");
-  });
-
-  it("no migration policy passed → default append-blind behaviour, unchanged", () => {
-    const src = templateSrc();
-    const dst = path.join(tmpDir, "gateguard.js");
-    fs.writeFileSync(dst, "#!/usr/bin/env node\nconsumer's own driver code\n", "utf-8");
-    const ws = makeWriteSet();
-
-    writeTier2(src, dst, TOKENS, "slash-comment", false, ws);
-
-    const result = fs.readFileSync(dst, "utf-8");
-    expect(result).toContain("consumer's own driver code");
-    expect(result).toContain("// bkit:start");
-    expect(ws.writes[0]!.action).toBe("append");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ensurePackageJsonScripts — managed package.json scripts
-// ---------------------------------------------------------------------------
-
 describe("ensurePackageJsonScripts", () => {
   function writePkg(content: object | string): void {
     const body = typeof content === "string" ? content : JSON.stringify(content, null, 2) + "\n";
@@ -490,7 +339,6 @@ describe("detectMarkerStyle", () => {
       "// <!-- bkit:start -->\nx\n// <!-- bkit:end -->\n",
       "html-comment",
     ],
-    ["hash marker", "a: 1\n# bkit:start\nx\n# bkit:end\n", "hash-comment"],
     ["slash marker", "// bkit:start\nx\n// bkit:end\n", "slash-comment"],
   ] as const)("%s → %s", (_label, content, style) => {
     expect(detectMarkerStyle(content)).toBe(style);
@@ -578,37 +426,6 @@ describe("stripManagedBlock — html-comment markers", () => {
     expect(result).toContain("above content");
     expect(result).toContain("below content");
     expect(result).not.toContain("bkit block");
-  });
-});
-
-describe("stripManagedBlock — hash-comment markers", () => {
-  it("removes hash-comment managed block from YAML/shell files", () => {
-    const content =
-      "# consumer preamble\n\n# bkit:start\nbkit-step: true\n# bkit:end\n\n# consumer footer\n";
-    const result = stripManagedBlock(content, "hash-comment");
-    expect(result).not.toContain("# bkit:start");
-    expect(result).not.toContain("bkit-step: true");
-    expect(result).not.toContain("# bkit:end");
-    expect(result).toContain("# consumer preamble");
-    expect(result).toContain("# consumer footer");
-  });
-
-  it("returns content unchanged when hash markers are absent", () => {
-    const content = "# consumer yaml\nstep: true\n";
-    const result = stripManagedBlock(content, "hash-comment");
-    expect(result).toBe(content);
-  });
-
-  it("does not strip html-comment block when style is hash-comment", () => {
-    const content = "<!-- bkit:start -->\nbkit content\n<!-- bkit:end -->\n";
-    const result = stripManagedBlock(content, "hash-comment");
-    expect(result).toBe(content);
-  });
-
-  it("does not strip hash-comment block when style is html-comment", () => {
-    const content = "# bkit:start\nbkit content\n# bkit:end\n";
-    const result = stripManagedBlock(content, "html-comment");
-    expect(result).toBe(content);
   });
 });
 
@@ -943,72 +760,6 @@ describe("writeTier2JsonContained", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// migrateLegacyBkitEnvelope — strip __bkit__ envelope (BAR-167 Phase 1)
-// Four sub-cases
-// ---------------------------------------------------------------------------
-
-describe("migrateLegacyBkitEnvelope", () => {
-  it("no-op when __bkit__ is absent: stripped=false", () => {
-    const doc: Record<string, JsonValue> = { hooks: { SessionStart: [] }, custom: "x" };
-    const template: Record<string, JsonValue> = { hooks: { SessionStart: [] } };
-    const result = migrateLegacyBkitEnvelope(doc, template);
-    expect(result.stripped).toBe(false);
-    expect(result.outDoc).toEqual(doc);
-  });
-
-  it("strips __bkit__; retains top-level keys; deepMerged=false when contained", () => {
-    const doc: Record<string, JsonValue> = {
-      __bkit__: { hooks: { SessionStart: [] } },
-      hooks: { SessionStart: [], Stop: [{ command: "echo stop" }] },
-    };
-    const template: Record<string, JsonValue> = { hooks: { SessionStart: [] } };
-    const result = migrateLegacyBkitEnvelope(doc, template);
-    expect(result.stripped).toBe(true);
-    expect(result.deepMerged).toBe(false);
-    expect(result.outDoc["__bkit__"]).toBeUndefined();
-    const hooks = result.outDoc.hooks as Record<string, JsonValue>;
-    expect(hooks.Stop).toBeDefined();
-  });
-
-  it("deepMerged=true when post-strip consumer is missing template scope", () => {
-    const doc: Record<string, JsonValue> = {
-      __bkit__: { hooks: { SessionStart: [{ command: "old" }] } },
-      // Post-strip: no top-level hooks key → missing template scope
-    };
-    const template: Record<string, JsonValue> = { hooks: { SessionStart: [{ command: "new" }] } };
-    const result = migrateLegacyBkitEnvelope(doc, template);
-    expect(result.stripped).toBe(true);
-    expect(result.deepMerged).toBe(true);
-    const hooks = result.outDoc.hooks as Record<string, JsonValue>;
-    expect(hooks.SessionStart).toBeDefined();
-  });
-
-  it("schemaFlipped=true when post-strip value type-flips against template — uses Task-0c fixture", () => {
-    // MUST use Task-0c fixture cursor-hooks.json BEFORE shape (flat-array hooks)
-    const fixturePath = path.resolve(
-      __dirname,
-      "../../tests/fixtures/heavy-customised-consumer-v1-envelope/cursor-hooks.json",
-    );
-    expect(fs.existsSync(fixturePath)).toBe(true);
-    const doc = JSON.parse(fs.readFileSync(fixturePath, "utf-8")) as Record<string, JsonValue>;
-    // Template uses Cursor v1 keyed-object (hooks: {sessionStart: [...], sessionStop: [...]})
-    const template: Record<string, JsonValue> = {
-      version: 1,
-      hooks: {
-        sessionStart: [{ command: "echo start" }],
-        sessionStop: [{ command: "echo stop" }],
-      },
-    };
-    const result = migrateLegacyBkitEnvelope(doc, template);
-    expect(result.stripped).toBe(true);
-    // The fixture has flat-array hooks; template has keyed-object hooks → type flip
-    expect(result.schemaFlipped).toBe(true);
-    expect(result.deepMerged).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Phase 3 — bkit-tiers.ts doc-block terminology check (BAR-167 sub-plan C Task 26)
 // ---------------------------------------------------------------------------

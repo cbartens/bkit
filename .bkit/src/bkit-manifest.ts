@@ -33,16 +33,6 @@ export interface ManifestEntry {
    * it is unchanged.
    */
   generated?: boolean;
-  /**
-   * `markered-text` only. Opt in to the no-marker migration policy in `writeTier2`:
-   * when a consumer's file predates this entry's marker adoption (exists, no markers),
-   * distinguish "ours, unmodified" (hash matches a prior canonical hash — replace
-   * wholesale) from "the consumer's own file" (append the block, then print this
-   * wiring-instructions string, with `{{PATH}}` substituted with the dest path)
-   * instead of always appending blind. Undefined (default) — every other
-   * markered-text file keeps the original append-blind behaviour.
-   */
-  noMarkerMigration?: string;
 }
 
 export type ModuleName = "core" | "claude" | "cursor" | "opencode" | "codex" | "lint" | "cloud";
@@ -96,8 +86,7 @@ export function parseIssueTracker(value: unknown): IssueTracker | null {
  * "active" signal; the package.json field only distinguishes an opt-out from
  * an undecided install.
  *
- * Single self-describing field (mirrors `bkit.issueTracker`). Legacy `"enabled"` is
- * mapped to `"claude"` by `parseCloudAgents`.
+ * Single self-describing field (mirrors `bkit.issueTracker`).
  */
 export const CLOUD_MODES = ["claude", "cursor", "opencode", "none"] as const;
 export type CloudAgents = (typeof CLOUD_MODES)[number];
@@ -105,11 +94,8 @@ export type CloudAgents = (typeof CLOUD_MODES)[number];
 /** Default when consumer manifest has no `bkit.cloudAgents` field (undecided). */
 export const DEFAULT_CLOUD_AGENTS: CloudAgents = "none";
 
-/** Narrow an unknown string to `CloudAgents` or return `null` if invalid.
- * Legacy `"enabled"` value maps to `"claude"`.
- */
+/** Narrow an unknown string to `CloudAgents` or return `null` if invalid. */
 export function parseCloudAgents(value: unknown): CloudAgents | null {
-  if (value === "enabled") return "claude"; // back-compat
   return typeof value === "string" && (CLOUD_MODES as readonly string[]).includes(value)
     ? (value as CloudAgents)
     : null;
@@ -142,111 +128,6 @@ const CORE_MANIFEST: ManifestEntry[] = [
   { path: ".bkit/README.md", format: "byte-equal-text", module: "core" },
 ];
 
-// GateGuard wiring instructions: printed by writeTier2's noMarkerMigration
-// policy when a consumer's gateguard file carries no bkit markers AND its hash does
-// not match a known bkit release — i.e. it is the consumer's own file, not bkit's.
-// bkit appends the (pure, inert) advisory-engine block regardless; these instructions
-// tell the consumer to call the appended function from their existing driver. {{PATH}}
-// is substituted with the destination path.
-export const GATEGUARD_CJS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed advisory block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open {{PATH}}. The appended block exports a pure function \`bkitGateguard(payload)\`
-  that returns \`{ mode, context }\` or \`null\` — it never touches stdin or stdout.
-  Wire it into your existing driver:
-    1. Parse the PreToolUse payload your driver already reads from stdin.
-    2. Call \`const result = bkitGateguard(payload);\`
-    3. If \`result\`, emit ONE JSON document to stdout: \`{ hookEventName: "PreToolUse",
-       permissionDecision: "deny", permissionDecisionReason: result.context }\` when
-       \`result.mode === "deny"\`, otherwise \`{ hookEventName: "PreToolUse",
-       additionalContext: result.context }\`.
-  Claude Code discards the entire hook's output if two emitters both write to
-  stdout, so make sure your driver still emits exactly once per invocation.
-`;
-
-export const GATEGUARD_JS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed advisory block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open {{PATH}}. The appended block exports a pure function
-  \`bkitGateguard(toolName, filePath, sessionId)\` that returns \`{ mode, context }\`
-  or \`null\` — it never touches opencode's client, stderr, or the throw path. Wire
-  it into your \`tool.execute.before\` hook:
-    1. Extract the file path from the tool args (\`write\`/\`edit\`/\`patch\` use \`path\`).
-    2. Call \`const result = bkitGateguard(tool, filePath, sessionID);\`
-    3. If \`result\` and \`result.mode === "deny"\`, \`throw new Error(result.context)\`
-       to block the call; otherwise surface \`result.context\` to the model (e.g. via
-       \`process.stderr.write\`) without blocking.
-`;
-
-export const GUARDRAILS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed guardrails block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open {{PATH}}. The appended block exports a pure function \`bkitGuardrails(payload)\`
-  that returns \`{ permission, user_message, agent_message }\` or \`null\` — it never
-  touches stdin or stdout. Wire it into your existing driver:
-    1. Parse the hook payload your driver already reads from stdin.
-    2. Call \`const decision = bkitGuardrails(payload);\`
-    3. If \`decision\`, emit it to stdout as ONE JSON document; a \`null\` result means
-       bkit has no opinion — fall through to your own decision, defaulting to
-       \`{ permission: "allow" }\`.
-  Cursor discards the entire hook's output if two emitters both write to stdout,
-  so make sure your driver still emits exactly once per invocation.
-`;
-
-/**
- * Codex twin of {@link GUARDRAILS_WIRING_INSTRUCTIONS}, separate text: the Codex engine
- * returns `{ verdict, reason }` and emits the Claude-family `hookSpecificOutput` envelope.
- */
-export const CODEX_GUARDRAILS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed guardrails block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open {{PATH}}. The appended block exports a pure function \`bkitGuardrails(payload)\`
-  that returns \`{ verdict, reason }\` or \`null\` — it never touches stdin or stdout.
-  \`verdict\` is "deny" or "ask". Wire it into your existing driver:
-    1. Parse the PreToolUse payload your driver already reads from stdin.
-    2. Call \`const decision = bkitGuardrails(payload);\`
-    3. If \`decision\`, emit ONE JSON document to stdout:
-       \`{ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny",
-       permissionDecisionReason: decision.reason } }\` when \`verdict === "deny"\`,
-       otherwise \`{ hookSpecificOutput: { hookEventName: "PreToolUse",
-       additionalContext: decision.reason } }\`.
-    4. A \`null\` result means bkit has no opinion — fall through to your own decision.
-  Do NOT map an "ask" verdict to \`permissionDecision: "ask"\`. Codex parses that value
-  but does not implement it: it records an error and runs the command anyway. Advisory
-  context is the strongest thing that actually reaches the model on this host.
-  Codex discards the entire hook's output if two emitters both write to stdout, so make
-  sure your driver still emits exactly once per invocation.
-`;
-
-/**
- * Claude twin of {@link GUARDRAILS_WIRING_INSTRUCTIONS}. Separate text: the Claude
- * engine returns `{ context }` and emits `hookSpecificOutput.additionalContext`; it is
- * NEVER wired to a `permissionDecision`.
- */
-export const CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed guardrails block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open {{PATH}}. The appended block exports a pure function \`bkitGuardrails(payload)\`
-  that returns \`{ context }\` or \`null\` — it never touches stdin or stdout.
-  Wire it into your existing driver:
-    1. Parse the PreToolUse payload your driver already reads from stdin.
-    2. Call \`const result = bkitGuardrails(payload);\`
-    3. If \`result\`, emit ONE JSON document to stdout:
-       \`{ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: result.context } }\`
-    4. A \`null\` result means bkit has nothing to say — emit nothing.
-  Do NOT map the result to \`permissionDecision\`. This hook is advisory by design:
-  \`deny\` already lives in .claude/settings.json and is evaluated before any hook, and
-  an \`ask\` here would force a permission prompt on every matching shell command — the
-  exact stall this host is configured to avoid.
-  Claude Code discards the entire hook's output if two emitters both write to stdout, so
-  make sure your driver still emits exactly once per invocation.
-`;
-
 const CLAUDE_MANIFEST: ManifestEntry[] = [
   // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md, owned by the claude module:
   // `uninstall --claude` removes it; a non-claude install/uninstall leaves it.
@@ -258,13 +139,11 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
   // only the advisory engine between `// bkit:start` / `// bkit:end`; the stdin/
   // stdout driver outside the block is consumer-owned from first install onward, so
   // a consumer can add their own advisories without losing them on upgrade. Wired
-  // in .claude/settings.json. noMarkerMigration covers every pre-markers consumer
-  // install (hash matches a prior canonical hash → replace wholesale).
+  // in .claude/settings.json.
   {
     path: ".claude/hooks/gateguard.cjs",
     format: "markered-text",
     module: "claude",
-    noMarkerMigration: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
   },
   // guardrails.cjs — Tier-2 markered-text, twin of the Cursor/Codex hooks.
   // PreToolUse matcher `Bash`. ADVISORY ONLY: covers URL hosts and shell-as-edit-channel;
@@ -273,7 +152,6 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
     path: ".claude/hooks/guardrails.cjs",
     format: "markered-text",
     module: "claude",
-    noMarkerMigration: CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS,
   },
   // .claude/hooks/cloud-bootstrap.sh is in the opt-in `cloud` module (CLOUD_MANIFEST).
   // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`),
@@ -283,54 +161,9 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
   { path: ".mcp.json", format: "json", module: "claude" },
   // Owned (writeTier1): consumer edits are overwritten. Real values go in `.bkit/.env`.
   { path: ".bkit/.env.example", format: "byte-equal-text", module: "claude" },
-  // A consumer copy of .bkit/scripts/bkit-mode.sh is detected on upgrade and an advisory
-  // is emitted advising deletion (see runClaudeModule's bkit-mode.sh drift check).
   // Mirrors from .agents/ — managed dynamically, not listed individually here (the set
   // depends on the bkit-prefix prompt/workflow files at install time). The uninstall
   // logic handles these via the BKIT_PREFIX filter.
-];
-
-// ---------------------------------------------------------------------------
-// lint:prose — the prose-gate script value (single source of truth)
-//
-// bkit does not seed `lint:prose` (it is a template script, `.bkit/templates.md`);
-// two surfaces carry this string:
-//   - the legacy re-point target (repointLegacyScripts, bkit-package-json.ts)
-//   - the F9 advisory remedy text (bkit-preflight.ts)
-//
-// F9 contract: symmetric soft-skip — a missing vale binary never hard-fails a
-// consumer's commit. A missing `.vale/styles/write-good` (gitignored, so absent in
-// every fresh checkout and `git worktree add`) self-heals (copy from the main worktree
-// via --git-common-dir, zero network; `vale sync` as fallback) and, if self-heal fails
-// with vale present, says so LOUDLY on stderr.
-//
-// Shell constraints: no single quotes anywhere in the body (it is wrapped in
-// `bash -c '...'`), and no backticks (a backtick inside the double-quoted echo
-// would command-substitute).
-export const LINT_PROSE_SCRIPT =
-  'bash -c \'if command -v vale >/dev/null 2>&1; then if [ ! -d .vale/styles/write-good ]; then echo "[bkit] .vale/styles/write-good absent (fresh checkout or worktree) - restoring" >&2; G=$(git rev-parse --git-common-dir 2>/dev/null) && M=$(dirname "$(cd "$G" && pwd)") && [ -d "$M/.vale/styles/write-good" ] && mkdir -p .vale/styles && cp -R "$M/.vale/styles/write-good" .vale/styles/ || vale sync || true; fi; if [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync" >&2; fi; else echo "[bkit] vale not installed - skipping prose lint (install vale, then run vale sync, to enable)"; fi\'';
-
-// lint:prose values an older bkit wrote, newest first.
-//
-// Any value byte-matching an entry here is provably bkit's own (never
-// consumer-authored), so install and upgrade re-point it at LINT_PROSE_SCRIPT. A
-// value matching NEITHER the current default NOR a legacy entry is
-// consumer-customised and is left strictly alone.
-//
-// Append the outgoing string here whenever LINT_PROSE_SCRIPT changes.
-export const LEGACY_LINT_PROSE_SCRIPTS: readonly string[] = [
-  'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
-];
-
-// The enforcing slop gate: `bkit ci slop` runs the delta against the PR base. CI
-// passes the base sha as the one bare argument (`pnpm slop:delta "$BASE_SHA"`).
-export const SLOP_DELTA_SCRIPT = "bkit ci slop";
-
-// Same rule as LEGACY_LINT_PROSE_SCRIPTS: a value byte-matching an entry is bkit's
-// own, so install / upgrade re-point it. Append the outgoing string whenever
-// SLOP_DELTA_SCRIPT changes.
-export const LEGACY_SLOP_DELTA_SCRIPTS: readonly string[] = [
-  "bash .bkit/scripts/bkit-slop-delta.sh",
 ];
 
 // ---------------------------------------------------------------------------
@@ -452,14 +285,11 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
   // permission map) — markered-text (slash-comment), same ownership split as the two
   // GateGuard hooks: bkit owns only the decision engine between the markers, the
   // stdin/stdout driver outside them is consumer-owned from first install onward, so a
-  // consumer can add their own gates without losing them on upgrade. noMarkerMigration
-  // covers every pre-markers consumer install (hash matches a prior canonical hash →
-  // replace wholesale).
+  // consumer can add their own gates without losing them on upgrade.
   {
     path: ".cursor/hooks/guardrails.cjs",
     format: "markered-text",
     module: "cursor",
-    noMarkerMigration: GUARDRAILS_WIRING_INSTRUCTIONS,
   },
   // GateGuard advisory PreToolUse hook for Cursor — same ownership split and the
   // same managed block as the Claude twin (byte-identical between the markers,
@@ -469,7 +299,6 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
     path: ".cursor/hooks/gateguard.cjs",
     format: "markered-text",
     module: "cursor",
-    noMarkerMigration: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
   },
   // Curl/wget host allowlist read at runtime by guardrails.cjs. No template backs it —
   // `writeNetworkAllowlistArtifact` (bkit-cloud-env.ts) computes the domain set from the
@@ -507,7 +336,6 @@ export const OPENCODE_MANIFEST: ManifestEntry[] = [
     path: ".opencode/plugin/gateguard.js",
     format: "markered-text",
     module: "opencode",
-    noMarkerMigration: GATEGUARD_JS_WIRING_INSTRUCTIONS,
   },
   // Agent and command mirrors are managed dynamically (not listed individually here —
   // the exact set depends on the bkit-prefix prompt/workflow files at install time).
@@ -538,7 +366,6 @@ export const CODEX_MANIFEST: ManifestEntry[] = [
     path: ".codex/hooks/guardrails.cjs",
     format: "markered-text",
     module: "codex",
-    noMarkerMigration: CODEX_GUARDRAILS_WIRING_INSTRUCTIONS,
   },
   // Agent mirrors (.codex/agents/*.toml) and workflow skills (.agents/skills/bkit-*/) are
   // managed dynamically — the set follows the bkit-prefix prompt/workflow files at install.

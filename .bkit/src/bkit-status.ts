@@ -66,7 +66,7 @@ function toStep(e: { type: "step-done"; workflow: string } & Step): Step {
   return step as Step;
 }
 
-// Fold the event log into the run array (legacy `status.json` shape). De-dupes
+// Fold the event log into the run array. De-dupes
 // (keeping first occurrence), then orders by `at` (stable), then reduces.
 export function fold(events: StatusEvent[]): WorkflowRun[] {
   const seen = new Set<string>();

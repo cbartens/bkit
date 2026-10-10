@@ -304,6 +304,11 @@ jobs:
   # and remote db push move out of this job when you adopt the scaffold below.
   bkit-tests-unit:
     runs-on: ubuntu-latest
+    # bkit-tests-check reads both: cache_skip (a SHA-cache short-circuit asserts no count)
+    # and tests_ran (the executed-test count the Run Unit Tests step writes).
+    outputs:
+      cache_skip: ${{ steps.cache.outputs.skip }}
+      tests_ran: ${{ steps.unit.outputs.ran }}
     # Env vars duplicated from bkit-tests-static's job-level `env:`.
     # See the comment above that `env:` in bkit-tests-static — NODE_OPTIONS is a
     # static YAML key here and never a $GITHUB_ENV write.
@@ -462,9 +467,14 @@ jobs:
       #     done
 
       - name: Run Unit Tests
+        id: unit
         if: steps.cache.outputs.skip != 'true'
         env:
           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
+        # Write the executed-test count as the step output `ran` so bkit-tests-check can
+        # prove tests ran. vitest: run with `--reporter=default --reporter=json
+        # --outputFile="$RUNNER_TEMP/unit.json"`, then
+        # `echo "ran=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/unit.json")" >> "$GITHUB_OUTPUT"`.
         run: pnpm test
 
       - name: Run Integration Tests
@@ -649,6 +659,56 @@ jobs:
       #       blob-report/
       #     retention-days: 14
       #     if-no-files-found: ignore
+
+  # ── bkit-tests-check ──────────────────────────────────────────────────────
+  # Capstone and sole branch-protection required check. `bkit runs gate` (/bkit-ship) merges
+  # only when this job is present and green at the head; `bkit setup protect-main` requires
+  # it. Its name is `package.json` `bkit.capstoneJob` (default bkit-tests-check).
+  # needs: every lane — a lane missing here cannot red the capstone. if: !cancelled(), never
+  # always(): a concurrency cancel must not stamp a failure. Each lane must succeed; a failed,
+  # skipped or cancelled lane reds it. A lane that writes an executed-test count must have run
+  # more than 0 tests. Each lane you adopt from the reference below joins needs: and the assert.
+  bkit-tests-check:
+    needs: [bkit-tests-static, bkit-tests-unit]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Assert Lanes Passed
+        env:
+          STATIC_RESULT: ${{ needs.bkit-tests-static.result }}
+          UNIT_RESULT: ${{ needs.bkit-tests-unit.result }}
+          UNIT_RAN: ${{ needs.bkit-tests-unit.outputs.tests_ran }}
+          UNIT_CACHE_SKIP: ${{ needs.bkit-tests-unit.outputs.cache_skip }}
+        run: |
+          FAIL=0
+          if [ "$STATIC_RESULT" != "success" ]; then
+            echo "::error::bkit-tests-static result=$STATIC_RESULT (expected success)"
+            FAIL=1
+          fi
+          if [ "$UNIT_RESULT" != "success" ]; then
+            echo "::error::bkit-tests-unit result=$UNIT_RESULT (expected success)"
+            FAIL=1
+          fi
+          # NON-HOLLOW: a real run (not a SHA-cache short-circuit) of a lane that writes a count
+          # must have executed >0 tests. An empty count is a lane that writes none yet.
+          if [ "$UNIT_RESULT" = "success" ] && [ "$UNIT_CACHE_SKIP" != "true" ]; then
+            case "$UNIT_RAN" in
+              '')
+                echo "::warning::bkit-tests-unit writes no executed-test count — green does not prove tests ran (see its Run Unit Tests step)." ;;
+              *[!0-9]*)
+                echo "::error::bkit-tests-unit executed-test count is non-numeric ('$UNIT_RAN')."
+                FAIL=1 ;;
+              0)
+                echo "::error::bkit-tests-unit succeeded but executed 0 tests — vacuous green."
+                FAIL=1 ;;
+            esac
+          fi
+          if [ "$FAIL" = "1" ]; then
+            echo "::error::bkit-tests-check FAILED — see above."
+            exit 1
+          fi
+          echo "✅ bkit-tests-check passed (static=$STATIC_RESULT, unit=$UNIT_RESULT, unit tests executed=${UNIT_RAN:-unreported})."
 
 # bkit-stub:smoke — Post-CI smoke triggered by workflow_run on {{DEFAULT_BRANCH}}. To enable: copy the YAML below into .github/workflows/smoke.yml (separate file — workflow_run cannot share a file with push/pull_request) and delete this stub header.
 # name: Smoke
@@ -956,8 +1016,8 @@ jobs:
 #       - name: Run Live Tests               # emit live_ran. testing.md § Validated means executed, § Schema-invariant DB checks.
 #
 # === JOB 4 — capstone (makes green == validated) ===
-# bkit-stub:bkit-tests-check — THE sole branch-protection required check. WHEN: always, the
-# moment any tier is skippable. ~seconds; needs no checkout UNTIL you extract the gate (below).
+# The starter bkit-tests-check above grows into this as lanes land. THE sole branch-protection
+# required check. ~seconds; needs no checkout UNTIL you extract the gate (below).
 #   bkit-tests-check:  needs:[bkit-tests-scope,bkit-tests-static,bkit-tests-unit,bkit-tests-build-web,bkit-tests-integration,bkit-tests-e2e-web,bkit-tests-migration,bkit-tests-live-web,bkit-tests-build-ios,bkit-tests-e2e-ios,bkit-tests-build-android,bkit-tests-e2e-android,bkit-tests-reset,bkit-tests-cleanup]; if: ${{ !cancelled() }}; timeout-minutes: 2 (mirror mode: see Mirror Push Run)
 #   # needs: EVERY lane you actually have — a lane missing from needs: is a lane whose failure
 #   # cannot red the capstone, which is the hollow-green this job exists to prevent.

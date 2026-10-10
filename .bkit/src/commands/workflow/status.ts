@@ -1,4 +1,4 @@
-// bkit status fold|route|meta|path — read and annotate a workflow's `status.jsonl`.
+// bkit status route|meta|path|row — read and annotate a workflow's `status.jsonl`.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -255,34 +255,6 @@ export const statusCommand: CommandSpec = {
           devPushes: ctx.flags.devPushes === true,
         });
         ctx.emit({ ...loc, exists: fs.existsSync(loc.path) });
-        return EXIT.OK;
-      },
-    },
-    fold: {
-      summary: "Fold status.jsonl into runs; a missing file folds to no runs.",
-      flags: [
-        { ...FILE_FLAG, help: "path to status.jsonl; absent file = no runs" },
-        {
-          ...WORKFLOW_FLAG,
-          required: false,
-          help: "also return this workflow's latest run as `last`",
-        },
-      ],
-      output: {
-        runs: "every run, oldest first",
-        latest: "the latest run of any workflow, or null",
-        last: "the latest run of --workflow, or null",
-      },
-      exitCodes: { [EXIT_NO_STATUS]: "status.jsonl unreadable or not valid NDJSON" },
-      run: (ctx) => {
-        const file = statusFile(ctx);
-        const runs = fs.existsSync(file) ? readRuns(file) : [];
-        const workflow = str(ctx.flags.workflow);
-        ctx.emit({
-          runs,
-          latest: runs.at(-1) ?? null,
-          last: workflow === undefined ? null : (lastRun(runs, workflow) ?? null),
-        });
         return EXIT.OK;
       },
     },

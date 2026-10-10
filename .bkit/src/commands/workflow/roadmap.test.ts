@@ -160,13 +160,6 @@ describe("bkit roadmap fold (tests/roadmap-fold.bats)", () => {
     expect(res.err).toContain("[bkit-roadmap] .bkit/issues.jsonl absent or empty");
   });
 
-  it("an empty ledger with plan files present points at bkit telemetry migrate", async () => {
-    const r = root();
-    fs.mkdirSync(path.join(r, "docs/plans/202610"), { recursive: true });
-    fs.writeFileSync(path.join(r, "docs/plans/202610/1-x-design.md"), "x");
-    expect((await fold(r)).err).toContain("run 'bkit telemetry migrate'");
-  });
-
   it("row 6: consumer text above and below the marker blocks survives a regenerate", async () => {
     const r = root();
     await fold(r);

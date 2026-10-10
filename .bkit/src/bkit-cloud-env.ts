@@ -844,7 +844,7 @@ export function renderCursorContextFetchProvision(cwd: string): string {
   // sections; non-empty → a self-contained section with its own leading/trailing blank.
   if (recipes.length === 0) return "";
   return (
-    "\n## Debug-fetch CLIs (parity with the Claude setup script)\n\n" +
+    "\n## Context-fetch CLIs (parity with the Claude setup script)\n\n" +
     "Your `.agents/context.md` declares these context-fetch CLIs. The Claude setup script\n" +
     "bakes them into its snapshot; for the SAME tools on Cursor, chain them into the\n" +
     "`install` command in `.cursor/environment.json` (idempotent — safe every rebuild):\n\n" +

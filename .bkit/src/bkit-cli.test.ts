@@ -3,7 +3,7 @@
 // core implicit; --typescript expands to lint; --auto is the cloud flag;
 // the internal module names (--core, --lint, --cloud) are unknown flags.
 // comply verb: --phase=<design|plan|build|debug|ship>.
-// telemetry verb: `bkit telemetry migrate [--dry-run]`.
+// telemetry verb: `bkit telemetry summary`.
 import { describe, expect, it, vi } from "vitest";
 import {
   parseArgs,
@@ -436,17 +436,6 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
     expect(parseArgs(["install", "--opencode=opencode-go"]).opencodeProvider).toBe("opencode-go");
   });
 
-  // Legacy aliases: bare `opencode` + `zen` normalise to opencode-zen; `go` to opencode-go.
-  it("--opencode=opencode normalises to opencode-zen (legacy alias)", () => {
-    expect(parseArgs(["install", "--opencode=opencode"]).opencodeProvider).toBe("opencode-zen");
-  });
-  it("--opencode=zen normalises to opencode-zen (legacy alias)", () => {
-    expect(parseArgs(["install", "--opencode=zen"]).opencodeProvider).toBe("opencode-zen");
-  });
-  it("--opencode=go normalises to opencode-go (legacy alias, #282)", () => {
-    expect(parseArgs(["install", "--opencode=go"]).opencodeProvider).toBe("opencode-go");
-  });
-
   const rejected: Array<[string, string]> = [
     ["gemini", "still descoped — not added in #245"],
     ["openai", "well-formed but unsupported (Codex CLI lane, #247)"],
@@ -457,6 +446,9 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
     ["provider with spaces", "spaces"],
     ["x$y", "special character"],
     ["1openrouter", "starts with digit"],
+    ["opencode", "not a provider key (Zen is opencode-zen)"],
+    ["zen", "not a provider key (Zen is opencode-zen)"],
+    ["go", "not a provider key (Go is opencode-go)"],
   ];
   for (const [value, why] of rejected) {
     it(`--opencode=${value} → rejected (${why})`, () => {
@@ -807,26 +799,14 @@ describe("printUsage — harvest + analysis verbs in help text (WS4-T5)", () => 
 });
 
 // ---------------------------------------------------------------------------
-// telemetry verb — `bkit telemetry migrate [--dry-run]`
+// telemetry verb — `bkit telemetry summary`
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — telemetry verb", () => {
-  it("telemetry migrate → verb=telemetry, telemetrySubverb=migrate", () => {
-    const result = parseArgs(["telemetry", "migrate"]);
+  it("telemetry summary → verb=telemetry, telemetrySubverb=summary", () => {
+    const result = parseArgs(["telemetry", "summary"]);
     expect(result.verb).toBe("telemetry");
-    expect(result.telemetrySubverb).toBe("migrate");
-  });
-
-  it("telemetry migrate --dry-run → dryRun=true", () => {
-    const result = parseArgs(["telemetry", "migrate", "--dry-run"]);
-    expect(result.verb).toBe("telemetry");
-    expect(result.telemetrySubverb).toBe("migrate");
-    expect(result.telemetryMigrateFlags.dryRun).toBe(true);
-  });
-
-  it("telemetry migrate (no --dry-run) → dryRun=false", () => {
-    const result = parseArgs(["telemetry", "migrate"]);
-    expect(result.telemetryMigrateFlags.dryRun).toBe(false);
+    expect(result.telemetrySubverb).toBe("summary");
   });
 
   it("telemetry with no sub-verb → exit(1)", () => {
@@ -837,11 +817,17 @@ describe("parseArgs — telemetry verb", () => {
     const errText = expectExit(() => parseArgs(["telemetry", "unknown-verb"]));
     expect(errText).toMatch(/unknown telemetry sub-verb/i);
   });
+
+  for (const removed of ["migrate", "validate", "normalise"]) {
+    it(`telemetry ${removed} is an unknown sub-verb → exit(1)`, () => {
+      expectExit(() => parseArgs(["telemetry", removed]));
+    });
+  }
 });
 
 describe("parseTelemetrySubverb", () => {
-  it("migrate → TelemetrySubverb", () => {
-    expect(parseTelemetrySubverb("migrate")).toBe("migrate");
+  it("summary → TelemetrySubverb", () => {
+    expect(parseTelemetrySubverb("summary")).toBe("summary");
   });
 
   it("unknown → null", () => {
@@ -852,38 +838,7 @@ describe("parseTelemetrySubverb", () => {
     expect(parseTelemetrySubverb(null)).toBeNull();
   });
 
-  it("TELEMETRY_SUBVERBS contains migrate", () => {
-    expect(TELEMETRY_SUBVERBS).toContain("migrate");
-  });
-});
-
-describe("printUsage — telemetry migrate in help text (WS5-T2)", () => {
-  function usage(): string {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    try {
-      printUsage();
-      return logSpy.mock.calls[0]?.[0] as string;
-    } finally {
-      logSpy.mockRestore();
-    }
-  }
-
-  it("documents bkit telemetry migrate", () => {
-    expect(usage()).toContain("telemetry migrate");
-  });
-
-  it("documents that migrate is destructive (parity-gated)", () => {
-    const text = usage();
-    expect(text).toMatch(/parity/i);
-  });
-
-  it("documents that migrate is NOT called from bkit upgrade", () => {
-    const text = usage();
-    // "NEVER called" and "from bkit upgrade" may be on separate lines in the help template
-    expect(text).toMatch(/NEVER called[\s\S]*?from bkit upgrade|never.*?upgrade/is);
-  });
-
-  it("documents --dry-run flag", () => {
-    expect(usage()).toContain("--dry-run");
+  it("TELEMETRY_SUBVERBS is exactly summary", () => {
+    expect([...TELEMETRY_SUBVERBS]).toEqual(["summary"]);
   });
 });

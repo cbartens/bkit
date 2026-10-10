@@ -9,8 +9,6 @@ import {
   type MarkerStyle,
 } from "./bkit-markers.js";
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
-import type { PreflightFinding } from "./bkit-preflight.js";
-import { hashFile } from "./bkit-version.js";
 
 export type { WriteSet };
 
@@ -200,8 +198,6 @@ export function deepMergeJson(base: JsonValue, override: JsonValue): JsonValue {
 // ---------------------------------------------------------------------------
 // writeTier2JsonContained — deep-containment JSON helper (BAR-167 Phase 1)
 //
-// No __bkit__ envelope required.
-//
 // Contract:
 //   - dest absent         → write template as-is (first install)
 //   - dest present, valid JSON, template contained → no-op (idempotent)
@@ -267,94 +263,6 @@ export function writeTier2JsonContained(
 }
 
 // ---------------------------------------------------------------------------
-// migrateLegacyBkitEnvelope — strip __bkit__ envelope from consumer doc
-//
-// Pure function — no file I/O.
-//
-// Contract:
-//   - __bkit__ absent → { stripped: false, deepMerged: false, schemaFlipped: false, outDoc: doc }
-//   - __bkit__ present → strip it; run deepContains(template, stripped)
-//     - ok=true → no further change; { stripped: true, deepMerged: false, schemaFlipped: false }
-//     - ok=false → deepMergeJson(stripped, template); { stripped: true, deepMerged: true, schemaFlipped }
-//   - schemaFlipped: true when at least one path in the merge changed value type
-// ---------------------------------------------------------------------------
-
-export interface MigrateLegacyBkitEnvelopeResult {
-  stripped: boolean;
-  deepMerged: boolean;
-  schemaFlipped: boolean;
-  outDoc: Record<string, JsonValue>;
-}
-
-export function migrateLegacyBkitEnvelope(
-  doc: Record<string, JsonValue>,
-  template: Record<string, JsonValue>,
-): MigrateLegacyBkitEnvelopeResult {
-  const noOp: MigrateLegacyBkitEnvelopeResult = {
-    stripped: false,
-    deepMerged: false,
-    schemaFlipped: false,
-    outDoc: doc,
-  };
-
-  // No envelope — nothing to migrate
-  if (!("__bkit__" in doc) || doc["__bkit__"] === undefined) {
-    return noOp;
-  }
-
-  // Strip __bkit__ from doc
-  const stripped: Record<string, JsonValue> = {};
-  for (const [k, v] of Object.entries(doc)) {
-    if (k !== "__bkit__") stripped[k] = v;
-  }
-
-  // Check if stripped doc already contains the template
-  const containsResult = deepContains(template as JsonValue, stripped as JsonValue);
-  if (containsResult.ok) {
-    return {
-      stripped: true,
-      deepMerged: false,
-      schemaFlipped: false,
-      outDoc: stripped,
-    };
-  }
-
-  // Deep-merge: stripped base, template override
-  const merged = deepMergeJson(stripped as JsonValue, template as JsonValue) as Record<
-    string,
-    JsonValue
-  >;
-
-  // Detect schema flip: any path where the type changed from stripped to merged
-  const schemaFlipped = _detectSchemaFlip(stripped, merged);
-
-  return {
-    stripped: true,
-    deepMerged: true,
-    schemaFlipped,
-    outDoc: merged,
-  };
-}
-
-/** Detect if any path type-flipped between two objects (shallow first level only for perf). */
-function _detectSchemaFlip(
-  before: Record<string, JsonValue>,
-  after: Record<string, JsonValue>,
-): boolean {
-  for (const key of Object.keys(after)) {
-    const bVal = before[key];
-    const aVal = after[key];
-    if (bVal === undefined) continue; // new key — not a flip
-    if (bVal === null && aVal === null) continue;
-    const bIsArray = Array.isArray(bVal);
-    const aIsArray = Array.isArray(aVal);
-    if (bIsArray !== aIsArray) return true;
-    if (!bIsArray && typeof bVal !== typeof aVal) return true;
-  }
-  return false;
-}
-
-// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
@@ -403,37 +311,9 @@ export function writeTier1(
 //   - dest has markers       → update only the bkit block (tokens applied to new block content)
 //   - dest present, no marks → append full block at EOF; preserve consumer content above
 //
-// markerStyle: "html-comment" for markdown/.gitignore; "hash-comment" for YAML/INI/shell.
-//
-// noMarkerMigration (optional, default off — no other markered-text file's behaviour
-// changes): two independent, self-limiting migration triggers, each firing only for
-// a shape that cannot occur once a file carries markers in the current layout:
-//   - no markers, hash matches a prior canonical hash → replace wholesale (same bytes
-//     a fresh install would produce): an unmodified file an older bkit wrote whole.
-//   - no markers, hash unknown/differs → append the block (unchanged default
-//     behaviour) and print wiring instructions — the consumer's own file needs one
-//     line added to call into the appended block.
-//   - markers present, but nothing meaningful lives after the end marker → replace
-//     wholesale (a file whose markers wrap the WHOLE file). Self-limiting: once
-//     migrated, real content lives after the end marker and this never fires again.
-//   - markers present, real content after the end marker → falls through to the
-//     normal markers-present update (unchanged default behaviour).
+// markerStyle: "html-comment" for markdown, shell and `.gitignore` (`# ` prefix allowed);
+// "slash-comment" for JS.
 // ---------------------------------------------------------------------------
-
-export interface Tier2NoMarkerMigration {
-  /** Consumer-relative path — the `canonicalHashes` key space. Carried separately:
-   * `dstPath` may be absolute (the upgrade engine passes an absolute path). */
-  relPath: string;
-  /** Canonical hashes recorded before this run (from `.bkit/version`), keyed by
-   * `relPath`. */
-  canonicalHashes: Record<string, string>;
-  /** Wiring-instructions text, printed via `console.warn`. `{{PATH}}` is substituted
-   * with `dstPath`. */
-  wiringMessage: string;
-  /** Optional: also push a structured advisory (install has a sink; `bkit upgrade`
-   * does not, and prints via `console.warn` alone). */
-  advisories?: PreflightFinding[];
-}
 
 export function writeTier2(
   srcPath: string,
@@ -442,7 +322,6 @@ export function writeTier2(
   markerStyle: MarkerStyle,
   dryRun: boolean,
   ws: WriteSet,
-  noMarkerMigration?: Tier2NoMarkerMigration,
 ): void {
   const srcRaw = fs.readFileSync(srcPath, "utf-8");
 
@@ -484,23 +363,6 @@ export function writeTier2(
       return;
     }
 
-    if (noMarkerMigration) {
-      const currentHash = hashFile(dstPath);
-      const recordedHash = noMarkerMigration.canonicalHashes[noMarkerMigration.relPath];
-      if (currentHash && recordedHash && currentHash === recordedHash) {
-        // Ours and unmodified (an older bkit's copy without markers) — replace wholesale,
-        // same bytes a fresh install would produce.
-        const content = applyTokens(srcRaw, tokens);
-        if (!dryRun) {
-          fs.writeFileSync(dstPath, content, "utf-8");
-          const srcMode = fs.statSync(srcPath).mode;
-          fs.chmodSync(dstPath, srcMode);
-        }
-        ws.writes.push({ path: dstPath, action: "update" });
-        return;
-      }
-    }
-
     // dest has no markers → append full block at EOF (with tokens applied)
     const appliedBlock = applyTokens(fullBlock, tokens);
     const sep =
@@ -516,41 +378,7 @@ export function writeTier2(
       fs.writeFileSync(dstPath, destContent + sep + appliedBlock + tail, "utf-8");
     }
     ws.writes.push({ path: dstPath, action: "append" });
-    if (noMarkerMigration) {
-      const message = noMarkerMigration.wiringMessage.replace(/\{\{PATH\}\}/g, dstPath);
-      console.warn(message);
-      noMarkerMigration.advisories?.push({
-        id: `tier2-block-appended-needs-wiring-${path.basename(dstPath)}`,
-        severity: "advisory",
-        detect: `${dstPath} exists with consumer-owned content and no bkit markers — the bkit-managed block was appended at EOF but is not wired into your driver.`,
-        action: message,
-      });
-    }
     return;
-  }
-
-  // Stale-position markers: markers ARE present and parseable, but nothing meaningful
-  // lives after the end marker (markers wrapping the WHOLE file, e.g. a gateguard.js
-  // with `bkit:end` at EOF). Replaced wholesale. Self-limiting: once migrated, real
-  // driver content lives after the end marker and every later run takes the ordinary
-  // path below.
-  if (noMarkerMigration) {
-    const [, endMarker] = selectMarkers(markerStyle);
-    const endIdx = findLineAnchoredMarkers(destContent, endMarker)[0]!;
-    const endLineEnd = destContent.indexOf("\n", endIdx + endMarker.length);
-    const afterBlock = endLineEnd === -1 ? "" : destContent.slice(endLineEnd + 1);
-    if (afterBlock.trim() === "") {
-      const content = applyTokens(srcRaw, tokens);
-      if (content !== destContent) {
-        if (!dryRun) {
-          fs.writeFileSync(dstPath, content, "utf-8");
-          const srcMode = fs.statSync(srcPath).mode;
-          fs.chmodSync(dstPath, srcMode);
-        }
-        ws.writes.push({ path: dstPath, action: "update" });
-      }
-      return;
-    }
   }
 
   // dest has markers → update managed block with new content (tokens applied)

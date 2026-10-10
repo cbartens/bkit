@@ -16,6 +16,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { CONTEXT_FETCH_CONTEXTS, parseContextFetchStart } from "../../bkit-preflight.js";
 import { lastRun } from "../../bkit-status.js";
 import { CommandError, EXIT, git, parseJson, } from "../lib.js";
 import { EXIT_NO_STATUS, positiveInt, readRuns, str } from "./status.js";
@@ -433,9 +434,6 @@ export function ledgerScan(source, terms) {
 // ---------------------------------------------------------------------------
 // context-fetch blocks in .agents/context.md
 // ---------------------------------------------------------------------------
-/** Evidence contexts, in the order coverage is narrated. */
-export const CONTEXTS = ["runtime", "ci", "diff", "e2e", "web"];
-const START = "<!-- context-fetch:start";
 const END_LINE = "<!-- context-fetch:end -->";
 /** Only blocks after `<!-- bkit:end -->` run; the managed examples above it never do. */
 export function consumerSection(md) {
@@ -443,26 +441,14 @@ export function consumerSection(md) {
     const at = lines.findIndex((l) => l.startsWith("<!-- bkit:end -->"));
     return at === -1 ? [] : lines.slice(at);
 }
-/** `<!-- context-fetch:start [name] [context=<c>] -->`; context defaults to runtime, last token wins. */
-export function parseMarker(line) {
-    const inner = line.replace(/^<!-- context-fetch:start[ \t]*/, "").replace(/[ \t]*-->$/, "");
-    let context = "runtime";
-    let name = "";
-    for (const token of inner.split(/[ \t]+/)) {
-        if (token.startsWith("context="))
-            context = token.slice("context=".length);
-        else if (token !== "")
-            name = token;
-    }
-    return { context, name };
-}
 export function fetchBlocks(section) {
     const blocks = [];
     let current;
     for (const line of section) {
-        if (line.startsWith(START)) {
-            const { context, name } = parseMarker(line);
-            const known = CONTEXTS.includes(context);
+        const start = parseContextFetchStart(line);
+        if (start) {
+            const { context, name } = start;
+            const known = CONTEXT_FETCH_CONTEXTS.includes(context);
             current = {
                 idx: blocks.length + 1,
                 context,
@@ -505,13 +491,8 @@ function fencedBody(lines) {
     return out.join("\n").replace(/\n+$/, "");
 }
 const readContextMd = (ctx) => {
-    const file = path.resolve(ctx.cwd, str(ctx.flags.contextFile) ?? ".agents/context.md");
+    const file = path.resolve(ctx.cwd, ".agents/context.md");
     return fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : undefined;
-};
-const CONTEXT_FILE_FLAG = {
-    name: "context-file",
-    type: "string",
-    help: "consumer context file (default .agents/context.md)",
 };
 const MONTH_FLAG = {
     name: "month",
@@ -650,7 +631,7 @@ export const contextCommand = {
         },
         "list-blocks": {
             summary: "Enumerate the consumer's context-fetch blocks and narrate coverage per context.",
-            flags: [CONTEXT_FILE_FLAG],
+            flags: [],
             output: {
                 blocks: "[{idx, context, name, known, prefix, suffix, body}] in file order",
                 coverage: "blocks per context (runtime, ci, diff, e2e, web)",
@@ -658,11 +639,11 @@ export const contextCommand = {
             },
             run: (ctx) => {
                 const blocks = fetchBlocks(consumerSection(readContextMd(ctx) ?? ""));
-                const coverage = Object.fromEntries(CONTEXTS.map((c) => [c, blocks.filter((b) => b.context === c).length]));
+                const coverage = Object.fromEntries(CONTEXT_FETCH_CONTEXTS.map((c) => [c, blocks.filter((b) => b.context === c).length]));
                 if (blocks.length === 0) {
                     ctx.log("context-fetch: NO BLOCKS CONFIGURED (.agents/context.md has none enabled) — CI, e2e and runtime evidence are ALL unfetched this attempt; their absence is UNCHECKED, not confirmed clean");
                 }
-                for (const c of CONTEXTS) {
+                for (const c of CONTEXT_FETCH_CONTEXTS) {
                     ctx.log(coverage[c]
                         ? `context-fetch context=${c} CONFIGURED (${coverage[c]} block(s))`
                         : `context-fetch context=${c} NOT CONFIGURED — that evidence is UNCHECKED this attempt, NOT confirmed clean`);
@@ -673,7 +654,7 @@ export const contextCommand = {
                 ctx.emit({
                     blocks,
                     coverage,
-                    contextsConfigured: CONTEXTS.filter((c) => coverage[c] > 0),
+                    contextsConfigured: CONTEXT_FETCH_CONTEXTS.filter((c) => coverage[c] > 0),
                 });
                 return EXIT.OK;
             },
@@ -691,7 +672,6 @@ export const contextCommand = {
                 FID_FLAG,
                 MONTH_FLAG,
                 ...ATTEMPT_FLAGS,
-                CONTEXT_FILE_FLAG,
             ],
             output: {
                 outcome: "checked (data written) | self-skipped (skip line written) | silent (nothing) | not-run",
@@ -708,7 +688,7 @@ export const contextCommand = {
         },
         finalise: {
             summary: "The context-fetch status row's fields: verdict, artifacts, contexts configured, clamped.",
-            flags: [FID_FLAG, MONTH_FLAG, ...ATTEMPT_FLAGS, CONTEXT_FILE_FLAG],
+            flags: [FID_FLAG, MONTH_FLAG, ...ATTEMPT_FLAGS],
             output: {
                 verdict: "PASS when any non-empty context-*-{attempt}.md exists, else FAIL",
                 artifacts: "those artifacts, relative to the working directory",
@@ -736,7 +716,7 @@ export const contextCommand = {
                 ctx.emit({
                     verdict: artifacts.length > 0 ? "PASS" : "FAIL",
                     artifacts,
-                    contextsConfigured: CONTEXTS.filter((c) => blocks.some((b) => b.context === c)),
+                    contextsConfigured: CONTEXT_FETCH_CONTEXTS.filter((c) => blocks.some((b) => b.context === c)),
                     clamped: readRecords(clampLogPath(ctx.cwd, fid, "context-fetch", attempt), (l) => ctx.log(`skipping a malformed clamp record: ${l}`)),
                 });
                 return EXIT.OK;

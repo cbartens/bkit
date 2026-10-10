@@ -69,51 +69,6 @@ describe("bkit status path", () => {
   });
 });
 
-describe("bkit status fold", () => {
-  it("folds to no runs when the file does not exist", async () => {
-    const r = await run([
-      "status",
-      "fold",
-      `--file=${path.join(tmp(), "none.jsonl")}`,
-      "--workflow=build",
-    ]);
-    expect(r.json).toEqual({ runs: [], latest: null, last: null });
-  });
-
-  it("returns every run, the latest of any workflow, and the latest of --workflow", async () => {
-    const file = log([
-      started("build", "2026-10-01T00:00:00Z"),
-      done("build", "build-plan-verify", "2026-10-01T00:01:00Z"),
-      started("debug", "2026-10-01T00:02:00Z"),
-    ]);
-    const r = await run(["status", "fold", `--file=${file}`, "--workflow=build"]);
-    expect(r.json.runs).toHaveLength(2);
-    expect(r.json.latest.workflow).toBe("debug");
-    expect(r.json.last.steps).toHaveLength(1);
-  });
-
-  it("refuses a malformed line rather than folding around it", async () => {
-    const file = log([started("build", "2026-10-01T00:00:00Z")]);
-    fs.appendFileSync(file, "{not json\n");
-    const r = await run(["status", "fold", `--file=${file}`]);
-    expect(r.code).toBe(3);
-    expect(r.err).toContain("line 2 is not JSON");
-  });
-
-  it("keeps an additive step field (ciDispatch) through the fold unchanged", async () => {
-    const ciDispatch = { outcome: "dispatched", head: SHA, attempts: 1, retrigger: false };
-    const file = log([
-      started("build", "2026-06-16T10:00:00Z"),
-      done("build", "build-close-workflow", "2026-06-16T10:01:00Z", { ciDispatch }),
-    ]);
-    const r = await run(["status", "fold", `--file=${file}`, "--workflow=build"]);
-    const step = r.json.last.steps.find((s: { step: string }) => s.step === "build-close-workflow");
-    expect(step.ciDispatch).toEqual(ciDispatch);
-    expect(step).not.toHaveProperty("type");
-    expect(step).not.toHaveProperty("workflow");
-  });
-});
-
 describe("bkit status route", () => {
   const base = ["status", "route"];
 

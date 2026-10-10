@@ -49,22 +49,6 @@ const headSha = (cwd) => git(cwd, ["rev-parse", "HEAD"]) ?? "";
 // ---------------------------------------------------------------------------
 // start
 // ---------------------------------------------------------------------------
-/** Rewrite a legacy `status.json` run array as `status.jsonl` events. */
-export function legacyEvents(runs) {
-    return runs.flatMap((w) => {
-        const end = w.steps.at(-1)?.at ?? w.startedAt;
-        const closing = w.status === "DONE"
-            ? [{ type: "workflow-done", workflow: w.workflow, at: end }]
-            : w.status === "FAILED"
-                ? [{ type: "workflow-failed", workflow: w.workflow, at: end }]
-                : [];
-        return [
-            { type: "workflow-started", workflow: w.workflow, at: w.startedAt },
-            ...w.steps.map((s) => ({ type: "step-done", workflow: w.workflow, ...s })),
-            ...closing,
-        ];
-    });
-}
 function checkHeldLock(file, who) {
     const holder = readHolder(file);
     if (holder === undefined)
@@ -266,13 +250,12 @@ export const workflowsCommand = {
             output: {
                 lock: "{path, month, token, reclaimed} of the lock taken, or {path} with --lock-held",
                 file: "absolute path to status.jsonl",
-                migrated: "a legacy status.json was rewritten as status.jsonl",
                 resumed: "the latest run was this workflow, IN_PROGRESS: no new row",
                 row: "the appended workflow-started row, or null when resuming",
                 run: "which run of the workflow this is (1-based)",
             },
             exitCodes: {
-                [EXIT_NO_STATUS]: "status.jsonl (or a legacy status.json) is not valid",
+                [EXIT_NO_STATUS]: "status.jsonl is not valid",
                 [EXIT_SPLIT_BUCKET]: "the feature has logs in more than one month bucket",
                 [EXIT_LOCK_NOT_HELD]: "--lock-held: the lock is missing or belongs to another owner",
             },
@@ -304,17 +287,6 @@ export const workflowsCommand = {
                 }
                 const file = where.status;
                 fs.mkdirSync(path.dirname(file), { recursive: true });
-                const legacy = path.join(path.dirname(file), "status.json");
-                let migrated = false;
-                if (!fs.existsSync(file) && fs.existsSync(legacy)) {
-                    const runs = jsonOrUndefined(fs.readFileSync(legacy, "utf-8"));
-                    if (!Array.isArray(runs))
-                        throw new CommandError(EXIT_NO_STATUS, `${legacy} is not a status.json run array`);
-                    fs.writeFileSync(file, legacyEvents(runs)
-                        .map(appendLine)
-                        .join(""));
-                    migrated = true;
-                }
                 if (!fs.existsSync(file))
                     fs.writeFileSync(file, "");
                 const latest = fold(readStatusEvents(file)).at(-1);
@@ -332,7 +304,6 @@ export const workflowsCommand = {
                 ctx.emit({
                     lock,
                     file,
-                    migrated,
                     resumed,
                     row,
                     run: runNumber(fold(readStatusEvents(file)), workflow),
@@ -466,7 +437,7 @@ export const workflowsCommand = {
                 report: "this workflow's telemetry report lines, for the close comment",
                 artifacts: "[{name, path, url}] feature docs and this workflow's logs on --ref",
                 artifactLinks: "the same as markdown `- [name](url)` lines",
-                complyNeeded: "always true: run `bkit comply --phase=<workflow>` (not run here)",
+                complyNeeded: "always true: `bkit comply --phase=<workflow>` runs BEFORE this close, so `report` carries this run's grade (not run here)",
                 roadmapFoldNeeded: "always true: append the feature row and run `bkit roadmap fold` (not run here)",
                 featureStatus: "roadmap status this close moves the feature to",
             },

@@ -44,6 +44,11 @@ const CI_UNIT_HEADER_TEMPLATE = `  # Unit lane. Parallel sibling of bkit-tests-s
   # and remote db push move out of this job when you adopt the scaffold below.
   bkit-tests-unit:
     runs-on: ubuntu-latest
+    # bkit-tests-check reads both: cache_skip (a SHA-cache short-circuit asserts no count)
+    # and tests_ran (the executed-test count the Run Unit Tests step writes).
+    outputs:
+      cache_skip: \${{ steps.cache.outputs.skip }}
+      tests_ran: \${{ steps.unit.outputs.ran }}
 `;
 
 const CI_UNIT_HEADER_COPY = `  # Unit lane. Parallel sibling of bkit-tests-static and bkit-tests-integration.
@@ -116,7 +121,7 @@ const ADOPTED: Record<string, Entry> = {
       { kind: "adapt", what: "single package", dropStub: "test-presence" },
       {
         kind: "adapt",
-        what: "unit tests with coverage (coverage stub enabled), bats (bkit-only), bkit-tests-integration and bkit-tests-check lanes; other stubs and the scaffold reference dropped",
+        what: "unit tests with coverage (coverage stub enabled), bats (bkit-only), the bkit-tests-integration lane, a capstone that also asserts the planner and integration; other stubs and the scaffold reference dropped",
         region: {
           template: ["      - name: Run Unit Tests\n", null],
           copy: ["      # Unit coverage:", null],

@@ -3,7 +3,7 @@
 // and emits writes into the shared WriteSet.
 //
 // Dispatch order: core → claude → cursor → opencode → codex → lint → cloud
-// .bkit-version is written LAST — in postDispatch after ALL modules complete (MED-4).
+// .bkit/version is written LAST — in postDispatch after ALL modules complete (MED-4).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -12,7 +12,6 @@ import {
   writeTier2,
   writeTier2JsonContained,
   deepMergeJson,
-  migrateLegacyBkitEnvelope,
   ensurePackageJsonScripts,
   ensureDir,
   type WriteSet,
@@ -28,7 +27,6 @@ import {
 import type { TokenMap } from "./bkit-tokens.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 import {
-  runPayload,
   applyT1,
   applyT2,
   applyT3,
@@ -57,11 +55,6 @@ import {
   type CloudAgents,
   BKIT_GATE_SCRIPTS,
   BKIT_OPTIONAL_GATES,
-  GATEGUARD_CJS_WIRING_INSTRUCTIONS,
-  CODEX_GUARDRAILS_WIRING_INSTRUCTIONS,
-  CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS,
-  GATEGUARD_JS_WIRING_INSTRUCTIONS,
-  GUARDRAILS_WIRING_INSTRUCTIONS,
 } from "./bkit-manifest.js";
 import type { CloudVariant } from "./bkit-cli.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
@@ -76,9 +69,6 @@ import {
   writeCursorCliPermissionsArtifact,
 } from "./bkit-cloud-env.js";
 import { OPENCODE_PROVIDER_DEFAULTS } from "./bkit-registry.js";
-import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
-import { isRetiredHashKey, retireOwnedFiles, withoutRetiredHashes } from "./bkit-retire.js";
-import { repointLegacyScripts } from "./bkit-package-json.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -112,7 +102,7 @@ function setConsumerBkitField(field: string, value: string, dryRun: boolean): vo
   }
 }
 
-export function listMdFiles(dir: string, prefix?: string): string[] {
+function listMdFiles(dir: string, prefix?: string): string[] {
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
@@ -224,7 +214,7 @@ export interface ModuleContext {
   /**
    * Deferred callbacks executed by dispatchModules AFTER all modules complete.
    * Use for finalisation work that must run only when the full dispatch succeeds
-   * (e.g. writing .bkit-version after all modules return cleanly).
+   * (e.g. writing .bkit/version after all modules return cleanly).
    */
   postDispatch: Array<() => void>;
   /** Issue tracker for workflow mirror substitution. Default: "none". */
@@ -412,12 +402,9 @@ function runCoreTemplates(
 }
 
 // ---------------------------------------------------------------------------
-// runCoreModule — payload pass + core templates + .bkit-version (LAST)
+// runCoreModule — core templates + .bkit/version (LAST)
 // ---------------------------------------------------------------------------
 
-// `.bkit-version` excluded: it's a runtime artifact written by postDispatch,
-// never source of truth.
-//
 // Tier-2-style `.agents/*.md` files (rules/friction/docs/skills) are excluded:
 // they ship as templates under `.bkit/templates/.agents/` and are installed by the
 // templates pass.
@@ -425,7 +412,6 @@ const COPY_EXCLUDE = new Set([
   "skills",
   "scripts",
   "README.md",
-  ".bkit-version",
   "rules.md",
   "friction.md",
   "docs.md",
@@ -434,8 +420,6 @@ const COPY_EXCLUDE = new Set([
   // .env.example is written by the claude module (writeTier1 from the template at
   // .bkit/templates/.bkit/.env.example).
   ".env.example",
-  // bkit-mode.sh is not shipped; this entry guards against an accidental re-addition.
-  "bkit-mode.sh",
 ]);
 
 // Top-level `.agents/` files that bkit force-overwrites on install (copyAdditive's
@@ -986,8 +970,8 @@ function copyAdditive(
 /**
  * The package.json scripts core keeps: the `bkit:gate:*` / `bkit:deps:*` names every
  * workflow, prompt and hook runs, seeded add-if-missing (a name already declared is
- * never touched, whatever its value), and the re-point of superseded bkit script
- * values. Install (runCoreModule) and upgrade (renderManagedOutputs) both run it, so a
+ * never touched, whatever its value). Install (runCoreModule) and upgrade
+ * (renderManagedOutputs) both run it, so a
  * clean upgrade leaves `bkit check` nothing to write. A missing gate name is a write,
  * so `bkit check` reports it. A missing or malformed package.json is preflight's to
  * report. Returns the paths written.
@@ -1003,15 +987,6 @@ export function seedCorePackageJsonScripts(
   if (gates.added.length > 0) {
     written.push("package.json");
     console.log(`${logPrefix} ${tag}core: package.json scripts added [${gates.added.join(", ")}]`);
-  }
-
-  const repointed = repointLegacyScripts(process.cwd(), dryRun);
-  if (repointed.length > 0) {
-    ws.writes.push({ path: "package.json", action: "update" });
-    if (written.length === 0) written.push("package.json");
-    console.log(
-      `${logPrefix} ${tag}core: package.json scripts re-pointed from a superseded bkit default [${repointed.join(", ")}]`,
-    );
   }
   return written;
 }
@@ -1115,8 +1090,8 @@ export function runCoreModule(ctx: ModuleContext): void {
   const target = path.join(cwd, ".agents");
 
   // Capture first-install signal NOW (before any writes) — used for the post-install banner.
-  // The .bkit-version write happens in postDispatch, so a mid-install crash in a later
-  // module leaves no .bkit-version on disk.
+  // The .bkit/version write happens in postDispatch, so a mid-install crash in a later
+  // module leaves no .bkit/version on disk.
   const versionFile = path.join(cwd, ".bkit", "version");
   const isFirstInstall = !fs.existsSync(versionFile);
 
@@ -1139,24 +1114,7 @@ export function runCoreModule(ctx: ModuleContext): void {
     );
   }
 
-  // 2. Payload cleanup pass — mirror sources + bkit docs are package-only (read
-  // directly from .bkit/); this removes any orphan copies a consumer carries under
-  // `.agents/`. No-op in dogfood and on clean trees.
-  console.log(`${logPrefix} ${tag}Running payload cleanup pass`);
-  const { deletes: payloadDeletes } = runPayload(dryRun);
-  if (payloadDeletes > 0) {
-    console.log(`${logPrefix} ${tag}payload: ${payloadDeletes} relocated orphan(s) removed`);
-  }
-
-  // 2b. Retire pass — delete files bkit dropped, when unchanged since bkit wrote them.
-  // A pending delete is a write, so `bkit check` reports it as drift.
-  const { deleted: retired } = retireOwnedFiles(cwd, {
-    dryRun,
-    log: (line) => console.log(`${logPrefix} ${line}`),
-  });
-  for (const p of retired) ws.writes.push({ path: p, action: "update" });
-
-  // 3. Core templates pass (only core-owned template files: AGENTS.md, CLAUDE.md, .gitignore, docs/)
+  // 2. Core templates pass (only core-owned template files: AGENTS.md, CLAUDE.md, .gitignore, docs/)
   // Each other module handles its own template files directly.
   console.log(`${logPrefix} ${tag}Running core templates pass`);
   runCoreTemplates(dryRun, ctx.tokens, ws, logPrefix);
@@ -1177,27 +1135,12 @@ export function runCoreModule(ctx: ModuleContext): void {
     }
   }
 
-  // 3c. Auto-migrate consumer context-fetch config onto .agents/context.md. Runs AFTER the
-  // templates pass has (re)written context.md's managed block, so carried blocks land below a
-  // header that already exists. Idempotent no-op once nothing remains.
-  //
-  // The config.md retirement (retire .agents/config.md, rename the markers) runs BEFORE the
-  // observability move (move the blocks out of docs/observability.md); both land in one
-  // context.md in a single pass.
-  {
-    const movedConfigMd = migrateConfigMdToContext(cwd, dryRun);
-    if (movedConfigMd) console.log(`${logPrefix} ${tag}${movedConfigMd}`);
-
-    const moved = migrateContextFetchToContext(cwd, dryRun);
-    if (moved) console.log(`${logPrefix} ${tag}${moved}`);
-  }
-
-  // 3d. The bkit:gate:* / bkit:deps:* package.json scripts (add-if-missing) and the
-  // re-point of superseded bkit script values. The advisories read the result.
+  // 3c. The bkit:gate:* / bkit:deps:* package.json scripts (add-if-missing). The
+  // advisories read the result.
   seedCorePackageJsonScripts(ctx);
   if (!dryRun) advisories.push(...detectGateAdvisories(cwd));
 
-  // 4. .bkit-version write — deferred to postDispatch so it only persists when ALL modules succeed.
+  // 4. .bkit/version write — deferred to postDispatch so it only persists when ALL modules succeed.
   // This ensures a mid-install crash in a subsequent module does not suppress the first-install
   // banner on retry (MED-4).
   // C3 fix: write JSON format with canonicalHashes populated from ws.writes (fully populated
@@ -1210,40 +1153,32 @@ export function runCoreModule(ctx: ModuleContext): void {
 
     // Build new canonicalHashes entries from ws.writes (files written in this run).
     // ws.writes is fully populated by the time postDispatch runs.
-    // Exclude .bkit-version itself and .agents/ internal files (not consumer-facing).
+    // Exclude .bkit/version itself and .agents/ internal files (not consumer-facing).
     const newCanonicalEntries: Record<string, string> = {};
     for (const entry of ws.writes) {
       const absPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
       const relPath = path.relative(cwd, absPath);
       if (relPath === path.join(".bkit", "version")) continue;
       if (relPath.startsWith(".agents" + path.sep)) continue;
-      // Template copies and retired paths carry no hash.
+      // Template copies carry no hash.
       if (relPath.startsWith(TEMPLATE_COPIES_DIR + path.sep)) continue;
-      if (isRetiredHashKey(relPath)) continue;
       if (!fs.existsSync(absPath)) continue;
       const hash = hashFile(absPath);
       if (hash) newCanonicalEntries[relPath] = hash;
     }
 
     // Merge: existing hashes preserved, new writes overwrite (hashes stay current).
-    // Paths bkit does not keep (retired owned files, templates) are dropped.
-    const canonicalHashes = withoutRetiredHashes({ ...existingCanonical, ...newCanonicalEntries });
+    const canonicalHashes = { ...existingCanonical, ...newCanonicalEntries };
 
     // Decide whether a write is needed: version mismatch, first install, new canonical
-    // entries, dropped keys, or a file carrying the legacy tier3Hashes field.
+    // entries, or a changed claudeAllowDerived record.
     const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
     const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
     const claudeAllowDerived = ctx.claudeAllowRecorded ?? existingVersion?.claudeAllowDerived ?? [];
     const derivedChanged =
       JSON.stringify(claudeAllowDerived) !==
       JSON.stringify(existingVersion?.claudeAllowDerived ?? []);
-    const droppedRetired = Object.keys(existingCanonical).some(isRetiredHashKey);
-    const needsWrite =
-      versionChanged ||
-      hasNewEntries ||
-      derivedChanged ||
-      droppedRetired ||
-      existingVersion?.legacyTier3Hashes === true;
+    const needsWrite = versionChanged || hasNewEntries || derivedChanged;
 
     if (needsWrite) {
       console.log(
@@ -1261,12 +1196,12 @@ export function runCoreModule(ctx: ModuleContext): void {
     }
   });
 
-  // 5. First-run extra logging (only when .bkit-version was absent at start of install)
+  // 5. First-run extra logging (only when .bkit/version was absent at start of install)
   if (isFirstInstall) {
     advisories.push({
       id: "first-install-postinstall-steps",
       severity: "advisory",
-      detect: "First install detected (.bkit-version was absent).",
+      detect: "First install detected (.bkit/version was absent).",
       action:
         "Post-install steps:\n\n" +
         "1. Add BKIT_GH_TOKEN_INSTALL to your GitHub Actions repository secrets:\n" +
@@ -1327,33 +1262,9 @@ export function runClaudeModule(ctx: ModuleContext): void {
   const claudeTemplates = path.join(getTemplatesRoot(), ".claude");
 
   // Tier 2 JSON (contained) — deep-containment: settings.json
-  // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
   const settingsSrc = path.join(claudeTemplates, "settings.json");
   const settingsDst = ".claude/settings.json";
   if (fs.existsSync(settingsSrc)) {
-    // Run migration first (idempotent — strips __bkit__ envelope if present)
-    if (fs.existsSync(settingsDst) && !dryRun) {
-      try {
-        const raw = fs.readFileSync(settingsDst, "utf-8");
-        const doc = JSON.parse(raw) as Record<string, JsonValue>;
-        const templateRaw = fs.readFileSync(settingsSrc, "utf-8");
-        const template = JSON.parse(templateRaw) as Record<string, JsonValue>;
-        const result = migrateLegacyBkitEnvelope(doc, template);
-        if (result.stripped) {
-          // Write migrated doc atomically via temp file + rename
-          const tmpPath = `${settingsDst}.bkit-migrate-tmp`;
-          fs.writeFileSync(tmpPath, JSON.stringify(result.outDoc, null, 2) + "\n", "utf-8");
-          fs.renameSync(tmpPath, settingsDst);
-          const variant = result.schemaFlipped
-            ? "schema flip applied (flat-array → keyed-object)"
-            : "stripped __bkit__ envelope";
-          console.log(`[bkit] migrated ${settingsDst} — ${variant} (v2.0.0)`);
-        }
-      } catch {
-        // Malformed JSON in migration — skip migration; writeTier2JsonContained below will throw
-        // with a user-actionable error message requiring manual fix before re-running bkit install.
-      }
-    }
     const prevLen = ws.writes.length;
     writeTier2JsonContained(settingsSrc, settingsDst, dryRun, ws);
     ctx.claudeAllowRecorded = enrichClaudeSettingsAllows(
@@ -1363,10 +1274,6 @@ export function runClaudeModule(ctx: ModuleContext): void {
       ws,
       advisories,
     );
-    // AFTER the contained merge: the merge is additive and re-seats any row pruned
-    // before it.
-    const prunedAsk = pruneRetiredClaudeAskRules(settingsDst, dryRun, ws);
-    if (prunedAsk) console.log(`${logPrefix} ${tag}${prunedAsk}`);
     if (ws.writes.length > prevLen) {
       console.log(`${logPrefix} ${tag}claude: ${settingsDst}`);
     }
@@ -1397,13 +1304,7 @@ export function runClaudeModule(ctx: ModuleContext): void {
     const dst = ".claude/hooks/gateguard.cjs";
     if (fs.existsSync(src)) {
       const prevLen = ws.writes.length;
-      const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
-      writeTier2(src, dst, tokens, "slash-comment", dryRun, ws, {
-        relPath: dst,
-        canonicalHashes: priorVersion?.canonicalHashes ?? {},
-        advisories,
-        wiringMessage: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
-      });
+      writeTier2(src, dst, tokens, "slash-comment", dryRun, ws);
       if (ws.writes.length > prevLen) {
         console.log(`${logPrefix} ${tag}claude: ${dst}`);
       }
@@ -1417,13 +1318,7 @@ export function runClaudeModule(ctx: ModuleContext): void {
     const dst = ".claude/hooks/guardrails.cjs";
     if (fs.existsSync(src)) {
       const prevLen = ws.writes.length;
-      const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
-      writeTier2(src, dst, tokens, "slash-comment", dryRun, ws, {
-        relPath: dst,
-        canonicalHashes: priorVersion?.canonicalHashes ?? {},
-        advisories,
-        wiringMessage: CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS,
-      });
+      writeTier2(src, dst, tokens, "slash-comment", dryRun, ws);
       if (ws.writes.length > prevLen) {
         console.log(`${logPrefix} ${tag}claude: ${dst}`);
       }
@@ -1464,30 +1359,6 @@ export function runClaudeModule(ctx: ModuleContext): void {
     }
   }
 
-  // bkit-mode.sh deletion advisory. bkit does not ship or remove
-  // .bkit/scripts/bkit-mode.sh; when present, advise deletion — provider selection is the
-  // opencode host (`bkit install --opencode=<provider>`); bkit has no `bkit mode` surface or
-  // ccr router.
-  //
-  // The advisory names the shell-rc source-line removal step: bkit-mode.sh installs a
-  // bkit() shell-function shim via `source .../bkit-mode.sh` in ~/.zshrc/~/.bashrc.
-  {
-    const modeDst = ".bkit/scripts/bkit-mode.sh";
-    if (fs.existsSync(modeDst)) {
-      advisories.push({
-        id: "bkit-mode-sh-deletion-required",
-        severity: "advisory",
-        detect:
-          ".bkit/scripts/bkit-mode.sh is present but bkit does not manage it. bkit has no `bkit mode` surface or ccr router, which this script depends on. Keeping this file creates a broken shell-rc source call on every new terminal.",
-        action:
-          "1. Delete the orphan script: rm .bkit/scripts/bkit-mode.sh\n" +
-          "2. Remove the source line from your shell rc (~/.zshrc or ~/.bashrc): delete or comment out the line that reads `source <repo-path>/.bkit/scripts/bkit-mode.sh`.\n" +
-          "3. Provider selection is an install operation: `bkit install --opencode=<provider>` (e.g. `--opencode=opencode-zen`). The claude host installs with `--claude`.\n" +
-          "4. Check your installed hosts and credentials: `bkit doctor` (credentials + tools) and `bkit status` (installed hosts + providers).",
-      });
-    }
-  }
-
   // Generated copy-paste-ready Claude-on-web setup doc — `.claude/cloud.md`.
   // UNTRACKED + gitignored (see .bkit/templates/gitignore): writeClaudeCloudDoc
   // inlines REAL secret values resolved from the consumer's `.envrc` (dotenv
@@ -1518,34 +1389,10 @@ export function runCursorModule(ctx: ModuleContext): void {
   renderCursorAgentsCommands(ctx);
 
   // Tier 2 JSON (contained) — deep-containment: hooks.json
-  // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
   const cursorTemplates = path.join(getTemplatesRoot(), ".cursor");
   const hooksSrc = path.join(cursorTemplates, "hooks.json");
   const hooksDst = ".cursor/hooks.json";
   if (fs.existsSync(hooksSrc)) {
-    // Run migration first (idempotent — strips __bkit__ envelope if present)
-    if (fs.existsSync(hooksDst) && !dryRun) {
-      try {
-        const raw = fs.readFileSync(hooksDst, "utf-8");
-        const doc = JSON.parse(raw) as Record<string, JsonValue>;
-        const templateRaw = fs.readFileSync(hooksSrc, "utf-8");
-        const template = JSON.parse(templateRaw) as Record<string, JsonValue>;
-        const result = migrateLegacyBkitEnvelope(doc, template);
-        if (result.stripped) {
-          // Write migrated doc atomically via temp file + rename
-          const tmpPath = `${hooksDst}.bkit-migrate-tmp`;
-          fs.writeFileSync(tmpPath, JSON.stringify(result.outDoc, null, 2) + "\n", "utf-8");
-          fs.renameSync(tmpPath, hooksDst);
-          const variant = result.schemaFlipped
-            ? "schema flip applied (flat-array → keyed-object)"
-            : "stripped __bkit__ envelope";
-          console.log(`[bkit] migrated ${hooksDst} — ${variant} (v2.0.0)`);
-        }
-      } catch {
-        // Malformed JSON in migration — skip migration; writeTier2JsonContained below will throw
-        // with a user-actionable error message requiring manual fix before re-running bkit install.
-      }
-    }
     const prevLen = ws.writes.length;
     writeTier2JsonContained(hooksSrc, hooksDst, dryRun, ws);
     if (ws.writes.length > prevLen) {
@@ -1584,13 +1431,7 @@ export function runCursorModule(ctx: ModuleContext): void {
     const dst = ".cursor/hooks/guardrails.cjs";
     if (fs.existsSync(src)) {
       const prevLen = ws.writes.length;
-      const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
-      writeTier2(src, dst, tokens, "slash-comment", dryRun, ws, {
-        relPath: dst,
-        canonicalHashes: priorVersion?.canonicalHashes ?? {},
-        advisories,
-        wiringMessage: GUARDRAILS_WIRING_INSTRUCTIONS,
-      });
+      writeTier2(src, dst, tokens, "slash-comment", dryRun, ws);
       if (ws.writes.length > prevLen) {
         console.log(`${logPrefix} ${tag}cursor: ${dst}`);
       }
@@ -1605,13 +1446,7 @@ export function runCursorModule(ctx: ModuleContext): void {
     const dst = ".cursor/hooks/gateguard.cjs";
     if (fs.existsSync(src)) {
       const prevLen = ws.writes.length;
-      const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
-      writeTier2(src, dst, tokens, "slash-comment", dryRun, ws, {
-        relPath: dst,
-        canonicalHashes: priorVersion?.canonicalHashes ?? {},
-        advisories,
-        wiringMessage: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
-      });
+      writeTier2(src, dst, tokens, "slash-comment", dryRun, ws);
       if (ws.writes.length > prevLen) {
         console.log(`${logPrefix} ${tag}cursor: ${dst}`);
       }
@@ -1981,58 +1816,6 @@ export function enrichClaudeSettingsAllows(
 }
 
 /**
- * `ask` rules an older bkit shipped, which bkit removes. Matched by exact string.
- *
- * A content-scoped `ask` rule such as `Bash(curl:*)` / `Bash(wget:*)` is evaluated
- * BEFORE the auto-mode classifier and always forces a prompt — beating even a matching
- * `allow`, in every permission mode. A cloud session cannot answer one, so every
- * `context=web` context-fetch block stalls on it. Claude's rules match a command prefix,
- * not a URL host, so there is no per-domain exception to carve out the way
- * `guardrails.cjs` does on Cursor and `curl *{domain}*` allows do on opencode. Shell curl
- * runs under `Bash(*)`; `deny` still blocks and the auto-mode classifier still sees the
- * command.
- */
-const RETIRED_CLAUDE_ASK_RULES: readonly string[] = ["Bash(curl:*)", "Bash(wget:*)"];
-
-/**
- * Remove {@link RETIRED_CLAUDE_ASK_RULES} from a consumer's `.claude/settings.json`.
- *
- * `.claude/settings.json` is Tier 2 JSON deep-containment with an ADDITIVE merge that never
- * prunes; this prune is exact string match on the two rows bkit itself shipped, nothing
- * pattern-based. A consumer's own `ask` rows — including a hand-written curl rule in any
- * other form — are untouched.
- *
- * Idempotent (no-op once absent), dry-run aware, and called from BOTH engines (install
- * dispatches modules, upgrade does not). Mirrors {@link enrichClaudeSettingsAllows}.
- */
-export function pruneRetiredClaudeAskRules(
-  settingsDst: string,
-  dryRun: boolean,
-  ws: WriteSet,
-): string | null {
-  if (!fs.existsSync(settingsDst)) return null;
-  let doc: { permissions?: { ask?: string[] } };
-  try {
-    doc = JSON.parse(fs.readFileSync(settingsDst, "utf-8")) as typeof doc;
-  } catch {
-    // Malformed consumer JSON: left alone.
-    return null;
-  }
-  const ask = doc.permissions?.ask;
-  if (!Array.isArray(ask)) return null;
-  const removed = ask.filter((r) => RETIRED_CLAUDE_ASK_RULES.includes(r));
-  if (removed.length === 0) return null;
-  if (!dryRun) {
-    doc.permissions!.ask = ask.filter((r) => !RETIRED_CLAUDE_ASK_RULES.includes(r));
-    fs.writeFileSync(settingsDst, JSON.stringify(doc, null, 2) + "\n", "utf-8");
-  }
-  if (!ws.writes.some((w) => w.path === settingsDst)) {
-    ws.writes.push({ path: settingsDst, action: "write" });
-  }
-  return `removed retired ask rule(s) from ${settingsDst}: ${removed.join(", ")} — shell curl/wget prompted in every mode, including cloud sessions that cannot answer`;
-}
-
-/**
  * Reconcile a consumer's `.opencode/opencode.json` against the freshly-rendered template.
  * Install is additive across provider keys: existing blocks for other providers
  * (bkit-seeded or consumer-added) are preserved. For each provider key present in the
@@ -2204,13 +1987,7 @@ export function runOpencodeModule(ctx: ModuleContext): void {
       // write; `bkit check` stays read-only when gateguard's parent dir is absent.
       if (!dryRun) ensureDir(path.dirname(pluginDst));
       const prevLen = ws.writes.length;
-      const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
-      writeTier2(pluginSrc, pluginDst, ctx.tokens, "slash-comment", dryRun, ws, {
-        relPath: pluginDst,
-        canonicalHashes: priorVersion?.canonicalHashes ?? {},
-        advisories,
-        wiringMessage: GATEGUARD_JS_WIRING_INSTRUCTIONS,
-      });
+      writeTier2(pluginSrc, pluginDst, ctx.tokens, "slash-comment", dryRun, ws);
       if (ws.writes.length > prevLen) {
         console.log(`${logPrefix} ${tag}opencode: ${pluginDst}`);
       }
@@ -2679,13 +2456,7 @@ export function runCodexModule(ctx: ModuleContext): void {
     if (fs.existsSync(hookSrc)) {
       if (!dryRun) ensureDir(path.dirname(hookDst));
       const prevLen = ws.writes.length;
-      const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
-      writeTier2(hookSrc, hookDst, ctx.tokens, "slash-comment", dryRun, ws, {
-        relPath: hookDst,
-        canonicalHashes: priorVersion?.canonicalHashes ?? {},
-        advisories,
-        wiringMessage: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
-      });
+      writeTier2(hookSrc, hookDst, ctx.tokens, "slash-comment", dryRun, ws);
       if (ws.writes.length > prevLen) console.log(`${logPrefix} ${tag}codex: ${hookDst}`);
     }
   }
@@ -2700,13 +2471,7 @@ export function runCodexModule(ctx: ModuleContext): void {
     if (fs.existsSync(railSrc)) {
       if (!dryRun) ensureDir(path.dirname(railDst));
       const prevLen = ws.writes.length;
-      const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
-      writeTier2(railSrc, railDst, ctx.tokens, "slash-comment", dryRun, ws, {
-        relPath: railDst,
-        canonicalHashes: priorVersion?.canonicalHashes ?? {},
-        advisories,
-        wiringMessage: CODEX_GUARDRAILS_WIRING_INSTRUCTIONS,
-      });
+      writeTier2(railSrc, railDst, ctx.tokens, "slash-comment", dryRun, ws);
       if (ws.writes.length > prevLen) console.log(`${logPrefix} ${tag}codex: ${railDst}`);
     }
   }
@@ -2761,7 +2526,7 @@ export function dispatchModules(modules: Set<ModuleFlag>, ctx: ModuleContext): v
     if (!fn) continue;
     fn(ctx);
   }
-  // Run deferred finalisation callbacks (e.g. .bkit-version write) only after all modules succeed.
+  // Run deferred finalisation callbacks (e.g. .bkit/version write) only after all modules succeed.
   for (const cb of ctx.postDispatch) {
     cb();
   }

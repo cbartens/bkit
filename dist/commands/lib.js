@@ -104,8 +104,14 @@ export function parseFlags(argv, specs) {
         }
     }
     for (const spec of specs) {
-        if (spec.required && out[camel(spec.name)] === undefined) {
+        if (!spec.required)
+            continue;
+        const value = out[camel(spec.name)];
+        if (value === undefined) {
             throw new CommandError(EXIT.USAGE, `missing required flag --${spec.name}`);
+        }
+        if (value === "" || (Array.isArray(value) && value.includes(""))) {
+            throw new CommandError(EXIT.USAGE, `required flag --${spec.name} needs a non-empty value`);
         }
     }
     return out;

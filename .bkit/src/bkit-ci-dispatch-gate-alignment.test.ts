@@ -51,16 +51,23 @@ describe.each([
     expect(dispatchFences(md)).toHaveLength(1);
   });
 
-  it("reads the auto-route suffix from the tracker in the same block, exact-matched", () => {
+  it("derives the auto-route suffix from the held labels in the same block", () => {
     const f = dispatchFences(md)[0]!;
     const derive = f.search(
-      /gh issue view \{ISSUE_ID\} --json labels --jq '\.labels\[\]\.name' .*grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit \[auto route\]"/,
+      /AUTO_ROUTE_SUFFIX=\$\("\$BKIT" issues labels \{LABEL_FLAGS\} \| jq -er \.autoRouteSuffix\) \|\| exit 2/,
     );
     const call = f.search(/"\$BKIT" runs dispatch .*--auto-route-suffix="\$AUTO_ROUTE_SUFFIX"/);
     expect(derive, `${name}: AUTO_ROUTE_SUFFIX not derived in the dispatch block`).toBeGreaterThan(
       -1,
     );
     expect(call, `${name}: runs dispatch does not take the derived suffix`).toBeGreaterThan(derive);
+  });
+
+  it("passes the held PR number, so a runtime without gh never needs it to find the PR", () => {
+    // Without --pr, runs dispatch asks gh for the PR and exits 80 before it
+    // reads the turn loop's --poll-result, so every re-entry exits 80 again.
+    const f = dispatchFences(md)[0]!;
+    expect(f).toMatch(/"\$BKIT" runs dispatch [^\n]*--pr="?\{PR_NUMBER\}"?/);
   });
 
   it("records the ciDispatch verdict as a local step-done row, after a hand-off exit is passed out", () => {

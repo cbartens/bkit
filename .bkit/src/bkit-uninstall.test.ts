@@ -98,8 +98,11 @@ describe("buildDecisionTable — markered-text format", () => {
     expect(entry!.format).toBe("markered-text");
   });
 
-  it("markered-text file with hash-comment markers → decision=strip-block (Group A file)", () => {
-    writeFile(".gitignore", "node_modules/\n# bkit:start\n.worktrees/\n# bkit:end\n");
+  it("markered-text file with `# `-prefixed markers → decision=strip-block (Group A file)", () => {
+    writeFile(
+      ".gitignore",
+      "node_modules/\n# <!-- bkit:start -->\n.worktrees/\n# <!-- bkit:end -->\n",
+    );
     const table = buildDecisionTable(["core"], makeCtx());
     const entry = table.find((r) => r.file === ".gitignore");
     expect(entry).toBeDefined();
@@ -225,19 +228,6 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
     const content = "BKIT_GH_TOKEN=\n";
     writeFile(OWNED, content);
     writeBkitVersionFile(version({ [OWNED]: sha256(content) }));
-    const table = buildDecisionTable(["claude"], makeCtx());
-    expect(table.find((r) => r.file === OWNED)!.decision).toBe("delete");
-  });
-
-  it("byte-equal-text file: legacy tier3Hashes-only record still matches → decision=delete", () => {
-    const content = "BKIT_GH_TOKEN=\n";
-    writeFile(OWNED, content);
-    const versionFilePath = path.join(tmpDir, ".bkit", "version");
-    fs.writeFileSync(
-      versionFilePath,
-      JSON.stringify({ pinnedVersion: "4.0.0", tier3Hashes: { [OWNED]: sha256(content) } }),
-      "utf-8",
-    );
     const table = buildDecisionTable(["claude"], makeCtx());
     expect(table.find((r) => r.file === OWNED)!.decision).toBe("delete");
   });

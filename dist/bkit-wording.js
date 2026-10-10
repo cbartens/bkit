@@ -18,7 +18,15 @@ export const NEAR_COPY = 0.8;
 /** Cut-off: a sentence shared by this many prompts belongs in the wording file. */
 export const SHARED_MIN = 5;
 const SURFACES = ["prompt", "workflow", "rules"];
-const MODES = ["required", "where-used", "forbidden", "if-verdict"];
+const MODES = [
+    "required",
+    "where-used",
+    "repeatable",
+    "forbidden",
+    "if-verdict",
+    "if-bash",
+];
+const POSITIONS = ["first", "header", "last"];
 const VERDICT_END = "<!-- verdict:end -->";
 const SLOT = /\{\{([A-Za-z][\w-]*)(\?)?\}\}/g;
 const LABEL = /^\*\*[^*]+:\*\* /;
@@ -54,8 +62,8 @@ export function parseWording(md) {
                     clause.except.add(f.trim());
             }
             else if (key === "position") {
-                if (value !== "first" && value !== "last") {
-                    throw new Error(`[bkit-wording] ${name}: position must be first or last`);
+                if (!POSITIONS.includes(value)) {
+                    throw new Error(`[bkit-wording] ${name}: position must be first, header, or last`);
                 }
                 clause.position = value;
             }
@@ -160,6 +168,33 @@ export function proseLineIndexes(file) {
     }
     return out;
 }
+/** Tool names in the front matter `tools:` list, inline (`[a, b]`) or block (`- a`) form. */
+export function toolsOf(content) {
+    const lines = content.split("\n");
+    if (lines[0] !== "---")
+        return [];
+    const close = lines.indexOf("---", 1);
+    const front = lines.slice(1, close === -1 ? 1 : close);
+    const at = front.findIndex((l) => /^tools:/.test(l));
+    if (at === -1)
+        return [];
+    const inline = /^tools:[ \t]*\[(.*)\][ \t]*$/.exec(front[at]);
+    if (inline) {
+        return inline[1]
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean);
+    }
+    const tools = [];
+    for (const line of front.slice(at + 1)) {
+        if (/^\S/.test(line))
+            break;
+        const item = /^[ \t]+-[ \t]+(\S+)/.exec(line);
+        if (item)
+            tools.push(item[1]);
+    }
+    return tools;
+}
 // ---------------------------------------------------------------------------
 // Matching
 // ---------------------------------------------------------------------------
@@ -178,7 +213,9 @@ export function compileText(text) {
         slots.push(m[1]);
         last = m.index + m[0].length;
     }
-    source += escapeRe(text.slice(last));
+    const tail = text.slice(last);
+    // A closing `.` also matches `;`: the line continues the sentence with local text.
+    source += tail.endsWith(".") ? `${escapeRe(tail.slice(0, -1))}[.;]` : escapeRe(tail);
     const first = text.search(SLOT);
     const compiled = {
         re: new RegExp(source, "g"),
@@ -192,8 +229,9 @@ export function compileText(text) {
 const countIn = (line, c) => [...line.matchAll(c.re)].length;
 /** Drop the blockquote, list marker, or step number in front of a line's text. */
 export const stripLinePrefix = (line) => line.replace(/^[ \t]*(?:>[ \t]?)?(?:[ \t]*(?:[-*]|\d+\.)[ \t]+)?/, "");
+/** Split after `.` or `;` (bold close allowed between), never after `e.g.`; the punctuation stays on the sentence. */
 export const splitSentences = (s) => s
-    .split(/(?<!\be\.g\.)(?<=\.\**)\s+(?=\S)/)
+    .split(/(?<!\be\.g\.)(?<=[.;]\**)\s+(?=\S)/)
     .map((x) => x.trim())
     .filter(Boolean);
 /** Word-level Levenshtein similarity in [0, 1]. */
@@ -214,13 +252,15 @@ function modeFor(clause, file) {
     if (clause.except.has(file.name))
         return undefined;
     const mode = clause.modes[file.surface];
-    if (mode !== "if-verdict")
-        return mode;
-    return file.content.includes(VERDICT_END) ? "required" : "forbidden";
+    if (mode === "if-verdict")
+        return file.content.includes(VERDICT_END) ? "required" : "forbidden";
+    if (mode === "if-bash")
+        return toolsOf(file.content).includes("Bash") ? "required" : "forbidden";
+    return mode;
 }
 /** Sentence windows in a line that are near, but not equal to, an unslotted clause wording. */
 function nearCopies(clause, lineIdx, line, allTexts) {
-    if (clause.texts.some((t) => line.includes(t)))
+    if (clause.texts.some((t) => countIn(line, compileText(t)) > 0))
         return [];
     const sentences = splitSentences(stripLinePrefix(line));
     const out = [];
@@ -228,36 +268,62 @@ function nearCopies(clause, lineIdx, line, allTexts) {
         if (compileText(canonical).slotted)
             continue;
         const k = splitSentences(canonical).length;
-        for (let i = 0; i + k <= sentences.length; i++) {
-            let found = sentences.slice(i, i + k).join(" ");
-            // An unlabelled clause can sit behind any surface's own label
-            // (`**Tools:**` in a prompt, `**Verify tools:**` in rules): compare the text only.
-            if (!canonical.startsWith("**"))
-                found = found.replace(LABEL, "");
-            if (allTexts.has(found))
+        const cw = canonical.split(/\s+/).length;
+        // A drift can add or drop a sentence break (`;` turned into `,`): try one sentence fewer and more.
+        for (let i = 0; i < sentences.length;) {
+            let best;
+            for (let size = Math.max(1, k - 1); size <= k + 1 && i + size <= sentences.length; size++) {
+                let window = sentences.slice(i, i + size).join(" ");
+                // An unlabelled clause can sit behind any surface's own label
+                // (`**Tools:**` in a prompt, `**Verify tools:**` in rules): compare the text only.
+                if (!canonical.startsWith("**"))
+                    window = window.replace(LABEL, "");
+                // A clause can close a sentence that opens with local text (`**If** {cond} → {clause}`): also compare the tail.
+                const words = window.split(/\s+/);
+                const candidates = [window];
+                for (const n of [cw - 1, cw, cw + 1]) {
+                    if (n > 0 && n < words.length)
+                        candidates.push(words.slice(-n).join(" "));
+                }
+                for (const found of candidates) {
+                    if (allTexts.has(found))
+                        continue;
+                    const score = similarity(found, canonical);
+                    if (score >= NEAR_COPY && (!best || score > best.score))
+                        best = { found, size, score };
+                }
+            }
+            if (!best) {
+                i++;
                 continue;
-            if (similarity(found, canonical) >= NEAR_COPY)
-                out.push({ line: lineIdx, found, canonical });
+            }
+            out.push({ line: lineIdx, found: best.found, canonical });
+            i += best.size;
         }
     }
     return out;
 }
-/** Labelled header lines in file order: the CAUTION block through to the body. */
-export function headerLabels(content) {
+/** Header line indexes in file order: the CAUTION block through to the body. */
+export function headerLines(content) {
     const lines = content.split("\n");
     const start = lines.findIndex((l) => l.startsWith("> [!CAUTION]"));
     if (start === -1)
         return [];
-    const labels = [];
+    const out = [];
     for (let i = start; i < lines.length; i++) {
         const line = lines[i];
         if (line === "---" || /^\*\*/.test(line))
             break;
-        const label = line.match(/^> (?:- )?\*\*([^*]+):\*\*/)?.[1];
-        if (label && label !== "EXECUTION PROTOCOL")
-            labels.push(label);
+        out.push(i);
     }
-    return labels;
+    return out;
+}
+/** Labelled header lines in file order, EXECUTION PROTOCOL excluded. */
+export function headerLabels(content) {
+    const lines = content.split("\n");
+    return headerLines(content)
+        .map((i) => lines[i].match(/^> (?:- )?\*\*([^*]+):\*\*/)?.[1])
+        .filter((l) => l !== undefined && l !== "EXECUTION PROTOCOL");
 }
 // ---------------------------------------------------------------------------
 // Check
@@ -270,14 +336,18 @@ export function checkWording(clauses, files) {
         const lines = file.content.split("\n");
         const prose = proseLineIndexes(file);
         const labels = file.surface === "rules" ? [] : headerLabels(file.content);
+        const header = new Set(file.surface === "rules" ? [] : headerLines(file.content));
+        const positioned = [];
+        const at = (i) => (i === undefined ? undefined : i + 1);
         for (const clause of clauses) {
             const mode = modeFor(clause, file);
             if (mode === undefined)
                 continue;
             const forms = compiled.get(clause);
-            const hits = prose.filter((i) => forms.some((c) => countIn(lines[i], c) > 0));
-            const count = prose.reduce((n, i) => n + forms.reduce((m, c) => m + countIn(lines[i], c), 0), 0);
-            const at = (i) => (i === undefined ? undefined : i + 1);
+            // Forms can overlap (a slotted form may also fit another's line): a line counts once per instance.
+            const perLine = (i) => Math.max(...forms.map((c) => countIn(lines[i], c)));
+            const hits = prose.filter((i) => perLine(i) > 0);
+            const count = hits.reduce((n, i) => n + perLine(i), 0);
             if (mode === "forbidden" && count > 0) {
                 findings.push({
                     file: file.id,
@@ -293,7 +363,7 @@ export function checkWording(clauses, files) {
                     problem: `missing; add: ${clause.texts[0]}`,
                 });
             }
-            if (mode !== "forbidden" && count > 1) {
+            if ((mode === "required" || mode === "where-used") && count > 1) {
                 findings.push({
                     file: file.id,
                     line: at(hits[1]),
@@ -323,37 +393,80 @@ export function checkWording(clauses, files) {
                         });
                     }
                 }
-                if (clause.anchored) {
-                    for (const c of forms) {
-                        if (c.slotted && line.includes(c.prefix) && countIn(line, c) === 0) {
-                            findings.push({
-                                file: file.id,
-                                line: i + 1,
-                                clause: clause.name,
-                                problem: `does not match the template: ${clause.texts[0]}`,
-                            });
-                        }
-                    }
+                if (clause.anchored &&
+                    forms.some((c) => c.slotted && line.includes(c.prefix)) &&
+                    perLine(i) === 0) {
+                    const templates = clause.texts.filter((t) => compileText(t).slotted);
+                    findings.push({
+                        file: file.id,
+                        line: i + 1,
+                        clause: clause.name,
+                        problem: `does not match the template${templates.length > 1 ? "s" : ""}: ${templates.join(" | ")}`,
+                    });
                 }
             }
             if (clause.position && count > 0 && file.surface !== "rules") {
+                positioned.push({ clause, line: hits[0] });
                 const label = clause.texts[0].match(/^\*\*([^*]+):\*\*/)?.[1];
-                const want = clause.position === "first" ? labels[0] : labels[labels.length - 1];
-                if (label && want !== label) {
+                const edge = clause.position === "first" ? labels[0] : labels[labels.length - 1];
+                if (clause.position !== "header" && label && edge !== label) {
                     findings.push({
                         file: file.id,
                         clause: clause.name,
-                        problem: `must be the ${clause.position} labelled header line; found "${want ?? "none"}"`,
+                        problem: `must be the ${clause.position} labelled header line; found "${edge ?? "none"}"`,
                     });
                 }
             }
         }
+        // Positioned clauses keep wording-file order inside the header.
+        let prev;
+        for (const p of positioned) {
+            if (!header.has(p.line)) {
+                findings.push({
+                    file: file.id,
+                    line: at(p.line),
+                    clause: p.clause.name,
+                    problem: "must be a header line",
+                });
+                continue;
+            }
+            if (prev && p.line < prev.line) {
+                findings.push({
+                    file: file.id,
+                    line: at(p.line),
+                    clause: p.clause.name,
+                    problem: `header order: must come after ${prev.clause.name}`,
+                });
+            }
+            prev = p;
+        }
     }
     return findings.concat(unlistedShared(clauses, files));
 }
+/** Could two sentences be NEAR_COPY-similar? Cheap word-count and shared-word bounds before `similarity`. */
+function nearCandidate(a, b) {
+    const longer = Math.max(a.length, b.length);
+    const need = Math.ceil(NEAR_COPY * longer);
+    if (Math.min(a.length, b.length) < need)
+        return false;
+    const pool = new Map();
+    for (const w of b)
+        pool.set(w, (pool.get(w) ?? 0) + 1);
+    let shared = 0;
+    for (const w of a) {
+        const n = pool.get(w) ?? 0;
+        if (n > 0) {
+            shared++;
+            pool.set(w, n - 1);
+        }
+    }
+    return shared >= need;
+}
 /**
  * Sentences shared by SHARED_MIN or more prompts that no clause covers. The cut-off
- * is the rule for what belongs in the wording file.
+ * is the rule for what belongs in the wording file. A sentence ending its line and
+ * the same sentence continued with `;` count as one. Near-copies count toward the
+ * cut-off, so one drifted copy cannot hide a sentence the other prompts share.
  */
 export function unlistedShared(clauses, files) {
     const forms = clauses.flatMap((c) => c.texts.map(compileText));
@@ -364,7 +477,8 @@ export function unlistedShared(clauses, files) {
             let rest = stripLinePrefix(lines[i]);
             for (const c of forms)
                 rest = rest.replace(c.re, "\u0000");
-            for (const s of splitSentences(rest)) {
+            for (const sentence of splitSentences(rest)) {
+                const s = sentence.replace(/[.;]$/, "");
                 if (s.includes("\u0000") || s.split(/\s+/).length < 3)
                     continue;
                 if (!seen.has(s))
@@ -373,13 +487,31 @@ export function unlistedShared(clauses, files) {
             }
         }
     }
-    return [...seen]
-        .filter(([, ids]) => ids.size >= SHARED_MIN)
-        .map(([s, ids]) => ({
-        file: [...ids][0],
-        clause: "(none)",
-        problem: `shared by ${ids.size} prompts but not in .bkit/wording.md: "${s}"`,
-    }));
+    const words = new Map([...seen.keys()].map((s) => [s, s.split(/\s+/)]));
+    const reported = new Set();
+    const findings = [];
+    // Seeds: sentences in 2+ prompts, widest first, so a group is reported once under its most-copied wording.
+    const seeds = [...seen].filter(([, ids]) => ids.size >= 2).sort((a, b) => b[1].size - a[1].size);
+    for (const [seed, ids] of seeds) {
+        if (reported.has(seed))
+            continue;
+        const near = [...seen.keys()].filter((s) => s !== seed &&
+            !reported.has(s) &&
+            nearCandidate(words.get(seed), words.get(s)) &&
+            similarity(seed, s) >= NEAR_COPY);
+        const group = new Set([...ids, ...near.flatMap((s) => [...seen.get(s)])]);
+        if (group.size < SHARED_MIN)
+            continue;
+        for (const s of [seed, ...near])
+            reported.add(s);
+        const drifted = near.length > 0 ? `, ${group.size - ids.size} as near-copies` : "";
+        findings.push({
+            file: [...ids][0],
+            clause: "(none)",
+            problem: `shared by ${group.size} prompts${drifted} but not in .bkit/wording.md: "${seed}"`,
+        });
+    }
+    return findings;
 }
 // ---------------------------------------------------------------------------
 // Sync
@@ -399,7 +531,10 @@ export function syncWording(clauses, files) {
                     const from = compileText(old);
                     lines[i] = lines[i].replace(from.re, (...groups) => {
                         const bySlot = new Map(from.slots.map((s, n) => [s, String(groups[n + 1])]));
-                        return clause.texts[0].replace(SLOT, (_, slot) => bySlot.get(slot) ?? "");
+                        const out = clause.texts[0].replace(SLOT, (_, slot) => bySlot.get(slot) ?? "");
+                        return String(groups[0]).endsWith(";") && out.endsWith(".")
+                            ? `${out.slice(0, -1)};`
+                            : out;
                     });
                 }
                 if (target.slotted)

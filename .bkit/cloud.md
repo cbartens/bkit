@@ -59,7 +59,7 @@ Three cloud stacks — each agent pairs with one tracker. Pick row for agent you
 - Same vale version (3.9.1) pre-installed on both clouds.
 - pnpm via corepack on both. Pastes pre-warm bkit's pin (`10.34.3`), but corepack resolves **each repo's own `packageManager`** in-repo — one setup script serves any pnpm pin; pre-warm version not load-bearing.
 - gh CLI on both: web setup script installs latest binary (same `github.com` release-download style as vale); GitHub-Actions runner ships pre-installed. Auth shared via `cloud-bootstrap.sh` (`gh auth login --with-token` with `BKIT_GH_TOKEN`, skipped when `GITHUB_TOKEN` already auths on runner).
-- Same opt-in-guard pattern — opt-in label `bkit:auto` — wrapped in `<!-- bkit:start --> ... <!-- bkit:end -->` (bkit-managed in consumer repos). Label `bkit:auto` on both trackers (Linear's bare `Auto` migrates to `bkit:auto`).
+- Same opt-in-guard pattern — opt-in label `bkit:auto` — wrapped in `<!-- bkit:start --> ... <!-- bkit:end -->` (bkit-managed in consumer repos). Label `bkit:auto` on both trackers.
 
 ## Background
 

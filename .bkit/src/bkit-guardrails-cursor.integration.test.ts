@@ -45,7 +45,7 @@ describe("cursor guardrails.cjs — shell", () => {
   it("asks on curl/wget to unknown hosts; allows tooling hosts from shipped list", () => {
     expect(run({ command: "curl https://example.com" }).permission).toBe("ask");
     expect(run({ command: "wget https://evil.example" }).permission).toBe("ask");
-    // Stack hosts are NOT shipped — ask until consumer declares them in config.md
+    // Stack hosts are NOT shipped — ask until consumer declares them in context.md
     expect(
       run({
         command:

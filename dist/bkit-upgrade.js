@@ -18,15 +18,12 @@
 //     - The consumer has modified the file since last install (on-disk hash != canonical hash).
 //
 // Dependency: `canonicalHashes` + `isConsumerModified` from bkit-version.ts.
-//             `migrateLegacyBkitEnvelope` from bkit-tiers.ts runs before
-//             `writeTier2JsonContained` to strip legacy `__bkit__` envelope on upgrade.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { readBkitVersion, writeBkitVersion, sha256, isConsumerModified, } from "./bkit-version.js";
 import { writeTier2, writeTier2JsonContained } from "./bkit-tiers.js";
 import { detectMarkerStyle } from "./bkit-markers.js";
 import { applyTokens } from "./bkit-tokens.js";
-import { isRetiredHashKey, withoutRetiredHashes } from "./bkit-retire.js";
 import { TEMPLATE_COPIES_DIR } from "./bkit-paths.js";
 /** Zero-value token map — markered-text templates managed on upgrade are token-free. */
 const EMPTY_TOKENS = {
@@ -96,7 +93,7 @@ export function diffFile(relPath, absolutePath, templateContent, canonicalHashes
     }
     // Template has changed (or canonical hash unknown). Check consumer drift —
     // when canonical hash is missing, isConsumerModified treats the file as drifted
-    // to block silent overwrites of pre-v0.9.x installs that never recorded hashes.
+    // to block a silent overwrite of a file bkit has no record of writing.
     if (isConsumerModified(relPath, absolutePath, canonicalHashes)) {
         return { action: "conflict", templateContent, diskContent };
     }
@@ -124,7 +121,7 @@ export function runUpgrade(candidates, options) {
     // Local WriteSet drives updated/skipped classification for the block/scope-merge
     // formats; the tier writers push exactly one entry per file they actually change.
     const ws = { writes: [] };
-    for (const { relPath, templatePath, format, contentOverride, noMarkerMigration } of candidates) {
+    for (const { relPath, templatePath, format, contentOverride } of candidates) {
         if (contentOverride === undefined && !fs.existsSync(templatePath)) {
             console.error(`${LOG_PREFIX} Template not found: ${templatePath} — skipping ${relPath}`);
             continue;
@@ -194,9 +191,7 @@ export function runUpgrade(candidates, options) {
                 }
             }
             else {
-                writeTier2(templatePath, absolutePath, tokens, markerStyle ?? "html-comment", options.dryRun, ws, noMarkerMigration
-                    ? { relPath, canonicalHashes, wiringMessage: noMarkerMigration }
-                    : undefined);
+                writeTier2(templatePath, absolutePath, tokens, markerStyle ?? "html-comment", options.dryRun, ws);
             }
             if (ws.writes.length > before) {
                 result.updated.push(relPath);
@@ -251,7 +246,7 @@ export function runUpgrade(candidates, options) {
     return result;
 }
 // ---------------------------------------------------------------------------
-// updateCanonicalHashes — record hashes of written files back to .bkit-version
+// updateCanonicalHashes — record hashes of written files back to .bkit/version
 // ---------------------------------------------------------------------------
 /**
  * After a successful upgrade, update `.bkit/version`:
@@ -280,23 +275,16 @@ export function updateCanonicalHashesAfterUpgrade(result, options) {
     if (!bkitVersion)
         return;
     const seedablePaths = new Set([...result.updated, ...result.skippedSeedable]);
-    // Drop the keys bkit does not keep (retired owned files, templates) and a legacy
-    // tier3Hashes field, exactly as install's postDispatch does, so a clean upgrade is
-    // followed by a zero-write check.
-    const newCanonicalHashes = withoutRetiredHashes(bkitVersion.canonicalHashes);
-    const droppedRetired = Object.keys(newCanonicalHashes).length !== Object.keys(bkitVersion.canonicalHashes).length ||
-        bkitVersion.legacyTier3Hashes === true;
+    const newCanonicalHashes = { ...bkitVersion.canonicalHashes };
     for (const relPath of seedablePaths) {
         // Exclude .agents/ internal files (docs.md, friction.md, rules.md, skills.md,
         // .env.example etc.) from canonicalHashes — they are not consumer-facing files
         // whose hashes bkit uses for drift detection. Mirrors the same filter applied
-        // in the install path (bkit-modules.ts postDispatch). Template copies and
-        // retired paths carry no hash there either.
+        // in the install path (bkit-modules.ts postDispatch). Template copies carry no
+        // hash there either.
         if (relPath.startsWith(".agents" + path.sep))
             continue;
         if (relPath.startsWith(TEMPLATE_COPIES_DIR + path.sep))
-            continue;
-        if (isRetiredHashKey(relPath))
             continue;
         const absolutePath = path.join(cwd, relPath);
         if (!fs.existsSync(absolutePath))
@@ -310,8 +298,7 @@ export function updateCanonicalHashesAfterUpgrade(result, options) {
     // Nothing to persist: no files processed AND the pin is current AND the record is unchanged.
     if (seedablePaths.size === 0 &&
         pinnedVersion === bkitVersion.pinnedVersion &&
-        webFetchUnchanged &&
-        !droppedRetired) {
+        webFetchUnchanged) {
         return;
     }
     const updated = {
@@ -323,89 +310,4 @@ export function updateCanonicalHashesAfterUpgrade(result, options) {
             : { claudeAllowDerived: [...options.claudeAllowDerived] }),
     };
     writeBkitVersion(versionFile, updated);
-}
-// ---------------------------------------------------------------------------
-// migrateStrayGitattributes — repair a stray no-dot gitattributes file
-// ---------------------------------------------------------------------------
-/**
- * Handles a file literally named `gitattributes` (no leading dot) at the repo root,
- * plus its dot-less `gitattributes` canonicalHashes key. Git only reads
- * `.gitattributes`.
- *
- * This migration:
- *   1. Renames a stray dot-less `gitattributes` file → `.gitattributes` (only
- *      when no real `.gitattributes` already exists — never clobbers one).
- *   2. Drops the bogus dot-less `gitattributes` key from canonicalHashes (the
- *      dotted `.gitattributes` key is reseeded by the upgrade walk that follows).
- *
- * Idempotent: a no-op on repos without the stray file or already migrated.
- */
-export function migrateStrayGitattributes(cwd, dryRun) {
-    const stray = path.join(cwd, "gitattributes");
-    const dotted = path.join(cwd, ".gitattributes");
-    if (fs.existsSync(stray) && fs.statSync(stray).isFile()) {
-        if (!fs.existsSync(dotted)) {
-            console.log(`${LOG_PREFIX}${dryRun ? " [dry-run]" : ""} migrate: rename stray 'gitattributes' → '.gitattributes'`);
-            if (!dryRun)
-                fs.renameSync(stray, dotted);
-        }
-        else {
-            console.warn(`${LOG_PREFIX} stray dot-less 'gitattributes' found alongside '.gitattributes' — leaving the stray for manual removal`);
-        }
-    }
-    if (dryRun)
-        return;
-    // Drop the bogus dot-less key 2.5.0 recorded; the dotted key is reseeded later.
-    const versionFile = path.join(cwd, ".bkit", "version");
-    const bkitVersion = readBkitVersion(versionFile);
-    if (bkitVersion?.canonicalHashes && "gitattributes" in bkitVersion.canonicalHashes) {
-        const canonicalHashes = { ...bkitVersion.canonicalHashes };
-        delete canonicalHashes.gitattributes;
-        writeBkitVersion(versionFile, { ...bkitVersion, canonicalHashes });
-    }
-}
-// ---------------------------------------------------------------------------
-// migrateWarningsToNoise — docs/warnings.md → docs/noise.md rename
-// ---------------------------------------------------------------------------
-/**
- * `docs/noise.md` registers every deliberate signal downgrade — log levels,
- * error-tracker issue archives / mutes, alert thresholds. An older bkit wrote the
- * same registry as `docs/warnings.md`.
- *
- * Consumers keep their own entries BELOW the managed block, so the file MOVES.
- *
- * This migration:
- *   1. Moves `docs/warnings.md` → `docs/noise.md` (only when no `docs/noise.md`
- *      already exists — never clobbers one). The upgrade walk that follows
- *      block-merges the new managed header into the moved file, so consumer
- *      entries below `bkit:end` survive untouched.
- *   2. Drops the stale `docs/warnings.md` key from canonicalHashes; the
- *      `docs/noise.md` key is reseeded by that same walk.
- *
- * Idempotent: a no-op on fresh installs and already-migrated consumers.
- */
-export function migrateWarningsToNoise(cwd, dryRun) {
-    const oldPath = path.join(cwd, "docs", "warnings.md");
-    const newPath = path.join(cwd, "docs", "noise.md");
-    if (fs.existsSync(oldPath) && fs.statSync(oldPath).isFile()) {
-        if (!fs.existsSync(newPath)) {
-            console.log(`${LOG_PREFIX}${dryRun ? " [dry-run]" : ""} migrate: rename 'docs/warnings.md' → 'docs/noise.md'`);
-            if (!dryRun) {
-                fs.mkdirSync(path.dirname(newPath), { recursive: true });
-                fs.renameSync(oldPath, newPath);
-            }
-        }
-        else {
-            console.warn(`${LOG_PREFIX} 'docs/warnings.md' found alongside 'docs/noise.md' — merge the entries by hand, then delete 'docs/warnings.md'`);
-        }
-    }
-    if (dryRun)
-        return;
-    const versionFile = path.join(cwd, ".bkit", "version");
-    const bkitVersion = readBkitVersion(versionFile);
-    if (bkitVersion?.canonicalHashes && "docs/warnings.md" in bkitVersion.canonicalHashes) {
-        const canonicalHashes = { ...bkitVersion.canonicalHashes };
-        delete canonicalHashes["docs/warnings.md"];
-        writeBkitVersion(versionFile, { ...bkitVersion, canonicalHashes });
-    }
 }

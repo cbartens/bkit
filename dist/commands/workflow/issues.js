@@ -126,6 +126,10 @@ function textVerb(ctx) {
 // ---------------------------------------------------------------------------
 /** Mutually exclusive: setting one drops the others. */
 export const PHASE_LABELS = ["bkit:design", "bkit:plan", "bkit:build", "bkit:ship", "bkit:merged"];
+/** The issue label that opts a feature into CI auto-routing. */
+export const AUTO_LABEL = "bkit:auto";
+/** Commit-subject suffix the CI auto-route gate matches; carried only while the issue has `AUTO_LABEL`. */
+export const AUTO_ROUTE_SUFFIX = " bkit [auto route]";
 export function transitionLabels(current, t) {
     const have = [...new Set(current)];
     const remove = new Set();
@@ -190,7 +194,7 @@ const BOARD_OPTION = {
  */
 function boardPayload(ctx, status) {
     const root = repoRoot(ctx.cwd);
-    const tracker = str(ctx.flags.tracker) ?? readBkitConfig(root).issueTracker;
+    const tracker = readBkitConfig(root).issueTracker;
     if (tracker !== "github") {
         if (tracker === "linear")
             ctx.log("Board status carried by issue state — no separate update.");
@@ -271,6 +275,7 @@ function labelsVerb(ctx) {
         remove,
         labels,
         changed: add.length + remove.length > 0,
+        autoRouteSuffix: labels.includes(AUTO_LABEL) ? AUTO_ROUTE_SUFFIX : "",
         linearState: linearState(t, board),
         board: payload,
         boardSkipped,
@@ -470,17 +475,13 @@ export const issuesCommand = {
                 },
                 { name: "issue", type: "string", help: "issue number (with --board)" },
                 { name: "owner-repo", type: "string", help: "<owner>/<repo> of the issue (with --board)" },
-                {
-                    name: "tracker",
-                    type: "string",
-                    help: "github | linear | none (default: package.json bkit.issueTracker)",
-                },
             ],
             output: {
                 add: "labels to add",
                 remove: "labels to remove",
                 labels: "the full label set to write",
                 changed: "whether add or remove is non-empty",
+                autoRouteSuffix: `"${AUTO_ROUTE_SUFFIX}" when the label set carries ${AUTO_LABEL}, else ""`,
                 linearState: "Linear issue state for this transition, or null",
                 board: "projects payloads {addItem, listItems, updateItem}, or null",
                 boardSkipped: "why board is null with --board: opted-out | not-configured | tracker-<name> | …",

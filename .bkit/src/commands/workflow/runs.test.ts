@@ -227,6 +227,16 @@ describe("bkit runs gate", () => {
   });
 
   describe("skipped lanes (16 is opt-in)", () => {
+    /** A checkout whose package.json declares `bkit.shipGateRequiredLanes`. */
+    const requiring = (lanes: string[]) => {
+      const d = tmp();
+      fs.writeFileSync(
+        path.join(d, "package.json"),
+        JSON.stringify({ name: "x", bkit: { shipGateRequiredLanes: lanes } }),
+      );
+      return d;
+    };
+
     it("a skipped lane alone does not refuse — the capstone's green settles it — but is reported", async () => {
       fixtureGh();
       const r = await gate(tmp(), "--head=skipped-lane");
@@ -236,31 +246,29 @@ describe("bkit runs gate", () => {
       expect(r.err).toContain("owns the planned-vs-vacuous judgement");
     });
 
-    it("refuses a skipped lane named in --required-lanes (16)", async () => {
+    it("refuses a skipped lane named in bkit.shipGateRequiredLanes (16)", async () => {
       fixtureGh();
-      const r = await gate(tmp(), "--head=skipped-lane", "--required-lanes=test");
+      const r = await gate(requiring(["test"]), "--head=skipped-lane");
       expect(r.code).toBe(16);
       expect(r.err).toContain("required lane(s) concluded 'skipped'");
       expect(r.err).toContain("vacuous green: test");
     });
 
-    it("--required-lanes naming a different lane does not refuse", async () => {
+    it("a required lane naming a different lane does not refuse", async () => {
       fixtureGh();
-      expect(
-        (await gate(tmp(), "--head=skipped-lane", "--required-lanes=some-other-lane")).code,
-      ).toBe(0);
+      expect((await gate(requiring(["some-other-lane"]), "--head=skipped-lane")).code).toBe(0);
     });
 
-    it("--required-lanes takes a comma-separated list", async () => {
+    it("refuses when any of several required lanes was skipped", async () => {
       fixtureGh();
-      const r = await gate(tmp(), "--head=skipped-lane", "--required-lanes=some-other-lane,test");
+      const r = await gate(requiring(["some-other-lane", "test"]), "--head=skipped-lane");
       expect(r.code).toBe(16);
       expect(r.err).toContain("vacuous green: test");
     });
 
     it("sees a skipped lane on page 2 of a paginated jobs list, and the capstone on page 1", async () => {
       fixtureGh();
-      const r = await gate(tmp(), "--head=paginated-skipped-lane", "--required-lanes=test");
+      const r = await gate(requiring(["test"]), "--head=paginated-skipped-lane");
       expect(r.code).toBe(16);
       expect(r.err).toContain("vacuous green: test");
       expect(r.err).not.toContain("ABSENT from run");
@@ -397,19 +405,16 @@ describe("bkit runs gate", () => {
       );
     });
 
-    it("--capstone and --ci-workflow beat package.json", async () => {
+    it("a configured capstone that is a job in the run passes; one that is not is absent (13)", async () => {
       fixtureGh();
-      const d = pkg({ capstoneJob: "app-check", ciWorkflow: "build.yml" });
       const r = await gate(
-        d,
+        pkg({ capstoneJob: "lint", ciWorkflow: "other.yml" }),
         "--head=green-capstone",
-        "--capstone=lint",
-        "--ci-workflow=other.yml",
       );
       expect(r.code).toBe(0);
       expect(r.json).toMatchObject({ capstone: "lint", ciWorkflow: "other.yml" });
       expect(r.err).toContain("capstone lint=success");
-      const absent = await gate(d, "--head=green-capstone", "--capstone=nope");
+      const absent = await gate(pkg({ capstoneJob: "nope" }), "--head=green-capstone");
       expect(absent.code).toBe(13);
       expect(absent.err).toContain("capstone job 'nope' ABSENT");
     });
@@ -419,6 +424,12 @@ describe("bkit runs gate", () => {
     const r = await cli(tmp(), ["gate", "--repo=example/example"]);
     expect(r.code).toBe(2);
     expect(r.err).toContain("--head");
+  });
+
+  it("an empty --head= is a usage error (2), not a gate refusal", async () => {
+    const r = await cli(tmp(), ["gate", "--head=", "--repo=example/example"]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("--head needs a non-empty value");
   });
 
   describe("--event", () => {
@@ -699,6 +710,7 @@ describe("bkit runs mirror", () => {
 
   it("usage: missing --head or a non-numeric minute value exits 2", async () => {
     expect((await cli(tmp(), ["mirror"])).code).toBe(2);
+    expect((await cli(tmp(), ["mirror", "--head="])).code).toBe(2);
     expect((await cli(tmp(), ["mirror", "--head=abc123", "--max-minutes=soon"])).code).toBe(2);
   });
 });

@@ -6,20 +6,13 @@
 // caller, so each caller keeps its own log context.
 const START_MARKER = "<!-- bkit:start -->";
 const END_MARKER = "<!-- bkit:end -->";
-const HASH_START_MARKER = "# bkit:start";
-const HASH_END_MARKER = "# bkit:end";
 const SLASH_START_MARKER = "// bkit:start";
 const SLASH_END_MARKER = "// bkit:end";
 // Select marker pair based on markerStyle.
 export function selectMarkers(markerStyle) {
-    switch (markerStyle) {
-        case "hash-comment":
-            return [HASH_START_MARKER, HASH_END_MARKER];
-        case "slash-comment":
-            return [SLASH_START_MARKER, SLASH_END_MARKER];
-        default:
-            return [START_MARKER, END_MARKER];
-    }
+    return markerStyle === "slash-comment"
+        ? [SLASH_START_MARKER, SLASH_END_MARKER]
+        : [START_MARKER, END_MARKER];
 }
 // Recognised line-comment prefixes — bare, shell (#), JS/TS (//).
 const ALLOWED_PREFIXES = ["", "# ", "// "];
@@ -116,7 +109,7 @@ export function extractFullManagedBlock(content, markerStyle = "html-comment") {
 // always one stripManagedBlock acts on: a marker alone on its line, bare or behind
 // a `# ` / `// ` prefix. Labelled, indented, or prose-quoted markers do not count.
 export function detectMarkerStyle(content) {
-    for (const style of ["html-comment", "hash-comment", "slash-comment"]) {
+    for (const style of ["html-comment", "slash-comment"]) {
         const [startMarker] = selectMarkers(style);
         if (findLineAnchoredMarkers(content, startMarker).length > 0)
             return style;

@@ -217,24 +217,6 @@ describe("bkit locks acquire --kind=workflow — a lock already there", () => {
     writeLock(cwd, M, "x design", WORKFLOW_LOCK_IDLE_S + 60);
     expect((await run(cwd, acquire())).code).toBe(1);
   });
-
-  it("falls back to a legacy status.json run array", async () => {
-    const cwd = repo();
-    fs.mkdirSync(logDir(cwd, M), { recursive: true });
-    fs.writeFileSync(
-      path.join(logDir(cwd, M), "status.json"),
-      JSON.stringify([
-        {
-          workflow: "design",
-          startedAt: iso(9 * MIN),
-          status: "IN_PROGRESS",
-          steps: [step("design", 3 * MIN)],
-        },
-      ]),
-    );
-    writeLock(cwd, M, "x design", WORKFLOW_LOCK_IDLE_S + 60);
-    expect((await run(cwd, acquire())).code).toBe(1);
-  });
 });
 
 describe("bkit locks acquire --kind=workflow — ship's book root", () => {

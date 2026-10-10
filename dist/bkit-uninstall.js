@@ -159,9 +159,6 @@ function isJsonObject(v) {
 // full/core uninstall (gated on core in moduleList below).
 const CORE_TEMPLATE_DOCTRINE = [
     { path: ".agents/context.md", format: "markered-text", module: "core" },
-    // Legacy location of `.agents/context.md`, for a consumer who uninstalls before the
-    // install/upgrade migration ran. A no-op once the migration has run.
-    { path: ".agents/config.md", format: "markered-text", module: "core" },
     { path: ".agents/docs.md", format: "markered-text", module: "core" },
     { path: ".agents/rules.md", format: "markered-text", module: "core" },
     { path: ".agents/skills.md", format: "markered-text", module: "core" },

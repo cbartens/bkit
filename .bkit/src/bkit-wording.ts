@@ -17,7 +17,9 @@ import { fileURLToPath } from "node:url";
 import { findLineAnchoredMarkers, selectMarkers } from "./bkit-markers.js";
 
 export type Surface = "prompt" | "workflow" | "rules";
-export type Mode = "required" | "where-used" | "forbidden" | "if-verdict";
+export type Mode =
+  "required" | "where-used" | "repeatable" | "forbidden" | "if-verdict" | "if-bash";
+export type Position = "first" | "header" | "last";
 
 export interface Clause {
   name: string;
@@ -28,9 +30,9 @@ export interface Clause {
   modes: Partial<Record<Surface, Mode>>;
   /** File basenames (no `.md`) that word this clause differently. */
   except: Set<string>;
-  /** Header-line position contract for prompts and workflows. */
-  position?: "first" | "last";
-  /** Slotted clause only: a line holding the fixed text before the first slot must match the whole template. */
+  /** Header line for prompts and workflows, in wording-file order among positioned clauses; first / last also open / close the labelled lines. */
+  position?: Position;
+  /** Slotted clause only: a line holding the fixed text before the first slot must match one of the templates. */
   anchored: boolean;
 }
 
@@ -56,7 +58,15 @@ export const NEAR_COPY = 0.8;
 export const SHARED_MIN = 5;
 
 const SURFACES: readonly Surface[] = ["prompt", "workflow", "rules"];
-const MODES: readonly Mode[] = ["required", "where-used", "forbidden", "if-verdict"];
+const MODES: readonly Mode[] = [
+  "required",
+  "where-used",
+  "repeatable",
+  "forbidden",
+  "if-verdict",
+  "if-bash",
+];
+const POSITIONS: readonly Position[] = ["first", "header", "last"];
 const VERDICT_END = "<!-- verdict:end -->";
 const SLOT = /\{\{([A-Za-z][\w-]*)(\?)?\}\}/g;
 const LABEL = /^\*\*[^*]+:\*\* /;
@@ -90,10 +100,10 @@ export function parseWording(md: string): Clause[] {
       } else if (key === "except") {
         for (const f of value.split(",")) clause.except.add(f.trim());
       } else if (key === "position") {
-        if (value !== "first" && value !== "last") {
-          throw new Error(`[bkit-wording] ${name}: position must be first or last`);
+        if (!(POSITIONS as readonly string[]).includes(value)) {
+          throw new Error(`[bkit-wording] ${name}: position must be first, header, or last`);
         }
-        clause.position = value;
+        clause.position = value as Position;
       } else if (key === "anchored") {
         clause.anchored = value === "yes";
       } else {
@@ -191,6 +201,30 @@ export function proseLineIndexes(file: WordingFile): number[] {
   return out;
 }
 
+/** Tool names in the front matter `tools:` list, inline (`[a, b]`) or block (`- a`) form. */
+export function toolsOf(content: string): string[] {
+  const lines = content.split("\n");
+  if (lines[0] !== "---") return [];
+  const close = lines.indexOf("---", 1);
+  const front = lines.slice(1, close === -1 ? 1 : close);
+  const at = front.findIndex((l) => /^tools:/.test(l));
+  if (at === -1) return [];
+  const inline = /^tools:[ \t]*\[(.*)\][ \t]*$/.exec(front[at]!);
+  if (inline) {
+    return inline[1]!
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+  }
+  const tools: string[] = [];
+  for (const line of front.slice(at + 1)) {
+    if (/^\S/.test(line)) break;
+    const item = /^[ \t]+-[ \t]+(\S+)/.exec(line);
+    if (item) tools.push(item[1]!);
+  }
+  return tools;
+}
+
 // ---------------------------------------------------------------------------
 // Matching
 // ---------------------------------------------------------------------------
@@ -219,7 +253,9 @@ export function compileText(text: string): Compiled {
     slots.push(m[1]!);
     last = m.index! + m[0].length;
   }
-  source += escapeRe(text.slice(last));
+  const tail = text.slice(last);
+  // A closing `.` also matches `;`: the line continues the sentence with local text.
+  source += tail.endsWith(".") ? `${escapeRe(tail.slice(0, -1))}[.;]` : escapeRe(tail);
   const first = text.search(SLOT);
   const compiled = {
     re: new RegExp(source, "g"),
@@ -237,9 +273,10 @@ const countIn = (line: string, c: Compiled) => [...line.matchAll(c.re)].length;
 export const stripLinePrefix = (line: string) =>
   line.replace(/^[ \t]*(?:>[ \t]?)?(?:[ \t]*(?:[-*]|\d+\.)[ \t]+)?/, "");
 
+/** Split after `.` or `;` (bold close allowed between), never after `e.g.`; the punctuation stays on the sentence. */
 export const splitSentences = (s: string) =>
   s
-    .split(/(?<!\be\.g\.)(?<=\.\**)\s+(?=\S)/)
+    .split(/(?<!\be\.g\.)(?<=[.;]\**)\s+(?=\S)/)
     .map((x) => x.trim())
     .filter(Boolean);
 
@@ -265,8 +302,9 @@ export function similarity(a: string, b: string): number {
 function modeFor(clause: Clause, file: WordingFile): Mode | undefined {
   if (clause.except.has(file.name)) return undefined;
   const mode = clause.modes[file.surface];
-  if (mode !== "if-verdict") return mode;
-  return file.content.includes(VERDICT_END) ? "required" : "forbidden";
+  if (mode === "if-verdict") return file.content.includes(VERDICT_END) ? "required" : "forbidden";
+  if (mode === "if-bash") return toolsOf(file.content).includes("Bash") ? "required" : "forbidden";
+  return mode;
 }
 
 interface NearCopy {
@@ -282,37 +320,64 @@ function nearCopies(
   line: string,
   allTexts: Set<string>,
 ): NearCopy[] {
-  if (clause.texts.some((t) => line.includes(t))) return [];
+  if (clause.texts.some((t) => countIn(line, compileText(t)) > 0)) return [];
   const sentences = splitSentences(stripLinePrefix(line));
   const out: NearCopy[] = [];
   for (const canonical of clause.texts) {
     if (compileText(canonical).slotted) continue;
     const k = splitSentences(canonical).length;
-    for (let i = 0; i + k <= sentences.length; i++) {
-      let found = sentences.slice(i, i + k).join(" ");
-      // An unlabelled clause can sit behind any surface's own label
-      // (`**Tools:**` in a prompt, `**Verify tools:**` in rules): compare the text only.
-      if (!canonical.startsWith("**")) found = found.replace(LABEL, "");
-      if (allTexts.has(found)) continue;
-      if (similarity(found, canonical) >= NEAR_COPY) out.push({ line: lineIdx, found, canonical });
+    const cw = canonical.split(/\s+/).length;
+    // A drift can add or drop a sentence break (`;` turned into `,`): try one sentence fewer and more.
+    for (let i = 0; i < sentences.length;) {
+      let best: { found: string; size: number; score: number } | undefined;
+      for (let size = Math.max(1, k - 1); size <= k + 1 && i + size <= sentences.length; size++) {
+        let window = sentences.slice(i, i + size).join(" ");
+        // An unlabelled clause can sit behind any surface's own label
+        // (`**Tools:**` in a prompt, `**Verify tools:**` in rules): compare the text only.
+        if (!canonical.startsWith("**")) window = window.replace(LABEL, "");
+        // A clause can close a sentence that opens with local text (`**If** {cond} → {clause}`): also compare the tail.
+        const words = window.split(/\s+/);
+        const candidates = [window];
+        for (const n of [cw - 1, cw, cw + 1]) {
+          if (n > 0 && n < words.length) candidates.push(words.slice(-n).join(" "));
+        }
+        for (const found of candidates) {
+          if (allTexts.has(found)) continue;
+          const score = similarity(found, canonical);
+          if (score >= NEAR_COPY && (!best || score > best.score)) best = { found, size, score };
+        }
+      }
+      if (!best) {
+        i++;
+        continue;
+      }
+      out.push({ line: lineIdx, found: best.found, canonical });
+      i += best.size;
     }
   }
   return out;
 }
 
-/** Labelled header lines in file order: the CAUTION block through to the body. */
-export function headerLabels(content: string): string[] {
+/** Header line indexes in file order: the CAUTION block through to the body. */
+export function headerLines(content: string): number[] {
   const lines = content.split("\n");
   const start = lines.findIndex((l) => l.startsWith("> [!CAUTION]"));
   if (start === -1) return [];
-  const labels: string[] = [];
+  const out: number[] = [];
   for (let i = start; i < lines.length; i++) {
     const line = lines[i]!;
     if (line === "---" || /^\*\*/.test(line)) break;
-    const label = line.match(/^> (?:- )?\*\*([^*]+):\*\*/)?.[1];
-    if (label && label !== "EXECUTION PROTOCOL") labels.push(label);
+    out.push(i);
   }
-  return labels;
+  return out;
+}
+
+/** Labelled header lines in file order, EXECUTION PROTOCOL excluded. */
+export function headerLabels(content: string): string[] {
+  const lines = content.split("\n");
+  return headerLines(content)
+    .map((i) => lines[i]!.match(/^> (?:- )?\*\*([^*]+):\*\*/)?.[1])
+    .filter((l): l is string => l !== undefined && l !== "EXECUTION PROTOCOL");
 }
 
 // ---------------------------------------------------------------------------
@@ -328,16 +393,17 @@ export function checkWording(clauses: Clause[], files: WordingFile[]): Finding[]
     const lines = file.content.split("\n");
     const prose = proseLineIndexes(file);
     const labels = file.surface === "rules" ? [] : headerLabels(file.content);
+    const header = new Set(file.surface === "rules" ? [] : headerLines(file.content));
+    const positioned: { clause: Clause; line: number }[] = [];
+    const at = (i: number | undefined) => (i === undefined ? undefined : i + 1);
     for (const clause of clauses) {
       const mode = modeFor(clause, file);
       if (mode === undefined) continue;
       const forms = compiled.get(clause)!;
-      const hits = prose.filter((i) => forms.some((c) => countIn(lines[i]!, c) > 0));
-      const count = prose.reduce(
-        (n, i) => n + forms.reduce((m, c) => m + countIn(lines[i]!, c), 0),
-        0,
-      );
-      const at = (i: number | undefined) => (i === undefined ? undefined : i + 1);
+      // Forms can overlap (a slotted form may also fit another's line): a line counts once per instance.
+      const perLine = (i: number) => Math.max(...forms.map((c) => countIn(lines[i]!, c)));
+      const hits = prose.filter((i) => perLine(i) > 0);
+      const count = hits.reduce((n, i) => n + perLine(i), 0);
       if (mode === "forbidden" && count > 0) {
         findings.push({
           file: file.id,
@@ -353,7 +419,7 @@ export function checkWording(clauses: Clause[], files: WordingFile[]): Finding[]
           problem: `missing; add: ${clause.texts[0]}`,
         });
       }
-      if (mode !== "forbidden" && count > 1) {
+      if ((mode === "required" || mode === "where-used") && count > 1) {
         findings.push({
           file: file.id,
           line: at(hits[1]),
@@ -383,39 +449,84 @@ export function checkWording(clauses: Clause[], files: WordingFile[]): Finding[]
             });
           }
         }
-        if (clause.anchored) {
-          for (const c of forms) {
-            if (c.slotted && line.includes(c.prefix) && countIn(line, c) === 0) {
-              findings.push({
-                file: file.id,
-                line: i + 1,
-                clause: clause.name,
-                problem: `does not match the template: ${clause.texts[0]}`,
-              });
-            }
-          }
+        if (
+          clause.anchored &&
+          forms.some((c) => c.slotted && line.includes(c.prefix)) &&
+          perLine(i) === 0
+        ) {
+          const templates = clause.texts.filter((t) => compileText(t).slotted);
+          findings.push({
+            file: file.id,
+            line: i + 1,
+            clause: clause.name,
+            problem: `does not match the template${templates.length > 1 ? "s" : ""}: ${templates.join(" | ")}`,
+          });
         }
       }
 
       if (clause.position && count > 0 && file.surface !== "rules") {
+        positioned.push({ clause, line: hits[0]! });
         const label = clause.texts[0]!.match(/^\*\*([^*]+):\*\*/)?.[1];
-        const want = clause.position === "first" ? labels[0] : labels[labels.length - 1];
-        if (label && want !== label) {
+        const edge = clause.position === "first" ? labels[0] : labels[labels.length - 1];
+        if (clause.position !== "header" && label && edge !== label) {
           findings.push({
             file: file.id,
             clause: clause.name,
-            problem: `must be the ${clause.position} labelled header line; found "${want ?? "none"}"`,
+            problem: `must be the ${clause.position} labelled header line; found "${edge ?? "none"}"`,
           });
         }
       }
+    }
+
+    // Positioned clauses keep wording-file order inside the header.
+    let prev: { clause: Clause; line: number } | undefined;
+    for (const p of positioned) {
+      if (!header.has(p.line)) {
+        findings.push({
+          file: file.id,
+          line: at(p.line),
+          clause: p.clause.name,
+          problem: "must be a header line",
+        });
+        continue;
+      }
+      if (prev && p.line < prev.line) {
+        findings.push({
+          file: file.id,
+          line: at(p.line),
+          clause: p.clause.name,
+          problem: `header order: must come after ${prev.clause.name}`,
+        });
+      }
+      prev = p;
     }
   }
   return findings.concat(unlistedShared(clauses, files));
 }
 
+/** Could two sentences be NEAR_COPY-similar? Cheap word-count and shared-word bounds before `similarity`. */
+function nearCandidate(a: string[], b: string[]): boolean {
+  const longer = Math.max(a.length, b.length);
+  const need = Math.ceil(NEAR_COPY * longer);
+  if (Math.min(a.length, b.length) < need) return false;
+  const pool = new Map<string, number>();
+  for (const w of b) pool.set(w, (pool.get(w) ?? 0) + 1);
+  let shared = 0;
+  for (const w of a) {
+    const n = pool.get(w) ?? 0;
+    if (n > 0) {
+      shared++;
+      pool.set(w, n - 1);
+    }
+  }
+  return shared >= need;
+}
+
 /**
  * Sentences shared by SHARED_MIN or more prompts that no clause covers. The cut-off
- * is the rule for what belongs in the wording file.
+ * is the rule for what belongs in the wording file. A sentence ending its line and
+ * the same sentence continued with `;` count as one. Near-copies count toward the
+ * cut-off, so one drifted copy cannot hide a sentence the other prompts share.
  */
 export function unlistedShared(clauses: Clause[], files: WordingFile[]): Finding[] {
   const forms = clauses.flatMap((c) => c.texts.map(compileText));
@@ -425,20 +536,39 @@ export function unlistedShared(clauses: Clause[], files: WordingFile[]): Finding
     for (const i of proseLineIndexes(file)) {
       let rest = stripLinePrefix(lines[i]!);
       for (const c of forms) rest = rest.replace(c.re, "\u0000");
-      for (const s of splitSentences(rest)) {
+      for (const sentence of splitSentences(rest)) {
+        const s = sentence.replace(/[.;]$/, "");
         if (s.includes("\u0000") || s.split(/\s+/).length < 3) continue;
         if (!seen.has(s)) seen.set(s, new Set());
         seen.get(s)!.add(file.id);
       }
     }
   }
-  return [...seen]
-    .filter(([, ids]) => ids.size >= SHARED_MIN)
-    .map(([s, ids]) => ({
+  const words = new Map([...seen.keys()].map((s) => [s, s.split(/\s+/)]));
+  const reported = new Set<string>();
+  const findings: Finding[] = [];
+  // Seeds: sentences in 2+ prompts, widest first, so a group is reported once under its most-copied wording.
+  const seeds = [...seen].filter(([, ids]) => ids.size >= 2).sort((a, b) => b[1].size - a[1].size);
+  for (const [seed, ids] of seeds) {
+    if (reported.has(seed)) continue;
+    const near = [...seen.keys()].filter(
+      (s) =>
+        s !== seed &&
+        !reported.has(s) &&
+        nearCandidate(words.get(seed)!, words.get(s)!) &&
+        similarity(seed, s) >= NEAR_COPY,
+    );
+    const group = new Set([...ids, ...near.flatMap((s) => [...seen.get(s)!])]);
+    if (group.size < SHARED_MIN) continue;
+    for (const s of [seed, ...near]) reported.add(s);
+    const drifted = near.length > 0 ? `, ${group.size - ids.size} as near-copies` : "";
+    findings.push({
       file: [...ids][0]!,
       clause: "(none)",
-      problem: `shared by ${ids.size} prompts but not in .bkit/wording.md: "${s}"`,
-    }));
+      problem: `shared by ${group.size} prompts${drifted} but not in .bkit/wording.md: "${seed}"`,
+    });
+  }
+  return findings;
 }
 
 // ---------------------------------------------------------------------------
@@ -459,7 +589,10 @@ export function syncWording(clauses: Clause[], files: WordingFile[]): Map<string
           const from = compileText(old);
           lines[i] = lines[i]!.replace(from.re, (...groups) => {
             const bySlot = new Map(from.slots.map((s, n) => [s, String(groups[n + 1])]));
-            return clause.texts[0]!.replace(SLOT, (_, slot: string) => bySlot.get(slot) ?? "");
+            const out = clause.texts[0]!.replace(SLOT, (_, slot: string) => bySlot.get(slot) ?? "");
+            return String(groups[0]).endsWith(";") && out.endsWith(".")
+              ? `${out.slice(0, -1)};`
+              : out;
           });
         }
         if (target.slotted) continue;

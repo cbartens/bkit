@@ -15,7 +15,7 @@
 > - **Never log PII.** Scrub sensitive fields at the source.
 > - Observability never blocks business logic.
 
-## Debug Fetch
+## Context Fetch
 
 Failure-evidence fetching for `/bkit-debug` (`context-fetch:*` blocks + cloud CLI provisioning) → configure in `.agents/context.md`. Ready-made blocks, one file per provider: `.bkit/templates/context/` (`.bkit/templates.md` § Context-fetch blocks). Author and enable each context there — `ci`, `diff`, `e2e`, `runtime` (default) and the optional `web`. bkit hardcodes no CI host, workflow filename, branch name or e2e framework; a context with no enabled block is fetched for no run and reported `NOT CONFIGURED` every attempt. The `context=web` search host ships in bkit's egress registry, so it needs no declaration; a block whose host is unreachable anyway self-skips → external signal `UNCHECKED`, never "no known upstream issue".
 
@@ -46,7 +46,7 @@ One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `
 
 Compliance grader stderr. Canonical grep patterns:
 
-- `[bkit-comply] grader unavailable, skipping` — grader unavailable (missing `dist/`, crash, non-zero `bkit comply`). Fail-open: `"$BKIT" comply --phase={p} || echo "[bkit-comply] grader unavailable, skipping"` → exit 0. Runs at the close a `bkit workflows close` `complyNeeded` asks for.
+- `[bkit-comply] grader unavailable, skipping` — grader unavailable (missing `dist/`, crash, non-zero `bkit comply`). Fail-open: `"$BKIT" comply --phase={p} || echo "[bkit-comply] grader unavailable, skipping"` → exit 0. Runs in the close block, before `bkit workflows close`, whose report carries the grade.
 - `[bkit-comply] append failed: {path}` — compliance row append to `.bkit/stats.jsonl` failed (best-effort; exit 0).
 - `[bkit-comply] internal error: {message}` — unhandled throw in dispatch (try/catch per DE-34; exit 0).
 
@@ -88,7 +88,7 @@ Compliance grader stderr. Canonical grep patterns:
 - `[bkit-roadmap] append failed: {path}` — ledger row append to `.bkit/issues.jsonl` failed (best-effort; exit 0).
 - `[bkit-roadmap] could not write {path} — board left as-is (fail-open): {reason}` — `written` false.
 - `[bkit-roadmap] .bkit/issues.jsonl: N malformed line(s) skipped` — one bad line skips only that row.
-- `[bkit-roadmap] {message}` — fold bootstrap/self-heal/hint lines, including the empty-ledger `bkit telemetry migrate` hint before the migration has run.
+- `[bkit-roadmap] {message}` — fold bootstrap/self-heal lines.
 - `[bkit-roadmap] dev lock busy — skipping dev-side roadmap mirror (feat-side row already written)` / `dev push failed — feat-side row already written` — build / debug dev-side mirror fail-open.
 
 ### `[bkit-runs]` prefix — ship merge gate
@@ -162,7 +162,7 @@ Phase 3 detects missing/misconfigured `BKIT_GH_TOKEN_INSTALL` at four surfaces; 
 | --- | --- |
 | `detectShellToken` | Local shell env var |
 | `detectNpmrcAuth` | `.npmrc` `@cbartens` registry mapping (token lives in pnpm user-level config, not here) |
-| `detectNpmrcLegacyAuthToken` | `.npmrc` legacy `_authToken` line — migration nudge (401s on pnpm >=10.34.3) |
+| `detectNpmrcAuthTokenLine` | `.npmrc` `_authToken` line (401s on pnpm >=10.34.3) |
 | `detectGhSecret` | GitHub Actions secret |
 | `detectCiYmlMissingTokenEnv` | `ci.yml` install step lacks the token `env:` wiring — blocker when `.npmrc` authenticates to GH Packages but the step is unwired |
 | `detectVercelEnv` | Vercel preview and production env vars |

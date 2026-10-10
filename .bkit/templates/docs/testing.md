@@ -51,7 +51,7 @@ Graph **flat and wide** for static/unit/build/integration: scope fans out; capst
                                    && migration != 'failure' && reset != 'failure'
 ```
 
-Adopt only lanes your repo has. Add a lane the moment its tier exists — a tier with no lane is a tier nothing gates. The jobs above the reference in `ci.yml` are the starter. The reference is the target. A starter stub that still sits inside `bkit-tests-unit` is the pre-split shape.
+Adopt only lanes your repo has. Add a lane the moment its tier exists — a tier with no lane is a tier nothing gates. The jobs above the reference in `ci.yml` are the starter: `bkit-tests-static` and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone `/bkit-ship` merges on. Every lane you add joins the capstone's `needs:` and its assert. The reference is the target. A starter stub that still sits inside `bkit-tests-unit` is the pre-split shape.
 
 Adopt in this order. Stop at the first tier this repo does not have. You write the step bodies; these files name the job, the `needs`, the `if`, and the rule.
 

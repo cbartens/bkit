@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { validate } from "../../bkit-telemetry";
 import { runCommand } from "../lib";
 import { locksCommand } from "./locks";
-import { legacyEvents, workflowsCommand } from "./workflows";
+import { workflowsCommand } from "./workflows";
 
 // Real git repos and worktrees per test; a busy machine needs more than the default 5s.
 vi.setConfig({ testTimeout: 30_000 });
@@ -73,7 +73,6 @@ const wf = (verb: string, workflow: string, ...extra: string[]) => [
   `--fid=${FID}`,
   ...extra,
 ];
-const sha = (n: number) => String(n).padStart(40, "0");
 
 // ---------------------------------------------------------------------------
 
@@ -82,7 +81,7 @@ describe("bkit workflows start", () => {
     const cwd = repo();
     const r = await run(cwd, wf("start", "build"));
     expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ resumed: false, migrated: false, run: 1 });
+    expect(r.json).toMatchObject({ resumed: false, run: 1 });
     expect(r.json.lock.month).toBe(M);
     expect(fs.existsSync(r.json.lock.path)).toBe(true);
     expect(rows(statusOf(cwd))).toEqual([
@@ -170,48 +169,8 @@ describe("bkit workflows start", () => {
     expect((await run(cwd, wf("start", "design", "--token=abc"))).code).toBe(2);
   });
 
-  it("rewrites a legacy status.json as status.jsonl first", async () => {
-    const cwd = repo();
-    const step = {
-      step: "build-x",
-      status: "DONE",
-      at: "2026-07-01T00:10:00Z",
-      parentSha: sha(1),
-      artifacts: [],
-    };
-    write(
-      cwd,
-      `${REL}/status.json`,
-      JSON.stringify([
-        { workflow: "build", startedAt: "2026-07-01T00:00:00Z", status: "DONE", steps: [step] },
-      ]),
-    );
-    const r = await run(cwd, wf("start", "build"));
-    expect(r.json).toMatchObject({ migrated: true, run: 2 });
-    expect(rows(statusOf(cwd)).slice(0, 3)).toEqual([
-      { type: "workflow-started", workflow: "build", at: "2026-07-01T00:00:00Z" },
-      { type: "step-done", workflow: "build", ...step },
-      { type: "workflow-done", workflow: "build", at: "2026-07-01T00:10:00Z" },
-    ]);
-  });
-
   it("rejects an unknown workflow", async () => {
     expect((await run(repo(), wf("start", "deploy"))).code).toBe(2);
-  });
-});
-
-describe("legacyEvents", () => {
-  it("emits no closing row for an IN_PROGRESS run, and FAILED ends at its start without steps", () => {
-    expect(
-      legacyEvents([
-        { workflow: "a", startedAt: "t1", status: "IN_PROGRESS", steps: [] },
-        { workflow: "b", startedAt: "t2", status: "FAILED", steps: [] },
-      ]),
-    ).toEqual([
-      { type: "workflow-started", workflow: "a", at: "t1" },
-      { type: "workflow-started", workflow: "b", at: "t2" },
-      { type: "workflow-failed", workflow: "b", at: "t2" },
-    ]);
   });
 });
 

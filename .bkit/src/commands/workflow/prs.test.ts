@@ -117,6 +117,7 @@ async function run(cwd: string, argv: string[]) {
 // ---------------------------------------------------------------------------
 
 describe("bkit prs open", () => {
+  const GH = { issueTracker: "github" };
   const open = (cwd: string, ...extra: string[]) =>
     run(cwd, ["prs", "open", "--fid=12-x", "--title=feat(12-x): thing", ...extra]);
 
@@ -175,12 +176,11 @@ describe("bkit prs open", () => {
     ["linear", "12-x", "ABC-1"],
     ["none", "-x", undefined],
   ])("refuses a %s marker with fid %j issue %j (exit 2)", async (tracker, fid, issue) => {
-    const cwd = repo();
+    const cwd = repo("feat/12-x", { issueTracker: tracker });
     const r = await run(cwd, [
       "prs",
       "open",
       `--fid=${fid}`,
-      `--tracker=${tracker}`,
       "--title=t",
       ...(issue === undefined ? [] : [`--issue=${issue}`]),
     ]);
@@ -191,12 +191,11 @@ describe("bkit prs open", () => {
   it.each([["[skip ci]"], ["[CI SKIP]"], ["[no ci]"], ["[skip actions]"], ["[actions skip]"]])(
     "refuses a title carrying %s before calling gh (exit 4)",
     async (token) => {
-      const cwd = repo();
+      const cwd = repo("feat/12-x", GH);
       const r = await run(cwd, [
         "prs",
         "open",
         "--fid=12-x",
-        "--tracker=github",
         "--issue=12",
         `--title=feat: x ${token}`,
       ]);
@@ -208,46 +207,44 @@ describe("bkit prs open", () => {
 
   it("refuses a PR from dev, main, or the base itself", async () => {
     for (const head of ["dev", "main"]) {
-      const r = await open(repo(), "--tracker=github", "--issue=12", `--head=${head}`);
+      const r = await open(repo("feat/12-x", GH), "--issue=12", `--head=${head}`);
       expect(r.code).toBe(2);
     }
-    expect(
-      (await open(repo(), "--tracker=github", "--issue=12", "--base=x", "--head=x")).code,
-    ).toBe(2);
+    expect((await open(repo("feat/12-x", GH), "--issue=12", "--base=x", "--head=x")).code).toBe(2);
   });
 
   it("exits 3 when the branch already has an open PR, and reuses it with --existing=reuse", async () => {
-    const cwd = repo();
+    const cwd = repo("feat/12-x", GH);
     gh.list([pr()]);
-    const fail = await open(cwd, "--tracker=github", "--issue=12");
+    const fail = await open(cwd, "--issue=12");
     expect(fail.code).toBe(3);
     expect(fail.json.number).toBe(7);
-    const reuse = await open(cwd, "--tracker=github", "--issue=12", "--existing=reuse");
+    const reuse = await open(cwd, "--issue=12", "--existing=reuse");
     expect(reuse.code).toBe(0);
     expect(reuse.json).toMatchObject({ created: false, number: 7 });
     expect(gh.calls().some((c) => c.startsWith("pr create"))).toBe(false);
   });
 
   it("retries a failed create once, and exits 5 when it fails twice", async () => {
-    const cwd = repo();
+    const cwd = repo("feat/12-x", GH);
     gh.view(pr());
     gh.createFails(1);
-    expect((await open(cwd, "--tracker=github", "--issue=12")).json.created).toBe(true);
+    expect((await open(cwd, "--issue=12")).json.created).toBe(true);
     gh.createFails(2);
-    const r = await open(cwd, "--tracker=github", "--issue=12");
+    const r = await open(cwd, "--issue=12");
     expect(r.code).toBe(5);
     expect(r.err).toContain("failed twice");
   });
 
   it("exits 5 when the open-PR probe errors", async () => {
     gh.exit("list", 1);
-    expect((await open(repo(), "--tracker=github", "--issue=12")).code).toBe(5);
+    expect((await open(repo("feat/12-x", GH), "--issue=12")).code).toBe(5);
   });
 
   it("exits 80 with the title and body when gh needs auth (exit 4) or is missing", async () => {
-    const cwd = repo();
+    const cwd = repo("feat/12-x", GH);
     gh.exit("list", 4);
-    const auth = await open(cwd, "--tracker=github", "--issue=12");
+    const auth = await open(cwd, "--issue=12");
     expect(auth.code).toBe(80);
     expect(auth.json).toMatchObject({
       useMcp: true,
@@ -259,14 +256,14 @@ describe("bkit prs open", () => {
     });
 
     process.env.PATH = tmp("bkit-prs-empty-path-");
-    const missing = await open(cwd, "--tracker=github", "--issue=12", "--head=feat/12-x");
+    const missing = await open(cwd, "--issue=12", "--head=feat/12-x");
     expect(missing.code).toBe(80);
     expect(missing.json.useMcp).toBe(true);
   });
 
   it("exits 6 when the created PR's base is not --base", async () => {
     gh.view(pr({ baseRefName: "main" }));
-    const r = await open(repo(), "--tracker=github", "--issue=12");
+    const r = await open(repo("feat/12-x", GH), "--issue=12");
     expect(r.code).toBe(6);
     expect(r.json.base).toBe("main");
   });
@@ -424,7 +421,7 @@ const fallbackRow = {
   type: "transport-fallback",
   from: "gh pr merge",
   to: "merge_pull_request",
-  reason: "RUNTIME_GITHUBCLI=false",
+  reason: "runtimeGithubCli=false",
   assertedBy: "pull_request_read",
   at: "2026-07-24T00:01:00Z",
 };

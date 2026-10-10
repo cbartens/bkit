@@ -8,7 +8,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { isTemplate } from "./bkit-modules";
 import { listFilesRecursive, remapTemplateDest } from "./bkit-install";
-import { BKIT_GATE_SCRIPTS, LINT_PROSE_SCRIPT, SLOP_DELTA_SCRIPT } from "./bkit-manifest";
+import { BKIT_GATE_SCRIPTS } from "./bkit-manifest";
 
 const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/ci.yml");
 const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/.prettierignore");
@@ -505,9 +505,8 @@ describe(".bkit/templates.md gate tool scripts (consumers copy and run them)", (
   const block = /```json\n([\s\S]*?)\n```/.exec(section);
   const scripts = JSON.parse(block?.[1] ?? "{}") as Record<string, string>;
 
-  it("lists the same lint:prose and slop:delta values install re-points legacy copies to", () => {
-    expect(scripts["lint:prose"]).toBe(LINT_PROSE_SCRIPT);
-    expect(scripts["slop:delta"]).toBe(SLOP_DELTA_SCRIPT);
+  it("lists slop:delta as the bkit ci slop verb", () => {
+    expect(scripts["slop:delta"]).toBe("bkit ci slop");
   });
 
   it("lists the lint value this repo runs", () => {

@@ -170,7 +170,6 @@ export const runtimeCommand = {
             summary: "Detect, then build the runtime-resolved row (and append it with --file).",
             flags: [
                 WORKFLOW_FLAG,
-                { name: "at", type: "string", help: "row timestamp (default: now, UTC whole seconds)" },
                 {
                     name: "base-sha",
                     type: "string",
@@ -184,10 +183,9 @@ export const runtimeCommand = {
             },
             run: (ctx) => {
                 const workflow = String(ctx.flags.workflow);
-                const at = str(ctx.flags.at) ?? statusTimestamp();
-                if (workflow === "" || at === "") {
-                    throw new CommandError(EXIT.USAGE, "--workflow and --at must be non-empty");
-                }
+                const at = statusTimestamp();
+                if (workflow === "")
+                    throw new CommandError(EXIT.USAGE, "--workflow must be non-empty");
                 const root = repoRoot(ctx.cwd);
                 const row = runtimeRow(detect(ctx.cwd, root, ctx.log), {
                     workflow,

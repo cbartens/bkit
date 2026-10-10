@@ -36,8 +36,8 @@ export const MAX_ROWS_BEFORE_ROLLUP = 5000;
 //
 // NOT package.json `name` — that is an npm package name, not a slug
 // (`@cbartens/bkit` vs `cbartens/bkit`). NOT the filesystem path — that makes the
-// "owner" a folder on whoever's laptop ran the tool (`GitHub/app-gether-life`,
-// or `code/app-gether-life` after they reorganise).
+// "owner" a folder on whoever's laptop ran the tool (`GitHub/my-app`, or
+// `code/my-app` after they reorganise).
 // ---------------------------------------------------------------------------
 
 /**
@@ -148,7 +148,7 @@ export interface TelemetryEnvelope {
   /**
    * Free-form related context: any pointer that helps a reader place this row —
    * feature ids, tracker ids (`BAR-217`), PRs, commit SHAs, file paths, sibling
-   * `ts`, a migrated row's ledger id (`KN-14`, `DE-7`). Every entry is a pointer,
+   * `ts`, a ledger id (`KN-14`, `DE-7`). Every entry is a pointer,
    * never an identity: `ts` (with `key` for instinct-loop kinds) identifies the row.
    */
   references?: string[];
@@ -195,12 +195,12 @@ export const VALID_KINDS: Set<string> = new Set([
  * The SAME vocabulary the challenge prompts assign to their findings;
  * `@bkit-build-challenge-remediate` passes a blocked finding's severity straight
  * through to its deferral row. NOT the preflight `blocker`/`advisory` scale (that
- * gates `bkit install`), and NOT the legacy `.md` ledgers' `critical|normal|low` scale.
+ * gates `bkit install`).
  *
  * Absent on machine-generated kinds (compliance / outcome / counter) and on
  * knowledge / decision, which have no triage severity.
  */
-export type TelemetrySeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+type TelemetrySeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 
 export const VALID_SEVERITIES: Set<string> = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
 
@@ -339,8 +339,8 @@ export interface CoverageStats {
 export interface OutcomePayload {
   /**
    * Parent commit SHA of the run — the run's identity anchor (shared with the
-   * `compliance` / `counter` rows written in the same close). Optional for
-   * back-compat with pre-generalization ship rows that keyed off `prNumber`.
+   * `compliance` / `counter` rows written in the same close). Optional: ship rows
+   * written without it are keyed by `prNumber`.
    */
   parentSha?: string;
   /** Ship-only: the merged PR number. Absent on design/plan/build/debug runs. */
@@ -508,7 +508,7 @@ export interface KnowledgePayload {
 }
 
 // decision — keyed by explicit `key` field (P5)
-export interface DecisionPayload {
+interface DecisionPayload {
   summary: string;
   description?: string;
   rationale?: string;
@@ -522,7 +522,7 @@ export interface DecisionPayload {
 // at every one of the five phase closes (design/plan/build/debug/ship) —
 // same-`key` append, last-write-wins fold gives the current phase.
 export interface FeaturePayload {
-  /** DOMAIN category (shared vocabulary with deferral/failure), NOT completed.md's legacy product-shaped set. */
+  /** DOMAIN category (shared vocabulary with deferral/failure). */
   category: string;
   /** Short title. `description` carries the prose. */
   summary?: string;
@@ -534,7 +534,7 @@ export interface FeaturePayload {
    *
    * `ts` is append time and MUST be minted at append (§ Write Idiom). `shippedAt` is
    * not part of the row identity, so it MAY carry a historic literal: an issue's
-   * `closed_at`, or a migrated `docs/completed.md` entry's own date. The board's
+   * `closed_at`, or a merge-commit date. The board's
    * Shipped section ranks on `shippedAt // ts`.
    *
    * Optional. A live phase close can omit it — there `ts` already IS the ship
@@ -571,8 +571,8 @@ export function identity(event: TelemetryEvent): string {
       return `compliance ${event.repo} ${event.workflow} ${event.parentSha} ${event.rule}`;
     case "outcome": {
       // One run row per workflow run: keyed by (repo, workflow, parentSha).
-      // Back-compat: pre-generalization ship rows carry no parentSha, so fall
-      // back to prNumber (then ts) — old ship rows stay uniquely keyed per PR.
+      // A ship row with no parentSha falls back to prNumber (then ts), so it stays
+      // uniquely keyed per PR.
       const anchor =
         event.parentSha ?? (event.prNumber !== undefined ? `pr${event.prNumber}` : `ts${event.ts}`);
       return `outcome ${event.repo} ${event.workflow} ${anchor}`;
@@ -657,7 +657,7 @@ export function validate(event: unknown): ValidationResult {
 
   // status — triage ladder on the SEVERITY_KINDS trio, ACTIVE/SUPERSEDED lifecycle on
   // decision and knowledge, absent elsewhere. Optional: absent = ACTIVE on that lifecycle.
-  // Enforced on write only; `parse` stays tolerant so legacy free-text statuses still read.
+  // Enforced on write only; `parse` stays tolerant so a free-text status row still reads.
   if (SEVERITY_KINDS.has(kind)) {
     if (e["status"] !== undefined && !TRIAGE_STATUSES.has(e["status"] as string)) {
       return {
@@ -729,7 +729,7 @@ export function validate(event: unknown): ValidationResult {
     if (e["prNumber"] !== undefined && typeof e["prNumber"] !== "number") {
       return { ok: false, reason: "outcome prNumber must be a number when present" };
     }
-    // parentSha — the run's identity anchor; optional (absent on legacy ship rows).
+    // parentSha — the run's identity anchor; optional (absent on some ship rows).
     if (e["parentSha"] !== undefined && typeof e["parentSha"] !== "string") {
       return { ok: false, reason: "outcome parentSha must be a string when present" };
     }
@@ -834,7 +834,7 @@ export function parse(raw: string): ParseResult {
 export type FoldedState = Map<string, TelemetryEvent>;
 
 /**
- * `ts` as a sortable number. Legacy rows carry an ISO-string `ts` or none at all:
+ * `ts` as a sortable number. A row may carry an ISO-string `ts` or none at all:
  * ISO strings parse; anything else sorts oldest.
  */
 function tsOrder(ts: unknown): number {
@@ -846,7 +846,7 @@ function tsOrder(ts: unknown): number {
   return Number.NEGATIVE_INFINITY;
 }
 
-/** Ascending `ts` comparator that stays consistent on legacy rows. Ties keep input order. */
+/** Ascending `ts` comparator that stays consistent on string-`ts` and `ts`-less rows. Ties keep input order. */
 export function compareTs(a: { ts: unknown }, b: { ts: unknown }): number {
   const x = tsOrder(a.ts);
   const y = tsOrder(b.ts);

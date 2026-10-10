@@ -364,8 +364,8 @@ describe("slop-scan resolution and summary reading", () => {
   });
 });
 
-// The behaviour cases of bkit-slop-delta-gate.integration.test.ts, against the real
-// slop-scan this repo installs, end to end through the command.
+// Behaviour cases against the real slop-scan this repo installs, end to end
+// through the command.
 describe("bkit ci slop — real slop-scan", () => {
   const CLEAN = "export function load(p: string) {\n  return JSON.parse(p);\n}\n";
   const EMPTY_CATCH = "export function risky() {\n  try {\n    doThing();\n  } catch (e) {}\n}\n";

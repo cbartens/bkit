@@ -10,7 +10,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const WORKFLOWS_DIR = path.resolve(".bkit/workflows");
@@ -67,18 +67,26 @@ const issueLookups = workflowFiles
   .map((file) => ({ file: path.basename(file), lines: fs.readFileSync(file, "utf-8").split("\n") }))
   .map(({ file, lines }) => {
     const key = lines.map((l) => l.trim()).find((l) => l.startsWith("ISSUE_KEY=$("));
-    const ls = lines
+    const find = lines
       .map((l) => l.trim())
-      .find((l) => l.startsWith("ls -d") && l.includes('"$ISSUE_KEY"-*/'));
-    return key && ls ? { file, key, ls } : null;
+      .find((l) => l.startsWith('find "$REPO_ROOT/docs/plans"') && l.includes("$ISSUE_KEY-*"));
+    return key && find ? { file, key, find } : null;
   })
-  .filter((x): x is { file: string; key: string; ls: string } => x !== null);
+  .filter((x): x is { file: string; key: string; find: string } => x !== null);
 
-function runLookup(lookup: { key: string; ls: string }, issueId: string, repoRoot: string): string {
-  const script = `${lookup.key.replaceAll("{ISSUE_ID}", issueId)}\n${lookup.ls}`;
-  return execFileSync("bash", ["-c", script], {
+const HAS_ZSH = spawnSync("zsh", ["-c", "true"]).status === 0;
+
+function runLookup(
+  lookup: { key: string; find: string },
+  issueId: string,
+  repoRoot: string,
+  shell = "bash",
+): string {
+  const script = `${lookup.key.replaceAll("{ISSUE_ID}", issueId)}\n${lookup.find}`;
+  return execFileSync(shell, ["-c", script], {
     env: { ...process.env, REPO_ROOT: repoRoot },
     encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
   }).trim();
 }
 
@@ -116,6 +124,19 @@ describe("Resolve FID — issue lookup reuses only that issue's feature", () => 
 
   it.each(issueLookups)("$file: prints nothing for an issue with no logs", (lookup) => {
     expect(runLookup(lookup, "999", issueRoot)).toBe("");
+  });
+
+  it.each(issueLookups)("$file: prints nothing when docs/plans does not exist", (lookup) => {
+    expect(runLookup(lookup, "68", fs.mkdtempSync(path.join(os.tmpdir(), "bkit-fid-empty-")))).toBe(
+      "",
+    );
+  });
+
+  // The agent's Bash tool runs zsh on macOS, where an unmatched glob aborts the
+  // command with "no matches found".
+  it.skipIf(!HAS_ZSH).each(issueLookups)("$file: runs the same under zsh", (lookup) => {
+    expect(runLookup(lookup, "68", issueRoot, "zsh")).toBe(FID);
+    expect(runLookup(lookup, "999", issueRoot, "zsh")).toBe("");
   });
 });
 

@@ -600,12 +600,13 @@ describe("bkit-ship.md — #363 build-challenge H2 regression: the auto-route ma
     }
     expect(target, "no single fenced block derives AND consumes AUTO_ROUTE_SUFFIX").toBeDefined();
     const block = target!.join("\n");
-    // Initialised empty (fail-safe), then re-derived from the tracker here.
-    expect(block).toMatch(/AUTO_ROUTE_SUFFIX=""/);
-    expect(block).toMatch(/gh issue view \{ISSUE_ID\} --json labels --jq '\.labels\[\]\.name'/);
-    // -qxF: whole-line fixed match, so `bkit:auto-paused` / `no-bkit:auto`
-    // cannot arm the route (mirrors bkit-cloud.yml's kill switch).
-    expect(block).toMatch(/grep -qxF 'bkit:auto'/);
+    // Derived here from the labels Step 10 sub-step 5 re-read through the
+    // tracker MCP; `bkit issues labels` exact-matches `bkit:auto` (mirrors
+    // bkit-cloud.yml's kill switch), pinned in commands/workflow/issues.test.ts.
+    expect(block).toMatch(
+      /AUTO_ROUTE_SUFFIX=\$\("\$BKIT" issues labels \{LABEL_FLAGS\} \| jq -er \.autoRouteSuffix\)/,
+    );
+    expect(block).not.toContain("gh issue view");
     // ...and the suffix actually reaches the squash subject.
     expect(block).toContain("${AUTO_ROUTE_SUFFIX}");
   });

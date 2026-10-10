@@ -15,7 +15,7 @@
 > - **Never log PII.** Scrub sensitive fields at the source.
 > - Observability never blocks business logic.
 
-## Debug Fetch
+## Context Fetch
 
 Failure-evidence fetching for `/bkit-debug` (`context-fetch:*` blocks + cloud CLI provisioning) → configure in `.agents/context.md`. Ready-made blocks, one file per provider: `.bkit/templates/context/` (`.bkit/templates.md` § Context-fetch blocks). Author and enable each context there — `ci`, `diff`, `e2e`, `runtime` (default) and the optional `web`. bkit hardcodes no CI host, workflow filename, branch name or e2e framework; a context with no enabled block is fetched for no run and reported `NOT CONFIGURED` every attempt. The `context=web` search host ships in bkit's egress registry, so it needs no declaration; a block whose host is unreachable anyway self-skips → external signal `UNCHECKED`, never "no known upstream issue".
 

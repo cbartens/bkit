@@ -40,7 +40,11 @@ function seedMinimalConsumer(dir: string): void {
 function seedStaleVersionPin(dir: string): void {
   // Create a stale .bkit/version (older than installed)
   fs.mkdirSync(path.join(dir, ".bkit"), { recursive: true });
-  fs.writeFileSync(path.join(dir, ".bkit", "version"), "0.4.1\n", "utf-8");
+  fs.writeFileSync(
+    path.join(dir, ".bkit", "version"),
+    JSON.stringify({ pinnedVersion: "0.4.1" }),
+    "utf-8",
+  );
   // Create a newer installed bkit in node_modules
   const bkitDir = path.join(dir, "node_modules", "@cbartens", "bkit");
   fs.mkdirSync(bkitDir, { recursive: true });
@@ -244,23 +248,16 @@ function listFilesRecursive(dir: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// BAR-167 Phase 1 — doctor surfaces tier2-json-drift and legacy-bkit-envelope advisories
+// BAR-167 Phase 1 — doctor surfaces the tier2-json-drift advisory
 // ---------------------------------------------------------------------------
 
 import { detectDirenvMissing, detectDirenvNotAllowed, runPreflight } from "./bkit-preflight";
 import { runPostInstallCheck } from "./bkit-postinstall";
 
 describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
-  it("tier2-json-drift and legacy-bkit-envelope-detected surface through runPreflight", () => {
-    // Seed consumer with __bkit__ in settings.json (legacy envelope)
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+  it("tier2-json-drift surfaces through runPreflight", () => {
     fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
-    fs.writeFileSync(
-      path.join(tmpDir, ".claude", "settings.json"),
-      JSON.stringify({ __bkit__: { hooks: {} } }),
-      "utf-8",
-    );
     // .cursor/hooks.json missing bkit content (tier2-json-drift)
     fs.writeFileSync(
       path.join(tmpDir, ".cursor", "hooks.json"),
@@ -272,11 +269,10 @@ describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
     const { advisories } = runPreflight(modules, tmpDir, "2.0.0");
 
     const ids = advisories.map((a) => a.id);
-    expect(ids).toContain("legacy-bkit-envelope-detected");
     expect(ids).toContain("tier2-json-drift");
   });
 
-  it("no drift/envelope advisories when consumer is schema-clean and fully contained", () => {
+  it("no drift advisory when consumer is fully contained", () => {
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
     const pkgRoot = path.resolve(scriptsDir, "..", "..");
     const templateSettings = path.join(pkgRoot, ".bkit", "templates", ".claude", "settings.json");
@@ -285,7 +281,7 @@ describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
-    // Copy templates as-is → fully contained, no envelope
+    // Copy templates as-is → fully contained
     fs.copyFileSync(templateSettings, path.join(tmpDir, ".claude", "settings.json"));
     fs.copyFileSync(templateHooks, path.join(tmpDir, ".cursor", "hooks.json"));
 
@@ -293,7 +289,6 @@ describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
     const { advisories } = runPreflight(modules, tmpDir, "2.0.0");
 
     const ids = advisories.map((a) => a.id);
-    expect(ids).not.toContain("legacy-bkit-envelope-detected");
     expect(ids).not.toContain("tier2-json-drift");
   });
 });

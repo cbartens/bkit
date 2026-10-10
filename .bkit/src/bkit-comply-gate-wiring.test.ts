@@ -6,9 +6,10 @@
 //     fail-open guard on the same line:
 //     `|| echo "[bkit-comply] grader unavailable, skipping"`.
 //   - No comply call sits unguarded under `set -e`.
-//   - The grader runs in the close block next to `bkit workflows close`, BEFORE
-//     that block's commit — comply appends `kind:"compliance"` rows to
-//     `.bkit/stats.jsonl`, and rows written after the commit never land.
+//   - The grader runs in the close block BEFORE `bkit workflows close` (whose
+//     report reads the compliance rows) and before that block's commit — comply
+//     appends `kind:"compliance"` rows to `.bkit/stats.jsonl`, and rows written
+//     after the commit never land.
 //   - Close telemetry is written once: one `bkit workflows close` per workflow,
 //     and the tracker close comment embeds the `report` it printed (via
 //     `close-telemetry.md`); no writer re-runs after the push.
@@ -70,6 +71,13 @@ describe("every phase workflow grades itself at close through bkit comply", () =
       expect(close, "the close block also runs bkit workflows close").toBeGreaterThan(-1);
       const commit = block!.slice(comply).search(/\bgit commit\b|\bledgers commit\b/);
       expect(commit, "a commit follows the grader in the same block").toBeGreaterThan(-1);
+    });
+
+    it(`bkit-${phase}.md: comply grades before workflows close, so the close report carries this run's grade`, () => {
+      const block = bashBlocks(content).find((b) => /\bcomply --phase=/.test(b))!;
+      expect(block.search(/\bcomply --phase=/)).toBeLessThan(
+        block.indexOf(`workflows close --workflow=${phase}`),
+      );
     });
 
     it(`bkit-${phase}.md writes close telemetry once and embeds its report in the close comment`, () => {
