@@ -27,13 +27,13 @@ $ARGUMENTS
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
-> - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step with `bkit locks acquire --kind=workflow`; release in last step with `bkit locks release` and in Failure Path with `bkit workflows fail`; release exit non-zero → **Failure Path** with `Lock removal failed`. **If** existing lock — its owning workflow's folded status.jsonl decides: `DONE` or `FAILED` → reclaimed only once the lock is >=30min old; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, reclaimed. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `bkit locks acquire --kind=dev`, release with `bkit locks release --kind=dev` via `trap ... EXIT`.
-> - **Status branch:** status.jsonl committed on `{BRANCH}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO mid-lifecycle pushes. **If** `RUNTIME_DEVPUSHES` = true → state reaches `dev` once in Close Workflow by local squash-merge, **else** by PR squash-merge.
+> - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step with `bkit locks acquire --kind=workflow`; release in last step with `bkit locks release` and in Failure Path with `bkit workflows fail`; release exit non-zero → **Failure Path** with `Lock removal failed`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed only once the lock file is at least 30 minutes old, younger → **Failure Path**. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `bkit locks acquire --kind=dev`, release with `bkit locks release --kind=dev` via `trap ... EXIT`.
+> - **Status branch:** status.jsonl committed on `{BRANCH}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO mid-lifecycle pushes. **If** `runtimeDevPushes` = true → state reaches `dev` once in Close Workflow by local squash-merge, **else** by PR squash-merge.
 > - **Subagents:** Invoke using `/name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return; do NOT assume success.
-> - **Worktrees:** **If** `RUNTIME_WORKTREES=true` (mint mode) → setup `cd`s into `.worktrees/{FID}` , **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; no `git worktree add`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
-> - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch. Standalone push steps MUST run EXACTLY ONE `git push`; NEVER put multiple push forms in one shell invocation.
-> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh repo view --json nameWithOwner` → `get_me` and parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from= --to= --reason= --asserted-by=`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
+> - **Worktrees:** **If** `runtimeWorktrees` = true (mint mode) → setup `cd`s into `.worktrees/{FID}` , **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; no `git worktree add`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
+> - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch. Standalone push steps MUST run EXACTLY ONE `git push`; NEVER put multiple push forms in one shell invocation.
+> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `gh pr create` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit branches push --mode=abort` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`; `--match-head-commit` SHA as `sha`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `bkit runs wait` / `bkit runs dispatch` / `bkit runs gate` / `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
@@ -53,6 +53,7 @@ $ARGUMENTS
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" workflows fail --workflow=design --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN}
    ```
+   **If** exit 5 → add `Lock removal failed` to the step 3 error.
 2. Add `bkit:failed` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    `{LABELS}` = `labels`, `{LINEAR_STATE}` = `linearState` of the block below; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
@@ -92,7 +93,7 @@ $ARGUMENTS
       ```bash
       REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
       ISSUE_KEY=$(printf '%s' "{ISSUE_ID}" | tr '[:upper:]' '[:lower:]')
-      ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/"$ISSUE_KEY"-*/ 2>/dev/null | awk -F/ '{print $(NF-1)}' | sort -u
+      find "$REPO_ROOT/docs/plans" -mindepth 3 -maxdepth 3 -type d -path "*/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/$ISSUE_KEY-*" 2>/dev/null | awk -F/ '{print $(NF)}' | sort -u
       ```
       One line → that `FID`. Several → **Failure Path** listing them (name the `FID` in the session prompt to pick one). None → next.
    4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`.
@@ -110,8 +111,8 @@ $ARGUMENTS
    ```
    **If** exit non-zero → **Failure Path**. Hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
 6. Set phase `bkit:design` → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   **If** `board` null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({board.addItem})` → resolve numeric item id `mcp__github__projects_list({board.listItems})` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({board.updateItem}, item_id: {ITEM_ID})`.
-   `{LABELS}` = `labels`, `{LINEAR_STATE}` = `linearState`, `board`, `boardSkipped` of the block below; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
+   **If** `BOARD` = null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
+   `{LABELS}` = `labels`, `{LINEAR_STATE}` = `linearState`, `{BOARD}` = `board`, `boardSkipped` of the block below; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" issues labels --phase=design --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}
@@ -149,7 +150,7 @@ $ARGUMENTS
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    DETECT=$("$BKIT" runtime detect --fid={FID}) || exit 2
-   WT_FLAG=""; [ "$(jq -r .runtimeWorktrees <<<"$DETECT")" = "true" ] && WT_FLAG=--worktrees
+   WT_FLAG=""; [ "$(printf '%s' "$DETECT" | jq -r .runtimeWorktrees)" = "true" ] && WT_FLAG=--worktrees
    "$BKIT" worktrees setup --workflow=design --fid={FID} --month={YYYYMM} $WT_FLAG
    ```
    Hold `worktreePath` as `{WORKTREE_PATH}`, `repoRoot` + `/.git/bkit-outbox/{FID}` as `{OUTBOX}`, `branch` as `{BRANCH}`, `logDir` as `{LOG_DIR}`, `sentinel` as `{SENTINEL}`, `baseSha` as `{BASE_SHA}` (empty when null).
@@ -597,10 +598,10 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 1. Archive any superseded design and copy final design to canonical bucket:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   DESIGN_FINAL=$(ls docs/plans/{YYYYMM}/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)
+   DESIGN_FINAL=$(find docs/plans/{YYYYMM}/logs/{FID} -maxdepth 1 -type f -name 'design-v*.md' 2>/dev/null | sort -V | tail -1)
    [ -z "$DESIGN_FINAL" ] && { echo "No design version found" >&2; exit 1; }
    RT=$("$BKIT" runtime assert --file="{STATUS}" --workflow=design) || exit 2
-   ANCHOR_SHA=$(jq -r .baseSha <<<"$RT")
+   ANCHOR_SHA=$(printf '%s' "$RT" | jq -r .baseSha)
    if [ -n "$ANCHOR_SHA" ]; then
      "$BKIT" branches anchor-stamp --file="$DESIGN_FINAL" --base-sha="$ANCHOR_SHA" >/dev/null || exit 1
    fi
@@ -617,10 +618,10 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps done --file="{STATUS}" --workflow=design --step=design-close-workflow --commit=none >/dev/null || exit 1
+   "$BKIT" comply --phase=design || echo "[bkit-comply] grader unavailable, skipping" >&2
    CLOSE=$("$BKIT" workflows close --workflow=design --fid={FID} --month={YYYYMM}) || exit 1
    printf '%s\n' "$CLOSE"
    printf '%s' "$CLOSE" | jq -r '.report | join("\n")' > "{OUTBOX}/close-telemetry.md" || exit 1
-   "$BKIT" comply --phase=design || echo "[bkit-comply] grader unavailable, skipping" >&2
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    ```
    **If** exit non-zero → **Failure Path**.
@@ -632,9 +633,9 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    [ "$(git config --get core.bare)" = "true" ] && [ -d "$REPO_ROOT/.git" ] && git config core.bare false
    RT=$("$BKIT" runtime assert --file="{STATUS}" --workflow=design) || exit 2
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   if [ "$(jq -r .runtimeDevPushes <<<"$RT")" = "true" ]; then
+   if [ "$(printf '%s' "$RT" | jq -r .runtimeDevPushes)" = "true" ]; then
      DEV=$("$BKIT" locks acquire --kind=dev --workflow=design --fid={FID}) || { echo "dev lock busy — serialise this run or use a separate clone" >&2; exit 1; }
-     DEV_TOKEN=$(jq -r .token <<<"$DEV")
+     DEV_TOKEN=$(printf '%s' "$DEV" | jq -r .token)
      trap '"$BKIT" locks release --kind=dev --workflow=design --fid={FID} --token="$DEV_TOKEN" >/dev/null' EXIT
      git checkout dev
      [ "$(git branch --show-current)" = "dev" ] || { echo "Not on dev after checkout (on '$(git branch --show-current)') — aborting dev ops" >&2; exit 1; }
@@ -667,12 +668,12 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      [ -n "$STRAY" ] && { echo "design close-workflow diff carries non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
      "$BKIT" branches push --mode=feature >/dev/null || { echo "close-commit push failed — the PR would not carry the roadmap row or the close status rows" >&2; exit 1; }
      PR=$("$BKIT" prs open --fid={FID} --title="docs({FID}): design DONE" --issue="{ISSUE_ID}" --head="{BRANCH}" --existing=reuse) || { echo "PR open failed for {BRANCH}" >&2; exit 1; }
-     PR_NUMBER=$(jq -r '.number // empty' <<<"$PR")
+     PR_NUMBER=$(printf '%s' "$PR" | jq -r '.number // empty')
      [ -n "$PR_NUMBER" ] || { echo "Could not resolve PR number for {BRANCH} to dev" >&2; exit 1; }
      gh pr merge "$PR_NUMBER" --squash --subject "docs({FID}): design DONE bkit [skip ci]" --body "" || { echo "gh pr merge failed" >&2; exit 1; }
      PROBE=$("$BKIT" prs probe --number="$PR_NUMBER") || { echo "Could not read PR $PR_NUMBER" >&2; exit 1; }
-     [ "$(jq -r .state <<<"$PROBE")" = "MERGED" ] || { echo "PR $PR_NUMBER did not reach MERGED" >&2; exit 1; }
-     LANDED_SHA=$(jq -r '.mergeCommitOid // empty' <<<"$PROBE")
+     [ "$(printf '%s' "$PROBE" | jq -r .state)" = "MERGED" ] || { echo "PR $PR_NUMBER did not reach MERGED" >&2; exit 1; }
+     LANDED_SHA=$(printf '%s' "$PROBE" | jq -r '.mergeCommitOid // empty')
      [ -n "$LANDED_SHA" ] || { echo "Could not resolve landed SHA for PR $PR_NUMBER" >&2; exit 1; }
      git fetch origin dev || { echo "fetch of origin/dev after the merge failed" >&2; exit 1; }
      git show "origin/dev:docs/plans/{YYYYMM}/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
@@ -691,8 +692,8 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    "$BKIT" locks release --kind=workflow --workflow=design --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || { echo "Lock removal failed" >&2; exit 1; }
    ```
    **If** exit non-zero → **Failure Path**.
-4. No label changes. **If** `board` null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({board.addItem})` → resolve numeric item id `mcp__github__projects_list({board.listItems})` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({board.updateItem}, item_id: {ITEM_ID})`.
-   `{LINEAR_STATE}` = `linearState`, `board`, `boardSkipped` of the block below:
+4. No label changes. **If** `BOARD` = null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
+   `{LINEAR_STATE}` = `linearState`, `{BOARD}` = `board`, `boardSkipped` of the block below:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" issues labels --board=review --issue={ISSUE_ID} --owner-repo={OWNER_REPO}
@@ -715,7 +716,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 - [ ] Canonical design copied (`docs/plans/{YYYYMM}/{FID}-design.md`, verified on `dev` post-merge)
 - [ ] Workflow status updated (`design` `DONE`, step `design-close-workflow` recorded with `parentSha`)
 - [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
-- [ ] Squash exited 0 and staged `{FID}-design.md` matched `feat/{FID}` before commit (if `RUNTIME_DEVPUSHES` = true)
+- [ ] Squash exited 0 and staged `{FID}-design.md` matched `feat/{FID}` before commit (if `runtimeDevPushes` = true)
 - [ ] Changes merged to `dev`
 - [ ] Post-close body scan clean, transport cross-check passed, `close-transport` row recorded
 - [ ] Worktree removed and feature branch deleted (mint mode only)

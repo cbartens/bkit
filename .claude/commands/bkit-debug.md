@@ -30,12 +30,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return; do NOT assume success.
 > - **Worktrees:** Debug NEVER creates a branch. Step 2 resumes `.worktrees/{FID}`, else adopts an existing `feat/{FID}` (local or origin, not the session's own branch) into it when the runtime mints worktrees, else adopts the session's current branch in place (`worktreePath` = main checkout); no `-b`. `main` is the one ineligible branch. cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
-> - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` branch ONLY. Pushes run through `bkit branches push`: EXACTLY ONE `git push`, plain for `dev` / `main`, `--force-with-lease` otherwise; NEVER put multiple push forms in one shell invocation.
-> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, or `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
+> - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` branch ONLY. Pushes run through `bkit branches push`: EXACTLY ONE `git push`, plain for `dev` / `main`, `--force-with-lease` otherwise; NEVER put multiple push forms in one shell invocation.
+> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `gh pr create` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit branches push --mode=abort` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`; `--match-head-commit` SHA as `sha`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `bkit runs wait` / `bkit runs dispatch` / `bkit runs gate` / `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active — phase label persists).
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking NOT required.
 
 
@@ -83,15 +83,16 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
 9. `git commit -m "docs({FID}): debug aborted bkit [skip ci]"`.
-10. Assert `{BRANCH}` non-empty and push the abort commit to it:
+10. Assert `{BRANCH}` non-empty and push abort commit — NEVER onto branch with open PR:
     ```bash
     BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-    "$BKIT" branches push --mode=feature
+    "$BKIT" branches push --mode=abort
     ```
-    → hold `ref` as `{HANDOVER_REF}` (null when nothing was pushed).
-    Route:
-    - **If** exit 0 → step 11.
-    - **Else** → push failed; `{HANDOVER_REF}` empty; do NOT claim success on tracker → step 11.
+    Decide `HANDOVER_REF`:
+    - **If** exit 0 → `HANDOVER_REF` = printed `ref`.
+    - **If** exit 7 → `HANDOVER_REF` empty; remote HEAD kept.
+    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
+    - **Else** → `HANDOVER_REF` empty; push failed → do NOT claim success on tracker.
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = `body` printed by:
     ```bash
@@ -125,7 +126,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
       ```bash
       REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
       ISSUE_KEY=$(printf '%s' "{ISSUE_ID}" | tr '[:upper:]' '[:lower:]')
-      ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/"$ISSUE_KEY"-*/ 2>/dev/null | awk -F/ '{print $(NF-1)}' | sort -u
+      find "$REPO_ROOT/docs/plans" -mindepth 3 -maxdepth 3 -type d -path "*/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/$ISSUE_KEY-*" 2>/dev/null | awk -F/ '{print $(NF)}' | sort -u
       ```
       One line → that `FID`. Several → **Failure Path** listing them (name the `FID` in the session prompt to pick one). None → next.
    4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase.
@@ -175,7 +176,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** `{SOAK_ROWS}` > 0 → `DEBUG_MODE` = SOAK (continuation), `SOAK_ENTRY` = false.
    - **If** exit 1 (printed `SOAK`) → `DEBUG_MODE` = SOAK, `SOAK_ENTRY` = true.
    - **Else** (exit 0, printed `NORMAL`) → `DEBUG_MODE` = NORMAL, `SOAK_ENTRY` = false.
-9. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })` → **If** `board` is null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({BOARD.addItem})` → resolve numeric item id `mcp__github__projects_list({BOARD.listItems})` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD.updateItem} + item_id: {ITEM_ID})`.
+9. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })` → **If** `BOARD` = null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
    `{LABELS}` = entries of `labels`, `{LINEAR_STATE}` = `linearState`, `{BOARD}` = `board`, printed by (`{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry; adds `bkit:debug`, clears `bkit:failed`, phase label persists):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -440,8 +441,14 @@ DEBUG_ATTEMPT=$("$BKIT" counters run --file="$STATUS" --workflow=debug | jq -er 
    DEBUG_ATTEMPT=$("$BKIT" counters run --file="$STATUS" --workflow=debug | jq -er .run) || exit 2
    FINAL=$("$BKIT" context finalise --fid={FID} --month={YYYYMM} --attempt="$DEBUG_ATTEMPT") || exit $?
    printf '%s\n' "$FINAL"
+   ARTIFACTS=$(printf '%s' "$FINAL" | jq -r '.artifacts[]') || exit 2
    set --
-   for f in $(printf '%s' "$FINAL" | jq -r '.artifacts[]'); do set -- "$@" --artifact="$f"; done
+   while IFS= read -r f; do
+     [ -n "$f" ] || continue
+     set -- "$@" --artifact="$f"
+   done <<BKIT_ARTIFACTS
+   $ARTIFACTS
+   BKIT_ARTIFACTS
    "$BKIT" steps done --file="$STATUS" --workflow=debug --step=context-fetch --verdict="$(printf '%s' "$FINAL" | jq -r .verdict)" --attempt="$DEBUG_ATTEMPT" "$@" --field=contextsConfigured="$(printf '%s' "$FINAL" | jq -c .contextsConfigured)" --field=clamped="$(printf '%s' "$FINAL" | jq -c .clamped)" --message="chore({FID}): fetch-context attempt ${DEBUG_ATTEMPT}" >/dev/null
    ```
    → hold `verdict` as `{FETCH_VERDICT}`, `artifacts` as `{FETCH_ARTIFACTS}`, `contextsConfigured` as `{CONTEXTS_CONFIGURED}`.
@@ -485,7 +492,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 1. Read the strategy ladder from status.jsonl:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" status route --file="{STATUS}" --workflow=debug --step=debug-failure-diagnose
+   "$BKIT" status route --file="{STATUS}" --workflow=debug --step=debug-failure-diagnose --require=strategy
    ```
    → hold `nextStrategy` as `{STRATEGY}`. **If** exit non-zero → **Failure Path**.
 2. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
@@ -809,23 +816,22 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      [ -n "$CURRENT_TITLE" ] && [ "$NEW_TITLE" != "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "$NEW_TITLE" || true
    fi
    ```
-2. Re-read labels → run the No-leak Assertion, close the run (workflow-done row, telemetry rows, report, artifact links), append the roadmap row, commit, release the lock, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell); `PUSH_MODE` = LOCAL also records the close row and audits the landed commit here:
+2. Re-read labels → run the No-leak Assertion, close the run (workflow-done row, telemetry rows, report, artifact links), append the roadmap row, commit, release the lock, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell); `PUSH_MODE` = LOCAL also records the close row and audits the landed commit here; `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired:
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`.
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
    TEST_SCOPE="{TEST_SCOPE}"
-   AUTO_ROUTE_SUFFIX=""
-   gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   AUTO_ROUTE_SUFFIX=$("$BKIT" issues labels {LABEL_FLAGS} | jq -er .autoRouteSuffix) || exit 2
    PUSH_MODE=$("$BKIT" status route --file="{STATUS}" --workflow=debug --require=pushMode | jq -er .pushMode) || exit 2
    if git diff origin/dev..HEAD -- . ':(exclude)docs/plans' | grep -qE '^\+.*\[DEBUG-OBSERVE\]'; then
      echo "No-leak Assertion FAILED: [DEBUG-OBSERVE] instrumentation survived into the debug diff — soak did not strip it." >&2; exit 1
    fi
+   "$BKIT" comply --phase=debug || echo "[bkit-comply] grader unavailable, skipping" >&2
    CLOSE=$("$BKIT" workflows close --workflow=debug --fid={FID} --month={YYYYMM} --file="$STATUS" --owner-repo={OWNER_REPO}) || exit $?
    printf '%s\n' "$CLOSE"
    printf '%s' "$CLOSE" | jq -r .artifactLinks > "{OUTBOX}/close-artifacts.md"
    printf '%s' "$CLOSE" | jq -r '.report | join("\n")' > "{OUTBOX}/close-telemetry.md"
-   "$BKIT" comply --phase=debug || echo "[bkit-comply] grader unavailable, skipping" >&2
    WT=$(git rev-parse --show-toplevel)
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    ROADMAP_ROW=$("$BKIT" roadmap feature --root="$WT" --workflow=debug --fid={FID} | jq -c .row)
@@ -881,28 +887,26 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    - **If** exit 0 → hold `number` as `{PR_NUMBER}`, `url` as `{PR_URL}`.
    - **If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → its number as `{PR_NUMBER}`, URL as `{PR_URL}`.
    - **Else** → **Failure Path**.
-5. **If** `TRIGGER_PR` = 1 → commit and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
+5. **If** `TRIGGER_PR` = 1 → commit and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell; `{LABEL_FLAGS}` as in sub-step 2):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    PUSH_MODE=$("$BKIT" status route --file="{STATUS}" --workflow=debug --require=pushMode | jq -er .pushMode) || exit 2
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
-   AUTO_ROUTE_SUFFIX=""
-   gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   AUTO_ROUTE_SUFFIX=$("$BKIT" issues labels {LABEL_FLAGS} | jq -er .autoRouteSuffix) || exit 2
    LOCAL_MODE_AUTO_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && LOCAL_MODE_AUTO_SUFFIX="$AUTO_ROUTE_SUFFIX"
    git add -A && git commit --allow-empty -m "chore({FID}): create-pr${VERBOSE_SUFFIX}${LOCAL_MODE_AUTO_SUFFIX}" || exit 1
    "$BKIT" branches push --mode=feature --require-ci
    ```
    **If** exit non-zero → **Failure Path**.
-6. **Run only if** `PUSH_MODE` = PR **or** `TRIGGER_PR` = 1 — CI-Dispatch Gate on the pushed head (set and use `AUTO_ROUTE_SUFFIX` in same shell; records `debug-close-workflow` in PR-mode, `debug-create-pr` after a created PR):
+6. **Run only if** `PUSH_MODE` = PR **or** `TRIGGER_PR` = 1 — CI-Dispatch Gate on the pushed head (set and use `AUTO_ROUTE_SUFFIX` in same shell; `{LABEL_FLAGS}` as in sub-step 2; records `debug-close-workflow` in PR-mode, `debug-create-pr` after a created PR):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
    TEST_SCOPE="{TEST_SCOPE}"
    PR_URL="{PR_URL}"
-   AUTO_ROUTE_SUFFIX=""
-   gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   AUTO_ROUTE_SUFFIX=$("$BKIT" issues labels {LABEL_FLAGS} | jq -er .autoRouteSuffix) || exit 2
    PUSH_MODE=$("$BKIT" status route --file="{STATUS}" --workflow=debug --require=pushMode | jq -er .pushMode) || exit 2
-   DISPATCH=$("$BKIT" runs dispatch --fid={FID} --auto-route-suffix="$AUTO_ROUTE_SUFFIX" {CI_REENTRY}); RC=$?
+   DISPATCH=$("$BKIT" runs dispatch --pr="{PR_NUMBER}" --fid={FID} --auto-route-suffix="$AUTO_ROUTE_SUFFIX" {CI_REENTRY}); RC=$?
    printf '%s\n' "$DISPATCH"
    case "$RC" in 80|81) exit "$RC" ;; esac
    CI_DISPATCH=$(printf '%s' "$DISPATCH" | jq -c .ciDispatch)
@@ -923,7 +927,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    - **If** exit 0 → sub-step 7.
    - **If** exit 81 or 80 → **CI wait turn-loop** → re-run this block with `{CI_REENTRY}`.
    - **Else** (1 unresolved verdict, 4 skip token in the pushed body, 5 / 6 / other) → **Failure Path**.
-7. No issue label changes. **If** `board` is null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({BOARD.addItem})` → resolve numeric item id `mcp__github__projects_list({BOARD.listItems})` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD.updateItem} + item_id: {ITEM_ID})`.
+7. No issue label changes. **If** `BOARD` = null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
    `{LINEAR_STATE}` = `linearState`, `{BOARD}` = `board`, printed by:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"

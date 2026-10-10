@@ -25,12 +25,12 @@ description: "Plan Feature — Autonomous plan generation"
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `docs/plans/{YYYYMM}/logs/{FID}/.lock` in Step 1 with `bkit locks acquire`; release in last step and Failure Path; a release that leaves the lock file → **Failure Path** with `Lock removal failed`. **If** existing lock — holder `IN_PROGRESS` and last step <30min idle → **Failure Path**; a DONE / FAILED (or idle `IN_PROGRESS`) holder's lock is reclaimed only once it is at least 30 minutes old, younger → **Failure Path**. **Dev lock:** hold `.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout) with `bkit locks acquire --kind=dev`; release via `trap ... EXIT`.
-> - **Status branch:** status.jsonl committed on `{BRANCH}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO mid-lifecycle pushes. **If** `RUNTIME_DEVPUSHES` = true → state reaches `dev` once in Close Workflow by local squash-merge, **else** by PR squash-merge.
+> - **Status branch:** status.jsonl committed on `{BRANCH}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO mid-lifecycle pushes. **If** `runtimeDevPushes` = true → state reaches `dev` once in Close Workflow by local squash-merge, **else** by PR squash-merge.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return; do NOT assume success.
-> - **Worktrees:** Step 2 `bkit worktrees setup` mints / resumes `.worktrees/{FID}` when `RUNTIME_WORKTREES=true`, **else** adopts the current branch in place (`WORKTREE_PATH` = main checkout); its block `cd`s into `worktreePath`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
-> - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch. Standalone push steps MUST run EXACTLY ONE `git push`; NEVER put multiple push forms in one shell invocation.
-> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh repo view --json nameWithOwner` → `get_me` and parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --kind=fallback --file={STATUS} --from= --to= --reason= --asserted-by=`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
+> - **Worktrees:** Step 2 `bkit worktrees setup` mints / resumes `.worktrees/{FID}` when `runtimeWorktrees` = true, **else** adopts the current branch in place (`WORKTREE_PATH` = main checkout); its block `cd`s into `worktreePath`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
+> - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch. Standalone push steps MUST run EXACTLY ONE `git push`; NEVER put multiple push forms in one shell invocation.
+> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `gh pr create` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit branches push --mode=abort` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`; `--match-head-commit` SHA as `sha`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `bkit runs wait` / `bkit runs dispatch` / `bkit runs gate` / `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
@@ -50,6 +50,7 @@ description: "Plan Feature — Autonomous plan generation"
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" workflows fail --workflow=plan --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN}
    ```
+   **If** exit 5 → add `Lock removal failed` to the step 3 error.
 2. Compute the labels — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -90,7 +91,7 @@ description: "Plan Feature — Autonomous plan generation"
       ```bash
       REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
       ISSUE_KEY=$(printf '%s' "{ISSUE_ID}" | tr '[:upper:]' '[:lower:]')
-      ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/"$ISSUE_KEY"-*/ 2>/dev/null | awk -F/ '{print $(NF-1)}' | sort -u
+      find "$REPO_ROOT/docs/plans" -mindepth 3 -maxdepth 3 -type d -path "*/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/$ISSUE_KEY-*" 2>/dev/null | awk -F/ '{print $(NF)}' | sort -u
       ```
       One line → that `FID`. Several → **Failure Path** listing them (name the `FID` in the session prompt to pick one). None → next.
    4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`; `ISSUE_ID` unset → `{branch-suffix}-{slug}`. Assert format:
@@ -116,7 +117,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```
    Hold `labels` as `{LABELS}`, `linearState` as `{LINEAR_STATE}`, `board` as `{BOARD}`.
    `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   **If** `{BOARD}` null → skip. **Else** ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
+   **If** `BOARD` = null → skip. **Else** ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
 8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = `body` from:
    ```bash
@@ -374,7 +375,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    ```
    Route:
    - **If** exit 0 → hold `verdict` as `APPLY_REVIEW_VERDICT`.
-   - **If** exit 6 → invoke offending subagent again with `"Your prior output 'plan-v2-reviewed.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+   - **If** exit 5 **or** 6 → invoke offending subagent again with `"Your prior output 'plan-v2-reviewed.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
    - **Else** → **Failure Path**.
 4. Update status and commit:
    ```bash
@@ -467,7 +468,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    ```
    Route:
    - **If** exit 0 → hold `verdict` as `APPLY_SCOPE_VERDICT`.
-   - **If** exit 6 → invoke offending subagent again with `"Your prior output 'plan-v3-checked.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+   - **If** exit 5 **or** 6 → invoke offending subagent again with `"Your prior output 'plan-v3-checked.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
    - **Else** → **Failure Path**.
 4. Update status and commit:
    ```bash
@@ -654,7 +655,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 1. Archive any superseded plan and copy final plan to canonical bucket:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   PLAN_FINAL=$(ls docs/plans/{YYYYMM}/logs/{FID}/plan-v*.md 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)
+   PLAN_FINAL=$(find docs/plans/{YYYYMM}/logs/{FID} -maxdepth 1 -type f -name 'plan-v*.md' 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)
    [ -z "$PLAN_FINAL" ] && { echo "No plan version found" >&2; exit 1; }
    mkdir -p "docs/plans/{YYYYMM}"
    BASE_SHA=$("$BKIT" runtime assert --file="{STATUS}" --workflow=plan 2>/dev/null | jq -r '.baseSha // ""')
@@ -663,20 +664,17 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    if [ -f "docs/plans/{YYYYMM}/{FID}-plan.md" ] && ! cmp -s "docs/plans/{YYYYMM}/{FID}-plan.md" "$PLAN_FINAL"; then
      TS=$(date -u +%Y%m%dT%H%M%SZ)
      mkdir -p "docs/plans/{YYYYMM}/archive"
-     for old in docs/plans/{YYYYMM}/{FID}-plan.md docs/plans/{YYYYMM}/{FID}-plan-[0-9]*.md; do
-       [ -f "$old" ] || continue
-       mv "$old" "docs/plans/{YYYYMM}/archive/$TS-$(basename "$old")"
-     done
+     find "docs/plans/{YYYYMM}" -maxdepth 1 -type f \( -name '{FID}-plan.md' -o -name '{FID}-plan-[0-9]*.md' \) | while IFS= read -r old; do
+       mv "$old" "docs/plans/{YYYYMM}/archive/$TS-$(basename "$old")" || exit 1
+     done || exit 1
    fi
    cp "$PLAN_FINAL" "docs/plans/{YYYYMM}/{FID}-plan.md"
-   for child in docs/plans/{YYYYMM}/logs/{FID}/plan-v4-[0-9]*.md; do
-     [ -f "$child" ] || continue
+   find "docs/plans/{YYYYMM}/logs/{FID}" -maxdepth 1 -type f -name 'plan-v4-[0-9]*.md' | while IFS= read -r child; do
      [ -z "$BASE_SHA" ] || "$BKIT" branches anchor-stamp --file="$child" --base-sha="$BASE_SHA" --design="$DESIGN_DOC" || exit 1
      N=$(basename "$child" | sed -E 's/plan-v4-([0-9]+)\.md/\1/')
-     cp "$child" "docs/plans/{YYYYMM}/{FID}-plan-${N}.md"
-   done
-   for f in docs/plans/{YYYYMM}/{FID}-plan*.md; do
-     [ -f "$f" ] || continue
+     cp "$child" "docs/plans/{YYYYMM}/{FID}-plan-${N}.md" || exit 1
+   done || exit 1
+   find "docs/plans/{YYYYMM}" -maxdepth 1 -type f -name '{FID}-plan*.md' | while IFS= read -r f; do
      sed -i.bak -E 's|plan-v[0-9]+-split\.md|{FID}-plan.md|g; s|plan-v[0-9]+-([0-9]+)\.md|{FID}-plan-\1.md|g' "$f"
      rm -f "$f.bak"
    done
@@ -685,10 +683,10 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-close-workflow --commit=none >/dev/null || exit 1
+   "$BKIT" comply --phase=plan || echo "[bkit-comply] grader unavailable, skipping" >&2
    CLOSE=$("$BKIT" workflows close --workflow=plan --fid={FID} --month={YYYYMM}) || exit 1
    printf '%s\n' "$CLOSE"
    printf '%s' "$CLOSE" | jq -r '.report | join("\n")' > "{OUTBOX}/close-telemetry.md" || exit 1
-   "$BKIT" comply --phase=plan || echo "[bkit-comply] grader unavailable, skipping" >&2
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    ```
    **If** exit non-zero → **Failure Path**.
@@ -717,7 +715,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      [ -z "$UNLANDED" ] || { echo "squash did not stage the feat/{FID} copy of:" >&2; echo "$UNLANDED" >&2; echo "nothing committed or pushed; feat/{FID} kept; the main checkout index still holds the squash" >&2; exit 1; }
      "$BKIT" roadmap feature --root="$REPO_ROOT" --workflow=plan --fid={FID}
      "$BKIT" ledgers commit --scope=core --mode=commit-allow-empty --month={YYYYMM} --fid={FID} --squash-of="feat/{FID}" --message="docs({FID}): plan DONE bkit [skip ci]" \
-       || { echo "[bkit-book] plan-close commit failed — nothing pushed; feat/{FID} kept" >&2; exit 1; }
+       || { echo "[bkit-plan] plan-close commit failed — nothing pushed; feat/{FID} kept" >&2; exit 1; }
      "$BKIT" branches push --mode=dev || { echo "dev push failed" >&2; exit 1; }
      CLOSE_SHAPE="local"
      CLOSE_TRANSPORT="git"
@@ -730,7 +728,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      git fetch origin dev "{BRANCH}"
      "$BKIT" roadmap feature --root=. --workflow=plan --fid={FID}
      "$BKIT" ledgers commit --scope=core --mode=commit-allow-empty --month={YYYYMM} --fid={FID} --message="docs({FID}): plan roadmap update bkit [skip ci]" \
-       || { echo "[bkit-book] plan-close commit failed — nothing pushed" >&2; exit 1; }
+       || { echo "[bkit-plan] plan-close commit failed — nothing pushed" >&2; exit 1; }
      STRAY=$(git diff --name-only "origin/dev...{BRANCH}" | grep -vE '^docs/plans/|^docs/roadmap\.md$|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$' || true)
      [ -n "$STRAY" ] && { echo "plan close-workflow diff carries non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
      "$BKIT" branches push --mode=feature || { echo "close-commit push failed — the PR would not carry the roadmap row or the close status rows" >&2; exit 1; }
@@ -759,9 +757,9 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    "$BKIT" prs transport-row --file="$STATUS" --kind=close --shape="$CLOSE_SHAPE" --sha="$LANDED_SHA" --scan-result="$SCAN_RESULT" || exit 1
    [ "$SCAN_RESULT" = "clean" ] || { echo "Landed commit $LANDED_SHA inherited a CI-suppression token in its body" >&2; exit 1; }
    git show "$CANONICAL_REF:docs/plans/{YYYYMM}/{FID}-plan.md" > /dev/null 2>&1 || { echo "Canonical plan missing on dev" >&2; exit 1; }
-   for SPLIT_FILE in $(git ls-tree -r --name-only "$LANDED_SHA" -- "docs/plans/{YYYYMM}/" | grep -E "{FID}-plan-[0-9]+\.md$" || true); do
+   git ls-tree -r --name-only "$LANDED_SHA" -- "docs/plans/{YYYYMM}/" | grep -E "{FID}-plan-[0-9]+\.md$" | while IFS= read -r SPLIT_FILE; do
      git show "$CANONICAL_REF:$SPLIT_FILE" > /dev/null 2>&1 || { echo "Canonical split plan missing on dev: $SPLIT_FILE" >&2; exit 1; }
-   done
+   done || exit 1
    "$BKIT" locks release --kind=workflow --workflow=plan --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} || { echo "Lock removal failed" >&2; exit 1; }
    ```
    **If** exit non-zero → **Failure Path**.
@@ -772,7 +770,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    ```
    Hold `linearState` as `{LINEAR_STATE}`, `board` as `{BOARD}`.
    No issue changes.
-   **If** `{BOARD}` null → skip. **Else** ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
+   **If** `BOARD` = null → skip. **Else** ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
 5. Build the close comment from the artifact links on `dev` and the close telemetry report:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -792,7 +790,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 - [ ] Canonical plan copied (`docs/plans/{YYYYMM}/{FID}-plan.md`, verified on `dev` post-merge; same sub-plans if any)
 - [ ] Workflow status updated (`plan` `DONE`, step `plan-close-workflow` recorded with `parentSha`)
 - [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
-- [ ] Squash exited 0 and staged `{FID}-plan.md` (and sub-plans) matched `feat/{FID}` before commit (if `RUNTIME_DEVPUSHES` = true)
+- [ ] Squash exited 0 and staged `{FID}-plan.md` (and sub-plans) matched `feat/{FID}` before commit (if `runtimeDevPushes` = true)
 - [ ] Changes merged to `dev`
 - [ ] Post-close body scan clean, transport cross-check passed, `close-transport` row recorded
 - [ ] Worktree removed and feature branch deleted (workflow-created worktree only)

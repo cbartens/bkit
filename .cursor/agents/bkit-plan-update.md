@@ -30,7 +30,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Update plan; do NOT just analyse; do NOT build, install, or write code.
-- **Multi-lens inputs:** Distinct lenses; merge max-wins on `CRITICAL`, apply OPTIONAL on merit. Single-input findings normal, not outvoted.
+- **Multi-lens inputs:** Distinct lenses; merge max-wins on `CRITICAL`, apply OPTIONAL on merit. Single-input findings are normal, not outvoted.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**

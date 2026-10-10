@@ -42,7 +42,7 @@ maxTurns: 150
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** after each substep — append log at EOF via Bash `echo {log entry} >> {output}`.
-5. `git fetch origin dev` → `git rebase origin/dev` to recreate conflict state. **If** rebase succeeds with no conflicts → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass → append log entry.
+5. `git fetch origin dev` → `git rebase origin/dev` to recreate conflict state. **If** rebase succeeds with no conflicts → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass; append log entry.
 6. Run the Tier-2 auto-resolver BEFORE any hand-classification — it clears every append-only ledger and the dependency lockfile deterministically, leaving only conflicts that need judgement:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
