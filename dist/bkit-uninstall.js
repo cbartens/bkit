@@ -161,10 +161,11 @@ function isJsonObject(v) {
 // so the manifest-driven table never sees them and a full uninstall would orphan bkit's own
 // rules/docs. Each carries a bkit managed block (markered-text), so strip-block preserves any
 // consumer content added below `bkit:end`, exactly like the root AGENTS.md. Removed only on a
-// full/core uninstall (gated on core in moduleList below). `.agents/context.md` and
-// `.agents/skills.md` are absent on purpose: they are create-if-missing (the consumer owns
-// them from first install), so uninstall leaves them.
+// full/core uninstall (gated on core in moduleList below). `.agents/skills.md` is absent on
+// purpose: it is create-if-missing (the consumer owns it from first install), so uninstall
+// leaves it.
 const CORE_TEMPLATE_DOCTRINE = [
+    { path: ".agents/context.md", format: "markered-text", module: "core" },
     // Legacy location of `.agents/context.md`. Listed so a consumer who uninstalls
     // BEFORE ever upgrading is not left holding an orphaned managed block — the
     // migration only runs on install/upgrade, and uninstall may come first. A no-op

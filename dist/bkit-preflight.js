@@ -226,9 +226,9 @@ export function detectGitignoreBlockDuplicates(cwd) {
  * `[verbose ci]` with `--trace=on`, this writes trace artifacts that no reporter
  * surfaces — pure cost (artifact upload + storage) with zero diagnostic payoff.
  *
- * "Hostile" gap per the BAR-224 signal-vs-noise classification. Detected in the
- * consumer-owned region of ci.yml (bkit-managed block stripped) so we never fire
- * on a bkit-shipped stub.
+ * "Hostile" gap per the BAR-224 signal-vs-noise classification. Reads the consumer's
+ * own ci.yml, active lines only: YAML comment lines are dropped first, so a commented
+ * template stub or a commented-out example never fires.
  */
 export function detectPlaywrightReporterHostile(cwd) {
     const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
@@ -346,7 +346,7 @@ function parseContextFetchStarts(section) {
  * Map of context-fetch source name -> predicate proving THIS repo actually runs
  * that backend. Evidence-gates `context-fetch-source-not-enabled`
  * so a single-backend consumer (e.g. Vercel-only) is never nagged about a
- * backend it does not use (e.g. Supabase). A shipped example whose name has no
+ * backend it does not use (e.g. Supabase). A shipped template whose name has no
  * entry here is never flagged (cannot prove use => stay quiet).
  */
 const CONTEXT_FETCH_BACKEND_EVIDENCE = {
@@ -380,15 +380,14 @@ function readDependencyNames(cwd) {
     return names;
 }
 /**
- * Advisory: consumer's `.agents/context.md` has the bkit-managed block (which
- * ships inert `<!-- context-fetch:start <name> --> ... <!-- context-fetch:end -->`
- * examples inside it) but no `context-fetch` block AFTER `<!-- bkit:end -->`.
+ * Advisory: consumer's `.agents/context.md` has the bkit-managed block but no
+ * `<!-- context-fetch:start <name> --> ... <!-- context-fetch:end -->` block AFTER
+ * `<!-- bkit:end -->`.
  *
  * `/bkit-debug`'s runtime sub-fetch runs every `context-fetch` block occurring
- * after `<!-- bkit:end -->` (consumer section) — the examples shipped inside the
- * managed block are intentionally skipped. With no consumer-section block, no
+ * after `<!-- bkit:end -->` (consumer section). With no consumer-section block, no
  * runtime-log artifact (`context-runtime-<name>-{ATTEMPT}.md`) is produced
- * on any debug run.
+ * on any debug run. Ready-made blocks ship in `.bkit/templates/context/`.
  *
  * Markers may be named (`context-fetch:start vercel`) or unnamed (legacy). Only
  * fires when the consumer has the bkit-managed block at all; consumers who fully
@@ -420,7 +419,7 @@ export function detectContextFetchMissing(cwd) {
         id: "context-fetch-missing",
         severity: "advisory",
         detect: "`.agents/context.md` has the bkit-managed block but no `<!-- context-fetch:start [name] --> ... <!-- context-fetch:end -->` block after `<!-- bkit:end -->`. `/bkit-debug` runs every block in that consumer section — with none, no runtime-log artifact is produced.",
-        action: "Copy one of the named `<!-- context-fetch:start <name> --> ... <!-- context-fetch:end -->` example blocks (e.g. `vercel`, `supabase`) out of the bkit-managed section and paste it after `<!-- bkit:end -->`, then set its env vars. REQUIRED: set the block's non-secret selector (e.g. `VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) by uncommenting the assignment line at the top of the copied block — committing it there is what makes the block run in headless cloud agents, which never read `.bkit/.env`. For cloud `/bkit-debug`, also set the secret tokens (`VERCEL_TOKEN` / `SUPABASE_ACCESS_TOKEN`) in your Claude/Cursor dashboard (or GitHub Actions secrets) and authenticate non-interactively (env tokens, never `vercel login`). Each block self-gates (missing CLI / token => a `[context-fetch:<name>] skipped — …` stderr breadcrumb, not an error), so enable only the sources you use; add your own block for any other log backend (`gcloud` / `aws` / `datadog`). Keep blocks read-only and idempotent — the agent customises severity / freshness / limit / target environment (e.g. Vercel preview vs production) at run-time.",
+        action: "Copy the blocks of a provider file in `.bkit/templates/context/` (e.g. `vercel.md`, `supabase.md`; index in `.bkit/templates.md` § Context-fetch blocks) and paste them after `<!-- bkit:end -->`, then set its env vars. REQUIRED: set the block's non-secret selector (e.g. `VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) by uncommenting the assignment line at the top of the copied block — committing it there is what makes the block run in headless cloud agents, which never read `.bkit/.env`. For cloud `/bkit-debug`, also set the secret tokens (`VERCEL_TOKEN` / `SUPABASE_ACCESS_TOKEN`) in your Claude/Cursor dashboard (or GitHub Actions secrets) and authenticate non-interactively (env tokens, never `vercel login`). Each block self-gates (missing CLI / token => a `[context-fetch:<name>] skipped — …` stderr breadcrumb, not an error), so enable only the sources you use; add your own block for any other log backend (`gcloud` / `aws` / `datadog`). Keep blocks read-only and idempotent — the agent customises severity / freshness / limit / target environment (e.g. Vercel preview vs production) at run-time.",
     };
 }
 /**
@@ -469,20 +468,39 @@ export function detectContextFetchContextMissing(cwd) {
         id: "context-fetch-context-missing",
         severity: "advisory",
         detect: `\`.agents/context.md\` enables context-fetch blocks below \`<!-- bkit:end -->\` but none for ${list}. \`/bkit-debug\` fetches ALL failure evidence from these blocks — it hardcodes no CI host, workflow filename, branch name or e2e framework — so ${plural ? "those classes" : "that class"} of evidence ${plural ? "are" : "is"} never fetched on any debug run. Every attempt reports \`context=<context> NOT CONFIGURED\`, and diagnosis must treat the gap as unchecked rather than clean.`,
-        action: `Copy the matching \`<!-- context-fetch:start <name> context=<context> --> ... <!-- context-fetch:end -->\` example block(s) out of the bkit-managed section to below \`<!-- bkit:end -->\`, one per missing context: ${list}. The shipped examples assume GitHub Actions and Playwright because that is the common case — they are examples, NOT the contract. Edit them to your setup: \`BASELINE_BRANCH\` / \`BASELINE_WORKFLOW\` must name YOUR trunk branch and workflow file, and \`E2E_ARTIFACT\` / \`E2E_JOB_RE\` must name YOUR upload-artifact and match ONLY the lane that block covers. On another CI host (GitLab, Bitbucket, Buildkite) replace the \`gh\` calls with that host's API — the context contract is just "write the evidence to stdout". A test lane whose evidence never reaches your CI host (a native lane whose reports stay on Expo EAS, Bitrise or Firebase Test Lab) needs its OWN \`context=e2e\` block fetching from that service: widening another block's job regex to cover it makes that block download the WRONG lane's report and file it under the failing lane's name, which is worse than fetching nothing. Blocks are self-contained — each discovers the run it needs itself, so there is no ordering between them and none share variables. Give each block a name unique within its context; a repeated \`context\` + name pair writes both blocks to one artifact path. No such lane in this repo → name the context on the opt-out marker below \`<!-- bkit:end -->\`, space-separated for several: \`<!-- context-fetch:none ${missing.join(" ")} -->\`. That dismisses those contexts ONLY; a bare \`<!-- context-fetch:none intentional -->\` dismisses every context-fetch advisory.`,
+        action: `Copy the matching \`<!-- context-fetch:start <name> context=<context> --> ... <!-- context-fetch:end -->\` block(s) from \`.bkit/templates/context/\` (\`github-ci.md\`, \`github-diff.md\`, \`playwright.md\`, …; index in \`.bkit/templates.md\` § Context-fetch blocks) to below \`<!-- bkit:end -->\`, one per missing context: ${list}. The templates assume GitHub Actions and Playwright because that is the common case — they are examples, NOT the contract. Edit them to your setup: \`BASELINE_BRANCH\` / \`BASELINE_WORKFLOW\` must name YOUR trunk branch and workflow file, and \`E2E_ARTIFACT\` / \`E2E_JOB_RE\` must name YOUR upload-artifact and match ONLY the lane that block covers. On another CI host (GitLab, Bitbucket, Buildkite) replace the \`gh\` calls with that host's API — the context contract is just "write the evidence to stdout". A test lane whose evidence never reaches your CI host (a native lane whose reports stay on Expo EAS, Bitrise or Firebase Test Lab) needs its OWN \`context=e2e\` block fetching from that service (Expo EAS: \`maestro-ios.md\`, \`expo-workflows.md\`): widening another block's job regex to cover it makes that block download the WRONG lane's report and file it under the failing lane's name, which is worse than fetching nothing. Blocks are self-contained — each discovers the run it needs itself, so there is no ordering between them and none share variables. Give each block a name unique within its context; a repeated \`context\` + name pair writes both blocks to one artifact path. No such lane in this repo → name the context on the opt-out marker below \`<!-- bkit:end -->\`, space-separated for several: \`<!-- context-fetch:none ${missing.join(" ")} -->\`. That dismisses those contexts ONLY; a bare \`<!-- context-fetch:none intentional -->\` dismisses every context-fetch advisory.`,
     };
 }
 /**
- * Advisory: `.agents/context.md` ships a NAMED context-fetch example (e.g.
- * `supabase`) in the bkit-managed region, this repo demonstrably runs that
- * backend, yet the consumer section after `<!-- bkit:end -->` enables no block
- * for it — so `/bkit-debug` fetches no runtime logs for a source the repo uses.
+ * Named fetch blocks bkit ships as templates, keyed by block name → the template file
+ * (`.bkit/templates/context/<file>`) that holds it. Read from the package, so the set
+ * follows the shipped templates without a hand-kept list.
+ */
+function shippedContextFetchTemplates() {
+    const dir = path.join(getTemplatesRoot(), "context");
+    const out = new Map();
+    if (!fs.existsSync(dir))
+        return out;
+    for (const file of fs.readdirSync(dir).sort()) {
+        if (!file.endsWith(".md"))
+            continue;
+        for (const { name } of parseContextFetchStarts(fs.readFileSync(path.join(dir, file), "utf-8"))) {
+            if (name && !out.has(name))
+                out.set(name, file);
+        }
+    }
+    return out;
+}
+/**
+ * Advisory: bkit ships a NAMED context-fetch template (e.g. `supabase` in
+ * `.bkit/templates/context/supabase.md`), this repo demonstrably runs that backend,
+ * yet the consumer section after `<!-- bkit:end -->` enables no block for it — so
+ * `/bkit-debug` fetches no runtime logs for a source the repo uses.
  *
- * Distinct from `context-fetch-missing` (consumer section has NO
- * block at all): this targets PARTIAL enablement — the post-upgrade footgun
- * where an upgrade ships a fresh `supabase` example while the consumer section
- * still holds only a legacy `vercel` block. The two are mutually exclusive: this
- * one only runs once the consumer section already has at least one block.
+ * Distinct from `context-fetch-missing` (consumer section has NO block at all): this
+ * targets PARTIAL enablement — a consumer section holding a `vercel` block while the
+ * repo also runs Supabase. The two are mutually exclusive: this one only runs once the
+ * consumer section already has at least one block.
  *
  * Evidence-gated to avoid nagging single-backend consumers: a source is flagged
  * only when `CONTEXT_FETCH_BACKEND_EVIDENCE[name]` proves the repo runs it. A
@@ -500,7 +518,6 @@ export function detectContextFetchSourceNotEnabled(cwd) {
     const endIdx = content.search(/^<!-- bkit:end -->$/m);
     if (endIdx === -1)
         return null;
-    const managed = content.slice(0, endIdx);
     const consumer = content.slice(endIdx);
     // Consumer opt-out marker dismisses the advisory.
     if (contextFetchDismissesAll(consumer))
@@ -511,16 +528,9 @@ export function detectContextFetchSourceNotEnabled(cwd) {
     const hasEnd = /^<!-- context-fetch:end -->$/m.test(consumer);
     if (!(hasStart && hasEnd))
         return null;
-    // Named example sources shipped in the bkit-managed region.
-    const shipped = new Set();
-    for (const { name } of parseContextFetchStarts(managed)) {
-        if (name)
-            shipped.add(name);
-    }
-    if (shipped.size === 0)
-        return null;
+    const shipped = shippedContextFetchTemplates();
     const consumerLower = consumer.toLowerCase();
-    const missing = [...shipped].filter((name) => {
+    const missing = [...shipped.keys()].filter((name) => {
         const evidence = CONTEXT_FETCH_BACKEND_EVIDENCE[name];
         if (!evidence || !evidence(cwd))
             return false; // no proof the repo runs it
@@ -530,12 +540,13 @@ export function detectContextFetchSourceNotEnabled(cwd) {
         return null;
     const names = missing.join(", ");
     const slash = missing.join("/");
+    const files = missing.map((n) => `\`.bkit/templates/context/${shipped.get(n)}\``).join(", ");
     const plural = missing.length > 1;
     return {
         id: "context-fetch-source-not-enabled",
         severity: "advisory",
-        detect: `\`.agents/context.md\` ships ${plural ? "" : "a "}context-fetch example${plural ? "s" : ""} for ${names} in the bkit-managed region and this repo uses ${plural ? "those backends" : "that backend"}, but no ${slash} block is enabled after \`<!-- bkit:end -->\`. \`/bkit-debug\` will fetch no ${slash} runtime logs.`,
-        action: `Copy the \`<!-- context-fetch:start ${missing[0]} --> ... <!-- context-fetch:end -->\` block${plural ? "s" : ""} (${names}) out of the bkit-managed section to after \`<!-- bkit:end -->\`, then set each block's env vars — including committing each block's non-secret selector (e.g. \`VERCEL_SCOPE\` / \`SUPABASE_PROJECT_ID\`) by uncommenting the assignment line at the top of the block, so it runs in headless cloud agents too (they never read \`.bkit/.env\`). Each block self-gates (missing CLI / token => a \`[context-fetch:<name>] skipped — …\` stderr breadcrumb, not an error). If you do not use ${slash} for runtime logs, add \`<!-- context-fetch:none intentional -->\` below \`<!-- bkit:end -->\` to dismiss. Do not edit above \`<!-- bkit:end -->\` (drift-gated).`,
+        detect: `bkit ships context-fetch template${plural ? "s" : ""} for ${names} and this repo uses ${plural ? "those backends" : "that backend"}, but \`.agents/context.md\` enables no ${slash} block after \`<!-- bkit:end -->\`. \`/bkit-debug\` will fetch no ${slash} runtime logs.`,
+        action: `Copy the blocks of ${files} to after \`<!-- bkit:end -->\` in \`.agents/context.md\`, then set each block's env vars — including committing each block's non-secret selector (e.g. \`VERCEL_SCOPE\` / \`SUPABASE_PROJECT_ID\`) by uncommenting the assignment line at the top of the block, so it runs in headless cloud agents too (they never read \`.bkit/.env\`). Each block self-gates (missing CLI / token => a \`[context-fetch:<name>] skipped — …\` stderr breadcrumb, not an error). If you do not use ${slash} for runtime logs, add \`<!-- context-fetch:none intentional -->\` below \`<!-- bkit:end -->\` to dismiss. Do not edit above \`<!-- bkit:end -->\` (install rewrites it).`,
     };
 }
 /**
@@ -680,7 +691,7 @@ export function detectContextFetchProvisionMissing(cwd) {
         id: "context-fetch-provision-missing",
         severity: "advisory",
         detect: `\`.agents/context.md\` enable${plural ? "" : "s"} context-fetch block${plural ? "s" : ""} that self-guard${plural ? "" : "s"} on a stack CLI but ship${plural ? "" : "s"} no matching \`<!-- context-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\`: ${list}. bkit installs no stack CLIs itself, so in cloud the CLI is absent, the block's own \`command -v\` guard trips, and it self-skips (silent \`exit 0\`) — \`/bkit-debug\` fetches no runtime logs for ${plural ? "those sources" : "that source"} (reads as "clean", not "not wired up").`,
-        action: `For each flagged block, add a sibling \`<!-- context-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\` — SAME name as the fetch block — whose bash body installs the CLI, self-guarded and install-only: \`command -v ${firstCli} >/dev/null 2>&1 || <install ${firstCli}>\` (e.g. \`pnpm add -g ${firstCli}\` for an npm-published CLI). If the bkit-managed section above \`<!-- bkit:end -->\` ships a ready-made \`context-fetch:provision ${firstName}\` recipe, copy that. Then re-run \`bkit install\` so the recipe bakes into \`.claude/cloud.md\`'s setup script; \`.claude/hooks/cloud-bootstrap.sh\` runs the same recipe on gh-runner / resumed sessions. A block that fetches via an MCP tool or only universal tools (curl/jq/date) needs no provision.`,
+        action: `For each flagged block, add a sibling \`<!-- context-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\` — SAME name as the fetch block — whose bash body installs the CLI, self-guarded and install-only: \`command -v ${firstCli} >/dev/null 2>&1 || <install ${firstCli}>\` (e.g. \`pnpm add -g ${firstCli}\` for an npm-published CLI). If \`.bkit/templates/context/\` ships a ready-made \`context-fetch:provision ${firstName}\` recipe, copy that. Then re-run \`bkit install\` so the recipe bakes into \`.claude/cloud.md\`'s setup script; \`.claude/hooks/cloud-bootstrap.sh\` runs the same recipe on gh-runner / resumed sessions. A block that fetches via an MCP tool or only universal tools (curl/jq/date) needs no provision.`,
     };
 }
 /**

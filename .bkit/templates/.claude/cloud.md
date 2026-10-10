@@ -66,9 +66,9 @@ fi
 
 if ! command -v jq >/dev/null 2>&1; then
   # jq is a single static binary — fetch it from the jqlang release (same github.com
-  # host + snapshot-once rationale as vale/gh above). context-fetch blocks that post-process
-  # curl output with `| jq …` need it present, and the base image may not ship it; the
-  # bkit-managed reference blocks avoid jq for that reason, but consumer blocks often use it.
+  # host + snapshot-once rationale as vale/gh above). context-fetch blocks, including the
+  # .bkit/templates/context/ ones, pipe their output through `| jq …` and assume it is
+  # present; the base image may not ship it.
   curl -fsSL --retry 3 --retry-all-errors "https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64" -o /usr/local/bin/jq
   chmod +x /usr/local/bin/jq
 fi

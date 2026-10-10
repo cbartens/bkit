@@ -568,9 +568,9 @@ Usage:
   bkit help                     Print this message.
 
 Core (implicit — no flag; installed/upgraded on every install):
-  AGENTS.md (cross-host dispatch router), .agents/rules.md + payload, .gitignore +
-  .gitattributes managed blocks, docs/, .bkit/*.md, .bkit/version, the template copies
-  in .bkit/templates/, .agents/context.md + skills.md (written once, then yours), and
+  AGENTS.md (cross-host dispatch router), .agents/rules.md + .agents/context.md +
+  payload, .gitignore + .gitattributes managed blocks, docs/, .bkit/*.md, .bkit/version,
+  the template copies in .bkit/templates/, .agents/skills.md (written once, then yours), and
   the bkit:gate:* / bkit:deps:* package.json scripts every workflow runs (added when
   missing, never overwritten, left by uninstall). The tool scripts those gates chain
   (typecheck, lint, format:check, lint:prose, slop:delta) and their devDeps are yours

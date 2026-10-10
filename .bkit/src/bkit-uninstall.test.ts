@@ -174,15 +174,21 @@ describe("buildDecisionTable — markered-text format", () => {
     }
   });
 
-  it("leaves the create-if-missing .agents/context.md and skills.md alone on a full uninstall", async () => {
+  it("strips only the managed block of .agents/context.md and leaves the create-if-missing skills.md", async () => {
+    const consumer = "## Enabled blocks\n\nour fetch blocks\n";
+    writeFile(
+      ".agents/context.md",
+      `<!-- bkit:start -->\nbkit rules\n<!-- bkit:end -->\n${consumer}`,
+    );
     const body = "<!-- bkit:start -->\nseeded once\n<!-- bkit:end -->\n";
-    writeFile(".agents/context.md", body);
     writeFile(".agents/skills.md", body);
     const table = buildDecisionTable(["core"], makeCtx());
-    expect(table.find((r) => r.file === ".agents/context.md")).toBeUndefined();
+    expect(table.find((r) => r.file === ".agents/context.md")?.decision).toBe("strip-block");
     expect(table.find((r) => r.file === ".agents/skills.md")).toBeUndefined();
     await runUninstall(["core"], makeCtx());
-    expect(readFile(".agents/context.md")).toBe(body);
+    const after = readFile(".agents/context.md");
+    expect(after).not.toContain("bkit rules");
+    expect(after).toContain(consumer);
     expect(readFile(".agents/skills.md")).toBe(body);
   });
 

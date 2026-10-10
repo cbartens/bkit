@@ -84,14 +84,14 @@ pnpm bkit install [--module-flags] [--auto-revert]
     │   ├─ fully-managed    → full overwrite (bkit fully owns file)
     │   ├─ markered-text   → managed-block merge (bkit owns marker region; consumer owns rest)
     │   ├─ json            → deep-containment merge (writeTier2JsonContained); MCP configs → bkit's tracker entry only
-    │   ├─ create-if-missing → write once when absent (.agents/context.md, skills.md), never again;
+    │   ├─ create-if-missing → write once when absent (.agents/skills.md), never again;
     │   │                      package.json bkit:gate:* / bkit:deps:* names added when missing, never overwritten
     │   ├─ templates       → raw copies into .bkit/templates/ only; never applied to the repo
     │   └─ On any error    → earlier modules' files stay written, .bkit/version not re-pinned — re-run install (idempotent)
     │
     └─ Phase 3: Post-install re-detection + commit
         ├─ Token-surface detectors (BKIT_GH_TOKEN_INSTALL at 4 surfaces)
-        ├─ CI YAML env-var check
+        ├─ Checks on the consumer's own ci.yml (token env, actionlint, run injection, capstone contract, bkit-stub)
         ├─ Vale package sync check
         ├─ Render unified advisory checklist
         ├─ Phase 3 blockers → exit 1 with recovery line; --auto-revert calls runUninstall first
@@ -123,15 +123,15 @@ Consumer repo
 ├── .agents/                # Cross-IDE agent runtime, populated by `pnpm bkit install`
 │   ├── rules.md            # markered-text — bkit block + consumer Project section
 │   ├── docs.md             # markered-text — doc index
-│   ├── context.md          # create-if-missing — project context (consumer-owned after first install)
+│   ├── context.md          # markered-text — context-fetch / allowed-domains / mcp-servers rules; consumer blocks below bkit:end
 │   ├── skills.md           # create-if-missing — installed-skill registry
 │   └── skills/             # installed agent skills (cross-IDE)
 └── .bkit/                  # bkit install state + config (consumer-side)
     ├── version             # JSON: { pinnedVersion, canonicalHashes, claudeAllowDerived }
-    ├── friction.md         # markered-text — friction log (consumer-owned outside block)
+    ├── friction.jsonl      # friction ledger — appended by phase workflows, drained by bkit harvest
     ├── advisories.md       # generated artifact (gitignored) — last install/check findings
     ├── .env.example        # fully-managed — token placeholders
-    ├── templates/          # raw template copies (ci.yml, hooks, tool configs …) — copy and own
+    ├── templates/          # raw template copies (ci.yml, hooks, tool configs, context/<provider>.md …) — copy and own
     └── .env                # consumer secrets (gitignored), auto-loaded via .envrc/direnv
 ```
 

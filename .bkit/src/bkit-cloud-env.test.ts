@@ -246,7 +246,7 @@ describe("template generation sentinels", () => {
 describe("extractContextFetchProvisionRecipes / renderCloudContextFetchProvision", () => {
   const MANAGED =
     "<!-- bkit:start -->\n# Config\n\n" +
-    // A provision example INSIDE the managed block must be ignored (reference-only).
+    // A provision block INSIDE the managed block must be ignored (never run).
     "<!-- context-fetch:provision vercel -->\n```bash\ncommand -v vercel || pnpm add -g vercel\n```\n<!-- context-fetch:end -->\n\n" +
     "<!-- bkit:end -->\n";
 

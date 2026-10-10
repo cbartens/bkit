@@ -106,9 +106,13 @@ describe("the fence is written once, by bkit context run-block", () => {
 describe("the payload is wrapped once, never twice", () => {
   // Fetch blocks are consumer-authored and their stdout IS the payload. A block
   // that prints its own banner nests a second fence inside the first, and the
-  // shipped example is what consumers copy. Prose about untrusted output is fine;
+  // shipped templates are what consumers copy. Prose about untrusted output is fine;
   // a marker line emitted into the payload is not.
-  for (const rel of [".agents/context.md", ".bkit/templates/.agents/context.md"]) {
+  const contextTemplates = fs
+    .readdirSync(path.join(REPO_ROOT, ".bkit/templates/context"))
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => `.bkit/templates/context/${f}`);
+  for (const rel of [".agents/context.md", ...contextTemplates]) {
     it(`${rel} fetch blocks emit no fence of their own`, () => {
       const emitted = read(rel).match(/^.*={3,}[^\n]*UNTRUSTED.*$/gm) ?? [];
       expect(emitted, `${rel} emits its own fence marker`).toEqual([]);

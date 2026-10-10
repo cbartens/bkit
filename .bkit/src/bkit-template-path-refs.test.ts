@@ -28,6 +28,7 @@ function forbiddenNames(): string[] {
     ".envrc",
     ".bkit/scripts/",
     ...listDir(path.join(templates, "scripts")).map((d) => `scripts/${d}`),
+    ...listDir(path.join(templates, "context")).map((f) => `context/${f}`),
   ];
 }
 
@@ -48,6 +49,7 @@ describe("no workflow or prompt names a template path", () => {
     expect(names).toContain("ci.yml");
     expect(names).toContain("bkit-cloud.yml");
     expect(names.some((n) => n.startsWith("scripts/"))).toBe(true);
+    expect(names).toContain("context/vercel.md");
   });
 
   it("reads every workflow and prompt", () => {

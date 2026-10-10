@@ -423,8 +423,8 @@ export function renderCloudContextFetchProvision(cwd: string): string {
 /**
  * Entries of every `<!-- {tag}:start --> … <!-- {tag}:end -->` list block BELOW
  * `<!-- bkit:end -->` in `.agents/context.md` — one entry per line; blank, `#` comment
- * and marker lines ignored. Blocks above the marker are bkit's reference examples and
- * never read. Returns entries verbatim, in order.
+ * and marker lines ignored. Blocks above the marker are never read. Returns entries
+ * verbatim, in order.
  */
 function extractConsumerListBlock(cwd: string, tag: string): string[] {
   const filePath = path.join(cwd, ".agents", "context.md");

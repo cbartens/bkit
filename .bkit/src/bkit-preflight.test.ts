@@ -628,7 +628,7 @@ describe("detectContextFetchContextMissing", () => {
     expect(detectContextFetchContextMissing(tmpDir)).toBeNull();
   });
 
-  it("ignores context blocks that sit INSIDE the managed block (shipped examples never run)", () => {
+  it("ignores context blocks that sit INSIDE the managed block (never run)", () => {
     writeConfig(
       "<!-- bkit:start -->\n" +
         block("ci") +
@@ -669,17 +669,9 @@ describe("detectContextFetchSourceNotEnabled", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify(obj), "utf-8");
   }
 
-  // Managed region shipping NAMED vercel + supabase examples (mirrors template).
-  const BKIT_NAMED_EXAMPLES =
-    "<!-- bkit:start -->\n" +
-    "# Observability\n\n" +
-    "<!-- context-fetch:start vercel -->\n" +
-    "```bash\nvercel logs --scope acme --json\n```\n" +
-    "<!-- context-fetch:end -->\n\n" +
-    "<!-- context-fetch:start supabase -->\n" +
-    "```bash\ncurl https://api.supabase.com/v1/projects/x/...\n```\n" +
-    "<!-- context-fetch:end -->\n\n" +
-    "<!-- bkit:end -->\n";
+  // The managed block carries rules only; the named sources come from the shipped
+  // `.bkit/templates/context/` files (vercel.md, supabase.md, …).
+  const MANAGED = "<!-- bkit:start -->\n# Config\n\n<!-- bkit:end -->\n";
   // Consumer-section blocks.
   const UNNAMED_VERCEL_BLOCK =
     "\n## Consumer\n\n" +
@@ -699,7 +691,7 @@ describe("detectContextFetchSourceNotEnabled", () => {
   it("flags supabase when repo uses supabase but only a legacy vercel block is enabled (visitfrasercoast case)", () => {
     writeSupabaseConfig();
     writeVercelJson();
-    writeConfig(BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK);
+    writeConfig(MANAGED + UNNAMED_VERCEL_BLOCK);
     const f = detectContextFetchSourceNotEnabled(tmpDir);
     expect(f).toBeDefined();
     expect(f?.id).toBe("context-fetch-source-not-enabled");
@@ -708,12 +700,12 @@ describe("detectContextFetchSourceNotEnabled", () => {
     // vercel IS enabled (its name appears in the unnamed block body) — not named.
     expect(f?.detect).not.toContain("vercel");
     expect(f?.action).toContain("context-fetch:none intentional");
-    expect(f?.action).toContain("Do not edit above");
+    expect(f?.action).toContain(".bkit/templates/context/supabase.md");
   });
 
   it("detects supabase use via an @supabase/* dependency (no config.toml)", () => {
     writePackageJson({ dependencies: { "@supabase/supabase-js": "^2" } });
-    writeConfig(BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK);
+    writeConfig(MANAGED + UNNAMED_VERCEL_BLOCK);
     const f = detectContextFetchSourceNotEnabled(tmpDir);
     expect(f?.id).toBe("context-fetch-source-not-enabled");
     expect(f?.detect).toContain("supabase");
@@ -722,7 +714,7 @@ describe("detectContextFetchSourceNotEnabled", () => {
   it("does NOT flag a backend the repo does not use (no supabase evidence)", () => {
     writeVercelJson(); // vercel-only repo
     writeConfig(
-      BKIT_NAMED_EXAMPLES +
+      MANAGED +
         "\n<!-- context-fetch:start vercel -->\n```bash\nvercel logs --json\n```\n<!-- context-fetch:end -->\n",
     );
     const f = detectContextFetchSourceNotEnabled(tmpDir);
@@ -731,7 +723,7 @@ describe("detectContextFetchSourceNotEnabled", () => {
 
   it("does NOT flag when the used backend's block is already enabled", () => {
     writeSupabaseConfig();
-    writeConfig(BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK + NAMED_SUPABASE_BLOCK);
+    writeConfig(MANAGED + UNNAMED_VERCEL_BLOCK + NAMED_SUPABASE_BLOCK);
     const f = detectContextFetchSourceNotEnabled(tmpDir);
     expect(f).toBeNull();
   });
@@ -739,16 +731,14 @@ describe("detectContextFetchSourceNotEnabled", () => {
   it("is dismissed by a <!-- context-fetch:none --> marker", () => {
     writeSupabaseConfig();
     writeVercelJson();
-    writeConfig(
-      BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK + "\n<!-- context-fetch:none intentional -->\n",
-    );
+    writeConfig(MANAGED + UNNAMED_VERCEL_BLOCK + "\n<!-- context-fetch:none intentional -->\n");
     const f = detectContextFetchSourceNotEnabled(tmpDir);
     expect(f).toBeNull();
   });
 
   it("does NOT fire when the consumer section has zero blocks (missing advisory owns that case)", () => {
     writeSupabaseConfig();
-    writeConfig(BKIT_NAMED_EXAMPLES + "\n## Consumer\n\nNo blocks here yet.\n");
+    writeConfig(MANAGED + "\n## Consumer\n\nNo blocks here yet.\n");
     expect(detectContextFetchSourceNotEnabled(tmpDir)).toBeNull();
     // The generic missing advisory still covers it.
     expect(detectContextFetchMissing(tmpDir)?.id).toBe("context-fetch-missing");
@@ -757,7 +747,7 @@ describe("detectContextFetchSourceNotEnabled", () => {
   it("flags both backends (plural) when both are used and neither name appears below bkit:end", () => {
     writeSupabaseConfig();
     writeVercelJson();
-    writeConfig(BKIT_NAMED_EXAMPLES + UNNAMED_AWS_BLOCK);
+    writeConfig(MANAGED + UNNAMED_AWS_BLOCK);
     const f = detectContextFetchSourceNotEnabled(tmpDir);
     expect(f?.id).toBe("context-fetch-source-not-enabled");
     expect(f?.detect).toContain("vercel");

@@ -136,7 +136,6 @@ const SUBTEMPLATE_MODULE_OWNED = new Set([".env.example"]);
  * upgrade walk when present, left in place by uninstall.
  */
 export const CREATE_IF_MISSING_PATHS = new Set([
-    path.join(".agents", "context.md"),
     path.join(".agents", "skills.md"),
 ]);
 /**
@@ -168,6 +167,9 @@ export function isTemplate(relPath) {
     if (TEMPLATE_EXACT.has(norm))
         return true;
     if (norm.startsWith(".vale/styles/House/"))
+        return true;
+    // One context-fetch file per provider, copied below `bkit:end` in `.agents/context.md`.
+    if (norm.startsWith("context/"))
         return true;
     // Root `scripts/` in the templates holds only per-tool examples (`scripts/<tool>/`).
     // bkit's own scripts live under `.bkit/scripts/`.

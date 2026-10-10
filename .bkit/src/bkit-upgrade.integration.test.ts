@@ -535,7 +535,8 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
 });
 
 // ---------------------------------------------------------------------------
-// #489 — upgrade never touches an adopted template copy or a create-if-missing file
+// #489 — upgrade never touches an adopted template copy or a create-if-missing file, and
+// refreshes only the managed block of .agents/context.md
 // ---------------------------------------------------------------------------
 
 describe("#489 — upgrade leaves the consumer's own files byte-identical", () => {
@@ -557,7 +558,7 @@ describe("#489 — upgrade leaves the consumer's own files byte-identical", () =
     });
   }
 
-  it("adopted ci.yml, .husky/pre-push, .envrc and edited .agents/context.md + skills.md survive upgrade and check", () => {
+  it("adopted ci.yml, .husky/pre-push, .envrc and an edited .agents/skills.md survive upgrade and check", () => {
     if (!fs.existsSync(tsxBin)) return;
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
@@ -566,8 +567,7 @@ describe("#489 — upgrade leaves the consumer's own files byte-identical", () =
       "utf-8",
     );
     expect(runCli(["install", "--claude", "--typescript"]).status).toBe(0);
-    // context.md / skills.md were written once by install.
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "context.md"))).toBe(true);
+    // skills.md was written once by install.
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills.md"))).toBe(true);
 
     const owned: Record<string, string> = {
@@ -575,7 +575,6 @@ describe("#489 — upgrade leaves the consumer's own files byte-identical", () =
       [path.join(".husky", "pre-push")]: "#!/bin/sh\npnpm test\n",
       // A pre-.bkit/ directive an older bkit wrote: it is the consumer's line.
       ".envrc": "dotenv_if_exists .agents/.env\n",
-      [path.join(".agents", "context.md")]: "# Our context, no bkit block\n",
       [path.join(".agents", "skills.md")]: "<!-- bkit:start -->\nstale\n<!-- bkit:end -->\nmine\n",
     };
     for (const [rel, content] of Object.entries(owned)) {
@@ -591,6 +590,37 @@ describe("#489 — upgrade leaves the consumer's own files byte-identical", () =
     for (const [rel, content] of Object.entries(owned)) {
       expect(fs.readFileSync(path.join(tmpDir, rel), "utf-8"), rel).toBe(content);
     }
+  });
+
+  it("check flags a stale .agents/context.md block; upgrade refreshes it and keeps the consumer's blocks", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude"]).status).toBe(0);
+    const abs = path.join(tmpDir, ".agents", "context.md");
+    const fresh = fs.readFileSync(abs, "utf-8");
+    const end = "<!-- bkit:end -->";
+    // The block's own rules quote the end marker, so the real one is the last.
+    const endIdx = fresh.lastIndexOf(end);
+    const managed = fresh.slice(0, endIdx + end.length);
+    const consumer =
+      "\n\n## Enabled blocks\n\n<!-- context-fetch:start ours context=web -->\n```bash\necho ours\n```\n<!-- context-fetch:end -->\n";
+    const stale = `${fresh.slice(0, endIdx)}stale rule\n${end}`;
+    fs.writeFileSync(abs, stale + consumer, "utf-8");
+
+    const flagged = runCli(["check"]);
+    expect(flagged.status, `${flagged.stdout}\n${flagged.stderr}`).toBe(1);
+    expect(`${flagged.stdout}\n${flagged.stderr}`).toContain(path.join(".agents", "context.md"));
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
+    expect(fs.readFileSync(abs, "utf-8")).toBe(managed + consumer);
+    const check = runCli(["check"]);
+    expect(check.status, `${check.stdout}\n${check.stderr}`).toBe(0);
   });
 });
 

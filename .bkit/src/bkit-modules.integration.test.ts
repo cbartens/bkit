@@ -2628,8 +2628,8 @@ describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
   });
 });
 
-describe("create-if-missing core files (.agents/context.md, .agents/skills.md)", () => {
-  const files = [path.join(".agents", "context.md"), path.join(".agents", "skills.md")];
+describe("create-if-missing core file (.agents/skills.md)", () => {
+  const files = [path.join(".agents", "skills.md")];
 
   it("install writes them once, records no hash and no write; a second install leaves edits alone", () => {
     const first = makeCtx();
@@ -2651,6 +2651,37 @@ describe("create-if-missing core files (.agents/context.md, .agents/skills.md)",
     for (const ws of [dry.ws, again.ws]) {
       expect(ws.writes.filter((w) => files.includes(path.normalize(w.path)))).toEqual([]);
     }
+  });
+});
+
+describe(".agents/context.md — bkit owns the managed block, the consumer owns the rest", () => {
+  const REL = path.join(".agents", "context.md");
+  const CONSUMER =
+    "\n## Enabled blocks\n\n<!-- context-fetch:start ours context=web -->\n```bash\necho ours\n```\n<!-- context-fetch:end -->\n";
+
+  it("install rewrites a stale block and keeps everything below bkit:end byte-identical", () => {
+    const first = makeCtx();
+    runCoreModule(first);
+    flushPostDispatch(first);
+    const abs = path.join(tmpDir, REL);
+    const fresh = fs.readFileSync(abs, "utf-8");
+    expect(fresh).toContain("<!-- bkit:end -->");
+    expect(first.ws.writes.some((w) => path.normalize(w.path) === REL)).toBe(true);
+
+    // The block's own rules quote the end marker, so the real one is the last.
+    const endIdx = fresh.lastIndexOf("<!-- bkit:end -->");
+    const managed = fresh.slice(0, endIdx + "<!-- bkit:end -->".length);
+    fs.writeFileSync(
+      abs,
+      `${fresh.slice(0, endIdx)}stale rule\n<!-- bkit:end -->${CONSUMER}`,
+      "utf-8",
+    );
+
+    const again = makeCtx();
+    runCoreModule(again);
+    const after = fs.readFileSync(abs, "utf-8");
+    expect(after).toBe(managed + CONSUMER);
+    expect(again.ws.writes.some((w) => path.normalize(w.path) === REL)).toBe(true);
   });
 });
 

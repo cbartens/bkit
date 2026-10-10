@@ -464,7 +464,7 @@ Running `bkit uninstall` twice is safe — subsequent runs skip absent files and
 
 ### What a full uninstall preserves
 
-Bare uninstall removes bkit-managed files and strips bkit-managed blocks, but **not** guaranteed zero-footprint wipe. Deliberately leaves: `docs/` reference payload (consumer-editable, often customised); `.agents/context.md` and `.agents/skills.md` (written once, then yours); every file you copied from `.bkit/templates/`; any owned whole-file the consumer modified (hash mismatch → preserved); generated artefacts not manifest-tracked (`.bkit/advisories.md`, `.bkit/friction.jsonl`). Use `--nuke` to force-remove every manifest-listed bkit file regardless of consumer modifications; generated artefacts and `docs/` still yours to delete by hand.
+Bare uninstall removes bkit-managed files and strips bkit-managed blocks, but **not** guaranteed zero-footprint wipe. Deliberately leaves: `docs/` reference payload (consumer-editable, often customised); `.agents/skills.md` (written once, then yours); everything below `bkit:end` in `.agents/context.md` and the other managed-block files; every file you copied from `.bkit/templates/`; any owned whole-file the consumer modified (hash mismatch → preserved); generated artefacts not manifest-tracked (`.bkit/advisories.md`, `.bkit/friction.jsonl`). Use `--nuke` to force-remove every manifest-listed bkit file regardless of consumer modifications; generated artefacts and `docs/` still yours to delete by hand.
 
 ## Phase 3 exit-1 and recovery
 

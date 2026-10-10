@@ -791,8 +791,8 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "The static import graph does NOT cross the HTTP boundary — a page imports `ui` and "
         "`validators`, never `services` — so the link is the endpoint literal at the calling "
         "symbol, followed through `v1.ts` to the router file and its service imports. Attribution "
-        "is per symbol, not per file: a file-level walk credited `items` to every auth page, "
-        "because a shared helper mentions it in a comment."
+        "is per symbol, not per file, so a domain named only in a shared helper's comment is not "
+        "credited to every page that imports the helper."
     ) if ROUTES_MMD else "No route layer — run with `--surface`."
     order = {"split": 0, "gap": 1, "bypassed": 2, "budgeted": 3, "one": 4, "unchecked": 5}
     rows = sorted(rows, key=lambda r: (order.get(r["status"], 9), r["lane"], r["capability"]))
