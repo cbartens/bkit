@@ -7,11 +7,11 @@
 # .mcp.json invokes this instead of a bare `serena` because macOS apps
 # launched from the Dock/Finder run under launchd, which does not inherit
 # login-shell PATH — `~/.local/bin` (local's uv-tool-install target) is
-# invisible there (docs/setup.md § Symbol Lookup (Serena);
+# invisible there (.bkit/templates.md § Serena;
 # .bkit/providers.md § macOS GUI-isolation covers the same root cause for
 # Cursor/opencode). Checked in the order each environment actually
 # installs it: local (uv tool install default) first, then cloud
-# (.agents/config.md's `debug-fetch:provision serena` — root-run setup
+# (.agents/context.md's `context-fetch:provision serena` — root-run setup
 # script, world-readable override), then PATH as a last resort for any
 # other install location.
 set -euo pipefail

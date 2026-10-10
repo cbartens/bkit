@@ -8,9 +8,34 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+bkit owns only what a workflow step runs or parses (#489). Everything a person or another tool runs — the CI workflow, git hooks, lint and prose configs, editor and cloud-agent setup, dependency updaters, helper scripts — ships as a template the consumer copies and owns. Every file bkit ships is in one of three groups: an owned file, an owned block in a shared file, or a template, copied to `.bkit/templates/`.
+
+### Added
+
+- **Templates, copied and never applied.** `bkit install` and `bkit upgrade` copy every template byte for byte, placeholders unfilled, into the consumer's `.bkit/templates/`, and delete a copy whose template left the package. The set: `ci.yml`, `bkit-cloud.yml`, `renovate.yml`, `renovate.json5`, `dependabot.yml`, both Husky hooks, `.vale.ini` and the four House styles, `.lintstagedrc.json`, `slop-scan.config.json`, `.prettierignore`, `.envrc`, the three Cursor files (`settings.json`, `environment.json`, `Dockerfile`), the Serena, graphify, secrets-sync and prettier-table scripts, `.serena/project.yml`, `.graphifyignore`, `docs/capabilities.md`, and the context-fetch files. bkit never writes, compares, reports on or removes a copy the consumer adopted elsewhere in the repo. `.bkit/templates.md` lists each template: what it does, where to copy it, how to install the tool behind it, and the placeholders to fill (`main`, `{{NODE_VERSION}}`, `{{CLOUD_RUNNER}}`). `docs/templates/bkit-audit-adoption.md` reports, per template, whether it is adopted and wired.
+- **`bkit upgrade` lists the templates that changed.** One line per changed, added or removed path under `.bkit/templates/`, then a pointer to `.bkit/templates.md`. Diff each against the adopted copy and merge what you want; `git diff .bkit/templates` in the upgrade commit is the package change. `bkit check` fails on a stale copy.
+- **Context-fetch blocks, one template file per provider.** `.bkit/templates/context/` holds `github` (`context=ci` and `context=diff`), `expo`, `maestro` (iOS and Android lanes), `playwright`, `tavily`, `sentry`, `vercel`, `supabase`, `stripe`, `resend`, `inngest`, `cloudrun` and `serena`. Each file carries that provider's fetch blocks, its `context-fetch:provision` block where a stack CLI is needed, its env vars, the `allowed-domains` lines bkit's egress registry does not already cover, and its `mcp-servers` names. Names, slugs and ids are placeholders. Every fetch block self-skips (`exit 0` plus a `skipped —` line on stderr) when its env vars are unset. Copy the blocks you use below `<!-- bkit:end -->` in `.agents/context.md`.
+- **Managed-version marker on every file bkit writes.** Each owned file and owned block carries `bkit:managed v<version>` in the file's comment syntax; JSON carries none. `bkit check` reports `bkit-managed-stale` for any marker that differs from the installed version — a blocker on `main` / `dev`, an advisory on a feature branch. It replaces `bkit-rendered-prompts-stale` and `bkit-managed-docs-stale`.
+- **`bkit check` fails when an owned hook file is missing.** The hook commands bkit wires skip a missing file, so a deleted `guardrails.cjs` turned its guard off silently. `owned-hook-missing` names each missing file and the install flag that restores it, for every installed host (Claude, Cursor, Codex, opencode) and for `.claude/hooks/cloud-bootstrap.sh` when `bkit.cloudAgents` is `claude`.
+
 ### Changed
 
 - **Licence: PolyForm Noncommercial 1.0.0 or PolyForm Small Business 1.0.0, replacing MIT** (#506). bkit is free for personal use, non-profits and businesses with fewer than 100 people and under US$1M revenue; larger companies need a commercial licence (bkit@bartens.biz). Code bkit's agents write is the user's. A folder with its own `LICENSE.md` uses that licence: `.bkit/core/` is PolyForm, `.bkit/shared/` is MIT-0. Full terms in `LICENSE.md`.
+- **`.agents/context.md` and `.agents/skills.md` are owned blocks.** Install and upgrade refresh the block between `<!-- bkit:start -->` and `<!-- bkit:end -->`; everything below `bkit:end` is the consumer's; `bkit check` flags a stale block; uninstall strips only the block. The `context.md` block holds the context-fetch rules only — markers, contexts, self-skip contract, output bounds, provisioning, `allowed-domains`, `mcp-servers`; the ready-made blocks are templates. An edit inside either block is lost on the next upgrade: put your own content below `bkit:end`.
+- **`.mcp.json` and `.cursor/mcp.json`: bkit owns only its tracker entry.** Install and upgrade reset that entry under `mcpServers` and keep every other server and its order; uninstall removes only bkit's entry, and only while it still equals the template. A malformed file stops install.
+- **`package.json`: bkit adds only the `bkit:gate:*` and `bkit:deps:*` names that are missing.** A name already present is never rewritten, whatever its value. The tool scripts those gates call (`typecheck`, `lint`, `format:check`, `lint:prose`, `lint:slop`, `slop:delta`) and their devDependencies are the consumer's; `.bkit/templates.md` § Gate tool scripts lists them, and `gate-missing-called-scripts` names any a default gate value calls that is missing. Uninstall leaves `package.json` scripts and devDependencies alone.
+- **`--typescript` writes only the slop-scan plugin** (`.bkit/scripts/bkit-slop-type-suppression.mjs`).
+- **`.bkit/.env.example` is an owned file**, overwritten on install and upgrade like the other owned files.
+- **`bkit uninstall` removes `.bkit/templates/` whole and keeps every file adopted from a template.** It also keeps `docs/`, everything below `bkit:end` in a shared file, and any owned file the consumer edited (hash mismatch); `--nuke` removes the edited owned files too.
+
+### Removed
+
+- **BREAKING — `--ci` and `--tooling`, and the `ci` and `git-hooks` modules.** Both flags are now unknown and fail install. bkit no longer adds `"prepare": "husky"` or the husky devDependency; the Husky hooks are templates.
+- **BREAKING — `bkit.runners`, `bkit.renovateRunner` and `bkit.depUpdater: "renovate"`.** The runner label and Node version are now placeholders in the `bkit-cloud.yml` and `ci.yml` templates (`{{CLOUD_RUNNER}}`, `{{NODE_VERSION}}`). `bkit.depUpdater: "none"` silences the updater advisory; any other value is ignored.
+- **BREAKING — `bkit uninstall --package`, `--keep-tooling` and `--keep-npmrc`.**
+- **`.bkitignore`, the seed-or-print merge instructions and the template upgrade conflicts.** Nothing bkit writes needs them: an owned file is overwritten, a template is copied.
+- **The create-if-missing file group.** No file is written once and left: bkit either keeps a file current or leaves it to the consumer.
+- **The `bkit codex` verb, `bkit prs guard-checkout`, `bkit branches rebase --onto` / `--abort` and `bkit runs dispatch --retrigger-suffix`.** No workflow called them.
 
 ---
 

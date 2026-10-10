@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Example. Paste below the bkit-managed block in .husky/pre-push and own it.
+# Example. Paste at the end of your .husky/pre-push, below the bkit lines, and own it.
 # bkit install does not write this file and does not overwrite a copy.
 #
 # Warn-only. Never blocks a push, never writes, never runs graphify.

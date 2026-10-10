@@ -147,7 +147,7 @@ Parallel lanes `bkit-tests-static` (typecheck, prettier, Vale, slop, actionlint,
 
 ## Cloud-agent workflow — `bkit-cloud.yml`
 
-Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; failed `dev` CI → `/bkit-debug {FID}`; `workflow_dispatch` runs any phase. Two jobs, each a no-op without its secret: `claude` (`claude-code-action`, https://github.com/anthropics/claude-code-action) and `opencode` (`opencode run`). Runs bkit workflows; `bkit install --auto=claude|opencode` points at it. Full recipe: `.bkit/cloud.md` § Post-CI auto-routing.
+Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; failed `dev` CI → `/bkit-debug {FID}`; `workflow_dispatch` runs any phase. Two jobs, each a no-op without its secret: `claude` (`claude-code-action`, https://github.com/anthropics/claude-code-action) and `opencode` (`opencode run`, https://opencode.ai/docs/github/). Runs bkit workflows; `bkit install --auto=claude|opencode` points at it. Full recipe: `.bkit/cloud.md` § Post-CI auto-routing.
 
 - Install: `bkit install --auto=claude` (writes `.claude/hooks/cloud-bootstrap.sh`) or `--auto=opencode` (needs `--opencode=<provider>` first). Both need `--tracker=github`.
 - Secrets: `ANTHROPIC_API_KEY` + the Claude GitHub App (`/install-github-app`) for `claude`; `OPENCODE_PROVIDER_KEY` for `opencode`. Repo Actions permissions: read and write, PR creation allowed.
@@ -238,7 +238,20 @@ Editor defaults (`settings.json`: prettier format-on-save, extension recommendat
 
 ## Dependabot and Renovate
 
-Opens dependency PRs. No bkit workflow reads either. Pick one; copy only its files.
+Opens dependency PRs. No bkit workflow reads either. Pick one; copy only its files. Reference: Dependabot https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference; Renovate https://docs.renovatebot.com/, self-hosted action https://github.com/renovatebot/github-action.
+
+Dependabot — commit `.github/dependabot.yml` on the default branch, then enable alerts and security updates:
+
+```bash
+gh api -X PUT 'repos/{owner}/{repo}/vulnerability-alerts'
+gh api -X PUT 'repos/{owner}/{repo}/automated-security-fixes'
+```
+
+Renovate (Mend) — commit `.github/renovate.json5` on the default branch, then install the App at https://github.com/apps/renovate (GitHub UI only; no `gh` equivalent). Renovate (self-hosted) — also copy `renovate.yml`, then set its platform token (fine-grained PAT; permissions → `docs/deployments.md` § Dependency updaters):
+
+```bash
+gh secret set BKIT_GH_TOKEN
+```
 
 - Examples ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them). Your copied workflows (`ci.yml`, `bkit-cloud.yml`) stay in scope so their pins refresh.
 - `enabled: false` on a Renovate package rule does not stop digest pinning; use `ignorePaths` to keep Renovate off a file.
@@ -247,12 +260,14 @@ Opens dependency PRs. No bkit workflow reads either. Pick one; copy only its fil
 
 ## Serena — symbol lookup
 
-Local language server, wired as MCP server; agents use it. Does not rewrite `CLAUDE.md` / `.claude/settings.json`.
+Local language server, wired as MCP server; agents use it. Does not rewrite `CLAUDE.md` / `.claude/settings.json`. Reference: https://github.com/oraios/serena.
 
 ```bash
 brew install uv
-uv tool install serena
+uv tool install -p 3.13 serena-agent
 ```
+
+PyPI name `serena-agent`, CLI `serena`. PyPI `serena` is an unrelated package.
 
 - Set `project_name`, `typescript_version` in `.serena/project.yml`. `typescript_version` must match `package.json`, not Serena's bundled compiler. TypeScript >= 7 ships no `tsserver` → language server fails to start (`Could not find a valid TypeScript installation`) → set `"5.9.3"` (Serena's bundled, last with `tsserver`).
 - Trust the project: add its path to `trusted_project_path_patterns` in `~/.serena/serena_config.yml`. Untrusted → Serena ignores all of `ls_specific_settings` (`typescript_version`, indexing waits) with only a log `WARNING`; lookups still answer on bundled defaults.
@@ -279,7 +294,7 @@ uv tool install serena
 
 ## graphify — map
 
-On-demand only — not an MCP server, installed skill, CI job, or git hook. Agents read `docs/capabilities.md`; audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. Only tracked output: `docs/capabilities.md`. Mermaid views: `docs/graphify-out/reports/graph-packages.mmd`, `graph-modules.mmd`.
+On-demand only — not an MCP server, installed skill, CI job, or git hook. Agents read `docs/capabilities.md`; audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. Only tracked output: `docs/capabilities.md`. Mermaid views: `docs/graphify-out/reports/graph-packages.mmd`, `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
 
 ```bash
 uv tool install "graphifyy[sql]"
@@ -314,7 +329,7 @@ export GRAPHIFY_OUT=docs/graphify-out
 graphify-out/
 ```
 
-- Paste `scripts/graphify/bkit-graph-pre-push.sh` below bkit block in `.husky/pre-push`. Warn-only: does not run graphify, does not block push.
+- Paste `scripts/graphify/bkit-graph-pre-push.sh` at the end of your `.husky/pre-push`, below the bkit lines. Warn-only: does not run graphify, does not block push.
 - `.graphifyignore` merges `.gitignore`.
 - Keep `package.json` in corpus — excluding it drops workspace `name` fields graphify resolves package imports with; graph still looks complete.
 - Keep `tsconfig.json` out; graphify reads `paths` regardless.

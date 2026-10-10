@@ -2,7 +2,7 @@
 
 {{BKIT_MANAGED_MARKER}}
 
-# Config
+# Context
 
 > [!CAUTION]
 > **Purpose:** Agent / tooling configuration bkit tooling PARSES and executes in `/bkit-debug` and when generating `cloud.md` files.
@@ -14,7 +14,7 @@
 > - Blocks below `<!-- bkit:end -->` = consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add yours there.
 > - Read-only + idempotent. **Never log PII.**
 
-## Debug Fetch
+## Context Fetch
 
 `/bkit-debug` runs **every** `bash` fenced block between `<!-- context-fetch:start [name] [context=<context>] -->` / `<!-- context-fetch:end -->` **after** `<!-- bkit:end -->`. Blocks above `<!-- bkit:end -->` are never executed. Per block: customise (severity / freshness / limit / query / filters — knobs in the block's `# Customise:` comment, last comment before the body), execute, write stdout to that context's artifact under `docs/plans/{YYYYMM}/logs/{FID}/`.
 

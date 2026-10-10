@@ -120,7 +120,7 @@ describe(".bkit/templates/context/", () => {
       path.join(getTemplatesRoot(), ".agents", "context.md"),
     ];
     for (const abs of sources) {
-      expect(fs.readFileSync(abs, "utf-8"), abs).not.toMatch(/gether|bartens/i);
+      expect(fs.readFileSync(abs, "utf-8"), abs).not.toMatch(/\b(?:gether|c?bartens)\b/i);
     }
   });
 
