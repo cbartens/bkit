@@ -1,5 +1,5 @@
-// bkit-workflow-lock-snippet.integration.test.ts — Behavioural regression for
-// the Resolve FID issue lookup in the phase workflows' Step 1, plus the guard
+// bkit-workflow-lock-snippet.integration.test.ts — the Resolve FID issue lookup in
+// the phase workflows' Step 1, plus the guard
 // that every phase takes its lock through `bkit locks acquire`. Spawns real
 // bash to execute the extracted lookup.
 //
@@ -61,8 +61,7 @@ const workflowFiles = fs
   .map((f) => path.join(WORKFLOWS_DIR, f));
 
 // Resolve FID, rule 3: with an issue ID, every phase reuses the feature already
-// logged for THAT issue. Taking the newest leftover `.lock` or newest bucket
-// would latch a fresh run onto an unrelated feature.
+// logged for THAT issue, never the newest leftover `.lock` or newest bucket.
 const PHASES = ["bkit-build.md", "bkit-debug.md", "bkit-design.md", "bkit-plan.md", "bkit-ship.md"];
 const issueLookups = workflowFiles
   .map((file) => ({ file: path.basename(file), lines: fs.readFileSync(file, "utf-8").split("\n") }))
@@ -84,8 +83,7 @@ function runLookup(lookup: { key: string; ls: string }, issueId: string, repoRoo
 }
 
 describe("every phase takes its feature lock through bkit locks acquire", () => {
-  // The command owns the month bucket and the split-bucket refusal; a phase
-  // that stopped calling it would be back to deriving the bucket by hand.
+  // The command owns the month bucket and the split-bucket refusal.
   it.each(PHASES)("%s", (file) => {
     const phase = file.replace(/^bkit-|\.md$/g, "");
     const content = fs.readFileSync(path.join(WORKFLOWS_DIR, file), "utf-8");

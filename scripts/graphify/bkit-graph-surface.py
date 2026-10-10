@@ -10,7 +10,7 @@ capabilities doc renders as its route layer.
 
     bkit-graph-surface.py <graph.json> <surface-out.json> [--quiet]
 
-THE CHAIN, and why each hop is mechanical:
+THE CHAIN:
 
   apps/web/src/app/[locale]/items/page.tsx   filesystem — one page.tsx per route
     -> api.v1.items  |  "/api/v1/items"   literal at the CALLING SYMBOL
@@ -20,17 +20,14 @@ THE CHAIN, and why each hop is mechanical:
 
 Replace `apps/web`, `apps/mobile`, `packages/api`, and `@scope` with this repo.
 
-Hop 1 has to be a literal scan: the static import graph does NOT cross the HTTP
-boundary. A page imports `@scope/ui` and validators, never services. Two call
-styles coexist and both are read here — Hono's typed RPC (`api.v1.items.$get`)
-and raw URL strings (`/api/v1/items`). That coexistence is itself a `split`
-capability until a rule tracks it.
+Hop 1 is a literal scan (the static import graph does NOT cross the HTTP
+boundary). Both call styles are read — Hono's typed RPC (`api.v1.items.$get`)
+and raw URL strings (`/api/v1/items`).
 
-ATTRIBUTION IS SYMBOL-LEVEL, NOT FILE-LEVEL. A file-level walk attributes an
-endpoint to every page that imports a shared helper, because the helper can
-carry the string in a comment. Whole-line comments are stripped, and a literal
-counts for the symbol whose line range contains it. graphify gives one line per
-symbol, so a symbol's range runs to the next symbol's line in the same file.
+ATTRIBUTION IS SYMBOL-LEVEL, NOT FILE-LEVEL. Whole-line comments are stripped,
+and a literal counts for the symbol whose line range contains it. graphify gives
+one line per symbol, so a symbol's range runs to the next symbol's line in the
+same file.
 """
 
 import argparse
@@ -167,12 +164,10 @@ for seg, files in seg_router.items():
 
 
 # --- hop 4: backend modules -> external providers ---------------------------
-# SDK-first, URL-fallback. Most integrations go through a client library and put
-# no URL in source at all — a URL scan misses every client that only imports an
-# SDK. Anything matching no rule
-# is still discovered from its hostname, so a new integration appears unprompted;
-# test code's callers are dropped by bkit-graphify-rollup.py's is_test_code, and social
-# links and example hosts with hide_nodes in the doc, not here.
+# SDK-first, URL-fallback: a provider is matched by SDK import, else discovered from
+# a URL hostname even when no rule names it. Test code's callers are dropped by
+# bkit-graphify-rollup.py's is_test_code, and social links and example hosts by
+# hide_nodes in the doc, not here.
 BY_MODULE = lambda p: "/".join(p.split("/")[:-1][:4]) or p.split("/")[0]
 SKIP_DIR = {"node_modules", "dist", ".next", ".turbo", "coverage", "build", ".git"}
 SKIP_FILE = (".test.", ".spec.", ".d.ts", ".config.")

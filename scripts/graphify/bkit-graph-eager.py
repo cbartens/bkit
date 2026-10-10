@@ -13,39 +13,23 @@ docs/capabilities.md.
 
 THE THING BEING LOOKED FOR. A call that runs at module scope runs on *import*,
 not on first use, so every file that transitively imports it pays whatever that
-call costs. A three-line `db/index.ts` that opens a database handle at import
-throws in Jest before a single test runs, and every test file that imports it
-needs a mock — including tests that never touch a database.
+call costs.
 
-WHY THIS IS NOT A GRAPH QUERY. It is the one construct graphify measurably drops:
-`graphify-confirms-presence-but-cannot-prove-absence` records that calls in
-module-level initialiser expressions are missed, even within a single file. The
-import EDGES are fine — every inbound edge to db/index.ts is present and correct
-— but the `openDatabaseSync(...)` call itself is not a node, so no query over
-graph.json can find it. The detection half therefore reads source. The downstream
-half does use graph.json, because transitive inbound imports are the check the
-graph is most trustworthy for.
+DETECTION reads source: graphify emits no node for a call in a module-level
+initialiser expression. The DOWNSTREAM count uses graph.json's transitive inbound
+imports.
 
-HOW MODULE SCOPE IS DECIDED, and why it takes two independent filters. Brace
-counting alone drifts: template literals spanning lines, regex literals and JSX
-all unbalance it, and a first pass this way reported `React.useContext` and
-`response.json` as module scope when both sit inside functions. So instead:
+HOW MODULE SCOPE IS DECIDED — a line counts only when both filters hold:
 
   1. the line is OUTSIDE every callable's line range, taken from graph.json.
      A `_callable` node's range runs from its line to the next symbol's line in
      the same file — the same symbol-attribution trick bkit-graph-surface.py uses.
-  2. the line starts at column 0. Prettier formats this repo, so anything nested
-     inside a callback body is indented no matter what the symbol table says.
-     This is what catches calls inside an anonymous arrow that graphify never
-     emitted a node for.
-
-Together they cut a large raw population down to the calls that actually run
-at import, without a hand-written exemption for a misparse.
+  2. the line starts at column 0 (Prettier indents anything nested inside a
+     callback body, including an anonymous arrow graphify emitted no node for).
 
 A file with no nodes in graph.json at all — newer than the graph, or never
 extracted — keeps filter 2 and loses filter 1. Those rows are marked
-`in_graph: false` and counted in the summary rather than dropped, because a
-check that quietly skips input reads exactly like a check that passed.
+`in_graph: false` and counted in the summary, never dropped.
 """
 
 import argparse
@@ -55,9 +39,8 @@ import os
 import re
 import sys
 
-# bkit-graph-imports.py is hyphenated to match its siblings, which `import` cannot
-# spell, so it is loaded by path. Four lines of boilerplate bought consistent
-# filenames across scripts/graphify.
+# bkit-graph-imports.py is hyphenated, which `import` cannot spell, so it is loaded
+# by path.
 import importlib.util as _ilu
 _spec = _ilu.spec_from_file_location(
     "graph_imports",
@@ -68,8 +51,7 @@ _spec.loader.exec_module(graph_imports)
 SRC = (".ts", ".tsx")
 SKIP_DIR = {"node_modules", "dist", ".next", ".turbo", "coverage", "build", ".git",
             ".worktrees", "docs"}
-# *.config.ts and *.setup.ts are harness bootstrap — evaluating at import is the
-# whole job (vitest.setup.integration.ts loads .env.test that way, correctly).
+# *.config.ts and *.setup.ts are harness bootstrap (import-time work is their job).
 # `.test-d.` is a type-level test and needs listing separately: it does not
 # contain `.test.`, so the ordinary test filter walks straight past it.
 # Test files are excluded as sources but kept as downstream consumers: a stub in
@@ -97,9 +79,8 @@ CALL = re.compile(
     r"|^(?:await\s+)?(?:new\s+)?([A-Za-z_$][\w$]*(?:\.[\w$]+)*)\s*\("
 )
 
-# Only these relations are a dependency. `contains` is structural nesting, and
-# `indirect_call` is a name-matching heuristic that has invented edges between
-# unrelated files that happened to define the same function name.
+# Only these relations are a dependency; `contains` (structural nesting) and
+# `indirect_call` (a name-matching heuristic) are not.
 DEP_RELATIONS = {"imports", "imports_from", "re_exports", "dynamic_import"}
 
 ap = argparse.ArgumentParser()
@@ -155,8 +136,7 @@ def inside_callable(path, line):
 # graph.json already carries the ~540 imports graphify cannot resolve — a `.js`
 # specifier never reaching a `.tsx` file, and workspace subpaths through an
 # `exports` map. bkit-graph-repair.py injects them during `pnpm graph`, so they are
-# read here like any other edge. Re-deriving them would be a second answer to
-# "what edges exist"; warn instead if the graph predates that step.
+# read here like any other edge; warns if the graph predates that step.
 INBOUND = collections.defaultdict(set)
 for link in raw["links"]:
     if link.get("relation") not in DEP_RELATIONS:

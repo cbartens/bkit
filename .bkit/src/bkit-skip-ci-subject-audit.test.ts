@@ -1,25 +1,19 @@
 // bkit-skip-ci-subject-audit.test.ts — CI-suppression token convention audit.
 //
-// Two DIFFERENT things get conflated, and conflating them breaks things in
-// both directions:
+// Two different things:
 //
-//   1. A deliberate `bkit [skip ci]` in a docs-only commit SUBJECT. This is
-//      the CI-minutes convention (`.agents/rules.md` § Docs-only commits) and
-//      it must STAY. Stripping it makes every phase close fire a full CI run
-//      on `dev` for a docs-only change — and breaks ship's promotion-lag
-//      guard (`bkit branches switch`), which stops the ship for a human when a
-//      local `dev` commit ahead of `origin/dev` lacks the token. Ship's own
-//      bookkeeping commit is exactly such a commit.
+//   1. A `bkit [skip ci]` in a docs-only commit SUBJECT: the CI-minutes convention
+//      (`.agents/rules.md` § Docs commits), present on every listed subject. Ship's
+//      promotion-lag guard (`bkit branches switch`) stops for a human when a local
+//      `dev` commit ahead of `origin/dev` lacks the token; ship's own bookkeeping
+//      commit carries it.
 //
-//   2. A token INHERITED into a squash-merge BODY. `gh pr merge` and the MCP
-//      merge tool default the body to the head branch's concatenated commit
-//      subjects, so one intermediate `[skip ci]` silently suppresses CI on a
-//      shared branch. That is the real defect; the guards are an explicit
-//      `--body ""` at every merge call site plus a post-close scan of the
-//      landed commit's BODY (subject excluded).
+//   2. A token INHERITED into a squash-merge BODY (`gh pr merge` and the MCP merge
+//      tool default the body to the head branch's concatenated commit subjects). The
+//      guards are an explicit `--body ""` at every merge call site plus a post-close
+//      scan of the landed commit's BODY (subject excluded).
 //
-// Both halves are asserted here, and the ship interaction is pinned in (iv)
-// so the convention cannot be swept away again without a red test.
+// Both halves are asserted here; the ship interaction is pinned in (iv).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -108,8 +102,8 @@ const SKIP_CI_SUBJECTS: Array<{
     description: "debug abort",
     literal: "docs({FID}): debug aborted bkit [skip ci]",
   },
-  // Ship has no separate abort subject: its Failure Path flushes ONE commit
-  // (#412), so the handover rides the `ship FAILED` commit rather than a second
+  // Ship has no separate abort subject: its Failure Path flushes ONE commit,
+  // so the handover rides the `ship FAILED` commit rather than a second
   // `ship aborted` push onto feat/{FID}.
   {
     file: "bkit-ship.md",

@@ -96,7 +96,7 @@ import {
 } from "./bkit-manifest.js";
 
 // ---------------------------------------------------------------------------
-// Staging helpers (P4.T1 / P4.T2)
+// Staging helpers
 //
 // `.bkit-staging/` is a per-run SCRATCH area: modules render derived files there
 // (e.g. opencode.json) before comparing/merging into the consumer destination.
@@ -104,13 +104,12 @@ import {
 // via `finally { discardAllStaging() }`.
 //
 // NOTE: `commitStaging` / `discardStaging` / `initStagingDir` are atomic-rename
-// PRIMITIVES retained for a future true per-module transactional path. They are
-// NOT on the current install path: dispatch writes module files directly to their
-// destinations and is NOT atomic across modules. A mid-dispatch failure can leave
-// earlier modules' files written (and `.bkit/version` unpinned); `bkit install`
-// is idempotent, so re-running completes a partial install. (#255 P1-5)
+// PRIMITIVES NOT on the current install path: dispatch writes module files directly
+// to their destinations and is NOT atomic across modules. A mid-dispatch failure can
+// leave earlier modules' files written (and `.bkit/version` unpinned); `bkit install`
+// is idempotent, so re-running completes a partial install.
 //
-// Design contract (BAR-142 §A4):
+// Design contract:
 //   - Staging path: `.bkit-staging/<module>/` relative to cwd.
 //   - Each staged file lives at `<stagingDir>/<rel-consumer-path>`.
 //   - commitStaging: move each staged file → real destination (fs.renameSync).
@@ -282,8 +281,8 @@ export function parseModelLookupForColumn(
 
 /**
  * Parse .bkit/prompts.md § Models table → Map<name, cursorModel>.
- * Header-addressed: finds the "Cursor model" column by header name.
- * Preserved for backward compatibility — delegates to parseModelLookupForColumn.
+ * Header-addressed: finds the "Cursor model" column by header name. Delegates to
+ * parseModelLookupForColumn.
  */
 export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
   return parseModelLookupForColumn(subagentsMdPath, GATEWAY_COLUMN.cursor);
@@ -292,10 +291,9 @@ export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
 /**
  * Gateway key → its prompts.md § Models column header.
  *
- * § Models is keyed on GATEWAY, never on program — a model id belongs to the gateway it
- * is served from, so a gateway shared by two programs is one column, not two. That is what
- * stops the table growing as programs x gateways. `anthropic` and `cursor` are the pinned
- * gateways of the claude and cursor programs (see PROGRAM_GATEWAYS in bkit-cli.ts).
+ * § Models is keyed on GATEWAY, never on program — a gateway shared by two programs is one
+ * column, not two. `anthropic` and `cursor` are the pinned gateways of the claude and cursor
+ * programs (see PROGRAM_GATEWAYS in bkit-cli.ts).
  *
  * Cells hold the BARE, gateway-scoped model id. Any prefix a program's config format needs
  * is added at render time by formatModelPin — never stored in the table.
@@ -320,8 +318,8 @@ const GATEWAY_COLUMN: Record<string, string> = {
  */
 export function formatModelPin(program: string, gateway: string, bareModel: string): string {
   if (program === "opencode") return `${opencodeProviderId(gateway)}/${bareModel}`;
-  // claude / cursor / codex all take the bare id: Claude and Cursor because their gateway is
-  // implicit, Codex because it names its gateway in `[model_providers.<id>]` instead.
+  // claude / cursor / codex all take the bare id: Claude's and Cursor's gateway is implicit,
+  // Codex names its gateway in `[model_providers.<id>]`.
   return bareModel;
 }
 
@@ -331,11 +329,9 @@ export function formatModelPin(program: string, gateway: string, bareModel: stri
  * `bkit check` / `bkit upgrade` take no `--opencode=` flag, so they read the provider the
  * consumer actually installed (package.json `bkit.opencodeProvider`, else the opencode.json
  * provider block). There is no default: a repo carrying `.opencode/` with no recorded
- * provider is a broken install, and rendering it against a substitute would silently rewrite
- * every agent pin to a provider the consumer never chose.
+ * provider is a broken install.
  *
- * Call ONLY on a path already known to need the opencode host — never speculatively, or a
- * consumer who simply did not install opencode gets a spurious failure.
+ * Call ONLY on a path already known to need the opencode host, never speculatively.
  */
 function requireOpencodeProvider(cwd: string, context: string): string {
   const detected = detectOpencodeProvider(cwd);
@@ -354,7 +350,7 @@ function requireOpencodeProvider(cwd: string, context: string): string {
  * Build the per-agent opencode model lookup for the selected provider.
  * Source of truth = prompts.md § Models, which carries one curated column per
  * provider ("OpenRouter", "Ollama"). Header-addressed. Every allowlisted provider
- * ships a column — an absent one is a bug, not a case to substitute around.
+ * ships a column; an absent one throws.
  */
 export function buildOpencodeModelLookup(
   subagentsMdPath: string,
@@ -517,9 +513,8 @@ export function parseEffortMap(promptsMdPath: string): EffortMap {
 
 /**
  * Resolve the prompts.md effort-table column for a program.
- * Throws on an unknown program: with the table keyed on program there is no gateway key
- * left to substitute around, and silently falling back would emit a ladder the caller
- * never chose. Callers pass a program ("claude" / "cursor" / "opencode"), not a gateway.
+ * Throws on an unknown program; never falls back. Callers pass a program ("claude" /
+ * "cursor" / "opencode"), not a gateway.
  */
 export function effortColumnForProgram(program: string): string {
   const col = EFFORT_COLUMN_FOR_PROGRAM[program];
@@ -622,8 +617,8 @@ export function applyOpencodeAgent(
   newFm += `model: ${formatModelPin("opencode", provider ?? "", opencodeModel)}\n`;
   newFm += opencodeToolsBlock(toolsBlock);
   if (effort && effortMap) {
-    // Program-keyed: every opencode gateway shares the one "OpenCode" ladder, so the
-    // gateway is deliberately not consulted here.
+    // Program-keyed: every opencode gateway shares the one "OpenCode" ladder; the gateway
+    // is not consulted.
     newFm += `reasoningEffort: ${lookupEffort(effortMap, "opencode", effort)}\n`;
   }
   newFm += "---\n";
@@ -653,11 +648,8 @@ export function applyEffortRemap(content: string, effortMap: EffortMap, host: st
 /**
  * Escape a body for a TOML basic multi-line string (`"""` … `"""`).
  *
- * TOML has no raw-string escape hatch that survives arbitrary content: literal strings
- * cannot contain their own quote run, and basic strings interpret backslashes. So the body
- * is emitted as a basic multi-line string with the sequences that would terminate or corrupt
- * it neutralised — a stray triple-quote in a prompt would otherwise close the value early and
- * yield a TOML file that parses as something else entirely.
+ * The body is emitted as a basic multi-line string with every sequence that would terminate
+ * or corrupt it (backslashes, a triple-quote run) neutralised.
  */
 export function escapeTomlMultiline(body: string): string {
   return body
@@ -684,11 +676,9 @@ function tomlString(key: string, value: string): string {
  *                              in `[model_providers.<id>]`, not in the pin)
  *   model_reasoning_effort  <- § Effort `Codex` column
  *
- * NOT emitted — `tools:`. Codex has no per-agent tool allowlist (openai/codex#6049 is open),
- * and `sandbox_mode` cannot stand in: every bkit agent is write-capable, so it would be
- * `workspace-write` for all of them and discriminate nothing. The declared `tools:` block is
- * therefore NOT enforced on this host; that limitation is documented in providers.md rather
- * than hidden behind a field that only looks like it restricts something.
+ * NOT emitted — `tools:`. Codex has no per-agent tool allowlist (openai/codex#6049 is open);
+ * `sandbox_mode` is not emitted either. The declared `tools:` block is NOT enforced on this
+ * host (documented in providers.md).
  */
 export function applyCodexAgent(
   content: string,
@@ -729,22 +719,21 @@ export function applyCodexAgent(
 /**
  * Session-prompt anchor prepended to every opencode command body. OpenCode
  * substitutes `$ARGUMENTS` with everything typed after the slash command before
- * the template is sent to the model. Without this, the command body replaces the
- * user's input and the issue ref / instructions are lost (issue #278). A single
- * top anchor keeps a large pasted prompt in one place and sits at the head where
- * the workflows' Step 1 issue-extraction ("scan session prompt") reads it. The
- * managed-version stamp is prepended afterwards, so this renders just below it.
+ * the template is sent to the model; this anchor carries the user's input into the
+ * command. One top anchor, at the head where the workflows' Step 1 issue-extraction
+ * ("scan session prompt") reads it. The managed-version stamp is prepended afterwards,
+ * so this renders just below it.
  */
 export const OPENCODE_SESSION_PROMPT_ANCHOR = "**Session prompt:**\n\n$ARGUMENTS\n\n---\n\n";
 
 /**
- * T2: Cursor/OpenCode command invocation rewrite (shared — also OC2 step 2 via
+ * Cursor/OpenCode command invocation rewrite (shared — also OC2 step 2 via
  * applyOpencodeCommand). Paired with applyT1 in the Cursor render pipeline.
  * - `Agent` tool → `Task` tool (subagent invocations)
  * - `Skill` tool → `Task` tool (slash-command invocations — Cursor/OpenCode
  *   `Task` covers both surfaces; Claude splits them into `Agent` + `Skill`)
  * - @name → /name on **Subagent:** lines:
- *   - bare `**Subagent:** @name` (legacy exact line)
+ *   - bare `**Subagent:** @name` (exact line)
  *   - real workflow shape `**Subagent:** Invoke \`@name\`…` (incl. indented lists)
  * - Caution placeholder `Invoke using \`@name\`` → `\`/name\``
  * Does NOT rewrite body prose, npm scopes, emails, or gate-checklist `@agent` refs.
@@ -756,7 +745,7 @@ export function applyT2(content: string): string {
   result = result.replace(/using `Skill` tool/g, "using `Task` tool");
   // Backticked `@agent` on any **Subagent:** line (numbered, list-indented, or bare).
   result = result.replace(/^([^\n]*?\*\*Subagent:\*\*[^\n]*?)`@([a-z][a-z0-9-]*)`/gm, "$1`/$2`");
-  // Bare `@agent` immediately after **Subagent:** (legacy exact-line form).
+  // Bare `@agent` immediately after **Subagent:** (exact-line form).
   result = result.replace(/^([^\n]*?\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)\b/gm, "$1/$2");
   result = result.replace(/Invoke using `@name`/g, "Invoke using `/name`");
   return result;
@@ -766,7 +755,7 @@ export function applyT2(content: string): string {
  * OC2: opencode command rewrite.
  * - Strips leading YAML frontmatter block (same as T1).
  * - Rewrites invocation spelling for opencode (same as T2 — see `applyT2`).
- * - Prepends the session-prompt `$ARGUMENTS` anchor (issue #278).
+ * - Prepends the session-prompt `$ARGUMENTS` anchor.
  */
 export function applyOpencodeCommand(content: string): string {
   // Step 1: strip frontmatter (same as T1)
@@ -779,11 +768,9 @@ export function applyOpencodeCommand(content: string): string {
 
 // T1: Replace the leading YAML frontmatter block with its `description:` value as a
 // plain first line, for Cursor commands. Cursor prints a command file's literal first
-// line as the description in the picker and hover, and it does not read frontmatter —
-// hence the strip. Dropping the description outright left whatever came next (the
-// managed-version marker) standing in as the description (#386). Derived from the
-// frontmatter at render time, so it cannot drift from the value Claude Code shows.
-// No frontmatter, or frontmatter without `description`, falls back to a plain strip.
+// line as the description in the picker and hover, and it does not read frontmatter.
+// Derived from the frontmatter at render time. No frontmatter, or frontmatter without
+// `description`, falls back to a plain strip.
 export function applyT1(content: string): string {
   const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!fm) return content;
@@ -992,20 +979,17 @@ function mirrorDirAlways(
   return writes;
 }
 
-// Payload pass: remove bkit files a legacy layout left in <cwd>/.agents/.
+// Payload pass: remove bkit files an older layout left in <cwd>/.agents/.
 // Mirror sources (`.bkit/workflows`, `.bkit/prompts`) and bkit-authoring docs
 // (`.bkit/*.md`) live package-side and are read directly from there at runtime
 // (see getWorkflowsRoot / getPromptsRoot / getBkitDocsRoot). The reference docs
 // are ALSO mirrored into the consumer's own `.bkit/` by runBkitDocs — at
-// `.bkit/`, never `.agents/`. A consumer on the legacy layout carries copies of
-// these under `.agents/` — `runPayload` removes those so the tree stays clean.
-// (`.agents/rules.md` is NOT relocated — it remains a consumer-shipped Tier-2
-// file; AGENTS.md/CLAUDE.md reference it.)
+// `.bkit/`, never `.agents/`. `runPayload` removes copies under `.agents/`.
+// (`.agents/rules.md` stays at `.agents/` — a consumer-shipped Tier-2 file;
+// AGENTS.md/CLAUDE.md reference it.)
 //
-// Named `runPayload` for call-site stability with the dispatch in runCoreModule;
-// it only does orphan cleanup. Never touches the bkit repo's own tree (isDogfood
-// guard): in dogfood these paths already live under `.bkit/`, so there is nothing in
-// `.agents/` to remove.
+// `runPayload` only does orphan cleanup. Never touches the bkit repo's own tree
+// (isDogfood guard).
 const RELOCATED_AGENTS_FILES = [
   "trackers.md",
   "workflows.md",
@@ -1014,11 +998,10 @@ const RELOCATED_AGENTS_FILES = [
   "providers.md",
 ] as const;
 
-// Files whose legacy path is under `.agents/` and current path under `.bkit/`, and that
-// carry consumer-owned or stateful content — MIGRATE (move) rather than delete,
-// so an upgrading consumer keeps their version pin, secrets, and friction log.
-// [oldRel, newRel]. `.env.example` is owned (the claude module overwrites it at the new
-// path), so the move only keeps the old path from lingering.
+// Files whose old path is under `.agents/` and current path under `.bkit/`, and that
+// carry consumer-owned or stateful content (version pin, secrets, friction log) — MOVED,
+// never deleted. [oldRel, newRel]. `.env.example` is owned (the claude module overwrites
+// it at the new path); the move removes the old path.
 const MIGRATED_AGENTS_FILES: ReadonlyArray<readonly [string, string]> = [
   [path.join(".agents", ".bkit-version"), path.join(".bkit", "version")],
   [path.join(".agents", ".env"), path.join(".bkit", ".env")],
@@ -1072,7 +1055,7 @@ export function runPayload(dryRun: boolean): { deletes: number } {
       fs.renameSync(oldRel, newRel);
     }
   }
-  // Legacy `.agents/advisories.md` — drop it (bkit writes .bkit/advisories.md).
+  // `.agents/advisories.md` — dropped (bkit writes .bkit/advisories.md).
   {
     const oldAdvisories = path.join(".agents", "advisories.md");
     if (fs.existsSync(oldAdvisories)) {
@@ -1086,19 +1069,17 @@ export function runPayload(dryRun: boolean): { deletes: number } {
 }
 
 // ---------------------------------------------------------------------------
-// D1 upgrade orphan-removal (#160)
+// Upgrade orphan-removal
 //
-// A consumer on a legacy layout may carry an `.agents/templates/` directory the
-// package does not ship. Remove it so the consumer tree stays clean. No-op when absent.
-// Dry-run aware: logs only, no FS write.
+// Removes an `.agents/templates/` directory the package does not ship. No-op when
+// absent. Dry-run aware: logs only, no FS write.
 // ---------------------------------------------------------------------------
 
 export function removeOrphanTemplatesDir(cwd: string, dryRun: boolean): void {
   const orphanDir = path.join(cwd, ".agents", "templates");
   if (!fs.existsSync(orphanDir)) return;
-  // Gate on bkit-origin sentinel: verify at least one known bkit-managed path
-  // exists inside the directory before deleting. This guards against silently
-  // destroying a consumer-owned .agents/templates/ directory that bkit never wrote.
+  // Deletes only when at least one known bkit-managed path exists inside the directory;
+  // a consumer-owned .agents/templates/ that bkit never wrote is left alone.
   const BKIT_SENTINELS = [
     "AGENTS.md",
     "CLAUDE.md",
@@ -1178,7 +1159,7 @@ export function runStatus(cwd: string, logPrefix: string): void {
   const opencodePresent = fs.existsSync(opencodeDir);
   // Resolve active provider (manifest-first; covers managed-auth gateways like opencode).
   const activeOpencodeProvider = detectOpencodeProvider(cwd);
-  // All installed providers (multi-provider tracking, Task 5 / #281).
+  // All installed providers.
   const allOpencodeProviders = detectOpencodeProviders(cwd);
   let opencodeModel = "unknown";
   const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
@@ -1238,8 +1219,8 @@ export function runStatus(cwd: string, logPrefix: string): void {
 
 /**
  * Detect which host modules a consumer has installed, by the presence of each host's
- * source-rendered agents directory. Used by `bkit upgrade` to re-render (#251) only the
- * hosts the consumer actually opted into — never force-creating an opencode/cursor tree.
+ * source-rendered agents directory. Used by `bkit upgrade` to re-render only the hosts
+ * the consumer installed — never force-creating an opencode/cursor tree.
  */
 export function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
   const mods = new Set<ModuleFlag>();
@@ -1253,16 +1234,14 @@ export function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
 /**
  * Installed-module set, detected by sentinel-file presence. Always core, plus the installed
  * subset of {claude, cursor, opencode, codex, lint}. Two callers:
- *   - `bkit check` (#252 Step 3) — scopes the drift gate, so a `--cursor`-only repo does not
+ *   - `bkit check` — scopes the drift gate, so a `--cursor`-only repo does not
  *     report `.claude/**` as drift, and a `--claude`-only repo is not flagged for lint files.
  *   - `bkit upgrade` — scopes the template walk, so upgrade does NOT force-create files for a
  *     module the consumer never installed.
  *
- * opencode IS gated (#255 #8): `.opencode/opencode.json` is the most drift-sensitive file
- * bkit ships (provider block + tracker-filtered mcp + permission map). It is safe to gate
- * because the render inputs fall back to the INSTALLED provider/tracker (renderOpencodeProvider
- * + the package.json tracker resolution), so an openrouter/opencode/… consumer is checked against its own
- * config — not the install default — and the dry-run path is read-only (installFile /
+ * opencode IS gated: the render inputs fall back to the INSTALLED provider/tracker
+ * (renderOpencodeProvider + the package.json tracker resolution), so an openrouter/opencode/…
+ * consumer is checked against its own config, and the dry-run path is read-only (installFile /
  * writeTier1 / reconcileOpencodeJson honour dryRun; ensureDir is dryRun-gated). The remaining
  * opt-in (cloud) stays out of the gate.
  * Dependency-updater files are not modules: bkit never drift-checks them.
@@ -1273,9 +1252,8 @@ export function detectInstalledModules(cwd: string): Set<ModuleFlag> {
   if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
   if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
   if (fs.existsSync(path.join(cwd, ".codex", "agents"))) mods.add("codex");
-  // lint (#265, the --typescript toolchain): the owned slop-scan plugin. Its configs
-  // (slop-scan.config.json, .prettierignore) are templates the consumer may adopt without
-  // the module, so they cannot be sentinels.
+  // lint (the --typescript toolchain): the owned slop-scan plugin. Its configs
+  // (slop-scan.config.json, .prettierignore) are templates, not sentinels.
   if (fs.existsSync(path.join(cwd, ".bkit", "scripts", "bkit-slop-type-suppression.mjs"))) {
     mods.add("lint");
   }
@@ -1283,7 +1261,7 @@ export function detectInstalledModules(cwd: string): Set<ModuleFlag> {
 }
 
 /**
- * Render a resolved module set back into valid CLI flags (#252/#265) for
+ * Render a resolved module set back into valid CLI flags for
  * recovery-hint text. Skips core (implicit), maps lint to --typescript and opt-ins to
  * their value-flag spellings.
  */
@@ -1303,7 +1281,7 @@ export function modulesToCliFlags(
 }
 
 /**
- * #252 Step 2/3 — validate the verb/module-flag combination before any dispatch
+ * Validate the verb/module-flag combination before any dispatch
  * work runs. `install` requires >=1 module flag (bare install errors);
  * `check` / `upgrade` take NO module flags — they
  * operate on everything already installed, so a stray flag is a hard error
@@ -1361,9 +1339,9 @@ export function validateCloudTrackerMatch(
  * Resolution order:
  *  1. `package.json` `bkit.opencodeProvider` — the authoritative record written on install.
  *     This is the ONLY signal for managed-auth gateways (opencode) whose opencode.json carries no
- *     custom provider block; without it upgrade would re-render the provider as the install default.
- *  2. `.opencode/opencode.json` first provider key — back-compat for installs that predate the
- *     manifest field (the block is keyed by provider id, matching renderOpencodeJson).
+ *     custom provider block.
+ *  2. `.opencode/opencode.json` first provider key — for installs without the manifest field
+ *     (the block is keyed by provider id, matching renderOpencodeJson).
  *  3. null — caller falls back to the install default so the model lookup still resolves.
  *
  * The manifest value is validated against the allowlist so a hand-edited package.json cannot
@@ -1377,7 +1355,7 @@ export function detectOpencodeProvider(cwd: string): string | null {
         bkit?: { opencodeProvider?: unknown };
       };
       const rawStored = pkg.bkit?.opencodeProvider;
-      // Normalize legacy keys (e.g. "zen" → "opencode") before allowlist check.
+      // Normalize renamed keys (e.g. "zen" → "opencode") before allowlist check.
       const stored =
         typeof rawStored === "string" ? normalizeOpencodeProvider(rawStored) : rawStored;
       if (
@@ -1411,7 +1389,7 @@ export function detectOpencodeProvider(cwd: string): string | null {
 /**
  * Returns all bkit-installed opencode providers from the consumer package.json.
  * Reads `bkit.opencodeProviders` array; falls back to `[bkit.opencodeProvider]` for
- * legacy single-provider installs (migrated on the next install run).
+ * single-provider installs (migrated on the next install run).
  * Filters to valid OPENCODE_PROVIDERS entries; returns [] when neither field exists.
  */
 export function detectOpencodeProviders(cwd: string): string[] {
@@ -1425,10 +1403,10 @@ export function detectOpencodeProviders(cwd: string): string[] {
     if (Array.isArray(arr)) {
       return arr
         .filter((v): v is string => typeof v === "string")
-        .map((v) => normalizeOpencodeProvider(v)) // migrate legacy keys (e.g. "zen" → "opencode")
+        .map((v) => normalizeOpencodeProvider(v)) // renamed keys (e.g. "zen" → "opencode")
         .filter((v) => (OPENCODE_PROVIDERS as readonly string[]).includes(v));
     }
-    // Legacy fallback: call detectOpencodeProvider which checks both package.json and opencode.json
+    // Fallback: detectOpencodeProvider checks both package.json and opencode.json
     const single = detectOpencodeProvider(cwd);
     if (single !== null) {
       return [single];
@@ -1462,11 +1440,8 @@ async function resolveLatestPublishedVersion(cwd: string): Promise<string> {
 /**
  * Atomic self-bump for `bkit upgrade --to=<v>` / `--latest`: install the target
  * @cbartens/bkit, then RE-EXEC the freshly-installed binary so the NEW code does
- * the render + re-pin (this process is still the OLD code — rendering new
- * templates with old logic would be a correctness hole). Coupling the package
- * bump and the re-render in one command is the point: it is impossible to bump
- * the package and forget the re-render, which is what strands a base branch's
- * mirrors (#256) for every feature branch to inherit.
+ * the render + re-pin (this process is still the OLD code). The package bump and
+ * the re-render are one command.
  *
  * Returns true when it handled the run (bumped + re-exec'd, or dry-run reported a
  * bump) → the caller should return. Returns false when already at target → the
@@ -1542,11 +1517,9 @@ async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boolean> {
 }
 
 // Not exported: this is the CLI entrypoint, driven by real argv/fs/process.exit
-// side effects, and its ~70 spawn-based scenarios in bkit-install.integration.test.ts
-// are what actually exercise it (v8 in-process coverage can't see a child process —
-// see docs/testing.md § Coverage on PRs, bkit-tests-unit). Pull genuinely pure
-// decision logic OUT into an exported function (see validateModuleFlagsForVerb /
-// validateCloudTrackerMatch above) when you want it unit-covered here instead.
+// side effects; bkit-install.integration.test.ts exercises it through spawned
+// processes. Pure decision logic lives in exported functions (validateModuleFlagsForVerb /
+// validateCloudTrackerMatch above) for unit coverage.
 async function main() {
   const commandExit = await runCommand(process.argv.slice(2), COMMANDS, {
     classicVerbs: CLASSIC_VERBS,
@@ -1595,21 +1568,9 @@ async function main() {
       const phase = complyPhase ?? "unknown";
       const logPrefix = "[bkit-comply]";
 
-      // parentSha MUST be a resolved hex SHA, for two reasons:
-      //   1. diffPaths guards on /^[0-9a-f]{7,40}$/ and returns [] otherwise — so an
-      //      unresolved rev makes every diff-based rule grade an EMPTY diff and pass
-      //      vacuously. It logs, but the row is still written and still says "pass".
-      //   2. parentSha is in identity() for compliance, so an unresolved literal is
-      //      the SAME identity on every run — successive runs fold into one another
-      //      and the history silently collapses.
-      //
-      // The previous code scanned .bkit/stats.jsonl for "the most recent
-      // workflow-started row that carried a parentSha". That row does not exist
-      // there: `workflow-started` is a status.jsonl EVENT TYPE, while stats.jsonl
-      // holds compliance/outcome/counter — and of those, only compliance and counter
-      // carry parentSha, both of which the loop explicitly skipped. So the loop could
-      // never match, the literal "HEAD~1" always won, and every compliance row bkit
-      // has ever written records parentSha "HEAD~1" against an empty diff.
+      // parentSha MUST be a resolved hex SHA: diffPaths returns [] for anything not
+      // matching /^[0-9a-f]{7,40}$/, and parentSha is part of the compliance identity().
+      // Resolves HEAD~1, else HEAD; neither → skip the grade.
       const statsPath = path.join(cwd, ".bkit", "stats.jsonl");
       const parentSha = resolveGitSha("HEAD~1", cwd) || resolveGitSha("HEAD", cwd);
       if (!parentSha) {
@@ -1659,7 +1620,7 @@ async function main() {
     return;
   }
 
-  // harvest — cross-repo harvest CLI (WS-4, #234 #233 #343).
+  // harvest — cross-repo harvest CLI.
   // Copies consumer .bkit/stats.jsonl and MOVES .bkit/friction.jsonl into harvest/;
   // COUNT-ONLY for docs/{deferrals,failures}.jsonl. Friction rows are pruned from the
   // consumer only after they are fsync'd + read back from the store. Fail-open: exits 0.
@@ -1691,8 +1652,8 @@ async function main() {
     return;
   }
 
-  // analysis — cross-repo analysis CLI (WS-4, #234 #183).
-  // Reports counts/rates/elapsed-time, #183 size↔outcome regression, per-rule compliance
+  // analysis — cross-repo analysis CLI.
+  // Reports counts/rates/elapsed-time, size↔outcome regression, per-rule compliance
   // rate, dispatch-size threshold, counterSource trust labelling. Advisory + inform-only.
   // See DE-34 for the shared-entrypoint + crash-isolation contract.
   if (verb === "analysis") {
@@ -1701,8 +1662,7 @@ async function main() {
       const { HARVEST_DEST_DIR } = await import("./bkit-harvest.js");
       const cwd = process.cwd();
       // Analyse: bkit's own stats.jsonl + harvested consumer rows.
-      // Harvest dest is sourced from the constant, NOT re-spelled here — these paths
-      // silently found nothing when the dir moved out of .bkit/ (#343).
+      // Harvest dest is sourced from the constant, NOT re-spelled here.
       const statsPath = path.join(cwd, ".bkit", "stats.jsonl");
       const harvestStatsPath = path.join(cwd, HARVEST_DEST_DIR, "stats.jsonl");
       const harvestFrictionPath = path.join(cwd, HARVEST_DEST_DIR, "friction.jsonl");
@@ -1734,7 +1694,7 @@ async function main() {
     return;
   }
 
-  // telemetry — sub-verb dispatcher (WS-5, #234).
+  // telemetry — sub-verb dispatcher.
   // `bkit telemetry migrate` ports docs/knowledge.md + docs/decisions.md to .jsonl.
   // Destructive (parity-gated) and NEVER reachable from `bkit upgrade` — see DE-39.
   // Advisory: exits 0 on failure after printing error (fail-open pattern).
@@ -1815,14 +1775,13 @@ async function main() {
 
   // Launcher verbs — exec the GUI app binary with .bkit/.env merged into the env
   // so that MCP token placeholders (BKIT_GH_TOKEN, BKIT_OPENCODE_API_KEY, …) resolve correctly
-  // even when launched from the Dock/Finder (macOS GUI-isolation #279/#280).
+  // even when launched from the Dock/Finder (macOS GUI-isolation).
   if (verb === "cursor" || verb === "opencode") {
     await launchApp(verb, process.cwd());
     return;
   }
 
-  // #252 Step 2/3 — install requires >=1 module flag; check/upgrade take NONE.
-  // See validateModuleFlagsForVerb for the full rationale.
+  // install requires >=1 module flag; check/upgrade take NONE (validateModuleFlagsForVerb).
   const moduleFlagsError = validateModuleFlagsForVerb(verb, moduleFlags);
   if (moduleFlagsError) {
     console.error(moduleFlagsError);
@@ -1839,10 +1798,9 @@ async function main() {
       modules,
       process.cwd(),
     );
-    // #435 broken-install case: the opencode host is on disk but neither provider signal
-    // survives. `bkit check` and `bkit upgrade` both exit 1 with the fix; doctor — the verb
-    // whose help advertises diagnosing config drift — printed four opencode lines and never
-    // mentioned it. Reported here (enforcement stays with check, which is the gating verb).
+    // Broken install: the opencode host is on disk but neither provider signal survives.
+    // `bkit check` and `bkit upgrade` exit 1 with the fix; doctor reports it here and does
+    // not enforce.
     if (fs.existsSync(path.join(process.cwd(), ".opencode"))) {
       if (detectOpencodeProvider(process.cwd()) === null) {
         allFindings.push({
@@ -1888,9 +1846,8 @@ async function main() {
       let detectedProvider: string | null = detectOpencodeProvider(process.cwd());
       if (opencodeProvider) detectedProvider = opencodeProvider;
 
-      // Multi-provider: get all installed providers (Task 5 / #281).
-      // If bkit.opencodeProviders is populated, use it; otherwise fall back to the
-      // single detected provider for backward compat with legacy single-provider installs.
+      // Multi-provider: all installed providers. bkit.opencodeProviders when populated,
+      // else the single detected provider.
       const allProviders = detectOpencodeProviders(process.cwd());
       const activeProvider = detectedProvider ?? allProviders[0] ?? null;
       const providersToCheck =
@@ -1928,8 +1885,8 @@ async function main() {
     // GUI-isolation check: flag any .bkit/.env keys that are set (non-empty) in the
     // file but absent or empty in process.env. This happens when the app was launched
     // via Dock/Finder (launchd) rather than from a direnv-active terminal — the env
-    // vars never make it into the process. Pointing at `bkit cursor` / `bkit opencode`
-    // is the actionable fix. (#279/#280)
+    // vars never make it into the process. The finding points at `bkit cursor` /
+    // `bkit opencode`.
     const bkitEnvPath = path.join(process.cwd(), ".bkit", ".env");
     if (fs.existsSync(bkitEnvPath)) {
       const fileVars = new Map(parseDotenv(fs.readFileSync(bkitEnvPath, "utf-8")));
@@ -1991,18 +1948,16 @@ async function main() {
     // the bogus dot-less canonicalHashes key before the walk reseeds the dotted one.
     migrateStrayGitattributes(process.cwd(), upgradeFlags.dryRun);
 
-    // Legacy docs/warnings.md → docs/noise.md: move the consumer's file
+    // docs/warnings.md → docs/noise.md: move the consumer's file
     // (their entries live below the managed block) before the walk reseeds it.
     migrateWarningsToNoise(process.cwd(), upgradeFlags.dryRun);
 
-    // D1 orphan-removal: a consumer on a legacy layout may carry an
-    // `.agents/templates/` directory the package does not ship. Remove it on
-    // upgrade so the consumer tree stays clean. No-op when already absent (fresh consumers).
-    // Dry-run aware: log only, no FS write.
+    // Orphan-removal: removes an `.agents/templates/` directory the package does not
+    // ship. No-op when absent. Dry-run aware: log only, no FS write.
     removeOrphanTemplatesDir(process.cwd(), upgradeFlags.dryRun);
 
     // Relocated-orphan removal: mirror sources and the bkit-authoring docs live in
-    // `.bkit/`. Strip any copies a legacy-layout consumer carries under `.agents/`
+    // `.bkit/`. Strip any copies a consumer carries under `.agents/`
     // (.agents/workflows, .agents/prompts, ...). No-op when absent / in dogfood.
     runPayload(upgradeFlags.dryRun);
 
@@ -2034,12 +1989,10 @@ async function main() {
       for (const entry of getModuleManifest(mod as ModuleName)) optInPaths.add(entry.path);
     }
 
-    // Host/tooling modules (claude, cursor, lint) must ALSO not be force-created by upgrade —
-    // post-#252 each is separately installable, so a `--claude`-only consumer must not get
-    // cursor/lint files seeded on upgrade (which `check` then flags — the install↔upgrade
-    // divergence). We gate them on sentinel-detected installation, exactly like `bkit check`
-    // scopes its drift gate. core + unmanaged files (docs/*.md, no manifest entry) always upgrade; the opt-in
-    // modules keep their dest-presence gating just below.
+    // Host/tooling modules (claude, cursor, lint) are never force-created by upgrade: they
+    // are gated on sentinel-detected installation, exactly like `bkit check` scopes its
+    // drift gate. core + unmanaged files (docs/*.md, no manifest entry) always upgrade; the
+    // opt-in modules keep their dest-presence gating just below.
     const installedModules = detectInstalledModules(process.cwd());
 
     // Resolve the consumer's tracker so upgrade renders tracker-conditional files
@@ -2056,9 +2009,8 @@ async function main() {
     }
 
     // opencode.json is provider/tracker-templated on install (renderOpencodeJson resolves the
-    // `@@OPENCODE_*@@` sentinels). It MUST be rendered the same way on
-    // upgrade — otherwise the json deep-merge injects the raw sentinel keys into the
-    // consumer's config (#245). Detect the installed provider so the render matches install.
+    // `@@OPENCODE_*@@` sentinels). Upgrade renders it the same way, with the installed
+    // provider, so no raw sentinel key reaches the consumer's config.
     const OPENCODE_JSON_RELPATH = path.join(".opencode", "opencode.json");
     // Demanded only when the consumer actually has an opencode.json to re-render — a repo
     // without the host must not be failed for a provider it was never asked to choose.
@@ -2134,9 +2086,8 @@ async function main() {
       collectTemplates(tplRoot, "");
     }
 
-    // Upgrade orphan: bkit-auto.yml is the legacy name of bkit-cloud.yml (#245).
-    // Only remove when bkit-cloud.yml is present — otherwise the legacy cloud workflow
-    // would go with no replacement.
+    // Upgrade orphan: bkit-auto.yml is the old name of bkit-cloud.yml. Removed only when
+    // bkit-cloud.yml is present.
     const oldAutoWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-auto.yml");
     const newCloudWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-cloud.yml");
     if (fs.existsSync(oldAutoWorkflow) && fs.existsSync(newCloudWorkflow)) {
@@ -2170,7 +2121,7 @@ async function main() {
     const templateReport = formatTemplateChanges(templateChanges);
     if (templateReport) console.log(`${LOG_PREFIX} ${templateReport}`);
 
-    // Task 3 (#281): re-render all installed provider blocks for upgrade.
+    // Re-render all installed provider blocks for upgrade.
     // The candidates walk above handles the ACTIVE provider's block via renderOpencodeJson.
     // For each ADDITIONAL installed provider, reconcile their template block into opencode.json
     // so template changes (new keys, updated placeholders) propagate to all providers' blocks.
@@ -2202,25 +2153,23 @@ async function main() {
     // writeClaudeCloudDoc (so the cloud.md provision injection sees the moved blocks) and the
     // canonicalHashes refresh (so the moved files are re-hashed → drift-clean).
     //
-    // #454 first: it retires .agents/config.md and renames the markers, so the #334 move below
-    // appends into the file that survives, whichever hop the consumer is coming from.
+    // The config.md retirement runs first (it retires .agents/config.md and renames the
+    // markers), so the observability.md move below appends into the file that survives.
     const migratedConfigMd = migrateConfigMdToContext(process.cwd(), upgradeFlags.dryRun);
     if (migratedConfigMd) console.log(`${LOG_PREFIX} ${migratedConfigMd}`);
 
     const migratedContextFetch = migrateContextFetchToContext(process.cwd(), upgradeFlags.dryRun);
     if (migratedContextFetch) console.log(`${LOG_PREFIX} ${migratedContextFetch}`);
 
-    // #251: the template walk above only covers `.bkit/templates/` config. Re-render the
+    // The template walk above only covers `.bkit/templates/` config. Re-render the
     // bkit-managed OUTPUT files install also produces but that are NOT templates — host
     // agents/commands (source-rendered from .bkit/prompts + .bkit/workflows), the
     // `.bkit/*.md` canonical docs (runBkitDocs) and core's package.json scripts (the
-    // bkit:gate:* names, add-if-missing, and the legacy script re-point). These are bkit-owned, force-overwritten
-    // output; without this a version bump ships new config but stale prompts/agents/
-    // commands/docs (a consumer would have to re-run `bkit install` to get them). Only the
-    // hosts the consumer installed are re-rendered (detected by their agents dir) so upgrade
-    // never force-creates an opt-in host. `.bkit/prompts.md` is markered → runBkitDocs
+    // bkit:gate:* names, add-if-missing, and the legacy script re-point). These are
+    // bkit-owned, force-overwritten output. Only the hosts the consumer installed are
+    // re-rendered (detected by their agents dir). `.bkit/prompts.md` is markered → runBkitDocs
     // block-merges it: managed block refreshed, consumer `## Model Overrides` below bkit:end
-    // preserved. Docs stay single-source PACKAGE-side (#204/#219) — never relocated to templates/.
+    // preserved. Docs stay single-source PACKAGE-side, never in templates/.
     const renderModules = detectInstalledHostModules(process.cwd());
     // Demanded only when opencode is one of the detected hosts — see requireOpencodeProvider.
     const renderProvider = renderModules.has("opencode")
@@ -2276,7 +2225,7 @@ async function main() {
       postDispatch: [],
       issueTracker: upgradeTracker,
       cloudVariant: null,
-      // Re-stamp every rendered agent + command at the version we are upgrading TO (#256),
+      // Re-stamp every rendered agent + command at the version we are upgrading TO,
       // so a clean upgrade refreshes the managed-version marker and `bkit check` stays green.
       version: getInstallingVersion(),
     };
@@ -2382,10 +2331,9 @@ async function main() {
     }
 
     // Refresh canonicalHashes (from resulting on-disk content) AND bump pinnedVersion
-    // to the version we just upgraded TO — otherwise a clean upgrade leaves the pin
-    // stale and the next `bkit check` wants to write it (1 write → exit 1), failing
-    // the CI drift gate (#129 §3). Called unconditionally (non-dry-run) so the pin
-    // bumps even when every file was a no-op skip. The re-rendered `.bkit/*.md` docs AND
+    // to the version we just upgraded TO, so the next `bkit check` has nothing to write.
+    // Called unconditionally (non-dry-run) so the pin bumps even when every file was a
+    // no-op skip. The re-rendered `.bkit/*.md` docs AND
     // host agent/command mirrors land in renderWs.writes (mirrors count toward check
     // exit), so feed those writes into canonicalHashes — keeping install/upgrade `.bkit/version`
     // parity.
@@ -2402,8 +2350,8 @@ async function main() {
       updateCanonicalHashesAfterUpgrade(
         {
           // Include the migrated docs so their post-migration on-disk hashes are
-          // recorded (both migrations mutate context.md, and the #334 move also mutates
-          // observability.md, AFTER runUpgrade hashed them) — else `bkit check` sees drift.
+          // recorded (both migrations mutate context.md, and the observability move also
+          // mutates observability.md, AFTER runUpgrade hashed them).
           updated: [
             ...result.updated,
             ...renderedDocPaths,
@@ -2485,28 +2433,24 @@ async function main() {
 
   if (dryRun) console.log(`${LOG_PREFIX} Running in check (dry-run) mode`);
 
-  // #252 Step 3 — `bkit check` scopes drift detection to what is INSTALLED (detected by
-  // sentinel files), not to a fixed full set. Otherwise a single-host repo would falsely
-  // report the absent host's files as drift. `install` keeps its explicit resolved set.
+  // `bkit check` scopes drift detection to what is INSTALLED (detected by sentinel files),
+  // not to a fixed full set. `install` keeps its explicit resolved set.
   const effectiveModules = verb === "check" ? detectInstalledModules(process.cwd()) : modules;
 
-  // #255 #8 — RENDER-input provider resolution. `bkit check` takes no `--opencode=` flag, so
-  // the parsed `opencodeProvider` is null on the check path. Falling back to the INSTALLED
-  // provider (package.json `bkit.opencodeProvider`, else the opencode.json provider block) lets
-  // the opencode drift check render with the consumer's real provider instead of the
-  // install default — otherwise an openrouter/opencode/… consumer reports false drift. On
-  // install this is a no-op: opencode joins the module set only when `--opencode=<provider>` was
-  // given (non-null), so `?? detect` never fires. The PARSED `opencodeProvider` still drives the
-  // persist-to-package.json logic below (gated on `!dryRun` + a real flag), so detection never
-  // leaks into what we record. (Tracker is already resolved from package.json below, so the
-  // opencode mcp block — which is tracker-dependent — already renders correctly on check.)
+  // RENDER-input provider resolution. `bkit check` takes no `--opencode=` flag, so the parsed
+  // `opencodeProvider` is null on the check path; it falls back to the INSTALLED provider
+  // (package.json `bkit.opencodeProvider`, else the opencode.json provider block). On install
+  // `?? detect` never fires: opencode joins the module set only when `--opencode=<provider>`
+  // was given. The PARSED `opencodeProvider` alone drives the persist-to-package.json logic
+  // below (gated on `!dryRun` + a real flag). The tracker is resolved from package.json below,
+  // so the tracker-dependent opencode mcp block renders the same way on check.
   const renderOpencodeProvider = opencodeProvider ?? detectOpencodeProvider(process.cwd());
 
   // Resolve issueTracker: --tracker= flag overrides; else read bkit.issueTracker from consumer
   // package.json; else default to "none".
-  // #252 S2-A: tracker switching is FREE — a `--tracker=` value always applies, whether
-  // first-set or a re-set of an already-recorded tracker.
-  // Resolved BEFORE preflight: preflight's tracker-dependent detectors must grade the tracker
+  // A `--tracker=` value always applies, whether first-set or a re-set of an
+  // already-recorded tracker.
+  // Resolved BEFORE preflight: preflight's tracker-dependent detectors grade the tracker
   // this run INSTALLS, not the one on disk from the previous run. Read-only — no writes here.
   let issueTracker: IssueTracker = DEFAULT_ISSUE_TRACKER;
   {
@@ -2550,7 +2494,7 @@ async function main() {
 
   // Parse model lookup (needed for cursor transforms).
   // DEFAULTS come from the PACKAGE's .bkit/prompts.md § Models (authoritative, matches the
-  // prompt files about to be installed — avoids a mid-install hard-fail in applyT3).
+  // prompt files about to be installed).
   // OVERRIDES come from the CONSUMER's installed .bkit/prompts.md `## Model Overrides`
   // section (below `bkit:end`) — per-agent, per-provider, preserved across upgrades.
   let modelLookup: Map<string, string> = new Map();
@@ -2640,11 +2584,11 @@ async function main() {
         const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
         if (persistTracker) bkit.issueTracker = tracker;
         if (persistProvider) {
-          // Save legacy single-string value BEFORE overwriting
+          // Save the single-string value BEFORE overwriting
           const prevProvider =
             typeof bkit.opencodeProvider === "string" ? bkit.opencodeProvider : null;
           bkit.opencodeProvider = opencodeProvider; // active (drives agent frontmatter)
-          // Update providers array (deduped). Migrate: if only legacy string existed, seed array.
+          // Update providers array (deduped). If only the single string existed, seed the array.
           const existingArr: string[] = Array.isArray(bkit.opencodeProviders)
             ? [...(bkit.opencodeProviders as string[])]
             : prevProvider && (OPENCODE_PROVIDERS as readonly string[]).includes(prevProvider)
@@ -2692,7 +2636,7 @@ async function main() {
     postDispatch,
     issueTracker,
     cloudVariant,
-    // Stamped into every rendered agent + command as the managed-version marker (#256).
+    // Stamped into every rendered agent + command as the managed-version marker.
     version: getInstallingVersion(),
   };
 
@@ -2702,9 +2646,9 @@ async function main() {
   // `.bkit-staging/` is a per-run scratch area for rendered files (e.g. opencode.json) — NOT a
   // cross-module commit/rollback transaction. Module fns write directly to their consumer
   // destinations, so a mid-dispatch failure can leave files already written (postDispatch — the
-  // `.bkit/version` pin — does not run). We surface the error rather than swallow it, and always
-  // clean up the scratch dir. `bkit install` is idempotent, so re-running completes a partial
-  // install. (#255 P1-5 — see README § Install staging directory.)
+  // `.bkit/version` pin — does not run). The error is surfaced, never swallowed, and the scratch
+  // dir is always cleaned up. `bkit install` is idempotent, so re-running completes a partial
+  // install. See README § Install staging directory.
   try {
     dispatchModules(effectiveModules, ctx);
   } finally {
@@ -2753,19 +2697,17 @@ async function main() {
   // Check mode: exit-1 on drift (totalWrites > 0). Banner already emitted above.
   // Host agent/command mirrors push would-writes into ws.writes (content drift OR
   // orphan delete). A stale managed-version marker ALSO surfaces as the
-  // bkit-rendered-prompts-stale Phase-3 blocker. The same is true for the
-  // managed docs/*.md marker (bkit-managed-docs-stale) — a stale doctrine doc need
-  // not change ws.writes to be stale. Treat BOTH marker blockers as drift here so
-  // `bkit check` hard-fails on outdated rendered prompts/workflows AND outdated
-  // docs (#256). A missing owned hook file (owned-hook-missing) fails check too, by name: the
-  // hook commands skip an absent file silently, and cloud-bootstrap.sh is never in ws.writes.
-  // Other Phase-3 blockers are install-only.
+  // bkit-rendered-prompts-stale Phase-3 blocker, and the managed docs/*.md marker
+  // ALSO surfaces as bkit-managed-docs-stale. BOTH marker blockers count as drift here,
+  // so `bkit check` hard-fails on outdated rendered prompts/workflows AND outdated docs.
+  // A missing owned hook file (owned-hook-missing) fails check too, by name
+  // (cloud-bootstrap.sh is never in ws.writes). Other Phase-3 blockers are install-only.
   //
   // Gate on `severity === "blocker"`, NOT mere id-presence: both gates are
   // branch-scoped (detectRenderedPromptsStale / detectManagedDocsStale downgrade to
   // `advisory` off main/dev), so on a feature branch the finding still surfaces in
   // the checklist but does not exit-1. On main/dev (or a PR into them) it stays a
-  // blocker and hard-fails as before.
+  // blocker and hard-fails.
   if (dryRun) {
     const renderedStale = postFindings.some(
       (f) => f.id === "bkit-rendered-prompts-stale" && f.severity === "blocker",

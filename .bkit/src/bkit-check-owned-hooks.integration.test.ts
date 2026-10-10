@@ -1,7 +1,7 @@
-// bkit-check-owned-hooks.integration.test.ts — `bkit check` fails on a missing owned hook (#489)
+// bkit-check-owned-hooks.integration.test.ts — `bkit check` fails on a missing owned hook
 //
-// The claude and codex hook commands are `test -f <file> && node <file> || true`, so a deleted
-// hook file turns its guard off without a word. `bkit check` must exit 1 and name the file.
+// The claude and codex hook commands are `test -f <file> && node <file> || true`. `bkit check`
+// exits 1 and names a missing file.
 // The required set follows what is installed: the hook files of each detected host, plus
 // `.claude/hooks/cloud-bootstrap.sh` only when `bkit.cloudAgents` is `claude`.
 //

@@ -12,9 +12,8 @@
 //
 // The CI workflow file and the capstone job come from `package.json` `bkit`
 // (`shared/config.ts`). The "did CI dispatch" probe matches the capstone's lane
-// namespace (`bkit-tests-check` -> any check containing `bkit-tests`): one lane
-// name breaks when a lane is renamed, and "any check" counts Vercel or Renovate
-// as CI.
+// namespace (`bkit-tests-check` -> any check containing `bkit-tests`), not one lane
+// name and not "any check".
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { statusTimestamp } from "../../bkit-status.js";

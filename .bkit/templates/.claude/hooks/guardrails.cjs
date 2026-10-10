@@ -1,39 +1,26 @@
 #!/usr/bin/env node
 // guardrails.cjs — bkit shell advisories (Claude Code).
 //
-// Third twin of `.cursor/hooks/guardrails.cjs` and `.codex/hooks/guardrails.cjs`,
-// carrying the same detection so the four hosts cannot drift. Wired from
-// `.claude/settings.json` → PreToolUse, matcher `Bash`.
+// Twin of `.cursor/hooks/guardrails.cjs` and `.codex/hooks/guardrails.cjs`, carrying
+// the same detection. Wired from `.claude/settings.json` → PreToolUse, matcher `Bash`.
 //
-// WHY THIS EXISTS AT ALL, given Claude already has a permission table.
-// `.claude/settings.json` covers everything expressible as a command PREFIX. Two
-// things are not:
+// SCOPE — the two shell checks a command-PREFIX permission table cannot express:
 //
-//   1. URL HOSTS. `Bash(curl:*)` matches a prefix, never a URL host, so Claude cannot
-//      say "allow curl to an allowlisted host, flag anything else" the way Cursor and
-//      opencode can. A blanket ask row would force a prompt on every shell fetch in
-//      every mode — unanswerable in a cloud session. This hook gives the signal
-//      without the prompt.
-//   2. SHELL-AS-EDIT-CHANNEL. `sed -i` and redirection into a source file route around
-//      every pre-edit gate; GateGuard only sees Edit/Write/MultiEdit. Detecting that
-//      needs the target path parsed, which no permission table can do.
+//   1. URL HOSTS. `Bash(curl:*)` matches a prefix, never a URL host. This hook flags a
+//      curl / wget whose URL host is off the network allowlist.
+//   2. SHELL-AS-EDIT-CHANNEL. `sed -i` and redirection into a source file bypass every
+//      pre-edit gate (GateGuard only sees Edit/Write/MultiEdit). Detection parses the
+//      target path.
 //
-// ADVISORY ONLY — this hook NEVER denies and NEVER asks.
-//   - `deny` already lives in settings.json and is evaluated BEFORE any hook, so
-//     duplicating it here would be dead code with a second place to drift.
-//   - `ask` is deliberately absent: a content-scoped ask is evaluated before the
-//     auto-mode classifier and always forces a prompt. Adding one here would cause
-//     the exact stall this host is configured to avoid.
-//   So the strongest thing that reaches the model without costing a prompt is
-//   `additionalContext`. The gate informs; the permission table and the auto-mode
-//   classifier remain what stop things.
+// ADVISORY ONLY — this hook NEVER denies and NEVER asks; it emits `additionalContext`.
+// `deny` rows live in settings.json and are evaluated BEFORE any hook. The permission
+// table and the auto-mode classifier are what stop commands.
 //
 // CONTRACT — do not regress:
 //   - FAIL OPEN: one top-level catch swallows every error and exits 0.
 //   - NEVER BLOCKS: no `permissionDecision` is ever emitted from the managed block.
 //   - PURE ENGINE: everything between the markers is a decision engine only — no stdin
-//     read, no stdout write — so bkit's emitter and yours cannot collide into one
-//     unparseable stdout blob. Add your own gates in the driver below the block.
+//     read, no stdout write. Add your own gates in the driver below the block.
 //
 // OWNERSHIP: everything between the markers is bkit-managed and overwritten on every
 // `bkit install` / `bkit upgrade`.
@@ -48,17 +35,14 @@ const path = require("node:path");
 /**
  * Hosts come from `.cursor/allowlist.json`, the single install-written artifact
  * carrying the resolved network allowlist (shipped egress registry union the
- * consumer's `allowed-domains`). There is deliberately NO hardcoded fallback list:
- * a second copy drifts from the registry silently, and the failure it produces — a
- * host allowed in one IDE and not another — stays invisible until someone hits it.
+ * consumer's `allowed-domains`). There is NO hardcoded fallback list.
  */
 
 /**
  * Reads `.cursor/allowlist.json` — the single install-written artifact carrying the
  * resolved network allowlist. Claude has no allowlist file of its own (its WebFetch
- * grants live in settings.json and govern the WebFetch TOOL, not shell curl), and
- * duplicating one would be a second source of truth that drifts. Absent (cursor
- * module not installed) → shipped tooling bases only.
+ * grants live in settings.json and govern the WebFetch TOOL, not shell curl). Absent
+ * (cursor module not installed) or unreadable → empty set: every URL host is off-list.
  */
 function loadNetworkAllowlistBases() {
   const bases = new Set();
@@ -73,7 +57,7 @@ function loadNetworkAllowlistBases() {
       }
     }
   } catch {
-    /* shipped fallback only — a corrupt/absent allowlist must not break the session */
+    /* corrupt allowlist → empty set; never breaks the session */
   }
   return bases;
 }
@@ -81,9 +65,7 @@ function loadNetworkAllowlistBases() {
 /**
  * Pull the HOST out of every `http(s)://…` URL in a command.
  *
- * Deliberately strict: only an explicit scheme counts. A scheme-less token cannot be
- * told apart from a local path without guessing, and guessing converts a flag into
- * silence.
+ * Strict: only an explicit scheme counts; a scheme-less token is never read as a URL.
  */
 function extractUrlHosts(cmd) {
   const hosts = [];
@@ -107,12 +89,9 @@ function hostMatchesBase(host, base) {
 }
 
 /**
- * True when EVERY URL in the command targets an allowlisted host.
- *
- * Matching the allowlist against the whole command string is trivially defeated:
- * `curl https://evil.example/x?src=github.com` or `curl https://github.com.attacker.io/`
- * both read as allowed. The host is the only part that decides where the bytes go, so
- * it is the only part consulted. No parseable URL → not allowed (flagged).
+ * True when EVERY URL in the command targets an allowlisted host. Only each URL's
+ * host is consulted, never the rest of the command string (query params, headers).
+ * No parseable URL → not allowed (flagged).
  */
 function curlWgetHostAllowed(cmd) {
   const hosts = extractUrlHosts(cmd);
@@ -136,9 +115,8 @@ function shellSegments(cmd) {
  * The program a segment actually runs: leading `VAR=val` assignments and wrappers
  * skipped, path stripped (`/usr/bin/curl` -> `curl`).
  *
- * Matching a bare word anywhere in the command instead is why this exists: `grep -n
- * 'curl' file` and `sed -n '/sed -i/p' notes.md` both contain the token without running
- * anything, and a gate that fires on those is noise a consumer switches off.
+ * A token that only appears as an argument (`grep -n 'curl' file`,
+ * `sed -n '/sed -i/p' notes.md`) is not the segment's program.
  */
 function segmentHead(seg) {
   const words = seg.split(/\s+/).filter(Boolean);
@@ -166,10 +144,9 @@ const SOURCE_EXT_RE = /\.(ts|tsx|js|jsx|cjs|mjs|json|md|sh|bash|py|rb|go|rs|java
  * Detect a shell command being used as an edit channel. Returns a list of human
  * descriptions, empty when the command edits nothing.
  *
- * Deliberately quiet on the shapes that dominate legitimate use — `> /dev/null`,
- * `>> "$GITHUB_ENV"`, `mktemp` handoff files, log capture — because a gate that
- * fires constantly is one that gets disabled. Only a redirect whose target both
- * looks like a repo path AND carries a source extension is reported.
+ * Quiet on `> /dev/null`, `>> "$GITHUB_ENV"`, `mktemp` handoff files and log capture.
+ * Only a redirect whose target both looks like a repo path AND carries a source
+ * extension is reported.
  *
  * Byte-identical to the Cursor and Codex twins; behavioural parity is asserted in
  * bkit-permissions-parity.integration.test.ts.
@@ -199,7 +176,7 @@ function shellEditTargets(cmd) {
   return [...new Set(hits)];
 }
 
-/** One shared advisory string so the hosts cannot word this differently. */
+/** Shared advisory string, identical on every host. */
 function shellEditAdvisory(hits) {
   return (
     `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). ` +

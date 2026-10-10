@@ -60,12 +60,10 @@ SRC = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".sql")
 # resolved to a `.tsx` file, and workspace subpaths through an `exports` map are
 # not resolved at all. ~540 edges on this repo. bkit-graph-repair.py writes them into
 # graph.json during `pnpm graph`, so this reads them like any other edge and
-# does NOT re-derive them — one source of truth, no subtraction to keep two
-# copies agreeing. If the graph was built without that step, warn and carry on
-# understated rather than silently patching around it.
-# bkit-graph-imports.py is hyphenated to match its siblings, which `import` cannot
-# spell, so it is loaded by path. Four lines of boilerplate bought consistent
-# filenames across scripts/graphify.
+# does NOT re-derive them. A graph built without that step gets a warning, and the
+# numbers below are understated.
+# bkit-graph-imports.py is hyphenated, which `import` cannot spell, so it is loaded
+# by path.
 import importlib.util as _ilu
 _spec = _ilu.spec_from_file_location(
     "graph_imports",
@@ -80,19 +78,16 @@ def sf(i):
     return str(ns.get(i, {}).get("source_file") or "")
 
 
-# Manifest/config endpoints are dropped: package.json must stay in the CORPUS for
-# resolution, but package.json -> package.json edges are artifacts of two
-# manifests sharing a dependency name and would invent cross-package links.
+# Manifest/config endpoints are dropped: package.json stays in the CORPUS for
+# resolution, but package.json -> package.json edges are not drawn.
 def is_src(p):
     return p.endswith(SRC)
 
 
 # Test code is IN the graph (.graphifyignore keeps it, so `graphify affected` sees test
 # callers, and graph.json, GraphML and the HTML views all carry it) and OUT of the Mermaid
-# pictures, which describe the product. One rule instead of a hand-kept hide_nodes list,
-# so a test folder or a colocated `x.test.ts` added tomorrow stays out without an edit.
-# Wider than bkit-graph-drift.py's test SURFACE on purpose: that one partitions the register's
-# counts and its budgets depend on it; this one only decides what a picture draws.
+# pictures. Wider than bkit-graph-drift.py's test SURFACE, which partitions the register's
+# counts; this one only decides what a picture draws.
 TEST_DIRS = {"e2e", "__tests__", "__mocks__", "__fixtures__", "__snapshots__", "fixtures",
              "test", "tests", "testing", "test-utils"}
 TEST_FILE = re.compile(r"\.(?:test|spec)\.[^/]+$|(?:^|/)(?:vitest|jest|playwright)\.(?:config|setup|workspace)[^/]*$")
@@ -170,8 +165,7 @@ def as_graphify_json(keyfn, out_dir):
     """Write the rollup in graphify's own node-link format.
 
     `graphify cluster-only` then renders it with the SAME interactive viz as the
-    full graph — click a node, its neighbours highlight and everything else dims
-    — except at 24 or 134 nodes instead of 9.5K, so it actually responds.
+    full graph — click a node, its neighbours highlight and everything else dims.
     """
     sym, files = collections.Counter(), collections.defaultdict(set)
     for n in raw["nodes"]:
@@ -213,59 +207,31 @@ def as_graphify_json(keyfn, out_dir):
     return len(payload["nodes"]), len(payload["links"])
 
 
-# Two visual channels, one meaning each — mixing them made drift status and node
-# identity fight for the same stroke colour.
+# Two visual channels, one meaning each:
 #   colour      = the CALLED capability. A node that is called owns a hue, and
 #                 every edge INTO it takes that hue, so all the callers of one
 #                 capability are one colour and can be followed back at a glance.
 #                 A node nothing calls has no hue and stays grey — web and mobile
 #                 routes only ever call, so the whole UI column is grey.
-#   dash + fill = drift status. The dash reads in greyscale and for a colourblind
-#                 reader, which a hue never does once there are 24 of them; the
-#                 fill is what makes a drifted box findable across the page.
-# Hues are mid-tone on purpose: they sit on both the light and dark Mermaid
-# themes. An undrifted node sets no fill, so it keeps whatever background the
-# reader's theme chose and the theme's own text colour stays right.
+#   dash + fill = drift status.
+# Hues are mid-tone, legible on both the light and dark Mermaid themes. An undrifted
+# node sets no fill, so it keeps the theme's background and text colour.
 PALETTE = [
     "#d73a4a", "#0969da", "#1a7f37", "#9a6700", "#8250df", "#bf3989",
     "#0e7490", "#a0522d", "#5b8c00", "#b45309", "#6d28d9", "#be123c",
     "#0f766e", "#4d7c0f", "#a21caf", "#1d4ed8", "#c2410c", "#15803d",
     "#7c3aed", "#b91c1c", "#0891b2", "#65a30d", "#c026d3", "#2563eb",
 ]
-# Drift = a dotted border plus a tinted box. No tint and a solid border means no
-# drift, so the eye finds every drifted node in one pass without reading a label.
-# The three dash patterns differ enough to tell apart at a glance and survive
-# greyscale, so the tint is never the only channel carrying the status.
-# Traffic light, worst first. The status colours the BOX, it is not stamped on
-# the label as an emoji: an emoji sits inside the text and reads as one more
-# word, and it cannot be made bigger, because GitHub renders Mermaid at
-# securityLevel strict and strips the inline HTML that would size it.
-# `split` is the only status with no owner at all, so it gets the one solid fill;
-# the other two are tints. The weight of the box is the severity, which three
-# equally pale tints in a row never convey.
-# Every fill pins its own `color`. The fill is fixed and the reader's theme is
-# not, so without that the dark theme keeps drawing near-white text on a tint.
+# Drift = a dashed border plus a tinted box; no tint and a solid border means no
+# drift. Each drift status has its own dash pattern. The status colours the BOX;
+# the label carries no emoji (GitHub renders Mermaid at securityLevel strict).
+# Every fill pins its own `color` (INK), so text stays dark on any theme.
 INK, PAPER = "#1f2328", "#ffffff"
-# ONE colour for every drift status, on purpose. A red/orange/yellow ramp ranks
-# them, and none of these scans can support a ranking: each proves a shape, never
-# an intent. A `split` can be a deliberate second implementation, a `bypassed`
-# call can be the one case the owner cannot serve, a `dead` URL can be a stub. All
-# four are warnings to check, so all four are amber. The status word says which
-# kind and the dash pattern tells them apart at a glance — no colour needed.
+# ONE colour (amber) for every drift status; the status word and the dash pattern
+# tell them apart.
 WARN = "#ffcc80"
-# `budgeted` is the one marked state that is NOT a warning, so it is the one that
-# breaks the dash. Dashed = an open question; solid + tinted = a question somebody
-# already answered, in writing, with a number a CI guard holds them to. That reads
-# in greyscale like every other channel here, and it does not need a sixth dash
-# pattern nobody could tell from the other five.
-#
-# It still gets a box. A budgeted bypass IS a bypass — hiding it would turn the
-# register into a list of things not yet argued with, and the argument is the part
-# worth keeping. The blue says "settled", not "absent".
-#
-# Blue and not green: green reads as `one`, and these are not `one`. A capability
-# with four accepted probe sites has four accepted probe sites, and the picture
-# should not claim otherwise.
+# `budgeted` is the one marked state that is NOT a warning: solid border, blue tint.
+# It still gets a box. Blue, not green: green reads as `one`.
 SETTLED = "#cfe2f3"
 DRIFT_STYLE = {"split": f"stroke-width:4px,stroke-dasharray:2 3,fill:{WARN},color:{INK}",
                "bypassed": f"stroke-width:4px,stroke-dasharray:8 4,fill:{WARN},color:{INK}",
@@ -319,9 +285,8 @@ def read_overrides(doc_path):
     read before writing, re-emitted verbatim. It is the only part of
     capabilities.md a human is meant to touch.
 
-    A file that exists but whose markers are missing or unparseable RAISES. The
-    alternative is silently dropping someone's overrides and rewriting the file
-    as though they never existed, which is the worst possible failure here.
+    An overrides block with no ```json fence, or with invalid JSON, RAISES; the
+    file is never rewritten without its overrides.
     """
     if not doc_path or not os.path.exists(doc_path):
         return json.loads(OV_DEFAULT), OV_DEFAULT
@@ -344,18 +309,11 @@ def resolve_paint(overlay, keys):
     """Map each drift row to exactly ONE node — the most specific one present.
 
     The overlay keys a row by the owner FILE; a diagram's nodes are directories at
-    whatever depth that view uses. Matching every node that is an ancestor of the
-    file would paint one row onto apps/web, apps/web/src AND apps/web/src/lib at
-    once, which reads as three separate problems. Longest matching key wins; ties cannot
-    occur because one key is a prefix of the other.
+    whatever depth that view uses. Longest matching key wins; ties cannot occur
+    because one key is a prefix of the other.
     """
-    # Two rows can land on one node — packages/services/src/outbound owns both the
-    # #1208 email split and the #1209 notification gap. Keyed by node, the second
-    # would silently replace the first, so one of them would vanish from the
-    # diagram. Merge instead: worst status wins the border, every note is kept.
-    # `budgeted` ranks below every warning on purpose: a node that owns one settled
-    # capability and one open one must draw as open. The notes both survive — sorted
-    # by this same rank, so the amber reason is read first.
+    # Rows landing on one node merge: worst status wins the border, every note is
+    # kept, sorted by this rank (worst first). `budgeted` ranks below every warning.
     rank = {"split": 3, "bypassed": 2, "gap": 1, "budgeted": 0}
     acc = collections.defaultdict(list)
     for okey, val in overlay.items():
@@ -421,15 +379,13 @@ def as_mermaid(keyfn, out, level, min_weight, overlay):
                  f'{symbols[k]} symbols · {len(files[k])} files{note}"]')
 
     if level == "package":
-        # The group IS the node at this level; wrapping each in its own subgraph
-        # would draw 24 boxes each containing one identical box.
+        # The group IS the node at this level; no subgraph per group.
         for k in sorted(keep):
             node(k, k, "  ")
     else:
         # The folder tree, drawn as nested subgraphs — Mermaid nests them to any
         # depth. A chain of single-child directories (apps > apps/web > .../src)
-        # is collapsed into one box titled with the joined path, so the nesting
-        # shows real structure rather than the depth of the checkout.
+        # is collapsed into one box titled with the joined path.
         grouped = collections.defaultdict(list)
         for k in sorted(keep):
             if k in forced:
@@ -552,7 +508,7 @@ def chain_block(surface, overlay, reach):
                    if not is_test_code(c)}
     mods = sorted(m for m in (reached | drifted | ext_callers) - hidden if not is_test_code(m))
     RESOLVED = resolve_paint(overlay, mods)
-    # A provider only test code calls would float with no edge once its callers are dropped.
+    # A provider only test code calls is not drawn.
     provs = sorted(p for p in ext if p not in hidden
                    and any(not is_test_code(c) for c in ext[p]["callers"]))
 
@@ -585,9 +541,8 @@ def chain_block(surface, overlay, reach):
     # picture as the endpoints that do resolve.
     dead = [(k, d["sites"], d["refusedBy"])
             for k, d in sorted((reach or {}).get("unreachable", {}).items()) if k not in hidden]
-    # A stranded route can also be a fetched one (`GET /api/config` is both, #1238).
-    # Same node id from both lists = a duplicate declaration, which Mermaid renders
-    # as one node with the SECOND label and silently drops the first.
+    # A stranded route that is also a dead fetch is drawn once, from the dead list
+    # (Mermaid keeps only the second label of a duplicate node id).
     dead_keys = {k for k, _, _ in dead}
     stranded = [r for r in (reach or {}).get("strandedHonoRoutes", [])
                 if r not in hidden and r not in dead_keys]
@@ -616,10 +571,9 @@ def chain_block(surface, overlay, reach):
         L.append('  subgraph gp_ext["EXTERNAL — third-party APIs"]')
         for pv in provs:
             d = ext[pv]
-            # Reached by BOTH a client library and a hand-rolled fetch is the same
-            # shape as #1222: two mechanisms for one capability, no single owner.
-            # env+sdk is NOT that — an SDK reading its DSN from env is one
-            # mechanism configured in the normal way.
+            # Reached by BOTH a client library and a hand-rolled fetch = two
+            # mechanisms for one capability. env+sdk is one mechanism (an SDK
+            # reading its DSN from env).
             two_ways = "sdk" in d["via"] and "url" in d["via"]
             detail = f"{len(d['endpoints'])} endpoint{'' if len(d['endpoints']) == 1 else 's'}" \
                 if d["endpoints"] else "SDK"
@@ -658,11 +612,8 @@ def chain_block(surface, overlay, reach):
         for c in ext[pv]["callers"]:
             if c in mods:
                 edge(sid("s_", c), sid("x_", pv), pv)
-    # Only when the call sits in the route file itself. A dead call made from a
-    # hook or a shared component has no route to hang off — `ErrorBoundary.tsx` is
-    # mounted by the root layout, which is not a route node — and a guessed edge
-    # would claim an attribution the scan did not make. Those nodes stand alone,
-    # and the call site in the label says where to look.
+    # Only when the call sits in the route file itself. Any other dead call stands
+    # alone; the call site in its label says where to look.
     route_of_file = {d["file"]: r for r, d in routes.items() if r not in hidden}
     for key, sites, _ in dead:
         for site in sites:
@@ -676,15 +627,7 @@ def chain_block(surface, overlay, reach):
 def eager_block(eager):
     """Render bkit-graph-eager.py's findings as the import-time side-effect table.
 
-    Kept as its own section, and deliberately NOT painted onto the diagrams. The
-    two visual channels there are already spoken for — hue is the called
-    capability, dash and fill are drift status — and "evaluates on import" is a
-    third, unrelated axis. Stacking it on the drift border would make one box
-    mean two things, which is the exact failure the PALETTE comment above records.
-
-    It is also a different altitude: drift is per capability, this is per file.
-    apps/mobile/src/db/index.ts is one of three files in its module, so a marker
-    on the `apps/mobile/src/db` box could only say "something in here does it".
+    Its own section, per file; NOT painted onto the diagrams.
     """
     if not eager:
         return ["_No import-time scan — run with `--eager`._"]
@@ -716,9 +659,7 @@ def eager_block(eager):
 def reachability_block(reach):
     """The register's rows for client calls no route serves.
 
-    Separate from the capability table because the unit is different: a capability
-    row is a mechanism with an owner, while this is one dead URL with one call site.
-    Folding them together would need a fake owner column on every row here.
+    Separate from the capability table: one row per dead URL and call site, no owner.
     """
     if reach is None:
         return ["Not scanned — run the rollup with `--reachability`."]
@@ -805,9 +746,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         budget = "—" if r.get("budget") is None else f"`{r['budget']}`"
         if r.get("budget_state") in ("over", "stale"):
             budget += f" {r['budget_state']}"
-        # Surface is shown because a row's counts are only readable against the file
-        # set they were taken over — a `0 of 0` on `tests` and one on `product` are
-        # different facts. Both surfaces exist so a test-only count is not read as product.
+        # The surface column names the file set a row's counts were taken over.
         return (f"| {r['lane']} | {r['capability']} | {owner} | `{r['pattern']}` | "
                 f"`{r.get('surface', 'product')}` | `{r['status']}` | {sites} | {budget} | "
                 f"{issue} |")

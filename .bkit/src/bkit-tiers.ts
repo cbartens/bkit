@@ -167,12 +167,9 @@ export function deepMergeJson(base: JsonValue, override: JsonValue): JsonValue {
   // Both are plain objects — recursive merge.
   //
   // Key ORDER follows `override` (the bkit template) for keys it defines, then appends
-  // base-only (consumer) keys. The template is the authority on ordering: this matters for
-  // order-significant maps like opencode's last-match-wins `permission.bash`, where a
-  // `git push --force-with-lease*: allow` placed last in the template must stay last after an
-  // upgrade/reconverge merge. Starting from `{...base}` (consumer order) instead let a stale
-  // consumer ordering put the narrower `git push --force*: deny` after it, silently DENYING
-  // force-with-lease (which rules.md permits on personal branches). (#255 P2-10)
+  // base-only (consumer) keys. Order-significant maps like opencode's last-match-wins
+  // `permission.bash` keep the template's order (`git push --force-with-lease*: allow`
+  // stays after `git push --force*: deny`).
   const baseObj = base as { [k: string]: JsonValue };
   const overrideObj = override as { [k: string]: JsonValue };
   const result: { [k: string]: JsonValue } = {};
@@ -272,7 +269,7 @@ export function writeTier2JsonContained(
 }
 
 // ---------------------------------------------------------------------------
-// migrateLegacyBkitEnvelope — strip __bkit__ envelope from consumer doc (BAR-167 Phase 1)
+// migrateLegacyBkitEnvelope — strip __bkit__ envelope from consumer doc
 //
 // Pure function — no file I/O.
 //
@@ -435,30 +432,20 @@ export function writeIfAbsent(
 // changes): two independent, self-limiting migration triggers, each firing only for
 // a shape that cannot occur once a file carries markers in the current layout:
 //   - no markers, hash matches a prior canonical hash → replace wholesale (same bytes
-//     a fresh install would produce). A file with no markers whose full-file hash
-//     matches bkit's own record is provably ours and unmodified — the case of a file
-//     an older bkit wrote whole, with no markers at all.
+//     a fresh install would produce): an unmodified file an older bkit wrote whole.
 //   - no markers, hash unknown/differs → append the block (unchanged default
 //     behaviour) and print wiring instructions — the consumer's own file needs one
 //     line added to call into the appended block.
 //   - markers present, but nothing meaningful lives after the end marker → replace
-//     wholesale. Covers a file whose markers wrap the WHOLE file (nothing left
-//     outside to preserve) — an ordinary block-content-only merge would silently
-//     discard whatever those markers wrap that the template puts outside the
-//     block. Self-limiting: once
-//     genuinely migrated, real content lives after the end marker and this never
-//     fires again, so it can never be reused to wholesale-replace a file that has
-//     legitimate consumer content outside the block (unlike a hash comparison, whose
-//     recorded value is refreshed after every write and would eventually "match"
-//     ANY stable, unmodified file — bkit's own included).
+//     wholesale (a file whose markers wrap the WHOLE file). Self-limiting: once
+//     migrated, real content lives after the end marker and this never fires again.
 //   - markers present, real content after the end marker → falls through to the
 //     normal markers-present update (unchanged default behaviour).
 // ---------------------------------------------------------------------------
 
 export interface Tier2NoMarkerMigration {
-  /** Consumer-relative path — the `canonicalHashes` key space. `dstPath` itself may be
-   * absolute (the upgrade engine passes an absolute path), so this is carried
-   * separately rather than derived from it. */
+  /** Consumer-relative path — the `canonicalHashes` key space. Carried separately:
+   * `dstPath` may be absolute (the upgrade engine passes an absolute path). */
   relPath: string;
   /** Canonical hashes recorded before this run (from `.bkit/version`), keyed by
    * `relPath`. */
@@ -566,13 +553,10 @@ export function writeTier2(
   }
 
   // Stale-position markers: markers ARE present and parseable, but nothing meaningful
-  // lives after the end marker. A block whose markers wrap the WHOLE file (the shape
-  // of a gateguard.js an older bkit wrote, with `bkit:end` literally at EOF) has this
-  // exact signature — the driver that belongs OUTSIDE the block is trapped INSIDE
-  // it, and an ordinary "replace only what's between the markers" merge would
-  // silently discard it (there is nothing in `afterBlock` to preserve it). Self-limiting
-  // by construction: once genuinely migrated, real driver content lives after the end
-  // marker, this is permanently false, and every later run takes the ordinary path below.
+  // lives after the end marker (markers wrapping the WHOLE file, e.g. a gateguard.js
+  // with `bkit:end` at EOF). Replaced wholesale. Self-limiting: once migrated, real
+  // driver content lives after the end marker and every later run takes the ordinary
+  // path below.
   if (noMarkerMigration) {
     const [, endMarker] = selectMarkers(markerStyle);
     const endIdx = findLineAnchoredMarkers(destContent, endMarker)[0]!;

@@ -1,11 +1,10 @@
 /**
- * bkit-ship-verdict.integration.test.ts — #380 Sub-plan 1 Task 5, matrix row 10.
+ * bkit-ship-verdict.integration.test.ts
  *
  * Boundary: real bash + real jq + real fs + the built `bkit roadmap feature`
  * (dist/, no mocks for the happy path). Runs the EXACT Step 6 block shipped in
  * `.bkit/workflows/bkit-ship.md` — the SHIPPED row append and the
- * `DOCS_VERDICT` it derives from the command's output — so a drift between
- * this test and the shipped shell can never pass silently.
+ * `DOCS_VERDICT` it derives from the command's output.
  */
 
 import { execSync } from "node:child_process";

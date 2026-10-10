@@ -3,15 +3,14 @@
 //   docs/decisions.md  → docs/decisions.jsonl   (kind:"decision")
 //   docs/pending.md    → docs/deferrals.jsonl   (kind:"deferral")
 //   .bkit/friction.md  → .bkit/friction.jsonl   (kind:"friction")
-//   docs/completed.md  → .bkit/issues.jsonl     (kind:"feature", status:"SHIPPED") — #380 fifth pair
+//   docs/completed.md  → .bkit/issues.jsonl     (kind:"feature", status:"SHIPPED")
 //
-// The fifth pair also performs the #380 Addendum 3 § S BOOTSTRAP SEED, same run:
-// scans docs/plans/{YYYYMM}/{FID}-{design,plan}.md + folded per-FID status.jsonl
-// and appends ONE `feature` row per in-flight FID at its detected phase, skipping
-// FIDs already present in .bkit/issues.jsonl. Without it the roadmap projection
-// has no rows for work already in flight on day one.
+// The fifth pair also performs the BOOTSTRAP SEED, same run: scans
+// docs/plans/{YYYYMM}/{FID}-{design,plan}.md + folded per-FID status.jsonl and
+// appends ONE `feature` row per in-flight FID at its detected phase, skipping FIDs
+// already present in .bkit/issues.jsonl.
 //
-// Safety contract (DE-39, KN-8 class):
+// Safety contract (DE-39):
 //   1. Creates a transient .md.bak before any write.
 //   2. Writes all rows to .jsonl.
 //   3. Verifies row-count parity against the .md.bak row count.
@@ -20,7 +19,7 @@
 //   6. Re-run is idempotent (no-op if .md already absent and .jsonl already populated).
 //
 // NEVER called from bkit upgrade — only via explicit `bkit telemetry migrate` invocation.
-// This is enforced mechanically by bkit-telemetry-migrate.integration.test.ts (WS5-T2b).
+// Enforced by bkit-telemetry-migrate.integration.test.ts.
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -47,13 +46,11 @@ export function parseRelated(value) {
  *
  * The legacy field is free prose, not a token: `RESOLVED — closed by the bkit
  * 3.3.0 upgrade`, `resolved (#453, 2026-06-03) — migration 20260603150000`,
- * `partially-resolved — Phase 1 landed, Phase 2 open`. An exact-equality check
- * (`raw === "resolved"`) silently defaults every one of those to OPEN, marking
- * closed work as outstanding. Substring-match instead — the same rule the
- * friction builder uses, shared so the two cannot drift.
+ * `partially-resolved — Phase 1 landed, Phase 2 open`. Substring match, shared with
+ * the friction builder.
  *
- * `partially-resolved` deliberately reads as OPEN: work remains. It is matched
- * BEFORE the resolve check because it contains "resolv" as a substring.
+ * `partially-resolved` reads as OPEN. It is matched BEFORE the resolve check because
+ * it contains "resolv" as a substring.
  */
 export function parseLegacyStatus(value) {
     const raw = (value ?? "open").toLowerCase().replace(/`/g, "").trim();
@@ -64,11 +61,9 @@ export function parseLegacyStatus(value) {
 /**
  * Map a legacy `**Severity:**` value onto the current enum.
  *
- * The legacy scale is `critical | normal | low`; `normal` is the middle of a
- * three-point scale, so it lands on MEDIUM rather than HIGH. Legacy entries
- * with no Severity (the whole of `friction.md`, which has no such field)
- * default to MEDIUM — the neutral point. This is an explicit unknown->neutral
- * mapping, NOT a claim about the row; re-triage on next touch.
+ * The legacy scale is `critical | normal | low`; `normal` maps to MEDIUM. Legacy
+ * entries with no Severity (the whole of `friction.md`, which has no such field)
+ * default to MEDIUM — an unknown->neutral mapping, NOT a claim about the row.
  */
 export function mapLegacySeverity(value) {
     switch (value?.toLowerCase().replace(/`/g, "").trim()) {
@@ -250,7 +245,7 @@ export function parseFrictionMd(content) {
  * frontend | data | integrations | ai | testing | security | other`) mapped
  * onto the current deferral/failure/feature domain set. Values already in the
  * domain set pass through unchanged; everything else maps to its closest
- * domain term, `other` if none (#380 Directive 2).
+ * domain term, `other` if none.
  */
 export function mapCompletedCategory(value) {
     const DOMAIN_SET = new Set([
@@ -284,7 +279,7 @@ export function mapCompletedCategory(value) {
 /**
  * Parse a `docs/completed.md` corpus into structured entries — one per
  * `## Title (YYYY-MM-DD)` heading, fields `**Category:**` / `**Artifacts:**` /
- * `**Summary:**` / `**Related:**` (#380 Directive 2). Skips the managed
+ * `**Summary:**` / `**Related:**`. Skips the managed
  * `bkit:start`/`bkit:end` header block. A heading missing Category or Summary
  * is NEVER silently skipped — it still produces a row (loud fallback), and a
  * diagnostic is pushed to `diagnosticLines` when supplied.
@@ -406,10 +401,7 @@ function parseMdEntries(content, headingRe) {
         const summary = cleanTitle(title);
         // Build detail from body (preserve for agent readability)
         const detail = body.length > 0 ? body : undefined;
-        // Build key: id-normalised-title slug.
-        // Safe to embed the legacy id HERE (unlike an agent minting a fresh DE-{N}):
-        // migration is a one-shot deterministic read of a static .md, so two runs
-        // cannot race to claim the same number.
+        // Build key: id-normalised-title slug, embedding the legacy id.
         const keySlug = stableKey(id, summary);
         // References: the entry's own legacy id FIRST, then everything its
         // `**Related:**` field points at.
@@ -450,9 +442,7 @@ function extractField(body, fieldName) {
  * an ad-hoc leading `YYYY-MM-DD — `. Both are read.
  *
  * The heading is NOT rewritten here. `cleanTitle` already removes the trailing
- * form, and the leading form is part of the title `stableKey` hashes — stripping
- * it would re-key the row, so a re-migration would mint new entities instead of
- * updating the existing ones.
+ * form; the leading form stays part of the title `stableKey` hashes.
  */
 export function parseTitleDate(titleRaw) {
     const m = /\((\d{4})-(\d{2})-(\d{2})\)\s*$/.exec(titleRaw) ?? /^(\d{4})-(\d{2})-(\d{2})\b/.exec(titleRaw);
@@ -462,7 +452,7 @@ export function parseTitleDate(titleRaw) {
     if (mo < 1 || mo > 12 || d < 1 || d > 31)
         return undefined;
     const ms = Date.UTC(y, mo - 1, d);
-    // Date.UTC rolls invalid days over (Feb 31 -> Mar 3); reject rather than lie.
+    // Date.UTC rolls invalid days over (Feb 31 -> Mar 3); an invalid day is rejected.
     const back = new Date(ms);
     if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) {
         return undefined;
@@ -484,12 +474,8 @@ function slugify(text) {
         .slice(0, 80);
 }
 /**
- * Key that survives title truncation. `slugify(prefix-title.slice(0, 60))` is not
- * unique: two entries whose titles diverge only after char 60 collapse to one key,
- * and `fold()` keeps only the last — so the store silently holds one entity where
- * the log had two. Recurrence entries are the most exposed, because a recurrence is
- * titled like the original it recurs from. The digest is appended ONLY when
- * truncation actually discards characters, so short titles keep a clean, readable key.
+ * Key that survives title truncation: `slugify(prefix-title.slice(0, 60))` plus a
+ * digest of the full title, appended ONLY when truncation discards characters.
  */
 function stableKey(prefix, title) {
     const slug = slugify(`${prefix}-${title.slice(0, 60)}`);
@@ -519,8 +505,7 @@ function buildKnowledgeRow(entry, opts) {
 }
 function buildDecisionRow(entry, opts) {
     const ts = opts.baseTs + opts.idx;
-    // Substring, not equality — `superseded by DE-12` / `superseded — …` are real
-    // legacy spellings and an exact match silently reports them as ACTIVE.
+    // Substring, not equality — matches `superseded by DE-12` / `superseded — …`.
     const statusValue = /supersed/i.test(entry.status ?? "")
         ? "SUPERSEDED"
         : "ACTIVE";
@@ -595,12 +580,9 @@ function buildFrictionRow(entry, opts) {
         kind: "friction",
         repo: opts.repo,
         bkitVersion: opts.bkitVersion,
-        // WHERE the friction happened, not who transported the row. A live friction
-        // row's envelope workflow/step ARE the workflow/step the friction occurred in
-        // (the orchestrator writing it is the workflow it happened in), so stamping
-        // "migrate" here would put every migrated row on a different axis from every
-        // live one and blind exactly the workflow/step dimensions the harvest slices by.
-        // Falls back to the migrate provenance only when the legacy row had neither.
+        // WHERE the friction happened, not who transported the row: envelope workflow/step
+        // are the workflow/step the friction occurred in, as on a live friction row. Falls
+        // back to the migrate provenance only when the legacy row had neither.
         workflow: e._workflow ?? "migrate",
         step: e._step ?? "bkit-telemetry-migrate",
         key: entry.key,
@@ -620,10 +602,8 @@ function buildFrictionRow(entry, opts) {
 }
 /**
  * Build a `feature` row (status:"SHIPPED") from a parsed `docs/completed.md`
- * entry (#380 Directive 2). `key` = the entry's stable slug — legacy
- * `completed.md` entries carry no FID, so the migrated key is NOT the FID
- * scheme live workflow closes use; it is still a stable, unique, content-minted
- * key, consistent with every other migrated ledger's key derivation.
+ * entry. `key` = the entry's stable, content-minted slug (legacy `completed.md`
+ * entries carry no FID), derived like every other migrated ledger's key.
  */
 function buildFeatureRow(entry, opts) {
     return {
@@ -648,12 +628,9 @@ const STATUS_RANK = {
     DEBUGGED: 3,
 };
 /**
- * Parse one JSONL line, never throwing — returns `null` on a malformed line
- * instead of raising. Callers own the loud diagnostic (never a silent skip):
- * this helper's ONLY job is "did it parse", so the log line always names the
- * caller's file/context rather than a generic message from inside a shared
- * catch. Bounds the parse-MISS class to one non-throwing primitive instead of
- * one log-and-continue `catch` per call site.
+ * Parse one JSONL line, never throwing — returns `null` on a malformed line.
+ * Callers own the loud diagnostic (never a silent skip) and name their own
+ * file/context in it.
  */
 function tryParseJsonLine(line) {
     let parsed = null;
@@ -668,8 +645,7 @@ function tryParseJsonLine(line) {
 /**
  * Read every `key` already present in `.bkit/issues.jsonl` (best-effort,
  * tolerant of malformed lines) — the seed skips any FID already recorded,
- * regardless of its current folded status (Addendum 3 § S: "skipping FIDs
- * already present in the ledger").
+ * regardless of its current folded status.
  */
 function existingIssueKeys(issuesJsonlPath) {
     const keys = new Set();
@@ -695,9 +671,8 @@ function existingIssueKeys(issuesJsonlPath) {
 /**
  * Detect an in-flight FID's phase from `docs/plans/{YYYYMM}/{FID}-{design,plan}.md`
  * presence plus its folded `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (a
- * `workflow-done` row for `build`/`debug` promotes the detected phase). This is
- * the ONE-TIME bootstrap read the on-disk scan is repurposed into (Addendum 3
- * § S) — NOT the per-close sensing source, which is the ledger itself.
+ * `workflow-done` row for `build`/`debug` promotes the detected phase). A one-time
+ * bootstrap read — NOT the per-close sensing source, which is the ledger itself.
  */
 function detectInFlightStatus(planDir, fid, hasPlan) {
     let status = hasPlan ? "PLANNED" : "DESIGNED";
@@ -840,12 +815,8 @@ export async function runMigrate(opts) {
     const frictionJsonlPath = path.join(cwd, ".bkit", "friction.jsonl");
     const frictionBakPath = frictionMdPath + ".bak";
     // Idempotency: .md absent = nothing to do for that pair, whether it was
-    // migrated already OR never existed to begin with (e.g. a consumer that
-    // only ever authored docs/completed.md and never had docs/knowledge.md /
-    // docs/decisions.md). Gating this on jsonl-non-empty would ABORT the whole
-    // run — including the unrelated completed.md -> issues.jsonl pair — for any
-    // consumer missing one of the legacy pairs; every pair shares the same
-    // absent-.md-means-skip rule.
+    // migrated already OR never existed. Every pair shares this absent-.md-means-skip
+    // rule; it does not depend on the .jsonl being non-empty.
     const knMdExists = fs.existsSync(knMdPath);
     const deMdExists = fs.existsSync(deMdPath);
     const pendingMdExists = fs.existsSync(pendingMdPath);
@@ -861,33 +832,21 @@ export async function runMigrate(opts) {
     const completedMdExists = fs.existsSync(completedMdPath);
     const completedAlreadyDone = !completedMdExists;
     // Determine repo slug from package.json or git remote — resolved once, used
-    // by every row builder AND the § S bootstrap seed (needed even on the
-    // already-migrated fast path below).
+    // by every row builder AND the bootstrap seed (needed even on the already-migrated
+    // fast path below).
     const repo = detectRepo(cwd);
-    // A fresh consumer has no legacy `.md` ledgers AND no migrated rows. Without
-    // this check `knAlreadyDone` / `deAlreadyDone` both hold false and the run falls
-    // through to `abort("knowledge.md not found")` — printing "migrate failed" for a
-    // documented no-op. Nothing to migrate is a clean outcome, not a failure.
+    // A fresh consumer has no legacy `.md` ledgers AND no migrated rows: a clean
+    // nothing-to-migrate outcome, not a failure.
     //
-    // These two are derived HERE and used ONLY by this check. They deliberately do
-    // NOT gate `knAlreadyDone` / `deAlreadyDone` above: gating idempotency on
-    // jsonl-non-empty would abort the whole run for any consumer missing one legacy
-    // pair, so every pair shares the absent-.md-means-skip rule.
-    // "Already migrated" still needs a rows-exist signal, so the fresh-consumer
-    // test keeps it.
+    // These two are derived HERE and used ONLY by this check; they do NOT gate
+    // `knAlreadyDone` / `deAlreadyDone` above. "Already migrated" needs a rows-exist
+    // signal, so the fresh-consumer test keeps it.
     const knJsonlNonEmpty = fs.existsSync(knJsonlPath) && fs.readFileSync(knJsonlPath, "utf-8").trim().length > 0;
     const deJsonlNonEmpty = fs.existsSync(deJsonlPath) && fs.readFileSync(deJsonlPath, "utf-8").trim().length > 0;
-    // issues.jsonl joins the rows-exist signal because it is a migration TARGET:
-    // a consumer whose only legacy ledger was `completed.md` has empty knowledge
-    // and decisions ledgers even after a successful migrate, so testing those two
-    // alone would report the second run as "nothing to migrate" on a repo that
-    // has in fact already migrated.
+    // issues.jsonl is part of the rows-exist signal: it is a migration TARGET.
     const issuesJsonlNonEmpty = fs.existsSync(issuesJsonlPath) && fs.readFileSync(issuesJsonlPath, "utf-8").trim().length > 0;
     //
-    // `completed.md` counts as a legacy ledger here. Omitting it would send a
-    // consumer who only ever authored `docs/completed.md` — the exact case the
-    // idempotency comment above calls out — down the nothing-to-migrate return,
-    // stranding the one file that has rows to convert into `.bkit/issues.jsonl`.
+    // `completed.md` counts as a legacy ledger here.
     const noLegacyLedgers = !knMdExists &&
         !deMdExists &&
         !pendingMdExists &&
@@ -922,9 +881,8 @@ export async function runMigrate(opts) {
         frictionAlreadyDone &&
         completedAlreadyDone) {
         lines.push("[bkit-telemetry] migrate: already complete (idempotent no-op)");
-        // The § S bootstrap seed still runs on an already-migrated repo — it is
-        // idempotent (skips FIDs already present) and is the only path that seeds
-        // in-flight FIDs discovered/added to docs/plans/** AFTER the first migrate.
+        // The bootstrap seed still runs on an already-migrated repo — idempotent (skips
+        // FIDs already present); it seeds FIDs added to docs/plans/** after the first migrate.
         const seedRows = dryRun ? [] : seedInFlightFeatures(cwd, repo, bkitVersion, lines);
         return {
             ran: seedRows.length > 0,
@@ -1008,7 +966,7 @@ export async function runMigrate(opts) {
         lines.push("[bkit-telemetry] migrate: friction.md absent — skipping");
     }
     // ---------------------------------------------------------------------------
-    // Parse docs/completed.md → .bkit/issues.jsonl `feature` rows (#380, fifth pair)
+    // Parse docs/completed.md → .bkit/issues.jsonl `feature` rows (fifth pair)
     // ---------------------------------------------------------------------------
     let completedEntries = [];
     let featureRows = [];
@@ -1188,7 +1146,7 @@ export async function runMigrate(opts) {
         lines.push(`[bkit-telemetry] migrate: friction.md had 0 entries — deleted (no rows to append)`);
     }
     // ---------------------------------------------------------------------------
-    // Parity-gated append cycle for docs/completed.md → .bkit/issues.jsonl (#380)
+    // Parity-gated append cycle for docs/completed.md → .bkit/issues.jsonl
     // ---------------------------------------------------------------------------
     let completedMdDeleted = false;
     if (!completedAlreadyDone && featureRows.length > 0) {
@@ -1223,7 +1181,7 @@ export async function runMigrate(opts) {
         lines.push(`[bkit-telemetry] migrate: completed.md had 0 entries — deleted (no rows to append)`);
     }
     // ---------------------------------------------------------------------------
-    // #380 Addendum 3 § S — bootstrap seed: one `feature` row per in-flight FID
+    // Bootstrap seed: one `feature` row per in-flight FID
     // detected from docs/plans/** + folded status.jsonl, skipping FIDs already in
     // .bkit/issues.jsonl (incl. the SHIPPED rows just ported above). Idempotent —
     // re-running adds no duplicate.
@@ -1276,14 +1234,11 @@ function abort(message, lines) {
 /**
  * The repo's `owner/repo` slug for the `repo` envelope field.
  *
- * The git remote is the ONLY authoritative source. package.json `name` is NOT a
- * slug — it is an npm package name: `@cbartens/bkit` against a true slug of
- * `cbartens/bkit`. One character, but `repo` is part of identity() for every kind, so the two
- * spellings fork every entity between them.
+ * The git remote is the ONLY authoritative source; package.json `name` is an npm
+ * package name (`@cbartens/bkit`), not a slug (`cbartens/bkit`). `repo` is part of
+ * identity() for every kind.
  *
- * No remote (a repo that has never been pushed) -> "unknown/repo", loudly. A
- * wrong-but-plausible slug is worse than an obviously-absent one: it forks
- * silently, whereas "unknown/repo" shows up the moment anyone reads the ledger.
+ * No remote (a repo that has never been pushed) -> "unknown/repo", loudly.
  */
 function detectRepo(cwd) {
     const slug = resolveRepoSlug(cwd);

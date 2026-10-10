@@ -37,18 +37,14 @@ cd "$REPO_ROOT"
 
 # Workspace-trust check + drift alarm.
 #
-# permissions.allow rows in .claude/settings.json GRANT capability, so Claude Code
-# applies them only once the workspace trust dialog has been accepted -- and it never
-# shows that dialog in a cloud session. Unset, every allow row is ignored and the only
-# notice is a stderr line no cloud session surfaces. deny/ask are unaffected.
+# Claude Code applies permissions.allow rows in .claude/settings.json only once the
+# workspace trust dialog has been accepted, and a cloud session never shows that
+# dialog: unset, every allow row is ignored. deny/ask are unaffected.
 #
-# The setup script (cloud.md section 4) records it at snapshot time, keyed on the repo
-# path it baked in. That path is an OBSERVATION of the current image, not a contract,
-# so re-check the DISCOVERED root here. Trust is keyed on the git repository root,
-# which is what Claude Code itself keys on.
-#
-# This cannot change the CURRENT session -- settings resolve before SessionStart -- so
-# its job is to make a silent no-op loud and tell the operator how to fix the snapshot.
+# The setup script (cloud.md section 4) records trust at snapshot time, keyed on the
+# repo path it baked in. This re-checks the DISCOVERED git repository root (the key
+# Claude Code uses). Settings resolve before SessionStart, so this cannot change the
+# CURRENT session; on a mismatch it logs how to fix the snapshot.
 if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && command -v jq >/dev/null 2>&1; then
   TRUST_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$REPO_ROOT")
   TRUST_FILE="${CLAUDE_CONFIG_DIR:-${HOME:-}}/.claude.json"
@@ -59,8 +55,8 @@ if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && command -v jq >/dev/null 2>&1; then
 fi
 
 if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
-  # Belt-and-braces: write the GH Packages auth token into pnpm's user-level
-  # config before install (supplements the project .npmrc auth token line).
+  # Writes the GH Packages auth token into pnpm's user-level config before install,
+  # alongside the project .npmrc auth token line.
   if [ -n "${BKIT_GH_TOKEN_INSTALL:-}" ]; then
     pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL" || log "pnpm config set failed (non-blocking)"
   fi
@@ -76,51 +72,37 @@ if [ -f .vale.ini ] && command -v vale >/dev/null 2>&1; then
 fi
 
 # Authenticate the gh CLI for the PR / branch / git-push surface (session-scoped).
-# On GitHub Actions runners gh is already authed via GITHUB_TOKEN (env wins over
-# stored creds), so the `gh auth status` guard no-ops there; it fires only where gh
-# isn't yet authed — e.g. Claude Code on the web. BKIT_GH_TOKEN comes from the
+# Runs only where `gh auth status` fails (e.g. Claude Code on the web); on GitHub
+# Actions runners gh is already authed via GITHUB_TOKEN. BKIT_GH_TOKEN comes from the
 # dashboard env vars (see cloud.md § Environment variables).
 #
-# gh hardening (#341 C2): prefer the SANCTIONED `GH_TOKEN`/`GITHUB_TOKEN` env
-# var over `gh auth login --with-token`. gh reads GH_TOKEN -> GITHUB_TOKEN
-# with TOP precedence over any stored `gh auth login` credential (gh manual;
-# cli/cli#2922) — a placeholder/stray GH_TOKEN the platform happens to set
-# silently overrides a successful --with-token login.
+# gh reads GH_TOKEN -> GITHUB_TOKEN with TOP precedence over any stored
+# `gh auth login` credential (gh manual; cli/cli#2922). A working GH_TOKEN /
+# GITHUB_TOKEN is used as-is. Branches on the `gh auth status` PROBE, not on
+# presence: a present-but-broken env token gets its own diagnosis.
 #
-# Branch on the PROBE, not on mere presence. In the exact failure #341 §2
-# documents — the platform sets a PLACEHOLDER GH_TOKEN — a presence check would
-# decline the only repair the hook has and say nothing specific about why.
-# "Prefer the sanctioned lane" means prefer it WHEN IT WORKS; when it is present
-# and broken, say so precisely.
-#
-# Single shared token — BKIT_GH_TOKEN is the one secret both this hook (gh) and
-# the GitHub MCP server (.mcp.json's Authorization header) read; no second
-# secret is introduced.
+# BKIT_GH_TOKEN is the one secret both this hook (gh) and the GitHub MCP server
+# (.mcp.json's Authorization header) read.
 if ! command -v gh >/dev/null 2>&1; then
   log "gh-preflight: gh is not on PATH — the GitHub MCP server is the only GitHub lane this session"
 elif gh auth status >/dev/null 2>&1; then
   log "gh-preflight: gh already authenticates (sanctioned env token or stored credential) — leaving that lane alone"
 elif [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
-  # Present but NOT authenticating: a placeholder or expired token. It outranks
-  # any stored credential, so `--with-token` cannot win — the login would report
-  # success and gh would keep using the broken env value. This hook cannot repair
-  # it either: a SessionStart hook's own `export` does not reach the agent's later
-  # Bash processes, and Claude Code documents no supported way to rewrite a cloud
-  # environment variable from inside a session (env vars are set in the dashboard;
-  # see cloud.md). So name the fault and the fix precisely and let the
-  # workflow-level Step-1 preflight fail the run closed onto the MCP lane.
+  # Present but NOT authenticating: a placeholder or expired token. It outranks any
+  # stored credential, so `--with-token` cannot override it, and a SessionStart hook's
+  # `export` does not reach the agent's later Bash processes (cloud env vars are set
+  # in the dashboard; see cloud.md). Logs the fault and its fix; the workflow-level
+  # Step-1 preflight fails the run closed onto the MCP lane.
   log "gh-preflight: WARNING — GH_TOKEN/GITHUB_TOKEN is set but does NOT authenticate (placeholder or expired). It takes precedence over any stored 'gh auth login' credential, so gh cannot be repaired from this hook. Fix it where it is defined — the cloud environment's Environment variables — by setting a valid token or removing the variable so BKIT_GH_TOKEN can be used instead. Until then gh stays down and workflows fall back to the GitHub MCP lane. See issue #341 §2/§6a."
 elif [ -n "${BKIT_GH_TOKEN:-}" ]; then
   log "gh auth login --with-token"
   printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token || log "gh auth login failed (non-blocking)"
 fi
 
-# gh-preflight (#341 C2): loud, NEVER-silent RUNTIME_GITHUBCLI record. SessionStart hooks
-# cannot hard-stop the session (see header note) — this line is a loud,
-# NON-BLOCKING signal only. The ENFORCING dual-lane abort lives in each
-# workflow's Step-1 preflight (`bkit runtime detect` / `bkit runtime assert`
-# reading RUNTIME_GITHUBCLI), NOT
-# here.
+# gh-preflight: always logs RUNTIME_GITHUBCLI. NON-BLOCKING (SessionStart hooks cannot
+# hard-stop the session; see header note). The ENFORCING dual-lane abort lives in each
+# workflow's Step-1 preflight (`bkit runtime detect` / `bkit runtime assert` reading
+# RUNTIME_GITHUBCLI).
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   RUNTIME_GITHUBCLI=true
 else
@@ -179,11 +161,9 @@ fi
 # fi
 #
 # Local backend stack (Supabase / Postgres / Redis / etc.):
-# Gate on the DAEMON, not just the CLI. `command -v supabase` starts passing the
-# moment a context-fetch:provision recipe puts the CLI on PATH (.agents/context.md
-# § CLI provisioning) — the container runtime it needs is still absent, so
-# `supabase start` dies, the `|| log` swallows it into one stderr line, and the
-# session carries on with no database. Skip loudly instead.
+# Gates on the DAEMON, not just the CLI: a context-fetch:provision recipe
+# (.agents/context.md § CLI provisioning) can put the CLI on PATH with no container
+# runtime running. No daemon → logs a SKIPPED line.
 # if [ -f supabase/config.toml ] && command -v supabase >/dev/null 2>&1; then
 #   if docker info >/dev/null 2>&1; then
 #     log "supabase start"

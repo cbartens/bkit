@@ -161,7 +161,7 @@ describe("identity — per-kind composite tuples", () => {
   });
 
   it("outcome: keyed by (repo, workflow, parentSha) — prNumber fallback when no parentSha", () => {
-    // Generalized per-workflow run row (#234): the run's parentSha is the anchor.
+    // Generalized per-workflow run row: the run's parentSha is the anchor.
     const withSha = outcomeEvent({ parentSha: "deadbeef" } as Partial<TelemetryEvent>);
     expect(identity(withSha)).toBe("outcome cbartens/bkit build deadbeef");
     // Back-compat: a legacy ship row with no parentSha falls back to its prNumber.
@@ -204,12 +204,7 @@ describe("identity — per-kind composite tuples", () => {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// severity — required on the triaged kinds, rejected elsewhere (#234)
-//
-// Regression guard: severity was specified in the #234 issue body AND design
-// (line 401, "MUST carry"), reached zero of the five plan files, and shipped as
-// a dead optional envelope field no writer ever emitted. These tests are what
-// make its absence loud instead of silent.
+// severity — required on the triaged kinds, rejected elsewhere
 // ---------------------------------------------------------------------------
 
 describe("severity — per-kind requirement + closed enum", () => {
@@ -242,8 +237,7 @@ describe("severity — per-kind requirement + closed enum", () => {
     },
   );
 
-  // critical|normal|low is off-enum — accepting it would silently admit a
-  // vocabulary whose distribution collapses to its default.
+  // critical|normal|low is off-enum.
   it.each(["low", "normal", "critical", "blocker", "advisory", "Critical", ""])(
     "rejects off-enum severity %j",
     (severity) => {
@@ -385,9 +379,8 @@ describe("severity — per-kind requirement + closed enum", () => {
   });
 });
 
-// Updating is an APPEND: the instinct loop is built on same-key rows accumulating.
-// Skipping when an identity-matching row exists would leave confidence/lastConfirmed/
-// recurrenceCount permanently unpopulated.
+// Updating is an APPEND: same-key rows accumulate, even when an identity-matching row
+// exists.
 describe("updating a row — supersede by same-key append", () => {
   it("a later same-key row wins the fold; the earlier one stays as history", () => {
     const logged = frictionEvent("ship-blocked-by-hook", {
@@ -422,9 +415,8 @@ describe("updating a row — supersede by same-key append", () => {
     expect(current.status).toBe("CLOSED");
   });
 
-  // Legacy consumer rows carry an ISO-string `ts`, or none at all. `a.ts - b.ts` on
-  // those is NaN, which voids the sort: the winner would depend on file order, and
-  // two harvest runs over the same rows would keep different ones (#343 harvest-1).
+  // Legacy consumer rows carry an ISO-string `ts`, or none at all; the sort stays
+  // consistent on them.
   it("fold orders ISO-string and missing ts deterministically, whatever the file order", () => {
     const missing = frictionEvent("k", { status: "OPEN" } as Partial<TelemetryEvent>);
     delete (missing as { ts?: number }).ts;
@@ -466,9 +458,7 @@ describe("updating a row — supersede by same-key append", () => {
 });
 
 // TRIAGED = analysed, disposition known, NOT fixed. It rides on exactly the kinds
-// that carry severity, because both express the same property: these three describe
-// open work someone triages. The trap it guards is a reader testing status=="OPEN"
-// and silently retiring everything the moment a sweep looks at it.
+// that carry severity, and counts as open work.
 describe("triage ladder — OPEN -> TRIAGED -> CLOSED", () => {
   it("TRIAGE_STATUSES is exactly OPEN|TRIAGED|CLOSED", () => {
     expect([...TRIAGE_STATUSES].sort()).toEqual(["CLOSED", "OPEN", "TRIAGED"]);
@@ -495,7 +485,7 @@ describe("triage ladder — OPEN -> TRIAGED -> CLOSED", () => {
   });
 });
 
-// #380 — `feature` kind: the canonical row for .bkit/issues.jsonl, a
+// `feature` kind: the canonical row for .bkit/issues.jsonl, a
 // deferral/failure row MINUS severity, PLUS the six-state phase ladder.
 describe("feature kind — .bkit/issues.jsonl (#380)", () => {
   it("is a valid kind, keyed by (kind, repo, key)", () => {
@@ -564,11 +554,7 @@ describe("feature kind — .bkit/issues.jsonl (#380)", () => {
   });
 });
 
-// The spec's examples are what agents copy — they are the schema in practice.
-// An example that silently drifts from the codec teaches the wrong shape to every
-// writer, which is precisely how `severity` and `references` were lost: present in
-// the type, absent from what anyone read. Validate them through the REAL codec
-// rather than eyeballing, so the examples cannot rot again.
+// The spec's examples validate through the REAL codec.
 describe("jsonl.md examples — validated against the codec", () => {
   const SPEC = path.resolve(import.meta.dirname, "..", "jsonl.md");
 
@@ -725,13 +711,9 @@ describe("resolveGitSha — parentSha must be a real SHA before it reaches a row
   });
 });
 
-// ONE summary, called by every workflow close step via `bkit telemetry summary`.
-// The five workflows each carried their own bash copy and every one was wrong:
-//   grep -cvE '…' || echo 0   -> prints "0\n0" when NOTHING is malformed, because
-//                                grep -c exits 1 on zero matches (the common case)
-//   jq '.bkitVersion // "unknown"' -> buckets "" under an EMPTY key, since jq's //
-//                                substitutes only on null/false
-//   wc -l                     -> counts lines, not parsed rows
+// ONE summary, called by every workflow close step via `bkit telemetry summary`:
+//   a zero malformed count prints "0" (not "0\n0"), an empty bkitVersion buckets as
+//   "unknown", and rows are parsed rows, not lines.
 describe("workflowTelemetry — ledger-health readout (no workflow)", () => {
   let dir: string;
   beforeEach(() => {
@@ -770,8 +752,7 @@ describe("workflowTelemetry — ledger-health readout (no workflow)", () => {
   });
 
   it("counts malformed lines by parsing, not by regex", () => {
-    // `{}` matches the bash guard /^\{.*\}$/ and would be counted VALID, but it is
-    // not a telemetry row; a truncated line is what the count is actually for.
+    // `{}` matches the bash guard /^\{.*\}$/ but is not a telemetry row.
     const s = workflowTelemetry(
       foldFrom([write([counterEvent({ parentSha: "aaa" })], ['{"ts":1,"kind":"coun'])]),
     );
@@ -1213,7 +1194,7 @@ describe("workflowTelemetry — per-workflow summary signals", () => {
 });
 
 // ---------------------------------------------------------------------------
-// workflowTelemetry — this-run + med·5 rolling baseline (#234)
+// workflowTelemetry — this-run + med·5 rolling baseline
 // ---------------------------------------------------------------------------
 
 describe("workflowTelemetry — this-run vs med·5 baseline", () => {

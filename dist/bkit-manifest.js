@@ -5,7 +5,7 @@
 // Design: pure data — no fs access, no side effects. Re-exported as a public
 // contract consumed by uninstall and upgrade.
 // ---------------------------------------------------------------------------
-// Issue tracker (#39)
+// Issue tracker
 // ---------------------------------------------------------------------------
 /**
  * Issue-tracker providers supported by `bkit install --tracker=<name>`.
@@ -29,7 +29,7 @@ export function parseIssueTracker(value) {
         : null;
 }
 // ---------------------------------------------------------------------------
-// Cloud agents — post-CI auto-routing (#119 "Managed Cloud Agents")
+// Cloud agents — post-CI auto-routing
 // ---------------------------------------------------------------------------
 /**
  * Cloud-agent automation chosen by the consumer (opt-in).
@@ -44,17 +44,17 @@ export function parseIssueTracker(value) {
  *
  * Recorded in `package.json` `bkit.cloudAgents`. Presence of the adopted copy
  * (`bkit-cloud.yml` for github-host variants; `.cursor/Dockerfile` for cursor) is the authoritative
- * "active" signal; the package.json field only distinguishes a deliberate opt-out from
+ * "active" signal; the package.json field only distinguishes an opt-out from
  * an undecided install.
  *
- * DECISION-C: single self-describing field (mirrors `bkit.issueTracker`).
- * Back-compat: legacy `"enabled"` is mapped to `"claude"` by `parseCloudAgents`.
+ * Single self-describing field (mirrors `bkit.issueTracker`). Legacy `"enabled"` is
+ * mapped to `"claude"` by `parseCloudAgents`.
  */
 export const CLOUD_MODES = ["claude", "cursor", "opencode", "none"];
 /** Default when consumer manifest has no `bkit.cloudAgents` field (undecided). */
 export const DEFAULT_CLOUD_AGENTS = "none";
 /** Narrow an unknown string to `CloudAgents` or return `null` if invalid.
- * Back-compat: legacy `"enabled"` value maps to `"claude"`.
+ * Legacy `"enabled"` value maps to `"claude"`.
  */
 export function parseCloudAgents(value) {
     if (value === "enabled")
@@ -88,12 +88,12 @@ const CORE_MANIFEST = [
     { path: ".bkit/workflows.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/README.md", format: "byte-equal-text", module: "core" },
 ];
-// GateGuard wiring instructions (#422): printed by writeTier2's noMarkerMigration
+// GateGuard wiring instructions: printed by writeTier2's noMarkerMigration
 // policy when a consumer's gateguard file carries no bkit markers AND its hash does
 // not match a known bkit release — i.e. it is the consumer's own file, not bkit's.
 // bkit appends the (pure, inert) advisory-engine block regardless; these instructions
-// are the one thing bkit cannot do for the consumer — call the appended function from
-// their existing driver. {{PATH}} is substituted with the destination path.
+// tell the consumer to call the appended function from their existing driver. {{PATH}}
+// is substituted with the destination path.
 export const GATEGUARD_CJS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed advisory block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -140,11 +140,8 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   so make sure your driver still emits exactly once per invocation.
 `;
 /**
- * Codex twin of {@link GUARDRAILS_WIRING_INSTRUCTIONS}. Separate text, not a reuse:
- * the Codex engine returns `{ verdict, reason }` and emits the Claude-family
- * `hookSpecificOutput` envelope, so the Cursor wording would name the wrong function
- * result and the wrong stdout shape — and a consumer following it would wire a hook
- * that parses as nothing and silently never gates.
+ * Codex twin of {@link GUARDRAILS_WIRING_INSTRUCTIONS}, separate text: the Codex engine
+ * returns `{ verdict, reason }` and emits the Claude-family `hookSpecificOutput` envelope.
  */
 export const CODEX_GUARDRAILS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed guardrails block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
 
@@ -169,9 +166,8 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 `;
 /**
  * Claude twin of {@link GUARDRAILS_WIRING_INSTRUCTIONS}. Separate text: the Claude
- * engine returns `{ context }` and emits `hookSpecificOutput.additionalContext`, and
- * it must NEVER be wired to a `permissionDecision` — that would turn an advisory into
- * the blanket prompt this host deliberately removed.
+ * engine returns `{ context }` and emits `hookSpecificOutput.additionalContext`; it is
+ * NEVER wired to a `permissionDecision`.
  */
 export const CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed guardrails block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
 
@@ -193,8 +189,8 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   make sure your driver still emits exactly once per invocation.
 `;
 const CLAUDE_MANIFEST = [
-    // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md (#252: moved core → claude,
-    // so `uninstall --claude` removes it and a non-claude install/uninstall leaves it).
+    // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md, owned by the claude module:
+    // `uninstall --claude` removes it; a non-claude install/uninstall leaves it.
     // Emitted by runClaudeModule (a root file, outside the .claude/ dir walk).
     { path: "CLAUDE.md", format: "markered-text", module: "claude" },
     { path: ".claude/settings.json", format: "json", module: "claude" },
@@ -211,21 +207,18 @@ const CLAUDE_MANIFEST = [
         module: "claude",
         noMarkerMigration: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
     },
-    // guardrails.cjs — Tier-2 markered-text, third twin of the Cursor/Codex hooks.
-    // PreToolUse matcher `Bash`. ADVISORY ONLY: it covers the two things a permission
-    // table cannot express (URL hosts, shell-as-edit-channel) and never denies or asks,
-    // because `deny` already runs before any hook and `ask` is the prompt this host is
-    // configured to avoid.
+    // guardrails.cjs — Tier-2 markered-text, twin of the Cursor/Codex hooks.
+    // PreToolUse matcher `Bash`. ADVISORY ONLY: covers URL hosts and shell-as-edit-channel;
+    // never denies or asks.
     {
         path: ".claude/hooks/guardrails.cjs",
         format: "markered-text",
         module: "claude",
         noMarkerMigration: CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS,
     },
-    // .claude/hooks/cloud-bootstrap.sh is in the opt-in `cloud` module (CLOUD_MANIFEST) —
-    // it only matters once a Claude Code on the web env is wired (a manual, opt-in step).
-    // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`)
-    // so a default install without the script no-ops instead of erroring.
+    // .claude/hooks/cloud-bootstrap.sh is in the opt-in `cloud` module (CLOUD_MANIFEST).
+    // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`),
+    // so a default install without the script no-ops.
     // bkit owns only its tracker entry under `mcpServers` (reconcileMcpJson); every other
     // key is the consumer's.
     { path: ".mcp.json", format: "json", module: "claude" },
@@ -233,25 +226,23 @@ const CLAUDE_MANIFEST = [
     { path: ".bkit/.env.example", format: "byte-equal-text", module: "claude" },
     // A consumer copy of .bkit/scripts/bkit-mode.sh is detected on upgrade and an advisory
     // is emitted advising deletion (see runClaudeModule's bkit-mode.sh drift check).
-    // Mirrors from .agents/ — managed dynamically; not listed individually here
-    // because the exact set depends on the bkit-prefix prompt/workflow files at
-    // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
+    // Mirrors from .agents/ — managed dynamically, not listed individually here (the set
+    // depends on the bkit-prefix prompt/workflow files at install time). The uninstall
+    // logic handles these via the BKIT_PREFIX filter.
 ];
 // ---------------------------------------------------------------------------
 // lint:prose — the prose-gate script value (single source of truth)
 //
-// bkit does not seed `lint:prose` (it is a template script, `.bkit/templates.md`),
-// but two surfaces carry this string and must agree:
+// bkit does not seed `lint:prose` (it is a template script, `.bkit/templates.md`);
+// two surfaces carry this string:
 //   - the legacy re-point target (repointLegacyScripts, bkit-package-json.ts)
 //   - the F9 advisory remedy text (bkit-preflight.ts)
 //
-// F9 (BAR-138) contract: symmetric soft-skip — never hard-fail a consumer's
-// commit because the vale binary is absent. A missing `.vale/styles/write-good`
-// is not treated the same as a missing binary. The styles dir is gitignored, so
-// it is absent in every fresh checkout AND in every `git worktree add`. That case
-// self-heals (copy from the main worktree via --git-common-dir, zero network;
-// `vale sync` as fallback) and, if self-heal fails with vale present, says so
-// LOUDLY on stderr.
+// F9 contract: symmetric soft-skip — a missing vale binary never hard-fails a
+// consumer's commit. A missing `.vale/styles/write-good` (gitignored, so absent in
+// every fresh checkout and `git worktree add`) self-heals (copy from the main worktree
+// via --git-common-dir, zero network; `vale sync` as fallback) and, if self-heal fails
+// with vale present, says so LOUDLY on stderr.
 //
 // Shell constraints: no single quotes anywhere in the body (it is wrapped in
 // `bash -c '...'`), and no backticks (a backtick inside the double-quoted echo
@@ -278,15 +269,12 @@ export const LEGACY_SLOP_DELTA_SCRIPTS = [
     "bash .bkit/scripts/bkit-slop-delta.sh",
 ];
 // ---------------------------------------------------------------------------
-// bkit:gate:* — the local gate workflows, prompts and hooks run (#437)
+// bkit:gate:* — the local gate workflows, prompts and hooks run
 //
-// ONE CHAIN. Each gate is the previous gate plus its own tier, so the NAME and
-// the VALUE describe the same sequence and cannot disagree. Tier vocabulary is
-// the `ci.yml` job ids (bkit-tests-static / -unit / -integration / -e2e / -live),
-// so a caller reads the coverage off the name without opening package.json and
-// `scope` in status.jsonl is self-describing. Where a step is not a tier
-// (`format`, the ship gate) the name spells out the actual steps rather than
-// inventing a label.
+// ONE CHAIN. Each gate is the previous gate plus its own tier; the NAME and the
+// VALUE describe the same sequence. Tier vocabulary is the `ci.yml` job ids
+// (bkit-tests-static / -unit / -integration / -e2e / -live). Where a step is not a
+// tier (`format`, the ship gate) the name spells out the actual steps.
 //
 // The consumer owns every value: a turbo monorepo writes `turbo run … --filter`,
 // a Python repo writes `ruff check && pytest`. bkit never reads a value — only
@@ -299,40 +287,32 @@ export const LEGACY_SLOP_DELTA_SCRIPTS = [
 // consumer's to add — `.bkit/templates.md` lists them; the
 // `gate-missing-called-scripts` advisory names any that are missing.
 //
-// The SAME names are what the git hook templates run (`.husky/pre-commit`, `.husky/pre-push`),
-// so agent and human gates cannot drift: one edit here changes both. `ci.yml` is
-// deliberately NOT on them — it needs per-step reporting, affected-package
-// conditionals, and tiers the local gate excludes, so it calls the scripts directly.
+// The SAME names are what the git hook templates run (`.husky/pre-commit`,
+// `.husky/pre-push`). `ci.yml` does NOT call the gates; it calls the scripts directly.
 //
-// `lint:slop` is in no gate by design: `slop-scan scan` is report-only and never
-// fails. The gate that fails on new findings is `slop:delta`.
+// `lint:slop` is in no gate: `slop-scan scan` is report-only and never fails. The gate
+// that fails on new findings is `slop:delta`.
 //
-// NOT SEEDED — and that is the point. The three deeper gates (…-integration,
-// …-integration-e2e, …-integration-e2e-live) are absent unless the consumer
-// writes them, because a seeded `pnpm test:integration` would hard-fail every
-// repo without that tier, and a gate named `…-integration-e2e` that silently
-// skipped them would be a false green. Each is
-// one line chaining its parent, e.g.
+// NOT SEEDED: the three deeper gates (…-integration, …-integration-e2e,
+// …-integration-e2e-live) are absent unless the consumer writes them. Each is one line
+// chaining its parent, e.g.
 //   "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration"
-// `/bkit-build` and `/bkit-debug` run the DEEPEST gate that exists and record its
-// name, so a repo with no integration tier is visibly gated at
-// `bkit:gate:static-unit` instead of quietly claiming more.
+// `/bkit-build` and `/bkit-debug` run the DEEPEST gate that exists and record its name.
 export const BKIT_GATE_SCRIPTS = {
     // `.husky/pre-commit`: prettier --write over staged files, and nothing else —
     // seconds, not minutes. Prose is a whole-repo scan, so it gates at pre-push.
     "bkit:gate:format": "pnpm lint-staged",
     // Everything that needs no test runner. Mirrors the bkit-tests-static CI job.
-    // Build's plan-execute loop between tasks (tests come later, at Run Tests), and
-    // the `.husky/pre-push` revert path where the tree is knowingly inconsistent and
-    // the suite would fail on deletions it cannot fix.
+    // Callers: build's plan-execute loop between tasks, and the `.husky/pre-push` revert
+    // path.
     "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
     // The default local gate: `.husky/pre-push`, build Step 14, the remediates.
     "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test",
     // Ship's conflict-resolve, the only caller whose dependency graph may have just
     // been hand-merged (lockfile conflict) and whose tree no one has ever compiled.
     // `install --frozen-lockfile` proves the merged lockfile still matches the
-    // manifest; `build` proves the resolution compiles. Both are subjects of this
-    // gate, not preconditions — which is why they are named here and nowhere else.
+    // manifest; `build` proves the resolution compiles. Both are named here and
+    // nowhere else.
     "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build",
     // --- dependency inspection ---------------------------------------------
     // Read-only, not gates: agents run these while diagnosing a version-shaped
@@ -357,17 +337,10 @@ export const BKIT_DEBUG_GATES = [
 /**
  * What `/bkit-build` Step 14 will run, in DESCENDING order — first one declared wins.
  *
- * Build stops at integration ON PURPOSE. Its diagnose → remediate loop can only
- * repair what its own gate runs, so a tier left to CI is a defect the agent cannot
- * fix in-session: build closes green, the PR reds, and recovery becomes a separate
- * human-triggered `/bkit-debug`. Integration catches contract breaks the unit tier
- * structurally cannot, at a cost the loop can absorb. E2E does not pay for itself
- * here — a production build plus a browser, re-run on every remediation attempt,
- * minutes before CI runs the same thing on the resulting PR.
+ * Build stops at integration; E2E and live are not in this list.
  *
- * Neither entry is seeded: declaring `bkit:gate:static-unit-integration` is how a
- * consumer opts their build loop into the integration tier. Absent it, build runs
- * exactly what it always ran.
+ * Neither entry is seeded: declaring `bkit:gate:static-unit-integration` opts the build
+ * loop into the integration tier.
  */
 export const BKIT_BUILD_GATES = [
     "bkit:gate:static-unit-integration",
@@ -376,15 +349,9 @@ export const BKIT_BUILD_GATES = [
 /**
  * The deeper gates, shallowest first, with what declaring each one costs.
  *
- * Never seeded — a placeholder would be worse than nothing here. The probe's
- * rule is "declared = run it", so an empty or stub value exits 0 and the
- * workflow records a `scope` claiming integration coverage it never ran: the
- * exact false-green #437 exists to kill, wearing a more convincing name.
- *
- * Absence is therefore load-bearing, which leaves discoverability as the real
- * problem: a repo that HAS an integration tier and never declares the gate is
- * silently gated at `bkit:gate:static-unit` by both build and debug. `declaredBy`
- * is how install detects exactly that case and advises — see detectGateAdvisories.
+ * Never seeded. The probe's rule is "declared = run it". `declaredBy` is how install
+ * detects a repo that HAS a tier but declares no gate for it, and advises — see
+ * detectGateAdvisories.
  */
 export const BKIT_OPTIONAL_GATES = [
     {
@@ -422,8 +389,7 @@ const CURSOR_MANIFEST = [
     // GateGuard advisory PreToolUse hook for Cursor — same ownership split and the
     // same managed block as the Claude twin (byte-identical between the markers,
     // asserted by a parity test). Wired in .cursor/hooks.json → preToolUse
-    // (matcher "Write"), deliberately without failClosed: an advisory hook that
-    // fails closed would block the edit it only meant to comment on.
+    // (matcher "Write"), without failClosed.
     {
         path: ".cursor/hooks/gateguard.cjs",
         format: "markered-text",
@@ -471,9 +437,9 @@ export const OPENCODE_MANIFEST = [
     // the exact set depends on the bkit-prefix prompt/workflow files at install time).
     // Uninstall uses the BKIT_PREFIX filter for .opencode/agents/ and .opencode/commands/.
 ];
-// --codex (#435): Codex CLI host. NOTE there is deliberately no `.codex/config.toml` here —
-// `openai` is a RESERVED built-in provider id in Codex (alongside `ollama` and `lmstudio`),
-// so bkit has nothing to declare; re-stating it under `[model_providers.openai]` is rejected.
+// --codex: Codex CLI host. NOTE there is no `.codex/config.toml` here — `openai` is a
+// RESERVED built-in provider id in Codex (alongside `ollama` and `lmstudio`); re-stating it
+// under `[model_providers.openai]` is rejected.
 // Codex reads project config from `.codex/`, and hooks load only once that layer is TRUSTED.
 export const CODEX_MANIFEST = [
     // hooks.json — Tier-2 json (deep-contained): bkit owns the PreToolUse GateGuard entry,
@@ -501,7 +467,7 @@ export const CODEX_MANIFEST = [
     // managed dynamically — the set follows the bkit-prefix prompt/workflow files at install.
 ];
 // Cloud agent integration is opt-in — NOT in a default install, so a default install
-// ships ZERO cloud footprint. The module is split by variant (DECISION-D):
+// ships ZERO cloud footprint. The module is split by variant:
 //
 //   cloud=claude (tracker=github):
 //   - cloud-bootstrap.sh    — Claude Code on the web SessionStart install hook
@@ -513,8 +479,7 @@ export const CODEX_MANIFEST = [
 // (.cursor/Dockerfile, .cursor/environment.json) ship as templates
 // (`.bkit/templates.md`); the consumer copies and owns them.
 //
-// Splitting per variant ensures uninstall removes ONLY the recorded variant's files.
-// See issue #119 ("Managed Cloud Agents").
+// Uninstall removes ONLY the recorded variant's files.
 export const CLOUD_MANIFEST_CLAUDE = [
     { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "cloud" },
 ];
@@ -528,7 +493,7 @@ const CLOUD_MANIFEST = [
     ...CLOUD_MANIFEST_OPENCODE,
     ...CLOUD_MANIFEST_CURSOR,
 ];
-// --typescript (#265): the owned slop-scan type-suppression plugin, the one file
+// --typescript: the owned slop-scan type-suppression plugin, the one file
 // `slop-scan.config.json` references that bkit keeps current. The tool scripts and
 // devDeps, slop-scan.config.json, .prettierignore, .lintstagedrc.json, the Vale config
 // and the husky hooks ship as templates (`.bkit/templates.md`); the consumer copies

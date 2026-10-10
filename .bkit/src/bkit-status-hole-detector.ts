@@ -1,16 +1,13 @@
-// bkit-status-hole-detector.ts — Tier-3 advisory status-hole detector (#384).
+// bkit-status-hole-detector.ts — Tier-3 advisory status-hole detector.
 //
 // A fail-open advisory that compares the set of ship steps RECORDED in a
 // status.jsonl against the set of steps the workflow PROSE says should be
 // there. It derives its expected set from .bkit/workflows/bkit-ship.md at
 // runtime (headings + step:"ship-*" literals) — NEVER a hand-maintained table
-// (decision 384-tier3-promotion; knowledge
-// 384-status-hole-detector-derives-expected-set-from-source-md).
+// (decision 384-tier3-promotion).
 //
 // ADVISORY / FAIL-OPEN: the CLI exits 0 unconditionally — even when holes are
-// found. A day-one blocking gate on a 25–65% holey corpus is noise that gets
-// disabled (decision 384-tier3-promotion). Promotion to a blocking gate is
-// gated on one release of fail-open signal without muting.
+// found (decision 384-tier3-promotion).
 //
 // Path-conditional expectations:
 //   - Path A (dev is ancestor): skips ship-conflict-resolve.
@@ -129,12 +126,9 @@ export interface HoleReport {
  * 3. Return the union of all unique step keys.
  *
  * The two passes scan the SAME `step:"ship-*"` regex and the heading pass only
- * narrows the line range, so `headingSteps` is always a subset of
- * `literalSteps` — comparing them for mutual disagreement would be a tautology.
- * The one direction that carries signal is `orphanSteps`: a status write that
- * appears in the file but NOT inside any `## … Step N` section. That is a real
- * prose bug (a step the workflow records but never numbers, so no gate covers
- * it), and it is what the detector reports.
+ * narrows the line range, so `headingSteps` is always a subset of `literalSteps`.
+ * The detector reports `orphanSteps`: a status write that appears in the file but NOT
+ * inside any `## … Step N` section.
  */
 export function deriveExpectedStepSetFromSource(shipMd: string): {
   steps: string[];
@@ -219,20 +213,12 @@ export function checkSourceCanonicalDrift(sourceSteps: string[]): string[] {
  * - else → IN_PROGRESS
  *
  * MERGED_ON_ENTRY is decided by the explicit `ship-merged-on-entry` row that
- * bkit-ship.md Step 2 sub-step 5 writes on the `state` = MERGED route. It
- * deliberately does NOT key on the absence of `ship-merge-pr` /
- * `ship-deferred-sweep`: those are the very rows this detector exists to flag,
- * so a Path A/B run that dropped BOTH (a double hole) would be reclassified as
- * MERGED_ON_ENTRY, removing both from the mandatory set and reporting zero
- * holes. Inferring the path from the evidence under audit hides exactly the
- * worst cases.
+ * bkit-ship.md Step 2 sub-step 5 writes on the `state` = MERGED route. It does NOT
+ * key on the absence of `ship-merge-pr` / `ship-deferred-sweep`.
  *
- * For corpus rows without the marker (written by an older bkit), fall back to requiring
- * BOTH `ship-worktree-setup` and `ship-regression-guard` to be absent. Step 2
- * writes those two in a single fenced block, so a genuine MERGED-on-entry
- * resume has neither, while a run that dropped only one stays Path A/B and its
- * hole still surfaces. Ambiguity remains only when a run loses the whole Step 2
- * write — narrow, and it resolves as soon as the marker is in the corpus.
+ * For corpus rows without the marker, it falls back to requiring BOTH
+ * `ship-worktree-setup` and `ship-regression-guard` to be absent (Step 2 writes those
+ * two in a single fenced block); a run that dropped only one stays Path A/B.
  */
 export function classifyRun(
   observedSteps: Set<string>,

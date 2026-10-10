@@ -1,6 +1,6 @@
-// bkit-upgrade.ts — `bkit upgrade` orchestrator + diff engine (P4.T5 / P4.T6).
+// bkit-upgrade.ts — `bkit upgrade` orchestrator + diff engine.
 //
-// Design contract (BAR-142 §A5):
+// Design contract:
 //
 //   `bkit upgrade` diffs old vs new template content against consumer drift using
 //   the `canonicalHashes` field from `.bkit/version`. Files whose on-disk
@@ -17,7 +17,7 @@
 //     - The template content has changed (new bkit version ships an update), AND
 //     - The consumer has modified the file since last install (on-disk hash != canonical hash).
 //
-// Dependency: P4.T4 `canonicalHashes` + `isConsumerModified` from bkit-version.ts.
+// Dependency: `canonicalHashes` + `isConsumerModified` from bkit-version.ts.
 //             `migrateLegacyBkitEnvelope` from bkit-tiers.ts runs before
 //             `writeTier2JsonContained` to strip legacy `__bkit__` envelope on upgrade.
 
@@ -52,10 +52,7 @@ const EMPTY_TOKENS: TokenMap = {
 // @cbartens/bkit package, then re-render at the new version. The imperative half
 // (pnpm add + re-exec of the freshly-installed binary) lives in bkit-install.ts
 // (runSelfBump); the version logic is split out here so it is unit-testable with
-// `resolveLatest` injected. Keeping the package bump and the re-render in ONE
-// command is the whole point — a bare `pnpm add @cbartens/bkit` that forgets the
-// re-render is exactly what leaves a base branch's rendered mirrors stale (#256),
-// which every branch cut from it then inherits.
+// `resolveLatest` injected. The package bump and the re-render are ONE command.
 // ---------------------------------------------------------------------------
 
 /** Accepts X.Y.Z with an optional prerelease tag (e.g. 4.1.5, 4.2.0-rc.1). */
@@ -127,7 +124,7 @@ export interface UpgradeResult {
   /**
    * Subset of `skipped` whose on-disk content is bkit's canonical baseline: block/scope-merge
    * skips, and whole-file skips where disk == template. A whole-file skip over consumer
-   * drift is excluded — recording its hash would erase the drift record (#459).
+   * drift is excluded, so the drift record survives.
    */
   skippedSeedable: string[];
 }
@@ -211,7 +208,7 @@ export interface UpgradeCandidate {
   /**
    * Pre-rendered template content that overrides reading `templatePath`. Used for
    * files install writes via a transform the upgrade walk can't reproduce from the raw
-   * template — e.g. `opencode.json` (#245), rendered with the consumer's tracker and
+   * template — e.g. `opencode.json`, rendered with the consumer's tracker and
    * provider so install and upgrade emit byte-identical output.
    */
   contentOverride?: string;
@@ -264,20 +261,17 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
     }
 
     const absolutePath = path.join(cwd, relPath);
-    // `contentOverride` (e.g. the rendered opencode.json, #245) wins over the raw
+    // `contentOverride` (e.g. the rendered opencode.json) wins over the raw
     // template so upgrade emits the same bytes install would.
     const templateContent = contentOverride ?? fs.readFileSync(templatePath, "utf-8");
 
-    // Resolve the write strategy the SAME way `bkit install` would — so install and
-    // upgrade can never disagree on a file and fight each other across runs:
+    // Resolve the write strategy the SAME way `bkit install` does:
     //
     //   - manifest `format` is authoritative when present:
     //       markered-text → block-merge (writeTier2, preserves content outside markers)
     //       json          → deep-merge  (writeTier2JsonContained, preserves consumer keys)
     //       byte-equal-text → whole-file/diff — even when the template carries markers
-    //                         (install writes these verbatim via writeTier1; block-merging
-    //                         one would reformat the block and churn forever against
-    //                         install).
+    //                         (install writes these verbatim via writeTier1).
     //   - NO manifest entry: the install core-templates pass block-merges markered
     //       MARKDOWN it manages as a directory (`docs/*.md`, `.agents/*.md`) where the
     //       consumer's prose lives after `bkit:end`; everything else (e.g. canonical
@@ -293,12 +287,11 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
       const before = ws.writes.length;
       if (format === "json") {
         // `contentOverride` (e.g. the rendered opencode.json with `@@OPENCODE_*@@`
-        // sentinels resolved, #245) must win over the raw template — otherwise the
-        // deep-merge injects the raw sentinel keys into the consumer's config.
+        // sentinels resolved) wins over the raw template.
         if (contentOverride !== undefined && options.dryRun) {
           // Dry-run must NOT touch disk — mirror install's opencode.json dry-run path (no
           // `.bkit-staging/` temp file). Compare the consumer dest against the rendered
-          // override directly. (#255 P2-11)
+          // override directly.
           if (
             !fs.existsSync(absolutePath) ||
             fs.readFileSync(absolutePath, "utf-8") !== contentOverride
@@ -359,7 +352,7 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
     // Whole-file formats (byte-equal-text, or unmanaged non-markered templates).
     // Token-substitute FIRST (matching install's writeTier1 tokens) so
     // drift-detect compares like-for-like and a freshly-seeded file gets real values,
-    // not a literal `{{DEFAULT_BRANCH}}` (#129 §2). Token-free templates are unchanged.
+    // not a literal `{{DEFAULT_BRANCH}}`. Token-free templates are unchanged.
     const effectiveTemplate = applyTokens(templateContent, tokens);
     const diffAction = diffFile(relPath, absolutePath, effectiveTemplate, canonicalHashes);
 
@@ -420,14 +413,14 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
  *         consumer content too), so the file is hashed as it now sits on disk.
  *       - whole-file skips → only when disk == template. A template-unchanged skip
  *         over consumer drift keeps its prior hash, so the next template change is
- *         a conflict, not a silent overwrite (#459).
+ *         a conflict, not a silent overwrite.
  *       - conflicts → never, for the same reason.
  *   - `pinnedVersion`: bump to the version just upgraded TO (`options.pinnedVersion`).
- *     Writing the pin here — exactly as `install`/`check` do — keeps upgrade
- *     drift-clean: a stale pin makes the next `bkit check` write it (1 write → exit 1).
+ *     Written here exactly as `install`/`check` do, so the next `bkit check` has no
+ *     pin write.
  *
- * Call this AFTER `runUpgrade` completes (P4.T4 integration: hashes must stay
- * in sync with the files bkit actually wrote so the next upgrade can detect drift).
+ * Call this AFTER `runUpgrade` completes (hashes stay in sync with the files bkit
+ * actually wrote).
  */
 export function updateCanonicalHashesAfterUpgrade(
   result: UpgradeResult,
@@ -498,15 +491,13 @@ export function updateCanonicalHashesAfterUpgrade(
 }
 
 // ---------------------------------------------------------------------------
-// migrateStrayGitattributes — repair the 2.5.0 no-dot gitattributes regression
+// migrateStrayGitattributes — repair a stray no-dot gitattributes file
 // ---------------------------------------------------------------------------
 
 /**
- * 2.5.0 wrote the `.gitattributes` template to a file literally named
- * `gitattributes` (no leading dot) at the repo root. Git only reads
- * `.gitattributes`, so the shipped union-merge rules for the append-only ledgers
- * were inert, and `.bkit/version` recorded a bogus dot-less
- * `gitattributes` canonicalHashes key.
+ * Handles a file literally named `gitattributes` (no leading dot) at the repo root,
+ * plus its dot-less `gitattributes` canonicalHashes key. Git only reads
+ * `.gitattributes`.
  *
  * This migration:
  *   1. Renames a stray dot-less `gitattributes` file → `.gitattributes` (only
@@ -514,7 +505,7 @@ export function updateCanonicalHashesAfterUpgrade(
  *   2. Drops the bogus dot-less `gitattributes` key from canonicalHashes (the
  *      dotted `.gitattributes` key is reseeded by the upgrade walk that follows).
  *
- * Idempotent: a no-op on repos that never hit the 2.5.0 bug or already migrated.
+ * Idempotent: a no-op on repos without the stray file or already migrated.
  */
 export function migrateStrayGitattributes(cwd: string, dryRun: boolean): void {
   const stray = path.join(cwd, "gitattributes");
@@ -554,9 +545,7 @@ export function migrateStrayGitattributes(cwd: string, dryRun: boolean): void {
  * error-tracker issue archives / mutes, alert thresholds. An older bkit wrote the
  * same registry as `docs/warnings.md`.
  *
- * Consumers keep their own entries BELOW the managed block, so the file has to
- * MOVE, not reseed: reseeding alone would write a fresh empty `docs/noise.md` and
- * strand every recorded downgrade in `docs/warnings.md`.
+ * Consumers keep their own entries BELOW the managed block, so the file MOVES.
  *
  * This migration:
  *   1. Moves `docs/warnings.md` → `docs/noise.md` (only when no `docs/noise.md`

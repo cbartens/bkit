@@ -8,10 +8,7 @@
  *
  * The rule: a token from a closed vocabulary is backticked — names and values
  * alike. One question, answerable by lookup rather than judgment: "is this
- * string in the vocabulary?" The predecessor rule ("singular enum literals
- * plain when compared") asked whether a literal was *being compared*, which is
- * not decidable at most sites, and the corpus split accordingly — prompts ran
- * 86% bare, workflows 68% bare, for the identical construct.
+ * string in the vocabulary?"
  *
  * THE IMPORTANT ONE is the third test. Fenced output templates are NOT prose:
  * they are the literal bytes the agent writes into its artifact, and the
@@ -34,8 +31,7 @@ const PROMPT_DIR = ".bkit/prompts";
 /**
  * Closed vocabulary: values that name a state, verdict, severity or mode.
  *
- * Emphasis words (NEVER, ALWAYS, MUST, ONLY) are deliberately absent — they are
- * prose, written bare, and backticking them was one of the drifts this fixed.
+ * Emphasis words (NEVER, ALWAYS, MUST, ONLY) are absent — they are prose, written bare.
  */
 const VOCABULARY = new Set([
   "PASS",
@@ -135,9 +131,7 @@ describe("prompt notation: bracketed instructions inside a template are prose", 
    *
    * The bracketed spans are prose that happens to live inside a fence — they
    * already carry bold and backticks — so the prose notation rules apply to
-   * them. Treating the whole fence as literal left them behind in the first
-   * sweep, which put the identical sentence in two notations about twenty
-   * lines apart in the same file.
+   * them.
    *
    * Contract lines are excluded: `Verdict:` / `Failures:` / `Spike:` are what
    * the orchestrator greps, and their trailing `[Initially set to PENDING.]`

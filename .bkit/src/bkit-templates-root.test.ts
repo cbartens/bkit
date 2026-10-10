@@ -30,11 +30,10 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// F1 MEDIUM — removeOrphanTemplatesDir sentinel guard
+// removeOrphanTemplatesDir sentinel guard
 //
-// The fix: the function now verifies at least one known bkit basename exists
-// inside .agents/templates/ before deleting. Without this guard, any
-// consumer-owned .agents/templates/ directory would be silently deleted.
+// The function deletes .agents/templates/ only when at least one known bkit basename
+// exists inside it; a consumer-owned directory survives.
 // ---------------------------------------------------------------------------
 
 describe("removeOrphanTemplatesDir — sentinel guard (F1 MEDIUM fix)", () => {
@@ -202,7 +201,7 @@ describe("getTemplatesRoot() — context resolution regression tests", () => {
   });
 
   it("does NOT return a .agents/templates path", () => {
-    // Regression guard (#160): the root is never <pkgRoot>/.agents/templates.
+    // The root is never <pkgRoot>/.agents/templates.
     const root = getTemplatesRoot();
     const oldForm = path.join(getPkgRoot(), ".agents", "templates");
     expect(root).not.toBe(oldForm);

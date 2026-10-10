@@ -353,8 +353,7 @@ export function checkWording(clauses, files) {
 }
 /**
  * Sentences shared by SHARED_MIN or more prompts that no clause covers. The cut-off
- * is the rule for what belongs in the wording file, so a newly copied sentence is
- * caught here rather than drifting on its own.
+ * is the rule for what belongs in the wording file.
  */
 export function unlistedShared(clauses, files) {
     const forms = clauses.flatMap((c) => c.texts.map(compileText));

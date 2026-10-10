@@ -1,15 +1,11 @@
 // T4 — five-surface egress fan-out parity.
 //
-// One derived set has to reach five places that encode it differently. Before the
-// registry landed, three of them were hand-maintained copies, and a host trusted in
-// one IDE but not another stayed invisible until somebody hit it. This asserts the
+// One derived set reaches five places that encode it differently. This asserts the
 // single derived union is present in every surface after a REAL install — no mocks at
-// the install boundary, because the bug class this guards is precisely a write path
-// that a mock would satisfy and the binary would not.
+// the install boundary.
 //
-// The flag set is load-bearing: `.opencode/opencode.json` `permission.bash` only
-// exists when an opencode provider is installed, so an install without
-// `--opencode=…` skips the OpenCode surface and passes vacuously.
+// The flag set includes `--opencode=…`: `.opencode/opencode.json` `permission.bash`
+// only exists when an opencode provider is installed.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -66,8 +62,7 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
     );
     expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
 
-    // A base that only exists because the registry derives it — not in any list bkit
-    // shipped before this change, so it cannot pass by accident on a stale copy.
+    // A base only the registry derives.
     const probe = "models.dev";
     expect(BKIT_SHIPPED_NETWORK_DOMAINS).toContain(probe);
 
@@ -97,9 +92,8 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
     const opencode = read(path.join(".opencode", "opencode.json"));
     expect(opencode).toContain(probe);
 
-    // Absence leg: the installed hook carries no domain array of its own. Written from
-    // the template, so this restates the template assertion rather than adding
-    // independent evidence — belt and braces, recorded as such.
+    // Absence leg: the installed hook carries no domain array of its own (same as the
+    // template assertion).
     const hook = read(path.join(".cursor", "hooks", "guardrails.cjs"));
     expect(hook).not.toContain("SHIPPED_NETWORK_BASES");
 
@@ -110,13 +104,8 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
   }, 180_000);
 });
 
-// T14 (provenance leg) — adding claudeAllowDerived must not itself create drift.
-//
-// The plan's Task 28 asserts `bkit check` reports zero writes outright. That reading is
-// unavailable while unrelated uncommitted template edits produce ambient drift of their
-// own, and an absolute assertion would then be measuring someone else's change. This
-// isolates the claim that matters here: the check write-set is IDENTICAL with and
-// without the provenance record, so the field contributes nothing to drift either way.
+// Provenance leg — claudeAllowDerived creates no drift: the check write-set is IDENTICAL
+// with and without the provenance record.
 describe("T14 — the provenance field contributes no bkit check drift", () => {
   it("check reports the same write set with and without claudeAllowDerived present", () => {
     if (!fs.existsSync(tsxBin)) return;

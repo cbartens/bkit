@@ -19,7 +19,7 @@ import {
 import { isTemplate } from "./bkit-modules";
 
 // ---------------------------------------------------------------------------
-// CLAUDE.md ownership move core → claude (#252)
+// CLAUDE.md is owned by the claude module, not core
 // ---------------------------------------------------------------------------
 
 describe("CLAUDE.md ownership (#252: moved core → claude)", () => {
@@ -354,18 +354,15 @@ describe("KN-19-for-opencode — writeTier2JsonContained throws on malformed .op
 // ---------------------------------------------------------------------------
 // LINT_PROSE_SCRIPT — shipped prose-gate contract
 //
-// This is the value bkit re-points a superseded lint:prose at, so it runs in
-// consumers' pre-push hooks: a quoting slip or a dropped guard degrades the gate
-// silently rather than loudly. These assert the
-// invariants that make it safe to embed and safe to trust.
+// The value bkit re-points a superseded lint:prose at; it runs in consumers' pre-push
+// hooks. These assert its embedding and guard invariants.
 // ---------------------------------------------------------------------------
 
 describe("LINT_PROSE_SCRIPT", () => {
   const body = LINT_PROSE_SCRIPT.replace(/^bash -c '/, "").replace(/'$/, "");
 
   it("is wrapped in bash -c with no single quotes in the body", () => {
-    // An inner single quote would terminate the `bash -c '...'` wrapper early and
-    // mangle the rest of the script into stray shell words.
+    // No inner single quote (the script is wrapped in `bash -c '...'`).
     expect(LINT_PROSE_SCRIPT.startsWith("bash -c '")).toBe(true);
     expect(LINT_PROSE_SCRIPT.endsWith("'")).toBe(true);
     expect(body).not.toContain("'");
@@ -377,8 +374,7 @@ describe("LINT_PROSE_SCRIPT", () => {
   });
 
   it("carries the F9 guard substring that bkit-preflight.ts greps for", () => {
-    // detectLintProseF9Vulnerable does a literal substring match; losing this
-    // exact form would make bkit advise consumers to "fix" the correct script.
+    // detectLintProseF9Vulnerable does a literal substring match on this exact form.
     expect(LINT_PROSE_SCRIPT).toContain("[ -d .vale/styles/write-good ]");
   });
 
@@ -398,8 +394,7 @@ describe("LINT_PROSE_SCRIPT", () => {
   });
 
   it("announces loudly on stderr when vale is present but self-heal failed", () => {
-    // One quiet line and exit 0 here would let a worktree commit bypass prose
-    // linting and still look green.
+    // A failed self-heal with vale present is loud on stderr.
     expect(body).toContain("PROSE LINT SKIPPED");
     expect(body).toContain(">&2");
   });
@@ -419,7 +414,7 @@ describe("LINT_PROSE_SCRIPT", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Telemetry data files — MUST be absent from manifest format entries (#234 WS1-T3)
+// Telemetry data files — MUST be absent from manifest format entries
 // These are git-tracked runtime ledgers, NOT install-engine payload.
 // ---------------------------------------------------------------------------
 

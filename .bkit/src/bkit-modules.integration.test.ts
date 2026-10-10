@@ -87,7 +87,7 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// #218 — canonical .bkit/*.md docs mirrored into the consumer's .bkit/
+// Canonical .bkit/*.md docs mirrored into the consumer's .bkit/
 // ---------------------------------------------------------------------------
 
 describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
@@ -145,7 +145,7 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #489 — templates are the consumer's: install leaves an adopted copy alone
+// Templates are the consumer's: install leaves an adopted copy alone
 // ---------------------------------------------------------------------------
 
 describe("install never writes or flags an adopted template copy", () => {
@@ -193,7 +193,7 @@ describe("install never writes or flags an adopted template copy", () => {
       ws.writes.filter((w) => adoptedSet.has(path.relative(tmpDir, path.resolve(w.path)))),
     ).toEqual([]);
     // No module advisory is about an adopted copy (no merge suggestion, no drift nag). The
-    // cloud setup advisories name the templates on purpose: they say what to copy.
+    // cloud setup advisories name the templates: they say what to copy.
     const setupIds = new Set(["bkit-cloud-setup", "cloud-env-customize"]);
     expect(
       ctx.advisories.filter(
@@ -412,7 +412,7 @@ describe(".bkit-version write-order regression (Reviewer 1 #7 + MED-4)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// runCloudModule — opt-in post-CI auto-routing (issue #119)
+// runCloudModule — opt-in post-CI auto-routing
 // ---------------------------------------------------------------------------
 
 describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => {
@@ -514,7 +514,7 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     // `cursor` is omitted — its applyT3 transform process.exit(1)s on the empty
     // modelLookup in this harness (see the dispatch tests above).
     dispatchModules(new Set(["core", "claude", "lint"]), makeCtx({}));
-    // claude is in the set — proves cloud-bootstrap.sh moved out of it into --cloud (#119).
+    // claude is in the set — cloud-bootstrap.sh is in --cloud, not claude.
     expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
   });
 });
@@ -592,8 +592,8 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
     const out = rawTemplate;
     // CI-completion surface: group expression must use head_branch directly, so concurrent
     // CI runs for the same branch (e.g. feat/141-cloud-app) cancel each other.
-    // A real slugged FID like feat/141-cloud-app must key on the full branch — not a
-    // stripped token — because replace() cannot reduce '141-cloud-app' to '141'.
+    // A real slugged FID like feat/141-cloud-app keys on the full branch — not a
+    // stripped token (replace() cannot reduce '141-cloud-app' to '141').
     expect(out).toMatch(/group:.*github\.event\.workflow_run\.head_branch/);
     const groupLine = out.split("\n").find((l) => l.includes("group: bkit-auto-"));
     expect(groupLine).toBeDefined();
@@ -603,17 +603,16 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
   });
 
   it("realistic slugged branch (feat/141-cloud-app) does NOT equal dispatch issue number (141) — cross-surface asymmetry is expected and documented", () => {
-    // This is the KEY property proving the prior STANDARD approach was wrong:
     // replace('feat/141-cloud-app', 'feat/', '') = '141-cloud-app' != '141'
-    // The two tokens are intentionally different across surfaces; each surface uses its
-    // own payload identity. Cross-boundary serialisation is the orchestrator's concern.
+    // The two tokens differ across surfaces; each surface uses its own payload identity.
+    // Cross-boundary serialisation is the orchestrator's concern.
     const dispatchGroup = `bkit-auto-141`;
     const ciBranch = "feat/141-cloud-app";
     const ciGroup = `bkit-auto-${ciBranch}`; // full branch, no replace()
     expect(dispatchGroup).not.toBe(ciGroup); // different by design
     // Neither path uses a replace() that would produce an incorrect result.
     const stripped = ciBranch.replace("feat/", "");
-    expect(stripped).toBe("141-cloud-app"); // NOT '141' — proves why replace() was wrong
+    expect(stripped).toBe("141-cloud-app"); // NOT '141'
     expect(stripped).not.toBe("141");
   });
 
@@ -671,10 +670,9 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     const out = rawTemplate;
     // workflow_dispatch runs must always pass the free-tier gate regardless of marker.
     expect(out).toContain("github.event_name == 'workflow_dispatch'");
-    // The if: uses || so dispatch path short-circuits the marker check.
-    // #363 M3/M4 widened the auto-route-gate if: with a same-repo (fork-origin
-    // guard) predicate and a dev-success early-exit clause, pushing the marker
-    // literal further from 'workflow_dispatch' — window widened accordingly.
+    // The if: uses || so dispatch path short-circuits the marker check. The
+    // auto-route-gate if: carries a same-repo (fork-origin guard) predicate and a
+    // dev-success early-exit clause between 'workflow_dispatch' and the marker literal.
     expect(out).toMatch(/workflow_dispatch[\s\S]{0,400}bkit \[auto route\]/);
   });
 
@@ -685,14 +683,11 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     expect(out).toContain('gh issue view "$ISSUE"');
     // SHARED-DERIV must set ISSUE from PR body primary source (portable grep -oE, not PCRE -oP).
     expect(out).toContain('ISSUE=$(echo "$PR_BODY" | grep -oE');
-    // SHARED-DERIV fallback must set ISSUE from FID (branch-derived numeric id).
-    // #363 H1: the fallback keeps FID as the FULL slug (shared status.jsonl key
-    // with the dev path) and derives the short ISSUE prefix FROM it, rather
-    // than the pre-H1 `ISSUE="$FID"` (which relied on FID already being
-    // truncated to the numeric/alpha id — the bug H1 fixed).
-    // #363 F3: `|| true` is required — on the fix/** arm this runs before the
-    // slug allowlist, so a non-FID branch yields no grep match and pipefail
-    // would kill the step instead of reaching the fail-safe no-op.
+    // SHARED-DERIV fallback sets ISSUE from FID (branch-derived numeric id): FID stays
+    // the FULL slug (shared status.jsonl key with the dev path) and the short ISSUE
+    // prefix is derived FROM it.
+    // `|| true` is required — on the fix/** arm this runs before the slug allowlist, so
+    // a non-FID branch yields no grep match and pipefail would kill the step.
     expect(out).toContain(
       "ISSUE=$(printf '%s' \"$FID\" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)",
     );
@@ -728,7 +723,7 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Core package.json scripts (#489): the bkit:gate:* / bkit:deps:* names are seeded
+// Core package.json scripts: the bkit:gate:* / bkit:deps:* names are seeded
 // add-if-missing on every install; the tool scripts they chain are templates.
 // ---------------------------------------------------------------------------
 
@@ -833,7 +828,7 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
 });
 
 // ---------------------------------------------------------------------------
-// MED-5 regression — advisories copy-paste safety (no backslash-escape sequences)
+// Advisories copy-paste safety (no backslash-escape sequences)
 // ---------------------------------------------------------------------------
 
 describe("MED-5: first-install advisory BKIT_GH_TOKEN_INSTALL block has no broken backslash-escape sequences", () => {
@@ -914,7 +909,7 @@ describe(".bkit-version first-run signal extra-logging", () => {
 });
 
 // ---------------------------------------------------------------------------
-// KN-3 regression guards — pnpm/action-setup@v4 single-SoT enforcement
+// pnpm/action-setup@v4 single-SoT enforcement (KN-3)
 // ---------------------------------------------------------------------------
 
 describe("KN-3 regression: ci.yml files must NOT set `with.version:` for pnpm action", () => {
@@ -943,8 +938,7 @@ describe("KN-3 regression: ci.yml files must NOT set `with.version:` for pnpm ac
 });
 
 // ---------------------------------------------------------------------------
-// C1 regression — readBkitVersion extracts pinnedVersion from JSON-format file
-// (BAR-131 build-challenge C1: raw .trim() would yield full JSON string)
+// readBkitVersion extracts pinnedVersion from a JSON-format file
 // ---------------------------------------------------------------------------
 
 describe("C1 regression: .bkit-version JSON format → pinnedVersion extraction", () => {
@@ -981,8 +975,7 @@ describe("C1 regression: .bkit-version JSON format → pinnedVersion extraction"
 });
 
 // ---------------------------------------------------------------------------
-// C3 regression — canonicalHashes populated after bkit install
-// (BAR-131 build-challenge C3: without canonicalHashes, drift detection breaks)
+// canonicalHashes populated after bkit install
 // ---------------------------------------------------------------------------
 
 describe("C3 regression: canonicalHashes populated in .bkit-version after bkit install", () => {
@@ -1068,11 +1061,10 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
 });
 
 // ---------------------------------------------------------------------------
-// C1 end-to-end regression — runClaudeModule applies deep-containment and
-// migrates legacy __bkit__ envelope on install (BAR-131 / BAR-167 regression guard)
+// runClaudeModule applies deep-containment and migrates the legacy __bkit__ envelope
+// on install.
 //
-// C1 (BAR-131): the version file is read via readBkitVersion().pinnedVersion; a raw
-// fs.readFileSync().trim() yields the full JSON blob, which fails semver comparison.
+// The version file is read via readBkitVersion().pinnedVersion.
 //
 // runClaudeModule: (1) if __bkit__ present → migrateLegacyBkitEnvelope strips it;
 // (2) writeTier2JsonContained deep-merges template into consumer. No __bkit__
@@ -1135,9 +1127,8 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
   });
 
   it("runClaudeModule preserves consumer-only keys when .bkit-version is JSON format (C1 regression guard)", () => {
-    // Regression guard: confirms readBkitVersion().pinnedVersion is used (not raw JSON blob).
-    // In v2.0.0, this manifests as: writeTier2JsonContained must still run and preserve
-    // consumer keys even when .bkit-version is in JSON format.
+    // readBkitVersion().pinnedVersion is used (not the raw JSON blob):
+    // writeTier2JsonContained runs and preserves consumer keys when .bkit-version is JSON.
     const versionFile = path.join(tmpDir, ".bkit", "version");
     fs.mkdirSync(path.dirname(versionFile), { recursive: true });
     writeBkitVersion(versionFile, {
@@ -1182,8 +1173,8 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
 // ---------------------------------------------------------------------------
 // COPY_EXCLUDE: Tier-2-style `.agents/*.md` files must NOT be additively copied
 // from the package payload — they ship as templates and the templates pass owns
-// them. Regression for the "consumer rules.md leaks bkit's `## Project Rules`
-// content from outside the bkit:start/end block" bug.
+// them. A consumer rules.md never carries bkit's `## Project Rules` content from
+// outside the bkit:start/end block.
 // ---------------------------------------------------------------------------
 
 describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to consumers", () => {
@@ -1750,19 +1741,11 @@ describe(".husky/pre-push delete-only push", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Challenge regression tests — Finding 1 (SHARED-DERIV portability + pipefail safety)
+// SHARED-DERIV portability + pipefail safety
 //
-// The SHARED-DERIV grep region of bkit-cloud.yml must avoid two defects:
-//   (a) `grep -oP` PCRE lookbehind — non-portable (BSD grep / some runner images)
-//   (b) No failure guard on ISSUE/FID assignments — `set -euo pipefail` aborts
-//       the step when grep exits 1 on a no-match body, making the fallback/fail-safe
-//       dead code and producing a RED job instead of skip=true no-op.
-//
-// It uses portable `grep -oE` + `sed`, with `|| true` guards so a no-match exits 0
-// and reaches the skip=true path.
-//
-// These tests stop a silent regression from re-introducing `grep -oP` or removing
-// the `|| true` guards.
+// The SHARED-DERIV grep region of bkit-cloud.yml uses portable `grep -oE` + `sed`
+// (no `grep -oP` PCRE lookbehind), with `|| true` guards on the ISSUE/FID assignments
+// so a no-match exits 0 under `set -euo pipefail` and reaches the skip=true path.
 // ---------------------------------------------------------------------------
 
 describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety regression", () => {
@@ -1781,9 +1764,7 @@ describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety r
   }
 
   it("(1a) canonical bkit-cloud.yml contains NO grep -oP (PCRE lookbehind) — portability regression guard", () => {
-    // Finding 1 (challenge-2): grep -oP relies on PCRE unavailable on BSD/macOS grep.
-    // A silent re-introduction of -oP would pass on ubuntu-latest but fail on any
-    // non-GNU runner — this test must catch it before ship.
+    // grep -oP relies on PCRE, unavailable on BSD/macOS grep.
     const canonical = readBkitCloudYml();
     expect(canonical).not.toContain("grep -oP");
   });
@@ -1798,7 +1779,7 @@ describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety r
     // when grep exits 1 on a no-match PR body, making fallback/fail-safe dead code.
     // The ISSUE assignment must end with `|| true` so a no-match exits 0.
     const canonical = readBkitCloudYml();
-    // The exact remediated form: grep -oE ... | sed ... | head -1 || true
+    // The form: grep -oE ... | sed ... | head -1 || true
     expect(canonical).toMatch(/ISSUE=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
   });
 
@@ -1910,17 +1891,10 @@ describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety r
 });
 
 // ---------------------------------------------------------------------------
-// Challenge regression tests — Finding 2 (claude.yml author_association gate)
+// claude.yml author_association gate
 //
-// The build challenge (Finding 2 HIGH) identified that the @claude trigger in
-// claude.yml had no author_association gate, allowing any external commenter to
-// trigger the job (OWNER/MEMBER/COLLABORATOR allow-list was missing).
-//
-// Remediation added `contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
-// github.event.comment.author_association)` (and equivalents) to all four event
-// paths in the job's `if:` condition.
-//
-// These tests lock in the allow-list so it cannot be silently removed on any path.
+// The @claude trigger's `if:` carries `contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
+// github.event.comment.author_association)` (and equivalents) on all four event paths.
 // ---------------------------------------------------------------------------
 
 describe("Challenge Finding 2 — claude.yml author_association allow-list regression", () => {
@@ -2101,7 +2075,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "gateguard.js"))).toBe(true);
   });
 
-  // #255 P2-9 / #282 — install is additive: a second provider install adds its block without
+  // Install is additive: a second provider install adds its block without
   // removing the first. Both openrouter + opencode blocks coexist after two installs.
   it("provider switch openrouter → opencode-go keeps both blocks (additive install)", () => {
     type OpencodeDoc = { provider?: Record<string, Record<string, unknown>> };
@@ -2323,8 +2297,8 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
 
 // ---------------------------------------------------------------------------
 // renderOpencodeJson — provider block must match opencode's custom-provider schema
-// (regression guard for #245: a stray `"api": "openai"` field makes opencode reject
-// the whole config, and env keys must use {env:VAR}, never shell ${VAR}.)
+// (a stray `"api": "openai"` field makes opencode reject the whole config; env keys use
+// {env:VAR}, never shell ${VAR}.)
 // ---------------------------------------------------------------------------
 describe("opencodeProviderId — bkit key → opencode-side provider id", () => {
   it("passes through custom providers (key === opencode id)", () => {
@@ -2377,7 +2351,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
 
   it("github MCP: type 'remote' (not 'http') + {env:} header — opencode schema valid", () => {
     // type "http" is valid for Claude/Cursor but NOT in opencode's enum (["local","remote"]);
-    // its presence makes opencode reject the whole config. Regression guard for #245.
+    // its presence makes opencode reject the whole config.
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
     const gh = parsed.mcp?.github;
     expect(gh.type).toBe("remote");
@@ -2422,9 +2396,8 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     // OpenCode schema: webfetch/websearch are Action only (ask|allow|deny), not
     // PermissionObjectConfig — URL maps fail validation (PermissionActionConfig).
     expect(perm.webfetch).toBe("ask");
-    // #255 P1-3: destructive-git + delete commands gated to parity with the Claude host
-    // (.claude/settings.json ask-list). opencode is the lowest-alignment host, so this
-    // surface must NOT be weaker than the Claude peer it ships alongside.
+    // Destructive-git + delete commands gated to parity with the Claude host
+    // (.claude/settings.json ask-list); opencode is never weaker than the Claude peer.
     for (const cmd of [
       "git reset --hard*",
       "git clean -fd*",
@@ -2447,21 +2420,15 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     );
   });
 
-  // The assertion above only checks the opencode direction ("must not be weaker than the
-  // Claude peer"), so a gap on the CLAUDE side survived it. Assert the other direction too.
+  // The other direction: the Claude side is never weaker than opencode.
   //
-  // curl / wget are a DELIBERATE, documented exemption, not an oversight — see the
-  // KNOWN DIVERGENCE block in bkit-permissions-parity.integration.test.ts. opencode gates
-  // them as `curl *: ask` and then layers `curl *{domain}*: allow` per allowlisted host
-  // (last-match-wins); Cursor does the same thing properly, parsing the URL host in
-  // guardrails.cjs. Claude has no equivalent: its rules match a command PREFIX, not a URL
-  // host, so the only two expressible options are blanket-ask or blanket-allow. Blanket-ask
-  // forces a prompt on every shell fetch in every mode — including cloud sessions, which
-  // have nobody to answer it — so bkit ships blanket-allow under `Bash(*)`, leaving `deny`
-  // and the auto-mode classifier as the backstops.
+  // curl / wget are the documented exemption — see the KNOWN DIVERGENCE block in
+  // bkit-permissions-parity.integration.test.ts. opencode gates them as `curl *: ask` and
+  // layers `curl *{domain}*: allow` per allowlisted host (last-match-wins); Cursor parses
+  // the URL host in guardrails.cjs; Claude runs them under `Bash(*)`.
   //
-  // Net effect: all three hosts run an allowlisted-host fetch unprompted. They differ only
-  // on an UNDECLARED host, where Cursor and opencode ask and Claude does not.
+  // All three hosts run an allowlisted-host fetch unprompted. They differ only on an
+  // UNDECLARED host, where Cursor and opencode ask and Claude does not.
   it("claude settings gate every bash class opencode gates (reverse-direction parity)", () => {
     const claudeSettings = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_TEMPLATE, "utf-8"));
     const gated = new Set<string>([
@@ -2485,8 +2452,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
       const gatedHere = [...gated].some((p) => p.startsWith(`Bash(${cmd}`));
       expect(gatedHere, `Bash(${cmd}...) must be gated on the Claude host too`).toBe(true);
     }
-    // The exemption is exactly two rules wide. Anything else Claude stops gating must
-    // either be justified here or is a regression.
+    // The exemption is exactly two rules wide.
     for (const cmd of ["curl", "wget"]) {
       const gatedHere = [...gated].some((p) => p.startsWith(`Bash(${cmd}`));
       expect(gatedHere, `Bash(${cmd}...) is the documented exemption — should NOT be gated`).toBe(
@@ -2548,12 +2514,9 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
 });
 
 // ---------------------------------------------------------------------------
-// reconcileOpencodeJson — provider-key ordering must be stable across paths.
-// Regression: install reconciles only the ACTIVE provider while upgrade also
-// reconciles each ADDITIONAL installed provider. deepMergeJson orders template
-// keys first, so reconciling a later provider can hoist it to the front —
-// install and upgrade would then render a different order and `bkit check` would
-// never settle (perpetual opencode.json + .bkit/version drift).
+// reconcileOpencodeJson — provider-key ordering is stable across paths: install
+// reconciles only the ACTIVE provider, upgrade also reconciles each ADDITIONAL
+// installed provider, and both render the same order.
 // ---------------------------------------------------------------------------
 describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
   const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
@@ -2725,7 +2688,7 @@ describe("reconcileOpencodeJson — preserves existing provider order", () => {
 });
 
 // ---------------------------------------------------------------------------
-// gateguard markered-text migration (#422) — install engine, all three
+// gateguard markered-text migration — install engine, all three
 // writeTier2 noMarkerMigration cases, for both the claude and opencode twins.
 // ---------------------------------------------------------------------------
 

@@ -10,16 +10,14 @@
 # fails; the gate that fails on NEW findings is `slop:delta`, which runs in pre-push.)
 #
 # WHAT it runs lives in package.json `bkit:gate:format`, not here — the same script
-# the bkit agent workflows dispatch through. Change the gate there and hooks, prompts
-# and workflows all move together. Add repo-specific extras BELOW this line.
+# the bkit agent workflows dispatch through; change the gate there. Add repo-specific
+# extras BELOW this line.
 set -e
 pnpm bkit:gate:format
 
 # bkit-repo only — block committing stale dist when a COMPILED `.bkit/src/*.ts` is
 # staged. Consumers don't compile TS and never run this gate.
-# Test files are excluded: they emit nothing into dist/, but bkit:check:dist rebuilds from
-# the WORKING TREE, so a test-only commit made while any source edit is still
-# uncommitted would fail on a diff it did not cause and cannot fix.
+# Staged test files alone do not trigger it.
 if git diff --cached --name-only --diff-filter=ACM |
   grep -v '\.test\.ts$' |
   grep -q '^\.bkit/src/.*\.ts$'; then

@@ -252,10 +252,10 @@ export function renderCorepackLine(cwd) {
 /**
  * Extract the bash body of every `context-fetch:provision <name>` block the consumer
  * enabled below `<!-- bkit:end -->` in `.agents/context.md`. Stack-agnostic: bkit
- * hardcodes no CLI names — the install recipe lives in the consumer's config.md,
+ * hardcodes no CLI names — the install recipe lives in the consumer's context.md,
  * co-located with the fetch block that needs the CLI. Mirrors the awk parser in
- * `.claude/hooks/cloud-bootstrap.sh` so the web setup-script snapshot and the
- * per-session hook provision the same CLIs. Returns one string per block (bash body).
+ * `.claude/hooks/cloud-bootstrap.sh`; the web setup-script snapshot and the per-session
+ * hook provision the same CLIs. Returns one string per block (bash body).
  */
 export function extractContextFetchProvisionRecipes(cwd) {
     const filePath = path.join(cwd, ".agents", "context.md");
@@ -426,17 +426,15 @@ export function isIpLiteral(host) {
 /**
  * Propose the registrable base for a provider `baseURL`, or `""` when the URL
  * contributes no allowlistable host. `URL.canParse` gates the parse, so this never
- * throws and carries no `try` / `catch` — an unparseable value contributes nothing
- * rather than being swallowed by an error handler.
+ * throws and carries no `try` / `catch`; an unparseable value contributes nothing.
  *
  * Contributes nothing for an empty host, `localhost` and its subdomains, an IP
  * literal, and any host of fewer than two labels: none of those is reachable through
  * a cloud egress allowlist. Everything else collapses to its last two labels.
  *
- * The collapse is deliberately the naive last-two-labels rule. Multi-label public
- * suffixes and shared-tenant apexes are handled as a DENY at authoring time by the
- * registry gate test, never by rewriting a base here — a rewriter would silently
- * widen or narrow a grant, where a deny fails loudly and leaves the fix to a human.
+ * The collapse is the naive last-two-labels rule. Multi-label public suffixes and
+ * shared-tenant apexes are a DENY at authoring time in the registry gate test, never a
+ * base rewrite here.
  */
 export function proposeEgressBase(baseURL) {
     if (!URL.canParse(baseURL))
@@ -479,11 +477,8 @@ export const BKIT_SHIPPED_NETWORK_HOSTS = deriveEgressEntries(BKIT_EGRESS_SOURCE
 /**
  * Apex-only unique bases from an expanded (apex + `*.`) domain list.
  *
- * Single call site (injectOpencodeDerivedAllows in bkit-modules.ts), kept as a
- * named export because (a) bkit-modules.ts is covered by the INTEGRATION lane only
- * — inlining here would move these branches out of the unit-lane's measured file
- * (bkit-cloud-env.ts) and silently erode the unit coverage floor, and (b) the
- * apex-collapse is the same shape as expandAllowedDomains above; named for review.
+ * Single call site (injectOpencodeDerivedAllows in bkit-modules.ts). Same apex-collapse
+ * shape as expandAllowedDomains above.
  */
 export function networkAllowlistBases(expanded) {
     return [...new Set(expanded.map((d) => d.replace(/^\*\./, "").trim()).filter(Boolean))].sort();
@@ -555,9 +550,8 @@ function writeGeneratedJson(cwd, rel, doc, dryRun) {
 }
 /**
  * 8-hex fingerprint of the DERIVED egress set only — bases and hosts, sorted, never
- * the consumer union. Hosts are included because the Cursor paste is hosts-only: a
- * bases-only hash would leave that fingerprint byte-identical across a changed paste.
- * Editing `allowed-domains` therefore never moves it; editing a registry row does.
+ * the consumer union. Hosts are included (the Cursor paste is hosts-only). Editing
+ * `allowed-domains` never moves it; editing a registry row does.
  */
 export function egressFingerprint() {
     const derived = [
@@ -603,10 +597,8 @@ export function renderCloudNetworkAllowlist(cwd) {
  *
  * Observed on the current image (`/home/user/<repo-name>`, agent running as uid=0
  * with `HOME=/root`) and NOT a documented contract: no environment variable in the
- * container names the repo root. So the setup script bakes the resolved path and
- * `cloud-bootstrap.sh` writes the DISCOVERED one, warning loudly on mismatch.
- * Between them a relocated clone costs one degraded session rather than a
- * permanent silent no-op.
+ * container names the repo root. The setup script bakes the resolved path and
+ * `cloud-bootstrap.sh` checks the DISCOVERED one, warning loudly on mismatch.
  */
 const CLOUD_REPO_PARENT = "/home/user";
 /** The path {@link renderCloudWorkspaceTrust} bakes into the setup script. */
@@ -620,18 +612,13 @@ export function cloudRepoPath(cwd) {
  * `.claude/settings.json` GRANT capability, so Claude Code applies them only once the
  * workspace trust dialog has been accepted — and it never shows that dialog in a
  * `claude -p` or SDK session. (`deny` and `ask` are unaffected; they only restrict.)
- * A cloud session therefore starts with every allow row ignored, announced on stderr
- * alone, where no cloud user ever sees it: the config reads as configured and does
- * nothing.
  *
- * The setup script is the only reliable place to fix this. It runs as root, before the
- * clone, before Claude Code starts, and its filesystem is snapshotted.
- * `cloud-bootstrap.sh` is too late (settings resolve before SessionStart), and an
- * in-session write cannot work either: `.claude/` is a protected path, which allow
- * rules never pre-approve.
+ * Runs in the setup script: as root, before the clone, before Claude Code starts, with
+ * its filesystem snapshotted. Settings resolve before SessionStart, and `.claude/` is a
+ * protected path allow rules never pre-approve.
  *
- * Merges rather than clobbers — the file may or may not exist at snapshot time, and
- * Claude Code stores its own state alongside the key on first run.
+ * Merges into the file (it may or may not exist at snapshot time, and Claude Code
+ * stores its own state alongside the key on first run).
  */
 export function renderCloudWorkspaceTrust(cwd) {
     const repoPath = cloudRepoPath(cwd);
@@ -653,12 +640,10 @@ export function renderCloudWorkspaceTrust(cwd) {
  * section, which for `environment` discards every built-in trust slot (including
  * "Trusted repo"). It is always emitted first, and asserted in the tests.
  *
- * The classifier otherwise trusts only the working repo and its configured remotes —
- * every context-fetch host is "external" to it, so each is a candidate block with
- * nothing configured. `Host containment` defaults to "an ordinary developer machine or
- * CI runner with open internet", which is exactly wrong for a sandbox behind an egress
- * allowlist, and until it names the session's identity the classifier blocks requests
- * for the host's own credentials.
+ * Unconfigured, the classifier trusts only the working repo and its configured remotes,
+ * and `Host containment` defaults to "an ordinary developer machine or CI runner with
+ * open internet". These entries name the context-fetch hosts, the egress-allowlisted
+ * sandbox, and the session's identity.
  */
 export function cloudAutoModeEnvironment(cwd) {
     const entries = [
@@ -683,14 +668,12 @@ export function cloudAutoModeEnvironment(cwd) {
 /**
  * Render the `@@CLOUD_USER_SETTINGS@@` setup-script region — the auto-mode classifier config.
  *
- * This has to be written host-side. The classifier deliberately does NOT read `autoMode`
- * from `.claude/settings.json` or `.claude/settings.local.json`, so that a checked-in repo
- * or a build step cannot inject its own classifier allow rules — meaning bkit cannot ship
- * it in-repo at all, and committing the file could never substitute for this.
+ * Written host-side: the classifier does NOT read `autoMode` from `.claude/settings.json`
+ * or `.claude/settings.local.json`.
  *
- * Seeds with `//=` rather than `=`: a consumer's own `autoMode.environment` is never
- * stomped by a re-pasted setup script. The trade is that later bkit changes to the seeded
- * entries do not reach a container that already has them, which is the safer direction.
+ * Seeds with `//=`, not `=`: a consumer's own `autoMode.environment` is never stomped by a
+ * re-pasted setup script, and later bkit changes to the seeded entries do not reach a
+ * container that already has them.
  */
 export function renderCloudUserSettings(cwd) {
     const env = JSON.stringify(cloudAutoModeEnvironment(cwd));
@@ -723,7 +706,7 @@ export function writeClaudeCloudDoc(cwd, tokens) {
         return false;
     const res = resolveCloudEnvVars(cwd);
     // UTC day drives the cache-bust; renderCloudCacheBust reads the PRIOR dst below to
-    // continue the per-day counter, which is safe because we overwrite dst afterwards.
+    // continue the per-day counter, before dst is overwritten.
     const today = new Date().toISOString().slice(0, 10);
     // Function-form replacers: resolved secret values may contain `$`, which a string
     // replacement would interpret ($&, $1, …).

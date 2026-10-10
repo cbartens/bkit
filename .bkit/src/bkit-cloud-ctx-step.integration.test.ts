@@ -1,21 +1,12 @@
-// bkit-cloud-ctx-step.integration.test.ts — #363 build-challenge test-gap closure.
+// bkit-cloud-ctx-step.integration.test.ts — bkit-cloud.yml's "Resolve phase + brief
+// context" (ctx) step: FID recovery, the cross-session loop-bound cap, the stale-run
+// guard, and marker-based gating for post-merge dev CI.
 //
-// #363 widened bkit-cloud.yml's `workflow_run` trigger to post-merge dev CI,
-// adding FID recovery, a cross-session loop-bound cap, a stale-run guard,
-// and marker-based gating in the "Resolve phase + brief context" (ctx) step.
-// The plan's own Derived Test Matrix (T1-T17) called for bash-unit-style
-// verification of this logic, but no test files were created during
-// plan-execute — build-challenge caught the H1 (FID
-// slug validation / full-slug retention) and M1 (jq fail-open) defects via
-// manual dry-run harnesses, not committed tests. This file spawns the REAL
-// extracted ctx-step bash (dedented straight out of the rendered YAML, not a
-// re-typed approximation) against a real git fixture + a stubbed `gh`, so a
-// future edit that reintroduces any of those defects fails a test instead of
-// requiring another challenge pass.
+// Spawns the REAL extracted ctx-step bash (dedented straight out of the rendered YAML)
+// against a real git fixture + a stubbed `gh`.
 //
-// Extraction is text-based (indentation-driven), not a YAML parse — this repo
-// ships no YAML parser dependency and the ctx step is a single `run: |` block
-// scalar, so slicing on indentation is exact and avoids adding a new dep.
+// Extraction is text-based (indentation-driven), not a YAML parse: the ctx step is a
+// single `run: |` block scalar.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -37,8 +28,7 @@ const DISPATCH_CAP = (() => {
 // The ctx step's dev-arm FID extraction relies on `sed -E ... \w+ ...`, a GNU
 // sed extension. GH Actions runners (ubuntu-latest) ship GNU sed, but macOS
 // dev machines ship BSD sed (silently no-ops on `\w`, unrelated to the code
-// under test). Prefer GNU sed transparently — via a PATH-shimmed `sed` that
-// shells out to `gsed` — rather than skip the suite outright.
+// under test). GNU sed is used via a PATH-shimmed `sed` that shells out to `gsed`.
 const nativeSedVersion = spawnSync("sed", ["--version"], { encoding: "utf8" });
 const nativeSedIsGnu = nativeSedVersion.status === 0 && /GNU sed/.test(nativeSedVersion.stdout);
 const gsedWhich = spawnSync("which", ["gsed"], { encoding: "utf8" });
@@ -448,10 +438,8 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   });
 
   // -------------------------------------------------------------------------
-  // T13 / Regression — build-challenge H1: the branch-fallback FID derivation
-  // keeps the FULL slug. Truncating to the leading numeric/alpha id (e.g. '363')
-  // would (a) orphan a wrong status.jsonl directory and (b) break the
-  // "one dispatch budget per FID" invariant with the dev path.
+  // The branch-fallback FID derivation keeps the FULL slug (one status.jsonl
+  // directory and one dispatch budget per FID, shared with the dev path).
   // -------------------------------------------------------------------------
   describe("feat/** path — FID recovery + cap exemption (T13, H1 regression)", () => {
     it("T13/H1: a marker-less feat/** PR recovers the FULL FID slug from the branch (not truncated to '363')", () => {
@@ -469,17 +457,13 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       expect(result.outputs.phase).toBe("debug");
       expect(result.outputs.arg).toBe("77");
       // feat/** is uncapped, so no counter row is written for EITHER the full
-      // slug or the truncated id — the pre-H1 bug would have created the
-      // truncated status directory on its way past.
+      // slug or the truncated id.
       expect(statusDirs(fixture.workspaceDir, "363")).toEqual([]);
     });
 
-    // #363 F3 — ISSUE is derived from FID BEFORE the slug allowlist runs, so a
-    // branch with no numeric/alpha id yields no grep match. Without `|| true`,
-    // pipefail propagates exit 1 under `set -euo pipefail` and the step dies
-    // red instead of reaching the fail-safe no-op three lines below — training
-    // operators to ignore red bkit-cloud runs. Reachable on any
-    // Renovate/hotfix/hand-named branch.
+    // ISSUE is derived from FID BEFORE the slug allowlist runs, so a branch with no
+    // numeric/alpha id (Renovate/hotfix/hand-named) yields no grep match; `|| true`
+    // keeps `set -euo pipefail` from killing the step before the fail-safe no-op.
     it.each([["feat/add-oauth"], ["feat/hotfix-login"], ["feat/renovate-bump"]])(
       "F3: a non-FID-shaped branch (%s) no-ops cleanly instead of aborting the step",
       (branch) => {
@@ -604,9 +588,8 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   });
 
   // -------------------------------------------------------------------------
-  // Regression — build-challenge M1: `dev_count=$(jq -s ... || echo 0)`
-  // silently treated an UNPARSEABLE status.jsonl as zero rows, defeating the
-  // cap forever. Fixed to fail-closed (refuse to dispatch) on a jq parse error.
+  // An UNPARSEABLE status.jsonl fails closed (refuse to dispatch) on a jq parse error,
+  // never counting as zero rows.
   // -------------------------------------------------------------------------
   it("M1 regression: an unparseable status.jsonl fails CLOSED (refuses to dispatch), not open", () => {
     const dir = path.join(
@@ -685,10 +668,8 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
     });
     expect(result.outputs.skip).toBe("true");
     expect(result.stdout).toContain("Stale dev CI");
-    // #363 F6: the dev-dispatch-dropped row goes to the RUN SUMMARY, not a
-    // committed status.jsonl. This branch is only reached because dev already
-    // advanced, so pushing the row to dev would usually be a non-fast-forward
-    // and drop it in exactly the scenario it records.
+    // The dev-dispatch-dropped row goes to the RUN SUMMARY, not a committed
+    // status.jsonl (this branch is reached only after dev advanced).
     const dropped = JSON.parse(
       /^\{"type":"dev-dispatch-dropped".*$/m.exec(result.summary)?.[0] ?? "null",
     ) as { type: string; fid: string; headSha: string; latestSha: string } | null;
@@ -701,8 +682,8 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   });
 
   // -------------------------------------------------------------------------
-  // #363 F7 — the kill switch must precede the stale-run guard, so revoking
-  // bkit:auto stops ALL side effects, not just the dispatch.
+  // The kill switch precedes the stale-run guard: revoking bkit:auto stops ALL side
+  // effects, not just the dispatch.
   // -------------------------------------------------------------------------
   it("kill switch precedes the stale-run guard: a revoked FID writes no drop telemetry", () => {
     const result = runCtxStep(fixture, {
@@ -722,8 +703,8 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   });
 
   // -------------------------------------------------------------------------
-  // #363 F8 — head_commit.message is subject+body; grep's `^` anchors per
-  // line, so a scoped line in the squash body must not win over the subject.
+  // head_commit.message is subject+body; grep's `^` anchors per line, and a scoped line
+  // in the squash body never wins over the subject.
   // -------------------------------------------------------------------------
   it("FID recovery reads the commit SUBJECT, not a scoped line in the body", () => {
     const result = runCtxStep(fixture, {

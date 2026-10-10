@@ -145,9 +145,8 @@ describe("cursor gateguard — no-op and fail-open cases", () => {
 
 describe("cursor gateguard — subagents are NOT exempt", () => {
   it("advises on an edit even when the payload carries subagent-ish markers", () => {
-    // Cursor's preToolUse payload has no subagent marker at all. This asserts the
-    // decision (subagents included) rather than the absence: even if a marker
-    // appeared, the hook must not skip on it.
+    // Cursor's preToolUse payload has no subagent marker at all; subagents are included
+    // even if a marker appears.
     fs.writeFileSync(path.join(workspace, "foo.ts"), "existing\n", "utf-8");
     const r = run(writePayload("foo.ts", newSession(), { agent_id: "sub-1", is_subagent: true }));
     expect(String(r.out["additional_context"])).toContain("bkit GateGuard");
@@ -171,8 +170,7 @@ describe("gateguard managed-block parity — cursor vs claude", () => {
   });
 
   it("the Cursor block contains no host-specific emit or stdin read", () => {
-    // Match the CALLS, not the words — the block's own comments name
-    // process.stdout to explain why it never writes to it.
+    // Match the CALLS, not the words — the block's own comments name process.stdout.
     const b = block(HOOK);
     expect(b).not.toContain("process.stdout.write");
     expect(b).not.toContain("readFileSync(0");

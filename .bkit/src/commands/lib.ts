@@ -467,9 +467,8 @@ export function commitMessage(cwd: string, sha: string): string | null {
 
 /**
  * The skip-CI token in a commit's BODY, or null; undefined when the commit cannot
- * be read. The subject is excluded on purpose: a docs-only commit carries
- * `[skip ci]` in its subject by convention, while the defect is a squash body that
- * concatenates branch subjects and so inherits a token nobody meant for the shared branch.
+ * be read. The subject is excluded (a docs-only commit carries `[skip ci]` in its
+ * subject by convention); the body is where a squash concatenates branch subjects.
  */
 export function bodySkipToken(cwd: string, sha: string): string | null | undefined {
   const msg = sha === "" ? null : commitMessage(cwd, sha);

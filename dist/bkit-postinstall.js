@@ -88,8 +88,8 @@ export function detectNpmrcAuth(cwd) {
  * Detect a legacy project-.npmrc auth-token line (`//npm.pkg.github.com/:_authToken=`).
  * On pnpm >=10.34.3 this line breaks installs: pnpm 401s on download
  * and, via config precedence (project .npmrc > user config), it shadows the user-level
- * token written by `pnpm config set`. Returns true when present so a migration advisory
- * can nudge its removal.
+ * token written by `pnpm config set`. Returns true when present; a migration advisory
+ * nudges its removal.
  */
 export function detectNpmrcLegacyAuthToken(cwd) {
     const npmrcPath = path.join(cwd, ".npmrc");
@@ -229,10 +229,8 @@ export function detectVercelEnv(env, cwd = process.cwd()) {
  * installCommand (or one whose installCommand lacks that `pnpm config set`) 401s on the
  * @cbartens/bkit download even when BKIT_GH_TOKEN_INSTALL is present in the Vercel env.
  *
- * This is the gap the #274 -> 4.1.2 revert papered over: bkit checked the Vercel ENV var
- * (detectVercelEnv) but never the missing installCommand, so a 401-bound config was
- * invisible at install time. Uses a raw-content regex (like detectCiYmlMissingTokenEnv)
- * rather than JSON.parse so a non-standard-but-valid vercel.json still matches.
+ * Uses a raw-content regex (like detectCiYmlMissingTokenEnv), not JSON.parse, so a
+ * non-standard-but-valid vercel.json still matches.
  *
  * Returns the offending vercel.json paths (relative to cwd); empty when all authenticate.
  */
@@ -271,8 +269,8 @@ export function detectVercelInstallCommandMissingAuth(cwd) {
  *   (2) the `BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}` env mapping that feeds it.
  * Either missing → the next install 401s on download. Severity is "blocker" when the
  * project .npmrc shows the repo authenticates to GH Packages (registry mapping or a
- * legacy ${BKIT_GH_TOKEN_INSTALL} ref) — the next CI run will 401; otherwise "advisory". Phase 3
- * doesn't exit-1 (writes already happened) but visibility matches the risk.
+ * legacy ${BKIT_GH_TOKEN_INSTALL} ref); otherwise "advisory". Phase 3 does not exit-1
+ * (writes already happened).
  */
 export function detectCiYmlMissingTokenEnv(cwd) {
     const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
@@ -411,8 +409,8 @@ export function detectCiYmlRunInjection(cwd) {
     if (!/^\s*# bkit:start\b/m.test(content))
         return null;
     // Attacker-controllable payload contexts: any github.event.* field and github.head_ref.
-    // github.base_ref / github.event_name / SHAs are constrained values, intentionally excluded
-    // so the shipped commented stubs (which reference github.base_ref) do not false-positive.
+    // github.base_ref / github.event_name / SHAs are constrained values and are excluded
+    // (the shipped commented stubs reference github.base_ref).
     const UNTRUSTED = /\$\{\{[^}]*\b(?:github\.event\.[\w.]+|github\.head_ref)\b[^}]*\}\}/;
     const indentOf = (l) => l.length - l.replace(/^[ \t]*/, "").length;
     const hits = [];
@@ -475,17 +473,13 @@ export function detectCiYmlRunInjection(cwd) {
 }
 /**
  * Detect drift of the consumer's `bkit-tests-check` capstone from bkit's canonical
- * CI contract. ci.yml is the consumer's copy of a template (freely edited) — bkit
- * never rewrites it, so over time a copy can silently lose a load-bearing invariant and
- * reintroduce a bug bkit already fixed (e.g. the concurrency-cancel that killed a
- * push-only @live canary). WARNING-ONLY presence check: flags the ABSENCE of a known-good
- * fragment, never "differs from canonical" (which would be all false-positives — the file
- * is meant to be edited). Fires only when the consumer opted into the capstone scaffold
- * (bkit-managed markers + a bkit-tests-check job).
+ * CI contract. ci.yml is the consumer's copy of a template; bkit never rewrites it.
+ * WARNING-ONLY presence check: flags the ABSENCE of a known-good fragment, never
+ * "differs from canonical". Fires only when the consumer opted into the capstone
+ * scaffold (bkit-managed markers + a bkit-tests-check job).
  *
  * Every check after the marker reads `code` (full-line comments stripped): the template's
- * commented-out stubs name `bkit-tests-check`, `!cancelled()` and `live_ran`, so matching
- * on raw text passes any ci.yml seeded from the template whatever its real jobs do.
+ * commented-out stubs name `bkit-tests-check`, `!cancelled()` and `live_ran`.
  */
 export function detectCiYmlCapstoneContractDrift(cwd) {
     const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
@@ -563,8 +557,8 @@ function walkRepoForHomeCheck(dir, testFiles, packageJsons, depth = 0) {
         entries = fs.readdirSync(dir, { withFileTypes: true });
     }
     catch (err) {
-        // Unreadable directory (permissions / not-a-dir race): skip this subtree. Surfaced
-        // under BKIT_DEBUG so the skip is diagnosable rather than silently swallowed.
+        // Unreadable directory (permissions / not-a-dir race): skip this subtree, logged
+        // under BKIT_DEBUG.
         if (process.env.BKIT_DEBUG)
             console.error(`[bkit] home-check skipped ${dir}: ${err.message}`);
         return;
@@ -594,16 +588,12 @@ const TEST_DEF_TITLE = /\b(?:it|test|describe|bench|suite)(?:\.\w+)*\s*(?:\([^)]
 // Mark every byte that sits inside a string, template literal, or comment. A REAL
 // test definition's `it`/`describe` keyword is code (mask 0); a keyword that appears
 // INSIDE a string is a fixture — a tag-linter package embeds sample test source as a
-// string literal (`const F = \`describe("@live X", …)\``) to lint it, and the title
-// regex, scanning raw text, would otherwise read the fixture's inner title as a real
-// tagged test. Skipping masked keyword positions rejects those without risk of a
-// false negative: real, runnable tests are never authored inside a quote.
+// string literal (`const F = \`describe("@live X", …)\``) to lint it. Masked keyword
+// positions are skipped; real, runnable tests are never authored inside a quote.
 //
-// `'`/`"` strings terminate at end-of-line (unescaped newlines are illegal in them
-// anyway); only template literals span lines. This bounds any mis-lex from an exotic
-// regex literal that happens to contain a lone quote to its own line, so it can never
-// swallow a later real test def. Regex literals are otherwise treated as plain code —
-// a regex containing a test-definition keyword + quoted title is not a real construct.
+// `'`/`"` strings terminate at end-of-line; only template literals span lines, so a
+// mis-lex from a regex literal containing a lone quote stays on its own line. Regex
+// literals are otherwise treated as plain code.
 function stringCommentMask(text) {
     const mask = new Uint8Array(text.length);
     const n = text.length;
@@ -665,13 +655,11 @@ function tagUsedInTestTitle(text, tag, mask) {
  * Detect `@live` / `@smoke`-tagged tests whose owning package declares no matching
  * `test:live` / `test:smoke` script — they have "no CI home": `turbo run test:live`
  * skips a package with no such script and exits 0, so the tagged tests never run and the
- * live/smoke tier reports green having executed nothing (ghost-green, the #483 class).
+ * live/smoke tier reports green having executed nothing.
  *
- * Stack/convention-safe: only flags a tag when the convention is ACTIVE in the repo (at
- * least one package declares the script) — so it is a silent no-op for repos that don't
- * use the live-testing convention, and for incidental `@live` string matches. WARNING-only;
- * the capstone's `run_live => live_ran > 0` assertion is the runtime backstop, this catches
- * it earlier (install / pre-push).
+ * Only flags a tag when the convention is ACTIVE in the repo (at least one package
+ * declares the script); a silent no-op otherwise. WARNING-only; the capstone's
+ * `run_live => live_ran > 0` assertion is the runtime check.
  */
 export function detectTaggedTestsWithoutCiHome(cwd) {
     const testFiles = [];
@@ -862,7 +850,7 @@ const BKIT_STUBS = [
         file: ".github/workflows/ci.yml",
         description: "Report Playwright E2E code-coverage on PRs — the third coverage tier, sibling of `coverage` (unit/integration). Free, entirely inside Actions with GITHUB_TOKEN (no third-party service, private-repo safe). Report-only by default. Unlike vitest there is NO --coverage flag: Playwright is black-box and does not instrument your source, so enabling is a 3-part pipeline documented in the stub header: (1) COLLECT during the E2E run — either an Istanbul instrumented build (`vite-plugin-istanbul` → window.__coverage__, cross-browser, scraped in a Playwright fixture) or the V8 API (`page.coverage`, Chromium-only, needs source maps); (2) REPORT with Monocart (`monocart-coverage-reports`, via the `monocart-reporter` Playwright reporter) which ingests EITHER V8 or Istanbul input and emits Istanbul-format coverage/e2e/coverage-summary.json + coverage-final.json — the SAME two files davelosert reads, so no new commenter is needed; (3) COMMENT by reusing davelosert/vitest-coverage-report-action@v2 pointed at coverage/e2e with a DISTINCT `name: e2e` so its sticky comment does not collide with the unit/integration ones. This step posts from the bkit-tests-e2e-web lane (or, with the combined starter, the bkit-tests-unit job as `coverage`), and needs that lane's job-level permissions block (pull-requests: write + actions: read + contents: read) or the comment cannot post. Ship NO threshold: a whole-app E2E % is denominator-noise (E2E exercises flows, not every branch) — gate the tier on the E2E step succeeding, not a %; for a real E2E % scope Monocart's entryFilter/sourceFilter then ratchet from current. The head.repo == repo guard skips fork PRs (read-only GITHUB_TOKEN); the hashFiles('coverage/e2e/coverage-summary.json') guard skips repos with no E2E coverage. See docs/testing.md § E2E coverage on PRs.",
     },
-    // --- The 4-job "green == validated" scaffold (bkit #203 / gether reference). ---
+    // --- The 4-job "green == validated" scaffold. ---
     // These ship commented in the FULL CI SCAFFOLD REFERENCE block at the end of the
     // template ci.yml. Order matters when adopting — see that block.
     {
@@ -977,12 +965,10 @@ export function detectBkitStubs(cwd) {
         const content = readOnce(stub.file);
         if (content === null)
             continue;
-        // Sentinel must be the full HEADER form — `# bkit-stub:<id> — <description>` — because that
-        // is the line the advisory tells you to delete. Requiring the em-dash separator keeps prose
-        // back-references ("the bkit-stub:coverage integration report posts from HERE") from firing
-        // an advisory that can never be dismissed: the block is enabled, its header is gone, and the
-        // only match left is a comment nobody was told to remove. Also subsumes the partial-prefix
-        // guard — `# bkit-stub:e2e —` cannot match stub `e2e-coverage` (a `-` follows, not a space).
+        // Sentinel is the full HEADER form — `# bkit-stub:<id> — <description>` — the line the
+        // advisory tells you to delete. Prose back-references ("the bkit-stub:coverage integration
+        // report posts from HERE") do not match, and `# bkit-stub:e2e —` cannot match stub
+        // `e2e-coverage` (a `-` follows, not a space).
         const sentinel = `# bkit-stub:${stub.id}`;
         const re = new RegExp(`(^|\\n)\\s*${sentinel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+—`);
         if (!re.test(content))
@@ -1004,22 +990,18 @@ export function detectBkitStubs(cwd) {
     // is still present (still disabled).
     const ciContent = readOnce(".github/workflows/ci.yml");
     if (ciContent) {
-        // Legacy scaffold job names. `bkit-decide` sits outside the bkit-tests-* namespace and is
-        // INVISIBLE to bkit's CI-Dispatch Gate, which polls the pushed HEAD for any bkit-tests-*
-        // check: a repo whose planner is still called `bkit-decide` matches only via the gate's
-        // legacy `decide` alternation, and a repo that renamed it to anything else (e.g. a bare
-        // `scope`) matches nothing at all — the gate then reports no-ci on every build and silently
-        // loses its ability to catch a genuinely undispatched run. Detected on the uncommented job
-        // key, so a repo that merely carries the commented scaffold reference does not fire this.
+        // Legacy scaffold job names. `bkit-decide` sits outside the bkit-tests-* namespace that
+        // bkit's CI-Dispatch Gate polls the pushed HEAD for (it matches only via the gate's legacy
+        // `decide` alternation). Detected on the uncommented job key; the commented scaffold
+        // reference does not fire this.
         const hasLegacyJob = (jobName) => new RegExp(`(^|\\n)\\s{2}${jobName}:\\s*(\\n|$)`).test(ciContent);
         const legacyJobs = ["bkit-decide", "bkit-tests-migrate"].filter(hasLegacyJob);
         if (legacyJobs.length > 0) {
             // docs/testing.md is bkit-managed and refreshes on every upgrade, so it already names
             // the CURRENT jobs (bkit-tests-scope / bkit-tests-migration) while this ci.yml —
-            // the consumer's file, which upgrade never rewrites — still names the legacy ones. Make that docs-vs-CI skew
-            // explicit when the managed docs are present and already migrated, so the mismatch is a
-            // stated finding rather than something an agent has to spot for itself. readOnce reuses
-            // the cache + baseline read-guard (no new error-obscuring catch).
+            // the consumer's file, which upgrade never rewrites — still names the legacy ones. The
+            // finding states that docs-vs-CI skew when the managed docs are present and already
+            // migrated. readOnce reuses the cache + baseline read-guard.
             const testingDoc = readOnce("docs/testing.md");
             const docsSkew = !!testingDoc &&
                 (testingDoc.includes("bkit-tests-scope") || testingDoc.includes("bkit-tests-migration"));
@@ -1120,14 +1102,13 @@ export function detectTurboIntegrationInputs(cwd) {
 /**
  * Detect whether the consumer's `test:integration` lane asserts real-service runtime
  * env (TEST_REAL_APIS, SUPABASE_*, service-role URL refs). A lane that silently mocks
- * integration tests passes CI without exercising real services — the worst-case
- * ghost-green from KN-23. Returns null if no `test:integration` script.
+ * integration tests passes CI without exercising real services (KN-23). Returns null if
+ * no `test:integration` script.
  *
- * The gating can legitimately live at any of three layers, so all three are inspected
- * before flagging a no-op lane: (1) the script string itself, (2) the CI workflow job
- * that invokes `test:integration` (a deliberately env-agnostic script keeps local runs
- * from forcing real-API mode, provisioning instead at the lane), (3) the vitest
- * integration config the script points at (home of the documented in-file guard).
+ * All three gating layers are inspected before flagging a no-op lane: (1) the script
+ * string itself, (2) the CI workflow job that invokes `test:integration` (an
+ * env-agnostic script provisioned at the lane), (3) the vitest integration config the
+ * script points at (home of the documented in-file guard).
  */
 export function detectTestIntegrationEnv(cwd) {
     const pkgPath = path.join(cwd, "package.json");
@@ -1155,8 +1136,8 @@ export function detectTestIntegrationEnv(cwd) {
     if (hasHint(script))
         return null;
     // 2. CI workflow lane: a workflow file that BOTH invokes `test:integration` AND
-    //    provisions a real-service hint is the lane doing the gating — the correct pattern
-    //    for an intentionally env-agnostic script (`supabase start` + `TEST_REAL_APIS` +
+    //    provisions a real-service hint is the lane doing the gating — the pattern for an
+    //    env-agnostic script (`supabase start` + `TEST_REAL_APIS` +
     //    service-role export around `turbo run test:integration`).
     const workflowsDir = path.join(cwd, ".github", "workflows");
     if (fs.existsSync(workflowsDir) && fs.statSync(workflowsDir).isDirectory()) {
@@ -1198,8 +1179,7 @@ export function detectTestIntegrationEnv(cwd) {
  * SHA pins for any workflow that runs with elevated permissions.
  *
  * bkit-owned workflow files (those tracked in `.bkit/version` `canonicalHashes`)
- * are exempt — bkit owns their pins and `bkit install` rewrites them, so a
- * consumer edit would be overwritten.
+ * are exempt — bkit owns their pins and `bkit install` rewrites them.
  */
 export function detectGhaFloatingTags(cwd) {
     const workflowsDir = path.join(cwd, ".github", "workflows");
@@ -1267,8 +1247,7 @@ export function detectRunLevelsNotComposed(cwd) {
     const readTokens = [
         "steps.detect.outputs.should_force_build",
         "steps.detect.outputs.should_run_full",
-        // Legacy output an older template emitted; matched so the check doesn't
-        // false-advise consumers who compose on it.
+        // Legacy output an older template emitted; matched too.
         "steps.detect.outputs.should_run_e2e",
     ];
     const composesRunLevels = (content) => content
@@ -1352,9 +1331,9 @@ export function buildTrackerSetupAdvisory(cwd) {
             action: "Linear tracker: set `BKIT_LINEAR_API_KEY` in `.bkit/.env` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session by the Linear integration — do not hardcode. Run `direnv allow` after setting the key so MCP servers and the preflight hook can authenticate.",
         };
     }
-    // tracker === "none". Distinguish deliberate opt-out (explicit
-    // `bkit.issueTracker: "none"`) from undecided (field absent). Symmetric with
-    // the dep-updater advisory — an explicit `none` silences the nudge.
+    // tracker === "none". Distinguish opt-out (explicit `bkit.issueTracker: "none"`)
+    // from undecided (field absent). An explicit `none` silences the nudge, as with the
+    // dep-updater advisory.
     if (hasExplicitIssueTrackerField(cwd))
         return null;
     return {
@@ -1381,7 +1360,7 @@ function hasExplicitIssueTrackerField(cwd) {
 /**
  * Classify the `bkit.githubProject` board-sync config in package.json:
  *   - "configured" → object with at least `owner` + `number` (the lookup keys)
- *   - "opted-out"  → set to `false` (deliberate "no board sync" — stay quiet)
+ *   - "opted-out"  → set to `false` ("no board sync" — stay quiet)
  *   - "absent"     → missing, malformed, or unreadable
  */
 function readGithubProjectConfig(cwd) {
@@ -1410,11 +1389,10 @@ function readGithubProjectConfig(cwd) {
  * `projects` toolset (required for Projects v2 board sync):
  *   - "present" → header lists `projects`
  *   - "missing" → github server has a toolset header that omits `projects`
- *                 (the real-world drift: installs predating the toolset addition)
+ *                 (installs predating the toolset addition)
  *   - "unknown" → no `.mcp.json`, no github server, or no header (can't judge)
  *
- * Scoped to root `.mcp.json` only — bkit deliberately omits the header from
- * `.cursor/mcp.json`, so its absence there is not drift.
+ * Scoped to root `.mcp.json` only — bkit omits the header from `.cursor/mcp.json`.
  */
 export function detectProjectsToolset(cwd) {
     const mcpPath = path.join(cwd, ".mcp.json");
@@ -1502,10 +1480,8 @@ export function buildGithubProjectAdvisory(cwd) {
  * Projects v2 board sync feeds `statusFieldId` straight into `projects_write`
  * `updated_field.id`, which requires the NUMERIC field id; a GraphQL node id
  * (`PVTSSF_…` — what `gh project field-list` returns) or any non-number value is
- * rejected with `updated_field.id: value must be a number`. Because sync is
- * best-effort and never gates, that rejection is a SILENT no-op — the board never
- * reflects phase and nobody notices. This catches it at install/check time, no
- * network needed.
+ * rejected with `updated_field.id: value must be a number`, and best-effort sync then
+ * no-ops silently. Checked at install/check time, no network needed.
  *
  * Gates: workflows installed AND tracker === "github" AND `bkit.githubProject` is
  * an object carrying `owner` + `number` (an otherwise-usable board) AND
@@ -1693,24 +1669,24 @@ function hasExplicitCloudAgentsField(cwd) {
  * `bkit install --auto=claude`; it does NOT ship with a default install. This nudges
  * consumers to make the choice post-install.
  *
- * Also performs the cloud=claude config-consistency assertion (T1.8): when
+ * Also performs the cloud=claude config-consistency assertion: when
  * `bkit.cloudAgents === "claude"` but the installed `bkit-cloud.yml` lacks
  * `id-token: write`, it surfaces a consistency warning (exit-1 signal surfaced via
  * the `blocker` severity in bkit-preflight caller).
  *
  * Resolution order (file presence is authoritative, package.json field is the
- * "deliberate opt-out" escape hatch):
+ * opt-out):
  *   - `.github/workflows/bkit-cloud.yml` present → `cloud-router` (informational; active)
- *   - `bkit.cloudAgents === "none"`                  → null (deliberate opt-out — stay quiet)
+ *   - `bkit.cloudAgents === "none"`                  → null (opt-out — stay quiet)
  *   - otherwise (undecided)                          → `cloud-router-none` (nudge to choose)
  *
- * Only fires when there is a `.github/workflows/` dir — without CI there is no
- * completion event for the router to wake on, so nothing to route.
+ * Only fires when there is a `.github/workflows/` dir (the router wakes on a CI
+ * completion event).
  */
 export function buildCloudSetupAdvisory(cwd) {
     const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
     if (fs.existsSync(routerPath)) {
-        // Config-consistency assertion (T1.8): cloud=claude requires id-token: write.
+        // Config-consistency assertion: cloud=claude requires id-token: write.
         // If the recorded variant is "claude" (or back-compat legacy "enabled" mapped to claude)
         // and the workflow file lacks id-token: write, surface a consistency finding.
         const recordedVariant = readConsumerCloudAgents(cwd);
@@ -1732,7 +1708,7 @@ export function buildCloudSetupAdvisory(cwd) {
             action: `The workflow requires: \`BKIT_ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.`,
         };
     }
-    // No router present — distinguish deliberate opt-out from undecided.
+    // No router present — distinguish opt-out from undecided.
     if (readConsumerCloudAgents(cwd) === "none" && hasExplicitCloudAgentsField(cwd)) {
         return null; // consumer explicitly chose `none` — stay quiet
     }
@@ -2020,7 +1996,7 @@ export function readChangelogVersionDelta(version) {
     }
 }
 // ---------------------------------------------------------------------------
-// detectRenderedPromptsStale (#256) — rendered prompts/workflows version gate
+// detectRenderedPromptsStale — rendered prompts/workflows version gate
 // ---------------------------------------------------------------------------
 /** Rendered agent + command mirror dirs that carry the managed-version marker. */
 const RENDERED_MIRROR_DIRS = [
@@ -2046,17 +2022,11 @@ function readPkgVersion() {
     }
 }
 // ---------------------------------------------------------------------------
-// Branch-scoped severity for the #256 stale gates
+// Branch-scoped severity for the stale gates
 //
-// A stale-render is almost never CREATED by a feature branch — it is INHERITED
-// from a base (dev) where the bkit package was bumped without an atomic
-// re-render. Hard-failing every feature-branch push for inherited drift is the
-// friction this scoping removes: the gate stays a hard BLOCKER on the
-// integration + release branches (`main`/`dev`), where stale doctrine must never
-// land, and downgrades to a non-blocking ADVISORY everywhere else — still shown
-// in the checklist so the dev knows to re-render, but it does not block an
-// intermediate push. A PR INTO main/dev re-asserts the blocker (via
-// GITHUB_BASE_REF), so the skew can never reach a protected branch silently.
+// The gate is a hard BLOCKER on the integration + release branches (`main`/`dev`)
+// and a non-blocking ADVISORY everywhere else (still shown in the checklist). A PR
+// INTO main/dev re-asserts the blocker (via GITHUB_BASE_REF).
 // ---------------------------------------------------------------------------
 /** Branches where a stale managed-version marker is a hard blocker, not a warning. */
 const PROTECTED_BRANCHES = new Set(["main", "dev"]);
@@ -2087,8 +2057,7 @@ function currentBranch(cwd) {
 }
 /**
  * True when the stale gates should hard-block here (on `main`/`dev`, or a PR
- * targeting them). Fail-safe: an undeterminable branch is treated as protected,
- * so an unknown environment never silently downgrades the gate to a warning.
+ * targeting them). Fail-safe: an undeterminable branch is treated as protected.
  * Exported for deterministic unit testing.
  */
 export function isOnProtectedBranch(cwd = process.cwd()) {
@@ -2103,12 +2072,11 @@ export function isOnProtectedBranch(cwd = process.cwd()) {
  * bkit version — i.e. the consumer is running prompts/workflows generated by a
  * different bkit, or hand-edited a managed mirror and dropped the marker.
  *
- * Phase-3 placement is deliberate (#256):
+ * Runs in Phase 3:
  *   - In `bkit check` (dry-run) the host renders do NOT write, so on-disk markers
  *     keep their stale value → this fires → check exits 1 (the hard gate).
  *   - In real `install` / `upgrade` the re-stamp write lands in Phase 2, BEFORE
- *     this runs, so the markers are fresh → no blocker. This avoids the
- *     chicken-and-egg where the gate would abort the very install that fixes it.
+ *     this runs, so the markers are fresh → no blocker.
  *   - `bkit doctor` replays Phase 3 read-only → surfaces it without exiting.
  *
  * Guards:
@@ -2157,7 +2125,7 @@ export function detectRenderedPromptsStale(cwd, installingVersion = readPkgVersi
     };
 }
 // ---------------------------------------------------------------------------
-// detectManagedDocsStale — managed docs/*.md version gate (#256 extension)
+// detectManagedDocsStale — managed docs/*.md version gate
 // ---------------------------------------------------------------------------
 /** Position of the first line-anchored `<!-- bkit:start -->`, or undefined when the doc has no block. */
 function managedBlockStart(content) {
@@ -2208,7 +2176,7 @@ function collectManagedDocMarkdown(dir, acc = []) {
  * not re-render, so agents read STALE doctrine (testing.md / deployments.md /
  * templates/bkit-plan.md, etc.) even though the prompts that point at them are fresh.
  *
- * Mirrors detectRenderedPromptsStale (#256): the marker is stamped into the first
+ * Mirrors detectRenderedPromptsStale: the marker is stamped into the first
  * line of each managed block at render (via the {{BKIT_MANAGED_MARKER}} token), so
  * this read-back gate works identically — fires in `bkit check` (dry-run, on-disk
  * markers keep their stale value), no-op in real install/upgrade (markers were
@@ -2222,9 +2190,8 @@ function collectManagedDocMarkdown(dir, acc = []) {
  * The managed-doc SET is enumerated from the package's template tree
  * (`<templates>/docs`), NOT a glob of the consumer's `docs/` — a consumer's
  * `docs/plans/{YYYYMM}/…` plans + logs are user-authored instances of
- * `docs/templates/bkit-plan.md` and inherit its `bkit:start` block, so a glob would
- * false-positive on every plan ever written. Only the canonical docs bkit ships
- * carry (and are checked for) the marker.
+ * `docs/templates/bkit-plan.md` and inherit its `bkit:start` block. Only the
+ * canonical docs bkit ships carry (and are checked for) the marker.
  *
  * Guards mirror the prompts gate: dev tree without a readable version → null;
  * no managed docs scanned → null. `templatesRoot` is injected for testability.
@@ -2277,8 +2244,7 @@ const HOOK_FILE_RE = /\/(hooks|plugin)\/[^/]+$/;
  * manifest of each installed host module, plus `.claude/hooks/cloud-bootstrap.sh` when
  * `bkit.cloudAgents` is `claude` (every claude settings.json wires cloud-bootstrap.sh, so the
  * reference alone does not mean the cloud module is installed). The claude and codex hook
- * commands skip a missing file (`test -f <file> && … || true`), so a deleted file turns its
- * guard off without a word, which is why `bkit check` fails on it.
+ * commands skip a missing file (`test -f <file> && … || true`); `bkit check` fails on it.
  */
 export function findMissingOwnedHooks(cwd, modules) {
     const required = [];
@@ -2317,12 +2283,9 @@ export function detectOwnedHookMissing(missing) {
 // ---------------------------------------------------------------------------
 /**
  * DE-<n>/KN-<n> alias collisions in the key-bearing ledgers — one number claimed
- * by more than one unrelated row. Older ledgers minted ids by "scan-highest-and-increment",
- * which lets two concurrent workflows mint the same id off the same base commit, and
- * `merge=union` appends both silently (their slug `key`s differ, so nothing
- * conflicts). A bare citation of that number then resolves ambiguously. Advisory,
- * never a blocker: it is pre-existing ledger data, not an install fault, and the
- * fix (`bkit telemetry normalise`) is the consumer's to run. Read-only fs scan.
+ * by more than one unrelated row (ids minted by "scan-highest-and-increment" under
+ * concurrent workflows, joined by `merge=union`). Advisory, never a blocker; the fix is
+ * `bkit telemetry normalise`. Read-only fs scan.
  */
 export function detectLedgerAliasCollisions(cwd) {
     const { collisions } = lintLedgers(cwd);
@@ -2354,14 +2317,14 @@ export function detectLedgerAliasCollisions(cwd) {
  */
 export function runPostInstallCheck(preflightAdvisories, modules, cwd = process.cwd()) {
     const phase3 = [];
-    // Rendered prompts/workflows version gate (#256) — in `bkit check`, a blocker on
+    // Rendered prompts/workflows version gate — in `bkit check`, a blocker on
     // main/dev (or a PR into them) and a non-blocking advisory on feature branches
     // when a mirror's managed-version marker drifts from the installed version. No-op
     // in real install/upgrade (markers were just re-stamped in Phase 2).
     const renderedStale = detectRenderedPromptsStale(cwd);
     if (renderedStale)
         phase3.push(renderedStale);
-    // Managed docs/*.md version gate (#256 extension) — same branch-scoped severity:
+    // Managed docs/*.md version gate — same branch-scoped severity:
     // blocker on main/dev, advisory on feature branches when a bkit-owned doc's
     // managed-version marker drifts. No-op in real install/upgrade (re-stamped Phase 2).
     const docsStale = detectManagedDocsStale(cwd);
@@ -2389,9 +2352,8 @@ export function runPostInstallCheck(preflightAdvisories, modules, cwd = process.
     }
     // BKIT_GH_TOKEN shell env — authenticates the GitHub MCP server
     // (`Authorization: Bearer ${BKIT_GH_TOKEN}` in .mcp.json), which powers the entire
-    // tracker + PR + Projects MCP surface. Only flag when a github MCP server is
-    // actually configured, and never in CI (no MCP server consumes it there — it
-    // would be log noise, not signal).
+    // tracker + PR + Projects MCP surface. Only flags when a github MCP server is
+    // configured, and never in CI.
     if (hasGithubMcpServer(cwd) && !process.env.CI) {
         const ghMcpTokenStatus = detectShellGhMcpToken();
         if (ghMcpTokenStatus === "missing") {
@@ -2480,8 +2442,8 @@ export function runPostInstallCheck(preflightAdvisories, modules, cwd = process.
             });
         }
         // "unknown" → silent skip (CLI absent / unauthed)
-        // Vercel installCommand auth — the gap the #274 -> 4.1.2 revert papered over. The
-        // env var alone is not enough: a registry-only .npmrc carries no token on pnpm
+        // Vercel installCommand auth. The env var alone is not enough: a registry-only .npmrc
+        // carries no token on pnpm
         // >=10.34.3 and Vercel cannot run a pre-install shell step, so each vercel.json must
         // authenticate via its installCommand or the @cbartens/bkit download 401s.
         const vercelNoAuth = detectVercelInstallCommandMissingAuth(cwd);
@@ -2495,9 +2457,8 @@ export function runPostInstallCheck(preflightAdvisories, modules, cwd = process.
         }
     }
     // Main branch protection — bkit's PR-base gates (build Step 17, ship Step 2)
-    // assert feat/* PRs target dev. To enforce at the GitHub layer (so direct
-    // pushes / mis-targeted PRs are rejected before the workflow runs), main
-    // needs branch protection restricting merges to PRs from dev.
+    // assert feat/* PRs target dev. Enforcing it at the GitHub layer needs branch
+    // protection on main restricting merges to PRs from dev.
     const protectionStatus = detectMainBranchProtection();
     const scriptHint = "\n\nQuick path: run `bkit setup protect-main --dry-run` to preview the policy, then drop `--dry-run` to apply. It requires the CI capstone job named by `package.json` `bkit.capstoneJob` (default `bkit-tests-check`, so the required check means 'validated', not just 'tests job did not fail') and pre-flights that the job exists in the `bkit.ciWorkflow` file before requiring it.";
     if (protectionStatus === "missing") {
@@ -2518,12 +2479,12 @@ export function runPostInstallCheck(preflightAdvisories, modules, cwd = process.
     // Optional post-install decisions (opt-in add-ons):
     //   1. Issue tracker — branch on bkit.issueTracker.
     //   2. Dependency updater — read-only. Suggests an example template. Never writes config.
-    //   3. Cloud agents — branch on bkit-cloud.yml presence (#119).
+    //   3. Cloud agents — branch on bkit-cloud.yml presence.
     const trackerSetup = buildTrackerSetupAdvisory(cwd);
     if (trackerSetup)
         phase3.push(trackerSetup);
     // GitHub Projects v2 board-sync prerequisites (config + toolset + PAT scope) —
-    // the whole feature was unadvised; absent any prerequisite it silently no-ops.
+    // absent any prerequisite, sync silently no-ops.
     const githubProjectSetup = buildGithubProjectAdvisory(cwd);
     if (githubProjectSetup)
         phase3.push(githubProjectSetup);
@@ -2597,7 +2558,7 @@ export function runPostInstallCheck(preflightAdvisories, modules, cwd = process.
     if (capstoneDrift)
         phase3.push(capstoneDrift);
     // @live/@smoke-tagged tests whose owning package declares no test:live/test:smoke
-    // script — "no CI home", the #483 ghost-green class.
+    // script — "no CI home".
     const taggedNoHome = detectTaggedTestsWithoutCiHome(cwd);
     if (taggedNoHome)
         phase3.push(taggedNoHome);
@@ -2628,11 +2589,11 @@ export function runPostInstallCheck(preflightAdvisories, modules, cwd = process.
     const ledgerCollisions = detectLedgerAliasCollisions(cwd);
     if (ledgerCollisions)
         phase3.push(ledgerCollisions);
-    // [mcp-env] direnv + .bkit/.env advisories (BAR-260).
+    // [mcp-env] direnv + .bkit/.env advisories.
     // Wired here in Phase 3 — the .bkit/.env.example scaffold only exists after
     // writes, so Phase 1 cannot see it on first install.
     // Pass the consumer's tracker so the mcp-env prose omits BKIT_LINEAR_API_KEY on github/none
-    // repos (issue #138) — they never wire Linear, so asking for the key is a false ask.
+    // repos.
     const mcpEnvTracker = readConsumerIssueTracker(cwd);
     const missingDotenv = detectMissingDotenv(cwd, mcpEnvTracker);
     if (missingDotenv)

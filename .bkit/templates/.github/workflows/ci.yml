@@ -47,20 +47,17 @@ jobs:
     # 401s on a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution) and to any later
     # pnpm/npx invocation. The committed project .npmrc carries ONLY the @cbartens
     # registry mapping; `pnpm config set` writes the shell-expanded literal token into
-    # pnpm's user-level config before install (version-proof across pnpm 10.x/11.x). The
-    # install step also keeps its own env: block for explicitness and for the tests that assert it.
+    # pnpm's user-level config before install (works across pnpm 10.x/11.x). The install
+    # step also keeps its own env: block.
     #
     # NODE_OPTIONS is set HERE, in static YAML, and must NEVER be written to $GITHUB_ENV.
-    # The runner blocklists NODE_OPTIONS for the $GITHUB_ENV / set-env workflow command,
-    # because a step able to set it at runtime could inject code into the runner's own node
-    # process. The write is REJECTED with
+    # The runner blocklists NODE_OPTIONS for the $GITHUB_ENV / set-env workflow command:
+    # the write is REJECTED with
     #   ##[error]Can't store NODE_OPTIONS output parameter using '$GITHUB_ENV' command.
-    # and — the part that hides it — the step's conclusion stays `success`, so the flag
-    # reaches nothing while the run goes green. Two more traps: the marker test is spelled
-    # out rather than reused as `env.VERBOSE_CI`, because the `env` context is NOT available
-    # to a job-level `env:` value and the shorter form resolves empty on every run; and a
-    # step with its own `env:` block REPLACES this value rather than merging, so such a step
-    # must restate the flags. See docs/testing.md § "CI verbosity".
+    # while the step's conclusion stays `success`. The marker test is spelled out, not
+    # `env.VERBOSE_CI`: the `env` context is NOT available to a job-level `env:` value. A
+    # step with its own `env:` block REPLACES this value rather than merging, so such a
+    # step must restate the flags. See docs/testing.md § "CI verbosity".
     env:
       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
@@ -88,8 +85,8 @@ jobs:
 
       # Under [verbose ci]: propagate DEBUG to all subsequent steps via $GITHUB_ENV. Note
       # that steps with their own `env:` block override $GITHUB_ENV — those steps must
-      # inline it in their env: declaration to stay verbose-aware. NODE_OPTIONS is
-      # deliberately NOT set here; the runner rejects that write while reporting success.
+      # inline it in their env: declaration to stay verbose-aware. NODE_OPTIONS is NOT
+      # set here; the runner rejects that write while reporting success.
       # See the job-level `env:` block above.
       - name: Configure Verbose CI
         if: env.VERBOSE_CI == '1'
@@ -302,8 +299,8 @@ jobs:
   bkit-tests-unit:
     runs-on: ubuntu-latest
     # Env vars duplicated from bkit-tests-static's verbose-ci-env block.
-    # See the verbose-ci-env block comment in bkit-tests-static for documentation —
-    # including why NODE_OPTIONS is a static YAML key here and never a $GITHUB_ENV write.
+    # See the verbose-ci-env block comment in bkit-tests-static — NODE_OPTIONS is a
+    # static YAML key here and never a $GITHUB_ENV write.
     env:
       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
@@ -890,7 +887,7 @@ jobs:
 #       - name: Provision Ephemeral DB        # [DB] if: RUN_MIGRATION / relevant — e.g. supabase start --exclude …
 #       - name: Replay Migrations From Empty  # [DB] if: RUN_MIGRATION / relevant — e.g. supabase db reset --local
 #       - name: Assert Seed Fixture Loaded    # [DB] if: RUN_MIGRATION / relevant — known seed row must exist
-#       - name: Apply Remote Migrations       # [DB] if: push to dev/main — UN-gated by run_migration on purpose
+#       - name: Apply Remote Migrations       # [DB] if: push to dev/main — UN-gated by run_migration
 #       #     (self-heals a remote left behind by an earlier failed run). AFTER replay steps so a
 #       #     from-empty failure never reaches shared remote. e.g. link + db push --linked --include-all
 #       #     (resolve project ref via vercel env pull or SUPABASE_* secrets — same pattern as drift checks).

@@ -1,5 +1,5 @@
 /**
- * bkit-counter-prose-audit.test.ts — WS3-T3 (#58 / #234).
+ * bkit-counter-prose-audit.test.ts
  *
  * Attempt counters are derived from status.jsonl by `bkit counters derive|run|rows`
  * and compared to their cap by `bkit counters route`; what those commands
@@ -25,8 +25,7 @@
  *      (filenames, comment headers) may, since a command printed that value
  *      earlier in the same step.
  *   5. No shell arithmetic on a counter: positions (next / current / count) are
- *      the command's job, and `$((X + 1))` is exactly the off-by-one class #58
- *      found.
+ *      the command's job.
  *   6. Mapping: each block derives the RIGHT counter for the row it writes.
  *   7. No raw status.jsonl field feeds `$(( ))` (arithmetic-injection sink).
  *   8. A block routing on `$DEBUG_MODE` / `$PUSH_MODE` reads it from `bkit status route`
@@ -558,9 +557,8 @@ describe("5. no $(( )) arithmetic on a counter — positions are the command's j
 //
 // For every block that BOTH writes a step-done row AND derives a counter, the
 // derive's step must be within COUNTER_STEP_MAP[row's step]. A deriving block
-// whose row-step is absent from the map reds, so the map cannot be silently
-// short. It PINS the mapping; it does not prove it — the derived NUMBER is
-// pinned per position in counters.test.ts.
+// whose row-step is absent from the map reds. It PINS the mapping; the derived NUMBER
+// is pinned per position in counters.test.ts.
 // ---------------------------------------------------------------------------
 
 const COUNTER_STEP_MAP: Record<string, string[]> = {

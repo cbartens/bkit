@@ -110,13 +110,12 @@ const boolString = (v: FlagValue, flag: string): boolean => {
 /**
  * Ledgers a conflict may be resolved in by union. Each is append-only and its
  * reader folds last-wins by `ts` over an identity tuple, so union loses nothing:
- * interleaved or duplicated rows are resolved by the reader. This is what
- * `merge=union` in `.gitattributes` would have done; the resolver is the safety
- * net for a repo whose `.gitattributes` predates a ledger or is missing.
+ * interleaved or duplicated rows are resolved by the reader. Same result as
+ * `merge=union` in `.gitattributes`, for a repo whose `.gitattributes` lacks a
+ * ledger or is missing.
  *
- * `.bkit/friction.jsonl` ships WITHOUT `merge=union` (union can resurrect a row
- * `bkit harvest` drained) but is listed here: a resurrected row is re-banked by
- * the next harvest, while a blocking conflict halts the workflow.
+ * `.bkit/friction.jsonl` ships WITHOUT `merge=union` but is listed here; a row union
+ * resurrects after `bkit harvest` drained it is re-banked by the next harvest.
  *
  * `docs/roadmap.md` is not append-only — it is regenerated from
  * `.bkit/issues.jsonl` — but every workflow close re-folds it, so both sides of

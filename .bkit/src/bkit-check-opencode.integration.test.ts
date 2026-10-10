@@ -1,15 +1,13 @@
-// bkit-check-opencode.integration.test.ts — #255 #8 regression
+// bkit-check-opencode.integration.test.ts
 //
-// `bkit check` must drift-gate the opencode host. `.opencode/opencode.json` is the most
-// drift-sensitive file bkit ships (provider block + tracker-filtered mcp + the permission
-// sandbox), so a consumer weakening it — or a tampered gateguard.js — must fail `check`.
+// `bkit check` drift-gates the opencode host: a consumer weakening
+// `.opencode/opencode.json` (provider block + tracker-filtered mcp + the permission
+// sandbox) — or a tampered gateguard.js — fails `check`.
 //
-// The trap this guards (the reason the gate was deferred until the render inputs were fixed):
-// `bkit check` takes no `--opencode=` flag, so without a provider/tracker FALLBACK the check
-// would re-render with the ollama/default and report FALSE drift for an openrouter/opencode/…
-// consumer. The render inputs now fall back to the installed provider (package.json
-// `bkit.opencodeProvider`, the authoritative signal for the opencode gateway whose on-disk block
-// is keyed `opencode`) and the recorded tracker — so a clean install checks green across providers.
+// `bkit check` takes no `--opencode=` flag; the render inputs fall back to the installed
+// provider (package.json `bkit.opencodeProvider`, the authoritative signal for the opencode
+// gateway whose on-disk block is keyed `opencode`) and the recorded tracker, so a clean
+// install checks green across providers.
 //
 // Strategy (in-test dogfood): spawn the real install + check binaries against a tmpdir
 // consumer. getPkgRoot resolves to THIS repo, so install renders the real sources into the
@@ -74,8 +72,8 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
     expect(`${check.stdout}${check.stderr}`).not.toContain("DRIFT DETECTED");
   });
 
-  // opencode renders an `opencode`-keyed provider block. This is the case that false-drifts if
-  // detection regresses to mapping the opencode.json provider-block key straight to a bkit key.
+  // opencode renders an `opencode`-keyed provider block, read through package.json, not the
+  // opencode.json provider-block key.
   it("clean install (opencode-go gateway, opencode-go block keyed by provider) → check exits 0, no false drift", () => {
     if (!fs.existsSync(getTsxBin())) return;
     const install = runBkit(["install", "--claude", "--opencode=opencode-go", "--tracker=github"]);
@@ -102,8 +100,7 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
     expect(check.stdout).toContain("0 write(s) would occur");
   });
 
-  // The actual guard: a consumer who drops the bkit permission sandbox from opencode.json
-  // (exactly the weakening #255 P1-3 hardened) must FAIL check.
+  // A consumer who drops the bkit permission sandbox from opencode.json FAILS check.
   it("dropped permission block in opencode.json → check exits 1 (drift detected)", () => {
     if (!fs.existsSync(getTsxBin())) return;
     expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
@@ -184,10 +181,9 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
     expect(check.stdout).toContain("0 write(s) would occur");
   });
 
-  // #435 — no default provider. `bkit check` / `bkit upgrade` take no `--opencode=` flag and
-  // read what the consumer installed; a repo carrying .opencode/ with no recorded provider is
-  // a broken install and must be reported, never rendered against a substitute (which would
-  // silently rewrite every agent pin to a provider the consumer never chose).
+  // No default provider. `bkit check` / `bkit upgrade` take no `--opencode=` flag and read
+  // what the consumer installed; a repo carrying .opencode/ with no recorded provider is
+  // reported as a broken install, never rendered against a substitute.
   it("opencode installed but no provider recorded → check exits 1 and names the fix", () => {
     if (!fs.existsSync(getTsxBin())) return;
     expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);

@@ -26,7 +26,7 @@ export interface Clause {
   /** Earlier wordings: never valid, and sync rewrites them to `texts[0]`. */
   retired: string[];
   modes: Partial<Record<Surface, Mode>>;
-  /** File basenames (no `.md`) that intentionally word this clause differently. */
+  /** File basenames (no `.md`) that word this clause differently. */
   except: Set<string>;
   /** Header-line position contract for prompts and workflows. */
   position?: "first" | "last";
@@ -415,8 +415,7 @@ export function checkWording(clauses: Clause[], files: WordingFile[]): Finding[]
 
 /**
  * Sentences shared by SHARED_MIN or more prompts that no clause covers. The cut-off
- * is the rule for what belongs in the wording file, so a newly copied sentence is
- * caught here rather than drifting on its own.
+ * is the rule for what belongs in the wording file.
  */
 export function unlistedShared(clauses: Clause[], files: WordingFile[]): Finding[] {
   const forms = clauses.flatMap((c) => c.texts.map(compileText));

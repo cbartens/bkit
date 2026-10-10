@@ -1,15 +1,12 @@
-// bkit-auto-fid-guard.test.ts — #341 build-challenge F4 remediation.
+// bkit-auto-fid-guard.test.ts — FID slug allowlist.
 //
-// bkit-auto resolves {FID} PRIMARILY from the PR-body marker
-// (`<!-- bkit:fid={FID} -->`, D9 marker-primary reorder). The PR body is
-// collaborator-trusted, not commit-signed (docs/security.md § CI Auto-Route
-// Trust), and {FID} flows straight into filesystem paths
-// (docs/plans/{YYYYMM}/logs/{FID}/…, .worktrees/{FID}) and downstream
-// /bkit-* dispatch. Without a slug allowlist a marker like
-// `bkit:fid=../../elsewhere` redirects writes outside the log directory.
+// bkit-auto resolves {FID} PRIMARILY from the PR-body marker (`<!-- bkit:fid={FID} -->`).
+// The PR body is collaborator-trusted, not commit-signed (docs/security.md § CI Auto-Route
+// Trust), and {FID} flows into filesystem paths (docs/plans/{YYYYMM}/logs/{FID}/…,
+// .worktrees/{FID}) and downstream /bkit-* dispatch.
 //
-// The allowlist lives in `bkit fids` (commands/workflow/fids.ts). This audit
-// proves BOTH halves of the guard:
+// The allowlist lives in `bkit fids` (commands/workflow/fids.ts). This audit asserts BOTH
+// halves of the guard:
 //   (i)  every FID entry point in bkit-auto.md goes through the command — the
 //        CI_DEV argument through `bkit fids check --tracker=any`, the PR-body
 //        marker and branch fallback through `bkit fids parse` — and no block

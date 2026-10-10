@@ -1,14 +1,11 @@
-// bkit-mcp-toolsets.test.ts — #341 T4 (C1).
+// bkit-mcp-toolsets.test.ts
 //
-// Asserts the `github` MCP server's `X-MCP-Toolsets` header includes `actions`
-// (enables the CI/Actions + artifact-download MCP fallback map consumed by
-// the gh->MCP fallback lane, Sub-Plan 5) in both the live `.mcp.json` and the
-// shipped `.bkit/templates/.mcp.json`, and that the two stay in sync via the
-// real render path (`buildMcpJson`) rather than a naive byte-equal check —
-// bkit owns only the tracker entry of `.mcp.json`, rendered tracker-filtered at
-// install time (`buildMcpJson`), so the live copy legitimately omits the `linear`
-// block the raw template carries. Validate with the real resolver, not a
-// string-presence assumption.
+// Asserts the `github` MCP server's `X-MCP-Toolsets` header includes `actions` (the
+// CI/Actions + artifact-download MCP fallback map the gh->MCP fallback lane uses) in
+// both the live `.mcp.json` and the shipped `.bkit/templates/.mcp.json`, and that the
+// two agree through the real render path (`buildMcpJson`): bkit owns only the tracker
+// entry of `.mcp.json`, rendered tracker-filtered, so the live copy omits the `linear`
+// block the raw template carries.
 
 import * as fs from "node:fs";
 import * as path from "node:path";

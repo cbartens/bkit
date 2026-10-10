@@ -1,13 +1,11 @@
 // bkit-gateguard-dogfood.integration.test.ts — the bkit-repo-only authoring advisories.
 //
-// `.bkit/workflows/*.md` and `.bkit/prompts/*.md` have authoring rules that keep
-// getting ignored (see the sections in `.bkit/workflows.md` and `.bkit/prompts.md`).
-// The hooks fire a path-scoped advisory at the moment of the edit, which a test
-// cannot do — a test only complains afterwards.
+// `.bkit/workflows/*.md` and `.bkit/prompts/*.md` have authoring rules (see the
+// sections in `.bkit/workflows.md` and `.bkit/prompts.md`); the hooks fire a
+// path-scoped advisory at the moment of the edit.
 //
 // This region lives OUTSIDE the bkit:start/bkit:end markers in this repo's four
-// installed hooks. It must therefore satisfy two opposite guarantees, both asserted
-// here because nothing else can:
+// installed hooks. Asserted:
 //   1. it survives `bkit install` / `bkit upgrade` (outside the managed block), and
 //   2. it NEVER reaches a consumer — no template may contain it, since
 //      `.bkit/workflows/` and `.bkit/prompts/` exist only in this repo.
@@ -240,8 +238,8 @@ describe("dogfood region — placement guarantees", () => {
   });
 
   it("the copied doc-advisory text still agrees with the shipped one", () => {
-    // bkitDocAuthoringAdvisory is a deliberate COPY of docAuthoringAdvisory, so the
-    // two can drift. They may differ only in the header label.
+    // bkitDocAuthoringAdvisory is a COPY of docAuthoringAdvisory; they differ only in the
+    // header label.
     const src = fs.readFileSync(CLAUDE, "utf-8");
     const bullets = (fn: string) => {
       const from = src.indexOf(`function ${fn}()`);
@@ -252,9 +250,8 @@ describe("dogfood region — placement guarantees", () => {
         .filter((l) => l.includes('"- ') || l.includes("`- "))
         .map((l) => l.trim().replace(/^[`"]|[`"] \+$/g, ""));
     };
-    // One deliberate omission: `.agents/docs.md` indexes `docs/` and `.agents/` for a
-    // consumer repo. bkit's own reference docs under `.bkit/` are not in that index,
-    // so "check the index first" is guidance the reader cannot act on.
+    // One omission: the "check `.agents/docs.md` index first" line (bkit's own reference
+    // docs under `.bkit/` are not in that index).
     const OMITTED = [
       "- Check .agents/docs.md index first and confirm topic belongs in THIS doc, not another.\\n",
     ];
@@ -273,8 +270,7 @@ describe("dogfood region — placement guarantees", () => {
   });
 
   it("NO template contains it — it must never reach a consumer install", () => {
-    // `.bkit/workflows/` and `.bkit/prompts/` do not exist outside this repo, so a
-    // consumer would get an advisory naming directories they do not have.
+    // `.bkit/workflows/` and `.bkit/prompts/` do not exist outside this repo.
     for (const t of TEMPLATES) {
       const src = fs.readFileSync(t, "utf-8");
       expect(src).not.toContain("DOGFOOD ONLY");
@@ -315,10 +311,8 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
       .trim()
       .toLowerCase();
 
-  // Rules a test already enforces are deliberately NOT in the advisory: a test is a
-  // harder gate than a nudge and costs no tokens per edit. Each exemption names the
-  // test that enforces it, and the test file must exist — delete the test and this
-  // fails, so a rule can never fall through the gap between the two.
+  // Rules a test already enforces are NOT in the advisory. Each exemption names the test
+  // that enforces it, and the test file must exist.
   const ENFORCED_BY: Record<string, string> = {
     "No internal labels, no coined guard names": "bkit-shipped-docs-refs.test.ts",
     "Untrusted content is fenced at the write": "bkit-untrusted-fence.test.ts",
@@ -339,11 +333,8 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
     }
   });
 
-  // Rules the master rule subsumes: `grep` the corpus and copy the closest case and
-  // you get these right, because the corpus SHOWS them. What copying cannot show you
-  // is an absence ("never bold for emphasis" — emphasis-bold is not there to see) or
-  // a threshold ("2+ branches switch shape" — you copy whichever example you landed
-  // on). Those stay named in the advisory; these do not.
+  // Rules the master rule ("grep the corpus and copy the closest case") subsumes. Rules
+  // stating an absence or a threshold stay named in the advisory; these do not.
   const SUBSUMED_BY_MASTER = new Set([
     "Procedural conditionals",
     "Gate items",
@@ -363,8 +354,7 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
     "Output section shape",
   ]);
 
-  // One lead is deliberately reworded. Recorded with its reason, so a rule added
-  // upstream without being carried across still fails.
+  // One lead is reworded, recorded here; any other upstream rule not carried across fails.
   const ALIASES: Record<string, string> = {
     // "here" means the doc you are reading; an advisory has to name the file.
     "Rationale lives here": "commentary lives in",

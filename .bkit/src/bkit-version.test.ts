@@ -247,8 +247,7 @@ describe("P4.T4 — canonicalHashes backward-compat + isConsumerModified", () =>
     expect(parsed).not.toBeNull();
     const filePath = path.join(tmpDir, "ci.yml");
     fs.writeFileSync(filePath, "some content\n", "utf-8");
-    // All files appear as "unknown" → upgrade must surface a conflict for the consumer
-    // to resolve rather than silently overwriting potentially-modified content.
+    // All files appear as "unknown" → upgrade surfaces a conflict for the consumer.
     expect(isConsumerModified(".github/workflows/ci.yml", filePath, parsed!.canonicalHashes)).toBe(
       true,
     );
@@ -256,7 +255,7 @@ describe("P4.T4 — canonicalHashes backward-compat + isConsumerModified", () =>
 });
 
 // ---------------------------------------------------------------------------
-// Managed-version marker (#256) — stampManagedVersion / managedVersionMarker
+// Managed-version marker — stampManagedVersion / managedVersionMarker
 // ---------------------------------------------------------------------------
 
 describe("managedVersionMarker", () => {
@@ -371,8 +370,7 @@ describe("claudeAllowDerived provenance field (T16)", () => {
   });
 
   it("reads a record written under the former key, webFetchDerived", () => {
-    // A consumer upgrading from a release that still wrote `webFetchDerived` must keep
-    // its provenance — losing it would leave bkit unable to prune its own grants.
+    // A `.bkit/version` carrying `webFetchDerived` keeps its provenance.
     const rows = ["WebFetch(domain:models.dev)"];
     const v = parseBkitVersion(JSON.stringify({ pinnedVersion: "4.12.0", webFetchDerived: rows }));
     expect(v?.claudeAllowDerived).toEqual(rows);

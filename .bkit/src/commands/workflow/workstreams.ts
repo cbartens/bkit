@@ -3,7 +3,7 @@
 // own issue.
 //
 // Advisory only. Workflows never create tracker issues, comment on another
-// issue, or set blockers (#486), so nothing here matches workstreams to issues
+// issue, or set blockers, so nothing here matches workstreams to issues
 // or builds blocked-by bodies. The tracker write itself stays an MCP call in the
 // workflow; this prepares its body.
 

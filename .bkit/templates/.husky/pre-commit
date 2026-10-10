@@ -10,7 +10,7 @@
 # fails; the gate that fails on NEW findings is `slop:delta`, which runs in pre-push.)
 #
 # WHAT it runs lives in package.json `bkit:gate:format`, not here — the same script
-# the bkit agent workflows dispatch through. Change the gate there and hooks, prompts
-# and workflows all move together. Add repo-specific extras BELOW this line.
+# the bkit agent workflows dispatch through; change the gate there. Add repo-specific
+# extras BELOW this line.
 set -e
 pnpm bkit:gate:format

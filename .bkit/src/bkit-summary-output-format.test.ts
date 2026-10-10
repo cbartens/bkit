@@ -1,23 +1,13 @@
 // bkit-summary-output-format.test.ts — the `**Output format:**` block of every
 // `bkit-*-summary.md` prompt states ONE contract per section, from a closed set.
 //
-// Why: three different contracts were in play across the five summary prompts and
-// none of them was named. `Breaking Changes` said "Every … item. List all; do NOT
-// trim" in plan and a bare noun phrase in design — same section, same intent,
-// opposite-looking instruction. `Deferred & Out-of-Scope` said "Every … item:" in
-// plan and "Full list of every … One summarised line per item" in ship. And
-// nothing anywhere separated "do not drop an item" from "do not use many words",
-// so a summariser asked to be brief could legitimately drop rows.
-//
-// The fix is a leading verb naming BOTH axes — coverage, and per-item treatment:
+// A leading verb names BOTH axes — coverage, and per-item treatment:
 //   Summarise:                              a synthesis; no per-item coverage promised
 //   List all items and summarise each:      every item appears, each one compressed
 //   List all items verbatim, do NOT summarise: every item appears, each one exact
 //
-// The verb carries the whole contract, so no placeholder restates it. An earlier
-// draft opened with `List every:` and then repeated `List all; do NOT trim` at the
-// end of the same line — two statements of one rule, which is how they drift apart.
-// This suite pins the verb set AND rejects that redundancy coming back.
+// The verb carries the whole contract; no placeholder restates it. This suite pins the
+// verb set AND rejects a restatement.
 //
 // A section that only applies under a verdict states the gate FIRST, so the reader
 // learns whether the section applies before reading what goes in it:
@@ -42,7 +32,7 @@ const VERBS = [
  * `Recommended Next Step` is exempt: it is a fixed-shape copy-paste handoff block
  * that reports no upstream artifact content, so the coverage/treatment verbs above
  * do not apply. Its opening `<ref>` derivation clause is shared verbatim across all
- * five prompts; the routing clause after it is per-phase and deliberately differs.
+ * five prompts; the routing clause after it is per-phase.
  */
 const EXEMPT_PREFIX = "Copy-paste handoff.";
 

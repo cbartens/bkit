@@ -171,7 +171,7 @@ describe("branches rebase: classification", () => {
       .filter((l) => !l.trim().startsWith("#") && /\bmerge=union\b/.test(l))
       .map((l) => l.trim().split(/\s+/)[0]!);
     for (const p of union) expect(LEDGERS, `${p} carries merge=union`).toContain(p);
-    // The one deliberate extra: friction ships unlisted but is resolved at rebase time.
+    // The one extra: friction ships unlisted but is resolved at rebase time.
     expect(LEDGERS.filter((l) => !union.includes(l))).toEqual([".bkit/friction.jsonl"]);
   });
 
@@ -1071,8 +1071,7 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
   });
 
   it("--merge-docs unions a conflicted ledger instead of dropping the branch's rows", async () => {
-    // Deviation from "prefer dev for docs/": dev's copy of a ledger would lose
-    // every row this branch appended.
+    // Ledgers union, unlike "prefer dev for docs/": every row this branch appended survives.
     const { origin, clone } = feature("sync-ledger");
     commit(clone, { "docs/knowledge.jsonl": '{"key":"B","ts":2}\n' }, "docs: branch row");
     landOnDev(origin, { "docs/knowledge.jsonl": '{"key":"C","ts":3}\n' });

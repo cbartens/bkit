@@ -4,9 +4,8 @@
 // session it injects an investigation checklist into the model's context so the
 // investigation happens BEFORE the edit. A second class of paths — quality-gate
 // configs — gets a stronger "fix the code, don't weaken the gate" advisory.
-// New-file advisory: a write to a not-yet-existing path is where bolt-on drift is
-// born. Nudge reuse-over-duplicate (rules.md "Improve over duplicate") instead of
-// the read-this-file checklist, which does not fit a file that does not exist yet.
+// A write to a not-yet-existing path gets the reuse-over-duplicate checklist (rules.md
+// "Improve over duplicate") instead of the read-this-file checklist.
 //
 // CONTRACT — do not regress:
 //   - ADVISORY BY DEFAULT: writes the checklist to stderr, which opencode surfaces in
@@ -15,8 +14,7 @@
 //     without blocking" primitive, so stderr is the advisory channel and the throw
 //     path is reserved for deny mode.
 //
-//   - FAIL OPEN: top-level try/catch swallows every error. A plugin that throws
-//     unexpectedly would crash the tool call — the fail-open boundary prevents that.
+//   - FAIL OPEN: top-level try/catch swallows every error except the deny-mode throw.
 //   - SUBAGENTS INCLUDED: a subagent edit is an edit. Dedup is per (session, file)
 //     and a subagent runs in its own session, so it gets its own checklist.
 //   - DEDUP: warns once per (session, file); state lives in OS temp dir keyed by
@@ -30,13 +28,10 @@
 //
 //   BKIT_ALLOW_CONFIG_EDIT=1 → suppress the gate-config advisory (sanctioned edit).
 //
-// opencode tool names (v1.16.x, from spike-verdict.md §(d)):
-//   The spike captured `"tool": "bash"` for a subagent bash call. opencode does not
-//   ship separate Edit/Write/MultiEdit tools — its primary edit surface is `write`
-//   (file writes) and `edit` (targeted edits). We guard: write, edit, patch.
-//   Bash is excluded (same as Claude's hook excludes Bash from non-edit tools).
+// opencode tool names (v1.16.x): no Edit/Write/MultiEdit tools; the edit surface is
+// `write` (file writes), `edit` (targeted edits) and `patch`. Guarded: write, edit,
+// patch. Bash is not guarded.
 //
-// See: docs/plans/202606/logs/245-opencode-provider-host/spike-verdict.md §(d)
 // Functional mirror of: .bkit/templates/.claude/hooks/gateguard.cjs
 //
 // OWNERSHIP: everything between the markers below is bkit-managed and is
@@ -51,14 +46,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-// opencode edit-like tool names (v1.16.x confirmed from spike).
-// `bash` is NOT in this list — same logic as the Claude hook excluding Bash.
-// Tool names are lowercase in opencode's plugin API (confirmed from spike payload).
+// opencode edit-like tool names (v1.16.x), lowercase in opencode's plugin API.
+// `bash` is NOT in this list.
 const EDIT_TOOLS = new Set(["write", "edit", "patch"]);
 
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
-// Editing these to silence a gate is the recurring "weaken the gate instead of
-// fixing the code" anti-pattern — prefer a targeted per-file opt-out + sign-off.
+// A matching path gets the gate-config advisory instead of the first-touch checklist.
 const GATE_CONFIG_PATTERNS = [
   /^tsconfig(\..+)?\.json$/,
   /^vitest\.config\.[mc]?[jt]s$/,
@@ -75,9 +68,9 @@ const GATE_CONFIG_PATTERNS = [
   /^lint-staged\.config\.[mc]?js$/,
 ];
 
-// The consumer's `.bkit/templates/` holds bkit's reference copies, refreshed on every
-// upgrade, so a path under it is not this repo's gate config. In bkit's own repo
-// (package name `@cbartens/bkit`) that folder is the template source and stays guarded.
+// A path under `.bkit/templates/` (bkit's reference copies, refreshed on every upgrade)
+// is not a gate config, except in bkit's own repo (package name `@cbartens/bkit`), where
+// that folder is the template source and stays guarded.
 const TEMPLATE_COPIES_DIR = ".bkit/templates/";
 
 function isBkitRepo(root) {
@@ -138,11 +131,9 @@ function configAdvisory(filePath) {
   );
 }
 
-// docs/*.md authoring contract — path-scoped, appended to whichever base advisory
-// applies (first-touch / new-file / gate-config are orthogonal to this). Segment
-// match, not basename — every one of these directories holds same-named files.
-// Excludes docs/plans/ (the plan template governs those, not the docs register)
-// and non-.md files (docs/ also holds knowledge.jsonl, decisions.jsonl, etc.).
+// docs/*.md authoring contract — appended to whichever base advisory applies
+// (first-touch / new-file / gate-config). Matches a `docs/` path segment, not a
+// basename. Excludes docs/plans/ and non-.md files.
 function isDocsPath(filePath) {
   const p = filePath.replace(/\\/g, "/");
   if (!p.endsWith(".md")) return false;
@@ -193,9 +184,8 @@ function markWarned(sessionId, filePath) {
   fs.writeFileSync(stateFile(sessionId), JSON.stringify(state), "utf-8");
 }
 
-// Opportunistic TTL: drop session state files older than 24h so the temp dir does
-// not grow without bound. Runs last (after the advisory is emitted) so a cleanup
-// race cannot suppress the advisory.
+// Opportunistic TTL: drops session state files older than 24h. Runs last, after the
+// advisory is decided; a cleanup race never suppresses the advisory.
 function gcOldState() {
   const dir = stateDir();
   if (!fs.existsSync(dir)) return;
@@ -225,7 +215,7 @@ function bkitGateguard(toolName, filePath, sessionId) {
   if (alreadyWarned(sid, filePath)) return null;
 
   const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
-  // A write to a not-yet-existing path is a NEW file — the bolt-on moment.
+  // A write to a not-yet-existing path is a NEW file and gets the reuse checklist.
   const isNewFile = toolName === "write" && !fs.existsSync(filePath);
   const baseContext = gated
     ? configAdvisory(filePath)
@@ -253,7 +243,7 @@ import { fileURLToPath } from "node:url";
 // (.bkit/workflows/ and .bkit/prompts/ never exist outside this repo). Lives
 // outside the managed block so it survives every `bkit install` / `bkit upgrade`.
 // Rules the advisories share with .bkit/workflows.md and .bkit/prompts.md are read
-// from those sections at hook time, never copied, so they cannot drift.
+// from those sections at hook time, never copied.
 // ---------------------------------------------------------------------------
 
 function isBkitWorkflowPath(filePath) {
@@ -337,10 +327,9 @@ function proseAuthoringAdvisory() {
 function isBkitDocPath(filePath) {
   const p = filePath.replace(/\\/g, "/");
   if (!p.endsWith(".md")) return false;
-  // Own docs/** test, deliberately NOT the managed block's isDocsPath: this region
-  // must keep working whatever happens inside the markers. docs/** already gets the
-  // shipped advisory, and the two execution surfaces get their own — what is left is
-  // bkit's own reference docs under `.bkit/` and `.agents/`, templates included.
+  // Own docs/** test, independent of the managed block's isDocsPath. Matches bkit's
+  // own reference docs under `.bkit/` and `.agents/`, templates included; docs/** and
+  // the two execution surfaces are excluded.
   if (p.startsWith("docs/") || p.includes("/docs/")) return false;
   if (isBkitWorkflowPath(p) || isBkitPromptPath(p)) return false;
   return (
@@ -385,10 +374,9 @@ export default function plugin(input) {
         const { tool, sessionID } = hookInput;
         if (!EDIT_TOOLS.has(tool)) return;
 
-        // Subagents are NOT exempt: a subagent edit is still an edit, and the
-        // investigation it skips is the same investigation. Dedup is per
-        // (session, file), and a subagent runs in its own session, so it gets the
-        // checklist once for a file the orchestrator already touched.
+        // Subagents are NOT exempt. Dedup is per (session, file), and a subagent runs
+        // in its own session, so it gets the checklist once for a file the orchestrator
+        // already touched.
 
         // Extract file path from tool args (opencode's write/edit/patch tools).
         // The args object structure: write → { path, content }, edit → { path, ... },
@@ -419,7 +407,7 @@ export default function plugin(input) {
         ) {
           throw err;
         }
-        // Fail-open: swallow unexpected errors so the hook never crashes a session.
+        // Fail-open: unexpected errors are swallowed and the tool call proceeds.
       }
     },
   };

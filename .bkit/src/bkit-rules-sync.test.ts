@@ -94,11 +94,8 @@ describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", ()
   });
 
   it("the template ships NO project rules below bkit:end — only the empty group scaffold", () => {
-    // D3 exclusion, asserted by shape rather than by naming known sections.
-    // Whatever a repo puts under `Project Rules` (naming conventions, repo
-    // authoring rules) is per-project and must ship to nobody; seeding even one
-    // would push one repo's conventions onto every consumer. Counting bullets
-    // instead of matching section titles keeps this gate working after a rename.
+    // `Project Rules` content (naming conventions, repo authoring rules) ships to nobody.
+    // Asserted by counting bullets, not by naming sections.
     const templateContent = fs.readFileSync(templateRulesPath, "utf-8");
     const belowManaged = templateContent.slice(
       templateContent.indexOf("<!-- bkit:end -->") + "<!-- bkit:end -->".length,

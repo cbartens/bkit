@@ -5,22 +5,15 @@
  * for `$ARGUMENTS[N]`, zero-based, so `/bkit-plan #442` rewrites every literal
  * `$0` in the file to `#442`.
  *
- * That lands inside awk programs. `awk '… tolower($0) …'` became
- * `awk '… tolower(#442) …'`, which dies with a syntax error — and dies SILENTLY,
- * because the call site is `M=$(awk …)`: awk's exit status is discarded, `M` is
- * empty, and the step writes `None.` as though the ledger held no matches.
- *
- * `$1`, `$2` … are the same hazard, dormant: an index with no matching argument
- * is left unchanged, so `awk '{print $2}'` survives a one-argument invocation and
- * breaks the moment a third argument is passed.
+ * Inside an awk program, `awk '… tolower($0) …'` would become `awk '… tolower(#442) …'`.
+ * `$1`, `$2` … are rewritten whenever that many arguments are passed.
  *
  * Ledger scans and lock-owner reads run inside `bkit` commands, so a workflow
  * needs no `$N` at all. When an inline awk
  * program does need a field, write `$(N)` (POSIX awk — `$` applied to a
- * parenthesised expression — with no `$`-digit sequence for any host to rewrite),
- * not the host's `\$N` escape: the backslash escape is Claude-Code-specific, and
- * these same files also render to `.cursor/commands/` and `.opencode/commands/`,
- * where a surviving `\$0` would reach awk as a syntax error of its own.
+ * parenthesised expression — with no `$`-digit sequence for any host to rewrite), not
+ * the host's `\$N` escape (Claude-Code-specific; these files also render to
+ * `.cursor/commands/` and `.opencode/commands/`).
  *
  * Scope is workflows only. `bkit` commands, `.bkit/scripts/*` and
  * `.github/workflows/*.yml` are executed as programs, never expanded.

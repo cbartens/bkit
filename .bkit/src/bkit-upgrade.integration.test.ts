@@ -1,9 +1,8 @@
 // bkit-upgrade.integration.test.ts — Integration test: 0.4.x → 0.5.x customised hooks scenario.
 //
-// Tests: Derived Test Matrix row
-//   "Upgrade integration (customised hooks scenario)" (P4.T7)
+// Tests: "Upgrade integration (customised hooks scenario)"
 //
-// Fixture: tests/fixtures/heavy-customised-consumer/ (committed in sub-plan-2 P2.T8a)
+// Fixture: tests/fixtures/heavy-customised-consumer/
 //
 // Scenario:
 //   A consumer had bkit@0.4.x installed with a customised .cursor/hooks.json:
@@ -285,7 +284,7 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
 });
 
 // ---------------------------------------------------------------------------
-// Issue #129 §5 — `bkit upgrade` must NOT force-create opt-in module files
+// `bkit upgrade` does NOT force-create opt-in module files
 //
 // Updater configs are examples. Upgrade must not create them, and must not
 // rewrite a copy the consumer already owns.
@@ -538,7 +537,7 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
 });
 
 // ---------------------------------------------------------------------------
-// #489 — install writes no template outside .bkit/templates/, upgrade never touches an
+// Install writes no template outside .bkit/templates/, upgrade never touches an
 // adopted template copy or a create-if-missing file, and refreshes only the managed
 // block of .agents/context.md
 // ---------------------------------------------------------------------------
@@ -659,12 +658,11 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
 });
 
 // ---------------------------------------------------------------------------
-// #255 — upgrade must not force-create uninstalled host/tooling modules
+// Upgrade does not force-create uninstalled host/tooling modules
 //
 // claude/cursor/lint are each separately installable. The upgrade template walk is
-// gated on sentinel-detected installation; seeding EVERY non-opt-in template would give
-// a `--claude`-only consumer cursor/lint FILES on upgrade, which `bkit check` then flags
-// as drift (install↔upgrade divergence).
+// gated on sentinel-detected installation: a `--claude`-only consumer gets no
+// cursor/lint files on upgrade.
 // ---------------------------------------------------------------------------
 
 describe("#255 — upgrade does not force-create uninstalled host/tooling modules", () => {
@@ -776,12 +774,11 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
 });
 
 // ---------------------------------------------------------------------------
-// #281 Task 3 — upgrade re-renders ALL installed provider blocks into opencode.json
+// Upgrade re-renders ALL installed provider blocks into opencode.json
 //
 // When multiple providers are installed (e.g. openrouter + ollama), `bkit upgrade`
-// must re-render and reconverge EVERY provider's block into opencode.json — not just
-// the active one. This ensures template changes (new keys, updated placeholders) reach
-// all installed providers' blocks on every upgrade.
+// re-renders and reconverges EVERY provider's block into opencode.json — not just the
+// active one.
 // ---------------------------------------------------------------------------
 
 describe("#281 Task 3 — upgrade re-renders all installed provider blocks", () => {
@@ -863,9 +860,7 @@ describe("#281 Task 3 — upgrade re-renders all installed provider blocks", () 
 });
 
 // ---------------------------------------------------------------------------
-// #281 AC — `bkit check` exits 0 (no drift) with multiple providers installed
-//
-// Spec: "bkit check exits 0 (no drift) with multiple providers installed; dry-run parity holds."
+// `bkit check` exits 0 (no drift) with multiple providers installed; dry-run parity holds.
 // ---------------------------------------------------------------------------
 
 describe("#281 AC — bkit check exits 0 with multiple providers installed", () => {
@@ -907,12 +902,10 @@ describe("#281 AC — bkit check exits 0 with multiple providers installed", () 
 });
 
 // ---------------------------------------------------------------------------
-// #334 — `bkit upgrade` auto-migrates context-fetch blocks observability.md → config.md
+// `bkit upgrade` auto-migrates context-fetch blocks observability.md → context.md
 //
-// install and upgrade are SEPARATE engines. The migration is wired into runCoreModule
-// (install) AND the upgrade dispatch; without the upgrade wiring an upgrading consumer's
-// context-fetch blocks stay stranded in docs/observability.md while /bkit-debug reads only
-// .agents/context.md. End-to-end via a real `bkit upgrade --auto-apply`, not a unit stub.
+// install and upgrade are SEPARATE engines; the migration is wired into runCoreModule
+// (install) AND the upgrade dispatch. End-to-end via a real `bkit upgrade --auto-apply`.
 // ---------------------------------------------------------------------------
 
 describe("#334 — bkit upgrade migrates context-fetch blocks observability.md → .agents/context.md", () => {
@@ -973,11 +966,9 @@ describe("#334 — bkit upgrade migrates context-fetch blocks observability.md �
 });
 
 // ---------------------------------------------------------------------------
-// #422 — gateguard.cjs/gateguard.js markered-text upgrade round-trip. This is the
-// regression test for detectMarkerStyle (bkit-tiers.ts, site 9): if the slash-comment
-// marker style is missing from its style list, `bkit upgrade` silently stops
-// managing these files with no error and no drift signal — nothing
-// else catches that. A real install, then a real upgrade, is the only way to prove it.
+// gateguard.cjs/gateguard.js markered-text upgrade round-trip: detectMarkerStyle
+// (bkit-tiers.ts) recognises the slash-comment marker style. A real install, then a
+// real upgrade.
 // ---------------------------------------------------------------------------
 
 describe("#422 — gateguard markered-text upgrade round-trip (site-9 regression)", () => {
@@ -1020,10 +1011,8 @@ describe("#422 — gateguard markered-text upgrade round-trip (site-9 regression
 
     // Tamper OUTSIDE the block (consumer's own driver code — must survive) AND STALE
     // the INSIDE-block content (must be refreshed back to the shipped template on
-    // upgrade). Block-merge is unconditional — this is the discriminating signal for
-    // the site-9 regression: without it, `detectMarkerStyle` mis-reads the `//
-    // bkit:start` template as null, writeTier2 finds no block to manage, and this
-    // stale content would silently survive the upgrade instead of being refreshed.
+    // upgrade). Block-merge is unconditional; the refreshed inside-block content shows
+    // `detectMarkerStyle` read the `// bkit:start` template.
     const cjsTampered = cjsOriginal
       .replace(
         /function isGateConfig/,

@@ -47,12 +47,9 @@ export const OPENCODE_PROVIDERS = [
  * a program. See providers.md § Supported hosts.
  *
  * One gateway = pinned, and the CLI flag takes no value (`--claude`). Several = the flag
- * must name one (`--opencode=<gateway>`). Pinning is POLICY, not capability: Cursor can
- * reach Claude models and anything behind OpenRouter can too. Each program is pinned to
- * the gateway whose subscription is already paid for, and the escape when a subscription
- * runs dry is to switch PROGRAM, not gateway — because the cheap gateway is attached to a
- * different program. Per-model deviations go in the consumer-owned `## Model Overrides`
- * table below the `bkit:end` marker; there is deliberately no gateway override.
+ * must name one (`--opencode=<gateway>`). Pinning is POLICY, not capability. Per-model
+ * deviations go in the consumer-owned `## Model Overrides` table below the `bkit:end`
+ * marker; there is no gateway override.
  */
 export const PROGRAM_GATEWAYS: Record<string, readonly string[]> = {
   claude: ["anthropic"],
@@ -231,7 +228,7 @@ export interface UpgradeFlags {
 // Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing) and
 // `typescript` are intercepted by dedicated branches in parseArgs before this set is
 // consulted; the generic check only ever validates claude/cursor/codex. `full`, `core`,
-// `lint` and `cloud` are NOT accepted as bare flags (#252/#265): use `--typescript` and
+// `lint` and `cloud` are NOT accepted as bare flags: use `--typescript` and
 // `--auto=<claude|cursor>`; core is implicit.
 // There is no dependency-updater flag. Copy an example; CI warns when none is present.
 const MODULE_FLAGS = new Set<ModuleFlag>(["claude", "cursor", "opencode", "codex", "typescript"]);
@@ -242,9 +239,7 @@ const ALL_MODULES: ModuleFlag[] = ["core", "claude", "cursor", "lint"];
 
 /**
  * Opt-in modules: never installed implicitly; each requires an explicit flag
- * (`--auto=`, `--opencode=`). A bare/full `uninstall` DOES remove
- * them (zero footprint). Rationale: cloud auto-dispatches agents and is inert
- * without secrets; opencode is a provider-pluggable additive host. See issue #119.
+ * (`--auto=`, `--opencode=`). A bare/full `uninstall` DOES remove them (zero footprint).
  * Dependency-updater files are not modules — bkit never writes or removes them.
  */
 export const OPTIN_MODULES = new Set<ModuleFlag>(["cloud", "opencode", "codex"]);
@@ -389,8 +384,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   }
 
   for (const arg of args) {
-    // `--help` / `-h` after a verb (e.g. `bkit install --help`) prints usage instead of
-    // erroring with "Unknown flag: --help" — many users expect subcommand help. (#255 P3)
+    // `--help` / `-h` after a verb (e.g. `bkit install --help`) prints usage.
     if (arg === "--help" || arg === "-h") {
       verb = "help";
       break;
@@ -520,7 +514,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
         continue;
       }
       if (flag === "force") {
-        // Uninstall-only (#252): force-delete whole-file owned files even if consumer-modified.
+        // Uninstall-only: force-delete whole-file owned files even if consumer-modified.
         uninstallFlags.force = true;
         continue;
       }
@@ -561,7 +555,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
         continue;
       }
 
-      // --typescript (#265): the owned slop-scan type-suppression plugin (internal `lint`
+      // --typescript: the owned slop-scan type-suppression plugin (internal `lint`
       // module). The tool scripts, devDeps, configs and hooks are templates.
       if (flag === "typescript") {
         moduleFlags.add("lint");

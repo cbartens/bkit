@@ -3,21 +3,17 @@
 //
 // Fires before Edit / Write / MultiEdit. On the FIRST touch of a given file in a
 // session it injects an investigation checklist into the model's context so the
-// investigation happens BEFORE the edit (LLM self-review is weak; the act of
-// investigating is what changes the output). A second class of paths — quality-
-// gate configs — gets a stronger "fix the code, don't weaken the gate" advisory.
-// New-file advisory: a Write to a not-yet-existing path is where bolt-on drift is
-// born. Nudge reuse-over-duplicate (rules.md "Improve over duplicate") instead of
-// the read-this-file checklist, which does not fit a file that does not exist yet.
+// investigation happens BEFORE the edit. A second class of paths — quality-gate
+// configs — gets a stronger "fix the code, don't weaken the gate" advisory. A Write
+// to a not-yet-existing path gets the reuse-over-duplicate checklist (rules.md
+// "Improve over duplicate") instead of the read-this-file checklist.
 //
 // CONTRACT — do not regress:
-//   - ADVISORY BY DEFAULT: emits `additionalContext` only, never blocks. The
-//     deny ramp is a deliberate, dogfood-gated flip — already wired behind
-//     BKIT_GATEGUARD=deny, so enabling it is a config change, NOT a code change.
+//   - ADVISORY BY DEFAULT: emits `additionalContext` only, never blocks. Deny mode
+//     is wired behind BKIT_GATEGUARD=deny (see MODES).
 //   - FAIL OPEN: a single top-level catch swallows every error (the process exits
 //     0 with whatever was already emitted). Normal control paths use existence
-//     guards rather than try/catch so the only error sink is that one boundary —
-//     a hook that throws would break the consumer's session.
+//     guards, never try/catch; that catch is the only error sink.
 //   - SUBAGENTS INCLUDED: a subagent edit is an edit. Dedup is per (session, file)
 //     and a subagent carries its own session id, so it gets its own checklist.
 //   - DEDUP: warns once per (session, file); state lives in the OS temp dir keyed
@@ -38,9 +34,8 @@
 //
 // OWNERSHIP: everything between the markers below is bkit-managed and is
 // overwritten on every `bkit install` / `bkit upgrade`. It is a pure advisory
-// engine only — no stdin read, no stdout write, no top-level invocation — so two
-// emitters (bkit's and yours) can never collide into one unparseable stdout
-// blob. Add your own logic in the driver that follows the managed block: call
+// engine only — no stdin read, no stdout write, no top-level invocation. Add your
+// own logic in the driver that follows the managed block: call
 // `bkitGateguard(payload)`, fold in your own checks, and call `emit()` once.
 
 "use strict";
@@ -54,8 +49,7 @@ const path = require("node:path");
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit"]);
 
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
-// Editing these to silence a gate is the recurring "weaken the gate instead of
-// fixing the code" anti-pattern — prefer a targeted per-file opt-out + sign-off.
+// A matching path gets the gate-config advisory instead of the first-touch checklist.
 const GATE_CONFIG_PATTERNS = [
   /^tsconfig(\..+)?\.json$/,
   /^vitest\.config\.[mc]?[jt]s$/,
@@ -72,9 +66,9 @@ const GATE_CONFIG_PATTERNS = [
   /^lint-staged\.config\.[mc]?js$/,
 ];
 
-// The consumer's `.bkit/templates/` holds bkit's reference copies, refreshed on every
-// upgrade, so a path under it is not this repo's gate config. In bkit's own repo
-// (package name `@cbartens/bkit`) that folder is the template source and stays guarded.
+// A path under `.bkit/templates/` (bkit's reference copies, refreshed on every upgrade)
+// is not a gate config, except in bkit's own repo (package name `@cbartens/bkit`), where
+// that folder is the template source and stays guarded.
 const TEMPLATE_COPIES_DIR = ".bkit/templates/";
 
 function isBkitRepo(root) {
@@ -124,11 +118,9 @@ function reuseChecklist(filePath) {
   );
 }
 
-// docs/*.md authoring contract — path-scoped, appended to whichever base advisory
-// applies (first-touch / new-file / gate-config are orthogonal to this). Segment
-// match, not basename — every one of these directories holds same-named files.
-// Excludes docs/plans/ (the plan template governs those, not the docs register)
-// and non-.md files (docs/ also holds knowledge.jsonl, decisions.jsonl, etc.).
+// docs/*.md authoring contract — appended to whichever base advisory applies
+// (first-touch / new-file / gate-config). Matches a `docs/` path segment, not a
+// basename. Excludes docs/plans/ and non-.md files.
 function isDocsPath(filePath) {
   const p = filePath.replace(/\\/g, "/");
   if (!p.endsWith(".md")) return false;
@@ -171,7 +163,7 @@ function stateFile(sessionId) {
 
 // Returns the per-session warned-file map. Absent state file is the NORMAL
 // first-touch case (guarded, no throw); a corrupt file throws to the top-level
-// fail-open boundary, which is acceptable (that one call no-ops).
+// fail-open boundary and that one call no-ops.
 function readState(sessionId) {
   const file = stateFile(sessionId);
   if (!fs.existsSync(file)) return { files: {} };
@@ -193,9 +185,8 @@ function markWarned(sessionId, filePath) {
   fs.writeFileSync(stateFile(sessionId), JSON.stringify(state), "utf-8");
 }
 
-// Opportunistic TTL: drop session state files older than 24h so the temp dir does
-// not grow without bound. Runs last (after the advisory is decided) so a cleanup
-// race cannot suppress the advisory — the driver emits before this returns.
+// Opportunistic TTL: drops session state files older than 24h. Runs last, after the
+// advisory is decided; a cleanup race never suppresses the advisory.
 function gcOldState() {
   const dir = stateDir();
   if (!fs.existsSync(dir)) return;
@@ -210,17 +201,14 @@ function gcOldState() {
 }
 
 // Pure: takes the already-parsed hook payload, returns the advisory to emit or
-// null. Never touches process.stdin / process.stdout — the driver below owns
-// both, so bkit and consumer logic can never produce two JSON documents on one
-// stdout stream.
+// null. Never touches process.stdin / process.stdout — the driver below owns both.
 function bkitGateguard(payload) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off") return null;
 
-  // Subagents are NOT exempt: a subagent edit is still an edit, and the
-  // investigation it skips is the same investigation. Dedup is per (session, file)
-  // and a subagent carries its own session id, so it gets the checklist once for a
-  // file the orchestrator already touched.
+  // Subagents are NOT exempt. Dedup is per (session, file) and a subagent carries its
+  // own session id, so it gets the checklist once for a file the orchestrator already
+  // touched.
   if (!EDIT_TOOLS.has(payload.tool_name)) return null;
 
   const input = payload.tool_input || {};
@@ -233,7 +221,7 @@ function bkitGateguard(payload) {
   if (alreadyWarned(sessionId, filePath)) return null;
 
   const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
-  // A Write to a not-yet-existing path is a NEW file — the bolt-on moment.
+  // A Write to a not-yet-existing path is a NEW file and gets the reuse checklist.
   const isNewFile = payload.tool_name === "Write" && !fs.existsSync(filePath);
   const baseContext = gated
     ? configAdvisory(filePath)

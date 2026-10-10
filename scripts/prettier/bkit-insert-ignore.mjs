@@ -58,8 +58,8 @@ function escapeCodeSpanPipes(line) {
 // Per GFM a pipe delimits a cell even inside a code span — `|| echo` in a cell is already TWO
 // cells, and splitting then rejoining it rewrites it as ` |  | echo`. Escape span pipes only when
 // that lands the row exactly on the separator's column count: a span pipe that is already a live
-// delimiter (older damage, or a deliberately split cell) must stay, or two real cells merge.
-// The separator is the arbiter, which keeps the decision stable across repeat runs.
+// delimiter (older damage, or a deliberately split cell) stays. The separator's column count
+// decides, so repeat runs make the same decision.
 function maybeEscape(line, ncols) {
   if (!isPipeRow(line) || !line.includes("`")) return line;
   const escaped = escapeCodeSpanPipes(line);
@@ -150,11 +150,9 @@ export function processText(src) {
   return out.join("");
 }
 
-// Damage this script deliberately will NOT touch. Escaping is safe only where a pipe is known to be
-// cell content, which is inside an inline-code span (maybeEscape). A bare pipe in plain cell prose
-// ("boundary=browser | network") is indistinguishable from a delimiter without reading the
-// sentence, and escaping the wrong one MERGES two real cells — so these are reported for a human.
-// GFM punishes both silently, which is why they survive for months:
+// Damage this script reports and does NOT touch. Escaping happens only inside an inline-code span
+// (maybeEscape); a bare pipe in plain cell prose ("boundary=browser | network") is left for a
+// human. GFM renders both silently wrong:
 //   truncated-row     a body row has MORE cells than the separator; GFM drops the overflow.
 //   unrendered-table  header cell count != separator; GFM renders the whole block as raw text.
 // Run on the POST-format text, so nothing escaping already fixed is reported twice.

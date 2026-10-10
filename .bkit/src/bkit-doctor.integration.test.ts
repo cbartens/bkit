@@ -321,7 +321,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
   });
 
   it("mcp-env-blank-key advisories surface when .bkit/.env has blank values (Linear tracker → all 3 keys)", () => {
-    // Linear tracker so BKIT_LINEAR_API_KEY is a required key (issue #138 tracker-gating).
+    // Linear tracker so BKIT_LINEAR_API_KEY is a required key.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "x", bkit: { issueTracker: "linear" } }),
@@ -430,7 +430,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Task 5 (#281) — status and doctor show ALL installed providers
+// status and doctor show ALL installed providers
 // ---------------------------------------------------------------------------
 
 function seedMultiProvider(dir: string): void {

@@ -255,7 +255,7 @@ describe("Group B templates — .vale.ini partial-ownership markers", () => {
 // ---------------------------------------------------------------------------
 // slop-scan.config.json — JSON deep-containment, NOT markers
 // Eleven required rules must be present with enabled: true — the ten core
-// built-ins plus the boundary/type-suppression plugin rule (#263).
+// built-ins plus the boundary/type-suppression plugin rule.
 // ---------------------------------------------------------------------------
 
 describe("slop-scan.config.json — required core rules (JSON deep-containment)", () => {

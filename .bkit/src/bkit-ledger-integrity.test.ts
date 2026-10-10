@@ -1,15 +1,12 @@
 /**
  * bkit-ledger-integrity.test.ts — the repo's LIVE ledgers stay machine-readable.
  *
- * Ledger appends are best-effort and exit 0 by design (`.bkit/jsonl.md`
- * § Best-effort append), so a malformed row raises no signal at write time and
- * nothing downstream notices until a reader fails. One invalid line (e.g. a
- * `ts` that is a literal, unexpanded `$(date +%s)000`) makes `jq` reject the
- * WHOLE file, so `bkit harvest`, the analysis pass, and every fold over that
- * ledger fail. A row with no `kind` cannot be routed to its ledger.
+ * Ledger appends are best-effort and exit 0 (`.bkit/jsonl.md` § Best-effort append).
+ * One invalid line (e.g. a `ts` that is a literal, unexpanded `$(date +%s)000`) makes
+ * `jq` reject the WHOLE file. A row with no `kind` cannot be routed to its ledger.
  *
- * `bkit-telemetry-lint.test.ts` covers the codec against fixtures; this file
- * asserts the real files on disk. Fixtures cannot catch a hand-appended row.
+ * `bkit-telemetry-lint.test.ts` covers the codec against fixtures; this file asserts
+ * the real files on disk.
  */
 
 import * as fs from "node:fs";
@@ -47,12 +44,9 @@ const DRAINED_LEDGER = ".bkit/friction.jsonl";
 
 /**
  * Envelope fields gated here: the ones every reader needs to route, attribute
- * and dedupe a row. `workflow` and `step` are NOT gated — a handful of rows
- * were authored outside any phase workflow (`step: "manual-investigation"`),
- * where `workflow` has no honest value, and backfilling a phase would put
- * invented data in a ledger that feeds analysis. Reconciling that with
- * `.bkit/jsonl.md` (mark them optional, or define a manual sentinel) is
- * tracked as `ledger-envelope-workflow-field-not-universal`.
+ * and dedupe a row. `workflow` and `step` are NOT gated (some rows were authored
+ * outside any phase workflow, `step: "manual-investigation"`); tracked as
+ * `ledger-envelope-workflow-field-not-universal`.
  */
 const ENVELOPE = ["ts", "kind", "repo", "bkitVersion"] as const;
 
@@ -71,9 +65,8 @@ type Parsed =
   | { line: number; row?: undefined; error: string };
 
 /**
- * Parse every row, KEEPING the parse error rather than discarding it — the
- * reason a line is unreadable (`Unexpected token`, `Invalid numeric literal`)
- * is what points at the append that wrote it.
+ * Parse every row, KEEPING the parse error (`Unexpected token`, `Invalid numeric
+ * literal`) for the failure message.
  */
 function parsed(rel: string): Parsed[] {
   return rows(rel).map(({ line, raw }) => {
@@ -124,21 +117,14 @@ describe("live ledgers are machine-readable", () => {
     });
   }
 
-  // `reason` (`.bkit/jsonl.md` § Deferral Reason) is what makes a deferral's claim
-  // to be out-of-scope adjudicable rather than self-granted. `validate()` gates it
-  // on programmatic writes, but every live deferral row is appended by an agent via
-  // `jq >>`, which never touches the codec — so the file itself is the only place
-  // the enum can be enforced.
+  // `reason` (`.bkit/jsonl.md` § Deferral Reason) is enforced on the file: `validate()`
+  // gates programmatic writes, and live deferral rows are appended via `jq >>`.
   describe("docs/deferrals.jsonl reason", () => {
-    // Rows appended before the field existed cannot grow one: the ledger is
-    // append-only and backfilling would invent a justification nobody gave. The
-    // cutoff is the day the field landed; every row already on disk predates it.
+    // Rows appended before the cutoff (the day the field landed) are exempt.
     const REASON_REQUIRED_FROM = 1785456000000; // 2026-07-31T00:00:00Z
 
-    // FOLDED, not per-line: a superseded row keeps whatever it said, by design
-    // (`.bkit/jsonl.md` § Updating a Row — "older rows = history"), so a value
-    // corrected by same-`key` append must not keep failing from the line it was
-    // corrected on. What has to hold is the CURRENT state of each entity.
+    // FOLDED, not per-line (`.bkit/jsonl.md` § Updating a Row): the CURRENT state of
+    // each entity is checked.
     const entities = () => {
       const { state } = foldFrom([path.join(REPO_ROOT, "docs/deferrals.jsonl")]);
       return [...state.values()].map((v) => ({ ...v }) as Record<string, unknown>);
@@ -151,13 +137,8 @@ describe("live ledgers are machine-readable", () => {
       expect(bad).toEqual([]);
     });
 
-    // `unjustified` is the one reason its own writer cannot assign — a reviewer
-    // sets it on someone else's deferral. `fold()` is last-write-wins over the
-    // whole row, so the next same-`key` append silently decides whether the
-    // verdict survives, and the party it judges is usually the one appending.
-    // `.bkit/jsonl.md` § Field Semantics states the carry-forward; nothing but
-    // this test enforces it, and the rate in `computeDeferralDiscipline` counts
-    // the folded entity, so a dropped verdict erases the finding outright.
+    // `unjustified` is set by a reviewer on someone else's deferral and carried forward
+    // by every later same-`key` row (`.bkit/jsonl.md` § Field Semantics).
     it("no entity drops an `unjustified` verdict a later row was meant to carry", () => {
       const raw = fs.readFileSync(path.join(REPO_ROOT, "docs/deferrals.jsonl"), "utf-8");
       const { events } = parse(raw);
@@ -183,10 +164,7 @@ describe("live ledgers are machine-readable", () => {
       expect(bare).toEqual([]);
     });
 
-    // The writer list is exhaustive, and prose alone did not hold it: the plan
-    // executor wrote rows despite a contract line forbidding it, turning blocked
-    // plan tasks into ledger entries the build loop reads as settled. Same cutoff
-    // as above — the rows that predate the rule stay as the record of why it exists.
+    // The writer list is exhaustive. Same cutoff as above.
     it("no entity since the cutoff names an unsanctioned writer", () => {
       const rogue = entities()
         .filter(
@@ -239,30 +217,12 @@ describe("live ledgers are machine-readable", () => {
   });
 
   /**
-   * A BACKDATED `ts` is the milder twin of the future one above, and the gate
-   * there cannot see it: a fabricated past value is indistinguishable from a
-   * real one, so it passes silently while still reordering the last-wins fold.
+   * A whole-second `ts` (ts % 1000 == 0) at or after the cutoff fails: `now*1000|floor`
+   * (`.bkit/jsonl.md` § Write Idiom) lands on a whole second once in a thousand rows.
+   * Rows below the cutoff are exempt.
    *
-   * What separates them is precision. `now*1000|floor` (`.bkit/jsonl.md`
-   * § Write Idiom) lands on a whole second once in a thousand rows; a
-   * hand-typed one is round, because a model writing a number by hand reaches
-   * for `…T00:00:00Z` and increments. The live ledgers carry the split as a
-   * controlled experiment: `.bkit/stats.jsonl`, appended only by the workflow
-   * shell via the idiom, is 0-for-63 whole-second, while the agent-appended
-   * ledgers — whose prompts say "in `.bkit/jsonl.md` format" and hand the model
-   * a JSON shape to author — are 44-for-270, including two decisions stamped
-   * the identical midnight value and three deferrals at a sequential
-   * `00:00:10/11/12`.
-   *
-   * Rows below the cutoff are that evidence and stay: the ledgers are
-   * append-only, and re-minting history would invent the very data this gate
-   * exists to keep out.
-   *
-   * Limits, stated rather than papered over: this catches round numbers, not
-   * dishonesty in general — a hand-typed `…006903` still passes, as does a
-   * fabricated round value backdated below the cutoff. It also fails the
-   * genuine 1-in-1000 mint. That one is not worth an escape hatch: re-run the
-   * append and take the new `ts`. Never hand-edit a digit to clear this test.
+   * Catches round numbers only; it also fails the genuine 1-in-1000 mint. Fix: re-run
+   * the append and take the new `ts`. Never hand-edit a digit to clear this test.
    */
   const HANDTYPED_TS_GATED_FROM = 1787788800000; // 2026-08-27T00:00:00Z
 

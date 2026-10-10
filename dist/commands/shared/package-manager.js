@@ -11,8 +11,8 @@ export const scriptCommand = (script) => [PACKAGE_RUNNER, script];
 export const installCommand = (opts) => opts.frozen ? [PACKAGE_RUNNER, "install", "--frozen-lockfile"] : [PACKAGE_RUNNER, "install"];
 /**
  * argv that regenerates a lockfile from its manifest, keyed by lockfile name.
- * Covers lockfiles from other ecosystems too, because a consumer's stack is free:
- * a rebase conflict in `Cargo.lock` is resolved the same way as one in
+ * Covers lockfiles from other ecosystems too: a rebase conflict in `Cargo.lock` is
+ * resolved the same way as one in
  * `pnpm-lock.yaml`. A lockfile with no entry is left for a human.
  */
 export const LOCKFILE_REGENERATE = {

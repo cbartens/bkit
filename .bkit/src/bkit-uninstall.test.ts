@@ -115,9 +115,8 @@ describe("buildDecisionTable — markered-text format", () => {
   });
 
   it("markered-text file with comment-prefixed html markers (# <!-- bkit:start -->) → decision=strip-block", () => {
-    // Regression: detectMarkerStyle required a bare `<!-- bkit:start -->` line and
-    // missed the `# `-prefixed form used by shell hooks (preflight.sh), so the whole
-    // file was preserved on uninstall instead of having its block stripped (leak).
+    // detectMarkerStyle recognises the `# `-prefixed form used by shell hooks
+    // (preflight.sh), so uninstall strips its block.
     writeFile(
       ".claude/hooks/preflight.sh",
       "#!/usr/bin/env bash\n# header\n\n# <!-- bkit:start -->\nbkit hook body\n# <!-- bkit:end -->\n",
@@ -158,10 +157,9 @@ describe("buildDecisionTable — markered-text format", () => {
   });
 
   it("core .agents/ doctrine files get a strip-block entry (they install via the templates pass, not the manifest)", () => {
-    // Regression: .agents/{docs,rules}.md install via runCoreTemplates and were in no
-    // manifest, so uninstall/--nuke could not remove them — a full uninstall orphaned
-    // bkit's own doctrine. They carry a managed block, so strip-block (preserve consumer content
-    // below bkit:end) is the treatment, matching AGENTS.md.
+    // .agents/{docs,rules}.md install via runCoreTemplates (no manifest entry); a full
+    // uninstall strip-blocks them (consumer content below bkit:end preserved), matching
+    // AGENTS.md.
     for (const rel of [".agents/docs.md", ".agents/rules.md"]) {
       writeFile(rel, "<!-- bkit:start -->\nbkit doctrine\n<!-- bkit:end -->\n# consumer note\n");
     }
@@ -725,11 +723,8 @@ describe("stripTier2JsonScope", () => {
   });
 
   it("install-enriched allow list does not survive while deny/ask are stripped", () => {
-    // Regression: install appends apex-domain WebFetch entries to `permissions.allow`
-    // after rendering the template, so that array never equalled the template and the
-    // old whole-array compare preserved it — while `deny`/`ask` (not enriched, so
-    // byte-equal) were stripped. Uninstall then left the repo MORE permissive than it
-    // found it. All three must strip together.
+    // Install appends apex-domain WebFetch entries to `permissions.allow` after rendering
+    // the template; `allow`, `deny` and `ask` all strip together.
     const template: Record<string, JsonValue> = {
       permissions: {
         allow: ["Skill(*)", "Bash(*)", "WebFetch(domain:github.com)"],
@@ -773,11 +768,8 @@ describe("stripTier2JsonScope", () => {
 
 describe("runUninstall — .claude/settings.json leaves no grants behind", () => {
   it("strips allow/deny/ask together, including install's WebFetch enrichment", async () => {
-    // Regression: the stripper compared whole arrays, so `permissions.allow` — which
-    // install enriches with apex-domain WebFetch grants AFTER rendering the template —
-    // never matched and was kept as consumer customisation, while `deny` and `ask`
-    // stripped cleanly. A full uninstall left `Bash(*)` in place with the guardrails
-    // gone: strictly more permissive than before bkit was installed.
+    // `permissions.allow` (enriched with apex-domain WebFetch grants AFTER rendering the
+    // template) strips element-wise like `deny` and `ask`; no `Bash(*)` is left behind.
     const templateRaw = fs.readFileSync(
       path.join(getTemplatesRoot(), ".claude", "settings.json"),
       "utf-8",
@@ -797,8 +789,7 @@ describe("runUninstall — .claude/settings.json leaves no grants behind", () =>
     await runUninstall(["claude"], makeCtx());
 
     // Everything in the file was bkit's — template plus enrichment — so nothing is
-    // left to keep and the file itself goes. Asserted unconditionally: an `if (exists)`
-    // guard here would pass vacuously the moment the strip regressed to leaving a husk.
+    // left to keep and the file itself goes. Asserted unconditionally.
     expect(fileExists(".claude/settings.json")).toBe(false);
     expect(template.permissions.allow).toContain("Bash(*)");
   });

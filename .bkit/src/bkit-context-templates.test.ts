@@ -2,10 +2,9 @@
 // `.bkit/templates/context/`.
 //
 // A consumer copies these blocks below `bkit:end` in `.agents/context.md`, where
-// `/bkit-debug` runs every fetch block and cloud setup runs every provision block. So
-// the markers must pair up the way those parsers read them, and a block whose CLI or
-// token is missing must self-skip loudly (`exit 0` plus a `[context-fetch:<name>]
-// skipped —` breadcrumb) rather than fail the step or print nothing.
+// `/bkit-debug` runs every fetch block and cloud setup runs every provision block. The
+// markers pair up the way those parsers read them, and a block whose CLI or token is
+// missing self-skips loudly (`exit 0` plus a `[context-fetch:<name>] skipped —` breadcrumb).
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";

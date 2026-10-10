@@ -36,10 +36,9 @@ const BASE_CANDIDATES = ["origin/dev", "origin/main"];
 const SCORE_EPSILON = 0.001;
 
 /**
- * Printed on failure. The fixes an agent reaches for first (deleting files,
- * rewiring callers, casting to any) make the code worse while turning the gate
- * green. The casts are named in words: spelled as code, this string would itself
- * be a type-suppression finding.
+ * Printed on failure: names the fixes to avoid (deleting files, rewiring callers,
+ * casting to any). The casts are named in words; spelled as code, this string would
+ * itself be a type-suppression finding.
  */
 export const FAIL_GUIDANCE = [
   "FAIL — change adds/worsens slop on net.",
@@ -49,7 +48,7 @@ export const FAIL_GUIDANCE = [
   "Inspect: slop-scan delta --base <base-worktree> --head .",
 ];
 
-/** The `summary` fields the gate reads. A slop-scan upgrade that drops one would silently disable the gate. */
+/** The `summary` fields the gate reads; each must be present. */
 const SUMMARY_FIELDS = [
   "addedCount",
   "resolvedCount",

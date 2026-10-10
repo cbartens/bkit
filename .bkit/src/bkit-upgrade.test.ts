@@ -312,7 +312,7 @@ describe("P4.T5 — runUpgrade diff engine", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #459 — skipped files whose disk content may be recorded as the canonical hash
+// Skipped files whose disk content may be recorded as the canonical hash
 // ---------------------------------------------------------------------------
 
 describe("runUpgrade — skippedSeedable (#459)", () => {
@@ -383,7 +383,7 @@ describe("runUpgrade — skippedSeedable (#459)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #422 — markered-text noMarkerMigration policy through runUpgrade (slash-comment)
+// markered-text noMarkerMigration policy through runUpgrade (slash-comment)
 // ---------------------------------------------------------------------------
 
 describe("runUpgrade — noMarkerMigration policy (markered-text, #422)", () => {
@@ -445,10 +445,8 @@ describe("runUpgrade — noMarkerMigration policy (markered-text, #422)", () => 
   });
 
   it("template with a slash-prefixed HTML marker (// <!-- bkit:start -->) is classified html-comment, not slash-comment (site-9 mis-classification trap)", () => {
-    // If detectMarkerStyle checked the bare slash-comment marker before the (possibly
-    // prefixed) html-comment marker, this template would be mis-classified as
-    // slash-comment, extractFullManagedBlock would find nothing, and writeTier2 would
-    // silently no-op — the exact trap this ordering guards against.
+    // detectMarkerStyle checks the (possibly prefixed) html-comment marker before the
+    // bare slash-comment marker, so this template classifies as html-comment.
     const htmlPrefixedTemplate =
       "// header\n// <!-- bkit:start -->\nbkit html-in-js block\n// <!-- bkit:end -->\nrest\n";
     const templatePath = writeFile(".bkit-staging/template/weird.js", htmlPrefixedTemplate);
@@ -671,8 +669,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     writeBkitVersionInDir(makeVersion({})); // pinnedVersion "0.8.0"
     const result = { updated: [], conflicts: [], skipped: [], skippedSeedable: [] };
 
-    // A clean upgrade where everything was a no-op skip must still bump the pin,
-    // otherwise the next `bkit check` wants to write it (1 write → exit 1).
+    // A clean upgrade where everything was a no-op skip still bumps the pin.
     updateCanonicalHashesAfterUpgrade(result, {
       dryRun: false,
       cwd: tmpDir,

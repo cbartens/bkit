@@ -686,7 +686,7 @@ describe("stripManagedBlock — slash-comment markers", () => {
 
 describe("stripManagedBlock — whitespace handling (BAR-138 lesson)", () => {
   it("does not use greedy whitespace regex — only removes the managed block region", () => {
-    // Regression guard: greedy whitespace between markers would eat consumer content
+    // Whitespace between markers is not greedy: consumer content survives
     const content =
       "line1\nline2\n\n<!-- bkit:start -->\nbkit block\n<!-- bkit:end -->\n\nline3\nline4\n";
     const result = stripManagedBlock(content, "html-comment");

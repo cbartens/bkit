@@ -99,13 +99,9 @@ function _stripScope(consumer, template) {
             }
         }
         else if (Array.isArray(tVal) && Array.isArray(cVal)) {
-            // Both arrays — strip ELEMENT-WISE, not whole-array. Whole-array equality is
-            // wrong for any list install enriches after rendering the template: bkit adds
-            // apex-domain `WebFetch` entries to `.claude/settings.json` `permissions.allow`,
-            // so that array never equals the template and would read as consumer
-            // customisation — leaving `allow` behind while `deny`/`ask` (not enriched, so
-            // byte-equal) are stripped, a repo strictly MORE permissive after uninstall
-            // than before it.
+            // Both arrays — strip ELEMENT-WISE, not whole-array: install enriches some lists
+            // after rendering the template (apex-domain `WebFetch` entries in
+            // `.claude/settings.json` `permissions.allow`).
             const tSerialised = new Set(tVal.map((el) => JSON.stringify(el)));
             const kept = cVal.filter((el) => !tSerialised.has(JSON.stringify(el)));
             if (kept.length === 0) {
@@ -161,15 +157,12 @@ function isJsonObject(v) {
 // so the manifest-driven table never sees them and a full uninstall would orphan bkit's own
 // rules/docs. Each carries a bkit managed block (markered-text), so strip-block preserves any
 // consumer content added below `bkit:end`, exactly like the root AGENTS.md. Removed only on a
-// full/core uninstall (gated on core in moduleList below). `.agents/skills.md` is absent on
-// purpose: it is create-if-missing (the consumer owns it from first install), so uninstall
-// leaves it.
+// full/core uninstall (gated on core in moduleList below). `.agents/skills.md` is absent: it
+// is create-if-missing (the consumer owns it from first install), so uninstall leaves it.
 const CORE_TEMPLATE_DOCTRINE = [
     { path: ".agents/context.md", format: "markered-text", module: "core" },
-    // Legacy location of `.agents/context.md`. Listed so a consumer who uninstalls
-    // BEFORE ever upgrading is not left holding an orphaned managed block — the
-    // migration only runs on install/upgrade, and uninstall may come first. A no-op
-    // once the migration has run, since the file is gone by then.
+    // Legacy location of `.agents/context.md`, for a consumer who uninstalls before the
+    // install/upgrade migration ran. A no-op once the migration has run.
     { path: ".agents/config.md", format: "markered-text", module: "core" },
     { path: ".agents/docs.md", format: "markered-text", module: "core" },
     { path: ".agents/rules.md", format: "markered-text", module: "core" },
@@ -177,8 +170,7 @@ const CORE_TEMPLATE_DOCTRINE = [
 export function buildDecisionTable(modules, ctx) {
     const moduleList = modules instanceof Set
         ? [...modules].filter((m) => 
-        // Include the opt-in add-ons (cloud) too — a Set caller passing
-        // them must not have them silently dropped (zero-footprint trap). (#255 P3)
+        // Includes the opt-in add-ons (cloud) a Set caller passes.
         ["core", "claude", "cursor", "lint", "opencode", "codex", "cloud"].includes(m))
         : modules;
     const entries = [
@@ -353,8 +345,7 @@ export async function runUninstall(modules, ctx) {
     };
     const moduleList = modules instanceof Set
         ? [...modules].filter((m) => 
-        // Include the opt-in add-ons (cloud) too — a Set caller passing
-        // them must not have them silently dropped (zero-footprint trap). (#255 P3)
+        // Includes the opt-in add-ons (cloud) a Set caller passes.
         ["core", "claude", "cursor", "lint", "opencode", "codex", "cloud"].includes(m))
         : modules;
     // Nuke confirmation
@@ -469,21 +460,18 @@ export async function runUninstall(modules, ctx) {
                             const style = detectMarkerStyle(content) ?? "html-comment";
                             const stripped = stripManagedBlock(content, style);
                             // A bkit-seeded markdown file (AGENTS.md, CLAUDE.md) keeps its `# Title` H1
-                            // OUTSIDE the bkit block, so a plain strip leaves a content-free husk like
-                            // `# AGENTS.md\n` rather than deleting the file. Treat a markdown file reduced to
-                            // a lone ATX heading (its only non-blank line) as a husk and delete it. Scoped to
-                            // .md/.mdc so shell/gitignore residue (a lone `# comment`) is never affected, and a
-                            // multi-line residual (e.g. prompts.md's consumer `## Model Overrides`) is preserved.
-                            // (#255 P2-15)
+                            // OUTSIDE the bkit block. A markdown file reduced to a lone ATX heading (its only
+                            // non-blank line) is a husk and is deleted. Scoped to .md/.mdc (shell/gitignore
+                            // residue such as a lone `# comment` is unaffected); a multi-line residual (e.g.
+                            // prompts.md's consumer `## Model Overrides`) is preserved.
                             const nonBlank = stripped.split("\n").filter((l) => l.trim().length > 0);
                             const isMarkdown = /\.mdc?$/.test(summary.file);
                             const isLoneHeadingHusk = isMarkdown && nonBlank.length === 1 && /^#{1,6}\s+\S/.test(nonBlank[0].trim());
                             // A file whose post-strip residual equals the bkit-seeded scaffold OUTSIDE the block
                             // (i.e. the template stripped the same way) carries NO genuine consumer content — it is
                             // 100% bkit-authored (hook shells left with only a shebang/header, a `.mdc` frontmatter
-                            // shell, a pristine prompts.md). Delete it rather than leave a dead husk (zero-footprint).
-                            // A consumer who added content outside the block strips UNEQUAL → preserved. Read is
-                            // covered by the enclosing try/catch — no separate error-obscuring catch.
+                            // shell, a pristine prompts.md) and is deleted. A consumer who added content outside
+                            // the block strips UNEQUAL → preserved. Read is covered by the enclosing try/catch.
                             const normResidual = (s) => s
                                 .split("\n")
                                 .map((l) => l.replace(/[ \t]+$/, ""))
@@ -523,9 +511,8 @@ export async function runUninstall(modules, ctx) {
     // Full/core uninstall: strip the `bkit` install-state object from package.json
     // (issueTracker / opencodeProvider(s) / cloudAgents). Legacy depUpdater /
     // renovateRunner / runners keys go with the block. Scripts and devDeps are the
-    // consumer's and stay; this clears the preference/manifest block so an
-    // "uninstalled" repo does not keep advertising prior bkit choices. No try/catch — malformed
-    // package.json is a hard failure on full teardown (same as a missing dest would be).
+    // consumer's and stay. No try/catch — malformed package.json is a hard failure on full
+    // teardown (same as a missing dest would be).
     if (moduleList.includes("core") && !ctx.dryRun) {
         const pkgPath = path.join(ctx.cwd, "package.json");
         if (fs.existsSync(pkgPath)) {
@@ -561,8 +548,7 @@ export async function runUninstall(modules, ctx) {
                 continue;
             try {
                 for (const f of fs.readdirSync(absDir)) {
-                    // .toml as well as .md: codex agent mirrors are TOML, and an extension-only
-                    // filter would leave every .codex/agents/bkit-*.toml behind on uninstall.
+                    // .toml as well as .md: codex agent mirrors are TOML.
                     if (!f.startsWith("bkit-") || !(f.endsWith(".md") || f.endsWith(".toml")))
                         continue;
                     const absFile = path.join(absDir, f);
@@ -627,9 +613,9 @@ export async function runUninstall(modules, ctx) {
         }
     }
     // Clean up bkit-owned scripts under .bkit/scripts/ (every shipped script is `bkit-*` and
-    // fully bkit-owned). They install via the core templates pass, not the manifest, so the
-    // table never sees them — glob rather than hardcode names so new scripts are covered. A
-    // full/core uninstall only, symmetric with how the core templates pass installs them.
+    // fully bkit-owned). They install via the core templates pass, not the manifest, so they
+    // are globbed, not listed. A full/core uninstall only, symmetric with how the core
+    // templates pass installs them.
     if (moduleList.includes("core")) {
         const scriptsDir = path.join(ctx.cwd, ".bkit", "scripts");
         if (fs.existsSync(scriptsDir)) {
@@ -685,7 +671,7 @@ export async function runUninstall(modules, ctx) {
     return result;
 }
 // ---------------------------------------------------------------------------
-// runSurgicalOpencodeUninstall — remove exactly ONE provider block (#281 Task 4)
+// runSurgicalOpencodeUninstall — remove exactly ONE provider block
 // ---------------------------------------------------------------------------
 /**
  * Surgical removal of a single opencode provider installed by bkit.

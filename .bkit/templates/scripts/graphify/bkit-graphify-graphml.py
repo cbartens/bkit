@@ -10,10 +10,10 @@ OWN interpreter — it imports graphify itself.
 
     bkit-graphify-graphml.py <graph.json> <out.graphml>
 
-The graphify CLI has no --graphml flag; that exists only on the /graphify skill,
-which this repo deliberately does not install (see docs/setup.md § Code Graph,
-"Never run"). Calling to_graphml() directly is the supported way to get the same
-file. Community IDs are carried through so Gephi can partition on them.
+The graphify CLI has no --graphml flag (only the /graphify skill has one, which
+this repo does not install; see docs/setup.md § Code Graph, "Never run"), so this
+calls to_graphml() directly. Community IDs are carried through so Gephi can
+partition on them.
 """
 
 import collections

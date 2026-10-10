@@ -90,8 +90,7 @@ export function getBkitDocsRoot(): string {
 // ---------------------------------------------------------------------------
 // isDogfood — true when bkit is running inside its own repo (in-repo install).
 // In this case the source tree IS the consumer's .agents/ directory, so any
-// payload copy would overwrite the source with itself — a no-op at best and a
-// self-overwrite hazard at worst.
+// payload copy would overwrite the source with itself.
 // ---------------------------------------------------------------------------
 
 export function isDogfood(): boolean {

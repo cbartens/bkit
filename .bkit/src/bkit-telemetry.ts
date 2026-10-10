@@ -64,7 +64,7 @@ export function parseRemoteUrlToSlug(url: string): string {
   return m?.[1] ?? "";
 }
 
-/** git env with hook vars scrubbed — see resolveRepoSlug for why this is load-bearing. */
+/** git env with hook vars scrubbed — see resolveRepoSlug. */
 export function gitEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   delete env["GIT_DIR"];
@@ -78,11 +78,8 @@ export function gitEnv(): NodeJS.ProcessEnv {
  * Resolve a rev (`HEAD~1`, a branch, a tag) to a full hex SHA. "" if it does not
  * resolve — e.g. `HEAD~1` in a repo with one commit.
  *
- * `parentSha` MUST be resolved before it reaches a row. It is part of identity()
- * for compliance and counter, so an unresolved literal like "HEAD~1" is the SAME
- * identity on every run and successive runs fold into each other. It is also what
- * the grader diffs against, and the diff guard rejects anything non-hex — silently
- * grading an empty diff, which passes every diff-based rule vacuously.
+ * `parentSha` MUST be resolved before it reaches a row: it is part of identity()
+ * for compliance and counter, and the grader's diff guard accepts only hex.
  */
 export function resolveGitSha(rev: string, cwd: string): string {
   const res = spawnSync("git", ["rev-parse", "--verify", "--quiet", `${rev}^{commit}`], {
@@ -100,13 +97,10 @@ export function resolveGitSha(rev: string, cwd: string): string {
  * Resolve a repo's `owner/repo` slug from its git remote. "" when there is no
  * remote or no git repo — callers decide the fallback, loudly.
  *
- * The env scrub is load-bearing, not hygiene: git hooks export GIT_DIR /
- * GIT_WORK_TREE / GIT_INDEX_FILE, and leaving them set makes `git -C <path>`
- * silently answer for the HOOK's repo instead of <path> — so a harvest run from
- * a hook would stamp every consumer's rows with bkit's own slug.
+ * Scrubs GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE (exported by git hooks) so
+ * `git -C <path>` answers for <path>, not the hook's repo.
  *
- * spawnSync, not execSync-in-a-try: a non-zero exit is an expected answer here
- * ("no remote"), not an exception to swallow.
+ * spawnSync: a non-zero exit ("no remote") is an expected answer, not an exception.
  */
 export function resolveRepoSlug(cwd: string): string {
   const res = spawnSync("git", ["remote", "get-url", "origin"], {
@@ -144,10 +138,8 @@ export interface TelemetryEnvelope {
    * The SUBAGENT that wrote the row, e.g. `bkit-build-challenge-remediate`.
    * Absent on orchestrator-written rows (the workflow itself wrote it).
    *
-   * Distinct from `step` on purpose: `step` is WHERE in the workflow, `subagent`
-   * is WHO. Conflating them costs the harvest one of the five dimensions it
-   * exists to slice by (repo/workflow/step/subagent/severity), and makes "which
-   * agent generates the most rework?" unanswerable.
+   * Distinct from `step`: `step` is WHERE in the workflow, `subagent` is WHO. One of
+   * the harvest's five slice dimensions (repo/workflow/step/subagent/severity).
    */
   subagent?: string;
   /**
@@ -208,11 +200,10 @@ export const VALID_KINDS: Set<string> = new Set([
  * Triage severity — carried by the three author-written kinds whose rows are
  * triaged by a human or a later agent (friction / deferral / failure).
  *
- * Deliberately the SAME vocabulary the challenge prompts already assign
- * to their findings, so `@bkit-build-challenge-remediate` passes a blocked
- * finding's severity straight through to its deferral row instead of re-deriving
- * it. NOT the preflight `blocker`/`advisory` scale (that gates `bkit install`,
- * a different axis), and NOT the legacy `.md` ledgers' `critical|normal|low` scale.
+ * The SAME vocabulary the challenge prompts assign to their findings;
+ * `@bkit-build-challenge-remediate` passes a blocked finding's severity straight
+ * through to its deferral row. NOT the preflight `blocker`/`advisory` scale (that
+ * gates `bkit install`), and NOT the legacy `.md` ledgers' `critical|normal|low` scale.
  *
  * Absent on machine-generated kinds (compliance / outcome / counter) and on
  * knowledge / decision, which have no triage severity.
@@ -235,11 +226,6 @@ export const SEVERITY_KINDS: Set<string> = new Set(["friction", "deferral", "fai
  * `OPEN` raised, cause unknown -> `TRIAGED` analysed, disposition known, not yet
  * fixed -> `CLOSED` dealt with (fixed, refuted, or established as not ours).
  *
- * `TRIAGED` exists because analysing something and fixing it are different events,
- * often far apart. Without it a sweep that works out exactly what an entry is, and
- * where its fix belongs, has nowhere to put that: recording `CLOSED` is a lie, and
- * leaving `OPEN` discards the analysis and invites the next sweep to redo it.
- *
  * `TRIAGED` IS STILL OPEN WORK. Readers counting open entries — a CI gate on open
  * CRITICAL failures, an audit debt lens, an age report — MUST count it. Only
  * `CLOSED` is done.
@@ -256,7 +242,7 @@ export const DECISION_STATUSES: Set<string> = new Set(["ACTIVE", "SUPERSEDED"]);
 
 /**
  * The `feature` kind's six-state phase ladder — the canonical status for
- * `.bkit/issues.jsonl` (#380), appended once per phase close, same-`key`
+ * `.bkit/issues.jsonl`, appended once per phase close, same-`key`
  * (the FID). `SHIPPED` projects into the roadmap's `## Shipped` section
  * (last 10, ts desc); `ABANDONED` hides the FID from every section.
  * `ABANDONED` is appended only by a human, or an agent on explicit human
@@ -279,24 +265,15 @@ export const FEATURE_STATUSES: Set<string> = new Set([
 ]);
 
 /**
- * Why a `deferral` is in the ledger instead of done — the justification, on a
- * different axis from `status` (how far the work has got) and `severity` (how
- * much it matters).
- *
- * The field exists because being declared was the ONLY test for exemption:
- * `@bkit-ship-deferred-sweep` builds its exempt set from whatever design, plan
- * and this ledger declare out-of-scope, and exempt never blocks a ship. The
- * agent that wanted out of the work also wrote the declaration granting it, so
- * unfinished in-scope work left the same trace as genuine out-of-scope work and
- * no reader could separate the two. A closed enum makes the claim testable:
+ * The justification for a `deferral`, on a different axis from `status` (how far
+ * the work has got) and `severity` (how much it matters). Closed enum:
  *
  * - `scope-declared` — a design or plan called this out of scope BEFORE the work
- *   started. MUST carry a `references` pointer to that section; the ledger row
- *   being the only place it was ever declared is the tell of the opposite case.
+ *   started. MUST carry a `references` pointer to that section.
  * - `hard-blocked` — an external blocker (missing credential, upstream fix,
  *   another feature) makes it impossible now. MUST name the blocker.
  * - `needs-decision` — a human decision is missing, and guessing it is worse than
- *   waiting. Confirmation is unavailable inside `/bkit-*` workflows by design.
+ *   waiting. Confirmation is unavailable inside `/bkit-*` workflows.
  * - `own-cycle` — genuinely plan-sized: a new architecture, not a mechanical fix.
  * - `unjustified` — ADJUDICATOR-ONLY (see UNJUSTIFIED_REASON).
  *
@@ -320,10 +297,8 @@ export const DEFERRAL_REASONS: Set<string> = new Set([
  * at write time, where the four justifications are the whole legal vocabulary.
  *
  * Set via same-`key` append like any other update, and NEVER rewritten afterwards:
- * a later row that closes the entry carries `unjustified` through verbatim, because
- * the rate it feeds (`computeDeferralDiscipline` in `bkit-analysis.ts`) measures how
- * often an agent deferred work it should have done — not whether someone later
- * cleaned up after it.
+ * a later row that closes the entry carries `unjustified` through verbatim. Feeds
+ * `computeDeferralDiscipline` in `bkit-analysis.ts`.
  */
 export const UNJUSTIFIED_REASON = "unjustified";
 
@@ -332,12 +307,8 @@ export const UNJUSTIFIED_REASON = "unjustified";
  * § Ledgers & Writers). EXHAUSTIVE: a subagent absent from this set does not
  * write the kind at all.
  *
- * The list is data, not prose, because the prose alone did not hold. Both
- * `@bkit-build-plan-execute` and `@bkit-build-plan-gaps-remediate` carry an
- * explicit "NO out-of-scope deferral" contract line, and the executor still
- * wrote rows — a blocked plan task is unfinished in-scope work, and routing it
- * to the ledger converts it into something the build loop treats as settled.
- * Its `BLOCKED` log line is the record; the next verify pass reads it.
+ * `@bkit-build-plan-execute` and `@bkit-build-plan-gaps-remediate` are not in it: a
+ * blocked plan task's record is its `BLOCKED` log line, which the next verify pass reads.
  *
  * Orchestrator-written rows carry no `subagent` and are outside this check.
  */
@@ -413,9 +384,8 @@ export interface OutcomePayload {
    * The repo's CUMULATIVE count of distinct failures at ship time — folded
    * entities, not lines. Per-cycle is the DELTA against the previous outcome row.
    *
-   * A total, NOT this run's discoveries: a raw count would mark every run after
-   * the first-ever bug as an error run forever. Readers MUST diff consecutive
-   * rows rather than test this absolutely.
+   * A total, NOT this run's discoveries. Readers MUST diff consecutive rows rather
+   * than test this absolutely.
    */
   failures: number;
   /**
@@ -440,7 +410,7 @@ export interface OutcomePayload {
   /**
    * Per-tier code-coverage % — each tier's coverage-summary.json `total.*.pct`.
    * Best-effort: a tier is absent when its coverage report is not produced
-   * (coverage is opt-in per #312 unit/integration, #313 e2e). Additive-optional —
+   * (coverage is opt-in per tier). Additive-optional —
    * no version bump; readers ingest rows with or without it.
    */
   coverage?: {
@@ -466,9 +436,8 @@ export interface FrictionPayload {
   /**
    * Free-form friction-type tag (see § Categories in .bkit/jsonl.md). Documented
    * set: human-confirm, permission-prompt, agent-rework, manual-install,
-   * tool-failure, destructive-backout, other. NOT validated on write — a
-   * different axis from the deferral/failure domain vocabulary, and kept
-   * free-form for symmetry with them (docs are the single source of truth).
+   * tool-failure, destructive-backout, other. NOT validated on write, like the
+   * deferral/failure domain vocabulary (the docs define the set).
    */
   category: string;
   scope: "bkit-repo" | "consumer" | "universal";
@@ -484,12 +453,10 @@ export interface FrictionPayload {
    * `OPEN` raised, cause unknown -> `TRIAGED` analysed, disposition known, not yet
    * fixed -> `CLOSED` dealt with (fixed, refuted, or not ours to fix).
    *
-   * `TRIAGED` exists because analysing a friction and fixing it are different events,
-   * often months apart, and collapsing them loses the interval. Appending it as its own
-   * same-`key` row makes that interval fall out of the ledger the same way the close does
-   * (see § Updating a Row): the entry's `ts` is when it was raised, the TRIAGED row's `ts`
-   * is when someone worked out what it was, the CLOSED row's `ts` is when it was fixed.
-   * Carry the disposition in `references` (the issue, the Fix N, or why it is not ours).
+   * Each is its own same-`key` row (see § Updating a Row): the entry's `ts` is when it
+   * was raised, the TRIAGED row's `ts` when it was analysed, the CLOSED row's `ts` when it
+   * was fixed. Carry the disposition in `references` (the issue, the Fix N, or why it is
+   * not ours).
    */
   status?: TriageStatus | string;
   confidence?: number;
@@ -509,9 +476,8 @@ export interface DeferralPayload {
   remediation?: string;
   source?: string;
   /**
-   * Why this is deferred rather than done — see DeferralReason. Required on every
-   * row written from this version on; optional in the type because the ledger is
-   * append-only and pre-existing rows cannot grow a field they were never asked for.
+   * The deferral's justification — see DeferralReason. Required on every new row;
+   * optional in the type: older rows in the append-only ledger lack it.
    */
   reason?: DeferralReason;
   /** OPEN -> TRIAGED -> CLOSED. See TRIAGE_STATUSES; TRIAGED is still open work. */
@@ -559,7 +525,7 @@ export interface DecisionPayload {
 }
 
 // feature — keyed by explicit `key` field (the FID). The canonical row for
-// `.bkit/issues.jsonl` (#380): a `deferral`/`failure` row MINUS `severity`,
+// `.bkit/issues.jsonl`: a `deferral`/`failure` row MINUS `severity`,
 // PLUS the six-state FeatureStatus ladder in place of TriageStatus. Appended
 // at every one of the five phase closes (design/plan/build/debug/ship) —
 // same-`key` append, last-write-wins fold gives the current phase.
@@ -574,12 +540,10 @@ export interface FeaturePayload {
   /**
    * Unix ms the feature ACTUALLY shipped, when that differs from `ts`.
    *
-   * `ts` is append time and MUST be minted at append (§ Write Idiom), so a
-   * historic row backfilled today sorts as the newest ship. `shippedAt` is not
-   * part of the row identity, so it MAY carry a historic literal: an issue's
+   * `ts` is append time and MUST be minted at append (§ Write Idiom). `shippedAt` is
+   * not part of the row identity, so it MAY carry a historic literal: an issue's
    * `closed_at`, or a migrated `docs/completed.md` entry's own date. The board's
-   * Shipped section ranks on `shippedAt // ts`, so a backfill lands in its real
-   * place instead of evicting genuinely recent ships.
+   * Shipped section ranks on `shippedAt // ts`.
    *
    * Optional. A live phase close can omit it — there `ts` already IS the ship
    * time. Only meaningful on `status: "SHIPPED"` rows.
@@ -878,9 +842,8 @@ export function parse(raw: string): ParseResult {
 export type FoldedState = Map<string, TelemetryEvent>;
 
 /**
- * `ts` as a sortable number. Legacy rows carry an ISO-string `ts` or none at all;
- * `a.ts - b.ts` on those is NaN, which voids the whole sort and makes every fold
- * winner depend on file order. ISO strings parse; anything else sorts oldest.
+ * `ts` as a sortable number. Legacy rows carry an ISO-string `ts` or none at all:
+ * ISO strings parse; anything else sorts oldest.
  */
 function tsOrder(ts: unknown): number {
   if (typeof ts === "number" && Number.isFinite(ts)) return ts;
@@ -1068,8 +1031,8 @@ function ledgerLine(result: FoldFromResult): string {
  *
  * Scoped STRICTLY to the one workflow — never the design→…→ship chain. For the
  * given workflow it shows THIS run's `outcome` (run) row against
- * `med·N` = the median of that workflow's previous N runs (rolling, outlier-robust
- * because durations are right-skewed), a secondary compliance line, and the ledger
+ * `med·N` = the median of that workflow's previous N runs (rolling), a secondary
+ * compliance line, and the ledger
  * footer. Fields absent on the run row are omitted — a metric shows only when the
  * workflow actually produced it.
  *

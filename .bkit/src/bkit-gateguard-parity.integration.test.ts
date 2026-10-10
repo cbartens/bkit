@@ -3,14 +3,11 @@
 // The three hooks share a byte-identical managed block but reach the model by three
 // different routes: Claude writes `hookSpecificOutput.additionalContext` to stdout,
 // Cursor writes `additional_context` with `permission: "allow"`, opencode writes to
-// stderr (and throws to block). Per-host suites drifted apart — Cursor was missing
-// the gate-config, ALLOW_CONFIG_EDIT, deny-retry and all five docs-density cases
-// that the other two had.
+// stderr (and throws to block).
 //
-// This file removes the drift as a possibility: every row runs against every host
-// through an adapter that normalises the delivery mechanism away. A behaviour that
-// cannot hold on some host must be stated here as an explicit exception with its
-// reason, not left as a silently missing test.
+// Every row runs against every host through an adapter that normalises the delivery
+// mechanism away. A behaviour that cannot hold on some host is stated here as an
+// explicit exception.
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -34,8 +31,8 @@ const HOSTS: Host[] = ["claude", "cursor", "opencode", "codex"];
 let counter = 0;
 function newSession(): string {
   counter += 1;
-  // Random component deliberate: dedup state is keyed by session id and persists in
-  // the OS temp dir for 24h, so a pid+counter id collides whenever a pid is recycled.
+  // Random component: dedup state is keyed by session id and persists in the OS temp dir
+  // for 24h, and pids are recycled.
   return `gg-parity-${process.pid}-${counter}-${Math.random().toString(36).slice(2)}`;
 }
 
@@ -133,9 +130,7 @@ async function runOpencode(c: Call): Promise<Outcome> {
 
 /**
  * Codex sends NO file path. Every edit arrives as `apply_patch` with a V4A patch envelope in
- * `tool_input.command`, so the adapter has to build a real envelope — the two places this host
- * can silently no-op are the tool name and that envelope, and a hand-waved payload here would
- * hide exactly the failure this suite exists to catch.
+ * `tool_input.command`, so the adapter builds a real envelope.
  */
 function runCodex(c: Call): Outcome {
   const op = c.kind === "create" ? "Add" : "Update";
@@ -372,7 +367,7 @@ describe("gateguard structural parity", () => {
   // Documented deviation, same class as opencode's. Codex shares Claude's stdin/stdout
   // contract but NOT its payload: edits arrive as `apply_patch` with a V4A patch envelope
   // in `tool_input.command` and no file path at all, so the block carries an extra parser
-  // and a different tool vocabulary. What must not differ is what the model is told.
+  // and a different tool vocabulary. The advisory texts are the same.
   it("the codex block carries the same advisory texts as the claude twin", () => {
     const codex = block(CODEX_HOOK);
     const claude = block(CLAUDE_HOOK);
@@ -382,8 +377,7 @@ describe("gateguard structural parity", () => {
     }
   });
 
-  // The two ways this host silently no-ops: wrong tool name, or no envelope parser.
-  // Both would leave a hook that installs, exits 0 and never fires.
+  // The block matches the `apply_patch` tool name and parses the envelope.
   it("the codex block matches apply_patch and parses the V4A envelope", () => {
     const b = block(CODEX_HOOK);
     expect(b).toContain('"apply_patch"');
@@ -394,9 +388,8 @@ describe("gateguard structural parity", () => {
   it("the opencode block carries the same advisory texts as the CJS twins", () => {
     // Documented deviation: opencode's block is NOT byte-identical to the other two.
     // It is an ES module with its own tool vocabulary (write/edit/patch vs
-    // Write/Edit/MultiEdit) and no `require`, so the surrounding code genuinely
-    // differs. What must not differ is what the model is told, so the advisory
-    // builders are compared instead of the whole block.
+    // Write/Edit/MultiEdit) and no `require`; the advisory builders are compared
+    // instead of the whole block.
     const oc = block(OPENCODE_PLUGIN);
     const cj = block(CLAUDE_HOOK);
     for (const marker of [
@@ -413,7 +406,7 @@ describe("gateguard structural parity", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Documented deviations — a behaviour that cannot hold everywhere states why.
+// Documented deviations — behaviours that differ by host.
 // ---------------------------------------------------------------------------
 
 describe("gateguard parity — documented deviations", () => {
@@ -431,8 +424,7 @@ describe("gateguard parity — documented deviations", () => {
   it("blocking is expressed differently per host but means the same thing", () => {
     // Claude: permissionDecision "deny". Cursor: permission "deny" + agent_message.
     // opencode: a thrown Error (its hook has no non-throwing block primitive). The
-    // adapters above normalise all three to `blocked`, which is why the deny rows
-    // can be asserted uniformly.
+    // adapters above normalise all three to `blocked`.
     const claude = runClaude({
       file: "package.json",
       session: newSession(),

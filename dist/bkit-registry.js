@@ -1,8 +1,5 @@
-// Egress registry leaf. Pure data: zero imports, zero control flow, so every module
-// that needs the shipped host set can read it without a cycle and without pulling
-// install machinery behind it. All branching lives in bkit-cloud-env.ts, which is the
-// coverage-measured file; a base collapse or a rejection test computed here would move
-// gated branches out of the measured set.
+// Egress registry leaf. Pure data: zero imports, zero control flow. All branching lives
+// in bkit-cloud-env.ts.
 // Per-provider provider key name + base URL + env var suggestions.
 // These are sane defaults; consumers tune after install.
 // npmPackage: set for custom OpenAI-compatible providers that use npm-based AI SDK driver.
@@ -52,19 +49,17 @@ export const OPENCODE_PROVIDER_DEFAULTS = {
 /**
  * The shipped egress sources. `hosts` and `bases` are literal arrays: the leaf parses
  * no URL. For `opencode-provider` rows the literals are gate-checked against the
- * provider baseURL by the suffix-invariant test, so a literal that drifts from its
- * provider fails at authoring time.
+ * provider baseURL by the suffix-invariant test.
  *
- * Deliberate absences, recorded so a later reader does not "fix" them:
- * - Dependency-updater hosts (Renovate, Dependabot). That egress happens on the
- *   updater's runner, never inside an agent session.
- * - The literal "none" member of `ISSUE_TRACKERS`. A sentinel, not a source. The
- *   completeness test skips exactly "none" and asserts it was the only skip.
- * - `json.schemastore.org`. Fetched by the editor JSON language server for the settings
- *   `$schema`, never by an agent tool call, so no WebFetch, curl or hook decision is
- *   ever taken against it.
- * - `kimi.com`. Outside the four-provider opencode allowlist; adding it would reverse
- *   an ACTIVE decision (`opencode-provider-allowlist-cut-to-four`).
+ * Not listed:
+ * - Dependency-updater hosts (Renovate, Dependabot): egress on the updater's runner,
+ *   never inside an agent session.
+ * - The literal "none" member of `ISSUE_TRACKERS`: a sentinel. The completeness test
+ *   skips exactly "none" and asserts it was the only skip.
+ * - `json.schemastore.org`: fetched by the editor JSON language server, never by an
+ *   agent tool call.
+ * - `kimi.com`: outside the four-provider opencode allowlist
+ *   (`opencode-provider-allowlist-cut-to-four`).
  */
 export const BKIT_EGRESS_SOURCES = [
     {
@@ -263,9 +258,8 @@ export const MULTI_LABEL_SUFFIXES = [
     "com.hk",
 ];
 /**
- * Shared-tenant apexes. A base collapse to one of these grants every tenant on the
- * platform, not just the intended one. The gate is a DENY, never a rewriter: an apex
- * absent from this list passes, so an unknown platform is allowed rather than blocked.
+ * Shared-tenant apexes: a base collapse to one of these grants every tenant on the
+ * platform. The gate is a DENY, never a rewriter; an apex absent from this list passes.
  */
 export const MULTI_TENANT_APEXES = [
     "amazonaws.com",

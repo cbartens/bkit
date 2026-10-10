@@ -1,4 +1,4 @@
-// bkit-template-copies.integration.test.ts — #489: templates are templates.
+// bkit-template-copies.integration.test.ts — templates are templates.
 //
 // Install and upgrade copy exactly the template set (isTemplate) into the consumer's
 // `.bkit/templates/`, raw, and never hash the copies. Paths that became templates

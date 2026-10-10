@@ -1,4 +1,4 @@
-// bkit-auto-route-marker.integration.test.ts — #363 build-challenge F1 closure.
+// bkit-auto-route-marker.integration.test.ts
 //
 // The `bkit [auto route]` marker is the single mechanism that admits a
 // post-merge `dev` CI run through bkit-cloud.yml's free-tier gate
@@ -7,19 +7,10 @@
 // bkit-ship.md threads it onto the squash `--subject`, bkit-build.md and
 // bkit-debug.md onto their close-workflow commits.
 //
-// It shipped inert. The derivation read `${LABELS:-}` — an MCP-derived
-// TEMPLATE value that is never assigned as a shell variable anywhere in
-// `.bkit/` — so it expanded empty in every runtime. The repair attempt that
-// followed (a `mktemp` handoff published via `$GITHUB_ENV`) did not help
-// either: `$GITHUB_ENV` is applied by the Actions runner only BETWEEN workflow
-// steps, while every agent Bash tool call in a cloud dispatch runs inside the
-// one `claude-code-action` step.
-//
-// Both defects survived review because the guarding tests asserted only that
-// the handoff TEXT appeared in the markdown. This file instead EXECUTES the
-// real fenced blocks — sliced out of the shipped `.bkit/workflows/*.md`, not
-// re-typed — against a stubbed `gh`, and asserts on the command the workflow
-// would actually run. A derivation that cannot produce the marker fails here.
+// `{LABELS}` is an MCP-derived TEMPLATE value, never a shell variable, and
+// `$GITHUB_ENV` applies only BETWEEN workflow steps. This file EXECUTES the real fenced
+// blocks — sliced out of the shipped `.bkit/workflows/*.md` — against a stubbed `gh`,
+// and asserts on the command the workflow runs.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -144,9 +135,8 @@ describe.skipIf(!hasTools)("#363 F1 — bkit [auto route] marker is actually emi
         }
       });
 
-      // The kill switch is exact-match (`grep -qxF`) in bkit-cloud.yml; an
-      // unanchored derivation here would arm a route the operator paused, and
-      // burn the marker into permanent `dev` history.
+      // The kill switch is exact-match (`grep -qxF`) in bkit-cloud.yml; so is this
+      // derivation.
       it.each([["bkit:auto-paused"], ["no-bkit:auto"]])(
         "does not arm the route on the near-miss label %s",
         (label) => {
@@ -158,9 +148,8 @@ describe.skipIf(!hasTools)("#363 F1 — bkit [auto route] marker is actually emi
         },
       );
 
-      // Non-GitHub trackers and `bkit:tracker false` have no issue to read.
-      // Under `set -euo pipefail` an unguarded lookup would abort the whole
-      // fence, taking the commit/push that follows it down too.
+      // Non-GitHub trackers and `bkit:tracker false` have no issue to read; the lookup is
+      // guarded under `set -euo pipefail`.
       it("fails closed, not fatally, when the issue cannot be read", () => {
         for (const fence of deriveFences(file)) {
           const r = runDerivation(derivationPrologue(fence), null);

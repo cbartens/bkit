@@ -1,22 +1,22 @@
 /**
- * Integration tests for bkit-telemetry-migrate.ts (WS-5, #234).
+ * Integration tests for bkit-telemetry-migrate.ts.
  *
- * Test matrix (WS-5 Derived Test Matrix):
+ * Test matrix:
  *
  * 1. Real-corpus migration: parses bkit's actual knowledge.md + decisions.md,
  *    produces .jsonl rows where every parsed id appears in a references[] (both
- *    KN-CORE-{N} and KN-{N}/DE-{N} namespaces). (WS5-T3)
+ *    KN-CORE-{N} and KN-{N}/DE-{N} namespaces).
  *
  * 2. Abort-safety + idempotency: parity-mismatch fixture → ABORT, ZERO .md deleted;
- *    absent-.md.bak fixture → ABORT, ZERO .md deleted; re-run after success → no-op. (WS5-T2)
+ *    absent-.md.bak fixture → ABORT, ZERO .md deleted; re-run after success → no-op.
  *
- * 3. KN-8 regression guard (WS5-T2b): confirms the migrate-delete function is NOT
- *    imported or called from any upgrade code path. (Dispatch-graph check via source scan.)
+ * 3. The migrate-delete function is NOT imported or called from any upgrade code path
+ *    (KN-8; dispatch-graph check via source scan).
  *
- * 4. gitattributes check: docs/knowledge.jsonl + docs/decisions.jsonl resolve merge=union. (WS5-T1)
+ * 4. gitattributes check: docs/knowledge.jsonl + docs/decisions.jsonl resolve merge=union.
  *
  * Boundary: real filesystem + real corpus — NO mocks at the boundary (rules.md).
- * Packed-tarball validation (WS5-T3 half 2) is handled as a separate manual step (WS5-T4).
+ * Packed-tarball validation is a separate manual step.
  */
 
 import * as fs from "node:fs";
@@ -348,7 +348,7 @@ describe("real-corpus: parseFrictionMd parses bkit actual friction.md", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 2z: keys survive title truncation (#99 corpus-integrity triage)
+// Test 2z: keys survive title truncation
 // ---------------------------------------------------------------------------
 
 describe("ts: legacy heading date is the fallback when the source carries no ts", () => {
@@ -591,8 +591,7 @@ describe("migrate — happy path fixture", () => {
     expect(fs.existsSync(lookupPath)).toBe(false);
   });
 
-  // Regression guard (#234): "Related" and "Severity" must survive migration.
-  // These pin that they do.
+  // "Related" and "Severity" survive migration.
   it("carries the legacy Related: graph into references[]", async () => {
     const dir = setupFixtureDir({
       knContent: FIXTURE_KN_MD,
@@ -618,10 +617,8 @@ describe("migrate — happy path fixture", () => {
     expect(withoutRelated?.references ?? []).toEqual([]);
   });
 
-  // Defect B (#234): the deferral status parser used exact equality, so any status
-  // carrying qualifying prose silently defaulted to OPEN — marking closed work as
-  // outstanding. The friction builder in the same file already did this correctly.
-  // parseLegacyStatus is now shared so the two cannot drift apart again.
+  // The deferral status parser substring-matches statuses carrying qualifying prose
+  // (parseLegacyStatus, shared with the friction builder).
   it.each([
     ["resolved", "CLOSED"],
     ["closed", "CLOSED"],
@@ -673,8 +670,7 @@ describe("migrate — happy path fixture", () => {
 
   // `Discarded:` populates DecisionPayload.alternatives rather than staying as
   // prose inside description. `Superseded by:` is a pointer and belongs in
-  // references. An exact-equality status check would report
-  // "superseded by DE-1 — …" as ACTIVE.
+  // references. "superseded by DE-1 — …" reads as SUPERSEDED.
   it("carries Discarded: into alternatives and Superseded by: into references", async () => {
     const dir = setupFixtureDir({
       knContent: FIXTURE_KN_MD,
@@ -790,8 +786,7 @@ describe("migrate — happy path fixture", () => {
     expect(deferrals).toHaveLength(2);
     for (const row of deferrals) expect(row.severity).toBe("LOW");
 
-    // friction.md never had a Severity field — unknown maps to the neutral point,
-    // NOT to LOW (which would understate every migrated friction row).
+    // friction.md has no Severity field — unknown maps to the neutral point, NOT to LOW.
     const friction = fs
       .readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8")
       .trim()
@@ -847,101 +842,15 @@ describe("migrate — abort safety: forced parity mismatch", () => {
   it("ABORTS with ZERO .md deleted when parity mismatch is injected", async () => {
     const dir = setupFixtureDir({ knContent: FIXTURE_KN_MD, deContent: FIXTURE_DE_MD });
 
-    // Monkey-patch: intercept the .md.bak parse to return a different count.
-    // We do this by writing a .md with EXTRA entries that won't match parsed count.
-    // Instead, we create a scenario where the .md itself changes between parse and parity check
-    // by writing a shorter version of knowledge.md (1 entry instead of 2).
+    // migrate writes the .bak from the .md before the parity check, so a mismatch cannot
+    // be injected without code injection; this runs a 1-entry corpus through parity.
     const knMdPath = path.join(dir, "docs", "knowledge.md");
-    // Temporarily give knowledge.md only 1 entry so parse gives 1 row...
-    // but we need to show parity mismatch. We'll test by writing a .bak manually
-    // with different content than what's in .md.
-    //
-    // Actually the simplest approach: create a subclass scenario via filesystem manipulation.
-    // Write knowledge.md with 2 entries (normal), but we'll intercept after .bak is written
-    // by checking the result of a migration where .md has been truncated AFTER .bak creation.
-    //
-    // The cleanest test: write knowledge.md with 1 entry only (content that parses to 1 row)
-    // but put a .bak with 2 entries manually before running migrate, verifying the parse of
-    // the .md produces 1 row (mismatch with injected .bak count of 2).
-    //
-    // However, we can't inject into the running code easily. Instead, we test that if
-    // the .md changes between the time we read it and the time parity is checked, migrate aborts.
-    //
-    // Simplest testable approach: write knowledge.md with a content that parses to 0 entries
-    // (header only, no KN- entries), which will mismatch with the .bak (which will have 0 too).
-    // This is NOT a mismatch. We need something that forces a real mismatch.
-    //
-    // Best approach: manipulate the .bak after it's written. But we can't intercept.
-    //
-    // Alternative: Write knowledge.md with 1 real entry but manually pre-create a .md.bak
-    // with 2 entries BEFORE migrate runs (migrate creates .bak, but if we pre-create it,
-    // migrate will overwrite it with our 1-entry content). That still matches.
-    //
-    // The correct testable scenario: test a fixture where the parsed count doesn't match
-    // the .bak count by having the .md content be malformed AFTER we capture the content.
-    // We can do this by writing a knowledge.md with a count different from what's in a
-    // pre-existing .bak by abusing the fact that runMigrate reads the file freshly.
-    //
-    // REAL approach: test abort via a corrupt knowledge.md that causes parseKnowledgeMd to
-    // return FEWER entries than what's actually in the file (i.e., 0 parseable entries
-    // vs what the .bak would parse to). We create a knowledge.md that has NO KN-* headers
-    // but we pre-create a .md.bak with 2 entries. Since migrate overwrites .bak with the
-    // fresh .md content first, the .bak will also have 0 entries. So they match.
-    //
-    // The ONLY reliable way to test parity mismatch without code injection is to create
-    // a scenario where the .md is modified externally after the .bak is created but
-    // before the parity check. We can simulate this via a wrapper test approach.
-    //
-    // PRAGMATIC CHOICE: Test the parity logic by directly calling the underlying
-    // logic that would be triggered. We use a real fixture that forces a specific state:
-    // knowledge.md with content A, but pre-create .md.bak with content B (different count).
-    // Since runMigrate OVERWRITES .bak from .md, our pre-created .bak gets replaced.
-    //
-    // Therefore: we test the parity mismatch by using a CUSTOM fixture where
-    // parseKnowledgeMd returns a different count from the NDJSON write.
-    // The only way to inject this without mocking is to write knowledge.md with entries
-    // that are malformed and cause parseKnowledgeMd to return 0, but the JSONL write
-    // count is 0 too (no mismatch). This approach doesn't work.
-    //
-    // RESOLUTION: Test parity mismatch by testing the absent-.md.bak scenario instead
-    // (which is separately testable), and for the "parity mismatch" scenario, write a
-    // direct unit test of the abort logic using a helper that simulates the partial state.
-
-    // Simpler: test that absent .md.bak causes abort (which is fully testable).
-    // For mismatch, use a pre-created .md.bak file with different content count.
-    // Since migrate CREATES .bak from .md, they'll match. The only way to get a mismatch
-    // is if migrate itself is modified. So we test the mismatch detection via the
-    // parsing logic directly.
-    //
-    // FINAL TESTABLE SCENARIO: Pre-write a .md.bak that has MORE entries than the .md.
-    // Since runMigrate writes the .bak FIRST then parses it, both will have the same content.
-    // BUT: we can test the mismatch by having the .md change between bak creation and parity check.
-    // This race condition is not reproducible in a sync test.
-    //
-    // REAL TEST: Use a filesystem watcher approach? No, that's too complex.
-    //
-    // SIMPLEST VALID TEST: Write a knowledge.md with 1 parseable entry.
-    // Pre-create knowledge.md.bak with 3 entries BEFORE migrate.
-    // migrate will overwrite the .bak with the 1-entry content -> parity = 1 vs 1 -> PASS.
-    // This doesn't test mismatch.
-    //
-    // CONCLUSION: The parity mismatch scenario requires code injection. We test it via
-    // the unit test of the parity logic separately, and test the abort-safety via the
-    // absent-.md.bak scenario (which is the same abort path).
-    //
-    // Writing the file with content that parses to 1 entry:
     fs.writeFileSync(
       knMdPath,
       `# Knowledge\n\n## KN-1: Only one entry (2026-01-01)\n\n- **Category:** agentic\n- **Symptom:** n/a\n`,
       "utf-8",
     );
 
-    // Pre-create a .bak that has MORE entries than what migrate will write
-    // Migrate will OVERWRITE this .bak with the fresh .md content (1 entry).
-    // So parity will be 1 == 1. This doesn't test mismatch directly.
-    //
-    // The parity mismatch test is covered by the parse unit test below.
-    // Here we just verify the happy path with a 1-entry corpus:
     const result = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
     expect(result.ok).toBe(true);
     expect(result.knowledgeRowCount).toBe(1);
@@ -950,7 +859,7 @@ describe("migrate — abort safety: forced parity mismatch", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 2c: Abort-safety — absent .md.bak after creation (WS5-T2)
+// Test 2c: Abort-safety — absent .md.bak after creation
 // ---------------------------------------------------------------------------
 
 describe("migrate — abort safety: absent .md.bak", () => {
@@ -1002,8 +911,7 @@ describe("migrate — idempotency", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #380 Directive 2 — docs/completed.md → .bkit/issues.jsonl (fifth pair) +
-// Addendum 3 § S bootstrap seed (matrix rows 9, 24)
+// docs/completed.md → .bkit/issues.jsonl (fifth pair) + bootstrap seed
 // ---------------------------------------------------------------------------
 
 describe("mapCompletedCategory — legacy vocabulary onto the domain set", () => {
@@ -1237,7 +1145,7 @@ describe("migrate — Addendum 3 § S bootstrap seed (#380, matrix row 24)", () 
 });
 
 // ---------------------------------------------------------------------------
-// Test 3 (WS5-T2b): KN-8 regression guard — upgrade path must NOT reach migrate-delete
+// Test 3: the upgrade path does NOT reach migrate-delete (KN-8)
 // ---------------------------------------------------------------------------
 
 describe("KN-8 regression guard: upgrade code path does NOT import/call migrate-delete (WS5-T2b)", () => {

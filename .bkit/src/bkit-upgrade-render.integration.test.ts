@@ -1,16 +1,14 @@
-// bkit-upgrade-render.integration.test.ts — #251 regression
+// bkit-upgrade-render.integration.test.ts
 //
-// `bkit upgrade` must re-render the bkit-managed OUTPUT files that the template walk
+// `bkit upgrade` re-renders the bkit-managed OUTPUT files that the template walk
 // (runUpgrade over .bkit/templates/) does NOT cover: host agents/commands (source-rendered
 // from .bkit/prompts + .bkit/workflows) and the `.bkit/*.md` canonical docs (runBkitDocs).
-// Before the fix, `bkit upgrade` left these stale — a consumer taking a new bkit version got
-// new config but stale prompts/agents/commands/docs, and had to re-run `bkit install`.
 //
 // Strategy (in-test dogfood): spawn the real install + upgrade binaries against a tmpdir
 // consumer. getPkgRoot resolves to THIS repo, so install renders the real sources into the
 // tmpdir. We then tamper rendered outputs + the prompts.md managed block + add a consumer
 // override row, run `upgrade`, and assert: agents/docs restored, managed block refreshed,
-// consumer override preserved (markered block-merge survives upgrade — #245).
+// consumer override preserved (markered block-merge survives upgrade).
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -166,8 +164,8 @@ describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => 
     tampered.theme = "consumer-custom-theme";
     fs.writeFileSync(opencodeJsonPath, JSON.stringify(tampered, null, 2) + "\n", "utf-8");
 
-    // Upgrade must render opencode.json the SAME way install does (contentOverride) — NOT
-    // deep-merge the raw template, which would inject the literal @@OPENCODE_*@@ sentinel keys.
+    // Upgrade renders opencode.json the SAME way install does (contentOverride): no literal
+    // @@OPENCODE_*@@ sentinel keys.
     const upgrade = runBkit(["upgrade", "--auto-apply"]);
     expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\]/);
 

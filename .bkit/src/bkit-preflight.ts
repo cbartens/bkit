@@ -55,10 +55,9 @@ export function dedupeById(findings: PreflightFinding[]): PreflightFinding[] {
  * Strip out content inside bkit-managed block markers (HTML, hash, and slash style).
  * Used by detectors that need to inspect only consumer-owned content.
  *
- * Uses line-anchored marker detection (via stripManagedBlock from bkit-tiers.ts) to
- * avoid the greedy-regex KN-8 hazard. Applies all marker styles sequentially so that
- * files using `<!-- bkit:start -->`, `# bkit:start`, or `// bkit:start` are stripped
- * correctly.
+ * Uses line-anchored marker detection (via stripManagedBlock from bkit-tiers.ts; KN-8).
+ * Applies all marker styles sequentially: `<!-- bkit:start -->`, `# bkit:start`, and
+ * `// bkit:start`.
  */
 export function stripBkitBlock(content: string): string {
   // Strip html-comment markers first, then hash-comment, then slash-comment
@@ -118,12 +117,11 @@ export function detectNotGitRepo(cwd: string, modules: Set<ModuleFlag>): Preflig
 // ---------------------------------------------------------------------------
 
 /**
- * #380 rollout advisory: `docs/completed.md` still present — the consumer has
- * not yet run `bkit telemetry migrate` (which ports it to `.bkit/issues.jsonl`
- * as `kind:"feature"` rows and performs the § S bootstrap seed). Advisory
- * only, never a blocker — DE-39 forbids wiring the migrator to `bkit upgrade`,
- * so an unmigrated repo simply gets an empty `docs/roadmap.md` board (never a
- * wrong one) plus this nudge.
+ * Advisory: `docs/completed.md` still present — the consumer has not yet run
+ * `bkit telemetry migrate` (which ports it to `.bkit/issues.jsonl` as
+ * `kind:"feature"` rows and performs the bootstrap seed). Advisory only, never a
+ * blocker (DE-39: the migrator is never wired to `bkit upgrade`); an unmigrated repo
+ * gets an empty `docs/roadmap.md` board.
  */
 export function detectCompletedMdUnmigrated(cwd: string): PreflightFinding | null {
   const filePath = path.join(cwd, "docs", "completed.md");
@@ -273,9 +271,9 @@ export function detectPlaywrightReporterHostile(cwd: string): PreflightFinding |
   if (!fs.existsSync(ciPath)) return null;
   const content = fs.readFileSync(ciPath, "utf-8");
   // Filter out YAML comment lines (those starting with optional whitespace + `#`) before
-  // matching, so we don't fire on bkit-shipped commented stubs or commented-out consumer
-  // examples. `stripBkitBlock` is unsuitable here because it uses strict line-anchored
-  // marker detection that misses indented YAML markers.
+  // matching: bkit-shipped commented stubs and commented-out consumer examples never fire.
+  // Not `stripBkitBlock`: its strict line-anchored marker detection misses indented YAML
+  // markers.
   const activeContent = content
     .split("\n")
     .filter((line) => !/^\s*#/.test(line))
@@ -304,8 +302,7 @@ const CONTEXT_FETCH_NONE_RE = /^<!-- context-fetch:none(?: [^>]*)? -->$/m;
 
 /**
  * Every `context=` a `context-fetch` block may declare. `runtime` is the default when
- * the attribute is absent, which is what keeps pre-context consumer blocks working
- * untouched. Mirrors the `case "$CONTEXT"` arms in `.bkit/workflows/bkit-debug.md`
+ * the attribute is absent. Mirrors the `case "$CONTEXT"` arms in `.bkit/workflows/bkit-debug.md`
  * Step 4; `bkit-context-fetchs.test.ts` fails when the two drift.
  */
 export const CONTEXT_FETCH_CONTEXTS: readonly string[] = ["runtime", "ci", "diff", "e2e", "web"];
@@ -314,11 +311,9 @@ export const CONTEXT_FETCH_CONTEXTS: readonly string[] = ["runtime", "ci", "diff
  * Contexts whose absence means an entire class of failure evidence is never fetched,
  * each with the evidence it carries.
  *
- * Deliberately a subset of {@link CONTEXT_FETCH_CONTEXTS}: `web` is enrichment, not
- * a class of evidence about THIS repo, and its self-skip names a fallback the agent
- * already has (the host's built-in web tools). Nagging every consumer to provision a
- * third-party search key would be noise, so it is valid-but-not-required. `runtime`
- * is covered by `context-fetch-missing` instead.
+ * A subset of {@link CONTEXT_FETCH_CONTEXTS}: `web` is valid-but-not-required (its
+ * self-skip names the host's built-in web tools as the fallback). `runtime` is covered
+ * by `context-fetch-missing` instead.
  */
 const CONTEXT_FETCH_EVIDENCE_CONTEXTS: Record<string, string> = {
   ci: "CI job/step failures and logs",
@@ -353,12 +348,9 @@ function contextFetchDismissesAll(consumer: string): boolean {
  * is free and both parts are optional: a bare `context-fetch:start` is an unnamed
  * `runtime` block (the pre-context form). Returns `null` for non-matching lines.
  *
- * Kept deliberately in step with the awk parser in `.bkit/workflows/bkit-debug.md`
- * Step 4 — the workflow executes what this function reports, so a divergence
- * means the advisory describes a block set that is not the one being run. That
- * parser strips `[ \t]*` and splits on `[ \t]+`, so this one must accept runs of
- * spaces and tabs too: a marker this rejects but awk accepts is a block that runs
- * while every advisory reports it absent.
+ * Kept in step with the awk parser in `.bkit/workflows/bkit-debug.md` Step 4, which
+ * executes the blocks this function reports. That parser strips `[ \t]*` and splits on
+ * `[ \t]+`, so this one accepts runs of spaces and tabs too.
  */
 export function parseContextFetchStart(line: string): { name: string; context: string } | null {
   const m = /^<!-- context-fetch:start((?:[ \t]+[\w.=-]+)*)[ \t]*-->$/.exec(line);
@@ -435,7 +427,7 @@ function readDependencyNames(cwd: string): string[] {
  * runtime-log artifact (`context-runtime-<name>-{ATTEMPT}.md`) is produced
  * on any debug run. Ready-made blocks ship in `.bkit/templates/context/`.
  *
- * Markers may be named (`context-fetch:start vercel`) or unnamed (legacy). Only
+ * Markers may be named (`context-fetch:start vercel`) or unnamed. Only
  * fires when the consumer has the bkit-managed block at all; consumers who fully
  * own `.agents/context.md` (no markers) are not nagged. Dismissable with a
  * `<!-- context-fetch:none ... -->` marker below `<!-- bkit:end -->`.
@@ -474,15 +466,11 @@ export function detectContextFetchMissing(cwd: string): PreflightFinding | null 
  *
  * `/bkit-debug` Step 4 is fully block-driven: CI logs, the last-passing diff and
  * e2e artifacts each come from a `context=`-tagged block, exactly as runtime logs
- * do. bkit hardcodes no CI host, workflow filename, branch name or e2e framework,
- * so a repo whose consumer section holds only `runtime` blocks (the pre-context
- * shape, and the shape every upgrade inherits) gets no CI evidence at all.
+ * do. bkit hardcodes no CI host, workflow filename, branch name or e2e framework.
  *
- * Distinct from `context-fetch-missing`, which owns the no-blocks-at-
- * all case; this one only fires once at least one block exists. Dismissable per
- * context — `<!-- context-fetch:none e2e -->` below `<!-- bkit:end -->` — so a repo
- * with no e2e lane silences that one context without also silencing the advisories
- * that catch a repo which wired nothing at all. A bare marker still dismisses all.
+ * Distinct from `context-fetch-missing`, which owns the no-blocks-at-all case; this
+ * one only fires once at least one block exists. Dismissable per context —
+ * `<!-- context-fetch:none e2e -->` below `<!-- bkit:end -->`. A bare marker dismisses all.
  */
 export function detectContextFetchContextMissing(cwd: string): PreflightFinding | null {
   const filePath = path.join(cwd, ".agents", "context.md");
@@ -549,12 +537,11 @@ function shippedContextFetchTemplates(): Map<string, string> {
  * repo also runs Supabase. The two are mutually exclusive: this one only runs once the
  * consumer section already has at least one block.
  *
- * Evidence-gated to avoid nagging single-backend consumers: a source is flagged
- * only when `CONTEXT_FETCH_BACKEND_EVIDENCE[name]` proves the repo runs it. A
- * source counts as enabled when its name appears anywhere in the consumer
- * section — a named marker (`context-fetch:start supabase`) OR an unnamed block
- * body (`vercel logs`, `api.supabase.com`) — so a legacy unnamed block is not a
- * false positive. Dismissable via `<!-- context-fetch:none ... -->` below
+ * Evidence-gated: a source is flagged only when `CONTEXT_FETCH_BACKEND_EVIDENCE[name]`
+ * proves the repo runs it. A source counts as enabled when its name appears anywhere
+ * in the consumer section — a named marker (`context-fetch:start supabase`) OR an
+ * unnamed block body (`vercel logs`, `api.supabase.com`). Dismissable via
+ * `<!-- context-fetch:none ... -->` below
  * `<!-- bkit:end -->`.
  */
 export function detectContextFetchSourceNotEnabled(cwd: string): PreflightFinding | null {
@@ -596,9 +583,8 @@ export function detectContextFetchSourceNotEnabled(cwd: string): PreflightFindin
  * utilities plus the binaries bkit's own cloud setup installs (vale, gh, jq,
  * pnpm/corepack, node, git, python3). A context-fetch block that self-guards on one
  * of these needs NO `context-fetch:provision` block — only a STACK CLI (vercel,
- * supabase, gcloud, aws, wrangler, …) does, because bkit installs no stack CLIs
- * itself (that would name a stack). Keep `jq` here: it is provisioned as a base
- * tool by the cloud setup script, not per-block.
+ * supabase, gcloud, aws, wrangler, …) does; bkit installs no stack CLIs itself. `jq`
+ * is here: the cloud setup script provisions it as a base tool, not per-block.
  */
 const CONTEXT_FETCH_BASE_TOOLS = new Set<string>([
   "curl",
@@ -639,13 +625,13 @@ const CONTEXT_FETCH_BASE_TOOLS = new Set<string>([
  * stack CLI (`command -v <cli>`) but ships no matching `<!-- context-fetch:provision
  * <name> -->` block below `<!-- bkit:end -->`. bkit installs no stack CLIs itself,
  * so in cloud that CLI is absent, the block's own guard trips, and it self-skips
- * with a silent `exit 0` — `/bkit-debug` fetches NO runtime logs for that source
- * (which reads as "clean", not "not wired up"). Both the `.claude/cloud.md` web
- * setup-script snapshot and `.claude/hooks/cloud-bootstrap.sh` provision from the
- * SAME `context-fetch:provision` recipes, so a missing recipe breaks both cloud paths.
+ * with a silent `exit 0` — `/bkit-debug` fetches NO runtime logs for that source.
+ * Both the `.claude/cloud.md` web setup-script snapshot and
+ * `.claude/hooks/cloud-bootstrap.sh` provision from the SAME `context-fetch:provision`
+ * recipes.
  *
- * Precise-signal: keyed on the block's OWN `command -v <cli>` self-guard, so a
- * curl/jq/API block (no stack-CLI guard) never false-positives; base tools
+ * Keyed on the block's OWN `command -v <cli>` self-guard, so a curl/jq/API block (no
+ * stack-CLI guard) never fires; base tools
  * (`CONTEXT_FETCH_BASE_TOOLS`) are ignored. Only NAMED start blocks are checked (a
  * provision block is matched by name). Dismissable via `<!-- context-fetch:none ...
  * -->` below `<!-- bkit:end -->`.
@@ -707,8 +693,7 @@ export function detectContextFetchProvisionMissing(cwd: string): PreflightFindin
   let firstName = "";
   let firstCli = "";
   for (const b of blocks) {
-    // Unnamed blocks are skipped: a provision sibling is matched by name, so an
-    // unnamed block can never be paired with one and would nag unfixably.
+    // Unnamed blocks are skipped: a provision sibling is matched by name.
     if (b.kind !== "start" || !b.name || seen.has(b.name)) continue;
     const body = b.body.join("\n");
     for (const m of body.matchAll(/command -v ([\w.-]+)/g)) {
@@ -840,7 +825,7 @@ export function detectTier2TextDrift(
   if (consumerBlocks.size === 0) return null;
 
   // Significant lines = load-bearing block content: non-blank, non-comment, trimmed (indentation
-  // is not semantic). Comments explain why, not what, so annotating a block never trips drift.
+  // is not semantic). Comment lines never trip drift.
   const significantLines = (body: string): string[] =>
     body
       .split("\n")
@@ -1120,10 +1105,9 @@ export function detectExtraMcpServers(
  * Consumer ran `bkit install` (which seeds .env.example) but has not yet
  * copied it to .bkit/.env and filled in their tokens.
  */
-// `tracker` controls whether `BKIT_LINEAR_API_KEY` appears in the token prose — a github/none
-// repo never wires Linear, so listing the key is a false ask (issue #138). Defaults to
-// `linear` (the superset) so any caller that doesn't pass a tracker still surfaces every
-// token; the real Phase-3 caller passes the consumer's resolved `bkit.issueTracker`.
+// `tracker` controls whether `BKIT_LINEAR_API_KEY` appears in the token prose (Linear
+// tracker only). Defaults to `linear` (the superset: every token); the real Phase-3
+// caller passes the consumer's resolved `bkit.issueTracker`.
 export function detectMissingDotenv(
   cwd: string,
   tracker: IssueTracker = "linear",
@@ -1181,8 +1165,7 @@ export function detectBlankDotenvKeys(
       description:
         "classic PAT with read:packages scope for authenticating to the GitHub Packages npm registry (@cbartens/* packages)",
     },
-    // BKIT_LINEAR_API_KEY only matters under the Linear tracker (issue #138) — a github/none
-    // repo's MCP stack never uses it, so don't flag it as a blank required key.
+    // BKIT_LINEAR_API_KEY is required only under the Linear tracker.
     ...(tracker === "linear"
       ? [
           {
@@ -1259,7 +1242,7 @@ export function detectDirenvMissing(
 
   const result = spawnSync("which", ["direnv"], { encoding: "utf-8" });
   if (result.status === 0 && result.stdout.trim()) return null;
-  // BKIT_LINEAR_API_KEY only matters under the Linear tracker (issue #138).
+  // BKIT_LINEAR_API_KEY is required only under the Linear tracker.
   const editKeys =
     tracker === "linear"
       ? "BKIT_GH_TOKEN_INSTALL, BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY"
@@ -1437,7 +1420,7 @@ export function runPreflight(
 
   advisories.push(...detectRetiredOwnedFiles(cwd));
 
-  // #380 rollout: docs/completed.md still present -> not yet migrated
+  // docs/completed.md still present -> not yet migrated
   const completedMdUnmigrated = detectCompletedMdUnmigrated(cwd);
   if (completedMdUnmigrated) advisories.push(completedMdUnmigrated);
 
@@ -1482,9 +1465,8 @@ export function runPreflight(
   }
 
   // [mcp-env] detectors run in Phase 3 (runPostInstallCheck in bkit-postinstall.ts),
-  // not here — Phase 1 cannot see the .bkit/.env.example scaffold on a first
-  // install because writes have not happened yet. Detectors stay exported
-  // from this file so the postinstall module can call them.
+  // not here: the .bkit/.env.example scaffold exists only after writes. Detectors are
+  // exported from this file for the postinstall module.
 
   return {
     blockers: dedupeById(blockers),

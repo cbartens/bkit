@@ -79,7 +79,7 @@ describe("gateguard hook — advisory (default mode)", () => {
     expect(typeof hso["additionalContext"]).toBe("string");
     expect(hso["additionalContext"]).toContain("GateGuard");
     expect(hso["additionalContext"]).toContain("foo.ts");
-    // Advisory must NOT carry a permission decision (that would alter the flow).
+    // Advisory carries NO permission decision.
     expect(hso["permissionDecision"]).toBeUndefined();
   });
 
@@ -207,8 +207,7 @@ describe("gateguard hook — no-op / fail-open cases", () => {
   });
 
   it("subagents are NOT exempt — an agent_id payload still gets the checklist", () => {
-    // Reversed deliberately: a subagent edit is still an edit, and the
-    // investigation it skips is the same investigation.
+    // A subagent edit gets the advisory too.
     const r = run(editPayload("src/sub.ts", newSession(), { agent_id: "subagent-123" }));
     expect(r.status).toBe(0);
     expect(hookOutput(r)["additionalContext"]).toContain("[bkit GateGuard]");

@@ -1,4 +1,4 @@
-// bkit-version.ts — Schema for .bkit/version (P2.T3, P4.T4).
+// bkit-version.ts — Schema for .bkit/version.
 //
 // Shapes the parser reads:
 //   v0.6.x schema: plain text "0.6.1\n"
@@ -6,9 +6,8 @@
 //   v0.9.x schema: JSON { pinnedVersion: string; tier3Hashes?: ...; canonicalHashes?: ... }
 //   current:       JSON { pinnedVersion, canonicalHashes, claudeAllowDerived }
 //
-// Backward-compat: if the file parses as plain text (not JSON), treat it as
+// A file that parses as plain text (not JSON) reads as
 // { pinnedVersion: trimmedContent, canonicalHashes: {} } — no fields are required.
-// This keeps `bkit uninstall` working on a plain-text file v0.6.x wrote.
 //
 // `canonicalHashes`: map of consumer-relative path → sha256 hex of the file
 // content bkit wrote. Used by `bkit upgrade` to detect consumer drift and by
@@ -113,10 +112,8 @@ export function writeBkitVersion(versionFilePath, v) {
  * Returns true (treat as consumer-modified — block silent overwrite) when:
  *   - `canonicalHashes` has a recorded hash for `relPath` and the current on-disk
  *     content hash differs from it (true drift), OR
- *   - `canonicalHashes` has no entry for `relPath` (unknown hash state — could be a
- *     pre-v0.9.x install where hashes were never recorded, or a file installed before
- *     hash-tracking applied). Defaulting to true forces upgrades to surface a conflict
- *     for the consumer to resolve, rather than silently overwriting content.
+ *   - `canonicalHashes` has no entry for `relPath` (unknown hash state); upgrade then
+ *     surfaces a conflict for the consumer to resolve.
  *
  * Returns false (no drift — safe to upgrade) only when:
  *   - The current on-disk content matches the recorded canonical hash, OR
@@ -155,21 +152,18 @@ export function hashFile(filePath) {
     return sha256(content);
 }
 // ---------------------------------------------------------------------------
-// Managed-version marker (#256) — single source of truth for the marker shape
+// Managed-version marker — single source of truth for the marker shape
 // stamped into every rendered agent + command (.claude / .cursor / .opencode).
 //
 // Each rendered file self-declares the bkit version it was generated from via an
 // inert HTML comment placed after the frontmatter fence. `bkit-modules.ts` stamps
 // it at render time (stampManagedVersion); the `bkit check` Phase-3 gate in
 // `bkit-postinstall.ts` (detectRenderedPromptsStale) reads it back with
-// MANAGED_MARKER_VERSION_RE and hard-fails on drift, so consumers can never
-// silently run prompts/workflows from an older bkit.
+// MANAGED_MARKER_VERSION_RE and hard-fails on drift.
 //
-// Lives here (version domain, node-builtins-only) so both the renderer and the
-// detector import ONE definition — the marker shape can never drift between the
-// side that writes it and the side that reads it. An HTML comment is inert under
-// the agent reader and every provider frontmatter parser, so it never breaks a
-// rendered template.
+// Lives here (version domain, node-builtins-only); the renderer and the detector
+// import ONE definition. An HTML comment is inert under the agent reader and every
+// provider frontmatter parser.
 // ---------------------------------------------------------------------------
 const MANAGED_MARKER_TOKEN = "bkit:managed v";
 // Matches a previously-stamped marker line (anchored at any line start) including
@@ -190,9 +184,8 @@ export function managedVersionMarker(version) {
  * stamping the same content twice yields identical bytes. With no frontmatter (e.g.
  * cursor/opencode commands whose transforms strip the frontmatter), the marker sinks
  * below the content's first Markdown heading instead, so it never becomes the
- * IDE-visible first line (#386); falls back to a top prepend only when there is no
- * heading either — there too the marker is followed by a blank line so the body
- * never butts up against it.
+ * IDE-visible first line; falls back to a top prepend only when there is no heading
+ * either, also followed by a blank line.
  */
 export function stampManagedVersion(content, version) {
     const stripped = content.replace(MANAGED_MARKER_LINE_RE, "");
@@ -204,8 +197,8 @@ export function stampManagedVersion(content, version) {
         return stripped.slice(0, cut) + marker + "\n\n" + body;
     }
     // No frontmatter — the cursor/opencode command transforms remove it (applyT1 /
-    // applyOpencodeCommand). A marker on line 1 becomes the IDE-visible command
-    // description (#386), so sink it below the first heading when there is one.
+    // applyOpencodeCommand). A marker on line 1 would be the IDE-visible command
+    // description, so it sinks below the first heading when there is one.
     const heading = stripped.match(/^#{1,6} .*$/m);
     if (heading?.index !== undefined) {
         const cut = heading.index + heading[0].length;

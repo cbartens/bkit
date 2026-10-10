@@ -1,9 +1,7 @@
-// bkit-catalog-parity.test.ts — catalog-parity guards (#230 item E).
+// bkit-catalog-parity.test.ts — catalog-parity guards.
 //
 // Recomputes the canonical catalogs from disk and asserts the bkit-authored index
-// docs stay in sync: "index drift = regression". Deterministic, no install. Cheap
-// insurance that a new prompt/workflow file (or a hand-edited count) cannot silently
-// diverge from its documentation.
+// docs stay in sync. Deterministic, no install.
 //
 // Direction matters: file -> doc. Every catalog FILE must be documented, but the docs
 // MAY describe entries that have no dedicated file.

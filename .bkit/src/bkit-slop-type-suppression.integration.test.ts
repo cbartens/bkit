@@ -10,8 +10,7 @@ import * as path from "node:path";
 // — a JSON config that loads the plugin by relative path — so the whole chain is
 // exercised: plugin loads via slop-scan's loader, the JSON `plugins` ref
 // resolves, the rule classifies casts AND ts-suppression directives, and
-// `overrides` suppress the right files. String-presence on the config would prove
-// none of that (project rule: validate shipped config with the real tool).
+// `overrides` suppress the right files.
 
 // The actual shipped plugin artifact, not a copy — the test guards the real file.
 const PLUGIN_SRC = path.resolve(
@@ -27,7 +26,7 @@ afterAll(() => {
 });
 
 const FIXTURES: Record<string, string> = {
-  // object-literal target double cast — the Fraser #122 shape (highest signal)
+  // object-literal target double cast (highest weight)
   "src/obj.ts": "export const x = (foo as unknown as { a: string }).a;\n",
   // general double cast
   "src/dbl.ts": "export const y = foo as unknown as Bar;\n",

@@ -52,7 +52,7 @@ const clamp = (file: string, profile: string, ...extra: string[]) =>
   run(["clamp", `--artifact=${file}`, `--profile=${profile}`, ...extra]);
 
 // ---------------------------------------------------------------------------
-// clamp — bkit-context-clamp.test.ts #427 T1
+// clamp
 // ---------------------------------------------------------------------------
 
 describe("bkit context clamp (#427 T1)", () => {
@@ -374,7 +374,7 @@ describe("humanBytes", () => {
 });
 
 // ---------------------------------------------------------------------------
-// ledger-scan — bkit-context-clamp.test.ts #427 T3
+// ledger-scan
 // ---------------------------------------------------------------------------
 
 describe("bkit context ledger-scan (#427 T3)", () => {

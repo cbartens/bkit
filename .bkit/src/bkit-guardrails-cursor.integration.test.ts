@@ -106,7 +106,7 @@ describe("cursor guardrails.cjs — read", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Managed-block boundary (#422) — consumers own the driver (stdin read + the
+// Managed-block boundary — consumers own the driver (stdin read + the
 // single emit()), bkit owns only the pure decision engine.
 // ---------------------------------------------------------------------------
 
@@ -144,11 +144,8 @@ describe("cursor guardrails.cjs — managed-block boundary", () => {
 // T6 — template <-> installed-mirror byte parity for the guardrails hooks.
 //
 // The hook is shipped per host as a self-contained file, so each host's mirror is a
-// copy of its template rather than an import. Nothing else gates that copy: `bkit
-// check` does not drift-gate host-render mirrors, so a template edited without a
-// re-install leaves the mirror silently stale, and the hook the editor actually runs
-// stops matching the one under review. Precedent for the shape:
-// bkit-gateguard-dogfood.integration.test.ts, which does the same for gateguard.cjs.
+// copy of its template. Same shape as bkit-gateguard-dogfood.integration.test.ts for
+// gateguard.cjs.
 describe("T6 — guardrails.cjs template and installed mirror are byte-identical", () => {
   const PAIRS: ReadonlyArray<readonly [string, string, string]> = [
     ["cursor", ".bkit/templates/.cursor/hooks/guardrails.cjs", ".cursor/hooks/guardrails.cjs"],
@@ -168,9 +165,7 @@ describe("T6 — guardrails.cjs template and installed mirror are byte-identical
   }
 
   it("no host embeds its own copy of the shipped host list", () => {
-    // The allowlist artifact is the only source. A literal list back in any hook is the
-    // regression the registry exists to prevent, and it would drift unnoticed because
-    // nothing compares a hook's array against the registry.
+    // The allowlist artifact is the only source; no hook carries a literal list.
     for (const [, template, mirror] of PAIRS) {
       expect(fs.readFileSync(template, "utf-8")).not.toContain("SHIPPED_NETWORK_BASES");
       if (fs.existsSync(mirror)) {

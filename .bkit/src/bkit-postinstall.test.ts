@@ -431,7 +431,7 @@ describe("detectGithubProjectFieldIdFormat", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectNpmrcAuth", () => {
-  // #274: registry-mapping-only is the correct shape — the auth token lives in
+  // Registry-mapping-only is the correct shape — the auth token lives in
   // pnpm's user-level config (pnpm config set), NOT in the project .npmrc.
   it("returns 'present' when .npmrc has only the @cbartens registry mapping", () => {
     fs.writeFileSync(
@@ -714,7 +714,7 @@ describe("detectCiYmlMissingTokenEnv", () => {
       "utf-8",
     );
   };
-  // #274 canonical correct install step: pnpm config set (user-level auth) + env mapping.
+  // Canonical install step: pnpm config set (user-level auth) + env mapping.
   const CONFIG_SET =
     '          pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"';
   const INSTALL = "          pnpm install --frozen-lockfile";
@@ -1114,8 +1114,7 @@ describe("detectTestIntegrationEnv", () => {
   });
 
   it("returns null when the CI workflow lane provisions the real-service env", () => {
-    // Script is intentionally env-agnostic (keeps local runs from forcing real-API mode);
-    // the ci.yml job that runs test:integration provisions the env instead.
+    // Script is env-agnostic; the ci.yml job that runs test:integration provisions the env.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       '{"scripts":{"test:integration":"vitest run --config vitest.integration.config.ts --passWithNoTests"}}',
@@ -1197,13 +1196,9 @@ describe("detectGhaFloatingTags", () => {
     expect(result!.detect).toContain("release.yml");
   });
 
-  // Issue #124 — bkit-canonical workflow files (listed in `.bkit-version`)
-  // carry bkit-owned pins. The shipped `renovate.json5` adds a
-  // packageRule with `matchFileNames` for bkit-managed workflow files so
-  // consumer-side Renovate stays out of them; consumers receive new
-  // SHAs/versions via `bkit install`, not via their own Renovate. The
-  // floating-tag advisory must skip them; otherwise consumers "remediate"
-  // a file `bkit install` overwrites on the next run.
+  // bkit-canonical workflow files (listed in `.bkit-version`) carry bkit-owned pins
+  // (the shipped `renovate.json5` excludes them via `matchFileNames`). The
+  // floating-tag advisory skips them.
   it("skips workflow files listed in .bkit-version canonicalHashes (issue #124)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
@@ -1368,7 +1363,7 @@ describe("buildTokenRenameMigrationAdvisory", () => {
 // ---------------------------------------------------------------------------
 // buildCloudSetupAdvisory — optional post-install decision (parity with the
 // tracker / dep-updater advisories). Cloud agents (post-CI auto-routing) are
-// opt-in via `bkit install --cloud`. See issue #119.
+// opt-in via `bkit install --auto=<variant>`.
 // ---------------------------------------------------------------------------
 
 describe("buildCloudSetupAdvisory", () => {
@@ -1870,8 +1865,7 @@ describe("writeAdvisoriesArtifact", () => {
 
 describe("runPostInstallCheck deduplication", () => {
   it("deduplicates findings within Phase 3 when same id appears multiple times", () => {
-    // We can't force duplicate ids from real detectors, but we can verify the
-    // cross-phase dedup: if preflightAdvisories has an id that Phase 3 would also emit,
+    // Cross-phase dedup: if preflightAdvisories has an id that Phase 3 also emits,
     // Phase 3 wins (its entry replaces preflight's).
     // Set up: shell token missing → Phase 3 will emit gh-bkit-token-unset-shell
     delete process.env.BKIT_GH_TOKEN_INSTALL;
@@ -1921,10 +1915,9 @@ describe("runPostInstallCheck deduplication", () => {
   });
 
   it("B2: cross-phase dedup is position-stable — preflight order preserved, Phase 3 appended", () => {
-    // B2 (BAR-142 §B2): When Phase 3 supersedes a preflight id, the surviving entry
-    // appears at the back of the list (Phase 3 position), not inserted at preflight position.
-    // This ensures the output order is stable: preflight findings (not superseded) first,
-    // Phase 3 findings second.
+    // When Phase 3 supersedes a preflight id, the surviving entry appears at the back of
+    // the list (Phase 3 position): preflight findings (not superseded) first, Phase 3
+    // findings second.
     process.env.BKIT_GH_TOKEN_INSTALL = "test"; // token present → no shell-token finding from Phase 3
 
     const preflightAdvisories: PreflightFinding[] = [
@@ -1960,7 +1953,7 @@ describe("runPostInstallCheck deduplication", () => {
 });
 
 // ---------------------------------------------------------------------------
-// readChangelogVersionDelta — A7 changelog header (BAR-142 §A7)
+// readChangelogVersionDelta — changelog header
 // ---------------------------------------------------------------------------
 
 describe("readChangelogVersionDelta", () => {
@@ -2434,7 +2427,7 @@ describe("detectWorkflowLintToolsMissing", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectRenderedPromptsStale (#256) — rendered prompts/workflows version gate
+// detectRenderedPromptsStale — rendered prompts/workflows version gate
 // ---------------------------------------------------------------------------
 
 describe("detectRenderedPromptsStale", () => {
@@ -2523,7 +2516,7 @@ describe("detectRenderedPromptsStale", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectManagedDocsStale (#256 extension) — managed docs/*.md version gate
+// detectManagedDocsStale — managed docs/*.md version gate
 // ---------------------------------------------------------------------------
 
 describe("detectManagedDocsStale", () => {
@@ -2699,7 +2692,7 @@ describe("detectManagedDocsStale", () => {
 });
 
 // ---------------------------------------------------------------------------
-// isOnProtectedBranch — branch-scoped severity for the #256 stale gates
+// isOnProtectedBranch — branch-scoped severity for the stale gates
 // ---------------------------------------------------------------------------
 
 describe("isOnProtectedBranch", () => {

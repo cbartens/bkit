@@ -1,5 +1,5 @@
 /**
- * bkit-block-locality-audit.test.ts — #440
+ * bkit-block-locality-audit.test.ts
  *
  * Audits every fenced shell block in `.bkit/workflows/**` and `.bkit/prompts/**`
  * for BLOCK LOCALITY:
@@ -7,34 +7,19 @@
  *   Every `$VAR` referenced inside a fenced shell block must be assigned
  *   inside THAT SAME block.
  *
- * Why: each fenced block is run as a separate Bash tool call, and shell state
- * (env vars, functions) does not persist between calls. A `$VAR` that no line
- * in the block assigns is therefore an unset variable at run time — it expands
- * to the empty string, silently. `jq --arg v "$SUMMARY_VERDICT"` with an unset
- * SUMMARY_VERDICT writes `"verdict": ""` into status.jsonl: the row lands, the
- * command exits 0, and the run looks healthy.
- *
- * This never fired in practice — all 244 committed verdict rows across
- * `docs/plans/**` carry a real value — because the orchestrator substituted the
- * value it was holding rather than deferring to bash. That is exactly what this
- * gate exists to pin down: correctness rested on undocumented model inference,
- * with nothing to detect the day it stopped holding. Under the #440 rule a
- * model-held value crosses into bash through one explicit assignment at the top
- * of the block:
+ * Each fenced block runs as a separate Bash tool call; shell state (env vars,
+ * functions) does not persist between calls. A model-held value crosses into bash
+ * through one explicit assignment at the top of the block:
  *
  *     SUMMARY_VERDICT="{SUMMARY_VERDICT}"
  *
  * after which `$SUMMARY_VERDICT` is locally assigned and this audit passes.
  *
- * SHAPE: ratchet, currently at zero. The #440 sweep assigned all 161
- * pre-existing references at their block boundary, so `KNOWN` is empty and any
- * unassigned reference fails immediately. `KNOWN` stays in place as the escape
- * hatch for a deliberate, argued exception: add the file/name/count and say why
- * in the commit. Counts are exact in both directions — dropping below an entry
- * also fails, so the inventory can never drift out of step with the corpus.
+ * SHAPE: ratchet, currently at zero. `KNOWN` is empty, so any unassigned reference
+ * fails immediately. An exception adds its file/name/count to `KNOWN`. Counts are
+ * exact in both directions — dropping below an entry also fails.
  *
- * NOT audited: standalone prose mentions of a variable. Per #440 the sigil is
- * optional there and both forms are correct, so there is nothing to check.
+ * NOT audited: standalone prose mentions of a variable (the sigil is optional there).
  */
 
 import * as fs from "node:fs";
@@ -279,18 +264,16 @@ function auditRepo(): Finding[] {
 }
 
 // ---------------------------------------------------------------------------
-// Ratchet inventory — references that predate #440
+// Ratchet inventory
 // ---------------------------------------------------------------------------
 
 /**
- * Per-file, per-name counts of unassigned `$VAR` references as of #440.
+ * Per-file, per-name counts of permitted unassigned `$VAR` references.
  *
- * Counts are EXACT in both directions. Fixing a reference fails the test until
- * this inventory is lowered in the same commit — that is deliberate, so the
- * inventory cannot drift out of step with the corpus.
+ * Counts are EXACT in both directions: fixing a reference fails the test until this
+ * inventory is lowered in the same commit.
  *
- * Line numbers are intentionally NOT part of the key: they shift on every edit
- * and would make the inventory churn without adding signal.
+ * Line numbers are NOT part of the key.
  */
 const KNOWN: Record<string, Record<string, number>> = {};
 
@@ -309,16 +292,10 @@ function tally(findings: Finding[]): Record<string, Record<string, number>> {
 /**
  * Scope: the bkit SOURCE of truth only — `.bkit/workflows/` and `.bkit/prompts/`.
  *
- * The host-render mirrors (`.claude/commands/`, `.cursor/commands/`,
- * `.opencode/commands/`) are force-overwritten output of `bkit install`, not
- * hand-edited source. Auditing them would double-report every finding and,
- * worse, hold CI red until someone re-ran `bkit install` — turning a
- * regenerable artifact into a merge blocker. Fix the source; the mirror follows.
- *
- * `.bkit/templates/` is out of scope for a different reason: its files are
- * consumer-facing config and cloud-env templates using `{{TOKEN}}` install-time
- * substitution, not orchestrator step files, so the prose-to-bash handoff this
- * audit guards does not occur there.
+ * Not audited: the host-render mirrors (`.claude/commands/`, `.cursor/commands/`,
+ * `.opencode/commands/`, output of `bkit install`) and `.bkit/templates/`
+ * (consumer-facing config using `{{TOKEN}}` install-time substitution, not
+ * orchestrator step files).
  */
 describe("#440: audit scope is bkit source, never the rendered mirrors", () => {
   const MIRRORS = [".claude/commands", ".cursor/commands", ".opencode/commands", ".bkit/templates"];

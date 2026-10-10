@@ -7,19 +7,14 @@
  * constants exported by `commands/workflow/context.ts` (its own tests pin the
  * written bytes). This file guards everything around that:
  *
- * - no workflow prints a fence of its own — run-block already wraps the payload,
- *   so a second fence nests inside the first and the "Fence ends at LAST line"
- *   claim stops being true;
+ * - no workflow prints a fence of its own (run-block already wraps the payload);
  * - any other copy of the instruction lines in a shipped source (prompts,
- *   templates, scripts, agent rules) is the WHOLE fence, verbatim and in order. A half-copied fence is the
- *   dangerous failure: the markers survive, one instruction line goes missing,
- *   and the artifact still looks wrapped;
+ *   templates, scripts, agent rules) is the WHOLE fence, verbatim and in order;
  * - consumer fetch blocks emit no fence, and subagents reading fenced artifacts
  *   are told so on spawn.
  *
- * Prose is defence-in-depth, the layer injection is designed to defeat. It sits
- * next to the payload rather than in a header, which is the whole reason for the
- * wrap; it does not replace a narrowly-scoped token.
+ * The prose sits next to the payload, not in a header; it is defence-in-depth and does
+ * not replace a narrowly-scoped token.
  */
 
 import * as fs from "node:fs";

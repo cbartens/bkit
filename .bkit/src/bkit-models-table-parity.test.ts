@@ -5,9 +5,8 @@
 // `.bkit/prompts/*.md` frontmatter and are mirrored byte-identically into `.claude/agents/`.
 // Only the `Cursor` column and the opencode gateway columns are parsed at install.
 //
-// That makes those three columns a hand-maintained COPY of the frontmatter with nothing
-// checking the two agree — edit one and the other silently becomes a lie, and the table is
-// what a human reads when deciding what to re-pin. These tests are the missing check.
+// Those three columns are a hand-maintained COPY of the frontmatter; these tests check
+// the two agree.
 //
 // Direction: file -> doc, matching bkit-catalog-parity.test.ts. Every prompt file must have
 // a row whose cells restate its frontmatter.

@@ -3,9 +3,8 @@
 // Four runtimes behave differently: a laptop, a GitHub Actions runner, a Cursor
 // Cloud Agent, and a claude.ai cloud session. Detection maps env markers to a
 // conservative DEFAULT capability table; only `runtimeGithubCli` is probed live
-// (`gh auth status`), because gh auth is the flaky one. `runtimeDevPushes` is
-// never probed: `git push --dry-run` sends no ref update, so a protected
-// branch's hook never fires and a false "true" can strand a live session on dev.
+// (`gh auth status`). `runtimeDevPushes` is never probed: `git push --dry-run` sends
+// no ref update, so a protected branch's hook never fires.
 //
 // Each command run is its own process, so nothing survives between workflow
 // blocks. The durable record is the `runtime-resolved` row `row` writes once per
@@ -42,8 +41,7 @@ export const EXIT_UNRESOLVED = 5;
 // ---------------------------------------------------------------------------
 /**
  * One detection primitive as true / false / ambiguous. Unset and an explicit
- * falsy literal both mean "not this runtime": `CI=false` is common in local
- * shells, and reading it as ambiguous would cost a laptop its worktrees.
+ * falsy literal (e.g. `CI=false`) both mean "not this runtime".
  */
 export function normFlag(value) {
     if (["true", "TRUE", "True", "1", "yes", "YES"].includes(value ?? ""))

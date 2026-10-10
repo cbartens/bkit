@@ -58,7 +58,7 @@ export function parseRemoteUrlToSlug(url) {
         .match(/[/:]([^/:]+\/[^/:]+)$/);
     return m?.[1] ?? "";
 }
-/** git env with hook vars scrubbed — see resolveRepoSlug for why this is load-bearing. */
+/** git env with hook vars scrubbed — see resolveRepoSlug. */
 export function gitEnv() {
     const env = { ...process.env };
     delete env["GIT_DIR"];
@@ -71,11 +71,8 @@ export function gitEnv() {
  * Resolve a rev (`HEAD~1`, a branch, a tag) to a full hex SHA. "" if it does not
  * resolve — e.g. `HEAD~1` in a repo with one commit.
  *
- * `parentSha` MUST be resolved before it reaches a row. It is part of identity()
- * for compliance and counter, so an unresolved literal like "HEAD~1" is the SAME
- * identity on every run and successive runs fold into each other. It is also what
- * the grader diffs against, and the diff guard rejects anything non-hex — silently
- * grading an empty diff, which passes every diff-based rule vacuously.
+ * `parentSha` MUST be resolved before it reaches a row: it is part of identity()
+ * for compliance and counter, and the grader's diff guard accepts only hex.
  */
 export function resolveGitSha(rev, cwd) {
     const res = spawnSync("git", ["rev-parse", "--verify", "--quiet", `${rev}^{commit}`], {
@@ -93,13 +90,10 @@ export function resolveGitSha(rev, cwd) {
  * Resolve a repo's `owner/repo` slug from its git remote. "" when there is no
  * remote or no git repo — callers decide the fallback, loudly.
  *
- * The env scrub is load-bearing, not hygiene: git hooks export GIT_DIR /
- * GIT_WORK_TREE / GIT_INDEX_FILE, and leaving them set makes `git -C <path>`
- * silently answer for the HOOK's repo instead of <path> — so a harvest run from
- * a hook would stamp every consumer's rows with bkit's own slug.
+ * Scrubs GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE (exported by git hooks) so
+ * `git -C <path>` answers for <path>, not the hook's repo.
  *
- * spawnSync, not execSync-in-a-try: a non-zero exit is an expected answer here
- * ("no remote"), not an exception to swallow.
+ * spawnSync: a non-zero exit ("no remote") is an expected answer, not an exception.
  */
 export function resolveRepoSlug(cwd) {
     const res = spawnSync("git", ["remote", "get-url", "origin"], {
@@ -155,10 +149,8 @@ export const DEFERRAL_REASONS = new Set([
  * at write time, where the four justifications are the whole legal vocabulary.
  *
  * Set via same-`key` append like any other update, and NEVER rewritten afterwards:
- * a later row that closes the entry carries `unjustified` through verbatim, because
- * the rate it feeds (`computeDeferralDiscipline` in `bkit-analysis.ts`) measures how
- * often an agent deferred work it should have done — not whether someone later
- * cleaned up after it.
+ * a later row that closes the entry carries `unjustified` through verbatim. Feeds
+ * `computeDeferralDiscipline` in `bkit-analysis.ts`.
  */
 export const UNJUSTIFIED_REASON = "unjustified";
 /**
@@ -166,12 +158,8 @@ export const UNJUSTIFIED_REASON = "unjustified";
  * § Ledgers & Writers). EXHAUSTIVE: a subagent absent from this set does not
  * write the kind at all.
  *
- * The list is data, not prose, because the prose alone did not hold. Both
- * `@bkit-build-plan-execute` and `@bkit-build-plan-gaps-remediate` carry an
- * explicit "NO out-of-scope deferral" contract line, and the executor still
- * wrote rows — a blocked plan task is unfinished in-scope work, and routing it
- * to the ledger converts it into something the build loop treats as settled.
- * Its `BLOCKED` log line is the record; the next verify pass reads it.
+ * `@bkit-build-plan-execute` and `@bkit-build-plan-gaps-remediate` are not in it: a
+ * blocked plan task's record is its `BLOCKED` log line, which the next verify pass reads.
  *
  * Orchestrator-written rows carry no `subagent` and are outside this check.
  */
@@ -428,9 +416,8 @@ export function parse(raw) {
     return result;
 }
 /**
- * `ts` as a sortable number. Legacy rows carry an ISO-string `ts` or none at all;
- * `a.ts - b.ts` on those is NaN, which voids the whole sort and makes every fold
- * winner depend on file order. ISO strings parse; anything else sorts oldest.
+ * `ts` as a sortable number. Legacy rows carry an ISO-string `ts` or none at all:
+ * ISO strings parse; anything else sorts oldest.
  */
 function tsOrder(ts) {
     if (typeof ts === "number" && Number.isFinite(ts))
@@ -571,8 +558,8 @@ function ledgerLine(result) {
  *
  * Scoped STRICTLY to the one workflow — never the design→…→ship chain. For the
  * given workflow it shows THIS run's `outcome` (run) row against
- * `med·N` = the median of that workflow's previous N runs (rolling, outlier-robust
- * because durations are right-skewed), a secondary compliance line, and the ledger
+ * `med·N` = the median of that workflow's previous N runs (rolling), a secondary
+ * compliance line, and the ledger
  * footer. Fields absent on the run row are omitted — a metric shows only when the
  * workflow actually produced it.
  *

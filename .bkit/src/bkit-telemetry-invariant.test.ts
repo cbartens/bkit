@@ -1,11 +1,11 @@
 /**
- * bkit-telemetry-invariant.test.ts — WS3-T4 (#58 / #234)
+ * bkit-telemetry-invariant.test.ts
  *
  * Fold-invariant check: confirms that the number of `kind:"counter"` rows
  * with `counterName:"verifyAttempt"` in a telemetry log equals the expected
  * count of `plan-verify` steps recorded in the same log.
  *
- * This tests the structural guarantee introduced by WS3:
+ * The structural guarantee:
  *   counters.verifyAttempt == count of plan-verify rows
  *
  * Uses a fixture JSONL log built in-test (no filesystem side effects).

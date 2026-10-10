@@ -800,7 +800,7 @@ describe("html-comment marker round-trip + default-arg backward compat", () => {
 });
 
 // ---------------------------------------------------------------------------
-// P4.T1 + P4.T2 — Staging dir + atomic rename (BAR-142 §A4)
+// Staging dir + atomic rename
 // ---------------------------------------------------------------------------
 
 describe("P4.T1 — getStagingDir / initStagingDir", () => {
@@ -925,14 +925,13 @@ describe("P4.T2 — commitStaging / discardStaging", () => {
 });
 
 // ---------------------------------------------------------------------------
-// B5 — LOG_PREFIX on dry-run blocker banner (BAR-142 §B5)
+// LOG_PREFIX on dry-run blocker banner
 // ---------------------------------------------------------------------------
 
 describe("B5 — LOG_PREFIX on blocker banner (source-level verification)", () => {
   it("bkit-install.ts emits LOG_PREFIX before the blocker banner on preflight exit", () => {
-    // Source-level check: the source must contain the LOG_PREFIX-prefixed log before
-    // the formatChecklist(blockers) call. This guards against regressions where the
-    // banner is printed without a log-prefix prefix line.
+    // Source-level check: the source contains the LOG_PREFIX-prefixed log before the
+    // formatChecklist(blockers) call.
     const src = fs.readFileSync(".bkit/src/bkit-install.ts", "utf-8");
     // Must contain LOG_PREFIX annotation before formatChecklist(blockers)
     expect(src).toContain("LOG_PREFIX} Preflight blockers detected");
@@ -1257,8 +1256,7 @@ describe("parseEffortMap", () => {
     expect(effortMap.get("Default")?.size).toBe(5);
   });
 
-  // The effort table is keyed on PROGRAM, so "every opencode gateway shares one ladder"
-  // is now structural rather than four map entries that could drift apart.
+  // The effort table is keyed on PROGRAM: every opencode gateway shares one ladder.
   it("effort columns are keyed on program, not gateway", () => {
     expect(effortColumnForProgram("claude")).toBe("Claude");
     expect(effortColumnForProgram("cursor")).toBe("Cursor");
@@ -1267,8 +1265,7 @@ describe("parseEffortMap", () => {
     expect(lookupEffort(effortMap, "opencode", "medium")).toBe("high");
   });
 
-  // A gateway key reaching this function means a caller confused the two axes. It must
-  // fail loudly: silently falling back would emit a thinking ladder nobody selected.
+  // A gateway key reaching this function throws; no fallback ladder.
   it("a gateway key is rejected — the axes must not be mixed", () => {
     for (const gateway of ["openrouter", "ollama", "opencode-zen", "opencode-go"]) {
       expect(() => effortColumnForProgram(gateway)).toThrow(/no prompts.md effort column/);
@@ -1276,8 +1273,8 @@ describe("parseEffortMap", () => {
     }
   });
 
-  // #205 — below-target providers ceiling out rather than downshift: a provider that scores
-  // under the Claude tier target must spend MORE thinking to close the gap, not less.
+  // Below-target providers ceiling out, never downshift: a provider that scores under the
+  // Claude tier target spends MORE thinking, not less.
   it("opencode columns ceiling out above low (never below the Default rung)", () => {
     const RANK = { none: 0, low: 1, medium: 2, high: 3, xhigh: 4, max: 5 };
     expect(lookupEffort(effortMap, "opencode", "low")).toBe("none");
@@ -1353,7 +1350,7 @@ describe("buildOpencodeModelLookup — default column reader", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildOpencodeModelLookup — per-provider model resolution", () => {
-  // #245 Phase 2 — the four OpenAI-compatible providers now ship curated columns.
+  // The four OpenAI-compatible providers ship curated columns.
   // Tier anchors: ideate-1 = opus, ideate-2 = sonnet, design-summary = haiku,
   // build-challenge-2 / debug-failure-diagnose = convergent (CoT reasoner).
   // OpenRouter opus+sonnet collapse onto V4.1 Flash (clears both Claude targets).
@@ -1371,7 +1368,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     );
   });
 
-  // Guards against silently reverting convergent to a DeepSeek slug, or haiku to V4 Flash.
+  // Convergent is not a DeepSeek slug; haiku is not V4 Flash.
   it("openrouter: convergent is kimi-k3; frozen/dated v4-pro slugs stay off the column", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
     const pins = [...lookup.values()];
@@ -1434,8 +1431,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
 
   it("opencode-go: curated OpenCode Go column (deepseek-v4-pro / deepseek-v4.1-flash)", () => {
     // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go catalog is
-    // invisible to /zen/v1/models — sourced via models.dev. minimax-m3 / qwen3.7-plus dropped: both
-    // score below deepseek-v4-pro at higher cost (#205 parity board).
+    // invisible to /zen/v1/models — sourced via models.dev.
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-go");
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) {
@@ -1525,7 +1521,7 @@ describe("model overrides (consumer-owned, below bkit:end)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseModelLookupForColumn — regression: header-addressed, not positional
+// parseModelLookupForColumn — header-addressed, not positional
 // ---------------------------------------------------------------------------
 
 describe("parseModelLookupForColumn regression — header-addressed", () => {
@@ -1840,8 +1836,7 @@ describe("runStatus — read-only host/provider status", () => {
     runStatus(cwd, "[bkit]");
     expect(out()).toContain("claude:  absent");
     expect(out()).toContain("cursor:  absent");
-    // Regression: codex presence was probed with process.cwd() instead of the cwd argument,
-    // so a bkit-repo `.codex/` leaked into the status of every OTHER directory.
+    // Codex presence is probed in the cwd argument, never process.cwd().
     expect(out()).toContain("codex:   absent");
     expect(out()).toMatch(/opencode: absent/);
     expect(out()).toContain("Installed hosts: none");
@@ -1886,7 +1881,7 @@ describe("runStatus — read-only host/provider status", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #386: line 1 of a rendered command is a description, never the marker
+// Line 1 of a rendered command is a description, never the marker
 // ---------------------------------------------------------------------------
 
 describe("#386: line 1 of a rendered command is a description, never the marker", () => {

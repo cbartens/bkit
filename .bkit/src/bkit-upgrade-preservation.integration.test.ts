@@ -1,15 +1,10 @@
 // bkit-upgrade-preservation.integration.test.ts
 //
-// Regression coverage for the 2.5.0 `bkit upgrade` data-loss regression (issue #129):
-// the upgrade engine whole-file-overwrote markered-text / json files, destroying
-// consumer content OUTSIDE the bkit-managed block (e.g. secret-protection rules in
-// `.gitignore`, the consumer's `mcpServers` in `.claude/settings.json`).
-//
-// The fix routes those formats through the SAME tier-aware writers the install path
-// uses: markered-text → block-merge (writeTier2), json → deep-merge
-// (writeTier2JsonContained). Both preserve every byte outside the managed region.
-// These tests pin that property: fake consumer content outside the markers must
-// survive an upgrade, while the bkit block is still updated to the new template.
+// `bkit upgrade` routes markered-text / json files through the SAME tier-aware writers
+// the install path uses: markered-text → block-merge (writeTier2), json → deep-merge
+// (writeTier2JsonContained). Consumer content outside the managed region (e.g.
+// secret-protection rules in `.gitignore`, `mcpServers` in `.claude/settings.json`)
+// survives an upgrade, while the bkit block is updated to the new template.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -65,8 +60,7 @@ function upgrade(candidates: UpgradeCandidate[]) {
 describe("upgrade preserves consumer content outside the bkit block (markered-text)", () => {
   it(".gitignore — consumer secret-protection rules survive; bkit block is updated (the #129 case)", () => {
     // Consumer installed cleanly under 2.4.0 then never hand-edited the file, so its
-    // on-disk content equals the recorded canonical hash — the exact state that made
-    // 2.5.0 silently whole-file-overwrite it.
+    // on-disk content equals the recorded canonical hash.
     const consumer =
       "# Consumer secrets — MUST survive\n" +
       ".env*.local\n" +
@@ -142,10 +136,8 @@ describe("upgrade preserves consumer content outside the bkit block (markered-te
 
   it("docs/*.md — consumer prose AFTER bkit:end survives even with NO manifest entry (content-detected)", () => {
     // docs/*.md are markered but managed as a directory, so they have NO manifest
-    // `format`. This is the case the reporter's #6 worried about: the consumer's
-    // project prose lives after `bkit:end`, and a whole-file overwrite would eat it.
-    // `format` is intentionally OMITTED here — block-merge must kick in from the
-    // template's markers alone.
+    // `format`; the consumer's project prose lives after `bkit:end`. `format` is OMITTED
+    // here — block-merge kicks in from the template's markers alone.
     const consumer =
       "<!-- bkit:start -->\n# Testing\n\n> bkit canonical guidance (OLD).\n<!-- bkit:end -->\n\n" +
       "## Our project testing notes — MUST survive\n\n" +
@@ -265,7 +257,7 @@ describe("upgrade is idempotent for block-merge formats", () => {
 });
 
 // ---------------------------------------------------------------------------
-// migrateStrayGitattributes — repair the 2.5.0 no-dot gitattributes regression
+// migrateStrayGitattributes — repair a stray no-dot gitattributes file
 // ---------------------------------------------------------------------------
 
 describe("migrateStrayGitattributes", () => {
@@ -408,8 +400,8 @@ describe("upgrade of an owned whole-file candidate", () => {
 });
 
 // ---------------------------------------------------------------------------
-// token substitution on upgrade (#129 §2) — upgrade must substitute {{TOKENS}}
-// like install (writeTier1), not write the literal placeholder.
+// token substitution on upgrade — upgrade substitutes {{TOKENS}} like install
+// (writeTier1), never writing the literal placeholder.
 // ---------------------------------------------------------------------------
 
 describe("upgrade substitutes template tokens (#129 §2)", () => {

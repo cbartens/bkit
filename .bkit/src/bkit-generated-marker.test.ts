@@ -7,23 +7,17 @@
  * from `bkit issues comment` / `bkit workstreams comment`, which open it with
  * `###### bkit:generated` (pinned in commands/workflow/issues.test.ts and
  * workstreams.test.ts), and `bkit issues text` drops marker-carrying comments and
- * applies the cut (pinned in issues.test.ts). What stays here is the wiring that
- * keeps those commands the ONLY place either happens — each a silent-failure mode
- * if it slips:
- *  1. No workflow hand-writes a ```comment template. A hand-written body that
- *     misses the marker looks like human input forever.
+ * applies the cut (pinned in issues.test.ts). What stays here is the wiring that keeps
+ * those commands the ONLY place either happens:
+ *  1. No workflow hand-writes a ```comment template.
  *  2. Every join into `ISSUE_TEXT` / `RELATED_ISSUE_TEXT` goes through
- *     `bkit issues text`, and no workflow names the marker or the cut token at
- *     all — a filter or cut reappearing in prose means the logic has split in two
- *     again, and one copy silently drifting is exactly the pollution the marker
- *     exists to close off.
+ *     `bkit issues text`, and no workflow names the marker or the cut token at all.
  *  3. Nothing bkit ships carries a whole-line cut marker, which would arm the next
  *     run's cut on bkit's own output.
  *  4. Every comment-fetch site normalises order with the same `sort oldest to
  *     newest` step, on both trackers. `bkit issues text` re-sorts by timestamp only
  *     when every comment carries one; for any other input the order it is handed
- *     is the order the cut sees, and a newest-first stream inverts "drop
- *     everything above the last marker" into "keep the superseded revision".
+ *     is the order the cut sees.
  */
 
 import * as fs from "node:fs";
@@ -49,9 +43,8 @@ const ALL_FILES = [...WORKFLOW_FILES, SPEC_FILE] as const;
 const MARKER = "###### bkit:generated";
 const CUT_TOKEN = "bkit:ignore-earlier";
 const CUT_MARKER = `###### ${CUT_TOKEN}`;
-// A cut marker is a WHOLE LINE of the heading form. That is what makes an inline
-// mention of the token prose rather than a live marker, and it is the whole reason
-// a prompt or a step may name the mechanism without arming it.
+// A cut marker is a WHOLE LINE of the heading form; an inline mention of the token is
+// prose, not a live marker.
 const CUT_MARKER_LINE_RE = new RegExp(`^[ \\t]*${CUT_MARKER}[ \\t]*$`);
 const read = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
 

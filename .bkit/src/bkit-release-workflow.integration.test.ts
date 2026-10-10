@@ -12,11 +12,8 @@ import { execFileSync } from "node:child_process";
 import { beforeAll, describe, expect, it } from "vitest";
 
 describe("published tarball excludes test sources (BAR-138, real `npm pack` inspection)", () => {
-  // Run a dry-run pack and inspect the actual file manifest. This is the only
-  // test that catches the npm quirk where .npmignore is silently ignored when
-  // a `files` array is set in package.json — i.e., asserting on
-  // package.json#files shape alone is insufficient (the actual tarball might
-  // still ship excluded paths).
+  // Run a dry-run pack and inspect the actual file manifest (npm ignores .npmignore
+  // when package.json sets a `files` array).
   const repoRoot = path.resolve(
     import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
     "..",

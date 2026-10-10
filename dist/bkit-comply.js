@@ -1,6 +1,6 @@
 // bkit-comply.ts — compliance grader for the bkit workflow suite.
 //
-// Implements the #234 grader:
+// Grader:
 //   - Pure functions over `git diff parentSha..HEAD` + filesystem state.
 //   - Deterministic, advisory (NEVER gating). Fail-open: callers use the idiom
 //     `pnpm bkit comply --phase={p} || echo "[bkit-comply] grader unavailable, skipping"`.
@@ -81,9 +81,9 @@ export function ruleNoMirrorEdit(diffPaths) {
  * carry `[skip ci]` (which would leave the PR's statusCheckRollup empty and admit
  * a vacuously green PR).  Fires only for the `ship` phase.
  *
- * This is advisory: a `[skip ci]` HEAD is legitimate for worktree-setup / create-pr
- * commits (see DE-21 D2); the ship close step's CI-Dispatch Gate (#261) already
- * guards against this deterministically.  The rule here adds a grader-level record.
+ * Advisory: a `[skip ci]` HEAD is legitimate for worktree-setup / create-pr commits
+ * (DE-21 D2); the ship close step's CI-Dispatch Gate is the deterministic guard. This
+ * rule adds a grader-level record.
  */
 export function ruleSkipCiNotHead(headSubject, phase) {
     if (phase !== "ship")

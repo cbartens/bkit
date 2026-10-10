@@ -8,14 +8,8 @@
  *   2. the consuming workflow's gate checklist, in `.bkit/workflows/<wf>.md`:
  *          - [ ] `Verdict` extracted and valid (`DIAGNOSE_VERDICT` in `PASS|CONCERNS|FAIL`)
  *
- * Nothing kept those two in step, and they drifted: `bkit-ship.md` gated
- * `DIAGNOSE_VERDICT` in `PASS|FAIL` while dispatching `@bkit-debug-failure-diagnose`,
- * the very same agent `bkit-build.md` and `bkit-debug.md` gate as
- * `PASS|CONCERNS|FAIL`. A CONCERNS diagnosis during a ship failure would fail
- * the gate on a legitimate verdict.
- *
- * The linkage is recovered from the files themselves, so there is no
- * hand-maintained vocabulary list to fall out of date:
+ * The linkage is recovered from the files themselves (no hand-maintained vocabulary
+ * list):
  *
  *   variable --(workflow "extract `Verdict` ... as `VAR`")--> artifact
  *   artifact --(workflow "Invoke `@agent`" + "Create:")-------> agent
@@ -23,8 +17,7 @@
  *
  * Verdict variables computed in bash rather than read from an artifact (ship's
  * `DOCS_VERDICT`, `MERGE_VERDICT`, debug's `TEST_VERDICT`) have no producing
- * agent and are skipped — EXEMPT_COMPUTED names them so a genuinely unlinked
- * variable cannot hide among them.
+ * agent and are skipped — EXEMPT_COMPUTED names them; any other unlinked variable fails.
  */
 
 import * as fs from "node:fs";
@@ -38,7 +31,7 @@ const PROMPT_DIR = ".bkit/prompts";
 /**
  * Verdict variables the workflow computes itself (bash, exit codes, or a
  * fold over status.jsonl) rather than extracting from a subagent artifact.
- * These have no prompt-side declaration by design.
+ * These have no prompt-side declaration.
  */
 const EXEMPT_COMPUTED = new Set([
   "DOCS_VERDICT", // ship derives it from a `jq` SHIPPED-row assertion on .bkit/issues.jsonl
@@ -150,8 +143,7 @@ export function variableSources(): Map<string, string> {
     for (const m of read(rel).matchAll(
       // `[^`\n]*?` admits a directory prefix inside the backticks
       // (`.bkit/.roadmap-refresh-on-demand.md`) while still capturing the bare
-      // stem, matching how artifactProducers' lazy prefix already behaves —
-      // otherwise a path-qualified artifact silently produces no linkage.
+      // stem, matching how artifactProducers' lazy prefix behaves.
       /`[^`\n]*?([a-zA-Z0-9{}_-]+)\.md`[^\n]{0,400}?extract `Verdict`[^\n]{0,220}?(?:as|compute) `([A-Z][A-Z0-9_]*)`/g,
     )) {
       out.set(m[2], normaliseArtifact(m[1]));
@@ -303,13 +295,9 @@ describe("verdict vocabulary: variable names match their step", () => {
   });
 
   /**
-   * Two verdict variables one edit apart are a latent bug: a single typo in a
-   * gate line or a jq `--arg` silently references the wrong step's verdict, and
-   * nothing downstream can tell. This is the constraint that blocks the
-   * otherwise-tempting `CHALLENGE_TESTS_VERDICT` -> `TESTS_VERDICT`, which
-   * would sit one character from `TEST_VERDICT` in the very same file
-   * (`bkit-build.md`), where `TEST_VERDICT` carries the test-run exit code and
-   * `CHALLENGE_TESTS_VERDICT` carries a subagent's review of test coverage.
+   * No two verdict variables in one workflow are one edit apart (e.g.
+   * `CHALLENGE_TESTS_VERDICT` is never renamed `TESTS_VERDICT`, one character from
+   * `TEST_VERDICT` in `bkit-build.md`).
    */
   it("no two verdict variables are within one edit of each other", () => {
     const perFile = new Map<string, Set<string>>();

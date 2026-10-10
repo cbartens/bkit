@@ -67,7 +67,7 @@ describe("gitattributes — consumer-inherited ledger JSONL files merge=union (W
   }
 });
 
-// #380 — .bkit/issues.jsonl is the canonical feature ledger; docs/roadmap.md is
+// .bkit/issues.jsonl is the canonical feature ledger; docs/roadmap.md is
 // the generated projection. Both merge=union.
 describe("gitattributes — .bkit/issues.jsonl + docs/roadmap.md (#380)", () => {
   const ROADMAP_FILES = [".bkit/issues.jsonl", "docs/roadmap.md"];
@@ -103,8 +103,7 @@ describe("gitattributes structural check — append-only ledgers ship, drained o
 
   /**
    * Byte offset of the actual `<path> merge=union` RULE, not the first mention of
-   * the path — `.bkit/friction.jsonl` is named in the managed block's comment
-   * explaining why it is excluded, and a bare `indexOf` would match that.
+   * the path — `.bkit/friction.jsonl` is also named in the managed block's comment.
    */
   const ruleIndex = (content: string, filePath: string): number => {
     const escaped = filePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -125,7 +124,7 @@ describe("gitattributes structural check — append-only ledgers ship, drained o
     "docs/deferrals.jsonl",
     "docs/failures.jsonl",
     // .bkit/issues.jsonl is the canonical feature ledger and docs/roadmap.md is
-    // its generated projection (#380).
+    // its generated projection.
     ".bkit/issues.jsonl",
     "docs/roadmap.md",
     ".bkit/stats.jsonl",
@@ -143,8 +142,8 @@ describe("gitattributes structural check — append-only ledgers ship, drained o
   }
 
   it(".bkit/friction.jsonl merge=union is a LOCAL opt-in below bkit:end, never shipped", () => {
-    // It is the drained ledger: union would resurrect rows `bkit harvest` removed,
-    // so bkit must not impose it on consumers. This repo accepts that trade-off.
+    // The drained ledger: the shipped template carries no union rule for it; this repo
+    // does.
     const content = gitattributes();
     const { end } = markers(content);
     const idx = ruleIndex(content, ".bkit/friction.jsonl");

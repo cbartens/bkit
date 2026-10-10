@@ -151,8 +151,8 @@ export function appendLine(event: StatusEvent | StatusRow): string {
 }
 
 // ---------------------------------------------------------------------------
-// Queries — the reads routing and counters make. Two scopings, deliberately
-// opposite: attempt counts and verdict/failures/mode reads look at the ACTIVE
+// Queries — the reads routing and counters make. Two opposite scopings: attempt
+// counts and verdict/failures/mode reads look at the ACTIVE
 // run only, so a resumed run never inherits a finished run's spent budget;
 // strategy reads ALL runs, so a resumed run keeps its place on the
 // STANDARD -> PIVOT -> FINAL ladder instead of restarting it.

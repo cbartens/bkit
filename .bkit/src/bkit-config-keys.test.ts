@@ -29,8 +29,7 @@ describe("bkit's own package.json", () => {
     expect(ownBkit()?.ciWorkflow).toBe("ci.yml");
   });
 
-  // Code 16 is opt-in: bkit's capstone asserts its own lanes, and a lane whose `if:`
-  // is event-scoped cannot run pre-merge, so naming it would refuse every PR.
+  // Code 16 is opt-in (a lane whose `if:` is event-scoped cannot run pre-merge).
   it("does NOT declare bkit.shipGateRequiredLanes", () => {
     expect(ownBkit()?.shipGateRequiredLanes).toBeUndefined();
   });

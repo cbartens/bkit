@@ -477,7 +477,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
 });
 
 // ---------------------------------------------------------------------------
-// surgical --opencode=<provider> removal (#281 Task 4)
+// surgical --opencode=<provider> removal
 // ---------------------------------------------------------------------------
 
 import { runSurgicalOpencodeUninstall } from "./bkit-uninstall";

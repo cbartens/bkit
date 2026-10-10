@@ -1,13 +1,10 @@
-// bkit-challenge-tests.test.ts — Edge-case tests targeting gaps identified by
-// the build challenge (BAR-141):
+// bkit-challenge-tests.test.ts — edge cases:
 //
-//   MEDIUM-3: Intra-phase dedup within Phase 3 not exercised with truly
-//             duplicate ids injected via spy — add a direct dedup test.
-//   MEDIUM-1: NaN edge case — empty / whitespace-only .bkit-version file
-//             must not emit a misleading bkit-version-major-downgrade advisory.
-//   FORMAT:   Plan §F5 byte-for-byte snapshot of formatChecklist output.
-//   SUBPROCESS: Integration subprocess exit-code test hardened via vi.spyOn
-//               to avoid silent skip when tsx is absent.
+//   Intra-phase dedup within Phase 3 with duplicate ids.
+//   An empty / whitespace-only .bkit-version file emits no
+//             bkit-version-major-downgrade advisory.
+//   Byte-for-byte snapshot of formatChecklist output.
+//   The blocker path through the public function API (no tsx subprocess).
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -68,7 +65,7 @@ describe("detectBkitVersionMajorDowngrade — NaN-guard edge cases", () => {
   it("emits NO advisory when .bkit-version is an empty file (parseInt returns NaN)", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "", "utf-8");
-    // NaN <= installingMajor evaluates to false without the guard → would emit a misleading advisory
+    // NaN major → no downgrade advisory
     const result = detectBkitVersionMajorDowngrade(tmpDir, "1.0.0");
     expect(result).toBeNull();
   });
@@ -101,7 +98,7 @@ describe("detectBkitVersionMajorDowngrade — NaN-guard edge cases", () => {
   });
 
   it("still emits an advisory when .bkit-version is valid and major is higher", () => {
-    // Regression guard: normal operation must still work after any NaN fix
+    // A real downgrade still fires
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "3.0.0\n", "utf-8");
     const result = detectBkitVersionMajorDowngrade(tmpDir, "1.0.0");
@@ -212,7 +209,7 @@ describe("runPostInstallCheck — intra-phase Phase 3 deduplication", () => {
 });
 
 // ---------------------------------------------------------------------------
-// FORMAT SNAPSHOT — Plan §F5: byte-for-byte formatChecklist snapshot
+// FORMAT SNAPSHOT — byte-for-byte formatChecklist snapshot
 // ---------------------------------------------------------------------------
 
 describe("formatChecklist — byte-for-byte snapshot (Plan §F5)", () => {
@@ -337,10 +334,9 @@ describe("formatChecklist — byte-for-byte snapshot (Plan §F5)", () => {
 
 describe("Phase 1 blocker short-circuit — vi.spyOn hardened path", () => {
   it("runPreflight returns a blocker and formatChecklist produces a non-empty exit banner", () => {
-    // Equivalent to the subprocess test in the integration suite, but exercised
-    // via the public function API — never silently skips due to tsx being absent.
-    // Confirms: package.json absent → blocker fires → formatChecklist returns
-    // a non-empty string (what the process would print before exit 1).
+    // Same path as the subprocess test in the integration suite, via the public function
+    // API: package.json absent → blocker fires → formatChecklist returns a non-empty
+    // string (what the process prints before exit 1).
 
     // tmpDir has no package.json
     const { blockers } = runPreflight(makeModules("core"), tmpDir);
@@ -382,15 +378,11 @@ describe("Phase 1 blocker short-circuit — vi.spyOn hardened path", () => {
   });
 
   it("runPostInstallCheck emits gh-bkit-token-unset-shell when BKIT_GH_TOKEN_INSTALL is explicitly deleted", () => {
-    // Harden: explicitly delete the env var so the test cannot silently pass
-    // due to ambient env state. This mirrors what the subprocess test would
-    // exercise, without relying on tsx being available.
+    // The env var is deleted explicitly (no ambient env state).
     //
-    // Note: vi.spyOn on ESM named exports cannot intercept intra-module calls
-    // (runPostInstallCheck → detectShellToken are in the same module; ESM
-    // live-binding means the spy patches the export object but the internal
-    // call site still uses the local binding). We therefore control the env var
-    // directly and assert on the output finding to prove the code path fires.
+    // vi.spyOn on ESM named exports cannot intercept intra-module calls
+    // (runPostInstallCheck → detectShellToken are in the same module), so the env var is
+    // controlled directly and the output finding asserted.
     delete process.env.BKIT_GH_TOKEN_INSTALL;
 
     // gh CLI unavailable → unknown (no additional gh-secret finding)

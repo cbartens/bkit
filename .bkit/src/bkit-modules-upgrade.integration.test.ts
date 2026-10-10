@@ -1,4 +1,4 @@
-// bkit-modules-upgrade.integration.test.ts — Upgrade-survival regression (BAR-167 Phase 1)
+// bkit-modules-upgrade.integration.test.ts — upgrade survival of consumer keys
 //
 // Tests that consumer-added keys in .claude/settings.json and .cursor/hooks.json
 // survive a simulated bkit upgrade chain:
@@ -6,8 +6,8 @@
 //   - v0.8.x → v2.0.0 (envelope strip via migrateLegacyBkitEnvelope + writeTier2JsonContained)
 //
 // References:
-//   - tests/fixtures/heavy-customised-consumer/    — v0.5.x consumer fixture (P2.T8a)
-//   - tests/fixtures/heavy-customised-consumer-v1-envelope/ — v0.8.x consumer fixture (BAR-167 Phase 1 Task 0c)
+//   - tests/fixtures/heavy-customised-consumer/    — v0.5.x consumer fixture
+//   - tests/fixtures/heavy-customised-consumer-v1-envelope/ — v0.8.x consumer fixture
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -332,10 +332,8 @@ describe("Task 23a — heavy-customised ci.yml survival", () => {
     // detectTier2TextDrift should detect drift because the marker block content differs
     // from the template (the fixture has NODE_AUTH_TOKEN added inside the block).
     // NOTE: ci.yml uses 6-space-indented markers which are not line-anchored at col-0,
-    // so extractManagedBlock returns null. The drift detector correctly returns null in
-    // this case (indented marker style is a Group B limitation — full drift detection
-    // for indented YAML markers requires a dedicated parser; this is deferred to a
-    // future iteration). The test documents the current boundary:
+    // so extractManagedBlock returns null and the drift detector returns null (indented
+    // YAML markers are not drift-detected). The test pins that boundary:
     const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
     // When indented markers are used, detectTier2TextDrift cannot detect the markers
     // and returns null (markers not found at expected anchoring positions).

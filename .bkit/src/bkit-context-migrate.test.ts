@@ -143,7 +143,7 @@ describe("migrateContextFetchToContext (filesystem)", () => {
   });
 });
 
-// The pre-#454 marker vocabulary, as a consumer's own config.md would still carry it.
+// The `debug-fetch:` marker vocabulary, as a consumer's own config.md carries it.
 const LEGACY_CONSUMER =
   "<!-- debug-fetch:start vercel context=runtime -->\n" +
   "```bash\n" +

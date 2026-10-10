@@ -13,7 +13,7 @@
 //     WITHOUT blocking the edit. Verified live on Cursor 3.17.8.
 //   - FAIL OPEN: top-level try/catch emits a bare allow on any error.
 //   - SUBAGENTS INCLUDED: a subagent edit is an edit. Cursor's payload carries no
-//     subagent marker at all, so there is nothing to exempt on even if we wanted to.
+//     subagent marker.
 //   - DEDUP: warns once per (session, file); state lives in OS temp dir keyed by
 //     session_id and is GC'd after 24h. Never writes into the consumer repo.
 //
@@ -30,7 +30,7 @@
 //     `tool_input: { file_path, content }` for BOTH edits and creates.
 //   - `file_path` on a write is RELATIVE to the workspace root; on a read it is
 //     absolute. The driver resolves it against `workspace_roots[0]` before calling
-//     the engine, because the new-file check is an fs.existsSync.
+//     the engine; the new-file check is an fs.existsSync.
 //   - Deny must use `agent_message`. Cursor routes `user_message` to the human.
 //
 // Wired from `.cursor/hooks.json` → preToolUse (matcher "Write").
@@ -53,8 +53,7 @@ const path = require("node:path");
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit"]);
 
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
-// Editing these to silence a gate is the recurring "weaken the gate instead of
-// fixing the code" anti-pattern — prefer a targeted per-file opt-out + sign-off.
+// A matching path gets the gate-config advisory instead of the first-touch checklist.
 const GATE_CONFIG_PATTERNS = [
   /^tsconfig(\..+)?\.json$/,
   /^vitest\.config\.[mc]?[jt]s$/,
@@ -71,9 +70,9 @@ const GATE_CONFIG_PATTERNS = [
   /^lint-staged\.config\.[mc]?js$/,
 ];
 
-// The consumer's `.bkit/templates/` holds bkit's reference copies, refreshed on every
-// upgrade, so a path under it is not this repo's gate config. In bkit's own repo
-// (package name `@cbartens/bkit`) that folder is the template source and stays guarded.
+// A path under `.bkit/templates/` (bkit's reference copies, refreshed on every upgrade)
+// is not a gate config, except in bkit's own repo (package name `@cbartens/bkit`), where
+// that folder is the template source and stays guarded.
 const TEMPLATE_COPIES_DIR = ".bkit/templates/";
 
 function isBkitRepo(root) {
@@ -123,11 +122,9 @@ function reuseChecklist(filePath) {
   );
 }
 
-// docs/*.md authoring contract — path-scoped, appended to whichever base advisory
-// applies (first-touch / new-file / gate-config are orthogonal to this). Segment
-// match, not basename — every one of these directories holds same-named files.
-// Excludes docs/plans/ (the plan template governs those, not the docs register)
-// and non-.md files (docs/ also holds knowledge.jsonl, decisions.jsonl, etc.).
+// docs/*.md authoring contract — appended to whichever base advisory applies
+// (first-touch / new-file / gate-config). Matches a `docs/` path segment, not a
+// basename. Excludes docs/plans/ and non-.md files.
 function isDocsPath(filePath) {
   const p = filePath.replace(/\\/g, "/");
   if (!p.endsWith(".md")) return false;
@@ -170,7 +167,7 @@ function stateFile(sessionId) {
 
 // Returns the per-session warned-file map. Absent state file is the NORMAL
 // first-touch case (guarded, no throw); a corrupt file throws to the top-level
-// fail-open boundary, which is acceptable (that one call no-ops).
+// fail-open boundary and that one call no-ops.
 function readState(sessionId) {
   const file = stateFile(sessionId);
   if (!fs.existsSync(file)) return { files: {} };
@@ -192,9 +189,8 @@ function markWarned(sessionId, filePath) {
   fs.writeFileSync(stateFile(sessionId), JSON.stringify(state), "utf-8");
 }
 
-// Opportunistic TTL: drop session state files older than 24h so the temp dir does
-// not grow without bound. Runs last (after the advisory is decided) so a cleanup
-// race cannot suppress the advisory — the driver emits before this returns.
+// Opportunistic TTL: drops session state files older than 24h. Runs last, after the
+// advisory is decided; a cleanup race never suppresses the advisory.
 function gcOldState() {
   const dir = stateDir();
   if (!fs.existsSync(dir)) return;
@@ -209,17 +205,14 @@ function gcOldState() {
 }
 
 // Pure: takes the already-parsed hook payload, returns the advisory to emit or
-// null. Never touches process.stdin / process.stdout — the driver below owns
-// both, so bkit and consumer logic can never produce two JSON documents on one
-// stdout stream.
+// null. Never touches process.stdin / process.stdout — the driver below owns both.
 function bkitGateguard(payload) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off") return null;
 
-  // Subagents are NOT exempt: a subagent edit is still an edit, and the
-  // investigation it skips is the same investigation. Dedup is per (session, file)
-  // and a subagent carries its own session id, so it gets the checklist once for a
-  // file the orchestrator already touched.
+  // Subagents are NOT exempt. Dedup is per (session, file) and a subagent carries its
+  // own session id, so it gets the checklist once for a file the orchestrator already
+  // touched.
   if (!EDIT_TOOLS.has(payload.tool_name)) return null;
 
   const input = payload.tool_input || {};
@@ -232,7 +225,7 @@ function bkitGateguard(payload) {
   if (alreadyWarned(sessionId, filePath)) return null;
 
   const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
-  // A Write to a not-yet-existing path is a NEW file — the bolt-on moment.
+  // A Write to a not-yet-existing path is a NEW file and gets the reuse checklist.
   const isNewFile = payload.tool_name === "Write" && !fs.existsSync(filePath);
   const baseContext = gated
     ? configAdvisory(filePath)
@@ -261,9 +254,8 @@ function emit(decision) {
 }
 
 /**
- * Cursor sends a workspace-relative `file_path` on writes and an absolute one on
- * reads. The engine's new-file check is an fs.existsSync, so a relative path that
- * misses would make every edit look like a new file.
+ * Resolves a workspace-relative `file_path` (Cursor sends one on writes, an absolute
+ * one on reads) against the first workspace root, else the process cwd.
  */
 function resolveAgainstWorkspace(filePath, roots) {
   if (!filePath || typeof filePath !== "string") return filePath;
@@ -300,6 +292,6 @@ try {
     emit({ permission: "allow" });
   }
 } catch {
-  // Fail open — a hook that throws must never stand between the agent and its edit.
+  // Fail open — any error emits a bare allow.
   emit({ permission: "allow" });
 }

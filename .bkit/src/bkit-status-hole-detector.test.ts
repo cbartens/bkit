@@ -1,4 +1,4 @@
-// bkit-status-hole-detector.test.ts — Tier-3 advisory status-hole detector tests (#384).
+// bkit-status-hole-detector.test.ts — Tier-3 advisory status-hole detector tests.
 //
 // Validates the detector's core contract:
 //   1. Source derivation: expected set parsed from bkit-ship.md (headings +
@@ -104,7 +104,7 @@ function mergedOnEntryStatus(): string {
     row("ship-start-workflow"),
     // Step 2 routes to Step 13 at sub-step 5 (`state` = MERGED) — BEFORE sub-step
     // 8 writes ship-worktree-setup + ship-regression-guard, so neither appears.
-    // The explicit marker is what makes this path unambiguous to an auditor.
+    // The explicit marker identifies this path.
     JSON.stringify({ type: "ship-merged-on-entry", workflow: "ship", at: "2026-07-29T00:00:00Z" }),
     // Steps 3–12 skipped entirely — PR was already merged
     row("ship-switch-to-dev"),
@@ -269,8 +269,7 @@ describe("classifyRun", () => {
   it("classifies a MERGED-on-entry run (Step 2 routed to Step 13 before its writes)", () => {
     // bkit-ship.md Step 2 routes on `state` = MERGED at sub-step 5, BEFORE
     // sub-step 8 writes ship-worktree-setup + ship-regression-guard — so a real
-    // MERGED-on-entry resume carries neither. (The previous fixture included
-    // both, which is a shape the MERGED path cannot produce.)
+    // MERGED-on-entry resume carries neither.
     const observed = new Set([
       "ship-start-workflow",
       "ship-switch-to-dev",
@@ -281,10 +280,8 @@ describe("classifyRun", () => {
   });
 
   it("does NOT read a double hole as MERGED_ON_ENTRY (regression)", () => {
-    // A Path A run that dropped BOTH ship-merge-pr and ship-deferred-sweep. The
-    // previous classifier keyed MERGED_ON_ENTRY on exactly that absence, so it
-    // reclassified the run and then excluded both from the mandatory set —
-    // reporting zero holes for the worst case in the corpus.
+    // A Path A run that dropped BOTH ship-merge-pr and ship-deferred-sweep stays Path A
+    // and reports both holes.
     const observed = new Set([
       "ship-start-workflow",
       "ship-worktree-setup",

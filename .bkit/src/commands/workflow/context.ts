@@ -1,9 +1,8 @@
 // bkit context clamp|clamp-log|ledger-scan|list-blocks|run-block|finalise —
 // size-bound context artifacts and fetch the consumer's evidence.
 //
-// clamp is a runaway backstop, NOT a routine cap: sized so a normal run never
-// fires it. A truncated artifact must never read as a complete one, so every
-// removal is marked in place and footered. Profiles:
+// clamp is a runaway backstop, NOT a routine cap: a normal run never fires it.
+// Every removal is marked in place and footered. Profiles:
 //
 //   ledger          200 lines / 50 KB, keep the FIRST lines. No per-line cap: a
 //                   ledger line is one JSON record and shortening it breaks it.
@@ -11,12 +10,6 @@
 //                   plus every line matching the signal pattern with 2 lines of
 //                   context. Lines over 2000 bytes are shortened in place. Hard
 //                   ceiling 12000 lines / 1.5 MB.
-//
-// debug-evidence is signal-driven because failure signal in local test output
-// is flat or middle-weighted (measured over 102 consumer artifacts): head+tail
-// kept as little as 10% of it, keeping matching lines kept 100% while still
-// cutting 41-76% of the bytes. The ceiling exists because immunity alone fails
-// open exactly when things are worst; it sits far above the observed maximum.
 //
 // Bytes are counted as raw bytes (as `LC_ALL=C awk` counts them), never as
 // characters, so a multi-byte line is measured by what it costs on disk.
@@ -100,9 +93,8 @@ const EVIDENCE = {
 export const CLAMP_PROFILES = ["ledger", "debug-evidence"] as const;
 
 /**
- * Lowercase substrings matched against a lowercased line. Broad on purpose:
- * `error` also covers `##[error]`, `fail` covers `FAILED`. Over-matching only
- * keeps more lines, the safe direction for a backstop; the ceiling bounds it.
+ * Lowercase substrings matched against a lowercased line. Broad: `error` also covers
+ * `##[error]`, `fail` covers `FAILED`; the ceiling bounds over-matching.
  */
 const SIGNALS = [
   "error",

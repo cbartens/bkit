@@ -5,8 +5,7 @@
 // declares is run, so a shallower gate never wins while a deeper one exists (the
 // order is the contract). Nothing declared is its own exit code, never an empty
 // command that exits 0 and reads as a clean run. A gate that exits 126 / 127 never
-// ran (not executable / not found), so it is not a failing test either: recording
-// it as FAIL sends a debug loop chasing tests that never executed.
+// ran (not executable / not found), so it is not recorded as a failing test.
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";

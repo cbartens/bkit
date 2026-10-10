@@ -148,8 +148,7 @@ describe("the external-input clause keeps all three legs", () => {
 });
 
 describe("the checker rejects what it should", () => {
-  // Asserts the gate, not the corpus: a checker loosened until it stopped failing
-  // would otherwise look exactly like one that passes honestly.
+  // Asserts the gate, not the corpus.
   const RULE = "**No commits:** Do NOT run `git commit` / `git add` / `git push` (caller does).";
 
   it("a missing required clause fails", () => {

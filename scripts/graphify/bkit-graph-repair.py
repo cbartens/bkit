@@ -21,8 +21,7 @@ this step at the end. The step is idempotent: after a raw `graphify update .`,
 run `pnpm graph:update`.
 
 ORDER MATTERS: this runs BEFORE clustering, so communities, the god-node
-ranking and the cycle list in graph-report.md are all computed from the repaired
-graph rather than from the one missing a sixth of its imports.
+ranking and the cycle list in graph-report.md are computed from the repaired graph.
 
 WHAT IS WRITTEN. One `imports_from` link per recovered file pair, between the
 two files' L1 nodes — that is the shape graphify itself uses for a file-to-file
@@ -37,9 +36,8 @@ import json
 import os
 import sys
 
-# bkit-graph-imports.py is hyphenated to match its siblings, which `import` cannot
-# spell, so it is loaded by path. Four lines of boilerplate bought consistent
-# filenames across scripts/graphify.
+# bkit-graph-imports.py is hyphenated, which `import` cannot spell, so it is loaded
+# by path.
 import importlib.util as _ilu
 _spec = _ilu.spec_from_file_location(
     "graph_imports",
@@ -72,10 +70,8 @@ def path_of(node_id):
     return str(nodes.get(node_id, {}).get("source_file") or "")
 
 
-# Strip a previous injection FIRST. Computing `existing` before this would see
-# last run's edges, skip every candidate as already present, and then delete
-# them — leaving the graph worse than an unrepaired one, and only on the second
-# run. Order here is load-bearing.
+# Strip a previous injection FIRST, before computing `existing`; the reverse order
+# skips every candidate as already present and then deletes last run's edges.
 before = len(graph["links"])
 graph["links"] = [l for l in graph["links"] if l.get("_origin") != ORIGIN]
 removed = before - len(graph["links"])
@@ -105,8 +101,8 @@ graph["links"].extend(added)
 
 # NO top-level marker: a `graph["import_repair"] = {...}` key does not survive
 # `cluster-only`, which rewrites graph.json and keeps only the keys it writes
-# itself (`built_at_commit` survives because graphify sets it). Measured, not
-# assumed. The per-link `_origin` DOES survive, so that is what consumers check
+# itself (`built_at_commit` survives because graphify sets it). The per-link
+# `_origin` DOES survive, so that is what consumers check
 # — see warn_if_unrepaired / repair_state in bkit-graph-imports.py.
 
 tmp = args.graph_json + ".repair.tmp"

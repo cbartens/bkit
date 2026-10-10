@@ -72,11 +72,9 @@ function newSession(): string {
 }
 
 /**
- * Spike-recorded real subagent `bash` call payload (verbatim from spike-verdict.md §(d)):
+ * Real subagent `bash` call payload shape (opencode v1.16.x):
  *   input_full: { tool: "bash", sessionID: "ses_151a398c...", callID: "toolu_01Hf..." }
  *   output_args: { command: "echo ...", description: "..." }
- *
- * This fixture uses the EXACT field names from the spike, not a hand-authored mock.
  */
 function spikeSubagentPayload(sessionID: string) {
   return {
@@ -341,7 +339,7 @@ describe("gateguard opencode plugin — off mode", () => {
 
 describe("gateguard opencode plugin — subagents are NOT exempt", () => {
   it("spike-recorded subagent payload (bash tool) stays a no-op — because bash is not an edit tool", async () => {
-    // This fixture mirrors the REAL spike-recorded payload verbatim (spike-verdict.md §(d)):
+    // This fixture mirrors a real recorded payload:
     //   input_full: { tool: "bash", sessionID: "ses_151a398c0ffeeQ2FvAEXuBvm8W", callID: "toolu_01HfGgMJfUGA3gRNFr6pUrXB" }
     //   output_args: { command: "echo ...", description: "..." }
     // The subagent's session has parentID = "ses_151a3b415ffeo5QG5V8WN8rceC" (orchestrator).
@@ -356,9 +354,9 @@ describe("gateguard opencode plugin — subagents are NOT exempt", () => {
   });
 
   it("a subagent session editing a file DOES get the advisory (exemption removed)", async () => {
-    // Reversed deliberately: a subagent edit is still an edit. Dedup is per
-    // (session, file) and a subagent runs in its own session, so it gets the
-    // checklist once even for a file the orchestrator already touched.
+    // A subagent edit is an edit. Dedup is per (session, file) and a subagent runs in its
+    // own session, so it gets the checklist once even for a file the orchestrator already
+    // touched.
     const session = newSession();
     const { hookInput, output } = writeHookInput("src/subagent-write.ts", session);
     const result = await invokeHook(plugin, subagentClient(), hookInput, output, {
@@ -528,7 +526,7 @@ describe("managed-block boundary", () => {
 });
 
 // ---------------------------------------------------------------------------
-// docs/*.md density advisory (#422) — parity with the Claude twin
+// docs/*.md density advisory — parity with the Claude twin
 // ---------------------------------------------------------------------------
 
 describe("gateguard plugin — docs/*.md density advisory (#422)", () => {

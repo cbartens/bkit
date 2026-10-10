@@ -1,24 +1,15 @@
-// bkit-workflow-archive-snippet.integration.test.ts — Behavioural regression for
-// the supersede-and-archive step in the design / plan Close Workflow blocks.
-// Spawns real bash to execute the extracted block against a fabricated tree.
+// bkit-workflow-archive-snippet.integration.test.ts — the supersede-and-archive step
+// in the design / plan Close Workflow blocks. Spawns real bash to execute the extracted
+// block against a fabricated tree.
 //
-// Root cause (#417): the close step copied the freshly generated document
-// straight over the canonical one:
+// Before writing the canonical document, the close step moves any existing canonical
+// into `docs/plans/{YYYYMM}/archive/{TIMESTAMP}-{FID}-...md`.
 //
-//   cp "$DESIGN_FINAL" "docs/plans/$YYYYMM/{FID}-design.md"
-//
-// Nothing checked whether a file was already there, so re-running design or plan
-// on a feature that had already completed destroyed the previous document in the
-// working tree. The fix moves any existing canonical into
-// `docs/plans/{YYYYMM}/archive/{TIMESTAMP}-{FID}-...md` first.
-//
-// `archive/` is a SUBDIRECTORY on purpose: every read of these artefacts is an
-// exact filename or a non-recursive glob, so a nested directory is invisible to
-// all of them. Renaming in place is not safe — `{FID}-plan-{TS}.md` matches the
-// sub-plan count glob in bkit-build.md and the plan-presence globs in
-// bkit-build.md and bkit-ship.md. These tests pin the behaviour, not the literal
-// path string. The block's `bkit` calls (runtime assert, anchor-stamp) run from
-// the repo's built dist/, linked into the fixture at the path the block resolves.
+// `archive/` is a SUBDIRECTORY: every read of these artefacts is an exact filename or a
+// non-recursive glob, which a nested directory is invisible to. These tests pin the
+// behaviour, not the literal path string. The block's `bkit` calls (runtime assert,
+// anchor-stamp) run from the repo's built dist/, linked into the fixture at the path the
+// block resolves.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -151,10 +142,8 @@ describe("design close: archive before overwrite", () => {
   });
 
   it("archives into the feature's own bucket, not the current month", () => {
-    // Guards #416: deriving the bucket with `date +%Y%m` would resolve a design
-    // that crossed a month boundary against an empty directory. MONTH is
-    // deliberately in the past; the block
-    // takes it as `{YYYYMM}`, the bucket `bkit locks acquire` resolved.
+    // MONTH is in the past; the block takes it as `{YYYYMM}`, the bucket
+    // `bkit locks acquire` resolved (not `date +%Y%m`).
     const root = makeRoot();
     write(root, `docs/plans/${MONTH}/logs/${FID}/design-v1-draft.md`, "V1\n");
     write(root, `docs/plans/${MONTH}/${FID}-design.md`, "OLD\n");
@@ -190,8 +179,8 @@ describe("plan close: archive the whole superseded set", () => {
   });
 
   it("leaves no stale sub-plan behind when the new split is smaller", () => {
-    // The orphan case: 2 sub-plans previously, none now. Without the archive
-    // move, {FID}-plan-1.md and -2.md would sit in the bucket looking active.
+    // The orphan case: 2 sub-plans previously, none now; {FID}-plan-1.md and -2.md are
+    // archived.
     const root = makeRoot();
     write(root, `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`, "NEW PLAN\n");
     write(root, `docs/plans/${MONTH}/${FID}-plan.md`, "OLD PLAN\n");
@@ -219,8 +208,8 @@ describe("plan close: archive the whole superseded set", () => {
 });
 
 describe("archive/ is unreachable from the globs that read these artefacts", () => {
-  // The reason archive/ is a subdirectory rather than a rename in place. Each
-  // glob below is the real one from the workflow it names.
+  // Archived files are invisible to the workflows' globs. Each glob below is the real
+  // one from the workflow it names.
   const cases: Array<{ name: string; glob: string }> = [
     { name: "bkit-build.md sub-plan count", glob: `docs/plans/${MONTH}/${FID}-plan-*.md` },
     { name: "bkit-ship.md plan presence", glob: `docs/plans/${MONTH}/${FID}-plan*.md` },

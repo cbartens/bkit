@@ -1,22 +1,21 @@
-// bkit-analysis.ts — Analysis CLI for bkit telemetry (WS-4, #234 #183).
+// bkit-analysis.ts — Analysis CLI for bkit telemetry.
 //
 // Provides:
 //   1. Counts/rates/elapsed-time over telemetry rows.
-//   2. #183 size↔outcome regression (logistic approximation: error ~ log(linesAdded)
+//   2. Size↔outcome regression (logistic approximation: error ~ log(linesAdded)
 //      + filesChanged) over `kind:"outcome"` rows.
 //   3. Dispatch-size threshold computation for plan-complexity-check / plan-split.
 //   4. `counterSource` trust labelling (model-self-report pre-P3, shell-bus post-P3).
-//   5. Per-rule compliance rate over `kind:"compliance"` rows (WS-2→WS-4 edge).
+//   5. Per-rule compliance rate over `kind:"compliance"` rows.
 //   6. Per-`bkitVersion`→CHANGELOG release-attributed regression.
 //
 // Rollup writer:
 //   writeRollupShard(hotPath, bkitRoot) — emits a shard at ARCHIVE_SHARD_TEMPLATE,
 //   triggered when hot file row count > MAX_ROWS_BEFORE_ROLLUP.
 //
-// Backfill scope decision: DE-37 — GitHub-API backfill limited to the repo where
-// bkit is installed; PRs closed >= `--since` date; fields: additions, deletions,
-// changedFiles, commits count (for correctiveCommits proxy). Model-self-report
-// counterSource (cannot trust shell-bus for historic runs).
+// Backfill scope (DE-37): GitHub-API backfill limited to the repo where bkit is
+// installed; PRs closed >= `--since` date; fields: additions, deletions, changedFiles,
+// commits count (for correctiveCommits proxy). Model-self-report counterSource.
 //
 // All computation is advisory + inform-only; never gates any workflow.
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
@@ -68,17 +67,12 @@ const SIZE_BUCKETS = [
 /**
  * Per-run NEW failures = this row's cumulative total minus the previous row's.
  *
- * `outcome.failures` is the repo's CUMULATIVE distinct-failure count at ship
- * time, so testing it absolutely (`row.failures > 0`) marks every run after the
- * repo's first-ever bug as an error run, forever — the regression would read
- * 100% error at every size and the size signal would vanish entirely.
+ * `outcome.failures` is the repo's CUMULATIVE distinct-failure count at ship time.
  *
- * Previous = the newest outcome row for the SAME repo strictly before this one.
- * Rows from other repos are irrelevant (each repo has its own ledger), and the
+ * Previous = the newest outcome row for the SAME repo strictly before this one; the
  * first row for a repo has no predecessor, so its total IS its delta.
  *
- * Clamped at 0: totals can fall when a triage sweep folds duplicate keys away,
- * and "fewer known bugs than last time" is not an error run.
+ * Clamped at 0: totals can fall when a triage sweep folds duplicate keys away.
  */
 export function newFailuresThisRun(row, allRows) {
     const previous = allRows
@@ -187,15 +181,9 @@ export function computeVersionCompliance(rows) {
 /**
  * Unjustified-rate per `(subagent, model)`.
  *
- * The point is attribution, not a leaderboard: a writer with a high rate has
- * either a prompt that under-specifies when deferring is legal, or a turn budget
- * that runs out before the work does — an agent nearing `maxTurns` writes a
- * deferral instead of finishing. Those need different fixes, and the rate is what
- * separates them from one-off judgement calls.
- *
  * Counts FOLDED entities, so an adjudication and its later close are one deferral,
- * not three. `unjustified` is carried verbatim through later rows precisely so the
- * rate keeps counting the deferral that should not have been written.
+ * not three. `unjustified` is carried verbatim through later rows, so the rate keeps
+ * counting it.
  */
 export function computeDeferralDiscipline(rows) {
     const byWriter = {};
@@ -335,8 +323,7 @@ export function writeRollupShard(hotPath, bkitRoot) {
     const shardPath = path.join(archiveDir, shardFilename);
     // Append-merge: if a same-month shard already exists, fold it with the hot
     // file and write the union, deduplicated by identity key (ts+kind+repo) in
-    // ledger order.  This prevents a second same-month rollup from silently
-    // dropping the first batch (RC-2).
+    // ledger order, so a second same-month rollup keeps the first batch.
     let mergedLines;
     if (fs.existsSync(shardPath)) {
         const existingRaw = fs.readFileSync(shardPath, "utf-8");

@@ -3,11 +3,9 @@
  *
  * Every `.md` in the install manifest, plus the `docs/` payload templates and
  * the canonical copies that seed them, lands in a consumer repo. Those docs
- * describe the CURRENT setup: a tracker issue number, a ledger key, or a
- * review-finding id means nothing to a consumer, and it ages into a wrong
- * claim as soon as the referenced work moves. Decisions belong in
- * `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl` — both of which
- * are ledgers whose rows carry those references as data.
+ * describe the CURRENT setup and carry no tracker issue number, ledger key, or
+ * review-finding id. Decisions belong in `docs/decisions.jsonl`, incidents in
+ * `docs/knowledge.jsonl`.
  *
  * Legitimate `#` uses are NOT flagged: placeholders (`#{ISSUE_ID}`,
  * `(#{PR_NUMBER})`), markdown anchors (`](#section)`), `package.json#scripts`,
@@ -97,13 +95,11 @@ describe("shipped docs carry no internal identifiers", () => {
 
 /**
  * The execution surfaces — `.bkit/workflows/*.md` and `.bkit/prompts/*.md` — are
- * rendered into every consumer's host directories, so the same rule applies. They
- * were outside the corpus above because neither is manifest-listed, which is how a
- * tracker number and four step cross-references survived in `bkit-ship.md`.
+ * rendered into every consumer's host directories, so the same rule applies (neither is
+ * manifest-listed).
  *
- * Scanned WITHOUT stripping fenced blocks: these files are mostly `bash` fences, and
- * a shell comment inside one ships verbatim. Both patterns currently have zero hits
- * fence-inclusive, so nothing legitimate needs an exemption.
+ * Scanned WITHOUT stripping fenced blocks: a shell comment inside one ships verbatim.
+ * No exemptions.
  */
 const EXECUTION_SURFACES = ["workflows", "prompts"].flatMap((dir) =>
   fs
@@ -113,13 +109,11 @@ const EXECUTION_SURFACES = ["workflows", "prompts"].flatMap((dir) =>
 );
 
 /**
- * A cross-reference to another step BY NUMBER. Steps get renumbered whenever one is
- * inserted, so the reference silently starts pointing at the wrong step — and the
- * orchestrator reads every step anyway, so it buys nothing. Name the step instead
- * (`Close Workflow`, `**Failure Path**`).
+ * A cross-reference to another step BY NUMBER. Name the step instead (`Close Workflow`,
+ * `**Failure Path**`).
  *
- * Deliberately narrow: only the parenthetical cross-ref form. In-list flow routing
- * (`→ step 5`) is the established convention and stays.
+ * Narrow: only the parenthetical cross-ref form. In-list flow routing (`→ step 5`) is
+ * allowed.
  */
 const STEP_CROSSREF = /\(Step [0-9]+\)/;
 
@@ -152,16 +146,10 @@ describe("execution surfaces carry no internal identifiers or step cross-refs", 
 });
 
 /**
- * The seeded CONFIG templates — workflows, renovate, dependabot, Vale styles, slop-scan.
- * These were outside both corpora above because neither is markdown, which is how forty
- * tracker references survived in `ci.yml`, `bkit-cloud.yml` and `renovate.json5`.
+ * The seeded CONFIG templates — workflows, renovate, dependabot, Vale styles, slop-scan
+ * (not markdown, so outside both corpora above).
  *
- * A `#N` in a consumer's own `ci.yml` is worse than useless: it points at an issue in
- * bkit's tracker they cannot read, or — far more confusingly — at whatever issue happens
- * to carry that number in THEIR tracker. The reason a rule exists belongs next to the rule.
- *
- * Scanned WITHOUT stripping fences: these files are configuration, and a comment is the
- * whole point of the surface being scanned.
+ * Scanned WITHOUT stripping fences: these files are configuration.
  */
 const SEEDED_CONFIG = fs
   .readdirSync(path.join(REPO_ROOT, ".bkit/templates"), { recursive: true, encoding: "utf-8" })
@@ -171,10 +159,7 @@ const SEEDED_CONFIG = fs
   .sort();
 
 /**
- * Narrative about what the file USED to be. A shipped config describes the current setup;
- * a consumer reading "this used to…" is being told about a repo that is not theirs, and the
- * paragraph ages into a wrong claim the moment the surrounding code moves again. State the
- * rule that holds now — the reason survives, the history does not.
+ * Narrative about what the file USED to be. A shipped config describes the current setup.
  */
 const HISTORY_PROSE =
   /\b(?:used to (?:say|be|commit|live|run)|the OLD wiring|CORRECTED|RETRACTED)\b/;

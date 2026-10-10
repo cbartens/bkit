@@ -1,15 +1,8 @@
 // bkit-preflight-tracker-order.integration.test.ts
-// Regression: preflight must grade the tracker the run INSTALLS, not the one on disk.
+// Preflight grades the tracker the run INSTALLS (including the `--tracker=` override), not
+// the one on disk. A run switching linear -> github reports mcp-extra-server-linear.
 //
-// The install path resolved `issueTracker` (including the `--tracker=` override) ~70 lines
-// AFTER it called runPreflight, so preflight silently fell back to reading the pre-install
-// package.json. On the run that switched linear -> github the tracker-dependent detectors
-// graded "linear": mcp-extra-server-linear was suppressed (linear allows linear) while
-// mcp-missing-server-github still fired (linear requires github too) — so the switching run
-// told the consumer to ADD github and never told them to drop the now-unused linear server.
-//
-// The detectors were correct in isolation; only the install wiring was wrong. These tests
-// therefore drive the real CLI rather than calling the detectors directly.
+// These tests drive the real CLI (the install wiring), not the detectors directly.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -66,7 +59,7 @@ describe("preflight tracker resolution order — integration", () => {
     seedLinearConsumer(tmpDir);
     const output = runCheckWithTrackerSwitch(tmpDir);
 
-    // The regression: this advisory was suppressed because preflight graded the stale "linear".
+    // Graded against the installed "github", not the on-disk "linear".
     expect(
       output,
       `extra-server advisory missing — preflight graded the stale on-disk tracker:\n${output}`,

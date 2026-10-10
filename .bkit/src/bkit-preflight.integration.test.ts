@@ -1,11 +1,11 @@
-// bkit-preflight.integration.test.ts — BAR-186 SessionStart hook (preflight.sh)
+// bkit-preflight.integration.test.ts — SessionStart hook (preflight.sh)
 // runtime behaviour. Spawns the real bash hook as a child process; the
 // source-level (no-subprocess) check for the same hook stays in
 // bkit-preflight.test.ts.
 //
 // The bash hook at .bkit/templates/.claude/hooks/preflight.sh runs as a
 // Claude SessionStart hook (a different surface from the install-time TS
-// preflight). Covered behaviour (BAR-186):
+// preflight). Covered behaviour:
 //   - IDE-skip path (empty LINEAR_ISSUE_ID exits 0 silently).
 //   - Missing BKIT_LINEAR_API_KEY hard-stops when a Linear issue is present.
 

@@ -4,20 +4,19 @@
 # Adapt app roots, the workspace package scope, and the rules JSON to this repo.
 # Code graph (graphify) — always local, never an LLM call. See .bkit/templates.md.
 #
-# graphify has no persistent "no LLM" setting: .graphifyrc accepts only
-# viz_node_limit, and there is no GRAPHIFY_CODE_ONLY env var. LLM-off is
-# per-invocation, so it lives here rather than in a config file anyone can
-# forget to pass.
+# graphify has no persistent "no LLM" setting (.graphifyrc accepts only
+# viz_node_limit; there is no GRAPHIFY_CODE_ONLY env var), so LLM-off is set per
+# invocation here.
 #
-# Two independent guards, because either alone is enough and both is free:
+# Two independent guards:
 #   1. --code-only / --no-label — the two flags that reach a model at all
 #      (docs/PDFs/images on extract, community naming on cluster).
 #   2. Unsetting every key graphify auto-detects a backend from, so a key in
 #      the caller's shell cannot silently pick one anyway.
 set -euo pipefail
 
-# Output directory. graphify defaults to graphify-out/ at the repo root; the
-# graph is an ad-hoc report rather than code, so it lives under docs/ instead.
+# Output directory. graphify defaults to graphify-out/ at the repo root; this
+# wrapper puts it under docs/.
 # GRAPHIFY_OUT (graphify/paths.py:26) is the supported override and takes a
 # relative path, not just a name. Every command honours it — extract,
 # cluster-only, update, tree AND the read commands, because their `--graph`
@@ -53,8 +52,7 @@ CAPABILITIES_DOC="docs/capabilities.md"
 R_SCOPED_PREFIX="scoped-"                 # + the subtree path, slashes to dashes
 
 # Cross-group edges below this weight are dropped from the Mermaid views only —
-# the HTML and GraphML views stay complete. Without it the module view is 322
-# edges and unreadable; at 12 it is 91 and still carries every heavy dependency.
+# the HTML and GraphML views stay complete.
 MMD_MIN_WEIGHT="${MMD_MIN_WEIGHT:-12}"
 
 # The two derived-view programs. They import networkx / graphify, so they run
@@ -62,9 +60,8 @@ MMD_MIN_WEIGHT="${MMD_MIN_WEIGHT:-12}"
 # system python.
 ROLLUP_PY="scripts/graphify/bkit-graphify-rollup.py"
 GRAPHML_PY="scripts/graphify/bkit-graphify-graphml.py"
-# Drift status is a LITERAL-pattern scan, not a graph query: external packages are
-# not nodes in graph.json, so no symbol graph sees a second `new Client(`. Runs on
-# system python (stdlib only) and writes the overlay the Mermaid views paint from.
+# Drift status: a LITERAL-pattern scan, not a graph query. Runs on system python
+# (stdlib only) and writes the overlay the Mermaid views paint from.
 DRIFT_PY="scripts/graphify/bkit-graph-drift.py"
 DRIFT_RULES="scripts/graphify/bkit-graph-drift-rules.json"
 # Route -> endpoint -> service join. Needs the graph (symbol-level attribution) AND
@@ -75,18 +72,14 @@ R_SURFACE="graph-surface.json"
 # commands (affected/god-nodes/explain/path/query) see them too, not just our
 # own checks. Resolver lives in graph_imports.py; this is its only writer.
 REPAIR_PY="scripts/graphify/bkit-graph-repair.py"
-# Modules that do work when imported. Detection is a SOURCE scan — a call in a
-# module-level initialiser is the one construct graphify measurably drops, so no
-# query over graph.json can find it. The blast radius on the other hand is pure
-# graph: transitive inbound imports, the check graphify is most trustworthy for.
+# Modules that do work when imported. Detection is a SOURCE scan; the blast radius
+# is graph.json's transitive inbound imports.
 EAGER_PY="scripts/graphify/bkit-graph-eager.py"
 EAGER_RULES="scripts/graphify/bkit-graph-eager-rules.json"
 R_EAGER="graph-eager.json"
-# Client fetches matched against the routes the app serves. Not a graph query
-# either, and for a sharper reason than the drift scan: a request URL is a STRING
-# inside a template literal, so it is not an edge in graph.json and never can be.
-# The register carries its findings because a dead URL is capability drift that
-# every compiler-level check (lint, check:type, knip, slop:delta) passes.
+# Client fetches matched against the routes the app serves. A SOURCE scan: a request
+# URL is a STRING inside a template literal, never an edge in graph.json. The
+# register carries its findings.
 REACH_MJS="scripts/ci/guards/assert-routes-reachable.mjs"
 R_REACH="graph-reachability.json"
 
@@ -148,7 +141,7 @@ run_local() { "${NOKEYS[@]}" GRAPHIFY_OUT="$OUT" graphify "$@"; }
 # Rollup and scoped runs render into a throwaway directory and move the finished
 # artifact into $REPORTS. Those sub-runs keep graphify's DEFAULT output name, so
 # the scratch layout is always <scratch>/graphify-out/ no matter where $OUT
-# points — one less path to keep in step, and the scratch tree is deleted anyway.
+# points.
 run_scratch() { "${NOKEYS[@]}" GRAPHIFY_OUT=graphify-out graphify "$@"; }
 
 # graphify ships its own interpreter next to the CLI; that is the only python
@@ -180,12 +173,11 @@ fi
 # cluster-only writes GRAPH_REPORT.md next to graph.json with no flag to
 # redirect it, so move it into $REPORTS afterwards under $R_REPORT.
 #
-# The whole-repo graph.html is DELETED, never kept: 8.3 MB that renders ~9.8K
-# nodes as a hairball where everything looks equally connected. --no-viz below
-# stops cluster-only writing one, but `graphify update` regenerates it on its own
+# The whole-repo graph.html is DELETED, never kept. --no-viz below stops
+# cluster-only writing one, but `graphify update` regenerates it on its own
 # ("regenerated missing or stale graph.html") before this function reclusters, so
-# the rm is what actually guarantees it never survives a run. Use graph:rollup
-# for something clickable, or Gephi on the GraphML for metrics.
+# the rm removes it. Use graph:rollup for something clickable, or Gephi on the
+# GraphML for metrics.
 cluster() {
   run_local cluster-only . --no-label --no-viz
   mkdir -p "$REPORTS"
@@ -196,14 +188,12 @@ cluster() {
 # Put back the imports graphify cannot resolve — a `.js` specifier never reaches
 # a `.tsx` file, and workspace subpaths through an `exports` map resolve to
 # nothing. ~540 edges here, 16% of relative imports. Upstream Graphify-Labs/
-# graphify#3486 and #3487; both still open on v8, so this is not a temporary
-# patch waiting on a version bump.
+# graphify#3486 and #3487, open on v8.
 #
-# BEFORE cluster, deliberately: communities, the god-node ranking and the cycle
-# list in graph-report.md are then all computed from the repaired graph. It runs
-# on every command that WRITES graph.json, because `graphify update` rewrites
-# the file and would otherwise drop the injection. Idempotent — it strips its
-# own previous edges before re-adding.
+# Runs BEFORE cluster, so communities, the god-node ranking and the cycle list in
+# graph-report.md are computed from the repaired graph. Runs on every command that
+# WRITES graph.json (`graphify update` rewrites the file without the injection).
+# Idempotent — it strips its own previous edges before re-adding.
 repair() {
   python3 "$REPAIR_PY" "$OUT/graph.json"
 }
@@ -256,12 +246,9 @@ capabilities() {
 }
 
 # Strip the three provenance stamps (one header line, two `%% GENERATED ... from
-# <sha>` comments) so `check` compares CONTENT. They are noise there by
-# construction: the graph is built at HEAD, while a committed register was built
-# at the PARENT of the commit carrying it, so the stamps can never match and an
-# unfiltered diff would red on every clean tree. Whether the stamp is stale is a
-# separate, cheaper question, answered by the freshness warning in
-# .husky/pre-push.
+# <sha>` comments) so `check` compares CONTENT: the graph is built at HEAD, a
+# committed register at the PARENT of the commit carrying it. Stamp staleness is
+# the freshness warning in .husky/pre-push.
 strip_stamps() {
   sed -E -e 's/(Diagrams from `graph\.json` @ `)[0-9a-f]+(`)/\1<sha>\2/' \
          -e 's/(GENERATED by bkit-graphify-rollup\.py from )[0-9a-f]+/\1<sha>/' "$1"
@@ -352,7 +339,7 @@ case "${1:-build}" in
     run_scratch extract "./$target" --code-only --out "$scratch"
     # graph.html is written by the clustering pass, NOT by extract — without this
     # the scoped run produces only graph.json and the promised HTML never exists.
-    # No --no-viz here: a subtree is small enough to render, which is the point.
+    # No --no-viz here: a subtree renders.
     run_scratch cluster-only "$scratch" --no-label
     mkdir -p "$REPORTS/$R_SCOPED_PREFIX$name"
     mv "$scratch"/graphify-out/* "$REPORTS/$R_SCOPED_PREFIX$name/" 2>/dev/null || true

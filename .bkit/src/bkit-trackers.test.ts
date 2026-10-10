@@ -67,9 +67,8 @@ ISSUE_ID="" — derive FID from branch.
   });
 
   it("does not jam content that follows a pair with no trailing false block", () => {
-    // Regression: the optional trailing-false `\s*` sits inside the optional group;
-    // outside it, it eats the newline after a pair and merges the next line
-    // onto the kept body (e.g. `…COMMENTS.→ EXISTING map…`).
+    // The optional trailing-false `\s*` sits inside the optional group, so the newline
+    // after a pair survives (no `…COMMENTS.→ EXISTING map…`).
     const wf = `2. ${pair("read call", "read call ln")}\n   → trailing derived line.\n`;
 
     const gh = substituteWorkflow(wf, "github").output;
@@ -199,11 +198,9 @@ describe("real workflow sources", () => {
     }
   });
 
-  // #202 invariant guard: tracker-only operations and their internal data
-  // placeholders must NEVER survive into the `none` render — they live only
-  // inside github/linear pairs (collapse to a stub under none) or `true` blocks
-  // (removed under none). If one leaks into the none render, a step assumes a
-  // tracker that isn't wired (the #202 bug class). Excluded: ISSUE_ID, STATE,
+  // Tracker-only operations and their internal data placeholders NEVER survive into the
+  // `none` render — they live only inside github/linear pairs (collapse to a stub under
+  // none) or `true` blocks (removed under none). Excluded: ISSUE_ID, STATE,
   // LABELS, DESCRIPTION, COMMENTS — these legitimately appear in the none path
   // (FID derivation, and the `false` stub that sets them empty).
   const TRACKER_ONLY_TOKENS = [
@@ -313,7 +310,7 @@ describe("real prompt sources", () => {
 });
 
 // ---------------------------------------------------------------------------
-// issue-scan call sites (#135) — bounded related-issue scan wired into
+// issue-scan call sites — bounded related-issue scan wired into
 // design/plan/debug entry; advisory, capped, degrades to a no-op under none.
 // ---------------------------------------------------------------------------
 

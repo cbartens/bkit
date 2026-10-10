@@ -1,5 +1,5 @@
 // bkit-ci-dispatch-gate-alignment.test.ts — workflow-side wiring of the
-// CI-Dispatch Gate (#261) and of ship's own re-validate poll.
+// CI-Dispatch Gate and of ship's own re-validate poll.
 //
 // The gate itself — poll, one clean re-trigger, the four outcomes, every
 // unresolved sub-reason (retrigger-suppressed, autoroute-mismatch,
@@ -10,8 +10,7 @@
 //   - build and debug each run it after their last push, with the auto-route
 //     suffix read from the tracker in the same block;
 //   - the verdict is recorded as a local step-done row and never committed or
-//     pushed (a pushed `[skip ci]` record would empty the PR's check rollup —
-//     KN-11);
+//     pushed (KN-11);
 //   - a hand-off (80 / 81) records nothing;
 //   - ship stays out of the gate and re-validates with a probe-first,
 //     bounded poll.

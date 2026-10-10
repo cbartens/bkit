@@ -1,4 +1,4 @@
-// bkit-harvest.ts — Cross-repo harvest CLI (WS-4, #234 #233).
+// bkit-harvest.ts — Cross-repo harvest CLI.
 //
 // MOVES consumer `.bkit/friction.jsonl` and COPIES `.bkit/stats.jsonl` into bkit's
 // central store at `harvest/`. COUNT-ONLY aggregates `docs/{deferrals,failures}.jsonl`
@@ -10,25 +10,20 @@
 //   - NEVER commits in any repo (bkit's or a consumer's) — the caller commits.
 //   - stats.jsonl is COPY-ONLY: consumer mtime + content unchanged.
 //   - friction.jsonl is MOVE: harvested rows are pruned from the consumer, but ONLY
-//     after that exact row is durably fsync'd + read back from the central store (#343).
-//   - The prune gate is byte-for-byte CONTENT, never identity: `fold` collapses rows
-//     sharing an identity, so an identity gate deletes colliding rows the store never
-//     kept.
+//     after that exact row is durably fsync'd + read back from the central store.
+//   - The prune gate is byte-for-byte CONTENT, never identity.
 //   - The central store ACCUMULATES across runs (never cleared) and holds every
-//     DISTINCT row, deduped by content only. It is never rewritten from the fold: a
-//     fold winner can change between runs (a newer same-key row, a legacy `ts`), and
-//     a store that kept only winners would drop rows an earlier run had already
-//     pruned. It is the only record of pruned consumer friction until the caller
-//     commits it; readers fold it.
+//     DISTINCT row, deduped by content only. It is never rewritten from the fold. It is
+//     the only record of pruned consumer friction until the caller commits it; readers
+//     fold it.
 //   - Malformed consumer lines are NEVER pruned (not ours to delete).
 //   - Per-consumer timeout + continue-on-stall.
 //   - Grep-able [bkit-harvest] log lines.
-//   - Relies on WS-1 tolerant `parse` for half-written tails.
+//   - Relies on the tolerant `parse` for half-written tails.
 //
-// Friction is moved, not copied: it is a work queue that must drain, so consumers
-// start each cycle clean. The copy -> fsync -> verify -> prune ordering keeps the
-// move non-destructive: a crash at any point re-copies idempotently on the next run
-// rather than losing rows.
+// Friction is moved, not copied: consumers start each cycle clean. Ordering is
+// copy -> fsync -> verify -> prune; a crash at any point re-copies idempotently on the
+// next run.
 //
 // Consumers are listed in `docs/consumers.md` (one absolute path per line).
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
@@ -52,8 +47,8 @@ import {
 export const HARVEST_COPY_FILES = ["stats.jsonl", "friction.jsonl"] as const;
 /**
  * Files PRUNED from the consumer after their rows are durably in the central store.
- * Must be a subset of HARVEST_COPY_FILES. `stats.jsonl` is deliberately absent —
- * run-outcome metrics are the consumer's own history and are copied, never moved.
+ * Must be a subset of HARVEST_COPY_FILES. `stats.jsonl` is absent: it is copied, never
+ * moved.
  */
 export const HARVEST_PRUNE_FILES = ["friction.jsonl"] as const;
 /** Files to COUNT-ONLY from each consumer's `docs/` directory (metadata only). */
@@ -63,9 +58,8 @@ export const HARVEST_TIMEOUT_MS = 10_000;
 /** Path (relative to bkit repo root) for the consumers list. */
 export const CONSUMERS_FILE = "docs/consumers.md";
 /**
- * Destination directory in bkit for harvested data. Repo root, NOT under `.bkit/` —
- * `.bkit/` is bkit's managed/installed surface and harvested consumer data is neither
- * managed nor shipped (#343).
+ * Destination directory in bkit for harvested data. Repo root, NOT under `.bkit/`
+ * (bkit's managed/installed surface).
  */
 export const HARVEST_DEST_DIR = "harvest";
 
@@ -200,11 +194,9 @@ export function harvestConsumer(consumerPath: string, bkitRoot: string): Harvest
     }
     const raw = fs.readFileSync(srcPath, "utf-8");
     const parsed = parse(raw);
-    // Count ENTITIES, not lines. A row is not an entity: updating a deferral
-    // (triage closing it, adding references) appends a new same-key row, so a
-    // raw line count reports one deferral as two and inflates with every triage
-    // pass. `fold` collapses same-key rows to the current state — the thing the
-    // dimensional harvest is actually counting. See .bkit/jsonl.md § Updating a Row.
+    // Count ENTITIES, not lines: updating a deferral appends a new same-key row, and
+    // `fold` collapses same-key rows to the current state. See .bkit/jsonl.md § Updating
+    // a Row.
     const folded = fold(parsed.events);
     result.countOnlyRows[filename] = folded.size;
     result.countOnlyRawRows[filename] = parsed.events.length;
@@ -248,20 +240,14 @@ export interface PruneResult {
 /**
  * Remove from `srcPath` exactly those rows whose CONTENT is durably in the store.
  *
- * Gated on byte-for-byte content, NOT on identity. This distinction is load-bearing and
- * was a real data-loss bug (#343): `fold()` collapses rows sharing an identity, so an
- * identity-gated prune deletes every colliding row from the consumer when the store
- * holds only one of them. Real consumer data hit this: friction `key`s were truncated
- * to ~68 chars, so two distinct entries produced byte-identical keys and one identity.
+ * Gated on byte-for-byte content, NOT on identity.
  *
- * Line-level, NOT event-level: a line that does not parse is kept verbatim. The tolerant
- * `parse` exists so a half-written tail does not abort a harvest — pruning that same tail
- * would delete a row we never stored.
+ * Line-level, NOT event-level: a line that does not parse is kept verbatim.
  *
- * Re-reads the file at prune time so rows appended by the consumer DURING the harvest
- * survive rather than being blanket-truncated.
+ * Re-reads the file at prune time, so rows appended by the consumer DURING the harvest
+ * survive.
  *
- * Writes via temp-file + rename so an interrupted prune cannot leave a torn ledger.
+ * Writes via temp-file + rename; an interrupted prune never leaves a torn ledger.
  */
 export function pruneConsumerFile(
   srcPath: string,
@@ -333,10 +319,8 @@ export function runHarvest(bkitRoot: string): HarvestResult {
   let totalCopied = 0;
   const totalCountOnly: Record<string, number> = {};
 
-  // The central store ACCUMULATES — it is NEVER cleared between runs. Harvest prunes
-  // the consumer once a row is stored, so the store is the only remaining record of
-  // that row until the caller commits it. Clearing here would delete the originals'
-  // only copy on the very next run. Re-copied rows collapse via the content dedup below.
+  // The central store ACCUMULATES — it is NEVER cleared between runs. Re-copied rows
+  // collapse via the content dedup below.
   const destDir = path.join(bkitRoot, HARVEST_DEST_DIR);
 
   for (const consumerPath of consumerPaths) {
@@ -370,8 +354,7 @@ export function runHarvest(bkitRoot: string): HarvestResult {
     const distinctLines = [...new Set(parsed.events.map((ev) => canonicalRow(ev)))].join("\n");
     fs.writeFileSync(destPath, distinctLines + (distinctLines.length > 0 ? "\n" : ""), "utf-8");
 
-    // Durability gate: fsync, then read the rows BACK OFF DISK. Pruning against the
-    // in-memory rows would trust a write we never confirmed landed.
+    // Durability gate: fsync, then read the rows BACK OFF DISK; prune against those.
     fsyncFile(destPath);
     const verified = parse(fs.readFileSync(destPath, "utf-8"));
     durableByFile[filename] = {
@@ -436,13 +419,7 @@ export function consumerPathToSlug(consumerPath: string): string {
   const slug = resolveRepoSlug(consumerPath);
   if (slug) return slug;
 
-  // Last resort, and loud. The previous implementation used the last two path
-  // segments unconditionally, which makes the "owner" a directory on whoever's
-  // machine ran the harvest: /Users/x/Documents/GitHub/app-gether-life became
-  // `GitHub/app-gether-life`, and re-cloning to ~/code/ would have silently
-  // minted `code/app-gether-life` as a THIRD identity for the same repo.
-  // `repo` is part of identity() for every kind, so each spelling forks the
-  // entity. Kept only so a remote-less consumer still harvests, never silently.
+  // Last resort, and loud: a remote-less consumer still harvests.
   const parts = consumerPath
     .replace(/\/+$/, "")
     .split("/")

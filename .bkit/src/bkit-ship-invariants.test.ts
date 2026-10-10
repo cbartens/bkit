@@ -1,4 +1,4 @@
-// bkit-ship-invariants.test.ts — #384 Tier-2 push / staging / step-key contract.
+// bkit-ship-invariants.test.ts — Tier-2 push / staging / step-key contract.
 //
 // Structural invariants of `bkit-ship.md` that hold whatever the mechanics
 // underneath: which steps may push the feature branch (and which may force),
@@ -96,10 +96,7 @@ function fencedLinesByStep(ship: string): Array<{ step: string; line: string }> 
 // FROZEN — canonical 15 ship-* step-key set
 // ---------------------------------------------------------------------------
 //
-// Step NUMBERS may move; KEYS may not. Renaming resets attempt counters across
-// three repos and orphans the Tier-3 detector corpus. Published here as the
-// source of truth the rewrite (SP2 T7) must match. Verbatim from the design
-// (§ Canonical `ship-*` step keys — stable schema).
+// Step NUMBERS may move; KEYS may not.
 //
 // 15 keys total (the canonical ship step set), in run order. Keys are added,
 // never renamed.
@@ -230,9 +227,7 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
 
 describe("bkit-ship.md — bookkeeping and status writes", () => {
   it("the roadmap migration is complete — no docs/completed.md in the install record", () => {
-    // .bkit/issues.jsonl is the feature ledger (#380). A merge with a branch
-    // that still carries docs/completed.md silently reintroduces the path;
-    // this fails loudly if it does. The
+    // .bkit/issues.jsonl is the feature ledger; docs/completed.md is absent. The
     // staging allow-list side lives in commands/workflow/ledgers.test.ts.
     const version = fs.readFileSync(path.join(REPO_ROOT, ".bkit/version"), "utf-8");
     expect(version).not.toContain("docs/completed.md");
@@ -305,7 +300,7 @@ describe("bkit-ship.md — bookkeeping and status writes", () => {
 });
 
 // ---------------------------------------------------------------------------
-// POSITIVE — every workflow opens its run with a workflow-started row (#492)
+// POSITIVE — every workflow opens its run with a workflow-started row
 // ---------------------------------------------------------------------------
 
 describe("every workflow writes its own workflow-started row (#492)", () => {
@@ -328,7 +323,7 @@ describe("every workflow writes its own workflow-started row (#492)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// NEGATIVE — no workflow hand-appends a status or ledger row (#467)
+// NEGATIVE — no workflow hand-appends a status or ledger row
 // ---------------------------------------------------------------------------
 
 describe("no workflow bash block appends to status.jsonl or .bkit/issues.jsonl with >> (#467)", () => {
@@ -450,8 +445,7 @@ describe("bkit-ship.md — gh pr merge carries --match-head-commit", () => {
 describe("bkit-ship.md — every dev-lock window releases on exit", () => {
   it("every fence that takes the dev lock releases it via trap ... EXIT", () => {
     // The lock file and its staleness rules live in `bkit locks`
-    // (commands/workflow/locks.test.ts); a window that forgot its release
-    // would block every other run's dev ops until the lock went stale.
+    // (commands/workflow/locks.test.ts).
     const windows = fences(readShip()).filter((f) => /"\$BKIT" locks acquire --kind=dev\b/.test(f));
     expect(windows.length).toBeGreaterThan(0);
     for (const f of windows) {
@@ -461,20 +455,17 @@ describe("bkit-ship.md — every dev-lock window releases on exit", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Build-challenge remediation regressions — one assertion per fixed finding
+// Workflow-markdown invariants of the merge path
 // ---------------------------------------------------------------------------
 //
-// The findings whose fix lives in the workflow markdown. Each would FAIL if
-// the bug were reintroduced. The gate's own findings (4b/c, 6, 8) are covered
-// in commands/workflow/runs.test.ts (bkit runs gate). Finding 7
-// (`GATE_EXIT=$?` unreachable under set -e) has no shell form: the gate call
-// stands alone in its fence and the orchestrator routes on its exit code.
+// The merge gate's own behaviour is covered in commands/workflow/runs.test.ts
+// (bkit runs gate). The gate call stands alone in its fence and the orchestrator
+// routes on its exit code.
 
 describe("bkit-ship.md — build-challenge remediation regressions", () => {
-  // Finding 1 (CRITICAL): staging only bookkeeping would drop the resolved source
-  // files the conflict-resolve subagent wrote, silently losing B2 conflict
-  // resolution. B2 stages tracked modifications (`--stage-tracked-updates`,
-  // `git add -u` inside `bkit ledgers commit`) before the single commit.
+  // B2 stages tracked modifications (`--stage-tracked-updates`, `git add -u` inside
+  // `bkit ledgers commit`) before the single commit, including the resolved source files
+  // the conflict-resolve subagent wrote.
   it("F1: B2 conflict-resolve stages tracked source modifications before its commit and push", () => {
     const b2 = fences(readShip()).find((f) => /"\$BKIT" branches push --mode=feature\b/.test(f));
     expect(b2, "B2 conflict-resolve push block not found").toBeDefined();
@@ -501,9 +492,8 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
     expect(programs.filter((p) => p.includes("${"))).toEqual([]);
   });
 
-  // Finding 3 (HIGH): without an error guard on `gh pr update-branch`, a 403/network/
-  // protection failure silently proceeds to merge an unintegrated PR. The
-  // `|| { echo ...; exit 1; }` guard routes failure to Failure Path.
+  // `gh pr update-branch` carries an `|| { echo ...; exit 1; }` guard that routes a
+  // 403/network/protection failure to Failure Path.
   it("F3: every fenced 'gh pr update-branch' call carries an error guard", () => {
     const ship = readShip();
     const lines = ship.split("\n");
@@ -557,25 +547,17 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #363 build-challenge H2 regression — the `AUTO_ROUTE_SUFFIX` handoff
+// The `AUTO_ROUTE_SUFFIX` handoff
 // ---------------------------------------------------------------------------
 //
-// H2 (HIGH): the squash-merge `--subject` carries `bkit [auto route]` — the
-// marker #363 depends on to admit a post-merge `dev` CI run through
-// bkit-cloud.yml's free-tier gate. `{LABELS}` is an MCP-derived TEMPLATE value,
-// never a shell variable, so `${LABELS:-}` expands empty in every runtime. A
-// `mktemp` + `$GITHUB_ENV` handoff does not bridge it either: `$GITHUB_ENV` is
-// applied by the Actions runner only BETWEEN workflow steps, and every agent
-// Bash tool call in a cloud dispatch runs inside the single `claude-code-action`
-// step. A test asserting only that handoff TEXT is present passes on a wholly
-// inert mechanism.
-//
-// The merge step re-derives the label from the tracker in the SAME fence that
-// consumes it (docs/knowledge.jsonl, key
-// `363-workflow-md-shell-var-does-not-survive-bash-tool-call-boundary`,
-// idiom 1). These assertions are shape-level guards only — the behavioural
-// proof (execute the fence against a `gh` stub, assert the rendered
-// `--subject`) lives in bkit-auto-route-marker.integration.test.ts.
+// The squash-merge `--subject` carries `bkit [auto route]`, which admits a post-merge
+// `dev` CI run through bkit-cloud.yml's free-tier gate. `{LABELS}` is an MCP-derived
+// TEMPLATE value, never a shell variable, and `$GITHUB_ENV` applies only BETWEEN
+// workflow steps. The merge step re-derives the label from the tracker in the SAME
+// fence that consumes it (docs/knowledge.jsonl, key
+// `363-workflow-md-shell-var-does-not-survive-bash-tool-call-boundary`, idiom 1).
+// Shape-level guards only — the behavioural check (execute the fence against a `gh`
+// stub, assert the rendered `--subject`) lives in bkit-auto-route-marker.integration.test.ts.
 describe("bkit-ship.md — #363 build-challenge H2 regression: the auto-route marker is derived where it is used", () => {
   it("no cross-Bash-tool-call handoff survives anywhere in the workflow", () => {
     const ship = readShip();

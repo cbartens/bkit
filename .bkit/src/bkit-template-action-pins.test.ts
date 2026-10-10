@@ -2,17 +2,9 @@
  * bkit-template-action-pins.test.ts — the shipped CI templates are SHA-pinned but
  * Renovate never sees them.
  *
- * `.github/renovate.json5` puts `.bkit/templates/**` in `ignorePaths`, which is
- * correct for consumers (bkit owns those files; new SHAs arrive via `bkit install`)
- * but leaves bkit itself with no bot watching them. The repo's own workflows get
- * bumped weekly; the templates they were copied from silently rot, and the drift
- * only surfaces when a consumer's CI breaks on an action bkit stopped testing
- * years earlier. The template snapshot pins the stale value as expected output, so
- * nothing else fails either.
- *
- * This test is that watcher: for every action BOTH surfaces pin, the SHAs must
- * match. Bumping the repo pin (or merging a Renovate PR) now fails here until the
- * template is bumped alongside it.
+ * `.github/renovate.json5` puts `.bkit/templates/**` in `ignorePaths`. For every action
+ * BOTH the repo's workflows and the templates pin, the SHAs match: bumping the repo pin
+ * (or merging a Renovate PR) fails here until the template is bumped alongside it.
  *
  * Scope notes:
  *   - Floating refs (`@v4`, `@main`) fail outright: every third-party `uses:` in
@@ -32,9 +24,7 @@ const REPO_WORKFLOWS = path.join(REPO_ROOT, ".github/workflows");
 const TEMPLATE_WORKFLOWS = path.join(REPO_ROOT, ".bkit/templates/.github/workflows");
 
 /**
- * Actions deliberately held back, with the reason. An entry here is a decision on
- * record, not an oversight — which is the whole difference this test buys. Remove
- * the entry when the template is bumped.
+ * Actions held back, with the reason. Remove the entry when the template is bumped.
  */
 const HELD_BACK: Record<string, string> = {};
 
@@ -119,7 +109,7 @@ describe("shipped CI templates track the repo's own action pins", () => {
   });
 
   it("every held-back action is still pinned on both surfaces", () => {
-    // A stale HELD_BACK entry would silently exempt an action nobody uses.
+    // Every HELD_BACK entry names an action the templates use.
     const repo = pins(REPO_WORKFLOWS);
     const template = pins(TEMPLATE_WORKFLOWS);
     for (const action of Object.keys(HELD_BACK)) {

@@ -361,17 +361,11 @@ describe("formatChecklist format contract", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Scenario 4 — Regression: stale consumer .agents/prompts.md does NOT crash
-// install on "Missing model lookup for <name>".
-//
-// A consumer upgrading from a release that predates a newly-added prompt (e.g.
-// bkit-design-organise) has an empty/stale Models table on disk. Parsing that
-// copy would hit "Missing model lookup for bkit-design-organise" and exit
-// mid-install (partial state).
+// Scenario 4 — a stale consumer .agents/prompts.md does NOT crash install on
+// "Missing model lookup for <name>".
 //
 // Install sources the model lookup from the PACKAGE's .bkit/prompts.md, so a
-// stale consumer copy is tolerated. This test guards against regression and
-// catches the analogous failure for ANY future prompt added without backfill.
+// consumer copy with an empty/stale Models table is tolerated.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -428,10 +422,9 @@ describe("Scenario 5 — full install smoke against scratch consumer", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Scenario 5b — docs/roadmap.md is consumer-owned (#380, Derived Test Matrix
-// row 18): `bkit install` must NEVER create/overwrite it, and a subsequent
-// `bkit check` dry-run must report clean drift (docs/roadmap.md is not part
-// of any managed marker set bkit tracks). Success Criterion 5's automated leg.
+// Scenario 5b — docs/roadmap.md is consumer-owned: `bkit install` NEVER
+// creates/overwrites it, and a subsequent `bkit check` dry-run reports clean drift
+// (docs/roadmap.md is not part of any managed marker set bkit tracks).
 // ---------------------------------------------------------------------------
 
 describe("Scenario 5b — docs/roadmap.md is consumer-owned: bkit install never creates it (#380 matrix row 18)", () => {
@@ -674,14 +667,12 @@ describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (
 });
 
 // ---------------------------------------------------------------------------
-// Scenario 9 — P4.T3: Mid-failure rollback fixture
+// Scenario 9 — Mid-failure rollback fixture
 //
 // Tests the staging mechanism end-to-end: staging files written to
 // `.bkit-staging/<module>/` but NOT committed when a mid-install failure
-// fires. Consumer files must remain byte-identical to pre-install state.
-//
-// Reproduces the BAR-142 §A4 concern: a crash after first module but before
-// commitStaging must leave consumer git-diff empty.
+// fires. Consumer files remain byte-identical to pre-install state: a crash after
+// the first module but before commitStaging leaves the consumer git-diff empty.
 // ---------------------------------------------------------------------------
 
 describe("Scenario 9 — P4.T3: mid-failure rollback, consumer files untouched", () => {
@@ -985,25 +976,20 @@ describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => 
 
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(combined).not.toContain("Missing model lookup");
-    // Sanity-check the install actually executed past parse — without an exit-0
-    // assertion we want at least one positive signal that the binary reached
-    // dispatch (otherwise a missing-tsx error path would pass vacuously).
+    // Positive signal that the binary reached dispatch (past parse).
     expect(combined).toMatch(/\[bkit-(check|install)\]/);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Scenario: rendered prompts/workflows version gate (#256), branch-scoped
+// Scenario: rendered prompts/workflows version gate, branch-scoped
 // `bkit check` hard-fails (exit 1) on main/dev when a rendered mirror's
-// managed-version marker is older than the installing bkit version — so a
-// consumer can never silently run outdated prompts/workflows on a protected
-// branch. On a feature branch the same drift is a NON-blocking advisory (it was
-// inherited from the base, not created here), so an intermediate push is not
-// blocked — see isOnProtectedBranch.
+// managed-version marker is older than the installing bkit version. On a feature
+// branch the same drift is a NON-blocking advisory — see isOnProtectedBranch.
 // ---------------------------------------------------------------------------
 
 describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () => {
-  // Build a scratch consumer with one deliberately-old claude mirror marker (the
+  // Build a scratch consumer with one old claude mirror marker (the
   // installing version under tsx is the repo's package.json version, far newer)
   // and run `bkit check`, forcing the effective branch via GH Actions env.
   // Returns null when tsx is unavailable (skip).
@@ -1027,8 +1013,7 @@ describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () =>
     const tsxBin = path.resolve(dir, "../../node_modules/.bin/tsx");
     if (!fs.existsSync(tsxBin)) return null;
 
-    // Force the branch deterministically: clear any ambient CI branch env first
-    // (bkit's own CI would otherwise leak its branch into the subprocess).
+    // Force the branch deterministically: clear any ambient CI branch env first.
     const env: NodeJS.ProcessEnv = { ...process.env, NODE_NO_WARNINGS: "1" };
     delete env.GITHUB_BASE_REF;
     delete env.GITHUB_REF_NAME;
@@ -1102,9 +1087,8 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
     expect(pkg).not.toContain("99.0.0");
   });
 
-  // Regression: in a pnpm workspace root, `pnpm add` refuses without -w
-  // (ERR_PNPM_ADDING_TO_ROOT), so the self-bump must pass -w. A pnpm-workspace.yaml
-  // at cwd is the workspace signal.
+  // In a pnpm workspace root, `pnpm add` refuses without -w (ERR_PNPM_ADDING_TO_ROOT),
+  // so the self-bump passes -w. A pnpm-workspace.yaml at cwd is the workspace signal.
   it("passes -w when the consumer is a pnpm workspace root", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1315,20 +1299,10 @@ describe("Scenario: runPayload leaves .envrc alone", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Challenge regression tests — Finding 3 (constraint-before-write)
+// Constraint-before-write: the cloud/tracker constraint check runs BEFORE the
+// package.json write, so a hard error writes no state.
 //
-// The build challenge (Finding 3 MEDIUM) identified that the tracker value was
-// persisted to package.json BEFORE the cloud/tracker constraint check ran.
-// For `bkit install --tracker=github --auto=cursor`:
-//   1. Tracker-switch block passed.
-//   2. bkit.issueTracker="github" WRITTEN to package.json.
-//   3. Cloud/tracker constraint fired (cursor requires linear != github) → exit 1.
-// Net effect: a failed install recorded the tracker, stranding the user.
-//
-// Remediation hoisted the cloud/tracker constraint check ABOVE the package.json
-// write, preserving the "no state written on hard error" invariant.
-//
-// These tests lock in the invariant:
+// Invariant:
 //   (a) `bkit install --tracker=github --auto=cursor` exits non-zero.
 //   (b) package.json is NOT mutated (issueTracker NOT written on mismatch).
 // ---------------------------------------------------------------------------
@@ -1440,10 +1414,6 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
 // Scenario P1-A — Orphan cleanup gate: bkit-auto.yml removal is gated on
 // bkit-cloud.yml being present.
 //
-// Regression guard for the P1 fix: before the fix, `bkit upgrade` would delete
-// bkit-auto.yml even when bkit-cloud.yml was not present — silently removing the
-// cloud workflow without a replacement.
-//
 // Two cases:
 //   B) bkit-auto.yml exists, bkit-cloud.yml already present on disk → deleted.
 //   C) bkit-auto.yml exists, bkit-cloud.yml absent → NOT deleted.
@@ -1552,8 +1522,8 @@ describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// #252 — CLI surface redesign (subprocess): install ≥1-flag guard, check/upgrade
-// no-flag guard, and CLAUDE.md ownership move (core → claude).
+// CLI surface (subprocess): install ≥1-flag guard, check/upgrade no-flag guard, and
+// CLAUDE.md owned by the claude module.
 // ---------------------------------------------------------------------------
 
 describe("#252 — install requires ≥1 module flag; check/upgrade take none", () => {
@@ -1668,7 +1638,7 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
 });
 
 // ---------------------------------------------------------------------------
-// detectOpencodeProviders — multi-provider tracking (issue #281 Task 2)
+// detectOpencodeProviders — multi-provider tracking
 // ---------------------------------------------------------------------------
 
 describe("detectOpencodeProviders — multi-provider tracking (issue #281 Task 2)", () => {
@@ -1723,7 +1693,7 @@ describe("detectOpencodeProviders — multi-provider tracking (issue #281 Task 2
 
 // ---------------------------------------------------------------------------
 // opencodeProviders persist block — two sequential installs + legacy migration
-// (issue #281 Task 2)
+
 // ---------------------------------------------------------------------------
 
 describe("opencodeProviders persist block — sequential installs + legacy migration (issue #281 Task 2)", () => {
@@ -1803,9 +1773,8 @@ describe("opencodeProviders persist block — sequential installs + legacy migra
   });
 });
 
-// T10 — the .bkit/version provenance record must survive a REAL install. The write
-// path is a fresh object literal, so any future field addition can silently drop this
-// one; a mocked install would never catch that. Real tmpdir consumer, spawned binary.
+// The .bkit/version provenance record survives a REAL install (the write path is a
+// fresh object literal). Real tmpdir consumer, spawned binary.
 describe("T10 — claudeAllowDerived survives a real install", () => {
   const paths = () => ({
     bkitInstallPath: path.resolve(

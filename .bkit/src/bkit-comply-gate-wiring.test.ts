@@ -1,19 +1,17 @@
 // bkit-comply-gate-wiring.test.ts — close-gate wiring audit.
 //
-// Done-when contract (WS2-T6 + #387):
+// Contract:
 //   - Every phase workflow (design, plan, build, debug, ship) grades itself at
 //     close with exactly one `"$BKIT" comply --phase=<wf>` call, carrying the
 //     fail-open guard on the same line:
 //     `|| echo "[bkit-comply] grader unavailable, skipping"`.
-//     A grader crash must never fail the close; the bracketed prefix keeps the
-//     skip grep-able.
 //   - No comply call sits unguarded under `set -e`.
 //   - The grader runs in the close block next to `bkit workflows close`, BEFORE
 //     that block's commit — comply appends `kind:"compliance"` rows to
 //     `.bkit/stats.jsonl`, and rows written after the commit never land.
 //   - Close telemetry is written once: one `bkit workflows close` per workflow,
 //     and the tracker close comment embeds the `report` it printed (via
-//     `close-telemetry.md`) rather than re-running a writer after the push (#387).
+//     `close-telemetry.md`); no writer re-runs after the push.
 
 import * as fs from "node:fs";
 import * as path from "node:path";

@@ -22,11 +22,9 @@ import { runGrader, realGitAdapter } from "./bkit-comply.js";
 // ---------------------------------------------------------------------------
 
 function run(cmd: string, cwd: string): string {
-  // Strip inherited GIT_* (GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE / …). When the
-  // suite runs under the pre-push hook these are set and would override `cwd`,
-  // making git operate on the REAL repo instead of the temp dir — hijacking the
-  // checked-out branch. The global vitest.setup.ts strip covers this too; this is
-  // belt-and-suspenders at the point of use.
+  // Strip inherited GIT_* (GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE / …), set when the
+  // suite runs under the pre-push hook, so git operates on the temp dir. The global
+  // vitest.setup.ts strip covers this too.
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
     if (key.startsWith("GIT_")) delete env[key];

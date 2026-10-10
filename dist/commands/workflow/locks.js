@@ -49,9 +49,7 @@ export function monthBuckets(root, fid) {
 }
 /**
  * The feature's month bucket: `--month` when given, else the one bucket its logs
- * are already in, else this UTC month. A feature split across buckets is refused,
- * because either side would be a guess (older keeps the history but a superseded
- * design; newer has the design but makes a built feature look new).
+ * are already in, else this UTC month. A feature split across buckets is refused.
  */
 export function resolveMonth(root, fid, month) {
     if (month !== undefined) {

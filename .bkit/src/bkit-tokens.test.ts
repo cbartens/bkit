@@ -85,7 +85,7 @@ describe("resolveTokens — BKIT_MANAGED_MARKER", () => {
 // `git init` + `git remote add` subprocess).
 
 // ---------------------------------------------------------------------------
-// Runner labels — configurable runs-on for bkit-managed workflows (#362)
+// Runner labels — configurable runs-on for bkit-managed workflows
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -158,7 +158,7 @@ describe("applyTokens", () => {
   });
 
   // -------------------------------------------------------------------------
-  // MED-7 regression — $& / $$ / $1 substitution patterns must not leak
+  // $& / $$ / $1 substitution patterns do not leak
   // -------------------------------------------------------------------------
 
   it("MED-7: token value '$&' substitutes as literal '$&', not as regex back-reference", () => {

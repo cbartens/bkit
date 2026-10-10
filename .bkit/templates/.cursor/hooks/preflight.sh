@@ -20,10 +20,9 @@ set -euo pipefail
 # Cursor sessionStart payload: { session_id, is_background_agent, composer_mode } — used for IDE detection below.
 INPUT=$(cat)
 
-# IDE session bailout — primitive grep so we don't pull in python3 on the skip path.
-# With failClosed:true wired in .cursor/hooks.json, a python3-missing machine would
-# otherwise block local IDE sessions. Background-agent sessions run inside the bkit
-# Dockerfile where python3 is guaranteed; the post-bailout code can safely use it.
+# IDE session bailout — grep only, no python3 on the skip path (failClosed:true in
+# .cursor/hooks.json blocks the session if this exits non-zero). Background-agent
+# sessions run inside the bkit Dockerfile, where python3 is present for the code below.
 # (Claude variant: uses empty LINEAR_ISSUE_ID env var as the proxy.)
 if ! printf '%s' "$INPUT" | grep -q '"is_background_agent"[[:space:]]*:[[:space:]]*true'; then
   exit 0

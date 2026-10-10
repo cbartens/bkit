@@ -11,26 +11,16 @@ that bkit-graphify-rollup.py paints onto the Mermaid nodes.
 
     bkit-graph-drift.py <rules.json> <overlay-out.json> [--quiet]
 
-WHY GREP AND NOT THE CODE GRAPH. The duplication worth catching is a duplicated
-MECHANISM — a second `new Client()`, a fourth hand-rolled send. External
-packages are not nodes in graph.json (source_file-less nodes are type
-names like `Any` / `URL`), so no symbol graph can see a second `new Client(`.
-graphify's duplicate-symbol check finds a thinner class: labels such as
-`.constructor()`, `main()`, and `handleSubmit()`, most of which are noise.
-
-Patterns are LITERAL, never regex — `new Ratelimit(` as an ERE is an unclosed
-group and silently matches nothing, which reads exactly like a clean result.
+Scans source text for a duplicated MECHANISM (a second `new Client()`, a fourth
+hand-rolled send) by literal substring match, not via the code graph. Patterns are
+LITERAL, never regex.
 
 TWO SURFACES. A rule's optional "surface" key picks which one it scans:
-"product" (the default), "tests", or "all". See sources() for why the test
-surface exists.
+"product" (the default), "tests", or "all". See sources().
 
-BUDGETED IS NOT DRIFT. A rule may declare "budgets": the EXACT number of
-non-owner sites allowed per scope prefix. A row whose measured count matches its
-declared budget everywhere is settled work, not open work, and gets its own
-status — `budgeted` — so the diagram stops painting it the same amber as a
-capability nobody has looked at. See budget_state() for why that is honest
-rather than a rug.
+BUDGETED. A rule may declare "budgets": the EXACT number of non-owner sites allowed
+per scope prefix. A row whose measured count matches its declared budget everywhere
+gets the status `budgeted` instead of the amber warning. See budget_state().
 """
 
 import argparse
@@ -49,9 +39,7 @@ SKIP_FILE = (".d.ts", ".config.")
 # else about the walk is identical, so the two surfaces are a PARTITION of the
 # same file set — see sources().
 TEST_FILE = (".test.", ".spec.")
-# The same four roots a budget guard should read, so a register count and
-# the budget enforcing it are taken over one tree. scripts/ is in: a maintenance script
-# building its own client is the drift class.
+# Roots walked; a budget guard reads the same roots. scripts/ is included.
 ROOTS = ("apps", "packages", "tooling", "scripts")
 SURFACES = ("product", "tests", "all")
 
@@ -82,13 +70,7 @@ def sources():
 
     A test HELPER that is neither under `e2e` nor named `.test.`/`.spec.` —
     `packages/utils/src/testing/**`, `packages/api/tests/setup.ts` — is scanned
-    as product code. That is deliberate: it is imported by product-shaped code
-    paths and its counts belong in a budget if they must stay.
-
-    WHY THE TEST SURFACE EXISTS. Test code is where the guards live, and
-    it is the one region a product-only scan cannot see: a signature
-    matcher misses inline statements inside `test()` callbacks, and a
-    business-rule grep does not see "click a button".
+    as product code.
     """
     for root in ROOTS:
         for dirpath, dirnames, filenames in os.walk(root):
@@ -101,14 +83,11 @@ def sources():
                 yield os.path.join(dirpath, f), ("tests" if is_test else "product")
 
 
-# One read of the tree, all rules matched against it.
-# A rule may narrow the tree it scans. "/api/v1/" means one thing in apps/ (a
-# caller hand-rolling a URL) and another in packages/api (the route definition
-# itself); without a scope the second drowns the first.
+# One read of the tree, all rules matched against it. A rule's optional "scope"
+# (path prefixes) narrows the files it matches.
 hits = {r["pattern"]: [] for r in rules}
 scoped = {r["pattern"]: tuple(r["scope"]) for r in rules if r.get("scope")}
-# Which surface each rule is asking about. Absent = "product", so every rule
-# written before the split keeps its exact surface without being edited.
+# Which surface each rule is asking about. Absent = "product".
 wants = {r["pattern"]: r.get("surface", "product") for r in rules}
 for pat, want in wants.items():
     if want not in SURFACES:
@@ -127,10 +106,7 @@ for path, surface in sources():
         if pat in text and (pat not in scoped or path.startswith(scoped[pat])):
             hits[pat].append(path)
 
-# A surface that walked nothing passes every budget of 0 without reading a byte,
-# which is the false green this whole file exists to prevent. Both surfaces are
-# non-trivial on a monorepo; a zero means the
-# walk broke, not that the repo changed.
+# A surface that matched 0 files fails the run: every rule on it would pass vacuously.
 for surface, n in seen.items():
     if n == 0:
         raise SystemExit(f"[drift] the {surface} surface matched 0 files. Every rule scoped to "
@@ -147,24 +123,12 @@ def budget_state(rule, outside):
       "over"   a prefix holds more than it declared, or a site landed outside
                every declared prefix. A new copy appeared.
       "stale"  a prefix holds fewer than it declared. The budget is a ceiling
-               nobody lowered, which is how a gate rots into decoration.
+               nobody lowered.
 
-    WHY A BUDGET IS ALLOWED TO DOWNGRADE A WARNING. Without it, one amber
-    covers two facts: an unbounded marker (18 of 19) and a marker that is
-    exactly at its declared count, whose note says the copies are probes and
-    the budget is not meant to reach zero. Rendering those the same means
-    every sweep rediscovers the settled rows.
-
-    A budget is not a shrug. It is an exact number with a stated reason in
-    `note`, and a CI test that counts the same prefixes should fail when the
-    count moves in EITHER direction — too many (a copy appeared) and too
-    few (the number is stale). That guard is the reason this status can be
-    quieter without becoming a place to hide work.
-
-    The unbudgeted-site clause is this file's own backstop, and the guard does
-    not have it: the guard only ever counts inside a prefix it was given, so a
-    copy landing in a part of `scope` no budget covers is invisible to it. Here
-    it reads as "over" and the row stays amber.
+    A budget is an exact number with its reason in the rule's `note`; a CI test
+    counting the same prefixes fails when the count moves in either direction. A
+    site outside every declared prefix reads as "over" here, which that test,
+    counting only inside its prefixes, does not see.
     """
     budgets = rule.get("budgets")
     if not budgets:
@@ -201,9 +165,7 @@ for r in rules:
     else:
         status = "one"
         detail = f"{len(users)} site{'' if len(users) == 1 else 's'}, all via the owner"
-    # A declared, guarded number is settled work. `one` and `gap` are left alone:
-    # `one` has nothing to budget, and a `gap` is an owner that does not exist
-    # yet, which no count of callers can make deliberate.
+    # At budget, `split` / `bypassed` become `budgeted`. `one` and `gap` never do.
     declared, verdict = budget_state(r, outside)
     if verdict == "at" and status in ("split", "bypassed"):
         status = "budgeted"
@@ -214,21 +176,10 @@ for r in rules:
         detail += f" · BUDGET STALE, {len(outside)} < {declared}"
     if r.get("issue"):
         detail += f" · #{r['issue']}"
-    # Key on the owner path when there is one, so the node the diagram paints is
-    # the module that OWNS the capability; on the busiest bypass otherwise.
-    #
-    # A row whose key is a TEST file is registered but never painted, and that is not
-    # squeamishness. The diagrams are folder rollups: resolve_paint() maps a row onto
-    # the longest node key that is a prefix of its path, and the longest node any file
-    # under apps/web/e2e/ has is `apps/web` itself — so one test-only row paints the
-    # whole apps/web package amber, reading as a product-wide defect. One level up it
-    # is the same smear: a helper site paints `packages/utils`.
-    # The test surface has no nodes of its own to land on either: bkit-graphify-rollup.py's
-    # is_test_code drops test code from the PICTURE (it stays in graph.json), and
-    # skips any row keyed on test code as well.
-    #
-    # Keyed on the PATH, not on the rule's surface, so an "all" rule still paints when
-    # its busiest hit is product code and stays quiet when it is not.
+    # Keyed on the owner path when there is one, on the busiest bypass otherwise. A
+    # row keyed on a TEST path is registered but never painted (bkit-graphify-rollup.py's
+    # is_test_code skips it too). The test is on the key PATH, not the rule's surface:
+    # an "all" rule paints when its busiest hit is product code.
     key = owner or (outside[0] if outside else None)
     if key and status != "one" and not is_test_path(key):
         overlay[key] = [status, f"{r['capability']} · {detail}"]

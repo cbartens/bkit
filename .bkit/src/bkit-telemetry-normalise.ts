@@ -4,14 +4,12 @@
 //
 // For every row it:
 //   1. drops the legacy `aliases[]` field, demoting its values into
-//      `references[]` (the current schema — sequential DE-{N} ids are
-//      un-mintable under concurrency);
+//      `references[]` (the current schema);
 //   2. keeps `ts` as the identity — never touched;
 //   3. re-keys ONLY rows whose legacy number COLLIDES (one DE-<n>/KN-<n> shared
 //      by >1 key): strips the `de-<n>-` / `kn-<n>-` prefix so the misleading
 //      shared number leaves the slug, preserving the legacy id as a `references[]`
-//      pointer. Unique numbered keys are left alone — they resolve fine and
-//      re-keying them would churn valid citations.
+//      pointer. Unique numbered keys are left alone.
 //
 // Safety (mirrors bkit-telemetry-migrate's DE-39 / KN-8 contract): a transient
 // .bak is written first, the rewrite goes to a .normalising temp, row-count

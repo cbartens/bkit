@@ -1,9 +1,8 @@
 // bkit-paths.test.ts — Unit tests for getPkgRoot() across the THREE run-contexts
 // documented in the bkit-paths.ts header comment.
 //
-// The dist arm (context 1 + 3) is EXPLICITLY asserted here in addition to the
-// tsx-from-source arm (context 2), because bkit:check:dist only exercises it
-// indirectly.
+// The dist arm (context 1 + 3) is asserted here in addition to the tsx-from-source arm
+// (context 2).
 
 import * as fs from "node:fs";
 import * as path from "node:path";

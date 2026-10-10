@@ -1,17 +1,11 @@
 // bkit-harvest.integration.test.ts — boundary: filesystem/consumer repo.
 //
-// Tests the split contract (#343): harvest COPIES consumer .bkit/stats.jsonl (never
-// modified) and MOVES .bkit/friction.jsonl (harvested rows pruned from the consumer).
-// Ground-truth = real filesystem stat, no mock.
+// Tests the split contract: harvest COPIES consumer .bkit/stats.jsonl (never
+// modified) and MOVES .bkit/friction.jsonl, pruning ONLY rows durably present in the
+// store. Ground-truth = real filesystem stat, no mock.
 //
-// WS4-T1 Derived Test Matrix row (as amended by #343):
-//   "Harvest COPIES consumer `.bkit/stats.jsonl` and NEVER writes/truncates it; harvest
-//   MOVES `.bkit/friction.jsonl`, pruning ONLY rows durably present in the store"
-//
-// The pruning tests below are load-bearing, not incidental. Once harvest deletes from a
-// consumer, the store is the ONLY copy of those rows until the caller commits — so the
-// properties that keep that safe (store accumulates, malformed lines are never pruned,
-// unharvested rows survive) are the difference between a harvest and a data-loss bug.
+// The pruning tests cover: the store accumulates, malformed lines are never pruned,
+// unharvested rows survive.
 
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -116,7 +110,7 @@ function makeBkitRoot(basePath: string, consumers: string[]): string {
 // WS4-T1 Boundary test: consumer file content + mtime unchanged after harvest
 // ---------------------------------------------------------------------------
 
-// stats.jsonl is copy-only; friction.jsonl is a MOVE (#343): harvested rows are
+// stats.jsonl is copy-only; friction.jsonl is a MOVE: harvested rows are
 // pruned from the consumer. This describe block asserts BOTH halves of that split.
 describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () => {
   it("never modifies consumer stats.jsonl, and prunes only harvested friction rows", () => {
@@ -174,9 +168,7 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     expect(result.consumers[0]!.copiedRows).toBe(3); // 2 stats + 1 friction
   });
 
-  // THE data-loss regression. Before #343 runHarvest unlinked the dest files and rebuilt
-  // from scratch each run. Combined with pruning, run 2 would delete the store (the only
-  // copy) and then re-copy from the now-empty consumer, shredding every harvested row.
+  // The store survives a second run: run 2 never deletes rows run 1 banked and pruned.
   it("ACCUMULATES the store across runs — a second harvest never destroys pruned rows", () => {
     const consumerPath = path.join(tmpDir, "consumer-app");
     makeConsumerRepo(consumerPath, {
@@ -257,10 +249,8 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     );
   });
 
-  // Data-loss guard (#343). Friction `key`s are truncated (~68 chars), so two genuinely
-  // different entries can share a key -> one identity. An identity-gated prune deletes
-  // BOTH from the consumer, so a store that kept only ONE would destroy the other. The
-  // store keeps every distinct row, so both are banked and both drain.
+  // Two different friction entries sharing a key (one identity): the store keeps every
+  // distinct row, so both are banked and both drain.
   it("stores and prunes both rows that share an identity", () => {
     const consumerPath = path.join(tmpDir, "consumer-app");
     // Same key + same repo => same identity, but genuinely different rows.
@@ -291,9 +281,7 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     expect(result.totalPrunedRows).toBe(2);
   });
 
-  // #343 harvest-2: a store rewritten from the fold would let a newer same-key row
-  // appended to the consumer later evict a row an earlier run had already pruned,
-  // leaving that row nowhere.
+  // A newer same-key row appended later never evicts a row an earlier run pruned.
   it("a newer same-key row never evicts a row an earlier run already pruned", () => {
     const consumerPath = path.join(tmpDir, "consumer-app");
     const frictionPath = path.join(consumerPath, ".bkit", "friction.jsonl");
@@ -320,9 +308,8 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     expect(store).toContain("second run entry");
   });
 
-  // #343 harvest-1: legacy rows carry an ISO-string or missing `ts`. A NaN-driven sort
-  // would make which same-key row the store keeps flip with file order between runs,
-  // dropping rows pruned on run 1 from the store on run 2.
+  // Legacy rows carry an ISO-string or missing `ts`; the store keeps rows pruned on run 1
+  // through run 2.
   it("keeps every pruned row across re-runs when same-key rows carry legacy ts", () => {
     const consumerPath = path.join(tmpDir, "consumer-app");
     const frictionPath = path.join(consumerPath, ".bkit", "friction.jsonl");
@@ -390,8 +377,7 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
   });
 
   // A consumer's triage pass closes a deferral by APPENDING a same-key row with
-  // status CLOSED (jsonl.md § Updating a Row). Counting raw lines would report
-  // that one deferral as two and inflate the dimensional counts with every pass.
+  // status CLOSED (jsonl.md § Updating a Row); that is still one deferral.
   it("counts ENTITIES not rows — a triage update does not inflate the count", () => {
     const consumerPath = path.join(tmpDir, "consumer-triaged");
     const opened = deferralRow(1_700_000_001_000, "defer-1");
@@ -484,15 +470,8 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
 // consumerPathToSlug — resolves from the consumer's git remote (real `git init`)
 // ---------------------------------------------------------------------------
 
-// `repo` is part of identity() for EVERY kind, so each spelling of a repo forks
-// every entity under it. This resolver must therefore agree with every other
-// producer of `repo`, which means: the git remote, and nothing else.
-//
-// The previous implementation took the last two path segments, making the OWNER a
-// directory on the operator's machine. Its tests passed because the fixture path
-// (`/Users/chris/GitHub/acme/my-app`) was shaped so the bug looked correct — a
-// real checkout is `/Users/x/Documents/GitHub/app-gether-life`, which yielded
-// `GitHub/app-gether-life` against a true slug of `gether-life/app-gether-life`.
+// `repo` is part of identity() for EVERY kind. This resolver agrees with every other
+// producer of `repo`: the git remote, and nothing else — never path segments.
 describe("consumerPathToSlug — resolves from the consumer's git remote", () => {
   /** A real git repo at `dir` with `origin` set to `remote`. */
   function makeRepoWithRemote(dir: string, remote: string): string {
@@ -508,7 +487,7 @@ describe("consumerPathToSlug — resolves from the consumer's git remote", () =>
       path.join(tmpDir, "Documents", "GitHub", "app-gether-life"),
       "https://github.com/gether-life/app-gether-life.git",
     );
-    // The path would have produced `GitHub/app-gether-life`.
+    // Not the path-derived `GitHub/app-gether-life`.
     expect(consumerPathToSlug(dir)).toBe("gether-life/app-gether-life");
   });
 
@@ -529,8 +508,7 @@ describe("consumerPathToSlug — resolves from the consumer's git remote", () =>
   it("falls back to the bare dir name when there is no remote — never an invented owner", () => {
     const dir = path.join(tmpDir, "Documents", "GitHub", "no-remote-app");
     fs.mkdirSync(dir, { recursive: true });
-    // A last-resort value that is obviously not a slug beats a plausible wrong
-    // one: `GitHub/no-remote-app` would look real and fork silently.
+    // The last-resort value is obviously not a slug (not `GitHub/no-remote-app`).
     expect(consumerPathToSlug(dir)).toBe("no-remote-app");
   });
 });

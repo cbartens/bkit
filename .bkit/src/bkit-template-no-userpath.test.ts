@@ -1,15 +1,11 @@
-// bkit-template-no-userpath.test.ts — #341 T1 (WS-5, D20).
+// bkit-template-no-userpath.test.ts
 //
-// Guards the shipped plan template + its repo copies against a leaked
-// developer-machine absolute path (e.g. `/Users/christian/...`). That kind
-// of path ships to every consumer, in every runtime, regardless of mode —
-// it is a plain shipped defect, not a mode-3-only issue.
+// The shipped plan template + its repo copies carry no developer-machine absolute path
+// (e.g. `/Users/christian/...`).
 //
-// Deliberately narrow: matches `/Users/<name>/...` only. The vendored
-// `/Users/jesse/...` example inside `.agents/skills/using-git-worktrees/
-// SKILL.md` is placeholder prose for a third-party skill, not a leaked
-// real path — it is explicitly OUT of scope for this guard (D20 decision:
-// do not touch it, it creates skill-sync drift for no consumer benefit).
+// Narrow: matches `/Users/<name>/...` only. The vendored `/Users/jesse/...` example
+// inside `.agents/skills/using-git-worktrees/SKILL.md` (third-party skill placeholder
+// prose) is out of scope.
 
 import * as fs from "node:fs";
 import * as path from "node:path";

@@ -496,8 +496,7 @@ describe("--only-if-dirty-tracked (build / design / plan Step 2)", () => {
     expect(res.err).toContain("src.ts");
   });
 
-  // Exiting 6 here would fail Step 2 on a fresh consumer repo whose only change
-  // is a dirty tracked non-bookkeeping file.
+  // A dirty tracked non-bookkeeping file alone does not exit 6.
   it("a dirty tree with no bookkeeping at all is nothing to commit, not exit 6", async () => {
     const r = repo();
     put(r, "README.md", "a\n");
@@ -682,9 +681,8 @@ describe("bookPathspecs", () => {
   });
 });
 
-// The frozen bookkeeping allow-list (design § `BOOK_ROOT` / `BOOK_PATHS`, #446):
-// every ship stage/commit resolves through bookPathspecs — never `-A`, never a
-// bare `docs/`. A path dropped from the builder strands that ledger dirty.
+// The frozen bookkeeping allow-list: every ship stage/commit resolves through
+// bookPathspecs — never `-A`, never a bare `docs/`.
 const BOOK_PATHS_ALLOW_LIST: readonly string[] = [
   // A .md, so the `docs/*.jsonl` glob does not reach it: named literally.
   "docs/roadmap.md",

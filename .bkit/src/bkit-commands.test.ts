@@ -1,10 +1,8 @@
 /**
  * bkit-commands.test.ts — every `bkit <noun> <verb>` command follows the conventions.
  *
- * Fixed up front because there is no pilot command to settle them: a mistake in
- * flag naming, output shape, or exit codes would otherwise be copied into every
- * command. The source folders are enumerated at run time, so a command added
- * tomorrow is covered or this suite is red.
+ * Flag naming, output shape, and exit codes. The source folders are enumerated at run
+ * time, so every command is covered.
  */
 
 import * as fs from "node:fs";

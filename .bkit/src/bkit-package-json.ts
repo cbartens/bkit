@@ -37,10 +37,8 @@ export function repointLegacyScripts(cwd: string, dryRun: boolean): string[] {
   const pkgPath = path.join(cwd, "package.json");
   if (!fs.existsSync(pkgPath)) return [];
   const raw = fs.readFileSync(pkgPath, "utf-8");
-  // Parse failure is a REPORTED state, not a swallowed one: install and upgrade must
-  // not abort half-finished over an unparseable consumer file (detectMalformedPackageJson
-  // is the surface that judges it), but a silent bail would leave the consumer
-  // wondering why a superseded script stayed.
+  // Parse failure is a REPORTED state, not a swallowed one; install and upgrade do not
+  // abort over an unparseable consumer file (detectMalformedPackageJson judges it).
   let pkg: Record<string, unknown> | null = null;
   let parseError: string | null = null;
   try {

@@ -5,9 +5,8 @@
 //
 //   1. migrateConfigMdToContext  — `.agents/config.md` → `.agents/context.md`.
 //      MOVES the consumer section AND transforms `debug-fetch:` → `context-fetch:`
-//      inside it, then deletes `.agents/config.md`. This is the one migration under a
-//      RELAXED contract: config.md carries the `debug-fetch:` marker vocabulary, so a
-//      verbatim move would leave the consumer with markers nothing parses.
+//      inside it, then deletes `.agents/config.md`. The one migration that rewrites
+//      markers: config.md carries the `debug-fetch:` marker vocabulary.
 //   2. migrateContextFetchToContext — `docs/observability.md` → `.agents/context.md`.
 //      MOVE-only; the one rewrite is the same marker swap.
 //
@@ -16,9 +15,9 @@
 //
 // Wired into BOTH version-move paths — `bkit install` via runCoreModule (after its
 // templates pass) AND `bkit upgrade` via the upgrade engine's explicit call (after its
-// render pass), each AFTER context.md's managed block is written — so an upgrading
-// consumer need do NOTHING. (install and upgrade are SEPARATE engines — both migrations
-// must be called from both.) Dry-run-aware and idempotent.
+// render pass), each AFTER context.md's managed block is written. (install and upgrade
+// are SEPARATE engines — both migrations are called from both.) Dry-run-aware and
+// idempotent.
 //
 // Safety contract:
 //   1. Content-preserving — a block's body is never rewritten except for the
@@ -36,10 +35,8 @@ const CONTEXT_RELPATH = path.join(".agents", "context.md");
 /** Legacy location of the same file. Read-and-delete only; never written. */
 const LEGACY_CONFIG_RELPATH = path.join(".agents", "config.md");
 const BKIT_END_RE = /^<!-- bkit:end -->$/;
-// Both marker vocabularies, on purpose. A consumer's observability.md may hold blocks
-// written as `debug-fetch:` — matching only `context-fetch:` would silently leave them
-// there forever, since nothing else ever revisits that file. They are transformed on
-// the way out by renameLegacyContextFetchMarkers.
+// Both marker vocabularies: `debug-fetch:` blocks in observability.md move too, renamed
+// on the way out by renameLegacyContextFetchMarkers.
 const FETCH_NS = "(?:debug|context)-fetch";
 const BLOCK_OPEN_RE = new RegExp(`^<!-- ${FETCH_NS}:(?:start|provision)(?: [^>]*)? -->$`);
 const BLOCK_CLOSE_RE = new RegExp(`^<!-- ${FETCH_NS}:end -->$`);
@@ -154,7 +151,7 @@ export function migrateContextFetchToContext(cwd, dryRun) {
  * (`start` / `end` / `provision` / `none`) AND of the `[debug-fetch:<name>] skipped`
  * breadcrumb consumers echo from inside block bodies, so a single swap keeps a
  * consumer's blocks and their stderr breadcrumbs consistent with the docs.
- * Deliberately narrow — the word "debug" elsewhere in their prose or shell is theirs.
+ * Narrow: only the `debug-fetch:` token; the word "debug" elsewhere is untouched.
  */
 export function renameLegacyContextFetchMarkers(text) {
     return text.replace(/debug-fetch:/g, "context-fetch:");
@@ -171,8 +168,7 @@ export function renameLegacyContextFetchMarkers(text) {
  *     context.md) → append the legacy consumer section below context.md's own
  *     managed block, transforming, deduping anything already there.
  *
- * The legacy file is DELETED either way. There is no generic retired-file sweep, so
- * leaving it would strand a stale copy that still reads as authoritative.
+ * The legacy file is DELETED either way.
  */
 export function migrateConfigMdToContext(cwd, dryRun) {
     const legacyPath = path.join(cwd, LEGACY_CONFIG_RELPATH);

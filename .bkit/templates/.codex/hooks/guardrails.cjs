@@ -1,25 +1,19 @@
 #!/usr/bin/env node
 // guardrails.cjs — bkit destructive-op shell gates (Codex CLI).
 //
-// Twin of `.cursor/hooks/guardrails.cjs`, carrying the same decision engine so the
-// four hosts cannot drift. Wired from `.codex/hooks.json`, matcher `Bash` — Codex's
-// canonical tool name for shell execution.
+// Twin of `.cursor/hooks/guardrails.cjs`, carrying the same decision engine. Wired from
+// `.codex/hooks.json`, matcher `Bash` — Codex's canonical tool name for shell execution.
 //
-// TWO THINGS DIFFER FROM THE CURSOR TWIN, both forced by Codex:
+// TWO THINGS DIFFER FROM THE CURSOR TWIN:
 //
 //   1. NO `ask`. Codex parses `permissionDecision: "ask"` but does not implement it —
-//      an attempt is recorded as an error and the tool call proceeds anyway. So the
-//      ask tier CANNOT be a prompt here. It is emitted as `additionalContext`: a loud
-//      advisory the model reads, command still runs. The deny tier is a real block.
-//      This is a deliberate, documented divergence, not an oversight — see
-//      `.bkit/src/bkit-permissions-parity.integration.test.ts` and providers.md.
+//      an attempt is recorded as an error and the tool call proceeds anyway. The ask
+//      tier is emitted as `additionalContext`: an advisory the model reads, the command
+//      still runs. The deny tier is a real block. Asserted in
+//      `.bkit/src/bkit-permissions-parity.integration.test.ts`; see providers.md.
 //   2. ENVELOPE. Codex is the Claude-family hook contract (stdin `tool_name` /
 //      `tool_input`, stdout `hookSpecificOutput`), not Cursor's `beforeShellExecution`
 //      + `{ permission }` shape.
-//
-// Consequence worth stating plainly: on Codex the ask tier informs rather than stops.
-// Every command in it is already on the PROHIBITED list in all five bkit workflow
-// headers, so no bkit workflow reaches one; this covers a human driving Codex by hand.
 //
 // REGISTRATION: `.codex/hooks.json`, matcher `Bash`. Codex loads project-local hooks
 // only once the project `.codex/` layer is TRUSTED — until then this does not run.
@@ -29,8 +23,7 @@
 //   - FAIL OPEN: one top-level catch swallows every error and exits 0.
 //   - DENY IS REAL: the deny tier returns permissionDecision "deny" and blocks.
 //   - PURE ENGINE: everything between the markers is a decision engine only — no stdin
-//     read, no stdout write — so bkit's emitter and yours cannot collide into one
-//     unparseable stdout blob. Add your own gates in the driver below the block.
+//     read, no stdout write. Add your own gates in the driver below the block.
 //
 // OWNERSHIP: everything between the markers is bkit-managed and overwritten on every
 // `bkit install` / `bkit upgrade`.
@@ -81,7 +74,7 @@ function decideShell(cmd) {
   }
 
   // Ask tier — advisory on this host (Codex cannot prompt). Same patterns as the
-  // Cursor twin so a gate added there is added here.
+  // Cursor twin.
   const askPatterns = [
     /\bsudo\b/,
     /\bbrew\s+install\b/,
@@ -106,9 +99,7 @@ function decideShell(cmd) {
   }
 
   // curl / wget: allowed when every URL host is on the network allowlist, advisory
-  // otherwise. Claude leaves shell fetches ungated entirely (its rules match a command
-  // prefix, not a URL host, so per-domain allows are inexpressible); this host can parse
-  // the host, so it does.
+  // otherwise.
   if (usesFetch(c)) {
     if (curlWgetHostAllowed(c)) return allow();
     return ask(
@@ -116,9 +107,7 @@ function decideShell(cmd) {
     );
   }
 
-  // Shell-as-edit-channel: advisory on every host. See the Cursor twin for why this
-  // is never a block — the rule has sanctioned exceptions and bkit's own plan
-  // workflow relies on one.
+  // Shell-as-edit-channel: advisory on every host, never a block.
   const edits = shellEditTargets(c);
   if (edits.length > 0) return ask(shellEditAdvisory(edits));
 
@@ -140,9 +129,8 @@ function shellSegments(cmd) {
  * The program a segment actually runs: leading `VAR=val` assignments and wrappers
  * skipped, path stripped (`/usr/bin/curl` -> `curl`).
  *
- * Matching a bare word anywhere in the command instead is why this exists: `grep -n
- * 'curl' file` and `sed -n '/sed -i/p' notes.md` both contain the token without running
- * anything, and a gate that fires on those is noise a consumer switches off.
+ * A token that only appears as an argument (`grep -n 'curl' file`,
+ * `sed -n '/sed -i/p' notes.md`) is not the segment's program.
  */
 function segmentHead(seg) {
   const words = seg.split(/\s+/).filter(Boolean);
@@ -171,10 +159,9 @@ const SOURCE_EXT_RE =
  * Detect a shell command being used as an edit channel. Returns a list of human
  * descriptions, empty when the command edits nothing.
  *
- * Deliberately quiet on the shapes that dominate legitimate use — `> /dev/null`,
- * `>> "$GITHUB_ENV"`, `mktemp` handoff files, log capture — because a gate that
- * fires constantly is one that gets disabled. Only a redirect whose target both
- * looks like a repo path AND carries a source extension is reported.
+ * Quiet on `> /dev/null`, `>> "$GITHUB_ENV"`, `mktemp` handoff files and log capture.
+ * Only a redirect whose target both looks like a repo path AND carries a source
+ * extension is reported.
  *
  * Byte-identical to the Cursor twin; behavioural parity is asserted in
  * bkit-permissions-parity.integration.test.ts.
@@ -204,7 +191,7 @@ function shellEditTargets(cmd) {
   return [...new Set(hits)];
 }
 
-/** One shared advisory string so the hosts cannot word this differently. */
+/** Shared advisory string, identical on every host. */
 function shellEditAdvisory(hits) {
   return (
     `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). ` +
@@ -218,16 +205,13 @@ function shellEditAdvisory(hits) {
 /**
  * Hosts come from `.cursor/allowlist.json`, the single install-written artifact
  * carrying the resolved network allowlist (shipped egress registry union the
- * consumer's `allowed-domains`). There is deliberately NO hardcoded fallback list:
- * a second copy drifts from the registry silently, and the failure it produces — a
- * host allowed in one IDE and not another — stays invisible until someone hits it.
+ * consumer's `allowed-domains`). There is NO hardcoded fallback list.
  */
 
 /**
  * Reads `.cursor/allowlist.json` — the single install-written artifact carrying the
- * resolved network allowlist. Codex has no allowlist file of its own, and duplicating
- * one would be a second source of truth that drifts. Absent (cursor module not
- * installed) → shipped tooling bases only.
+ * resolved network allowlist. Codex has no allowlist file of its own. Absent (cursor
+ * module not installed) or unreadable → empty set: every URL host is off-list.
  */
 function loadNetworkAllowlistBases() {
   const bases = new Set();
@@ -242,8 +226,7 @@ function loadNetworkAllowlistBases() {
       }
     }
   } catch {
-    /* shipped fallback only — a corrupt/absent allowlist must not crash the
-       session; an empty set means every host reads as unknown */
+    /* corrupt allowlist → empty set: every host reads as unknown; never crashes */
   }
   return bases;
 }
@@ -251,9 +234,8 @@ function loadNetworkAllowlistBases() {
 /**
  * Pull the HOST out of every `http(s)://…` URL in a command.
  *
- * Deliberately strict: only an explicit scheme counts. A scheme-less token cannot be
- * told apart from a local path (`./deploy.sh`, `pkg.json`) without guessing, and
- * guessing here converts an advisory into an allow.
+ * Strict: only an explicit scheme counts; a scheme-less token (`./deploy.sh`,
+ * `pkg.json`) is never read as a URL.
  */
 function extractUrlHosts(cmd) {
   const hosts = [];
@@ -281,11 +263,8 @@ function hostMatchesBase(host, base) {
 /**
  * Allow curl/wget only when EVERY URL in the command targets an allowlisted host.
  *
- * Matching the allowlist against the whole command string is trivially defeated:
- * `curl https://evil.example/x?src=github.com`, `curl https://github.com.attacker.io/`,
- * or any request carrying an allowlisted domain in a header all read as allowed. The
- * host is the only part of the command that decides where the bytes go, so it is the
- * only part consulted. No parseable URL, or any host off the list → advisory.
+ * Only each URL's host is consulted, never the rest of the command string (query
+ * params, headers). No parseable URL, or any host off the list → advisory.
  */
 function curlWgetHostAllowed(cmd) {
   const hosts = extractUrlHosts(cmd);
@@ -299,8 +278,8 @@ function curlWgetHostAllowed(cmd) {
  * `{ verdict: "allow"|"ask"|"deny", reason? }`, or `null` when bkit has no opinion
  * (the caller decides what a no-opinion result means).
  *
- * Codex reports shell execution as `Bash`; the aliases are kept so a
- * consumer-registered matcher still routes here.
+ * Codex reports shell execution as `Bash`; the aliases match a consumer-registered
+ * matcher.
  */
 const SHELL_TOOL_NAMES = new Set(["Bash", "bash", "shell", "local_shell", "exec"]);
 
@@ -340,9 +319,8 @@ try {
               permissionDecision: "deny",
               permissionDecisionReason: result.reason,
             }
-          : // `ask` is parsed-but-unimplemented on Codex; surfacing it as a decision
-            // would be recorded as an error and the call would proceed regardless.
-            // Advisory context is the strongest thing that actually reaches the model.
+          : // `ask` is parsed-but-unimplemented on Codex; the ask tier is emitted as
+            // advisory context.
             { hookEventName: "PreToolUse", additionalContext: result.reason },
       );
     }

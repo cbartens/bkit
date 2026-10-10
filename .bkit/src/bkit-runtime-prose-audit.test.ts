@@ -1,22 +1,16 @@
-// bkit-runtime-prose-audit.test.ts — #341 T16, Derived Test Matrix row 15.
+// bkit-runtime-prose-audit.test.ts
 //
-// The design's own honest limit (D3): tests can prove `bkit runtime detect`
-// DETECTS capabilities correctly, never that prose rules HONOUR them — that
-// consumption guarantee rests on a real live-mode run. This audit is
-// deliberately narrow: PRESENCE, not BEHAVIOUR.
+// Narrow: PRESENCE, not BEHAVIOUR (whether prose rules honour the detected
+// capabilities needs a real live-mode run).
 //
 //   (i)  every `RUNTIME_*` capability flag has >=1 reader somewhere in
-//        `.bkit/workflows/*.md` — a flag set but never read anywhere is a
-//        dead flag, exactly the class of gap #341 T14/T15 discovered
-//        (docs/failures.jsonl key `runtime-resolved-row-never-emitted-step1`)
-//        — and every phase workflow emits the `runtime-resolved` row those
-//        readers depend on, through `bkit runtime row`.
+//        `.bkit/workflows/*.md`, and every phase workflow emits the
+//        `runtime-resolved` row those readers depend on, through `bkit runtime row`.
 //   (ii) no workflow sleeps in the foreground. Every wait lives in a command:
 //        CI waits in `bkit runs wait|dispatch` (which hands a blocked sleep to
 //        the agent's turn loop with exit 81, pinned in
 //        commands/workflow/runs.test.ts) and the dev-lock poll in
-//        `bkit locks acquire --kind=dev`. A raw `sleep N` reappearing in a
-//        workflow is a wait that bypasses both.
+//        `bkit locks acquire --kind=dev`. No raw `sleep N` in a workflow.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -68,12 +62,8 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
     });
 
     it("RUNTIME_GITHUBCLI's reader chain includes the runtime-resolved row it is durably read back from", () => {
-      // The row-15 audit's own reason to exist: #341 T14/T15 discovered
-      // RUNTIME_GITHUBCLI had readers (the gh->MCP fallback rule, D25 close-guard) but
-      // no writer ever durably emitted the row those readers depend on
-      // (docs/failures.jsonl key runtime-resolved-row-never-emitted-step1,
-      // fixed in this same sub-plan). Assert BOTH halves are present now:
-      // the reader and the emission call site, which runs before the first
+      // RUNTIME_GITHUBCLI: BOTH halves present — the reader (the gh->MCP fallback rule,
+      // close-guard) and the emission call site, which runs before the first
       // `bkit runtime assert` that reads the row back.
       expect(corpus).toContain("runtime-resolved");
       for (const workflow of ["design", "plan", "build", "debug", "ship"] as const) {

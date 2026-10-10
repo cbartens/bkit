@@ -2,10 +2,8 @@
 //
 // main only ever moves through a release PR, so it requires a PR, requires the
 // capstone check, and allows no force-push, no deletion and no merge commits.
-// The policy also binds admins: agents act with the owner's admin token, so an
-// admin exemption would make the agent itself the bypass. `dev` is left
-// unprotected on purpose — operators choose direct-push or feat/PR and own that
-// the tests ran.
+// The policy also binds admins. `dev` is left unprotected — operators choose
+// direct-push or feat/PR.
 //
 // The required check is `bkit.capstoneJob`, the always-on job that asserts every
 // expected tier ran and passed, so "required check green" means validated, not

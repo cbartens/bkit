@@ -11,8 +11,7 @@
 // is adopted into notes-post, and a mangled pair self-heals without removing a
 // byte.
 //
-// Tracker issues are NOT rendered: a wired tracker already shows them, and a
-// regenerated copy can only go stale. Fail-open: this never exits non-zero for
+// Tracker issues are NOT rendered. Fail-open: this never exits non-zero for
 // a bad ledger or an unwritable board, and never gates the caller's close.
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -56,9 +55,7 @@ const or = (a, b) => (a === undefined || a === null || a === false ? b : a);
 /**
  * Fold rows by `key`, last write wins (highest `ts`, file order breaking ties),
  * and bucket by folded status. ABANDONED is in no bucket, so it hides a FID from
- * the whole board. SHIPPED ranks on `shippedAt`, falling back to `ts`: `ts` is
- * append time, so a row backfilled today for work shipped months ago would
- * otherwise sort as the newest ship and evict the real ones.
+ * the whole board. SHIPPED ranks on `shippedAt`, falling back to `ts` (append time).
  */
 export function project(rows) {
     const groups = new Map();
@@ -88,7 +85,7 @@ export function project(rows) {
 const cell = (v) => typeof v === "string" ? v : v === undefined ? "null" : JSON.stringify(v);
 /**
  * `FID | Title | Last-transition (ts)`. Milestone and blocked-by are not on a
- * feature row, so they would print an em dash on every row of every board.
+ * feature row and are not columns.
  */
 function table(rows) {
     if (rows.length === 0)

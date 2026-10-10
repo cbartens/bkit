@@ -1,13 +1,9 @@
-// bkit-analysis.test.ts — Unit tests for analysis CLI (WS4-T3) and rollup writer (WS4-T4).
-//
-// WS4-T3 Derived Test Matrix rows:
-//   - "Analysis CLI computes #183 size↔outcome regression + dispatch-size threshold over
-//     `outcome` rows; labels `counterSource` trust tier"
-//   - "Analysis CLI computes per-rule compliance rate over `kind:"compliance"` rows"
-//
-// WS4-T4 Derived Test Matrix row:
-//   - "Rollup WRITER produces a shard at ARCHIVE_SHARD_TEMPLATE that `foldFrom` reads
-//     back with row count preserved (writer↔reader round-trip)"
+// bkit-analysis.test.ts — Unit tests for the analysis CLI and rollup writer:
+//   - size↔outcome regression + dispatch-size threshold over `outcome` rows;
+//     `counterSource` trust tier labels
+//   - per-rule compliance rate over `kind:"compliance"` rows
+//   - the rollup WRITER's shard at ARCHIVE_SHARD_TEMPLATE reads back through `foldFrom`
+//     with row count preserved
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -113,15 +109,11 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// WS4-T3: #183 size↔outcome regression + dispatch-size threshold + counterSource
+// size↔outcome regression + dispatch-size threshold + counterSource
 // ---------------------------------------------------------------------------
 
 // outcome.deferrals/failures are the repo's CUMULATIVE distinct-entity totals at
-// ship time, so per-run discoveries are the delta against the previous row. The
-// old classifier tested `row.failures > 0` absolutely against a total produced by
-// `wc -l`, which marks every run after the repo's first-ever bug as an error run
-// forever — the regression reads 100% error at every size and the size signal,
-// the entire point of #183, disappears.
+// ship time, so per-run discoveries are the delta against the previous row.
 describe("newFailuresThisRun — per-run delta over cumulative totals", () => {
   it("a flat cumulative total is NOT a new failure each run", () => {
     const rows: OutcomeRow[] = [
@@ -388,8 +380,7 @@ describe("computeDeferralDiscipline", () => {
     expect(result.every((d) => d.model === "unknown")).toBe(true);
   });
 
-  // Rows predating the field must not read as justified — they are unknown, and
-  // silently folding them into a justification would flatter every historic writer.
+  // Rows predating the field read as unknown, never as justified.
   it("buckets a missing reason as unspecified, not as a justification", () => {
     const [entry] = computeDeferralDiscipline([deferral({ key: "a", reason: undefined })]);
     expect(entry!.byReason).toEqual({ unspecified: 1 });

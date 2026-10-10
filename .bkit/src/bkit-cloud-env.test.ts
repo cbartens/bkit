@@ -868,12 +868,8 @@ describe("egress registry — completeness, invariants and the anti-widening gat
     // Soft warn, never a failure: these TLDs are where a two-label collapse can grab a
     // platform namespace (workers.dev, vercel.app, run.app), so each base on one is
     // reviewed once and listed here. A NEW base on these TLDs fails until it is reviewed.
-    //
-    // The plan's Task 6 names models.dev as the only accepted warn. linear.app is the
-    // second: it is a legitimate company apex, it predates this change as one of the ten
-    // hand-typed bases, and dropping it would revoke a working grant — so the accept list
-    // carries both rather than the assertion carrying only the newly derived one.
-    // dora.dev, google.dev and slsa.dev are audit anchor publishers (DORA, the Gemini
+    // linear.app is a company apex. dora.dev, google.dev and slsa.dev are audit anchor
+    // publishers (DORA, the Gemini
     // prompting guide at ai.google.dev, SLSA): each is its owner's own apex, not a platform
     // that hosts other tenants.
     const ACCEPTED_SOFT_WARN = ["dora.dev", "google.dev", "linear.app", "models.dev", "slsa.dev"];

@@ -4,15 +4,14 @@
 // Twin of `.claude/hooks/gateguard.cjs`. Codex's hook contract is the same family as
 // Claude Code's — same stdin envelope (`tool_name`, `tool_input`, `session_id`, `cwd`),
 // same stdout shape (`hookSpecificOutput` with `permissionDecision` / `additionalContext`)
-// — so the advisory engine is shared verbatim. Two things differ and are handled above:
+// — so the advisory engine is shared verbatim. Two things differ and are handled below:
 //
 //   1. TOOL NAME. Codex reports file edits as `apply_patch`, never Edit/Write/MultiEdit.
 //   2. NO FILE PATH. The V4A patch envelope arrives in `tool_input.command`; the touched
 //      paths have to be parsed out of it (see parseApplyPatchTargets).
 //
-// Get either wrong and the hook installs, exits 0, and silently never fires — a gate that
-// proves only that it was asked. `bkit-gateguard-parity.integration.test.ts` runs the
-// shared behaviour table against this host to make that failure mode visible.
+// `bkit-gateguard-parity.integration.test.ts` runs the shared behaviour table against
+// this host.
 //
 // REGISTRATION: `.codex/hooks.json`, matcher `apply_patch`. Codex loads project-local
 // hooks only once the project `.codex/` layer is TRUSTED — until then this does not run.
@@ -42,7 +41,7 @@ const path = require("node:path");
 
 // Codex reports every file edit as `apply_patch`, whatever matcher registered the hook
 // (`apply_patch` / `Edit` / `Write` are all accepted as matchers, but the payload always
-// says apply_patch). The aliases are kept so a consumer-registered matcher still works.
+// says apply_patch). `Edit` / `Write` match a consumer-registered matcher.
 const EDIT_TOOLS = new Set(["apply_patch", "Edit", "Write"]);
 
 // Codex does NOT send a file path: `apply_patch` puts a V4A patch envelope in
@@ -63,8 +62,7 @@ function parseApplyPatchTargets(command, cwd) {
 }
 
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
-// Editing these to silence a gate is the recurring "weaken the gate instead of
-// fixing the code" anti-pattern — prefer a targeted per-file opt-out + sign-off.
+// A matching path gets the gate-config advisory instead of the first-touch checklist.
 const GATE_CONFIG_PATTERNS = [
   /^tsconfig(\..+)?\.json$/,
   /^vitest\.config\.[mc]?[jt]s$/,
@@ -81,9 +79,9 @@ const GATE_CONFIG_PATTERNS = [
   /^lint-staged\.config\.[mc]?js$/,
 ];
 
-// The consumer's `.bkit/templates/` holds bkit's reference copies, refreshed on every
-// upgrade, so a path under it is not this repo's gate config. In bkit's own repo
-// (package name `@cbartens/bkit`) that folder is the template source and stays guarded.
+// A path under `.bkit/templates/` (bkit's reference copies, refreshed on every upgrade)
+// is not a gate config, except in bkit's own repo (package name `@cbartens/bkit`), where
+// that folder is the template source and stays guarded.
 const TEMPLATE_COPIES_DIR = ".bkit/templates/";
 
 function isBkitRepo(root) {
@@ -133,11 +131,9 @@ function reuseChecklist(filePath) {
   );
 }
 
-// docs/*.md authoring contract — path-scoped, appended to whichever base advisory
-// applies (first-touch / new-file / gate-config are orthogonal to this). Segment
-// match, not basename — every one of these directories holds same-named files.
-// Excludes docs/plans/ (the plan template governs those, not the docs register)
-// and non-.md files (docs/ also holds knowledge.jsonl, decisions.jsonl, etc.).
+// docs/*.md authoring contract — appended to whichever base advisory applies
+// (first-touch / new-file / gate-config). Matches a `docs/` path segment, not a
+// basename. Excludes docs/plans/ and non-.md files.
 function isDocsPath(filePath) {
   const p = filePath.replace(/\\/g, "/");
   if (!p.endsWith(".md")) return false;
@@ -180,7 +176,7 @@ function stateFile(sessionId) {
 
 // Returns the per-session warned-file map. Absent state file is the NORMAL
 // first-touch case (guarded, no throw); a corrupt file throws to the top-level
-// fail-open boundary, which is acceptable (that one call no-ops).
+// fail-open boundary and that one call no-ops.
 function readState(sessionId) {
   const file = stateFile(sessionId);
   if (!fs.existsSync(file)) return { files: {} };
@@ -202,9 +198,8 @@ function markWarned(sessionId, filePath) {
   fs.writeFileSync(stateFile(sessionId), JSON.stringify(state), "utf-8");
 }
 
-// Opportunistic TTL: drop session state files older than 24h so the temp dir does
-// not grow without bound. Runs last (after the advisory is decided) so a cleanup
-// race cannot suppress the advisory — the driver emits before this returns.
+// Opportunistic TTL: drops session state files older than 24h. Runs last, after the
+// advisory is decided; a cleanup race never suppresses the advisory.
 function gcOldState() {
   const dir = stateDir();
   if (!fs.existsSync(dir)) return;
@@ -219,23 +214,20 @@ function gcOldState() {
 }
 
 // Pure: takes the already-parsed hook payload, returns the advisory to emit or
-// null. Never touches process.stdin / process.stdout — the driver below owns
-// both, so bkit and consumer logic can never produce two JSON documents on one
-// stdout stream.
+// null. Never touches process.stdin / process.stdout — the driver below owns both.
 function bkitGateguard(payload) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off") return null;
 
-  // Subagents are NOT exempt: a subagent edit is still an edit, and the
-  // investigation it skips is the same investigation. Dedup is per (session, file)
-  // and a subagent carries its own session id, so it gets the checklist once for a
-  // file the orchestrator already touched.
+  // Subagents are NOT exempt. Dedup is per (session, file) and a subagent carries its
+  // own session id, so it gets the checklist once for a file the orchestrator already
+  // touched.
   if (!EDIT_TOOLS.has(payload.tool_name)) return null;
 
   const input = payload.tool_input || {};
   const cwd = typeof payload.cwd === "string" ? payload.cwd : "";
-  // One patch can touch several files. Advise on the first not-yet-warned target so a
-  // multi-file patch cannot slip past by burying a new file behind an already-seen one.
+  // One patch can touch several files. Advises on the first not-yet-warned target, so a
+  // new file after an already-warned one still gets its advisory.
   const targets = parseApplyPatchTargets(input.command, cwd);
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : "no-session";
   const target = targets.find((t) => !alreadyWarned(sessionId, t.file));
@@ -243,8 +235,7 @@ function bkitGateguard(payload) {
   const filePath = target.file;
 
   const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
-  // `*** Add File:` IS the new-file signal — no existence probe needed, unlike Claude
-  // where a Write to a missing path is what marks the bolt-on moment.
+  // `*** Add File:` IS the new-file signal; no existence probe.
   const isNewFile = target.isNew;
   const baseContext = gated
     ? configAdvisory(filePath)
@@ -270,7 +261,7 @@ function bkitGateguard(payload) {
 // (.bkit/workflows/ and .bkit/prompts/ never exist outside this repo). Lives
 // outside the managed block so it survives every `bkit install` / `bkit upgrade`.
 // Rules the advisories share with .bkit/workflows.md and .bkit/prompts.md are read
-// from those sections at hook time, never copied, so they cannot drift.
+// from those sections at hook time, never copied.
 // ---------------------------------------------------------------------------
 
 function isBkitWorkflowPath(filePath) {
@@ -354,10 +345,9 @@ function proseAuthoringAdvisory() {
 function isBkitDocPath(filePath) {
   const p = filePath.replace(/\\/g, "/");
   if (!p.endsWith(".md")) return false;
-  // Own docs/** test, deliberately NOT the managed block's isDocsPath: this region
-  // must keep working whatever happens inside the markers. docs/** already gets the
-  // shipped advisory, and the two execution surfaces get their own — what is left is
-  // bkit's own reference docs under `.bkit/` and `.agents/`, templates included.
+  // Own docs/** test, independent of the managed block's isDocsPath. Matches bkit's
+  // own reference docs under `.bkit/` and `.agents/`, templates included; docs/** and
+  // the two execution surfaces are excluded.
   if (p.startsWith("docs/") || p.includes("/docs/")) return false;
   if (isBkitWorkflowPath(p) || isBkitPromptPath(p)) return false;
   return (

@@ -124,7 +124,7 @@ describe("detectNotGitRepo", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectCompletedMdUnmigrated (#380)
+// detectCompletedMdUnmigrated
 // ---------------------------------------------------------------------------
 
 describe("detectCompletedMdUnmigrated", () => {
@@ -362,7 +362,7 @@ describe("stripBkitBlock", () => {
 });
 
 // ---------------------------------------------------------------------------
-// P3.T7 — detectHooksConfigOverwriteRisk is absent (BAR-142 §A1)
+// detectHooksConfigOverwriteRisk is absent
 // ---------------------------------------------------------------------------
 // These tests check that the function does not exist in the source.
 
@@ -909,9 +909,8 @@ describe("detectPlaywrightReporterHostile", () => {
 });
 
 // ---------------------------------------------------------------------------
-// B4 — detectShellToken: unset vs empty-string (BAR-142 §B4)
-// B6 — .npmrc inline action text + fallback (BAR-142 §B6)
-// (Test matrix specifies bkit-preflight.test.ts as target)
+// detectShellToken: unset vs empty-string
+// .npmrc inline action text + fallback
 // ---------------------------------------------------------------------------
 
 let originalEnv: NodeJS.ProcessEnv;
@@ -949,7 +948,7 @@ describe("B4 — detectShellToken differentiates unset from empty-string", () =>
 });
 
 // ---------------------------------------------------------------------------
-// B6 — advisory auth shape (BAR-142 §B6 + #274 user-level pnpm config set)
+// Advisory auth shape (user-level pnpm config set)
 //
 // Advisory text must prescribe the user-level auth shape
 //   `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"`
@@ -957,8 +956,7 @@ describe("B4 — detectShellToken differentiates unset from empty-string", () =>
 // .npmrc as the auth mechanism — pnpm >=10.34.3 401s on that env-substitution (the legacy
 // line is flagged for removal by detectNpmrcLegacyAuthToken, never prescribed).
 //
-// The BAR-142 §B6 invariant holds too: the broken POSIX-fallback
-// `${VAR:-default}` form must never appear (pnpm cannot parse it; it 401s).
+// The POSIX-fallback `${VAR:-default}` form never appears (pnpm cannot parse it).
 // ---------------------------------------------------------------------------
 
 describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-liner", () => {
@@ -991,7 +989,7 @@ describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-
 });
 
 // ---------------------------------------------------------------------------
-// P3.T8 — B3 Vercel CLI hang guard (BAR-142 §B3)
+// Vercel CLI hang guard
 // ---------------------------------------------------------------------------
 
 describe("B3 — Vercel CLI hang guard: detectVercelEnv skips shell-out when .vercel/project.json absent", () => {
@@ -1041,7 +1039,7 @@ describe("B3 — Vercel CLI hang guard: detectVercelEnv skips shell-out when .ve
 });
 
 // ---------------------------------------------------------------------------
-// BAR-186 — SessionStart hook (preflight.sh) — regression coverage
+// SessionStart hook (preflight.sh)
 //
 // The bash hook at .bkit/templates/.claude/hooks/preflight.sh runs as a
 // Claude SessionStart hook (a different surface from the install-time TS

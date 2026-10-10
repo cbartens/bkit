@@ -3,8 +3,7 @@
 // Resolves .bkit/.env in the current repo root, merges it over process.env,
 // and exec's the GUI app binary directly so it inherits the per-repo token set.
 //
-// Why not `open -a`? `open` routes through launchd which drops the inherited
-// env (#279/#280). We exec the raw binary instead.
+// Not `open -a`: `open` routes through launchd, which drops the inherited env.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync, spawn } from "node:child_process";

@@ -5,7 +5,7 @@
 // recorded when it last wrote it (`.bkit/version` `canonicalHashes`). A file the
 // consumer edited stays, and an advisory names what does its job. Consumer files
 // that still call a retired path (CI workflows, package.json scripts) get one
-// advisory per line, because nothing else would tell them the call fails.
+// advisory per line.
 
 import * as fs from "node:fs";
 import * as path from "node:path";

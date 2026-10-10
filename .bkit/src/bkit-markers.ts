@@ -35,7 +35,7 @@ const ALLOWED_PREFIXES = ["", "# ", "// "];
 //   - The line before the marker is empty, "# ", or "// " (comment prefixes).
 //   - The character after the marker is end-of-line or end-of-file.
 // Backtick-quoted prose mentions are ignored.
-// markerStyle defaults to "html-comment" for backward compat.
+// markerStyle defaults to "html-comment".
 export function findLineAnchoredMarkers(
   content: string,
   markerOrStyle: string | MarkerStyle,
@@ -116,7 +116,7 @@ export function replaceManagedBlock(
 }
 
 // Extract the bkit-managed block content from a file, stripping surrounding newlines.
-// markerStyle defaults to "html-comment" for backward compat.
+// markerStyle defaults to "html-comment".
 // Markers may be bare or comment-prefixed. Returns null if markers absent, duplicated, or inverted.
 export function extractManagedBlock(
   content: string,
@@ -195,7 +195,7 @@ export function extractNamedBlocks(
 }
 
 // Extract the FULL bkit-managed block INCLUDING marker lines from a file.
-// markerStyle defaults to "html-comment" for backward compat.
+// markerStyle defaults to "html-comment".
 // Used to append a fresh block to a destination that has none. Markers may be
 // bare or comment-prefixed. Returns null if markers absent, duplicated, or inverted.
 export function extractFullManagedBlock(

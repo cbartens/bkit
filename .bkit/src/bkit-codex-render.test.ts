@@ -1,8 +1,7 @@
 // bkit-codex-render.test.ts — the Codex host's two renderers.
 //
-// Codex is the first host whose agent format is NOT markdown-with-frontmatter, so the two
-// things that can go wrong here are new: TOML that parses as something other than intended,
-// and a workflow skill that Codex silently ignores because its frontmatter is wrong.
+// Codex's agent format is TOML, not markdown-with-frontmatter: the TOML parses as intended,
+// and each workflow skill carries the frontmatter Codex reads.
 import { describe, expect, it } from "vitest";
 import {
   applyCodexAgent,
@@ -50,7 +49,7 @@ describe("applyCodexAgent", () => {
   });
 
   it("does NOT emit tools — Codex has no per-agent allowlist (openai/codex#6049)", () => {
-    // Emitting a tools key that Codex ignores would read as enforcement that is not there.
+    // No tools key (Codex ignores it).
     const out = applyCodexAgent(md("name: a\ndescription: d\ntools:\n  - Read\n  - Bash"), lookup);
     expect(out).not.toMatch(/^tools/m);
     expect(out).not.toContain("sandbox_mode");
@@ -70,7 +69,7 @@ describe("applyCodexAgent", () => {
   });
 
   it("escapes backslashes before quote runs, not after", () => {
-    // Order matters: escaping quotes first would then double-escape their own backslashes.
+    // Backslashes are escaped before quotes.
     expect(escapeTomlMultiline("a\\b")).toBe("a\\\\b");
     expect(escapeTomlMultiline('"""')).toBe('\\"\\"\\"');
   });

@@ -1,9 +1,8 @@
 // bkit-release-workflow.test.ts — Structural assertions for .github/workflows/release.yml
-// (BAR-138: GH Packages distribution pipeline validation).
+// (GH Packages distribution pipeline).
 //
-// No YAML parser available in devDependencies — uses string-based structural
-// assertions on the raw YAML file content. Each assertion maps to a specific
-// design requirement from bar-138-plan-1.md § Architecture & Component Changes.
+// String-based structural assertions on the raw YAML file content (no YAML parser in
+// devDependencies).
 //
 // Real `npm pack` tarball-manifest inspection is covered in
 // bkit-release-workflow.integration.test.ts (real npm subprocess).
@@ -44,9 +43,9 @@ describe("release.yml structural assertions (BAR-138)", () => {
   });
 
   it("permissions.contents is write (sliding v{N} tag step pushes back to origin)", () => {
-    // v1.0.3+: contents was upgraded from read → write so the "Update sliding
-    // major-version tag" step can `git push origin v{N} --force` using the
-    // default GITHUB_TOKEN. See docs/deployments.md § "Sliding major-version tag".
+    // contents: write — the "Update sliding major-version tag" step runs
+    // `git push origin v{N} --force` with the default GITHUB_TOKEN. See
+    // docs/deployments.md § "Sliding major-version tag".
     expect(content).toContain("contents: write");
   });
 

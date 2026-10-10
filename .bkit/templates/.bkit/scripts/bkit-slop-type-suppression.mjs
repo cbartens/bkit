@@ -1,31 +1,26 @@
 // slop-scan plugin: boundary/type-suppression + boundary/gate-suppression
 //
-// Flags constructs that silence the TypeScript type system at a boundary, so a
-// renamed SDK field or a changed signature compiles clean and ships broken while
-// the boundary test passes against the wrong shape. Two families:
+// Flags constructs that silence the TypeScript type system at a boundary. Two families:
 //   - escape-hatch casts: the double cast (`<expr> as unknown as <T>`) and the
 //     any cast (`<expr> as any`). The object-literal target form of the double
-//     cast is the highest-signal shape — it is the one that shipped Fraser #122 /
-//     PR #282 silently broken.
+//     cast carries the highest weight.
 //   - compiler-suppression directives: the ts-ignore / ts-nocheck /
-//     ts-expect-error pragma comments, which suppress the very error a boundary
-//     test exists to surface (ts-nocheck disables a whole file).
-// See docs/testing.md § "Validated means executed" for the rationale this enforces.
+//     ts-expect-error pragma comments (ts-nocheck disables a whole file).
+// Enforces docs/testing.md § "Validated means executed".
 //
 // Design notes:
 //   - Zero imports. The only coupling to slop-scan is the finding object shape and
-//     meta.apiVersion. apiVersion is hard-pinned (not imported) so a future engine
-//     API bump fails loud at load instead of running against a mismatched contract.
-//   - `delta` is intentionally omitted: slop-scan defaults to per-location matching
-//     when a finding carries locations, so a pure line-shift of a pre-existing hit
-//     nets to zero and only genuinely new ones register as added occurrences.
+//     meta.apiVersion. apiVersion is hard-pinned (not imported); an engine API bump
+//     fails at load.
+//   - `delta` is omitted: slop-scan then matches per location, so a pure line-shift
+//     of a pre-existing hit nets to zero and only new hits register as added.
 //   - Cast patterns use `\s+` (never a literal single space), and the directive
 //     pattern is split by an alternation group, so this file never flags its own
-//     pattern literals when the tool scans itself; a self-override in
-//     slop-scan.config.json is the belt-and-suspenders second layer.
+//     pattern literals when the tool scans itself; slop-scan.config.json also
+//     carries a self-override.
 //   - Casts are comment-skipped (a cast inside a comment is inert); directives are
 //     NOT comment-skipped, because they ARE comments. Casts err toward
-//     under-flagging (a cast sharing a line with `//` is skipped) — a nag, not a wedge.
+//     under-flagging (a cast sharing a line with `//` is skipped).
 
 const DOUBLE_CAST = /\bas\s+unknown\s+as\b/g;
 const ANY_CAST = /\bas\s+any\b/g;
@@ -41,10 +36,8 @@ const WEIGHT = {
 };
 
 // gate-suppression: silencing a NON-type gate inline — a skipped/focused test (the
-// test runner's gate) or a BLANKET linter disable. Same "weaken the gate instead of
-// fixing the code" reflex as the ts-* directives above, for the other gates. The
-// targeted, per-rule next-line form is the doctrine's sanctioned opt-out and is
-// deliberately NOT flagged — only blanket disables (whole-file, or naming no rule) are.
+// test runner's gate) or a BLANKET linter disable. The targeted, per-rule next-line
+// form is NOT flagged — only blanket disables (whole-file, or naming no rule) are.
 // Each pattern puts a group right after the test fn's dot / the directive keyword (and a
 // char class for the x/f prefix) so this file never matches its own pattern literals —
 // same self-evasion trick as DOUBLE_CAST / TS_SUPPRESS.

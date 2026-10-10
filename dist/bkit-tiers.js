@@ -104,12 +104,9 @@ export function deepMergeJson(base, override) {
     // Both are plain objects — recursive merge.
     //
     // Key ORDER follows `override` (the bkit template) for keys it defines, then appends
-    // base-only (consumer) keys. The template is the authority on ordering: this matters for
-    // order-significant maps like opencode's last-match-wins `permission.bash`, where a
-    // `git push --force-with-lease*: allow` placed last in the template must stay last after an
-    // upgrade/reconverge merge. Starting from `{...base}` (consumer order) instead let a stale
-    // consumer ordering put the narrower `git push --force*: deny` after it, silently DENYING
-    // force-with-lease (which rules.md permits on personal branches). (#255 P2-10)
+    // base-only (consumer) keys. Order-significant maps like opencode's last-match-wins
+    // `permission.bash` keep the template's order (`git push --force-with-lease*: allow`
+    // stays after `git push --force*: deny`).
     const baseObj = base;
     const overrideObj = override;
     const result = {};
@@ -371,13 +368,10 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws, no
         return;
     }
     // Stale-position markers: markers ARE present and parseable, but nothing meaningful
-    // lives after the end marker. A block whose markers wrap the WHOLE file (the shape
-    // of a gateguard.js an older bkit wrote, with `bkit:end` literally at EOF) has this
-    // exact signature — the driver that belongs OUTSIDE the block is trapped INSIDE
-    // it, and an ordinary "replace only what's between the markers" merge would
-    // silently discard it (there is nothing in `afterBlock` to preserve it). Self-limiting
-    // by construction: once genuinely migrated, real driver content lives after the end
-    // marker, this is permanently false, and every later run takes the ordinary path below.
+    // lives after the end marker (markers wrapping the WHOLE file, e.g. a gateguard.js
+    // with `bkit:end` at EOF). Replaced wholesale. Self-limiting: once migrated, real
+    // driver content lives after the end marker and every later run takes the ordinary
+    // path below.
     if (noMarkerMigration) {
         const [, endMarker] = selectMarkers(markerStyle);
         const endIdx = findLineAnchoredMarkers(destContent, endMarker)[0];

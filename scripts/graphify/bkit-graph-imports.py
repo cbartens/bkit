@@ -9,13 +9,12 @@ the sibling `graph-*.py` scripts, which are standalone and cannot be imported
 themselves.
 
 ONE WRITER. `bkit-graph-repair.py` is the only caller of `resolved_import_edges()`;
-it injects the result into graph.json during `pnpm graph`, so graph.json is the
-single source of truth and `graphify affected` / `explain` / `path` / `query`
-see the same edges our own checks do. bkit-graph-eager.py and bkit-graphify-rollup.py call
-`warn_if_unrepaired()` and otherwise just read the graph.
+it injects the result into graph.json during `pnpm graph`, so `graphify affected` /
+`explain` / `path` / `query` see the same edges these scripts do. bkit-graph-eager.py
+and bkit-graphify-rollup.py call `warn_if_unrepaired()` and otherwise just read the
+graph.
 
-Two independent gaps, ~550 edges on this repo. Both are silent: a missing edge
-looks exactly like a clean result.
+Two independent gaps, ~550 edges on this repo.
 
 ── GAP 1: a `.js` specifier never resolves to a `.tsx` file ──────────────────
 
@@ -49,25 +48,20 @@ are NOT interchangeable:
       "default":      "./src/components/Icon.web.tsx"      <- what web gets
     }
 
-`types` always points into `dist/`, which is gitignored and not in the corpus,
-so taking it would invent an edge to a file that does not exist in the graph.
+`types` always points into `dist/`, which is gitignored and not in the corpus; it
+is skipped.
 
 CONDITION CHOICE IS PER IMPORTER, not per package. An importer under apps/mobile
 or named `*.native.*` gets `react-native`; one under apps/web or `*.web.*` gets
-`default`. Taking both everywhere would claim apps/mobile imports
-`Button.web.tsx`, which it never does. Where the importer is genuinely shared
-(anything in packages/), both are emitted — the union is the safe direction for
-a reachability question, because over-claiming an edge cannot produce a false
-"this file is dead".
+`default`. Where the importer is shared (anything in packages/), both are
+emitted.
 
 ── SCOPE ────────────────────────────────────────────────────────────────────
 
-Extensionless relative specifiers are left alone: graphify's own
-append-extension loop already handles that shape correctly, and guessing here
-would invent edges it rightly declined. A bare `@scope/services` root import,
-and a `.js`-suffixed subpath into a package with no matching `exports` entry,
-still do not resolve. They are counted by `unresolved_specifiers()` rather
-than silently dropped.
+Extensionless relative specifiers are left to graphify's own append-extension
+loop. A bare `@scope/services` root import, and a `.js`-suffixed subpath into a
+package with no matching `exports` entry, do not resolve; `unresolved_specifiers()`
+counts them.
 """
 
 from __future__ import annotations
@@ -97,8 +91,8 @@ TS_EQUIVALENT = {
 # first: a platform split has no single answer.
 PLATFORM_SUFFIXES = (".native.tsx", ".web.tsx", ".native.ts", ".web.ts")
 
-# `types` is deliberately absent — it points into dist/, which is not in the
-# corpus. Order matters only when a single condition is being picked.
+# `types` is absent — it points into dist/, which is not in the corpus. Order
+# matters only when a single condition is being picked.
 NATIVE_CONDITIONS = ("react-native", "default", "node", "import", "require")
 WEB_CONDITIONS = ("default", "node", "import", "require")
 ALL_CONDITIONS = ("react-native", "default", "node", "import", "require")
@@ -110,16 +104,11 @@ REPAIR_ORIGIN = "graph-repair"
 def repair_state(graph):
     """(edges injected by bkit-graph-repair.py, was the repair run at all).
 
-    Consumers call this instead of re-deriving the edges themselves. graph.json
-    is the single source of truth once `pnpm graph` has run — a second
-    independent repair on read means two answers to "what edges exist", and the
-    only way to keep them agreeing is to subtract one from the other, which is
-    complexity bought for nothing.
+    Consumers call this instead of re-deriving the edges themselves.
 
     There is no top-level marker to check: `cluster-only` rewrites graph.json
     and drops keys it does not own. The per-link `_origin` survives, so that is
-    the signal. A genuinely zero-repair graph would read as unrepaired here,
-    which is the safe direction — it warns instead of quietly proceeding.
+    the signal. A genuinely zero-repair graph reads as unrepaired here.
     """
     n = sum(1 for l in graph.get("links", ()) if l.get("_origin") == REPAIR_ORIGIN)
     return n, n > 0
@@ -128,10 +117,7 @@ def repair_state(graph):
 def warn_if_unrepaired(graph, who, stream=None):
     """Print a loud warning when graph.json has not been through bkit-graph-repair.py.
 
-    Deliberately not a self-heal. graphify misses ~540 imports here, and a
-    consumer that silently patched around it would make `pnpm graph:rollup`
-    disagree with `graphify affected` over the same file. A missing edge looks like a clean gap.
-    calls out, where a skipped step reads exactly like a passed one.
+    Warns only; never repairs on read.
     """
     import sys as _sys
     count, ok = repair_state(graph)
@@ -152,9 +138,8 @@ def _strip_output_ext(path):
 def _source_files_for(stem, ext):
     """Every real source file a specifier ending `stem + ext` can denote.
 
-    Falls through to the platform suffixes in two different situations, which is
-    why the source-extension strip below is needed as well as the output-
-    extension one the caller already did:
+    Falls through to the platform suffixes in two situations, so it strips the
+    source extension below as well as the output extension the caller stripped:
 
       ./Icon.js            an output extension, no Icon.ts/.tsx on disk
       ./src/controls/*.tsx an exports map naming a file that does not exist,

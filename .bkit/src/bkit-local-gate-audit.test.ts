@@ -1,19 +1,10 @@
-// bkit-local-gate-audit.test.ts — #437.
+// bkit-local-gate-audit.test.ts
 //
-// Prompts and workflows name a `bkit:gate*` script and `package.json` defines
-// it. A gate command inlined at each call site (an `if [ -f turbo.json ] … else
-// jq -e ".scripts[…]"` probe) fails two ways:
+// Prompts and workflows name a `bkit:gate*` script and `package.json` defines it; no
+// call site inlines a gate command (an `if [ -f turbo.json ] … else jq -e
+// ".scripts[…]"` probe).
 //
-//   - a consumer whose toolchain matches none of the probed script names gets
-//     TEST_SCOPE="" -> `eval ""` -> exit 0, and the agent records the gate as
-//     having run;
-//   - the copies drift (one with the turbo branch and NO fallback does nothing
-//     at all in a single-package repo).
-//
-// This audit keeps the indirection in place; nothing else in the suite
-// references the command.
-//
-// Deliberately narrow: PRESENCE of the indirection, not behaviour of the gate.
+// Narrow: PRESENCE of the indirection, not behaviour of the gate.
 // What the scripts actually run is the consumer's, and is asserted where it is
 // owned — BKIT_GATE_SCRIPTS (install default) and bkit-modules.integration.test.ts.
 
@@ -28,9 +19,7 @@ const PROMPTS_DIR = path.resolve(REPO_ROOT, ".bkit/prompts");
 const WORKFLOWS_DIR = path.resolve(REPO_ROOT, ".bkit/workflows");
 
 // The canonical authoring surfaces. Host renders under .claude/ .cursor/
-// .opencode/ are generated from these by `bkit install` and are not inspected:
-// fixing a render without fixing its source would pass this audit and ship the
-// old command anyway.
+// .opencode/ are generated from these by `bkit install` and are not inspected.
 function canonicalFiles(): Array<{ rel: string; body: string }> {
   const out: Array<{ rel: string; body: string }> = [];
   for (const dir of [PROMPTS_DIR, WORKFLOWS_DIR]) {
@@ -53,9 +42,8 @@ const BANNED = [
   { pattern: "--filter='...[origin/dev]'", why: "turbo affected-selector inlined at a call site" },
 ] as const;
 
-// Occurrences that are NOT a re-inlined gate. Every entry must say why, and a
-// NEW banned occurrence must be added here deliberately or the audit fails —
-// never silently allowed.
+// Occurrences that are NOT a re-inlined gate, each with its reason. Any other banned
+// occurrence fails the audit.
 const EXEMPT: Array<{ rel: string; pattern: string; context: string }> = [
   {
     rel: ".bkit/workflows.md",
@@ -74,13 +62,9 @@ function isExempt(rel: string, pattern: string): boolean {
   return EXEMPT.some((e) => e.rel === rel && e.pattern === pattern);
 }
 
-// Call sites that MUST dispatch through a named gate, and which one. Guards the
-// drift half: a prompt silently losing its gate call is the bkit-build-challenge-tests
-// failure mode, and greps for "no banned string" would not catch it.
+// Call sites that MUST dispatch through a named gate, and which one.
 const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
-  // Hooks run the same scripts as the agents. If these drift back to their own
-  // command lists, a green `git push` and a green agent gate stop meaning the
-  // same thing — silently, since both still pass.
+  // Hooks run the same scripts as the agents.
   [".bkit/templates/.husky/pre-commit", "pnpm bkit:gate:format"],
   [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:static-unit"],
   [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:static"],
@@ -136,9 +120,7 @@ describe("bkit-local-gate-audit (#437)", () => {
   });
 
   // Both call sites share one contract: pass the candidates in descending depth,
-  // and `bkit tests run` runs the first the consumer declares. Order IS the
-  // contract — a shallower gate winning while a deeper one is declared means the
-  // workflow silently under-tests and then records a scope claiming it did more.
+  // and `bkit tests run` runs the first the consumer declares. Order IS the contract.
   const PROBES = [
     { workflow: "bkit-build.md", gates: BKIT_BUILD_GATES, stopsAt: "integration", sites: 2 },
     { workflow: "bkit-debug.md", gates: BKIT_DEBUG_GATES, stopsAt: "live", sites: 1 },
@@ -200,9 +182,8 @@ describe("bkit-local-gate-audit (#437)", () => {
   });
 
   it("the seeded gates chain only scripts that exist here or are themselves gates", () => {
-    // This repo IS a consumer of these defaults. If a default chains a script
-    // bkit does not declare, bkit's own /bkit-build breaks — the regression the
-    // gate-missing-called-scripts advisory warns other consumers about.
+    // This repo IS a consumer of these defaults: every script a default chains is
+    // declared here.
     const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {
       scripts?: Record<string, string>;
     };
