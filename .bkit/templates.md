@@ -58,7 +58,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 | --- | --- | --- | --- | --- | --- | --- |
 | `github.md` | GitHub Actions | `ci`, `diff` | `ci`: failing run: failed jobs / steps, `::error` annotations, failed-step logs; `diff`: `git diff --stat` since the last green CI run on trunk | `GH_TOKEN` / `BASELINE_BRANCH`, `BASELINE_WORKFLOW` (`diff`) | — | `gh` (base tool) |
 | `playwright.md` | Playwright on GitHub Actions | `e2e` | failing run's report artifact, failing specs first | `GH_TOKEN` / `E2E_ARTIFACT`, `E2E_JOB_RE` | — | `gh` (base tool) |
-| `maestro.md` | Maestro iOS lane started from GitHub Actions | `e2e` | failed job's full log, sliced to the result steps | `GH_TOKEN` / `IOS_JOB_RE`, `IOS_STEPS` | — | `gh` (base tool) |
+| `maestro.md` | Maestro iOS and Android lanes on GitHub Actions | `e2e` | every failed Maestro job's full log, sliced to the result steps | `GH_TOKEN` / `MAESTRO_JOB_RE`, `MAESTRO_STEPS` | — | `gh` (base tool) |
 | `tavily.md` | any | `web` | web search for upstream causes (untrusted output) | `BKIT_TAVILY_API_KEY` / `QUERY` | — | — |
 | `sentry.md` | Sentry | `runtime` | unresolved issues, last 24 h; trace / window recipes | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_HOST` | `sentry.io` | — |
 | `vercel.md` | Vercel | `runtime` | serverless + edge error / fatal logs in a window | `VERCEL_TOKEN` / `VERCEL_SCOPE`, `VERCEL_ENV` | `vercel.com` | `vercel` (yes) |
@@ -83,7 +83,7 @@ Placeholders. Each sits on a commented assignment line or an env default in the 
 | `de.sentry.io` (commented) | `sentry.md` (`SENTRY_HOST`) | uncomment for an EU-region org; default `sentry.io` |
 | `your-gcp-project-id`, `your-service-name` | `cloudrun.md` (`GCP_PROJECT_ID`, `GCP_SERVICE`) | GCP project id; optional service name |
 | `^your-e2e-job-name$` | `playwright.md` (`E2E_JOB_RE`) | anchored job name of that lane only |
-| `^your-ios-e2e-job-name$`, `Your per-flow results step\|Your failure classification step` | `maestro.md` (`IOS_JOB_RE`, `IOS_STEPS`) | anchored job name; `\|`-separated names of the steps that print results |
+| `^your-maestro-e2e-job-name$`, `Your per-flow results step\|Your failure classification step` | `maestro.md` (`MAESTRO_JOB_RE`, `MAESTRO_STEPS`) | anchored regex matching the Maestro lanes' job names; `\|`-separated names of the steps that print results |
 | `dev`, `ci.yml` | `github.md` `context=diff` (`BASELINE_BRANCH`, `BASELINE_WORKFLOW`) | trunk branch, CI workflow file |
 | `apps/mobile` | `expo.md`, both blocks (`EXPO_APP_DIR`) | the EAS-linked app folder |
 | `serena-agent==1.7.0` | `serena.md` | the Serena version you run locally |

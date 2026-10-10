@@ -10,7 +10,7 @@ Fits: React Native / Expo apps on EAS. `context=runtime` (`expo` block): recent 
 - CLI: `eas` (`eas-cli`); each block's same-named provision block installs it in cloud, self-guarded, so copying both installs once. `expo` also uses `node` to decompress logs.
 - Domains: `expo.dev` (both), `googleapis.com` (`expo`), `eascdn.net` (`expo-workflows`); each section carries its own `allowed-domains` block.
 - `expo`: build logs are pre-signed, brotli-encoded storage URLs valid ~15 min; macOS curl has no brotli, so the block decompresses with Node zlib and filters the JSON lines with `jq`.
-- `expo-workflows`: pair with the `maestro-ios` block (`maestro.md`) when a GitHub Actions job starts the run: that block reads the GitHub job log, this one reads EAS.
+- `expo-workflows`: pair with the `maestro` block (`maestro.md`) when a GitHub Actions job starts the run: that block reads the GitHub job log, this one reads EAS.
 - `expo-workflows`: read in this order: per-flow exception (2b), then the XCUITest runner errors (2e) for any `DeviceUnreachableException` — Maestro's iOS driver is an XCUITest case hosting the HTTP server, so one failure inside it fails every later flow. Then the view-hierarchy dump (2d) for any selector or visibility failure: it is the tree Maestro actually searched, and it can contradict a screenshot.
 - `expo-workflows`: artifact URLs are pre-signed and expire in ~1 h; EAS keeps the data 90 days. An expired URL means re-run `workflow:status`, not "artifact gone".
 
