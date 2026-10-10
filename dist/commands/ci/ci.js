@@ -137,9 +137,12 @@ function slop(ctx) {
         return EXIT.OK;
     }
     const wt = fs.mkdtempSync(path.join(os.tmpdir(), "slop-delta."));
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "slop-delta-out."));
+    const outFile = path.join(outDir, "delta.json");
     const removeWorktree = () => {
         runGit(ctx.cwd, ["worktree", "remove", "--force", wt]);
         fs.rmSync(wt, { recursive: true, force: true });
+        fs.rmSync(outDir, { recursive: true, force: true });
     };
     return withCleanup(() => {
         const added = runGit(ctx.cwd, ["worktree", "add", "-q", "--detach", wt, base]);
@@ -150,11 +153,23 @@ function slop(ctx) {
         ctx.log(`base ${base} (${baseRef}) vs working tree`);
         const argv = slopScanArgv();
         const viaNpx = argv[0] === "npx";
-        const res = spawnSync(argv[0], [...argv.slice(1), "delta", "--base", wt, "--head", ".", "--json"], {
-            cwd: top.stdout,
-            encoding: "utf-8",
-            maxBuffer: 1 << 28,
-        });
+        // slop-scan calls process.exit right after writing its JSON. Into a pipe that
+        // drops whatever is still buffered (about 64 KB survives); into a file the
+        // write is synchronous, so the whole report lands.
+        const outFd = fs.openSync(outFile, "w");
+        let res;
+        try {
+            res = spawnSync(argv[0], [...argv.slice(1), "delta", "--base", wt, "--head", ".", "--json"], {
+                cwd: top.stdout,
+                encoding: "utf-8",
+                stdio: ["ignore", outFd, "pipe"],
+                maxBuffer: 1 << 28,
+            });
+        }
+        finally {
+            fs.closeSync(outFd);
+        }
+        const stdout = fs.readFileSync(outFile, "utf-8");
         if (res.status !== 0) {
             if (couldNotRun(res, viaNpx)) {
                 ctx.log(`slop-scan could not run (${argv.join(" ")}): install it as a dev dependency, or put it on PATH`);
@@ -163,7 +178,7 @@ function slop(ctx) {
             ctx.log(`slop-scan delta failed (exit ${res.status ?? res.signal}):\n${tail(res.stderr ?? "")}`);
             return EXIT_SLOP_FAILED;
         }
-        const s = readSummary(res.stdout);
+        const s = readSummary(stdout);
         if ("missing" in s) {
             ctx.log(`slop-scan delta --json has no ${s.missing} — its output format changed; refusing to pass a gate that would check nothing`);
             return EXIT_SLOP_FAILED;

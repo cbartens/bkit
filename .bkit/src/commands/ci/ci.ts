@@ -8,7 +8,7 @@
 // old line and added at the new one, netting to zero. The pre-existing baseline is
 // never the change's to fix.
 
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -153,9 +153,12 @@ function slop(ctx: RunContext): Promise<number> | number {
   }
 
   const wt = fs.mkdtempSync(path.join(os.tmpdir(), "slop-delta."));
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "slop-delta-out."));
+  const outFile = path.join(outDir, "delta.json");
   const removeWorktree = () => {
     runGit(ctx.cwd, ["worktree", "remove", "--force", wt]);
     fs.rmSync(wt, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
   };
 
   return withCleanup(() => {
@@ -168,15 +171,26 @@ function slop(ctx: RunContext): Promise<number> | number {
 
     const argv = slopScanArgv();
     const viaNpx = argv[0] === "npx";
-    const res = spawnSync(
-      argv[0]!,
-      [...argv.slice(1), "delta", "--base", wt, "--head", ".", "--json"],
-      {
-        cwd: top.stdout,
-        encoding: "utf-8",
-        maxBuffer: 1 << 28,
-      },
-    );
+    // slop-scan calls process.exit right after writing its JSON. Into a pipe that
+    // drops whatever is still buffered (about 64 KB survives); into a file the
+    // write is synchronous, so the whole report lands.
+    const outFd = fs.openSync(outFile, "w");
+    let res: SpawnSyncReturns<string>;
+    try {
+      res = spawnSync(
+        argv[0]!,
+        [...argv.slice(1), "delta", "--base", wt, "--head", ".", "--json"],
+        {
+          cwd: top.stdout,
+          encoding: "utf-8",
+          stdio: ["ignore", outFd, "pipe"],
+          maxBuffer: 1 << 28,
+        },
+      );
+    } finally {
+      fs.closeSync(outFd);
+    }
+    const stdout = fs.readFileSync(outFile, "utf-8");
     if (res.status !== 0) {
       if (couldNotRun(res, viaNpx)) {
         ctx.log(
@@ -189,7 +203,7 @@ function slop(ctx: RunContext): Promise<number> | number {
       );
       return EXIT_SLOP_FAILED;
     }
-    const s = readSummary(res.stdout);
+    const s = readSummary(stdout);
     if ("missing" in s) {
       ctx.log(
         `slop-scan delta --json has no ${s.missing} — its output format changed; refusing to pass a gate that would check nothing`,

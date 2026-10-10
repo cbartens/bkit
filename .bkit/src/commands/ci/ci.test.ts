@@ -132,7 +132,7 @@ async function run(cwd: string, argv: string[]) {
 /** No base worktree left behind: not registered in the repo, nothing left in TMPDIR. */
 function expectCleaned(cwd: string) {
   expect(git(cwd, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(1);
-  expect(fs.readdirSync(tmpRoot).filter((f) => f.startsWith("slop-delta."))).toEqual([]);
+  expect(fs.readdirSync(tmpRoot).filter((f) => f.startsWith("slop-delta"))).toEqual([]);
 }
 
 describe("bkit ci slop — gate decision", () => {
@@ -312,6 +312,36 @@ describe("bkit ci slop — slop-scan failures", () => {
     expect(r.err).toContain(`could not check out base ${base} as a worktree`);
     expect(fake.calls()).toBe("");
     expect(fs.readdirSync(tmpRoot)).toEqual([]);
+  });
+});
+
+describe("bkit ci slop — large reports", () => {
+  it("reads a report far larger than a pipe buffer from a slop-scan that exits straight after writing", async () => {
+    const { cwd, base } = repo();
+    const bin = mkdir("bkit-ci-bin-");
+    const report = JSON.stringify({
+      schemaVersion: 2,
+      padding: "x".repeat(256 * 1024),
+      summary: summary({ addedCount: 2, resolvedCount: 2 }),
+    });
+    fs.writeFileSync(path.join(bin, "report.json"), report);
+    fs.writeFileSync(
+      path.join(bin, "slop-scan"),
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        `process.stdout.write(fs.readFileSync(${JSON.stringify(path.join(bin, "report.json"))}, "utf-8"));`,
+        "process.exit(0);",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    process.env.PATH = `${bin}${path.delimiter}${savedEnv.PATH ?? ""}`;
+    const r = await run(cwd, [`--base=${base}`]);
+    expect(r.err).not.toContain("output is not JSON");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ passed: true, added: 2, resolved: 2, netFindingCount: 0 });
+    expectCleaned(cwd);
   });
 });
 
