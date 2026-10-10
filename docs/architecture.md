@@ -36,7 +36,7 @@ cbartens/bkit (this repo)
 │   ├── bkit-preflight.ts   # Phase 1 — read-only blocker + advisory detectors
 │   ├── bkit-modules.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
 │   ├── bkit-postinstall.ts # Phase 3 — post-install re-detection + checklist formatter
-│   ├── bkit-tiers.ts       # Format-aware file-write primitives (fully-managed / markered-text / create-if-missing) + deepContains/writeTier2JsonContained
+│   ├── bkit-tiers.ts       # Format-aware file-write primitives (fully-managed / markered-text) + deepContains/writeTier2JsonContained
 │   ├── bkit-tokens.ts      # Token resolver (default branch, project name, managed-version marker)
 │   ├── bkit-version.ts     # .bkit/version JSON schema (pinnedVersion, canonicalHashes, claudeAllowDerived)
 │   ├── bkit-manifest.ts    # Per-module install-write manifest (drives uninstall + the upgrade walk)
@@ -84,8 +84,7 @@ pnpm bkit install [--module-flags] [--auto-revert]
     │   ├─ fully-managed    → full overwrite (bkit fully owns file)
     │   ├─ markered-text   → managed-block merge (bkit owns marker region; consumer owns rest)
     │   ├─ json            → deep-containment merge (writeTier2JsonContained); MCP configs → bkit's tracker entry only
-    │   ├─ create-if-missing → write once when absent (.agents/skills.md), never again;
-    │   │                      package.json bkit:gate:* / bkit:deps:* names added when missing, never overwritten
+    │   ├─ package.json    → bkit:gate:* / bkit:deps:* names added when missing, never overwritten
     │   ├─ templates       → raw copies into .bkit/templates/ only; never applied to the repo
     │   └─ On any error    → earlier modules' files stay written, .bkit/version not re-pinned — re-run install (idempotent)
     │
@@ -124,7 +123,7 @@ Consumer repo
 │   ├── rules.md            # markered-text — bkit block + consumer Project section
 │   ├── docs.md             # markered-text — doc index
 │   ├── context.md          # markered-text — context-fetch / allowed-domains / mcp-servers rules; consumer blocks below bkit:end
-│   ├── skills.md           # create-if-missing — installed-skill registry
+│   ├── skills.md           # markered-text — installed-skill registry; consumer Project Skills below bkit:end
 │   └── skills/             # installed agent skills (cross-IDE)
 └── .bkit/                  # bkit install state + config (consumer-side)
     ├── version             # JSON: { pinnedVersion, canonicalHashes, claudeAllowDerived }
@@ -144,7 +143,7 @@ Workflow/prompt SOURCES not shipped into consumer `.agents/`; live in installed 
 
 `.claude/hooks/gateguard.cjs`, `.cursor/hooks/gateguard.cjs`, `.codex/hooks/gateguard.cjs` and `.opencode/plugin/gateguard.js` (the GateGuard pre-edit advisory hooks) plus `.claude/hooks/guardrails.cjs`, `.cursor/hooks/guardrails.cjs` and `.codex/hooks/guardrails.cjs` (shell gates: destructive ops, secret exposure, URL-host checks and shell-as-edit-channel) are markered-text (slash-comment: `// bkit:start` / `// bkit:end`) — bkit owns only the pure advisory engine between the markers; the stdin/stdout driver (Claude) or exported plugin (opencode) around it is consumer-owned from first install onward, so a consumer can add their own advisories without losing them on upgrade. A pre-markers install (no markers, hash matches a prior canonical hash) is replaced wholesale on the next install/upgrade; a genuinely consumer-authored file (no markers, unknown hash) gets the block appended plus printed wiring instructions.
 
-Every rendered agent/command file — and every bkit-managed `docs/*.md` block (first line of `bkit:start` via `{{BKIT_MANAGED_MARKER}}`) — carries `<!-- bkit:managed vX.Y.Z … -->` stamped by `bkit install`/`upgrade`. Marker drift → `bkit check` emits `bkit-rendered-prompts-stale` (prompts/workflows) or `bkit-managed-docs-stale` (canonical doc set, never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main`/`dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
+Every non-JSON file bkit writes or refreshes carries the managed-version marker, one text in the file's comment syntax: `<!-- bkit:managed vX.Y.Z … -->` (markdown), `# <!-- bkit:managed vX.Y.Z … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, codex TOML), `// bkit:managed vX.Y.Z …` (JS hooks, `.mjs`). Rendered agents / commands / skills are stamped by `stampManagedVersion`; every other file carries `{{BKIT_MANAGED_MARKER}}` in its source (first line inside the `bkit:start` block, or below the first heading of a whole file), resolved by `applyTokens`. `listStampedFiles` (`bkit-modules.ts`) derives the set from the core templates, the manifest and the rendered mirrors; marker drift on any of them → `bkit check` emits `bkit-managed-stale` (never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main`/`dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
 
 ## Compliance Grader Subsystem (#234 WS-2)
 

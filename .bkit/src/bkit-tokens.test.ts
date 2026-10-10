@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTokens, resolveTokens } from "./bkit-tokens";
+import { managedVersionMarker, readManagedVersion } from "./bkit-version";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,15 +70,13 @@ describe("resolveTokens — PROJECT_NAME", () => {
   });
 });
 
-describe("resolveTokens — BKIT_MANAGED_MARKER", () => {
-  it("populates the marker from the installing bkit version (not the consumer's)", async () => {
+describe("resolveTokens — BKIT_VERSION", () => {
+  it("populates the installing bkit version (not the consumer's)", async () => {
     // Consumer package.json version is irrelevant — the marker tracks the bkit pkg.
     writeJson("package.json", { name: "consumer", version: "0.1.2" });
     const tokens = await resolveTokens(tmpDir);
-    expect(tokens.BKIT_MANAGED_MARKER).toMatch(
-      /^<!-- bkit:managed v\S+ — do NOT edit; run `bkit upgrade` to refresh -->$/,
-    );
-    expect(tokens.BKIT_MANAGED_MARKER).not.toContain("0.1.2");
+    expect(tokens.BKIT_VERSION).toMatch(/^\d+\.\d+\.\d+/);
+    expect(tokens.BKIT_VERSION).not.toBe("0.1.2");
   });
 });
 
@@ -120,18 +119,23 @@ describe("applyTokens", () => {
     expect(applyTokens(content, tokens)).toBe(content);
   });
 
-  it("substitutes {{BKIT_MANAGED_MARKER}} from the token value when provided", () => {
-    const marker = "<!-- bkit:managed v9.9.9 — do NOT edit; run `bkit upgrade` to refresh -->";
-    const result = applyTokens("<!-- bkit:start -->\n{{BKIT_MANAGED_MARKER}}\n", {
-      ...tokens,
-      BKIT_MANAGED_MARKER: marker,
-    });
-    expect(result).toContain(marker);
-    expect(result).not.toContain("{{BKIT_MANAGED_MARKER}}");
+  it("resolves {{BKIT_MANAGED_MARKER}} to the form its comment prefix selects", () => {
+    const result = applyTokens(
+      "<!-- bkit:start -->\n{{BKIT_MANAGED_MARKER}}\n# {{BKIT_MANAGED_MARKER}}\n// {{BKIT_MANAGED_MARKER}}\n",
+      { ...tokens, BKIT_VERSION: "9.9.9" },
+    );
+    expect(result.split("\n").slice(1, 4)).toEqual([
+      managedVersionMarker("9.9.9"),
+      managedVersionMarker("9.9.9", "hash"),
+      managedVersionMarker("9.9.9", "slash"),
+    ]);
+    for (const line of result.split("\n").slice(1, 4)) {
+      expect(readManagedVersion(line)).toBe("9.9.9");
+    }
   });
 
   it("falls back to a computed marker when the token value is omitted (bare literal TokenMap)", () => {
-    // tokens here has no BKIT_MANAGED_MARKER — applyTokens computes it from the
+    // tokens here has no BKIT_VERSION — applyTokens computes the marker from the
     // installing bkit version rather than leaving a dangling placeholder.
     const result = applyTokens("{{BKIT_MANAGED_MARKER}}", tokens);
     expect(result).toMatch(

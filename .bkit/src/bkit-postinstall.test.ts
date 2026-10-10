@@ -40,8 +40,7 @@ import {
   buildTokenRenameMigrationAdvisory,
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
-  detectRenderedPromptsStale,
-  detectManagedDocsStale,
+  detectManagedStale,
   isOnProtectedBranch,
   formatChecklist,
   runPostInstallCheck,
@@ -1482,7 +1481,7 @@ describe("detectRunLevelsNotComposed", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "ci.yml"),
-      "      - name: Detect Direct Push\n# bkit:start\nbkit content\n# bkit:end\n",
+      "      - name: Detect Direct Push\n        run: echo detect\n",
     );
     const result = detectRunLevelsNotComposed(tmpDir);
     expect(result).not.toBeNull();
@@ -2071,19 +2070,17 @@ describe("detectCiYmlMissingActionlint", () => {
     "jobs:\n" +
     "  bkit-tests:\n" +
     "    runs-on: ubuntu-latest\n" +
-    "    # bkit:start verbose-ci-env\n" +
-    "    # bkit:end verbose-ci-env\n" +
     "    steps:\n" +
     "      - run: pnpm test\n";
 
   it("returns null when ci.yml is absent", () => {
     expect(detectCiYmlMissingActionlint(tmpDir)).toBeNull();
   });
-  it("returns null when ci.yml has no bkit markers (consumer-owned)", () => {
+  it("returns null when ci.yml was not adopted from bkit's template (no bkit-tests job)", () => {
     writeCi("name: CI\njobs:\n  test:\n    runs-on: ubuntu-latest\n");
     expect(detectCiYmlMissingActionlint(tmpDir)).toBeNull();
   });
-  it("fires on a bkit-managed ci.yml with no actionlint step", () => {
+  it("fires on an adopted ci.yml with no actionlint step", () => {
     writeCi(MANAGED_NO_ACTIONLINT);
     const f = detectCiYmlMissingActionlint(tmpDir);
     expect(f?.id).toBe("ci-yml-missing-actionlint");
@@ -2104,20 +2101,14 @@ describe("detectCiYmlRunInjection", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), content);
   }
-  const MARKERS =
-    "name: CI\n" +
-    "jobs:\n" +
-    "  bkit-tests:\n" +
-    "    runs-on: ubuntu-latest\n" +
-    "    # bkit:start verbose-ci-env\n" +
-    "    # bkit:end verbose-ci-env\n" +
-    "    steps:\n";
+  const ADOPTED =
+    "name: CI\n" + "jobs:\n" + "  bkit-tests:\n" + "    runs-on: ubuntu-latest\n" + "    steps:\n";
 
   it("returns null when ci.yml is absent", () => {
     expect(detectCiYmlRunInjection(tmpDir)).toBeNull();
   });
 
-  it("returns null when ci.yml has no bkit markers (consumer-owned)", () => {
+  it("returns null when ci.yml was not adopted from bkit's template (no bkit-tests job)", () => {
     writeCi(
       "name: CI\njobs:\n  test:\n    steps:\n" +
         '      - run: |\n        MSG="${{ github.event.pull_request.title }}"\n',
@@ -2127,7 +2118,7 @@ describe("detectCiYmlRunInjection", () => {
 
   it("fires on an untrusted expression inlined into a run: block body", () => {
     writeCi(
-      MARKERS +
+      ADOPTED +
         "      - name: Detect Direct Push\n" +
         "        run: |\n" +
         '          MSG="${{ github.event.pull_request.title }}"\n' +
@@ -2141,18 +2132,18 @@ describe("detectCiYmlRunInjection", () => {
   });
 
   it("fires on an inline run: with the sink on the same line", () => {
-    writeCi(MARKERS + '      - run: echo "${{ github.event.issue.title }}"\n');
+    writeCi(ADOPTED + '      - run: echo "${{ github.event.issue.title }}"\n');
     expect(detectCiYmlRunInjection(tmpDir)?.id).toBe("ci-yml-run-injection");
   });
 
   it("fires on github.head_ref inlined into a run: body", () => {
-    writeCi(MARKERS + "      - run: |\n" + '          git checkout "${{ github.head_ref }}"\n');
+    writeCi(ADOPTED + "      - run: |\n" + '          git checkout "${{ github.head_ref }}"\n');
     expect(detectCiYmlRunInjection(tmpDir)?.id).toBe("ci-yml-run-injection");
   });
 
   it("returns null for the safe env-indirection form", () => {
     writeCi(
-      MARKERS +
+      ADOPTED +
         "      - name: Detect Direct Push\n" +
         "        env:\n" +
         "          PR_TITLE: ${{ github.event.pull_request.title }}\n" +
@@ -2164,7 +2155,7 @@ describe("detectCiYmlRunInjection", () => {
 
   it("returns null when github.event.* appears only in env: / if: (not a run: body)", () => {
     writeCi(
-      MARKERS +
+      ADOPTED +
         "      - name: Guard\n" +
         "        if: github.event.pull_request.title != ''\n" +
         "        env:\n" +
@@ -2176,7 +2167,7 @@ describe("detectCiYmlRunInjection", () => {
 
   it("does not scan a YAML-commented stub (github.base_ref reference stays silent)", () => {
     writeCi(
-      MARKERS +
+      ADOPTED +
         "      # - name: Migrations Guard\n" +
         "      #   run: |\n" +
         '      #     git fetch origin "${{ github.base_ref }}"\n',
@@ -2207,10 +2198,9 @@ describe("detectCiYmlCapstoneContractDrift", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), content);
   }
-  // A bkit-managed ci.yml whose capstone carries all three load-bearing invariants.
+  // An adopted ci.yml whose capstone carries all three load-bearing invariants.
   const GOOD =
     "name: CI\n" +
-    "# bkit:start\n" +
     "concurrency:\n" +
     "  group: ci-${{ github.workflow }}-${{ github.ref }}\n" +
     "  cancel-in-progress: true\n" +
@@ -2236,12 +2226,8 @@ describe("detectCiYmlCapstoneContractDrift", () => {
   it("returns null when ci.yml is absent", () => {
     expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
   });
-  it("returns null when not bkit-managed (no markers)", () => {
-    writeCi("name: CI\njobs:\n  bkit-tests-check:\n    if: ${{ always() }}\n");
-    expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
-  });
   it("returns null when there is no bkit-tests-check capstone", () => {
-    writeCi("name: CI\n# bkit:start\njobs:\n  bkit-tests:\n    steps: []\n");
+    writeCi("name: CI\njobs:\n  bkit-tests:\n    steps: []\n");
     expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
   });
   it("returns null when all invariants are present", () => {
@@ -2427,267 +2413,136 @@ describe("detectWorkflowLintToolsMissing", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectRenderedPromptsStale — rendered prompts/workflows version gate
+// detectManagedStale — managed-version marker gate over every stamped file
 // ---------------------------------------------------------------------------
 
-describe("detectRenderedPromptsStale", () => {
-  // Write a rendered mirror file carrying (or omitting) a managed-version marker.
-  function writeRendered(relDir: string, name: string, markerVersion: string | null): void {
-    const dir = path.join(tmpDir, relDir);
-    fs.mkdirSync(dir, { recursive: true });
+describe("detectManagedStale", () => {
+  function write(rel: string, content: string): void {
+    const p = path.join(tmpDir, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, content, "utf-8");
+  }
+  // A rendered mirror carrying (or omitting) a managed-version marker.
+  function writeRendered(rel: string, version: string | null): void {
     const base = "---\nname: bkit-x\n---\n\nbody\n";
-    fs.writeFileSync(
-      path.join(dir, name),
-      markerVersion ? stampManagedVersion(base, markerVersion) : base,
-      "utf-8",
+    write(rel, version ? stampManagedVersion(base, version) : base);
+  }
+  // A block-scoped file: the marker (or none) as the first line of its bkit block.
+  function writeBlock(rel: string, version: string | null): void {
+    const marker = version ? `${managedVersionMarker(version)}\n\n` : "";
+    write(rel, `# consumer intro\n\n<!-- bkit:start -->\n\n${marker}# T\n\n<!-- bkit:end -->\n`);
+  }
+
+  it("returns null when every stamped file matches, in every comment form", () => {
+    writeRendered(".claude/agents/bkit-a.md", "4.0.0");
+    writeBlock("docs/testing.md", "4.0.0");
+    writeBlock("AGENTS.md", "4.0.0");
+    write(
+      ".gitignore",
+      `node_modules/\n# <!-- bkit:start -->\n\n${managedVersionMarker("4.0.0", "hash")}\n\n.worktrees/\n\n# <!-- bkit:end -->\n`,
     );
-  }
-
-  it("returns null when every rendered marker matches the installing version", () => {
-    writeRendered(".claude/agents", "bkit-a.md", "4.0.0");
-    writeRendered(".claude/commands", "bkit-b.md", "4.0.0");
-    expect(detectRenderedPromptsStale(tmpDir, "4.0.0")).toBeNull();
+    write(
+      ".claude/hooks/gateguard.cjs",
+      `// driver\n// bkit:start\n\n${managedVersionMarker("4.0.0", "slash")}\n\nconst x = 1;\n\n// bkit:end\n`,
+    );
+    write(".bkit/workflows.md", `# Workflows\n\n${managedVersionMarker("4.0.0")}\n\nbody\n`);
+    write(".codex/agents/bkit-a.toml", `${managedVersionMarker("4.0.0", "hash")}\nname = "a"\n`);
+    expect(detectManagedStale(tmpDir, "4.0.0", true)).toBeNull();
   });
 
-  it("returns a blocker on a protected branch when a marker is older than the installing version", () => {
-    writeRendered(".claude/agents", "bkit-a.md", "4.0.0");
-    const f = detectRenderedPromptsStale(tmpDir, "4.1.0", true);
-    expect(f).not.toBeNull();
-    expect(f?.id).toBe("bkit-rendered-prompts-stale");
+  it("returns a blocker on a protected branch, naming each stale file and its version", () => {
+    writeRendered(".claude/agents/bkit-a.md", "4.1.0");
+    writeBlock("docs/testing.md", "4.0.0");
+    const f = detectManagedStale(tmpDir, "4.1.0", true);
+    expect(f?.id).toBe("bkit-managed-stale");
     expect(f?.severity).toBe("blocker");
-    expect(f?.detect).toContain("4.1.0");
-    expect(f?.detect).toContain("bkit-a.md");
-    // No feature-branch note on a protected branch.
-    expect(f?.detect).not.toContain("non-blocking");
-  });
-
-  it("downgrades to a non-blocking advisory on a feature branch (drift is inherited, not created)", () => {
-    writeRendered(".claude/agents", "bkit-a.md", "4.0.0");
-    const f = detectRenderedPromptsStale(tmpDir, "4.1.0", false);
-    expect(f).not.toBeNull();
-    expect(f?.id).toBe("bkit-rendered-prompts-stale"); // still the same finding id…
-    expect(f?.severity).toBe("advisory"); // …but non-blocking here
-    expect(f?.detect).toContain("non-blocking on this feature branch");
-    expect(f?.detect).toContain("hard-fail");
-  });
-
-  it("flags a managed mirror that has no marker at all (hand-edited / pre-feature)", () => {
-    writeRendered(".cursor/agents", "bkit-a.md", null);
-    const f = detectRenderedPromptsStale(tmpDir, "4.0.0");
-    expect(f?.id).toBe("bkit-rendered-prompts-stale");
-    expect(f?.detect).toContain("no marker");
-  });
-
-  it("scans all three providers' agent + command mirrors", () => {
-    writeRendered(".claude/agents", "bkit-a.md", "4.0.0");
-    writeRendered(".cursor/commands", "bkit-b.md", "3.0.0"); // stale
-    writeRendered(".opencode/agents", "bkit-c.md", "4.0.0");
-    const f = detectRenderedPromptsStale(tmpDir, "4.0.0");
-    expect(f).not.toBeNull();
-    expect(f?.detect).toContain(".cursor/commands/bkit-b.md");
-    // The two fresh files are not named as stale.
+    expect(f?.detect).toContain("1 of 2");
+    expect(f?.detect).toContain(`${path.join("docs", "testing.md")} (v4.0.0)`);
     expect(f?.detect).not.toContain("bkit-a.md");
-    expect(f?.detect).not.toContain("bkit-c.md");
-  });
-
-  it("ignores non-bkit and non-md files in the mirror dirs", () => {
-    const dir = path.join(tmpDir, ".claude/agents");
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "README.txt"), "not managed", "utf-8");
-    fs.writeFileSync(path.join(dir, "consumer-agent.md"), "no marker, not bkit-", "utf-8");
-    expect(detectRenderedPromptsStale(tmpDir, "4.0.0")).toBeNull();
-  });
-
-  it("returns null when nothing is rendered (no mirror dirs)", () => {
-    expect(detectRenderedPromptsStale(tmpDir, "4.0.0")).toBeNull();
-  });
-
-  it("guards against a 0.0.0 / empty installing version (no false blocker)", () => {
-    writeRendered(".claude/agents", "bkit-a.md", "3.0.0");
-    expect(detectRenderedPromptsStale(tmpDir, "0.0.0")).toBeNull();
-    expect(detectRenderedPromptsStale(tmpDir, "")).toBeNull();
-  });
-
-  it("truncates the example list and reports the overflow count", () => {
-    for (let i = 0; i < 8; i++) writeRendered(".claude/agents", `bkit-${i}.md`, "3.0.0");
-    const f = detectRenderedPromptsStale(tmpDir, "4.0.0");
-    expect(f?.detect).toContain("(+3 more)"); // 8 stale, 5 shown
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectManagedDocsStale — managed docs/*.md version gate
-// ---------------------------------------------------------------------------
-
-describe("detectManagedDocsStale", () => {
-  // A separate fake package-templates root so the canonical doc SET is enumerated
-  // from there (mirrors getTemplatesRoot() in production), independent of tmpDir.
-  let templatesRoot: string;
-
-  beforeEach(() => {
-    templatesRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-tmpl-"));
-  });
-  afterEach(() => {
-    fs.rmSync(templatesRoot, { recursive: true, force: true });
-  });
-
-  // Declare a doc as bkit-managed by placing it in the template tree.
-  function declareCanonical(rel: string): void {
-    const p = path.join(templatesRoot, "docs", rel);
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, "<!-- bkit:start -->\n{{BKIT_MANAGED_MARKER}}\n\n# T\n<!-- bkit:end -->\n");
-  }
-
-  // Write a consumer-side doc with (or without) a managed marker as the block's
-  // first line. `markerVersion === undefined` → no bkit:start block at all.
-  function writeConsumerDoc(rel: string, markerVersion: string | null | undefined): void {
-    const p = path.join(tmpDir, "docs", rel);
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    if (markerVersion === undefined) {
-      fs.writeFileSync(p, "# plain consumer doc, no managed block\n");
-      return;
-    }
-    const markerLine = markerVersion ? managedVersionMarker(markerVersion) + "\n" : "";
-    fs.writeFileSync(p, `<!-- bkit:start -->\n${markerLine}\n# T\n<!-- bkit:end -->\n`);
-  }
-
-  it("returns null when every managed doc marker matches the installing version", () => {
-    declareCanonical("testing.md");
-    declareCanonical("plans/template.md");
-    writeConsumerDoc("testing.md", "4.0.0");
-    writeConsumerDoc("plans/template.md", "4.0.0");
-    expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
-  });
-
-  it("returns a blocker on a protected branch when a managed doc marker is older than the installing version", () => {
-    declareCanonical("testing.md");
-    writeConsumerDoc("testing.md", "4.0.0");
-    const f = detectManagedDocsStale(tmpDir, "4.1.0", templatesRoot, true);
-    expect(f).not.toBeNull();
-    expect(f?.id).toBe("bkit-managed-docs-stale");
-    expect(f?.severity).toBe("blocker");
-    expect(f?.detect).toContain("4.1.0");
-    expect(f?.detect).toContain("docs/testing.md");
-    expect(f?.detect).toContain("(v4.0.0)");
     expect(f?.detect).not.toContain("non-blocking");
   });
 
   it("downgrades to a non-blocking advisory on a feature branch", () => {
-    declareCanonical("testing.md");
-    writeConsumerDoc("testing.md", "4.0.0");
-    const f = detectManagedDocsStale(tmpDir, "4.1.0", templatesRoot, false);
-    expect(f?.id).toBe("bkit-managed-docs-stale");
+    writeRendered(".cursor/commands/bkit-b.md", "4.0.0");
+    const f = detectManagedStale(tmpDir, "4.1.0", false);
+    expect(f?.id).toBe("bkit-managed-stale");
     expect(f?.severity).toBe("advisory");
     expect(f?.detect).toContain("non-blocking on this feature branch");
   });
 
-  it("skips a doc that only quotes the marker in prose (no managed block)", () => {
-    declareCanonical("architecture.md");
-    const p = path.join(tmpDir, "docs", "architecture.md");
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(
-      p,
-      "# Architecture\n\nbkit content sits inside `<!-- bkit:start -->` markers.\n",
+  it("reads the hash, slash and TOML forms back", () => {
+    write(
+      ".claude/hooks/preflight.sh",
+      `#!/usr/bin/env bash\n# <!-- bkit:start -->\n\n${managedVersionMarker("3.0.0", "hash")}\n\nexit 0\n\n# <!-- bkit:end -->\n`,
     );
-    expect(detectManagedDocsStale(tmpDir, "4.1.0", templatesRoot, true)).toBeNull();
+    write(
+      ".cursor/hooks/guardrails.cjs",
+      `// bkit:start\n\n${managedVersionMarker("3.0.0", "slash")}\n\n// bkit:end\n`,
+    );
+    write(".codex/agents/bkit-a.toml", `${managedVersionMarker("3.0.0", "hash")}\nname = "a"\n`);
+    write(".bkit/.env.example", `# env\n${managedVersionMarker("3.0.0", "hash")}\nX=\n`);
+    const f = detectManagedStale(tmpDir, "4.0.0", true);
+    for (const rel of [
+      ".claude/hooks/preflight.sh",
+      ".cursor/hooks/guardrails.cjs",
+      ".codex/agents/bkit-a.toml",
+      ".bkit/.env.example",
+    ]) {
+      expect(f?.detect).toContain(`${path.normalize(rel)} (v3.0.0)`);
+    }
+  });
+
+  it("flags a whole file with no marker and a block with no marker", () => {
+    writeRendered(".opencode/agents/bkit-a.md", null);
+    writeBlock(".agents/rules.md", null);
+    const f = detectManagedStale(tmpDir, "4.0.0", true);
+    expect(f?.detect).toContain(`${path.join(".opencode", "agents", "bkit-a.md")} (no marker)`);
+    expect(f?.detect).toContain(`${path.join(".agents", "rules.md")} (no marker)`);
+  });
+
+  it("skips a block-scoped file that has no bkit block (the consumer's own file)", () => {
+    write("docs/testing.md", "# our testing doc\n");
+    write(".gitignore", "node_modules/\n");
+    write(".claude/hooks/gateguard.cjs", "// our own hook\n");
+    expect(detectManagedStale(tmpDir, "4.0.0", true)).toBeNull();
   });
 
   it("reads the stamp from the real block when prose quotes both markers first", () => {
-    declareCanonical("testing.md");
-    const p = path.join(tmpDir, "docs", "testing.md");
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(
-      p,
+    write(
+      "docs/testing.md",
       "Edit outside `<!-- bkit:start -->` / `<!-- bkit:end -->`.\n" +
         `<!-- bkit:start -->\n${managedVersionMarker("4.1.0")}\n\n# T\n<!-- bkit:end -->\n`,
     );
-    expect(detectManagedDocsStale(tmpDir, "4.1.0", templatesRoot, true)).toBeNull();
+    expect(detectManagedStale(tmpDir, "4.1.0", true)).toBeNull();
   });
 
-  it("flags a managed doc whose block carries no marker (pre-feature / hand-edited)", () => {
-    declareCanonical("deployments.md");
-    writeConsumerDoc("deployments.md", null);
-    const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
-    expect(f?.id).toBe("bkit-managed-docs-stale");
-    expect(f?.detect).toContain("docs/deployments.md");
-    expect(f?.detect).toContain("no marker");
-  });
-
-  it("does NOT false-positive on user plans/logs that inherit template.md's bkit:start block", () => {
-    // Only plans/template.md is canonical; a consumer's instantiated plans + logs
-    // under docs/plans/{YYYYMM}/ inherit its bkit:start but are user-owned.
-    declareCanonical("plans/template.md");
-    writeConsumerDoc("plans/template.md", "4.0.0"); // fresh canonical
-    // User plan + log, both stale-looking and marker-less — must be ignored.
-    writeConsumerDoc("plans/202605/143-feature-plan.md", "1.0.0");
-    writeConsumerDoc("plans/202605/logs/143-feature/plan-v1-draft.md", null);
-    expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
-  });
-
-  it("skips canonical docs the consumer does not have (no crash, others still checked)", () => {
-    declareCanonical("testing.md");
-    declareCanonical("observability.md"); // consumer never created this one
-    writeConsumerDoc("testing.md", "3.0.0"); // stale
-    const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
-    expect(f?.detect).toContain("docs/testing.md");
-    expect(f?.detect).not.toContain("observability.md");
-    expect(f?.detect).toContain("1 of 1"); // only testing.md was scanned
-  });
-
-  it("ignores a consumer doc that dropped the managed block entirely", () => {
-    declareCanonical("testing.md");
-    writeConsumerDoc("testing.md", undefined); // no bkit:start → not ours to gate
-    expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
-  });
-
-  it("guards against a 0.0.0 / empty installing version (no false blocker)", () => {
-    declareCanonical("testing.md");
-    writeConsumerDoc("testing.md", "3.0.0");
-    expect(detectManagedDocsStale(tmpDir, "0.0.0", templatesRoot)).toBeNull();
-    expect(detectManagedDocsStale(tmpDir, "", templatesRoot)).toBeNull();
-  });
-
-  it("ignores deeper prose references to the marker, reading only the first in-block stamp", () => {
-    declareCanonical("decisions.md");
-    const p = path.join(tmpDir, "docs", "decisions.md");
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    // Real first-line stamp = current; a prose mention of an example version
-    // appears deeper and must NOT be the one read.
-    fs.writeFileSync(
-      p,
-      `<!-- bkit:start -->\n${managedVersionMarker("4.0.0")}\n\n# Decisions\n\n` +
-        "Docs stamp a `<!-- bkit:managed vX.Y.Z … -->` marker.\n<!-- bkit:end -->\n",
+  it("never reads inline prose vX.Y.Z as the stamp", () => {
+    write(
+      "docs/architecture.md",
+      "<!-- bkit:start -->\n\n# Architecture\n\ncarries `<!-- bkit:managed vX.Y.Z … -->`.\n<!-- bkit:end -->\n",
     );
-    expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
-  });
-
-  it("does NOT treat inline prose vX.Y.Z as a stamp when the first block has no full-line marker", () => {
-    // Dogfood architecture.md shape: unexpanded {{BKIT_MANAGED_MARKER}} + prose
-    // documenting `vX.Y.Z` — the prose must report as "(no marker)", never "(vX.Y.Z)".
-    declareCanonical("architecture.md");
-    const p = path.join(tmpDir, "docs", "architecture.md");
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(
-      p,
-      "<!-- bkit:start -->\n{{BKIT_MANAGED_MARKER}}\n\n# Architecture\n\n" +
-        "carries `<!-- bkit:managed vX.Y.Z … -->` stamped by bkit.\n<!-- bkit:end -->\n" +
-        "\n## Consumer section\n\n" +
-        `<!-- bkit:start -->\n${managedVersionMarker("4.0.0")}\n\n# Architecture\n<!-- bkit:end -->\n`,
-    );
-    const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
-    expect(f?.id).toBe("bkit-managed-docs-stale");
-    expect(f?.detect).toContain("docs/architecture.md");
+    const f = detectManagedStale(tmpDir, "4.0.0", true);
     expect(f?.detect).toContain("no marker");
     expect(f?.detect).not.toContain("(vX.Y.Z)");
   });
 
+  it("ignores files bkit does not write: user plans, non-bkit mirror files", () => {
+    writeBlock("docs/plans/202605/143-feature-plan.md", "1.0.0");
+    write(".claude/agents/consumer-agent.md", "no marker, not bkit-\n");
+    write(".claude/agents/README.txt", "not managed\n");
+    expect(detectManagedStale(tmpDir, "4.0.0", true)).toBeNull();
+  });
+
+  it("returns null when nothing is installed, and on a 0.0.0 / empty installing version", () => {
+    expect(detectManagedStale(tmpDir, "4.0.0", true)).toBeNull();
+    writeRendered(".claude/agents/bkit-a.md", "3.0.0");
+    expect(detectManagedStale(tmpDir, "0.0.0", true)).toBeNull();
+    expect(detectManagedStale(tmpDir, "", true)).toBeNull();
+  });
+
   it("truncates the example list and reports the overflow count", () => {
-    for (let i = 0; i < 8; i++) {
-      declareCanonical(`doc-${i}.md`);
-      writeConsumerDoc(`doc-${i}.md`, "3.0.0");
-    }
-    const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
-    expect(f?.detect).toContain("(+3 more)"); // 8 stale, 5 shown
+    for (let i = 0; i < 8; i++) writeRendered(`.claude/agents/bkit-${i}.md`, "3.0.0");
+    expect(detectManagedStale(tmpDir, "4.0.0", true)?.detect).toContain("(+3 more)");
   });
 });
 

@@ -210,32 +210,42 @@ export function hashFile(filePath: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Managed-version marker — single source of truth for the marker shape
-// stamped into every rendered agent + command (.claude / .cursor / .opencode).
+// Managed-version marker — single source of truth for the marker every file bkit
+// writes or refreshes carries (JSON files excepted: JSON has no comments).
 //
-// Each rendered file self-declares the bkit version it was generated from via an
-// inert HTML comment placed after the frontmatter fence. `bkit-modules.ts` stamps
-// it at render time (stampManagedVersion); the `bkit check` Phase-3 gate in
-// `bkit-postinstall.ts` (detectRenderedPromptsStale) reads it back with
-// MANAGED_MARKER_VERSION_RE and hard-fails on drift.
+// One marker text, wrapped in the file's comment syntax:
+//   html   `<!-- bkit:managed vX.Y.Z — … -->`    markdown, `.mdc`
+//   hash   `# <!-- bkit:managed vX.Y.Z — … -->`  shell, `.gitignore`, `.env.example`, TOML
+//   slash  `// bkit:managed vX.Y.Z — …`          JS (`.cjs` / `.js` / `.mjs`)
 //
-// Lives here (version domain, node-builtins-only); the renderer and the detector
-// import ONE definition. An HTML comment is inert under the agent reader and every
-// provider frontmatter parser.
+// Rendered agents / commands / skills are stamped at render (stampManagedVersion);
+// every other file carries the `{{BKIT_MANAGED_MARKER}}` token in its source, which
+// applyTokens (bkit-tokens.ts) resolves to the form its comment prefix selects. The
+// `bkit check` gate (detectManagedStale, bkit-postinstall.ts) reads the stamp back
+// with readManagedVersion.
 // ---------------------------------------------------------------------------
 
-const MANAGED_MARKER_TOKEN = "bkit:managed v";
-// Matches a previously-stamped marker line (anchored at any line start) including
-// its trailing newline, so re-stamping replaces rather than appends (idempotent).
-export const MANAGED_MARKER_LINE_RE = /^<!-- bkit:managed v[^\n]*-->\n?/m;
-// Extracts the stamped version. `\S+` stops at the space before the em-dash,
-// capturing just the semver — used by the detector to compare against the
-// installing version.
-export const MANAGED_MARKER_VERSION_RE = /<!-- bkit:managed v(\S+)/;
+/** Comment syntax a managed-version marker is written in. */
+export type ManagedMarkerForm = "html" | "hash" | "slash";
 
-/** Build the managed-version marker comment for a given version. */
-export function managedVersionMarker(version: string): string {
-  return `<!-- ${MANAGED_MARKER_TOKEN}${version} — do NOT edit; run \`bkit upgrade\` to refresh -->`;
+// Matches a stamped marker line in any form (anchored at a line start) including its
+// trailing newline, so re-stamping replaces rather than appends (idempotent). Inline
+// prose that quotes the marker never starts a line with it, so it never matches.
+export const MANAGED_MARKER_LINE_RE = /^(?:<!-- |# <!-- |\/\/ )bkit:managed v[^\n]*\n?/m;
+// Extracts the stamped version. `\S+` stops at the space before the em-dash.
+export const MANAGED_MARKER_VERSION_RE = /bkit:managed v(\S+)/;
+
+/** Build the managed-version marker for a given version, in the given comment syntax. */
+export function managedVersionMarker(version: string, form: ManagedMarkerForm = "html"): string {
+  const text = `bkit:managed v${version} — do NOT edit; run \`bkit upgrade\` to refresh`;
+  if (form === "slash") return `// ${text}`;
+  return form === "hash" ? `# <!-- ${text} -->` : `<!-- ${text} -->`;
+}
+
+/** Version of the first full-line managed-version marker in `content`, or null when none. */
+export function readManagedVersion(content: string): string | null {
+  const line = content.match(MANAGED_MARKER_LINE_RE)?.[0];
+  return line?.match(MANAGED_MARKER_VERSION_RE)?.[1] ?? null;
 }
 
 /**

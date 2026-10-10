@@ -1,4 +1,5 @@
 // slop-scan plugin: boundary/type-suppression + boundary/gate-suppression
+// bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh
 //
 // Flags constructs that silence the TypeScript type system at a boundary. Two families:
 //   - escape-hatch casts: the double cast (`<expr> as unknown as <T>`) and the

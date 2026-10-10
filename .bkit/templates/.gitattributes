@@ -1,5 +1,7 @@
 # <!-- bkit:start -->
 
+# {{BKIT_MANAGED_MARKER}}
+
 # Append-only ledgers: union merge auto-concatenates both sides on conflict.
 # EVERY ledger bkit workflows append to is listed — one left out blocks a merge
 # over data that never conflicted, two branches having simply appended different

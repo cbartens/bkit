@@ -1,5 +1,7 @@
 # Workflows
 
+{{BKIT_MANAGED_MARKER}}
+
 > [!CAUTION]
 > **Purpose:** Agent-pipeline reference — workflow conventions, execution patterns, IDE integration, subagent catalog.
 >
@@ -197,7 +199,7 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) shares skeleton
 
 **Step convention:** every step ends `### 🔒 Gate N — {Step Name}` checklist (verify before proceed) + NEW tracker comment with one fenced section (§ Comment Lifecycle).
 
-**Managed-version marker:** renderer injects `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`(blank line below) after frontmatter (claude), or below the first heading where the frontmatter was replaced by its `description` value as the first line (cursor/opencode). Stamped at`bkit install`/`upgrade`by`stampManagedVersion`— NEVER add version to source workflow.`bkit check`flags`bkit-rendered-prompts-stale`when marker drifts — hard blocker on`main`/`dev` (or PR into them); advisory on feature branches (inherited drift).
+**Managed-version marker:** renderer injects `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`(blank line below) after frontmatter (claude), or below the first heading where the frontmatter was replaced by its `description` value as the first line (cursor/opencode). Stamped at`bkit install`/`upgrade`by`stampManagedVersion`— NEVER add version to source workflow.`bkit check`flags`bkit-managed-stale`when marker drifts — hard blocker on`main`/`dev` (or PR into them); advisory on feature branches (inherited drift).
 
 **Pre-worktree git scope:** Step 1 + Step 2 pre-worktree guard on originating branch (often `dev`). Stage the bookkeeping allow-list only (`bkit ledgers commit --only-if-dirty-tracked --scope=core`: FID log dir + ledgers — NEVER whole `docs/plans/` tree). NEVER `git add -A` until `cd "$WORKTREE_PATH"` — sweeps unrelated user edits into workflow commit → rides feat → dev on merge. Post-worktree (Step 3+) `git add -A` fine; cwd = sandbox. `git worktree add` does not inherit dirty state.
 
@@ -754,7 +756,7 @@ Step 10's `gh pr merge --squash` threads `AUTO_ROUTE_SUFFIX = " bkit [auto route
 
 ### `bkit [verbose ci]` Marker Propagation
 
-`bkit [verbose ci]` = CI commit-message / PR-title marker (`docs/deployments.md` § Commit-message force tags) escalating log detail one run. `/bkit-debug` auto-applies every CI-triggering push (retry evidence); `/bkit-build` and `/bkit-ship` never apply. Template ci.yml § `bkit:start verbose-ci-env` for env block; `docs/testing.md` § "CI verbosity" for knob list.
+`bkit [verbose ci]` = CI commit-message / PR-title marker (`docs/deployments.md` § Commit-message force tags) escalating log detail one run. `/bkit-debug` auto-applies every CI-triggering push (retry evidence); `/bkit-build` and `/bkit-ship` never apply. Template ci.yml `bkit-tests-static` job-level `env:` for env block; `docs/testing.md` § "CI verbosity" for knob list.
 
 **Why debug always-verbose, build never:**
 

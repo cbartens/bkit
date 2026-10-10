@@ -1,6 +1,5 @@
 # Example. Copy into the repo and own it.
 # bkit install does not write this file and does not overwrite a copy.
-# bkit:start
 extends: existence
 message: "LLM slop: '%s' — rewrite in direct voice."
 level: error
@@ -12,4 +11,3 @@ tokens:
   - don't hesitate to
   - let me know if
   - let me explain
-# bkit:end

@@ -1,5 +1,7 @@
 <!-- bkit:start -->
 
+{{BKIT_MANAGED_MARKER}}
+
 # Agent Prompts Index
 
 > [!CAUTION]
@@ -43,7 +45,7 @@
 - **Removal = delete:** drop instruction outright; NEVER leave removal explanations.
 - **Enforced elsewhere:** step numbers by `bkit-shipped-docs-refs.test.ts`, the managed-version marker by `bkit-prompt-notation.test.ts`, shared sentences, the `**Rules:**` bullet, and the `.agents/rules.md` group headings by `bkit-wording.test.ts` — the GateGuard advisory omits them because a test is the gate.
   - **No step numbers:** NEVER cite a step number — this prompt's own, the workflow's, or a supplied template's step / gate. Numbering shifts the moment a step is inserted. Name the action or section instead, or signal through `Verdict` and let the orchestrator route.
-  - **Managed-version marker:** Rendered agents get injected `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`after frontmatter (one blank line below), stamped at`bkit install`/`upgrade`by`stampManagedVersion`— NOT in sources. NEVER add version line to source prompt.`bkit check`flags`bkit-rendered-prompts-stale`on marker drift — hard blocker on`main`/`dev` (or PR into them); advisory on feature branches (inherited drift) — prevents silent outdated prompts on protected branches.
+  - **Managed-version marker:** Rendered agents get injected `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`after frontmatter (one blank line below), stamped at`bkit install`/`upgrade`by`stampManagedVersion`— NOT in sources. NEVER add version line to source prompt.`bkit check`flags`bkit-managed-stale`on marker drift — hard blocker on`main`/`dev` (or PR into them); advisory on feature branches (inherited drift) — prevents silent outdated prompts on protected branches.
 
 ## Frontmatter Conventions
 

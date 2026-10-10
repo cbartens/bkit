@@ -2,6 +2,8 @@
 
 <!-- bkit:start -->
 
+{{BKIT_MANAGED_MARKER}}
+
 - **Rules:** Read `.agents/rules.md` → FOLLOW ALL rules.
 
 > [!CAUTION]

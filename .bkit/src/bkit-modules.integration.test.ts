@@ -26,10 +26,15 @@ import {
   dispatchModules,
   detectGateAdvisories,
   isTemplate,
+  listStampedFiles,
+  readInstallingVersion,
+  runBkitDocs,
+  getPkgRoot,
   type ModuleContext,
 } from "./bkit-modules";
 import { BKIT_GATE_SCRIPTS } from "./bkit-manifest";
-import { readBkitVersion, writeBkitVersion, sha256 } from "./bkit-version";
+import { readBkitVersion, readManagedVersion, writeBkitVersion, sha256 } from "./bkit-version";
+import { applyTokens } from "./bkit-tokens";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -107,7 +112,10 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     "README.md",
   ];
 
-  it("force-overwrites the seven package .bkit/*.md docs into the consumer's .bkit/, byte-equal", () => {
+  const rendered = (name: string): string =>
+    applyTokens(fs.readFileSync(path.join(PKG_DOCS_ROOT, name), "utf-8"), makeCtx().tokens);
+
+  it("force-overwrites the seven package .bkit/*.md docs into the consumer's .bkit/, rendered", () => {
     const ctx = makeCtx();
     runCoreModule(ctx);
     flushPostDispatch(ctx);
@@ -115,13 +123,23 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     for (const name of DOCS) {
       const dst = path.join(tmpDir, ".bkit", name);
       expect(fs.existsSync(dst), `consumer .bkit/${name} must exist after install`).toBe(true);
-      const consumerBytes = fs.readFileSync(dst);
-      const pkgBytes = fs.readFileSync(path.join(PKG_DOCS_ROOT, name));
       expect(
-        consumerBytes.equals(pkgBytes),
-        `consumer .bkit/${name} must byte-equal the package source`,
-      ).toBe(true);
+        fs.readFileSync(dst, "utf-8"),
+        `consumer .bkit/${name} must equal the rendered package source`,
+      ).toBe(rendered(name));
+      expect(readManagedVersion(fs.readFileSync(dst, "utf-8")), name).toBe(readInstallingVersion());
     }
+  });
+
+  it("leaves a doc unrendered, and unchecked, where its package source is the destination (dogfood)", () => {
+    const doc = path.join(".bkit", "workflows.md");
+    expect(listStampedFiles(tmpDir).map((f) => f.path)).toContain(doc);
+    expect(listStampedFiles(getPkgRoot()).map((f) => f.path)).not.toContain(doc);
+
+    process.chdir(getPkgRoot());
+    const ws = makeWriteSet();
+    runBkitDocs(true, makeCtx().tokens, ws, "[test]");
+    expect(ws.writes).toEqual([]);
   });
 
   it("is idempotent: a second core run writes none of the docs again", () => {
@@ -139,8 +157,7 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     fs.mkdirSync(path.dirname(dst), { recursive: true });
     fs.writeFileSync(dst, "consumer tampered content\n", "utf-8");
     runCoreModule(makeCtx());
-    const pkgBytes = fs.readFileSync(path.join(PKG_DOCS_ROOT, "cloud.md"));
-    expect(fs.readFileSync(dst).equals(pkgBytes)).toBe(true);
+    expect(fs.readFileSync(dst, "utf-8")).toBe(rendered("cloud.md"));
   });
 });
 
@@ -622,9 +639,10 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
       "utf-8",
     );
     // bkit's own adopted copy fills the `{{CLOUD_RUNNER}}` placeholder with
-    // ubuntu-latest and is otherwise the template byte for byte.
+    // ubuntu-latest and is otherwise the template byte for byte. Block-marker lines are
+    // not content, so the copy is compared without them.
     const rendered = rawTemplate.replace(/\{\{CLOUD_RUNNER\}\}/g, () => "ubuntu-latest");
-    expect(canonical).toBe(rendered);
+    expect(canonical.replace(/^[ \t]*# bkit:(?:start|end)\b[^\n]*\n/gm, "")).toBe(rendered);
   });
 });
 
@@ -639,7 +657,7 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
 //     slug extraction). Note: with intra-surface concurrency (T3.1 PIVOT design), the
 //     CI-completion concurrency key uses head_branch directly — ISSUE from SHARED-DERIV
 //     is the issue number for the kill switch, not the concurrency token. The
-//     single-sourcing here means ISSUE is set once in shared-deriv and consumed by the
+//     single-sourcing here means ISSUE is set once in SHARED-DERIV and consumed by the
 //     kill switch — not re-derived elsewhere.
 // ---------------------------------------------------------------------------
 
@@ -671,7 +689,7 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     // workflow_dispatch runs must always pass the free-tier gate regardless of marker.
     expect(out).toContain("github.event_name == 'workflow_dispatch'");
     // The if: uses || so dispatch path short-circuits the marker check. The
-    // auto-route-gate if: carries a same-repo (fork-origin guard) predicate and a
+    // free-tier if: carries a same-repo (fork-origin guard) predicate and a
     // dev-success early-exit clause between 'workflow_dispatch' and the marker literal.
     expect(out).toMatch(/workflow_dispatch[\s\S]{0,400}bkit \[auto route\]/);
   });
@@ -692,33 +710,21 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
       "ISSUE=$(printf '%s' \"$FID\" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)",
     );
     // The ISSUE variable used by gh issue view is the SAME one set by SHARED-DERIV.
-    // Verify no separate re-derivation of ISSUE appears outside the shared-deriv block.
-    const sharedDerivStart = out.indexOf("# bkit:start shared-deriv");
-    const sharedDerivEnd = out.indexOf("# bkit:end shared-deriv");
+    // gh issue view must appear AFTER the SHARED-DERIV machinery (uses its output).
+    const sharedDerivStart = out.indexOf("# SHARED-DERIV:");
     expect(sharedDerivStart).toBeGreaterThan(-1);
-    expect(sharedDerivEnd).toBeGreaterThan(sharedDerivStart);
-    // gh issue view must appear INSIDE or AFTER the shared-deriv block (uses its output).
     const ghIssueViewPos = out.indexOf('gh issue view "$ISSUE"');
     expect(ghIssueViewPos).toBeGreaterThan(sharedDerivStart);
   });
 
-  it("(c) bkit:start/bkit:end markers wrap gate logic — shared-deriv inside auto-route-gate", () => {
-    const out = rawTemplate;
-    // Gate logic must be wrapped in bkit:start/end markers.
-    expect(out).toContain("# bkit:start auto-route-gate");
-    expect(out).toContain("# bkit:end auto-route-gate");
-    expect(out).toContain("# bkit:start shared-deriv");
-    expect(out).toContain("# bkit:end shared-deriv");
-    // auto-route-gate wraps the job if: (free-tier gate).
-    const autoRouteGateStart = out.indexOf("# bkit:start auto-route-gate");
-    const autoRouteGateEnd = out.indexOf("# bkit:end auto-route-gate");
-    // The contains(...head_commit.message, 'bkit [auto route]') expression in the if: body
-    // must be inside the auto-route-gate marker block.
+  it("(c) each job's free-tier marker check lives in its job-level if: gate", () => {
     const containsExpr =
       "contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')";
-    const containsPos = out.indexOf(containsExpr);
-    expect(containsPos).toBeGreaterThan(autoRouteGateStart);
-    expect(containsPos).toBeLessThan(autoRouteGateEnd);
+    const gates = [...rawTemplate.matchAll(/^ {4}if: >-\n([\s\S]*?)^ {4}runs-on:/gm)].map(
+      (m) => m[1],
+    );
+    expect(gates).toHaveLength(2);
+    for (const gate of gates) expect(gate).toContain(containsExpr);
   });
 });
 
@@ -1190,7 +1196,7 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
     const pkgRoot = path.resolve(scriptsDir, "..", "..");
     const templatePath = path.join(pkgRoot, ".bkit", "templates", ".agents", "rules.md");
-    const template = fs.readFileSync(templatePath, "utf-8");
+    const template = applyTokens(fs.readFileSync(templatePath, "utf-8"), ctx.tokens);
 
     // Both files have markers — the inner block content must match (modulo
     // surrounding-newline normalisation done by updateManagedBlock).
@@ -1495,165 +1501,70 @@ describe("tier2-json-drift advisory for slop-scan.config.json (Task 19 unblocked
 });
 
 // ---------------------------------------------------------------------------
-// Task 23 — detectTier2TextDrift named-block logic. The ci.yml template is the
-// fixture because it carries several named blocks, one of them `optional`. ci.yml
-// itself is a template and `bkit check` never drift-checks it (MARKERED_TEXT_DRIFT_PATHS).
+// Task 23 — detectTier2TextDrift block logic, on AGENTS.md (MARKERED_TEXT_DRIFT_PATHS).
+// Only the lines inside bkit:start / bkit:end are compared, as a subset: every required
+// template line must be present; comments, extras and the managed-version marker never
+// count.
 // ---------------------------------------------------------------------------
 
-describe("Task 23 — detectTier2TextDrift named-block logic (ci.yml template as fixture)", () => {
-  const relPath = path.join(".github", "workflows", "ci.yml");
+describe("Task 23 — detectTier2TextDrift block logic (AGENTS.md)", () => {
+  const relPath = "AGENTS.md";
   const pkgRoot = (() => {
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
     return path.resolve(scriptsDir, "..", "..");
   })();
-  const readTemplate = (): string =>
-    fs.readFileSync(path.join(pkgRoot, ".bkit", "templates", relPath), "utf-8");
+  const ROUTER_LINE = "> This file is a **workflow router only**. It does NOT execute workflows.";
+  const readRendered = (): string =>
+    applyTokens(
+      fs.readFileSync(path.join(pkgRoot, ".bkit", "templates", relPath), "utf-8"),
+      makeCtx().tokens,
+    );
   const writeConsumer = (content: string): void => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, relPath), content, "utf-8");
   };
 
-  it("no drift when a step OUTSIDE any named block is removed (consumer owns unmarked regions)", () => {
-    // The `Run bkit Check` step is a plain step, not inside a bkit:start/end block, so the
-    // consumer owns it — removing it is NOT drift. Only bkit-owned named blocks are compared.
-    const consumer = readTemplate().replace(
-      /\n      - name: Run bkit Check\n        if: steps\.cache\.outputs\.skip != 'true'\n        run: pnpm bkit check\n/,
-      "\n",
-    );
-    writeConsumer(consumer);
+  it("no drift when the consumer file matches the rendered template", () => {
+    writeConsumer(readRendered());
     expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
   });
 
-  it("no tier2-text-drift when consumer ci.yml matches the template exactly", () => {
-    writeConsumer(readTemplate());
+  it("no drift when content OUTSIDE the block changes (consumer owns it)", () => {
+    writeConsumer(readRendered().replace("# AGENTS.md\n", "# Our agents\n") + "\n## Ours\n");
     expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
   });
 
-  it("flags DRIFT when the bkit-owned verbose-ci-env block content is edited", () => {
-    // Mutate one line INSIDE the verbose-ci-env named block → bkit-owned content drift.
-    const consumer = readTemplate().replace(
-      /VERBOSE_CI: \$\{\{[^\n]*\}\}/,
-      "VERBOSE_CI: 'consumer-hacked'",
-    );
-    writeConsumer(consumer);
+  it("no drift when the block carries a managed-version marker of another version", () => {
+    writeConsumer(readRendered().replace(/bkit:managed v\S+/, "bkit:managed v0.0.1"));
+    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
+  });
+
+  it("flags DRIFT when a bkit-owned line in the block is edited", () => {
+    writeConsumer(readRendered().replace(ROUTER_LINE, "> consumer-hacked"));
     const drift = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
     expect(drift?.id).toBe("tier2-text-drift");
-    expect(drift?.detect).toContain("verbose-ci-env");
+    expect(drift?.detect).toContain("drifted: (default block)");
   });
 
-  it("no drift when a consumer adds a comment annotation inside a managed block", () => {
-    // Comments inside a managed block are non-load-bearing — a consumer annotating the block
-    // with a ticket ref / rationale must not trip perpetual drift on a template file bkit never
-    // rewrites. Only semantic (non-comment) lines are compared.
-    const consumer = readTemplate().replace(
-      "    # bkit:end verbose-ci-env",
-      "      # consumer note: ticket PROJ-42 tracks the verbose-ci rollout\n    # bkit:end verbose-ci-env",
+  it("no drift when a consumer adds a comment annotation inside the block", () => {
+    writeConsumer(
+      readRendered().replace(ROUTER_LINE, `${ROUTER_LINE}\n<!-- consumer note: PROJ-42 -->`),
     );
-    writeConsumer(consumer);
     expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
   });
 
-  it("still flags DRIFT when a consumer comments OUT a semantic line in a managed block", () => {
-    // Commenting out a required env var removes a semantic line → still caught (the comment
-    // exclusion must not become an escape hatch for disabling bkit-owned content).
-    const consumer = readTemplate().replace(
-      /^(\s*)VERBOSE_CI: \$\{\{[^\n]*\}\}/m,
-      "$1# VERBOSE_CI: (disabled by consumer)",
-    );
-    writeConsumer(consumer);
-    const drift = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    expect(drift?.id).toBe("tier2-text-drift");
-    expect(drift?.detect).toContain("verbose-ci-env");
+  it("still flags DRIFT when a consumer comments OUT a required line", () => {
+    writeConsumer(readRendered().replace(ROUTER_LINE, `<!-- ${ROUTER_LINE} -->`));
+    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)?.id).toBe("tier2-text-drift");
   });
 
-  it("does NOT flag MISSING when the optional ts-ci-steps block is absent (hand-maintained toolchain)", () => {
-    // ts-ci-steps ships `optional`: a consumer that maintains its own setup/install/typecheck
-    // steps outside the block (and deletes the block) must NOT be perpetually nagged "missing"
-    // on a template file bkit never rewrites. Other required blocks remain intact.
-    const consumer = readTemplate().replace(
-      /\n\s*# bkit:start ts-ci-steps optional\n[\s\S]*?# bkit:end ts-ci-steps\n/g,
-      "\n",
-    );
-    writeConsumer(consumer);
-    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    expect(result?.detect ?? "").not.toContain("ts-ci-steps");
-  });
-
-  it("no ts-ci-steps drift on a correctly-installed consumer (optional block, consumer-owned)", () => {
-    // A real install renders `node-version: {{NODE_VERSION}}` → `node-version: 22`. ts-ci-steps
-    // is `optional` — the consumer's own toolchain region — so it is never compared for drift.
-    const consumer = readTemplate().replace(/\{\{NODE_VERSION\}\}/g, "22");
-    writeConsumer(consumer);
+  it("no drift when a consumer adds an EXTRA line inside the block (subset — extras OK)", () => {
+    writeConsumer(readRendered().replace(ROUTER_LINE, `${ROUTER_LINE}\n> Our extra rule.`));
     expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
   });
 
-  it("no ts-ci-steps drift even when the consumer customises a step (optional = consumer-owned)", () => {
-    // ts-ci-steps IS the consumer's toolchain; editing a step (here: repin setup-node) must NOT
-    // nag — enforcing content on a template block bkit never rewrites was perpetual noise on every
-    // consumer that customised its own CI.
-    const consumer = readTemplate()
-      .replace(/\{\{NODE_VERSION\}\}/g, "22")
-      .replace(
-        "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
-        "actions/setup-node@0000000000000000000000000000000000000000",
-      );
-    writeConsumer(consumer);
-    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    expect(result?.detect ?? "").not.toContain("ts-ci-steps");
-  });
-
-  it("no drift when a consumer adds an EXTRA line inside a managed block (subset — extras OK)", () => {
-    // "All the content and more" stays quiet: an added env var is not drift.
-    const consumer = readTemplate().replace(
-      "      BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}",
-      "      BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}\n      MY_CONSUMER_VAR: '1'",
-    );
-    writeConsumer(consumer);
-    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
-  });
-
-  it("no drift when a bare structural key (env:) sits outside the marker (gether's layout)", () => {
-    // gether wraps only the bkit assignments in the marker; the bare `env:` key sits just above
-    // it. A bare structural key is not required content — all three assignments remain present.
-    const consumer = readTemplate().replace(/\n( +)env:\n( +TURBO_LOG_LEVEL:)/, "\n$2");
-    writeConsumer(consumer);
-    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
-  });
-
-  it("still flags DRIFT when a consumer DROPS a required line from a managed block (subset)", () => {
-    // A genuinely missing required assignment still gates.
-    const consumer = readTemplate().replace(/\n +VERBOSE_CI: \$\{\{[^\n]*\}\}/, "");
-    writeConsumer(consumer);
-    const drift = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    expect(drift?.id).toBe("tier2-text-drift");
-    expect(drift?.detect).toContain("verbose-ci-env");
-  });
-
-  it("flags MISSING when a required named block (verbose-ci-env) is absent but other markers remain", () => {
-    // Drop the whole verbose-ci-env block; keep the (optional) main-lag-warning block so the
-    // consumer still has bkit markers. Required block missing → flagged.
-    const consumer = readTemplate().replace(
-      /\n {4}# bkit:start verbose-ci-env\n[\s\S]*?# bkit:end verbose-ci-env\n/,
-      "\n",
-    );
-    writeConsumer(consumer);
-    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    expect(result?.id).toBe("tier2-text-drift");
-    expect(result?.detect).toMatch(/missing:.*verbose-ci-env/);
-  });
-
-  it("flags MISSING when the required main-lag-warning block is deleted", () => {
-    // main-lag-warning ships REQUIRED (no `optional` flag) so adoption is nagged everywhere —
-    // a consumer that drops it (e.g. installed before the block existed) gets a non-blocking
-    // advisory pointing them to re-sync from the template.
-    const consumer = readTemplate().replace(
-      /\n {6}# bkit:start main-lag-warning\n[\s\S]*?# bkit:end main-lag-warning\n/,
-      "\n",
-    );
-    writeConsumer(consumer);
-    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    expect(result?.id).toBe("tier2-text-drift");
-    expect(result?.detect).toMatch(/missing:.*main-lag-warning/);
+  it("flags DRIFT when a consumer DROPS a required line from the block", () => {
+    writeConsumer(readRendered().replace(`${ROUTER_LINE}\n`, ""));
+    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)?.id).toBe("tier2-text-drift");
   });
 });
 
@@ -1805,21 +1716,19 @@ describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety r
     // prove the || true guards make the step exit 0 (not exit 1).
     const canonical = readBkitCloudYml();
 
-    // Extract the two assignment lines from the shared-deriv block.
-    const sharedDerivStart = canonical.indexOf("# bkit:start shared-deriv");
-    const sharedDerivEnd = canonical.indexOf("# bkit:end shared-deriv");
+    // Extract the two assignment lines from the SHARED-DERIV machinery.
+    const sharedDerivStart = canonical.indexOf("# SHARED-DERIV:");
     expect(sharedDerivStart).toBeGreaterThan(-1);
-    expect(sharedDerivEnd).toBeGreaterThan(sharedDerivStart);
-    const sharedDerivBlock = canonical.slice(sharedDerivStart, sharedDerivEnd);
+    const sharedDerivBlock = canonical.slice(sharedDerivStart);
 
     // Pull out the ISSUE= and FID= lines (they contain the grep commands).
     const issueLineMatch = sharedDerivBlock.match(/ISSUE=\$\(echo "\$PR_BODY"[^\n]+\)/);
     const fidLineMatch = sharedDerivBlock.match(/FID=\$\(echo "\$PR_BODY"[^\n]+\)/);
     expect(
       issueLineMatch,
-      "ISSUE= assignment line must be found in shared-deriv block",
+      "ISSUE= assignment line must be found after SHARED-DERIV",
     ).not.toBeNull();
-    expect(fidLineMatch, "FID= assignment line must be found in shared-deriv block").not.toBeNull();
+    expect(fidLineMatch, "FID= assignment line must be found after SHARED-DERIV").not.toBeNull();
 
     const issueLine = issueLineMatch![0]!.trim();
     const fidLine = fidLineMatch![0]!.trim();
@@ -1854,9 +1763,7 @@ describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety r
     // Complementary positive case: a PR body WITH the markers must yield the correct values.
     const canonical = readBkitCloudYml();
 
-    const sharedDerivStart = canonical.indexOf("# bkit:start shared-deriv");
-    const sharedDerivEnd = canonical.indexOf("# bkit:end shared-deriv");
-    const sharedDerivBlock = canonical.slice(sharedDerivStart, sharedDerivEnd);
+    const sharedDerivBlock = canonical.slice(canonical.indexOf("# SHARED-DERIV:"));
 
     const issueLineMatch = sharedDerivBlock.match(/ISSUE=\$\(echo "\$PR_BODY"[^\n]+\)/);
     const fidLineMatch = sharedDerivBlock.match(/FID=\$\(echo "\$PR_BODY"[^\n]+\)/);
@@ -2579,37 +2486,13 @@ describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
   });
 });
 
-describe("create-if-missing core file (.agents/skills.md)", () => {
-  const files = [path.join(".agents", "skills.md")];
-
-  it("install writes them once, records no hash and no write; a second install leaves edits alone", () => {
-    const first = makeCtx();
-    runCoreModule(first);
-    flushPostDispatch(first);
-    for (const rel of files) expect(fs.existsSync(path.join(tmpDir, rel)), rel).toBe(true);
-    expect(first.ws.writes.filter((w) => files.includes(path.normalize(w.path)))).toEqual([]);
-    const hashes = readBkitVersion(path.join(tmpDir, ".bkit", "version"))!.canonicalHashes;
-    for (const rel of files) expect(hashes[rel]).toBeUndefined();
-
-    for (const rel of files) fs.writeFileSync(path.join(tmpDir, rel), `edited ${rel}\n`, "utf-8");
-    const dry = makeCtx({ dryRun: true });
-    runCoreModule(dry);
-    const again = makeCtx();
-    runCoreModule(again);
-    for (const rel of files) {
-      expect(fs.readFileSync(path.join(tmpDir, rel), "utf-8")).toBe(`edited ${rel}\n`);
-    }
-    for (const ws of [dry.ws, again.ws]) {
-      expect(ws.writes.filter((w) => files.includes(path.normalize(w.path)))).toEqual([]);
-    }
-  });
-});
-
-describe(".agents/context.md — bkit owns the managed block, the consumer owns the rest", () => {
-  const REL = path.join(".agents", "context.md");
-  const CONSUMER =
-    "\n## Enabled blocks\n\n<!-- context-fetch:start ours context=web -->\n```bash\necho ours\n```\n<!-- context-fetch:end -->\n";
-
+describe.each([
+  [
+    path.join(".agents", "context.md"),
+    "\n## Enabled blocks\n\n<!-- context-fetch:start ours context=web -->\n```bash\necho ours\n```\n<!-- context-fetch:end -->\n",
+  ],
+  [path.join(".agents", "skills.md"), "\n## Project Skills\n\n| `ours/skills` | ours | ours |\n"],
+])("%s — bkit owns the managed block, the consumer owns the rest", (REL, CONSUMER) => {
   it("install rewrites a stale block and keeps everything below bkit:end byte-identical", () => {
     const first = makeCtx();
     runCoreModule(first);

@@ -1,5 +1,7 @@
 <!-- bkit:start -->
 
+{{BKIT_MANAGED_MARKER}}
+
 # Document Index
 
 > [!CAUTION]

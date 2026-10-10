@@ -1,11 +1,11 @@
 // bkit-templates.test.ts — Task 22 (BAR-167 Phase 2)
 //
-// Marker presence enforcement tests for Group A + Group B templates.
+// Marker presence enforcement for the markdown files bkit writes from .bkit/templates/
+// (Group A), content checks for templates bkit never writes (Group B: no markers), and
 // slop-scan.config.json required-rules enumeration (JSON deep-containment, no markers).
 //
-// These tests assert that the canonical template files in .bkit/templates/
-// contain the correct bkit:start / bkit:end markers so that the install pass
-// can correctly extract and manage the bkit-owned block.
+// Group A files must contain the bkit:start / bkit:end markers so that the install pass
+// can extract and manage the bkit-owned block.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -55,13 +55,6 @@ const GROUP_A_MD_FILES = [
 ];
 
 const GROUP_A_MDC_FILES = [".cursor/rules/00-shared-rules.mdc"];
-
-const GROUP_A_YAML_FILES = [
-  ".vale/styles/House/Filler.yml",
-  ".vale/styles/House/Hedging.yml",
-  ".vale/styles/House/LLMSlop.yml",
-  ".vale/styles/House/Verbose.yml",
-];
 
 describe("audit templates — managed block plus consumer stub", () => {
   const audits = listAuditTemplates();
@@ -129,81 +122,20 @@ describe("Group A templates — html-comment markers (md/mdc files)", () => {
   }
 });
 
-describe("Group A templates — hash-comment markers (YAML files)", () => {
-  for (const relPath of GROUP_A_YAML_FILES) {
-    it(`${relPath}: has exactly one # bkit:start and one # bkit:end`, () => {
-      const content = readTemplate(relPath);
-      expect(countMatches(content, /^# bkit:start$/m)).toBe(1);
-      expect(countMatches(content, /^# bkit:end$/m)).toBe(1);
-    });
-
-    it(`${relPath}: bkit:start appears before bkit:end`, () => {
-      const content = readTemplate(relPath);
-      const startIdx = content.indexOf("# bkit:start");
-      const endIdx = content.lastIndexOf("# bkit:end");
-      expect(startIdx).toBeGreaterThanOrEqual(0);
-      expect(endIdx).toBeGreaterThan(startIdx);
-    });
-
-    it(`${relPath}: extractManagedBlock returns non-null non-empty content`, () => {
-      const content = readTemplate(relPath);
-      const block = extractManagedBlock(content, "hash-comment");
-      expect(block).not.toBeNull();
-      expect(block!.length).toBeGreaterThan(0);
-    });
-  }
-});
-
 // ---------------------------------------------------------------------------
-// Group B — Partial-ownership templates
-// ci.yml: a template the consumer copies and owns. It carries NAMED blocks (`verbose-ci-env`,
-//   `main-lag-warning`) as labels only; bkit never checks them. It carries no bare
-//   whole-file `# bkit:start`/`# bkit:end` markers: consumers read those as "bkit
-//   owns/syncs these steps".
-// .vale.ini: markers wrap StylesPath, Packages, MinAlertLevel, House style enable
+// Group B — templates bkit never writes (no markers; see bkit-templates-content.test.ts)
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Helper: extract content of the named verbose-ci-env block (ci.yml style).
-// Marker is indented (4-space) so extractManagedBlock (which requires
-// line-anchored col-0 or comment-prefix markers) cannot be used directly.
-// ---------------------------------------------------------------------------
-
-function extractCiYmlVerboseBlock(content: string): string | null {
-  const startMarker = "    # bkit:start verbose-ci-env";
-  const endMarker = "    # bkit:end verbose-ci-env";
-  const startIdx = content.indexOf(startMarker);
-  const endIdx = content.indexOf(endMarker);
-  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return null;
-  const startLineEnd = content.indexOf("\n", startIdx);
-  if (startLineEnd === -1) return null;
-  return content.slice(startLineEnd + 1, endIdx);
-}
-
-describe("Group B templates — ci.yml named verbose-ci-env block", () => {
-  it("ci.yml has exactly one # bkit:start verbose-ci-env (4-space indent)", () => {
+describe("Group B templates — ci.yml", () => {
+  it("ci.yml bkit-tests-static job-level env carries the verbose-CI wiring", () => {
     const content = readTemplate(".github/workflows/ci.yml");
-    expect(countMatches(content, /^    # bkit:start verbose-ci-env$/m)).toBe(1);
-  });
-
-  it("ci.yml has exactly one # bkit:end verbose-ci-env (4-space indent)", () => {
-    const content = readTemplate(".github/workflows/ci.yml");
-    expect(countMatches(content, /^    # bkit:end verbose-ci-env$/m)).toBe(1);
-  });
-
-  it("ci.yml carries no bare whole-file bkit markers", () => {
-    const content = readTemplate(".github/workflows/ci.yml");
-    expect(countMatches(content, /^\s*# bkit:start$/m)).toBe(0);
-    expect(countMatches(content, /^\s*# bkit:end$/m)).toBe(0);
-  });
-
-  it("ci.yml verbose-ci-env block contains the verbose-CI env wiring", () => {
-    const content = readTemplate(".github/workflows/ci.yml");
-    const block = extractCiYmlVerboseBlock(content);
-    expect(block).not.toBeNull();
-    expect(block!).toContain("VERBOSE_CI");
-    expect(block!).toContain("TURBO_LOG_LEVEL");
-    expect(block!).toContain("BKIT_GH_TOKEN_INSTALL");
+    const env = content.match(
+      /^ {2}bkit-tests-static:\n[\s\S]*?^ {4}env:\n([\s\S]*?)^ {4}steps:/m,
+    )?.[1];
+    expect(env).toBeDefined();
+    expect(env!).toContain("VERBOSE_CI");
+    expect(env!).toContain("TURBO_LOG_LEVEL");
+    expect(env!).toContain("BKIT_GH_TOKEN_INSTALL");
   });
 
   it("ci.yml install step writes the GH Packages auth token via pnpm config set (user-level, before install)", () => {
@@ -214,41 +146,13 @@ describe("Group B templates — ci.yml named verbose-ci-env block", () => {
   });
 });
 
-describe("Group B templates — .vale.ini partial-ownership markers", () => {
-  it(".vale.ini has exactly one # bkit:start at column 0", () => {
+describe("Group B templates — .vale.ini", () => {
+  it(".vale.ini sets StylesPath, Packages and MinAlertLevel and enables House on .agents/**", () => {
     const content = readTemplate(".vale.ini");
-    expect(countMatches(content, /^# bkit:start$/m)).toBe(1);
-  });
-
-  it(".vale.ini has exactly one # bkit:end at column 0", () => {
-    const content = readTemplate(".vale.ini");
-    expect(countMatches(content, /^# bkit:end$/m)).toBe(1);
-  });
-
-  it(".vale.ini marker block contains StylesPath", () => {
-    const content = readTemplate(".vale.ini");
-    const block = extractManagedBlock(content, "hash-comment");
-    expect(block).not.toBeNull();
-    expect(block!).toContain("StylesPath");
-  });
-
-  it(".vale.ini marker block contains Packages", () => {
-    const content = readTemplate(".vale.ini");
-    const block = extractManagedBlock(content, "hash-comment");
-    expect(block!).toContain("Packages");
-  });
-
-  it(".vale.ini marker block contains MinAlertLevel", () => {
-    const content = readTemplate(".vale.ini");
-    const block = extractManagedBlock(content, "hash-comment");
-    expect(block!).toContain("MinAlertLevel");
-  });
-
-  it(".vale.ini marker block contains House style enable ([.agents/**])", () => {
-    const content = readTemplate(".vale.ini");
-    const block = extractManagedBlock(content, "hash-comment");
-    expect(block!).toContain("[.agents/**]");
-    expect(block!).toContain("BasedOnStyles = House");
+    expect(content).toContain("StylesPath");
+    expect(content).toContain("Packages");
+    expect(content).toContain("MinAlertLevel");
+    expect(content).toMatch(/\[\.agents\/\*\*\]\nBasedOnStyles = House/);
   });
 });
 

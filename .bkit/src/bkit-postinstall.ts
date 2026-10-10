@@ -22,15 +22,15 @@ import {
   getModuleManifest,
   CLOUD_MANIFEST_CLAUDE,
 } from "./bkit-manifest.js";
-import {
-  readBkitVersion,
-  MANAGED_MARKER_LINE_RE,
-  MANAGED_MARKER_VERSION_RE,
-} from "./bkit-version.js";
-import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
-import { findLineAnchoredMarkers, selectMarkers } from "./bkit-markers.js";
+import { readBkitVersion, readManagedVersion } from "./bkit-version.js";
+import { getPkgRoot } from "./bkit-paths.js";
+import { detectMarkerStyle, findLineAnchoredMarkers, selectMarkers } from "./bkit-markers.js";
 import { lintLedgers } from "./bkit-telemetry-lint.js";
-import { detectOpencodeYmlProviderDrift, TEMPLATES_POINTER } from "./bkit-modules.js";
+import {
+  detectOpencodeYmlProviderDrift,
+  listStampedFiles,
+  TEMPLATES_POINTER,
+} from "./bkit-modules.js";
 
 export type { PreflightFinding };
 
@@ -376,7 +376,7 @@ export function detectBkitCloudYmlAlwaysTrueGate(cwd: string): PreflightFinding 
     detect:
       ".github/workflows/bkit-cloud.yml writes its auto-route `if:` gate as a `|` block scalar wrapping ${{ }} — GitHub Actions evaluates this to a non-empty string (always true), so the free-tier `bkit [auto route]` gate never fires and the job runs on every triggering event.",
     action:
-      "Replace the `if: |` block under `# bkit:start auto-route-gate` with a `>-` folded expression that drops the ${{ }} wrapper (GitHub Actions evaluates `if:` expressions natively):\n\n" +
+      "Replace the auto-route job's `if: |` block scalar with a `>-` folded expression that drops the ${{ }} wrapper (GitHub Actions evaluates `if:` expressions natively):\n\n" +
       "    if: >-\n" +
       "      github.event_name == 'workflow_dispatch'\n" +
       "      || (\n" +
@@ -388,12 +388,19 @@ export function detectBkitCloudYmlAlwaysTrueGate(cwd: string): PreflightFinding 
 }
 
 /**
- * Detect a bkit-managed `.github/workflows/ci.yml` with no `actionlint` step.
+ * Matches a `.github/workflows/ci.yml` copied from bkit's ci.yml template: an uncommented
+ * job named `bkit-tests` or `bkit-tests-<lane>`, the job names every lane of the template
+ * carries.
+ */
+const ADOPTED_CI_JOB_RE = /^[ \t]+bkit-tests(?:-[\w-]+)?:[ \t]*$/m;
+
+/**
+ * Detect a `.github/workflows/ci.yml` adopted from bkit's template with no `actionlint` step.
  * `yaml.safe_load` (and generic YAML linters) accept workflows that are valid YAML
  * but invalid GitHub Actions (doubled quotes inside ${{ }}, always-true `if:` block
  * scalars). actionlint is GHA-aware and catches that class.
  *
- * Only fires when the consumer adopted bkit's ci.yml template (markers present).
+ * Only fires when the consumer adopted bkit's ci.yml template (ADOPTED_CI_JOB_RE).
  * ci.yml is the consumer's file, so `bkit install` never adds the step — the action
  * inlines the manual step.
  */
@@ -401,7 +408,7 @@ export function detectCiYmlMissingActionlint(cwd: string): PreflightFinding | nu
   const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
   if (!fs.existsSync(ciPath)) return null;
   const content = fs.readFileSync(ciPath, "utf-8");
-  if (!/^\s*# bkit:start\b/m.test(content)) return null;
+  if (!ADOPTED_CI_JOB_RE.test(content)) return null;
   if (/actionlint/i.test(content)) return null;
   return {
     id: "ci-yml-missing-actionlint",
@@ -433,13 +440,13 @@ export function detectCiYmlMissingActionlint(cwd: string): PreflightFinding | nu
  * indentation and flags untrusted expressions inside their bodies only. `env:` / `if:` /
  * `with:` / `concurrency:` contexts are NOT run bodies, so the safe env-indirection form does
  * not fire; a YAML-commented `run:` key never opens a body, so shipped commented stubs stay
- * silent. Only scans a bkit-managed ci.yml (markers present).
+ * silent. Only scans a ci.yml adopted from bkit's template (ADOPTED_CI_JOB_RE).
  */
 export function detectCiYmlRunInjection(cwd: string): PreflightFinding | null {
   const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
   if (!fs.existsSync(ciPath)) return null;
   const content = fs.readFileSync(ciPath, "utf-8");
-  if (!/^\s*# bkit:start\b/m.test(content)) return null;
+  if (!ADOPTED_CI_JOB_RE.test(content)) return null;
 
   // Attacker-controllable payload contexts: any github.event.* field and github.head_ref.
   // github.base_ref / github.event_name / SHAs are constrained values and are excluded
@@ -508,16 +515,15 @@ export function detectCiYmlRunInjection(cwd: string): PreflightFinding | null {
  * CI contract. ci.yml is the consumer's copy of a template; bkit never rewrites it.
  * WARNING-ONLY presence check: flags the ABSENCE of a known-good fragment, never
  * "differs from canonical". Fires only when the consumer opted into the capstone
- * scaffold (bkit-managed markers + a bkit-tests-check job).
+ * scaffold (an uncommented bkit-tests-check job).
  *
- * Every check after the marker reads `code` (full-line comments stripped): the template's
- * commented-out stubs name `bkit-tests-check`, `!cancelled()` and `live_ran`.
+ * Every check reads `code` (full-line comments stripped): the template's commented-out
+ * stubs name `bkit-tests-check`, `!cancelled()` and `live_ran`.
  */
 export function detectCiYmlCapstoneContractDrift(cwd: string): PreflightFinding | null {
   const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
   if (!fs.existsSync(ciPath)) return null;
   const content = fs.readFileSync(ciPath, "utf-8");
-  if (!/^\s*# bkit:start\b/m.test(content)) return null; // consumer-owned, not bkit-managed
   const code = content
     .split("\n")
     .filter((line) => !/^\s*#/.test(line))
@@ -1350,8 +1356,8 @@ export function detectRunLevelsNotComposed(cwd: string): PreflightFinding | null
   // `cache.outputs.skip` — neither is consumer composition. So we look for the READ form,
   // on uncommented lines only (the shipped `bkit-stub:e2e` block reads the outputs but is
   // commented out by default — enabling it correctly counts as composition).
-  // ci.yml is the consumer's file (no bkit:start/end region to fence off), so matching the
-  // read form is what distinguishes a consumer gate.
+  // ci.yml is the consumer's file, so matching the read form is what distinguishes a
+  // consumer gate.
   const readTokens = [
     "steps.detect.outputs.should_force_build",
     "steps.detect.outputs.should_run_full",
@@ -2170,18 +2176,8 @@ export function readChangelogVersionDelta(version: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// detectRenderedPromptsStale — rendered prompts/workflows version gate
+// detectManagedStale — managed-version marker gate over every stamped file
 // ---------------------------------------------------------------------------
-
-/** Rendered agent + command mirror dirs that carry the managed-version marker. */
-const RENDERED_MIRROR_DIRS = [
-  ".claude/agents",
-  ".claude/commands",
-  ".cursor/agents",
-  ".cursor/commands",
-  ".opencode/agents",
-  ".opencode/commands",
-];
 
 /**
  * Best-effort read of the installing bkit version from the package root.
@@ -2246,165 +2242,67 @@ export function isOnProtectedBranch(cwd: string = process.cwd()): boolean {
 }
 
 /**
- * Blocker: a rendered prompt/workflow (.claude / .cursor / .opencode agents +
- * commands) carries a managed-version marker that differs from the installing
- * bkit version — i.e. the consumer is running prompts/workflows generated by a
- * different bkit, or hand-edited a managed mirror and dropped the marker.
- *
- * Runs in Phase 3:
- *   - In `bkit check` (dry-run) the host renders do NOT write, so on-disk markers
- *     keep their stale value → this fires → check exits 1 (the hard gate).
- *   - In real `install` / `upgrade` the re-stamp write lands in Phase 2, BEFORE
- *     this runs, so the markers are fresh → no blocker.
- *   - `bkit doctor` replays Phase 3 read-only → surfaces it without exiting.
- *
- * Guards:
- *   - `installingVersion` "0.0.0"/empty (dev tree without a readable package.json)
- *     → return null (cannot meaningfully compare; never a false blocker).
- *   - No rendered files scanned → return null (nothing installed to check).
- *
- * Severity is branch-scoped (see PROTECTED_BRANCHES): a hard `blocker` on
- * main/dev (or a PR into them), a non-blocking `advisory` on feature branches.
- *
- * `installingVersion` and `onProtectedBranch` are injected for testability;
- * they default to the package root and the resolved current branch.
+ * Version of the managed-version marker inside a file's first `bkit:start`…`bkit:end`
+ * block, in whichever marker style the file uses (`<!-- -->`, `# <!-- -->`, `//`).
+ * Markers count only on their own line, so prose quoting them is skipped; only a
+ * full-line marker counts, so an inline example (`vX.Y.Z` in architecture.md) is never
+ * read as the stamp. `undefined` when the file has no block, null when the block has no
+ * marker.
  */
-export function detectRenderedPromptsStale(
-  cwd: string,
-  installingVersion: string = readPkgVersion(),
-  onProtectedBranch: boolean = isOnProtectedBranch(cwd),
-): PreflightFinding | null {
-  if (!installingVersion || installingVersion === "0.0.0") return null;
-
-  const stale: string[] = [];
-  let scanned = 0;
-  for (const rel of RENDERED_MIRROR_DIRS) {
-    const dir = path.join(cwd, rel);
-    if (!fs.existsSync(dir)) continue;
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.endsWith(".md") || !f.startsWith("bkit-")) continue;
-      scanned++;
-      const content = fs.readFileSync(path.join(dir, f), "utf-8");
-      const found = content.match(MANAGED_MARKER_VERSION_RE)?.[1] ?? null;
-      if (found !== installingVersion) {
-        stale.push(`${rel}/${f}${found ? ` (v${found})` : " (no marker)"}`);
-      }
-    }
-  }
-
-  if (scanned === 0 || stale.length === 0) return null;
-
-  const examples = stale.slice(0, 5).join(", ");
-  const more = stale.length > 5 ? ` (+${stale.length - 5} more)` : "";
-  const branchNote = onProtectedBranch
-    ? ""
-    : " (non-blocking on this feature branch — it WILL hard-fail `bkit check` on main/dev, so re-render before merging.)";
-  return {
-    id: "bkit-rendered-prompts-stale",
-    severity: onProtectedBranch ? "blocker" : "advisory",
-    detect: `${stale.length} of ${scanned} rendered prompt/workflow mirror file(s) carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.${branchNote}`,
-    action:
-      "Re-render every prompt/workflow at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts) or re-run `pnpm bkit install` with your host flags. To MOVE to a newer bkit, use `pnpm bkit upgrade --latest` (or `--to=<version>`) — it bumps @cbartens/bkit AND re-renders in one step; `pnpm add @cbartens/bkit` alone does NOT re-render. The .claude/.cursor/.opencode agents + commands are bkit-managed mirrors and must be regenerated after every version bump. Never hand-edit them; edits to a mirror drop the version marker and fail this gate.",
-  };
-}
-
-// ---------------------------------------------------------------------------
-// detectManagedDocsStale — managed docs/*.md version gate
-// ---------------------------------------------------------------------------
-
-/** Position of the first line-anchored `<!-- bkit:start -->`, or undefined when the doc has no block. */
-function managedBlockStart(content: string): number | undefined {
-  return findLineAnchoredMarkers(content, selectMarkers("html-comment")[0])[0];
-}
-
-/**
- * Read the managed-version stamp from a doc's first `bkit:start`…`bkit:end` block.
- * Markers count only on their own line, so prose quoting them is skipped. Only a
- * full-line `<!-- bkit:managed v… -->` counts — inline prose examples
- * (`vX.Y.Z` in architecture.md) must not be mistaken for the stamp.
- */
-export function readManagedDocStampVersion(content: string): string | null {
-  const startIdx = managedBlockStart(content);
-  if (startIdx === undefined) return null;
-  const endMarker = selectMarkers("html-comment")[1];
+export function readManagedBlockVersion(content: string): string | null | undefined {
+  const style = detectMarkerStyle(content);
+  if (style === null) return undefined;
+  const [startMarker, endMarker] = selectMarkers(style);
+  const startIdx = findLineAnchoredMarkers(content, startMarker)[0]!;
   const endIdx = findLineAnchoredMarkers(content, endMarker).find((i) => i > startIdx);
   const region =
     endIdx === undefined
       ? content.slice(startIdx)
       : content.slice(startIdx, endIdx + endMarker.length);
-  const line = region.match(MANAGED_MARKER_LINE_RE)?.[0] ?? null;
-  if (!line) return null;
-  return line.match(MANAGED_MARKER_VERSION_RE)?.[1] ?? null;
-}
-
-/** Recursively collect `*.md` paths under `dir` (docs trees are shallow). */
-function collectManagedDocMarkdown(dir: string, acc: string[] = []): string[] {
-  let ents: fs.Dirent[];
-  try {
-    ents = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return acc;
-  }
-  for (const ent of ents) {
-    const p = path.join(dir, ent.name);
-    if (ent.isDirectory()) collectManagedDocMarkdown(p, acc);
-    else if (ent.isFile() && ent.name.endsWith(".md")) acc.push(p);
-  }
-  return acc;
+  return readManagedVersion(region);
 }
 
 /**
- * Blocker: a bkit-managed doc under `docs/` (any `*.md` carrying a
- * `<!-- bkit:start -->` block) embeds a managed-version marker that differs from
- * the installing bkit version — i.e. the consumer bumped the bkit package but did
- * not re-render, so agents read STALE doctrine (testing.md / deployments.md /
- * templates/bkit-plan.md, etc.) even though the prompts that point at them are fresh.
+ * Stale managed-version marker on any file bkit writes (listStampedFiles): the rendered
+ * agents / commands / skills, the managed blocks (AGENTS.md, CLAUDE.md, `.agents/*.md`,
+ * `docs/*.md`, `.gitignore`, the hooks, …) and the whole files bkit owns (`.bkit/*.md`,
+ * `.bkit/.env.example`, `.bkit/scripts/*`). A marker that differs from the installing
+ * bkit version means the consumer bumped the package without re-rendering, or hand-edited
+ * a managed region and dropped the marker.
  *
- * Mirrors detectRenderedPromptsStale: the marker is stamped into the first
- * line of each managed block at render (via the {{BKIT_MANAGED_MARKER}} token), so
- * this read-back gate works identically — fires in `bkit check` (dry-run, on-disk
- * markers keep their stale value), no-op in real install/upgrade (markers were
- * just re-stamped in Phase 2 before Phase 3 runs).
+ * Runs in Phase 3:
+ *   - `bkit check` (dry-run) writes nothing, so on-disk markers keep their stale value →
+ *     this fires → check exits 1 on main/dev.
+ *   - real `install` / `upgrade` re-stamp in Phase 2, before this runs → no finding.
+ *   - `bkit doctor` replays Phase 3 read-only → surfaces it without exiting.
  *
- * The stamp is read ONLY as a full-line `<!-- bkit:managed v… -->` inside the
- * first `bkit:start`…`bkit:end` block (`readManagedDocStampVersion`). Consumer
- * lines above the block, inline prose examples (`vX.Y.Z` in architecture.md), and
- * any later appended blocks cannot be mistaken for the real first-line stamp.
+ * A block-scoped file without a bkit block is the consumer's (they dropped the block, or
+ * never had bkit's) and is skipped; a whole file without a marker is stale. Files absent
+ * on disk are skipped. A dev tree without a readable package version (`0.0.0` / empty)
+ * yields null, as does a repo with nothing stamped.
  *
- * The managed-doc SET is enumerated from the package's template tree
- * (`<templates>/docs`), NOT a glob of the consumer's `docs/` — a consumer's
- * `docs/plans/{YYYYMM}/…` plans + logs are user-authored instances of
- * `docs/templates/bkit-plan.md` and inherit its `bkit:start` block. Only the
- * canonical docs bkit ships carry (and are checked for) the marker.
- *
- * Guards mirror the prompts gate: dev tree without a readable version → null;
- * no managed docs scanned → null. `templatesRoot` is injected for testability.
+ * Severity is branch-scoped (see PROTECTED_BRANCHES): a `blocker` on main/dev (or a PR
+ * into them), an `advisory` on feature branches. `installingVersion` and
+ * `onProtectedBranch` are injected for testability.
  */
-export function detectManagedDocsStale(
+export function detectManagedStale(
   cwd: string,
   installingVersion: string = readPkgVersion(),
-  templatesRoot: string = getTemplatesRoot(),
   onProtectedBranch: boolean = isOnProtectedBranch(cwd),
 ): PreflightFinding | null {
   if (!installingVersion || installingVersion === "0.0.0") return null;
 
-  const docsTemplateRoot = path.join(templatesRoot, "docs");
-  const canonicalRelPaths = collectManagedDocMarkdown(docsTemplateRoot).map((p) =>
-    path.relative(docsTemplateRoot, p),
-  );
-
   const stale: string[] = [];
   let scanned = 0;
-  for (const rel of canonicalRelPaths) {
-    const file = path.join(cwd, "docs", rel);
-    if (!fs.existsSync(file)) continue; // consumer may not have every doc
-    const content = fs.readFileSync(file, "utf-8");
-    if (managedBlockStart(content) === undefined) continue; // consumer dropped the managed block — not ours to gate
+  for (const { path: rel, scope } of listStampedFiles(cwd)) {
+    const abs = path.join(cwd, rel);
+    if (!fs.existsSync(abs)) continue;
+    const content = fs.readFileSync(abs, "utf-8");
+    const found =
+      scope === "block" ? readManagedBlockVersion(content) : readManagedVersion(content);
+    if (found === undefined) continue;
     scanned++;
-    const found = readManagedDocStampVersion(content);
-    if (found !== installingVersion) {
-      stale.push(`docs/${rel}${found ? ` (v${found})` : " (no marker)"}`);
-    }
+    if (found !== installingVersion) stale.push(`${rel}${found ? ` (v${found})` : " (no marker)"}`);
   }
 
   if (scanned === 0 || stale.length === 0) return null;
@@ -2415,11 +2313,11 @@ export function detectManagedDocsStale(
     ? ""
     : " (non-blocking on this feature branch — it WILL hard-fail `bkit check` on main/dev, so re-render before merging.)";
   return {
-    id: "bkit-managed-docs-stale",
+    id: "bkit-managed-stale",
     severity: onProtectedBranch ? "blocker" : "advisory",
-    detect: `${stale.length} of ${scanned} bkit-managed doc(s) under docs/ carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.${branchNote}`,
+    detect: `${stale.length} of ${scanned} bkit-managed file(s) carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.${branchNote}`,
     action:
-      "Re-render the managed docs at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts + docs) or re-run `pnpm bkit install` with your host flags. To MOVE to a newer bkit, use `pnpm bkit upgrade --latest` (or `--to=<version>`) — it bumps @cbartens/bkit AND re-renders in one step; `pnpm add @cbartens/bkit` alone does NOT re-render. The docs/*.md managed blocks (testing.md, deployments.md, templates/bkit-plan.md, …) are bkit-owned and must be regenerated after every version bump so agents read current doctrine. Edit consumer-owned content OUTSIDE the `<!-- bkit:start -->`/`<!-- bkit:end -->` block; never hand-edit inside it.",
+      "Re-render every bkit-managed file at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs every host, doc and hook) or re-run `pnpm bkit install` with your host flags. To MOVE to a newer bkit, use `pnpm bkit upgrade --latest` (or `--to=<version>`) — it bumps @cbartens/bkit AND re-renders in one step; `pnpm add @cbartens/bkit` alone does NOT re-render. Never hand-edit a rendered agent/command or the content between `bkit:start` and `bkit:end`: put your own content outside the block, where install and upgrade never write.",
   };
 }
 
@@ -2530,18 +2428,11 @@ export function runPostInstallCheck(
 ): PreflightFinding[] {
   const phase3: PreflightFinding[] = [];
 
-  // Rendered prompts/workflows version gate — in `bkit check`, a blocker on
-  // main/dev (or a PR into them) and a non-blocking advisory on feature branches
-  // when a mirror's managed-version marker drifts from the installed version. No-op
-  // in real install/upgrade (markers were just re-stamped in Phase 2).
-  const renderedStale = detectRenderedPromptsStale(cwd);
-  if (renderedStale) phase3.push(renderedStale);
-
-  // Managed docs/*.md version gate — same branch-scoped severity:
-  // blocker on main/dev, advisory on feature branches when a bkit-owned doc's
-  // managed-version marker drifts. No-op in real install/upgrade (re-stamped Phase 2).
-  const docsStale = detectManagedDocsStale(cwd);
-  if (docsStale) phase3.push(docsStale);
+  // Managed-version marker gate — in `bkit check`, a blocker on main/dev (or a PR into
+  // them) and a non-blocking advisory on feature branches when any stamped file's marker
+  // drifts from the installed version. No-op in real install/upgrade (re-stamped Phase 2).
+  const managedStale = detectManagedStale(cwd);
+  if (managedStale) phase3.push(managedStale);
 
   // Shell token
   const shellStatus = detectShellToken();

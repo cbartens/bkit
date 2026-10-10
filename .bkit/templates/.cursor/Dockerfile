@@ -2,9 +2,8 @@
 # Example. Copy into the repo and own it.
 # bkit install does not write this file and does not overwrite a copy.
 #
-# The block between the `# <!-- bkit:start -->` and `# <!-- bkit:end -->` markers
-# below installs the toolchain bkit's workflows use (vale, gh, jq, python3,
-# corepack-pinned pnpm). Adapt the rest to your stack:
+# The `bkit toolchain` section below installs the toolchain bkit's workflows use
+# (vale, gh, jq, python3, corepack-pinned pnpm). Adapt the rest to your stack:
 #   - `FROM` base image
 #   - Node major (default 20; pin to match `engines.node` / `.nvmrc`)
 #   - System deps (curl, ca-certificates baseline; add libpq, ruby, etc.)
@@ -17,7 +16,7 @@ FROM ubuntu:26.04@sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea264
 
 # --- Consumer-owned: base system + Node ------------------------------------
 # bkit's toolchain assumes curl, ca-certificates, and Node >=20 are on PATH
-# before the bkit block runs. Pin Node to match your repo's `engines.node`.
+# before the bkit toolchain section runs. Pin Node to match your repo's `engines.node`.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -25,11 +24,10 @@ RUN curl -fsSL --retry 3 --retry-all-errors https://deb.nodesource.com/setup_20.
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# <!-- bkit:start -->
 # --- bkit toolchain (keep as shipped; diff against bkit's template) ---------
 # Aligned with the Claude Code on the web setup script in bkit's `cloud.md`.
 # Updates arrive in `.bkit/templates/.cursor/Dockerfile` on `bkit upgrade`; put repo
-# extensions outside this block.
+# extensions under Consumer extensions below.
 
 # System deps the preflight hook + bkit workflows depend on.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -54,7 +52,6 @@ RUN cd /tmp \
 
 # pnpm — corepack-pinned to match `packageManager` in package.json.
 RUN corepack enable && corepack prepare pnpm@10.34.3 --activate
-# <!-- bkit:end -->
 
 # --- Consumer extensions ---------------------------------------------------
 # Add per-repo install steps here. Uncomment / adapt as needed:

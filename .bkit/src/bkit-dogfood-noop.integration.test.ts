@@ -11,6 +11,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getPkgRoot, isDogfood } from "./bkit-paths";
 import { runPayload } from "./bkit-install";
+import { applyTokens } from "./bkit-tokens";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -86,7 +87,7 @@ describe("runPayload() — zero writes when isDogfood() (in-repo install)", () =
 //
 // `.bkit/scripts` is excluded from the npm `files` list — consumers receive
 // scripts from `.bkit/templates/.bkit/scripts/`; the root copy is the dogfood
-// mirror, so every shipped script must be byte-identical in both homes.
+// mirror, so every shipped script must equal its template as install renders it.
 
 describe("dogfood byte-identity — .bkit/scripts", () => {
   const pkgRoot = getPkgRoot();
@@ -96,11 +97,14 @@ describe("dogfood byte-identity — .bkit/scripts", () => {
     expect(shipped.length).toBeGreaterThan(0);
   });
 
-  it.each(shipped)("%s: root copy === template copy (byte-identical)", (name) => {
+  it.each(shipped)("%s: root copy === rendered template copy", (name) => {
     const root = path.join(pkgRoot, ".bkit/scripts", name);
     const tmpl = path.join(pkgRoot, ".bkit/templates/.bkit/scripts", name);
     expect(fs.existsSync(root)).toBe(true);
-    expect(fs.readFileSync(root, "utf-8")).toBe(fs.readFileSync(tmpl, "utf-8"));
+    const tokens = { DEFAULT_BRANCH: "", PROJECT_NAME: "", REPO_SLUG: "" };
+    expect(fs.readFileSync(root, "utf-8")).toBe(
+      applyTokens(fs.readFileSync(tmpl, "utf-8"), tokens),
+    );
   });
 });
 

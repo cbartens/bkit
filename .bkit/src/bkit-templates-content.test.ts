@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { isTemplate } from "./bkit-modules";
-import { listFilesRecursive } from "./bkit-install";
+import { listFilesRecursive, remapTemplateDest } from "./bkit-install";
 import { BKIT_GATE_SCRIPTS, LINT_PROSE_SCRIPT, SLOP_DELTA_SCRIPT } from "./bkit-manifest";
 
 const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/ci.yml");
@@ -131,12 +131,13 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
       expect(step).toMatch(/git diff --name-only "origin\/\$DEFAULT_BRANCH" HEAD/);
     });
 
-    it("is token-free (default branch read at runtime, so the block is identical per repo)", () => {
-      // No bkit {{TOKEN}} inside the block; the default branch comes from the Actions
+    it("is token-free (default branch read at runtime, so the step is identical per repo)", () => {
+      // No bkit {{TOKEN}} inside the step; the default branch comes from the Actions
       // context at runtime.
       const block =
-        content.match(/# bkit:start main-lag-warning\n[\s\S]*?# bkit:end main-lag-warning/)?.[0] ??
-        "";
+        content.match(
+          /- name: Check Default Branch Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/,
+        )?.[0] ?? "";
       expect(block).toContain("- name: Check Default Branch Lags Dev");
       expect(block).toContain("DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}");
       expect(block).not.toMatch(/\{\{[A-Z_]+\}\}/);
@@ -446,9 +447,8 @@ describe("consumer .prettierignore template (.bkit/templates/.prettierignore)", 
     expect(fs.existsSync(CONSUMER_PRETTIERIGNORE_TEMPLATE)).toBe(true);
   });
 
-  it("contains the bkit-managed block markers", () => {
-    expect(content).toContain("# bkit:start");
-    expect(content).toContain("# bkit:end");
+  it("carries no bkit:start / bkit:end block (bkit never writes a template)", () => {
+    expect(content).not.toMatch(/^# bkit:(start|end)\b/m);
   });
 });
 
@@ -468,20 +468,15 @@ describe("templates", () => {
     }
   });
 
-  it("ships the code-graph scripts without a bkit managed block", () => {
-    for (const rel of [
-      "scripts/graphify/bkit-graphify.sh",
-      "scripts/graphify/bkit-graphify-rollup.py",
-      "scripts/serena/bkit-serena-mcp.sh",
-      "scripts/secrets/bkit-secrets.mjs",
-      "scripts/secrets/bkit-secrets.config.mjs",
-      "scripts/prettier/bkit-insert-ignore.mjs",
-      "scripts/graphify/bkit-graph-drift-rules.json",
-      ".graphifyignore",
-      ".serena/project.yml",
-      "docs/capabilities.md",
-    ]) {
-      expect(fs.readFileSync(path.join(root, rel), "utf-8"), rel).not.toMatch(/bkit:start/);
+  it("no template carries a bkit:start / bkit:end block (bkit never writes a template)", () => {
+    const templates = listFilesRecursive(root)
+      .map((abs) => path.relative(root, abs))
+      .filter((rel) => isTemplate(remapTemplateDest(rel)));
+    expect(templates).toContain(path.join(".github", "workflows", "ci.yml"));
+    for (const rel of templates) {
+      expect(fs.readFileSync(path.join(root, rel), "utf-8"), rel).not.toMatch(
+        /^[ \t]*(?:#|\/\/)?[ \t]*(?:<!--[ \t]*)?bkit:(?:start|end)\b/m,
+      );
     }
   });
 

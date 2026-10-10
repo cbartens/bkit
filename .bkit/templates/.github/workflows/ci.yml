@@ -1,7 +1,7 @@
 # Example. Copy into the repo and own it.
 # bkit install does not write this file and does not overwrite a copy.
-# Keep the `# bkit:start verbose-ci-env` block below intact if you want verbose-CI
-# support: it is where the `[verbose ci]` commit marker is read.
+# The job-level `env:` of bkit-tests-static is where the `[verbose ci]` commit marker is
+# read; keep it if you want verbose-CI support.
 name: CI
 
 on:
@@ -33,7 +33,6 @@ jobs:
   # bkit-tests-unit — wall-clock = MAX(lane).
   bkit-tests-static:
     runs-on: ubuntu-latest
-    # bkit:start verbose-ci-env
     # [verbose ci] marker — escalates CI log detail for one run. Composes freely with
     # [force build] / [force full] / [force cache] / [skip ci] (independent contains() per marker).
     # Markers are bare substrings — bkit-emitted commits prepend `bkit ` for attribution
@@ -63,14 +62,12 @@ jobs:
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
       NODE_OPTIONS: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '--trace-warnings --trace-deprecation' || '' }}
       BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
-    # bkit:end verbose-ci-env
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history so slop:delta can materialise the PR base ref as a worktree.
           fetch-depth: 0
 
-      # bkit:start ts-ci-steps optional
       # Node/TS toolchain region. On a non-Node repo, replace these steps with your
       # stack's setup / install commands (and the typecheck / lint / test steps below with
       # its own). Replace `{{NODE_VERSION}}` with your Node major (`.bkit/templates.md`).
@@ -81,7 +78,6 @@ jobs:
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
       # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      # bkit:end ts-ci-steps
 
       # Under [verbose ci]: propagate DEBUG to all subsequent steps via $GITHUB_ENV. Note
       # that steps with their own `env:` block override $GITHUB_ENV — those steps must
@@ -141,7 +137,6 @@ jobs:
             fi
           fi
 
-      # bkit:start main-lag-warning
       # Promotion-lag reminder (non-blocking). Renovate reads its config
       # ONLY from the default branch, and scheduled / default-branch-triggered Actions run the
       # default branch's copy of each workflow — so a renovate.json5 or .github/workflows/ edit
@@ -149,7 +144,7 @@ jobs:
       # branch PR lands. CI on dev validates the code; nothing otherwise checks it reached the
       # default branch. Warns (never fails) on dev pushes when those consumed-from-default-branch
       # surfaces differ — keyed ONLY on those surfaces, so ordinary app-code dev pushes stay
-      # quiet. The default branch is read at runtime, so this block is identical for every repo.
+      # quiet. The default branch is read at runtime, so this step is identical for every repo.
       # Safe to keep in any repo: it only runs on dev pushes and self-skips when the default
       # branch is dev/unset, so it never fires where the dev -> default-branch flow does not apply.
       # See docs/deployments.md § "Promotion-lag warning".
@@ -183,7 +178,6 @@ jobs:
             echo "They run the **$DEFAULT_BRANCH** version until promoted. Open a \`dev\` -> \`$DEFAULT_BRANCH\` PR to apply them."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::warning::$DEFAULT_BRANCH is $BEHIND commit(s) behind dev and consumed-from-$DEFAULT_BRANCH surfaces (Renovate config / workflows) differ — they run STALE until you promote dev -> $DEFAULT_BRANCH. See the run summary."
-      # bkit:end main-lag-warning
 
       # bkit-stub:migrations-immutable — Block edits to an already-merged migration. The if: below is the
       # pre-planner shape (pull_request only). Once bkit-tests-scope exists, run this on every event
@@ -202,7 +196,6 @@ jobs:
       #     done
       #     exit $EXIT
 
-      # bkit:start ts-ci-steps optional
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
         # Write the GH Packages auth token into pnpm's user-level config before install
@@ -268,7 +261,6 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: pnpm slop:delta "$BASE_SHA"
-      # bkit:end ts-ci-steps
 
       # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
       # (${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
@@ -287,19 +279,17 @@ jobs:
           done
           "$RUNNER_TEMP/actionlint" -color
 
-      # bkit:start ts-ci-steps optional
       - name: Run bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
-      # bkit:end ts-ci-steps
 
   # ── bkit-tests-unit ───────────────────────────────────────────────────────
   # Unit lane. Parallel sibling of bkit-tests-static. Integration, E2E, deploy-await,
   # and remote db push move out of this job when you adopt the scaffold below.
   bkit-tests-unit:
     runs-on: ubuntu-latest
-    # Env vars duplicated from bkit-tests-static's verbose-ci-env block.
-    # See the verbose-ci-env block comment in bkit-tests-static — NODE_OPTIONS is a
+    # Env vars duplicated from bkit-tests-static's job-level `env:`.
+    # See the comment above that `env:` in bkit-tests-static — NODE_OPTIONS is a
     # static YAML key here and never a $GITHUB_ENV write.
     env:
       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
@@ -312,13 +302,11 @@ jobs:
           # Full history needed for E2E / supabase stubs when enabled.
           fetch-depth: 0
 
-      # bkit:start ts-ci-steps optional
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: {{NODE_VERSION}}
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      # bkit:end ts-ci-steps
 
       # NODE_OPTIONS is a job-level `env:` key above, never a $GITHUB_ENV write — the runner
       # rejects that write and still reports success. See bkit-tests-static's block comment.
@@ -389,7 +377,6 @@ jobs:
       #       done
       #     done
 
-      # bkit:start ts-ci-steps optional
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
         run: |
@@ -397,7 +384,6 @@ jobs:
           pnpm install --frozen-lockfile
         env:
           BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
-      # bkit:end ts-ci-steps
 
       # bkit-stub:supabase-migrate — REMOTE `db push` belongs in `bkit-tests-migration`, NOT here
       # and NOT in `bkit-tests-e2e-web`. Prefer the migration-lane stub below
@@ -443,7 +429,6 @@ jobs:
       #       fi
       #     done
 
-      # bkit:start ts-ci-steps optional
       - name: Run Unit Tests
         if: steps.cache.outputs.skip != 'true'
         env:
@@ -460,7 +445,6 @@ jobs:
           else
             echo "::warning::test:integration script not found in package.json — skipping integration tests"
           fi
-      # bkit:end ts-ci-steps
 
       # bkit-stub:coverage — Report vitest coverage on PRs via davelosert/vitest-coverage-report-action (free, runs entirely inside Actions with GITHUB_TOKEN — no third-party service, safe for private repos). Report-only by default: nothing fails the build until YOU set a threshold. PER-TIER: unit and integration are measured and commented SEPARATELY (a single merged number lets integration mask a hollow unit suite). To enable: make the edits below, uncomment the two steps, and delete this stub header.
       #   1. devDep + config. Add `@vitest/coverage-v8` (pin to your vitest major) and a coverage block in vitest.config:
@@ -757,7 +741,7 @@ jobs:
 #   static/unit/integration/build-*: needs:[bkit-tests-scope]; if: run_level != 'none'; timeout-minutes: 20
 #   Emit <tier>_ran from the runner summary. Capstone asserts >0. testing.md § Validated means executed.
 #   deployments.md § Parallel test lanes.
-#   env: [D] scope TURBO_TOKEN/VERCEL_*/SUPABASE_* here (least-privilege); KEEP the named verbose-ci-env block from the starter (preflight checks it by name).
+#   env: [D] scope TURBO_TOKEN/VERCEL_*/SUPABASE_* here (least-privilege); KEEP the verbose-CI job-level `env:` from the starter's bkit-tests-static.
 #     steps:
 #       - name: Checkout Repository          # [U] fetch-depth: 0 only if running slop-scan delta
 #       - name: Fetch Base Branch            # [M/PR] if: pull_request — base for --filter/diffs

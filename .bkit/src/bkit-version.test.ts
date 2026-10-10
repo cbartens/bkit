@@ -12,6 +12,7 @@ import {
   hashFile,
   isConsumerModified,
   managedVersionMarker,
+  readManagedVersion,
   stampManagedVersion,
   MANAGED_MARKER_VERSION_RE,
   type BkitVersion,
@@ -269,6 +270,33 @@ describe("managedVersionMarker", () => {
   it("round-trips through the extraction regex", () => {
     expect(managedVersionMarker("4.0.0").match(MANAGED_MARKER_VERSION_RE)?.[1]).toBe("4.0.0");
     expect(managedVersionMarker("12.34.56").match(MANAGED_MARKER_VERSION_RE)?.[1]).toBe("12.34.56");
+  });
+
+  it("wraps the same marker text in the hash and slash comment forms", () => {
+    const html = managedVersionMarker("4.0.0");
+    expect(managedVersionMarker("4.0.0", "hash")).toBe(`# ${html}`);
+    expect(managedVersionMarker("4.0.0", "slash")).toBe(
+      `// ${html.replace(/^<!-- /, "").replace(/ -->$/, "")}`,
+    );
+  });
+});
+
+describe("readManagedVersion", () => {
+  it("reads the version from a full-line marker in every form", () => {
+    for (const form of ["html", "hash", "slash"] as const) {
+      expect(readManagedVersion(`x\n${managedVersionMarker("4.2.0", form)}\ny\n`)).toBe("4.2.0");
+    }
+  });
+
+  it("ignores a marker quoted mid-line in prose", () => {
+    expect(readManagedVersion("Docs stamp a `<!-- bkit:managed vX.Y.Z … -->` marker.\n")).toBe(
+      null,
+    );
+  });
+
+  it("returns the first marker when several are present", () => {
+    const content = `${managedVersionMarker("1.0.0")}\n${managedVersionMarker("2.0.0", "slash")}\n`;
+    expect(readManagedVersion(content)).toBe("1.0.0");
   });
 });
 

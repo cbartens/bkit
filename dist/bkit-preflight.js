@@ -216,8 +216,8 @@ export function detectGitignoreBlockDuplicates(cwd) {
 // ---------------------------------------------------------------------------
 // [verbose ci] marker advisories (BAR-224)
 // ---------------------------------------------------------------------------
-// No presence detector for the ci.yml `verbose-ci-env` block: ci.yml is the consumer's copy
-// of a template, so bkit never checks its blocks.
+// No presence detector for the ci.yml verbose-CI `env:`: ci.yml is the consumer's copy of
+// a template, so bkit never checks it.
 /**
  * Advisory: consumer's Playwright invocation passes `--reporter=line`, which
  * overrides the configured reporter chain in `playwright.config.ts`. Under

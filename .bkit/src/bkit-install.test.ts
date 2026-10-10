@@ -706,31 +706,31 @@ describe("extractNamedBlocks", () => {
     const yaml =
       "jobs:\n" +
       "  t:\n" +
-      "    # bkit:start verbose-ci-env\n" +
+      "    # bkit:start env-block\n" +
       "    env:\n" +
       "      V: '1'\n" +
-      "    # bkit:end verbose-ci-env\n" +
+      "    # bkit:end env-block\n" +
       "    steps:\n" +
-      "      # bkit:start main-lag-warning optional\n" +
+      "      # bkit:start lag-step optional\n" +
       "      - run: echo lag\n" +
-      "      # bkit:end main-lag-warning\n";
+      "      # bkit:end lag-step\n";
     const m = extractNamedBlocks(yaml);
-    expect(new Set(m.keys())).toEqual(new Set(["verbose-ci-env", "main-lag-warning"]));
+    expect(new Set(m.keys())).toEqual(new Set(["env-block", "lag-step"]));
     // Raw line indentation is preserved (same contract as extractManagedBlock) — both the
     // template and consumer blocks carry identical indentation, so the comparison is exact.
-    expect(m.get("verbose-ci-env")?.body).toBe("    env:\n      V: '1'");
-    expect(m.get("verbose-ci-env")?.optional).toBe(false);
-    expect(m.get("main-lag-warning")?.body).toBe("      - run: echo lag");
-    expect(m.get("main-lag-warning")?.optional).toBe(true);
+    expect(m.get("env-block")?.body).toBe("    env:\n      V: '1'");
+    expect(m.get("env-block")?.optional).toBe(false);
+    expect(m.get("lag-step")?.body).toBe("      - run: echo lag");
+    expect(m.get("lag-step")?.optional).toBe(true);
   });
 
   it("ignores backtick-quoted prose mentions of markers (line-anchored matching)", () => {
     const content =
-      "# The one exception is the `# bkit:start verbose-ci-env` block below.\n" +
-      "jobs:\n  t:\n    # bkit:start verbose-ci-env\n    env: {}\n    # bkit:end verbose-ci-env\n";
+      "# The one exception is the `# bkit:start env-block` block below.\n" +
+      "jobs:\n  t:\n    # bkit:start env-block\n    env: {}\n    # bkit:end env-block\n";
     const m = extractNamedBlocks(content);
-    expect([...m.keys()]).toEqual(["verbose-ci-env"]);
-    expect(m.get("verbose-ci-env")?.body).toBe("    env: {}");
+    expect([...m.keys()]).toEqual(["env-block"]);
+    expect(m.get("env-block")?.body).toBe("    env: {}");
   });
 
   it("drops an unterminated block (no matching end)", () => {

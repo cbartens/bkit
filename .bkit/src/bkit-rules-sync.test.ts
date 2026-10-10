@@ -2,7 +2,8 @@
 //
 // Asserts that the `bkit:start`→`bkit:end` managed block in bkit's own
 // `.agents/rules.md` byte-equals the same block in the canonical template at
-// `.bkit/templates/.agents/rules.md`.
+// `.bkit/templates/.agents/rules.md`, as install renders it (managed-version marker
+// resolved).
 //
 // D3 constraint: compare the MANAGED BLOCK ONLY (between `<!-- bkit:start -->`
 // and `<!-- bkit:end -->` inclusive). Everything after the closing marker is
@@ -14,6 +15,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { getPkgRoot } from "./bkit-paths.js";
+import { applyTokens } from "./bkit-tokens.js";
 
 // ---------------------------------------------------------------------------
 // extractManagedBlock — extract `<!-- bkit:start -->` … `<!-- bkit:end -->`
@@ -55,7 +57,11 @@ describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", ()
 
   it("managed bkit:start→bkit:end block is byte-identical between .agents/rules.md and the template", () => {
     const agentsContent = fs.readFileSync(agentsRulesPath, "utf-8");
-    const templateContent = fs.readFileSync(templateRulesPath, "utf-8");
+    const templateContent = applyTokens(fs.readFileSync(templateRulesPath, "utf-8"), {
+      DEFAULT_BRANCH: "",
+      PROJECT_NAME: "",
+      REPO_SLUG: "",
+    });
 
     const agentsBlock = extractManagedBlock(agentsRulesPath, agentsContent);
     const templateBlock = extractManagedBlock(templateRulesPath, templateContent);

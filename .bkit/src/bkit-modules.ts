@@ -10,7 +10,6 @@ import * as path from "node:path";
 import {
   writeTier1,
   writeTier2,
-  writeIfAbsent,
   writeTier2JsonContained,
   deepMergeJson,
   migrateLegacyBkitEnvelope,
@@ -23,6 +22,7 @@ import {
   readBkitVersion,
   writeBkitVersion,
   hashFile,
+  managedVersionMarker,
   stampManagedVersion,
 } from "./bkit-version.js";
 import type { TokenMap } from "./bkit-tokens.js";
@@ -265,15 +265,6 @@ const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "gitignore", ".gitattributes"]
 const SUBTEMPLATE_MODULE_OWNED = new Set([".env.example"]);
 
 /**
- * Core templates written once when absent and never again (writeIfAbsent): the consumer
- * owns them from the first install. No hash, no `bkit check` drift, skipped by the
- * upgrade walk when present, left in place by uninstall.
- */
-export const CREATE_IF_MISSING_PATHS: ReadonlySet<string> = new Set([
-  path.join(".agents", "skills.md"),
-]);
-
-/**
  * Templates. Install and upgrade copy them into the consumer's `.bkit/templates/`
  * and never apply them. A consumer copies the file into the repo and owns it.
  */
@@ -345,63 +336,36 @@ export function guardTemplatesRoot(root: string, logPrefix = "[bkit-modules]"): 
   }
 }
 
-// Run templates pass only for core-owned files (top-level md files, docs/, .agents/ subtemplates).
-// Each other module handles its own template files directly.
-function runCoreTemplates(
-  dryRun: boolean,
-  tokens: TokenMap,
-  ws: WriteSet,
-  logPrefix: string,
-): void {
-  const root = getTemplatesRoot();
-  guardTemplatesRoot(root, logPrefix);
-
-  const tag = dryRun ? "[dry-run] " : "";
-
-  // Process top-level entries
-  for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
-    const name = ent.name;
-    // Skip non-core module dirs/files
-    if (NON_CORE_TEMPLATE_DIRS.has(name)) continue;
-    // Only process known core files or core dirs
-    if (!CORE_TEMPLATE_FILES.has(name) && !CORE_TEMPLATE_DIRS.has(name) && !ent.isDirectory()) {
-      // Root-level template files outside the core set belong to another module or are
-      // templates (copied by syncTemplateCopies) — skip.
-      continue;
-    }
-    if (ent.isDirectory() && !CORE_TEMPLATE_DIRS.has(name)) continue;
-
-    const srcPath = path.join(root, name);
-    if (ent.isFile()) {
-      // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
-      const dstPath = remapTemplateDest(name);
-      const prevLen = ws.writes.length;
-      writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
-      if (ws.writes.length > prevLen) {
-        console.log(`${logPrefix} ${tag}core: ${dstPath}`);
-      }
-    } else if (ent.isDirectory()) {
-      // Process the directory recursively
-      processCoreTemplateDir(srcPath, name, dryRun, tokens, ws, logPrefix);
-    }
-  }
-
-  // Note: `.agents/` subtemplates in `templates/.agents/` ARE processed here
-  // (via CORE_TEMPLATE_DIRS): their managed block is sourced from the template,
-  // never from bkit's own dogfood `.agents/*.md`. These basenames are listed in
-  // COPY_EXCLUDE so copyAdditive never writes the same destination paths.
+/** A core-owned template and how install writes it. */
+interface CoreTemplateFile {
+  /** Absolute template path. */
+  src: string;
+  /** Consumer-relative destination. */
+  dst: string;
+  /** `block`: writeTier2 refreshes the html-comment managed block. `whole`: writeTier1. */
+  scope: "block" | "whole";
 }
 
-function processCoreTemplateDir(
-  srcDir: string,
-  relBase: string,
-  dryRun: boolean,
-  tokens: TokenMap,
-  ws: WriteSet,
-  logPrefix: string,
-): void {
-  const tag = dryRun ? "[dry-run] " : "";
-  if (!fs.existsSync(srcDir)) return;
+// The core-owned templates (top-level AGENTS.md / .gitignore / .gitattributes, docs/,
+// .agents/, .bkit/scripts/). Each other module handles its own template files directly.
+// `.agents/` templates are sourced from the templates tree, never from bkit's own dogfood
+// `.agents/*.md`; COPY_EXCLUDE lists their basenames so copyAdditive never writes them.
+function listCoreTemplateFiles(root: string): CoreTemplateFile[] {
+  const out: CoreTemplateFile[] = [];
+  for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+    const name = ent.name;
+    if (NON_CORE_TEMPLATE_DIRS.has(name)) continue;
+    if (ent.isFile() && CORE_TEMPLATE_FILES.has(name)) {
+      // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
+      out.push({ src: path.join(root, name), dst: remapTemplateDest(name), scope: "block" });
+    } else if (ent.isDirectory() && CORE_TEMPLATE_DIRS.has(name)) {
+      collectCoreTemplateDir(path.join(root, name), name, out);
+    }
+  }
+  return out;
+}
+
+function collectCoreTemplateDir(srcDir: string, relBase: string, out: CoreTemplateFile[]): void {
   for (const ent of fs.readdirSync(srcDir, { withFileTypes: true })) {
     // Skip subtemplate files another module writes (e.g. .bkit/.env.example).
     if (
@@ -414,36 +378,35 @@ function processCoreTemplateDir(
     const srcPath = path.join(srcDir, ent.name);
     const relPath = path.join(relBase, ent.name);
     if (ent.isDirectory()) {
-      processCoreTemplateDir(srcPath, relPath, dryRun, tokens, ws, logPrefix);
+      collectCoreTemplateDir(srcPath, relPath, out);
     } else if (ent.isFile()) {
       // Templates live under core dirs (scripts/, docs/) but are not installed.
       if (isTemplate(relPath)) continue;
       // Skip opt-in-module-owned files that happen to live under a core dir.
       if (CORE_TEMPLATE_PATH_EXCLUDE.has(relPath)) continue;
-      const dstPath = relPath;
-      if (CREATE_IF_MISSING_PATHS.has(relPath)) {
-        if (writeIfAbsent(srcPath, dstPath, tokens, dryRun)) {
-          console.log(`${logPrefix} ${tag}core: ${dstPath}`);
-        }
-        continue;
-      }
-      const prevLen = ws.writes.length;
-      if (relBase === path.join(".bkit", "scripts")) {
-        // `.bkit/scripts/*` are bkit-owned executables with NO consumer-editable region.
-        // They were being handed to writeTier2 with the html-comment marker style, which no
-        // shell script uses: `extractFullManagedBlock` returned null, writeTier2 returned
-        // early, and once seeded a modified script was never re-rendered and never entered
-        // the drift comparison — `bkit check` exited 0 on a tampered script the merge gate
-        // relied on. The upgrade engine already treats every one of them whole-file
-        // (non-markdown, no manifest entry → diffFile/conflict), so Tier 1 here is what makes
-        // install, upgrade and check agree.
-        writeTier1(srcPath, dstPath, tokens, dryRun, ws);
-      } else {
-        writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
-      }
-      if (ws.writes.length > prevLen) {
-        console.log(`${logPrefix} ${tag}core: ${dstPath}`);
-      }
+      // `.bkit/scripts/*` are bkit-owned whole files with no consumer region: Tier 1,
+      // overwritten and drift-checked whole, as the upgrade engine treats them.
+      const scope = relBase === path.join(".bkit", "scripts") ? "whole" : "block";
+      out.push({ src: srcPath, dst: relPath, scope });
+    }
+  }
+}
+
+function runCoreTemplates(
+  dryRun: boolean,
+  tokens: TokenMap,
+  ws: WriteSet,
+  logPrefix: string,
+): void {
+  const root = getTemplatesRoot();
+  guardTemplatesRoot(root, logPrefix);
+  const tag = dryRun ? "[dry-run] " : "";
+  for (const { src, dst, scope } of listCoreTemplateFiles(root)) {
+    const prevLen = ws.writes.length;
+    if (scope === "whole") writeTier1(src, dst, tokens, dryRun, ws);
+    else writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+    if (ws.writes.length > prevLen) {
+      console.log(`${logPrefix} ${tag}core: ${dst}`);
     }
   }
 }
@@ -505,9 +468,9 @@ export const BKIT_CANONICAL_DOCS = [
 ] as const;
 
 // Mirror the package's canonical `.bkit/*.md` docs into the consumer's `.bkit/`.
-// Tier 1 (force-overwrite + ws-tracked for dry-run/install parity). No-op in
-// dogfood: getBkitDocsRoot() resolves to <cwd>/.bkit, so src === dst and
-// writeTier1 short-circuits on the byte-equal check (no ws write).
+// Tier 1 (force-overwrite + ws-tracked for dry-run/install parity). Each source carries
+// the `{{BKIT_MANAGED_MARKER}}` token. Skipped in dogfood: getBkitDocsRoot() resolves to
+// <cwd>/.bkit, so the source is the destination and stays unrendered.
 export function runBkitDocs(
   dryRun: boolean,
   tokens: TokenMap,
@@ -526,6 +489,7 @@ export function runBkitDocs(
     // missing src).
     if (!fs.existsSync(srcPath)) continue;
     const dstPath = path.join(".bkit", name);
+    if (path.resolve(dstPath) === path.resolve(srcPath)) continue;
     const prevLen = ws.writes.length;
     if (formatByPath.get(path.join(".bkit", name)) === "markered-text") {
       writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
@@ -905,6 +869,78 @@ export function renderManagedOutputs(modules: Set<ModuleFlag>, ctx: ModuleContex
   if (modules.has("codex")) written.push(...renderCodexAgentsSkills(ctx));
 
   return written;
+}
+
+// ---------------------------------------------------------------------------
+// listStampedFiles — every file bkit writes that carries the managed-version marker
+// ---------------------------------------------------------------------------
+
+/** A file bkit writes into the consumer repo carrying the managed-version marker. */
+export interface StampedFile {
+  /** Consumer-relative path. */
+  path: string;
+  /** `block`: the marker is the first line of the file's bkit block. `whole`: bkit owns the file. */
+  scope: "block" | "whole";
+}
+
+/** Rendered mirror dirs: every `bkit-*` file of the given extension in each is bkit's. */
+const RENDERED_MIRRORS: ReadonlyArray<[dir: string, ext: string]> = [
+  [".claude/agents", ".md"],
+  [".claude/commands", ".md"],
+  [".cursor/agents", ".md"],
+  [".cursor/commands", ".md"],
+  [".opencode/agents", ".md"],
+  [".opencode/commands", ".md"],
+  [".codex/agents", ".toml"],
+];
+
+/**
+ * Every file bkit writes into `cwd` that carries the managed-version marker: the core
+ * templates (listCoreTemplateFiles), the non-JSON non-generated manifest entries of every
+ * module, and the rendered mirrors present on disk (agents, commands, the codex workflow
+ * skills). JSON files carry none. A `.bkit/*.md` doc whose package source is the destination
+ * (dogfood) is not rendered there, so it is left out. Paths only; whether each exists is the
+ * caller's to check.
+ */
+export function listStampedFiles(cwd: string): StampedFile[] {
+  const byPath = new Map<string, StampedFile>();
+  const add = (p: string, scope: StampedFile["scope"]): void => {
+    const rel = path.normalize(p);
+    if (!byPath.has(rel)) byPath.set(rel, { path: rel, scope });
+  };
+
+  for (const { dst, scope } of listCoreTemplateFiles(getTemplatesRoot())) add(dst, scope);
+
+  const canonicalDocs = new Set<string>(BKIT_CANONICAL_DOCS.map((n) => path.join(".bkit", n)));
+  for (const entry of getInstallManifest()) {
+    if (entry.format === "json" || entry.generated) continue;
+    if (entry.path === path.join(".bkit", "version")) continue;
+    if (
+      canonicalDocs.has(path.normalize(entry.path)) &&
+      path.resolve(cwd, entry.path) === path.resolve(getBkitDocsRoot(), path.basename(entry.path))
+    ) {
+      continue;
+    }
+    add(entry.path, entry.format === "markered-text" ? "block" : "whole");
+  }
+
+  for (const [dir, ext] of RENDERED_MIRRORS) {
+    const abs = path.join(cwd, dir);
+    if (!fs.existsSync(abs)) continue;
+    for (const f of fs.readdirSync(abs)) {
+      if (f.startsWith(BKIT_PREFIX) && f.endsWith(ext)) add(path.join(dir, f), "whole");
+    }
+  }
+  const skills = path.join(cwd, CODEX_SKILLS_DIR);
+  if (fs.existsSync(skills)) {
+    for (const d of fs.readdirSync(skills)) {
+      if (!d.startsWith(BKIT_PREFIX)) continue;
+      if (fs.existsSync(path.join(skills, d, "SKILL.md"))) {
+        add(path.join(CODEX_SKILLS_DIR, d, "SKILL.md"), "whole");
+      }
+    }
+  }
+  return [...byPath.values()];
 }
 
 function copyAdditive(
@@ -2546,7 +2582,7 @@ export function renderCodexAgentsSkills(ctx: ModuleContext): string[] {
     throw new Error("renderCodexAgentsSkills: ctx.codexModelLookup is required");
   }
 
-  // --- Agents: markdown+frontmatter -> TOML ---
+  // --- Agents: markdown+frontmatter -> TOML, managed-version marker as the first line ---
   {
     const src = getPromptsRoot();
     const dest = ".codex/agents";
@@ -2558,6 +2594,7 @@ export function renderCodexAgentsSkills(ctx: ModuleContext): string[] {
     for (const f of files) {
       const stem = f.replace(/\.md$/, "");
       const transform = (c: string) =>
+        `${managedVersionMarker(version, "hash")}\n` +
         applyCodexAgent(substituteWorkflow(c, issueTracker).output, codexModelLookup, effortMap);
       if (installFile(path.join(src, f), path.join(dest, `${stem}.toml`), transform, dryRun)) {
         const rel = path.join(dest, `${stem}.toml`);

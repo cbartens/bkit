@@ -11,13 +11,11 @@ export interface TokenMap {
   // `owner/repo` slug parsed from the `origin` remote, substituted for
   // `{{REPO_SLUG}}`. Empty string when origin is absent/unparseable.
   REPO_SLUG: string;
-  // Full `<!-- bkit:managed vX.Y.Z … -->` marker line for the INSTALLING bkit
-  // version. Substituted into the first line of
-  // each managed doc's `bkit:start` block so `bkit check` can flag a consumer
-  // running stale doctrine (`detectManagedDocsStale`). Optional so the many
-  // TokenMap literals (tests, the resolveTokens-failure fallback) need not set it
-  // — applyTokens computes the marker on demand when the placeholder is present.
-  BKIT_MANAGED_MARKER?: string;
+  // INSTALLING bkit version, stamped by the `{{BKIT_MANAGED_MARKER}}` token. Optional
+  // so the many TokenMap literals (tests, the resolveTokens-failure fallback) need
+  // not set it — applyTokens reads the package version on demand when the token is
+  // present.
+  BKIT_VERSION?: string;
 }
 
 // Read the INSTALLING bkit version from the package root (NOT the consumer's
@@ -78,7 +76,7 @@ export async function resolveTokens(cwd: string): Promise<TokenMap> {
     DEFAULT_BRANCH: resolveDefaultBranch(cwd),
     PROJECT_NAME: name.trim(),
     REPO_SLUG: resolveRepoSlug(cwd),
-    BKIT_MANAGED_MARKER: managedVersionMarker(readInstallingBkitVersion()),
+    BKIT_VERSION: readInstallingBkitVersion(),
   };
 }
 
@@ -94,13 +92,15 @@ export function applyTokens(content: string, tokens: TokenMap): string {
     .replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch)
     .replace(/\{\{PROJECT_NAME\}\}/g, () => projectName)
     .replace(/\{\{REPO_SLUG\}\}/g, () => repoSlug);
-  // BKIT_MANAGED_MARKER is resolved lazily: only touch the filesystem when the
-  // placeholder is actually present AND the caller's TokenMap omitted the value
-  // (resolveTokens always sets it; bare literals in tests / the install fallback
-  // do not). Keeps applyTokens IO-free for the overwhelmingly common case.
+  // {{BKIT_MANAGED_MARKER}} → the managed-version marker. A token after `// ` at a line
+  // start resolves to the slash form (JS); every other occurrence to the HTML comment,
+  // so `# {{BKIT_MANAGED_MARKER}}` yields the hash form. The version is read from the
+  // package only when the token is present and the TokenMap omits BKIT_VERSION.
   if (out.includes("{{BKIT_MANAGED_MARKER}}")) {
-    const marker = tokens.BKIT_MANAGED_MARKER ?? managedVersionMarker(readInstallingBkitVersion());
-    out = out.replace(/\{\{BKIT_MANAGED_MARKER\}\}/g, () => marker);
+    const version = tokens.BKIT_VERSION ?? readInstallingBkitVersion();
+    out = out
+      .replace(/^\/\/ \{\{BKIT_MANAGED_MARKER\}\}/gm, () => managedVersionMarker(version, "slash"))
+      .replace(/\{\{BKIT_MANAGED_MARKER\}\}/g, () => managedVersionMarker(version));
   }
   return out;
 }

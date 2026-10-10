@@ -34,6 +34,8 @@ cd "$REPO_ROOT"
 
 # <!-- bkit:start -->
 
+# <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # --- bkit baseline install (managed; do not edit) --------------------------
 
 # Workspace-trust check + drift alarm.

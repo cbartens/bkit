@@ -1,3 +1,4 @@
+# <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 name = "bkit-utility-update-decisions"
 description = "Senior editor correcting decisions the docs or codebase have since contradicted."
 model = "gpt-6-astra"

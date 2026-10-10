@@ -1,5 +1,7 @@
 # Cloud agent environments — Claude Code on the web + Cursor Cloud Agents + opencode
 
+{{BKIT_MANAGED_MARKER}}
+
 > [!CAUTION]
 > **Purpose:** Canonical reference for Claude Code on the web (mobile / web), Cursor Cloud Agents, and opencode cloud runners. Claude + opencode → **GitHub** tracker (unified `bkit-cloud.yml`); Cursor → **Linear**. Not interchangeable per repo — pick agent matching your tracker (see § Cloud-agent support matrix).
 >
@@ -392,7 +394,7 @@ When bkit reference Dockerfile changes (e.g. vale bump):
 1. `pnpm bkit install` — bkit-managed toolchain updates inside `# <!-- bkit:start -->` / `# <!-- bkit:end -->` of `.claude/hooks/cloud-bootstrap.sh` without touching consumer customisations outside markers. `.cursor/Dockerfile` is your copy of a template: diff it against `.bkit/templates/.cursor/Dockerfile` when `bkit upgrade` lists that path.
 2. Set `BKIT_LINEAR_API_KEY`, `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL` as **Runtime Secret**s in the Cloud Agents dashboard (`cursor.com/dashboard/cloud-agents` → your environment → **Secrets** tab). Paste-ready values are in `.cursor/cloud.md`.
 3. Add Claude environment **named after repo** at `claude.ai/code`; paste recipe from § Claude Code on the web (one environment per repo — secrets per-repo).
-4. Customise `.cursor/Dockerfile` Node major / Playwright / extra system deps. Keep the toolchain block between the markers as the template ships it, so a template diff stays readable.
+4. Customise `.cursor/Dockerfile` Node major / Playwright / extra system deps. Keep the `bkit toolchain` section as the template ships it, so a template diff stays readable.
 
 # Post-CI auto-routing
 

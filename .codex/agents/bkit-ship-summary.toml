@@ -1,3 +1,4 @@
+# <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 name = "bkit-ship-summary"
 description = "Senior reviewer evaluating ship cycles for completion and follow-up needs."
 model = "gpt-6-luna"

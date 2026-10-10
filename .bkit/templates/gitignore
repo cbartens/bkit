@@ -34,6 +34,8 @@ tmp/**
 
 # <!-- bkit:start -->
 
+# {{BKIT_MANAGED_MARKER}}
+
 # Worktrees, plan logs, per-run sentinels. Sentinels are written mid-run, read by
 # the same run's Failure Path, cleared at next Step 1 — never bookkeeping, so
 # path-scoped staging must not commit them.

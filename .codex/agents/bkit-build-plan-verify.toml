@@ -1,3 +1,4 @@
+# <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 name = "bkit-build-plan-verify"
 description = "Senior verifier checking that plan deliverables actually exist in the codebase."
 model = "gpt-6-astra"

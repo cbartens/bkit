@@ -44,7 +44,7 @@ const hasTools =
 // ---------------------------------------------------------------------------
 // Extraction — pull the "Resolve phase + brief context" `run: |` block out of
 // the raw template. occurrence 0 = claude job, 1 = opencode job (both bodies
-// are byte-identical per the shared-deriv contract asserted elsewhere —
+// are byte-identical per the SHARED-DERIV contract asserted elsewhere —
 // bkit-modules.integration.test.ts T2.7 — so tests run against occurrence 0).
 // ---------------------------------------------------------------------------
 function extractCtxStepScript(yaml: string, occurrence: number): string {

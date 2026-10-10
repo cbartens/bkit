@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
+import { applyTokens } from "./bkit-tokens";
 
 const HOOK = path.resolve(".bkit/templates/.cursor/hooks/guardrails.cjs");
 
@@ -143,10 +144,10 @@ describe("cursor guardrails.cjs — managed-block boundary", () => {
 
 // T6 — template <-> installed-mirror byte parity for the guardrails hooks.
 //
-// The hook is shipped per host as a self-contained file, so each host's mirror is a
-// copy of its template. Same shape as bkit-gateguard-dogfood.integration.test.ts for
-// gateguard.cjs.
-describe("T6 — guardrails.cjs template and installed mirror are byte-identical", () => {
+// The hook is shipped per host as a self-contained file, so each host's mirror is its
+// template as install renders it (managed-version marker resolved). Same shape as
+// bkit-gateguard-dogfood.integration.test.ts for gateguard.cjs.
+describe("T6 — guardrails.cjs installed mirror is its rendered template", () => {
   const PAIRS: ReadonlyArray<readonly [string, string, string]> = [
     ["cursor", ".bkit/templates/.cursor/hooks/guardrails.cjs", ".cursor/hooks/guardrails.cjs"],
     ["claude", ".bkit/templates/.claude/hooks/guardrails.cjs", ".claude/hooks/guardrails.cjs"],
@@ -160,7 +161,13 @@ describe("T6 — guardrails.cjs template and installed mirror are byte-identical
       expect(
         fs.readFileSync(mirror, "utf-8"),
         `${mirror} is stale — run \`pnpm bkit install\``,
-      ).toBe(fs.readFileSync(template, "utf-8"));
+      ).toBe(
+        applyTokens(fs.readFileSync(template, "utf-8"), {
+          DEFAULT_BRANCH: "",
+          PROJECT_NAME: "",
+          REPO_SLUG: "",
+        }),
+      );
     });
   }
 

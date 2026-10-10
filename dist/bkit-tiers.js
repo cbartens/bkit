@@ -277,21 +277,6 @@ export function writeTier1(srcPath, dstPath, tokens, dryRun, ws) {
     }
     ws.writes.push({ path: dstPath, action: "write" });
 }
-// ---------------------------------------------------------------------------
-// create-if-missing — write the src content (tokens applied) once, when dst is absent.
-//
-// The consumer owns the file from then on: a present dst is never read or touched.
-// Pushes nothing to the WriteSet in either mode, so the file gets no hash and
-// `bkit check` never reports it — dry-run and live stay in parity by construction.
-// Returns whether it wrote (always false on dry-run).
-// ---------------------------------------------------------------------------
-export function writeIfAbsent(srcPath, dstPath, tokens, dryRun) {
-    if (dryRun || fs.existsSync(dstPath))
-        return false;
-    ensureDir(path.dirname(dstPath));
-    fs.writeFileSync(dstPath, applyTokens(fs.readFileSync(srcPath, "utf-8"), tokens), "utf-8");
-    return true;
-}
 export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws, noMarkerMigration) {
     const srcRaw = fs.readFileSync(srcPath, "utf-8");
     if (!fs.existsSync(dstPath)) {

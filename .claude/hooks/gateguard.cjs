@@ -42,6 +42,8 @@
 
 // bkit:start
 
+// bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh
+
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");

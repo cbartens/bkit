@@ -7,7 +7,6 @@ import { sha256 } from "./bkit-version";
 import {
   writeTier1,
   writeTier2,
-  writeIfAbsent,
   writeTier2JsonContained,
   migrateLegacyBkitEnvelope,
   deepContains,
@@ -350,46 +349,6 @@ describe("writeTier2 — noMarkerMigration policy (#422)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// create-if-missing
-// ---------------------------------------------------------------------------
-
-describe("writeIfAbsent", () => {
-  const tokens = {
-    DEFAULT_BRANCH: "main",
-    PROJECT_NAME: "p",
-    REPO_SLUG: "o/p",
-  };
-
-  it("writes the file (tokens applied) when dest is absent", () => {
-    const src = path.join(tmpDir, "context.md");
-    const dst = path.join(tmpDir, "out", "context.md");
-    fs.writeFileSync(src, "branch {{DEFAULT_BRANCH}}\n", "utf-8");
-
-    expect(writeIfAbsent(src, dst, tokens, false)).toBe(true);
-    expect(fs.readFileSync(dst, "utf-8")).toBe("branch main\n");
-  });
-
-  it("leaves a present dest byte-identical, however it differs from the source", () => {
-    const src = path.join(tmpDir, "context.md");
-    const dst = path.join(tmpDir, "context-out.md");
-    fs.writeFileSync(src, "bkit version\n", "utf-8");
-    fs.writeFileSync(dst, "the consumer's version\n", "utf-8");
-
-    expect(writeIfAbsent(src, dst, tokens, false)).toBe(false);
-    expect(fs.readFileSync(dst, "utf-8")).toBe("the consumer's version\n");
-  });
-
-  it("dry-run never touches disk", () => {
-    const src = path.join(tmpDir, "skills.md");
-    const dst = path.join(tmpDir, "nested", "skills.md");
-    fs.writeFileSync(src, "x\n", "utf-8");
-
-    expect(writeIfAbsent(src, dst, tokens, true)).toBe(false);
-    expect(fs.existsSync(path.dirname(dst))).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // ensurePackageJsonScripts — managed package.json scripts
 // ---------------------------------------------------------------------------
 
@@ -540,7 +499,7 @@ describe("detectMarkerStyle", () => {
   it.each([
     ["marker quoted in prose", "Wrap it in `<!-- bkit:start -->` markers.\n"],
     ["hash marker with a trailing label", "# bkit:start — managed block\nx\n# bkit:end\n"],
-    ["indented hash marker", "jobs:\n    # bkit:start auto-route-gate\n    # bkit:end\n"],
+    ["indented hash marker", "jobs:\n    # bkit:start gate\n    # bkit:end\n"],
     ["marker embedded mid-line", "some text <!-- bkit:start --> more text\n"],
     ["no markers", "plain content\n"],
     ["empty content", ""],

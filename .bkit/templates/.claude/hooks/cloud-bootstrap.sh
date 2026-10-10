@@ -33,6 +33,9 @@ REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 cd "$REPO_ROOT"
 
 # <!-- bkit:start -->
+
+# {{BKIT_MANAGED_MARKER}}
+
 # --- bkit baseline install (managed; do not edit) --------------------------
 
 # Workspace-trust check + drift alarm.
@@ -143,6 +146,7 @@ if [ -f .agents/context.md ]; then
     printf '%s\n' "$PROVISION" | bash || log "context-fetch CLI provisioning failed (non-blocking)"
   fi
 fi
+
 # <!-- bkit:end -->
 
 # --- Consumer extensions ---------------------------------------------------

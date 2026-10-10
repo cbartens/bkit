@@ -33,7 +33,6 @@ import {
   renderOpencodeJson,
   reconcileOpencodeJson,
   reconcileMcpJson,
-  CREATE_IF_MISSING_PATHS,
   renderManagedOutputs,
   enrichClaudeSettingsAllows,
   pruneRetiredClaudeAskRules,
@@ -2045,13 +2044,6 @@ async function main() {
             // `.bkit/templates/` copies instead (syncTemplateCopies below).
             if (isTemplate(relPath)) continue;
             if (relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH) continue;
-            // Create-if-missing files are the consumer's once written: never merged.
-            if (
-              CREATE_IF_MISSING_PATHS.has(relPath) &&
-              fs.existsSync(path.join(process.cwd(), relPath))
-            ) {
-              continue;
-            }
             // Skip opt-in-module files the consumer hasn't opted into (dest absent).
             if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
               continue;
@@ -2696,39 +2688,27 @@ async function main() {
 
   // Check mode: exit-1 on drift (totalWrites > 0). Banner already emitted above.
   // Host agent/command mirrors push would-writes into ws.writes (content drift OR
-  // orphan delete). A stale managed-version marker ALSO surfaces as the
-  // bkit-rendered-prompts-stale Phase-3 blocker, and the managed docs/*.md marker
-  // ALSO surfaces as bkit-managed-docs-stale. BOTH marker blockers count as drift here,
-  // so `bkit check` hard-fails on outdated rendered prompts/workflows AND outdated docs.
-  // A missing owned hook file (owned-hook-missing) fails check too, by name
-  // (cloud-bootstrap.sh is never in ws.writes). Other Phase-3 blockers are install-only.
+  // orphan delete). A stale managed-version marker on any stamped file ALSO surfaces as
+  // the bkit-managed-stale Phase-3 blocker, which counts as drift here. A missing owned
+  // hook file (owned-hook-missing) fails check too, by name (cloud-bootstrap.sh is never
+  // in ws.writes). Other Phase-3 blockers are install-only.
   //
-  // Gate on `severity === "blocker"`, NOT mere id-presence: both gates are
-  // branch-scoped (detectRenderedPromptsStale / detectManagedDocsStale downgrade to
-  // `advisory` off main/dev), so on a feature branch the finding still surfaces in
-  // the checklist but does not exit-1. On main/dev (or a PR into them) it stays a
-  // blocker and hard-fails.
+  // Gate on `severity === "blocker"`, NOT mere id-presence: detectManagedStale is
+  // branch-scoped (downgraded to `advisory` off main/dev), so on a feature branch the
+  // finding still surfaces in the checklist but does not exit-1. On main/dev (or a PR
+  // into them) it stays a blocker and hard-fails.
   if (dryRun) {
-    const renderedStale = postFindings.some(
-      (f) => f.id === "bkit-rendered-prompts-stale" && f.severity === "blocker",
+    const managedStale = postFindings.some(
+      (f) => f.id === "bkit-managed-stale" && f.severity === "blocker",
     );
-    const docsStale = postFindings.some(
-      (f) => f.id === "bkit-managed-docs-stale" && f.severity === "blocker",
-    );
-    if (totalWrites > 0 || renderedStale || docsStale || missingHooks.length > 0) {
+    if (totalWrites > 0 || managedStale || missingHooks.length > 0) {
       if (totalWrites > 0) {
         console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
       }
-      if (renderedStale) {
+      if (managedStale) {
         console.error(
-          `${LOG_PREFIX} check: rendered prompts/workflows are stale (managed-version marker drift) — ` +
-            `see the bkit-rendered-prompts-stale blocker above. Run \`pnpm bkit upgrade\` (or re-run install) and commit.`,
-        );
-      }
-      if (docsStale) {
-        console.error(
-          `${LOG_PREFIX} check: managed docs are stale (managed-version marker drift) — ` +
-            `see the bkit-managed-docs-stale blocker above. Run \`pnpm bkit upgrade\` (or re-run install) and commit.`,
+          `${LOG_PREFIX} check: bkit-managed files are stale (managed-version marker drift) — ` +
+            `see the bkit-managed-stale blocker above. Run \`pnpm bkit upgrade\` (or re-run install) and commit.`,
         );
       }
       for (const hook of missingHooks) {

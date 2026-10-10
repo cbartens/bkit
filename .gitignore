@@ -44,6 +44,8 @@ graphify-out/
 
 # <!-- bkit:start -->
 
+# <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Worktrees, plan logs, per-run sentinels. Sentinels are written mid-run, read by
 # the same run's Failure Path, cleared at next Step 1 — never bookkeeping, so
 # path-scoped staging must not commit them.

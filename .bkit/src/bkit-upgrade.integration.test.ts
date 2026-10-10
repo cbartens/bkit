@@ -24,9 +24,16 @@ import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runUpgrade } from "./bkit-upgrade";
 import { listFilesRecursive, remapTemplateDest } from "./bkit-install";
-import { isTemplate } from "./bkit-modules";
+import { isTemplate, listStampedFiles, readInstallingVersion } from "./bkit-modules";
 import { getTemplatesRoot } from "./bkit-paths";
-import { sha256, writeBkitVersion, readBkitVersion, type BkitVersion } from "./bkit-version";
+import { detectMarkerStyle, findLineAnchoredMarkers, selectMarkers } from "./bkit-markers";
+import {
+  sha256,
+  writeBkitVersion,
+  readBkitVersion,
+  readManagedVersion,
+  type BkitVersion,
+} from "./bkit-version";
 
 let tmpDir: string;
 let originalCwd: string;
@@ -538,8 +545,8 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
 
 // ---------------------------------------------------------------------------
 // Install writes no template outside .bkit/templates/, upgrade never touches an
-// adopted template copy or a create-if-missing file, and refreshes only the managed
-// block of .agents/context.md
+// adopted template copy, and refreshes only the managed block of .agents/context.md
+// and .agents/skills.md
 // ---------------------------------------------------------------------------
 
 describe("#489 — install and upgrade leave the consumer's own files alone", () => {
@@ -593,7 +600,7 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
     expect(listFilesRecursive(copies).length).toBe(templates.length);
   });
 
-  it("an adopted copy of every template and an edited .agents/skills.md survive upgrade and check", () => {
+  it("an adopted copy of every template survives upgrade and check", () => {
     if (!fs.existsSync(tsxBin)) return;
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
@@ -602,12 +609,8 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
       "utf-8",
     );
     expect(runCli(["install", "--claude", "--cursor", "--typescript"]).status).toBe(0);
-    // skills.md was written once by install.
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "skills.md"))).toBe(true);
 
-    const owned: Record<string, string> = {
-      [path.join(".agents", "skills.md")]: "<!-- bkit:start -->\nstale\n<!-- bkit:end -->\nmine\n",
-    };
+    const owned: Record<string, string> = {};
     for (const rel of templatePaths()) owned[rel] = `consumer's own ${rel}\n`;
     for (const [rel, content] of Object.entries(owned)) {
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
@@ -625,35 +628,177 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
     }
   });
 
-  it("check flags a stale .agents/context.md block; upgrade refreshes it and keeps the consumer's blocks", () => {
-    if (!fs.existsSync(tsxBin)) return;
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+  it.each([
+    [
+      path.join(".agents", "context.md"),
+      "\n\n## Enabled blocks\n\n<!-- context-fetch:start ours context=web -->\n```bash\necho ours\n```\n<!-- context-fetch:end -->\n",
+    ],
+    [
+      path.join(".agents", "skills.md"),
+      "\n\n## Project Skills\n\n| `ours/skills` | ours | ours |\n",
+    ],
+  ])(
+    "check flags a stale %s block; upgrade refreshes it and keeps the consumer's content",
+    (rel, consumer) => {
+      if (!fs.existsSync(tsxBin)) return;
+      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+        "utf-8",
+      );
+      expect(runCli(["install", "--claude"]).status).toBe(0);
+      const abs = path.join(tmpDir, rel);
+      const fresh = fs.readFileSync(abs, "utf-8");
+      const end = "<!-- bkit:end -->";
+      // The block's own rules may quote the end marker, so the real one is the last.
+      const endIdx = fresh.lastIndexOf(end);
+      const managed = fresh.slice(0, endIdx + end.length);
+      const stale = `${fresh.slice(0, endIdx)}stale rule\n${end}`;
+      fs.writeFileSync(abs, stale + consumer, "utf-8");
+
+      const flagged = runCli(["check"]);
+      expect(flagged.status, `${flagged.stdout}\n${flagged.stderr}`).toBe(1);
+      expect(`${flagged.stdout}\n${flagged.stderr}`).toContain(rel);
+
+      const upgrade = runCli(["upgrade", "--auto-apply"]);
+      expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
+      expect(fs.readFileSync(abs, "utf-8")).toBe(managed + consumer);
+      const check = runCli(["check"]);
+      expect(check.status, `${check.stdout}\n${check.stderr}`).toBe(0);
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Every file bkit writes or refreshes carries the managed-version marker
+//
+// The inventory is what a real install writes: every file git would track after an
+// install with every host and the claude cloud lane, minus JSON (no comment syntax) and
+// the template copies (bkit never applies them). Gitignored generated files
+// (`.claude/cloud.md`, `.bkit/advisories.md`) fall out with git's own ignore rules.
+// ---------------------------------------------------------------------------
+
+describe("#489 — managed-version marker on every file bkit writes", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "bkit-install.ts",
+  );
+  const tsxBin = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../node_modules/.bin/tsx",
+  );
+
+  function runCli(args: string[]) {
+    const r = spawnSync(tsxBin, [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 120_000,
+    });
+    return { status: r.status, out: `${r.stdout ?? ""}\n${r.stderr ?? ""}` };
+  }
+
+  function installEverything(): void {
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir }).status).toBe(0);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
       "utf-8",
     );
-    expect(runCli(["install", "--claude"]).status).toBe(0);
-    const abs = path.join(tmpDir, ".agents", "context.md");
-    const fresh = fs.readFileSync(abs, "utf-8");
-    const end = "<!-- bkit:end -->";
-    // The block's own rules quote the end marker, so the real one is the last.
-    const endIdx = fresh.lastIndexOf(end);
-    const managed = fresh.slice(0, endIdx + end.length);
-    const consumer =
-      "\n\n## Enabled blocks\n\n<!-- context-fetch:start ours context=web -->\n```bash\necho ours\n```\n<!-- context-fetch:end -->\n";
-    const stale = `${fresh.slice(0, endIdx)}stale rule\n${end}`;
-    fs.writeFileSync(abs, stale + consumer, "utf-8");
+    const hosts = ["--claude", "--cursor", "--codex", "--opencode=openrouter", "--typescript"];
+    const install = runCli(["install", ...hosts, "--auto=claude", "--tracker=github"]);
+    expect(install.status, install.out).toBe(0);
+  }
 
-    const flagged = runCli(["check"]);
-    expect(flagged.status, `${flagged.stdout}\n${flagged.stderr}`).toBe(1);
-    expect(`${flagged.stdout}\n${flagged.stderr}`).toContain(path.join(".agents", "context.md"));
+  // JSON (an object or array document) has no comment syntax, so it carries no marker.
+  const isJson = (text: string): boolean => /^\s*[{[]/.test(text);
+
+  // Every non-JSON, non-template file the install left for git to track.
+  function writtenFiles(): string[] {
+    const r = spawnSync("git", ["ls-files", "--others", "--exclude-standard"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+    });
+    return r.stdout
+      .split("\n")
+      .filter(Boolean)
+      .map((rel) => path.normalize(rel))
+      .filter((rel) => !rel.startsWith(path.join(".bkit", "templates") + path.sep))
+      .filter((rel) => !isJson(fs.readFileSync(path.join(tmpDir, rel), "utf-8")))
+      .sort();
+  }
+
+  // The first non-blank line inside the file's bkit block, or undefined without a block.
+  function firstBlockLine(content: string): string | undefined {
+    const style = detectMarkerStyle(content);
+    if (style === null) return undefined;
+    const start = findLineAnchoredMarkers(content, selectMarkers(style)[0])[0]!;
+    return content
+      .slice(content.indexOf("\n", start) + 1)
+      .split("\n")
+      .find((l) => l.trim() !== "");
+  }
+
+  it("every written file carries a marker at the installing version, and check derives the same set", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    installEverything();
+    const version = readInstallingVersion();
+    const written = writtenFiles();
+    expect(written.length).toBeGreaterThan(0);
+
+    const stamped = new Map(listStampedFiles(tmpDir).map((f) => [f.path, f.scope]));
+    for (const rel of written) {
+      const content = fs.readFileSync(path.join(tmpDir, rel), "utf-8");
+      expect(readManagedVersion(content), rel).toBe(version);
+      if (stamped.get(rel) === "block") {
+        expect(readManagedVersion(firstBlockLine(content) ?? ""), `${rel} block line 1`).toBe(
+          version,
+        );
+      }
+    }
+    expect(
+      [...stamped.keys()].filter((rel) => fs.existsSync(path.join(tmpDir, rel))).sort(),
+    ).toEqual(written);
+  });
+
+  it("check flags an old marker; upgrade restamps every marker with no conflict; check is then clean", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    installEverything();
+    const version = readInstallingVersion();
+    const written = writtenFiles();
+
+    // Simulate an install made by an older bkit: every marker reads 4.0.0, and the
+    // recorded hashes and pin are what that older bkit wrote.
+    const versionFile = path.join(tmpDir, ".bkit", "version");
+    const recorded = readBkitVersion(versionFile)!;
+    for (const rel of written) {
+      const abs = path.join(tmpDir, rel);
+      const aged = fs
+        .readFileSync(abs, "utf-8")
+        .replaceAll(`bkit:managed v${version} `, "bkit:managed v4.0.0 ");
+      fs.writeFileSync(abs, aged, "utf-8");
+      if (rel in recorded.canonicalHashes) recorded.canonicalHashes[rel] = sha256(aged);
+    }
+    writeBkitVersion(versionFile, { ...recorded, pinnedVersion: "4.0.0" });
+
+    const stale = runCli(["check"]);
+    expect(stale.out).toContain("bkit-managed-stale");
+    expect(stale.out).toContain(`${written.length} of ${written.length} bkit-managed file(s)`);
+    expect(stale.out).toContain("(v4.0.0)");
 
     const upgrade = runCli(["upgrade", "--auto-apply"]);
-    expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
-    expect(fs.readFileSync(abs, "utf-8")).toBe(managed + consumer);
+    expect(upgrade.status, upgrade.out).toBe(0);
+    expect(upgrade.out).toContain("conflicts: 0");
+    for (const rel of written) {
+      expect(readManagedVersion(fs.readFileSync(path.join(tmpDir, rel), "utf-8")), rel).toBe(
+        version,
+      );
+    }
+
     const check = runCli(["check"]);
-    expect(check.status, `${check.stdout}\n${check.stderr}`).toBe(0);
+    expect(check.out).toContain("0 write(s) would occur");
+    expect(check.out).not.toContain("bkit-managed-stale");
   });
 });
 

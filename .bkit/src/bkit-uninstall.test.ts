@@ -172,22 +172,24 @@ describe("buildDecisionTable — markered-text format", () => {
     }
   });
 
-  it("strips only the managed block of .agents/context.md and leaves the create-if-missing skills.md", async () => {
-    const consumer = "## Enabled blocks\n\nour fetch blocks\n";
-    writeFile(
-      ".agents/context.md",
-      `<!-- bkit:start -->\nbkit rules\n<!-- bkit:end -->\n${consumer}`,
-    );
-    const body = "<!-- bkit:start -->\nseeded once\n<!-- bkit:end -->\n";
-    writeFile(".agents/skills.md", body);
+  it("strips only the managed blocks of .agents/context.md and .agents/skills.md, marker included", async () => {
+    const marker = "<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->";
+    const consumer = "## Project Skills\n\nour own skills\n";
+    for (const rel of [".agents/context.md", ".agents/skills.md"]) {
+      writeFile(
+        rel,
+        `<!-- bkit:start -->\n\n${marker}\n\nbkit rules\n\n<!-- bkit:end -->\n${consumer}`,
+      );
+    }
     const table = buildDecisionTable(["core"], makeCtx());
-    expect(table.find((r) => r.file === ".agents/context.md")?.decision).toBe("strip-block");
-    expect(table.find((r) => r.file === ".agents/skills.md")).toBeUndefined();
     await runUninstall(["core"], makeCtx());
-    const after = readFile(".agents/context.md");
-    expect(after).not.toContain("bkit rules");
-    expect(after).toContain(consumer);
-    expect(readFile(".agents/skills.md")).toBe(body);
+    for (const rel of [".agents/context.md", ".agents/skills.md"]) {
+      expect(table.find((r) => r.file === rel)?.decision).toBe("strip-block");
+      const after = readFile(rel);
+      expect(after).not.toContain("bkit rules");
+      expect(after).not.toContain("bkit:managed");
+      expect(after).toBe(consumer);
+    }
   });
 
   it("core .agents/ doctrine files are NOT swept by a targeted (non-core) uninstall", () => {

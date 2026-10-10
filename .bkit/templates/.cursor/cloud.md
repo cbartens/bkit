@@ -53,8 +53,8 @@ The base image bakes the **same tools at the same versions as the Claude setup
 script** — vale 3.9.1, gh, jq, python3, corepack-pinned pnpm — so both clouds run an
 identical bkit toolchain:
 
-- `.cursor/Dockerfile` — image build (bkit owns the block between the
-  `# <!-- bkit:start -->` markers; set Node major / Playwright / extra apt deps
+- `.cursor/Dockerfile` — image build, your copy of the template (keep its
+  `bkit toolchain` section as shipped; set Node major / Playwright / extra apt deps
   outside it).
 - `.cursor/environment.json` — per-snapshot `install` (`pnpm install
   --frozen-lockfile` + `vale sync`), the analogue of Claude's

@@ -1,5 +1,7 @@
 # Templates — copy and own
 
+{{BKIT_MANAGED_MARKER}}
+
 > [!CAUTION]
 > **Purpose:** Every template bkit ships and never installs — what each does, where to copy it, how to install the tool behind it.
 >
@@ -138,7 +140,7 @@ Parallel lanes `bkit-tests-static` (typecheck, prettier, Vale, slop, actionlint,
 
 - Install: nothing beyond the gate tool scripts above, a `test` script, and `packageManager` in `package.json` (`pnpm/action-setup` reads it; do not add `with: version:`).
 - Secrets: `BKIT_GH_TOKEN_INSTALL` (`read:packages`) → `docs/deployments.md` § Consumer CI auth.
-- Adapt: `main`, `{{NODE_VERSION}}`. Non-Node repo → replace the `ts-ci-steps` blocks with your stack's setup / install / check steps.
+- Adapt: `main`, `{{NODE_VERSION}}`. Non-Node repo → replace the Node / pnpm setup, install and check steps with your stack's.
 - Adopt a scaffold lane only when its tier exists (`docs/testing.md`). Each `# bkit-stub:<id> —` header raises an install advisory until you enable or delete that stub.
 - Keep the `name: CI` line, or rename `workflows: [CI]` in `bkit-cloud.yml` and set `bkit.ciWorkflow` to the new file name.
 - Keep `fetch-depth: 0` on the static lane: `slop:delta` checks the PR base out as a worktree.
@@ -175,7 +177,6 @@ pnpm add -D prettier@^3.5.3
 2. Add `format:check` (§ Gate tool scripts). Reference: https://prettier.io/docs/install.
 
 - Keep the `.bkit/templates/` line.
-- Own entries go outside the `bkit:start` / `bkit:end` lines.
 
 ## lint-staged — `.lintstagedrc.json`
 
@@ -230,10 +231,10 @@ direnv allow
 
 Editor defaults (`settings.json`: prettier format-on-save, extension recommendations) and the Cursor Cloud Agent image (`environment.json` → `Dockerfile` + per-snapshot `install`). Cloud agents run bkit workflows; `bkit install --auto=cursor` (needs `--tracker=linear`) points at the two cloud files. Reference: https://cursor.com/docs/cloud-agent/setup.
 
-- `Dockerfile`: the block between the markers installs what bkit's workflows use (git, jq, python3, gh, pinned Vale, corepack-pinned pnpm). Adapt `FROM`, the Node major and repo extras outside it.
+- `Dockerfile`: the `bkit toolchain` section installs what bkit's workflows use (git, jq, python3, gh, pinned Vale, corepack-pinned pnpm). Adapt `FROM`, the Node major and repo extras outside it.
 - `environment.json` `install`: writes the `BKIT_GH_TOKEN_INSTALL` auth line, `pnpm install --frozen-lockfile`, `vale sync` when `.vale.ini` exists.
 - Secrets: Cloud Agents dashboard → Runtime Secrets (`.bkit/cloud.md`).
-- Traps: the corepack pnpm pin must match `packageManager`. Keep the marked block as shipped so the template diff on upgrade stays readable.
+- Traps: the corepack pnpm pin must match `packageManager`. Keep the `bkit toolchain` section as shipped so the template diff on upgrade stays readable.
 
 ## Dependabot and Renovate
 

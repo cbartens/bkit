@@ -32,6 +32,8 @@
 
 // bkit:start
 
+// {{BKIT_MANAGED_MARKER}}
+
 const fs = require("node:fs");
 const path = require("node:path");
 

@@ -514,7 +514,7 @@ The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisor
 | `bkit-manifest.test.ts` | Unit | Per-module install-write manifest assertions. |
 | `bkit-package-json.test.ts` | Unit | `stripManagedKeys` manifest-driven cleanup. |
 | `bkit-modules-upgrade.integration.test.ts` | Integration | Two-version fully-managed → json-format migration (consumer key survival); opencode reconverge and seeded `bkit-mode.sh` deletion advisory. |
-| `bkit-upgrade.test.ts` and `bkit-upgrade.integration.test.ts` | Unit and Integration | Diff engine, drift detection, `--non-interactive` semantics. |
+| `bkit-upgrade.test.ts` and `bkit-upgrade.integration.test.ts` | Unit and Integration | Diff engine, drift detection, `--non-interactive` semantics. Managed-version marker guard: every non-JSON, non-template file a real full install writes carries the marker and equals `listStampedFiles`; a version bump restamps every marker with no conflict and `bkit check` is then clean. |
 | `bkit-version.test.ts` (extended) | Unit | `canonicalHashes` reads, including a legacy `tier3Hashes` map folded in and never written back. |
 | `bkit-gateguard-claude.integration.test.ts` | Integration | Claude GateGuard hook (`.claude/hooks/gateguard.cjs`, spawned as a real process): advisory/deny modes, dedup, docs/\*.md density advisory (path-scoped, segment match). |
 | `bkit-gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagents included, advisory/deny modes, dedup, docs/\*.md density advisory, managed-block boundary (no `export` inside the marker region), twin parity vs the Claude hook. |

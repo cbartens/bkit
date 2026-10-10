@@ -1,3 +1,4 @@
+# <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 name = "bkit-plan-review-3"
 description = "Senior reviewer surfacing regression risk and design-coverage for plan task surfaces."
 model = "gpt-6-astra"

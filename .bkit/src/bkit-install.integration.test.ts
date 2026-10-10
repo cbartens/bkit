@@ -982,9 +982,9 @@ describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => 
 });
 
 // ---------------------------------------------------------------------------
-// Scenario: rendered prompts/workflows version gate, branch-scoped
-// `bkit check` hard-fails (exit 1) on main/dev when a rendered mirror's
-// managed-version marker is older than the installing bkit version. On a feature
+// Scenario: managed-version marker gate, branch-scoped
+// `bkit check` hard-fails (exit 1) on main/dev when a stamped file's (here a rendered
+// mirror's) managed-version marker is older than the installing bkit version. On a feature
 // branch the same drift is a NON-blocking advisory — see isOnProtectedBranch.
 // ---------------------------------------------------------------------------
 
@@ -1028,26 +1028,22 @@ describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () =>
     return { combined: `${result.stdout ?? ""}\n${result.stderr ?? ""}`, status: result.status };
   }
 
-  it("on main: hard-fails (exit 1) and names the bkit-rendered-prompts-stale BLOCKER", () => {
+  it("on main: hard-fails (exit 1) and names the bkit-managed-stale BLOCKER", () => {
     const r = runStaleCheck({ GITHUB_REF_NAME: "main" });
     if (!r) return;
-    expect(r.combined, r.combined).toContain("[blocker] bkit-rendered-prompts-stale");
-    expect(r.combined).toContain(
-      "rendered prompts/workflows are stale (managed-version marker drift)",
-    );
+    expect(r.combined, r.combined).toContain("[blocker] bkit-managed-stale");
+    expect(r.combined).toContain("bkit-managed files are stale (managed-version marker drift)");
     expect(r.status, `expected exit 1, got ${r.status}:\n${r.combined}`).toBe(1);
   });
 
   it("on a feature branch: surfaces a non-blocking ADVISORY, no marker-drift hard-fail line", () => {
     const r = runStaleCheck({ GITHUB_REF_NAME: "feat/296-file-upload" });
     if (!r) return;
-    expect(r.combined, r.combined).toContain("[advisory] bkit-rendered-prompts-stale");
+    expect(r.combined, r.combined).toContain("[advisory] bkit-managed-stale");
     expect(r.combined).toContain("non-blocking on this feature branch");
     // The blocker-only stderr drift line is gated on severity===blocker, so it must
     // NOT appear here even though other writes may still flag generic drift.
-    expect(r.combined).not.toContain(
-      "rendered prompts/workflows are stale (managed-version marker drift)",
-    );
+    expect(r.combined).not.toContain("bkit-managed files are stale (managed-version marker drift)");
   });
 });
 

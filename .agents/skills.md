@@ -1,5 +1,7 @@
 <!-- bkit:start -->
 
+<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Skills
 
 > [!CAUTION]

@@ -16,6 +16,8 @@
 
 # <!-- bkit:start -->
 
+# {{BKIT_MANAGED_MARKER}}
+
 set -euo pipefail
 
 # Consume stdin so the writing process doesn't block.

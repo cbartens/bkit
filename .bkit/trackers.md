@@ -1,5 +1,7 @@
 # Trackers
 
+{{BKIT_MANAGED_MARKER}}
+
 > [!CAUTION]
 > **Purpose:** Reference for inline tracker-block model in `.bkit/workflows/bkit-*.md` and `.bkit/prompts/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents marker contract + cross-cutting per-tracker conventions only.
 >
