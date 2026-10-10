@@ -16,7 +16,7 @@
     "docs/setup.md": "5d155ee10f5bb06664ef61df5808a4ace233f977a7db251bf10e83670d121045",
     "docs/data-schema.md": "775244ee6fb320897108b35256b744512a311abc729ea6cea4f45bf46f69eb72",
     ".gitattributes": "dedac86da95e7b8d325ede30e6cecce26d4b1e62d5128466418fba001dc05d87",
-    ".claude/hooks/cloud-bootstrap.sh": "b3790648964438bdf742ce801ac7b71c0457b1a9a69438d48ac4d522076442e9",
+    ".claude/hooks/cloud-bootstrap.sh": "5c88ce7315cdeae4321c928f4f11d0c15248f619ac14a002d5490fa92d576c22",
     ".cursor/hooks.json": "a4d0db3bf77b8637d924c8cf9c0345b9970cb6068ecd15f313bdb7ea0ce0e763",
     "docs/observability.md": "61beae60ac038df492d3e9bf17bc50a269a079c6cfe81c1c4398850275ba32a0",
     ".gitignore": "b6f55938e0a03654f1fce36b177b6e88476c7d43553d9328338a3369cf9444d4",
