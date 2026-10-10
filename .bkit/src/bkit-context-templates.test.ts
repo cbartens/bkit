@@ -63,9 +63,9 @@ afterAll(() => fs.rmSync(scratch, { recursive: true, force: true }));
 describe(".bkit/templates/context/", () => {
   it("ships the provider set", () => {
     expect(files).toEqual(
-      expect.arrayContaining(["github-ci.md", "github-diff.md", "playwright.md", "vercel.md"]),
+      expect.arrayContaining(["expo.md", "github.md", "maestro.md", "playwright.md", "vercel.md"]),
     );
-    expect(files.length).toBeGreaterThanOrEqual(15);
+    expect(files.length).toBeGreaterThanOrEqual(13);
   });
 
   it.each(files)("%s: every block is named, closed, and carries a bash body", (file) => {

@@ -5,12 +5,12 @@
 
 Fits: a native iOS e2e lane whose GitHub Actions job hands the run to Expo EAS (Maestro on an EAS simulator) and uploads no GitHub artifact. `context=e2e`: the full log of the failed job, sliced to the steps that carry the per-flow result, else its tail.
 
-- Why a separate block: the per-flow result sits in a step that always succeeds inside the failed job, so `gh run view --log-failed` (the `context=ci` block) never returns it, and the Playwright block's artifact download 404s on this lane.
+- Covers what the other blocks miss: it reads the per-flow result from the step that always succeeds inside the failed job, which `gh run view --log-failed` (the `context=ci` block) skips; the Playwright block's artifact download finds nothing on this lane.
 - Secret: `GH_TOKEN` in cloud (local `gh auth login` works too).
 - Non-secret: `IOS_JOB_RE` (anchored regex for this lane's job name), `IOS_STEPS` (`|`-separated step names that print the result), `IOS_LOG_TAIL`. Edit the defaults in the block.
 - CLI: `gh` — base tooling, no provision block.
 - Domains: none beyond bkit's derived set (`github.com`).
-- Screenshots, JUnit and view-hierarchy dumps live on EAS, not in this log: `expo-workflows.md` fetches them.
+- Screenshots, JUnit and view-hierarchy dumps live on EAS, not in this log: the `expo-workflows` block in `expo.md` fetches them.
 
 Copy the block below into `.agents/context.md`, below `<!-- bkit:end -->`.
 

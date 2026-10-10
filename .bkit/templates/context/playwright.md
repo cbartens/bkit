@@ -9,7 +9,7 @@ Fits: a web e2e lane that runs Playwright on GitHub Actions and uploads its repo
 - Non-secret: `E2E_ARTIFACT` (your upload-artifact name, default `playwright-report`) and `E2E_JOB_RE` (anchored regex for this lane's job name). Edit the defaults in the block.
 - CLI: `gh` — base tooling, no provision block.
 - Domains: none beyond bkit's derived set (`github.com`).
-- One block per lane. A lane whose evidence does not reach GitHub (a native lane on Expo EAS) needs its own block: see `maestro-ios.md` and `expo-workflows.md`.
+- One block per lane. A lane whose evidence does not reach GitHub (a native lane on Expo EAS) needs its own block: see `maestro.md` and the `expo-workflows` block in `expo.md`.
 
 Copy the block below into `.agents/context.md`, below `<!-- bkit:end -->`.
 

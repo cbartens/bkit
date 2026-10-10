@@ -51,15 +51,14 @@ Placeholders. Copies keep them raw; replace each in your copy:
 
 ## Context-fetch blocks — `.agents/context.md`
 
-`/bkit-debug` runs every `context-fetch` block below `<!-- bkit:end -->` in `.agents/context.md`; cloud setup runs every `context-fetch:provision` block there. One file per provider holds its fetch block, its provision block (stack CLI only), the `allowed-domains` it needs beyond bkit's derived egress set, and its `mcp-servers` names. Block rules (markers, contexts, self-skip, output bounds) → the managed block of `.agents/context.md`.
+`/bkit-debug` runs every `context-fetch` block below `<!-- bkit:end -->` in `.agents/context.md`; cloud setup runs every `context-fetch:provision` block there. One file per provider holds its fetch blocks (one per context; copy one or more), each fetch block's provision block (stack CLI only), the `allowed-domains` it needs beyond bkit's derived egress set, and its `mcp-servers` names. Block rules (markers, contexts, self-skip, output bounds) → the managed block of `.agents/context.md`.
 
 <!-- prettier-ignore -->
 | File | Fits | `context=` | Fetches | Secret / non-secret env | Domains | CLI (provision) |
 | --- | --- | --- | --- | --- | --- | --- |
-| `github-ci.md` | GitHub Actions | `ci` | failing run: failed jobs / steps, `::error` annotations, failed-step logs | `GH_TOKEN` / — | — | `gh` (base tool) |
-| `github-diff.md` | GitHub Actions | `diff` | `git diff --stat` since the last green CI run on trunk | `GH_TOKEN` / `BASELINE_BRANCH`, `BASELINE_WORKFLOW` | — | `gh` (base tool) |
+| `github.md` | GitHub Actions | `ci`, `diff` | `ci`: failing run: failed jobs / steps, `::error` annotations, failed-step logs; `diff`: `git diff --stat` since the last green CI run on trunk | `GH_TOKEN` / `BASELINE_BRANCH`, `BASELINE_WORKFLOW` (`diff`) | — | `gh` (base tool) |
 | `playwright.md` | Playwright on GitHub Actions | `e2e` | failing run's report artifact, failing specs first | `GH_TOKEN` / `E2E_ARTIFACT`, `E2E_JOB_RE` | — | `gh` (base tool) |
-| `maestro-ios.md` | Maestro iOS lane started from GitHub Actions | `e2e` | failed job's full log, sliced to the result steps | `GH_TOKEN` / `IOS_JOB_RE`, `IOS_STEPS` | — | `gh` (base tool) |
+| `maestro.md` | Maestro iOS lane started from GitHub Actions | `e2e` | failed job's full log, sliced to the result steps | `GH_TOKEN` / `IOS_JOB_RE`, `IOS_STEPS` | — | `gh` (base tool) |
 | `tavily.md` | any | `web` | web search for upstream causes (untrusted output) | `BKIT_TAVILY_API_KEY` / `QUERY` | — | — |
 | `sentry.md` | Sentry | `runtime` | unresolved issues, last 24 h; trace / window recipes | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_HOST` | `sentry.io` | — |
 | `vercel.md` | Vercel | `runtime` | serverless + edge error / fatal logs in a window | `VERCEL_TOKEN` / `VERCEL_SCOPE`, `VERCEL_ENV` | `vercel.com` | `vercel` (yes) |
@@ -68,8 +67,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 | `resend.md` | Resend | `runtime` | bounced / complained / failed / delayed sends | `RESEND_API_KEY` / — | `resend.com` | — |
 | `inngest.md` | Inngest Cloud | `runtime` | `inngest/function.failed` events | `INNGEST_SIGNING_KEY` / — | `inngest.com` | — |
 | `cloudrun.md` | Google Cloud Run | `runtime` | container errors + memory-limit kills | `GCP_CLIENT_EMAIL`, `GCP_PRIVATE_KEY` (headless) / `GCP_PROJECT_ID`, `GCP_SERVICE` | `googleapis.com`, `google.com` | `gcloud` (yes) |
-| `expo.md` | Expo EAS Build | `runtime` | build status + errored-build log lines | `EXPO_TOKEN` / `EXPO_APP_DIR` | `expo.dev`, `googleapis.com` | `eas` (yes) |
-| `expo-workflows.md` | Expo EAS Workflows (Maestro) | `e2e` | per-flow exceptions, JUnit, screenshots, Maestro commands, hierarchy dumps, XCUITest + JS console | `EXPO_TOKEN` / `EXPO_APP_DIR` | `expo.dev`, `eascdn.net` | `eas` (yes) |
+| `expo.md` | Expo EAS Build + EAS Workflows (Maestro) | `runtime`, `e2e` | `runtime`: build status + errored-build log lines; `e2e`: per-flow exceptions, JUnit, screenshots, Maestro commands, hierarchy dumps, XCUITest + JS console | `EXPO_TOKEN` / `EXPO_APP_DIR` | `expo.dev`, `googleapis.com` (`runtime`), `eascdn.net` (`e2e`) | `eas` (yes) |
 | `serena.md` | Serena MCP server | — | nothing: provision only, installs `serena` in cloud | — | — | `uv` (yes) |
 
 MCP names listed: `sentry` / `Sentry`, `vercel` / `Vercel`, `supabase` / `Supabase`, `inngest`, `serena`. Every tool on a listed server runs without a prompt, writes included — list only servers you trust with that.
@@ -85,14 +83,14 @@ Placeholders. Each sits on a commented assignment line or an env default in the 
 | `de.sentry.io` (commented) | `sentry.md` (`SENTRY_HOST`) | uncomment for an EU-region org; default `sentry.io` |
 | `your-gcp-project-id`, `your-service-name` | `cloudrun.md` (`GCP_PROJECT_ID`, `GCP_SERVICE`) | GCP project id; optional service name |
 | `^your-e2e-job-name$` | `playwright.md` (`E2E_JOB_RE`) | anchored job name of that lane only |
-| `^your-ios-e2e-job-name$`, `Your per-flow results step\|Your failure classification step` | `maestro-ios.md` (`IOS_JOB_RE`, `IOS_STEPS`) | anchored job name; `\|`-separated names of the steps that print results |
-| `dev`, `ci.yml` | `github-diff.md` (`BASELINE_BRANCH`, `BASELINE_WORKFLOW`) | trunk branch, CI workflow file |
-| `apps/mobile` | `expo.md`, `expo-workflows.md` (`EXPO_APP_DIR`) | the EAS-linked app folder |
+| `^your-ios-e2e-job-name$`, `Your per-flow results step\|Your failure classification step` | `maestro.md` (`IOS_JOB_RE`, `IOS_STEPS`) | anchored job name; `\|`-separated names of the steps that print results |
+| `dev`, `ci.yml` | `github.md` `context=diff` (`BASELINE_BRANCH`, `BASELINE_WORKFLOW`) | trunk branch, CI workflow file |
+| `apps/mobile` | `expo.md`, both blocks (`EXPO_APP_DIR`) | the EAS-linked app folder |
 | `serena-agent==1.7.0` | `serena.md` | the Serena version you run locally |
 
 Adopt:
 
-1. Copy the file's blocks below `<!-- bkit:end -->` in `.agents/context.md`: the fetch block, its provision block, its `allowed-domains` and `mcp-servers` blocks (several of each merge).
+1. Copy the file's blocks below `<!-- bkit:end -->` in `.agents/context.md`: each fetch block you want, its provision block, its `allowed-domains` and `mcp-servers` blocks (several of each merge).
 2. Replace the placeholders. Commit non-secret selectors inline so cloud agents inherit them.
 3. Set the secret env vars locally (app env via `.envrc`, not `.bkit/.env`) and in each cloud dashboard (`.bkit/cloud.md`).
 4. `bkit install` → the provision recipes reach `.claude/cloud.md`'s setup script, the domains reach the cloud allowlist and local fetch permissions, the MCP names reach every host's allow rules.
