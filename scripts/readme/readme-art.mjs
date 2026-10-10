@@ -29,6 +29,7 @@ const THEMES = {
     gate: "#bf8700",
     gateInk: "#ffffff",
     ok: "#1a7f37",
+    lime: "#7a9a0e",
   },
   dark: {
     bg: "#0d1117",
@@ -44,6 +45,7 @@ const THEMES = {
     gate: "#d29922",
     gateInk: "#0d1117",
     ok: "#3fb950",
+    lime: "#a8c93a",
   },
 };
 
@@ -183,6 +185,246 @@ function social(t) {
     H,
     b,
     "bkit — from vibe coding to production code. A senior engineering team's process, run by AI agents, signed off by you. Works with Claude Code, Cursor, Codex and opencode.",
+  );
+}
+
+// ---------- Fences (why it works) ----------
+const mix = (a, b, k) => {
+  const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [x, y] = [p(a), p(b)];
+  return (
+    "#" +
+    x
+      .map((v, i) =>
+        Math.round(v + (y[i] - v) * k)
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")
+  );
+};
+function fences(t) {
+  const W = 1200,
+    H = 1060,
+    X0 = 60,
+    X1 = 1060,
+    CY = 440;
+  // Funnel half-height eases from 165 at the left to 40 at the right.
+  const half = (x) => {
+    const u = Math.min(1, Math.max(0, (x - X0) / (X1 - X0)));
+    return 165 - 125 * u * u * (3 - 2 * u);
+  };
+  const edge = (x, side) => CY + side * half(x);
+  const trace = (a, b, side) =>
+    Array.from({ length: 61 }, (_, i) => {
+      const x = a + ((b - a) * i) / 60;
+      return `${i ? "L" : "M"}${x.toFixed(1)},${edge(x, side).toFixed(1)}`;
+    }).join(" ");
+  // Five phases: design, plan, build, debug, ship
+  const cols = [X0, 276, 492, 708, 924, 1140];
+  const fence = t.design,
+    split = cols[2]; // reviewers only to the left, reviewers + automated checks to the right
+  const agentCol = (x) =>
+    x < cols[1]
+      ? mix(t.gate, t.lime, Math.max(0, (x - X0) / (cols[1] - X0)))
+      : x < split
+        ? mix(t.lime, t.build, (x - cols[1]) / (split - cols[1]))
+        : t.build;
+
+  let b = `<defs><linearGradient id="fz" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${t.gate}" stop-opacity="0.1"/><stop offset="1" stop-color="${t.ok}" stop-opacity="0.14"/></linearGradient>`;
+  b += `<marker id="fa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${t.debug}"/></marker></defs>`;
+  b += `<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
+
+  b += text(X0, 64, "WHY IT WORKS", { size: 14, weight: 700, fill: t.plan, ls: 2.4 });
+  b += text(X0 - 2, 128, "You don't steer AI.", { size: 56, weight: 800, fill: t.text, ls: -1.5 });
+  b += text(X0 - 2, 190, "You build fences.", { size: 56, weight: 800, fill: t.muted, ls: -1.5 });
+  b += text(
+    X0,
+    234,
+    "Tell an AI what you want and you might get it. Put reviewers and hard checks around it, and anything off target is sent back.",
+    { size: 19, fill: t.muted },
+  );
+
+  // Column guides, phase by phase
+  cols.slice(1).forEach((x) => {
+    b += `<line x1="${x}" y1="262" x2="${x}" y2="640" stroke="${t.border}" stroke-dasharray="4 6"/>`;
+  });
+
+  // Funnel body and fence
+  b += `<path d="${trace(X0, X1, -1)} L${X1},${edge(X1, 1)} ${trace(X1, X0, 1).replace(/^M/, "L")} Z" fill="url(#fz)"/>`;
+  for (const side of [-1, 1]) {
+    b += `<path d="${trace(X0, split, side)}" fill="none" stroke="${fence}" stroke-width="3" stroke-dasharray="3 7" stroke-linecap="round"/>`;
+    b += `<path d="${trace(split, X1, side)}" fill="none" stroke="${fence}" stroke-width="6" stroke-linecap="round"/>`;
+    for (let x = X0 + 6; x < X1; x += 18) {
+      const y = edge(x, side);
+      b += `<line x1="${x}" y1="${y + side * 4}" x2="${x + 3}" y2="${y + side * 12}" stroke="${fence}" stroke-width="1.5" opacity="0.6"/>`;
+    }
+  }
+  b += text(0, 0, "THE FENCE", { size: 15, weight: 800, fill: fence, ls: 3 }).replace(
+    "<text ",
+    `<text transform="translate(540 ${edge(540, 1) + 34}) rotate(-10)" `,
+  );
+
+  // Bounces: off target, sent back, retried
+  const bounces = [
+    [560, -1],
+    [770, 1],
+    [960, -1],
+  ];
+  const taken = bounces.flatMap(([x, side]) => [
+    [x, edge(x, side) - side * 30],
+    [x + 40, edge(x + 40, side) - side * 30],
+  ]);
+  // Agents: scattered and pointing every way on the left, lined up on the right
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  for (let i = 0; i < 30; i++) {
+    const x = X0 + 40 + (i / 29) * (X1 - X0 - 90) + (rnd() - 0.5) * 30;
+    const spread = half(x) - 22;
+    let y = null;
+    for (let tries = 0; tries < 20 && y === null; tries++) {
+      const cand = CY + (rnd() * 2 - 1) * spread;
+      if (taken.every(([tx, ty]) => Math.hypot(tx - x, ty - cand) > 40)) y = cand;
+    }
+    if (y === null) continue; // no clear spot: leave this agent out rather than overlap
+    taken.push([x, y]);
+    const order = Math.min(1, (x - X0) / (X1 - X0 - 120));
+    const ang = (rnd() * 2 - 1) * Math.PI * 0.75 * (1 - order) ** 1.5 + (CY - y) * 0.004 * order;
+    const c = agentCol(x);
+    b += `<line x1="${(x - Math.cos(ang) * 30).toFixed(1)}" y1="${(y - Math.sin(ang) * 30).toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${c}" stroke-width="3" stroke-linecap="round" opacity="0.55"/>`;
+    b += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="9" fill="${c}"/>`;
+  }
+  for (const [x, side] of bounces) {
+    const hit = edge(x + 22, side) - side * 3;
+    const y0 = edge(x, side) - side * 30;
+    b += `<path d="M${x + 6},${y0 + side * -4} L${x + 22},${hit} L${x + 40},${edge(x + 40, side) - side * 30}" fill="none" stroke="${t.debug}" stroke-width="3" marker-end="url(#fa)"/>`;
+    b += `<circle cx="${x}" cy="${y0}" r="9" fill="${t.debug}"/>`;
+  }
+  // Output
+  b += `<line x1="${X1 + 12}" y1="${CY}" x2="${X1 + 64}" y2="${CY}" stroke="${t.ok}" stroke-width="3" stroke-linecap="round"/>`;
+  b += `<circle cx="${X1 + 12}" cy="${CY}" r="11" fill="${t.ok}"/>`;
+  b += text(1140, edge(980, -1) - 36, "Production-grade code", {
+    size: 20,
+    weight: 800,
+    fill: t.ok,
+    anchor: "end",
+  });
+
+  // Sign-off points, and where tests decide between debug and ship
+  [cols[1], cols[2], cols[5]].forEach((x) => (b += gateIcon(x, 640, t, 16)));
+  b += text(cols[3], 646, "tests fail", { size: 14, fill: t.debug, anchor: "middle", weight: 600 });
+  b += text(cols[4], 646, "tests pass", { size: 14, fill: t.ok, anchor: "middle", weight: 600 });
+
+  // What fences each phase
+  const phases = [
+    {
+      name: "Design",
+      agents: [
+        "3 rival designs",
+        "Is it buildable?",
+        "Will it run reliably?",
+        "Probe code for unknowns",
+      ],
+      checks: [],
+    },
+    {
+      name: "Plan",
+      agents: [
+        "Is the scope tight?",
+        "Tasks in the right order?",
+        "What could this break?",
+        "Is every task testable?",
+      ],
+      checks: [],
+    },
+    {
+      name: "Build",
+      agents: ["Hunt bugs and edge cases", "Hunt security holes", "Was all of the plan built?"],
+      checks: ["Typecheck · lint", "Formatting · prose", "Test lanes in CI"],
+    },
+    {
+      name: "Debug",
+      agents: ["Find the root cause", "Fix exactly that", "Remember the fix"],
+      checks: ["Failed tests re-run", "Done only when green"],
+    },
+    {
+      name: "Ship",
+      agents: ["Resolve merge conflicts", "Nothing quietly dropped", "Docs brought up to date"],
+      checks: ["Re-tested on latest code", "Every planned test ran"],
+    },
+  ];
+  phases.forEach((p, i) => {
+    const cx = (cols[i] + cols[i + 1]) / 2;
+    b += text(cx, 702, p.name.toUpperCase(), {
+      size: 26,
+      weight: 800,
+      fill: t.text,
+      anchor: "middle",
+      ls: 1.5,
+    });
+    b += text(cx, 736, "AGENTS", {
+      size: 12,
+      weight: 700,
+      fill: fence,
+      anchor: "middle",
+      ls: 1.6,
+    });
+    p.agents.forEach(
+      (s, k) => (b += text(cx, 762 + k * 24, s, { size: 16, fill: t.text, anchor: "middle" })),
+    );
+    b += text(cx, 872, "AUTOMATED CHECKS", {
+      size: 12,
+      weight: 700,
+      fill: fence,
+      anchor: "middle",
+      ls: 1.6,
+    });
+    if (!p.checks.length)
+      b += text(cx, 898, "No code to run yet", { size: 16, fill: t.muted, anchor: "middle" });
+    p.checks.forEach((s, k) => {
+      const [label, fill] = Array.isArray(s) ? s : [s, t.text];
+      b += text(cx, 898 + k * 24, label, {
+        size: 16,
+        fill,
+        anchor: "middle",
+        weight: fill === t.text ? 400 : 600,
+      });
+    });
+  });
+
+  // Legend
+  b += `<line x1="${X0}" y1="984" x2="${W - X0}" y2="984" stroke="${t.border}"/>`;
+  let lx = X0;
+  const item = (glyph, w, label) => {
+    b += glyph(lx);
+    b += text(lx + w, 1024, label, { size: 15, fill: t.muted });
+    lx += w + label.length * 7.6 + 30;
+  };
+  item((x) => `<circle cx="${x + 8}" cy="1019" r="8" fill="${t.build}"/>`, 24, "AI agent");
+  item(
+    (x) => `<circle cx="${x + 8}" cy="1019" r="8" fill="${t.debug}"/>`,
+    24,
+    "Off target: sent back and retried",
+  );
+  item(
+    (x) =>
+      `<line x1="${x}" y1="1019" x2="${x + 30}" y2="1019" stroke="${fence}" stroke-width="3" stroke-dasharray="3 7" stroke-linecap="round"/>`,
+    40,
+    "Reviewers only",
+  );
+  item(
+    (x) =>
+      `<line x1="${x}" y1="1019" x2="${x + 30}" y2="1019" stroke="${fence}" stroke-width="6" stroke-linecap="round"/>`,
+    40,
+    "Reviewers + automated checks",
+  );
+  item((x) => gateIcon(x + 12, 1019, t, 12), 30, "Waits for your sign-off");
+
+  return svg(
+    W,
+    H,
+    b,
+    "You don't steer AI, you build fences. AI agents start out scattered at design and are funnelled through plan, build, debug and ship into production-grade code. At design and plan, reviewer agents fence the work in; from build onwards, automated checks (typecheck, lint, formatting, prose, tests) join them. Work that goes off target is sent back and retried, a failed test goes to debug, which finds the root cause, fixes it and re-runs the tests until they pass, and bkit waits for your sign-off after design, after plan and before merge.",
   );
 }
 
@@ -413,6 +655,7 @@ for (const [name, t] of Object.entries(THEMES)) {
   writeFileSync(join(OUT, `bkit-hero-${name}.svg`), hero(t));
   writeFileSync(join(OUT, `bkit-pipeline-${name}.svg`), pipeline(t));
   writeFileSync(join(OUT, `bkit-features-${name}.svg`), features(t));
+  writeFileSync(join(OUT, `bkit-fences-${name}.svg`), fences(t));
 }
 // One image: link previews have no light/dark switch, and dark reads on both.
 writeFileSync(join(OUT, "bkit-social.svg"), social(THEMES.dark));

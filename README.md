@@ -55,6 +55,13 @@ One command per job. Each one runs a team of specialised agents, 48 in total, so
 
 ## Why it's different
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-fences-dark.svg">
+    <img alt="You don't steer AI, you build fences. AI agents start out scattered at design and are funnelled through plan, build, debug and ship into production-grade code. At design and plan, reviewer agents fence the work in; from build onwards, automated checks (typecheck, lint, formatting, prose, tests) join them. Work that goes off target is sent back and retried, a failed test goes to debug, which finds the root cause, fixes it and re-runs the tests until they pass, and bkit waits for your sign-off after design, after plan and before merge." src=".github/assets/bkit-fences-light.svg" width="100%">
+  </picture>
+</p>
+
 ### You stay in control
 
 - **Decide in plain English, not code.** Before any code is written you approve two short documents: a design ("three ways to build this; we recommend this one, because…") and a plan ("these twelve steps, and how we'll know each is done").
