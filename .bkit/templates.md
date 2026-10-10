@@ -49,7 +49,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 - Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) → ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini` and `slop-scan.config.json` templates already do; check your adopted copy does too.
 - Templates are written in Node unless the tool they wrap already needs another runtime (graphify and Serena: Python + shell launchers; git hooks: POSIX `sh`).
 - `bkit.depUpdater: "none"` → skips install-time absence advisory for updaters.
-- No manifest key for any template.
+- No manifest key for any template. `docs/templates/bkit-audit-adoption.md` lists every template each run: adopted and wired, or not adopted and why.
 
 ## Context-fetch blocks — `.agents/context.md`
 

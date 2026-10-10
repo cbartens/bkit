@@ -65,7 +65,8 @@ Code is reviewed; dashboards are not. Dashboard changes (hosting, database, paym
 | Store signing credentials, developer memberships, store accounts | Store sweep | `bkit-audit-app-store` |
 | Rewriting docs that describe a setting wrongly | Docs sweep | `bkit-audit-documentation` |
 | Error-stream and platform-log triage | Log sweep | `bkit-audit-logs` |
-| Coding-agent settings, permissions, hooks, tool servers; bkit install state | Agent config sweep | `bkit-audit-agents` |
+| Coding-agent settings, permissions, hooks, tool servers | Agent config sweep | `bkit-audit-agents` |
+| bkit install state; templates adopted and wired | bkit adoption sweep | `bkit-audit-adoption` |
 | Changing settings, secrets, or records | Audit reports only | Plan from this report |
 
 ### 🚨 Pre-Flight / Dependencies 🚨

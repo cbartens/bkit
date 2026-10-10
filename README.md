@@ -26,7 +26,7 @@ AI coding agents are fast, but on their own they skip the parts that make softwa
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-features-dark.svg">
-    <img alt="What ships with bkit: ready-made workflows, independent review, self-fixing builds, 34 audits, your sign-off, guardrails, honest CI, quality checks, any AI tool, laptop to cloud, parallel features, skills on demand, docs and memory kept current, best model per job, work stats, templates to adopt." src=".github/assets/bkit-features-light.svg" width="100%">
+    <img alt="What ships with bkit: ready-made workflows, independent review, self-fixing builds, 35 audits, your sign-off, guardrails, honest CI, quality checks, any AI tool, laptop to cloud, parallel features, skills on demand, docs and memory kept current, best model per job, work stats, templates to adopt." src=".github/assets/bkit-features-light.svg" width="100%">
   </picture>
 </p>
 
@@ -41,7 +41,7 @@ One command per job. Each one runs a team of specialised agents, 48 in total, so
 | Build it                 | `/bkit-build`  | Writes the code, checks it against the plan, hunts for bugs and security holes, runs the tests, and opens a pull request. |
 | Fix what broke           | `/bkit-debug`  | Reads the failure logs, finds the cause, fixes it, re-tests, and writes down the lesson.                                  |
 | Ship it                  | `/bkit-ship`   | Checks nothing was missed, waits for every test to pass, updates the docs, and merges once you say so.                    |
-| Health check             | 34 audits      | Security, privacy, accessibility, performance, reliability, cost and more. Findings feed straight into `/bkit-plan`.      |
+| Health check             | 35 audits      | Security, privacy, accessibility, performance, reliability, cost and more. Findings feed straight into `/bkit-plan`.      |
 | Housekeeping             | utility agents | Keep docs, decisions, known issues and the roadmap current.                                                               |
 
 ## How it works
@@ -81,7 +81,7 @@ One command per job. Each one runs a team of specialised agents, 48 in total, so
 - **Documentation that keeps itself current.** bkit sets up the docs a professional project keeps: architecture, data schema, deployments, testing, security, monitoring, design system, tech stack and local setup, each with a clear purpose. Agents fill them in as they work, `/bkit-ship` updates them after every feature, and an index tells each agent which docs to read at each step. The docs stay current because the agents depend on them.
 - **Project memory agents actually read.** Plain-text ledgers in your repo record lessons from every fix (`docs/knowledge.jsonl`), decisions and the reasons behind them (`docs/decisions.jsonl`), work consciously postponed (`docs/deferrals.jsonl`) and known bugs (`docs/failures.jsonl`). Agents read them before they start, and `/bkit-ship` checks nothing postponed was quietly dropped.
 - **Numbers on your own work.** Every run records its time, size of change and retries in `.bkit/stats.jsonl`, and posts them to the issue next to the median of your last five runs.
-- **Health checks on demand.** 34 audit checklists act like hiring a specialist for a day: security, privacy, accessibility, architecture, performance, database, LLM usage, cost and more.
+- **Health checks on demand.** 35 audit checklists act like hiring a specialist for a day: security, privacy, accessibility, architecture, performance, database, LLM usage, cost and more.
 
 ## Templates ready to adopt
 

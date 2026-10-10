@@ -346,7 +346,7 @@ function features(t) {
         ["A workflow per job", "Design, plan, build, debug", "and ship — a command each"],
         ["Independent review", "Agents check work they", "didn't write themselves"],
         ["Self-fixing builds", "Reads the error, fixes it,", "re-tests, remembers the fix"],
-        ["34 audits", "Security, privacy, cost,", "accessibility and more"],
+        ["35 audits", "Security, privacy, cost,", "accessibility and more"],
       ],
     ],
     [
@@ -405,7 +405,7 @@ function features(t) {
     W,
     H,
     b,
-    "What ships with bkit: ready-made workflows, independent review, self-fixing builds, 34 audits, human sign-off, guardrails, honest CI, quality checks, any AI tool, laptop to cloud, parallel features, skills on demand, docs and memory kept current, best model per job, work stats, templates to adopt.",
+    "What ships with bkit: ready-made workflows, independent review, self-fixing builds, 35 audits, human sign-off, guardrails, honest CI, quality checks, any AI tool, laptop to cloud, parallel features, skills on demand, docs and memory kept current, best model per job, work stats, templates to adopt.",
   );
 }
 
