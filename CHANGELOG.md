@@ -47,7 +47,7 @@ bkit owns only what a workflow step runs or parses (#489). Everything a person o
 - **`bkit uninstall` cleans up `docs/`.** A full uninstall strips bkit's block, managed marker included, from every `docs/*.md` bkit installed (a file holding nothing else is deleted) and deletes the owned `docs/templates/bkit-*.md`. Your own content in those files, and your own files in `docs/templates/`, stay.
 - **Hooks are generated from one source per family.** Install builds each host's `preflight.sh`, `gateguard` and `guardrails` hook from a small per-host template plus the code the hosts share (`.bkit/core/hook-parts/`), spliced into the managed block. The generated files are plain JS / bash, need no `node_modules`, and keep the `bkitGateguard(payload)` / `bkitGuardrails(payload)` API your driver calls. The Cursor and Codex deny messages now share one wording.
 - **`bkit-cloud.yml`: one `context` job resolves phase + arg** for both runner jobs, which `needs:` it and run only when their own secret is set; the dev-dispatch counter row is written once per run instead of once per runner. Re-copy the template (all three jobs take `{{CLOUD_RUNNER}}`).
-- **`cloud-bootstrap.sh` asks bkit**: the gh probe is `bkit runtime detect` and the provision recipes come from `bkit context list-blocks`, both read with `jq`. Without bkit or `jq` the hook logs `gh-preflight: SKIPPED` and does neither.
+- **`cloud-bootstrap.sh` asks bkit for the provision recipes** (`bkit context list-blocks`, read with `jq`). Without bkit or `jq` the hook logs `context-fetch provisioning: SKIPPED`; the gh probe and the `BKIT_GH_TOKEN` login need only `gh` and always run.
 
 ### Removed
 

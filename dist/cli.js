@@ -523,7 +523,7 @@ Dependency updaters (copy an example and own it):
 
   --auto=<claude|cursor|opencode>
                   Cloud-agent (auto-dispatch) integration (opt-in). --auto=claude needs
-                  tracker=github + BKIT_ANTHROPIC_API_KEY + the Claude GitHub App; --auto=cursor
+                  tracker=github + the ANTHROPIC_API_KEY repo secret + the Claude GitHub App; --auto=cursor
                   needs tracker=linear; --auto=opencode needs tracker=github + a remote
                   opencode provider (OPENCODE_PROVIDER_KEY). Bare --auto is accepted on
                   uninstall only.

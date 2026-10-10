@@ -40,9 +40,10 @@ exit 1
 EOF
   chmod +x "$FAKE_BIN/gh"
 
-  # The hook probes gh through `bkit runtime detect` (and reads it with jq), so the
-  # workdir is a git repo carrying bkit where `pnpm install` leaves it: here a shim to
-  # the repo's built CLI. node and jq are linked into FAKE_BIN so PATH needs no host dirs.
+  # The provision block lists recipes through `bkit context list-blocks` (read with jq),
+  # so the workdir is a git repo carrying bkit where `pnpm install` leaves it: here a shim
+  # to the repo's built CLI. node and jq are linked into FAKE_BIN so PATH needs no host
+  # dirs. The gh probe and login need only gh.
   git -C "$WORKDIR" init -q
   mkdir -p "$WORKDIR/node_modules/.bin"
   printf '#!/bin/sh\nexec node "%s/dist/cli.js" "$@"\n' "$REPO_ROOT" >"$WORKDIR/node_modules/.bin/bkit"
@@ -155,12 +156,23 @@ run_bootstrap() {
 
 # --- bkit-backed blocks -------------------------------------------------------
 
-@test "without bkit installed, gh preflight and provisioning are skipped loudly, never silently" {
+@test "without bkit installed, gh still logs in from BKIT_GH_TOKEN and provisioning is skipped loudly" {
   rm "$WORKDIR/node_modules/.bin/bkit"
-  run run_bootstrap env FAKE_GH_AUTH_OK=1
+  mkdir -p "$WORKDIR/.agents"
+  printf '<!-- bkit:end -->\n' >"$WORKDIR/.agents/context.md"
+  run run_bootstrap env BKIT_GH_TOKEN=bkit-token FAKE_GH_AUTH_OK=0
   [ "$status" -eq 0 ]
-  [[ "$output" == *"gh-preflight: SKIPPED"* ]]
-  [[ "$output" != *"RUNTIME_GITHUBCLI="* ]]
+  [[ "$output" == *"gh auth login --with-token invoked"* ]]
+  [[ "$output" == *"RUNTIME_GITHUBCLI="* ]]
+  [[ "$output" == *"context-fetch provisioning: SKIPPED"* ]]
+}
+
+@test "without jq, gh still logs in from BKIT_GH_TOKEN" {
+  rm "$FAKE_BIN/jq"
+  run run_bootstrap env BKIT_GH_TOKEN=bkit-token FAKE_GH_AUTH_OK=0
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"gh auth login --with-token invoked"* ]]
+  [[ "$output" == *"RUNTIME_GITHUBCLI="* ]]
 }
 
 @test "runs each context-fetch:provision recipe bkit context list-blocks returns, and only those below bkit:end" {

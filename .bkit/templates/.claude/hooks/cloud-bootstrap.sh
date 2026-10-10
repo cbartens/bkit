@@ -74,73 +74,77 @@ if [ -f .vale.ini ] && command -v vale >/dev/null 2>&1; then
   fi
 fi
 
-# bkit (installed by the `pnpm install` above) answers the gh probe and lists the
-# provision recipes; jq (installed by the cloud setup script) reads its JSON. Either
-# missing → both blocks below are skipped, loudly.
-BKIT="$REPO_ROOT/node_modules/.bin/bkit"
-if [ ! -x "$BKIT" ] || ! command -v jq >/dev/null 2>&1; then
-  log "gh-preflight: SKIPPED — bkit (node_modules/.bin/bkit) or jq is missing, so gh is neither probed nor authenticated and no context-fetch CLI is provisioned this session. Fix: a working 'pnpm install' and the cloud setup script from .claude/cloud.md."
-else
-  # `bkit runtime detect` probes `gh auth status`: "<runtimeGithubCli> <exit>", exit 127 =
-  # gh not on PATH. --fid only shapes worktreePath, which this hook does not read.
-  gh_probe() {
-    "$BKIT" runtime detect --fid=cloud-bootstrap 2>/dev/null \
-      | jq -r '"\(.runtimeGithubCli) \(.runtimeGithubCliExit)"' 2>/dev/null || printf 'false 1'
-  }
-  GH_STATE=$(gh_probe)
-
-  # Authenticate the gh CLI for the PR / branch / git-push surface (session-scoped).
-  # Runs only where the probe fails (e.g. Claude Code on the web); on GitHub Actions
-  # runners gh is already authed via GITHUB_TOKEN. BKIT_GH_TOKEN comes from the
-  # dashboard env vars (see cloud.md § Environment variables).
-  #
-  # gh reads GH_TOKEN -> GITHUB_TOKEN with TOP precedence over any stored
-  # `gh auth login` credential (gh manual; cli/cli#2922). A working GH_TOKEN /
-  # GITHUB_TOKEN is used as-is. Branches on the PROBE, not on presence: a
-  # present-but-broken env token gets its own diagnosis.
-  #
-  # BKIT_GH_TOKEN is the one secret both this hook (gh) and the GitHub MCP server
-  # (.mcp.json's Authorization header) read.
-  if [ "${GH_STATE#* }" = "127" ]; then
-    log "gh-preflight: gh is not on PATH — the GitHub MCP server is the only GitHub lane this session"
-  elif [ "${GH_STATE% *}" = "true" ]; then
-    log "gh-preflight: gh already authenticates (sanctioned env token or stored credential) — leaving that lane alone"
-  elif [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
-    # Present but NOT authenticating: a placeholder or expired token. It outranks any
-    # stored credential, so `--with-token` cannot override it, and a SessionStart hook's
-    # `export` does not reach the agent's later Bash processes (cloud env vars are set
-    # in the dashboard; see cloud.md). Logs the fault and its fix; the workflow-level
-    # Step-1 preflight fails the run closed onto the MCP lane.
-    log "gh-preflight: WARNING — GH_TOKEN/GITHUB_TOKEN is set but does NOT authenticate (placeholder or expired). It takes precedence over any stored 'gh auth login' credential, so gh cannot be repaired from this hook. Fix it where it is defined — the cloud environment's Environment variables — by setting a valid token or removing the variable so BKIT_GH_TOKEN can be used instead. Until then gh stays down and workflows fall back to the GitHub MCP lane. See .bkit/cloud.md § Environment variables."
-  elif [ -n "${BKIT_GH_TOKEN:-}" ]; then
-    log "gh auth login --with-token"
-    printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token || log "gh auth login failed (non-blocking)"
+# gh probe: "<authenticates> <exit>" — "false 127" when gh is not on PATH. Needs only gh,
+# so the login below runs even when bkit or jq is missing.
+gh_probe() {
+  if ! command -v gh >/dev/null 2>&1; then
+    printf 'false 127'
+  elif gh auth status >/dev/null 2>&1; then
+    printf 'true 0'
+  else
+    printf 'false 1'
   fi
+}
+GH_STATE=$(gh_probe)
 
-  # gh-preflight: always logs RUNTIME_GITHUBCLI (probed again, after any login).
-  # NON-BLOCKING (SessionStart hooks cannot hard-stop the session; see header note).
-  # The ENFORCING dual-lane abort lives in each workflow's Step-1 preflight
-  # (`bkit runtime detect` / `bkit runtime assert` reading RUNTIME_GITHUBCLI).
-  GH_STATE=$(gh_probe)
-  RUNTIME_GITHUBCLI=${GH_STATE% *}
-  log "gh-preflight: RUNTIME_GITHUBCLI=${RUNTIME_GITHUBCLI}"
+# Authenticate the gh CLI for the PR / branch / git-push surface (session-scoped).
+# Runs only where the probe fails (e.g. Claude Code on the web); on GitHub Actions
+# runners gh is already authed via GITHUB_TOKEN. BKIT_GH_TOKEN comes from the
+# dashboard env vars (see cloud.md § Environment variables).
+#
+# gh reads GH_TOKEN -> GITHUB_TOKEN with TOP precedence over any stored
+# `gh auth login` credential (gh manual; cli/cli#2922). A working GH_TOKEN /
+# GITHUB_TOKEN is used as-is. Branches on the PROBE, not on presence: a
+# present-but-broken env token gets its own diagnosis.
+#
+# BKIT_GH_TOKEN is the one secret both this hook (gh) and the GitHub MCP server
+# (.mcp.json's Authorization header) read.
+if [ "${GH_STATE#* }" = "127" ]; then
+  log "gh-preflight: gh is not on PATH — the GitHub MCP server is the only GitHub lane this session"
+elif [ "${GH_STATE% *}" = "true" ]; then
+  log "gh-preflight: gh already authenticates (sanctioned env token or stored credential) — leaving that lane alone"
+elif [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
+  # Present but NOT authenticating: a placeholder or expired token. It outranks any
+  # stored credential, so `--with-token` cannot override it, and a SessionStart hook's
+  # `export` does not reach the agent's later Bash processes (cloud env vars are set
+  # in the dashboard; see cloud.md). Logs the fault and its fix; the workflow-level
+  # Step-1 preflight fails the run closed onto the MCP lane.
+  log "gh-preflight: WARNING — GH_TOKEN/GITHUB_TOKEN is set but does NOT authenticate (placeholder or expired). It takes precedence over any stored 'gh auth login' credential, so gh cannot be repaired from this hook. Fix it where it is defined — the cloud environment's Environment variables — by setting a valid token or removing the variable so BKIT_GH_TOKEN can be used instead. Until then gh stays down and workflows fall back to the GitHub MCP lane. See .bkit/cloud.md § Environment variables."
+elif [ -n "${BKIT_GH_TOKEN:-}" ]; then
+  log "gh auth login --with-token"
+  printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token || log "gh auth login failed (non-blocking)"
+fi
 
-  # Dual-lane signal: gh and the GitHub MCP server are BOTH keyed off the same
-  # BKIT_GH_TOKEN (this hook + .mcp.json's Authorization header) — if none of
-  # BKIT_GH_TOKEN/GH_TOKEN/GITHUB_TOKEN are set, neither lane can authenticate.
-  # Loud, non-blocking (see above); the workflow-level Step-1 preflight is what
-  # actually fails the run closed.
-  if [ "$RUNTIME_GITHUBCLI" = "false" ] && [ -z "${BKIT_GH_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ]; then
-    log "DUAL-LANE WARNING: neither gh nor the GitHub MCP server can authenticate — BKIT_GH_TOKEN/GH_TOKEN/GITHUB_TOKEN are all unset. Both lanes read the same credential; the workflow's Step-1 preflight will fail closed. Non-blocking signal only (SessionStart hooks cannot abort the session) — see .bkit/cloud.md § MCP issue-tracker integration."
-  fi
+# gh-preflight: always logs RUNTIME_GITHUBCLI (probed again, after any login).
+# NON-BLOCKING (SessionStart hooks cannot hard-stop the session; see header note).
+# The ENFORCING dual-lane abort lives in each workflow's Step-1 preflight
+# (`bkit runtime detect` / `bkit runtime assert` reading RUNTIME_GITHUBCLI).
+GH_STATE=$(gh_probe)
+RUNTIME_GITHUBCLI=${GH_STATE% *}
+log "gh-preflight: RUNTIME_GITHUBCLI=${RUNTIME_GITHUBCLI}"
 
-  # Provision context-fetch CLIs the consumer declared in .agents/context.md. Stack-agnostic:
-  # bkit runs whatever `context-fetch:provision` recipe each block carries (self-guarded with
-  # `command -v <cli> || <install>`), so no stack name is baked into bkit. Runs every session
-  # (a no-op once the CLI is present); the web setup script bakes the same recipes into its
-  # snapshot, so this is the gh-runner + resumed-session path. `bkit context list-blocks`
-  # returns each block's bash body below `bkit:end` as `provision`. See .agents/context.md.
-  if [ -f .agents/context.md ]; then
+# Dual-lane signal: gh and the GitHub MCP server are BOTH keyed off the same
+# BKIT_GH_TOKEN (this hook + .mcp.json's Authorization header) — if none of
+# BKIT_GH_TOKEN/GH_TOKEN/GITHUB_TOKEN are set, neither lane can authenticate.
+# Loud, non-blocking (see above); the workflow-level Step-1 preflight is what
+# actually fails the run closed.
+if [ "$RUNTIME_GITHUBCLI" = "false" ] && [ -z "${BKIT_GH_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ]; then
+  log "DUAL-LANE WARNING: neither gh nor the GitHub MCP server can authenticate — BKIT_GH_TOKEN/GH_TOKEN/GITHUB_TOKEN are all unset. Both lanes read the same credential; the workflow's Step-1 preflight will fail closed. Non-blocking signal only (SessionStart hooks cannot abort the session) — see .bkit/cloud.md § MCP issue-tracker integration."
+fi
+
+# Provision context-fetch CLIs the consumer declared in .agents/context.md. Stack-agnostic:
+# bkit runs whatever `context-fetch:provision` recipe each block carries (self-guarded with
+# `command -v <cli> || <install>`), so no stack name is baked into bkit. Runs every session
+# (a no-op once the CLI is present); the web setup script bakes the same recipes into its
+# snapshot, so this is the gh-runner + resumed-session path. `bkit context list-blocks`
+# returns each block's bash body below `bkit:end` as `provision`; bkit (installed by the
+# `pnpm install` above) lists them and jq (installed by the cloud setup script) reads the
+# JSON. See .agents/context.md.
+if [ -f .agents/context.md ]; then
+  BKIT="$REPO_ROOT/node_modules/.bin/bkit"
+  if [ ! -x "$BKIT" ] || ! command -v jq >/dev/null 2>&1; then
+    log "context-fetch provisioning: SKIPPED — bkit (node_modules/.bin/bkit) or jq is missing. Fix: a working 'pnpm install' and the cloud setup script from .claude/cloud.md."
+  else
     PROVISION=$("$BKIT" context list-blocks 2>/dev/null | jq -r '.provision[]' 2>/dev/null || true)
     if [ -n "$PROVISION" ]; then
       log "provisioning context-fetch CLIs from .agents/context.md"

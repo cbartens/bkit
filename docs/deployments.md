@@ -565,7 +565,7 @@ The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it t
 <!-- prettier-ignore -->
 | Job | Dispatch | Gated on | LLM secret |
 | --- | --- | --- | --- |
-| `claude` | `claude-code-action` (OIDC via Claude GitHub App) | first step exports `enabled=true` only when `BKIT_ANTHROPIC_API_KEY` is non-empty; absent → `::notice::… no-op` | `BKIT_ANTHROPIC_API_KEY` |
+| `claude` | `claude-code-action` (OIDC via Claude GitHub App) | first step exports `enabled=true` only when `ANTHROPIC_API_KEY` is non-empty; absent → `::notice::… no-op` | `ANTHROPIC_API_KEY` |
 | `opencode` | `opencode run` CLI (installed in-job) | first step exports `enabled=true` only when `OPENCODE_PROVIDER_KEY` is non-empty; absent → no-op | `OPENCODE_PROVIDER_KEY` |
 
 **Rules:**

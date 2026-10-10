@@ -1403,11 +1403,11 @@ describe("detectRunLevelsNotComposed", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectCiRouterSecrets", () => {
-  it("returns empty when bkit-auto workflow is absent", () => {
+  it("returns empty when bkit-cloud.yml is absent", () => {
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
   });
 
-  it("any tracker: emits ONLY BKIT_ANTHROPIC_API_KEY (bkit-cloud.yml is GitHub-only, no LINEAR dependency)", () => {
+  it("any tracker: emits ONLY ANTHROPIC_API_KEY (bkit-cloud.yml is GitHub-only, no LINEAR dependency)", () => {
     // bkit-cloud.yml is cloud=claude / GitHub-tracker only — no BKIT_LINEAR_API_KEY.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1462,7 +1462,7 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(buildCloudDashboardsAdvisory(tmpDir)).toBeNull();
   });
 
-  it("fires when bkit-auto workflow exists", () => {
+  it("fires when bkit-cloud.yml exists", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),

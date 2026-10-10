@@ -141,7 +141,7 @@ export function detectMainBranchProtection() {
 }
 /**
  * Detect whether the repo's default GitHub Actions workflow permissions let the
- * bkit-auto workflow push status commits and open/merge PRs. Reads
+ * bkit-cloud.yml push status commits and open/merge PRs. Reads
  * `repos/{owner}/{repo}/actions/permissions/workflow`:
  *   - default_workflow_permissions: "read" | "write"
  *   - can_approve_pull_request_reviews: boolean
@@ -1646,7 +1646,7 @@ export function buildCloudSetupAdvisory(cwd) {
             id: "cloud-router",
             severity: "advisory",
             detect: "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present). The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done.",
-            action: `The workflow requires: \`BKIT_ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.`,
+            action: `The workflow requires: the \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.`,
         };
     }
     // No router present — distinguish opt-out from undecided.
@@ -1661,13 +1661,13 @@ export function buildCloudSetupAdvisory(cwd) {
         severity: "advisory",
         detect: "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-cloud.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
         action: "Optional post-install decision. For a GitHub-tracker repo: `pnpm bkit install --auto=claude --tracker=github`. For a Linear-tracker repo: `pnpm bkit install --auto=cursor --tracker=linear`.\n\n" +
-            "Prerequisites for `--auto=claude`: `BKIT_ANTHROPIC_API_KEY` repo secret + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
+            "Prerequisites for `--auto=claude`: `ANTHROPIC_API_KEY` repo secret + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
             'To opt out and silence this advisory, set `bkit.cloudAgents` to `"none"` in package.json.',
     };
 }
 /**
  * Build the consolidated "three locations to sync secrets" advisory. Fires when
- * the consumer's repo has the bkit-auto workflow installed OR a
+ * the consumer's repo has bkit-cloud.yml installed OR a
  * .claude/ or .cursor/ install present — both indicate cloud-side agent use,
  * which means the same three secrets need to be set in three places (GitHub
  * Actions, Cursor Settings online, Claude app web).
@@ -1680,7 +1680,7 @@ export function buildCloudDashboardsAdvisory(cwd) {
     const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
     if (!hasRouter && !hasClaude && !hasCursor)
         return null;
-    // cloud=claude path (bkit-cloud.yml): GitHub-tracker only, BKIT_ANTHROPIC_API_KEY only.
+    // cloud=claude path (bkit-cloud.yml): GitHub-tracker only, ANTHROPIC_API_KEY only.
     // cloud=cursor path (.cursor/): BKIT_LINEAR_API_KEY for Cursor dashboard.
     // Distinguish by recorded variant; fall back to presence-based detection.
     const recordedVariant = readConsumerCloudAgents(cwd);
@@ -1697,13 +1697,13 @@ export function buildCloudDashboardsAdvisory(cwd) {
             "       Verify: `gh secret list | grep -E 'ANTHROPIC_API_KEY|BKIT_GH_TOKEN_INSTALL'`\n\n";
     const vendorNote = isCursorCloud
         ? "BKIT_LINEAR_API_KEY is read from the Linear dashboard (https://linear.app/settings/api)."
-        : "BKIT_ANTHROPIC_API_KEY is read from the Anthropic dashboard (https://console.anthropic.com/settings/keys). The Claude GitHub App (`/install-github-app`) is also required for `cloud=claude`.";
+        : "ANTHROPIC_API_KEY is read from the Anthropic dashboard (https://console.anthropic.com/settings/keys); `.bkit/.env` holds the same value as BKIT_ANTHROPIC_API_KEY. The Claude GitHub App (`/install-github-app`) is also required for `cloud=claude`.";
     return {
         id: "cloud-secrets-three-locations",
         severity: "advisory",
         detect: `The secrets used by bkit's cloud integration (${secretList}) must also be set in the relevant cloud dashboards. Bkit cannot verify dashboard state — surface the checklist so you don't ship a half-configured cloud setup.`,
         action: "Set each secret in the required locations:\n\n" +
-            "1. **GitHub Actions** (used by the bkit-auto workflow and consumer workflows):\n" +
+            "1. **GitHub Actions** (used by bkit-cloud.yml and your own workflows):\n" +
             ghSetLines +
             "2. **Cursor Cloud Agents** (used by Cursor's cloud agent runner): open `https://cursor.com/dashboard/cloud-agents` → your environment → **Secrets** tab. Add each secret as a **Runtime Secret** (loaded as an env var, redacted from the agent's transcript). Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but secrets come from this dashboard only; the resolved paste-ready values are in `.cursor/cloud.md` (gitignored).\n\n" +
             "3. **Claude Code (web)** (used by Claude.ai's cloud agent runner): open `https://claude.ai/code` → Settings → Setup → Environment Variables. Add each secret. Claude reads its setup script from the dashboard, NOT from the repo, so changes here do not require a commit.\n\n" +
@@ -1713,8 +1713,8 @@ export function buildCloudDashboardsAdvisory(cwd) {
     };
 }
 /**
- * Detect whether the GitHub Actions secrets the bkit-auto workflow needs are set.
- * Only fires when `.github/workflows/bkit-cloud.yml` exists. `BKIT_ANTHROPIC_API_KEY` is
+ * Detect whether the GitHub Actions secrets `bkit-cloud.yml` needs are set.
+ * Only fires when `.github/workflows/bkit-cloud.yml` exists. `ANTHROPIC_API_KEY` is
  * always required (claude-code-action) for the cloud=claude path. The workflow is
  * GitHub-tracker only — no `BKIT_LINEAR_API_KEY` dependency. Returns one finding per
  * missing secret.
@@ -2299,10 +2299,10 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd()) {
     const cloudSetup = buildCloudSetupAdvisory(cwd);
     if (cloudSetup)
         phase3.push(cloudSetup);
-    // bkit-auto workflow requires BKIT_ANTHROPIC_API_KEY + BKIT_LINEAR_API_KEY secrets.
+    // bkit-cloud.yml needs the ANTHROPIC_API_KEY repo secret.
     for (const f of detectCiRouterSecrets(cwd))
         phase3.push(f);
-    // bkit-auto workflow also needs repo Actions write permissions + PR-creation
+    // bkit-cloud.yml also needs repo Actions write permissions + PR-creation
     // allowance, else `actions/checkout` and `gh pr create` 403. Detectable at the
     // repo level via the Actions API; org-level policy can still override.
     if (fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-cloud.yml"))) {

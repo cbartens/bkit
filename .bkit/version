@@ -2,7 +2,7 @@
   "pinnedVersion": "4.12.0",
   "canonicalHashes": {
     ".cursor/mcp.json": "355e01cadabed3b924ebe339dc07ecbf7179397ebc9accf8618d5d7d6af6c438",
-    "docs/deployments.md": "ebc7db1d9d55d0e2cb80c0814b7ebcc1b50fe356f7e2c6c704736df787ed51f4",
+    "docs/deployments.md": "ac3975b6cb9804214d0c9d22c8bf5f93600bb7cbc6bd3b568d6a7623385e8217",
     "docs/testing.md": "bf5afcfda28e9152d625f971f6d5598a1cf8b1865e5eb441cab87f46f2384584",
     ".claude/settings.json": "626fe730982f8fc75f0da984292eee0bb308e3a5da5987e1a3c31c9f4d99cca8",
     ".agents/context.md": "5cf54b91ffaa5d9372415a24dd1acfe0910c7def1f4434e25ccf110e3eaed013",
@@ -16,7 +16,7 @@
     "docs/setup.md": "618713683aa284b0ce75aea4c5f408ff7109d879f49020d5beb1f7ed4a2a8fdf",
     "docs/data-schema.md": "775244ee6fb320897108b35256b744512a311abc729ea6cea4f45bf46f69eb72",
     ".gitattributes": "edecd987c9578ec506953d5ec1cad91033ed0f211240bd67414b91e536bf8abf",
-    ".claude/hooks/cloud-bootstrap.sh": "857a8d78c1a3589f1b5f188ee249778cdcee97e9be369588884bbf1f726092ae",
+    ".claude/hooks/cloud-bootstrap.sh": "c992f2378aa1e101174d253377d928a6af447b26f12454e0ea719d6c33825be4",
     ".cursor/hooks.json": "a4d0db3bf77b8637d924c8cf9c0345b9970cb6068ecd15f313bdb7ea0ce0e763",
     "docs/observability.md": "7b419b52d98c2c0613ae0e8a9c08c8c3359826c61ba11385ec0eb938576bd498",
     ".gitignore": "8c74134db3b5ff272eec20564a01f21e8d34865968d633063048aa9df3028af4",
