@@ -295,9 +295,8 @@ jobs:
       # branch, and scheduled / default-branch-triggered Actions run the default branch's copy
       # of each workflow — so a renovate.json5 or .github/workflows/ edit that lands on dev but
       # is never promoted runs STALE until a dev -> default branch PR lands. Warns (never fails) on
-      # dev pushes when those consumed-from-default-branch surfaces differ. Mirrors the consumer
-      # scaffold's `main-lag-warning` block (kept marker-free here — bkit's own ci.yml is not the
-      # shipped scaffold). See docs/deployments.md § "Promotion-lag warning".
+      # dev pushes when those consumed-from-default-branch surfaces differ. Same check as the
+      # template ci.yml's promotion-lag step. See docs/deployments.md § "Promotion-lag warning".
       - name: Check Default Branch Lags Dev
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
         env:

@@ -94,7 +94,6 @@ jobs:
     # Free-tier gate: CI-driven runs additionally require 'bkit [auto route]' in the
     # head commit message — zero runner minutes if the marker is absent (no opted-in
     # close-workflow HEAD). Dispatched runs always proceed.
-    # bkit:start auto-route-gate
     if: >-
       github.event_name == 'workflow_dispatch'
       || (
@@ -103,7 +102,6 @@ jobs:
       && contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')
       && !(github.event.workflow_run.head_branch == 'dev' && github.event.workflow_run.conclusion == 'success')
       )
-    # bkit:end auto-route-gate
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -189,7 +187,6 @@ jobs:
               *) echo "::notice::Non-terminal CI conclusion '$CONCLUSION' — no-op exit."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
             esac
 
-            # bkit:start shared-deriv
             # SHARED-DERIV: FID/ISSUE recovery + dispatch-cap machinery for both
             # CI-driven trigger surfaces (feat/** pre-merge, dev post-merge).
 
@@ -426,7 +423,6 @@ jobs:
               # MAX_NORMAL_ATTEMPT counters. The dev arm above is the only
               # capped surface.
             fi
-            # bkit:end shared-deriv
           fi
           # Guard: arg must be alphanumeric/dash/dot/slash (numeric PR/issue ids + FIDs like
           # 245-opencode-provider-host). workflow_dispatch inputs.issue flows unsanitized into the
@@ -466,7 +462,6 @@ jobs:
   # ---------------------------------------------------------------------------
   opencode:
     name: opencode (${{ github.event_name }})
-    # bkit:start auto-route-gate
     if: >-
       github.event_name == 'workflow_dispatch'
       || (
@@ -475,7 +470,6 @@ jobs:
       && contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')
       && !(github.event.workflow_run.head_branch == 'dev' && github.event.workflow_run.conclusion == 'success')
       )
-    # bkit:end auto-route-gate
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -533,7 +527,6 @@ jobs:
               *) echo "::notice::Non-terminal CI conclusion '$CONCLUSION' — no-op exit."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
             esac
 
-            # bkit:start shared-deriv
             # FID/ISSUE recovery + dispatch-cap machinery for both CI-driven
             # trigger surfaces (feat/**, dev). See the claude job's ctx
             # step for the commented version of this block — identical logic.
@@ -723,7 +716,6 @@ jobs:
               # (pre-merge, in-session-bounded). The dev arm is the only capped
               # surface.
             fi
-            # bkit:end shared-deriv
           fi
           # Guard: arg must be alphanumeric/dash/dot/slash (numeric PR/issue ids + FIDs like 245-opencode-provider-host).
           if ! [[ "$ARG" =~ ^[0-9A-Za-z._/-]+$ ]]; then
