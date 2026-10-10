@@ -1,6 +1,6 @@
 // bkit-comply.ts — compliance grader for the bkit workflow suite.
 //
-// Implements the #232 (consolidated into #234) grader:
+// Implements the #234 grader:
 //   - Pure functions over `git diff parentSha..HEAD` + filesystem state.
 //   - Deterministic, advisory (NEVER gating). Fail-open: callers use the idiom
 //     `pnpm bkit comply --phase={p} || echo "[bkit-comply] grader unavailable, skipping"`.

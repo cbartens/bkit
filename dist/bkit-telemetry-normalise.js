@@ -1,15 +1,15 @@
 // bkit-telemetry-normalise.ts — one-shot, idempotent normalisation of the
 // key-bearing ledgers (docs/decisions.jsonl, docs/knowledge.jsonl) off the
-// retired sequential-alias scheme (.bkit/jsonl.md § Key & References).
+// legacy sequential-alias scheme (.bkit/jsonl.md § Key & References).
 //
 // For every row it:
-//   1. drops the deprecated `aliases[]` field, demoting its values into
-//      `references[]` (the current schema — the alias was folded into references
-//      once sequential DE-{N} ids proved un-mintable under concurrency);
+//   1. drops the legacy `aliases[]` field, demoting its values into
+//      `references[]` (the current schema — sequential DE-{N} ids are
+//      un-mintable under concurrency);
 //   2. keeps `ts` as the identity — never touched;
 //   3. re-keys ONLY rows whose legacy number COLLIDES (one DE-<n>/KN-<n> shared
 //      by >1 key): strips the `de-<n>-` / `kn-<n>-` prefix so the misleading
-//      shared number leaves the slug, preserving the old id as a `references[]`
+//      shared number leaves the slug, preserving the legacy id as a `references[]`
 //      pointer. Unique numbered keys are left alone — they resolve fine and
 //      re-keying them would churn valid citations.
 //

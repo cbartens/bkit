@@ -1,29 +1,27 @@
 // bkit-context-migrate.ts — automatic relocation of consumer context-fetch config
-// onto `.agents/context.md`, from both of its former homes.
+// from `.agents/config.md` and `docs/observability.md` onto `.agents/context.md`.
 //
 // Two migrations live here, and `bkit install` / `bkit upgrade` run them in order:
 //
-//   1. migrateConfigMdToContext  — `.agents/config.md` → `.agents/context.md`, issue
-//      #454. MOVES the consumer section AND transforms `debug-fetch:` → `context-fetch:`
-//      inside it, then deletes the old file. This is the one migration under a RELAXED
-//      contract: the marker vocabulary changed with the filename, so a verbatim move
-//      would leave the consumer with markers nothing parses.
-//   2. migrateContextFetchToContext — `docs/observability.md` → `.agents/context.md`,
-//      issue #334, re-pointed here by #454. Still MOVE-only, still verbatim.
+//   1. migrateConfigMdToContext  — `.agents/config.md` → `.agents/context.md`.
+//      MOVES the consumer section AND transforms `debug-fetch:` → `context-fetch:`
+//      inside it, then deletes `.agents/config.md`. This is the one migration under a
+//      RELAXED contract: config.md carries the `debug-fetch:` marker vocabulary, so a
+//      verbatim move would leave the consumer with markers nothing parses.
+//   2. migrateContextFetchToContext — `docs/observability.md` → `.agents/context.md`.
+//      MOVE-only; the one rewrite is the same marker swap.
 //
-// Order matters: #454 runs FIRST so that a consumer sitting two versions back — blocks
-// in observability.md, a config.md from the #334 hop, or both — converges on one
-// context.md in a single pass, whichever hop they are on.
+// Order matters: config.md runs FIRST so that a consumer with blocks in
+// observability.md, a config.md, or both converges on one context.md in a single pass.
 //
 // Wired into BOTH version-move paths — `bkit install` via runCoreModule (after its
 // templates pass) AND `bkit upgrade` via the upgrade engine's explicit call (after its
 // render pass), each AFTER context.md's managed block is written — so an upgrading
 // consumer need do NOTHING. (install and upgrade are SEPARATE engines — both migrations
-// must be called from both.) Modelled on the automatic `.agents/→.bkit/` move + `.envrc`
-// re-point in bkit-install.ts (dry-run-aware, idempotent).
+// must be called from both.) Dry-run-aware and idempotent.
 //
 // Safety contract:
-//   1. Content-preserving — a block's body is never rewritten except for the #454
+//   1. Content-preserving — a block's body is never rewritten except for the
 //      `debug-fetch:` → `context-fetch:` token swap, which is confined to that token.
 //   2. Idempotent — once the source file has no consumer-section blocks (or is gone),
 //      a re-run is a no-op.
@@ -35,13 +33,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 const OBSERVABILITY_RELPATH = path.join("docs", "observability.md");
 const CONTEXT_RELPATH = path.join(".agents", "context.md");
-/** Pre-#454 home of the same file. Read-and-delete only; never written. */
+/** Legacy location of the same file. Read-and-delete only; never written. */
 const LEGACY_CONFIG_RELPATH = path.join(".agents", "config.md");
 const BKIT_END_RE = /^<!-- bkit:end -->$/;
-// Both marker vocabularies, on purpose. A consumer two versions back still has blocks
-// in observability.md written as `debug-fetch:` — matching only the post-#454 spelling
-// would silently leave them there forever, since nothing else ever revisits that file.
-// They are transformed on the way out by renameLegacyContextFetchMarkers.
+// Both marker vocabularies, on purpose. A consumer's observability.md may hold blocks
+// written as `debug-fetch:` — matching only `context-fetch:` would silently leave them
+// there forever, since nothing else ever revisits that file. They are transformed on
+// the way out by renameLegacyContextFetchMarkers.
 const FETCH_NS = "(?:debug|context)-fetch";
 const BLOCK_OPEN_RE = new RegExp(`^<!-- ${FETCH_NS}:(?:start|provision)(?: [^>]*)? -->$`);
 const BLOCK_CLOSE_RE = new RegExp(`^<!-- ${FETCH_NS}:end -->$`);
@@ -104,8 +102,8 @@ export function migrateContextFetchBlocks(observability, context) {
     // the removal leaves behind (avoid a growing gap on repeated shapes).
     const keptLines = obsLines.filter((_, idx) => !removeIdx.has(idx));
     let newObservability = collapseBlankRuns(keptLines.join("\n"));
-    // Rename any legacy-vocabulary markers as they move (same swap #454 applies to
-    // config.md), THEN dedup — so a re-run cannot append a second, differently-spelled
+    // Rename any legacy-vocabulary markers as they move (same swap as for config.md),
+    // THEN dedup — so a re-run cannot append a second, differently-spelled
     // copy of a block the consumer already carries.
     const renamed = blocks.map((b) => renameLegacyContextFetchMarkers(b));
     const fresh = renamed.filter((b) => !context.includes(b.trim()));
@@ -150,22 +148,22 @@ export function migrateContextFetchToContext(cwd, dryRun) {
     return line;
 }
 /**
- * Rewrite the pre-#454 marker vocabulary inside a consumer's own config text.
+ * Rewrite the legacy `debug-fetch:` marker vocabulary inside a consumer's own config text.
  *
  * One token does the whole job: `debug-fetch:` is the prefix of all four markers
  * (`start` / `end` / `provision` / `none`) AND of the `[debug-fetch:<name>] skipped`
  * breadcrumb consumers echo from inside block bodies, so a single swap keeps a
- * consumer's blocks and their stderr breadcrumbs consistent with the renamed docs.
+ * consumer's blocks and their stderr breadcrumbs consistent with the docs.
  * Deliberately narrow — the word "debug" elsewhere in their prose or shell is theirs.
  */
 export function renameLegacyContextFetchMarkers(text) {
     return text.replace(/debug-fetch:/g, "context-fetch:");
 }
 /**
- * `.agents/config.md` → `.agents/context.md` (issue #454).
+ * `.agents/config.md` → `.agents/context.md`.
  *
- * Unlike the #334 migration this TRANSFORMS as it moves — see
- * `renameLegacyContextFetchMarkers`. Three shapes, all idempotent:
+ * TRANSFORMS as it moves — see `renameLegacyContextFetchMarkers`. Three shapes, all
+ * idempotent:
  *
  *   - No legacy file → no-op (the common steady state).
  *   - Legacy file, no context.md yet → move the whole file across, transforming.

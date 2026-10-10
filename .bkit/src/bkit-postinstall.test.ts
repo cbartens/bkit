@@ -1563,7 +1563,6 @@ describe("detectCiRouterSecrets", () => {
 
   it("any tracker: emits ONLY BKIT_ANTHROPIC_API_KEY (bkit-cloud.yml is GitHub-only, no LINEAR dependency)", () => {
     // bkit-cloud.yml is cloud=claude / GitHub-tracker only — no BKIT_LINEAR_API_KEY.
-    // This supersedes the old "Linear tracker: emits ANTHROPIC + LINEAR" behavior.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "linear" } }),

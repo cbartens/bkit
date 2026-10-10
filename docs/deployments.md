@@ -290,12 +290,12 @@ The merge gate (`bkit runs gate`) asserts the capstone job's `conclusion=success
 
 ### Consumer rollback path
 
-The ship gate + bookkeeping rework ship together in one `bkit upgrade` so no consumer sees prose calling a gate it does not have. To unwind a bad ship surface (the gate command, managed config, or rewritten `bkit-ship.md`) without downgrading unrelated fixes:
+To unwind a bad ship surface (the gate command, managed config, or rewritten `bkit-ship.md`) without downgrading unrelated fixes:
 
 1. **Pin the previous `@cbartens/bkit`** in `package.json` (the sliding `@v{N}` tag auto-receives patches; a regression lands via the tag, so pin to the last known-good immutable `v{N}.x.y` or `@<sha>` — see § Sliding major-version tag). Re-install and confirm `bkit check` reports no drift.
 2. **Hold `bkit upgrade` for `.bkit/workflows/bkit-ship.md`** until the regression is fixed upstream. The gate (`bkit runs gate`) and ship's waits ship inside the `@cbartens/bkit` package (`dist/`), not as files in your repo, so the version pin in step 1 is what rolls them back. Other bkit upgrades are independent.
 3. **Audit any `BKIT_SHIP_GATE_OVERRIDE` rows** in `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` written in the interim. Each `type:"ship-gate-override"` row is a sanctioned escape that turned a refusal into a merge — treat every row as a PR whose capstone was NOT green at the merged head and re-verify it against the pinned-good gate (`bkit runs gate --head=<sha>`). `[bkit-runs] override honoured for head …` is the matching `docs/observability.md` grep key.
-4. **A per-workflow pin/revert affordance does not yet exist**; today the package pin + selective `bkit upgrade` hold is the recovery path. Document any incident in `docs/failures.jsonl`.
+4. **No per-workflow pin/revert exists**; the package pin + selective `bkit upgrade` hold is the recovery path. Document any incident in `docs/failures.jsonl`.
 
 Ship's docs sync, summaries, `SHIPPED` roadmap row and skill removals ride the PR: one `[skip ci]` commit on the feature branch before the merge — the only pre-merge push besides conflict-resolve. Status rows (`status.jsonl`) → dev tree from Step 1 when `RUNTIME_DEVPUSHES=true` (modes 1–2), current working branch tree when `false` (mode 3 — cloud); see `.bkit/workflows.md` § Ship `BOOK_ROOT`. Post-merge tail = one `[skip ci]` close commit → push `dev` from the dev checkout (modes 1–2), or built off `origin/dev` → push `dev`, refused → `ship-close/{FID}` PR (mode 3).
 
@@ -341,11 +341,11 @@ Do not add a host-side "hold promotion until a named check passes" setting (e.g.
 
 Health (optional, `.github/workflows/health.yml`) runs on `workflow_run` after that CI run succeeds, and smokes the deployment this SHA promoted. Not a required check.
 
-## Disable GitHub Code Quality before GA billing
+## Disable GitHub Code Quality billing
 
-GitHub **Code Quality** (coverage-on-PR + the _Code Quality: CodeQL_ runs) is free public-preview only until **GA on 2026-07-20**, after which it bills **per active committer + Actions minutes + AI credits** — and it is **opt-out**: repos with default setup enabled are billed silently unless it is turned off first.
+GitHub **Code Quality** (coverage-on-PR + the _Code Quality: CodeQL_ runs) bills **per active committer + Actions minutes + AI credits** — and it is **opt-out**: repos with default setup enabled are billed silently unless it is turned off.
 
-- **If your repo had Code Quality default setup enabled, disable it** — repo → **Settings → Code security → Code Quality** (turn off default setup) before the billing start date, or accept the per-committer charge.
+- **If your repo has Code Quality default setup enabled, disable it** — repo → **Settings → Code security → Code Quality** (turn off default setup), or accept the per-committer charge.
 - **The bkit coverage stub replaces the coverage-on-PR value only.** `bkit-stub:coverage` gives a free, in-Actions coverage comment (shipped stub targets Vitest; `testing.md` § Coverage on PRs) with no third-party service. It does **not** replace **CodeQL security scanning** — keep or re-enable that separately if you rely on it (a distinct product/decision).
 
 ## GitHub Actions pinning
@@ -510,7 +510,7 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 
 **Poll anchors the check NAMESPACE, not a lane name** — the capstone `bkit.capstoneJob` minus its last `-segment` (`bkit-tests-check` → any check containing `bkit-tests`). Single-job anchor PROHIBITED. Alignment: `bkit-ci-dispatch-gate-alignment.test.ts`; legacy scaffolds: `ci-legacy-scaffold-job-names` advisory.
 
-**Gate sites (2, not 3):** build Step 18; debug Step 10 sub-step 6 (PR-mode and LOCAL-mode). Ship OUT — Step 15 reads the squash commit's CI with `bkit runs gate --head=<SQUASH_SHA>`; CI-Dispatch there masks "essential tests skipped".
+**Gate sites (2):** build Step 18; debug Step 10 sub-step 6 (PR-mode and LOCAL-mode). Ship OUT — Step 15 reads the squash commit's CI with `bkit runs gate --head=<SQUASH_SHA>`; CI-Dispatch there masks "essential tests skipped".
 
 **Open-PR pre-flight (build Step 18):** `bkit prs probe --base=dev` first; open PR → Failure Path (`feat/{FID} already has open PR #N to dev`). `bkit prs open` probes `--head` again before creating: exit 3 on an existing open PR (`--existing=fail`, the default), exit 5 on a `gh` error — never a blind create.
 
@@ -554,7 +554,7 @@ Or Actions tab → CI → Run workflow → select branch. Same pattern as consum
 
 1. **Phase 1 — Preflight (read-only).** Blockers + advisories; blockers exit 1 before writes. No hooks-config-overwrite gate — deep-containment preserves consumer keys.
 2. **Phase 2 — Install (direct writes).** Modules write straight to destinations; NOT atomic across modules. `.bkit-staging/<module>/` = per-run scratch for derived files, removed by `discardAllStaging` after every dispatch. Mid-dispatch error → earlier modules' files stay written, `.bkit/version` not re-pinned → re-run `bkit install` (idempotent).
-3. **Phase 3 — Post-install.** Re-detect token/ci/vale/devDeps. Cross-phase dedupe: Phase 3 wins. `bkit check`: Phase 3 read-only. **Phase 3 blockers exit 1** (v0.7.0+) + recovery line; `--auto-revert` → `runUninstall` in-process.
+3. **Phase 3 — Post-install.** Re-detect token/ci/vale/devDeps. Cross-phase dedupe: Phase 3 wins. `bkit check`: Phase 3 read-only. **Phase 3 blockers exit 1** + recovery line; `--auto-revert` → `runUninstall` in-process.
 
 `pnpm bkit install` — all three phases. `pnpm bkit check` — Phase 1 + 3 read-only; exit 1 on Tier-1/Tier-2 drift. `pnpm bkit doctor` — Phase 1 + 3, no writes. `pnpm bkit upgrade` — diff vs `canonicalHashes`; conflicts stderr (`--auto-apply` non-zero). Offline re-render at installed version; `--latest`/`--to=<version>` bump + re-exec atomically. Also re-renders output outside `.bkit/templates/` — host agents/commands + `.bkit/*.md` (`runBkitDocs`) per installed host (by `agents/` dir). Force-overwritten; `.bkit/prompts.md` markered — consumer overrides below `bkit:end` block-merge-preserved.
 
@@ -600,4 +600,4 @@ Breaking changes ship as `v2.0.0` and the workflow auto-creates a separate `v2` 
 - Major number extracted from `github.ref_name` via `sed -E 's/^v([0-9]+)\..*/\1/'`, so `v1.0.3` → `v1`, `v2.4.0` → `v2`. No hard-coded major.
 - Prerelease tags (any tag containing `-`, e.g. `v1.0.3-rc.1`) are skipped — sliding tags only advance on stable releases.
 - Requires `permissions: contents: write` at the workflow level (set in `release.yml`); the default `GITHUB_TOKEN` is sufficient — no PAT needed.
-- Bootstrap: the first `v{N}.x.y` release after this workflow ships creates `v{N}` automatically. No manual `git tag -a v1` step required.
+- Bootstrap: the first `v{N}.x.y` release creates `v{N}` automatically. No manual `git tag -a v1` step required.

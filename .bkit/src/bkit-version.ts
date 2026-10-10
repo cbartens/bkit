@@ -1,6 +1,6 @@
 // bkit-version.ts — Schema for .bkit/version (P2.T3, P4.T4).
 //
-// Extension history:
+// Shapes the parser reads:
 //   v0.6.x schema: plain text "0.6.1\n"
 //   v0.7.x schema: JSON { pinnedVersion: string; tier3Hashes?: Record<string, string> }
 //   v0.9.x schema: JSON { pinnedVersion: string; tier3Hashes?: ...; canonicalHashes?: ... }
@@ -8,18 +8,16 @@
 //
 // Backward-compat: if the file parses as plain text (not JSON), treat it as
 // { pinnedVersion: trimmedContent, canonicalHashes: {} } — no fields are required.
-// This ensures `bkit uninstall` works on consumers that installed with v0.6.x
-// before the schema extension.
+// This keeps `bkit uninstall` working on a plain-text file v0.6.x wrote.
 //
 // `canonicalHashes`: map of consumer-relative path → sha256 hex of the file
 // content bkit wrote. Used by `bkit upgrade` to detect consumer drift and by
 // `bkit uninstall` to delete an owned file only when it is unchanged since bkit
 // wrote it. Absent means "unknown" → treat as consumer-modified (preserve).
 //
-// `tier3Hashes` (retired): the hashes of the seed-or-print files bkit used to
-// write. Still parsed so an older `.bkit/version` keeps its hashes: they are
-// folded into `canonicalHashes` (a canonical entry wins), and the next install
-// or upgrade rewrites the file without the field.
+// `tier3Hashes` (legacy): a second hash map an older bkit wrote. The parser folds
+// it into `canonicalHashes` (a canonical entry wins), and the next install or
+// upgrade rewrites the file without the field.
 //
 // Security note: sha256 used for content identity only, not cryptographic
 // authentication. No secrets are stored here.
@@ -64,7 +62,7 @@ export interface BkitVersion {
    */
   claudeAllowDerived: string[];
   /**
-   * Set by the parser when the file still carries the retired `tier3Hashes` map
+   * Set by the parser when the file carries a legacy `tier3Hashes` map
    * (already folded into `canonicalHashes`), so the next install or upgrade knows
    * to rewrite the file. Never serialized.
    */
@@ -101,13 +99,13 @@ export function parseBkitVersion(content: string): BkitVersion | null {
       const pinnedVersion = typeof parsed.pinnedVersion === "string" ? parsed.pinnedVersion : "";
       const hashMap = (v: unknown): Record<string, string> | null =>
         v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, string>) : null;
-      // The retired seed-or-print hashes record what bkit wrote, exactly as canonicalHashes
-      // does, so they fold in underneath it (a canonical entry wins).
+      // tier3Hashes records what bkit wrote, exactly as canonicalHashes does, so it
+      // folds in underneath it (a canonical entry wins).
       const tier3Hashes = hashMap(parsed.tier3Hashes);
       // P4.T4: canonicalHashes is additive — absent on old payloads → default {}
       const canonicalHashes = { ...tier3Hashes, ...hashMap(parsed.canonicalHashes) };
       // Additive, same shape of guard as canonicalHashes — absent on old payloads → [].
-      // Older payloads carry the same record under its former name, `webFetchDerived`.
+      // Older payloads carry the same record as `webFetchDerived`.
       const recorded = parsed.claudeAllowDerived ?? parsed.webFetchDerived;
       const claudeAllowDerived = Array.isArray(recorded) ? (recorded as string[]) : [];
       return {

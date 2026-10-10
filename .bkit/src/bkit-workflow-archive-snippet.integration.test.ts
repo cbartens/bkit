@@ -151,9 +151,9 @@ describe("design close: archive before overwrite", () => {
   });
 
   it("archives into the feature's own bucket, not the current month", () => {
-    // Guards the companion fix in #416: the close step used to derive the bucket
-    // with `date +%Y%m`, so a design that crossed a month boundary resolved
-    // against an empty directory. MONTH is deliberately in the past; the block
+    // Guards #416: deriving the bucket with `date +%Y%m` would resolve a design
+    // that crossed a month boundary against an empty directory. MONTH is
+    // deliberately in the past; the block
     // takes it as `{YYYYMM}`, the bucket `bkit locks acquire` resolved.
     const root = makeRoot();
     write(root, `docs/plans/${MONTH}/logs/${FID}/design-v1-draft.md`, "V1\n");

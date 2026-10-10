@@ -211,9 +211,7 @@ describe("renderCloudEnvNotes", () => {
 });
 
 // The generated .claude/cloud.md template carries the sentinels the module
-// substitutes at install/upgrade time. (The canonical .bkit/cloud.md no longer
-// duplicates the setup-script body — it points at the generated doc — so there is
-// no vale-version literal to keep in lockstep with the template anymore.)
+// substitutes at install/upgrade time.
 describe("template generation sentinels", () => {
   const pkgRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
   const template = fs.readFileSync(
@@ -354,9 +352,8 @@ describe("writeClaudeCloudDoc — end-to-end render (real template)", () => {
   it("renders the always-Custom block with shipped hosts when no allowed-domains are declared", () => {
     writeClaudeCloudDoc(tmpDir, TOKENS);
     const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
-    // The tick instruction now reaches the zero-declared path too. Asserting `toContain`
-    // here is the point: the old `not.toContain` froze the regression Task 10 removes —
-    // a zero-declaration consumer dropped to a bare Custom list and lost PyPI, crates.io,
+    // The tick instruction reaches the zero-declared path too. Without it a
+    // zero-declaration consumer drops to a bare Custom list and loses PyPI, crates.io,
     // the Go proxy and the cloud SDK hosts the "also include defaults" tick preserves.
     expect(out).toContain("Also include default list");
     expect(out).toContain("githubcopilot.com");
@@ -431,7 +428,7 @@ describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllow
   it("renders the always-Custom block (with pointer) when nothing is declared", () => {
     const out = renderCloudNetworkAllowlist(tmpDir);
     expect(out).toContain("Also include default list");
-    // the pointer prose survives, reworded: it no longer promises a section that now always renders
+    // the pointer prose renders alongside the always-Custom block
     expect(out).toContain("No `allowed-domains` block is declared");
     expect(out).toContain("```text");
   });
@@ -627,7 +624,7 @@ describe("cursor template generation sentinels", () => {
     expect(template).not.toContain("@@CLOUD_CONTEXT_FETCH_PROVISION@@");
   });
 
-  it("directs secrets to the Runtime Secret / Secrets-tab path, not the old Settings pane", () => {
+  it("directs secrets to the Runtime Secret / Secrets-tab path, not the Environment Variables pane", () => {
     expect(template).toContain("Runtime Secret");
     expect(template).toContain("dashboard/cloud-agents");
     expect(template).not.toContain("Background Agents → Environment Variables");

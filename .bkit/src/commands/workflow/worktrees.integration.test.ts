@@ -141,7 +141,7 @@ describe("bkit worktrees setup — mint (create)", () => {
     expect(installCalls()).toBe(`${wtOf(f)} install --frozen-lockfile`);
   });
 
-  it("copies the configured list, narrates each missing entry, and never the old hard-coded paths", async () => {
+  it("copies the configured list, narrates each missing entry, and nothing outside it", async () => {
     const f = fixture();
     fs.mkdirSync(path.join(f.repo, "apps/web"), { recursive: true });
     fs.writeFileSync(path.join(f.repo, "apps/web/.env.preview"), "X=1\n");

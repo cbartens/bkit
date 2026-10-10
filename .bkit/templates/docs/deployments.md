@@ -290,12 +290,12 @@ The merge gate (`bkit runs gate`) asserts the capstone job's `conclusion=success
 
 ### Consumer rollback path
 
-The ship gate + bookkeeping rework ship together in one `bkit upgrade` so no consumer sees prose calling a gate it does not have. To unwind a bad ship surface (the gate command, managed config, or rewritten `bkit-ship.md`) without downgrading unrelated fixes:
+To unwind a bad ship surface (the gate command, managed config, or rewritten `bkit-ship.md`) without downgrading unrelated fixes:
 
 1. **Pin the previous `@cbartens/bkit`** in `package.json` (the sliding `@v{N}` tag auto-receives patches; a regression lands via the tag, so pin to the last known-good immutable `v{N}.x.y` or `@<sha>` — see § Sliding major-version tag). Re-install and confirm `bkit check` reports no drift.
 2. **Hold `bkit upgrade` for `.bkit/workflows/bkit-ship.md`** until the regression is fixed upstream. The gate (`bkit runs gate`) and ship's waits ship inside the `@cbartens/bkit` package (`dist/`), not as files in your repo, so the version pin in step 1 is what rolls them back. Other bkit upgrades are independent.
 3. **Audit any `BKIT_SHIP_GATE_OVERRIDE` rows** in `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` written in the interim. Each `type:"ship-gate-override"` row is a sanctioned escape that turned a refusal into a merge — treat every row as a PR whose capstone was NOT green at the merged head and re-verify it against the pinned-good gate (`bkit runs gate --head=<sha>`). `[bkit-runs] override honoured for head …` is the matching `docs/observability.md` grep key.
-4. **A per-workflow pin/revert affordance does not yet exist**; today the package pin + selective `bkit upgrade` hold is the recovery path. Document any incident in `docs/failures.jsonl`.
+4. **No per-workflow pin/revert exists**; the package pin + selective `bkit upgrade` hold is the recovery path. Document any incident in `docs/failures.jsonl`.
 
 Ship's docs sync, summaries, `SHIPPED` roadmap row and skill removals ride the PR: one `[skip ci]` commit on the feature branch before the merge — the only pre-merge push besides conflict-resolve. Status rows (`status.jsonl`) → dev tree from Step 1 when `RUNTIME_DEVPUSHES=true` (modes 1–2), current working branch tree when `false` (mode 3 — cloud); see `.bkit/workflows.md` § Ship `BOOK_ROOT`. Post-merge tail = one `[skip ci]` close commit → push `dev` from the dev checkout (modes 1–2), or built off `origin/dev` → push `dev`, refused → `ship-close/{FID}` PR (mode 3).
 
@@ -341,11 +341,11 @@ Do not add a host-side "hold promotion until a named check passes" setting (e.g.
 
 Health (optional, `.github/workflows/health.yml`) runs on `workflow_run` after that CI run succeeds, and smokes the deployment this SHA promoted. Not a required check.
 
-## Disable GitHub Code Quality before GA billing
+## Disable GitHub Code Quality billing
 
-GitHub **Code Quality** (coverage-on-PR + the _Code Quality: CodeQL_ runs) is free public-preview only until **GA on 2026-07-20**, after which it bills **per active committer + Actions minutes + AI credits** — and it is **opt-out**: repos with default setup enabled are billed silently unless it is turned off first.
+GitHub **Code Quality** (coverage-on-PR + the _Code Quality: CodeQL_ runs) bills **per active committer + Actions minutes + AI credits** — and it is **opt-out**: repos with default setup enabled are billed silently unless it is turned off.
 
-- **If your repo had Code Quality default setup enabled, disable it** — repo → **Settings → Code security → Code Quality** (turn off default setup) before the billing start date, or accept the per-committer charge.
+- **If your repo has Code Quality default setup enabled, disable it** — repo → **Settings → Code security → Code Quality** (turn off default setup), or accept the per-committer charge.
 - **The bkit coverage stub replaces the coverage-on-PR value only.** `bkit-stub:coverage` gives a free, in-Actions coverage comment (shipped stub targets Vitest; `testing.md` § Coverage on PRs) with no third-party service. It does **not** replace **CodeQL security scanning** — keep or re-enable that separately if you rely on it (a distinct product/decision).
 
 ## GitHub Actions pinning

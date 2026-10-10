@@ -170,10 +170,10 @@ function _stripScope(
       // Both arrays — strip ELEMENT-WISE, not whole-array. Whole-array equality is
       // wrong for any list install enriches after rendering the template: bkit adds
       // apex-domain `WebFetch` entries to `.claude/settings.json` `permissions.allow`,
-      // so that array never equals the template and was misread as consumer
+      // so that array never equals the template and would read as consumer
       // customisation — leaving `allow` behind while `deny`/`ask` (not enriched, so
-      // byte-equal) were stripped. Net effect was a repo strictly MORE permissive
-      // after uninstall than before it.
+      // byte-equal) are stripped, a repo strictly MORE permissive after uninstall
+      // than before it.
       const tSerialised = new Set(tVal.map((el) => JSON.stringify(el)));
       const kept = cVal.filter((el) => !tSerialised.has(JSON.stringify(el)));
       if (kept.length === 0) {
@@ -236,10 +236,10 @@ function isJsonObject(v: JsonValue | undefined): v is Record<string, JsonValue> 
 // `.agents/skills.md` are absent on purpose: they are create-if-missing (the consumer owns
 // them from first install), so uninstall leaves them.
 const CORE_TEMPLATE_DOCTRINE: ManifestEntry[] = [
-  // Retired in #454 (renamed to context.md above). Kept here so a consumer who
-  // uninstalls BEFORE ever upgrading is not left holding an orphaned managed block —
-  // the migration only runs on install/upgrade, and uninstall may come first. A no-op
-  // for everyone already migrated, since the file is gone by then.
+  // Legacy location of `.agents/context.md`. Listed so a consumer who uninstalls
+  // BEFORE ever upgrading is not left holding an orphaned managed block — the
+  // migration only runs on install/upgrade, and uninstall may come first. A no-op
+  // once the migration has run, since the file is gone by then.
   { path: ".agents/config.md", format: "markered-text", module: "core" },
   { path: ".agents/docs.md", format: "markered-text", module: "core" },
   { path: ".agents/rules.md", format: "markered-text", module: "core" },

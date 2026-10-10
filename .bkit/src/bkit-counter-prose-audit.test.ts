@@ -1,6 +1,5 @@
 /**
- * bkit-counter-prose-audit.test.ts — WS3-T3 (#58 / #234), moved onto `bkit`
- * commands by #467.
+ * bkit-counter-prose-audit.test.ts — WS3-T3 (#58 / #234).
  *
  * Attempt counters are derived from status.jsonl by `bkit counters derive|run|rows`
  * and compared to their cap by `bkit counters route`; what those commands

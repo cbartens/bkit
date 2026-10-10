@@ -22,9 +22,8 @@ Patterns are LITERAL, never regex — `new Ratelimit(` as an ERE is an unclosed
 group and silently matches nothing, which reads exactly like a clean result.
 
 TWO SURFACES. A rule's optional "surface" key picks which one it scans:
-"product" (the default, and what every pre-existing rule gets), "tests", or
-"all". Test code was previously skipped outright, which made it the one region
-no duplication detector could see — see sources() for why that mattered.
+"product" (the default), "tests", or "all". See sources() for why the test
+surface exists.
 
 BUDGETED IS NOT DRIFT. A rule may declare "budgets": the EXACT number of
 non-owner sites allowed per scope prefix. A row whose measured count matches its
@@ -77,12 +76,9 @@ def sources():
     Two surfaces, and they PARTITION the file set — no file is on both, none is
     on neither:
 
-      product  application code. Byte-for-byte the surface this scanner has
-               always had.
+      product  application code.
       tests    anything under an `e2e` directory, plus any `.test.` / `.spec.`
-               file anywhere. Exactly what the product surface used to `continue`
-               past, which is why adding it moves no file and changes no
-               existing rule's count.
+               file anywhere — exactly what the product surface skips.
 
     A test HELPER that is neither under `e2e` nor named `.test.`/`.spec.` —
     `packages/utils/src/testing/**`, `packages/api/tests/setup.ts` — is scanned
@@ -90,9 +86,9 @@ def sources():
     paths and its counts belong in a budget if they must stay.
 
     WHY THE TEST SURFACE EXISTS. Test code is where the guards live, and
-    it is the one region a product-only scan cannot see: this scanner
-    used to skip it, a signature matcher misses inline statements inside
-    `test()` callbacks, and a business-rule grep does not see "click a button".
+    it is the one region a product-only scan cannot see: a signature
+    matcher misses inline statements inside `test()` callbacks, and a
+    business-rule grep does not see "click a button".
     """
     for root in ROOTS:
         for dirpath, dirnames, filenames in os.walk(root):

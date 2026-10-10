@@ -290,9 +290,6 @@ describe("shell-as-edit-channel — advisory on every script host", () => {
 });
 
 describe("cross-host gate parity — curl / wget in a shell", () => {
-  // Was an `it.todo` while the canonical behaviour was undecided and Claude had no way
-  // to express it. Both are now settled, so this asserts real behaviour.
-  //
   // Every host allows a fetch to an ALLOWLISTED host with no interruption — the common
   // path, and the one context-fetch blocks take. They differ only on an UNDECLARED host,
   // and each difference is structural rather than a choice left lying around:
@@ -397,11 +394,8 @@ describe("cross-host gate parity — curl / wget in a shell", () => {
 
 describe("cross-host gate parity — network allowlist", () => {
   it("the guardrails hook carries no hardcoded host list of its own", () => {
-    // Replaces the old base-list-vs-WebFetch-seed parity assertion. Both sides of that
-    // comparison were hand-maintained copies, so it could only ever catch the two
-    // drifting apart — never either drifting from the registry they both claimed to
-    // mirror. The single artifact is `.cursor/allowlist.json`, written from the
-    // registry at install; a hook that reintroduces a literal list is the regression.
+    // The single artifact is `.cursor/allowlist.json`, written from the registry at
+    // install; a hook that reintroduces a literal list is the regression.
     const guardrails = fs.readFileSync(GUARDRAILS, "utf-8");
     expect(guardrails).not.toContain("SHIPPED_NETWORK_BASES");
     expect(guardrails).toContain(".cursor");
@@ -409,8 +403,7 @@ describe("cross-host gate parity — network allowlist", () => {
   });
 
   it("the shipped Claude settings seed no host grants of its own", () => {
-    // The seed was a fourth partial copy, stale against the registry. Grants now arrive
-    // only via enrichClaudeSettingsAllows, which records what it wrote so it can
+    // Grants arrive only via enrichClaudeSettingsAllows, which records what it wrote so it can
     // later prune it. A literal back in the template would be unrecorded and unprunable.
     const webFetch = claudePermissions().allow.filter((a) => a.startsWith("WebFetch(domain:"));
     expect(webFetch).toEqual([]);

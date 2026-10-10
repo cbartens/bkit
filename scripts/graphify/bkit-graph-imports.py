@@ -12,10 +12,7 @@ ONE WRITER. `bkit-graph-repair.py` is the only caller of `resolved_import_edges(
 it injects the result into graph.json during `pnpm graph`, so graph.json is the
 single source of truth and `graphify affected` / `explain` / `path` / `query`
 see the same edges our own checks do. bkit-graph-eager.py and bkit-graphify-rollup.py call
-`warn_if_unrepaired()` and otherwise just read the graph. An earlier version had
-them each re-derive the edges on read, which meant two answers to "what edges
-exist" and a subtraction in `collapse()` whose only job was to stop the two
-double-counting. That subtraction was the tell that the design was wrong.
+`warn_if_unrepaired()` and otherwise just read the graph.
 
 Two independent gaps, ~550 edges on this repo. Both are silent: a missing edge
 looks exactly like a clean result.

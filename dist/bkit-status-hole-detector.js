@@ -174,13 +174,13 @@ export function checkSourceCanonicalDrift(sourceSteps) {
  * MERGED_ON_ENTRY is decided by the explicit `ship-merged-on-entry` row that
  * bkit-ship.md Step 2 sub-step 5 writes on the `state` = MERGED route. It
  * deliberately does NOT key on the absence of `ship-merge-pr` /
- * `ship-deferred-sweep`, which is what an earlier revision did: those are the
- * very rows this detector exists to flag, so a Path A/B run that dropped BOTH
- * (a double hole) was reclassified as MERGED_ON_ENTRY, which then removed both
- * from the mandatory set and reported zero holes. Inferring the path from the
- * evidence under audit hides exactly the worst cases.
+ * `ship-deferred-sweep`: those are the very rows this detector exists to flag,
+ * so a Path A/B run that dropped BOTH (a double hole) would be reclassified as
+ * MERGED_ON_ENTRY, removing both from the mandatory set and reporting zero
+ * holes. Inferring the path from the evidence under audit hides exactly the
+ * worst cases.
  *
- * For corpus rows written BEFORE the marker existed, fall back to requiring
+ * For corpus rows without the marker (written by an older bkit), fall back to requiring
  * BOTH `ship-worktree-setup` and `ship-regression-guard` to be absent. Step 2
  * writes those two in a single fenced block, so a genuine MERGED-on-entry
  * resume has neither, while a run that dropped only one stays Path A/B and its

@@ -143,7 +143,7 @@ One verb scheme across every step in `ci.yml`, so a red run can be triaged from 
 | `Run` | invokes a named tool or suite |
 | `Report` / `Upload` / `Count` / `Merge` / `Fetch` | move or publish results |
 
-`Guard`, `Validate`, `Verify` and `Audit` are **not** in the scheme. Each of them meant "fail the job if this isn't true" — which is what `Assert` means — so four spellings of one idea taught the reader nothing and hid the one distinction that matters. `Check` is the load-bearing half: it is reserved for a step that genuinely cannot red the lane, either because it carries `continue-on-error: true` or because its body only ever warns. A step named `Check` that can fail the build is the one naming error this scheme exists to prevent, because it trains you to skim past a real failure.
+`Guard`, `Validate`, `Verify` and `Audit` are **not** in the scheme: each means "fail the job if this isn't true", which is `Assert`. `Check` is the load-bearing half: it is reserved for a step that genuinely cannot red the lane, either because it carries `continue-on-error: true` or because its body only ever warns. A step named `Check` that can fail the build is the one naming error this scheme exists to prevent, because it trains you to skim past a real failure.
 
 Two smaller rules that follow from the same idea:
 
@@ -164,7 +164,7 @@ Three practical rules:
 
 **The exception, stated so it is not mistaken for the rule.** When the shipped artefact _is_ prose — a rules file an agent reads, a CLI help string, an advisory message — the wording is the behaviour, and asserting on it is correct. The distinction is whether the text is the deliverable or a description of one.
 
-### Composite actions: two things that cost a red CI to learn
+### Composite actions: two rules that fail silently
 
 A composite action (`uses: ./.github/actions/setup`) is the right way to stop copy-pasting a setup block across lanes. Two of its rules are not obvious and neither fails loudly:
 
@@ -339,7 +339,7 @@ Beyond the gates above, three practices raise confidence further — opt-in, not
 
 Shipped stubs target Vitest (`bkit-stub:coverage`) and Playwright (`bkit-stub:e2e-coverage`); on another runner keep the rules (per-tier, report-only, ratchet from current) and swap the tooling.
 
-Report coverage on each PR **without a paid product or a third-party service** — e.g. the `bkit-stub:coverage` block in `.github/workflows/ci.yml` runs `davelosert/vitest-coverage-report-action` entirely inside Actions with `GITHUB_TOKEN`, posting sticky per-PR comments (safe for private repos; no coverage data leaves the runner). Replaces GitHub Code Quality's coverage-on-PR value (`deployments.md` § Disable GitHub Code Quality before GA billing) — **not** CodeQL security scanning, a separate product.
+Report coverage on each PR **without a paid product or a third-party service** — e.g. the `bkit-stub:coverage` block in `.github/workflows/ci.yml` runs `davelosert/vitest-coverage-report-action` entirely inside Actions with `GITHUB_TOKEN`, posting sticky per-PR comments (safe for private repos; no coverage data leaves the runner). Replaces GitHub Code Quality's coverage-on-PR value (`deployments.md` § Disable GitHub Code Quality billing) — **not** CodeQL security scanning, a separate product.
 
 **Per-tier, not merged.** Unit and integration are measured and commented **separately** (two runs into `coverage/unit` and `coverage/integration`, two comments keyed by a distinct `name:`). A single merged number is the weakest option: coverage is a **union**, so a line covered only by an integration test reads as covered and **hides a missing unit test** — a merged gate lets integration mask a hollow unit suite. The two numbers also have different denominators, so they can't be honestly combined into one.
 
@@ -418,8 +418,8 @@ CI must catch every consumer `pnpm bkit install` hard-fail. Same `.bkit/src/*` c
 1. **Unit test** — failure branch (bad input → exit).
 2. **Smoke spawn** — `bkit install --claude --cursor --typescript` on scratch consumer (`os.tmpdir()`, exit 0). `bkit-install.integration.test.ts` § Scenario 5.
 3. **Stale-state spawn** — pre-seeded upgrade-skew consumer. Same file § Scenario 5.
-4. **Phase 3 blocker** — Scenario 6 (exit 1 + recovery) + 7 (`--auto-revert` → `runUninstall`). v0.7.0+.
-5. **Mid-failure rollback** — Scenario 9: post-first-module failure → `discardAllStaging`, byte-identical consumer. v0.9.0+.
+4. **Phase 3 blocker** — Scenario 6 (exit 1 + recovery) + 7 (`--auto-revert` → `runUninstall`).
+5. **Mid-failure rollback** — Scenario 9: post-first-module failure → `discardAllStaging`, byte-identical consumer.
 
 ## Heavy-customised consumer fixture
 
@@ -517,7 +517,7 @@ The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisor
 | `bkit-upgrade.test.ts` and `bkit-upgrade.integration.test.ts` | Unit and Integration | Diff engine, drift detection, `--non-interactive` semantics. |
 | `bkit-version.test.ts` (extended) | Unit | `canonicalHashes` reads, including a legacy `tier3Hashes` map folded in and never written back. |
 | `bkit-gateguard-claude.integration.test.ts` | Integration | Claude GateGuard hook (`.claude/hooks/gateguard.cjs`, spawned as a real process): advisory/deny modes, dedup, docs/\*.md density advisory (path-scoped, segment match). |
-| `bkit-gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagents included (exemption removed), advisory/deny modes, dedup, docs/\*.md density advisory, managed-block boundary (no `export` inside the marker region), twin parity vs the Claude hook. |
+| `bkit-gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagents included, advisory/deny modes, dedup, docs/\*.md density advisory, managed-block boundary (no `export` inside the marker region), twin parity vs the Claude hook. |
 | `bkit-gateguard-cursor.integration.test.ts` | Integration | Cursor GateGuard hook (`.cursor/hooks/gateguard.cjs`, spawned): advisory via `additional_context` on an allow, deny via `agent_message`, workspace-relative path resolution, managed-block parity with the Claude twin. |
 | `bkit-gateguard-parity.integration.test.ts` | Integration | One GateGuard behaviour table asserted on all three hosts through per-host adapters — advisory content, docs density, dedup, modes, fail-open, subagents included — plus the documented deviations. |
 | `bkit-gateguard-dogfood.integration.test.ts` | Integration | bkit-repo-only authoring advisories (`.bkit/workflows/`, `.bkit/prompts/`, bkit's own `.md` docs, `.agents/rules.md` § Repo Authoring prose scope) in all four installed hooks: routing per host, placement after `bkit:end`, never present in a template, rule-coverage vs the source sections, shared rules read from the source at hook time, every path the Repo Authoring rules name exists. |
@@ -563,7 +563,6 @@ The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisor
 | `commands/workflow/roadmap.test.ts` | Unit (real fixture ledgers) | Ledger projection under `tracker: none`; deterministic/idempotent regenerate; status projection incl. `ABANDONED` hidden; fail-open exit 0 (malformed line skips only its row; absent ledger bootstraps; unwritable board left as-is); consumer text byte-unchanged; duplicate-line collapse; `## Shipped` capped at 10; marker repair; no tracker block rendered. |
 | `bkit-telemetry-migrate.integration.test.ts` (extended) | Integration | `docs/completed.md` → `.bkit/issues.jsonl` fifth migrate pair, parity gate + deletion, bootstrap seed, idempotent re-run. |
 | `bkit-ship-verdict.integration.test.ts` | Integration | `UPDATE_DOCS_VERDICT` resolves from a `SHIPPED`-status row only — a `BUILT`-only row must NOT green it. |
-| `bkit-catalog-parity.test.ts`, `bkit-wording.test.ts` | Unit | Cover the five `bkit-utility-review-*` agents generically: each needs a row in `.bkit/prompts.md` and the narrowest-scoped-token clause. No per-agent content assertions — that machinery is what this change removed. |
 
 ## Compliance grader test coverage
 
@@ -592,7 +591,7 @@ const violations = runGrader({ parentSha, phase: "ship", gitAdapter: realGitAdap
 | `bkit-comply.integration.test.ts` | Integration (boundary: git diff) | Temp git repo and `realGitAdapter`; asserts `no-mirror-edit` flagged on actual diff output. |
 | `bkit-comply-gate-wiring.test.ts` | Integration (boundary: workflow files) | Grep-based audit: every wired close gate has `\|\| echo`, no bare invocation under `set -e`. |
 
-## opencode host test coverage (sub-plan 4)
+## opencode host test coverage
 
 <!-- prettier-ignore -->
 | Matrix row | Test location | Signal |
@@ -604,7 +603,7 @@ const violations = runGrader({ parentSha, phase: "ship", gitAdapter: realGitAdap
 | opencode reconverge on upgrade | `bkit-modules-upgrade.integration.test.ts` | consumer keys in `opencode.json` survive; bkit keys reconverged |
 | GateGuard opencode plugin | `bkit-gateguard-opencode.test.ts` | advisory fires, subagents included, dedup, docs density advisory, managed-block boundary |
 | GateGuard markered-text migration | `bkit-modules.integration.test.ts`, `bkit-upgrade.test.ts`, `bkit-upgrade.integration.test.ts` | install and upgrade engines: hash-match wholesale replace, hash-unknown append + wiring advisory, upgrade round-trip refreshes the block while preserving consumer content outside it |
-| end-to-end (manual) | `e2e-verdict.md` (Task 5.1) | deferred — provider offline during session |
+| end-to-end (manual) | `e2e-verdict.md` (Task 5.1) | § Manual recipe — opencode E2E |
 
 ## Manual recipe — opencode E2E (Task 5.1)
 
@@ -640,7 +639,7 @@ const result = spawnSync(
 expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
 ```
 
-`install` requires ≥1 module flag (v4.0.0+) — bare/dropped flags exit 1. Spawn explicit module set under test.
+`install` requires ≥1 module flag — bare/dropped flags exit 1. Spawn explicit module set under test.
 
 Assert ≥1 positive signal (`[bkit-install]` prefix, exit 0 with reason, or file exists) — else binary-not-found exit 1 passes vacuously.
 

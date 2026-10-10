@@ -4,9 +4,9 @@
 // NDJSON ledgers governed by ONE canonical TypeScript reducer:
 //
 //   .bkit/stats.jsonl     — compliance, outcome, counter rows
-//   .bkit/friction.jsonl  — friction entries (replaces .bkit/friction.md)
-//   docs/deferrals.jsonl  — deferred work (replaces docs/pending.md)
-//   docs/failures.jsonl   — discovered bugs (new)
+//   .bkit/friction.jsonl  — friction entries
+//   docs/deferrals.jsonl  — deferred work
+//   docs/failures.jsonl   — discovered bugs
 //
 // LOAD-BEARING DIVERGENCES FROM bkit-status.ts (NOT inherited — each pinned by test):
 //   (a) Tolerant `parse`: per-line try/catch + skip + malformedLineCount.
@@ -559,10 +559,8 @@ function versionSpread(versionCounts) {
         .join(", ") || "none");
 }
 /**
- * Ledger-health readout — the parse-integrity line kept as a footer. Preserves the
- * `rows` / `malformed:` / `versions:` tokens that replaced five wrong bash copies
- * (grep -c printing "0\n0" on zero matches; jq's `//` bucketing "" under an empty
- * key; wc -l counting lines not parsed rows).
+ * Ledger-health readout — the parse-integrity line kept as a footer, with the
+ * `rows` / `malformed:` / `versions:` tokens.
  */
 function ledgerLine(result) {
     return `[bkit-telemetry] ledger: ${result.rowCount} rows · malformed: ${result.malformedLineCount} · versions: ${versionSpread(result.versionCounts)}`;
@@ -571,9 +569,8 @@ function ledgerLine(result) {
  * THE per-workflow telemetry report, emitted at each workflow's close step and
  * injected into the tracker close comment (`bkit telemetry summary --phase=<w>`).
  *
- * Scoped STRICTLY to the one workflow — never the design→…→ship chain (this #234
- * follow-up supersedes the original "ship reports the whole chain" note). For the
- * given workflow it shows THIS run's generalized `outcome` (run) row against
+ * Scoped STRICTLY to the one workflow — never the design→…→ship chain. For the
+ * given workflow it shows THIS run's `outcome` (run) row against
  * `med·N` = the median of that workflow's previous N runs (rolling, outlier-robust
  * because durations are right-skewed), a secondary compliance line, and the ledger
  * footer. Fields absent on the run row are omitted — a metric shows only when the

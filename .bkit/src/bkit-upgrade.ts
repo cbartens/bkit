@@ -18,7 +18,7 @@
 //     - The consumer has modified the file since last install (on-disk hash != canonical hash).
 //
 // Dependency: P4.T4 `canonicalHashes` + `isConsumerModified` from bkit-version.ts.
-//             BAR-167 v2.0.0: `migrateLegacyBkitEnvelope` from bkit-tiers.ts runs before
+//             `migrateLegacyBkitEnvelope` from bkit-tiers.ts runs before
 //             `writeTier2JsonContained` to strip legacy `__bkit__` envelope on upgrade.
 
 import * as fs from "node:fs";
@@ -423,10 +423,8 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
  *         a conflict, not a silent overwrite (#459).
  *       - conflicts → never, for the same reason.
  *   - `pinnedVersion`: bump to the version just upgraded TO (`options.pinnedVersion`).
- *     `bkit upgrade` previously refreshed hashes but left the pin stale, so the very
- *     next `bkit check` wanted to write the pin (1 write → exit 1), leaving a clean
- *     upgrade in a CI-FAILING state until a manual edit (issue #129 §3). Writing the
- *     pin here — exactly as `install`/`check` do — keeps upgrade drift-clean.
+ *     Writing the pin here — exactly as `install`/`check` do — keeps upgrade
+ *     drift-clean: a stale pin makes the next `bkit check` write it (1 write → exit 1).
  *
  * Call this AFTER `runUpgrade` completes (P4.T4 integration: hashes must stay
  * in sync with the files bkit actually wrote so the next upgrade can detect drift).
@@ -450,7 +448,7 @@ export function updateCanonicalHashesAfterUpgrade(
 
   const seedablePaths = new Set([...result.updated, ...result.skippedSeedable]);
 
-  // Drop the keys bkit no longer keeps (retired owned files, templates) and the retired
+  // Drop the keys bkit does not keep (retired owned files, templates) and a legacy
   // tier3Hashes field, exactly as install's postDispatch does, so a clean upgrade is
   // followed by a zero-write check.
   const newCanonicalHashes = withoutRetiredHashes(bkitVersion.canonicalHashes);
@@ -552,13 +550,13 @@ export function migrateStrayGitattributes(cwd: string, dryRun: boolean): void {
 // ---------------------------------------------------------------------------
 
 /**
- * `docs/warnings.md` (registry of intentional log-level downgrades) widened to
- * cover every deliberate signal downgrade — log levels, error-tracker issue
- * archives / mutes, alert thresholds — and was renamed `docs/noise.md`.
+ * `docs/noise.md` registers every deliberate signal downgrade — log levels,
+ * error-tracker issue archives / mutes, alert thresholds. An older bkit wrote the
+ * same registry as `docs/warnings.md`.
  *
  * Consumers keep their own entries BELOW the managed block, so the file has to
- * MOVE, not reseed: renaming only the template would write a fresh empty
- * `docs/noise.md` and strand every recorded downgrade in the orphaned old file.
+ * MOVE, not reseed: reseeding alone would write a fresh empty `docs/noise.md` and
+ * strand every recorded downgrade in `docs/warnings.md`.
  *
  * This migration:
  *   1. Moves `docs/warnings.md` → `docs/noise.md` (only when no `docs/noise.md`
@@ -585,7 +583,7 @@ export function migrateWarningsToNoise(cwd: string, dryRun: boolean): void {
       }
     } else {
       console.warn(
-        `${LOG_PREFIX} 'docs/warnings.md' found alongside 'docs/noise.md' — merge the entries by hand, then delete the old file`,
+        `${LOG_PREFIX} 'docs/warnings.md' found alongside 'docs/noise.md' — merge the entries by hand, then delete 'docs/warnings.md'`,
       );
     }
   }

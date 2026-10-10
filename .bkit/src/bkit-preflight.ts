@@ -1092,14 +1092,14 @@ export function detectExtraMcpServers(
       id: `mcp-extra-server-${key}-${relPath.replace(/[^a-z0-9]/gi, "-")}`,
       severity: "advisory",
       detect: `${relPath} has the ${key} MCP server but the ${issueTracker} tracker does not use it.`,
-      action: `[mcp] ${relPath} carries the ${key} MCP server, which is not used by the ${issueTracker} tracker. Remove the "${key}" entry from mcpServers (it is no longer needed).`,
+      action: `[mcp] ${relPath} carries the ${key} MCP server, which is not used by the ${issueTracker} tracker. Remove the "${key}" entry from mcpServers.`,
     });
   }
   return findings;
 }
 
 // ---------------------------------------------------------------------------
-// [mcp-env] advisories — direnv + .bkit/.env setup (BAR-260 follow-up)
+// [mcp-env] advisories — direnv + .bkit/.env setup (BAR-260)
 // ---------------------------------------------------------------------------
 
 /**
@@ -1460,7 +1460,7 @@ export function runPreflight(
 
   // Missing MCP server advisory — one finding per missing required key, per file.
   // Tracker-aware: when issueTracker === "github", only github MCP server is required
-  // (Linear gate is a no-op on GitHub tracker — gate moved into workflow Step 1 via MCP).
+  // (the Linear gate is a no-op on the GitHub tracker; the gate runs in workflow Step 1 via MCP).
   // Extra MCP server advisory — one finding per bkit-managed server that the
   // resolved tracker does not use (e.g. a stale `linear` entry under `github`).
   for (const relPath of [".mcp.json", ".cursor/mcp.json"]) {

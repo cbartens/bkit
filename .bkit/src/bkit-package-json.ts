@@ -1,7 +1,7 @@
-// bkit-package-json.ts — Re-point package.json script values bkit once seeded.
+// bkit-package-json.ts — Re-point package.json script values an older bkit wrote.
 //
-// bkit no longer seeds the tool scripts (`.bkit/templates.md` lists them), but an
-// existing consumer may still carry a value an older bkit wrote. A value that
+// bkit does not seed the tool scripts (`.bkit/templates.md` lists them), but a
+// consumer may carry a value an older bkit wrote. A value that
 // byte-matches a known prior bkit default is provably bkit's own, so it is
 // re-pointed at the current one. Anything else is the consumer's and stays.
 
@@ -18,7 +18,8 @@ import {
 const LEGACY_SCRIPT_REPOINTS: Readonly<Record<string, readonly [string, readonly string[]]>> = {
   // A superseded lint:prose silently self-disables in worktrees and fresh checkouts.
   "lint:prose": [LINT_PROSE_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS],
-  // The retired `.bkit/scripts/bkit-slop-delta.sh` is gone; its callers move to `bkit ci slop`.
+  // A legacy value calls `.bkit/scripts/bkit-slop-delta.sh`, which bkit does not ship;
+  // the current value runs `bkit ci slop`.
   "slop:delta": [SLOP_DELTA_SCRIPT, LEGACY_SLOP_DELTA_SCRIPTS],
 };
 

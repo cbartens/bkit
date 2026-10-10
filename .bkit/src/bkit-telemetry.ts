@@ -4,9 +4,9 @@
 // NDJSON ledgers governed by ONE canonical TypeScript reducer:
 //
 //   .bkit/stats.jsonl     — compliance, outcome, counter rows
-//   .bkit/friction.jsonl  — friction entries (replaces .bkit/friction.md)
-//   docs/deferrals.jsonl  — deferred work (replaces docs/pending.md)
-//   docs/failures.jsonl   — discovered bugs (new)
+//   .bkit/friction.jsonl  — friction entries
+//   docs/deferrals.jsonl  — deferred work
+//   docs/failures.jsonl   — discovered bugs
 //
 // LOAD-BEARING DIVERGENCES FROM bkit-status.ts (NOT inherited — each pinned by test):
 //   (a) Tolerant `parse`: per-line try/catch + skip + malformedLineCount.
@@ -145,10 +145,9 @@ export interface TelemetryEnvelope {
    * Absent on orchestrator-written rows (the workflow itself wrote it).
    *
    * Distinct from `step` on purpose: `step` is WHERE in the workflow, `subagent`
-   * is WHO. They were conflated — most rows put an agent name in `step` while
-   * `subagent` sat empty on all 141 — which cost the harvest one of the five
-   * dimensions it exists to slice by (repo/workflow/step/subagent/severity), and
-   * made "which agent generates the most rework?" unanswerable.
+   * is WHO. Conflating them costs the harvest one of the five dimensions it
+   * exists to slice by (repo/workflow/step/subagent/severity), and makes "which
+   * agent generates the most rework?" unanswerable.
    */
   subagent?: string;
   /**
@@ -163,18 +162,16 @@ export interface TelemetryEnvelope {
    */
   model?: string;
   /**
-   * Free-form related context — the JSONL form of the retired `**Related:**`
-   * field. Holds ANY pointer that helps a later reader place this row: feature
-   * ids, tracker ids (`BAR-217`), PRs, commit SHAs, file paths, sibling `ts`,
-   * and this row's OWN former ledger id (`KN-14`, `DE-7`) when it was migrated
-   * off the `.md` ledgers.
+   * Free-form related context — the JSONL form of the legacy `.md` ledgers'
+   * `**Related:**` field. Holds ANY pointer that helps a later reader place this
+   * row: feature ids, tracker ids (`BAR-217`), PRs, commit SHAs, file paths,
+   * sibling `ts`, and this row's OWN legacy ledger id (`KN-14`, `DE-7`) when it
+   * was migrated off the `.md` ledgers.
    *
-   * Deliberately NOT split into an identity field vs a link field. The design's
-   * separate `aliases[]` ("I AM KN-14") was folded in here after the sequential
-   * `DE-{N}` scheme proved un-mintable under concurrency — two workflows read
-   * the same max from their own base commit and mint the same id, so an alias
-   * could not be a reliable identity anyway (9 collided in a live consumer
-   * ledger). `ts` is the id; everything else is a pointer.
+   * Deliberately NOT split into an identity field vs a link field. Sequential
+   * `DE-{N}` ids are un-mintable under concurrency — two workflows read the same
+   * max from their own base commit and mint the same id — so an alias cannot be
+   * a reliable identity. `ts` is the id; everything else is a pointer.
    */
   references?: string[];
   /**
@@ -221,9 +218,7 @@ export const VALID_KINDS: Set<string> = new Set([
  * to their findings, so `@bkit-build-challenge-remediate` passes a blocked
  * finding's severity straight through to its deferral row instead of re-deriving
  * it. NOT the preflight `blocker`/`advisory` scale (that gates `bkit install`,
- * a different axis), and NOT the pre-JSONL `critical|normal|low` scale — the
- * latter's authored distribution collapsed to its default (19 low / 2 normal /
- * 0 critical of 21 rows in the old `docs/pending.md`), carrying no signal.
+ * a different axis), and NOT the legacy `.md` ledgers' `critical|normal|low` scale.
  *
  * Absent on machine-generated kinds (compliance / outcome / counter) and on
  * knowledge / decision, which have no triage severity.
@@ -380,8 +375,7 @@ export interface CoverageStats {
 }
 
 // outcome — one row per WORKFLOW RUN, keyed by (repo, workflow, parentSha).
-// Generalized from the original ship/PR-only shape (#234 follow-up): every workflow
-// now writes one run row at its close, carrying just the fields that apply to it
+// Every workflow writes one run row at its close, carrying just the fields that apply to it
 // (absent fields are simply omitted — the summary shows a metric only when present).
 // `prNumber` is ship-only; the per-run instinct-loop deltas (frictionAdded /
 // deferralsAdded / failuresAdded) are what `workflowTelemetry` features.
@@ -1067,10 +1061,8 @@ function versionSpread(versionCounts: Record<string, number>): string {
 }
 
 /**
- * Ledger-health readout — the parse-integrity line kept as a footer. Preserves the
- * `rows` / `malformed:` / `versions:` tokens that replaced five wrong bash copies
- * (grep -c printing "0\n0" on zero matches; jq's `//` bucketing "" under an empty
- * key; wc -l counting lines not parsed rows).
+ * Ledger-health readout — the parse-integrity line kept as a footer, with the
+ * `rows` / `malformed:` / `versions:` tokens.
  */
 function ledgerLine(result: FoldFromResult): string {
   return `[bkit-telemetry] ledger: ${result.rowCount} rows · malformed: ${result.malformedLineCount} · versions: ${versionSpread(result.versionCounts)}`;
@@ -1080,9 +1072,8 @@ function ledgerLine(result: FoldFromResult): string {
  * THE per-workflow telemetry report, emitted at each workflow's close step and
  * injected into the tracker close comment (`bkit telemetry summary --phase=<w>`).
  *
- * Scoped STRICTLY to the one workflow — never the design→…→ship chain (this #234
- * follow-up supersedes the original "ship reports the whole chain" note). For the
- * given workflow it shows THIS run's generalized `outcome` (run) row against
+ * Scoped STRICTLY to the one workflow — never the design→…→ship chain. For the
+ * given workflow it shows THIS run's `outcome` (run) row against
  * `med·N` = the median of that workflow's previous N runs (rolling, outlier-robust
  * because durations are right-skewed), a secondary compliance line, and the ledger
  * footer. Fields absent on the run row are omitted — a metric shows only when the

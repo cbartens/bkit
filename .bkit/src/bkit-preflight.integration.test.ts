@@ -3,12 +3,11 @@
 // source-level (no-subprocess) check for the same hook stays in
 // bkit-preflight.test.ts.
 //
-// The bash hook at .agents/templates/.claude/hooks/preflight.sh runs as a
+// The bash hook at .bkit/templates/.claude/hooks/preflight.sh runs as a
 // Claude SessionStart hook (a different surface from the install-time TS
-// preflight). Dispatch-specific bypass logic was reverted on 2026-05-13; the
-// latent-bug fixes from BAR-186 remain:
+// preflight). Covered behaviour (BAR-186):
 //   - IDE-skip path (empty LINEAR_ISSUE_ID exits 0 silently).
-//   - Missing BKIT_LINEAR_API_KEY still hard-stops when a Linear issue is present.
+//   - Missing BKIT_LINEAR_API_KEY hard-stops when a Linear issue is present.
 
 import { spawnSync } from "node:child_process";
 import * as path from "node:path";

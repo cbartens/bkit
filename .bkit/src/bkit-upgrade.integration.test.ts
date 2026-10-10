@@ -573,7 +573,7 @@ describe("#489 — upgrade leaves the consumer's own files byte-identical", () =
     const owned: Record<string, string> = {
       [path.join(".github", "workflows", "ci.yml")]: "name: my ci\non: push\n",
       [path.join(".husky", "pre-push")]: "#!/bin/sh\npnpm test\n",
-      // The pre-.bkit/ directive bkit used to rewrite: it is the consumer's line now.
+      // A pre-.bkit/ directive an older bkit wrote: it is the consumer's line.
       ".envrc": "dotenv_if_exists .agents/.env\n",
       [path.join(".agents", "context.md")]: "# Our context, no bkit block\n",
       [path.join(".agents", "skills.md")]: "<!-- bkit:start -->\nstale\n<!-- bkit:end -->\nmine\n",
@@ -595,15 +595,15 @@ describe("#489 — upgrade leaves the consumer's own files byte-identical", () =
 });
 
 // ---------------------------------------------------------------------------
-// #255 follow-up — upgrade must not force-create uninstalled host/tooling modules
+// #255 — upgrade must not force-create uninstalled host/tooling modules
 //
-// Post-#252 claude/cursor/lint are each separately installable. The upgrade template walk
-// used to seed EVERY non-opt-in template, so a `--claude`-only consumer got cursor/lint
-// FILES on upgrade, and `bkit check` then flagged that as drift (install↔upgrade
-// divergence). The walk is now gated on sentinel-detected installation.
+// claude/cursor/lint are each separately installable. The upgrade template walk is
+// gated on sentinel-detected installation; seeding EVERY non-opt-in template would give
+// a `--claude`-only consumer cursor/lint FILES on upgrade, which `bkit check` then flags
+// as drift (install↔upgrade divergence).
 // ---------------------------------------------------------------------------
 
-describe("#255 follow-up — upgrade does not force-create uninstalled host/tooling modules", () => {
+describe("#255 — upgrade does not force-create uninstalled host/tooling modules", () => {
   const bkitInstallPath = path.resolve(
     path.dirname(new URL(import.meta.url).pathname),
     "bkit-install.ts",

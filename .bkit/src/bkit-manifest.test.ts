@@ -372,8 +372,7 @@ describe("LINT_PROSE_SCRIPT", () => {
   });
 
   it("contains no backticks", () => {
-    // The old default put `vale sync` in backticks inside a DOUBLE-quoted echo,
-    // where a backtick command-substitutes instead of printing.
+    // Inside a DOUBLE-quoted echo a backtick command-substitutes instead of printing.
     expect(body).not.toContain("`");
   });
 
@@ -399,8 +398,8 @@ describe("LINT_PROSE_SCRIPT", () => {
   });
 
   it("announces loudly on stderr when vale is present but self-heal failed", () => {
-    // The whole point of the change: this case used to emit one quiet line and
-    // exit 0, so a worktree commit bypassed prose linting and still looked green.
+    // One quiet line and exit 0 here would let a worktree commit bypass prose
+    // linting and still look green.
     expect(body).toContain("PROSE LINT SKIPPED");
     expect(body).toContain(">&2");
   });
@@ -411,8 +410,8 @@ describe("LINT_PROSE_SCRIPT", () => {
 
   it("lists the previous shipped default as legacy so existing installs get re-pointed", () => {
     expect(LEGACY_LINT_PROSE_SCRIPTS.length).toBeGreaterThan(0);
-    // The pre-fix default, verbatim — the value on every consumer that installed
-    // before this change. Must byte-match or those installs are never corrected.
+    // The default an older bkit wrote, verbatim. Must byte-match or those installs
+    // are never re-pointed.
     expect(LEGACY_LINT_PROSE_SCRIPTS).toContain(
       'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
     );

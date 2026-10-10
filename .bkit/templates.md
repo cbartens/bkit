@@ -35,7 +35,7 @@
 Placeholders. Copies keep them raw; replace each in your copy:
 
 <!-- prettier-ignore -->
-| Placeholder | In | Put | Value bkit used to fill in |
+| Placeholder | In | Put | Typical value |
 | --- | --- | --- | --- |
 | `main` | `ci.yml` (`on.push` / `on.pull_request` branches; stub comments) | your default branch | `origin/HEAD`, else `main` |
 | `{{NODE_VERSION}}` | `ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major | `.nvmrc`, then `engines.node`, then `22` |
@@ -43,7 +43,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
 - **What changed on upgrade.** `bkit upgrade` lists changed / added / removed template paths. For each one you adopted: `diff .bkit/templates/<path> <path>`, merge what you want (placeholder lines differ by design). `git diff .bkit/templates` in the upgrade commit = the package change.
-- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) → ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini` and `slop-scan.config.json` templates already do; an older adopted copy does not.
+- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) → ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini` and `slop-scan.config.json` templates already do; check your adopted copy does too.
 - Templates are written in Node unless the tool they wrap already needs another runtime (graphify and Serena: Python + shell launchers; git hooks: POSIX `sh`).
 - `bkit.depUpdater: "none"` → skips install-time absence advisory for updaters.
 - No manifest key for any template.

@@ -69,7 +69,7 @@ export const PROGRAM_GATEWAYS: Record<string, readonly string[]> = {
  * CLI to the current canonical key before allowlist validation.
  */
 export const OPENCODE_PROVIDER_ALIASES: Record<string, string> = {
-  // Legacy bare `opencode` (pre-split) resolved to the Zen gateway → map to opencode-zen.
+  // Legacy bare `opencode` means the Zen gateway → map to opencode-zen.
   opencode: "opencode-zen",
   zen: "opencode-zen",
   go: "opencode-go",
@@ -443,8 +443,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
       // Value-bearing flag: --auto=<claude|cursor> — cloud-agent (auto-dispatch) lane;
       // sets the internal `cloud` module. Bare `--auto` (no variant) is accepted only on
-      // uninstall (variant read from package.json). The old `--cloud` / `--cloud=<v>`
-      // spelling was dropped (#252) — it now falls through to the generic "Unknown flag".
+      // uninstall (variant read from package.json).
       if (flag === "auto") {
         if (verb !== "uninstall") {
           console.error(
@@ -522,8 +521,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
       if (flag === "force") {
         // Uninstall-only (#252): force-delete whole-file owned files even if consumer-modified.
-        // The install-side tracker-switch override was dropped — tracker switching is
-        // now free, so `--force` no longer affects install.
         uninstallFlags.force = true;
         continue;
       }
@@ -543,9 +540,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
         uninstallFlags.autoRevert = true;
         continue;
       }
-      // Upgrade-specific flag: --auto-apply (renamed from --non-interactive, #252) —
+      // Upgrade-specific flag: --auto-apply —
       // auto-apply non-conflicting changes, emit the conflict list, exit non-zero on
-      // any conflict (CI-safe). The internal field stays `nonInteractive`.
+      // any conflict (CI-safe). The internal field is `nonInteractive`.
       if (flag === "auto-apply") {
         upgradeFlags.nonInteractive = true;
         continue;
@@ -724,8 +721,8 @@ Usage:
                                  signal the merge=union append never surfaces); also WARNs
                                  on sequential keys minted outside the one-shot migration.
   bkit telemetry normalise [--dry-run]
-                                 Normalise those ledgers off the retired sequential-alias
-                                 scheme: drop the deprecated aliases[] field into
+                                 Normalise those ledgers off sequential aliases:
+                                 move the legacy aliases[] field into
                                  references[], keep ts as the id, and re-key only the
                                  colliding rows (strip the shared number, preserve it as a
                                  references[] pointer). Parity-gated + idempotent: a re-run

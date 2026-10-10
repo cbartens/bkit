@@ -67,8 +67,8 @@ describe("gitattributes — consumer-inherited ledger JSONL files merge=union (W
   }
 });
 
-// #380 — .bkit/issues.jsonl replaces docs/completed.md as the canonical feature
-// ledger; docs/roadmap.md is the generated projection. Both merge=union.
+// #380 — .bkit/issues.jsonl is the canonical feature ledger; docs/roadmap.md is
+// the generated projection. Both merge=union.
 describe("gitattributes — .bkit/issues.jsonl + docs/roadmap.md (#380)", () => {
   const ROADMAP_FILES = [".bkit/issues.jsonl", "docs/roadmap.md"];
 
@@ -79,7 +79,7 @@ describe("gitattributes — .bkit/issues.jsonl + docs/roadmap.md (#380)", () => 
     });
   }
 
-  it("root + template .gitattributes no longer name docs/completed.md", () => {
+  it("root + template .gitattributes do not name docs/completed.md", () => {
     for (const p of [".gitattributes", ".bkit/templates/.gitattributes"]) {
       const content = fs.readFileSync(path.join(REPO_ROOT, p), "utf-8");
       expect(content, `${p} must not reference docs/completed.md`).not.toContain(
@@ -94,11 +94,8 @@ describe("gitattributes — .bkit/issues.jsonl + docs/roadmap.md (#380)", () => 
  * what decides whether a consumer inherits it from `bkit install` or has to add it
  * by hand.
  *
- * This block previously asserted the opposite: that `stats` / `deferrals` /
- * `failures` sat BELOW the marker as bkit-repo-local lines. That was the workaround
- * for the managed block not covering them, pinned as the expected shape — so the
- * gap could not be noticed from a green suite. Every strictly append-only ledger is
- * now shipped inside the block; only the drained one stays local.
+ * Every strictly append-only ledger is shipped inside the block; only the drained
+ * one stays local.
  */
 describe("gitattributes structural check — append-only ledgers ship, drained one is local", () => {
   const gitattributes = (): string =>
@@ -127,8 +124,8 @@ describe("gitattributes structural check — append-only ledgers ship, drained o
     "docs/decisions.jsonl",
     "docs/deferrals.jsonl",
     "docs/failures.jsonl",
-    // #380 retired docs/completed.md; .bkit/issues.jsonl is the canonical feature
-    // ledger in its place and docs/roadmap.md is its generated projection.
+    // .bkit/issues.jsonl is the canonical feature ledger and docs/roadmap.md is
+    // its generated projection (#380).
     ".bkit/issues.jsonl",
     "docs/roadmap.md",
     ".bkit/stats.jsonl",

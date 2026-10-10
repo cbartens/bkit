@@ -591,9 +591,8 @@ describe("migrate — happy path fixture", () => {
     expect(fs.existsSync(lookupPath)).toBe(false);
   });
 
-  // Regression guard (#234): the original migration called extractField for 14
-  // fields but never for "Related" or "Severity", so both were dropped on the
-  // floor for every consumer who migrated. These pin that they survive.
+  // Regression guard (#234): "Related" and "Severity" must survive migration.
+  // These pin that they do.
   it("carries the legacy Related: graph into references[]", async () => {
     const dir = setupFixtureDir({
       knContent: FIXTURE_KN_MD,
@@ -672,11 +671,10 @@ describe("migrate — happy path fixture", () => {
     expect(friction[0]?.description).toContain("Pre-commit hook refuses commits");
   });
 
-  // DecisionPayload.alternatives has existed since #234 but nothing populated it:
-  // `Discarded:` was never parsed, so 26 of bkit's 34 decision rows left their
-  // alternatives as prose inside description. `Superseded by:` is a pointer and
-  // belongs in references. The status check here was exact-equality too, so
-  // "superseded by DE-1 — …" silently reported ACTIVE.
+  // `Discarded:` populates DecisionPayload.alternatives rather than staying as
+  // prose inside description. `Superseded by:` is a pointer and belongs in
+  // references. An exact-equality status check would report
+  // "superseded by DE-1 — …" as ACTIVE.
   it("carries Discarded: into alternatives and Superseded by: into references", async () => {
     const dir = setupFixtureDir({
       knContent: FIXTURE_KN_MD,

@@ -270,7 +270,7 @@ describe("module dispatch: --typescript seeds core + lint only", () => {
   });
 });
 
-describe("--typescript footprint (#265, narrowed by #489)", () => {
+describe("--typescript footprint (#265)", () => {
   const TOOL_SCRIPTS = [
     "typecheck",
     "lint",
@@ -994,7 +994,7 @@ describe("C1 regression: .bkit-version JSON format → pinnedVersion extraction"
 
 // ---------------------------------------------------------------------------
 // C3 regression — canonicalHashes populated after bkit install
-// (BAR-131 build-challenge C3: install never wrote canonicalHashes → drift detection broken)
+// (BAR-131 build-challenge C3: without canonicalHashes, drift detection breaks)
 // ---------------------------------------------------------------------------
 
 describe("C3 regression: canonicalHashes populated in .bkit-version after bkit install", () => {
@@ -1083,18 +1083,15 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
 // C1 end-to-end regression — runClaudeModule applies deep-containment and
 // migrates legacy __bkit__ envelope on install (BAR-131 / BAR-167 regression guard)
 //
-// Original C1 bug (BAR-131): bkit-modules.ts read .bkit-version with
-// fs.readFileSync().trim(), yielding the full JSON blob. migrateTier1JsonToTier2
-// received the blob, semverLte returned false, and migration was silently skipped.
-// Fixed to use readBkitVersion().pinnedVersion.
+// C1 (BAR-131): the version file is read via readBkitVersion().pinnedVersion; a raw
+// fs.readFileSync().trim() yields the full JSON blob, which fails semver comparison.
 //
-// BAR-167 v2.0.0: migrateTier1JsonToTier2 and writeTier2Json are deleted.
-// runClaudeModule now: (1) if __bkit__ present → migrateLegacyBkitEnvelope strips
-// it; (2) writeTier2JsonContained deep-merges template into consumer. No __bkit__
+// runClaudeModule: (1) if __bkit__ present → migrateLegacyBkitEnvelope strips it;
+// (2) writeTier2JsonContained deep-merges template into consumer. No __bkit__
 // key is ever written. Consumer-only keys (hooks.Stop, customKey) survive.
 //
-// These tests verify the call site in runClaudeModule still correctly processes
-// the .bkit-version JSON format and preserves consumer keys through the new path.
+// These tests verify the call site in runClaudeModule correctly processes
+// the .bkit-version JSON format and preserves consumer keys.
 // ---------------------------------------------------------------------------
 
 describe("C1 end-to-end regression: runClaudeModule applies deep-containment with JSON-format .bkit-version", () => {
@@ -1655,8 +1652,7 @@ describe("Task 23 — detectTier2TextDrift named-block logic (ci.yml template as
 
   it("flags MISSING when a required named block (verbose-ci-env) is absent but other markers remain", () => {
     // Drop the whole verbose-ci-env block; keep the (optional) main-lag-warning block so the
-    // consumer still has bkit markers. Required block missing → flagged (migrates the retired
-    // detectCiYmlVerboseCiBlockMissing coverage onto the generic drift advisory).
+    // consumer still has bkit markers. Required block missing → flagged.
     const consumer = readTemplate().replace(
       /\n {4}# bkit:start verbose-ci-env\n[\s\S]*?# bkit:end verbose-ci-env\n/,
       "\n",
@@ -1768,18 +1764,17 @@ describe(".husky/pre-push delete-only push", () => {
 // ---------------------------------------------------------------------------
 // Challenge regression tests — Finding 1 (SHARED-DERIV portability + pipefail safety)
 //
-// The build challenge (Finding 1 HIGH) identified two coexisting defects in the
-// SHARED-DERIV grep region of bkit-cloud.yml:
+// The SHARED-DERIV grep region of bkit-cloud.yml must avoid two defects:
 //   (a) `grep -oP` PCRE lookbehind — non-portable (BSD grep / some runner images)
 //   (b) No failure guard on ISSUE/FID assignments — `set -euo pipefail` aborts
 //       the step when grep exits 1 on a no-match body, making the fallback/fail-safe
 //       dead code and producing a RED job instead of skip=true no-op.
 //
-// Remediation replaced `grep -oP` with portable `grep -oE` + `sed`, and added
-// `|| true` guards so a no-match exits 0 and reaches the skip=true path.
+// It uses portable `grep -oE` + `sed`, with `|| true` guards so a no-match exits 0
+// and reaches the skip=true path.
 //
-// These tests lock in the remediation so a silent regression cannot re-introduce
-// `grep -oP` or remove the `|| true` guards.
+// These tests stop a silent regression from re-introducing `grep -oP` or removing
+// the `|| true` guards.
 // ---------------------------------------------------------------------------
 
 describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety regression", () => {
@@ -2568,9 +2563,9 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
 // reconcileOpencodeJson — provider-key ordering must be stable across paths.
 // Regression: install reconciles only the ACTIVE provider while upgrade also
 // reconciles each ADDITIONAL installed provider. deepMergeJson orders template
-// keys first, so reconciling a later provider used to hoist it to the front —
-// install and upgrade then rendered a different order and `bkit check` never
-// settled (perpetual opencode.json + .bkit/version drift).
+// keys first, so reconciling a later provider can hoist it to the front —
+// install and upgrade would then render a different order and `bkit check` would
+// never settle (perpetual opencode.json + .bkit/version drift).
 // ---------------------------------------------------------------------------
 describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
   const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);

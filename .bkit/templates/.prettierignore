@@ -12,7 +12,7 @@ dist/
 # .cursor (the managed-version marker and transform output are the source of
 # truth, not a prettier rewrite). .opencode/plugin/ is listed for the same
 # reason as .claude/ and .cursor/: its hook is a render of the template, and
-# leaving it lintable let prettier reformat the mirror but not the two ignored
+# leaving it lintable would let prettier reformat the mirror but not the two ignored
 # twins, silently diverging three copies that must stay byte-identical.
 .claude/
 .cursor/

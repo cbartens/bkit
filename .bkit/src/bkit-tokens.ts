@@ -8,14 +8,11 @@ import { gitEnv, resolveRepoSlug } from "./bkit-telemetry.js";
 export interface TokenMap {
   DEFAULT_BRANCH: string;
   PROJECT_NAME: string;
-  // `owner/repo` slug parsed from the `origin` remote. Consumed by the Renovate
-  // module's `extends: ["local>{{REPO_SLUG}}//..."]` line (Renovate's local-preset
-  // syntax requires the slug — there is no slug-free self-reference). Empty string
-  // when origin is absent/unparseable; the Renovate flow is origin-gated, so the
-  // line self-heals on the re-run that follows pushing to a remote.
+  // `owner/repo` slug parsed from the `origin` remote, substituted for
+  // `{{REPO_SLUG}}`. Empty string when origin is absent/unparseable.
   REPO_SLUG: string;
   // Full `<!-- bkit:managed vX.Y.Z … -->` marker line for the INSTALLING bkit
-  // version (#256 extended to managed docs). Substituted into the first line of
+  // version. Substituted into the first line of
   // each managed doc's `bkit:start` block so `bkit check` can flag a consumer
   // running stale doctrine (`detectManagedDocsStale`). Optional so the many
   // TokenMap literals (tests, the resolveTokens-failure fallback) need not set it

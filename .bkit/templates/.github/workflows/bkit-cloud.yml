@@ -15,7 +15,6 @@ name: bkit-cloud
 #
 # Phase 1 wires three trigger surfaces:
 #   - workflow_run (CI completion on feat/**): success -> ship, failure -> debug
-#     (preserves the previous bkit-ci-router behaviour exactly).
 #   - workflow_run (CI completion on dev): success -> no-op (regression check passed),
 #     failure -> /bkit-debug {FID} (FID recovered from squash-merge commit scope;
 #     loop-bounded by MAX_DEV_DISPATCH_ATTEMPTS). [skip ci] close commits never trigger CI.
@@ -236,7 +235,7 @@ jobs:
               # suppresses `set -e` for the whole body. An explicit test, not
               # `${VAR:?}`: the `:?` expansion exits the whole shell even from
               # inside a `|| {}`-guarded function. Fail closed when the
-              # workflow-level env no longer defines a whole-number cap.
+              # workflow-level env does not define a whole-number cap.
               case "${MAX_DEV_DISPATCH_ATTEMPTS:-}" in
                 '' | *[!0-9]*)
                   echo "::notice::MAX_DEV_DISPATCH_ATTEMPTS is not set to a whole number — refusing to dispatch uncounted (fail-closed)."
@@ -363,8 +362,8 @@ jobs:
               # an operator who believes such a label revokes automation.
               # this MUST precede the stale-run guard below. That guard
               # mkdir -p's, commits and pushes a telemetry row to dev before
-              # exiting, so with the old ordering an operator who removed
-              # bkit:auto to halt a misbehaving loop still got uncapped
+              # exiting, so in the reverse order an operator who removed
+              # bkit:auto to halt a misbehaving loop would still get uncapped
               # bkit-auto[bot] commits pushed to the integration branch on every
               # subsequent red dev CI. The check needs nothing the guard sets.
               if ! gh issue view "$ISSUE" --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto'; then
@@ -632,7 +631,7 @@ jobs:
               # suppresses `set -e` for the whole body. An explicit test, not
               # `${VAR:?}`: the `:?` expansion exits the whole shell even from
               # inside a `|| {}`-guarded function. Fail closed when the
-              # workflow-level env no longer defines a whole-number cap.
+              # workflow-level env does not define a whole-number cap.
               case "${MAX_DEV_DISPATCH_ATTEMPTS:-}" in
                 '' | *[!0-9]*)
                   echo "::notice::MAX_DEV_DISPATCH_ATTEMPTS is not set to a whole number — refusing to dispatch uncounted (fail-closed)."

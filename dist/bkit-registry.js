@@ -7,8 +7,8 @@
 // These are sane defaults; consumers tune after install.
 // npmPackage: set for custom OpenAI-compatible providers that use npm-based AI SDK driver.
 export const OPENCODE_PROVIDER_DEFAULTS = {
-    // Aggregator — one key, every model (incl :free variants). Re-added as a named, pinned
-    // provider (NOT the any-endpoint fallback #245 removed).
+    // Aggregator — one key, every model (incl :free variants). A named, pinned provider
+    // (NOT an any-endpoint fallback).
     // opencode custom providers use the npm driver (NOT an "api" field, which is invalid
     // and makes opencode reject the whole config) and read keys via {env:VAR} — never
     // shell ${VAR}. See https://opencode.ai/docs/config + /docs/providers.
@@ -63,8 +63,8 @@ export const OPENCODE_PROVIDER_DEFAULTS = {
  * - `json.schemastore.org`. Fetched by the editor JSON language server for the settings
  *   `$schema`, never by an agent tool call, so no WebFetch, curl or hook decision is
  *   ever taken against it.
- * - `kimi.com`. Removed when the opencode provider allowlist was cut to four; re-adding
- *   it would reverse an ACTIVE decision.
+ * - `kimi.com`. Outside the four-provider opencode allowlist; adding it would reverse
+ *   an ACTIVE decision (`opencode-provider-allowlist-cut-to-four`).
  */
 export const BKIT_EGRESS_SOURCES = [
     {

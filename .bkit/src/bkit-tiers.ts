@@ -205,7 +205,7 @@ export function deepMergeJson(base: JsonValue, override: JsonValue): JsonValue {
 // ---------------------------------------------------------------------------
 // writeTier2JsonContained — deep-containment JSON helper (BAR-167 Phase 1)
 //
-// Replaces writeTier2Json. No __bkit__ envelope required.
+// No __bkit__ envelope required.
 //
 // Contract:
 //   - dest absent         → write template as-is (first install)
@@ -433,19 +433,19 @@ export function writeIfAbsent(
 //
 // noMarkerMigration (optional, default off — no other markered-text file's behaviour
 // changes): two independent, self-limiting migration triggers, each firing only for
-// a shape that cannot occur once a file is genuinely on the new format:
+// a shape that cannot occur once a file carries markers in the current layout:
 //   - no markers, hash matches a prior canonical hash → replace wholesale (same bytes
 //     a fresh install would produce). A file with no markers whose full-file hash
-//     matches bkit's own record is provably ours and unmodified — the migration case
-//     for a file that was previously fully bkit-owned with no markers at all.
+//     matches bkit's own record is provably ours and unmodified — the case of a file
+//     an older bkit wrote whole, with no markers at all.
 //   - no markers, hash unknown/differs → append the block (unchanged default
 //     behaviour) and print wiring instructions — the consumer's own file needs one
 //     line added to call into the appended block.
 //   - markers present, but nothing meaningful lives after the end marker → replace
-//     wholesale. Covers a file whose markers predate a block-boundary move and used
-//     to wrap the WHOLE file (nothing left outside to preserve) — an ordinary
-//     block-content-only merge would silently discard whatever the old markers
-//     wrapped that the new template moved outside the block. Self-limiting: once
+//     wholesale. Covers a file whose markers wrap the WHOLE file (nothing left
+//     outside to preserve) — an ordinary block-content-only merge would silently
+//     discard whatever those markers wrap that the template puts outside the
+//     block. Self-limiting: once
 //     genuinely migrated, real content lives after the end marker and this never
 //     fires again, so it can never be reused to wholesale-replace a file that has
 //     legitimate consumer content outside the block (unlike a hash comparison, whose
@@ -524,7 +524,7 @@ export function writeTier2(
       const currentHash = hashFile(dstPath);
       const recordedHash = noMarkerMigration.canonicalHashes[noMarkerMigration.relPath];
       if (currentHash && recordedHash && currentHash === recordedHash) {
-        // Ours and unmodified (predates the marker migration) — replace wholesale,
+        // Ours and unmodified (an older bkit's copy without markers) — replace wholesale,
         // same bytes a fresh install would produce.
         const content = applyTokens(srcRaw, tokens);
         if (!dryRun) {
@@ -566,11 +566,10 @@ export function writeTier2(
   }
 
   // Stale-position markers: markers ARE present and parseable, but nothing meaningful
-  // lives after the end marker. A block whose markers used to wrap the WHOLE file
-  // (the shape every gateguard.js predates: markers introduced ad hoc before
-  // slash-comment was a real MarkerStyle, with `bkit:end` literally at EOF) has this
-  // exact signature — the driver that now belongs OUTSIDE the block is still trapped
-  // INSIDE it, and an ordinary "replace only what's between the markers" merge would
+  // lives after the end marker. A block whose markers wrap the WHOLE file (the shape
+  // of a gateguard.js an older bkit wrote, with `bkit:end` literally at EOF) has this
+  // exact signature — the driver that belongs OUTSIDE the block is trapped INSIDE
+  // it, and an ordinary "replace only what's between the markers" merge would
   // silently discard it (there is nothing in `afterBlock` to preserve it). Self-limiting
   // by construction: once genuinely migrated, real driver content lives after the end
   // marker, this is permanently false, and every later run takes the ordinary path below.

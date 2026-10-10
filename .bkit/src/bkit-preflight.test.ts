@@ -362,13 +362,11 @@ describe("stripBkitBlock", () => {
 });
 
 // ---------------------------------------------------------------------------
-// P3.T7 — detectHooksConfigOverwriteRisk has been DELETED (BAR-142 §A1)
+// P3.T7 — detectHooksConfigOverwriteRisk is absent (BAR-142 §A1)
 // ---------------------------------------------------------------------------
-// detectHooksConfigOverwriteRisk is removed in v0.8.0 (P3.T7 per plan).
-// These tests are the removal verification — checking that the function no
-// longer exists in the source.
+// These tests check that the function does not exist in the source.
 
-describe("P3.T7 — detectHooksConfigOverwriteRisk deleted (v0.8.0)", () => {
+describe("P3.T7 — detectHooksConfigOverwriteRisk absent", () => {
   it("detectHooksConfigOverwriteRisk is NOT present in bkit-preflight.ts source", () => {
     // Source-level check: the function must not exist in the source
     const src = fs.readFileSync(path.join(__dirname, "bkit-preflight.ts"), "utf-8");
@@ -969,7 +967,7 @@ describe("B4 — detectShellToken differentiates unset from empty-string", () =>
 // .npmrc as the auth mechanism — pnpm >=10.34.3 401s on that env-substitution (the legacy
 // line is flagged for removal by detectNpmrcLegacyAuthToken, never prescribed).
 //
-// The BAR-142 §B6 invariant still holds permanently: the broken POSIX-fallback
+// The BAR-142 §B6 invariant holds too: the broken POSIX-fallback
 // `${VAR:-default}` form must never appear (pnpm cannot parse it; it 401s).
 // ---------------------------------------------------------------------------
 
@@ -1053,15 +1051,14 @@ describe("B3 — Vercel CLI hang guard: detectVercelEnv skips shell-out when .ve
 });
 
 // ---------------------------------------------------------------------------
-// BAR-186 — SessionStart hook (preflight.sh) — retained regression coverage
+// BAR-186 — SessionStart hook (preflight.sh) — regression coverage
 //
-// The bash hook at .agents/templates/.claude/hooks/preflight.sh runs as a
+// The bash hook at .bkit/templates/.claude/hooks/preflight.sh runs as a
 // Claude SessionStart hook (a different surface from the install-time TS
-// preflight in this file). Dispatch-specific bypass logic was reverted on
-// 2026-05-13; the latent-bug fixes from BAR-186 remain:
+// preflight in this file). Covered behaviour:
 //   - Brew-bin check is Darwin-gated (Linux sandbox / CI pass through).
 //   - IDE-skip path (empty LINEAR_ISSUE_ID exits 0 silently).
-//   - Missing BKIT_LINEAR_API_KEY still hard-stops when a Linear issue is present.
+//   - Missing BKIT_LINEAR_API_KEY hard-stops when a Linear issue is present.
 //
 // Runtime behaviour (real bash subprocess) is covered in
 // bkit-preflight.integration.test.ts; only the source-level (no-subprocess)
@@ -1349,7 +1346,7 @@ describe("detectExtraMcpServers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// [mcp-env] detectors — BAR-260 follow-up
+// [mcp-env] detectors — BAR-260
 // ---------------------------------------------------------------------------
 
 describe("detectMissingDotenv", () => {

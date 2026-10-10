@@ -4,7 +4,7 @@
 // `done` captures `parentSha` before committing, writes the row, then commits,
 // in that fixed order: the fold's de-dup key includes `parentSha`, so attempt
 // counts stay right only if it moves forward after every step. The gate checks
-// what `done` wrote, so a step no longer types its own row and then ticks a box
+// what `done` wrote, so a step cannot hand-type its own row and then tick a box
 // saying it did.
 import * as fs from "node:fs";
 import * as path from "node:path";

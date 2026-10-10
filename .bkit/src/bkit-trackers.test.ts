@@ -67,8 +67,8 @@ ISSUE_ID="" — derive FID from branch.
   });
 
   it("does not jam content that follows a pair with no trailing false block", () => {
-    // Regression: the optional trailing-false `\s*` used to live outside the
-    // optional group, eating the newline after a pair and merging the next line
+    // Regression: the optional trailing-false `\s*` sits inside the optional group;
+    // outside it, it eats the newline after a pair and merges the next line
     // onto the kept body (e.g. `…COMMENTS.→ EXISTING map…`).
     const wf = `2. ${pair("read call", "read call ln")}\n   → trailing derived line.\n`;
 
@@ -192,7 +192,7 @@ describe("real workflow sources", () => {
       const count = (re: RegExp) => (src.match(re) ?? []).length;
       const gh = count(/<!--\s*bkit:tracker\s+github\s+start\s*-->/g);
       const ln = count(/<!--\s*bkit:tracker\s+linear\s+start\s*-->/g);
-      // `none` markers are retired — no-tracker content uses `false`.
+      // No-tracker content uses `false`, never a `none` marker.
       const legacyNone = count(/<!--\s*bkit:tracker\s+none\s+(?:start|end)\s*-->/g);
       expect(gh, `${wf} unbalanced github/linear`).toBe(ln);
       expect(legacyNone, `${wf} has retired bkit:tracker none markers`).toBe(0);

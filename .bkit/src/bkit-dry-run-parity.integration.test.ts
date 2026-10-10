@@ -15,9 +15,8 @@ import type { ModuleFlag, CloudVariant } from "./bkit-cli";
 // difference is whether bytes hit disk. We assert path-set equality between the
 // two runs against identical starting state (a fresh tmpdir each time).
 //
-// (The legacy `runTemplates` parity tests were removed when that dead second
-// mechanism was deleted — its per-file rules are now covered by writeTier2 in
-// bkit-tiers.test.ts, and parity by the cross-module checks below.)
+// Per-file tier rules are covered by writeTier2 in bkit-tiers.test.ts, and
+// parity by the cross-module checks below.
 // ---------------------------------------------------------------------------
 
 let tmpDir: string;

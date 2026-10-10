@@ -231,8 +231,6 @@ capabilities() {
   # are open — it must not abort the register that reports them. Anything above 1
   # is the scan itself failing (an unfollowable router variable, a missing v1.ts)
   # and MUST stop the run, or the register silently loses the whole section.
-  # The scan only started honouring that split when it was ported to Node: the
-  # Python version exited 1 for a scan failure too, so this branch never fired.
   # Pinned by assert-routes-reachable.test.mjs.
   # Skip the section when scripts/ci/guards/assert-routes-reachable.mjs is absent.
   REACH_ARGS=()

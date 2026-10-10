@@ -1,12 +1,11 @@
-// bkit-retire.ts — remove files bkit used to own and no longer ships.
+// bkit-retire.ts — delete files an older bkit wrote that bkit does not ship.
 //
-// Install and upgrade overwrite what bkit owns, but never delete a file bkit has
-// dropped, so a retired script would sit in every consumer's repo forever. This
-// deletes it when it still matches the hash bkit recorded when it last wrote it
-// (`.bkit/version` `canonicalHashes`). A file the consumer edited stays, and an
-// advisory names what replaced it. Consumer files that still call a retired path
-// (CI workflows, package.json scripts) get one advisory per line, because nothing
-// else would tell them the call now fails.
+// Install and upgrade overwrite what bkit owns, but never delete a file bkit does
+// not ship. This deletes each retired file when it still matches the hash bkit
+// recorded when it last wrote it (`.bkit/version` `canonicalHashes`). A file the
+// consumer edited stays, and an advisory names what does its job. Consumer files
+// that still call a retired path (CI workflows, package.json scripts) get one
+// advisory per line, because nothing else would tell them the call fails.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -15,13 +14,16 @@ import type { PreflightFinding } from "./bkit-preflight.js";
 import { isConsumerModified, readBkitVersion, writeBkitVersion } from "./bkit-version.js";
 
 export interface RetiredFile {
-  /** Consumer-relative path bkit used to write. */
+  /** Consumer-relative path an older bkit wrote. */
   path: string;
-  /** What does its job now, e.g. a `bkit <noun> <verb>` command. */
+  /** What does its job, e.g. a `bkit <noun> <verb>` command. */
   replacement: string;
 }
 
-/** Files bkit owned and no longer ships. Append when a file is dropped; never remove an entry. */
+/**
+ * Owned files an older bkit wrote that bkit does not ship. Append when bkit stops
+ * shipping one; never remove an entry.
+ */
 export const RETIRED_OWNED_FILES: readonly RetiredFile[] = [
   {
     path: ".bkit/scripts/bkit-book-commit.sh",
@@ -59,7 +61,7 @@ export const isRetiredOwned = (
 ) => list.some((r) => r.path === relPath);
 
 /**
- * Paths bkit used to write and now ships only as templates. The consumer's file
+ * Paths an older bkit wrote that bkit ships only as templates. The consumer's file
  * stays; only its `.bkit/version` hash goes, so a stale key cannot exempt it from
  * checks. Never list these in RETIRED_OWNED_FILES: that list deletes unedited copies.
  */
@@ -87,11 +89,11 @@ export const RETIRED_MANAGED_PATHS: ReadonlySet<string> = new Set([
   ".cursor/Dockerfile",
 ]);
 
-/** A `.bkit/version` hash key bkit no longer keeps: a retired owned file or a retired managed path. */
+/** A `.bkit/version` hash key bkit does not keep: a retired owned file or a retired managed path. */
 export const isRetiredHashKey = (relPath: string): boolean =>
   RETIRED_MANAGED_PATHS.has(relPath) || isRetiredOwned(relPath);
 
-/** `hashes` without the keys bkit no longer keeps. */
+/** `hashes` without the keys bkit does not keep. */
 export function withoutRetiredHashes(hashes: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(hashes).filter(([p]) => !isRetiredHashKey(p)));
 }
@@ -123,13 +125,11 @@ export function retireOwnedFiles(
     if (!fs.existsSync(abs)) continue;
     if (isConsumerModified(r.path, abs, hashes)) {
       result.kept.push(r.path);
-      opts.log(
-        `${tag}retire: kept ${r.path} — edited since bkit wrote it (replaced by ${r.replacement})`,
-      );
+      opts.log(`${tag}retire: kept ${r.path} — edited since bkit wrote it (use ${r.replacement})`);
       continue;
     }
     result.deleted.push(r.path);
-    opts.log(`${tag}retire: delete ${r.path} (replaced by ${r.replacement})`);
+    opts.log(`${tag}retire: delete ${r.path} (use ${r.replacement})`);
     if (!opts.dryRun) fs.rmSync(abs);
   }
 
@@ -189,7 +189,7 @@ export function detectRetiredOwnedFiles(
     findings.push({
       id: `retired-file-kept:${r.path}`,
       severity: "advisory",
-      detect: `${r.path} is no longer shipped by bkit. It was edited after bkit wrote it, so bkit left it in place.`,
+      detect: `${r.path} is not shipped by bkit. It was edited after bkit wrote it, so bkit left it in place.`,
       action: `Move any change you still need to ${r.replacement}, then delete it: rm ${r.path}`,
     });
   }
@@ -197,7 +197,7 @@ export function detectRetiredOwnedFiles(
     findings.push({
       id: `retired-file-caller:${c.file}:${c.line}`,
       severity: "advisory",
-      detect: `${c.file}:${c.line} calls ${c.retired.path}, which bkit no longer ships — that line fails on its next run.`,
+      detect: `${c.file}:${c.line} calls ${c.retired.path}, which bkit does not ship — that line fails on its next run.`,
       action: `In ${c.file} line ${c.line}, replace the call to ${c.retired.path} with ${c.retired.replacement}.`,
     });
   }

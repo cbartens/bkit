@@ -140,7 +140,7 @@ export function deepMergeJson(base, override) {
 // ---------------------------------------------------------------------------
 // writeTier2JsonContained — deep-containment JSON helper (BAR-167 Phase 1)
 //
-// Replaces writeTier2Json. No __bkit__ envelope required.
+// No __bkit__ envelope required.
 //
 // Contract:
 //   - dest absent         → write template as-is (first install)
@@ -332,7 +332,7 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws, no
             const currentHash = hashFile(dstPath);
             const recordedHash = noMarkerMigration.canonicalHashes[noMarkerMigration.relPath];
             if (currentHash && recordedHash && currentHash === recordedHash) {
-                // Ours and unmodified (predates the marker migration) — replace wholesale,
+                // Ours and unmodified (an older bkit's copy without markers) — replace wholesale,
                 // same bytes a fresh install would produce.
                 const content = applyTokens(srcRaw, tokens);
                 if (!dryRun) {
@@ -371,11 +371,10 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws, no
         return;
     }
     // Stale-position markers: markers ARE present and parseable, but nothing meaningful
-    // lives after the end marker. A block whose markers used to wrap the WHOLE file
-    // (the shape every gateguard.js predates: markers introduced ad hoc before
-    // slash-comment was a real MarkerStyle, with `bkit:end` literally at EOF) has this
-    // exact signature — the driver that now belongs OUTSIDE the block is still trapped
-    // INSIDE it, and an ordinary "replace only what's between the markers" merge would
+    // lives after the end marker. A block whose markers wrap the WHOLE file (the shape
+    // of a gateguard.js an older bkit wrote, with `bkit:end` literally at EOF) has this
+    // exact signature — the driver that belongs OUTSIDE the block is trapped INSIDE
+    // it, and an ordinary "replace only what's between the markers" merge would
     // silently discard it (there is nothing in `afterBlock` to preserve it). Self-limiting
     // by construction: once genuinely migrated, real driver content lives after the end
     // marker, this is permanently false, and every later run takes the ordinary path below.

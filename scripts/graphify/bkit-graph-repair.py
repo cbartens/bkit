@@ -10,14 +10,14 @@ between `extract` and `cluster-only`.
 
     bkit-graph-repair.py <graph.json> [--rules R] [--quiet]
 
-WHY IN THE FILE AND NOT ONLY ON READ. An earlier version repaired on read,
-inside bkit-graph-eager.py and bkit-graphify-rollup.py. That fixed our own checks and the
+WHY IN THE FILE AND NOT ONLY ON READ. Repairing on read, inside
+bkit-graph-eager.py and bkit-graphify-rollup.py, would fix our own checks and the
 generated doc but NOT `graphify affected`, `god-nodes`, `explain`, `path` or
 `query` — those read graph.json directly, so every hand-typed blast-radius
-question was still answered from a graph missing those edges. `affected` is the
+question would be answered from a graph missing those edges. `affected` is the
 one most likely to be trusted in a hurry, and a missing edge looks like a clean
-gap. Repairing the file instead makes graph.json the single source
-of truth: the consumers now just read it, and call `warn_if_unrepaired` so a
+gap. Repairing the file makes graph.json the single source
+of truth: the consumers just read it, and call `warn_if_unrepaired` so a
 graph built without this step says so rather than quietly understating.
 
 WHY IT SURVIVES. The obvious objection is that `graphify update` rewrites

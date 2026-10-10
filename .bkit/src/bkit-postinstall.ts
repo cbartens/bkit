@@ -60,8 +60,7 @@ export function detectShellToken(): TokenPresence {
  * detectShellToken but for the token that authenticates the GitHub MCP server
  * (`Authorization: Bearer ${BKIT_GH_TOKEN}` in .mcp.json). Where BKIT_GH_TOKEN_INSTALL only
  * gates `pnpm install` from GH Packages, BKIT_GH_TOKEN powers the entire tracker +
- * PR + Projects MCP surface — so its absence is more functionally severe, yet
- * historically had no shell-env advisory (only the `.env`-gated preflight check).
+ * PR + Projects MCP surface — so its absence is more functionally severe.
  */
 export function detectShellGhMcpToken(): TokenPresence {
   if (process.env.BKIT_GH_TOKEN === undefined) return "missing";
@@ -93,7 +92,7 @@ export function hasGithubMcpServer(cwd: string): boolean {
 /**
  * Detect whether .npmrc declares the @cbartens GH Packages registry mapping.
  *
- * As of the pnpm >=10.34.3 auth rework the _authToken is NOT stored in the project
+ * On pnpm >=10.34.3 the _authToken is NOT stored in the project
  * .npmrc: a project-.npmrc `${BKIT_GH_TOKEN_INSTALL}` env-substitution 401s on download
  * (ERR_PNPM_FETCH_401), so the token lives in pnpm's user-level config (written via
  * `pnpm config set`). The only line the committed project .npmrc must carry is the
@@ -114,7 +113,7 @@ export function detectNpmrcAuth(cwd: string): TokenPresence {
 
 /**
  * Detect a legacy project-.npmrc auth-token line (`//npm.pkg.github.com/:_authToken=`).
- * As of the pnpm >=10.34.3 auth rework this line breaks installs: pnpm 401s on download
+ * On pnpm >=10.34.3 this line breaks installs: pnpm 401s on download
  * and, via config precedence (project .npmrc > user config), it shadows the user-level
  * token written by `pnpm config set`. Returns true when present so a migration advisory
  * can nudge its removal.
@@ -292,7 +291,7 @@ export function detectVercelInstallCommandMissingAuth(cwd: string): string[] {
  * Returns null if no ci.yml, no `pnpm install` step, or the step is correctly wired
  * (no false positives).
  *
- * As of the pnpm >=10.34.3 auth rework the correct shape requires BOTH:
+ * On pnpm >=10.34.3 the correct shape requires BOTH:
  *   (1) a `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` step that
  *       writes the token into pnpm's user-level config before install, AND
  *   (2) the `BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}` env mapping that feeds it.
@@ -351,7 +350,7 @@ export function detectCiYmlMissingTokenEnv(cwd: string): PreflightFinding | null
       "        pnpm install --frozen-lockfile\n" +
       "      env:\n" +
       "        BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}\n\n" +
-      "pnpm >=10.34.3 no longer authenticates a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution (it 401s on download), so the token must be set via `pnpm config set` — the shell expands $BKIT_GH_TOKEN_INSTALL to the literal token before pnpm stores it in user-level config, version-proof across pnpm 10.x and 11.x.\n\n" +
+      "pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution (it 401s on download), so the token must be set via `pnpm config set` — the shell expands $BKIT_GH_TOKEN_INSTALL to the literal token before pnpm stores it in user-level config, version-proof across pnpm 10.x and 11.x.\n\n" +
       "Also confirm the secret exists: `gh secret list | grep BKIT_GH_TOKEN_INSTALL`. If absent: `gh secret set BKIT_GH_TOKEN_INSTALL --body=$BKIT_GH_TOKEN_INSTALL`.",
   };
 }
@@ -1101,7 +1100,7 @@ export function detectBkitStubs(cwd: string): PreflightFinding[] {
   // is still present (still disabled).
   const ciContent = readOnce(".github/workflows/ci.yml");
   if (ciContent) {
-    // Legacy scaffold job names. `bkit-decide` predates the bkit-tests-* namespace and is
+    // Legacy scaffold job names. `bkit-decide` sits outside the bkit-tests-* namespace and is
     // INVISIBLE to bkit's CI-Dispatch Gate, which polls the pushed HEAD for any bkit-tests-*
     // check: a repo whose planner is still called `bkit-decide` matches only via the gate's
     // legacy `decide` alternation, and a repo that renamed it to anything else (e.g. a bare
@@ -1126,7 +1125,7 @@ export function detectBkitStubs(cwd: string): PreflightFinding[] {
         id: "ci-legacy-scaffold-job-names",
         severity: "advisory",
         detect:
-          `.github/workflows/ci.yml defines the legacy scaffold job${legacyJobs.length > 1 ? "s" : ""} ${legacyJobs.join(" + ")} — renamed in the current scaffold.` +
+          `.github/workflows/ci.yml defines the legacy scaffold job${legacyJobs.length > 1 ? "s" : ""} ${legacyJobs.join(" + ")} — the current scaffold uses bkit-tests-scope / bkit-tests-migration.` +
           (docsSkew
             ? " docs/testing.md (bkit-managed, refreshed on upgrade) already names the current jobs, so docs and ci.yml now describe DIFFERENT job names — an agent reading the docs will not find the jobs they reference."
             : ""),
@@ -1376,8 +1375,8 @@ export function detectRunLevelsNotComposed(cwd: string): PreflightFinding | null
   const readTokens = [
     "steps.detect.outputs.should_force_build",
     "steps.detect.outputs.should_run_full",
-    // Legacy (pre-#291 template emitted should_run_e2e for the removed [force e2e]);
-    // kept so the check doesn't false-advise consumers who composed on the old output.
+    // Legacy output an older template emitted; matched so the check doesn't
+    // false-advise consumers who compose on it.
     "steps.detect.outputs.should_run_e2e",
   ];
   const composesRunLevels = (content: string): boolean =>
@@ -1744,7 +1743,7 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
   };
 }
 /**
- * One-time migration nudge for the BKIT_-prefixed GitHub token names. bkit now uses:
+ * One-time migration nudge for the BKIT_-prefixed GitHub token names. bkit uses:
  *   - `BKIT_GH_TOKEN_INSTALL` — classic `read:packages` PAT for GitHub Packages install /
  *     lockfile auth (widely distributed: local, CI, Vercel, Renovate hostRules).
  *   - `BKIT_GH_TOKEN` — the general fine-grained WRITE PAT (GitHub MCP server +, when
@@ -1764,7 +1763,7 @@ export function buildTokenRenameMigrationAdvisory(cwd: string): PreflightFinding
     id: "gh-token-scheme-rename",
     severity: "advisory",
     detect:
-      "`.bkit/.env` uses a retired GitHub token name. bkit now prefixes direnv-loaded keys with `BKIT_`: `BKIT_GH_TOKEN_INSTALL` (classic `read:packages`, for GitHub Packages install / lockfile auth) and `BKIT_GH_TOKEN` (the general fine-grained WRITE token — GitHub MCP + self-hosted Renovate platform auth). The old `GH_BKIT_TOKEN_INSTALL` / `GH_BKIT_TOKEN` / `GH_MCP_TOKEN` names are retired so they do not collide with `GH_TOKEN` or other direnv exports.",
+      "`.bkit/.env` uses a retired GitHub token name. bkit prefixes direnv-loaded keys with `BKIT_`: `BKIT_GH_TOKEN_INSTALL` (classic `read:packages`, for GitHub Packages install / lockfile auth) and `BKIT_GH_TOKEN` (the general fine-grained WRITE token — GitHub MCP + self-hosted Renovate platform auth). The prefix keeps them from colliding with `GH_TOKEN` or other direnv exports.",
     action:
       "Rename the keys wherever the token is set — the VALUES do not change:\n\n" +
       "  1. `.bkit/.env`: rename `GH_BKIT_TOKEN_INSTALL` -> `BKIT_GH_TOKEN_INSTALL`, `GH_BKIT_TOKEN` -> `BKIT_GH_TOKEN`, and `GH_MCP_TOKEN` -> `BKIT_GH_TOKEN`. Then `direnv allow` and restart your editor.\n" +
@@ -1989,13 +1988,13 @@ const BKIT_GH_TOKEN_INSTALL_MISSING_ACTION =
   "        pnpm install --frozen-lockfile\n" +
   "      env:\n" +
   "        BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}\n\n" +
-  "IMPORTANT — pnpm >=10.34.3 no longer authenticates a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution and 401s on download (ERR_PNPM_FETCH_401), so the token must be set via `pnpm config set` — the shell expands $BKIT_GH_TOKEN_INSTALL to the literal token before pnpm stores it in user-level config, version-proof across pnpm 10.x and 11.x. Metadata calls (pnpm view) can still resolve, so the failure only shows on a real install.\n\n" +
+  "IMPORTANT — pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution and 401s on download (ERR_PNPM_FETCH_401), so the token must be set via `pnpm config set` — the shell expands $BKIT_GH_TOKEN_INSTALL to the literal token before pnpm stores it in user-level config, version-proof across pnpm 10.x and 11.x. Metadata calls (pnpm view) can still resolve, so the failure only shows on a real install.\n\n" +
   "Verify secret set: gh secret list | grep BKIT_GH_TOKEN_INSTALL";
 
 const BKIT_GH_TOKEN_INSTALL_UNKNOWN_ACTION =
   "Could not auto-check BKIT_GH_TOKEN_INSTALL secret (gh CLI unavailable, unauthenticated, or this isn't a GitHub repo yet).\n\n" +
   "Manually verify the BKIT_GH_TOKEN_INSTALL secret exists on the consumer's GitHub repo. It is required for the seeded ci.yml install step (`pnpm config set` + `pnpm install`) to authenticate against the GitHub Packages npm registry when installing @cbartens/bkit.\n\n" +
-  "IMPORTANT — pnpm >=10.34.3 no longer authenticates a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution and 401s on download (ERR_PNPM_FETCH_401). The seeded install step writes the token via `pnpm config set` (the shell expands $BKIT_GH_TOKEN_INSTALL to the literal token before pnpm stores it in user-level config); if BKIT_GH_TOKEN_INSTALL is unset there, that write is empty and the install 401s.\n\n" +
+  "IMPORTANT — pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution and 401s on download (ERR_PNPM_FETCH_401). The seeded install step writes the token via `pnpm config set` (the shell expands $BKIT_GH_TOKEN_INSTALL to the literal token before pnpm stores it in user-level config); if BKIT_GH_TOKEN_INSTALL is unset there, that write is empty and the install 401s.\n\n" +
   "Once `gh` is installed and authenticated, get your token and export it:\n\n" +
   "    export BKIT_GH_TOKEN_INSTALL=$(gh auth token)\n\n" +
   "Then verify the secret is set on the repo:\n\n" +
@@ -2014,7 +2013,7 @@ const VERCEL_MISSING_ACTION =
   "    vercel env add BKIT_GH_TOKEN_INSTALL production\n\n" +
   "Or via web: Vercel project → Settings → Environment Variables.\n" +
   "The token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained).\n\n" +
-  "Why the installCommand: pnpm >=10.34.3 no longer authenticates a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution (it 401s on download), so the token must reach pnpm's user-level config via `pnpm config set` before install.";
+  "Why the installCommand: pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution (it 401s on download), so the token must reach pnpm's user-level config via `pnpm config set` before install.";
 
 // ---------------------------------------------------------------------------
 // formatChecklist — pure renderer
@@ -2233,7 +2232,7 @@ function readPkgVersion(): string {
 // friction this scoping removes: the gate stays a hard BLOCKER on the
 // integration + release branches (`main`/`dev`), where stale doctrine must never
 // land, and downgrades to a non-blocking ADVISORY everywhere else — still shown
-// in the checklist so the dev knows to re-render, but it no longer blocks an
+// in the checklist so the dev knows to re-render, but it does not block an
 // intermediate push. A PR INTO main/dev re-asserts the blocker (via
 // GITHUB_BASE_REF), so the skew can never reach a protected branch silently.
 // ---------------------------------------------------------------------------
@@ -2515,7 +2514,7 @@ export function detectOwnedHookMissing(missing: MissingOwnedHook[]): PreflightFi
   return {
     id: "owned-hook-missing",
     severity: "blocker",
-    detect: `${missing.length} bkit-owned hook file(s) missing: ${missing.map((h) => h.path).join(", ")}. The host still has each hook wired, but the file it runs is gone, so the guard or setup step it holds no longer happens.`,
+    detect: `${missing.length} bkit-owned hook file(s) missing: ${missing.map((h) => h.path).join(", ")}. The host still has each hook wired, but the file it runs is gone, so the guard or setup step it holds does not run.`,
     action: missing.map(describeMissingOwnedHook).join("\n"),
   };
 }
@@ -2526,9 +2525,9 @@ export function detectOwnedHookMissing(missing: MissingOwnedHook[]): PreflightFi
 
 /**
  * DE-<n>/KN-<n> alias collisions in the key-bearing ledgers — one number claimed
- * by more than one unrelated row. The retired "scan-highest-and-increment" scheme
- * let two concurrent workflows mint the same id off the same base commit, and
- * `merge=union` appended both silently (their slug `key`s differ, so nothing
+ * by more than one unrelated row. Older ledgers minted ids by "scan-highest-and-increment",
+ * which lets two concurrent workflows mint the same id off the same base commit, and
+ * `merge=union` appends both silently (their slug `key`s differ, so nothing
  * conflicts). A bare citation of that number then resolves ambiguously. Advisory,
  * never a blocker: it is pre-existing ledger data, not an install fault, and the
  * fix (`bkit telemetry normalise`) is the consumer's to run. Read-only fs scan.
@@ -2645,7 +2644,7 @@ export function runPostInstallCheck(
         "    @cbartens:registry=https://npm.pkg.github.com\n\n" +
         "The token lives in pnpm's user-level config — write it once with:\n\n" +
         '    pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n\n' +
-        "pnpm >=10.34.3 no longer authenticates a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution (it 401s on download), which is why the token must NOT go in .npmrc.",
+        "pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution (it 401s on download), which is why the token must NOT go in .npmrc.",
     });
   }
   // "unknown" (absent) → silent skip per spec
@@ -2858,11 +2857,11 @@ export function runPostInstallCheck(
   if (wfLintTools) phase3.push(wfLintTools);
 
   // DE-<n>/KN-<n> alias collisions in the key-bearing ledgers (silent duplicate ids
-  // from the retired scan-highest-and-increment scheme). Read-only fs scan.
+  // from scan-highest-and-increment minting in older ledgers). Read-only fs scan.
   const ledgerCollisions = detectLedgerAliasCollisions(cwd);
   if (ledgerCollisions) phase3.push(ledgerCollisions);
 
-  // [mcp-env] direnv + .bkit/.env advisories (BAR-260 follow-up).
+  // [mcp-env] direnv + .bkit/.env advisories (BAR-260).
   // Wired here in Phase 3 — the .bkit/.env.example scaffold only exists after
   // writes, so Phase 1 cannot see it on first install.
   // Pass the consumer's tracker so the mcp-env prose omits BKIT_LINEAR_API_KEY on github/none

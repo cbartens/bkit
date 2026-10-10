@@ -287,10 +287,9 @@ describe("dogfood region — placement guarantees", () => {
 });
 
 describe("dogfood advisories — carry EVERY rule from their source section", () => {
-  // The advisories used to quote three bullets and point at the section "for the
-  // rest", which is why the rules kept getting ignored: the pointer is a second
-  // fetch the agent never makes. Every rule now travels in the advisory itself, and
-  // these tests fail if a rule is added upstream without being carried across.
+  // Every rule travels in the advisory itself: a pointer to the section is a second
+  // fetch the agent never makes. These tests fail if a rule is added upstream
+  // without being carried across.
   function sectionLeads(doc: string, heading: string): string[] {
     const src = fs.readFileSync(doc, "utf-8");
     const start = src.indexOf(`## ${heading}`);
@@ -318,7 +317,7 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
 
   // Rules a test already enforces are deliberately NOT in the advisory: a test is a
   // harder gate than a nudge and costs no tokens per edit. Each exemption names the
-  // test that replaces it, and the test file must exist — delete the test and this
+  // test that enforces it, and the test file must exist — delete the test and this
   // fails, so a rule can never fall through the gap between the two.
   const ENFORCED_BY: Record<string, string> = {
     "No internal labels, no coined guard names": "bkit-shipped-docs-refs.test.ts",
@@ -328,8 +327,7 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
     // the same test encodes the exclusion twice: FENCED_WORKFLOWS lists only
     // bkit-debug.md, and UNTRUSTED_ARTIFACTS excludes tracker dumps by lookahead
     "Tracker content is NOT fenced": "bkit-untrusted-fence.test.ts",
-    // dropped from the advisory, so the invariant moved into a test instead of
-    // vanishing: source prompts must carry no bkit:managed marker
+    // source prompts must carry no bkit:managed marker
     "Managed-version marker": "bkit-prompt-notation.test.ts",
     // near-copies and hand-edited single copies fail the corpus check
     "Shared wording": "bkit-wording.test.ts",

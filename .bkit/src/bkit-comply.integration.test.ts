@@ -26,7 +26,7 @@ function run(cmd: string, cwd: string): string {
   // suite runs under the pre-push hook these are set and would override `cwd`,
   // making git operate on the REAL repo instead of the temp dir — hijacking the
   // checked-out branch. The global vitest.setup.ts strip covers this too; this is
-  // belt-and-suspenders at the point of use. See the 2026-07-13 incident note.
+  // belt-and-suspenders at the point of use.
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
     if (key.startsWith("GIT_")) delete env[key];

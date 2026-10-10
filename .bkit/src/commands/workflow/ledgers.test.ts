@@ -496,8 +496,8 @@ describe("--only-if-dirty-tracked (build / design / plan Step 2)", () => {
     expect(res.err).toContain("src.ts");
   });
 
-  // The script exits 6 here, which failed Step 2 on a fresh consumer repo whose
-  // only change was a dirty tracked non-bookkeeping file.
+  // Exiting 6 here would fail Step 2 on a fresh consumer repo whose only change
+  // is a dirty tracked non-bookkeeping file.
   it("a dirty tree with no bookkeeping at all is nothing to commit, not exit 6", async () => {
     const r = repo();
     put(r, "README.md", "a\n");
@@ -718,7 +718,7 @@ describe("bookPathspecs — frozen bookkeeping allow-list", () => {
     expect(pr).toContain("docs/*.jsonl"); // .bkit/issues.jsonl's route is the .bkit/*.jsonl glob
   });
 
-  it("never names the retired docs/completed.md (#380)", () => {
+  it("never names docs/completed.md (#380)", () => {
     for (const scope of ["core", "full", "pr"] as const) {
       expect(bookPathspecs("202610", "1-x", scope)).not.toContain("docs/completed.md");
     }

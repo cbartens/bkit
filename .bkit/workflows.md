@@ -648,7 +648,7 @@ Then assert each Update/Create artifact exists, non-empty. Empty → **Failure P
 <!-- prettier-ignore -->
 | Agent | `Verdict` values | Routing |
 | --- | --- | --- |
-| `@bkit-build-plan-current` | PASS / CONCERNS / FAIL | PASS → Step 5. CONCERNS / FAIL → Step 5 too — advisory only: recorded on the `step-done` row, posted to the tracker with `Affected`, echoed as a console advisory, never blocking. Aborting a build because the plan drifted was the more expensive failure — the common `Broken` case is work that already landed, and the fix (`/bkit-plan` re-run) throws away a worktree that was ready to build. The findings instead flow into Step 6: `@bkit-build-plan-execute` reads `build-plan-current.md` and treats it as fact about the codebase, the plan as intent. Build still never revises the plan file — that belongs to `/bkit-plan`, whose own close re-stamps the anchor. Never invokes `@bkit-plan-update`. |
+| `@bkit-build-plan-current` | PASS / CONCERNS / FAIL | PASS → Step 5. CONCERNS / FAIL → Step 5 too — advisory only: recorded on the `step-done` row, posted to the tracker with `Affected`, echoed as a console advisory, never blocking. The findings flow into Step 6: `@bkit-build-plan-execute` reads `build-plan-current.md` and treats it as fact about the codebase, the plan as intent. Build never revises the plan file — that belongs to `/bkit-plan`, whose own close re-stamps the anchor. Never invokes `@bkit-plan-update`. |
 | `@bkit-build-plan-verify` | PASS / CONCERNS / FAIL | PASS → boundary gate (between sub-plans; § Sub-plan boundary gate) → next sub-plan or Step 9; CONCERNS/FAIL / boundary FAIL → `@bkit-build-plan-gaps-remediate` loop (max `MAX_VERIFY_ATTEMPT` = 3 → Failure Path). |
 | `@bkit-build-challenge-reconcile` | PASS / CONCERNS / FAIL | PASS → Step 14; CONCERNS AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 12 → Step 13 → Step 14; CONCERNS AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 14; FAIL AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 12 → Step 13 → re-Step 10; FAIL AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. Findings carry `class: mechanical | architectural`; `@bkit-build-challenge-remediate` classify-gate FAILs (no fixes) when any architectural finding is present, else fixes mechanical findings. One re-Challenge bite — bounded by `CHALLENGE_REMEDIATE_ATTEMPT` < 1. |
 | `@bkit-design-review-1` / `-2` | PASS / CONCERNS / FAIL | `REVIEW_VERDICT` = worst-of-two. PASS/CONCERNS → Step 6 spike (`SPIKE` = TRUE) else Step 7 apply-review; FAIL → Failure Path (design fundamentally not viable, human reframe required). `@bkit-design-review-1` additionally emits `Spike` (`TRUE` / `FALSE`) in its header — a routing flag, not a verdict; `SPIKE` gates Step 6 only and never contributes to `REVIEW_VERDICT`. |
@@ -803,7 +803,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 
 **Hard stop in Step 11 caution block:** "Design requires human review. Do NOT invoke `/bkit-plan`."
 
-**Step 10 contract:** the organised design's `## Suggested Workstreams` is the suggestion. Step 10 copies that list onto the parent issue as an advisory comment (`NEVER auto-trigger`). It does not file issues. `/bkit-plan` Step 1 still parses `**Parent design:**` when a human has put that marker on an issue body; absent → standalone plan. `/bkit-build` Step 1 still honours blocker edges a human has set. Design and plan never share FID.
+**Step 10 contract:** the organised design's `## Suggested Workstreams` is the suggestion. Step 10 copies that list onto the parent issue as an advisory comment (`NEVER auto-trigger`). It does not file issues. `/bkit-plan` Step 1 parses `**Parent design:**` when a human has put that marker on an issue body; absent → standalone plan. `/bkit-build` Step 1 honours blocker edges a human has set. Design and plan never share FID.
 
 ### `/bkit-plan` — 12 steps
 
@@ -1278,7 +1278,7 @@ then `"$BKIT" <noun> <verb> …`. It is the main checkout's binary, so it works 
 **`{OUTBOX}`** = `<main checkout>/.git/bkit-outbox/{FID}/` (git common dir): temporary command inputs and outputs — issue description / comments files for `bkit issues text`, close artifact and telemetry lines, ship's pre-merge snapshot and close worktree, the `.worktree-owned` marker. Outside every worktree, so it survives worktree removal; never committed.
 
 <!-- prettier-ignore -->
-| Noun | Verbs | Replaces |
+| Noun | Verbs | Covers |
 | --- | --- | --- |
 | `repo` | `info` | Step 1 owner/repo, branch, behind-`dev` notice |
 | `fids` | `check`, `parse` | FID format asserts; auto's marker / branch FID recovery |

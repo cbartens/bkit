@@ -247,9 +247,8 @@ function seedDevDispatchRows(workspaceDir: string, fid: string, headShas: string
  *
  * NOT a hardcoded bucket: the step discovers an existing one and falls back to
  * `date -u +%Y%m` when the FID has no logs yet, so an unseeded fixture writes to
- * whatever month the suite runs in. Pinning `202607` made these assertions pass
- * only while that was the current month — they broke at the 2026-08-01 rollover
- * with no code change. Mirror the step's own discovery instead.
+ * whatever month the suite runs in. A pinned month passes only while it is the
+ * current month. Mirror the step's own discovery instead.
  */
 function statusDirs(workspaceDir: string, fid: string): string[] {
   const plans = path.join(workspaceDir, "docs/plans");
@@ -415,13 +414,13 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   });
 
   // -------------------------------------------------------------------------
-  // `fix/**` is no longer a bkit surface. /bkit-debug creates no branch — it
+  // `fix/**` is not a bkit surface. /bkit-debug creates no branch — it
   // adopts an existing feat/{FID} or works in place on the branch that went
-  // red — so nothing mints fix/{FID} any more. The trigger filter drops it,
+  // red — so nothing mints fix/{FID}. The trigger filter drops it,
   // and a fix/ branch that reaches the ctx step anyway (a hand-named branch, a
   // consumer who re-widened the filter) must fail SAFE, not dispatch.
   // -------------------------------------------------------------------------
-  describe("fix/** is retired as a routed surface", () => {
+  describe("fix/** is not a routed surface", () => {
     it("the workflow_run trigger filter covers feat/** and dev only", () => {
       expect(rawTemplate).toContain("branches: ['feat/**', 'dev']");
       expect(rawTemplate).not.toContain("fix/");
@@ -450,10 +449,9 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
 
   // -------------------------------------------------------------------------
   // T13 / Regression — build-challenge H1: the branch-fallback FID derivation
-  // used to truncate to the leading numeric/alpha id (e.g. '363'), which
-  // (a) orphaned a wrong status.jsonl directory and (b) broke the
-  // "one dispatch budget per FID" invariant with the dev path. Fixed
-  // by keeping the FULL slug.
+  // keeps the FULL slug. Truncating to the leading numeric/alpha id (e.g. '363')
+  // would (a) orphan a wrong status.jsonl directory and (b) break the
+  // "one dispatch budget per FID" invariant with the dev path.
   // -------------------------------------------------------------------------
   describe("feat/** path — FID recovery + cap exemption (T13, H1 regression)", () => {
     it("T13/H1: a marker-less feat/** PR recovers the FULL FID slug from the branch (not truncated to '363')", () => {
@@ -689,9 +687,8 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
     expect(result.stdout).toContain("Stale dev CI");
     // #363 F6: the dev-dispatch-dropped row goes to the RUN SUMMARY, not a
     // committed status.jsonl. This branch is only reached because dev already
-    // advanced, so the old `git push origin dev || true` was usually a
-    // non-fast-forward and silently dropped the row in exactly the scenario it
-    // records — while the warning told the operator to go read it.
+    // advanced, so pushing the row to dev would usually be a non-fast-forward
+    // and drop it in exactly the scenario it records.
     const dropped = JSON.parse(
       /^\{"type":"dev-dispatch-dropped".*$/m.exec(result.summary)?.[0] ?? "null",
     ) as { type: string; fid: string; headSha: string; latestSha: string } | null;

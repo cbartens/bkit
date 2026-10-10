@@ -116,7 +116,7 @@ describe("pruneRetiredClaudeAskRules", () => {
   });
 });
 
-describe("shipped settings no longer carry the retired rules", () => {
+describe("shipped settings carry none of the retired rules", () => {
   const pkgRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
 
   for (const rel of [".claude/settings.json", ".bkit/templates/.claude/settings.json"]) {

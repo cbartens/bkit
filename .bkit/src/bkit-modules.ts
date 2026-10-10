@@ -219,7 +219,7 @@ export interface ModuleContext {
    * Used by runOpencodeModule to seed the provider block in opencode.json.
    */
   opencodeProvider?: string | null;
-  /** Structured advisory accumulator — replaces the legacy printSink: string[] channel. */
+  /** Structured advisory accumulator. */
   advisories: PreflightFinding[];
   ws: WriteSet;
   logPrefix: string;
@@ -257,7 +257,7 @@ const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents", ".bkit", "scripts"]);
 // Top-level template files (non-directory) that belong to core.
 // `gitignore` is stored dot-less (npm strips a literal `.gitignore`); `.gitattributes`
 // is stored with its dot (npm does not strip it) — see remapTemplateDest / NPM_STRIP_REMAP.
-// CLAUDE.md is NOT here (#252): it moved to the `claude` module (a Claude-Code-only root
+// CLAUDE.md is NOT here (#252): it belongs to the `claude` module (a Claude-Code-only root
 // redirect, the analog of Cursor's .cursor/rules/00-shared-rules.mdc) — runClaudeModule
 // emits it. AGENTS.md (cross-host dispatch router) stays core.
 const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "gitignore", ".gitattributes"]);
@@ -312,7 +312,6 @@ export function isTemplate(relPath: string): boolean {
 
 // Files that live under a core-owned template dir (e.g. `.bkit/scripts/`) but are
 // NOT shipped by the plain core pass — skip them there so the right owner writes them.
-// Note: `.bkit/scripts/bkit-mode.sh` was removed in #245 — no longer in templates.
 const SLOP_PLUGIN = "bkit-slop-type-suppression.mjs";
 const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
   // The slop-scan plugin belongs to the `lint` module (--typescript), so a consumer
@@ -481,21 +480,19 @@ const COPY_EXCLUDE = new Set([
   // .bkit/templates/.bkit/.env.example). Copying it here too would double-handle the
   // same destination.
   ".env.example",
-  // bkit-mode.sh was removed in #245 (opencode replaces the ccr router lane); this
-  // entry is kept as a guard to prevent any future accidental re-addition.
+  // bkit-mode.sh is not shipped; this entry guards against an accidental re-addition.
   "bkit-mode.sh",
 ]);
 
 // Top-level `.agents/` files that bkit force-overwrites on install (copyAdditive's
 // default skip-if-exists is wrong for canonical bkit-owned content).
 //
-// Currently EMPTY: the former members (prompts.md, workflows.md, providers.md, cloud.md)
-// are bkit-authoring docs / engine data that live package-side under `.bkit/` and
-// are read directly from there at runtime (getBkitDocsRoot). They are no longer
-// `.agents/` files at all, so there is nothing to force-overwrite HERE. Their
-// consumer-side mirrors (under `.bkit/`, not `.agents/`) are written by
-// `runBkitDocs` (see BKIT_CANONICAL_DOCS below). Kept as the extension point if a
-// canonical consumer-side `.agents/` file is reintroduced.
+// EMPTY: the bkit-authoring docs / engine data (prompts.md, workflows.md, providers.md,
+// cloud.md) live package-side under `.bkit/` and are read directly from there at
+// runtime (getBkitDocsRoot). They are not `.agents/` files, so there is nothing to
+// force-overwrite HERE. Their consumer-side mirrors (under `.bkit/`, not `.agents/`)
+// are written by `runBkitDocs` (see BKIT_CANONICAL_DOCS below). This set is the
+// extension point for a canonical consumer-side `.agents/` file.
 export const CANONICAL_OVERWRITE_RELPATHS = new Set<string>([]);
 
 // Canonical bkit-authored reference docs that live package-side under `.bkit/`.
@@ -503,8 +500,7 @@ export const CANONICAL_OVERWRITE_RELPATHS = new Set<string>([]);
 // consumer's `.bkit/` on every install so a consumer can read them in-repo without
 // spelunking node_modules. Force-overwritten (Tier 1) — bkit owns them, so a
 // consumer edit is replaced. Source of truth is the package's own `.bkit/<name>`.
-// `README.md` ships only because package.json `files` no longer excludes it; the
-// other five already ship in the tarball. (`advisories.md` is a regenerated runtime
+// Every entry ships in the tarball under `.bkit/`. (`advisories.md` is a regenerated runtime
 // artifact and `friction.md` is a consumer-owned seed — neither belongs here.)
 export const BKIT_CANONICAL_DOCS = [
   "cloud.md",
@@ -1118,9 +1114,9 @@ export function runCoreModule(ctx: ModuleContext): void {
     );
   }
 
-  // 2. Payload cleanup pass — mirror sources + bkit docs + rules.md are now
-  // package-only (read directly from .bkit/); this removes any orphan copies a
-  // consumer carries from an earlier layout. No-op in dogfood and on clean trees.
+  // 2. Payload cleanup pass — mirror sources + bkit docs are package-only (read
+  // directly from .bkit/); this removes any orphan copies a consumer carries from
+  // a legacy layout. No-op in dogfood and on clean trees.
   console.log(`${logPrefix} ${tag}Running payload cleanup pass`);
   const { deletes: payloadDeletes } = runPayload(dryRun);
   if (payloadDeletes > 0) {
@@ -1196,7 +1192,7 @@ export function runCoreModule(ctx: ModuleContext): void {
       const relPath = path.relative(cwd, absPath);
       if (relPath === path.join(".bkit", "version")) continue;
       if (relPath.startsWith(".agents" + path.sep)) continue;
-      // Template copies carry no hash; retired paths no longer keep one.
+      // Template copies and retired paths carry no hash.
       if (relPath.startsWith(TEMPLATE_COPIES_DIR + path.sep)) continue;
       if (isRetiredHashKey(relPath)) continue;
       if (!fs.existsSync(absPath)) continue;
@@ -1205,12 +1201,12 @@ export function runCoreModule(ctx: ModuleContext): void {
     }
 
     // Merge: existing hashes preserved, new writes overwrite (hashes stay current).
-    // Drop paths bkit no longer keeps (retired owned files, templates). A stale key
+    // Drop paths bkit does not keep (retired owned files, templates). A stale key
     // would keep exempting that file from checks such as the floating-tag check.
     const canonicalHashes = withoutRetiredHashes({ ...existingCanonical, ...newCanonicalEntries });
 
     // Decide whether a write is needed: version mismatch, first install, new canonical
-    // entries, dropped keys, or a file still carrying the retired tier3Hashes field.
+    // entries, dropped keys, or a file carrying the legacy tier3Hashes field.
     const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
     const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
     const claudeAllowDerived = ctx.claudeAllowRecorded ?? existingVersion?.claudeAllowDerived ?? [];
@@ -1283,16 +1279,15 @@ export function runClaudeModule(ctx: ModuleContext): void {
   const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
 
   // Source-rendered agents/commands (.claude/agents from .bkit/prompts, .claude/commands
-  // from .bkit/workflows). Extracted to renderClaudeAgentsCommands so `bkit upgrade`
+  // from .bkit/workflows). Shared with `bkit upgrade` via renderClaudeAgentsCommands so it
   // re-renders them identically (#251) — bkit-owned output, force-overwritten.
   renderClaudeAgentsCommands(ctx);
 
-  // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md (#252: moved core → claude).
+  // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md (#252).
   // It is a ROOT file (not under .claude/), so the .claude/ template walk does not cover it
-  // and core no longer emits it — the claude module writes it here. Tier-2 markered-text
-  // (writeTier2 html-comment), byte-identical to the prior core emit, so dogfood/upgrade
-  // stay no-op. The matching canonicalHashes entry is recorded by core's postDispatch from
-  // ws (which aggregates every module's writes), so version-pin bookkeeping is unchanged.
+  // and core does not emit it — the claude module writes it here. Tier-2 markered-text
+  // (writeTier2 html-comment). The matching canonicalHashes entry is recorded by core's
+  // postDispatch from ws (which aggregates every module's writes).
   {
     const src = path.join(getTemplatesRoot(), "CLAUDE.md");
     const dst = "CLAUDE.md";
@@ -1411,11 +1406,11 @@ export function runClaudeModule(ctx: ModuleContext): void {
     }
   }
 
-  // cloud-bootstrap.sh moved to the opt-in `cloud` module (runCloudModule) — it
+  // cloud-bootstrap.sh belongs to the opt-in `cloud` module (runCloudModule) — it
   // only matters once a Claude Code on the web env is wired (a manual opt-in step),
-  // so a default --full install ships zero cloud footprint. The SessionStart hook
+  // so an install without `--auto=` ships zero cloud footprint. The SessionStart hook
   // entry in .claude/settings.json is guarded (`test -f … || true`) so it no-ops
-  // when the script is absent. The `cloud-env-customize` advisory moved with it.
+  // when the script is absent. The `cloud-env-customize` advisory lives there too.
 
   // .mcp.json — bkit owns only its tracker entry under `mcpServers`; every other key
   // (the consumer's own servers) is kept as-is.
@@ -1447,14 +1442,13 @@ export function runClaudeModule(ctx: ModuleContext): void {
   }
 
   // Task 6.3 — bkit-mode.sh deletion advisory (upgrade-migration drift detection).
-  // .bkit/scripts/bkit-mode.sh was written once and then edited by consumers (upgrade
-  // never overwrote it). Every prior consumer keeps a copy on disk even after
-  // upgrading to a bkit version that no longer ships the template. Detect the orphan
-  // and advise deletion — the opencode host (additive, via `bkit install --opencode=<provider>`)
-  // is the replacement; the `bkit mode` surface and ccr router are retired.
+  // An older bkit wrote .bkit/scripts/bkit-mode.sh once and left it to the consumer,
+  // so upgrade does not remove it, and bkit does not ship it. Detect the orphan and
+  // advise deletion — provider selection is the opencode host (additive, via
+  // `bkit install --opencode=<provider>`); bkit has no `bkit mode` surface or ccr router.
   //
   // The advisory explicitly names the shell-rc source line removal step because
-  // bkit-mode.sh installed a bkit() shell-function shim via `source .../bkit-mode.sh`
+  // bkit-mode.sh installs a bkit() shell-function shim via `source .../bkit-mode.sh`
   // in ~/.zshrc/~/.bashrc. Deleting the file without removing the source line leaves
   // a broken source call that errors on every new shell.
   {
@@ -1464,11 +1458,11 @@ export function runClaudeModule(ctx: ModuleContext): void {
         id: "bkit-mode-sh-deletion-required",
         severity: "advisory",
         detect:
-          ".bkit/scripts/bkit-mode.sh is present but is no longer managed by bkit. The `bkit mode` surface and the ccr router it depended on have been retired. Keeping this file creates a broken shell-rc source call on every new terminal.",
+          ".bkit/scripts/bkit-mode.sh is present but bkit does not manage it. bkit has no `bkit mode` surface or ccr router, which this script depends on. Keeping this file creates a broken shell-rc source call on every new terminal.",
         action:
           "1. Delete the orphan script: rm .bkit/scripts/bkit-mode.sh\n" +
           "2. Remove the source line from your shell rc (~/.zshrc or ~/.bashrc): delete or comment out the line that reads `source <repo-path>/.bkit/scripts/bkit-mode.sh`.\n" +
-          "3. Provider selection is now an install operation: `bkit install --opencode=<provider>` (e.g. `--opencode=opencode`). The claude host is always-on — no flag needed.\n" +
+          "3. Provider selection is an install operation: `bkit install --opencode=<provider>` (e.g. `--opencode=opencode-zen`). The claude host installs with `--claude`.\n" +
           "4. Check your installed hosts and credentials: `bkit doctor` (credentials + tools) and `bkit status` (installed hosts + providers).",
       });
     }
@@ -1665,8 +1659,6 @@ export function runCursorModule(ctx: ModuleContext): void {
     );
   }
 }
-
-// checkBkitTokenSecret and detectVercelProject moved to bkit-postinstall.ts (Phase 3 owns them).
 
 // ---------------------------------------------------------------------------
 // runOpencodeModule — opencode provider-agnostic host (opt-in via --opencode=<provider>)
@@ -1978,16 +1970,16 @@ export function enrichClaudeSettingsAllows(
 }
 
 /**
- * `ask` rules bkit once shipped and has since retired. Matched by exact string.
+ * `ask` rules an older bkit shipped, which bkit removes. Matched by exact string.
  *
- * `Bash(curl:*)` / `Bash(wget:*)` were added to gate shell network egress on Claude,
- * but a content-scoped `ask` rule is evaluated BEFORE the auto-mode classifier and
- * always forces a prompt — beating even a matching `allow`, in every permission mode.
- * A cloud session cannot answer one, so every `context=web` context-fetch block
- * stalled on it. Claude's rules match a command prefix, not a URL host, so there is
- * no per-domain exception to carve out the way `guardrails.cjs` does on Cursor and
- * `curl *{domain}*` allows do on opencode. Shell curl now runs under `Bash(*)`;
- * `deny` still blocks and the auto-mode classifier still sees the command.
+ * A content-scoped `ask` rule such as `Bash(curl:*)` / `Bash(wget:*)` is evaluated
+ * BEFORE the auto-mode classifier and always forces a prompt — beating even a matching
+ * `allow`, in every permission mode. A cloud session cannot answer one, so every
+ * `context=web` context-fetch block stalls on it. Claude's rules match a command prefix,
+ * not a URL host, so there is no per-domain exception to carve out the way
+ * `guardrails.cjs` does on Cursor and `curl *{domain}*` allows do on opencode. Shell curl
+ * runs under `Bash(*)`; `deny` still blocks and the auto-mode classifier still sees the
+ * command.
  */
 const RETIRED_CLAUDE_ASK_RULES: readonly string[] = ["Bash(curl:*)", "Bash(wget:*)"];
 
@@ -2392,8 +2384,8 @@ export function runCloudModule(ctx: ModuleContext): void {
   const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
   const templates = getTemplatesRoot();
-  // Default to "claude" when cloudVariant is not set (back-compat: the old bare --cloud
-  // always meant the Claude/GitHub path). Callers should always pass cloudVariant.
+  // Default to "claude" (the Claude/GitHub path) when cloudVariant is not set.
+  // Callers should always pass cloudVariant.
   const variant: CloudAgents = ctx.cloudVariant ?? "claude";
 
   if (variant === "claude") {

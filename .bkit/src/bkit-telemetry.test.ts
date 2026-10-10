@@ -242,8 +242,8 @@ describe("severity — per-kind requirement + closed enum", () => {
     },
   );
 
-  // The old critical|normal|low scale is retired — accepting it would silently
-  // resurrect the vocabulary whose distribution collapsed to its default.
+  // critical|normal|low is off-enum — accepting it would silently admit a
+  // vocabulary whose distribution collapses to its default.
   it.each(["low", "normal", "critical", "blocker", "advisory", "Critical", ""])(
     "rejects off-enum severity %j",
     (severity) => {
@@ -262,8 +262,8 @@ describe("severity — per-kind requirement + closed enum", () => {
     expect(validate({ ...deferralEvent("k"), status: s }).ok).toBe(true);
   });
 
-  // The free-text statuses the legacy corpus carried (`WORKED_AROUND`, `Resolving`,
-  // a whole sentence) are exactly what this gate stops being written again.
+  // Free-text statuses (`WORKED_AROUND`, `Resolving`, a whole sentence) are
+  // exactly what this gate stops being written.
   it.each(["WORKED_AROUND", "Resolving", "resolved", "open", "ACTIVE", ""])(
     "rejects off-ladder status %j on a severity kind",
     (status) => {
@@ -304,9 +304,8 @@ describe("severity — per-kind requirement + closed enum", () => {
     expect(r.reason).toContain("do not carry status");
   });
 
-  // reason — the deferral justification. Being declared used to be the only test
-  // for exemption from the ship sweep, and the agent that wanted out of the work
-  // wrote the declaration; the enum is what makes the claim adjudicable.
+  // reason — the deferral justification. A bare declaration is written by the agent
+  // that wants out of the work; the enum is what makes the claim adjudicable.
   it("DEFERRAL_REASONS is exactly the four justifications plus the adjudicator verdict", () => {
     expect([...DEFERRAL_REASONS].sort()).toEqual([
       "hard-blocked",
@@ -386,10 +385,9 @@ describe("severity — per-kind requirement + closed enum", () => {
   });
 });
 
-// The spec previously said "skip if an identity-matching row already exists",
-// which forbade the same-key append the instinct loop is built on — so no ledger
-// ever accumulated a second same-key row and confidence/lastConfirmed/
-// recurrenceCount stayed permanently unpopulated. Updating is an APPEND.
+// Updating is an APPEND: the instinct loop is built on same-key rows accumulating.
+// Skipping when an identity-matching row exists would leave confidence/lastConfirmed/
+// recurrenceCount permanently unpopulated.
 describe("updating a row — supersede by same-key append", () => {
   it("a later same-key row wins the fold; the earlier one stays as history", () => {
     const logged = frictionEvent("ship-blocked-by-hook", {
@@ -425,8 +423,8 @@ describe("updating a row — supersede by same-key append", () => {
   });
 
   // Legacy consumer rows carry an ISO-string `ts`, or none at all. `a.ts - b.ts` on
-  // those is NaN, which voids the sort: the winner then depended on file order, and
-  // two harvest runs over the same rows kept different ones (#343 harvest-1).
+  // those is NaN, which voids the sort: the winner would depend on file order, and
+  // two harvest runs over the same rows would keep different ones (#343 harvest-1).
   it("fold orders ISO-string and missing ts deterministically, whatever the file order", () => {
     const missing = frictionEvent("k", { status: "OPEN" } as Partial<TelemetryEvent>);
     delete (missing as { ts?: number }).ts;
@@ -1215,7 +1213,7 @@ describe("workflowTelemetry — per-workflow summary signals", () => {
 });
 
 // ---------------------------------------------------------------------------
-// workflowTelemetry — this-run + med·5 rolling baseline (#234 follow-up)
+// workflowTelemetry — this-run + med·5 rolling baseline (#234)
 // ---------------------------------------------------------------------------
 
 describe("workflowTelemetry — this-run vs med·5 baseline", () => {

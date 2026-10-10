@@ -231,7 +231,7 @@ bkit owns some files outright, owns one part of others, writes a few once and th
 
 Comment prefixes (`# `, `// `) before markers preserved on block updates.
 
-**Hook scripts — Tier 2 with a migration policy.** A `.claude/hooks/gateguard.cjs`, `.cursor/hooks/gateguard.cjs`, `.opencode/plugin/gateguard.js` or `.cursor/hooks/guardrails.cjs` that exists with no markers is not appended to blind: content hashing to a bkit release is replaced wholesale (ours, unmodified — it predates marker adoption); anything else gets the block appended plus printed wiring instructions, because bkit cannot add the call into a consumer-authored driver for them. bkit's block is a pure advisory engine — no stdin read, no stdout write, no top-level call — so it cannot collide with a consumer's own emitter.
+**Hook scripts — Tier 2 with a migration policy.** A `.claude/hooks/gateguard.cjs`, `.cursor/hooks/gateguard.cjs`, `.opencode/plugin/gateguard.js` or `.cursor/hooks/guardrails.cjs` that exists with no markers is not appended to blind: content hashing to a bkit release is replaced wholesale (an unmodified bkit copy); anything else gets the block appended plus printed wiring instructions, because bkit cannot add the call into a consumer-authored driver for them. bkit's block is a pure advisory engine — no stdin read, no stdout write, no top-level call — so it cannot collide with a consumer's own emitter.
 
 ### What install writes
 

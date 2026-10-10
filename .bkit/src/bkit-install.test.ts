@@ -944,23 +944,23 @@ describe("B5 — LOG_PREFIX on blocker banner (source-level verification)", () =
 });
 
 // ---------------------------------------------------------------------------
-// Task 6.1 — ci.yml template registry-auth assertion (updated for BAR-138)
+// Task 6.1 — ci.yml template registry-auth assertion (BAR-138)
 // ---------------------------------------------------------------------------
 
-describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)", () => {
-  // BAR-138: The consumer CI template was updated to use GitHub Packages
-  // registry auth (.npmrc + BKIT_GH_TOKEN_INSTALL env var) instead of the old git
-  // auth-shim (git config --global url.insteadOf). Tests updated accordingly.
+describe("ci.yml template registry-auth assertion (Task 6.1 — BAR-138)", () => {
+  // BAR-138: The consumer CI template uses GitHub Packages registry auth
+  // (.npmrc + BKIT_GH_TOKEN_INSTALL env var), not a git auth-shim
+  // (git config --global url.insteadOf).
 
   it("ci.yml template exists", () => {
     const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
     expect(fs.existsSync(templatePath), `template must exist at ${templatePath}`).toBe(true);
   });
 
-  it("ci.yml template does NOT contain the old git auth-shim (BAR-138 cleanup)", () => {
+  it("ci.yml template does NOT contain a git auth-shim (BAR-138)", () => {
     const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");
-    // The old auth-shim has been removed — these strings must be absent
+    // Auth-shim strings must be absent
     expect(content).not.toContain("git config --global url.");
     expect(content).not.toContain("insteadOf");
     expect(content).not.toContain("Configure private-repo auth");
@@ -971,7 +971,7 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
     const content = fs.readFileSync(templatePath, "utf-8");
     // BKIT_GH_TOKEN_INSTALL must be present as the env var for registry auth
     expect(content).toContain("BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}");
-    // BKIT_GH_TOKEN_INSTALL is now declared at job-level too (so non-install pnpm steps
+    // BKIT_GH_TOKEN_INSTALL is declared at job-level too (so non-install pnpm steps
     // don't emit ".npmrc env substitution failed" warnings). Locate the step-
     // level declaration adjacent to the install command, skipping any earlier
     // job-level occurrence.

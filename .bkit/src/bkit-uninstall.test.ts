@@ -60,7 +60,7 @@ function writeBkitVersionFile(v: BkitVersion): void {
 }
 
 // ---------------------------------------------------------------------------
-// buildDecisionTable — json-format files (formerly Tier-1)
+// buildDecisionTable — json-format files
 // ---------------------------------------------------------------------------
 
 describe("buildDecisionTable — json format", () => {
@@ -82,7 +82,7 @@ describe("buildDecisionTable — json format", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildDecisionTable — markered-text files (formerly Tier-2)
+// buildDecisionTable — markered-text files
 // ---------------------------------------------------------------------------
 
 describe("buildDecisionTable — markered-text format", () => {
@@ -98,7 +98,7 @@ describe("buildDecisionTable — markered-text format", () => {
     expect(entry!.format).toBe("markered-text");
   });
 
-  it("markered-text file with hash-comment markers → decision=strip-block (use a Group A file, since .husky/* moved to byte-equal-text in v2.0.4)", () => {
+  it("markered-text file with hash-comment markers → decision=strip-block (Group A file)", () => {
     writeFile(".gitignore", "node_modules/\n# bkit:start\n.worktrees/\n# bkit:end\n");
     const table = buildDecisionTable(["core"], makeCtx());
     const entry = table.find((r) => r.file === ".gitignore");
@@ -526,7 +526,7 @@ describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
 
 describe("runUninstall — .bkit/version install-state (4.6.3)", () => {
   it("deletes .bkit/version on a full/core uninstall (bkit install-state, zero-footprint)", () => {
-    // .bkit/version records no hash for itself, so the generic byte-equal hash-guard used to
+    // .bkit/version records no hash for itself, so the generic byte-equal hash-guard would
     // preserve it as "consumer-modified" — leaving bkit state behind after a full teardown.
     writeBkitVersionFile({ pinnedVersion: "1.0.0", canonicalHashes: {}, claudeAllowDerived: [] });
     return runUninstall(["core"], makeCtx()).then(() => {

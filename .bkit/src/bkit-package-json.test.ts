@@ -38,10 +38,10 @@ function readScripts(): Record<string, string> {
 }
 
 // ---------------------------------------------------------------------------
-// repointLegacyScripts — install and upgrade both run it. bkit no longer seeds
-// these scripts, so without it an existing consumer would keep the lint:prose
-// that silently self-disables in worktrees, or a slop:delta that calls a
-// retired script.
+// repointLegacyScripts — install and upgrade both run it. bkit does not seed
+// these scripts, so without it a consumer would keep a lint:prose an older bkit
+// wrote (which silently self-disables in worktrees), or a slop:delta that calls
+// a script bkit does not ship.
 // ---------------------------------------------------------------------------
 
 describe("repointLegacyScripts", () => {

@@ -33,9 +33,9 @@
 #                                stderr BEFORE the successful JSON output (runs
 #                                + jobs queries). Simulates real `gh` behaviour
 #                                under GH_DEBUG / deprecation headers / transport
-#                                notices. Finding-6 regression test: the
-#                                `2>&1` capture in the old shell gate merged this
-#                                into stdout and corrupted jq parsing.
+#                                notices. Finding-6 regression test: a `2>&1`
+#                                capture merges this into stdout and corrupts
+#                                jq parsing.
 #
 # Anything else: exit 1 (matches the FAKE_BIN/gh precedent — fail loudly on
 # unrecognised calls so a missing boundary surfaces in the test).

@@ -143,7 +143,7 @@ One verb scheme across every step in `ci.yml`, so a red run can be triaged from 
 | `Run` | invokes a named tool or suite |
 | `Report` / `Upload` / `Count` / `Merge` / `Fetch` | move or publish results |
 
-`Guard`, `Validate`, `Verify` and `Audit` are **not** in the scheme. Each of them meant "fail the job if this isn't true" — which is what `Assert` means — so four spellings of one idea taught the reader nothing and hid the one distinction that matters. `Check` is the load-bearing half: it is reserved for a step that genuinely cannot red the lane, either because it carries `continue-on-error: true` or because its body only ever warns. A step named `Check` that can fail the build is the one naming error this scheme exists to prevent, because it trains you to skim past a real failure.
+`Guard`, `Validate`, `Verify` and `Audit` are **not** in the scheme: each means "fail the job if this isn't true", which is `Assert`. `Check` is the load-bearing half: it is reserved for a step that genuinely cannot red the lane, either because it carries `continue-on-error: true` or because its body only ever warns. A step named `Check` that can fail the build is the one naming error this scheme exists to prevent, because it trains you to skim past a real failure.
 
 Two smaller rules that follow from the same idea:
 
@@ -164,7 +164,7 @@ Three practical rules:
 
 **The exception, stated so it is not mistaken for the rule.** When the shipped artefact _is_ prose — a rules file an agent reads, a CLI help string, an advisory message — the wording is the behaviour, and asserting on it is correct. The distinction is whether the text is the deliverable or a description of one.
 
-### Composite actions: two things that cost a red CI to learn
+### Composite actions: two rules that fail silently
 
 A composite action (`uses: ./.github/actions/setup`) is the right way to stop copy-pasting a setup block across lanes. Two of its rules are not obvious and neither fails loudly:
 
@@ -339,7 +339,7 @@ Beyond the gates above, three practices raise confidence further — opt-in, not
 
 Shipped stubs target Vitest (`bkit-stub:coverage`) and Playwright (`bkit-stub:e2e-coverage`); on another runner keep the rules (per-tier, report-only, ratchet from current) and swap the tooling.
 
-Report coverage on each PR **without a paid product or a third-party service** — e.g. the `bkit-stub:coverage` block in `.github/workflows/ci.yml` runs `davelosert/vitest-coverage-report-action` entirely inside Actions with `GITHUB_TOKEN`, posting sticky per-PR comments (safe for private repos; no coverage data leaves the runner). Replaces GitHub Code Quality's coverage-on-PR value (`deployments.md` § Disable GitHub Code Quality before GA billing) — **not** CodeQL security scanning, a separate product.
+Report coverage on each PR **without a paid product or a third-party service** — e.g. the `bkit-stub:coverage` block in `.github/workflows/ci.yml` runs `davelosert/vitest-coverage-report-action` entirely inside Actions with `GITHUB_TOKEN`, posting sticky per-PR comments (safe for private repos; no coverage data leaves the runner). Replaces GitHub Code Quality's coverage-on-PR value (`deployments.md` § Disable GitHub Code Quality billing) — **not** CodeQL security scanning, a separate product.
 
 **Per-tier, not merged.** Unit and integration are measured and commented **separately** (two runs into `coverage/unit` and `coverage/integration`, two comments keyed by a distinct `name:`). A single merged number is the weakest option: coverage is a **union**, so a line covered only by an integration test reads as covered and **hides a missing unit test** — a merged gate lets integration mask a hollow unit suite. The two numbers also have different denominators, so they can't be honestly combined into one.
 

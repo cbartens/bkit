@@ -444,7 +444,7 @@ describe("opencode opencode.json reconverge on upgrade", () => {
 // ---------------------------------------------------------------------------
 // seeded bkit-mode.sh deletion advisory (sub-plan 4 Task 6.3)
 // Any seeded .bkit/scripts/bkit-mode.sh on disk triggers the deletion advisory,
-// NOT silent preservation — the ccr router lane is retired.
+// NOT silent preservation — bkit has no ccr router lane.
 // ---------------------------------------------------------------------------
 
 function makeModuleCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {

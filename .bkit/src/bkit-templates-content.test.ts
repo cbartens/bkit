@@ -1,5 +1,5 @@
 // bkit-templates-content.test.ts — Snapshot/diff tests for seeded template files.
-// (BAR-138: verifies consumer CI template has been updated for registry-based auth)
+// (BAR-138: verifies consumer CI template uses registry-based auth)
 // Sibling of bkit-templates.test.ts which enforces marker PRESENCE; this file
 // enforces template CONTENT (BKIT_GH_TOKEN_INSTALL, renovate baseBranchPatterns, etc.).
 
@@ -69,7 +69,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     // below ships a knob that reaches nothing on a run that goes green. Only static YAML
     // works. These two assertions are a pair: deleting the rejected write on its own would
     // leave the lanes quiet AND knob-less, which is worse than the bug, because the error
-    // annotation was the only thing pointing at it.
+    // annotation is the only thing pointing at it.
     it("never writes NODE_OPTIONS to $GITHUB_ENV", () => {
       const offenders = content
         .split("\n")
@@ -318,7 +318,7 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(
       /matchDepTypes:\s*\[\s*"devDependencies"\s*\][\s\S]*?groupName:\s*"non-major dependencies"[\s\S]*?automerge:\s*true/,
     );
-    // Old per-type group names are gone — proof the four collapsed into one.
+    // No per-type group names — the four dependency types share one group.
     expect(content).not.toMatch(/groupName:\s*"devDependencies \(non-major\)"/);
     expect(content).not.toMatch(/groupName:\s*"type definitions"/);
     expect(content).not.toMatch(/groupName:\s*"linters \(eslint\)"/);

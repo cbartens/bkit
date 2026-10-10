@@ -91,7 +91,7 @@ docs/plans/
 # 3. Build and tooling JSON. `.json` is a code extension to graphify, so these
 # are parsed as source and every top-level key becomes a node with no manifest
 # semantics behind it — 206 nodes of task and env-var names for turbo.json,
-# whose `globalEnv` key once ranked as a god node at 41 edges.
+# whose `globalEnv` key ranks as a god node at 41 edges when parsed.
 #
 # package.json is NOT excluded, and must never be. graphify reads the workspace
 # `name` fields out of the CORPUS to resolve a workspace package specifier;

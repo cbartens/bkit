@@ -55,8 +55,8 @@ cbartens/bkit (this repo)
 │   ├── bkit-harvest.ts     # Cross-repo harvest CLI (#234 WS-4, #343) — COPIES consumer .bkit/stats.jsonl (never modified); MOVES .bkit/friction.jsonl into harvest/ at repo root, pruning drained rows from the consumer; COUNT-ONLY for docs/{deferrals,failures}.jsonl; store keeps every distinct row, deduped by content (never rewritten from the fold); prune gated on byte-for-byte content (NOT identity — fold collapses colliding rows) after copy→fsync→read-back; store accumulates, never cleared; never commits in any repo; `bkit harvest`
 │   ├── bkit-analysis.ts    # Analysis CLI (#234 WS-4) — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counterSource trust labelling, per-rule compliance rate over kind:"compliance" rows; rollup writer (writeRollupShard); `bkit analysis`
 │   ├── bkit-telemetry-migrate.ts # Legacy .md → .jsonl migration CLI (#234 WS-5, #380) — parity-gated destructive migration of docs/knowledge.md, docs/decisions.md, docs/pending.md → deferrals.jsonl, .bkit/friction.md, docs/completed.md → .bkit/issues.jsonl (fifth pair, plus the in-flight bootstrap seed); KN-/DE- ids + legacy Related: graph preserved in references[]; Severity mapped onto CRITICAL|HIGH|MEDIUM|LOW; Description prose → description (title → summary); Discarded: → alternatives; friction Workflow:/Step: preserved as the envelope workflow/step (where it happened, not the migrate transport); `bkit telemetry migrate [--dry-run]`
-│   ├── bkit-telemetry-lint.ts # Read-only alias-collision scan (#361) — flags one DE-<n>/KN-<n> claimed by >1 slug key (the retired scan-highest-and-increment race that merge=union appended silently) + minted keys written outside the one-shot migrate; `bkit telemetry validate` (exit 1 on collision); shared by the postinstall advisory + the normaliser
-│   └── bkit-telemetry-normalise.ts # One-shot idempotent normaliser (#361) — drops deprecated aliases[] into references[], keeps ts, re-keys ONLY colliding rows (strip the shared number, preserve it as a references[] pointer); parity-gated (.bak + row-count), original untouched on abort; `bkit telemetry normalise [--dry-run]`
+│   ├── bkit-telemetry-lint.ts # Read-only alias-collision scan (#361) — flags one DE-<n>/KN-<n> claimed by >1 slug key + minted keys written outside the one-shot migrate; `bkit telemetry validate` (exit 1 on collision); shared by the postinstall advisory + the normaliser
+│   └── bkit-telemetry-normalise.ts # One-shot idempotent normaliser (#361) — folds an `aliases[]` field into references[], keeps ts, re-keys ONLY colliding rows (strip the shared number, preserve it as a references[] pointer); parity-gated (.bak + row-count), original untouched on abort; `bkit telemetry normalise [--dry-run]`
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .bkit/workflows/      # Workflow markdown files (bkit-design, plan, build, debug, ship, auto)
 ├── .bkit/prompts/        # Subagent prompt files
@@ -83,7 +83,7 @@ pnpm bkit install [--module-flags] [--auto-revert]
     │   ├─ .bkit-staging/<module>/ = per-run scratch for derived files; discardAllStaging in finally
     │   ├─ fully-managed    → full overwrite (bkit fully owns file)
     │   ├─ markered-text   → managed-block merge (bkit owns marker region; consumer owns rest)
-    │   ├─ json            → deep-containment merge (writeTier2JsonContained; v2.0.0+); MCP configs → bkit's tracker entry only
+    │   ├─ json            → deep-containment merge (writeTier2JsonContained); MCP configs → bkit's tracker entry only
     │   ├─ create-if-missing → write once when absent (.agents/context.md, skills.md), never again;
     │   │                      package.json bkit:gate:* / bkit:deps:* names added when missing, never overwritten
     │   ├─ templates       → raw copies into .bkit/templates/ only; never applied to the repo
@@ -94,18 +94,18 @@ pnpm bkit install [--module-flags] [--auto-revert]
         ├─ CI YAML env-var check
         ├─ Vale package sync check
         ├─ Render unified advisory checklist
-        ├─ Phase 3 blockers (v0.7.0+) → exit 1 with recovery line; --auto-revert calls runUninstall first
+        ├─ Phase 3 blockers → exit 1 with recovery line; --auto-revert calls runUninstall first
         └─ Write .bkit-version JSON (pinnedVersion + canonicalHashes from this run's WriteSet)
 ```
 
 CLI verbs:
 
-- `pnpm bkit install` — all three phases. Requires ≥1 module flag (v4.0.0+); bare `bkit install` errors.
-- `pnpm bkit check` — Phase 1 + Phase 3 read-only (v2.2.3+); exit 1 on Tier-1/Tier-2 drift, no writes.
-- `pnpm bkit doctor` (v0.6.0+) — Phase 1 + Phase 3 detection; never writes; always exit 0.
-- `pnpm bkit status` (v4.0.0+) — read-only; installed host (claude/cursor/opencode) + configured provider.
-- `pnpm bkit uninstall` (v0.7.0+) — surgical format-aware removal: fully-managed delete / markered-text strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--keep-npmrc`. package.json scripts and devDeps are never removed (the `bkit` install-state block goes on a full uninstall).
-- `pnpm bkit upgrade` (v0.9.0+) — diff engine vs `canonicalHashes`; non-conflicts auto-apply, conflicts stderr (`--auto-apply` non-zero on conflict). Module-scoped (v4.0.0+). Re-renders at **installed** version (offline). `--to=<version>` / `--latest` (#296) bump `@cbartens/bkit` (`pnpm add`) → re-exec fresh binary → re-render + re-pin atomically — version bump cannot drift mirrors; bare `pnpm add` does not re-render.
+- `pnpm bkit install` — all three phases. Requires ≥1 module flag; bare `bkit install` errors.
+- `pnpm bkit check` — Phase 1 + Phase 3 read-only; exit 1 on Tier-1/Tier-2 drift, no writes.
+- `pnpm bkit doctor` — Phase 1 + Phase 3 detection; never writes; always exit 0.
+- `pnpm bkit status` — read-only; installed host (claude/cursor/opencode) + configured provider.
+- `pnpm bkit uninstall` — surgical format-aware removal: fully-managed delete / markered-text strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--keep-npmrc`. package.json scripts and devDeps are never removed (the `bkit` install-state block goes on a full uninstall).
+- `pnpm bkit upgrade` — diff engine vs `canonicalHashes`; non-conflicts auto-apply, conflicts stderr (`--auto-apply` non-zero on conflict). Module-scoped. Re-renders at **installed** version (offline). `--to=<version>` / `--latest` (#296) bump `@cbartens/bkit` (`pnpm add`) → re-exec fresh binary → re-render + re-pin atomically — version bump cannot drift mirrors; bare `pnpm add` does not re-render.
 - `pnpm bkit comply --phase <p>` (#234 WS-2) — grader over `git diff parentSha..HEAD`; advisory-only, fail-open.
 - `pnpm bkit harvest` (#234 WS-4, #343) — bkit-repo only; COPIES `stats.jsonl`, MOVES `friction.jsonl` (prunes consumer), count-only `docs/{deferrals,failures}.jsonl`. Never commits.
 - `pnpm bkit analysis` (#234 WS-4) — harvested store counts/rates; size↔outcome regression, per-rule compliance, rollup shard.
@@ -118,8 +118,8 @@ CLI verbs:
 Consumer repo
 ├── package.json            # devDependencies: { "@cbartens/bkit": "^4.0.0" }
 ├── .npmrc                  # @cbartens:registry=npm.pkg.github.com (registry only; token in pnpm user-level config)
-├── .claude/settings.json   # json format — deep-containment (template scope ⊆ consumer; v2.0.0+)
-├── .cursor/hooks.json      # json format — Cursor v1 keyed-object; deep-containment (v2.0.0+)
+├── .claude/settings.json   # json format — deep-containment (template scope ⊆ consumer)
+├── .cursor/hooks.json      # json format — Cursor v1 keyed-object; deep-containment
 ├── .agents/                # Cross-IDE agent runtime, populated by `pnpm bkit install`
 │   ├── rules.md            # markered-text — bkit block + consumer Project section
 │   ├── docs.md             # markered-text — doc index
@@ -144,7 +144,7 @@ Workflow/prompt SOURCES not shipped into consumer `.agents/`; live in installed 
 
 `.claude/hooks/gateguard.cjs`, `.cursor/hooks/gateguard.cjs`, `.codex/hooks/gateguard.cjs` and `.opencode/plugin/gateguard.js` (the GateGuard pre-edit advisory hooks) plus `.claude/hooks/guardrails.cjs`, `.cursor/hooks/guardrails.cjs` and `.codex/hooks/guardrails.cjs` (shell gates: destructive ops, secret exposure, URL-host checks and shell-as-edit-channel) are markered-text (slash-comment: `// bkit:start` / `// bkit:end`) — bkit owns only the pure advisory engine between the markers; the stdin/stdout driver (Claude) or exported plugin (opencode) around it is consumer-owned from first install onward, so a consumer can add their own advisories without losing them on upgrade. A pre-markers install (no markers, hash matches a prior canonical hash) is replaced wholesale on the next install/upgrade; a genuinely consumer-authored file (no markers, unknown hash) gets the block appended plus printed wiring instructions.
 
-Every rendered agent/command file — and every bkit-managed `docs/*.md` block (first line of `bkit:start` via `{{BKIT_MANAGED_MARKER}}`) — carries `<!-- bkit:managed vX.Y.Z … -->` stamped by `bkit install`/`upgrade` (v4.0.0+). Marker drift → `bkit check` emits `bkit-rendered-prompts-stale` (prompts/workflows) or `bkit-managed-docs-stale` (canonical doc set, never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main`/`dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches — stale render usually inherited from base bump without atomic re-render, not created on feature branch. Advisory still in checklist for visibility; no longer blocks intermediate push.
+Every rendered agent/command file — and every bkit-managed `docs/*.md` block (first line of `bkit:start` via `{{BKIT_MANAGED_MARKER}}`) — carries `<!-- bkit:managed vX.Y.Z … -->` stamped by `bkit install`/`upgrade`. Marker drift → `bkit check` emits `bkit-rendered-prompts-stale` (prompts/workflows) or `bkit-managed-docs-stale` (canonical doc set, never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main`/`dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
 
 ## Compliance Grader Subsystem (#234 WS-2)
 
@@ -154,28 +154,28 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 
 - `.bkit/src/bkit-comply.ts` — pure grader (`ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`); no side effects, no `process.exit`.
 - `.bkit/src/bkit-paths-policy.ts` — protected-path table (mirror prefixes + gate-config basenames); shared by grader + committed `.cjs`.
-- `.claude/hooks/gate-paths.generated.cjs` — generated from `bkit-paths-policy.ts`; drift in `bkit-paths-policy.test.ts`. Install = byte-equal Tier-1 copy, NOT install-time codegen.
+- `.claude/hooks/gate-paths.generated.cjs` — generated from `bkit-paths-policy.ts`; drift in `bkit-paths-policy.test.ts`. bkit's own repo only; install never writes it.
 - `bkit-cli.ts` — `comply` verb + `--phase` dispatch (DE-34).
 
 **Crash isolation (DE-34):** `comply` dispatch try/catch; crash → `[bkit-comply] internal error: …`, exit 0. Workflow wiring: `|| echo "[bkit-comply] grader unavailable, skipping"` silences non-zero.
 
-**Rollout (DE-35):** Ship-only in P2; other phases in future sub-plans.
+**Wiring:** every phase workflow (design, plan, build, debug, ship) runs `bkit comply --phase=<p>`.
 
 ## Knowledge/Decisions JSONL Ledgers (#234 WS-5)
 
-`docs/knowledge.jsonl` (`kind:"knowledge"`) + `docs/decisions.jsonl` (`kind:"decision"`) = NDJSON successors to markdown ledgers. Consumer-inherited (`.gitattributes` managed block, `merge=union`), populated by `bkit telemetry migrate`.
+`docs/knowledge.jsonl` (`kind:"knowledge"`) + `docs/decisions.jsonl` (`kind:"decision"`) = NDJSON ledgers. Consumer-inherited (`.gitattributes` managed block, `merge=union`), populated by `bkit telemetry migrate`.
 
 **Migration (one-time, destructive per A5):** `bkit telemetry migrate [--dry-run]` ports markdown → NDJSON, preserves `KN-N`/`KN-CORE-N`/`DE-N` + legacy `**Related:**` graph in `references[]`, DELETES `.md` only after row-count parity vs transient `.md.bak`. Mismatch or missing `.bak` → ABORT, zero `.md` deleted. Re-run idempotent. Destructive delete unreachable from `bkit upgrade` (boundary test, KN-8/DE-39).
 
 **Data topology:** shared `TelemetryEnvelope` (ts, kind, repo, bkitVersion, workflow, step, key, references[]) + kind payloads (`KnowledgePayload`/`DecisionPayload`) in `bkit-telemetry.ts`. Agents read JSONL post-migration.
 
-`references[]` = single cross-entry pointer for EVERY kind (envelope, not payload) — feature ids, tracker ids, PRs, SHAs, paths, sibling `ts`, legacy `KN-N`/`DE-N`. No separate identity: design `aliases[]` folded in once sequential `DE-{N}` proved un-mintable under concurrency. `ts` = id; `references[]` = pointers. Contract: `.bkit/jsonl.md` § Key & References.
+`references[]` = single cross-entry pointer for EVERY kind (envelope, not payload) — feature ids, tracker ids, PRs, SHAs, paths, sibling `ts`, legacy `KN-N`/`DE-N`. No separate identity field. `ts` = id; `references[]` = pointers. Contract: `.bkit/jsonl.md` § Key & References.
 
-Legacy consumer ledgers (`de-<n>-…` keys + `aliases:["DE-<n>"]`) kept the race live (#361). Close via `bkit telemetry validate` (exit 1 on `DE-<n>`/`KN-<n>` claimed by >1 slug `key`; postinstall advisory) + `bkit telemetry normalise` (drops `aliases[]` → `references[]`, keeps `ts`, re-keys colliding rows only). Cite slug `key`, never bare number.
+Legacy consumer ledgers (`de-<n>-…` keys + `aliases:["DE-<n>"]`) can claim one `DE-<n>` from several keys (#361). Detect via `bkit telemetry validate` (exit 1 on `DE-<n>`/`KN-<n>` claimed by >1 slug `key`; postinstall advisory) ; fix via `bkit telemetry normalise` (drops `aliases[]` → `references[]`, keeps `ts`, re-keys colliding rows only). Cite slug `key`, never bare number.
 
 ## Roadmap Ledger & Board
 
-`.bkit/issues.jsonl` (`kind:"feature"`) = canonical feature-state ledger, appended at every phase close. `docs/roadmap.md` = generated board, a pure projection of it. Consumer-inherited (`.gitattributes` managed block, `merge=union`). `docs/completed.md` is retired — deleted by the migration, no reader remains.
+`.bkit/issues.jsonl` (`kind:"feature"`) = canonical feature-state ledger, appended at every phase close. `docs/roadmap.md` = generated board, a pure projection of it. Consumer-inherited (`.gitattributes` managed block, `merge=union`). A legacy `docs/completed.md` is deleted by the migration; nothing reads it.
 
 **Components:**
 

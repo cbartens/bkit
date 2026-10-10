@@ -3,12 +3,10 @@
  *
  * Ledger appends are best-effort and exit 0 by design (`.bkit/jsonl.md`
  * § Best-effort append), so a malformed row raises no signal at write time and
- * nothing downstream notices until a reader fails. `.bkit/friction.jsonl`
- * carried a row whose `ts` was a literal, unexpanded `$(date +%s)000` — one
- * invalid line makes `jq` reject the WHOLE file, so `bkit harvest`, the
- * analysis pass, and every fold over that ledger had been failing since it
- * landed. Three sibling rows in the same neighbourhood used a `detail` field
- * with no `kind`, which is what routes a row to its ledger.
+ * nothing downstream notices until a reader fails. One invalid line (e.g. a
+ * `ts` that is a literal, unexpanded `$(date +%s)000`) makes `jq` reject the
+ * WHOLE file, so `bkit harvest`, the analysis pass, and every fold over that
+ * ledger fail. A row with no `kind` cannot be routed to its ledger.
  *
  * `bkit-telemetry-lint.test.ts` covers the codec against fixtures; this file
  * asserts the real files on disk. Fixtures cannot catch a hand-appended row.
@@ -293,10 +291,9 @@ describe("live ledgers are machine-readable", () => {
 
 /**
  * `merge=union` is what stops two branches that each appended a row from
- * conflicting over data that never disagreed. The shipped block listed only
- * `knowledge` and `decisions`, so `deferrals` / `failures` / `stats` — appended by
- * the same workflows under the same append-only rule — blocked merges instead, and
- * every consumer's only recourse was a local override below `bkit:end`.
+ * conflicting over data that never disagreed. Every append-only ledger needs it:
+ * one left out blocks merges, and a consumer's only recourse is a local override
+ * below `bkit:end`.
  */
 describe("shipped .gitattributes covers every append-only ledger", () => {
   const managedBlock = (rel: string): string => {

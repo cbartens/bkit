@@ -8,7 +8,7 @@ on:
     branches: [main, dev]
 
 # pull-requests: read lets bkit-tests-scope call repos/{}/commits/{sha}/pulls to tell a
-# merged-PR dev push (light) from a direct dev push (full — the uuid-incident fix).
+# merged-PR dev push (light) from a direct dev push (full).
 permissions:
   actions: read
   contents: read
@@ -116,7 +116,7 @@ jobs:
             echo "✅ push main → run_level=full (main-carveout)"
           elif [ "$REF" = "refs/heads/dev" ]; then
             # Merged-PR dev push (PR already ran full) → light. Direct dev push with no
-            # merged PR behind it → escalate to full (kills the uuid-incident at source).
+            # merged PR behind it → escalate to full.
             # API error → full (run-to-be-safe).
             set +e
             PR_RESPONSE=$(gh api "repos/$REPO/commits/$SHA/pulls" 2>&1)
@@ -402,7 +402,7 @@ jobs:
           done
           "$RUNNER_TEMP/actionlint" -color
 
-      # bkit ships pre-built (no `prepare: tsc` since v0.3.0). dist/ must be
+      # bkit ships pre-built (no `prepare: tsc`). dist/ must be
       # regenerated and committed whenever .bkit/src/**.ts changes.
       # This step rebuilds dist/ in CI and fails if the working tree differs
       # from the committed version.

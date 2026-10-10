@@ -102,8 +102,7 @@ function fencedLinesByStep(ship: string): Array<{ step: string; line: string }> 
 // (§ Canonical `ship-*` step keys — stable schema).
 //
 // 15 keys total (the canonical ship step set), in run order. Keys are added,
-// never renamed: `ship-bookkeeping-push` arrived when docs, summaries and
-// ledgers moved onto the PR ahead of the merge (#452).
+// never renamed.
 
 export const CANONICAL_SHIP_STEP_KEYS: readonly string[] = [
   "ship-start-workflow",
@@ -231,9 +230,9 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
 
 describe("bkit-ship.md — bookkeeping and status writes", () => {
   it("the roadmap migration is complete — no docs/completed.md in the install record", () => {
-    // #380 deleted docs/completed.md in favour of .bkit/issues.jsonl. A merge
-    // with a branch predating that deletion silently reintroduces the path
-    // (it did, on 2026-08-26); this fails loudly if it happens again. The
+    // .bkit/issues.jsonl is the feature ledger (#380). A merge with a branch
+    // that still carries docs/completed.md silently reintroduces the path;
+    // this fails loudly if it does. The
     // staging allow-list side lives in commands/workflow/ledgers.test.ts.
     const version = fs.readFileSync(path.join(REPO_ROOT, ".bkit/version"), "utf-8");
     expect(version).not.toContain("docs/completed.md");
@@ -351,7 +350,7 @@ describe("no workflow bash block appends to status.jsonl or .bkit/issues.jsonl w
     });
   }
 
-  it("RED-PROOF: the retired append shapes are caught", () => {
+  it("RED-PROOF: the hand-append shapes are caught", () => {
     for (const line of [
       `jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"ship-merged-on-entry", workflow:"ship", at:$t}' >> "$STATUS"`,
       `printf '%s\\n' "$ROADMAP_LINE" >> .bkit/issues.jsonl`,
@@ -466,16 +465,15 @@ describe("bkit-ship.md — every dev-lock window releases on exit", () => {
 // ---------------------------------------------------------------------------
 //
 // The findings whose fix lives in the workflow markdown. Each would FAIL if
-// the original bug were reintroduced. The gate's own findings (4b/c, 6, 8)
-// are covered in commands/workflow/runs.test.ts (bkit runs gate). Finding 7
-// (`GATE_EXIT=$?` unreachable under set -e) no longer has a shell form: the
-// gate call stands alone in its fence and the orchestrator routes on its exit
-// code.
+// the bug were reintroduced. The gate's own findings (4b/c, 6, 8) are covered
+// in commands/workflow/runs.test.ts (bkit runs gate). Finding 7
+// (`GATE_EXIT=$?` unreachable under set -e) has no shell form: the gate call
+// stands alone in its fence and the orchestrator routes on its exit code.
 
 describe("bkit-ship.md — build-challenge remediation regressions", () => {
-  // Finding 1 (CRITICAL): B2 conflict resolution was silently lost — staging
-  // only bookkeeping dropped the resolved source files the conflict-resolve
-  // subagent wrote. Fix: stage tracked modifications (`--stage-tracked-updates`,
+  // Finding 1 (CRITICAL): staging only bookkeeping would drop the resolved source
+  // files the conflict-resolve subagent wrote, silently losing B2 conflict
+  // resolution. B2 stages tracked modifications (`--stage-tracked-updates`,
   // `git add -u` inside `bkit ledgers commit`) before the single commit.
   it("F1: B2 conflict-resolve stages tracked source modifications before its commit and push", () => {
     const b2 = fences(readShip()).find((f) => /"\$BKIT" branches push --mode=feature\b/.test(f));
@@ -490,10 +488,10 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
     expect(commit).toBeLessThan(push);
   });
 
-  // Finding 2 (HIGH): the ship-revalidate-timeout row was NEVER written — jq
-  // rejected a single-quoted program containing `${SHIP_CI_WAIT_TIMEOUT_S:-1800}`
-  // (shell does not expand inside single quotes, and `${` is a jq syntax
-  // error). Values reach jq programs through --arg / --argjson or stdin.
+  // Finding 2 (HIGH): jq rejects a single-quoted program containing
+  // `${SHIP_CI_WAIT_TIMEOUT_S:-1800}` (shell does not expand inside single quotes,
+  // and `${` is a jq syntax error), so the row is never written. Values reach jq
+  // programs through --arg / --argjson or stdin.
   it("F2: no single-quoted jq program carries a shell ${...} expansion", () => {
     const programs = fences(readShip())
       .flatMap((f) => f.split("\n"))
@@ -503,9 +501,9 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
     expect(programs.filter((p) => p.includes("${"))).toEqual([]);
   });
 
-  // Finding 3 (HIGH): `gh pr update-branch` had no error guard — a 403/network/
-  // protection failure silently proceeded to merge an unintegrated PR. Fix: add
-  // `|| { echo ...; exit 1; }` so failure routes to Failure Path.
+  // Finding 3 (HIGH): without an error guard on `gh pr update-branch`, a 403/network/
+  // protection failure silently proceeds to merge an unintegrated PR. The
+  // `|| { echo ...; exit 1; }` guard routes failure to Failure Path.
   it("F3: every fenced 'gh pr update-branch' call carries an error guard", () => {
     const ship = readShip();
     const lines = ship.split("\n");
@@ -528,9 +526,9 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
     expect(violations).toEqual([]);
   });
 
-  // Finding 4a (MEDIUM): the gate's override audit row landed in a
-  // literal-brace junk path because the status path never reached the gate.
-  // Fix: the gate takes the run's status log explicitly.
+  // Finding 4a (MEDIUM): if the status path never reaches the gate, its override
+  // audit row lands in a literal-brace junk path. The gate takes the run's status
+  // log explicitly.
   it("F4a: the merge gate is handed the run's status log", () => {
     const gate = fencedLinesByStep(readShip()).find((l) =>
       /"\$BKIT" runs gate --head="\{GATE_HEAD\}"/.test(l.line),
@@ -539,9 +537,8 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
     expect(gate!.line).toMatch(/--file="\{STATUS\}"/);
   });
 
-  // Finding 5 (MEDIUM): gate code 11 (in progress — poll) was a dead branch —
-  // Step 6 routed ONLY 14/10 to Step 5, so code 11 fell through to Failure Path
-  // instead of polling. Fix: route 11 to Step 5 alongside 10/14.
+  // Finding 5 (MEDIUM): gate code 11 (in progress — poll) must route to the poll
+  // step alongside the other poll-able codes, not fall through to Failure Path.
   it("F5: gate code 11 (poll) routes to Step 9 alongside codes 10, 14 and 17", () => {
     const ship = readShip();
     const lines = ship.split("\n");
@@ -563,26 +560,18 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
 // #363 build-challenge H2 regression — the `AUTO_ROUTE_SUFFIX` handoff
 // ---------------------------------------------------------------------------
 //
-// H2 (HIGH): threading `bkit [auto route]` onto the squash-merge `--subject`
-// originally read `${LABELS:-}` inside the Step 5 merge Bash block. `{LABELS}`
-// is an MCP-derived TEMPLATE value — it is never assigned as a shell variable
-// anywhere in `.bkit/`, so `${LABELS:-}` expanded empty in every runtime,
-// `AUTO_ROUTE_SUFFIX` was always "", and the squash-merge commit NEVER carried
-// the marker. That is the entire mechanism #363 depends on to admit a
-// post-merge `dev` CI run through bkit-cloud.yml's free-tier gate — the
-// feature would have shipped silently inert.
+// H2 (HIGH): the squash-merge `--subject` carries `bkit [auto route]` — the
+// marker #363 depends on to admit a post-merge `dev` CI run through
+// bkit-cloud.yml's free-tier gate. `{LABELS}` is an MCP-derived TEMPLATE value,
+// never a shell variable, so `${LABELS:-}` expands empty in every runtime. A
+// `mktemp` + `$GITHUB_ENV` handoff does not bridge it either: `$GITHUB_ENV` is
+// applied by the Actions runner only BETWEEN workflow steps, and every agent
+// Bash tool call in a cloud dispatch runs inside the single `claude-code-action`
+// step. A test asserting only that handoff TEXT is present passes on a wholly
+// inert mechanism.
 //
-// The first repair attempt (a `mktemp` + `$GITHUB_ENV` handoff written next to
-// the Step 1 read) did NOT fix it: `$GITHUB_ENV` is applied by the Actions
-// runner only BETWEEN workflow steps, and every agent Bash tool call in a
-// cloud dispatch runs inside the single `claude-code-action` step, so the
-// variable never reappeared at Step 5. The tests that guarded it asserted only
-// that the handoff TEXT was present, so they passed on a wholly inert
-// mechanism.
-//
-// Fixed by removing cross-call state entirely: Step 5 re-derives the label
-// from the tracker in the SAME fence that consumes it
-// (docs/knowledge.jsonl, key
+// The merge step re-derives the label from the tracker in the SAME fence that
+// consumes it (docs/knowledge.jsonl, key
 // `363-workflow-md-shell-var-does-not-survive-bash-tool-call-boundary`,
 // idiom 1). These assertions are shape-level guards only — the behavioural
 // proof (execute the fence against a `gh` stub, assert the rendered
@@ -591,7 +580,7 @@ describe("bkit-ship.md — #363 build-challenge H2 regression: the auto-route ma
   it("no cross-Bash-tool-call handoff survives anywhere in the workflow", () => {
     const ship = readShip();
     // $GITHUB_ENV does not bridge Bash tool calls inside one Action step, and
-    // a mktemp path published through it is the exact idiom that shipped inert.
+    // a mktemp path published through it is inert.
     expect(ship).not.toContain("BKIT_AUTO_ROUTE_FILE");
     expect(ship).not.toMatch(/>>\s*"\$GITHUB_ENV"/);
   });
@@ -684,7 +673,7 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
     expect(countLines(failurePathBlock(readShip()), /--mode=commit --message/)).toBe(1);
   });
 
-  it("does not keep the retired 'ship aborted' second commit", () => {
+  it("makes no 'ship aborted' second commit", () => {
     expect(countLines(failurePathBlock(readShip()), /ship aborted/)).toBe(0);
   });
 

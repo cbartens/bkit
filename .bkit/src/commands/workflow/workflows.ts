@@ -88,8 +88,8 @@ function workflowName(ctx: RunContext): string {
 }
 
 /**
- * start and close work in the current tree (ship: its book root), as the shell
- * blocks they replace did with `git rev-parse --show-toplevel`.
+ * start and close work in the current tree (ship: its book root), the root
+ * `git rev-parse --show-toplevel` reports.
  */
 function whereInTree(ctx: RunContext, workflow: string, fid: string): Where {
   const root = repoRoot(ctx.cwd);

@@ -43,8 +43,8 @@ function readAllWorkflows(): string {
 }
 
 // (i) every RUNTIME_* capability flag must have >=1 reader across the workflow corpus.
-// CAN_SLEEP was deleted (#341 follow-up): whether the runtime can sleep is
-// measured inside `bkit runs wait|dispatch`, not predicted by a capability row.
+// Whether the runtime can sleep is measured inside `bkit runs wait|dispatch`,
+// not predicted by a capability row.
 const RUNTIME_FLAGS = ["RUNTIME_WORKTREES", "RUNTIME_DEVPUSHES", "RUNTIME_GITHUBCLI"] as const;
 
 describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {

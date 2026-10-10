@@ -29,7 +29,7 @@ import { findLineAnchoredMarkers, selectMarkers } from "./bkit-markers.js";
 /**
  * Split a legacy `**Related:**` value into individual pointers.
  *
- * The field was free prose ("BAR-138, BAR-130, `docs/…/design.md`, KN-1"), so
+ * The field is free prose ("BAR-138, BAR-130, `docs/…/design.md`, KN-1"), so
  * split on commas and keep each item verbatim minus surrounding backticks —
  * items carry trailing qualifiers ("BAR-142 §A2", "`docs/pending.md` (per-key
  * deferred)") that are meaning, not noise, and are preserved as written.
@@ -45,12 +45,12 @@ export function parseRelated(value) {
 /**
  * Map a legacy `**Status:**` value onto OPEN/CLOSED.
  *
- * The legacy field was free prose, not a token: `RESOLVED — closed by the bkit
+ * The legacy field is free prose, not a token: `RESOLVED — closed by the bkit
  * 3.3.0 upgrade`, `resolved (#453, 2026-06-03) — migration 20260603150000`,
  * `partially-resolved — Phase 1 landed, Phase 2 open`. An exact-equality check
  * (`raw === "resolved"`) silently defaults every one of those to OPEN, marking
  * closed work as outstanding. Substring-match instead — the same rule the
- * friction builder already used, now shared so the two cannot drift again.
+ * friction builder uses, shared so the two cannot drift.
  *
  * `partially-resolved` deliberately reads as OPEN: work remains. It is matched
  * BEFORE the resolve check because it contains "resolv" as a substring.
@@ -64,9 +64,9 @@ export function parseLegacyStatus(value) {
 /**
  * Map a legacy `**Severity:**` value onto the current enum.
  *
- * The retired scale was `critical | normal | low`; `normal` is the middle of a
+ * The legacy scale is `critical | normal | low`; `normal` is the middle of a
  * three-point scale, so it lands on MEDIUM rather than HIGH. Legacy entries
- * with no Severity (the whole of `friction.md`, which never had the field)
+ * with no Severity (the whole of `friction.md`, which has no such field)
  * default to MEDIUM — the neutral point. This is an explicit unknown->neutral
  * mapping, NOT a claim about the row; re-triage on next touch.
  */
@@ -141,7 +141,6 @@ export function parsePendingMd(content) {
         const description = extractField(entryBody, "Description") ?? title;
         const workaround = extractField(entryBody, "Workaround");
         const source = extractField(entryBody, "Source");
-        // Both were silently dropped before #234's severity/references restoration.
         const severity = mapLegacySeverity(extractField(entryBody, "Severity"));
         const references = parseRelated(extractField(entryBody, "Related"));
         const key = stableKey("pending", title);
@@ -164,7 +163,6 @@ export function parsePendingMd(content) {
         entries[entries.length - 1]._type = type;
         entries[entries.length - 1]._severity =
             severity;
-        // Was parsed and then discarded — the row builder emitted the title instead.
         entries[entries.length - 1]._description =
             description;
         entries[entries.length - 1]._workaround =
@@ -225,7 +223,6 @@ export function parseFrictionMd(content) {
             summary: title,
             detail: entryBody.length > 0 ? entryBody : undefined,
             category,
-            // Was parsed and then discarded — the row builder emitted the title instead.
             _description: description,
             _source: extractField(entryBody, "Source"),
             // WHERE the friction happened. For a live friction row the orchestrator
@@ -234,7 +231,7 @@ export function parseFrictionMd(content) {
             _workflow: extractField(entryBody, "Workflow"),
             _step: extractField(entryBody, "Step"),
             references: parseRelated(extractField(entryBody, "Related")),
-            // The legacy friction.md format had no Severity field at all, so this is
+            // The legacy friction.md format has no Severity field at all, so this is
             // always the unknown->neutral default rather than a migrated value.
             _severity: mapLegacySeverity(extractField(entryBody, "Severity")),
             entryTs: parseTitleDate(titleRaw),
@@ -400,9 +397,7 @@ function parseMdEntries(content, headingRe) {
         const rationale = extractField(body, "Why") ?? extractField(body, "Rationale");
         const rootCause = extractField(body, "Root cause");
         const fix = extractField(body, "Fix or rule");
-        // `Discarded:` -> DecisionPayload.alternatives. The payload field has existed
-        // since #234 but nothing ever populated it: 26 of bkit's 34 decision rows had
-        // their alternatives left as prose inside `description`.
+        // `Discarded:` -> DecisionPayload.alternatives.
         const alternatives = extractField(body, "Discarded");
         // `Superseded by: DE-12` is a POINTER to another entry, so it belongs in
         // references (`status: SUPERSEDED` records the state; this records by what).
@@ -417,8 +412,7 @@ function parseMdEntries(content, headingRe) {
         // cannot race to claim the same number.
         const keySlug = stableKey(id, summary);
         // References: the entry's own legacy id FIRST, then everything its
-        // `**Related:**` field pointed at. Both were dropped by the original
-        // migration — the id survived in aliases[], the Related: graph did not.
+        // `**Related:**` field points at.
         const references = [
             id,
             ...parseRelated(extractField(body, "Related")),
@@ -494,10 +488,8 @@ function slugify(text) {
  * unique: two entries whose titles diverge only after char 60 collapse to one key,
  * and `fold()` keeps only the last — so the store silently holds one entity where
  * the log had two. Recurrence entries are the most exposed, because a recurrence is
- * titled like the original it recurs from; the real case was the two "Plan Step 11:
- * close-workflow STRAY guard rejects protocol-mandated ..." entries, which differ
- * only at char 61+. The digest is appended ONLY when truncation actually discards
- * characters, so short titles keep a clean, readable key.
+ * titled like the original it recurs from. The digest is appended ONLY when
+ * truncation actually discards characters, so short titles keep a clean, readable key.
  */
 function stableKey(prefix, title) {
     const slug = slugify(`${prefix}-${title.slice(0, 60)}`);
@@ -563,8 +555,7 @@ function buildDeferralRow(entry, opts) {
         type,
         category: entry.category ?? "other",
         severity: e._severity ?? "MEDIUM",
-        // Title -> summary, prose -> description. Emitting the title as `description`
-        // (and dropping the parsed prose) retained ~40% of the legacy content.
+        // Title -> summary, prose -> description.
         summary: entry.summary,
         description: e._description ?? entry.summary,
         remediation: e._workaround,
@@ -607,8 +598,8 @@ function buildFrictionRow(entry, opts) {
         // WHERE the friction happened, not who transported the row. A live friction
         // row's envelope workflow/step ARE the workflow/step the friction occurred in
         // (the orchestrator writing it is the workflow it happened in), so stamping
-        // "migrate" here put every migrated row on a different axis from every live
-        // one and blinded exactly the workflow/step dimensions the harvest slices by.
+        // "migrate" here would put every migrated row on a different axis from every
+        // live one and blind exactly the workflow/step dimensions the harvest slices by.
         // Falls back to the migrate provenance only when the legacy row had neither.
         workflow: e._workflow ?? "migrate",
         step: e._step ?? "bkit-telemetry-migrate",
@@ -616,7 +607,7 @@ function buildFrictionRow(entry, opts) {
         category,
         scope,
         severity: e._severity ?? "MEDIUM",
-        // Title -> summary, prose -> description (was emitting the title as description).
+        // Title -> summary, prose -> description.
         summary: entry.summary,
         description: e._description ?? entry.summary,
         remediation: e._remediation,
@@ -851,11 +842,10 @@ export async function runMigrate(opts) {
     // Idempotency: .md absent = nothing to do for that pair, whether it was
     // migrated already OR never existed to begin with (e.g. a consumer that
     // only ever authored docs/completed.md and never had docs/knowledge.md /
-    // docs/decisions.md). Gating this on jsonl-non-empty (as a prior revision
-    // did) wrongly ABORTED the whole run — including the unrelated
-    // completed.md -> issues.jsonl pair — for any consumer missing one of the
-    // legacy pairs; every pair now shares the same absent-.md-means-skip rule
-    // pending/friction/completed already used.
+    // docs/decisions.md). Gating this on jsonl-non-empty would ABORT the whole
+    // run — including the unrelated completed.md -> issues.jsonl pair — for any
+    // consumer missing one of the legacy pairs; every pair shares the same
+    // absent-.md-means-skip rule.
     const knMdExists = fs.existsSync(knMdPath);
     const deMdExists = fs.existsSync(deMdPath);
     const pendingMdExists = fs.existsSync(pendingMdPath);
@@ -874,15 +864,15 @@ export async function runMigrate(opts) {
     // by every row builder AND the § S bootstrap seed (needed even on the
     // already-migrated fast path below).
     const repo = detectRepo(cwd);
-    // A fresh consumer has no legacy `.md` ledgers AND no migrated rows, so neither
-    // `knAlreadyDone` nor `deAlreadyDone` holds and the run fell through to
-    // `abort("knowledge.md not found")` — printing "migrate failed" for a documented
-    // no-op. Nothing to migrate is a clean outcome, not a failure.
+    // A fresh consumer has no legacy `.md` ledgers AND no migrated rows. Without
+    // this check `knAlreadyDone` / `deAlreadyDone` both hold false and the run falls
+    // through to `abort("knowledge.md not found")` — printing "migrate failed" for a
+    // documented no-op. Nothing to migrate is a clean outcome, not a failure.
     //
     // These two are derived HERE and used ONLY by this check. They deliberately do
     // NOT gate `knAlreadyDone` / `deAlreadyDone` above: gating idempotency on
-    // jsonl-non-empty aborted the whole run for any consumer missing one legacy
-    // pair, which is why every pair now shares the absent-.md-means-skip rule.
+    // jsonl-non-empty would abort the whole run for any consumer missing one legacy
+    // pair, so every pair shares the absent-.md-means-skip rule.
     // "Already migrated" still needs a rows-exist signal, so the fresh-consumer
     // test keeps it.
     const knJsonlNonEmpty = fs.existsSync(knJsonlPath) && fs.readFileSync(knJsonlPath, "utf-8").trim().length > 0;
@@ -1286,10 +1276,9 @@ function abort(message, lines) {
 /**
  * The repo's `owner/repo` slug for the `repo` envelope field.
  *
- * The git remote is the ONLY authoritative source. package.json `name` was used
- * here previously and is NOT a slug — it is an npm package name, so bkit's own
- * ledgers were stamped `@cbartens/bkit` against a true slug of `cbartens/bkit`.
- * One character, but `repo` is part of identity() for every kind, so the two
+ * The git remote is the ONLY authoritative source. package.json `name` is NOT a
+ * slug — it is an npm package name: `@cbartens/bkit` against a true slug of
+ * `cbartens/bkit`. One character, but `repo` is part of identity() for every kind, so the two
  * spellings fork every entity between them.
  *
  * No remote (a repo that has never been pushed) -> "unknown/repo", loudly. A

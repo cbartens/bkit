@@ -150,7 +150,7 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
   });
 
   it("package.json: a full uninstall leaves every script and devDep, bkit defaults included (#489)", async () => {
-    // bkit seeds the bkit:gate:* names but never owns them, and it no longer adds the
+    // bkit seeds the bkit:gate:* names but never owns them, and it does not add the
     // tool scripts, `prepare: husky` or the husky devDep. So even values byte-equal to
     // what an older bkit wrote stay: only the `bkit` install-state block goes.
     const pkgPath = path.join(tmpDir, "package.json");
@@ -376,7 +376,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     expect(fs.existsSync(opencodeJsonPath), ".opencode/opencode.json should be deleted").toBe(
       false,
     );
-    // gateguard.js survives — it is the consumer's driver now; only bkit's block is gone
+    // gateguard.js survives — it is the consumer's driver; only bkit's block is gone
     expect(
       fs.existsSync(pluginPath),
       ".opencode/plugin/gateguard.js should NOT be deleted (consumer owns the driver)",

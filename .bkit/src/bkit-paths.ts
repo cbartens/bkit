@@ -9,9 +9,6 @@ import { fileURLToPath } from "node:url";
 // BKIT_SRC_SUBPATH — the package-relative sub-path that contains bkit's engine
 // source files. All three run-contexts derive their suffix check from this
 // constant so a single edit flips every resolver.
-//
-// Value (WS-1 pre-move, OLD form):  ".agents/scripts"
-// Value (WS-3 post-move, NEW form): ".bkit/src"
 // ---------------------------------------------------------------------------
 
 export const BKIT_SRC_SUBPATH = `.bkit${path.sep}src`;

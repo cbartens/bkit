@@ -72,7 +72,26 @@ const GATE_CONFIG_PATTERNS = [
   /^lint-staged\.config\.[mc]?js$/,
 ];
 
+// The consumer's `.bkit/templates/` holds bkit's reference copies, refreshed on every
+// upgrade, so a path under it is not this repo's gate config. In bkit's own repo
+// (package name `@cbartens/bkit`) that folder is the template source and stays guarded.
+const TEMPLATE_COPIES_DIR = ".bkit/templates/";
+
+function isBkitRepo(root) {
+  const pkg = path.join(root, "package.json");
+  if (!fs.existsSync(pkg)) return false;
+  return JSON.parse(fs.readFileSync(pkg, "utf-8")).name === "@cbartens/bkit";
+}
+
+function isTemplateCopy(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  const at = p.startsWith(TEMPLATE_COPIES_DIR) ? 0 : p.indexOf("/" + TEMPLATE_COPIES_DIR);
+  if (at < 0) return false;
+  return !isBkitRepo(path.resolve(p.slice(0, at) || "."));
+}
+
 function isGateConfig(filePath) {
+  if (isTemplateCopy(filePath)) return false;
   const base = path.basename(filePath);
   return GATE_CONFIG_PATTERNS.some((re) => re.test(base));
 }

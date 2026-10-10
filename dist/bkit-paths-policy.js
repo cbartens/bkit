@@ -6,9 +6,8 @@
 //   - This file is the ONE source of truth for protected path definitions.
 //   - The `.cjs` is generated from this table and committed; a drift test
 //     (`bkit-paths-policy.test.ts`) fails if the committed file diverges.
-//   - Install stays a byte-equal Tier-1 copy of the `.cjs` — NOT install-time
-//     codegen; the generation step is a manual bkit-dev tool
-//     (`generateGatePathsCjs()`).
+//   - The `.cjs` lives in bkit's own repo only; install never writes it. The
+//     generation step is a manual bkit-dev tool (`generateGatePathsCjs()`).
 //   - Never import install-tier logic from here (keeps grader crash-isolated from
 //     the consumer-mutating install path — see DE-34).
 import * as fs from "node:fs";

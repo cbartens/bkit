@@ -1,15 +1,13 @@
 // bkit-workflow-book-paths.test.ts — static regression guard for #446.
 //
-// The bookkeeping stage/commit blocks in .bkit/workflows/*.md used to build
-// a `BOOK_PATHS` pathspec with unquoted shell word-splitting and an `ls`
-// glob that ABORTS under zsh when a glob matches nothing (fine under bash,
-// where an unmatched glob just passes through literally) — a host-shell
-// dependency that let the pattern spread from 5 sites to 16 in a single
-// commit with nothing to catch it. `bkit ledgers commit|union` replaces every
-// site (its allow-list is covered in commands/workflow/ledgers.test.ts); these
-// two static shapes must
-// never reappear in a `.bkit/workflows/*.md` file, since neither is caught
-// by `bkit:lint:workflows` (actionlint covers `.github/workflows/` only).
+// The bookkeeping stage/commit blocks in .bkit/workflows/*.md go through
+// `bkit ledgers commit|union` (its allow-list is covered in
+// commands/workflow/ledgers.test.ts). A hand-built `BOOK_PATHS` pathspec with
+// unquoted shell word-splitting, or an `ls` glob that ABORTS under zsh when it
+// matches nothing (fine under bash, where an unmatched glob passes through
+// literally), is a host-shell dependency. These two static shapes must never
+// appear in a `.bkit/workflows/*.md` file, since neither is caught by
+// `bkit:lint:workflows` (actionlint covers `.github/workflows/` only).
 
 import * as fs from "node:fs";
 import * as path from "node:path";

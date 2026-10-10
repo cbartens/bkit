@@ -1,7 +1,7 @@
 /**
  * Tests for bkit-telemetry-lint.ts — the read-only DE-<n>/KN-<n> alias-collision
- * scan (issue: the retired scan-highest-and-increment scheme let concurrent
- * workflows mint the same number, and merge=union appended both silently).
+ * scan (a scan-highest-and-increment scheme lets concurrent workflows mint the
+ * same number, and merge=union appends both silently).
  *
  * The load-bearing repro is the real consumer shape: `DE-114` claimed by three
  * unrelated rows. Boundary: real filesystem for lintLedgers; pure calls for scanRows.

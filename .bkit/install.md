@@ -187,7 +187,7 @@ After either flow makes `BKIT_GH_TOKEN_INSTALL` available in shell, write into p
 pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"
 ```
 
-pnpm >=10.34.3 no longer authenticates project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` env-substitution (401s on download) — user-level step required; committed `.npmrc` carries only registry mapping. `pnpm config set` writes `~/.npmrc` on pnpm 10.x and `~/.config/pnpm/auth.ini` on pnpm 11.x (whichever pnpm reads) — same command across pnpm versions.
+pnpm >=10.34.3 does not authenticate project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` env-substitution (401s on download) — user-level step required; committed `.npmrc` carries only registry mapping. `pnpm config set` writes `~/.npmrc` on pnpm 10.x and `~/.config/pnpm/auth.ini` on pnpm 11.x (whichever pnpm reads) — same command across pnpm versions.
 
 ## Cloud agent environments (Claude Code on the web + Cursor Background Agents)
 
@@ -255,7 +255,7 @@ bkit resolves from **GitHub Packages npm registry**. Authentication requires:
        BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
    ```
 
-> **⚠️ Why `pnpm config set`, not `.npmrc`:** pnpm >=10.34.3 no longer authenticates project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` env-substitution — `pnpm install` 401s on `@cbartens/bkit` download (`ERR_PNPM_FETCH_401`) even when token set. `pnpm config set` writes token to pnpm user-level config (`~/.npmrc` on pnpm 10.x, `~/.config/pnpm/auth.ini` on pnpm 11.x). Leftover `_authToken` line in project `.npmrc` must be **removed** — 401s and, by config precedence (project > user), shadows user-level token. Note: `pnpm view @cbartens/bkit` (metadata) may still resolve with broken setup — verify with real `pnpm install`, not `view`.
+> **⚠️ Why `pnpm config set`, not `.npmrc`:** pnpm >=10.34.3 does not authenticate project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` env-substitution — `pnpm install` 401s on `@cbartens/bkit` download (`ERR_PNPM_FETCH_401`) even when token set. `pnpm config set` writes token to pnpm user-level config (`~/.npmrc` on pnpm 10.x, `~/.config/pnpm/auth.ini` on pnpm 11.x). Leftover `_authToken` line in project `.npmrc` must be **removed** — 401s and, by config precedence (project > user), shadows user-level token. Note: `pnpm view @cbartens/bkit` (metadata) may still resolve with broken setup — verify with real `pnpm install`, not `view`.
 
 ### Agent access to `BKIT_GH_TOKEN_INSTALL`
 
@@ -273,7 +273,7 @@ set -a; source apps/web/.env.preview 2>/dev/null; set +a; <command that needs th
 
 ## Consumer Vercel auth
 
-Vercel runs own `pnpm install` in fresh build container — cannot run pre-install shell step. Since pnpm >=10.34.3 no longer authenticates project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` env-substitution, set token via one-line `installCommand` writing pnpm user-level config before install.
+Vercel runs own `pnpm install` in fresh build container — cannot run pre-install shell step. pnpm >=10.34.3 does not authenticate project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` env-substitution, so set token via one-line `installCommand` writing pnpm user-level config before install.
 
 1. **Add `BKIT_GH_TOKEN_INSTALL` to Vercel env vars** for each environment that builds (preview + production at minimum):
 
@@ -313,9 +313,9 @@ bkit checks preconditions and known advisory patterns before touching any file. 
 | Advisory | On-disk `.bkit/version` major > installing major (downgrade) |
 | Advisory | `node_modules/@cbartens/bkit` version > `.bkit/version` (stale pin) |
 
-**Phase 2 — Install (current behaviour)**
+**Phase 2 — Install**
 
-Module dispatch writes managed files. Same as before this feature shipped.
+Module dispatch writes managed files.
 
 **Phase 3 — Post-install (re-detect + unified output)**
 
@@ -347,7 +347,7 @@ After writes, bkit re-runs token-surface and environment checks — some only ac
 
 Phase 1 and Phase 3 findings merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection more accurate post-write). Zero findings → no banner.
 
-**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus writes (v2.2.3+). Changes no managed file (regenerates `.bkit/advisories.md` artifact) and **exits 1 when any managed-file write would occur** in installed module — Tier-2 JSON deep-containment or markered-block drift, whole-file byte-equal mismatch, **host agent/command mirror content drift** (would-write / orphan delete), or when rendered prompts/workflows / managed docs carry a stale managed-version marker (`bkit-rendered-prompts-stale` / `bkit-managed-docs-stale`, #256). Gate covers **installed** module set ({core, claude, cursor, codex, lint} plus **opencode**, each detected by sentinel files). A missing `bkit:gate:*` name counts as a write. opencode gated (#255 #8): `.opencode/opencode.json` (provider block + tracker-filtered mcp + permission sandbox) and `gateguard.js` drift fail `check` — render inputs fall back to installed provider (`package.json` `bkit.opencodeProvider`, authoritative for `opencode-zen` / `opencode-go`; all installed providers tracked in `bkit.opencodeProviders: string[]`) and recorded tracker, so clean install across providers checks green (no false drift). Remaining **opt-in** module (cloud) is NOT drift-gated. A missing bkit-owned hook file also fails `check`, one line per file naming it and the `bkit install` flag that restores it: the hook files of every installed host (`.claude/hooks/*`, `.cursor/hooks/*`, `.codex/hooks/*`, `.opencode/plugin/gateguard.js`), plus `.claude/hooks/cloud-bootstrap.sh` when `bkit.cloudAgents` is `claude` — the hook commands skip a missing file (`test -f … || true`), so without this the guard would be off with no signal. Updater configs are not bkit files, so `bkit check` does not report them. See `docs/knowledge.jsonl` KN-4 for original design (Phase 3 read-only semantics now enforced via read-only detector paths, not by skipping Phase 3).
+**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus writes. Changes no managed file (regenerates `.bkit/advisories.md` artifact) and **exits 1 when any managed-file write would occur** in installed module — Tier-2 JSON deep-containment or markered-block drift, whole-file byte-equal mismatch, **host agent/command mirror content drift** (would-write / orphan delete), or when rendered prompts/workflows / managed docs carry a stale managed-version marker (`bkit-rendered-prompts-stale` / `bkit-managed-docs-stale`, #256). Gate covers **installed** module set ({core, claude, cursor, codex, lint} plus **opencode**, each detected by sentinel files). A missing `bkit:gate:*` name counts as a write. opencode gated (#255 #8): `.opencode/opencode.json` (provider block + tracker-filtered mcp + permission sandbox) and `gateguard.js` drift fail `check` — render inputs fall back to installed provider (`package.json` `bkit.opencodeProvider`, authoritative for `opencode-zen` / `opencode-go`; all installed providers tracked in `bkit.opencodeProviders: string[]`) and recorded tracker, so clean install across providers checks green (no false drift). Remaining **opt-in** module (cloud) is NOT drift-gated. A missing bkit-owned hook file also fails `check`, one line per file naming it and the `bkit install` flag that restores it: the hook files of every installed host (`.claude/hooks/*`, `.cursor/hooks/*`, `.codex/hooks/*`, `.opencode/plugin/gateguard.js`), plus `.claude/hooks/cloud-bootstrap.sh` when `bkit.cloudAgents` is `claude` — the hook commands skip a missing file (`test -f … || true`), so without this the guard would be off with no signal. Updater configs are not bkit files, so `bkit check` does not report them. Phase 3 stays read-only through read-only detector paths, not by being skipped (`docs/knowledge.jsonl` KN-4).
 
 **`PreflightFinding` shape** — stable contract for downstream tooling:
 

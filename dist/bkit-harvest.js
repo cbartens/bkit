@@ -17,20 +17,18 @@
 //   - The central store ACCUMULATES across runs (never cleared) and holds every
 //     DISTINCT row, deduped by content only. It is never rewritten from the fold: a
 //     fold winner can change between runs (a newer same-key row, a legacy `ts`), and
-//     a store that kept only winners dropped rows an earlier run had already pruned
-//     (#343). It is the only record of pruned consumer friction until the caller
+//     a store that kept only winners would drop rows an earlier run had already
+//     pruned. It is the only record of pruned consumer friction until the caller
 //     commits it; readers fold it.
 //   - Malformed consumer lines are NEVER pruned (not ours to delete).
 //   - Per-consumer timeout + continue-on-stall.
 //   - Grep-able [bkit-harvest] log lines.
 //   - Relies on WS-1 tolerant `parse` for half-written tails.
 //
-// #234 originally locked harvest as COPY-ONLY ("copying, not moving, makes a harvest
-// bug structurally non-destructive"). #343 deliberately reverses that for friction
-// only: friction is a work queue that must drain, so consumers start each cycle clean.
-// The safety the copy-only rule bought is preserved structurally instead, by the
-// copy -> fsync -> verify -> prune ordering: a crash at any point re-copies
-// idempotently on the next run rather than losing rows.
+// Friction is moved, not copied: it is a work queue that must drain, so consumers
+// start each cycle clean. The copy -> fsync -> verify -> prune ordering keeps the
+// move non-destructive: a crash at any point re-copies idempotently on the next run
+// rather than losing rows.
 //
 // Consumers are listed in `docs/consumers.md` (one absolute path per line).
 // See DE-34 for the shared-entrypoint + crash-isolation contract.

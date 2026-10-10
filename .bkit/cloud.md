@@ -269,10 +269,9 @@ bkit wires two MCP servers into `.mcp.json` at repo root (project-shared, read b
 
 # Cursor Cloud Agents
 
-> Cursor renamed "Background Agents" to **Cloud Agents**; secrets moved from the old
-> Settings pane to the **Secrets tab** of the Cloud Agents dashboard
-> (`cursor.com/dashboard/cloud-agents`). The `is_background_agent` webhook field is
-> unchanged. This doc uses "Cloud Agents" throughout.
+> Cursor calls these **Cloud Agents**; secrets live in the **Secrets tab** of the Cloud
+> Agents dashboard (`cursor.com/dashboard/cloud-agents`). The webhook field is
+> `is_background_agent`. This doc uses "Cloud Agents" throughout.
 
 > [!TIP]
 > **No manual copy needed for the dashboard secrets.** `bkit install --cursor` writes

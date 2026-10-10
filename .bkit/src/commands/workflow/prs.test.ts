@@ -145,7 +145,7 @@ describe("bkit prs open", () => {
     );
   });
 
-  it("always writes the marker, even with no plan (the debug close used to send none)", async () => {
+  it("always writes the marker, even with no plan", async () => {
     const cwd = repo("feat/12-x", { issueTracker: "github" });
     gh.view(pr());
     const r = await open(cwd, "--issue=#12", "--plan=docs/missing-plan.md");

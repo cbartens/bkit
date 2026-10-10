@@ -1,18 +1,17 @@
 // bkit-local-gate-audit.test.ts — #437.
 //
-// The gate command used to live inline in eight prompts and two workflows, each
-// copy a slightly different `if [ -f turbo.json ] … else jq -e ".scripts[…]"`
-// probe. Two consequences, both observed on this repo:
+// Prompts and workflows name a `bkit:gate*` script and `package.json` defines
+// it. A gate command inlined at each call site (an `if [ -f turbo.json ] … else
+// jq -e ".scripts[…]"` probe) fails two ways:
 //
-//   - a consumer whose toolchain matched none of the probed script names got
-//     TEST_SCOPE="" -> `eval ""` -> exit 0, and the agent recorded the gate as
+//   - a consumer whose toolchain matches none of the probed script names gets
+//     TEST_SCOPE="" -> `eval ""` -> exit 0, and the agent records the gate as
 //     having run;
-//   - the copies drifted (bkit-build-challenge-tests had the turbo branch and
-//     NO fallback, so it did nothing at all in a single-package repo).
+//   - the copies drift (one with the turbo branch and NO fallback does nothing
+//     at all in a single-package repo).
 //
-// Prompts and workflows now name a `bkit:gate*` script and `package.json`
-// defines it. This audit keeps it that way: it is the guard that stops copy
-// number four, since nothing else in the suite referenced the command at all.
+// This audit keeps the indirection in place; nothing else in the suite
+// references the command.
 //
 // Deliberately narrow: PRESENCE of the indirection, not behaviour of the gate.
 // What the scripts actually run is the consumer's, and is asserted where it is
@@ -47,8 +46,8 @@ function canonicalFiles(): Array<{ rel: string; body: string }> {
 }
 
 // A toolchain command inlined at a call site. `--filter='...[origin/dev]'` is
-// turbo's affected-package selector; `jq -e '.scripts[` is the probe half of the
-// retired fallback. Either one reappearing means someone re-inlined the gate.
+// turbo's affected-package selector; `jq -e '.scripts[` is the probe half of an
+// inlined script-name fallback. Either one reappearing means someone re-inlined the gate.
 const BANNED = [
   { pattern: "pnpm turbo", why: "names a task runner instead of a bkit:gate* script" },
   { pattern: "--filter='...[origin/dev]'", why: "turbo affected-selector inlined at a call site" },

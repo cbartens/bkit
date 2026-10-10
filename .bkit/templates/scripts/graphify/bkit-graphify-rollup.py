@@ -345,14 +345,14 @@ def resolve_paint(overlay, keys):
 
     The overlay keys a row by the owner FILE; a diagram's nodes are directories at
     whatever depth that view uses. Matching every node that is an ancestor of the
-    file painted #1222 onto apps/web, apps/web/src AND apps/web/src/lib at once,
-    which reads as three separate problems. Longest matching key wins; ties cannot
+    file would paint one row onto apps/web, apps/web/src AND apps/web/src/lib at
+    once, which reads as three separate problems. Longest matching key wins; ties cannot
     occur because one key is a prefix of the other.
     """
     # Two rows can land on one node — packages/services/src/outbound owns both the
     # #1208 email split and the #1209 notification gap. Keyed by node, the second
-    # silently replaced the first, so one of them vanished from the diagram. Merge
-    # instead: worst status wins the border, every note is kept.
+    # would silently replace the first, so one of them would vanish from the
+    # diagram. Merge instead: worst status wins the border, every note is kept.
     # `budgeted` ranks below every warning on purpose: a node that owns one settled
     # capability and one open one must draw as open. The notes both survive — sorted
     # by this same rank, so the amber reason is read first.
@@ -859,11 +859,11 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "install, absent in CI, so nothing here can turn a build red.",
         "",
         "It still gets a box in the diagrams, drawn solid and blue rather than dashed and amber. A",
-        "budgeted bypass is still a bypass; what changed is that the picture no longer asks the",
-        "same question of it every sweep. An unbounded marker (18 of 19) and a marker that is",
-        "exactly at its declared count — whose note says the copies are probes and the budget",
-        "is not meant to reach zero — rendered identically, so each pass rediscovered the",
-        "settled rows and had to re-read the notes to dismiss them.",
+        "budgeted bypass is still a bypass; the different drawing stops the picture asking the",
+        "same question of it every sweep. Drawn identically, an unbounded marker (18 of 19) and a",
+        "marker that is exactly at its declared count — whose note says the copies are probes and",
+        "the budget is not meant to reach zero — would make each pass rediscover the settled rows",
+        "and re-read the notes to dismiss them.",
         "",
         "<!-- prettier-ignore -->",
         "| Status | Meaning | Action |",

@@ -11,9 +11,9 @@
 //
 //   1. URL HOSTS. `Bash(curl:*)` matches a prefix, never a URL host, so Claude cannot
 //      say "allow curl to an allowlisted host, flag anything else" the way Cursor and
-//      opencode can. The blanket ask row that used to stand in for it forced a prompt
-//      on every shell fetch in every mode — unanswerable in a cloud session — and was
-//      removed. This hook restores the signal without restoring the prompt.
+//      opencode can. A blanket ask row would force a prompt on every shell fetch in
+//      every mode — unanswerable in a cloud session. This hook gives the signal
+//      without the prompt.
 //   2. SHELL-AS-EDIT-CHANNEL. `sed -i` and redirection into a source file route around
 //      every pre-edit gate; GateGuard only sees Edit/Write/MultiEdit. Detecting that
 //      needs the target path parsed, which no permission table can do.
@@ -21,9 +21,9 @@
 // ADVISORY ONLY — this hook NEVER denies and NEVER asks.
 //   - `deny` already lives in settings.json and is evaluated BEFORE any hook, so
 //     duplicating it here would be dead code with a second place to drift.
-//   - `ask` is what was deliberately removed: a content-scoped ask is evaluated before
-//     the auto-mode classifier and always forces a prompt. Re-adding one here would
-//     reintroduce the exact stall this host is configured to avoid.
+//   - `ask` is deliberately absent: a content-scoped ask is evaluated before the
+//     auto-mode classifier and always forces a prompt. Adding one here would cause
+//     the exact stall this host is configured to avoid.
 //   So the strongest thing that reaches the model without costing a prompt is
 //   `additionalContext`. The gate informs; the permission table and the auto-mode
 //   classifier remain what stop things.

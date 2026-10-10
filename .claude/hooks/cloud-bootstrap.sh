@@ -88,10 +88,9 @@ fi
 # cli/cli#2922) — a placeholder/stray GH_TOKEN the platform happens to set
 # silently overrides a successful --with-token login.
 #
-# Branch on the PROBE, not on mere presence. An earlier revision skipped the
-# login whenever GH_TOKEN/GITHUB_TOKEN was merely SET, which meant that in the
-# exact failure #341 §2 documents — the platform sets a PLACEHOLDER GH_TOKEN —
-# the hook declined the only repair it had and said nothing specific about why.
+# Branch on the PROBE, not on mere presence. In the exact failure #341 §2
+# documents — the platform sets a PLACEHOLDER GH_TOKEN — a presence check would
+# decline the only repair the hook has and say nothing specific about why.
 # "Prefer the sanctioned lane" means prefer it WHEN IT WORKS; when it is present
 # and broken, say so precisely.
 #

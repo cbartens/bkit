@@ -116,9 +116,8 @@ function makeBkitRoot(basePath: string, consumers: string[]): string {
 // WS4-T1 Boundary test: consumer file content + mtime unchanged after harvest
 // ---------------------------------------------------------------------------
 
-// stats.jsonl stays copy-only; friction.jsonl became a MOVE in #343 (harvested rows are
-// pruned from the consumer). This describe block asserts BOTH halves of that split —
-// it previously asserted friction was unchanged too, which is the contract #343 reversed.
+// stats.jsonl is copy-only; friction.jsonl is a MOVE (#343): harvested rows are
+// pruned from the consumer. This describe block asserts BOTH halves of that split.
 describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () => {
   it("never modifies consumer stats.jsonl, and prunes only harvested friction rows", () => {
     const consumerPath = path.join(tmpDir, "consumer-app");
@@ -258,11 +257,10 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     );
   });
 
-  // Regression for a real data-loss bug found against live consumer data (#343).
-  // Friction `key`s are truncated (~68 chars), so two genuinely different entries can
-  // share a key -> one identity. An identity-gated prune deleted BOTH from the consumer
-  // while a fold-written store kept ONE — destroying the loser. The store now keeps
-  // every distinct row, so both are banked and both drain.
+  // Data-loss guard (#343). Friction `key`s are truncated (~68 chars), so two genuinely
+  // different entries can share a key -> one identity. An identity-gated prune deletes
+  // BOTH from the consumer, so a store that kept only ONE would destroy the other. The
+  // store keeps every distinct row, so both are banked and both drain.
   it("stores and prunes both rows that share an identity", () => {
     const consumerPath = path.join(tmpDir, "consumer-app");
     // Same key + same repo => same identity, but genuinely different rows.
@@ -293,9 +291,9 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     expect(result.totalPrunedRows).toBe(2);
   });
 
-  // #343 harvest-2: the store was rewritten from the fold, so a newer same-key row
-  // appended to the consumer later evicted a row an earlier run had already pruned.
-  // That row then existed nowhere.
+  // #343 harvest-2: a store rewritten from the fold would let a newer same-key row
+  // appended to the consumer later evict a row an earlier run had already pruned,
+  // leaving that row nowhere.
   it("a newer same-key row never evicts a row an earlier run already pruned", () => {
     const consumerPath = path.join(tmpDir, "consumer-app");
     const frictionPath = path.join(consumerPath, ".bkit", "friction.jsonl");
@@ -322,9 +320,9 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     expect(store).toContain("second run entry");
   });
 
-  // #343 harvest-1: legacy rows with an ISO-string or missing `ts` made the fold's sort
-  // NaN-driven, so which same-key row the store kept flipped with file order between
-  // runs — and rows pruned on run 1 were dropped from the store on run 2.
+  // #343 harvest-1: legacy rows carry an ISO-string or missing `ts`. A NaN-driven sort
+  // would make which same-key row the store keeps flip with file order between runs,
+  // dropping rows pruned on run 1 from the store on run 2.
   it("keeps every pruned row across re-runs when same-key rows carry legacy ts", () => {
     const consumerPath = path.join(tmpDir, "consumer-app");
     const frictionPath = path.join(consumerPath, ".bkit", "friction.jsonl");

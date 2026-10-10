@@ -8,16 +8,14 @@
  * That lands inside awk programs. `awk '… tolower($0) …'` became
  * `awk '… tolower(#442) …'`, which dies with a syntax error — and dies SILENTLY,
  * because the call site is `M=$(awk …)`: awk's exit status is discarded, `M` is
- * empty, and the step writes `None.` as though the ledger held no matches. On
- * 2026-08-26 that turned 16 matching `docs/deferrals.jsonl` rows into `None.` in
- * a plan's `related-deferrals.md`. Nothing failed; the artifact was just wrong.
+ * empty, and the step writes `None.` as though the ledger held no matches.
  *
  * `$1`, `$2` … are the same hazard, dormant: an index with no matching argument
  * is left unchanged, so `awk '{print $2}'` survives a one-argument invocation and
  * breaks the moment a third argument is passed.
  *
- * The ledger scans and lock-owner reads that used awk field references now run
- * inside `bkit` commands, so a workflow needs no `$N` at all. When an inline awk
+ * Ledger scans and lock-owner reads run inside `bkit` commands, so a workflow
+ * needs no `$N` at all. When an inline awk
  * program does need a field, write `$(N)` (POSIX awk — `$` applied to a
  * parenthesised expression — with no `$`-digit sequence for any host to rewrite),
  * not the host's `\$N` escape: the backslash escape is Claude-Code-specific, and

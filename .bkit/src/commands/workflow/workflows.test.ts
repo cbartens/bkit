@@ -436,7 +436,7 @@ describe("bkit workflows close", () => {
     });
   });
 
-  it("always writes the telemetry, whatever the runtime (design used to skip it in PR mode)", async () => {
+  it("always writes the telemetry, whatever the runtime", async () => {
     const cwd = closable("design");
     const r = await run(cwd, wf("close", "design"));
     expect(r.code).toBe(0);

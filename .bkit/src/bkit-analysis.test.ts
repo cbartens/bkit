@@ -133,7 +133,7 @@ describe("newFailuresThisRun — per-run delta over cumulative totals", () => {
     expect(newFailuresThisRun(rows[1]!, rows)).toBe(0);
     expect(newFailuresThisRun(rows[2]!, rows)).toBe(0);
 
-    // Only the first run is an error run — under the old absolute test, all three were.
+    // Only the first run is an error run — an absolute-total test would flag all three.
     const result = computeRegression(rows);
     const xs = result.buckets.find((b) => b.label.startsWith("XS"))!;
     expect(xs.count).toBe(3);

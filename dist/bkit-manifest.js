@@ -47,14 +47,14 @@ export function parseIssueTracker(value) {
  * "active" signal; the package.json field only distinguishes a deliberate opt-out from
  * an undecided install.
  *
- * DECISION-C (AMENDED 2026-05-27): single self-describing field (mirrors `bkit.issueTracker`).
+ * DECISION-C: single self-describing field (mirrors `bkit.issueTracker`).
  * Back-compat: legacy `"enabled"` is mapped to `"claude"` by `parseCloudAgents`.
  */
 export const CLOUD_MODES = ["claude", "cursor", "opencode", "none"];
 /** Default when consumer manifest has no `bkit.cloudAgents` field (undecided). */
 export const DEFAULT_CLOUD_AGENTS = "none";
 /** Narrow an unknown string to `CloudAgents` or return `null` if invalid.
- * Back-compat: legacy `"enabled"` value maps to `"claude"` (the only meaning it ever had).
+ * Back-compat: legacy `"enabled"` value maps to `"claude"`.
  */
 export function parseCloudAgents(value) {
     if (value === "enabled")
@@ -68,8 +68,8 @@ export function parseCloudAgents(value) {
 // ---------------------------------------------------------------------------
 const CORE_MANIFEST = [
     { path: "AGENTS.md", format: "markered-text", module: "core" },
-    // CLAUDE.md moved core → claude (#252) — see CLAUDE_MANIFEST. AGENTS.md (the
-    // cross-host dispatch router) stays core; CLAUDE.md is a Claude-Code-only redirect.
+    // CLAUDE.md is in CLAUDE_MANIFEST: it is a Claude-Code-only redirect. AGENTS.md
+    // (the cross-host dispatch router) is core.
     { path: ".gitignore", format: "markered-text", module: "core" },
     // Append-only ledger union-merge rules live in a managed block; consumers may add
     // their own attributes outside the block, so this is markered-text (not whole-file).
@@ -89,7 +89,7 @@ const CORE_MANIFEST = [
     { path: ".bkit/README.md", format: "byte-equal-text", module: "core" },
 ];
 // GateGuard wiring instructions (#422): printed by writeTier2's noMarkerMigration
-// policy when a consumer's gateguard file predates marker adoption AND its hash does
+// policy when a consumer's gateguard file carries no bkit markers AND its hash does
 // not match a known bkit release — i.e. it is the consumer's own file, not bkit's.
 // bkit appends the (pure, inert) advisory-engine block regardless; these instructions
 // are the one thing bkit cannot do for the consumer — call the appended function from
@@ -222,19 +222,17 @@ const CLAUDE_MANIFEST = [
         module: "claude",
         noMarkerMigration: CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS,
     },
-    // .claude/hooks/cloud-bootstrap.sh moved to the opt-in `cloud` module (CLOUD_MANIFEST) —
+    // .claude/hooks/cloud-bootstrap.sh is in the opt-in `cloud` module (CLOUD_MANIFEST) —
     // it only matters once a Claude Code on the web env is wired (a manual, opt-in step).
     // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`)
-    // so a default --full install without the script no-ops instead of erroring.
+    // so a default install without the script no-ops instead of erroring.
     // bkit owns only its tracker entry under `mcpServers` (reconcileMcpJson); every other
     // key is the consumer's.
     { path: ".mcp.json", format: "json", module: "claude" },
     // Owned (writeTier1): consumer edits are overwritten. Real values go in `.bkit/.env`.
     { path: ".bkit/.env.example", format: "byte-equal-text", module: "claude" },
-    // Note: .bkit/scripts/bkit-mode.sh was removed in #245 (opencode host ships as additive
-    // provider-agnostic host via `bkit install --opencode=<provider>`; the ccr router lane
-    // and `bkit mode` surface are retired). Consumer copies are detected on upgrade and an
-    // advisory is emitted advising deletion (see runClaudeModule's bkit-mode.sh drift check).
+    // A consumer copy of .bkit/scripts/bkit-mode.sh is detected on upgrade and an advisory
+    // is emitted advising deletion (see runClaudeModule's bkit-mode.sh drift check).
     // Mirrors from .agents/ — managed dynamically; not listed individually here
     // because the exact set depends on the bkit-prefix prompt/workflow files at
     // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
@@ -242,32 +240,29 @@ const CLAUDE_MANIFEST = [
 // ---------------------------------------------------------------------------
 // lint:prose — the prose-gate script value (single source of truth)
 //
-// bkit no longer seeds `lint:prose` (it is a template script, `.bkit/templates.md`),
-// but two surfaces still carry this string and must agree:
+// bkit does not seed `lint:prose` (it is a template script, `.bkit/templates.md`),
+// but two surfaces carry this string and must agree:
 //   - the legacy re-point target (repointLegacyScripts, bkit-package-json.ts)
 //   - the F9 advisory remedy text (bkit-preflight.ts)
 //
-// F9 (BAR-138) contract, preserved: symmetric soft-skip — never hard-fail a
-// consumer's commit because the vale binary is absent. What CHANGED: a missing
-// `.vale/styles/write-good` is no longer treated the same as a missing binary.
-// The styles dir is gitignored, so it is absent in every fresh checkout AND in
-// every `git worktree add` — which meant the pre-commit prose gate silently
-// self-disabled in worktrees while still reporting success. Now that case
+// F9 (BAR-138) contract: symmetric soft-skip — never hard-fail a consumer's
+// commit because the vale binary is absent. A missing `.vale/styles/write-good`
+// is not treated the same as a missing binary. The styles dir is gitignored, so
+// it is absent in every fresh checkout AND in every `git worktree add`. That case
 // self-heals (copy from the main worktree via --git-common-dir, zero network;
 // `vale sync` as fallback) and, if self-heal fails with vale present, says so
-// LOUDLY on stderr instead of emitting one quiet line nobody reads.
+// LOUDLY on stderr.
 //
 // Shell constraints: no single quotes anywhere in the body (it is wrapped in
 // `bash -c '...'`), and no backticks (a backtick inside the double-quoted echo
 // would command-substitute).
 export const LINT_PROSE_SCRIPT = 'bash -c \'if command -v vale >/dev/null 2>&1; then if [ ! -d .vale/styles/write-good ]; then echo "[bkit] .vale/styles/write-good absent (fresh checkout or worktree) - restoring" >&2; G=$(git rev-parse --git-common-dir 2>/dev/null) && M=$(dirname "$(cd "$G" && pwd)") && [ -d "$M/.vale/styles/write-good" ] && mkdir -p .vale/styles && cp -R "$M/.vale/styles/write-good" .vale/styles/ || vale sync || true; fi; if [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync" >&2; fi; else echo "[bkit] vale not installed - skipping prose lint (install vale, then run vale sync, to enable)"; fi\'';
-// Prior bkit-shipped lint:prose defaults, newest first.
+// lint:prose values an older bkit wrote, newest first.
 //
-// Why this list exists: bkit once seeded `lint:prose`, and an existing consumer
-// would keep the silently-self-disabling version forever. Any value byte-matching
-// an entry here is provably bkit's own (never consumer-authored), so install and
-// upgrade re-point it at LINT_PROSE_SCRIPT. A value matching NEITHER the current
-// default NOR a legacy entry is consumer-customised and is left strictly alone.
+// Any value byte-matching an entry here is provably bkit's own (never
+// consumer-authored), so install and upgrade re-point it at LINT_PROSE_SCRIPT. A
+// value matching NEITHER the current default NOR a legacy entry is
+// consumer-customised and is left strictly alone.
 //
 // Append the outgoing string here whenever LINT_PROSE_SCRIPT changes.
 export const LEGACY_LINT_PROSE_SCRIPTS = [
@@ -284,11 +279,6 @@ export const LEGACY_SLOP_DELTA_SCRIPTS = [
 ];
 // ---------------------------------------------------------------------------
 // bkit:gate:* — the local gate workflows, prompts and hooks run (#437)
-//
-// Before this, eight prompts and two workflows each carried their own
-// `if [ -f turbo.json ] … else jq -e ".scripts[…]"` copy. A consumer on a
-// different toolchain silently no-opped every probe, `eval ""` exited 0, and the
-// agent recorded the gate as having run.
 //
 // ONE CHAIN. Each gate is the previous gate plus its own tier, so the NAME and
 // the VALUE describe the same sequence and cannot disagree. Tier vocabulary is
@@ -321,7 +311,7 @@ export const LEGACY_SLOP_DELTA_SCRIPTS = [
 // …-integration-e2e, …-integration-e2e-live) are absent unless the consumer
 // writes them, because a seeded `pnpm test:integration` would hard-fail every
 // repo without that tier, and a gate named `…-integration-e2e` that silently
-// skipped them would be the exact false-green this issue exists to kill. Each is
+// skipped them would be a false green. Each is
 // one line chaining its parent, e.g.
 //   "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration"
 // `/bkit-build` and `/bkit-debug` run the DEEPEST gate that exists and record its
@@ -510,7 +500,7 @@ export const CODEX_MANIFEST = [
     // Agent mirrors (.codex/agents/*.toml) and workflow skills (.agents/skills/bkit-*/) are
     // managed dynamically — the set follows the bkit-prefix prompt/workflow files at install.
 ];
-// Cloud agent integration is opt-in — NOT included in --full, so a default install
+// Cloud agent integration is opt-in — NOT in a default install, so a default install
 // ships ZERO cloud footprint. The module is split by variant (DECISION-D):
 //
 //   cloud=claude (tracker=github):
@@ -544,7 +534,7 @@ const CLOUD_MANIFEST = [
 // and the husky hooks ship as templates (`.bkit/templates.md`); the consumer copies
 // and owns them.
 const LINT_MANIFEST = [
-    // Moved OUT of the core template walk (#265) so it ships only with --typescript.
+    // Excluded from the core template walk so it ships only with --typescript.
     // Tier 1 (bkit-owned, force-overwritten). Mirrors .bkit/templates/.bkit/scripts/.
     // See CORE_TEMPLATE_PATH_EXCLUDE.
     {

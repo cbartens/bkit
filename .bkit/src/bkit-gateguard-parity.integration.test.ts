@@ -211,6 +211,37 @@ describe("gateguard behaviour parity — advisory content", () => {
   }
 });
 
+describe("gateguard behaviour parity — template copies", () => {
+  function repo(name: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gg-parity-repo-"));
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name }));
+    return dir;
+  }
+  const consumer = repo("consumer-app");
+  const dogfood = repo("@cbartens/bkit");
+
+  for (const host of HOSTS) {
+    it(`${host}: a consumer's .bkit/templates/.vale.ini is not a gate config`, async () => {
+      const file = path.join(consumer, ".bkit/templates/.vale.ini");
+      const r = await run(host, { file, session: newSession() });
+      expect(r.advisory).toContain("[bkit GateGuard]");
+      expect(r.advisory).not.toContain("quality-gate config");
+    });
+
+    it(`${host}: a consumer's root .vale.ini is a gate config`, async () => {
+      const file = path.join(consumer, ".vale.ini");
+      const r = await run(host, { file, session: newSession() });
+      expect(r.advisory).toContain("quality-gate config");
+    });
+
+    it(`${host}: bkit's own .bkit/templates/.vale.ini is a gate config`, async () => {
+      const file = path.join(dogfood, ".bkit/templates/.vale.ini");
+      const r = await run(host, { file, session: newSession() });
+      expect(r.advisory).toContain("quality-gate config");
+    });
+  }
+});
+
 describe("gateguard behaviour parity — docs density advisory", () => {
   const cases: { file: string; expected: boolean; why: string }[] = [
     { file: "docs/architecture.md", expected: true, why: "a docs markdown file" },

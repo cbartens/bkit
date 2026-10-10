@@ -82,9 +82,9 @@ run_bootstrap() {
 # --- placeholder/expired sanctioned token (regression) ----------------------
 # #341 §2's documented mode-3 failure: the platform sets a GH_TOKEN that does
 # NOT authenticate. It outranks any stored credential, so `--with-token` cannot
-# win. An earlier revision keyed the skip on the variable being merely SET, so
-# this case produced only "trusting it over --with-token" — reassuring, wrong,
-# and with no pointer to the actual remedy. The branch now keys on the probe.
+# win. A skip keyed on the variable being merely SET would print only "trusting
+# it over --with-token" — reassuring, wrong, and with no pointer to the actual
+# remedy. The branch keys on the probe.
 
 @test "a PRESENT but non-authenticating GH_TOKEN is diagnosed, not silently trusted (regression)" {
   run run_bootstrap env GH_TOKEN=placeholder BKIT_GH_TOKEN=bkit-token FAKE_GH_AUTH_OK=0

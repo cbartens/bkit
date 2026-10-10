@@ -152,7 +152,7 @@ Post-install findings via `formatChecklist(ctx.advisories)` (`bkit-postinstall.t
 
 - Blockers (Phase 1) → `stderr`, exit 1 before writes.
 - Advisories (Phase 1 + Phase 3) → numbered checklist after install.
-- `bkit check` (dry-run) → Phase 1 + Phase 3 advisories (read-only); exit 1 on Tier-1/Tier-2 drift. No writes. (v2.2.3+; prior: Phase 1 only.)
+- `bkit check` (dry-run) → Phase 1 + Phase 3 advisories (read-only); exit 1 on Tier-1/Tier-2 drift. No writes.
 
 ## Phase 3 Token-Surface Detectors
 

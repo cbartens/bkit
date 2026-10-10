@@ -4,7 +4,7 @@
 // and exec's the GUI app binary directly so it inherits the per-repo token set.
 //
 // Why not `open -a`? `open` routes through launchd which drops the inherited
-// env — that's the root cause of #279/#280. We exec the raw binary instead.
+// env (#279/#280). We exec the raw binary instead.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync, spawn } from "node:child_process";

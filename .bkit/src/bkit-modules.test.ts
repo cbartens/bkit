@@ -43,7 +43,7 @@ describe("package.json manifest invariants (BAR-138)", () => {
     expect(pkg.repository?.url).not.toMatch(/^git\+/);
   });
 
-  it("description does not contain the old git-dependency lie", () => {
+  it("description does not claim a private git dependency", () => {
     expect(pkg.description).toBeTruthy();
     expect(pkg.description).not.toContain("git dependency from a private GitHub repo");
   });
@@ -74,16 +74,16 @@ describe("package.json manifest invariants (BAR-138)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Task C1 — Installer advisory action constants (BAR-138, migrated to bkit-postinstall.ts)
+// Task C1 — Installer advisory action constants (BAR-138, in bkit-postinstall.ts)
 // ---------------------------------------------------------------------------
 
 // Read the source file as a string to inspect the constant bodies without
 // executing the module (avoids import side-effects and keeps tests fast).
-// Note: the constants are now in bkit-postinstall.ts (Phase 3 owner), not bkit-modules.ts.
+// Note: the constants live in bkit-postinstall.ts (Phase 3 owner), not bkit-modules.ts.
 const POSTINSTALL_SRC = fs.readFileSync(path.resolve(".bkit/src/bkit-postinstall.ts"), "utf-8");
 const MODULES_SRC = fs.readFileSync(path.resolve(".bkit/src/bkit-modules.ts"), "utf-8");
 
-describe("BKIT_GH_TOKEN_INSTALL_MISSING action strings (now in bkit-postinstall.ts)", () => {
+describe("BKIT_GH_TOKEN_INSTALL_MISSING action strings (in bkit-postinstall.ts)", () => {
   // The action string is now embedded in the const BKIT_GH_TOKEN_INSTALL_MISSING_ACTION
   const match = POSTINSTALL_SRC.match(
     /const BKIT_GH_TOKEN_INSTALL_MISSING_ACTION\s*=\s*([\s\S]*?)(?=\nconst |\nexport )/,
@@ -116,20 +116,20 @@ describe("BKIT_GH_TOKEN_INSTALL_MISSING action strings (now in bkit-postinstall.
     expect(POSTINSTALL_SRC).not.toContain("git config --global url.");
   });
 
-  it("BKIT_GH_TOKEN_INSTALL_MISSING_INSTRUCTIONS no longer exists in bkit-modules.ts", () => {
+  it("BKIT_GH_TOKEN_INSTALL_MISSING_INSTRUCTIONS is absent from bkit-modules.ts", () => {
     expect(MODULES_SRC).not.toContain("BKIT_GH_TOKEN_INSTALL_MISSING_INSTRUCTIONS");
   });
 
-  it("BKIT_GH_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS no longer exists in bkit-modules.ts", () => {
+  it("BKIT_GH_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS is absent from bkit-modules.ts", () => {
     expect(MODULES_SRC).not.toContain("BKIT_GH_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS");
   });
 
-  it("VERCEL_AUTH_INSTRUCTIONS no longer exists in bkit-modules.ts", () => {
+  it("VERCEL_AUTH_INSTRUCTIONS is absent from bkit-modules.ts", () => {
     expect(MODULES_SRC).not.toContain("VERCEL_AUTH_INSTRUCTIONS");
   });
 });
 
-describe("VERCEL action strings (now in bkit-postinstall.ts)", () => {
+describe("VERCEL action strings (in bkit-postinstall.ts)", () => {
   it("postinstall source contains vercel env add BKIT_GH_TOKEN_INSTALL", () => {
     expect(POSTINSTALL_SRC).toContain("vercel env add BKIT_GH_TOKEN_INSTALL");
   });
@@ -150,7 +150,7 @@ describe("VERCEL action strings (now in bkit-postinstall.ts)", () => {
 });
 
 describe("runCoreModule first-install advisory (BAR-141: structured finding)", () => {
-  // The first-install message is now emitted as a structured PreflightFinding advisory.
+  // The first-install message is emitted as a structured PreflightFinding advisory.
   // Check the source uses advisories.push with the correct id.
   it("uses advisories.push (not printSink.push) for first-install message", () => {
     expect(MODULES_SRC).not.toContain("printSink.push");
@@ -176,15 +176,6 @@ describe("runCoreModule first-install advisory (BAR-141: structured finding)", (
     expect(block).toContain("read:packages");
   });
 });
-
-// ---------------------------------------------------------------------------
-// P3.T4 + P3.T5 — superseded by BAR-167 Phase 1
-// .claude/settings.json and .cursor/hooks.json now use writeTier2JsonContained +
-// migrateLegacyBkitEnvelope (no __bkit__ envelope). Tests for the new primitives
-// live in bkit-tiers.test.ts and the integration coverage is in
-// bkit-modules.integration.test.ts. These blocks have been removed to avoid
-// asserting deleted symbols (writeTier2Json, migrateTier1JsonToTier2, __bkit__).
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // BAR-164 — installer guard: canonical CI template must not contain a

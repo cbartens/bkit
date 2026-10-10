@@ -10,7 +10,7 @@
 > permissions, tracker dispatch, sharing across repos): `.bkit/cloud.md`.
 
 This is the Cursor twin of `.claude/cloud.md`: the **same bkit cloud environment**,
-built by a different mechanic. Cursor **Cloud Agents** (formerly "Background Agents")
+built by a different mechanic. Cursor **Cloud Agents**
 bake the toolchain (vale, gh, jq, python3, corepack pnpm) into `.cursor/Dockerfile`,
 and run the per-snapshot install from `.cursor/environment.json` — both ship in the
 repo, nothing to paste. The only thing you add in the dashboard is the **secrets**

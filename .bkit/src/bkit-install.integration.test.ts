@@ -364,13 +364,12 @@ describe("formatChecklist format contract", () => {
 // Scenario 4 — Regression: stale consumer .agents/prompts.md does NOT crash
 // install on "Missing model lookup for <name>".
 //
-// Repro of the v0.5.0 hard-fail (BAR-141 follow-up): a consumer upgrading from
-// a release that predates a newly-added prompt (e.g. bkit-design-organise)
-// would have an empty/stale Models table on disk. Before the fix, install
-// parsed the consumer's stale prompts.md → applyT3 hit "Missing model lookup
-// for bkit-design-organise" → process.exit(1) mid-install (partial state).
+// A consumer upgrading from a release that predates a newly-added prompt (e.g.
+// bkit-design-organise) has an empty/stale Models table on disk. Parsing that
+// copy would hit "Missing model lookup for bkit-design-organise" and exit
+// mid-install (partial state).
 //
-// The fix sources the model lookup from the PACKAGE's .bkit/prompts.md, so a
+// Install sources the model lookup from the PACKAGE's .bkit/prompts.md, so a
 // stale consumer copy is tolerated. This test guards against regression and
 // catches the analogous failure for ANY future prompt added without backfill.
 // ---------------------------------------------------------------------------
@@ -1153,7 +1152,7 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Scenario: .bkit/.env.example + .envrc scaffolding (BAR-260 follow-up)
+// Scenario: .bkit/.env.example + .envrc scaffolding (BAR-260)
 // ---------------------------------------------------------------------------
 
 import { runClaudeModule, getPkgRoot } from "./bkit-modules";
@@ -1505,7 +1504,7 @@ describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when
     // Upgrade may exit non-zero on conflicts — that's OK; we only care about file removal
     // The log must mention the orphan removal
     expect(combined).toContain("bkit-auto.yml");
-    // bkit-auto.yml must be gone (it was replaced by bkit-cloud.yml)
+    // bkit-auto.yml must be removed when bkit-cloud.yml is present
     expect(
       fs.existsSync(oldAutoPath),
       `bkit-auto.yml should be deleted when bkit-cloud.yml is present.\ncombined: ${combined}`,

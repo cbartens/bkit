@@ -182,12 +182,12 @@ describe("removeOrphanTemplatesDir — sentinel guard (F1 MEDIUM fix)", () => {
 // getTemplatesRoot() — three-context resolution
 //
 // Already tested in bkit-paths.test.ts:
-//   - ends with .bkit/templates (post-move WS-3 form)
+//   - ends with .bkit/templates
 //   - is rooted at getPkgRoot()
 //
-// New coverage: verify the actual resolved path exists (test context arm),
+// Here: verify the actual resolved path exists (test context arm),
 // verify it equals getPkgRoot() + ".bkit/templates" (direct derivation),
-// and verify it does NOT equal the old pre-move ".agents/templates" form.
+// and verify it does NOT equal a ".agents/templates" form.
 // ---------------------------------------------------------------------------
 
 describe("getTemplatesRoot() — context resolution regression tests", () => {
@@ -201,9 +201,8 @@ describe("getTemplatesRoot() — context resolution regression tests", () => {
     expect(templatesIdx).toBeGreaterThan(bkitIdx);
   });
 
-  it("does NOT return the old pre-move .agents/templates path", () => {
-    // Regression: pre-#160 the path was <pkgRoot>/.agents/templates.
-    // Verify this form is never returned again.
+  it("does NOT return a .agents/templates path", () => {
+    // Regression guard (#160): the root is never <pkgRoot>/.agents/templates.
     const root = getTemplatesRoot();
     const oldForm = path.join(getPkgRoot(), ".agents", "templates");
     expect(root).not.toBe(oldForm);
@@ -232,7 +231,7 @@ describe("getTemplatesRoot() — context resolution regression tests", () => {
     // getTemplatesRoot() for a dist/ pkg root would be:
     const expectedTemplates = path.join(result, ".bkit", "templates");
     expect(expectedTemplates).toBe(path.join("/pkg", ".bkit", "templates"));
-    // and NOT the old .agents/templates form
+    // and NOT a .agents/templates form
     expect(expectedTemplates).not.toBe(path.join("/pkg", ".agents", "templates"));
   });
 

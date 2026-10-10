@@ -4,9 +4,7 @@
 // bash to execute the extracted lookup.
 //
 // The month-bucket derivation and the refusal of a feature split across two
-// buckets used to be inline shell here (an `ls -d ... | awk '{print $(NF-3)}'`
-// whose trailing-slash off-by-one once produced a bogus `logs/logs/` tree).
-// Both moved into `bkit locks acquire --kind=workflow`; their cases live in
+// buckets live in `bkit locks acquire --kind=workflow`; their cases live in
 // commands/workflow/locks.test.ts ("month bucket").
 
 import * as fs from "node:fs";
@@ -63,8 +61,8 @@ const workflowFiles = fs
   .map((f) => path.join(WORKFLOWS_DIR, f));
 
 // Resolve FID, rule 3: with an issue ID, every phase reuses the feature already
-// logged for THAT issue. It replaced a hint that took the newest leftover
-// `.lock` or newest bucket — which latched a fresh run onto an unrelated feature.
+// logged for THAT issue. Taking the newest leftover `.lock` or newest bucket
+// would latch a fresh run onto an unrelated feature.
 const PHASES = ["bkit-build.md", "bkit-debug.md", "bkit-design.md", "bkit-plan.md", "bkit-ship.md"];
 const issueLookups = workflowFiles
   .map((file) => ({ file: path.basename(file), lines: fs.readFileSync(file, "utf-8").split("\n") }))

@@ -1,6 +1,6 @@
 // bkit-comply-gate-wiring.test.ts — close-gate wiring audit.
 //
-// Done-when contract (WS2-T6 + #387, moved onto `bkit` commands by #467):
+// Done-when contract (WS2-T6 + #387):
 //   - Every phase workflow (design, plan, build, debug, ship) grades itself at
 //     close with exactly one `"$BKIT" comply --phase=<wf>` call, carrying the
 //     fail-open guard on the same line:

@@ -827,24 +827,20 @@ function mirrorDirAlways(src, dst, dryRun, log) {
     }
     return writes;
 }
-// Payload pass: refresh bkit-canonical content in <cwd>/.agents/ from the package payload.
-//   - .agents/{workflows,prompts}/bkit-*.md → overwrite + prune (bkit-prefix only)
-// In dogfood (running from .bkit/src/ in the bkit repo itself), src and dst
-// resolve to the same paths, so this pass is a no-op.
+// Payload pass: remove bkit files a legacy layout left in <cwd>/.agents/.
 // Mirror sources (`.bkit/workflows`, `.bkit/prompts`) and bkit-authoring docs
 // (`.bkit/*.md`) live package-side and are read directly from there at runtime
 // (see getWorkflowsRoot / getPromptsRoot / getBkitDocsRoot). The reference docs
-// are ALSO mirrored into the consumer's own `.bkit/` by runBkitDocs — but at the
-// NEW `.bkit/` home, never the old `.agents/` one. Consumers upgraded from a
-// layout that copied these into `.agents/` carry orphans at the OLD path —
-// `runPayload` removes those so the tree stays clean. (`.agents/rules.md` is NOT
-// relocated — it remains a consumer-shipped Tier-2 file; AGENTS.md/CLAUDE.md
-// reference it.)
+// are ALSO mirrored into the consumer's own `.bkit/` by runBkitDocs — at
+// `.bkit/`, never `.agents/`. A consumer on the legacy layout carries copies of
+// these under `.agents/` — `runPayload` removes those so the tree stays clean.
+// (`.agents/rules.md` is NOT relocated — it remains a consumer-shipped Tier-2
+// file; AGENTS.md/CLAUDE.md reference it.)
 //
 // Named `runPayload` for call-site stability with the dispatch in runCoreModule;
-// the historical "payload copy" is gone, leaving only orphan cleanup. Never
-// touches the bkit repo's own tree (isDogfood guard): in dogfood these paths
-// already live under `.bkit/`, so there is nothing in `.agents/` to remove.
+// it only does orphan cleanup. Never touches the bkit repo's own tree (isDogfood
+// guard): in dogfood these paths already live under `.bkit/`, so there is nothing in
+// `.agents/` to remove.
 const RELOCATED_AGENTS_FILES = [
     "trackers.md",
     "workflows.md",
@@ -852,7 +848,7 @@ const RELOCATED_AGENTS_FILES = [
     "prompts.md",
     "providers.md",
 ];
-// Files that moved from `.agents/` to a consumer-side `.bkit/` directory and
+// Files whose legacy path is under `.agents/` and current path under `.bkit/`, and that
 // carry consumer-owned or stateful content — MIGRATE (move) rather than delete,
 // so an upgrading consumer keeps their version pin, secrets, and friction log.
 // [oldRel, newRel]. `.env.example` is owned (the claude module overwrites it at the new
@@ -913,7 +909,7 @@ export function runPayload(dryRun) {
             fs.renameSync(oldRel, newRel);
         }
     }
-    // Old regenerated advisories artifact — drop it (rewritten at .bkit/advisories.md).
+    // Legacy `.agents/advisories.md` — drop it (bkit writes .bkit/advisories.md).
     {
         const oldAdvisories = path.join(".agents", "advisories.md");
         if (fs.existsSync(oldAdvisories)) {
@@ -928,9 +924,8 @@ export function runPayload(dryRun) {
 // ---------------------------------------------------------------------------
 // D1 upgrade orphan-removal (#160)
 //
-// Consumers who ran `bkit upgrade` on a version that shipped `.agents/templates/`
-// (pre-#160 layout) now carry an orphaned directory that no longer exists in the
-// tarball. Remove it so the consumer tree stays clean. No-op when absent.
+// A consumer on a legacy layout may carry an `.agents/templates/` directory the
+// package does not ship. Remove it so the consumer tree stays clean. No-op when absent.
 // Dry-run aware: logs only, no FS write.
 // ---------------------------------------------------------------------------
 export function removeOrphanTemplatesDir(cwd, dryRun) {
@@ -1083,11 +1078,10 @@ export function detectInstalledHostModules(cwd) {
 /**
  * Installed-module set, detected by sentinel-file presence. Always core, plus the installed
  * subset of {claude, cursor, opencode, codex, lint}. Two callers:
- *   - `bkit check` (#252 Step 3) — scopes the drift gate, so a `--cursor`-only repo no longer
- *     reports `.claude/**` as drift, and a `--claude`-only repo is not flagged for lint files.
+ *   - `bkit check` (#252 Step 3) — scopes the drift gate, so a `--cursor`-only repo does not
+ *     report `.claude/**` as drift, and a `--claude`-only repo is not flagged for lint files.
  *   - `bkit upgrade` — scopes the template walk, so upgrade does NOT force-create files for a
- *     module the consumer never installed (the install↔upgrade divergence: upgrade used to seed
- *     lint/cursor files for a claude-only consumer, which `check` then flagged).
+ *     module the consumer never installed.
  *
  * opencode IS gated (#255 #8): `.opencode/opencode.json` is the most drift-sensitive file
  * bkit ships (provider block + tracker-filtered mcp + permission map). It is safe to gate
@@ -1095,7 +1089,7 @@ export function detectInstalledHostModules(cwd) {
  * + the package.json tracker resolution), so an openrouter/opencode/… consumer is checked against its own
  * config — not the install default — and the dry-run path is read-only (installFile /
  * writeTier1 / reconcileOpencodeJson honour dryRun; ensureDir is dryRun-gated). The remaining
- * opt-ins (cloud) stay out of the gate, matching prior behaviour.
+ * opt-in (cloud) stays out of the gate.
  * Dependency-updater files are not modules: bkit never drift-checks them.
  */
 export function detectInstalledModules(cwd) {
@@ -1117,7 +1111,7 @@ export function detectInstalledModules(cwd) {
     return mods;
 }
 /**
- * Render a resolved module set back into valid new-surface CLI flags (#252/#265) for
+ * Render a resolved module set back into valid CLI flags (#252/#265) for
  * recovery-hint text. Skips core (implicit), maps lint to --typescript and opt-ins to
  * their value-flag spellings.
  */
@@ -1139,8 +1133,8 @@ export function modulesToCliFlags(mods, opencodeProvider, cloudVariant) {
 }
 /**
  * #252 Step 2/3 — validate the verb/module-flag combination before any dispatch
- * work runs. `install` requires >=1 module flag (bare install errors; replaces
- * the old implicit empty→full); `check` / `upgrade` take NO module flags — they
+ * work runs. `install` requires >=1 module flag (bare install errors);
+ * `check` / `upgrade` take NO module flags — they
  * operate on everything already installed, so a stray flag is a hard error
  * pointing at the no-flag form. Returns the error message to print, or `null`
  * when the combination is valid.
@@ -1507,11 +1501,7 @@ async function main() {
         try {
             const { runMigrate } = await import("./bkit-telemetry-migrate.js");
             // `bkit telemetry summary [--phase <workflow>]` — THE telemetry summary, for
-            // every workflow's close step. Previously each of the five workflows carried
-            // its own bash version, and each was wrong: `grep -c … || echo 0` printed
-            // "0\n0" whenever nothing was malformed (grep exits 1 on zero matches), and
-            // `jq '.bkitVersion // "unknown"'` bucketed empty versions under an empty key
-            // because `//` substitutes only on null/false. One implementation, one answer.
+            // every workflow's close step.
             if (telemetrySubverb === "summary") {
                 const { foldFrom, workflowTelemetry } = await import("./bkit-telemetry.js");
                 const statsPath = path.join(process.cwd(), ".bkit", "stats.jsonl");
@@ -1537,7 +1527,7 @@ async function main() {
                 return;
             }
             // `bkit telemetry normalise [--dry-run]` — one-shot, idempotent rewrite off
-            // the retired sequential-alias scheme (parity-gated; original untouched on abort).
+            // sequential aliases (parity-gated; original untouched on abort).
             if (telemetrySubverb === "normalise") {
                 const { runNormalise } = await import("./bkit-telemetry-normalise.js");
                 const result = await runNormalise({
@@ -1738,19 +1728,17 @@ async function main() {
         // named `gitattributes` (no dot), which git never reads. Rename it and drop
         // the bogus dot-less canonicalHashes key before the walk reseeds the dotted one.
         migrateStrayGitattributes(process.cwd(), upgradeFlags.dryRun);
-        // docs/warnings.md → docs/noise.md rename: the doc widened from log-level
-        // downgrades to every deliberate signal downgrade. Move the consumer's file
+        // Legacy docs/warnings.md → docs/noise.md: move the consumer's file
         // (their entries live below the managed block) before the walk reseeds it.
         migrateWarningsToNoise(process.cwd(), upgradeFlags.dryRun);
-        // D1 orphan-removal: consumers who upgraded from a version that shipped
-        // `.agents/templates/` (pre-#160 layout) now carry an orphaned directory
-        // that no longer exists in the tarball. Remove it on upgrade so the
-        // consumer tree stays clean. No-op when already absent (fresh consumers).
+        // D1 orphan-removal: a consumer on a legacy layout may carry an
+        // `.agents/templates/` directory the package does not ship. Remove it on
+        // upgrade so the consumer tree stays clean. No-op when already absent (fresh consumers).
         // Dry-run aware: log only, no FS write.
         removeOrphanTemplatesDir(process.cwd(), upgradeFlags.dryRun);
-        // Relocated-orphan removal: mirror sources (.agents/workflows, .agents/prompts)
-        // and the bkit-authoring docs moved into `.bkit/`. Strip any copies an old-layout
-        // consumer still carries. No-op when absent / in dogfood.
+        // Relocated-orphan removal: mirror sources and the bkit-authoring docs live in
+        // `.bkit/`. Strip any copies a legacy-layout consumer carries under `.agents/`
+        // (.agents/workflows, .agents/prompts, ...). No-op when absent / in dogfood.
         runPayload(upgradeFlags.dryRun);
         // Retired bkit files: delete unedited copies, then name every edited copy and
         // every consumer CI / package.json line that still calls one.
@@ -1874,14 +1862,14 @@ async function main() {
             };
             collectTemplates(tplRoot, "");
         }
-        // Upgrade orphan: bkit-auto.yml was renamed to bkit-cloud.yml (#245).
-        // Only remove when bkit-cloud.yml is present — otherwise the old cloud workflow
+        // Upgrade orphan: bkit-auto.yml is the legacy name of bkit-cloud.yml (#245).
+        // Only remove when bkit-cloud.yml is present — otherwise the legacy cloud workflow
         // would go with no replacement.
         const oldAutoWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-auto.yml");
         const newCloudWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-cloud.yml");
         if (fs.existsSync(oldAutoWorkflow) && fs.existsSync(newCloudWorkflow)) {
             const tag = upgradeFlags.dryRun ? "[dry-run] " : "";
-            console.log(`${LOG_PREFIX} ${tag}upgrade: removing orphan .github/workflows/bkit-auto.yml (renamed to bkit-cloud.yml)`);
+            console.log(`${LOG_PREFIX} ${tag}upgrade: removing orphan .github/workflows/bkit-auto.yml (legacy name of bkit-cloud.yml)`);
             if (!upgradeFlags.dryRun) {
                 fs.rmSync(oldAutoWorkflow, { force: true });
             }
@@ -2093,7 +2081,7 @@ async function main() {
         // stale and the next `bkit check` wants to write it (1 write → exit 1), failing
         // the CI drift gate (#129 §3). Called unconditionally (non-dry-run) so the pin
         // bumps even when every file was a no-op skip. The re-rendered `.bkit/*.md` docs AND
-        // host agent/command mirrors land in renderWs.writes (mirrors now count toward check
+        // host agent/command mirrors land in renderWs.writes (mirrors count toward check
         // exit), so feed those writes into canonicalHashes — keeping install/upgrade `.bkit/version`
         // parity.
         if (!upgradeFlags.dryRun) {
@@ -2183,8 +2171,7 @@ async function main() {
     // Resolve issueTracker: --tracker= flag overrides; else read bkit.issueTracker from consumer
     // package.json; else default to "none".
     // #252 S2-A: tracker switching is FREE — a `--tracker=` value always applies, whether
-    // first-set or a re-set of an already-recorded tracker. The old switch guard (and its
-    // `--force` override) was dropped along with install `--force`.
+    // first-set or a re-set of an already-recorded tracker.
     // Resolved BEFORE preflight: preflight's tracker-dependent detectors must grade the tracker
     // this run INSTALLS, not the one on disk from the previous run. Read-only — no writes here.
     let issueTracker = DEFAULT_ISSUE_TRACKER;
@@ -2419,7 +2406,7 @@ async function main() {
     // `bkit check` hard-fails on outdated rendered prompts/workflows AND outdated
     // docs (#256). A missing owned hook file (owned-hook-missing) fails check too, by name: the
     // hook commands skip an absent file silently, and cloud-bootstrap.sh is never in ws.writes.
-    // Other Phase-3 blockers keep their historical install-only semantics.
+    // Other Phase-3 blockers are install-only.
     //
     // Gate on `severity === "blocker"`, NOT mere id-presence: both gates are
     // branch-scoped (detectRenderedPromptsStale / detectManagedDocsStale downgrade to

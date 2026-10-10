@@ -1,12 +1,9 @@
 // bkit-paths.test.ts — Unit tests for getPkgRoot() across the THREE run-contexts
 // documented in the bkit-paths.ts header comment.
 //
-// WS1-T7 — authored pre-move under .agents/scripts/, moved to .bkit/src/ by WS3-T1.
-// WS3-T2 — assertions updated to post-move (.bkit/src, .bkit/templates) form.
-//
 // The dist arm (context 1 + 3) is EXPLICITLY asserted here in addition to the
-// tsx-from-source arm (context 2), because WS3-T2 leaves the dist/ arm
-// intentionally untouched and bkit:check:dist only exercises it indirectly.
+// tsx-from-source arm (context 2), because bkit:check:dist only exercises it
+// indirectly.
 
 import * as fs from "node:fs";
 import * as path from "node:path";

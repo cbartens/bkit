@@ -305,7 +305,7 @@ describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
 });
 
 // ---------------------------------------------------------------------------
-// BAR-260 follow-up — doctor surfaces [mcp-env] advisories
+// BAR-260 — doctor surfaces [mcp-env] advisories
 // ---------------------------------------------------------------------------
 
 describe("bkit doctor — [mcp-env] advisory surface", () => {

@@ -1,7 +1,7 @@
 // bkit-cli.test.ts — CLI dispatch surface (#252 redesign + #234 comply/telemetry verbs).
 // Surface: install requires ≥1 module flag (guard lives in main(), not parseArgs);
-// core implicit; --typescript expands to lint; --auto replaces --cloud;
-// --dependency= and --renovate= are unknown flags; --full/--core dropped.
+// core implicit; --typescript expands to lint; --auto is the cloud flag;
+// --cloud, --dependency=, --renovate=, --full and --core are unknown flags.
 // comply verb: --phase=<design|plan|build|debug|ship> (WS2-T5, #234).
 // telemetry verb: `bkit telemetry migrate [--dry-run]` (WS5-T2, #234).
 import { describe, expect, it, vi } from "vitest";
@@ -142,14 +142,14 @@ describe("parseArgs — module flags", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — dropped flags now error (#252: D2/D3/D4/D7)
+// parseArgs — unknown flags error (#252: D2/D3/D4/D7)
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — dropped flags reject with generic 'Unknown flag' (S1)", () => {
   const dropped = [
     "--full",
     "--core",
-    // #489: the ci and git-hooks modules are gone; ci.yml and the hooks are templates.
+    // ci.yml and the git hooks are templates, not modules.
     "--ci",
     "--tooling",
     "--lint",
@@ -174,14 +174,14 @@ describe("parseArgs — dropped flags reject with generic 'Unknown flag' (S1)", 
     }
   });
 
-  it("--non-interactive → Unknown flag (renamed to --auto-apply)", () => {
+  it("--non-interactive → Unknown flag (use --auto-apply)", () => {
     const msg = expectExit(() => parseArgs(["upgrade", "--non-interactive"]));
     expect(msg).toMatch(/Unknown flag/);
   });
 });
 
 // ---------------------------------------------------------------------------
-// --typescript (#265, narrowed by #489): the owned slop-scan plugin (internal `lint`)
+// --typescript (#265): the owned slop-scan plugin (internal `lint`)
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — --typescript", () => {
@@ -250,11 +250,11 @@ describe("parseArgs — unknown flag / verb rejection", () => {
     expect(expectExit(() => parseArgs(["deploy"]))).toMatch(/Unknown verb/);
   });
 
-  it("retired `init` verb is rejected as unknown", () => {
+  it("`init` verb is rejected as unknown", () => {
     expect(expectExit(() => parseArgs(["init"]))).toMatch(/Unknown verb/);
   });
 
-  it("retired `--host=claude` is rejected (use `--claude`)", () => {
+  it("`--host=claude` is rejected (use `--claude`)", () => {
     expect(expectExit(() => parseArgs(["install", "--host=claude"]))).toMatch(/Unknown flag/);
   });
 });
@@ -306,7 +306,7 @@ describe("printUsage — help output", () => {
     const output = usage();
     expect(output).toContain("opencode-zen");
     expect(output).toContain("opencode-go");
-    // Old single-gateway help phrase must be gone.
+    // The single-gateway help phrase must be absent.
     expect(output).not.toContain("opencode (opencode-native gateway");
   });
 
@@ -323,7 +323,7 @@ describe("printUsage — help output", () => {
     expect(output).toContain("--nuke");
   });
 
-  it("documents the --auto-apply upgrade flag (renamed from --non-interactive)", () => {
+  it("documents the --auto-apply upgrade flag, not --non-interactive", () => {
     const output = usage();
     expect(output).toContain("--auto-apply");
     expect(output).not.toContain("--non-interactive");
