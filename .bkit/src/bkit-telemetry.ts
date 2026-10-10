@@ -162,16 +162,10 @@ export interface TelemetryEnvelope {
    */
   model?: string;
   /**
-   * Free-form related context — the JSONL form of the legacy `.md` ledgers'
-   * `**Related:**` field. Holds ANY pointer that helps a later reader place this
-   * row: feature ids, tracker ids (`BAR-217`), PRs, commit SHAs, file paths,
-   * sibling `ts`, and this row's OWN legacy ledger id (`KN-14`, `DE-7`) when it
-   * was migrated off the `.md` ledgers.
-   *
-   * Deliberately NOT split into an identity field vs a link field. Sequential
-   * `DE-{N}` ids are un-mintable under concurrency — two workflows read the same
-   * max from their own base commit and mint the same id — so an alias cannot be
-   * a reliable identity. `ts` is the id; everything else is a pointer.
+   * Free-form related context: any pointer that helps a reader place this row —
+   * feature ids, tracker ids (`BAR-217`), PRs, commit SHAs, file paths, sibling
+   * `ts`, a migrated row's ledger id (`KN-14`, `DE-7`). Every entry is a pointer,
+   * never an identity: `ts` (with `key` for instinct-loop kinds) identifies the row.
    */
   references?: string[];
   /**

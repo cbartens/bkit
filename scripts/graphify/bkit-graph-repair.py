@@ -10,23 +10,15 @@ between `extract` and `cluster-only`.
 
     bkit-graph-repair.py <graph.json> [--rules R] [--quiet]
 
-WHY IN THE FILE AND NOT ONLY ON READ. Repairing on read, inside
-bkit-graph-eager.py and bkit-graphify-rollup.py, would fix our own checks and the
-generated doc but NOT `graphify affected`, `god-nodes`, `explain`, `path` or
-`query` — those read graph.json directly, so every hand-typed blast-radius
-question would be answered from a graph missing those edges. `affected` is the
-one most likely to be trusted in a hurry, and a missing edge looks like a clean
-gap. Repairing the file makes graph.json the single source
-of truth: the consumers just read it, and call `warn_if_unrepaired` so a
-graph built without this step says so rather than quietly understating.
+graph.json carries the repaired edges, so every reader sees them: our own
+checks, the generated doc, and `graphify affected`, `god-nodes`, `explain`,
+`path` and `query`. Readers call `warn_if_unrepaired`, so a graph built without
+this step says so.
 
-WHY IT SURVIVES. The obvious objection is that `graphify update` rewrites
-graph.json and would drop the injection. It does — which is why this runs as a
-step of every wrapper command that writes the file, not once by hand. `pnpm
-graph*` is the documented entry point (`.bkit/templates.md`) and each of
-build / clean / update re-injects at the end of its own run. A raw `graphify
-update .` typed outside the wrapper loses them until the next `pnpm graph:update`;
-the step is idempotent, so recovering is just re-running it.
+`graphify update` rewrites graph.json without the injected edges, so every
+wrapper command that writes the file (`pnpm graph`, `:clean`, `:update`) runs
+this step at the end. The step is idempotent: after a raw `graphify update .`,
+run `pnpm graph:update`.
 
 ORDER MATTERS: this runs BEFORE clustering, so communities, the god-node
 ranking and the cycle list in graph-report.md are all computed from the repaired

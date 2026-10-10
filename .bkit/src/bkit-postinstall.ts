@@ -2296,8 +2296,7 @@ export function isOnProtectedBranch(cwd: string = process.cwd()): boolean {
  *   - No rendered files scanned → return null (nothing installed to check).
  *
  * Severity is branch-scoped (see PROTECTED_BRANCHES): a hard `blocker` on
- * main/dev (or a PR into them), a non-blocking `advisory` on feature branches —
- * a feature branch inherits this drift, it does not create it.
+ * main/dev (or a PR into them), a non-blocking `advisory` on feature branches.
  *
  * `installingVersion` and `onProtectedBranch` are injected for testability;
  * they default to the package root and the resolved current branch.
