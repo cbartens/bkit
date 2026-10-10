@@ -37,7 +37,7 @@
     "registry": "https://npm.pkg.github.com",
     "access": "restricted"
   },
-  "license": "MIT",
+  "license": "(PolyForm-Noncommercial-1.0.0 OR PolyForm-Small-Business-1.0.0)",
   "scripts": {
     "bkit:gate:format": "pnpm lint-staged",
     "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",

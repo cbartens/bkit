@@ -6,6 +6,14 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **Licence: PolyForm Noncommercial 1.0.0 or PolyForm Small Business 1.0.0, replacing MIT** (#506). bkit is free for personal use, non-profits and businesses with fewer than 100 people and under US$1M revenue; larger companies need a commercial licence (bkit@bartens.biz). Code bkit's agents write is the user's. A folder with its own `LICENSE.md` uses that licence: `.bkit/core/` is PolyForm, `.bkit/shared/` is MIT-0. Full terms in `LICENSE.md`.
+
+---
+
 ## [4.12.0] — 2026-08-25
 
 ### Added

@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="#license"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <a href="#license"><img alt="License: PolyForm Noncommercial or PolyForm Small Business" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%20%2F%20Small%20Business-blue"></a>
   <img alt="Node 20+" src="https://img.shields.io/badge/node-%E2%89%A520-339933">
   <img alt="Works with Claude Code, Cursor, Codex and opencode" src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Codex%20%C2%B7%20opencode-8250df">
 </p>
@@ -126,7 +126,7 @@ Full install, upgrade and CI/Vercel token setup: [`.bkit/install.md`](.bkit/inst
 No, but you do need to read a design and a plan and decide whether they're right. Setup takes a few terminal commands, or one pasted prompt.
 
 **What does it cost?**
-bkit is free and open source. It runs on AI subscriptions you already have (Claude, Cursor, ChatGPT for Codex), on pay-as-you-go providers through opencode, or on free local models. Several agents reviewing in parallel uses more of your quota than a single chat; that's the price of the second opinions.
+bkit is free for personal use, non-profits and small businesses (fewer than 100 people and under US$1M revenue); larger companies need a commercial licence ([License](#license)). It runs on AI subscriptions you already have (Claude, Cursor, ChatGPT for Codex), on pay-as-you-go providers through opencode, or on free local models. Several agents reviewing in parallel uses more of your quota than a single chat; that's the price of the second opinions.
 
 **Can it break my live site?**
 Not without your sign-off. Work happens in a separate copy of the repo, goes through a pull request, must pass every test, and merges only when you approve.
@@ -161,4 +161,13 @@ GitHub Issues or Linear.
 
 ## License
 
-MIT
+bkit is source-available, not open source: anyone can read all of it, and it's free under either of two licences, whichever fits you.
+
+- **[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0):** personal and hobby use, and charities, schools, research bodies and government, whatever their size.
+- **[PolyForm Small Business 1.0.0](https://polyformproject.org/licenses/small-business/1.0.0):** any use, commercial included, by a person or company with fewer than 100 people and under US$1M revenue.
+
+If neither fits, email bkit@bartens.biz for a commercial licence.
+
+**The code bkit's agents write for you is yours.** The licences cover bkit itself, not what its agents produce in your repo.
+
+Full terms: [`LICENSE.md`](LICENSE.md).
