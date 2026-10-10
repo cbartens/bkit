@@ -11,7 +11,7 @@ bkit is source-available: anyone can read all of it, and you can use it for free
 Pick whichever fits. If neither does, email bkit@bartens.biz for a commercial licence.
 
 - **What bkit's agents write for you is yours.** These licences cover bkit itself, not the code, docs or other output its agents produce in your repo.
-- **A folder with its own `LICENSE.md` is covered by that file instead of this one.** Everything in `.bkit/shared/` is MIT-0, so you can do anything with those files.
+- **A folder with its own `LICENSE.md` is covered by that file instead of this one.** Everything in `.bkit/shared/` and `.bkit/templates/` is MIT-0, so you can do anything with those files, and a template you copy into your repo is yours.
 - This summary is a guide. Where it and the licence texts below differ, the licence texts apply.
 
 Required Notice: Copyright 2026 Christian Bartens (https://github.com/cbartens/bkit)
