@@ -126,8 +126,6 @@ function textVerb(ctx) {
 // ---------------------------------------------------------------------------
 /** Mutually exclusive: setting one drops the others. */
 export const PHASE_LABELS = ["bkit:design", "bkit:plan", "bkit:build", "bkit:ship", "bkit:merged"];
-/** Live alongside the phase label; `bkit:auto` is never set by a workflow, only kept. */
-export const ADDITIVE_LABELS = ["bkit:auto", "bkit:failed", "bkit:debug"];
 export function transitionLabels(current, t) {
     const have = [...new Set(current)];
     const remove = new Set();

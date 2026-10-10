@@ -108,7 +108,8 @@ function couldNotRun(res: ReturnType<typeof spawnSync>, viaNpx: boolean): boolea
   return viaNpx && /could not determine executable/i.test(String(res.stderr ?? ""));
 }
 
-const tail = (text: string, lines = 20) => text.trim().split("\n").slice(-lines).join("\n");
+/** The last 20 lines of `text`. */
+const tail = (text: string) => text.trim().split("\n").slice(-20).join("\n");
 
 /**
  * Run `body`, then `cleanup` even if SIGINT / SIGTERM arrives meanwhile, then let

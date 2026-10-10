@@ -4,8 +4,8 @@
 // Allow-list for cross-module imports (BAR-167 Phase 1+2):
 //   readBkitVersion       — from bkit-version.ts (version pin reader)
 //   deepContains          — from bkit-tiers.ts (JSON containment primitive)
-//   extractManagedBlock   — from bkit-install.ts (marker block extraction)
-//   getPkgRoot            — from bkit-paths.ts (package root resolver, no cycle)
+//   extractManagedBlock   — from bkit-markers.ts (marker block extraction)
+//   getTemplatesRoot      — from bkit-paths.ts (templates root resolver, no cycle)
 //   parseIssueTracker     — from bkit-manifest.ts (pure data, no cycle)
 //   LINT_PROSE_SCRIPT     — from bkit-manifest.ts (pure data, no cycle) — the F9
 //                           remedy text must quote the SAME string install seeds
@@ -17,8 +17,8 @@ import type { ModuleFlag } from "./bkit-cli.js";
 import { readBkitVersion } from "./bkit-version.js";
 import { deepContains, type JsonValue } from "./bkit-tiers.js";
 import { detectRetiredOwnedFiles } from "./bkit-retire.js";
-import { extractNamedBlocks, stripManagedBlock } from "./bkit-markers.js";
-import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
+import { extractManagedBlock, stripManagedBlock } from "./bkit-markers.js";
+import { getTemplatesRoot } from "./bkit-paths.js";
 import {
   parseIssueTracker,
   DEFAULT_ISSUE_TRACKER,
@@ -750,11 +750,7 @@ export function detectLegacyBkitEnvelope(cwd: string, relPath: string): Prefligh
  * Runs deepContains(template, consumerFile) — fires when ok=false.
  * Severity: advisory.
  */
-export function detectTier2JsonDrift(
-  cwd: string,
-  relPath: string,
-  pkgRoot: string,
-): PreflightFinding | null {
+export function detectTier2JsonDrift(cwd: string, relPath: string): PreflightFinding | null {
   const absPath = path.join(cwd, relPath);
   const templatePath = path.join(getTemplatesRoot(), relPath);
   if (!fs.existsSync(absPath) || !fs.existsSync(templatePath)) return null;
@@ -784,45 +780,22 @@ export function detectTier2JsonDrift(
 }
 
 /**
- * Advisory: detect when a markered-text file's bkit-managed block differs from the
- * template's marker block (Phase 2 — tier2-text-drift advisory, BAR-167).
+ * Advisory: detect when a markered-text file's bkit-managed block is missing a line the
+ * template's block carries.
  *
- * Fires when:
- *   - Consumer file exists AND has bkit markers
- *   - Template file exists AND has a bkit marker block
- *   - The extracted consumer block != extracted template block (byte-equal check)
- *
- * Does NOT fire when markers are absent from consumer (the `markers-missing` case).
- *
- * Follows `[Context] Message` advisory format.
+ * Fires when the consumer file and the template both carry a bkit-managed block and the
+ * consumer block lacks a required template line. A consumer file without markers is
+ * consumer-owned and never flagged. Content outside the markers is never compared.
  */
-export function detectTier2TextDrift(
-  cwd: string,
-  relPath: string,
-  pkgRoot: string,
-): PreflightFinding | null {
-  void pkgRoot; // signature kept for call-site compatibility; templates resolve via getTemplatesRoot
+export function detectTier2TextDrift(cwd: string, relPath: string): PreflightFinding | null {
   const absPath = path.join(cwd, relPath);
   const templatePath = path.join(getTemplatesRoot(), relPath);
   if (!fs.existsSync(absPath) || !fs.existsSync(templatePath)) return null;
 
-  const consumerContent = fs.readFileSync(absPath, "utf-8");
-  const templateContent = fs.readFileSync(templatePath, "utf-8");
-
-  // Every named (and the default unnamed) bkit-managed block in the TEMPLATE is the
-  // authoritative scope. Compare each against the consumer's same-named block:
-  //   - consumer lacks it  → "missing"  (unless the template marks the block `optional`)
-  //   - consumer has it but content differs → "drifted"
-  // Content OUTSIDE bkit:start/bkit:end is consumer-owned and never compared, so a
-  // freely-edited file only trips on its bkit-owned regions — no false positives.
-  const templateBlocks = extractNamedBlocks(templateContent);
-  if (templateBlocks.size === 0) return null; // template owns no marked region in this file
-
-  const consumerBlocks = extractNamedBlocks(consumerContent);
-  // Consumer carries no bkit markers at all → fully consumer-owned (markers-missing case),
-  // or has only the bare wrapper of a different file shape. Never flag a file the consumer
-  // wrote without bkit markers.
-  if (consumerBlocks.size === 0) return null;
+  const templateBlock = extractManagedBlock(fs.readFileSync(templatePath, "utf-8"));
+  if (templateBlock === null) return null;
+  const consumerBlock = extractManagedBlock(fs.readFileSync(absPath, "utf-8"));
+  if (consumerBlock === null) return null;
 
   // Significant lines = load-bearing block content: non-blank, non-comment, trimmed (indentation
   // is not semantic). Comment lines never trip drift.
@@ -835,49 +808,28 @@ export function detectTier2TextDrift(
       );
 
   // A required line is real bkit content the consumer must retain. A bare YAML mapping key (`env:`)
-  // is structural scaffolding — a consumer with the child assignments has the structure wherever
-  // it placed the marker. A `{{TOKEN}}` line renders per-consumer, so it can never be matched
+  // is structural scaffolding. A `{{TOKEN}}` line renders per-consumer, so it can never be matched
   // literally. Neither counts as content for drift. (`${{ … }}` is a GitHub Actions expression,
   // NOT a bkit token — the negative lookbehind keeps those enforced.)
   const isStructural = (line: string): boolean => /^[A-Za-z0-9_.-]+:$/.test(line);
   const hasBkitToken = (line: string): boolean => /(?<!\$)\{\{[^}]+\}\}/.test(line);
-  const requiredLines = (body: string): string[] =>
-    significantLines(body).filter((l) => !isStructural(l) && !hasBkitToken(l));
 
-  const missing: string[] = [];
-  const drifted: string[] = [];
-  for (const [name, tBlock] of templateBlocks) {
-    const label = name || "(default block)";
-    // An `optional` block is fully consumer-owned: bkit seeds it but never flags missing OR drift.
-    // A consumer that dropped the block is opted out, not broken.
-    if (tBlock.optional) continue;
-    const cBlock = consumerBlocks.get(name);
-    if (!cBlock) {
-      missing.push(label);
-      continue;
-    }
-    // Subset / presence: the block drifts only if the consumer is MISSING a required bkit line.
-    // Extras, reordering, re-indentation, comments, and marker placement (`env:` inside vs outside
-    // the marker) are all fine — a consumer that has all the bkit content "and more" stays quiet;
-    // a genuinely dropped or edited required line still gates.
-    const consumerLines = new Set(significantLines(cBlock.body));
-    if (requiredLines(tBlock.body).some((l) => !consumerLines.has(l))) drifted.push(label);
-  }
+  // Subset / presence: the block drifts only if the consumer is MISSING a required bkit line.
+  // Extras, reordering, re-indentation and comments are all fine.
+  const consumerLines = new Set(significantLines(consumerBlock));
+  const dropped = significantLines(templateBlock).filter(
+    (l) => !isStructural(l) && !hasBkitToken(l) && !consumerLines.has(l),
+  );
+  if (dropped.length === 0) return null;
 
-  if (missing.length === 0 && drifted.length === 0) return null;
-
-  const parts = [...missing.map((n) => `missing: ${n}`), ...drifted.map((n) => `drifted: ${n}`)];
-  const details = parts.slice(0, 6).join("; ");
-  const more = parts.length > 6 ? ` (+${parts.length - 6} more)` : "";
   return {
     id: "tier2-text-drift",
     severity: "advisory",
-    detect: `${relPath} has bkit-managed block(s) that differ from the shipped template — ${details}${more}.`,
+    detect: `${relPath} has a bkit-managed block missing ${dropped.length} line(s) of the shipped template.`,
     action:
-      `Re-sync the bkit-managed block(s) in ${relPath} from .bkit/templates/${relPath} ` +
+      `Re-sync the bkit-managed block in ${relPath} from .bkit/templates/${relPath} ` +
       "(run `pnpm bkit install`, or copy the block between its `bkit:start`/`bkit:end` markers). " +
-      "Content outside the markers is preserved. A block marked `bkit:start <name> optional` may be " +
-      "deleted (markers included) without this warning.",
+      "Content outside the markers is preserved.",
   };
 }
 
@@ -964,13 +916,8 @@ function semverGt(a: string, b: string): boolean {
 // Advisory: missing MCP server entries in .mcp.json / .cursor/mcp.json
 // ---------------------------------------------------------------------------
 
-/**
- * The set of MCP server keys that bkit considers required in any mcpServers object.
- * Exported so tests can reference it without duplication.
- *
- * For tracker-aware checks use `requiredMcpServersForTracker(tracker)` instead.
- */
-export const REQUIRED_MCP_SERVERS: readonly string[] = ["linear", "github"];
+/** Every MCP server key bkit manages; `requiredMcpServersForTracker` picks the required subset. */
+const REQUIRED_MCP_SERVERS: readonly string[] = ["linear", "github"];
 
 /**
  * Return the MCP server keys required for a given issue tracker.
@@ -994,15 +941,14 @@ export function requiredMcpServersForTracker(tracker: IssueTracker): readonly st
  *   - File present, mcpServers missing a required key → one advisory per missing key
  *   - File present, all required keys present → return []
  *
- * Pass `issueTracker` to narrow which MCP servers are required. Defaults to checking
- * `REQUIRED_MCP_SERVERS` (all servers) for backward compatibility.
+ * `issueTracker` selects which MCP servers are required.
  *
  * Follows `[context] Message` advisory format.
  */
 export function detectMissingMcpServers(
   cwd: string,
   relPath: string,
-  issueTracker?: IssueTracker,
+  issueTracker: IssueTracker,
 ): PreflightFinding[] {
   const absPath = path.join(cwd, relPath);
   if (!fs.existsSync(absPath)) return [];
@@ -1019,8 +965,7 @@ export function detectMissingMcpServers(
       ? (doc.mcpServers as Record<string, unknown>)
       : null;
 
-  const requiredServers =
-    issueTracker !== undefined ? requiredMcpServersForTracker(issueTracker) : REQUIRED_MCP_SERVERS;
+  const requiredServers = requiredMcpServersForTracker(issueTracker);
 
   const findings: PreflightFinding[] = [];
   for (const key of requiredServers) {
@@ -1052,7 +997,6 @@ export function detectMissingMcpServers(
  *
  * Semantics:
  *   - File absent / malformed / no mcpServers → return []
- *   - `issueTracker` undefined → return [] (cannot know what's allowed → no false positives)
  *   - bkit-managed server present but not in `requiredMcpServersForTracker(tracker)` → one advisory
  *
  * Follows `[context] Message` advisory format.
@@ -1060,10 +1004,8 @@ export function detectMissingMcpServers(
 export function detectExtraMcpServers(
   cwd: string,
   relPath: string,
-  issueTracker?: IssueTracker,
+  issueTracker: IssueTracker,
 ): PreflightFinding[] {
-  if (issueTracker === undefined) return [];
-
   const absPath = path.join(cwd, relPath);
   if (!fs.existsSync(absPath)) return [];
 
@@ -1397,7 +1339,6 @@ export function runPreflight(
 
   // --- Advisory detectors ---
   // Phase 1: legacy envelope advisory (fires before JSON drift)
-  const pkgRoot = getPkgRoot();
   for (const relPath of [".claude/settings.json", ".cursor/hooks.json"]) {
     const envelopeAdvisory = detectLegacyBkitEnvelope(cwd, relPath);
     if (envelopeAdvisory) advisories.push(envelopeAdvisory);
@@ -1405,13 +1346,13 @@ export function runPreflight(
 
   // Phase 1: JSON containment drift advisory
   for (const relPath of [".claude/settings.json", ".cursor/hooks.json"]) {
-    const driftAdvisory = detectTier2JsonDrift(cwd, relPath, pkgRoot);
+    const driftAdvisory = detectTier2JsonDrift(cwd, relPath);
     if (driftAdvisory) advisories.push(driftAdvisory);
   }
 
   // Phase 2: markered-text block drift advisory (BAR-167)
   for (const relPath of MARKERED_TEXT_DRIFT_PATHS) {
-    const textDriftAdvisory = detectTier2TextDrift(cwd, relPath, pkgRoot);
+    const textDriftAdvisory = detectTier2TextDrift(cwd, relPath);
     if (textDriftAdvisory) advisories.push(textDriftAdvisory);
   }
 

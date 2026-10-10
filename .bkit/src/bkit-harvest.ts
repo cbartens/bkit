@@ -17,7 +17,6 @@
 //     the only record of pruned consumer friction until the caller commits it; readers
 //     fold it.
 //   - Malformed consumer lines are NEVER pruned (not ours to delete).
-//   - Per-consumer timeout + continue-on-stall.
 //   - Grep-able [bkit-harvest] log lines.
 //   - Relies on the tolerant `parse` for half-written tails.
 //
@@ -32,7 +31,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   fold,
-  identity,
   parse,
   resolveRepoSlug,
   type FoldedState,
@@ -53,8 +51,6 @@ export const HARVEST_COPY_FILES = ["stats.jsonl", "friction.jsonl"] as const;
 export const HARVEST_PRUNE_FILES = ["friction.jsonl"] as const;
 /** Files to COUNT-ONLY from each consumer's `docs/` directory (metadata only). */
 export const HARVEST_COUNT_FILES = ["deferrals.jsonl", "failures.jsonl"] as const;
-/** Per-consumer read timeout in milliseconds. */
-export const HARVEST_TIMEOUT_MS = 10_000;
 /** Path (relative to bkit repo root) for the consumers list. */
 export const CONSUMERS_FILE = "docs/consumers.md";
 /**
@@ -431,29 +427,3 @@ export function consumerPathToSlug(consumerPath: string): string {
   );
   return fallback;
 }
-
-/**
- * Verify that a consumer file's content and mtime are unchanged.
- * Returns true if unchanged (copy-only invariant holds).
- * Used in integration tests; exported for external verification.
- */
-export interface FileSnapshot {
-  content: string;
-  mtimeMs: number;
-  size: number;
-}
-
-export function snapshotFile(filePath: string): FileSnapshot | null {
-  if (!fs.existsSync(filePath)) return null;
-  const stat = fs.statSync(filePath);
-  const content = fs.readFileSync(filePath, "utf-8");
-  return { content, mtimeMs: stat.mtimeMs, size: stat.size };
-}
-
-export function fileUnchanged(before: FileSnapshot, after: FileSnapshot): boolean {
-  return before.content === after.content && before.size === after.size;
-}
-
-// Re-export identity for dedup verification in tests
-export { identity };
-export type { TelemetryEvent };

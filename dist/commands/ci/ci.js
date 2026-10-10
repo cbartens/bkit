@@ -93,7 +93,8 @@ function couldNotRun(res, viaNpx) {
     // npx exits 1 with this message when the package is not installed locally.
     return viaNpx && /could not determine executable/i.test(String(res.stderr ?? ""));
 }
-const tail = (text, lines = 20) => text.trim().split("\n").slice(-lines).join("\n");
+/** The last 20 lines of `text`. */
+const tail = (text) => text.trim().split("\n").slice(-20).join("\n");
 /**
  * Run `body`, then `cleanup` even if SIGINT / SIGTERM arrives meanwhile, then let
  * the signal take its default effect. Without the listeners Node dies on the

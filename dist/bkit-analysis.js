@@ -9,20 +9,13 @@
 //   5. Per-rule compliance rate over `kind:"compliance"` rows.
 //   6. Per-`bkitVersion`→CHANGELOG release-attributed regression.
 //
-// Rollup writer:
-//   writeRollupShard(hotPath, bkitRoot) — emits a shard at ARCHIVE_SHARD_TEMPLATE,
-//   triggered when hot file row count > MAX_ROWS_BEFORE_ROLLUP.
-//
 // Backfill scope (DE-37): GitHub-API backfill limited to the repo where bkit is
 // installed; PRs closed >= `--since` date; fields: additions, deletions, changedFiles,
 // commits count (for correctiveCommits proxy). Model-self-report counterSource.
 //
 // All computation is advisory + inform-only; never gates any workflow.
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { ARCHIVE_SHARD_TEMPLATE, MAX_ROWS_BEFORE_ROLLUP, UNJUSTIFIED_REASON, foldFrom, parse, } from "./bkit-telemetry.js";
-export { ARCHIVE_SHARD_TEMPLATE, MAX_ROWS_BEFORE_ROLLUP };
+import { UNJUSTIFIED_REASON, foldFrom } from "./bkit-telemetry.js";
 export function computeCounts(events) {
     const byKind = {};
     const byWorkflow = {};
@@ -289,91 +282,4 @@ export function runAnalysis(paths) {
         deferralDiscipline,
         reportLines,
     };
-}
-// ---------------------------------------------------------------------------
-// Rollup writer (WS4-T4) — emits archive shard at ARCHIVE_SHARD_TEMPLATE
-// ---------------------------------------------------------------------------
-/**
- * Write a rollup shard for the hot file at `hotPath`.
- * Shard path: .bkit/archive/{basename}.{YYYYMM}.jsonl
- * Triggered when hot file row count > MAX_ROWS_BEFORE_ROLLUP.
- *
- * Decision: shard is git-tracked (committed at close with [skip ci]).
- * See DE-38 for rollup-trigger-value + committed-vs-gitignored-archive decision.
- */
-export function writeRollupShard(hotPath, bkitRoot) {
-    if (!fs.existsSync(hotPath)) {
-        console.error(`[bkit-analysis] writeRollupShard: hot file not found: ${hotPath}`);
-        return null;
-    }
-    const raw = fs.readFileSync(hotPath, "utf-8");
-    const parsed = parse(raw);
-    if (parsed.events.length <= MAX_ROWS_BEFORE_ROLLUP) {
-        console.error(`[bkit-analysis] writeRollupShard: ${parsed.events.length} rows <= threshold ${MAX_ROWS_BEFORE_ROLLUP} — no shard needed`);
-        return null;
-    }
-    const basename = path.basename(hotPath, ".jsonl");
-    const now = new Date();
-    const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const shardFilename = `${basename}.${yyyymm}.jsonl`;
-    const archiveDir = path.join(bkitRoot, ".bkit", "archive");
-    if (!fs.existsSync(archiveDir)) {
-        fs.mkdirSync(archiveDir, { recursive: true });
-    }
-    const shardPath = path.join(archiveDir, shardFilename);
-    // Append-merge: if a same-month shard already exists, fold it with the hot
-    // file and write the union, deduplicated by identity key (ts+kind+repo) in
-    // ledger order, so a second same-month rollup keeps the first batch.
-    let mergedLines;
-    if (fs.existsSync(shardPath)) {
-        const existingRaw = fs.readFileSync(shardPath, "utf-8");
-        const existingParsed = parse(existingRaw);
-        // Build a Set of seen identity keys from existing shard first (prior data
-        // wins on collision so we preserve the original timestamp ordering).
-        const seen = new Set();
-        const orderedLines = [];
-        for (const ev of existingParsed.events) {
-            const key = `${ev.ts}|${ev.kind}|${ev.repo}`;
-            if (!seen.has(key)) {
-                seen.add(key);
-                orderedLines.push(JSON.stringify(ev));
-            }
-        }
-        for (const ev of parsed.events) {
-            const key = `${ev.ts}|${ev.kind}|${ev.repo}`;
-            if (!seen.has(key)) {
-                seen.add(key);
-                orderedLines.push(JSON.stringify(ev));
-            }
-        }
-        mergedLines = orderedLines;
-    }
-    else {
-        mergedLines = parsed.events.map((ev) => JSON.stringify(ev));
-    }
-    fs.writeFileSync(shardPath, mergedLines.join("\n") + (mergedLines.length > 0 ? "\n" : ""), "utf-8");
-    // Truncate hot file (keep empty, ready for fresh appends)
-    fs.writeFileSync(hotPath, "", "utf-8");
-    console.error(`[bkit-analysis] Rollup shard written: ${shardPath} (${mergedLines.length} rows archived)`);
-    return shardPath;
-}
-/**
- * foldFrom a hot file + its archive shards and return the combined result.
- * This is the reader side of the rollup writer contract.
- * The WS-1 `foldFrom` already handles reading hot + archive shards, so this
- * is a thin convenience wrapper that resolves the shard paths for a given hot file.
- */
-export function foldWithArchive(hotPath, bkitRoot) {
-    const basename = path.basename(hotPath, ".jsonl");
-    const archiveDir = path.join(bkitRoot, ".bkit", "archive");
-    const shardPaths = [];
-    if (fs.existsSync(archiveDir)) {
-        for (const entry of fs.readdirSync(archiveDir)) {
-            if (entry.startsWith(`${basename}.`) && entry.endsWith(".jsonl")) {
-                shardPaths.push(path.join(archiveDir, entry));
-            }
-        }
-    }
-    // hotPath first so fold sorts by ts (ascending) — later shards win
-    return foldFrom([...shardPaths, hotPath]);
 }

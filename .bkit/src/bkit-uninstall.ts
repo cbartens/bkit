@@ -14,7 +14,6 @@
 //   --force         override the byte-equal-text hash guard (delete even if consumer modified)
 //   --nuke          confirm prompt then wipe ALL bkit-managed files regardless of format
 //   --yes           skip interactive confirm for --nuke
-//   --keep-npmrc    skip .npmrc removal (default: skip anyway — .npmrc is not bkit-managed)
 //
 // Observability: console.error("[bkit-uninstall] …") for all error paths.
 
@@ -629,9 +628,8 @@ export async function runUninstall(
   }
 
   // Full/core uninstall: strip the `bkit` install-state object from package.json
-  // (issueTracker / opencodeProvider(s) / cloudAgents). Legacy depUpdater /
-  // renovateRunner / runners keys go with the block. Scripts and devDeps are the
-  // consumer's and stay. No try/catch — malformed package.json is a hard failure on full
+  // (issueTracker / opencodeProvider(s) / cloudAgents), whatever keys it holds. Scripts
+  // and devDeps are the consumer's and stay. No try/catch — malformed package.json is a hard failure on full
   // teardown (same as a missing dest would be).
   if (moduleList.includes("core") && !ctx.dryRun) {
     const pkgPath = path.join(ctx.cwd, "package.json");

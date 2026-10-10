@@ -79,7 +79,6 @@ Compliance grader stderr. Canonical grep patterns:
 - `[bkit-analysis] #183 Size↔outcome regression (dispatch-size threshold: N linesAdded):` — regression header.
 - `[bkit-analysis] counterSource trust: shell-bus=N (trusted) | model-self-report=N (untrusted, pre-P3)` — trust tier.
 - `[bkit-analysis] Per-rule compliance rates:` — compliance header.
-- `[bkit-analysis] writeRollupShard: {message}` — rollup status.
 
 ### `[bkit-roadmap]` prefix
 

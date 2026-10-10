@@ -27,7 +27,6 @@ import {
   detectHoles,
   formatAdvisoryReport,
   main,
-  type RunPath,
 } from "./bkit-status-hole-detector";
 
 // __dirname-anchored (G4) — resolves regardless of vitest's invocation cwd.

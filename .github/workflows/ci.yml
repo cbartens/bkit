@@ -1,3 +1,7 @@
+# Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
+# The job-level `env:` of bkit-tests-static is where the `[verbose ci]` commit marker is
+# read; keep it if you want verbose-CI support.
 name: CI
 
 on:
@@ -7,28 +11,29 @@ on:
   pull_request:
     branches: [main, dev]
 
-# pull-requests: read lets bkit-tests-scope call repos/{}/commits/{sha}/pulls to tell a
-# merged-PR dev push (light) from a direct dev push (full).
 permissions:
   actions: read
   contents: read
+  # bkit-tests-scope reads repos/{repo}/commits/{sha}/pulls.
   pull-requests: read
 
-# Cancel superseded in-progress runs on the same PR only. Never on push to main/dev.
+# One run per branch or pull request. A newer run cancels the older one on every event.
+# A pull request keys on its number; a push or dispatch keys on the ref. A PR and a push to
+# dev therefore still overlap. A shared resource those two runs both touch is serialised by
+# the tenant lease (bkit-tests-reset), not by this group. A workflow_run observer sees the
+# latest run on that ref only. A push plans against the last green run on the branch, not
+# github.event.before, so a cancelled run's changes stay in scope.
+# See docs/deployments.md § "One run per branch or pull request".
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # ── bkit-tests-scope ── always-on planner (no `if:`; never skips). Emits the bkit-test-plan
-  # JSON read via fromJSON(needs.bkit-tests-scope.outputs.plan).<field> + a $GITHUB_STEP_SUMMARY table.
-  # bkit is single-package, no deploy — web_affected/run_e2e/run_live are always false and
-  # there's no turbo affected-graph. The full multi-tier decide ships to consumers in
-  # .bkit/templates/.github/workflows/ci.yml; this dogfoods the marker + run_level +
-  # merged-PR-escalation core. Test lanes (bkit-tests-static, bkit-tests-unit,
-  # bkit-tests-integration) run in parallel; the capstone bkit-tests-check needs all three.
+  # ── bkit-tests-scope ─────────────────────────────────────────────────────
+  # Planner, always on (no `if:`): emits the bkit-test-plan JSON every lane reads via
+  # fromJSON(needs.bkit-tests-scope.outputs.plan) plus a $GITHUB_STEP_SUMMARY table.
+  # Single package, no deploy: web_affected / run_e2e / run_live are always false.
   bkit-tests-scope:
-    name: bkit-tests-scope
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
@@ -57,8 +62,7 @@ jobs:
 
           MARKERS=""
           case "$MSG" in *"[force build]"*) MARKERS="$MARKERS force-build" ;; esac
-          # [force full] — the consumer-scaffold hammer (full + bypass web_affected →
-          # integration + e2e + @live). Here it maps to run_level=full (same as [force build]).
+          # [force full] maps to run_level=full, same as [force build]: no web_affected tier here.
           case "$MSG" in *"[force full]"*) MARKERS="$MARKERS force-full" ;; esac
           case "$MSG" in *"[force cache]"*) MARKERS="$MARKERS force-cache" ;; esac
           case "$MSG" in *"[verbose ci]"*) MARKERS="$MARKERS verbose-ci" ;; esac
@@ -95,9 +99,7 @@ jobs:
             RUN_LEVEL="none"; DEPTH_SOURCE="marker:skip-ci"; WHETHER_REASON="skipped-because:skip-ci-marker"
             echo "🛑 [skip ci] → run_level=none"
           elif [ "$HAS_FORCE_BUILD" = "true" ] || [ "$HAS_FORCE_FULL" = "true" ]; then
-            # Layer 2 — how much to run. [force build] / [force full] both escalate to full
-            # here; in a deploy-bearing consumer scaffold [force full] additionally bypasses
-            # web_affected (integration + e2e + @live) — bkit's own repo has no such tiers.
+            # Layer 2 — how much to run. [force build] / [force full] both escalate to full.
             if [ "$HAS_FORCE_FULL" = "true" ]; then
               RUN_LEVEL="full"; DEPTH_SOURCE="marker:force-full"; WHETHER_REASON="ran-because:force-full"
               echo "✅ [force full] → run_level=full"
@@ -155,9 +157,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
         run: |
-          # bkit is single-package with no deploy: web_affected / run_e2e /
-          # run_live / global_dep_changed are constant false. The fields stay in
-          # the contract; the bkit-test-plan schema is identical to the consumer template.
+          # Single package, no deploy: web_affected / run_e2e / run_live /
+          # global_dep_changed are constant false; the fields stay in the plan contract.
           PLAN_JSON=$(jq -cn \
             --arg schema "bkit-test-plan" \
             --arg run_level "${RUN_LEVEL:-none}" \
@@ -224,9 +225,9 @@ jobs:
             echo "| markers | ${MARKERS:-none} |"
             echo ""
             if [ "$RUN_LEVEL" = "none" ]; then
-              echo "> ⏭️ **bkit-tests-static + bkit-tests-unit skipped** — $WHETHER"
+              echo "> ⏭️ **test lanes skipped** — $WHETHER"
             else
-              echo "> ✅ **bkit-tests-static + bkit-tests-unit run** (run_level=\`$RUN_LEVEL\`); web / e2e / live tiers are N/A for bkit."
+              echo "> ✅ **test lanes run** (run_level=\`$RUN_LEVEL\`); no web / e2e / live tiers."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -239,23 +240,52 @@ jobs:
             echo "> ⚠️ Run cancelled before the plan-table could be written (concurrency cancel-in-progress)."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── bkit-tests-static ─────────────────────────────────────────────────────
+  # ── bkit-tests-static ────────────────────────────────────────────────────
   # Static-analysis lane: typecheck, format, prose lint, slop, actionlint,
-  # dist-freshness, bkit check. Runs on a CLEAN tree (no test artifacts).
-  # Parallel sibling of bkit-tests-unit — wall-clock = MAX(lane).
+  # bkit check. Runs on a CLEAN tree (no test artifacts). Parallel sibling of
+  # bkit-tests-unit — wall-clock = MAX(lane).
   bkit-tests-static:
-    name: bkit-tests-static
     needs: [bkit-tests-scope]
     if: fromJSON(needs.bkit-tests-scope.outputs.plan).run_level != 'none'
     runs-on: ubuntu-latest
-    outputs:
-      cache_skip: ${{ steps.cache.outputs.skip }}
+    # [verbose ci] marker — escalates CI log detail for one run. Composes freely with
+    # [force build] / [force full] / [force cache] / [skip ci] (independent contains() per marker).
+    # Markers are bare substrings — bkit-emitted commits prepend `bkit ` for attribution
+    # (e.g. `bkit [verbose ci]`); substring match honours both forms.
+    # See docs/deployments.md § "Commit-message force tags" for where to put the marker
+    # (PR title for feature-branch pushes vs commit message for direct dev/main pushes)
+    # and docs/testing.md § "CI verbosity" for the full knob list.
+    #
+    # BKIT_GH_TOKEN_INSTALL is declared at the job level so $BKIT_GH_TOKEN_INSTALL is available to the
+    # install step's `pnpm config set` (the REQUIRED GH Packages auth — pnpm >=10.34.3
+    # 401s on a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution) and to any later
+    # pnpm/npx invocation. The committed project .npmrc carries ONLY the @cbartens
+    # registry mapping; `pnpm config set` writes the shell-expanded literal token into
+    # pnpm's user-level config before install (works across pnpm 10.x/11.x). The install
+    # step also keeps its own env: block.
+    #
+    # NODE_OPTIONS is set HERE, in static YAML, and must NEVER be written to $GITHUB_ENV.
+    # The runner blocklists NODE_OPTIONS for the $GITHUB_ENV / set-env workflow command:
+    # the write is REJECTED with
+    #   ##[error]Can't store NODE_OPTIONS output parameter using '$GITHUB_ENV' command.
+    # while the step's conclusion stays `success`. The marker test is spelled out, not
+    # `env.VERBOSE_CI`: the `env` context is NOT available to a job-level `env:` value. A
+    # step with its own `env:` block REPLACES this value rather than merging, so such a
+    # step must restate the flags. See docs/testing.md § "CI verbosity".
+    env:
+      TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
+      VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
+      NODE_OPTIONS: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '--trace-warnings --trace-deprecation' || '' }}
+      BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history so slop:delta can materialise the PR base ref as a worktree.
           fetch-depth: 0
 
+      # Node/TS toolchain region. On a non-Node repo, replace these steps with your
+      # stack's setup / install commands (and the typecheck / lint / test steps below with
+      # its own). Replace `{{NODE_VERSION}}` with your Node major (`.bkit/templates.md`).
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
@@ -264,41 +294,67 @@ jobs:
       # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
+      # Under [verbose ci]: propagate DEBUG to all subsequent steps via $GITHUB_ENV. Note
+      # that steps with their own `env:` block override $GITHUB_ENV — those steps must
+      # inline it in their env: declaration to stay verbose-aware. NODE_OPTIONS is NOT
+      # set here; the runner rejects that write while reporting success.
+      # See the job-level `env:` block above.
+      - name: Configure Verbose CI
+        if: env.VERBOSE_CI == '1'
+        run: |
+          echo "🔊 [verbose ci] marker active — escalating log detail"
+          echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
+
+      # [force build] / [force cache] run the suite even when this SHA already has a green run.
       - name: Check SHA Cache
         id: cache
         env:
           GH_TOKEN: ${{ github.token }}
-          PLAN: ${{ needs.bkit-tests-scope.outputs.plan }}
+          # User-controlled text (PR title) arrives via env: (runtime expansion,
+          # injection-safe) — never inlined into the run: body.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          SKIP="false"
-          FORCE=$(echo "$PLAN" | jq -r '(.markers_present // []) | any(.[]; . == "force-build" or . == "force-cache")' 2>/dev/null || echo "false")
-          if [ "$FORCE" = "true" ]; then
-            echo "::notice::force marker present — ignoring SHA cache."
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            MSG="$PR_TITLE"
           else
-            SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
-            PRIOR=$(gh run list \
-              --repo "$GITHUB_REPOSITORY" \
-              --workflow "$GITHUB_WORKFLOW" \
-              --status success \
-              --limit 50 \
-              --json headSha,createdAt \
-              --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
-              2>/dev/null || echo 0)
-            if [ "${PRIOR:-0}" -gt 0 ]; then
-              SKIP="true"
-              echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
-            fi
+            MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
           fi
-          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+          case "$MSG" in
+            *"[force build]"*|*"[force cache]"*)
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::force marker present — ignoring SHA cache."
+              exit 0 ;;
+          esac
+          SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
+          PRIOR=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow "$GITHUB_WORKFLOW" \
+            --status success \
+            --limit 50 \
+            --json headSha,createdAt \
+            --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
+            2>/dev/null || echo 0)
+          if [ "${PRIOR:-0}" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      # Promotion-lag reminder (non-blocking). Renovate reads its config ONLY from the default
-      # branch, and scheduled / default-branch-triggered Actions run the default branch's copy
-      # of each workflow — so a renovate.json5 or .github/workflows/ edit that lands on dev but
-      # is never promoted runs STALE until a dev -> default branch PR lands. Warns (never fails) on
-      # dev pushes when those consumed-from-default-branch surfaces differ. Same check as the
-      # template ci.yml's promotion-lag step. See docs/deployments.md § "Promotion-lag warning".
+      # Promotion-lag reminder (non-blocking). Renovate reads its config
+      # ONLY from the default branch, and scheduled / default-branch-triggered Actions run the
+      # default branch's copy of each workflow — so a renovate.json5 or .github/workflows/ edit
+      # that lands on dev but is never promoted runs STALE for everyone until a dev -> default
+      # branch PR lands. CI on dev validates the code; nothing otherwise checks it reached the
+      # default branch. Warns (never fails) on dev pushes when those consumed-from-default-branch
+      # surfaces differ — keyed ONLY on those surfaces, so ordinary app-code dev pushes stay
+      # quiet. The default branch is read at runtime, so this step is identical for every repo.
+      # Safe to keep in any repo: it only runs on dev pushes and self-skips when the default
+      # branch is dev/unset, so it never fires where the dev -> default-branch flow does not apply.
+      # See docs/deployments.md § "Promotion-lag warning".
       - name: Check Default Branch Lags Dev
-        if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
@@ -330,8 +386,19 @@ jobs:
 
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
-        run: pnpm install --frozen-lockfile
+        # Write the GH Packages auth token into pnpm's user-level config before install
+        # (REQUIRED — pnpm >=10.34.3 401s on a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} ref).
+        run: |
+          pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"
+          pnpm install --frozen-lockfile
+        env:
+          BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
 
+      # Static checks first — they read the source tree and must scan it CLEAN.
+      # Vitest/build run AFTER (below): they write coverage, dist/, and other
+      # artifacts that would otherwise pollute the Slop Scan and bkit check inputs.
+      # Keep this group (typecheck → prettier → vale → slop → bkit check) ahead of
+      # the test/build group if you reorder.
       - name: Run Typecheck
         if: steps.cache.outputs.skip != 'true'
         run: pnpm typecheck
@@ -340,8 +407,9 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm format:check
 
-      # vale is not on the runner and .vale/styles/ is gitignored; this step installs a pinned
-      # vale tarball and runs `vale sync` (matches .cursor/Dockerfile / docs/setup.md).
+      # vale is not on the runner and .vale/styles/ is gitignored, so without this step
+      # `pnpm lint:prose` guard-skips (write-good missing) and the prose gate is silently
+      # dead. Pinned tarball + `vale sync` (else E100: write-good missing).
       - name: Install Vale
         if: steps.cache.outputs.skip != 'true'
         env:
@@ -379,7 +447,8 @@ jobs:
         run: pnpm slop:delta "$BASE_SHA"
 
       # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
-      # (${{ }} expression syntax, shellcheck on run: blocks).
+      # (${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
+      # workflows that are valid YAML but invalid GHA; actionlint catches that class.
       - name: Run actionlint
         if: steps.cache.outputs.skip != 'true'
         run: |
@@ -394,35 +463,28 @@ jobs:
           done
           "$RUNNER_TEMP/actionlint" -color
 
-      # bkit ships pre-built (no `prepare: tsc`). dist/ must be
-      # regenerated and committed whenever .bkit/src/**.ts changes.
-      # This step rebuilds dist/ in CI and fails if the working tree differs
-      # from the committed version.
-      - name: Assert Dist Freshness
-        if: steps.cache.outputs.skip != 'true'
-        run: pnpm bkit:check:dist
-
       - name: Run bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
 
-      # Tier-3 status-hole detector — ADVISORY, fail-open (the CLI exits 0 even
-      # when it finds holes; `|| true` also swallows any non-zero exit).
+      # bkit repo only: dist/ is committed; rebuild it and fail when it differs.
+      - name: Assert Dist Freshness
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm bkit:check:dist
+
+      # bkit repo only: status-hole detector, advisory (exits 0 when it finds holes).
       - name: Check Status Holes
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit:audit:status || true
 
-  # ── bkit-tests-unit ──────────────────────────────────────────────────────
-  # Unit-test lane: vitest only. Parallel sibling of bkit-tests-static —
-  # wall-clock = MAX(lane). Emits tests_ran for the non-hollow capstone check.
+  # ── bkit-tests-unit ───────────────────────────────────────────────────────
+  # Unit lane. Parallel sibling of bkit-tests-static and bkit-tests-integration.
   bkit-tests-unit:
-    name: bkit-tests-unit
     needs: [bkit-tests-scope]
     if: fromJSON(needs.bkit-tests-scope.outputs.plan).run_level != 'none'
     runs-on: ubuntu-latest
-    # Job-level permissions REPLACE the workflow-level block (they are not additive). The
-    # coverage report step needs pull-requests: write to post its PR comment; the Check SHA
-    # Cache step calls `gh run list`, so actions: read must be re-declared here or it breaks.
+    # Job-level permissions replace the workflow-level block: pull-requests: write posts
+    # the coverage comment; actions: read keeps the SHA cache's `gh run list` working.
     permissions:
       actions: read
       contents: read
@@ -430,6 +492,14 @@ jobs:
     outputs:
       cache_skip: ${{ steps.cache.outputs.skip }}
       tests_ran: ${{ steps.vitest.outputs.ran }}
+    # Env vars duplicated from bkit-tests-static's job-level `env:`.
+    # See the comment above that `env:` in bkit-tests-static — NODE_OPTIONS is a
+    # static YAML key here and never a $GITHUB_ENV write.
+    env:
+      TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
+      VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
+      NODE_OPTIONS: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '--trace-warnings --trace-deprecation' || '' }}
+      BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -439,46 +509,62 @@ jobs:
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
+      # NODE_OPTIONS is a job-level `env:` key above, never a $GITHUB_ENV write — the runner
+      # rejects that write and still reports success. See bkit-tests-static's block comment.
+      - name: Configure Verbose CI
+        if: env.VERBOSE_CI == '1'
+        run: |
+          echo "🔊 [verbose ci] marker active — escalating log detail"
+          echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
+
+      # [force build] / [force cache] run the suite even when this SHA already has a green run.
       - name: Check SHA Cache
         id: cache
         env:
           GH_TOKEN: ${{ github.token }}
-          PLAN: ${{ needs.bkit-tests-scope.outputs.plan }}
+          # User-controlled text (PR title) arrives via env: (runtime expansion,
+          # injection-safe) — never inlined into the run: body.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          SKIP="false"
-          FORCE=$(echo "$PLAN" | jq -r '(.markers_present // []) | any(.[]; . == "force-build" or . == "force-cache")' 2>/dev/null || echo "false")
-          if [ "$FORCE" = "true" ]; then
-            echo "::notice::force marker present — ignoring SHA cache."
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            MSG="$PR_TITLE"
           else
-            SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
-            PRIOR=$(gh run list \
-              --repo "$GITHUB_REPOSITORY" \
-              --workflow "$GITHUB_WORKFLOW" \
-              --status success \
-              --limit 50 \
-              --json headSha,createdAt \
-              --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
-              2>/dev/null || echo 0)
-            if [ "${PRIOR:-0}" -gt 0 ]; then
-              SKIP="true"
-              echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
-            fi
+            MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
           fi
-          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+          case "$MSG" in
+            *"[force build]"*|*"[force cache]"*)
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::force marker present — ignoring SHA cache."
+              exit 0 ;;
+          esac
+          SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
+          PRIOR=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow "$GITHUB_WORKFLOW" \
+            --status success \
+            --limit 50 \
+            --json headSha,createdAt \
+            --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
+            2>/dev/null || echo 0)
+          if [ "${PRIOR:-0}" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"
+          pnpm install --frozen-lockfile
+        env:
+          BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
 
-      # UNIT coverage run. The gate command itself — scoped via --coverage.include to an explicit
-      # list of .bkit/src logic files plus .bkit/src/commands/** — with the branch-coverage floor
-      # --coverage.thresholds.branches (set just below current, ratcheted up) that reds the lane on a
-      # regression — lives in the `test:coverage:unit` package.json script. SINGLE SOURCE: the
-      # /bkit-build Run Tests step runs the SAME script (via bkit:gate:static-unit). This step only
-      # appends the JSON test reporter + outputFile for the executed-count below. Its parallel
-      # sibling bkit-tests-integration owns the integration tier (report-only) — separate lanes, one
-      # number and executed-count per tier. Mirrors the per-tier bkit-stub:coverage scaffold shipped
-      # to consumers. See testing.md § Coverage on PRs.
+      # Unit coverage: `test:coverage:unit` scopes --coverage.include to the logic files and
+      # carries the --coverage.thresholds.branches floor; bkit:gate:static-unit runs the same
+      # script. The JSON reporter feeds the executed-count bkit-tests-check asserts.
       - name: Run Unit Tests
         id: vitest
         if: steps.cache.outputs.skip != 'true'
@@ -489,17 +575,12 @@ jobs:
           echo "ran=$UNIT_RAN" >> "$GITHUB_OUTPUT"
           echo "::notice::vitest executed $UNIT_RAN unit test(s)."
 
-      # Shell-level tests (bats) for the shipped hook scripts and the gh stub harness —
-      # shell logic vitest can't reach. jq is preinstalled on ubuntu-latest; bats-core
-      # comes from npm via npx.
+      # bkit repo only: bats over the shipped hook scripts and the gh stub harness.
       - name: Run Shell Tests (bats)
         if: steps.cache.outputs.skip != 'true'
         run: npx --yes bats tests/*.bats
 
-      # Unit coverage comment on PRs (the COMMENT step never fails the lane; the unit RUN above gates
-      # branches via --coverage.thresholds.branches). A distinct name: keys the sticky comment so the
-      # unit / integration comments don't collide. The head.repo == repo guard skips fork PRs, where
-      # GITHUB_TOKEN is read-only and the comment would fail.
+      # A distinct name: keys each sticky comment so the two do not collide.
       - name: Report Unit Coverage on PR
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
@@ -507,20 +588,18 @@ jobs:
           name: unit
           json-summary-path: coverage/unit/coverage-summary.json
           json-final-path: coverage/unit/coverage-final.json
-          file-coverage-mode: changes
+          file-coverage-mode: changes          # per-file table limited to files changed in the PR
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── bkit-tests-integration ── parallel sibling of static + unit (separate lane). Owns the
-  # integration tier: runs *.integration.test.ts and reports integration coverage scoped to the
-  # engine surface (modules/install/upgrade/uninstall). REPORT-ONLY — no --coverage.thresholds
-  # (gated on EXECUTION via the capstone's integration_ran > 0, not a %; testing.md § Coverage on PRs).
+  # ── bkit-tests-integration ────────────────────────────────────────────────
+  # Integration lane: *.integration.test.ts, coverage scoped to the engine surface
+  # (modules / install / upgrade / uninstall). Report-only: no --coverage.thresholds;
+  # bkit-tests-check gates it on its executed-count. Parallel sibling of static + unit.
   bkit-tests-integration:
-    name: bkit-tests-integration
     needs: [bkit-tests-scope]
     if: fromJSON(needs.bkit-tests-scope.outputs.plan).run_level != 'none'
     runs-on: ubuntu-latest
-    # Same job-level permissions as bkit-tests-unit: pull-requests: write for the coverage
-    # comment; actions: read for the SHA-cache `gh run list`.
+    # Same job-level permissions as bkit-tests-unit.
     permissions:
       actions: read
       contents: read
@@ -528,6 +607,12 @@ jobs:
     outputs:
       cache_skip: ${{ steps.cache.outputs.skip }}
       tests_ran: ${{ steps.vitest.outputs.ran }}
+    # Env vars duplicated from bkit-tests-static's job-level `env:`.
+    env:
+      TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
+      VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
+      NODE_OPTIONS: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '--trace-warnings --trace-deprecation' || '' }}
+      BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -537,39 +622,58 @@ jobs:
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
+      - name: Configure Verbose CI
+        if: env.VERBOSE_CI == '1'
+        run: |
+          echo "🔊 [verbose ci] marker active — escalating log detail"
+          echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
+
+      # [force build] / [force cache] run the suite even when this SHA already has a green run.
       - name: Check SHA Cache
         id: cache
         env:
           GH_TOKEN: ${{ github.token }}
-          PLAN: ${{ needs.bkit-tests-scope.outputs.plan }}
+          # User-controlled text (PR title) arrives via env: (runtime expansion,
+          # injection-safe) — never inlined into the run: body.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          SKIP="false"
-          FORCE=$(echo "$PLAN" | jq -r '(.markers_present // []) | any(.[]; . == "force-build" or . == "force-cache")' 2>/dev/null || echo "false")
-          if [ "$FORCE" = "true" ]; then
-            echo "::notice::force marker present — ignoring SHA cache."
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            MSG="$PR_TITLE"
           else
-            SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
-            PRIOR=$(gh run list \
-              --repo "$GITHUB_REPOSITORY" \
-              --workflow "$GITHUB_WORKFLOW" \
-              --status success \
-              --limit 50 \
-              --json headSha,createdAt \
-              --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
-              2>/dev/null || echo 0)
-            if [ "${PRIOR:-0}" -gt 0 ]; then
-              SKIP="true"
-              echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
-            fi
+            MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
           fi
-          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+          case "$MSG" in
+            *"[force build]"*|*"[force cache]"*)
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::force marker present — ignoring SHA cache."
+              exit 0 ;;
+          esac
+          SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
+          PRIOR=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow "$GITHUB_WORKFLOW" \
+            --status success \
+            --limit 50 \
+            --json headSha,createdAt \
+            --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
+            2>/dev/null || echo 0)
+          if [ "${PRIOR:-0}" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"
+          pnpm install --frozen-lockfile
+        env:
+          BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
 
-      # INTEGRATION coverage run, scoped via --coverage.include to the engine surface
-      # (modules/install/upgrade/uninstall). Report-only — NO --coverage.thresholds (see job header).
+      # Integration coverage, scoped via --coverage.include to the engine surface.
       - name: Run Integration Tests
         id: vitest
         if: steps.cache.outputs.skip != 'true'
@@ -583,7 +687,8 @@ jobs:
           echo "::notice::vitest executed $INT_RAN integration test(s)."
 
       - name: Report Integration Coverage on PR
-        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
+        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
         uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
         with:
           name: integration
@@ -592,19 +697,13 @@ jobs:
           file-coverage-mode: changes
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── bkit-tests-check ── capstone; needs ALL test lanes; if: !cancelled() (NOT always(); a
-  # failure() is not cancelled(), so real failures still fail). Asserts the plan was honoured: bkit-tests-scope
-  # succeeded and, when run_level != none, ALL THREE test lanes (static / unit / integration)
-  # succeeded AND unit + integration each executed >0 tests (not a vacuous green). bkit's SOLE
-  # branch-protection required check (`bkit setup protect-main`, which reads bkit.capstoneJob = bkit-tests-check)
-  # — green means "the planned suite ran and passed", not "nothing visibly failed".
-  # NAMESPACE NOTE: bkit-tests-scope is the PLANNER, not a test lane, but it lives in the
-  # bkit-tests-* namespace. Its SCOPE_RESULT assertion below is what makes it non-hollow — it is
-  # NOT covered by the per-lane result/*_ran loop. Any guard that treats every bkit-tests-* job as
-  # a lane must exempt it BY NAME and point at that assertion, or a scope failure goes unasserted
-  # and the capstone stays green.
+  # ── bkit-tests-check ──────────────────────────────────────────────────────
+  # Capstone and sole branch-protection required check (`bkit setup protect-main` reads
+  # bkit.capstoneJob). Needs every lane; if: !cancelled(), never always(). Asserts
+  # bkit-tests-scope succeeded and, when run_level != none, every test lane succeeded and
+  # unit + integration each executed >0 tests. bkit-tests-scope is the planner, not a
+  # lane: SCOPE_RESULT asserts it by name, outside the per-lane loop.
   bkit-tests-check:
-    name: bkit-tests-check
     needs: [bkit-tests-scope, bkit-tests-static, bkit-tests-unit, bkit-tests-integration]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -667,14 +766,3 @@ jobs:
             exit 1
           fi
           echo "✅ bkit-tests-check passed — planned suite ran (static=$STATIC_RESULT, unit=${UNIT_RAN:-cache-skip/none}, integration=${INTEGRATION_RAN:-cache-skip/none} tests) and succeeded (run_level=$plan_run_level)."
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CONSUMER SCAFFOLD (not used by bkit). bkit ships the FULL multi-tier scaffold to
-# consumers in .bkit/templates/.github/workflows/ci.yml as `# bkit-stub:` blocks they
-# enable: turbo affected-graph (bkit-tests-scope); integration + E2E + Vercel-await; the
-# push-only @live job (bkit-tests-live) — all N/A for single-package, no-deploy bkit.
-# bkit's own CI splits into parallel lanes (bkit-tests-static + bkit-tests-unit +
-# bkit-tests-integration), one lane per tier; e2e/migrate/live lanes are template-only
-# (bkit has no browser/DB/deploy).
-# `pnpm bkit install`/`upgrade` advise on each stub. See .bkit/src/bkit-postinstall.ts.
-# ─────────────────────────────────────────────────────────────────────────────

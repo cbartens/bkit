@@ -202,11 +202,6 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
 
     // Second uninstall (idempotency check)
     const result2 = await runUninstall(["core", "lint", "claude"], makeCtx());
-    // Files already absent → all skip-absent
-    const nonSkipAbsent = result2.deleted.filter((f) => {
-      // These were deleted in first run
-      return !["AGENTS.md", ".claude/settings.json"].includes(f);
-    });
     // No errors (would throw if not idempotent)
     expect(result2.decisions.length).toBeGreaterThan(0);
   });

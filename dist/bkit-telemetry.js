@@ -10,26 +10,18 @@
 //
 // LOAD-BEARING DIVERGENCES FROM bkit-status.ts (NOT inherited — each pinned by test):
 //   (a) Tolerant `parse`: per-line try/catch + skip + malformedLineCount.
-//       `parseStatus` does a bare JSON.parse(l) and THROWS on malformed lines.
 //   (b) `validate` REJECTS unknown `kind` before write. No reject path in status.ts.
 //   (c) ms `ts` via now*1000|floor, NOT ISO `at`.
-//
-// Archive shard path: .bkit/archive/{basename}.{YYYYMM}.jsonl
-// `foldFrom(paths[])` reads hot + archive shards so the P4 rollup cannot break readers.
 //
 // Version provenance: every row records the emitting `bkitVersion`. Readers ingest
 // ALL well-formed rows (no version gating) and report row counts per `bkitVersion`
 // so an unexpected version surfaces for triage.
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
-import * as path from "node:path";
-import * as readline from "node:readline";
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 export const MAX_ROWS_BEFORE_ROLLUP = 5000;
-/** Template for archive shards: replace {basename} and {YYYYMM}. */
-export const ARCHIVE_SHARD_TEMPLATE = ".bkit/archive/{basename}.{YYYYMM}.jsonl";
 // ---------------------------------------------------------------------------
 // repo — the owner/repo slug, resolved ONE way
 //
@@ -391,7 +383,7 @@ export function validate(event) {
 }
 /**
  * Tolerant parse — per-line try/catch, skips + counts unparseable lines.
- * NEVER throws. NEW behaviour vs parseStatus which throws on malformed lines.
+ * NEVER throws.
  *
  * No version gating — ALL well-formed rows are kept regardless of `bkitVersion`.
  */
@@ -450,13 +442,7 @@ export function fold(events) {
     }
     return state;
 }
-/**
- * Reads the hot file at `hotPath` plus any archive shards matching the
- * ARCHIVE_SHARD_TEMPLATE, folds all events together.
- *
- * Archive shard template: .bkit/archive/{basename}.{YYYYMM}.jsonl
- * e.g. .bkit/archive/stats.202606.jsonl
- */
+/** Reads every existing file in `paths` and folds all events together. */
 export function foldFrom(paths) {
     let allEvents = [];
     let totalMalformed = 0;
@@ -476,7 +462,7 @@ export function foldFrom(paths) {
     const rowCount = allEvents.length;
     const maxRowsWarning = rowCount > MAX_ROWS_BEFORE_ROLLUP;
     if (maxRowsWarning) {
-        console.warn(`[bkit-telemetry] MAX_ROWS_BEFORE_ROLLUP exceeded: ${rowCount} rows > ${MAX_ROWS_BEFORE_ROLLUP}. Consider archiving to ${ARCHIVE_SHARD_TEMPLATE}.`);
+        console.warn(`[bkit-telemetry] MAX_ROWS_BEFORE_ROLLUP exceeded: ${rowCount} rows > ${MAX_ROWS_BEFORE_ROLLUP}.`);
     }
     return {
         state: fold(allEvents),
@@ -485,27 +471,6 @@ export function foldFrom(paths) {
         versionCounts,
         maxRowsWarning,
     };
-}
-/**
- * Compute archive shard paths for a hot file.
- * Returns all existing archive shards matching the template pattern.
- */
-export function archiveShardPaths(hotPath) {
-    const basename = path.basename(hotPath, ".jsonl");
-    const archiveDir = path.join(path.dirname(hotPath), "..", ".bkit", "archive");
-    const altArchiveDir = path.join(path.dirname(hotPath), "archive");
-    const candidates = [];
-    for (const dir of [archiveDir, altArchiveDir]) {
-        if (!fs.existsSync(dir))
-            continue;
-        const entries = fs.readdirSync(dir);
-        for (const entry of entries) {
-            if (entry.startsWith(`${basename}.`) && entry.endsWith(".jsonl")) {
-                candidates.push(path.join(dir, entry));
-            }
-        }
-    }
-    return candidates;
 }
 // ---------------------------------------------------------------------------
 // AppendLine — serialize one event to its NDJSON line
@@ -670,5 +635,3 @@ export function workflowTelemetry(result, workflow) {
     lines.push(...maxRowsLines);
     return { ...base, lines };
 }
-// Re-export readline for potential streaming use (optional)
-export { readline };

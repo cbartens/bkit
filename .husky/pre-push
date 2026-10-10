@@ -89,13 +89,8 @@ fi
 # Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
 pnpm bkit check < /dev/null
 
-# bkit-repo only — bats runs inside `bkit:gate:static-unit` (above) and self-skips when
-# the binary is absent; it is NOT a devDependency (CI installs it via `npx --yes bats`).
-
-# bkit-repo only — verify committed `dist/` matches `tsc` output of committed source.
-# Consumers don't have TS to compile and never run this gate.
+# bkit repo only: committed `dist/` must equal the `tsc` output of committed source.
 pnpm bkit:check:dist < /dev/null
 
-# bkit-repo only — actionlint validates `.github/workflows/*` (YAML parse is not enough).
-# Guard-skips when actionlint is absent; install actionlint to enforce.
+# bkit repo only: actionlint over `.github/workflows/*`; skips when actionlint is absent.
 pnpm bkit:lint:workflows < /dev/null

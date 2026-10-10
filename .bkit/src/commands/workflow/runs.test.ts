@@ -709,7 +709,6 @@ describe("bkit runs mirror", () => {
 
 const ok = (stdout: string): GhResult => ({ ok: true, stdout, stderr: "", missing: false });
 const fail: GhResult = { ok: false, stdout: "", stderr: "HTTP 500", missing: false };
-const missing: GhResult = { ok: false, stdout: "", stderr: "", missing: true };
 const rollup = (...checks: Array<string | Record<string, unknown>>) =>
   ok(
     JSON.stringify({
@@ -979,7 +978,6 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     pr: "7",
     fid: "1-x",
     autoRouteSuffix: "",
-    retriggerSuffix: "",
     budgetS: 60,
     intervalS: 10,
     retriggered: false,
@@ -1004,7 +1002,6 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
       {
         ...base(cwd),
         autoRouteSuffix: " bkit [auto route]",
-        retriggerSuffix: " bkit [auto route]",
       },
       { gh, ...quiet },
     );
@@ -1047,15 +1044,6 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(before);
   });
 
-  it("autoroute-mismatch: the re-trigger suffix must equal the auto-route suffix", async () => {
-    const { cwd } = closeRepo();
-    const r = await ciDispatchGate(
-      { ...base(cwd), autoRouteSuffix: " bkit [auto route]", retriggerSuffix: "" },
-      { gh: sequenceGh([NONE]).gh, ...quiet },
-    );
-    expect(r.ciDispatch).toMatchObject({ outcome: "unresolved", reason: "autoroute-mismatch" });
-  });
-
   it("gh-error: every poll errored", async () => {
     const { cwd } = closeRepo();
     const r = await ciDispatchGate(base(cwd), { gh: sequenceGh([fail]).gh, ...quiet });
@@ -1065,7 +1053,7 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
   it("retrigger-suppressed maps to unresolved only, never no-ci", async () => {
     const { cwd } = closeRepo();
     const r = await ciDispatchGate(
-      { ...base(cwd), autoRouteSuffix: " [skip ci]", retriggerSuffix: " [skip ci]" },
+      { ...base(cwd), autoRouteSuffix: " [skip ci]" },
       { gh: sequenceGh([NONE]).gh, ...quiet },
     );
     expect(r.ciDispatch).toMatchObject({ outcome: "unresolved", reason: "retrigger-suppressed" });

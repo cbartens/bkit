@@ -93,11 +93,27 @@ jobs:
           echo "🔊 [verbose ci] marker active — escalating log detail"
           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
 
+      # [force build] / [force cache] run the suite even when this SHA already has a green run.
       - name: Check SHA Cache
         id: cache
         env:
           GH_TOKEN: \${{ github.token }}
+          # User-controlled text (PR title) arrives via env: (runtime expansion,
+          # injection-safe) — never inlined into the run: body.
+          PR_TITLE: \${{ github.event.pull_request.title }}
+          EVENT_NAME: \${{ github.event_name }}
         run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            MSG="$PR_TITLE"
+          else
+            MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
+          fi
+          case "$MSG" in
+            *"[force build]"*|*"[force cache]"*)
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::force marker present — ignoring SHA cache."
+              exit 0 ;;
+          esac
           SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
           PRIOR=$(gh run list \\
             --repo "$GITHUB_REPOSITORY" \\
@@ -319,11 +335,27 @@ jobs:
           echo "🔊 [verbose ci] marker active — escalating log detail"
           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
 
+      # [force build] / [force cache] run the suite even when this SHA already has a green run.
       - name: Check SHA Cache
         id: cache
         env:
           GH_TOKEN: \${{ github.token }}
+          # User-controlled text (PR title) arrives via env: (runtime expansion,
+          # injection-safe) — never inlined into the run: body.
+          PR_TITLE: \${{ github.event.pull_request.title }}
+          EVENT_NAME: \${{ github.event_name }}
         run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            MSG="$PR_TITLE"
+          else
+            MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
+          fi
+          case "$MSG" in
+            *"[force build]"*|*"[force cache]"*)
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::force marker present — ignoring SHA cache."
+              exit 0 ;;
+          esac
           SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
           PRIOR=$(gh run list \\
             --repo "$GITHUB_REPOSITORY" \\
@@ -703,8 +735,8 @@ jobs:
 #
 # === JOB 1 — planner (always-on) ===
 # bkit-stub:bkit-tests-scope — emits the bkit-test-plan JSON. WHEN: CI has >1 run-type (PR/
-# dev-push/release) or any skippable tier. bkit's OWN ci.yml is a single-package (no
-# affected-graph) copy — start there if not a monorepo.
+# dev-push/release) or any skippable tier. Single-package repo: drop the [M] steps; the
+# plan comes from markers and the event alone.
 #   bkit-tests-scope:  runs-on: ubuntu-latest; timeout-minutes: 2; outputs: { plan: \${{ steps.scope.outputs.plan }} }
 #     steps:
 #       - name: Checkout Repository          # [M] fetch-depth: 0 (turbo diffs need the base commit)

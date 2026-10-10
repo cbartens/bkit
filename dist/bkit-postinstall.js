@@ -1026,7 +1026,6 @@ export function detectBkitStubs(cwd) {
         };
         const e2eEnabled = isStepEnabled("Run E2E Tests");
         const vercelEnabled = isStepEnabled("Await Vercel Preview");
-        const autoForceEnabled = isStepEnabled("Auto Force E2E for Sensitive Paths");
         if (vercelEnabled && stubSentinelPresent.has("e2e")) {
             findings.push({
                 id: "bkit-stub-pair-vercel-without-e2e",
@@ -2220,7 +2219,7 @@ export function detectLedgerAliasCollisions(cwd) {
  *
  * cwd defaults to process.cwd().
  */
-export function runPostInstallCheck(preflightAdvisories, modules, cwd = process.cwd()) {
+export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd()) {
     const phase3 = [];
     // Managed-version marker gate — in `bkit check`, a blocker on main/dev (or a PR into
     // them) and a non-blocking advisory on feature branches when any stamped file's marker

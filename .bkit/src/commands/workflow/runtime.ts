@@ -22,7 +22,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { statusTimestamp } from "../../bkit-status.js";
-import { gitEnv } from "../../bkit-telemetry.js";
 import { CommandError, EXIT, repoRoot, runTool, type CommandSpec, type FlagSpec } from "../lib.js";
 import {
   EXIT_NO_STATUS,

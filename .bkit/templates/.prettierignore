@@ -35,8 +35,6 @@ pnpm-lock.yaml
 # never be byte-equal to what the renderer emits and every close would carry a
 # formatting-only diff. The fold's output is the source of truth.
 docs/roadmap.md
-
-
 # bkit's reference copies of its templates — refreshed by `bkit upgrade`, never
 # formatted by this repo.
 .bkit/templates/

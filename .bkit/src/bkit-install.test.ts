@@ -21,10 +21,6 @@ import {
   parseFrontmatter,
   remapTemplateDest,
   updateManagedBlock,
-  getStagingDir,
-  initStagingDir,
-  commitStaging,
-  discardStaging,
   discardAllStaging,
   STAGING_ROOT,
   detectInstalledModules,
@@ -40,10 +36,9 @@ import {
 import {
   extractFullManagedBlock,
   extractManagedBlock,
-  extractNamedBlocks,
   findLineAnchoredMarkers,
 } from "./bkit-markers";
-import type { ModuleFlag, Verb, CloudVariant } from "./bkit-cli";
+import type { ModuleFlag, Verb } from "./bkit-cli";
 import type { IssueTracker } from "./bkit-manifest";
 import { DEFAULT_ISSUE_TRACKER } from "./bkit-manifest";
 import { substituteWorkflow } from "./bkit-trackers";
@@ -686,69 +681,6 @@ describe("slash-comment marker round-trip (markerStyle: 'slash-comment')", () =>
 });
 
 // ---------------------------------------------------------------------------
-// extractNamedBlocks — named/optional/multi-block parser (template-driven drift)
-// ---------------------------------------------------------------------------
-
-describe("extractNamedBlocks", () => {
-  it("parses a bare (unnamed) hash block under the empty-string key", () => {
-    const m = extractNamedBlocks("a.txt\n# bkit:start\nb.txt\n# bkit:end\n");
-    expect([...m.keys()]).toEqual([""]);
-    expect(m.get("")?.body).toBe("b.txt");
-    expect(m.get("")?.optional).toBe(false);
-  });
-
-  it("parses a bare HTML block under the empty-string key", () => {
-    const m = extractNamedBlocks("# Title\n<!-- bkit:start -->\nbody\n<!-- bkit:end -->\n");
-    expect(m.get("")?.body).toBe("body");
-  });
-
-  it("parses multiple INDENTED named blocks in one file", () => {
-    const yaml =
-      "jobs:\n" +
-      "  t:\n" +
-      "    # bkit:start env-block\n" +
-      "    env:\n" +
-      "      V: '1'\n" +
-      "    # bkit:end env-block\n" +
-      "    steps:\n" +
-      "      # bkit:start lag-step optional\n" +
-      "      - run: echo lag\n" +
-      "      # bkit:end lag-step\n";
-    const m = extractNamedBlocks(yaml);
-    expect(new Set(m.keys())).toEqual(new Set(["env-block", "lag-step"]));
-    // Raw line indentation is preserved (same contract as extractManagedBlock) — both the
-    // template and consumer blocks carry identical indentation, so the comparison is exact.
-    expect(m.get("env-block")?.body).toBe("    env:\n      V: '1'");
-    expect(m.get("env-block")?.optional).toBe(false);
-    expect(m.get("lag-step")?.body).toBe("      - run: echo lag");
-    expect(m.get("lag-step")?.optional).toBe(true);
-  });
-
-  it("ignores backtick-quoted prose mentions of markers (line-anchored matching)", () => {
-    const content =
-      "# The one exception is the `# bkit:start env-block` block below.\n" +
-      "jobs:\n  t:\n    # bkit:start env-block\n    env: {}\n    # bkit:end env-block\n";
-    const m = extractNamedBlocks(content);
-    expect([...m.keys()]).toEqual(["env-block"]);
-    expect(m.get("env-block")?.body).toBe("    env: {}");
-  });
-
-  it("drops an unterminated block (no matching end)", () => {
-    const m = extractNamedBlocks("  # bkit:start orphan\n  body line\n  steps:\n");
-    expect(m.size).toBe(0);
-  });
-
-  it("closes a named block with a bare `# bkit:end` too (lenient end matching)", () => {
-    const m = extractNamedBlocks("# bkit:start foo\nx\n# bkit:end\n");
-    expect(m.get("foo")?.body).toBe("x");
-  });
-
-  it("returns an empty map when no markers are present", () => {
-    expect(extractNamedBlocks("jobs:\n  t:\n    steps:\n      - run: a\n").size).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Task 2.1b — HTML-comment round-trip + default-arg backward compat
 // ---------------------------------------------------------------------------
 
@@ -800,10 +732,10 @@ describe("html-comment marker round-trip + default-arg backward compat", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Staging dir + atomic rename
+// Staging scratch area
 // ---------------------------------------------------------------------------
 
-describe("P4.T1 — getStagingDir / initStagingDir", () => {
+describe("discardAllStaging", () => {
   let tmpDir: string;
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-staging-test-"));
@@ -812,115 +744,13 @@ describe("P4.T1 — getStagingDir / initStagingDir", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("getStagingDir returns the expected absolute path", () => {
-    const result = getStagingDir("core", tmpDir);
-    expect(result).toBe(path.join(tmpDir, STAGING_ROOT, "core"));
-  });
-
-  it("initStagingDir creates the staging dir", () => {
-    const stagingDir = getStagingDir("test-module", tmpDir);
-    initStagingDir(stagingDir);
-    expect(fs.existsSync(stagingDir)).toBe(true);
-    expect(fs.statSync(stagingDir).isDirectory()).toBe(true);
-  });
-
-  it("initStagingDir clears an existing staging dir (idempotent)", () => {
-    const stagingDir = getStagingDir("test-module", tmpDir);
-    initStagingDir(stagingDir);
-    fs.writeFileSync(path.join(stagingDir, "stale.txt"), "stale", "utf-8");
-    initStagingDir(stagingDir);
-    expect(fs.readdirSync(stagingDir)).toHaveLength(0);
-  });
-});
-
-describe("P4.T2 — commitStaging / discardStaging", () => {
-  let tmpDir: string;
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-staging-test-"));
-  });
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("commitStaging moves staged files to their consumer destinations", () => {
-    const stagingDir = getStagingDir("core", tmpDir);
-    fs.mkdirSync(path.join(stagingDir, ".claude", "agents"), { recursive: true });
-    fs.writeFileSync(
-      path.join(stagingDir, ".claude", "agents", "bkit-foo.md"),
-      "agent content",
-      "utf-8",
-    );
-
-    const committed = commitStaging(stagingDir, tmpDir);
-    expect(committed).toContain(path.join(".claude", "agents", "bkit-foo.md"));
-    expect(fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8")).toBe(
-      "agent content",
-    );
-    // Staging dir itself is removed after commit
-    expect(fs.existsSync(stagingDir)).toBe(false);
-  });
-
-  it("commitStaging returns empty array when staging dir does not exist", () => {
-    const stagingDir = getStagingDir("nonexistent", tmpDir);
-    const committed = commitStaging(stagingDir, tmpDir);
-    expect(committed).toEqual([]);
-  });
-
-  it("commitStaging overwrites the consumer file at destination with staged version", () => {
-    // Verify the consumer file at destination gets the staged version
-    const stagingDir = getStagingDir("core", tmpDir);
-    // Create staging dir + staged file
-    fs.mkdirSync(path.join(stagingDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(stagingDir, ".agents", "existing.md"), "new content", "utf-8");
-    // Pre-existing consumer file
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", "existing.md"), "old content", "utf-8");
-
-    commitStaging(stagingDir, tmpDir);
-    expect(fs.readFileSync(path.join(tmpDir, ".agents", "existing.md"), "utf-8")).toBe(
-      "new content",
-    );
-  });
-
-  it("discardStaging removes staging dir without touching consumer files", () => {
-    const stagingDir = getStagingDir("core", tmpDir);
-    initStagingDir(stagingDir);
-    fs.writeFileSync(path.join(stagingDir, "staged.md"), "staged", "utf-8");
-
-    // Consumer file at real destination is untouched
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", "consumer.md"), "consumer data", "utf-8");
-
-    discardStaging(stagingDir);
-    expect(fs.existsSync(stagingDir)).toBe(false);
-    // Consumer file survives
-    expect(fs.readFileSync(path.join(tmpDir, ".agents", "consumer.md"), "utf-8")).toBe(
-      "consumer data",
-    );
-  });
-
-  it("discardStaging is a no-op when dir does not exist", () => {
-    const stagingDir = getStagingDir("nonexistent", tmpDir);
-    expect(() => discardStaging(stagingDir)).not.toThrow();
-  });
-
-  it("discardAllStaging removes the entire STAGING_ROOT", () => {
+  it("removes the entire STAGING_ROOT", () => {
     const stagingRoot = path.join(tmpDir, STAGING_ROOT);
     fs.mkdirSync(path.join(stagingRoot, "core"), { recursive: true });
     fs.mkdirSync(path.join(stagingRoot, "claude"), { recursive: true });
     fs.writeFileSync(path.join(stagingRoot, "core", "test.md"), "x");
     discardAllStaging(tmpDir);
     expect(fs.existsSync(stagingRoot)).toBe(false);
-  });
-
-  it("commitStaging creates missing parent dirs at destination", () => {
-    const stagingDir = getStagingDir("core", tmpDir);
-    fs.mkdirSync(path.join(stagingDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(stagingDir, ".github", "workflows", "ci.yml"), "name: CI", "utf-8");
-    commitStaging(stagingDir, tmpDir);
-    expect(fs.readFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), "utf-8")).toBe(
-      "name: CI",
-    );
   });
 });
 

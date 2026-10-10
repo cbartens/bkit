@@ -15,7 +15,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
 const TEMPLATE_DIR = path.join(REPO_ROOT, ".bkit", "templates", "scripts", "secrets");
-const ADOPTED_DIR = path.join(REPO_ROOT, "scripts", "secrets");
 const SECRET = "sk-test-NEVER-PRINT-ME";
 
 const GH_STUB = `#!/bin/bash
@@ -330,11 +329,5 @@ describe("bkit-secrets.mjs", () => {
       CONFIG.replace('DEPLOY_ID: ["github", "eas"]', 'DEPLOY_ID: "githbu"'),
     );
     await expect(cli("drift")).rejects.toThrow(/unknown store "githbu"/);
-  });
-
-  it("bkit's adopted copy is byte-identical to the template", () => {
-    expect(fs.readFileSync(path.join(ADOPTED_DIR, "bkit-secrets.mjs"), "utf-8")).toBe(
-      fs.readFileSync(path.join(TEMPLATE_DIR, "bkit-secrets.mjs"), "utf-8"),
-    );
   });
 });

@@ -21,93 +21,17 @@ import { runUninstall, runSurgicalOpencodeUninstall, } from "./bkit-uninstall.js
 import { runUpgrade, updateCanonicalHashesAfterUpgrade, migrateStrayGitattributes, migrateWarningsToNoise, planSelfBump, } from "./bkit-upgrade.js";
 import { DEFAULT_ISSUE_TRACKER, parseIssueTracker, getInstallManifest, getModuleManifest, } from "./bkit-manifest.js";
 // ---------------------------------------------------------------------------
-// Staging helpers
+// Staging scratch area
 //
 // `.bkit-staging/` is a per-run SCRATCH area: modules render derived files there
 // (e.g. opencode.json) before comparing/merging into the consumer destination.
 // runInstall Phase 2 cleans it up after every dispatch — success or failure —
-// via `finally { discardAllStaging() }`.
-//
-// NOTE: `commitStaging` / `discardStaging` / `initStagingDir` are atomic-rename
-// PRIMITIVES NOT on the current install path: dispatch writes module files directly
-// to their destinations and is NOT atomic across modules. A mid-dispatch failure can
-// leave earlier modules' files written (and `.bkit/version` unpinned); `bkit install`
-// is idempotent, so re-running completes a partial install.
-//
-// Design contract:
-//   - Staging path: `.bkit-staging/<module>/` relative to cwd.
-//   - Each staged file lives at `<stagingDir>/<rel-consumer-path>`.
-//   - commitStaging: move each staged file → real destination (fs.renameSync).
-//     Falls back to copy+delete if cross-device rename throws EXDEV.
-//   - discardStaging: fs.rmSync(stagingDir, { recursive: true, force: true }).
+// via `finally { discardAllStaging() }`. Dispatch writes module files directly to
+// their destinations and is NOT atomic across modules; `bkit install` is idempotent,
+// so re-running completes a partial install.
 // ---------------------------------------------------------------------------
-/** Staging root dir — all staging work lives under this path (relative to cwd). */
+/** Staging root dir (relative to cwd). */
 export const STAGING_ROOT = ".bkit-staging";
-/**
- * Build the staging directory path for a given module.
- * Returns an absolute path.
- */
-export function getStagingDir(module, cwd = process.cwd()) {
-    return path.join(cwd, STAGING_ROOT, module);
-}
-/**
- * Initialise a staging directory (create + empty).
- * Safe to call multiple times — idempotent.
- */
-export function initStagingDir(stagingDir) {
-    if (fs.existsSync(stagingDir)) {
-        fs.rmSync(stagingDir, { recursive: true, force: true });
-    }
-    fs.mkdirSync(stagingDir, { recursive: true });
-}
-/**
- * Commit a staging directory by moving each staged file to its real destination.
- *
- * Staged files live at `<stagingDir>/<relPath>` where `relPath` is relative to
- * consumer root (e.g. `.claude/agents/bkit-foo.md`).
- * On commit, each file is moved to `<cwd>/<relPath>`.
- *
- * Falls back to copy+delete when rename throws EXDEV (cross-device move).
- * Returns the list of committed relative paths.
- */
-export function commitStaging(stagingDir, cwd = process.cwd()) {
-    if (!fs.existsSync(stagingDir))
-        return [];
-    const committed = [];
-    const entries = listFilesRecursive(stagingDir);
-    for (const absStaged of entries) {
-        const relPath = path.relative(stagingDir, absStaged);
-        const destAbs = path.join(cwd, relPath);
-        fs.mkdirSync(path.dirname(destAbs), { recursive: true });
-        try {
-            fs.renameSync(absStaged, destAbs);
-        }
-        catch (err) {
-            // Cross-device rename (EXDEV) — fall back to copy + delete
-            if (err.code === "EXDEV") {
-                fs.copyFileSync(absStaged, destAbs);
-                fs.chmodSync(destAbs, fs.statSync(absStaged).mode);
-                fs.rmSync(absStaged);
-            }
-            else {
-                throw err;
-            }
-        }
-        committed.push(relPath);
-    }
-    // Clean up the (now-empty) staging dir
-    fs.rmSync(stagingDir, { recursive: true, force: true });
-    return committed;
-}
-/**
- * Discard a staging directory without touching consumer files.
- * Safe to call when stagingDir does not exist.
- */
-export function discardStaging(stagingDir) {
-    if (fs.existsSync(stagingDir)) {
-        fs.rmSync(stagingDir, { recursive: true, force: true });
-    }
-}
 /**
  * Discard ALL staging dirs under STAGING_ROOT (cleanup on mid-install failure).
  */
@@ -198,7 +122,7 @@ export function parseModelLookup(subagentsMdPath) {
  *
  * § Models is keyed on GATEWAY, never on program — a gateway shared by two programs is one
  * column, not two. `anthropic` and `cursor` are the pinned gateways of the claude and cursor
- * programs (see PROGRAM_GATEWAYS in bkit-cli.ts).
+ * programs.
  *
  * Cells hold the BARE, gateway-scoped model id. Any prefix a program's config format needs
  * is added at render time by formatModelPin — never stored in the table.
@@ -416,8 +340,6 @@ export function effortColumnForProgram(program) {
 export function lookupEffort(effortMap, program, sourceEffort) {
     return effortMap.get(effortColumnForProgram(program))?.get(sourceEffort) ?? sourceEffort;
 }
-// Fields in Claude frontmatter that are opencode-incompatible and must be dropped.
-const CLAUDE_ONLY_FIELDS = new Set(["permissionMode", "maxTurns", "is_background", "readonly"]);
 /**
  * Convert a Claude `tools:` frontmatter block (a YAML array of capitalized tool names,
  * e.g. `- Read`/`- Write`) into opencode's `AgentConfig.tools` shape: an object map of
@@ -785,34 +707,6 @@ export function remapTemplateDest(rel) {
     if (mapped === undefined)
         return rel;
     return dir === "." ? mapped : path.join(dir, mapped);
-}
-function mirrorDirAlways(src, dst, dryRun, log) {
-    let writes = 0;
-    if (!dryRun)
-        fs.mkdirSync(dst, { recursive: true });
-    for (const ent of fs.readdirSync(src, { withFileTypes: true })) {
-        const srcPath = path.join(src, ent.name);
-        const dstPath = path.join(dst, ent.name);
-        if (ent.isDirectory()) {
-            writes += mirrorDirAlways(srcPath, dstPath, dryRun, (sub) => log(path.join(ent.name, sub)));
-            continue;
-        }
-        if (!ent.isFile())
-            continue;
-        const srcContent = fs.readFileSync(srcPath);
-        if (fs.existsSync(dstPath)) {
-            const dstContent = fs.readFileSync(dstPath);
-            if (srcContent.equals(dstContent))
-                continue;
-        }
-        if (!dryRun) {
-            fs.copyFileSync(srcPath, dstPath);
-            fs.chmodSync(dstPath, fs.statSync(srcPath).mode);
-        }
-        writes++;
-        log(ent.name);
-    }
-    return writes;
 }
 // Payload pass: remove bkit files an older layout left in <cwd>/.agents/.
 // Mirror sources (`.bkit/workflows`, `.bkit/prompts`) and bkit-authoring docs
@@ -1555,7 +1449,7 @@ async function main() {
         console.log(`${LOG_PREFIX} Running advisory scan (no managed-file writes)`);
         console.log(`${LOG_PREFIX} Templates root: ${getTemplatesRoot()}`);
         const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
-        const allFindings = runPostInstallCheck([...preflightAdvisories, ...blockers], modules, process.cwd());
+        const allFindings = runPostInstallCheck([...preflightAdvisories, ...blockers], process.cwd());
         // Broken install: the opencode host is on disk but neither provider signal survives.
         // `bkit check` and `bkit upgrade` exit 1 with the fix; doctor reports it here and does
         // not enforce.
@@ -1585,7 +1479,6 @@ async function main() {
         // opencode host diagnostics: report required tools and cred presence per provider.
         // Never echoes key values — only reports present/absent.
         const opencodeDir = path.join(process.cwd(), ".opencode");
-        const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
         if (fs.existsSync(opencodeDir) || modules.has("opencode")) {
             console.log(`${LOG_PREFIX} --- opencode host diagnostics ---`);
             // Check opencode binary
@@ -2321,7 +2214,7 @@ async function main() {
     catch (err) {
         void err; // Non-fatal — changelog header is informational
     }
-    const postFindings = runPostInstallCheck(ctx.advisories, effectiveModules, process.cwd());
+    const postFindings = runPostInstallCheck(ctx.advisories, process.cwd());
     // check only: install has just written every hook file of the modules it dispatched, and a
     // missing cloud-bootstrap.sh after `install --claude` is not that run's fault.
     const missingHooks = dryRun ? findMissingOwnedHooks(process.cwd(), effectiveModules) : [];

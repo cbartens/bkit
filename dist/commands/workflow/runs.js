@@ -248,15 +248,11 @@ export async function ciDispatchGate(o, deps) {
             deps.log("unresolved(timeout-dirty): no run and the pushed head carries a CI suppressor — not re-triggering a dirty head");
             return verdict("unresolved", "timeout-dirty");
         }
-        if (o.retriggerSuffix !== o.autoRouteSuffix) {
-            deps.log("unresolved(autoroute-mismatch): the re-trigger suffix differs from the auto-route suffix");
-            return verdict("unresolved", "autoroute-mismatch");
-        }
         const committed = runGit(o.cwd, [
             "commit",
             "--allow-empty",
             "-m",
-            `chore(${o.fid}): re-trigger${o.retriggerSuffix}`,
+            `chore(${o.fid}): re-trigger${o.autoRouteSuffix}`,
         ]).ok;
         if (!committed || !pushCurrentBranch(o.cwd)) {
             deps.log("re-trigger commit or push failed — no verdict; route to the Failure Path");
@@ -811,13 +807,11 @@ async function runDispatch(ctx) {
     if (pollResult === undefined && (f.attempts !== undefined || f.allErrored === true)) {
         throw new CommandError(EXIT.USAGE, "--attempts / --all-errored go with --poll-result");
     }
-    const autoRouteSuffix = str(f.autoRouteSuffix) ?? "";
     const r = await ciDispatchGate({
         cwd: ctx.cwd,
         pr,
         fid: String(f.fid),
-        autoRouteSuffix,
-        retriggerSuffix: str(f.retriggerSuffix) ?? autoRouteSuffix,
+        autoRouteSuffix: str(f.autoRouteSuffix) ?? "",
         budgetS: wholeNumber(f.budgetS, "budget-s", 60),
         intervalS: wholeNumber(f.intervalS, "interval-s", 10, 1),
         supplied: pollResult === undefined
@@ -978,11 +972,6 @@ export const runsCommand = {
                     name: "auto-route-suffix",
                     type: "string",
                     help: 'suffix the issue\'s bkit:auto label gives (" bkit [auto route]" or empty), read in this block',
-                },
-                {
-                    name: "retrigger-suffix",
-                    type: "string",
-                    help: "suffix for the re-trigger commit (default: --auto-route-suffix); must equal it",
                 },
                 { ...BUDGET_FLAG, help: "poll budget in seconds (default 60)" },
                 { ...INTERVAL_FLAG, help: "seconds between polls (default 10)" },

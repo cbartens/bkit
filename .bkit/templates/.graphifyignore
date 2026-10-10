@@ -73,6 +73,7 @@
 .agents/skills/
 .bkit/
 .claude/
+.codex/
 .cursor/
 .opencode/
 .serena/

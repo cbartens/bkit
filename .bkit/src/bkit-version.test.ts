@@ -7,7 +7,6 @@ import {
   parseBkitVersion,
   readBkitVersion,
   serializeBkitVersion,
-  writeBkitVersion,
   sha256,
   hashFile,
   isConsumerModified,

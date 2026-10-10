@@ -2,8 +2,8 @@
 // CI-Dispatch Gate and of ship's own re-validate poll.
 //
 // The gate itself — poll, one clean re-trigger, the four outcomes, every
-// unresolved sub-reason (retrigger-suppressed, autoroute-mismatch,
-// ci-declared-no-run, gh-error), the agent turn-loop hand-off, the capstone
+// unresolved sub-reason (retrigger-suppressed, ci-declared-no-run,
+// gh-error), the agent turn-loop hand-off, the capstone
 // namespace, and "nothing is pushed after the verdict" — is `bkit runs
 // dispatch`, covered in commands/workflow/runs.test.ts. What stays here is
 // what the workflows must do around it:

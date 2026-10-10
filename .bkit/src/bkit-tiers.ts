@@ -1,19 +1,18 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { updateManagedBlock, type WriteEntry, type WriteSet } from "./bkit-install.js";
+import { updateManagedBlock, type WriteSet } from "./bkit-install.js";
 import {
   extractFullManagedBlock,
   extractManagedBlock,
   findLineAnchoredMarkers,
   selectMarkers,
-  stripManagedBlock,
   type MarkerStyle,
 } from "./bkit-markers.js";
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
 import type { PreflightFinding } from "./bkit-preflight.js";
 import { hashFile } from "./bkit-version.js";
 
-export type { WriteSet, WriteEntry };
+export type { WriteSet };
 
 // ---------------------------------------------------------------------------
 // JsonValue — generic JSON type used throughout Tier-2 JSON helpers
@@ -68,7 +67,7 @@ export function deepContains(
 
   // Both are arrays
   if (Array.isArray(template) && Array.isArray(consumer)) {
-    _deepContainsArray(template, consumer, pathPrefix, missing, mismatched);
+    _deepContainsArray(template, consumer, pathPrefix, missing);
     return { ok: missing.length === 0 && mismatched.length === 0, missing, mismatched };
   }
 
@@ -113,7 +112,6 @@ function _deepContainsArray(
   consumer: JsonValue[],
   pathPrefix: string,
   missing: string[],
-  mismatched: string[],
 ): void {
   // Classify template elements as primitive or object
   for (let i = 0; i < template.length; i++) {

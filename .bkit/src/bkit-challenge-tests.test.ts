@@ -166,7 +166,7 @@ describe("runPostInstallCheck — intra-phase Phase 3 deduplication", () => {
       throw new Error("gh: command not found");
     });
 
-    const result = runPostInstallCheck([], makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([], tmpDir);
 
     // "npmrc-missing-gh-packages" must appear exactly once even though two
     // detectors (detectNpmrcAuth + mocked detectValePackageNotSynced) emitted it
@@ -194,7 +194,7 @@ describe("runPostInstallCheck — intra-phase Phase 3 deduplication", () => {
       throw new Error("gh: command not found");
     });
 
-    const result = runPostInstallCheck([], makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([], tmpDir);
 
     const allMatches = result.filter((f) => f.id === "npmrc-missing-gh-packages");
     // Exactly one — intra-phase dedup dropped the second
@@ -216,11 +216,11 @@ describe("formatChecklist — byte-for-byte snapshot (Plan §F5)", () => {
   it("matches inline snapshot for a 2-finding fixture", () => {
     const findings: PreflightFinding[] = [
       {
-        id: "husky-no-markers-precommit",
+        id: "example-preflight-advisory",
         severity: "advisory",
         detect: ".husky/pre-commit exists but has no bkit-managed block markers.",
         action:
-          "bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has `# bkit:start` / `# bkit:end` markers around the bkit section. Run `pnpm bkit install --git-hooks` after adding markers.",
+          "bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has `# bkit:start` / `# bkit:end` markers around the bkit section.",
       },
       {
         id: "gh-bkit-token-unset-shell",
@@ -244,9 +244,9 @@ describe("formatChecklist — byte-for-byte snapshot (Plan §F5)", () => {
       Templates: see .bkit/templates.md; copies live in .bkit/templates/ (if your own gates scan the repo, ignore .bkit/templates/).
 
 
-      --- 1/2 [advisory] husky-no-markers-precommit ---
+      --- 1/2 [advisory] example-preflight-advisory ---
       DETECT: .husky/pre-commit exists but has no bkit-managed block markers.
-      ACTION: bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has \`# bkit:start\` / \`# bkit:end\` markers around the bkit section. Run \`pnpm bkit install --git-hooks\` after adding markers.
+      ACTION: bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has \`# bkit:start\` / \`# bkit:end\` markers around the bkit section.
 
       --- 2/2 [advisory] gh-bkit-token-unset-shell ---
       DETECT: BKIT_GH_TOKEN_INSTALL is not set in the shell environment.
@@ -390,7 +390,7 @@ describe("Phase 1 blocker short-circuit — vi.spyOn hardened path", () => {
       throw new Error("gh: command not found");
     });
 
-    const result = runPostInstallCheck([], makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([], tmpDir);
 
     // gh-bkit-token-unset-shell must appear, proving detectShellToken was
     // called and returned "missing" (env var is deleted → Boolean("") === false)
@@ -423,7 +423,7 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
       throw new Error("gh: command not found");
     });
 
-    const result = runPostInstallCheck([preflightAdvisory], makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([preflightAdvisory], tmpDir);
 
     const matches = result.filter((f) => f.id === "gh-bkit-token-unset-shell");
     // Exactly one occurrence
@@ -438,7 +438,7 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
 
   it("preflight-only advisory survives when Phase 3 does not emit the same id", () => {
     const uniquePreflightAdvisory: PreflightFinding = {
-      id: "husky-no-markers-precommit",
+      id: "example-preflight-advisory",
       severity: "advisory",
       detect: "Preflight husky detect",
       action: "Preflight husky action",
@@ -447,9 +447,9 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
     process.env.BKIT_GH_TOKEN_INSTALL = "set";
     execSync.mockReturnValue("BKIT_GH_TOKEN_INSTALL\n"); // gh secret present → no gh findings
 
-    const result = runPostInstallCheck([uniquePreflightAdvisory], makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([uniquePreflightAdvisory], tmpDir);
 
-    const matches = result.filter((f) => f.id === "husky-no-markers-precommit");
+    const matches = result.filter((f) => f.id === "example-preflight-advisory");
     expect(matches).toHaveLength(1);
     // Preflight content preserved (Phase 3 did not emit this id)
     expect(matches[0]!.detect).toBe("Preflight husky detect");
@@ -464,7 +464,7 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
     process.env.BKIT_GH_TOKEN_INSTALL = "set";
     execSync.mockReturnValue("BKIT_GH_TOKEN_INSTALL\n"); // no GH secret missing
 
-    const result = runPostInstallCheck(preflightAdvisories, makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck(preflightAdvisories, tmpDir);
 
     const ids = result.map((f) => f.id);
     const alphaIdx = ids.indexOf("alpha");

@@ -18,5 +18,3 @@ export const TIMEOUTS = {
   /** Seconds to contend for `.dev.lock` before giving up. */
   SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S: 600,
 } as const;
-
-export type TimeoutName = keyof typeof TIMEOUTS;

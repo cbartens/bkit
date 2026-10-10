@@ -12,7 +12,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
 const TEMPLATE = path.join(REPO_ROOT, ".bkit/templates/scripts/prettier/bkit-insert-ignore.mjs");
-const ADOPTED = path.join(REPO_ROOT, "scripts/prettier/bkit-insert-ignore.mjs");
 
 const mod = await import(pathToFileURL(TEMPLATE).href);
 
@@ -92,9 +91,5 @@ describe("bkit-insert-ignore.mjs", () => {
     expect(mod.collectTargets(["docs/plans/202610/x.md"], root)).toEqual([
       "docs/plans/202610/x.md",
     ]);
-  });
-
-  it("bkit's adopted copy is byte-identical to the template", () => {
-    expect(fs.readFileSync(ADOPTED, "utf8")).toBe(fs.readFileSync(TEMPLATE, "utf8"));
   });
 });

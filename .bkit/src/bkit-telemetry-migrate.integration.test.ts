@@ -29,7 +29,6 @@ import {
   parseDecisionsMd,
   parsePendingMd,
   parseFrictionMd,
-  parseCompletedMd,
   mapCompletedCategory,
   seedInFlightFeatures,
   parseLegacyStatus,

@@ -107,8 +107,7 @@ def by_package(p):
 
 
 def by_module(p):
-    # .bkit/src is one flat folder of ~70 engine files, so a folder key would draw it
-    # as a single box; one module per file is the level its structure lives at.
+    # .bkit/src is one flat folder: one module per file.
     if p.startswith(".bkit/src/"):
         return re.sub(r"\.[^./]+$", "", p)
     return "/".join(p.split("/")[:-1][:4]) or p.split("/")[0]

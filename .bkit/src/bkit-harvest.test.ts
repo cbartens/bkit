@@ -13,7 +13,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { CONSUMERS_FILE, HARVEST_COPY_FILES, HARVEST_DEST_DIR, runHarvest } from "./bkit-harvest";
-import { identity, parse, type TelemetryEvent } from "./bkit-telemetry";
+import type { TelemetryEvent } from "./bkit-telemetry";
 
 // ---------------------------------------------------------------------------
 // Fixtures

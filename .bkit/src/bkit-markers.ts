@@ -35,29 +35,7 @@ const ALLOWED_PREFIXES = ["", "# ", "// "];
 //   - The line before the marker is empty, "# ", or "// " (comment prefixes).
 //   - The character after the marker is end-of-line or end-of-file.
 // Backtick-quoted prose mentions are ignored.
-// markerStyle defaults to "html-comment".
-export function findLineAnchoredMarkers(
-  content: string,
-  markerOrStyle: string | MarkerStyle,
-  _markerStyle?: MarkerStyle,
-): number[] {
-  // Support both legacy call-site (content, markerString) and new call-site (content, markerStyle).
-  // If markerOrStyle is a known MarkerStyle literal, treat it as style; otherwise treat as marker string.
-  let marker: string;
-  if (
-    markerOrStyle === "html-comment" ||
-    markerOrStyle === "hash-comment" ||
-    markerOrStyle === "slash-comment"
-  ) {
-    // Called as findLineAnchoredMarkers(content, markerStyle) — internal helper path
-    // This overload is used only internally; callers pass marker string directly.
-    // Retain backward-compat: interpret as the START marker of the given style.
-    const [start] = selectMarkers(markerOrStyle as MarkerStyle);
-    marker = start;
-  } else {
-    marker = markerOrStyle;
-  }
-
+export function findLineAnchoredMarkers(content: string, marker: string): number[] {
   const positions: number[] = [];
   const len = marker.length;
   let pos = 0;
@@ -131,67 +109,6 @@ export function extractManagedBlock(
   const inner =
     startLineEnd === -1 ? "" : content.slice(startLineEnd + 1, lineStartOf(content, ends[0]!));
   return inner.replace(/^\n+/, "").replace(/\n+$/, "");
-}
-
-/**
- * Parse EVERY named bkit-managed block in a file into `name -> { body, optional }`.
- *
- * Marker grammar (one style per file — auto-detected; HTML-comment wins if present):
- *   HTML:  <!-- bkit:start [name] [optional] -->  ...  <!-- bkit:end [name] -->
- *   hash:  # bkit:start [name] [optional]          ...  # bkit:end [name]
- * The default (unnamed) block uses a bare `# bkit:start` / `<!-- bkit:start -->` and is
- * keyed under "" — backward-compatible with extractManagedBlock's single-block model.
- *
- * Markers may be indented (leading whitespace); HTML markers may additionally carry a
- * `# ` / `// ` comment prefix (so they survive inside shell / JS files). `optional` after
- * the name flags the block as deletable — callers use it to suppress a "missing block"
- * finding (a block that is PRESENT but DIFFERS is still drift regardless of `optional`).
- *
- * `body` is the inner content with surrounding blank lines stripped (matching
- * extractManagedBlock). First occurrence of a name wins; an unterminated block (no
- * matching end) is dropped. Matching is line-anchored — the marker must be the whole
- * line (modulo indent + comment prefix) — so backtick-quoted prose mentions never match.
- * An end marker closes the open block when its name matches OR when it is bare (`# bkit:end`).
- */
-export function extractNamedBlocks(
-  content: string,
-): Map<string, { body: string; optional: boolean }> {
-  const NAME = "[A-Za-z0-9][A-Za-z0-9_-]*";
-  const hashStart = new RegExp(
-    `^[ \\t]*#[ \\t]*bkit:start(?:[ \\t]+(${NAME}))?(?:[ \\t]+(optional))?[ \\t]*$`,
-  );
-  const hashEnd = new RegExp(`^[ \\t]*#[ \\t]*bkit:end(?:[ \\t]+(${NAME}))?[ \\t]*$`);
-  const htmlStart = new RegExp(
-    `^[ \\t]*(?:#|//)?[ \\t]*<!--[ \\t]*bkit:start(?:[ \\t]+(${NAME}))?(?:[ \\t]+(optional))?[ \\t]*-->[ \\t]*$`,
-  );
-  const htmlEnd = new RegExp(
-    `^[ \\t]*(?:#|//)?[ \\t]*<!--[ \\t]*bkit:end(?:[ \\t]+(${NAME}))?[ \\t]*-->[ \\t]*$`,
-  );
-
-  const lines = content.split("\n");
-  const isHtml = lines.some((l) => htmlStart.test(l));
-  const startRe = isHtml ? htmlStart : hashStart;
-  const endRe = isHtml ? htmlEnd : hashEnd;
-
-  const result = new Map<string, { body: string; optional: boolean }>();
-  let open: { name: string; optional: boolean; bodyLines: string[] } | null = null;
-  for (const line of lines) {
-    if (open) {
-      const em = endRe.exec(line);
-      const endName = em ? (em[1] ?? "") : null;
-      if (em && (endName === open.name || endName === "")) {
-        const body = open.bodyLines.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
-        if (!result.has(open.name)) result.set(open.name, { body, optional: open.optional });
-        open = null;
-      } else {
-        open.bodyLines.push(line);
-      }
-    } else {
-      const sm = startRe.exec(line);
-      if (sm) open = { name: sm[1] ?? "", optional: !!sm[2], bodyLines: [] };
-    }
-  }
-  return result;
 }
 
 // Extract the FULL bkit-managed block INCLUDING marker lines from a file.

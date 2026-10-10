@@ -32,8 +32,6 @@ import {
   TEMPLATES_POINTER,
 } from "./bkit-modules.js";
 
-export type { PreflightFinding };
-
 // ---------------------------------------------------------------------------
 // Token-surface detectors
 // ---------------------------------------------------------------------------
@@ -1131,7 +1129,6 @@ export function detectBkitStubs(cwd: string): PreflightFinding[] {
     };
     const e2eEnabled = isStepEnabled("Run E2E Tests");
     const vercelEnabled = isStepEnabled("Await Vercel Preview");
-    const autoForceEnabled = isStepEnabled("Auto Force E2E for Sensitive Paths");
 
     if (vercelEnabled && stubSentinelPresent.has("e2e")) {
       findings.push({
@@ -2423,7 +2420,6 @@ export function detectLedgerAliasCollisions(cwd: string): PreflightFinding | nul
  */
 export function runPostInstallCheck(
   preflightAdvisories: PreflightFinding[],
-  modules: Set<ModuleFlag>,
   cwd: string = process.cwd(),
 ): PreflightFinding[] {
   const phase3: PreflightFinding[] = [];

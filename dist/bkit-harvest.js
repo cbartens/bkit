@@ -17,7 +17,6 @@
 //     the only record of pruned consumer friction until the caller commits it; readers
 //     fold it.
 //   - Malformed consumer lines are NEVER pruned (not ours to delete).
-//   - Per-consumer timeout + continue-on-stall.
 //   - Grep-able [bkit-harvest] log lines.
 //   - Relies on the tolerant `parse` for half-written tails.
 //
@@ -29,7 +28,7 @@
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fold, identity, parse, resolveRepoSlug, } from "./bkit-telemetry.js";
+import { fold, parse, resolveRepoSlug, } from "./bkit-telemetry.js";
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -43,8 +42,6 @@ export const HARVEST_COPY_FILES = ["stats.jsonl", "friction.jsonl"];
 export const HARVEST_PRUNE_FILES = ["friction.jsonl"];
 /** Files to COUNT-ONLY from each consumer's `docs/` directory (metadata only). */
 export const HARVEST_COUNT_FILES = ["deferrals.jsonl", "failures.jsonl"];
-/** Per-consumer read timeout in milliseconds. */
-export const HARVEST_TIMEOUT_MS = 10_000;
 /** Path (relative to bkit repo root) for the consumers list. */
 export const CONSUMERS_FILE = "docs/consumers.md";
 /**
@@ -329,15 +326,3 @@ export function consumerPathToSlug(consumerPath) {
         `This is NOT an owner/repo slug and will not join rows from the same repo harvested elsewhere.`);
     return fallback;
 }
-export function snapshotFile(filePath) {
-    if (!fs.existsSync(filePath))
-        return null;
-    const stat = fs.statSync(filePath);
-    const content = fs.readFileSync(filePath, "utf-8");
-    return { content, mtimeMs: stat.mtimeMs, size: stat.size };
-}
-export function fileUnchanged(before, after) {
-    return before.content === after.content && before.size === after.size;
-}
-// Re-export identity for dedup verification in tests
-export { identity };

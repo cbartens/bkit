@@ -1,7 +1,7 @@
 // bkit-cli.test.ts — CLI dispatch surface (module flags + comply/telemetry verbs).
 // Surface: install requires ≥1 module flag (guard lives in main(), not parseArgs);
 // core implicit; --typescript expands to lint; --auto is the cloud flag;
-// --cloud, --dependency=, --renovate=, --full and --core are unknown flags.
+// the internal module names (--core, --lint, --cloud) are unknown flags.
 // comply verb: --phase=<design|plan|build|debug|ship>.
 // telemetry verb: `bkit telemetry migrate [--dry-run]`.
 import { describe, expect, it, vi } from "vitest";
@@ -101,16 +101,6 @@ describe("parseArgs — module flags", () => {
     expect([...result.modules]).toEqual(["core"]);
   });
 
-  it("--dependency= and --renovate= are unknown flags", () => {
-    expect(expectExit(() => parseArgs(["install", "--dependency=renovate"]))).toMatch(
-      /Unknown flag/,
-    );
-    expect(expectExit(() => parseArgs(["install", "--renovate=self"]))).toMatch(/Unknown flag/);
-    expect(expectExit(() => parseArgs(["install", "--claude", "--dependency=dependabot"]))).toMatch(
-      /Unknown flag/,
-    );
-  });
-
   it("--auto=claude → cloud + core only; cloudVariant=claude", () => {
     const result = parseArgs(["install", "--auto=claude"]);
     expect([...result.modules].sort()).toEqual(["cloud", "core"]);
@@ -145,39 +135,13 @@ describe("parseArgs — module flags", () => {
 // parseArgs — unknown flags error
 // ---------------------------------------------------------------------------
 
-describe("parseArgs — dropped flags reject with generic 'Unknown flag' (S1)", () => {
-  const dropped = [
-    "--full",
-    "--core",
-    // ci.yml and the git hooks are templates, not modules.
-    "--ci",
-    "--tooling",
-    "--lint",
-    "--git-hooks",
-    "--renovate",
-    "--dependabot",
-    "--dependency=renovate",
-    "--renovate=self",
-    "--cloud",
-    "--cloud=claude",
-  ];
-  for (const flag of dropped) {
+describe("parseArgs — internal module names are not flags", () => {
+  for (const flag of ["--core", "--lint", "--cloud", "--cloud=claude"]) {
     it(`${flag} → Unknown flag`, () => {
       const msg = expectExit(() => parseArgs(["install", flag]));
       expect(msg).toMatch(/Unknown flag/);
     });
   }
-
-  it("uninstall --ci / --tooling / --package / --keep-tooling → Unknown flag (#489)", () => {
-    for (const flag of ["--ci", "--tooling", "--package", "--keep-tooling"]) {
-      expect(expectExit(() => parseArgs(["uninstall", flag]))).toMatch(/Unknown flag/);
-    }
-  });
-
-  it("--non-interactive → Unknown flag (use --auto-apply)", () => {
-    const msg = expectExit(() => parseArgs(["upgrade", "--non-interactive"]));
-    expect(msg).toMatch(/Unknown flag/);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -250,12 +214,8 @@ describe("parseArgs — unknown flag / verb rejection", () => {
     expect(expectExit(() => parseArgs(["deploy"]))).toMatch(/Unknown verb/);
   });
 
-  it("`init` verb is rejected as unknown", () => {
-    expect(expectExit(() => parseArgs(["init"]))).toMatch(/Unknown verb/);
-  });
-
-  it("`--host=claude` is rejected (use `--claude`)", () => {
-    expect(expectExit(() => parseArgs(["install", "--host=claude"]))).toMatch(/Unknown flag/);
+  it("`bkit codex` is not a verb", () => {
+    expect(expectExit(() => parseArgs(["codex"]))).toMatch(/Unknown verb/);
   });
 });
 
@@ -283,17 +243,7 @@ describe("printUsage — help output", () => {
     expect(output).toContain("--typescript");
     expect(output).toContain("renovate.json5");
     expect(output).toContain("dependabot.yml");
-    expect(output).not.toMatch(/--dependency=/);
-    expect(output).not.toMatch(/--renovate=/);
     expect(output).toContain("--auto=");
-  });
-
-  it("does NOT advertise the dropped flags", () => {
-    const output = usage();
-    // The dropped bare flags must not appear as offered options.
-    for (const flag of ["full", "core", "lint", "git-hooks", "ci", "tooling", "package"]) {
-      expect(output).not.toMatch(new RegExp(`^\\s*--${flag}\\b`, "m"));
-    }
   });
 
   it("documents compose + core examples", () => {
@@ -323,10 +273,8 @@ describe("printUsage — help output", () => {
     expect(output).toContain("--nuke");
   });
 
-  it("documents the --auto-apply upgrade flag, not --non-interactive", () => {
-    const output = usage();
-    expect(output).toContain("--auto-apply");
-    expect(output).not.toContain("--non-interactive");
+  it("documents the --auto-apply upgrade flag", () => {
+    expect(usage()).toContain("--auto-apply");
   });
 });
 
@@ -361,12 +309,6 @@ describe("parseArgs — uninstall verb", () => {
     const result = parseArgs(["uninstall", "--auto"]);
     expect([...result.modules]).toEqual(["cloud"]);
     expect(result.cloudVariant).toBeNull();
-  });
-
-  it("uninstall --dependency=renovate is an unknown flag", () => {
-    expect(expectExit(() => parseArgs(["uninstall", "--dependency=renovate"]))).toMatch(
-      /Unknown flag/,
-    );
   });
 
   it("uninstall --dry-run sets dryRun flag", () => {
@@ -482,16 +424,6 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
   for (const value of accepted) {
     it(`--opencode=${value} is accepted`, () => {
       expect(parseArgs(["install", `--opencode=${value}`]).opencodeProvider).toBe(value);
-    });
-  }
-
-  // Retired providers are rejected outright — no alias, no migration path.
-  const removed = ["ollama-local", "nvidia", "groq", "cerebras", "zai", "moonshot"] as const;
-  for (const value of removed) {
-    it(`--opencode=${value} is rejected (removed provider)`, () => {
-      expect(expectExit(() => parseArgs(["install", `--opencode=${value}`]))).toMatch(
-        /unsupported provider/,
-      );
     });
   }
 

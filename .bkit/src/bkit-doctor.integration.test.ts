@@ -247,13 +247,7 @@ function listFilesRecursive(dir: string): string[] {
 // BAR-167 Phase 1 — doctor surfaces tier2-json-drift and legacy-bkit-envelope advisories
 // ---------------------------------------------------------------------------
 
-import {
-  detectLegacyBkitEnvelope,
-  detectTier2JsonDrift,
-  detectDirenvMissing,
-  detectDirenvNotAllowed,
-  runPreflight,
-} from "./bkit-preflight";
+import { detectDirenvMissing, detectDirenvNotAllowed, runPreflight } from "./bkit-preflight";
 import { runPostInstallCheck } from "./bkit-postinstall";
 
 describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
@@ -315,8 +309,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "BKIT_GH_TOKEN=\n", "utf-8");
     // No .bkit/.env
 
-    const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
-    const findings = runPostInstallCheck([], modules, tmpDir);
+    const findings = runPostInstallCheck([], tmpDir);
     expect(findings.some((a) => a.id === "mcp-env-missing-dotenv")).toBe(true);
   });
 
@@ -334,8 +327,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
       "utf-8",
     );
 
-    const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
-    const findings = runPostInstallCheck([], modules, tmpDir);
+    const findings = runPostInstallCheck([], tmpDir);
     const ids = findings.map((a) => a.id);
     expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
     expect(ids).toContain("mcp-env-blank-key-bkit_gh_token_install");
@@ -355,8 +347,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
       "utf-8",
     );
 
-    const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
-    const findings = runPostInstallCheck([], modules, tmpDir);
+    const findings = runPostInstallCheck([], tmpDir);
     const ids = findings.map((a) => a.id);
     expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
     expect(ids).not.toContain("mcp-env-blank-key-bkit_linear_api_key");
@@ -371,8 +362,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
       "utf-8",
     );
 
-    const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
-    const findings = runPostInstallCheck([], modules, tmpDir);
+    const findings = runPostInstallCheck([], tmpDir);
     expect(findings.some((a) => a.id === "mcp-env-missing-dotenv")).toBe(false);
     expect(findings.some((a) => a.id.startsWith("mcp-env-blank-key-"))).toBe(false);
     // direnv advisories depend on system state — we only check the non-system advisories

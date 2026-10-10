@@ -60,7 +60,7 @@ Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-
 
 **Additive multi-provider install:** `bkit install --opencode=<provider>` additive — second provider ADDS block to `opencode.json`, keeps first. Agent frontmatter (`model:`) re-renders to last-installed (active) provider; other blocks stay for interactive switch/overrides. Installed providers → `bkit.opencodeProviders: string[]` in `package.json`; active → `bkit.opencodeProvider`. `bkit status` lists all, marks active; `bkit doctor` checks all credentials. Remove one: `bkit uninstall --opencode=<provider>` (surgical — block + array; if active removed, re-point via `bkit install --opencode=<new>` or `bkit upgrade`). `bkit uninstall --opencode` (bare) tears down entire opencode host.
 
-New host — row above + `PROGRAM_GATEWAYS` (`bkit-cli.ts`) + `run<Host>Module` (`bkit-modules.ts`) + manifest block (`bkit-manifest.ts`) + `.bkit/templates/<dir>/` + GateGuard case in `bkit-gateguard-parity.integration.test.ts`. New provider ALSO needs `GATEWAY_COLUMN` (`bkit-install.ts`) + a curated `prompts.md` § Models column.
+New host — row above + `run<Host>Module` (`bkit-modules.ts`) + manifest block (`bkit-manifest.ts`) + `.bkit/templates/<dir>/` + GateGuard case in `bkit-gateguard-parity.integration.test.ts`. New provider ALSO needs `GATEWAY_COLUMN` (`bkit-install.ts`) + a curated `prompts.md` § Models column.
 
 ---
 
@@ -174,7 +174,7 @@ Cloud Agents API: `curl https://api.cursor.com/v0/models -u "$BKIT_CURSOR_API_KE
 
 **Lives in `.bkit/prompts.md`** (per-agent metadata with descriptions, effort/maxTurns rationale, tool patterns).
 
-`prompts.md`: one row per agent: `name | Cursor model | Claude effort | role hint`. Canonical for Cursor frontmatter rewrite (T3). `bkit/hosts/cursor.ts` mirrors; CI drift gate enforces parity.
+`prompts.md`: one row per agent: `name | Cursor model | Claude effort | role hint`. Canonical for Cursor frontmatter rewrite (T3); `bkit-models-table-parity.test.ts` checks it against the prompt frontmatter.
 
 ### Per-workflow (orchestrator) model
 

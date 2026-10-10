@@ -445,62 +445,30 @@ function appendLog(ctx: RunContext, file: string | undefined, lines: string[]): 
 
 function rebaseVerb(ctx: RunContext): number {
   const top = topLevel(ctx.cwd);
-  const onto = str(ctx.flags.onto);
   const sentinel = str(ctx.flags.sentinel);
   const sentinelPath = sentinel === undefined ? undefined : path.resolve(ctx.cwd, sentinel);
   if (sentinelPath) fs.rmSync(sentinelPath, { force: true });
 
-  const finish = (result: RebaseResult, outcome: "clean" | "resolved" | "refused"): number => {
-    appendLog(ctx, str(ctx.flags.logFile), result.log);
-    let aborted = false;
-    if (outcome === "refused") {
-      if (ctx.flags.abort === true && rebaseInProgress(top))
-        aborted = runGit(top, ["rebase", "--abort"]).ok;
-      if (sentinelPath) {
-        fs.mkdirSync(path.dirname(sentinelPath), { recursive: true });
-        fs.writeFileSync(sentinelPath, "");
-      }
-    }
-    ctx.emit({
-      outcome,
-      resolved: result.resolved,
-      skippedCommits: result.skippedCommits,
-      rounds: result.rounds,
-      refused: result.refused,
-      reason: result.reason,
-      aborted,
-      sentinel: outcome === "refused" && sentinel !== undefined ? sentinel : null,
-    });
-    return outcome === "refused" ? EXIT_REFUSED : EXIT.OK;
-  };
-  const empty = (): RebaseResult => ({
-    ok: true,
-    resolved: [],
-    skippedCommits: 0,
-    rounds: 0,
-    refused: null,
-    reason: null,
-    log: [],
-  });
-
-  if (onto !== undefined) {
-    const started = quietGit(top, ["rebase", "--rebase-merges", onto]);
-    if (started.ok) return finish(empty(), "clean");
-    if (!rebaseInProgress(top)) {
-      const result = empty();
-      const reason = `git rebase ${onto} did not start: ${started.stderr.split("\n")[0] ?? ""}`;
-      result.ok = false;
-      result.reason = reason;
-      result.log.push(`REFUSE — ${reason}`);
-      ctx.log(`REFUSE — ${reason}`);
-      return finish(result, "refused");
-    }
-  } else if (!rebaseInProgress(top)) {
-    ctx.log("no rebase in progress — pass --onto=<ref> to start one");
+  if (!rebaseInProgress(top)) {
+    ctx.log("no rebase in progress");
     return EXIT_NO_REBASE;
   }
   const result = resolveRebase(top, (line) => ctx.log(line));
-  return finish(result, result.ok ? "resolved" : "refused");
+  appendLog(ctx, str(ctx.flags.logFile), result.log);
+  if (!result.ok && sentinelPath) {
+    fs.mkdirSync(path.dirname(sentinelPath), { recursive: true });
+    fs.writeFileSync(sentinelPath, "");
+  }
+  ctx.emit({
+    outcome: result.ok ? "resolved" : "refused",
+    resolved: result.resolved,
+    skippedCommits: result.skippedCommits,
+    rounds: result.rounds,
+    refused: result.refused,
+    reason: result.reason,
+    sentinel: !result.ok && sentinel !== undefined ? sentinel : null,
+  });
+  return result.ok ? EXIT.OK : EXIT_REFUSED;
 }
 
 function pushVerb(ctx: RunContext): number {
@@ -962,16 +930,6 @@ export const branchesCommand: CommandSpec = {
         "Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse anything else.",
       flags: [
         {
-          name: "onto",
-          type: "string",
-          help: "start `git rebase --rebase-merges <ref>` first (without it, a rebase must be in progress)",
-        },
-        {
-          name: "abort",
-          type: "boolean",
-          help: "on refusal, git rebase --abort (default: leave it in progress for diagnosis)",
-        },
-        {
           name: "log-file",
           type: "string",
           help: "append the resolution log lines here, e.g. logs/{FID}/rebase-resolve-log.md",
@@ -983,18 +941,17 @@ export const branchesCommand: CommandSpec = {
         },
       ],
       output: {
-        outcome: "clean (rebased without conflict) | resolved | refused",
+        outcome: "resolved | refused (the rebase is left in progress for diagnosis)",
         resolved: "conflicts resolved: [{path, how: union|lockfile}]",
         skippedCommits: "commits skipped because resolution emptied them",
         rounds: "resolve rounds run",
         refused: "the path that stopped resolution (null when none, or not path-specific)",
         reason: "why resolution refused (null on success)",
-        aborted: "true when --abort aborted the rebase",
         sentinel: "the sentinel written on refusal (null otherwise)",
       },
       exitCodes: {
-        [EXIT_REFUSED]: "a conflict is not auto-resolvable (or the rebase did not start)",
-        [EXIT_NO_REBASE]: "no rebase in progress and no --onto",
+        [EXIT_REFUSED]: "a conflict is not auto-resolvable",
+        [EXIT_NO_REBASE]: "no rebase in progress",
       },
       run: rebaseVerb,
     },

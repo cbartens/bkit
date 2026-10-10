@@ -16,15 +16,27 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CONSUMERS_FILE,
   HARVEST_COPY_FILES,
-  HARVEST_COUNT_FILES,
   HARVEST_DEST_DIR,
   consumerPathToSlug,
-  fileUnchanged,
   harvestConsumer,
   pruneConsumerFile,
   runHarvest,
-  snapshotFile,
 } from "./bkit-harvest";
+
+interface FileSnapshot {
+  content: string;
+  size: number;
+}
+
+function snapshotFile(filePath: string): FileSnapshot | null {
+  if (!fs.existsSync(filePath)) return null;
+  return { content: fs.readFileSync(filePath, "utf-8"), size: fs.statSync(filePath).size };
+}
+
+/** Content + size byte-identical (the copy-only invariant). */
+function fileUnchanged(before: FileSnapshot, after: FileSnapshot): boolean {
+  return before.content === after.content && before.size === after.size;
+}
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -233,7 +245,6 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     makeConsumerRepo(consumerPath, {
       ".bkit/friction.jsonl": frictionRow(1_700_000_000_003, "fk-1") + "\n",
     });
-    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
     const consumerSlug = "test-owner/consumer-app"; // rows carry their own repo stamp
 
     // The store holds a DIFFERENT row than the one on disk.

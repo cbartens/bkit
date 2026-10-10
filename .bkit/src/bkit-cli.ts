@@ -15,7 +15,6 @@ export type ModuleFlag =
   // `typescript` is an accepted CLI token only — parseArgs expands it to the internal
   // `lint` module, so it never appears in a resolved module set or the dispatch registry.
   | "typescript";
-export type { IssueTracker };
 
 /** Cloud-agent variant chosen via `--auto=<variant>`. */
 export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"] as const;
@@ -37,28 +36,6 @@ export const OPENCODE_PROVIDERS = [
   "opencode-zen",
   "opencode-go",
 ] as const;
-
-/**
- * Every program bkit installs for, and the gateways it may use.
- *
- * A "program" is the thing that reads the files bkit writes (`.claude/`, `.cursor/`,
- * `.opencode/`); a "gateway" is the thing tokens are bought through. They are separate
- * axes: model ids belong to a gateway, `effort:`/`reasoningEffort:` spelling belongs to
- * a program. See providers.md § Supported hosts.
- *
- * One gateway = pinned, and the CLI flag takes no value (`--claude`). Several = the flag
- * must name one (`--opencode=<gateway>`). Pinning is POLICY, not capability. Per-model
- * deviations go in the consumer-owned `## Model Overrides` table below the `bkit:end`
- * marker; there is no gateway override.
- */
-export const PROGRAM_GATEWAYS: Record<string, readonly string[]> = {
-  claude: ["anthropic"],
-  cursor: ["cursor"],
-  opencode: OPENCODE_PROVIDERS,
-  // Codex CLI names its gateway in `[model_providers.<id>]`, not in the model pin.
-  // Pinned to openai: the ChatGPT subscription is what makes Codex cheap to run.
-  codex: ["openai"],
-};
 
 /**
  * Hidden backward-compat aliases for `--opencode=<provider>` values (not exposed in
@@ -101,7 +78,6 @@ export const CLASSIC_VERBS: ReadonlySet<string> = new Set([
   "telemetry",
   "cursor",
   "opencode",
-  "codex",
   "help",
 ]);
 
@@ -205,7 +181,6 @@ export interface UninstallFlags {
   force: boolean;
   nuke: boolean;
   yes: boolean;
-  keepNpmrc: boolean;
   autoRevert: boolean;
 }
 
@@ -276,7 +251,6 @@ function defaultUninstallFlags(): UninstallFlags {
     force: false,
     nuke: false,
     yes: false,
-    keepNpmrc: false,
     autoRevert: false,
   };
 }
@@ -331,7 +305,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   } else if (firstArg === "telemetry") {
     verb = "telemetry";
     args.shift();
-  } else if (firstArg === "cursor" || firstArg === "opencode" || firstArg === "codex") {
+  } else if (firstArg === "cursor" || firstArg === "opencode") {
     verb = firstArg as Verb;
     args.shift();
     // Launcher verbs take no flags — reject any remaining args up-front.
@@ -343,8 +317,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
     verb = "help";
     args.shift();
   } else if (firstArg !== undefined && !firstArg.startsWith("-")) {
-    // Unknown verb (`init` removed in v0.2.0 — name modules explicitly, e.g.
-    // `install --claude --typescript`).
     console.error(`[bkit] Unknown verb: ${firstArg}. Run \`bkit help\` for usage.`);
     process.exit(1);
   }
@@ -524,10 +496,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
       if (flag === "yes") {
         uninstallFlags.yes = true;
-        continue;
-      }
-      if (flag === "keep-npmrc") {
-        uninstallFlags.keepNpmrc = true;
         continue;
       }
       if (flag === "auto-revert") {
@@ -802,7 +770,6 @@ Uninstall flags:
   --force         Delete owned whole-file files even if consumer modified them.
   --nuke          Delete ALL bkit-managed files regardless of tier/hash (requires confirm).
   --yes           Skip interactive confirm for --nuke.
-  --keep-npmrc    Preserve .npmrc (default: .npmrc is not bkit-managed, always preserved).
 
 Examples:
   bkit install --claude                       .claude/** + CLAUDE.md + core.

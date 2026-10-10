@@ -64,13 +64,7 @@
         "**/*.spec.js"
       ],
       "rules": {
-        "structure.duplicate-function-signatures": {
-          "enabled": false
-        },
         "tests.duplicate-mock-setup": {
-          "enabled": false
-        },
-        "boundary/type-suppression": {
           "enabled": false
         }
       }
@@ -102,6 +96,21 @@
         "**/.opencode/plugin/gateguard.js"
       ],
       "rules": {
+        "structure.duplicate-function-signatures": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "files": [
+        "**/.claude/hooks/guardrails.cjs",
+        "**/.cursor/hooks/guardrails.cjs",
+        "**/.codex/hooks/guardrails.cjs"
+      ],
+      "rules": {
+        "defensive.empty-catch": {
+          "enabled": false
+        },
         "structure.duplicate-function-signatures": {
           "enabled": false
         }

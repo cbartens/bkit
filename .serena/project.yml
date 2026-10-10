@@ -88,8 +88,8 @@ ls_specific_settings:
     indexing_timeout: 180.0
     # Match the repo's own TypeScript (package.json) instead of Serena's bundled
     # 5.9.3, so the server analyses the code with the compiler that compiles it.
-    # bkit compiles with TypeScript 7, which ships no tsserver; Serena's
-    # TypeScript server needs one, so it runs the last 5.x it bundles.
+    # TypeScript 7+ ships no tsserver and the server will not start on it: keep
+    # 5.9.3 there. Ignored unless this project is trusted (see above).
     typescript_version: "5.9.3"
 
 # list of workspace folder paths (LSP backend only).
@@ -144,13 +144,11 @@ ignored_paths:
   - ".claude/**"
   - ".cursor/**"
   - ".opencode/**"
-  # bkit's own source is .bkit/src and .bkit/scripts, so .bkit/ stays indexed.
-  # .bkit/templates/ is the install payload: its hooks and scripts are copied
-  # into .claude/, .cursor/, .opencode/ and scripts/, so indexing it would
-  # answer each of those symbols twice.
+  # bkit repo only: .bkit/src and .bkit/scripts are source; the install payload stays out.
   - ".bkit/templates/**"
   - ".agents/skills/**"
-  # Committed compiler output that duplicates .bkit/src.
+  # Committed compiler output that duplicates TypeScript source. Drop the
+  # line if this repo has none.
   - "dist/**"
 
 # whether the project is in read-only mode

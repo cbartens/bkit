@@ -15,9 +15,7 @@
 set -e
 pnpm bkit:gate:format
 
-# bkit-repo only — block committing stale dist when a COMPILED `.bkit/src/*.ts` is
-# staged. Consumers don't compile TS and never run this gate.
-# Staged test files alone do not trigger it.
+# bkit repo only: a staged non-test `.bkit/src/*.ts` runs the dist freshness check.
 if git diff --cached --name-only --diff-filter=ACM |
   grep -v '\.test\.ts$' |
   grep -q '^\.bkit/src/.*\.ts$'; then

@@ -58,18 +58,6 @@ afterEach(() => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function seedFixture(): void {
-  // Copy fixture files into tmpDir
-  const files = fs.readdirSync(FIXTURES_DIR);
-  for (const file of files) {
-    const src = path.join(FIXTURES_DIR, file);
-    const dst = path.join(tmpDir, file);
-    if (fs.statSync(src).isFile()) {
-      fs.copyFileSync(src, dst);
-    }
-  }
-}
-
 function seedCursorHooksFromFixture(): void {
   // Place the fixture's cursor-hooks.json at .cursor/hooks.json
   fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
@@ -105,9 +93,6 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
     }
 
     seedCursorHooksFromFixture();
-
-    // The fixture hooks.json has consumer additions (failClosed, loop_limit)
-    const fixtureContent = fs.readFileSync(path.join(FIXTURES_DIR, "cursor-hooks.json"), "utf-8");
 
     // Simulate what bkit@0.4.x would have written as the canonical content:
     // A minimal hooks.json with just SessionStart (no consumer additions)

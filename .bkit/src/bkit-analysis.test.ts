@@ -1,9 +1,7 @@
-// bkit-analysis.test.ts — Unit tests for the analysis CLI and rollup writer:
+// bkit-analysis.test.ts — Unit tests for the analysis CLI:
 //   - size↔outcome regression + dispatch-size threshold over `outcome` rows;
 //     `counterSource` trust tier labels
 //   - per-rule compliance rate over `kind:"compliance"` rows
-//   - the rollup WRITER's shard at ARCHIVE_SHARD_TEMPLATE reads back through `foldFrom`
-//     with row count preserved
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -11,23 +9,19 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  ARCHIVE_SHARD_TEMPLATE,
-  MAX_ROWS_BEFORE_ROLLUP,
   computeComplianceRates,
   computeCounts,
   computeDeferralDiscipline,
   computeElapsedStats,
   computeRegression,
   computeVersionCompliance,
-  foldWithArchive,
   newFailuresThisRun,
   runAnalysis,
-  writeRollupShard,
   type ComplianceRow,
   type DeferralRow,
   type OutcomeRow,
 } from "./bkit-analysis";
-import { foldFrom, type TelemetryEvent } from "./bkit-telemetry";
+import type { TelemetryEvent } from "./bkit-telemetry";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -554,144 +548,5 @@ describe("runAnalysis — full report (WS4-T3)", () => {
     expect(entry.unjustifiedCount).toBe(1);
     expect(entry.unjustifiedRate).toBe(0.5);
     expect(report.reportLines.join("\n")).toMatch(/Deferral discipline: 1\/2/);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// WS4-T4: Rollup writer + writer↔reader round-trip
-// ---------------------------------------------------------------------------
-
-describe("writeRollupShard — rollup writer (WS4-T4)", () => {
-  it("writes a shard at ARCHIVE_SHARD_TEMPLATE when threshold exceeded", () => {
-    const bkitRoot = path.join(tmpDir, "bkitroot");
-    fs.mkdirSync(path.join(bkitRoot, ".bkit"), { recursive: true });
-
-    const hotPath = path.join(bkitRoot, ".bkit", "stats.jsonl");
-
-    // Write MAX_ROWS_BEFORE_ROLLUP + 1 rows
-    const rows: unknown[] = [];
-    for (let i = 0; i <= MAX_ROWS_BEFORE_ROLLUP; i++) {
-      rows.push({
-        ts: 1_700_000_000_000 + i,
-        kind: "counter",
-        repo: "cbartens/bkit",
-        bkitVersion: "4.1.4",
-        workflow: "build",
-        step: "build-close-workflow",
-        counterName: `counter-${i}`,
-        counterValue: i,
-        parentSha: "abc123",
-        counterSource: "shell-bus",
-      });
-    }
-    fs.writeFileSync(hotPath, rows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
-
-    const shardPath = writeRollupShard(hotPath, bkitRoot);
-
-    // Shard was written
-    expect(shardPath).not.toBeNull();
-    expect(shardPath).toBeDefined();
-    expect(fs.existsSync(shardPath!)).toBe(true);
-
-    // Shard filename follows ARCHIVE_SHARD_TEMPLATE pattern
-    expect(path.basename(shardPath!)).toMatch(/^stats\.\d{6}\.jsonl$/);
-
-    // Hot file is now empty (rolled over)
-    const hotContent = fs.readFileSync(hotPath, "utf-8");
-    expect(hotContent).toBe("");
-
-    // Archive shard has all rows
-    const shardContent = fs.readFileSync(shardPath!, "utf-8");
-    const shardRows = shardContent.trim().split("\n").filter(Boolean);
-    expect(shardRows.length).toBe(MAX_ROWS_BEFORE_ROLLUP + 1);
-  });
-
-  it("returns null when threshold is not exceeded", () => {
-    const bkitRoot = path.join(tmpDir, "bkitroot");
-    fs.mkdirSync(path.join(bkitRoot, ".bkit"), { recursive: true });
-
-    const hotPath = path.join(bkitRoot, ".bkit", "stats.jsonl");
-    fs.writeFileSync(
-      hotPath,
-      JSON.stringify({
-        ts: 1_700_000_000_000,
-        kind: "counter",
-        repo: "cbartens/bkit",
-        bkitVersion: "4.1.4",
-        workflow: "build",
-        step: "build-close-workflow",
-        counterName: "SHIP_ATTEMPT",
-        counterValue: 1,
-        parentSha: "abc123",
-        counterSource: "shell-bus",
-      }) + "\n",
-      "utf-8",
-    );
-
-    const shardPath = writeRollupShard(hotPath, bkitRoot);
-    expect(shardPath).toBeNull();
-  });
-
-  it("foldFrom reads hot + archive shards with row count preserved (round-trip)", () => {
-    const bkitRoot = path.join(tmpDir, "bkitroot");
-    fs.mkdirSync(path.join(bkitRoot, ".bkit"), { recursive: true });
-    fs.mkdirSync(path.join(bkitRoot, ".bkit", "archive"), { recursive: true });
-
-    const hotPath = path.join(bkitRoot, ".bkit", "stats.jsonl");
-
-    // Write MAX_ROWS_BEFORE_ROLLUP + 1 rows (each with unique ts for unique identity)
-    const totalRows = MAX_ROWS_BEFORE_ROLLUP + 1;
-    const allRows: unknown[] = [];
-    for (let i = 0; i < totalRows; i++) {
-      allRows.push({
-        ts: 1_700_000_000_000 + i,
-        kind: "counter",
-        repo: "cbartens/bkit",
-        bkitVersion: "4.1.4",
-        workflow: "build",
-        step: "build-close-workflow",
-        counterName: `counter-${i}`,
-        counterValue: i,
-        parentSha: "abc123",
-        counterSource: "shell-bus",
-      });
-    }
-    fs.writeFileSync(hotPath, allRows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
-
-    // Write rollup shard — hot file is now empty
-    const shardPath = writeRollupShard(hotPath, bkitRoot)!;
-    expect(shardPath).not.toBeNull();
-
-    // Add 5 NEW rows to the now-empty hot file
-    const newRows: unknown[] = [];
-    for (let i = 0; i < 5; i++) {
-      newRows.push({
-        ts: 1_700_000_000_000 + totalRows + i,
-        kind: "counter",
-        repo: "cbartens/bkit",
-        bkitVersion: "4.1.4",
-        workflow: "ship",
-        step: "ship-close-workflow",
-        counterName: `new-counter-${i}`,
-        counterValue: i,
-        parentSha: "xyz999",
-        counterSource: "shell-bus",
-      });
-    }
-    fs.writeFileSync(hotPath, newRows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
-
-    // foldWithArchive should read hot + shard = totalRows + 5 unique rows
-    const folded = foldWithArchive(hotPath, bkitRoot);
-    expect(folded.rowCount).toBe(totalRows + 5);
-    expect(folded.state.size).toBe(totalRows + 5); // All unique by (counterName)
-    expect(folded.malformedLineCount).toBe(0);
-  });
-
-  it("returns null for non-existent hot file", () => {
-    const bkitRoot = path.join(tmpDir, "bkitroot");
-    fs.mkdirSync(path.join(bkitRoot, ".bkit"), { recursive: true });
-
-    const shardPath = writeRollupShard(path.join(bkitRoot, ".bkit", "nonexistent.jsonl"), bkitRoot);
-    expect(shardPath).toBeNull();
   });
 });

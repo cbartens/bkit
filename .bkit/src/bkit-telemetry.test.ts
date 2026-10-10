@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  ARCHIVE_SHARD_TEMPLATE,
   DEFERRAL_REASONS,
   FEATURE_STATUSES,
   MAX_ROWS_BEFORE_ROLLUP,
@@ -1057,18 +1056,13 @@ describe("constants", () => {
     expect(typeof MAX_ROWS_BEFORE_ROLLUP).toBe("number");
     expect(MAX_ROWS_BEFORE_ROLLUP).toBeGreaterThan(0);
   });
-
-  it("ARCHIVE_SHARD_TEMPLATE contains {basename} and {YYYYMM}", () => {
-    expect(ARCHIVE_SHARD_TEMPLATE).toContain("{basename}");
-    expect(ARCHIVE_SHARD_TEMPLATE).toContain("{YYYYMM}");
-  });
 });
 
 // ---------------------------------------------------------------------------
-// foldFrom — reads hot file + synthetic archive shard
+// foldFrom — reads and folds several ledger files
 // ---------------------------------------------------------------------------
 
-describe("foldFrom — synthetic archive shard", () => {
+describe("foldFrom — several ledger files", () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -1092,9 +1086,9 @@ describe("foldFrom — synthetic archive shard", () => {
     expect(result.maxRowsWarning).toBe(false);
   });
 
-  it("reads archive shard alongside hot file and folds combined", () => {
+  it("folds two files together", () => {
     const hotPath = path.join(tmpDir, "stats.jsonl");
-    const archivePath = path.join(tmpDir, "stats.202606.jsonl"); // simulates the template pattern
+    const archivePath = path.join(tmpDir, "stats.202606.jsonl");
 
     const archiveEvent = complianceEvent({
       ts: 500,

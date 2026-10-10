@@ -46,17 +46,6 @@ export type StatusEvent =
   | { type: "workflow-done"; workflow: string; at: string }
   | { type: "workflow-failed"; workflow: string; at: string };
 
-export function validateInvariants(step: Step): { ok: boolean; reason?: string } {
-  if (step.verdict === undefined) return { ok: true };
-  if (step.failures === undefined) return { ok: false, reason: "verdict requires failures" };
-  if (step.verdict === "PASS" && step.failures !== 0)
-    return { ok: false, reason: "PASS requires failures=0" };
-  if (step.verdict === "FAIL" && step.failures <= 0)
-    return { ok: false, reason: "FAIL requires failures>0" };
-  if (step.failures < 0) return { ok: false, reason: "failures must be non-negative" };
-  return { ok: true };
-}
-
 // Identity for de-dup under union merge. `step-done` is unique per
 // (workflow, step, parentSha, at); workflow-level events per (type, workflow, at).
 function identity(e: StatusEvent): string {
@@ -121,24 +110,6 @@ export function fold(events: StatusEvent[]): WorkflowRun[] {
     }
   }
   return runs;
-}
-
-// Tolerant reader for the install/upgrade boundary: accepts a new `status.jsonl`
-// (newline-delimited events → folded) OR a legacy `status.json` (a single JSON
-// array of already-folded runs, passed through). Blank lines ignored.
-export function parseStatus(raw: string): WorkflowRun[] {
-  const trimmed = raw.trim();
-  if (trimmed === "") return [];
-  if (trimmed[0] === "[") {
-    // Legacy status.json — already the folded run array.
-    return JSON.parse(trimmed) as WorkflowRun[];
-  }
-  const events = trimmed
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l !== "")
-    .map((l) => JSON.parse(l) as StatusEvent);
-  return fold(events);
 }
 
 // Any status.jsonl row. The fold reads only StatusEvent types; the log also carries

@@ -12,7 +12,7 @@ import * as path from "node:path";
 
 import { activeDoneSteps, appendLine, statusTimestamp, type Step } from "../../bkit-status.js";
 import { getPromptsRoot } from "../../bkit-paths.js";
-import { CommandError, EXIT, parseJson, runGit, type CommandSpec, type FlagSpec } from "../lib.js";
+import { CommandError, EXIT, runGit, type CommandSpec, type FlagSpec } from "../lib.js";
 import {
   EXIT_NO_STATUS,
   FILE_FLAG,
@@ -42,8 +42,8 @@ export const EXIT_COMMIT = 8;
 // ---------------------------------------------------------------------------
 
 /** Allowed verdicts from a prompt's own `Verdict: A | B | C [note]` output line. */
-export function promptVerdicts(agent: string, promptsRoot = getPromptsRoot()): string[] {
-  const file = path.join(promptsRoot, `${agent}.md`);
+export function promptVerdicts(agent: string): string[] {
+  const file = path.join(getPromptsRoot(), `${agent}.md`);
   if (!fs.existsSync(file)) throw new CommandError(EXIT.USAGE, `no prompt ${agent} at ${file}`);
   const line = fs
     .readFileSync(file, "utf-8")

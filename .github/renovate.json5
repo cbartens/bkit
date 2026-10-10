@@ -232,12 +232,7 @@
     },
 
     // ─────────────────────────────────────────────────────────────────────
-    // bkit repo only — vite and pnpm majors are not bumped. Minor and patch stay
-    // enabled.
-    // vite stays on ^6 via root `pnpm.overrides`.
-    // pnpm 11 ignores `pnpm.overrides` in package.json (they move to
-    // pnpm-workspace.yaml) and blocks esbuild's build script unless it is listed
-    // in onlyBuiltDependencies.
+    // bkit repo only — vite and pnpm majors are not bumped; minor and patch are.
     // ─────────────────────────────────────────────────────────────────────
     { matchPackageNames: ["vite"], matchUpdateTypes: ["major"], enabled: false },
     { matchPackageNames: ["pnpm"], matchUpdateTypes: ["major"], enabled: false },

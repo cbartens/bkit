@@ -248,7 +248,6 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
       outcome: "resolved",
       resolved: [{ path: "docs/knowledge.jsonl", how: "union" }],
       refused: null,
-      aborted: false,
     });
     const rows = read(dir, "docs/knowledge.jsonl").split("\n").filter(Boolean);
     expect(rows).toHaveLength(3);
@@ -264,7 +263,7 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     diverge(dir, { "src.txt": "feat\n" }, { "src.txt": "main\n" });
     const r = await run(dir, ["rebase"]);
     expect(r.code).toBe(3);
-    expect(r.json).toMatchObject({ outcome: "refused", refused: "src.txt", aborted: false });
+    expect(r.json).toMatchObject({ outcome: "refused", refused: "src.txt" });
     expect(r.err).toContain("REFUSE src.txt");
     expect(git(dir, "status", "--porcelain").out).toContain("src.txt");
     expect(inRebase(dir)).toBe(true);
@@ -411,72 +410,37 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json).toMatchObject({ refused: lockfile, reason: "resolution failed" });
   });
 
-  it("--onto rebases cleanly when nothing conflicts", async () => {
-    const dir = makeRepo("onto-clean");
-    divergeOnly(dir, { "a.txt": "a\n" }, { "b.txt": "b\n" });
-    const r = await run(dir, ["rebase", "--onto=main"]);
-    expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ outcome: "clean", rounds: 0, resolved: [] });
-    expect(git(dir, "merge-base", "--is-ancestor", "main", "HEAD").ok).toBe(true);
-  });
-
-  it("--onto starts the rebase and resolves its conflicts", async () => {
-    const dir = makeRepo("onto-resolve");
-    divergeOnly(
-      dir,
-      { "docs/knowledge.jsonl": '{"key":"B","ts":2}\n' },
-      { "docs/knowledge.jsonl": '{"key":"C","ts":3}\n' },
-    );
-    const r = await run(dir, ["rebase", "--onto=main"]);
-    expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ outcome: "resolved" });
-    expect(inRebase(dir)).toBe(false);
-  });
-
-  it("--abort aborts on refusal; --sentinel and --log-file record it", async () => {
-    const dir = makeRepo("abort");
-    divergeOnly(dir, { "src.txt": "feat\n" }, { "src.txt": "main\n" });
-    const before = sha(dir);
+  it("--sentinel and --log-file record a refusal; the rebase stays in progress", async () => {
+    const dir = makeRepo("sentinel-write");
+    diverge(dir, { "src.txt": "feat\n" }, { "src.txt": "main\n" });
     write(dir, "logs/.rebase-failed", "stale");
     const r = await run(dir, [
       "rebase",
-      "--onto=main",
-      "--abort",
       "--sentinel=logs/.rebase-failed",
       "--log-file=logs/rebase-resolve-log.md",
     ]);
     expect(r.code).toBe(3);
-    expect(r.json).toMatchObject({
-      outcome: "refused",
-      aborted: true,
-      sentinel: "logs/.rebase-failed",
-    });
-    expect(inRebase(dir)).toBe(false);
-    expect(sha(dir)).toBe(before);
+    expect(r.json).toMatchObject({ outcome: "refused", sentinel: "logs/.rebase-failed" });
+    expect(inRebase(dir)).toBe(true);
     expect(read(dir, "logs/.rebase-failed")).toBe("");
     expect(read(dir, "logs/rebase-resolve-log.md")).toMatch(/^\[bkit-rebase\] REFUSE src\.txt/);
   });
 
   it("removes a stale sentinel when the rebase succeeds", async () => {
     const dir = makeRepo("sentinel-clear");
-    divergeOnly(dir, { "a.txt": "a\n" }, { "b.txt": "b\n" });
+    diverge(
+      dir,
+      { "docs/knowledge.jsonl": '{"key":"B","ts":2}\n' },
+      { "docs/knowledge.jsonl": '{"key":"C","ts":3}\n' },
+    );
     write(dir, "logs/.rebase-failed", "");
-    const r = await run(dir, ["rebase", "--onto=main", "--sentinel=logs/.rebase-failed"]);
+    const r = await run(dir, ["rebase", "--sentinel=logs/.rebase-failed"]);
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ sentinel: null });
     expect(fs.existsSync(path.join(dir, "logs/.rebase-failed"))).toBe(false);
   });
 
-  it("refuses when --onto cannot even start the rebase", async () => {
-    const dir = makeRepo("nostart");
-    divergeOnly(dir, { "src.txt": "feat\n" }, { "src.txt": "main\n" });
-    fs.appendFileSync(path.join(dir, "src.txt"), "dirty\n");
-    const r = await run(dir, ["rebase", "--onto=main"]);
-    expect(r.code).toBe(3);
-    expect(String(r.json?.reason)).toContain("did not start");
-  });
-
-  it("exits 4 when no rebase is in progress and no --onto is given", async () => {
+  it("exits 4 when no rebase is in progress", async () => {
     const dir = makeRepo("none");
     const r = await run(dir, ["rebase"]);
     expect(r.code).toBe(4);

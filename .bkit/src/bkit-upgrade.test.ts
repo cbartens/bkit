@@ -13,7 +13,6 @@ import {
   runUpgrade,
   updateCanonicalHashesAfterUpgrade,
   planSelfBump,
-  LOG_PREFIX,
   type UpgradeConflict,
 } from "./bkit-upgrade";
 import { sha256, writeBkitVersion, readBkitVersion, type BkitVersion } from "./bkit-version";

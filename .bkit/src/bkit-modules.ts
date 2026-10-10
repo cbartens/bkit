@@ -2547,8 +2547,7 @@ export function applyCodexSkill(
 // ---------------------------------------------------------------------------
 // runCodexModule — Codex CLI host (opt-in via --codex)
 //
-// Nullary flag, unlike --opencode: Codex has exactly one gateway (`openai`). See
-// PROGRAM_GATEWAYS in bkit-cli.ts.
+// Nullary flag, unlike --opencode: Codex has exactly one gateway (`openai`).
 //
 // Renders THREE things, two of them unlike any other host:
 //   .codex/agents/<name>.toml          — TOML, not markdown-with-frontmatter

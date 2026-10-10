@@ -41,7 +41,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 | Placeholder | In | Put | Typical value |
 | --- | --- | --- | --- |
 | `main` | `ci.yml` (`on.push` / `on.pull_request` branches; stub comments) | your default branch | `origin/HEAD`, else `main` |
-| `{{NODE_VERSION}}` | `ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major | `.nvmrc`, then `engines.node`, then `22` |
+| `{{NODE_VERSION}}` | `ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, both jobs) | a runner label | `ubuntu-latest` |
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
@@ -238,9 +238,8 @@ Editor defaults (`settings.json`: prettier format-on-save, extension recommendat
 
 ## Dependabot and Renovate
 
-Opens dependency PRs. No bkit workflow reads either. Pick one.
+Opens dependency PRs. No bkit workflow reads either. Pick one; copy only its files.
 
-- Use one.
 - Examples ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them). Your copied workflows (`ci.yml`, `bkit-cloud.yml`) stay in scope so their pins refresh.
 - `enabled: false` on a Renovate package rule does not stop digest pinning; use `ignorePaths` to keep Renovate off a file.
 - Land config on default branch before bot runs. Examples set `baseBranchPatterns: ["dev"]`.
@@ -337,7 +336,7 @@ graphify-out/
 - Add capability → rule in `bkit-graph-drift-rules.json`: lane, owner module, one literal marker. Shipped rules JSON = one example row; replace it.
 - Marker = a literal ONLY the owner should contain (a host, a header, a marker string) — NEVER the owner's exported function name: every legitimate caller then reads as `bypassed`.
 
-`MMD_MIN_WEIGHT` (default 12) drops light edges from `.mmd` files only. Iterate in mermaid.live; render internal-architecture diagram locally:
+`MMD_MIN_WEIGHT` (default 12, set in `bkit-graphify.sh`) drops light edges from the Mermaid views (`.mmd` files and the diagrams in `docs/capabilities.md`). One module per file → thinner edges → lower the default in your copy; an env override changes `docs/capabilities.md` per shell and fails `pnpm graph:check`. Iterate in mermaid.live; render internal-architecture diagram locally:
 
 ```bash
 npx -y @mermaid-js/mermaid-cli -i docs/graphify-out/reports/graph-packages.mmd -o tmp/graph-packages.svg
@@ -346,7 +345,7 @@ npx -y @mermaid-js/mermaid-cli -i docs/graphify-out/reports/graph-packages.mmd -
 - `bkit-graph-repair.py` runs between extract and cluster: restores `.js` specifiers pointing at `.tsx` files and workspace subpaths through an `exports` map. Bare `graphify update` drops that injection; `pnpm graph:update` restores it.
 - `bkit-graph-surface.py` = route layer. Assumes `apps/web` / `apps/mobile` page routes, `packages/api/src/v1.ts`, workspace scope `@scope/services/`. Replace `@scope` and route globs or section stays empty. Route reachability runs only when `scripts/ci/guards/assert-routes-reachable.mjs` exists; else skipped.
 - `bkit-graph-imports.py` picks `react-native` vs `default` export conditions from importer path (`apps/mobile` vs `apps/web`). Change prefixes if app roots differ.
-- Source roots are hard-coded for an `apps/` + `packages/` monorepo: `ROOTS` in `bkit-graph-drift.py` (files the drift rules scan), `by_package` / `by_module` in `bkit-graphify-rollup.py` (diagram boxes). Other layout → adapt all three, else capabilities read `gap` and diagrams come out empty. One flat source folder → `by_module` = one node per file. No web routes / no imports between top-level folders → route and package diagrams stay empty; that is the answer, not a fault.
+- Source roots are hard-coded for an `apps/` + `packages/` monorepo: `ROOTS` in `bkit-graph-drift.py` (files the drift rules scan), `ROOTS` in `bkit-graph-eager.py` and `DEFAULT_ROOTS` in `bkit-graph-imports.py` (files those passes walk), `by_package` / `by_module` in `bkit-graphify-rollup.py` (diagram boxes). Other layout → adapt all five, else capabilities read `gap` and diagrams come out empty. One flat source folder → `by_module` = one node per file. No web routes / no imports between top-level folders → route and package diagrams stay empty; that is the answer, not a fault.
 - Extract warning `had syntax errors and may be partially extracted` can fire on valid code → symbols after that line are missing from the graph; treat that file as unmapped.
 
 Do not run:

@@ -92,10 +92,6 @@ afterEach(() => {
   spawnSync.mockReset();
 });
 
-function makeModules(...flags: string[]): Set<import("./bkit-cli").ModuleFlag> {
-  return new Set(flags) as Set<import("./bkit-cli").ModuleFlag>;
-}
-
 // ---------------------------------------------------------------------------
 // detectShellToken
 // ---------------------------------------------------------------------------
@@ -1879,7 +1875,7 @@ describe("runPostInstallCheck deduplication", () => {
       },
     ];
 
-    const result = runPostInstallCheck(preflightAdvisories, makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck(preflightAdvisories, tmpDir);
 
     // Should appear exactly once
     const matches = result.filter((f) => f.id === "gh-bkit-token-unset-shell");
@@ -1890,7 +1886,7 @@ describe("runPostInstallCheck deduplication", () => {
 
   it("gh-bkit-token-unset-shell is emitted when BKIT_GH_TOKEN_INSTALL is unset", () => {
     delete process.env.BKIT_GH_TOKEN_INSTALL;
-    const result = runPostInstallCheck([], makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([], tmpDir);
     expect(result.some((f) => f.id === "gh-bkit-token-unset-shell")).toBe(true);
   });
 
@@ -1902,14 +1898,14 @@ describe("runPostInstallCheck deduplication", () => {
     );
     // Ensure token is set so only npmrc advisory fires
     process.env.BKIT_GH_TOKEN_INSTALL = "test";
-    const result = runPostInstallCheck([], makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([], tmpDir);
     expect(result.some((f) => f.id === "npmrc-missing-gh-packages")).toBe(true);
   });
 
   it("no finding is emitted for .npmrc when file is absent (silent skip)", () => {
     process.env.BKIT_GH_TOKEN_INSTALL = "test";
     // No .npmrc file
-    const result = runPostInstallCheck([], makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([], tmpDir);
     expect(result.some((f) => f.id === "npmrc-missing-gh-packages")).toBe(false);
   });
 
@@ -1920,15 +1916,15 @@ describe("runPostInstallCheck deduplication", () => {
     process.env.BKIT_GH_TOKEN_INSTALL = "test"; // token present → no shell-token finding from Phase 3
 
     const preflightAdvisories: PreflightFinding[] = [
-      { id: "husky-no-markers-precommit", severity: "advisory", detect: "p1", action: "a1" },
+      { id: "example-preflight-advisory", severity: "advisory", detect: "p1", action: "a1" },
       { id: "prettierignore-no-markers", severity: "advisory", detect: "p2", action: "a2" },
     ];
 
     // Use an empty ws so no devdeps finding fires
-    const result = runPostInstallCheck(preflightAdvisories, makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck(preflightAdvisories, tmpDir);
 
     // All preflight advisories that Phase 3 doesn't supersede must come first
-    const p1Idx = result.findIndex((f) => f.id === "husky-no-markers-precommit");
+    const p1Idx = result.findIndex((f) => f.id === "example-preflight-advisory");
     const p2Idx = result.findIndex((f) => f.id === "prettierignore-no-markers");
     // Both preflight advisories must survive (Phase 3 doesn't emit these ids)
     expect(p1Idx).toBeGreaterThanOrEqual(0);
@@ -1941,11 +1937,11 @@ describe("runPostInstallCheck deduplication", () => {
     process.env.BKIT_GH_TOKEN_INSTALL = "test";
     // Two entries with the same id — only the first should survive.
     const preflightAdvisories: PreflightFinding[] = [
-      { id: "husky-no-markers-precommit", severity: "advisory", detect: "first", action: "a1" },
-      { id: "husky-no-markers-precommit", severity: "advisory", detect: "second", action: "a2" },
+      { id: "example-preflight-advisory", severity: "advisory", detect: "first", action: "a1" },
+      { id: "example-preflight-advisory", severity: "advisory", detect: "second", action: "a2" },
     ];
-    const result = runPostInstallCheck(preflightAdvisories, makeModules("lint"), tmpDir);
-    const matches = result.filter((f) => f.id === "husky-no-markers-precommit");
+    const result = runPostInstallCheck(preflightAdvisories, tmpDir);
+    const matches = result.filter((f) => f.id === "example-preflight-advisory");
     expect(matches).toHaveLength(1);
     expect(matches[0]!.detect).toBe("first"); // first occurrence wins
   });

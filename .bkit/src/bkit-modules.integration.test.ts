@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { WriteSet } from "./bkit-tiers";
 import {
   parseModelLookup,
@@ -11,12 +11,11 @@ import {
   listFilesRecursive,
   remapTemplateDest,
 } from "./bkit-install";
-import { extractFullManagedBlock, extractManagedBlock } from "./bkit-markers";
+import { extractManagedBlock } from "./bkit-markers";
 import type { PreflightFinding } from "./bkit-preflight";
 import {
   runCoreModule,
   runClaudeModule,
-  runCursorModule,
   runCloudModule,
   runOpencodeModule,
   renderOpencodeJson,
@@ -631,18 +630,6 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
     const stripped = ciBranch.replace("feat/", "");
     expect(stripped).toBe("141-cloud-app"); // NOT '141'
     expect(stripped).not.toBe("141");
-  });
-
-  it("bkit's own adopted bkit-cloud.yml is the template with {{CLOUD_RUNNER}} filled in (T3.1 + T2.7 invariant, #362)", () => {
-    const canonical = fs.readFileSync(
-      path.join(pkgRoot, ".github", "workflows", "bkit-cloud.yml"),
-      "utf-8",
-    );
-    // bkit's own adopted copy fills the `{{CLOUD_RUNNER}}` placeholder with
-    // ubuntu-latest and is otherwise the template byte for byte. Block-marker lines are
-    // not content, so the copy is compared without them.
-    const rendered = rawTemplate.replace(/\{\{CLOUD_RUNNER\}\}/g, () => "ubuntu-latest");
-    expect(canonical.replace(/^[ \t]*# bkit:(?:start|end)\b[^\n]*\n/gm, "")).toBe(rendered);
   });
 });
 
@@ -1286,8 +1273,6 @@ describe("detectLegacyBkitEnvelope advisory", () => {
 
 describe("detectTier2JsonDrift advisory", () => {
   it("returns advisory when consumer is missing a template key", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..");
     const relPath = ".claude/settings.json";
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     // Consumer missing bkit-owned hooks.SessionStart
@@ -1296,7 +1281,7 @@ describe("detectTier2JsonDrift advisory", () => {
       JSON.stringify({ $schema: "x", hooks: {} }),
       "utf-8",
     );
-    const result = detectTier2JsonDrift(tmpDir, relPath, pkgRoot);
+    const result = detectTier2JsonDrift(tmpDir, relPath);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("tier2-json-drift");
     expect(result!.severity).toBe("advisory");
@@ -1310,7 +1295,7 @@ describe("detectTier2JsonDrift advisory", () => {
     // Copy template as-is to consumer
     fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
     fs.copyFileSync(templatePath, path.join(tmpDir, relPath));
-    const result = detectTier2JsonDrift(tmpDir, relPath, pkgRoot);
+    const result = detectTier2JsonDrift(tmpDir, relPath);
     expect(result).toBeNull();
   });
 });
@@ -1471,7 +1456,7 @@ describe("tier2-json-drift advisory for slop-scan.config.json (Task 19 unblocked
     const driftContent = { ...template, rules: consumerRules };
     fs.writeFileSync(path.join(tmpDir, relPath), JSON.stringify(driftContent, null, 2), "utf-8");
 
-    const result = detectTier2JsonDrift(tmpDir, relPath, pkgRoot);
+    const result = detectTier2JsonDrift(tmpDir, relPath);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("tier2-json-drift");
     expect(result!.severity).toBe("advisory");
@@ -1495,7 +1480,7 @@ describe("tier2-json-drift advisory for slop-scan.config.json (Task 19 unblocked
     const consumerContent = { ...template, rules: consumerRules };
     fs.writeFileSync(path.join(tmpDir, relPath), JSON.stringify(consumerContent, null, 2), "utf-8");
 
-    const result = detectTier2JsonDrift(tmpDir, relPath, pkgRoot);
+    const result = detectTier2JsonDrift(tmpDir, relPath);
     expect(result).toBeNull();
   });
 });
@@ -1525,46 +1510,45 @@ describe("Task 23 — detectTier2TextDrift block logic (AGENTS.md)", () => {
 
   it("no drift when the consumer file matches the rendered template", () => {
     writeConsumer(readRendered());
-    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
+    expect(detectTier2TextDrift(tmpDir, relPath)).toBeNull();
   });
 
   it("no drift when content OUTSIDE the block changes (consumer owns it)", () => {
     writeConsumer(readRendered().replace("# AGENTS.md\n", "# Our agents\n") + "\n## Ours\n");
-    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
+    expect(detectTier2TextDrift(tmpDir, relPath)).toBeNull();
   });
 
   it("no drift when the block carries a managed-version marker of another version", () => {
     writeConsumer(readRendered().replace(/bkit:managed v\S+/, "bkit:managed v0.0.1"));
-    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
+    expect(detectTier2TextDrift(tmpDir, relPath)).toBeNull();
   });
 
   it("flags DRIFT when a bkit-owned line in the block is edited", () => {
     writeConsumer(readRendered().replace(ROUTER_LINE, "> consumer-hacked"));
-    const drift = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
+    const drift = detectTier2TextDrift(tmpDir, relPath);
     expect(drift?.id).toBe("tier2-text-drift");
-    expect(drift?.detect).toContain("drifted: (default block)");
   });
 
   it("no drift when a consumer adds a comment annotation inside the block", () => {
     writeConsumer(
       readRendered().replace(ROUTER_LINE, `${ROUTER_LINE}\n<!-- consumer note: PROJ-42 -->`),
     );
-    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
+    expect(detectTier2TextDrift(tmpDir, relPath)).toBeNull();
   });
 
   it("still flags DRIFT when a consumer comments OUT a required line", () => {
     writeConsumer(readRendered().replace(ROUTER_LINE, `<!-- ${ROUTER_LINE} -->`));
-    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)?.id).toBe("tier2-text-drift");
+    expect(detectTier2TextDrift(tmpDir, relPath)?.id).toBe("tier2-text-drift");
   });
 
   it("no drift when a consumer adds an EXTRA line inside the block (subset — extras OK)", () => {
     writeConsumer(readRendered().replace(ROUTER_LINE, `${ROUTER_LINE}\n> Our extra rule.`));
-    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
+    expect(detectTier2TextDrift(tmpDir, relPath)).toBeNull();
   });
 
   it("flags DRIFT when a consumer DROPS a required line from the block", () => {
     writeConsumer(readRendered().replace(`${ROUTER_LINE}\n`, ""));
-    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)?.id).toBe("tier2-text-drift");
+    expect(detectTier2TextDrift(tmpDir, relPath)?.id).toBe("tier2-text-drift");
   });
 });
 

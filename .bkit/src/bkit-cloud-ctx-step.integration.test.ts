@@ -119,11 +119,6 @@ function git(cwd: string, ...args: string[]): void {
   }
 }
 
-/** Best-effort git call — some ops (e.g. push into a rejecting hook) are meant to fail. */
-function gitAllowFail(cwd: string, ...args: string[]): void {
-  spawnSync("git", args, { cwd, encoding: "utf8" });
-}
-
 interface Fixture {
   workspaceDir: string;
   originDir: string;

@@ -18,7 +18,7 @@ export function deepContains(template, consumer, pathPrefix = "") {
     }
     // Both are arrays
     if (Array.isArray(template) && Array.isArray(consumer)) {
-        _deepContainsArray(template, consumer, pathPrefix, missing, mismatched);
+        _deepContainsArray(template, consumer, pathPrefix, missing);
         return { ok: missing.length === 0 && mismatched.length === 0, missing, mismatched };
     }
     // Type mismatch (one is array, other is not, or different primitive types)
@@ -55,7 +55,7 @@ export function deepContains(template, consumer, pathPrefix = "") {
     }
     return { ok: true, missing, mismatched };
 }
-function _deepContainsArray(template, consumer, pathPrefix, missing, mismatched) {
+function _deepContainsArray(template, consumer, pathPrefix, missing) {
     // Classify template elements as primitive or object
     for (let i = 0; i < template.length; i++) {
         const tEl = template[i];

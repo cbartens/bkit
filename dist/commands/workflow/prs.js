@@ -1,4 +1,4 @@
-// bkit prs open|probe|guard-checkout|scan-body|cross-check|transport-row — the
+// bkit prs open|probe|scan-body|cross-check|transport-row — the
 // pull-request side of a phase close, and the close audit trail.
 //
 // `gh` is the only transport `open` and `probe` drive. When it is missing or not
@@ -6,7 +6,6 @@
 // and body, so the workflow makes the same call through the GitHub MCP tool. Every
 // PR `open` creates carries the `bkit:issue` / `bkit:fid` marker: `/bkit-auto`
 // reads it first and only guesses from the branch name when it is missing.
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseIssueTracker } from "../../bkit-manifest.js";
@@ -244,14 +243,6 @@ function openPr(ctx) {
     }
     return EXIT.OK;
 }
-// ---------------------------------------------------------------------------
-// guard-checkout
-// ---------------------------------------------------------------------------
-export const EXIT_GUARD_REFUSED = 4;
-export const EXIT_DETACHED = 5;
-export const EXIT_CHECKOUT_FAILED = 6;
-export const EXIT_RUN_FAILED = 7;
-export const EXIT_RESTORE_FAILED = 8;
 /** The latest row of `type` in the log, or undefined. */
 const lastRow = (rows, type) => rows.filter((r) => r.type === type).at(-1);
 /** A capability value as the shell compared it: by its string form. */
@@ -259,56 +250,6 @@ function capability(v) {
     const s = String(v);
     return s === "true" ? true : s === "false" ? false : null;
 }
-function guardCheckout(ctx) {
-    const target = refFlag(ctx.flags.target, "target");
-    const command = String(ctx.flags.run);
-    if (command.trim() === "")
-        throw new CommandError(EXIT.USAGE, "--run must be non-empty");
-    const rows = readStatusRows(statusFile(ctx));
-    const resolved = lastRow(rows, "runtime-resolved");
-    const worktrees = capability(resolved?.runtimeWorktrees);
-    const devPushes = capability(resolved?.runtimeDevPushes);
-    if (worktrees !== true || devPushes !== true) {
-        ctx.log(`refusing local checkout: runtimeWorktrees=${String(worktrees ?? "unset")} runtimeDevPushes=${String(devPushes ?? "unset")} — both must be true to check out "${target}" locally`);
-        return EXIT_GUARD_REFUSED;
-    }
-    const original = git(ctx.cwd, ["branch", "--show-current"]) ?? "";
-    if (original === "") {
-        ctx.log(`could not resolve the current branch (detached HEAD?) — refusing to check out "${target}"`);
-        return EXIT_DETACHED;
-    }
-    const checkout = runGit(ctx.cwd, ["checkout", target]);
-    if (!checkout.ok) {
-        ctx.log(`git checkout ${target} failed: ${checkout.stderr}`);
-        return EXIT_CHECKOUT_FAILED;
-    }
-    // The restore runs whatever the command did, so a failed or killed step never
-    // strands the session on the shared branch. git gets the name as one argv entry,
-    // never through a shell, so a branch named `x'$(…)'y` stays a name.
-    let runExitCode = null;
-    let restored = false;
-    try {
-        const res = spawnSync("sh", ["-c", command], { cwd: ctx.cwd, encoding: "utf-8" });
-        runExitCode = res.status;
-        for (const line of `${res.stdout ?? ""}${res.stderr ?? ""}`.split("\n")) {
-            if (line !== "")
-                ctx.log(line);
-        }
-    }
-    finally {
-        const back = runGit(ctx.cwd, ["checkout", original]);
-        restored = back.ok;
-        if (!restored)
-            ctx.log(`RESTORE FAILED: git checkout ${original}: ${back.stderr}`);
-    }
-    ctx.emit({ target, originalBranch: original, restored, runExitCode });
-    if (!restored)
-        return EXIT_RESTORE_FAILED;
-    return runExitCode === 0 ? EXIT.OK : EXIT_RUN_FAILED;
-}
-// ---------------------------------------------------------------------------
-// scan-body / cross-check / transport-row
-// ---------------------------------------------------------------------------
 export const EXIT_UNREADABLE_COMMIT = 3;
 /**
  * Scan a landed commit's BODY for a CI-suppressing token. The subject is skipped on
@@ -410,7 +351,7 @@ const HEAD_FLAG = {
 const BASE_FLAG = { name: "base", type: "string", help: "base branch (default dev)" };
 export const prsCommand = {
     noun: "prs",
-    summary: "Open and probe pull requests, guard a local close checkout, and audit the close transport.",
+    summary: "Open and probe pull requests, and audit the close transport.",
     verbs: {
         open: {
             summary: "Open a PR whose body carries the bkit:issue / bkit:fid marker (exit 80: use MCP).",
@@ -502,34 +443,6 @@ export const prsCommand = {
                 ctx.emit(prOutput(res.pr));
                 return res.pr ? EXIT.OK : EXIT.NO;
             },
-        },
-        "guard-checkout": {
-            summary: "Check out a shared branch, run one command, restore the original branch.",
-            flags: [
-                { ...FILE_FLAG, help: "status.jsonl whose runtime-resolved row must allow the checkout" },
-                { name: "target", type: "string", required: true, help: "branch to check out, e.g. dev" },
-                {
-                    name: "run",
-                    type: "string",
-                    required: true,
-                    help: "shell command run while --target is checked out",
-                },
-            ],
-            output: {
-                target: "branch that was checked out",
-                originalBranch: "branch restored afterwards",
-                restored: "whether the restore succeeded",
-                runExitCode: "exit code of --run",
-            },
-            exitCodes: {
-                [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON",
-                [EXIT_GUARD_REFUSED]: "runtime-resolved does not record runtimeWorktrees AND runtimeDevPushes true",
-                [EXIT_DETACHED]: "detached HEAD: nothing to restore to",
-                [EXIT_CHECKOUT_FAILED]: "git checkout --target failed",
-                [EXIT_RUN_FAILED]: "--run exited non-zero (branch restored)",
-                [EXIT_RESTORE_FAILED]: "the original branch could not be restored",
-            },
-            run: guardCheckout,
         },
         "scan-body": {
             summary: "Check a landed commit's body (not its subject) for a CI-suppressing token.",

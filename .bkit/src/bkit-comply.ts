@@ -148,8 +148,6 @@ export interface GraderInput {
   parentSha: string;
   /** Workflow phase: design | plan | build | debug | ship */
   phase: string;
-  /** Absolute path to the plan file (currently unused; reserved for P2 rules). */
-  planPath?: string;
   /** Working directory for git commands. Defaults to process.cwd(). */
   cwd?: string;
   /** Inject a custom git adapter (for integration tests). */

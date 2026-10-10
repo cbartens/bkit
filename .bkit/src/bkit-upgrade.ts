@@ -34,7 +34,6 @@ import { writeTier2, writeTier2JsonContained, type WriteSet } from "./bkit-tiers
 import { detectMarkerStyle } from "./bkit-markers.js";
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
 import type { ManifestEntry } from "./bkit-manifest.js";
-import type { ModuleFlag } from "./bkit-cli.js";
 import { isRetiredHashKey, withoutRetiredHashes } from "./bkit-retire.js";
 import { TEMPLATE_COPIES_DIR } from "./bkit-paths.js";
 

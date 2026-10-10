@@ -13,7 +13,6 @@ import {
   parseCloudAgents,
   LINT_PROSE_SCRIPT,
   LEGACY_LINT_PROSE_SCRIPTS,
-  type ManifestEntry,
   type ModuleName,
 } from "./bkit-manifest";
 import { isTemplate } from "./bkit-modules";

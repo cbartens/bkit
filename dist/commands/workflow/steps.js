@@ -25,8 +25,8 @@ export const EXIT_COMMIT = 8;
 // Verdict header
 // ---------------------------------------------------------------------------
 /** Allowed verdicts from a prompt's own `Verdict: A | B | C [note]` output line. */
-export function promptVerdicts(agent, promptsRoot = getPromptsRoot()) {
-    const file = path.join(promptsRoot, `${agent}.md`);
+export function promptVerdicts(agent) {
+    const file = path.join(getPromptsRoot(), `${agent}.md`);
     if (!fs.existsSync(file))
         throw new CommandError(EXIT.USAGE, `no prompt ${agent} at ${file}`);
     const line = fs

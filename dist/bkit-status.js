@@ -14,19 +14,6 @@
 // `parentSha` is captured at step START via `git rev-parse HEAD`, BEFORE the
 // step's own commit (if any). Forensic only — points to the commit that preceded
 // this step's work, not the commit that resulted from it.
-export function validateInvariants(step) {
-    if (step.verdict === undefined)
-        return { ok: true };
-    if (step.failures === undefined)
-        return { ok: false, reason: "verdict requires failures" };
-    if (step.verdict === "PASS" && step.failures !== 0)
-        return { ok: false, reason: "PASS requires failures=0" };
-    if (step.verdict === "FAIL" && step.failures <= 0)
-        return { ok: false, reason: "FAIL requires failures>0" };
-    if (step.failures < 0)
-        return { ok: false, reason: "failures must be non-negative" };
-    return { ok: true };
-}
 // Identity for de-dup under union merge. `step-done` is unique per
 // (workflow, step, parentSha, at); workflow-level events per (type, workflow, at).
 function identity(e) {
@@ -95,24 +82,6 @@ export function fold(events) {
         }
     }
     return runs;
-}
-// Tolerant reader for the install/upgrade boundary: accepts a new `status.jsonl`
-// (newline-delimited events → folded) OR a legacy `status.json` (a single JSON
-// array of already-folded runs, passed through). Blank lines ignored.
-export function parseStatus(raw) {
-    const trimmed = raw.trim();
-    if (trimmed === "")
-        return [];
-    if (trimmed[0] === "[") {
-        // Legacy status.json — already the folded run array.
-        return JSON.parse(trimmed);
-    }
-    const events = trimmed
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l !== "")
-        .map((l) => JSON.parse(l));
-    return fold(events);
 }
 // Serialize one event to the NDJSON line appended to `status.jsonl`, newline included.
 export function appendLine(event) {

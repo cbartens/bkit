@@ -10,19 +10,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runPreflight } from "./bkit-preflight";
 import { formatChecklist, runPostInstallCheck } from "./bkit-postinstall";
-import {
-  initStagingDir,
-  commitStaging,
-  discardStaging,
-  discardAllStaging,
-  getStagingDir,
-  runPayload,
-  STAGING_ROOT,
-  detectOpencodeProviders,
-} from "./bkit-install";
+import { runPayload, detectOpencodeProviders } from "./bkit-install";
 import type { WriteSet } from "./bkit-tiers";
 import type { ModuleFlag } from "./bkit-cli";
 import { resolveNetworkAllowlist } from "./bkit-cloud-env";
@@ -60,7 +51,7 @@ function makeModules(...flags: string[]): Set<ModuleFlag> {
 describe("Scenario 1 — blocker: no package.json → exit 1, zero writes", () => {
   it("runPreflight returns no-package-json blocker when package.json is absent", () => {
     // tmpDir has no package.json
-    const { blockers, advisories } = runPreflight(makeModules("core", "lint"), tmpDir);
+    const { blockers } = runPreflight(makeModules("core", "lint"), tmpDir);
     expect(blockers.some((f) => f.id === "no-package-json")).toBe(true);
     expect(blockers[0]!.severity).toBe("blocker");
     // no-git-repo fires here too (--core + no .git) — that is correct behaviour
@@ -143,10 +134,6 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     );
     // .git dir — so not-git-repo does NOT fire
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-    // .husky/pre-commit is not a preflight-advisory trigger: the hooks are templates
-    // the consumer owns, so bkit neither writes nor checks them.
-    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".husky", "pre-commit"), "#!/bin/sh\npnpm test\n", "utf-8");
   });
 
   it("runPreflight returns advisory findings for seeded conditions", () => {
@@ -154,9 +141,6 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     expect(blockers).toHaveLength(0);
     const ids = advisories.map((f) => f.id);
     expect(ids).toContain("lint-prose-f9-vulnerable");
-    // husky-no-markers-* is never emitted: the husky hooks are templates
-    expect(ids).not.toContain("husky-no-markers-precommit");
-    expect(ids).not.toContain("husky-no-markers-prepush");
   });
 
   it("formatChecklist renders a numbered checklist for multiple advisories", () => {
@@ -186,12 +170,7 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     delete process.env.BKIT_GH_TOKEN_INSTALL;
 
     try {
-      const postFindings = runPostInstallCheck(
-        preflightAdvisories,
-        makeModules("core", "lint"),
-        tmpDir,
-        false, // not dry-run
-      );
+      const postFindings = runPostInstallCheck(preflightAdvisories, tmpDir);
       const ids = postFindings.map((f) => f.id);
       expect(ids).toContain("gh-bkit-token-unset-shell");
     } finally {
@@ -208,12 +187,7 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
 
     let postFindings: ReturnType<typeof runPostInstallCheck>;
     try {
-      postFindings = runPostInstallCheck(
-        preflightAdvisories,
-        makeModules("core", "lint"),
-        tmpDir,
-        false,
-      );
+      postFindings = runPostInstallCheck(preflightAdvisories, tmpDir);
     } finally {
       if (savedToken !== undefined) process.env.BKIT_GH_TOKEN_INSTALL = savedToken;
     }
@@ -232,12 +206,7 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
 
   it("no duplicate ids in the final checklist", () => {
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
-    const postFindings = runPostInstallCheck(
-      preflightAdvisories,
-      makeModules("core", "lint"),
-      tmpDir,
-      false,
-    );
+    const postFindings = runPostInstallCheck(preflightAdvisories, tmpDir);
     const ids = postFindings.map((f) => f.id);
     const uniqueIds = [...new Set(ids)];
     expect(ids).toEqual(uniqueIds);
@@ -275,7 +244,7 @@ describe("Scenario 3 — bkit check: Phase 3 detectors run for parity with insta
 
     let findings: ReturnType<typeof runPostInstallCheck>;
     try {
-      findings = runPostInstallCheck(preflightAdvisories, makeModules("core", "lint"), tmpDir);
+      findings = runPostInstallCheck(preflightAdvisories, tmpDir);
     } finally {
       if (savedToken !== undefined) process.env.BKIT_GH_TOKEN_INSTALL = savedToken;
     }
@@ -507,7 +476,7 @@ describe("Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)", () => 
       "utf-8",
     );
 
-    const findings = runPostInstallCheck([], makeModules("core"), tmpDir);
+    const findings = runPostInstallCheck([], tmpDir);
     const blocker = findings.find((f) => f.severity === "blocker");
     expect(blocker).toBeDefined();
     expect(blocker!.id).toBe("ci-yml-missing-token-env");
@@ -527,7 +496,7 @@ describe("Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)", () => 
       "//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
     );
 
-    const findings = runPostInstallCheck([], makeModules("core"), tmpDir);
+    const findings = runPostInstallCheck([], tmpDir);
     const blockerFindings = findings.filter((f) => f.severity === "blocker");
     expect(blockerFindings.length).toBeGreaterThan(0);
     expect(blockerFindings[0]!.id).toBe("ci-yml-missing-token-env");
@@ -664,94 +633,6 @@ describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (
     // This is the byte-identical-to-pre-install check: file was absent → now absent.
     expect(fs.existsSync(versionFilePath)).toBe(false);
   }, 90_000);
-});
-
-// ---------------------------------------------------------------------------
-// Scenario 9 — Mid-failure rollback fixture
-//
-// Tests the staging mechanism end-to-end: staging files written to
-// `.bkit-staging/<module>/` but NOT committed when a mid-install failure
-// fires. Consumer files remain byte-identical to pre-install state: a crash after
-// the first module but before commitStaging leaves the consumer git-diff empty.
-// ---------------------------------------------------------------------------
-
-describe("Scenario 9 — P4.T3: mid-failure rollback, consumer files untouched", () => {
-  it("discardAllStaging after partial writes leaves consumer files untouched", () => {
-    // Seed consumer state
-    fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".claude", "agents", "bkit-foo.md"),
-      "original agent content",
-      "utf-8",
-    );
-
-    // Simulate first module writing to staging (NOT committed yet)
-    const stagingDir = getStagingDir("claude", tmpDir);
-    initStagingDir(stagingDir);
-    fs.mkdirSync(path.join(stagingDir, ".claude", "agents"), { recursive: true });
-    fs.writeFileSync(
-      path.join(stagingDir, ".claude", "agents", "bkit-foo.md"),
-      "would-be-new content",
-      "utf-8",
-    );
-
-    // Simulate a second module starting to stage
-    const stagingDir2 = getStagingDir("cursor", tmpDir);
-    initStagingDir(stagingDir2);
-
-    // Simulate mid-failure: discard all staging (would be triggered by error handler)
-    discardAllStaging(tmpDir);
-
-    // Consumer file must be byte-identical to pre-install state
-    const consumerContent = fs.readFileSync(
-      path.join(tmpDir, ".claude", "agents", "bkit-foo.md"),
-      "utf-8",
-    );
-    expect(consumerContent).toBe("original agent content");
-
-    // All staging dirs must be removed
-    expect(fs.existsSync(path.join(tmpDir, STAGING_ROOT))).toBe(false);
-  });
-
-  it("commitStaging after successful module moves files + staging dir removed", () => {
-    // Seed staging with files to commit
-    const stagingDir = getStagingDir("claude", tmpDir);
-    initStagingDir(stagingDir);
-    fs.mkdirSync(path.join(stagingDir, ".claude", "agents"), { recursive: true });
-    fs.writeFileSync(
-      path.join(stagingDir, ".claude", "agents", "bkit-bar.md"),
-      "new agent content",
-      "utf-8",
-    );
-
-    // Commit the module
-    const committed = commitStaging(stagingDir, tmpDir);
-    expect(committed).toContain(path.join(".claude", "agents", "bkit-bar.md"));
-
-    // File is at consumer destination
-    expect(fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-bar.md"), "utf-8")).toBe(
-      "new agent content",
-    );
-
-    // Staging dir removed
-    expect(fs.existsSync(stagingDir)).toBe(false);
-  });
-
-  it("staging root is NOT present in the consumer's repo after a full successful commit", () => {
-    // After all modules commit, STAGING_ROOT must not exist
-    const stagingDir = getStagingDir("core", tmpDir);
-    initStagingDir(stagingDir);
-    fs.writeFileSync(path.join(stagingDir, "file.md"), "x", "utf-8");
-    commitStaging(stagingDir, tmpDir);
-    // When all staging dirs are committed, STAGING_ROOT should be empty and can be removed
-    // (Each commitStaging removes its own subdir; STAGING_ROOT parent dir may still exist)
-    const stagingRoot = path.join(tmpDir, STAGING_ROOT);
-    if (fs.existsSync(stagingRoot)) {
-      // Should be empty — no uncommitted staging subdirs remain
-      const remaining = fs.readdirSync(stagingRoot);
-      expect(remaining).toHaveLength(0);
-    }
-  });
 });
 
 // ---------------------------------------------------------------------------

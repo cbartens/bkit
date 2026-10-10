@@ -1,7 +1,7 @@
 // bkit-comply.test.ts — unit tests for the compliance grader pure functions.
 //
 // Done-when contract (WS2-T3):
-//   - `(parentSha, phase, planPath) -> Violation[]` is deterministic.
+//   - `(parentSha, phase) -> Violation[]` is deterministic.
 //   - Unit test asserts each rule's pass/fail.
 //   - Every emitted `kind:"compliance"` row carries `bkitVersion`.
 
