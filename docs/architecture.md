@@ -21,7 +21,7 @@
 
 bkit = **CLI tool + agent-stack payload** as npm package (`@cbartens/bkit` via GitHub Packages):
 
-1. **Producer repo (this repo):** canonical `.bkit/` payload — engine (`.bkit/src`), mirrors (`.bkit/workflows`, `.bkit/prompts`), authoring docs (`.bkit/docs`), consumer templates (`.bkit/templates`).
+1. **Producer repo (this repo):** canonical `.bkit/` payload — engine (`.bkit/core/engine`), mirrors (`.bkit/workflows`, `.bkit/prompts`), authoring docs (`.bkit/docs`), consumer templates (`.bkit/templates`).
 2. **Consumer repos:** devDependency; `pnpm bkit install` regenerates IDE mirrors + bkit-managed blocks. Mirror sources + authoring docs read package-relative from installed `.bkit/` — NOT copied into consumer `.agents/`.
 
 No server, database, or network service. Build-time / DX tool only.
@@ -30,28 +30,37 @@ No server, database, or network service. Build-time / DX tool only.
 
 ```
 cbartens/bkit (this repo)
-├── .bkit/src/              # TypeScript source for the bkit CLI
-│   ├── bkit-install.ts     # entry point (main); orchestrates phases 1–3 + staging primitives
-│   ├── bkit-cli.ts         # CLI verb + module-flag parsing (install | check | doctor | status | uninstall | upgrade | cursor | opencode | comply | harvest | analysis | telemetry | help)
-│   ├── bkit-preflight.ts   # Phase 1 — read-only blocker + advisory detectors
-│   ├── bkit-modules.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
-│   ├── bkit-postinstall.ts # Phase 3 — post-install re-detection + checklist formatter
-│   ├── bkit-tiers.ts       # Format-aware file-write primitives (fully-managed / markered-text) + deepContains/writeTier2JsonContained
-│   ├── bkit-tokens.ts      # Token resolver (default branch, project name, managed-version marker)
-│   ├── bkit-version.ts     # .bkit/version JSON schema (pinnedVersion, canonicalHashes, claudeAllowDerived)
-│   ├── bkit-manifest.ts    # Per-module install-write manifest (drives uninstall + the upgrade walk)
-│   ├── bkit-uninstall.ts   # `bkit uninstall` orchestrator — surgical format-aware removal
-│   ├── bkit-upgrade.ts     # `bkit upgrade` diff engine + canonicalHashes drift detection
-│   ├── bkit-paths.ts       # Single resolver seam — getTemplatesRoot / getPkgRoot / isDogfood
-│   ├── bkit-paths-policy.ts # Single protected-path table (mirror prefixes + gate-config basenames); source of truth for the grader AND the committed generated .cjs
-│   ├── bkit-launch.ts      # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
-│   ├── bkit-cloud-env.ts   # Resolves the `.claude/cloud.md` + `.cursor/cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds BKIT_LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-independent
-│   ├── bkit-trackers.ts    # Tracker-provider substitution engine (github / linear / none)
-│   ├── bkit-status.ts      # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in bkit-install.ts)
-│   ├── bkit-telemetry.ts   # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine (#234 WS-1)
-│   ├── bkit-comply.ts      # Compliance grader (#234 WS-2) — no-mirror-edit + skip-ci-not-head rules; emits kind:"compliance" rows; `bkit comply --phase <p>` (fail-open)
-│   ├── bkit-harvest.ts     # Cross-repo harvest CLI (#234 WS-4, #343) — COPIES consumer .bkit/stats.jsonl (never modified); MOVES .bkit/friction.jsonl into harvest/ at repo root, pruning drained rows from the consumer; COUNT-ONLY for docs/{deferrals,failures}.jsonl; store keeps every distinct row, deduped by content (never rewritten from the fold); prune gated on byte-for-byte content (NOT identity — fold collapses colliding rows) after copy→fsync→read-back; store accumulates, never cleared; never commits in any repo; `bkit harvest`
-│   └── bkit-analysis.ts    # Analysis CLI (#234 WS-4) — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counterSource trust labelling, per-rule compliance rate over kind:"compliance" rows; `bkit analysis`
+├── .bkit/core/engine/       # TypeScript source for the bkit CLI
+│   ├── cli.ts                   # entry point (the `bkit` bin); CLI verb + module-flag parsing (install | check | doctor | status | uninstall | upgrade | cursor | opencode | comply | harvest | analysis | telemetry | help)
+│   ├── commands/                # what you type: one file or folder per verb / noun
+│   │   ├── install/install.ts   # main() dispatch; orchestrates phases 1–3 + staging primitives
+│   │   ├── install/upgrade.ts   # `bkit upgrade` diff engine + canonicalHashes drift detection
+│   │   ├── install/uninstall.ts # `bkit uninstall` orchestrator — surgical format-aware removal
+│   │   ├── launch.ts            # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
+│   │   ├── comply.ts            # Compliance grader (#234 WS-2) — no-mirror-edit + skip-ci-not-head rules; emits kind:"compliance" rows; `bkit comply --phase <p>` (fail-open)
+│   │   ├── harvest.ts           # Cross-repo harvest CLI (#234 WS-4, #343) — COPIES consumer .bkit/stats.jsonl (never modified); MOVES .bkit/friction.jsonl into harvest/ at repo root, pruning drained rows from the consumer; COUNT-ONLY for docs/{deferrals,failures}.jsonl; store keeps every distinct row, deduped by content (never rewritten from the fold); prune gated on byte-for-byte content (NOT identity — fold collapses colliding rows) after copy→fsync→read-back; store accumulates, never cleared; never commits in any repo; `bkit harvest`
+│   │   ├── analysis.ts          # Analysis CLI (#234 WS-4) — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counterSource trust labelling, per-rule compliance rate over kind:"compliance" rows; `bkit analysis`
+│   │   └── workflow/ ci/ setup/ # `bkit <noun> <verb>` workflow commands
+│   ├── install/                 # what gets written into a consumer repo, and how
+│   │   ├── modules/index.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
+│   │   ├── write.ts             # Format-aware file-write primitives (fully-managed / markered-text) + deepContains/writeTier2JsonContained
+│   │   ├── placeholders.ts      # Token resolver (default branch, project name, managed-version marker)
+│   │   ├── version-file.ts      # .bkit/version JSON schema (pinnedVersion, canonicalHashes, claudeAllowDerived)
+│   │   ├── manifest.ts          # Per-module install-write manifest (drives uninstall + the upgrade walk)
+│   │   └── cloud-env.ts         # Resolves the `.claude/cloud.md` + `.cursor/cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds BKIT_LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-independent
+│   ├── render/                  # workflow and prompt sources → host agent and command copies
+│   │   └── trackers.ts          # Tracker-provider substitution engine (github / linear / none)
+│   ├── checks/                  # detection before and after writes
+│   │   ├── before/index.ts      # Phase 1 — read-only blocker + advisory detectors
+│   │   └── after/index.ts       # Phase 3 — post-install re-detection + checklist formatter
+│   ├── ledgers/                 # JSONL ledger codecs
+│   │   ├── status.ts            # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in commands/install/install.ts)
+│   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine (#234 WS-1)
+│   ├── shared/                  # helpers every folder uses
+│   │   ├── package-roots.ts     # Single resolver seam — getTemplatesRoot / getPkgRoot / isDogfood
+│   │   └── protected-paths.ts   # Single protected-path table (mirror prefixes + gate-config basenames); source of truth for the grader AND the committed generated .cjs
+│   ├── tools/wording.ts         # repo-only `pnpm wording:sync`, not a bkit command
+│   └── audits/                  # tests only: read shipped text (workflows/ templates/ hooks/ repo/)
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .bkit/workflows/      # Workflow markdown files (bkit-design, plan, build, debug, ship, auto)
 ├── .bkit/prompts/        # Subagent prompt files
@@ -62,7 +71,7 @@ cbartens/bkit (this repo)
 │                           # Holds every distinct row ever harvested; readers fold it by identity.
 │                           # Accumulates across runs and is never cleared — once harvest prunes a
 │                           # consumer's friction row, this is the only copy until it is committed.
-└── package.json            # bin: bkit → dist/bkit-install.js
+└── package.json            # bin: bkit → dist/cli.js
 ```
 
 ## Install Lifecycle (Three Phases)
@@ -138,7 +147,7 @@ Workflow/prompt SOURCES not shipped into consumer `.agents/`; live in installed 
 
 `.claude/hooks/gateguard.cjs`, `.cursor/hooks/gateguard.cjs`, `.codex/hooks/gateguard.cjs` and `.opencode/plugin/gateguard.js` (the GateGuard pre-edit advisory hooks) plus `.claude/hooks/guardrails.cjs`, `.cursor/hooks/guardrails.cjs` and `.codex/hooks/guardrails.cjs` (shell gates: destructive ops, secret exposure, URL-host checks and shell-as-edit-channel) are markered-text (slash-comment: `// bkit:start` / `// bkit:end`) — bkit owns only the pure advisory engine between the markers; the stdin/stdout driver (Claude) or exported plugin (opencode) around it is consumer-owned from first install onward, so a consumer can add their own advisories without losing them on upgrade. A pre-markers install (no markers, hash matches a prior canonical hash) is replaced wholesale on the next install/upgrade; a genuinely consumer-authored file (no markers, unknown hash) gets the block appended plus printed wiring instructions.
 
-Every non-JSON file bkit writes or refreshes carries the managed-version marker, one text in the file's comment syntax: `<!-- bkit:managed vX.Y.Z … -->` (markdown), `# <!-- bkit:managed vX.Y.Z … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, codex TOML), `// bkit:managed vX.Y.Z …` (JS hooks, `.mjs`). Rendered agents / commands / skills are stamped by `stampManagedVersion`; every other file carries `{{BKIT_MANAGED_MARKER}}` in its source (first line inside the `bkit:start` block, or below the first heading of a whole file), resolved by `applyTokens`. `listStampedFiles` (`bkit-modules.ts`) derives the set from the core templates, the manifest and the rendered mirrors; marker drift on any of them → `bkit check` emits `bkit-managed-stale` (never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main`/`dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
+Every non-JSON file bkit writes or refreshes carries the managed-version marker, one text in the file's comment syntax: `<!-- bkit:managed vX.Y.Z … -->` (markdown), `# <!-- bkit:managed vX.Y.Z … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, codex TOML), `// bkit:managed vX.Y.Z …` (JS hooks, `.mjs`). Rendered agents / commands / skills are stamped by `stampManagedVersion`; every other file carries `{{BKIT_MANAGED_MARKER}}` in its source (first line inside the `bkit:start` block, or below the first heading of a whole file), resolved by `applyTokens`. `listStampedFiles` (`.bkit/core/engine/install/modules/index.ts`) derives the set from the core templates, the manifest and the rendered mirrors; marker drift on any of them → `bkit check` emits `bkit-managed-stale` (never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main`/`dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
 
 ## Compliance Grader Subsystem (#234 WS-2)
 
@@ -146,10 +155,10 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 
 **Components:**
 
-- `.bkit/src/bkit-comply.ts` — pure grader (`ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`); no side effects, no `process.exit`.
-- `.bkit/src/bkit-paths-policy.ts` — protected-path table (mirror prefixes + gate-config basenames); shared by grader + committed `.cjs`.
-- `.claude/hooks/gate-paths.generated.cjs` — generated from `bkit-paths-policy.ts`; drift in `bkit-paths-policy.test.ts`. bkit's own repo only; install never writes it.
-- `bkit-cli.ts` — `comply` verb + `--phase` dispatch (DE-34).
+- `.bkit/core/engine/commands/comply.ts` — pure grader (`ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`); no side effects, no `process.exit`.
+- `.bkit/core/engine/shared/protected-paths.ts` — protected-path table (mirror prefixes + gate-config basenames); shared by grader + committed `.cjs`.
+- `.claude/hooks/gate-paths.generated.cjs` — generated from `.bkit/core/engine/shared/protected-paths.ts`; drift in `.bkit/core/engine/shared/protected-paths.test.ts`. bkit's own repo only; install never writes it.
+- `.bkit/core/engine/cli.ts` — `comply` verb + `--phase` dispatch (DE-34).
 
 **Crash isolation (DE-34):** `comply` dispatch try/catch; crash → `[bkit-comply] internal error: …`, exit 0. Workflow wiring: `|| echo "[bkit-comply] grader unavailable, skipping"` silences non-zero.
 
@@ -159,7 +168,7 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 
 `docs/knowledge.jsonl` (`kind:"knowledge"`) + `docs/decisions.jsonl` (`kind:"decision"`) = NDJSON ledgers. Consumer-inherited (`.gitattributes` managed block, `merge=union`).
 
-**Data topology:** shared `TelemetryEnvelope` (ts, kind, repo, bkitVersion, workflow, step, key, references[]) + kind payloads (`KnowledgePayload`/`DecisionPayload`) in `bkit-telemetry.ts`.
+**Data topology:** shared `TelemetryEnvelope` (ts, kind, repo, bkitVersion, workflow, step, key, references[]) + kind payloads (`KnowledgePayload`/`DecisionPayload`) in `.bkit/core/engine/ledgers/telemetry.ts`.
 
 `references[]` = single cross-entry pointer for EVERY kind (envelope, not payload) — feature ids, tracker ids, PRs, SHAs, paths, sibling `ts`, `KN-N`/`DE-N` ids. No separate identity field. `ts` = id; `references[]` = pointers. Contract: `.bkit/jsonl.md` § Key & References. Cite slug `key`, never bare number.
 
@@ -169,7 +178,7 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 
 **Components:**
 
-- `bkit roadmap fold` (`.bkit/src/commands/workflow/roadmap.ts`) — deterministic status tier, fail-open. It rewrites the whole generated region of `docs/roadmap.md` in one pass: the `bkit:roadmap-status` block from `.bkit/issues.jsonl`, the `bkit:roadmap-analysis` block carried through verbatim, and two consumer `## Notes` blocks carried through verbatim. Every phase close calls it. No tracker table is rendered — a wired tracker already shows its own issues, and a regenerated copy can only go stale. Everything above the first marker is preserved. `roadmap-notes-post` is last.
+- `bkit roadmap fold` (`.bkit/core/engine/commands/workflow/roadmap.ts`) — deterministic status tier, fail-open. It rewrites the whole generated region of `docs/roadmap.md` in one pass: the `bkit:roadmap-status` block from `.bkit/issues.jsonl`, the `bkit:roadmap-analysis` block carried through verbatim, and two consumer `## Notes` blocks carried through verbatim. Every phase close calls it. No tracker table is rendered — a wired tracker already shows its own issues, and a regenerated copy can only go stale. Everything above the first marker is preserved. `roadmap-notes-post` is last.
 - `.bkit/prompts/bkit-utility-update-roadmap.md` (`@bkit-utility-update-roadmap`) — the only writer of the `roadmap-analysis` block. Runs `bkit roadmap fold` itself, then ranks from the board, in-flight `docs/plans/**` artifacts, open deferrals/failures, and — when a tracker is wired — its OPEN issues (read-only, never comments). Always names the next milestone and the next distinct umbrella; includes a child only when it is open, unblocked, and able to start now. Those two stay visible; the list stays priority order, one row per container. Length is `package.json` `bkit.roadmapNext` (positive integer; absent or invalid → 25). Due audits (`docs/templates/bkit-audit-*.md` cadence vs newest `docs/audits/` report) compete by priority (risk covered first, then how overdue) for at most 3 rows. The length hint sits in the generated `roadmap-status` header.
 
 **Ownership boundary:** `docs/roadmap.md` is consumer-owned — `bkit install` never creates or overwrites it and `bkit check` drift stays clean. bkit rewrites only the mechanical `roadmap-status` tables; the two `## Notes` blocks and `roadmap-analysis` are carried through. `roadmap-notes-post` is last. `roadmap-analysis` is written ONLY by `@bkit-utility-update-roadmap`; the fold carries it through untouched, so a phase close never blanks it. Ship stages both roadmap paths through the frozen `BOOK_PATHS` allow-list.

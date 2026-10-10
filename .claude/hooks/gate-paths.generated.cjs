@@ -1,6 +1,6 @@
-// gate-paths.generated.cjs — AUTO-GENERATED from .bkit/src/bkit-paths-policy.ts
+// gate-paths.generated.cjs — AUTO-GENERATED from .bkit/core/engine/shared/protected-paths.ts
 // DO NOT EDIT BY HAND — regenerate via `generateGatePathsCjs()` then commit.
-// Drift is detected by bkit-paths-policy.test.ts (Vitest).
+// Drift is detected by .bkit/core/engine/shared/protected-paths.test.ts (Vitest).
 "use strict";
 
 /** Prefixes for bkit-managed IDE mirror directories. */

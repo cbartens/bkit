@@ -16,10 +16,10 @@
 // name and not "any check".
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { statusTimestamp } from "../../bkit-status.js";
+import { statusTimestamp } from "../../ledgers/status.js";
 import { bodySkipToken, commitMessage, CommandError, EXIT, git, parseJson, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
-import { readBkitConfig } from "../shared/config.js";
-import { TIMEOUTS } from "../shared/timeouts.js";
+import { readBkitConfig } from "../../shared/settings.js";
+import { TIMEOUTS } from "../../shared/timeouts.js";
 import { checkOnlyBookkeeping } from "./ledgers.js";
 import { str } from "./status.js";
 const GH_MISSING = "gh is not on PATH — use the mapped GitHub MCP tool instead";

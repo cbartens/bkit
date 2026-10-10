@@ -16,8 +16,8 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { CONTEXT_FETCH_CONTEXTS, parseContextFetchStart } from "../../bkit-preflight.js";
-import { lastRun } from "../../bkit-status.js";
+import { CONTEXT_FETCH_CONTEXTS, parseContextFetchStart } from "../../checks/before/index.js";
+import { lastRun } from "../../ledgers/status.js";
 import { CommandError, EXIT, git, parseJson, } from "../lib.js";
 import { EXIT_NO_STATUS, positiveInt, readRuns, str } from "./status.js";
 /** Exit code: the artifact to clamp is missing, unreadable, or could not be replaced. */
@@ -27,7 +27,7 @@ export const EXIT_ARTIFACT = 4;
 // ---------------------------------------------------------------------------
 /**
  * The fence wrapped around fetched evidence as it lands on disk. Byte-identical
- * to the copy `bkit-untrusted-fence.test.ts` pins; do NOT reword. Fetched text
+ * to the copy `commands/workflow/context.test.ts` pins; do NOT reword. Fetched text
  * is attacker-influenceable and a subagent reads it back.
  */
 export const FENCE_INSTRUCTION_LINES = [

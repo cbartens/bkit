@@ -53,7 +53,7 @@ R_SCOPED_PREFIX="scoped-"                 # + the subtree path, slashes to dashe
 
 # Cross-group edges below this weight are dropped from the Mermaid views only —
 # the HTML and GraphML views stay complete.
-# bkit repo: one module per .bkit/src file, so the default is 6.
+# bkit repo: one module per .bkit/core/engine file, so the default is 6.
 MMD_MIN_WEIGHT="${MMD_MIN_WEIGHT:-6}"
 
 # The two derived-view programs. They import networkx / graphify, so they run

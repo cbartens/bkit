@@ -144,7 +144,7 @@ ignored_paths:
   - ".claude/**"
   - ".cursor/**"
   - ".opencode/**"
-  # bkit repo only: .bkit/src and .bkit/scripts are source; the install payload stays out.
+  # bkit repo only: .bkit/core/engine and .bkit/scripts are source; the install payload stays out.
   - ".bkit/templates/**"
   - ".agents/skills/**"
   # Committed compiler output that duplicates TypeScript source. Drop the

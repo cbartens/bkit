@@ -5,7 +5,7 @@
   "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",
   "bin": {
-    "bkit": "./dist/bkit-install.js"
+    "bkit": "./dist/cli.js"
   },
   "files": [
     "dist",
@@ -13,9 +13,9 @@
     ".agents",
     "README.md",
     "CHANGELOG.md",
-    "!.bkit/src/**/*.test.ts",
-    "!.bkit/src/**/*.integration.test.ts",
-    "!.bkit/src/__snapshots__",
+    "!.bkit/core/engine/**/*.test.ts",
+    "!.bkit/core/engine/**/*.integration.test.ts",
+    "!.bkit/core/engine/**/__snapshots__",
     "!.bkit/.env",
     "!.bkit/.env.example",
     "!.bkit/scripts",
@@ -45,7 +45,7 @@
     "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build",
     "bkit:deps:outdated": "pnpm outdated",
     "bkit:deps:audit": "pnpm audit",
-    "bkit": "node dist/bkit-install.js",
+    "bkit": "node dist/cli.js",
     "typecheck": "tsc --noEmit",
     "lint": "bash -c 'if [ -f eslint.config.js ] || [ -f eslint.config.mjs ] || [ -f .eslintrc.json ]; then npx eslint .; else echo \"[bkit] no eslint config - skipping lint (bkit typechecks with tsc and scans with slop-scan)\"; fi'",
     "format": "prettier --write .",
@@ -55,10 +55,10 @@
     "slop:delta": "bkit ci slop",
     "bkit:lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
     "test": "vitest run",
-    "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/src/bkit-{analysis,cli,cloud-env,comply,harvest,install,launch,manifest,markers,paths,paths-policy,postinstall,preflight,status,telemetry,tiers,tokens,trackers,uninstall,upgrade,version,wording}.ts' --coverage.include='.bkit/src/commands/**/*.ts' --coverage.thresholds.branches=70",
+    "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/core/engine/{cli,commands/analysis,install/cloud-env,commands/comply,commands/harvest,commands/install/install,commands/launch,install/manifest,install/managed-block,shared/package-roots,shared/protected-paths,checks/after/index,checks/before/index,ledgers/status,ledgers/telemetry,install/write,install/placeholders,render/trackers,commands/install/uninstall,commands/install/upgrade,install/version-file,tools/wording}.ts' --coverage.include='.bkit/core/engine/commands/**/*.ts' --coverage.include='.bkit/core/engine/shared/{settings,package-json,package-manager,timeouts}.ts' --coverage.thresholds.branches=70",
     "bkit:test:bats": "bash -c 'if command -v bats >/dev/null 2>&1; then bats tests/*.bats; else echo \"[bkit] bats missing - skipping bats suite (install bats to enable)\" >&2; fi'",
-    "build": "tsc && chmod +x dist/bkit-install.js",
-    "bkit:check:dist": "rm -rf dist && tsc && chmod +x dist/bkit-install.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
+    "build": "tsc && chmod +x dist/cli.js",
+    "bkit:check:dist": "rm -rf dist && tsc && chmod +x dist/cli.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
     "graph": "bash scripts/graphify/bkit-graphify.sh build",
     "graph:check": "bash scripts/graphify/bkit-graphify.sh check",
     "graph:clean": "bash scripts/graphify/bkit-graphify.sh clean",
@@ -67,8 +67,8 @@
     "graph:scoped": "bash scripts/graphify/bkit-graphify.sh scoped",
     "graph:tree": "bash scripts/graphify/bkit-graphify.sh tree",
     "graph:update": "bash scripts/graphify/bkit-graphify.sh update",
-    "bkit:audit:status": "tsx .bkit/src/bkit-status-hole-detector.ts docs/plans/*/logs/*/status.jsonl",
-    "wording:sync": "tsx .bkit/src/bkit-wording.ts --write",
+    "bkit:audit:status": "tsx .bkit/core/engine/checks/status-holes.ts docs/plans/*/logs/*/status.jsonl",
+    "wording:sync": "tsx .bkit/core/engine/tools/wording.ts --write",
     "prepare": "husky"
   },
   "devDependencies": {

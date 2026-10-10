@@ -15,8 +15,8 @@
 // a bad ledger or an unwritable board, and never gates the caller's close.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { compareTs, parse, resolveRepoSlug, validate } from "../../bkit-telemetry.js";
-import { readBkitVersion } from "../../bkit-version.js";
+import { compareTs, parse, resolveRepoSlug, validate } from "../../ledgers/telemetry.js";
+import { readBkitVersion } from "../../install/version-file.js";
 import { CommandError, EXIT, parseJson } from "../lib.js";
 import { str } from "./status.js";
 /** Roadmap status each workflow's close moves the feature to. */

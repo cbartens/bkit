@@ -166,7 +166,7 @@ const SOURCE_EXT_RE =
  * extension is reported.
  *
  * Byte-identical to the Cursor twin; behavioural parity is asserted in
- * bkit-permissions-parity.integration.test.ts.
+ * .bkit/core/engine/install/modules/index.integration.test.ts.
  */
 function shellEditTargets(cmd) {
   const hits = [];

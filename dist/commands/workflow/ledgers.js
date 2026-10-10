@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { gitEnv } from "../../bkit-telemetry.js";
+import { gitEnv } from "../../ledgers/telemetry.js";
 import { CommandError, EXIT } from "../lib.js";
 import { str } from "./status.js";
 /** Root is not a directory or repo, git is too old, or a ref does not resolve. */

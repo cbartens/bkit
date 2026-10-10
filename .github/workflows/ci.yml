@@ -680,7 +680,7 @@ jobs:
         run: |
           pnpm exec vitest run --coverage --coverage.reportsDirectory=coverage/integration \
             integration.test \
-            --coverage.include='.bkit/src/bkit-{modules,install,upgrade,uninstall}.ts' \
+            --coverage.include='.bkit/core/engine/{install/modules/index,commands/install/install,commands/install/upgrade,commands/install/uninstall}.ts' \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/int-result.json"
           INT_RAN=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/int-result.json")
           echo "ran=$INT_RAN" >> "$GITHUB_OUTPUT"

@@ -8,9 +8,9 @@
 //   none    any slug             ^[a-z0-9][a-z0-9-]*$        (no tracker shape; still path-safe)
 //   any     github or linear     ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$  (auto's CI_DEV allowlist)
 import * as path from "node:path";
-import { parseIssueTracker } from "../../bkit-manifest.js";
+import { parseIssueTracker } from "../../install/manifest.js";
 import { CommandError, EXIT, git } from "../lib.js";
-import { readBkitConfig } from "../shared/config.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { str } from "./status.js";
 export const FID_PATTERNS = {
     github: /^[0-9]+-[a-z0-9-]+$/,

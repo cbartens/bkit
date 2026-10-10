@@ -123,7 +123,7 @@
       }
     },
     {
-      "files": [".bkit/src/bkit-slop-type-suppression.integration.test.ts"],
+      "files": [".bkit/core/engine/audits/templates/slop-type-suppression.integration.test.ts"],
       "rules": {
         "boundary/type-suppression": {
           "enabled": false
@@ -134,7 +134,7 @@
       }
     },
     {
-      "files": [".bkit/src/bkit-modules.integration.test.ts"],
+      "files": [".bkit/core/engine/install/modules/index.integration.test.ts"],
       "rules": {
         "boundary/gate-suppression": {
           "enabled": false
@@ -142,7 +142,7 @@
       }
     },
     {
-      "files": [".bkit/src", ".bkit/src/**"],
+      "files": [".bkit/core/engine", ".bkit/core/engine/**"],
       "rules": {
         "structure.directory-fanout-hotspot": {
           "enabled": false
@@ -150,7 +150,7 @@
       }
     },
     {
-      "files": [".bkit/src/bkit-comply.ts"],
+      "files": [".bkit/core/engine/commands/comply.ts"],
       "rules": {
         "defensive.error-obscuring": {
           "enabled": false
@@ -158,7 +158,7 @@
       }
     },
     {
-      "files": [".bkit/src/bkit-gateguard-opencode.test.ts"],
+      "files": [".bkit/core/engine/audits/hooks/gateguard-opencode.test.ts"],
       "rules": {
         "defensive.empty-catch": {
           "enabled": false
@@ -166,8 +166,8 @@
       }
     },
     {
-      "files": [".bkit/src/bkit-cloud-env.ts"],
-      "_reason": "networkAllowlistBases() is a one-line apex-collapse over expandAllowedDomains output, called once from bkit-modules.ts. Inlining at the call site would move these branches out of bkit-cloud-env.ts (the unit-lane's measured file) into bkit-modules.ts (covered by the integration lane only) and silently erode the unit coverage floor \u2014 verified by CI red on the first inline attempt. Kept as a named export for coverage accounting; same shape as expandAllowedDomains above it.",
+      "files": [".bkit/core/engine/install/cloud-env.ts"],
+      "_reason": "networkAllowlistBases() is a one-line apex-collapse over expandAllowedDomains output, called once from .bkit/core/engine/install/modules/index.ts. Inlining at the call site would move these branches out of .bkit/core/engine/install/cloud-env.ts (the unit-lane's measured file) into .bkit/core/engine/install/modules/index.ts (covered by the integration lane only) and silently erode the unit coverage floor \u2014 verified by CI red on the first inline attempt. Kept as a named export for coverage accounting; same shape as expandAllowedDomains above it.",
       "rules": {
         "structure.pass-through-wrappers": {
           "enabled": false
@@ -175,7 +175,7 @@
       }
     },
     {
-      "files": [".bkit/src/bkit-harvest.ts"],
+      "files": [".bkit/core/engine/commands/harvest.ts"],
       "_reason": "canonicalRow() is a NAMED CONTRACT, not a pass-through: it is the single definition of the byte-for-byte serialisation the friction prune gate compares against, used by both the store writer and the gate. Inlining JSON.stringify at both call sites to satisfy the rule would be exactly the 'rewire callers to satisfy a lint' that rules.md forbids, and would let the two sides drift apart \u2014 the gate guards a DELETE, so drift is not free. Scoped to this one file + rule.",
       "rules": {
         "structure.pass-through-wrappers": {
@@ -184,7 +184,7 @@
       }
     },
     {
-      "files": [".bkit/src/bkit-modules.ts"],
+      "files": [".bkit/core/engine/install/modules/index.ts"],
       "_reason": "Fail-open catches on consumer-authored JSON: package.json (setConsumerBkitField, detectGateAdvisories, detectOpencodeYmlProviderDrift), .claude/settings.json and .cursor/hooks.json (the v2 envelope migrations, enrichClaudeSettingsAllows, pruneRetiredClaudeAskRules), and the parse-or-sentinel reads in reconcileOpencodeJson / removeOpencodeProviderBlock / reconcileMcpJson. install must NOT crash on a consumer's corrupt file; slop-scan's log+rethrow shape would abort install/upgrade on consumer input we cannot fix from here. Each catch carries a comment naming its fallback. Scoped per-rule to this file.",
       "rules": {
         "defensive.empty-catch": {
@@ -196,7 +196,7 @@
       }
     },
     {
-      "files": [".bkit/src/bkit-install.ts"],
+      "files": [".bkit/core/engine/commands/install/install.ts"],
       "_reason": "detectOpencodeProvider's fail-open catches on consumer-authored JSON (package.json, .opencode/opencode.json): a corrupt consumer file must fall through to the default provider, not abort install/upgrade. Rethrowing would make bkit's install depend on the consumer's JSON validity \u2014 wrong direction. The empty catch with the 'fall back' comment is the contract. Scoped to this file + rule.",
       "rules": {
         "defensive.error-obscuring": {

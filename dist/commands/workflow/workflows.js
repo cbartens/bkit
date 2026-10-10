@@ -13,9 +13,9 @@
 //        fold are separate commands; the output says both are due.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { appendLine, fold, runNumber, statusTimestamp, } from "../../bkit-status.js";
-import { appendLine as telemetryLine, foldFrom, resolveRepoSlug, validate, workflowTelemetry, } from "../../bkit-telemetry.js";
-import { readBkitVersion } from "../../bkit-version.js";
+import { appendLine, fold, runNumber, statusTimestamp, } from "../../ledgers/status.js";
+import { appendLine as telemetryLine, foldFrom, resolveRepoSlug, validate, workflowTelemetry, } from "../../ledgers/telemetry.js";
+import { readBkitVersion } from "../../install/version-file.js";
 import { CommandError, EXIT, git, parseJson, repoRoot, runGit, statusLocation, statusRelPath, } from "../lib.js";
 import { EXIT_REMOVE_FAILED, EXIT_SPLIT_BUCKET, acquireWorkflowLock, lockRoot, owns, readHolder, releaseLock, resolveMonth, workflowLockPath, } from "./locks.js";
 import { FEATURE_STATUS } from "./roadmap.js";

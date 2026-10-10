@@ -480,7 +480,7 @@ Gate fails locally → fix + re-stage; do NOT `--no-verify` or amend over failed
 
 ### `dist/` commit policy
 
-Source-repo only. Any `.bkit/src/*.ts` change MUST include `pnpm build && git add dist/` in same commit.
+Source-repo only. Any `.bkit/core/engine/**/*.ts` change MUST include `pnpm build && git add dist/` in same commit.
 
 - Hooks run `typecheck` + `test`, NOT `pnpm build`. Source-repo pre-push runs `pnpm bkit:check:dist` (blocks stale `dist/`) but does not commit freshened `dist/` — run `pnpm build && git add dist/` manually.
 - CI `bkit-tests-static` "Assert Dist Freshness" (`pnpm bkit:check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) — `.github/workflows/ci.yml` only.
@@ -508,7 +508,7 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 
 **Rule:** last push to CI-validated ref → HEAD without CI-suppressor + confirmed CI run for pushed HEAD. **CI-Dispatch Gate** (`.bkit/workflows.md` § "CI-Dispatch Gate"): (1) pre-push HEAD-message deny-list — `bkit branches push --require-ci` exits 6 on a CI-suppressing token anywhere in the HEAD message; (2) post-push `bkit runs dispatch` → run in `statusCheckRollup`, self-heal once via clean `re-trigger`, verdict `dispatched`/`self-healed`/`no-ci`/`unresolved`. A `[skip ci]` HEAD leaves an empty rollup.
 
-**Poll anchors the check NAMESPACE, not a lane name** — the capstone `bkit.capstoneJob` minus its last `-segment` (`bkit-tests-check` → any check containing `bkit-tests`). Single-job anchor PROHIBITED. Alignment: `bkit-ci-dispatch-gate-alignment.test.ts`; legacy scaffolds: `ci-legacy-scaffold-job-names` advisory.
+**Poll anchors the check NAMESPACE, not a lane name** — the capstone `bkit.capstoneJob` minus its last `-segment` (`bkit-tests-check` → any check containing `bkit-tests`). Single-job anchor PROHIBITED. Alignment: `.bkit/core/engine/audits/workflows/ci-dispatch-gate-alignment.test.ts`; legacy scaffolds: `ci-legacy-scaffold-job-names` advisory.
 
 **Gate sites (2):** build Step 18; debug Step 10 sub-step 6 (PR-mode and LOCAL-mode). Ship OUT — Step 15 reads the squash commit's CI with `bkit runs gate --head=<SQUASH_SHA>`; CI-Dispatch there masks "essential tests skipped".
 

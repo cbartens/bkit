@@ -57,8 +57,8 @@ echo "len=${#BKIT_GH_TOKEN}"                 # non-zero → MCP token loaded; gh
 
 ```bash
 pnpm install --frozen-lockfile                                          # workspace deps + husky git hooks
-pnpm tsx .bkit/src/bkit-install.ts install --claude --cursor --typescript  # dogfood install (this repo only)
-pnpm tsx .bkit/src/bkit-install.ts check                                # drift gate
+pnpm tsx .bkit/core/engine/cli.ts install --claude --cursor --typescript  # dogfood install (this repo only)
+pnpm tsx .bkit/core/engine/cli.ts check                                # drift gate
 vale sync                                                               # one-off; pulls lint:prose styles
 ```
 

@@ -8,7 +8,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { COULD_NOT_RUN_EXIT_CODES } from "../shared/package-manager.js";
+import { COULD_NOT_RUN_EXIT_CODES } from "../../shared/package-manager.js";
 import { CommandError, EXIT, git, parseJson } from "../lib.js";
 /** The skills.sh CLI, as `.agents/skills.md` documents it. */
 export const SKILLS_CLI = ["npx", "skills"];

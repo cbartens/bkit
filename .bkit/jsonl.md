@@ -3,7 +3,7 @@
 {{BKIT_MANAGED_MARKER}}
 
 > [!CAUTION]
-> **Purpose:** How to format a new row for any bkit JSONL ledger (`docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `.bkit/issues.jsonl`, `.bkit/friction.jsonl`, `.bkit/stats.jsonl`). Codec: `.bkit/src/bkit-telemetry.ts`. Which `kind` → which ledger + workflow write timing: `.bkit/workflows.md` § Telemetry Ledgers.
+> **Purpose:** How to format a new row for any bkit JSONL ledger (`docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `.bkit/issues.jsonl`, `.bkit/friction.jsonl`, `.bkit/stats.jsonl`). Codec: `.bkit/core/engine/ledgers/telemetry.ts`. Which `kind` → which ledger + workflow write timing: `.bkit/workflows.md` § Telemetry Ledgers.
 >
 > **Rules:**
 >
@@ -129,7 +129,7 @@ Prune gates (in order):
 - **Malformed lines** — NEVER pruned.
 - **Store accumulates** — every distinct row, deduped by content only; never cleared, never rewritten from `fold` (winners shift between runs). Readers fold it. `harvest` NEVER commits, either repo.
 
-`stats.jsonl` = COPY-only; `deferrals` / `failures` = COUNT-only (envelope metadata; prose never leaves consumer). Contract: `.bkit/src/bkit-harvest.ts`.
+`stats.jsonl` = COPY-only; `deferrals` / `failures` = COUNT-only (envelope metadata; prose never leaves consumer). Contract: `.bkit/core/engine/commands/harvest.ts`.
 
 ## Summary vs Description
 
@@ -426,7 +426,7 @@ Indented for readability — **on disk each row = single physical line** (§ Wri
   "rootCause": "the install engine writes core.bare while staging and does not restore it on the success path",
   "remediation": "run `git config core.bare false` after install",
   "status": "OPEN",
-  "references": ["176", "a1b2c3d", ".bkit/src/bkit-install.ts"]
+  "references": ["176", "a1b2c3d", ".bkit/core/engine/commands/install/install.ts"]
 }
 ```
 

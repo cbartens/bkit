@@ -68,7 +68,7 @@ Each template's `Purpose` is its scope. Main ones: security, privacy, accessibil
 | Tool | Version | Used for |
 | --- | --- | --- |
 | Node | >= 20 (`engines.node`) | Runs the bkit CLI. |
-| `pnpm` | matches `package.json` `packageManager` | Required in every consumer repo, whatever the stack: bkit installs and upgrades itself with pnpm, which makes the repo a pnpm repo. Runs the worktree install (`pnpm install --frozen-lockfile`) and the `bkit:gate:*` scripts. Non-Node stack → stub `package.json` whose `bkit:gate:*` scripts wrap the stack's own commands (e.g. `ruff check && pytest`). Also bkit CLI (`bkit install`; `pnpm tsx .bkit/src/bkit-install.ts` in bkit dev). |
+| `pnpm` | matches `package.json` `packageManager` | Required in every consumer repo, whatever the stack: bkit installs and upgrades itself with pnpm, which makes the repo a pnpm repo. Runs the worktree install (`pnpm install --frozen-lockfile`) and the `bkit:gate:*` scripts. Non-Node stack → stub `package.json` whose `bkit:gate:*` scripts wrap the stack's own commands (e.g. `ruff check && pytest`). Also bkit CLI (`bkit install`; `pnpm tsx .bkit/core/engine/commands/install/install.ts` in bkit dev). |
 | `gh` | latest, authenticated | PR create / view / merge in `/bkit-build`, `/bkit-debug`, `/bkit-ship` |
 | `git` >= 2.5 | — | Worktree operations |
 | `jq` | latest | Reads the JSON that `bkit` commands print, in workflow Bash |
@@ -203,8 +203,8 @@ bkit install --claude --cursor --typescript   # (re)seed hosts + the slop plugin
 bkit repo runs install script via `tsx` instead of published bin:
 
 ```bash
-pnpm tsx .bkit/src/bkit-install.ts install
-pnpm tsx .bkit/src/bkit-install.ts check
+pnpm tsx .bkit/core/engine/cli.ts install
+pnpm tsx .bkit/core/engine/cli.ts check
 ```
 
 CI drift gate (`.github/workflows/ci.yml`) fails PR if generated files diverge from `install` output.
@@ -288,7 +288,7 @@ Two capabilities **opt-in**, excluded from default install: **issue tracker** (`
 bkit dogfoods templates: `.bkit/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit copy) must stay byte-equal where they overlap. Updater scans `.github/workflows/` only, not template path. Applies ONLY if bkit-repo opted into updater. When updater PR opens against bkit workflows:
 
 1. Before merge, edit matching `.bkit/templates/.github/workflows/*.yml` with same SHA bump (one `Edit` per file).
-2. Run `pnpm test` (`bkit-templates-content.test.ts` snapshot regenerates via `pnpm vitest run .bkit/src/bkit-templates-content.test.ts -u` if ci.yml shape changed; commit snapshot).
+2. Run `pnpm test` (`.bkit/core/engine/audits/templates/templates-content.test.ts` snapshot regenerates via `pnpm vitest run .bkit/core/engine/audits/templates/templates-content.test.ts -u` if ci.yml shape changed; commit snapshot).
 3. Push template-side change to updater PR branch (or follow-up commit on `dev` if branch read-only).
 
 Consumers: `.github/workflows/ci.yml` and `bkit-cloud.yml` are your copies of templates, so updater bumps survive install and upgrade. New pins in the templates arrive in `.bkit/templates/` on `bkit upgrade`; adopt them like any other template change.
@@ -396,7 +396,7 @@ bare `.bkit/comparison.md` or `.bkit/prompts/` in your own repo will not resolve
 | `node_modules/@cbartens/bkit/.bkit/workflows/` | Canonical slash-command source (rendered into `.claude/commands/`, `.cursor/commands/`, `.opencode/commands/`) |
 | `node_modules/@cbartens/bkit/.bkit/prompts/` | Canonical subagent source (rendered into `.claude/agents/`, `.cursor/agents/`, `.opencode/agents/`) |
 | `node_modules/@cbartens/bkit/.bkit/templates/` | Sources `bkit install` writes from (see § What install writes), plus the templates it copies into the consumer's `.bkit/templates/` (see `.bkit/templates.md`) |
-| `node_modules/@cbartens/bkit/dist/bkit-install.js` | Install engine — renders host outputs and applies templates (`.bkit/src/bkit-install.ts` is the TypeScript source, not shipped as such) |
+| `node_modules/@cbartens/bkit/dist/cli.js` | Install engine — renders host outputs and applies templates (`.bkit/core/engine/cli.ts` is the TypeScript source, not shipped as such) |
 
 ---
 
@@ -409,7 +409,7 @@ Edit `.bkit/workflows/` (orchestrators) or `.bkit/prompts/` (subagents), then re
 vim .bkit/workflows/bkit-build.md
 
 # Regenerate (run dist binary; faster than tsx and matches what consumers run)
-pnpm build && node dist/bkit-install.js install
+pnpm build && node dist/cli.js install
 
 # Commit both source and generated output together
 git add .bkit/workflows/bkit-build.md .claude/commands/bkit-build.md .cursor/commands/bkit-build.md

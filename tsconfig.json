@@ -10,11 +10,11 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "outDir": "dist",
-    "rootDir": ".bkit/src",
+    "rootDir": ".bkit/core/engine",
     "declaration": false,
     "sourceMap": false,
     "types": ["node"]
   },
-  "include": [".bkit/src/**/*.ts"],
+  "include": [".bkit/core/engine/**/*.ts"],
   "exclude": ["node_modules", "dist", "tmp", ".worktrees", "**/*.test.ts"]
 }

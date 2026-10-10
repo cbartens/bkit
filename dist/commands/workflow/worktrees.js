@@ -11,9 +11,9 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { gitEnv } from "../../bkit-telemetry.js";
-import { readBkitConfig } from "../shared/config.js";
-import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../shared/package-manager.js";
+import { gitEnv } from "../../ledgers/telemetry.js";
+import { readBkitConfig } from "../../shared/settings.js";
+import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
 import { CommandError, EXIT, git, repoRoot, runGit } from "../lib.js";
 import { WORKFLOW_FLAG } from "./status.js";
 const WORKFLOWS = ["design", "plan", "build", "debug", "ship"];

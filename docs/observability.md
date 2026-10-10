@@ -147,7 +147,7 @@ Release-PR capstone in mirror mode (`docs/deployments.md` § One CI run per dev 
 
 ## Advisory Checklist Output
 
-Post-install findings via `formatChecklist(ctx.advisories)` (`bkit-postinstall.ts`). Each `PreflightFinding`: `{ id, severity, detect, action }`. Primary human-readable observability surface.
+Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/checks/after/index.ts`). Each `PreflightFinding`: `{ id, severity, detect, action }`. Primary human-readable observability surface.
 
 - Blockers (Phase 1) → `stderr`, exit 1 before writes.
 - Advisories (Phase 1 + Phase 3) → numbered checklist after install.

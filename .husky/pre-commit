@@ -15,9 +15,9 @@
 set -e
 pnpm bkit:gate:format
 
-# bkit repo only: a staged non-test `.bkit/src/*.ts` runs the dist freshness check.
+# bkit repo only: a staged non-test `.bkit/core/engine/**/*.ts` runs the dist freshness check.
 if git diff --cached --name-only --diff-filter=ACM |
   grep -v '\.test\.ts$' |
-  grep -q '^\.bkit/src/.*\.ts$'; then
+  grep -q '^\.bkit/core/engine/.*\.ts$'; then
   pnpm bkit:check:dist < /dev/null
 fi

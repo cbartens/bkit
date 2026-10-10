@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { CommandError, EXIT, parseJson, repoRoot, } from "../lib.js";
-import { readBkitConfig } from "../shared/config.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { str } from "./status.js";
 /** Exit code: an input file is missing or not in the expected shape. */
 export const EXIT_BAD_INPUT = 3;

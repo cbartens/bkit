@@ -107,8 +107,8 @@ def by_package(p):
 
 
 def by_module(p):
-    # .bkit/src is one flat folder: one module per file.
-    if p.startswith(".bkit/src/"):
+    # .bkit/core/engine: one module per file.
+    if p.startswith(".bkit/core/engine/"):
         return re.sub(r"\.[^./]+$", "", p)
     return "/".join(p.split("/")[:-1][:4]) or p.split("/")[0]
 

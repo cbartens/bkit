@@ -50,7 +50,7 @@ Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-
 
 > **GateGuard needs the `.codex/` layer TRUSTED.** Codex loads project-local hooks only once trusted. Until then the hook is installed and never fires — present, proving nothing. Same for `guardrails.cjs`.
 >
-> **Codex cannot prompt.** It parses `permissionDecision: "ask"` but does not implement it — an ask is recorded as an error and the call proceeds. `guardrails.cjs` therefore blocks the `deny` tier for real and emits the `ask` tier as advisory `additionalContext`: the gate fires and informs, it cannot stop the command. Every ask-tier command is already PROHIBITED in all five workflow headers, so no bkit workflow reaches one. Asserted in `bkit-permissions-parity.integration.test.ts`.
+> **Codex cannot prompt.** It parses `permissionDecision: "ask"` but does not implement it — an ask is recorded as an error and the call proceeds. `guardrails.cjs` therefore blocks the `deny` tier for real and emits the `ask` tier as advisory `additionalContext`: the gate fires and informs, it cannot stop the command. Every ask-tier command is already PROHIBITED in all five workflow headers, so no bkit workflow reaches one. Asserted in `.bkit/core/engine/install/modules/index.integration.test.ts`.
 
 **Explicit host axis (no implicit full):** `bkit install` requires ≥1 module flag — bare `bkit install` errors. Every host explicit; hosts compose: `bkit install --claude --cursor --opencode=opencode-zen` installs all three (+ implicit core). `--opencode` cannot render without `=<provider>` (strict allowlist). Switch providers: re-run install. All hosts render from `.bkit/`; run state in `status.jsonl` + plan docs + tracker (never host session) — phase/resumed run moves across hosts/providers mid-feature with identical gates + per-agent pins: hit limit on one, continue on another. `bkit status` → installed hosts + active providers; `bkit doctor` → credentials + tool reachability.
 
@@ -60,7 +60,7 @@ Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-
 
 **Additive multi-provider install:** `bkit install --opencode=<provider>` additive — second provider ADDS block to `opencode.json`, keeps first. Agent frontmatter (`model:`) re-renders to last-installed (active) provider; other blocks stay for interactive switch/overrides. Installed providers → `bkit.opencodeProviders: string[]` in `package.json`; active → `bkit.opencodeProvider`. `bkit status` lists all, marks active; `bkit doctor` checks all credentials. Remove one: `bkit uninstall --opencode=<provider>` (surgical — block + array; if active removed, re-point via `bkit install --opencode=<new>` or `bkit upgrade`). `bkit uninstall --opencode` (bare) tears down entire opencode host.
 
-New host — row above + `run<Host>Module` (`bkit-modules.ts`) + manifest block (`bkit-manifest.ts`) + `.bkit/templates/<dir>/` + GateGuard case in `bkit-gateguard-parity.integration.test.ts`. New provider ALSO needs `GATEWAY_COLUMN` (`bkit-install.ts`) + a curated `prompts.md` § Models column.
+New host — row above + `run<Host>Module` (`.bkit/core/engine/install/modules/index.ts`) + manifest block (`.bkit/core/engine/install/manifest.ts`) + `.bkit/templates/<dir>/` + GateGuard case in `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`. New provider ALSO needs `GATEWAY_COLUMN` (`.bkit/core/engine/commands/install/install.ts`) + a curated `prompts.md` § Models column.
 
 ---
 
@@ -174,7 +174,7 @@ Cloud Agents API: `curl https://api.cursor.com/v0/models -u "$BKIT_CURSOR_API_KE
 
 **Lives in `.bkit/prompts.md`** (per-agent metadata with descriptions, effort/maxTurns rationale, tool patterns).
 
-`prompts.md`: one row per agent: `name | Cursor model | Claude effort | role hint`. Canonical for Cursor frontmatter rewrite (T3); `bkit-models-table-parity.test.ts` checks it against the prompt frontmatter.
+`prompts.md`: one row per agent: `name | Cursor model | Claude effort | role hint`. Canonical for Cursor frontmatter rewrite (T3); `.bkit/core/engine/audits/workflows/models-table-parity.test.ts` checks it against the prompt frontmatter.
 
 ### Per-workflow (orchestrator) model
 
@@ -204,7 +204,7 @@ Dashboard label-based routing.
 
 **Decision:** Cursor **never emits `readonly:`**. Subagents write directly on both hosts, matching canonical Claude command shape. Cursor subagents have full tool access: Cursor CLI 2026.10.01 ignores the `tools:` allowlist (measured).
 
-**Implementation:** T3 in `bkit-install.ts` emits only `name` / `description` / `model` — no `readonly:`. Generated `.cursor/agents/*.md` confirm zero `readonly:` lines.
+**Implementation:** T3 in `.bkit/core/engine/commands/install/install.ts` emits only `name` / `description` / `model` — no `readonly:`. Generated `.cursor/agents/*.md` confirm zero `readonly:` lines.
 
 **Trade-off accepted:** Cursor per-agent runtime safety → tool-allowlist sandboxing once `tools:` lands. Canonical command bodies byte-identical-shape; outputs identical.
 
@@ -273,7 +273,7 @@ Pre-edit advisory hook, on all four hosts (Claude Code, Cursor, Codex, opencode)
 
 **Subagents:** not exempt on any host. A subagent edit is an edit, and dedup is per (session, file) with a subagent carrying its own session id, so it gets its own checklist. No host reads a subagent marker (Claude's `agent_id`, opencode's `parentID`); Cursor's payload carries none.
 
-**Deny mode, per host:** Claude and Codex `permissionDecision: "deny"` with the checklist as `permissionDecisionReason`; Cursor `permission: "deny"` with the checklist as `agent_message` (`user_message` goes to the human, not the model); opencode throws — `tool.execute.before` is block-or-allow only, so the throw path is the block and stderr is the advisory channel. Same behaviour, three delivery mechanisms across four hosts; asserted uniformly in `.bkit/src/bkit-gateguard-parity.integration.test.ts`.
+**Deny mode, per host:** Claude and Codex `permissionDecision: "deny"` with the checklist as `permissionDecisionReason`; Cursor `permission: "deny"` with the checklist as `agent_message` (`user_message` goes to the human, not the model); opencode throws — `tool.execute.before` is block-or-allow only, so the throw path is the block and stderr is the advisory channel. Same behaviour, three delivery mechanisms across four hosts; asserted uniformly in `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`.
 
 **Divergence budget:** the Claude and Cursor managed blocks are byte-identical (test-asserted). opencode's differs only where the runtime forces it — ES module rather than CJS, tool vocabulary `write`/`edit`/`patch` rather than `Edit`/`Write`/`MultiEdit`. Codex's differs only in its payload — every edit arrives as `apply_patch` with a V4A envelope and no file path, so its block carries the envelope parser. Every advisory string, gate-config pattern and docs-path rule is identical across all four.
 
@@ -297,7 +297,7 @@ Pre-edit advisory hook, on all four hosts (Claude Code, Cursor, Codex, opencode)
 
 ### Network allowlist — one source, three encodings
 
-**Source of truth:** bkit's own hosts come from the egress registry (`.bkit/src/bkit-registry.ts`) and must never be re-declared. Stack domains come from consumer `.agents/context.md` → `<!-- allowed-domains:start -->` **after** `<!-- bkit:end -->` (apex domains). Never ship Vercel/Supabase/Sentry/etc. into every consumer.
+**Source of truth:** bkit's own hosts come from the egress registry (`.bkit/core/engine/shared/egress.ts`) and must never be re-declared. Stack domains come from consumer `.agents/context.md` → `<!-- allowed-domains:start -->` **after** `<!-- bkit:end -->` (apex domains). Never ship Vercel/Supabase/Sentry/etc. into every consumer.
 
 **`bkit install` / `bkit upgrade` apply that set differently per host** — same policy, native mechanics:
 
@@ -384,7 +384,7 @@ Installed provider catalog changes. Look up model IDs before pinning in `.openco
 
 **Model ID format:** opencode provider-prefixed frontmatter: `<provider>/<model-id>` (e.g. `openrouter/moonshotai/kimi-k3`, `ollama/kimi-k2.7-code`). Pins = `prompts.md` § Models — **one column per provider** (`OpenRouter`, `Ollama`, `OpenCode Zen`, `OpenCode Go`). Gateways: `opencode/<id>` Zen, `opencode-go/<id>` Go. CLI keys `opencode-zen` / `opencode-go`.
 
-**Lookup mechanic (install pin resolution).** `bkit install --opencode=<provider>` → `buildOpencodeModelLookup(promptsMdPath, provider)` (`.bkit/src/bkit-install.ts`):
+**Lookup mechanic (install pin resolution).** `bkit install --opencode=<provider>` → `buildOpencodeModelLookup(promptsMdPath, provider)` (`.bkit/core/engine/commands/install/install.ts`):
 
 1. Provider key → `prompts.md` column via `OPENCODE_PROVIDER_COLUMN` (`openrouter`→`OpenRouter`, `ollama`→`Ollama`, `opencode-zen`→`OpenCode Zen`, `opencode-go`→`OpenCode Go`).
 2. Parse column → seed `.opencode/agents/<name>.md` `model:` verbatim.
@@ -411,7 +411,7 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 2. Pull every source; stamp the date. LiveBench `table_<date>.csv` name ≠ freshness.
 3. Slug live? § Per-provider live model lookup. OpenRouter: also `GET /api/v1/models/{slug}/endpoints`.
 4. Shortlist 1–2 / tier. Reject single-endpoint + `cache_control` hosts (Anthropic, Alibaba) unless no alternative.
-5. Apply: `prompts.md` § Models + this board + `.bkit/src/bkit-install.test.ts` OpenRouter tests + `bkit install`. Stamp `prompts.md` § Live model-ID verification.
+5. Apply: `prompts.md` § Models + this board + `.bkit/core/engine/commands/install/install.test.ts` OpenRouter tests + `bkit install`. Stamp `prompts.md` § Live model-ID verification.
 
 **Sources — check all.**
 

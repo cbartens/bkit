@@ -12,7 +12,7 @@
 // stays "Expected" forever and wedges every PR.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { readBkitConfig } from "../shared/config.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { CommandError, EXIT, parseJson, repoRoot, runGh, } from "../lib.js";
 /** Exit code: `gh repo view` did not name the repository. */
 export const EXIT_NO_REPO = 3;

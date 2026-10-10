@@ -10,7 +10,7 @@
 //      an attempt is recorded as an error and the tool call proceeds anyway. The ask
 //      tier is emitted as `additionalContext`: an advisory the model reads, the command
 //      still runs. The deny tier is a real block. Asserted in
-//      `.bkit/src/bkit-permissions-parity.integration.test.ts`; see providers.md.
+//      `.bkit/core/engine/install/modules/index.integration.test.ts`; see providers.md.
 //   2. ENVELOPE. Codex is the Claude-family hook contract (stdin `tool_name` /
 //      `tool_input`, stdout `hookSpecificOutput`), not Cursor's `beforeShellExecution`
 //      + `{ permission }` shape.
@@ -166,7 +166,7 @@ const SOURCE_EXT_RE =
  * extension is reported.
  *
  * Byte-identical to the Cursor twin; behavioural parity is asserted in
- * bkit-permissions-parity.integration.test.ts.
+ * .bkit/core/engine/install/modules/index.integration.test.ts.
  */
 function shellEditTargets(cmd) {
   const hits = [];

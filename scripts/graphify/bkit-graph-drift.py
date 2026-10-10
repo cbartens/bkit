@@ -40,7 +40,7 @@ SKIP_FILE = (".d.ts", ".config.")
 # same file set — see sources().
 TEST_FILE = (".test.", ".spec.")
 # Roots walked; a budget guard reads the same roots. scripts/ is included.
-ROOTS = (".bkit/src", ".bkit/scripts", "scripts")
+ROOTS = (".bkit/core/engine", ".bkit/scripts", "scripts")
 SURFACES = ("product", "tests", "all")
 
 ap = argparse.ArgumentParser()

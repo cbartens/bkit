@@ -10,7 +10,7 @@
 //   2. NO FILE PATH. The V4A patch envelope arrives in `tool_input.command`; the touched
 //      paths have to be parsed out of it (see parseApplyPatchTargets).
 //
-// `bkit-gateguard-parity.integration.test.ts` runs the shared behaviour table against
+// `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` runs the shared behaviour table against
 // this host.
 //
 // REGISTRATION: `.codex/hooks.json`, matcher `apply_patch`. Codex loads project-local

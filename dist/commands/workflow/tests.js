@@ -11,8 +11,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { CommandError, EXIT, git } from "../lib.js";
-import { readPackageJson } from "../shared/package-json.js";
-import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../shared/package-manager.js";
+import { readPackageJson } from "../../shared/package-json.js";
+import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
 import { str } from "./status.js";
 /** Exit code: no candidate gate is declared in package.json. */
 export const EXIT_NO_GATE = 3;

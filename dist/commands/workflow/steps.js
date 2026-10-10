@@ -8,8 +8,8 @@
 // saying it did.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { activeDoneSteps, appendLine, statusTimestamp } from "../../bkit-status.js";
-import { getPromptsRoot } from "../../bkit-paths.js";
+import { activeDoneSteps, appendLine, statusTimestamp } from "../../ledgers/status.js";
+import { getPromptsRoot } from "../../shared/package-roots.js";
 import { CommandError, EXIT, runGit } from "../lib.js";
 import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, extraField, positiveInt, readRuns, statusFile, str, } from "./status.js";
 const VERDICT_END = "<!-- verdict:end -->";

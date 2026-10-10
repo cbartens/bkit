@@ -36,10 +36,10 @@ for (const key of Object.keys(process.env)) {
 // WHY: 5s is a unit-test budget and the integration suite is not unit work — it
 // spawns the bkit CLI under `tsx` in a temp repo, so one `it` pays process
 // startup plus real fs and git work. Each is fast alone (all of
-// bkit-upgrade.integration.test.ts runs in ~6s), but the full suite runs those
+// .bkit/core/engine/commands/install/upgrade.integration.test.ts runs in ~6s), but the full suite runs those
 // spawns in parallel and on a loaded machine they lose the race against 5s. It
 // surfaces as `Error: Test timed out in 5000ms` on a DIFFERENT test each run —
-// bkit-upgrade and bkit-check-opencode traded places across 7 full-suite runs on
+// the upgrade and check-opencode integration tests traded places across 7 full-suite runs on
 // 2026-08-27 — which reads as a flaky product but is only ever a starved
 // subprocess. `pnpm test` is a pre-push gate (.husky/pre-push ->
 // bkit:gate:static-unit), so that starvation blocks pushes on a green tree, and

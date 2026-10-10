@@ -56,7 +56,7 @@ maxTurns: 200
     - Host + provider lists (`.bkit/providers.md`, `.bkit/README.md`, `.bkit/cloud.md` support matrix) vs CLI parser + renderer defaults
     - subagent catalog + phase order (`.bkit/workflows.md`, `.bkit/comparison.md`) vs shipped prompt / workflow files
     - prompt frontmatter table (`.bkit/prompts.md`) vs each `.bkit/prompts/*.md` frontmatter (model, effort, `maxTurns`, tools)
-    - ledger fields (`.bkit/jsonl.md`) vs telemetry codec (`.bkit/src/bkit-telemetry.ts`)
+    - ledger fields (`.bkit/jsonl.md`) vs telemetry codec (`.bkit/core/engine/ledgers/telemetry.ts`)
     - tracker marker contract (`.bkit/trackers.md`) vs inline blocks
 14. Guardrail parity — every host enforces same destructive-op and secret-exposure guardrails; guardrail weaker than docs claim **or** host gating fewer dangerous ops than peers → finding. Confirm no untrusted input reaches shell or model-prompt surface unsanitised.
 15. Workflow integrity — audit every `.bkit/workflows/bkit-*.md` against `.bkit/workflows.md` § Workflow Authoring Rules and for flow / logic defects that would strand a live run. Confirm with Read before recording. Minimum checks (`CRITICAL` when unreachable escalation / contradictory guards; `HIGH` otherwise):

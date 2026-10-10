@@ -1,7 +1,7 @@
 # Shared Wording
 
 > [!CAUTION]
-> **Purpose:** Canonical text of every sentence shared by 5+ prompts, plus the header sentences workflows share with prompts. Checked by `.bkit/src/bkit-wording.test.ts`; rewritten in place by `pnpm wording:sync`.
+> **Purpose:** Canonical text of every sentence shared by 5+ prompts, plus the header sentences workflows share with prompts. Checked by `.bkit/core/engine/tools/wording.test.ts`; rewritten in place by `pnpm wording:sync`.
 >
 > **Rules:**
 >

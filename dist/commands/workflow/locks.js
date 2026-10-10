@@ -16,9 +16,9 @@
 import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fold, lastRun, statusTimestamp, } from "../../bkit-status.js";
+import { fold, lastRun, statusTimestamp, } from "../../ledgers/status.js";
 import { CommandError, EXIT, git, parseJson, repoRoot, statusRelPath, utcMonth, } from "../lib.js";
-import { TIMEOUTS } from "../shared/timeouts.js";
+import { TIMEOUTS } from "../../shared/timeouts.js";
 import { str } from "./status.js";
 /** A workflow lock whose holder shows no sign of life for this long is stale. */
 export const WORKFLOW_LOCK_IDLE_S = 1800;

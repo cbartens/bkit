@@ -151,7 +151,7 @@ const SOURCE_EXT_RE = /\.(ts|tsx|js|jsx|cjs|mjs|json|md|sh|bash|py|rb|go|rs|java
  * extension is reported.
  *
  * Byte-identical to the Cursor and Codex twins; behavioural parity is asserted in
- * bkit-permissions-parity.integration.test.ts.
+ * .bkit/core/engine/install/modules/index.integration.test.ts.
  */
 function shellEditTargets(cmd) {
   const hits = [];

@@ -15,21 +15,21 @@
     {
       "capability": "Managed-version marker",
       "lane": "Install",
-      "owner": ".bkit/src/bkit-version.ts",
+      "owner": ".bkit/core/engine/install/version-file.ts",
       "pattern": "do NOT edit; run",
       "note": "Rendered mirrors are stamped through stampManagedVersion only."
     },
     {
       "capability": "Tracker block substitution",
       "lane": "Install",
-      "owner": ".bkit/src/bkit-trackers.ts",
+      "owner": ".bkit/core/engine/render/trackers.ts",
       "pattern": "bkit:tracker",
       "note": "Prompts and workflows carry tracker blocks; only the trackers module resolves them."
     },
     {
       "capability": "Cursor API access",
       "lane": "Providers",
-      "owner": ".bkit/src/bkit-registry.ts",
+      "owner": ".bkit/core/engine/shared/egress.ts",
       "pattern": "api.cursor.com",
       "note": "Model catalog probes go through the registry."
     }

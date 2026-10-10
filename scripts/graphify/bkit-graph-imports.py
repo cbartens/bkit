@@ -73,7 +73,7 @@ import re
 SRC_EXTS = (".ts", ".tsx")
 SKIP_DIR = {"node_modules", "dist", ".next", ".turbo", "coverage", "build", ".git",
             ".worktrees", "docs"}
-DEFAULT_ROOTS = (".bkit/src", "scripts")
+DEFAULT_ROOTS = (".bkit/core/engine", "scripts")
 MANIFEST_GLOB_DIRS = ("packages", "apps", "tooling")
 
 # `from "x"`, `import("x")`, `export ... from "x"`, `require("x")`. Group 1 is

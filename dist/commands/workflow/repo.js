@@ -4,7 +4,7 @@
 // answers nothing, from the `origin` remote URL instead (the MCP fallback the
 // workflows already describe: "parse git remote"). The current branch, and how
 // far it trails `origin/dev`, ride along so Step 1 is one call.
-import { parseRemoteUrlToSlug } from "../../bkit-telemetry.js";
+import { parseRemoteUrlToSlug } from "../../ledgers/telemetry.js";
 import { EXIT, git, runGit, runTool } from "../lib.js";
 /** Exit code: neither gh nor the origin remote named an owner/repo. */
 export const EXIT_NO_REPO = 3;

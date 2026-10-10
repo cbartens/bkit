@@ -19,7 +19,7 @@
 //   otherwise                              LOCAL
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { statusTimestamp } from "../../bkit-status.js";
+import { statusTimestamp } from "../../ledgers/status.js";
 import { CommandError, EXIT, repoRoot, runTool } from "../lib.js";
 import { EXIT_NO_STATUS, FILE_FLAG, WORKFLOW_FLAG, readStatusEvents, statusFile, str, } from "./status.js";
 export const RUNTIMES = [

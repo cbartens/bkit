@@ -2,7 +2,7 @@
 //
 // Sources live in `commands/workflow/` (called by the phase workflows),
 // `commands/ci/` (`bkit ci ...`) and `commands/setup/` (`bkit setup ...`).
-// `bkit-commands.test.ts` fails on a source file in those folders that is not
+// `commands/conventions.test.ts` fails on a source file in those folders that is not
 // listed here, so a command cannot exist without being reachable.
 import { ciCommand } from "./ci/ci.js";
 import { setupCommand } from "./setup/setup.js";
