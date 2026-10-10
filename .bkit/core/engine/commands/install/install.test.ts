@@ -76,18 +76,14 @@ describe("modulesToCliFlags — resolved module set → recovery-hint CLI flags"
     expect(flags(["opencode"], null)).toBe("--opencode=<provider>");
   });
 
-  it("maps lint to --typescript", () => {
-    expect(flags(["core", "lint"])).toBe("--typescript");
-  });
-
   it("maps the cloud opt-in (placeholder when the variant is unknown)", () => {
     expect(flags(["cloud"], null, "cursor")).toBe("--auto=cursor");
     expect(flags(["cloud"], null, null)).toBe("--auto=<variant>");
   });
 
   it("composes multiple modules in flag order", () => {
-    expect(flags(["core", "claude", "cursor", "lint", "cloud"], null, "claude")).toBe(
-      "--claude --cursor --typescript --auto=claude",
+    expect(flags(["core", "claude", "cursor", "cloud"], null, "claude")).toBe(
+      "--claude --cursor --auto=claude",
     );
   });
 });

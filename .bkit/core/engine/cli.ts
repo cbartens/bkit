@@ -20,17 +20,7 @@ import { runInstall } from "./commands/install/install.js";
 import { OPTIN_MODULES } from "./install/manifest.js";
 import { OPENCODE_PROVIDERS } from "./shared/egress.js";
 
-export type ModuleFlag =
-  | "core"
-  | "claude"
-  | "cursor"
-  | "opencode"
-  | "codex"
-  | "lint"
-  | "cloud"
-  // `typescript` is an accepted CLI token only — parseArgs expands it to the internal
-  // `lint` module, so it never appears in a resolved module set or the dispatch registry.
-  | "typescript";
+export type ModuleFlag = "core" | "claude" | "cursor" | "opencode" | "codex" | "cloud";
 
 /** Cloud-agent variant chosen via `--auto=<variant>`. */
 export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"] as const;
@@ -117,9 +107,9 @@ export interface ParsedArgs {
   modules: Set<ModuleFlag>;
   /**
    * The module flags the user EXPLICITLY named, as internal module names (core is
-   * never here — it is implicit; `--typescript` is expanded to lint). Drives
-   * the install "≥1 flag required" guard and the check/upgrade "no module flags" guard
-   * in main(). `--tracker` / `--auto-revert` are modifiers and are NOT counted here.
+   * never here — it is implicit). Drives the install "≥1 flag required" guard and the
+   * check/upgrade "no module flags" guard in main(). `--tracker` / `--auto-revert` are
+   * modifiers and are NOT counted here.
    */
   moduleFlags: Set<ModuleFlag>;
   /** Uninstall-specific flags (only populated when verb === "uninstall"). */
@@ -174,29 +164,28 @@ export interface UpgradeFlags {
   latest: boolean;
 }
 
-// Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing) and
-// `typescript` are intercepted by dedicated branches in parseArgs before this set is
-// consulted; the generic check only ever validates claude/cursor/codex. `full`, `core`,
-// `lint` and `cloud` are NOT accepted as bare flags: use `--typescript` and
-// `--auto=<claude|cursor>`; core is implicit.
+// Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing) is
+// intercepted by a dedicated branch in parseArgs before this set is consulted; the
+// generic check only ever validates claude/cursor/codex. `full`, `core` and `cloud`
+// are NOT accepted as bare flags: use `--auto=<claude|cursor>`; core is implicit.
 // There is no dependency-updater flag. Copy an example; CI warns when none is present.
-const MODULE_FLAGS = new Set<ModuleFlag>(["claude", "cursor", "opencode", "codex", "typescript"]);
+const MODULE_FLAGS = new Set<ModuleFlag>(["claude", "cursor", "opencode", "codex"]);
 
 // ALL_MODULES — every non-opt-in module, core first. Used to expand a bare/full
 // uninstall (which additionally pulls in the opt-in add-ons below for zero footprint).
-const ALL_MODULES: ModuleFlag[] = ["core", "claude", "cursor", "lint"];
+const ALL_MODULES: ModuleFlag[] = ["core", "claude", "cursor"];
 
 /**
  * Resolve the explicit module-flag set into the concrete module set to dispatch.
  * `flags` holds the internal module names the user explicitly named — core is NOT
- * among them (it is implicit) and `typescript` is already expanded to lint by parseArgs. The install "≥1 flag required" rule is enforced by the caller
- * (commands/install/install.ts main), not here.
+ * among them (it is implicit). The install "≥1 flag required" rule is enforced by the
+ * caller (commands/install/install.ts main), not here.
  *
  *   install / check / upgrade / doctor / status → core implicit + the named modules.
  *   uninstall (bare)     → every module incl. opt-in add-ons + core (zero footprint).
  *   uninstall (targeted) → the named modules ONLY (core is removed only by a bare
  *                          uninstall — a targeted uninstall must not strip the shared
- *                          foundation, e.g. `uninstall --typescript` keeps AGENTS.md).
+ *                          foundation, e.g. `uninstall --claude` keeps AGENTS.md).
  */
 export function resolveModules(flags: Set<ModuleFlag>, verb: Verb): Set<ModuleFlag> {
   if (verb === "uninstall") {
@@ -288,9 +277,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
     process.exit(1);
   }
 
-  // Accumulates the internal module names the user explicitly named (no core;
-  // `--typescript` expanded to lint). resolveModules turns this into the
-  // dispatch set; main() reads it for the install/check/upgrade flag guards.
+  // Accumulates the internal module names the user explicitly named (no core).
+  // resolveModules turns this into the dispatch set; main() reads it for the
+  // install/check/upgrade flag guards.
   const moduleFlags = new Set<ModuleFlag>();
   const uninstallFlags = defaultUninstallFlags();
   const upgradeFlags = defaultUpgradeFlags();
@@ -485,15 +474,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
         continue;
       }
 
-      // --typescript: the owned slop-scan type-suppression plugin (internal `lint`
-      // module). The tool scripts, devDeps, configs and hooks are templates.
-      if (flag === "typescript") {
-        moduleFlags.add("lint");
-        continue;
-      }
-
-      // Bare module flags. opencode/typescript are intercepted above; only
-      // claude/cursor/codex reach here. Everything else hits the generic unknown-flag error.
+      // Bare module flags. opencode is intercepted above; only claude/cursor/codex
+      // reach here. Everything else hits the generic unknown-flag error.
       const moduleFlag = flag as ModuleFlag;
       if (!MODULE_FLAGS.has(moduleFlag)) {
         console.error(`[bkit] Unknown flag: ${arg}. Run \`bkit help\` for usage.`);
@@ -571,11 +553,11 @@ Usage:
   bkit uninstall [module-flags] Remove bkit-managed files + strip managed blocks.
                                  No flags = full removal — ALL modules incl. opt-in add-ons
                                  (cloud/opencode) + core. Consumer-owned updater configs
-                                 (renovate.json5, dependabot.yml, renovate.yml) are left in place. Consumer-modified
+                                 (renovate.json5, dependabot.yml, bkit-renovate.yml) are left in place. Consumer-modified
                                  files, the docs/ payload, and generated artefacts
                                  (.bkit/advisories.md, .bkit/friction.jsonl) are preserved (use
                                  --nuke to force-remove manifest-listed files). Target with the
-                                 same module flags as install (e.g. uninstall --typescript); a
+                                 same module flags as install (e.g. uninstall --claude); a
                                  targeted uninstall leaves core untouched.
   bkit doctor                   Read-only preflight + post-install advisory replay.
                                  Diagnose token surfaces and config drift. Exits 0.
@@ -641,28 +623,25 @@ Module flags (composable; symmetric install ↔ uninstall):
                   (root redirect to .agents/rules.md) + .claude settings/hooks + the
                   tracker entry in .mcp.json + .bkit/.env.example.
   --cursor        .cursor/agents/ + .cursor/commands/ (T1/T2/T3 transforms) +
-                  .cursor/rules/00-shared-rules.mdc + .cursor settings.
+                  .cursor/rules/bkit-rules.mdc + .cursor settings.
   --opencode=<provider>
                   Additive opencode host. Each install ADDS a provider block to
                   opencode.json; agent defaults track the last-installed (active) provider.
                   Provider value is REQUIRED. Supported: openrouter, ollama,
                   opencode-zen, opencode-go (opencode-native gateways;
                   auth via BKIT_OPENCODE_API_KEY).
-                  Ships .opencode/** (agents, commands, opencode.json, gateguard).
+                  Ships .opencode/** (agents, commands, opencode.json, bkit-gateguard.js).
                   Configure your provider key; verify with \`bkit doctor\`. All installed
                   providers tracked in bkit.opencodeProviders.
   --codex         Codex CLI host. BARE flag — takes no value: Codex runs on one gateway
                   (openai), so only --opencode is provider-pluggable. Ships .codex/agents/*.toml
-                  + .codex/hooks.json + .codex/hooks/gateguard.cjs, plus the workflow skills
+                  + .codex/hooks.json + .codex/hooks/bkit-gateguard.cjs, plus the workflow skills
                   (.agents/skills/bkit-*/). Codex loads project-local hooks ONLY once the
                   .codex/ layer is trusted — until then GateGuard is installed and never fires.
-  --typescript    The owned slop-scan type-suppression plugin
-                  (.bkit/scripts/bkit-slop-type-suppression.mjs). ci.yml, the tool scripts,
-                  devDeps, configs and hooks are templates (.bkit/templates.md).
 
 Dependency updaters (copy an example and own it):
   .bkit/templates/.github/renovate.json5
-  .bkit/templates/.github/workflows/renovate.yml   (self-hosted runner, optional)
+  .bkit/templates/.github/workflows/bkit-renovate.yml   (self-hosted runner, optional)
   .bkit/templates/.github/dependabot.yml
   All templates and install steps: .bkit/templates.md
 
@@ -701,7 +680,7 @@ Uninstall flags:
 
 Examples:
   bkit install --claude                       .claude/** + CLAUDE.md + core.
-  bkit install --claude --cursor --typescript Both hosts + the slop-scan plugin + core.
+  bkit install --claude --cursor              Both hosts + core.
   bkit install --opencode=opencode-zen          opencode host (Zen built-in gateway, additive).
   bkit install --opencode=opencode-go           opencode host (Go built-in gateway, additive).
   bkit install --opencode=openrouter            add openrouter alongside an opencode gateway.
@@ -711,7 +690,7 @@ Examples:
   bkit check                                  Drift-check everything installed (CI gate).
   bkit upgrade --auto-apply                   Upgrade installed files; CI-safe.
   bkit uninstall                              Full uninstall (all modules; artefacts kept, --nuke to purge).
-  bkit uninstall --typescript                 Remove the slop-scan plugin only (core kept).
+  bkit uninstall --claude                     Remove the claude host only (core kept).
   bkit cursor                                 Launch Cursor with .bkit/.env (MCP tokens).
   bkit opencode                               Launch opencode with .bkit/.env (API key).
 
@@ -761,7 +740,7 @@ export function validateModuleFlagsForVerb(
   if (verb === "install" && moduleFlags.size === 0) {
     return (
       "[bkit] `bkit install` requires at least one module flag. Name what to install: " +
-      "--claude, --cursor, --codex, --opencode=<provider>, --typescript (plus opt-in " +
+      "--claude, --cursor, --codex, --opencode=<provider> (plus opt-in " +
       "--auto=<claude|cursor>). Run `bkit help` for usage."
     );
   }

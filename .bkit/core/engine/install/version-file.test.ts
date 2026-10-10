@@ -183,12 +183,12 @@ describe("P4.T4 — canonicalHashes + isConsumerModified", () => {
     const json = JSON.stringify({ pinnedVersion: "0.7.0" });
     const parsed = parseBkitVersion(json);
     expect(parsed).not.toBeNull();
-    const filePath = path.join(tmpDir, "ci.yml");
+    const filePath = path.join(tmpDir, "bkit-ci.yml");
     fs.writeFileSync(filePath, "some content\n", "utf-8");
     // All files appear as "unknown" → upgrade surfaces a conflict for the consumer.
-    expect(isConsumerModified(".github/workflows/ci.yml", filePath, parsed!.canonicalHashes)).toBe(
-      true,
-    );
+    expect(
+      isConsumerModified(".github/workflows/bkit-ci.yml", filePath, parsed!.canonicalHashes),
+    ).toBe(true);
   });
 });
 

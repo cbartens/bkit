@@ -31,7 +31,7 @@ describe("untrusted-fence", () => {
   const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 
   /** Workflows whose subagents read fetched external evidence. */
-  const FENCED_WORKFLOWS = [".bkit/workflows/bkit-debug.md"] as const;
+  const FENCED_WORKFLOWS = [".bkit/core/workflows/bkit-debug.md"] as const;
 
   /** Artifacts holding fetched external evidence — tracker dumps excluded. */
   const UNTRUSTED_ARTIFACTS = /context-(?!related)/;
@@ -53,7 +53,7 @@ describe("untrusted-fence", () => {
       .sort();
   }
 
-  const WORKFLOWS = filesUnder(".bkit/workflows").filter((f) => f.endsWith(".md"));
+  const WORKFLOWS = filesUnder(".bkit/core/workflows").filter((f) => f.endsWith(".md"));
 
   /**
    * Shipped sources that could write or hand an agent another copy of the fence.
@@ -61,10 +61,10 @@ describe("untrusted-fence", () => {
    * in prose to explain the fence, which is not a copy.
    */
   const OTHER_SURFACES = [
-    ".bkit/prompts",
-    ".bkit/templates/.agents",
+    ".bkit/core/prompts",
+    ".bkit/core/.agents",
     ".bkit/templates/scripts",
-    ".bkit/scripts",
+    "scripts/slop",
     ".agents/context.md",
     ".agents/rules.md",
   ].flatMap(filesUnder);

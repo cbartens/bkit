@@ -2,7 +2,7 @@
 //
 // § Models carries one column per GATEWAY. Three of those columns are not read by any code
 // path: the Claude pin, the effort rung and the turn cap all live in each
-// `.bkit/prompts/*.md` frontmatter and are mirrored byte-identically into `.claude/agents/`.
+// `.bkit/core/prompts/*.md` frontmatter and are mirrored byte-identically into `.claude/agents/`.
 // Only the `Cursor` column and the opencode gateway columns are parsed at install.
 //
 // Those three columns are a hand-maintained COPY of the frontmatter; these tests check
@@ -14,9 +14,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseModelLookupForColumn } from "../../render/models";
+import { getBkitDocsRoot, getPromptsRoot } from "../../shared/package-roots";
 
-const PROMPTS_DIR = path.resolve(".bkit/prompts");
-const PROMPTS_MD = path.resolve(".bkit/prompts.md");
+const PROMPTS_DIR = getPromptsRoot();
+const PROMPTS_MD = path.join(getBkitDocsRoot(), "prompts.md");
 
 /** name -> frontmatter field value, read straight from the prompt files. */
 function frontmatterField(field: string): Map<string, string> {

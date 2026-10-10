@@ -9,6 +9,7 @@ import { parseModelLookup, buildOpencodeModelLookup, parseEffortMap } from "../.
 import type { PreflightFinding } from "../../checks/before/index";
 import { runOpencodeModule, renderOpencodeJson, reconcileOpencodeJson } from "./opencode";
 import type { ModuleContext } from "./index";
+import { getBkitDocsRoot } from "../../shared/package-roots";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -45,14 +46,7 @@ afterEach(() => {
 
 describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
   // Resolve the real opencode model lookup from prompts.md (same source used at install time)
-  const PROMPTS_MD = path.resolve(
-    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
-    "..",
-    "..",
-    "..",
-    "..",
-    "prompts.md",
-  );
+  const PROMPTS_MD = path.join(getBkitDocsRoot(), "prompts.md");
   const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
   const OPENCODE_MODEL_LOOKUP = buildOpencodeModelLookup(PROMPTS_MD, "opencode-zen");
   const EFFORT_MAP = parseEffortMap(PROMPTS_MD);
@@ -145,16 +139,16 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(jsonStr).not.toMatch(/sk-[a-zA-Z0-9]{20,}/); // no raw API key
   });
 
-  it("clean install writes .opencode/plugin/gateguard.js", () => {
+  it("clean install writes .opencode/plugin/bkit-gateguard.js", () => {
     const ws = makeWriteSet();
     const ctx = makeOpencodeCtx({ ws });
     runOpencodeModule(ctx);
 
     const pluginWrite = ws.writes.find((w) =>
-      w.path.endsWith(path.join(".opencode", "plugin", "gateguard.js")),
+      w.path.endsWith(path.join(".opencode", "plugin", "bkit-gateguard.js")),
     );
     expect(pluginWrite).toBeDefined();
-    expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "gateguard.js"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "bkit-gateguard.js"))).toBe(true);
   });
 
   // Install is additive: a second provider install adds its block without
@@ -312,9 +306,11 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
       const commandFiles = fs.readdirSync(commandDir).filter((f) => f.endsWith(".md"));
       expect(commandFiles).toHaveLength(0);
     }
-    // opencode.json and gateguard.js must not exist on disk
+    // opencode.json and bkit-gateguard.js must not exist on disk
     expect(fs.existsSync(path.join(tmpDir, ".opencode", "opencode.json"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "gateguard.js"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "bkit-gateguard.js"))).toBe(
+      false,
+    );
     // Advisory still fired
     expect(ctx.advisories.find((a) => a.id === "opencode-setup")).toBeDefined();
   });
@@ -325,14 +321,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
 // ---------------------------------------------------------------------------
 
 describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2.2)", () => {
-  const PROMPTS_MD = path.resolve(
-    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
-    "..",
-    "..",
-    "..",
-    "..",
-    "prompts.md",
-  );
+  const PROMPTS_MD = path.join(getBkitDocsRoot(), "prompts.md");
   const OPENCODE_MODEL_LOOKUP = buildOpencodeModelLookup(PROMPTS_MD, "opencode-zen");
   const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
 
@@ -381,9 +370,9 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
 });
 
 describe("renderOpencodeJson — opencode custom-provider format", () => {
-  const TEMPLATE = path.resolve(".bkit/templates/.opencode/opencode.json");
+  const TEMPLATE = path.resolve(".bkit/shared/.opencode/opencode.json");
   // Resolved at collection time — the `it` bodies below run after a chdir into a temp repo.
-  const CLAUDE_SETTINGS_TEMPLATE = path.resolve(".bkit/templates/.claude/settings.json");
+  const CLAUDE_SETTINGS_TEMPLATE = path.resolve(".bkit/shared/.claude/settings.json");
 
   it("openrouter (remote): npm driver, aggregator baseURL, apiKey via {env:BKIT_OPENROUTER_API_KEY}", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
@@ -414,7 +403,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
 
   it("uses the 'plugin' key (singular), not 'plugins' (opencode schema)", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
-    expect(parsed.plugin).toContain(".opencode/plugin/gateguard.js");
+    expect(parsed.plugin).toContain(".opencode/plugin/bkit-gateguard.js");
     expect(parsed.plugins).toBeUndefined();
   });
 
@@ -472,7 +461,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
   // curl / wget are the documented exemption — see the KNOWN DIVERGENCE block in
   // install/modules/index.integration.test.ts. opencode gates them as `curl *: ask` and
   // layers `curl *{domain}*: allow` per allowlisted host (last-match-wins); Cursor parses
-  // the URL host in guardrails.cjs; Claude runs them under `Bash(*)`.
+  // the URL host in bkit-guardrails.cjs; Claude runs them under `Bash(*)`.
   //
   // All three hosts run an allowlisted-host fetch unprompted. They differ only on an
   // UNDECLARED host, where Cursor and opencode ask and Claude does not.
@@ -550,7 +539,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
       expect(block.options?.baseURL).toBeUndefined();
       expect(block.options?.apiKey).toBe("{env:BKIT_OPENCODE_API_KEY}");
       expect(Object.keys(block)).toEqual(["options"]);
-      expect(parsed.plugin).toContain(".opencode/plugin/gateguard.js");
+      expect(parsed.plugin).toContain(".opencode/plugin/bkit-gateguard.js");
       expect(JSON.stringify(parsed)).not.toContain("@@OPENCODE");
     }
     // Zen CLI key must NOT invent a custom `opencode-zen` block — models.dev id is `opencode`.
@@ -567,8 +556,11 @@ describe("reconcileOpencodeJson — preserves existing provider order", () => {
     fs.mkdirSync(".opencode", { recursive: true });
     fs.writeFileSync(
       DST,
-      JSON.stringify({ plugin: [".opencode/plugin/gateguard.js"], provider: providers }, null, 2) +
-        "\n",
+      JSON.stringify(
+        { plugin: [".opencode/plugin/bkit-gateguard.js"], provider: providers },
+        null,
+        2,
+      ) + "\n",
       "utf-8",
     );
   }

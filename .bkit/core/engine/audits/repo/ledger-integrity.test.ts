@@ -264,7 +264,7 @@ describe("shipped .gitattributes covers every append-only ledger", () => {
     return body.slice(start, end);
   };
 
-  for (const rel of [".gitattributes", ".bkit/templates/.gitattributes"]) {
+  for (const rel of [".gitattributes", ".bkit/shared/.gitattributes"]) {
     describe(rel, () => {
       it("declares merge=union for every append-only ledger", () => {
         const block = managedBlock(rel);

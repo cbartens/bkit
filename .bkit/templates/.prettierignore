@@ -15,6 +15,7 @@ dist/
 # twins, silently diverging three copies that must stay byte-identical.
 .claude/
 .cursor/
+.codex/
 .opencode/agents/
 .opencode/commands/
 .opencode/plugin/

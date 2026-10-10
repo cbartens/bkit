@@ -81,7 +81,7 @@ describe("detectManagedStale", () => {
       `node_modules/\n# <!-- bkit:start -->\n\n${managedVersionMarker("4.0.0", "hash")}\n\n.worktrees/\n\n# <!-- bkit:end -->\n`,
     );
     write(
-      ".claude/hooks/gateguard.cjs",
+      ".claude/hooks/bkit-gateguard.cjs",
       `// driver\n// bkit:start\n\n${managedVersionMarker("4.0.0", "slash")}\n\nconst x = 1;\n\n// bkit:end\n`,
     );
     write(".bkit/workflows.md", `# Workflows\n\n${managedVersionMarker("4.0.0")}\n\nbody\n`);
@@ -111,19 +111,19 @@ describe("detectManagedStale", () => {
 
   it("reads the hash, slash and TOML forms back", () => {
     write(
-      ".claude/hooks/preflight.sh",
+      ".claude/hooks/bkit-preflight.sh",
       `#!/usr/bin/env bash\n# <!-- bkit:start -->\n\n${managedVersionMarker("3.0.0", "hash")}\n\nexit 0\n\n# <!-- bkit:end -->\n`,
     );
     write(
-      ".cursor/hooks/guardrails.cjs",
+      ".cursor/hooks/bkit-guardrails.cjs",
       `// bkit:start\n\n${managedVersionMarker("3.0.0", "slash")}\n\n// bkit:end\n`,
     );
     write(".codex/agents/bkit-a.toml", `${managedVersionMarker("3.0.0", "hash")}\nname = "a"\n`);
     write(".bkit/.env.example", `# env\n${managedVersionMarker("3.0.0", "hash")}\nX=\n`);
     const f = detectManagedStale(tmpDir, "4.0.0", true);
     for (const rel of [
-      ".claude/hooks/preflight.sh",
-      ".cursor/hooks/guardrails.cjs",
+      ".claude/hooks/bkit-preflight.sh",
+      ".cursor/hooks/bkit-guardrails.cjs",
       ".codex/agents/bkit-a.toml",
       ".bkit/.env.example",
     ]) {
@@ -142,7 +142,7 @@ describe("detectManagedStale", () => {
   it("skips a block-scoped file that has no bkit block (the consumer's own file)", () => {
     write("docs/testing.md", "# our testing doc\n");
     write(".gitignore", "node_modules/\n");
-    write(".claude/hooks/gateguard.cjs", "// our own hook\n");
+    write(".claude/hooks/bkit-gateguard.cjs", "// our own hook\n");
     expect(detectManagedStale(tmpDir, "4.0.0", true)).toBeNull();
   });
 

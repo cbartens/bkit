@@ -3,12 +3,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import { getModuleManifest, CLOUD_MANIFEST_CLAUDE } from "../../install/manifest.js";
+import { getModuleManifest } from "../../install/manifest.js";
 import { readManagedVersion } from "../../install/version-file.js";
 import { getPkgRoot } from "../../shared/package-roots.js";
 import { detectMarkerStyle, findLineAnchoredMarkers, selectMarkers, } from "../../install/managed-block.js";
 import { listStampedFiles } from "../../install/modules/index.js";
-import { readConsumerCloudAgents } from "./github.js";
 // ---------------------------------------------------------------------------
 // detectManagedStale — managed-version marker gate over every stamped file
 // ---------------------------------------------------------------------------
@@ -95,7 +94,7 @@ export function readManagedBlockVersion(content) {
  * Stale managed-version marker on any file bkit writes (listStampedFiles): the rendered
  * agents / commands / skills, the managed blocks (AGENTS.md, CLAUDE.md, `.agents/*.md`,
  * `docs/*.md`, `.gitignore`, the hooks, …) and the whole files bkit owns (`.bkit/*.md`,
- * `.bkit/.env.example`, `.bkit/scripts/*`). A marker that differs from the installing
+ * `.bkit/.env.example`). A marker that differs from the installing
  * bkit version means the consumer bumped the package without re-rendering, or hand-edited
  * a managed region and dropped the marker.
  *
@@ -156,10 +155,8 @@ const HOOK_HOST_FLAGS = [
 const HOOK_FILE_RE = /\/(hooks|plugin)\/[^/]+$/;
 /**
  * Owned hook files that are missing for what this repo has installed: the hook files in the
- * manifest of each installed host module, plus `.claude/hooks/cloud-bootstrap.sh` when
- * `bkit.cloudAgents` is `claude` (every claude settings.json wires cloud-bootstrap.sh, so the
- * reference alone does not mean the cloud module is installed). The claude and codex hook
- * commands skip a missing file (`test -f <file> && … || true`); `bkit check` fails on it.
+ * manifest of each installed host module. The claude and codex hook commands skip a missing
+ * file (`test -f <file> && … || true`); `bkit check` fails on it.
  */
 export function findMissingOwnedHooks(cwd, modules) {
     const required = [];
@@ -169,11 +166,6 @@ export function findMissingOwnedHooks(cwd, modules) {
         for (const entry of getModuleManifest(host)) {
             if (HOOK_FILE_RE.test(entry.path))
                 required.push({ path: entry.path, restoreFlag });
-        }
-    }
-    if (readConsumerCloudAgents(cwd) === "claude") {
-        for (const entry of CLOUD_MANIFEST_CLAUDE) {
-            required.push({ path: entry.path, restoreFlag: "--auto=claude" });
         }
     }
     return required.filter((hook) => !fs.existsSync(path.join(cwd, hook.path)));

@@ -11,7 +11,7 @@ import {
   type FileSummary,
 } from "./uninstall";
 import { serializeBkitVersion, sha256, type BkitVersion } from "../../install/version-file";
-import { getTemplatesRoot } from "../../shared/package-roots";
+import { findTemplateSource, getSharedRoot } from "../../shared/package-roots";
 
 let tmpDir: string;
 
@@ -119,13 +119,13 @@ describe("buildDecisionTable — markered-text format", () => {
 
   it("markered-text file with comment-prefixed html markers (# <!-- bkit:start -->) → decision=strip-block", () => {
     // detectMarkerStyle recognises the `# `-prefixed form used by shell hooks
-    // (preflight.sh), so uninstall strips its block.
+    // (bkit-preflight.sh), so uninstall strips its block.
     writeFile(
-      ".claude/hooks/preflight.sh",
+      ".claude/hooks/bkit-preflight.sh",
       "#!/usr/bin/env bash\n# header\n\n# <!-- bkit:start -->\nbkit hook body\n# <!-- bkit:end -->\n",
     );
     const table = buildDecisionTable(["claude"], makeCtx());
-    const entry = table.find((r) => r.file === ".claude/hooks/preflight.sh");
+    const entry = table.find((r) => r.file === ".claude/hooks/bkit-preflight.sh");
     expect(entry).toBeDefined();
     expect(entry!.format).toBe("markered-text");
     expect(entry!.decision).toBe("strip-block");
@@ -137,11 +137,11 @@ describe("buildDecisionTable — markered-text format", () => {
     // slash-comment style, or the block never resolves and the file is preserved
     // untouched instead of having its block stripped.
     writeFile(
-      ".claude/hooks/gateguard.cjs",
+      ".claude/hooks/bkit-gateguard.cjs",
       "#!/usr/bin/env node\n// header\n\n// <!-- bkit:start -->\nbkit hook body\n// <!-- bkit:end -->\nconst driver = true;\n",
     );
     const table = buildDecisionTable(["claude"], makeCtx());
-    const entry = table.find((r) => r.file === ".claude/hooks/gateguard.cjs");
+    const entry = table.find((r) => r.file === ".claude/hooks/bkit-gateguard.cjs");
     expect(entry).toBeDefined();
     expect(entry!.format).toBe("markered-text");
     expect(entry!.decision).toBe("strip-block");
@@ -149,11 +149,11 @@ describe("buildDecisionTable — markered-text format", () => {
 
   it("markered-text file with bare slash-comment markers (// bkit:start) → decision=strip-block", () => {
     writeFile(
-      ".opencode/plugin/gateguard.js",
+      ".opencode/plugin/bkit-gateguard.js",
       "// header\n\n// bkit:start\nbkit plugin body\n// bkit:end\nexport default function plugin() {}\n",
     );
     const table = buildDecisionTable(["opencode"], makeCtx());
-    const entry = table.find((r) => r.file === ".opencode/plugin/gateguard.js");
+    const entry = table.find((r) => r.file === ".opencode/plugin/bkit-gateguard.js");
     expect(entry).toBeDefined();
     expect(entry!.format).toBe("markered-text");
     expect(entry!.decision).toBe("strip-block");
@@ -252,7 +252,7 @@ describe("buildDecisionTable — markered-text format", () => {
 
     it("covers every docs/*.md the templates ship", () => {
       const shipped = fs
-        .readdirSync(path.join(getTemplatesRoot(), "docs"))
+        .readdirSync(path.join(getSharedRoot(), "docs"))
         .filter((f) => f.endsWith(".md") && f !== "capabilities.md");
       expect(shipped.length).toBeGreaterThan(0);
       for (const f of shipped) writeFile(path.join("docs", f), block);
@@ -327,10 +327,10 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
 
   it("an adopted template is never in the table, whatever its content", () => {
     writeFile(".cursor/Dockerfile", "FROM node:22\n");
-    writeFile(".github/workflows/ci.yml", "name: ci\n");
-    const table = buildDecisionTable(["core", "claude", "cursor", "lint", "cloud"], makeCtx());
+    writeFile(".github/workflows/bkit-ci.yml", "name: bkit-ci\n");
+    const table = buildDecisionTable(["core", "claude", "cursor", "cloud"], makeCtx());
     expect(table.find((r) => r.file === ".cursor/Dockerfile")).toBeUndefined();
-    expect(table.find((r) => r.file === ".github/workflows/ci.yml")).toBeUndefined();
+    expect(table.find((r) => r.file === ".github/workflows/bkit-ci.yml")).toBeUndefined();
   });
 });
 
@@ -476,7 +476,7 @@ describe("runUninstall — round-trip", () => {
 // ---------------------------------------------------------------------------
 
 describe("runUninstall — MCP config keeps the consumer's servers", () => {
-  const templatesRoot = getTemplatesRoot();
+  const templatesRoot = getSharedRoot();
   const trackerEntry = (rel: string, tracker: string): unknown =>
     (
       JSON.parse(fs.readFileSync(path.join(templatesRoot, rel), "utf-8")) as {
@@ -515,7 +515,7 @@ describe("runUninstall — MCP config keeps the consumer's servers", () => {
 // ---------------------------------------------------------------------------
 
 describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
-  const templatesRoot = getTemplatesRoot();
+  const templatesRoot = getSharedRoot();
   // Exact rendered opencode.json a `--opencode=opencode-go --tracker=github` install writes.
   const RENDERED_OPENCODE =
     JSON.stringify(
@@ -545,19 +545,16 @@ describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
   it("deletes a 100%-bkit markered-text file (residual == shipped scaffold, not a dead husk)", () => {
     // .claude/hooks/preflight.sh is a shebang + bkit header wrapping a managed block — 100% bkit.
     // A pristine install strips to a residual identical to the template scaffold → delete.
-    const rel = ".claude/hooks/preflight.sh";
-    writeFile(rel, fs.readFileSync(path.join(templatesRoot, rel), "utf-8"));
+    const rel = ".claude/hooks/bkit-preflight.sh";
+    writeFile(rel, fs.readFileSync(findTemplateSource(rel)!, "utf-8"));
     return runUninstall(["claude"], makeCtx()).then(() => {
       expect(fileExists(rel)).toBe(false);
     });
   });
 
   it("preserves a markered-text file when the consumer added content outside the block", () => {
-    const rel = ".claude/hooks/preflight.sh";
-    writeFile(
-      rel,
-      fs.readFileSync(path.join(templatesRoot, rel), "utf-8") + "\n# my custom check\n",
-    );
+    const rel = ".claude/hooks/bkit-preflight.sh";
+    writeFile(rel, fs.readFileSync(findTemplateSource(rel)!, "utf-8") + "\n# my custom check\n");
     return runUninstall(["claude"], makeCtx()).then(() => {
       expect(fileExists(rel)).toBe(true);
       expect(readFile(rel)).toContain("my custom check");
@@ -823,7 +820,7 @@ describe("stripTier2JsonScope", () => {
 });
 
 // ---------------------------------------------------------------------------
-// runUninstall — generated .claude/cloud.md cleanup (untracked secret-bearing file)
+// runUninstall — generated .claude/bkit-cloud.md cleanup (untracked secret-bearing file)
 // ---------------------------------------------------------------------------
 
 describe("runUninstall — .claude/settings.json leaves no grants behind", () => {
@@ -831,7 +828,7 @@ describe("runUninstall — .claude/settings.json leaves no grants behind", () =>
     // `permissions.allow` (enriched with apex-domain WebFetch grants AFTER rendering the
     // template) strips element-wise like `deny` and `ask`; no `Bash(*)` is left behind.
     const templateRaw = fs.readFileSync(
-      path.join(getTemplatesRoot(), ".claude", "settings.json"),
+      path.join(getSharedRoot(), ".claude", "settings.json"),
       "utf-8",
     );
     const template = JSON.parse(templateRaw) as {
@@ -856,7 +853,7 @@ describe("runUninstall — .claude/settings.json leaves no grants behind", () =>
 
   it("preserves a permission the consumer added themselves", async () => {
     const templateRaw = fs.readFileSync(
-      path.join(getTemplatesRoot(), ".claude", "settings.json"),
+      path.join(getSharedRoot(), ".claude", "settings.json"),
       "utf-8",
     );
     const onDisk = JSON.parse(templateRaw) as {
@@ -875,24 +872,24 @@ describe("runUninstall — .claude/settings.json leaves no grants behind", () =>
   });
 });
 
-describe("runUninstall — .claude/cloud.md cleanup", () => {
-  it("deletes .claude/cloud.md when the claude host is uninstalled", async () => {
-    writeFile(".claude/cloud.md", "# generated cloud doc\nBKIT_GH_TOKEN=secret\n");
+describe("runUninstall — .claude/bkit-cloud.md cleanup", () => {
+  it("deletes .claude/bkit-cloud.md when the claude host is uninstalled", async () => {
+    writeFile(".claude/bkit-cloud.md", "# generated cloud doc\nBKIT_GH_TOKEN=secret\n");
     const result = await runUninstall(["claude"], makeCtx());
-    expect(fileExists(".claude/cloud.md")).toBe(false);
-    expect(result.deleted).toContain(path.join(".claude", "cloud.md"));
+    expect(fileExists(".claude/bkit-cloud.md")).toBe(false);
+    expect(result.deleted).toContain(path.join(".claude", "bkit-cloud.md"));
   });
 
   it("dry-run reports the deletion but leaves the file on disk", async () => {
-    writeFile(".claude/cloud.md", "BKIT_GH_TOKEN=secret\n");
+    writeFile(".claude/bkit-cloud.md", "BKIT_GH_TOKEN=secret\n");
     const result = await runUninstall(["claude"], makeCtx({ dryRun: true }));
-    expect(fileExists(".claude/cloud.md")).toBe(true);
-    expect(result.deleted).toContain(path.join(".claude", "cloud.md"));
+    expect(fileExists(".claude/bkit-cloud.md")).toBe(true);
+    expect(result.deleted).toContain(path.join(".claude", "bkit-cloud.md"));
   });
 
-  it("leaves .claude/cloud.md untouched when claude is NOT in the uninstall set", async () => {
-    writeFile(".claude/cloud.md", "BKIT_GH_TOKEN=secret\n");
+  it("leaves .claude/bkit-cloud.md untouched when claude is NOT in the uninstall set", async () => {
+    writeFile(".claude/bkit-cloud.md", "BKIT_GH_TOKEN=secret\n");
     await runUninstall(["core"], makeCtx());
-    expect(fileExists(".claude/cloud.md")).toBe(true);
+    expect(fileExists(".claude/bkit-cloud.md")).toBe(true);
   });
 });

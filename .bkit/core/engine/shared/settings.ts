@@ -28,7 +28,7 @@ export interface BkitConfig {
 }
 
 export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
-  ciWorkflow: "ci.yml",
+  ciWorkflow: "bkit-ci.yml",
   capstoneJob: "bkit-tests-check",
   worktreeCopy: [".env", ".env.local"],
   worktreeInstall: true,

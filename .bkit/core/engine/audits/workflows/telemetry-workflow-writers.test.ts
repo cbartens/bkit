@@ -23,7 +23,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-const WORKFLOWS_DIR = path.join(REPO_ROOT, ".bkit/workflows");
+const WORKFLOWS_DIR = path.join(REPO_ROOT, ".bkit/core/workflows");
 
 const WORKFLOW_FILES = fs
   .readdirSync(WORKFLOWS_DIR)

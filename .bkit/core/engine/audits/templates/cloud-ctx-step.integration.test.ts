@@ -88,7 +88,7 @@ const CTX_SCRIPT = hasTools ? extractCtxStepScript(rawTemplate, 0) : "";
 // ---------------------------------------------------------------------------
 const GH_STUB = `#!/usr/bin/env bash
 case "$*" in
-  "run list "*"--workflow ci.yml"*)
+  "run list "*"--workflow bkit-ci.yml"*)
     printf '%s' "\${STUB_LATEST_CI_SHA:-}"
     ;;
   "issue view "*"--json labels"*)

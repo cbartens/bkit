@@ -14,7 +14,12 @@ import {
 import { readBkitVersion, stampManagedVersion } from "../version-file.js";
 import { applyEffortRemap } from "../../render/hosts.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
-import { getTemplatesRoot, getWorkflowsRoot, getPromptsRoot } from "../../shared/package-roots.js";
+import {
+  getCoreRoot,
+  getSharedRoot,
+  getWorkflowsRoot,
+  getPromptsRoot,
+} from "../../shared/package-roots.js";
 import { type IssueTracker, DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { writeClaudeCloudDoc, resolveClaudeDerivedAllows } from "../cloud-env.js";
@@ -87,7 +92,7 @@ export function runClaudeModule(ctx: ModuleContext): void {
   // (writeTier2 html-comment). The matching canonicalHashes entry is recorded by core's
   // postDispatch from ws (which aggregates every module's writes).
   {
-    const src = path.join(getTemplatesRoot(), "CLAUDE.md");
+    const src = path.join(getSharedRoot(), "CLAUDE.md");
     const dst = "CLAUDE.md";
     if (fs.existsSync(src)) {
       const prevLen = ws.writes.length;
@@ -98,10 +103,11 @@ export function runClaudeModule(ctx: ModuleContext): void {
     }
   }
 
-  const claudeTemplates = path.join(getTemplatesRoot(), ".claude");
+  const claudeShared = path.join(getSharedRoot(), ".claude");
+  const claudeHooks = path.join(getCoreRoot(), ".claude", "hooks");
 
   // Tier 2 JSON (contained) — deep-containment: settings.json
-  const settingsSrc = path.join(claudeTemplates, "settings.json");
+  const settingsSrc = path.join(claudeShared, "settings.json");
   const settingsDst = ".claude/settings.json";
   if (fs.existsSync(settingsSrc)) {
     const prevLen = ws.writes.length;
@@ -123,8 +129,8 @@ export function runClaudeModule(ctx: ModuleContext): void {
   // to update only the bkit-managed block, preserving any consumer content outside markers.
   // Changed from writeTier1 to align install dispatch with manifest format classification.
   {
-    const src = path.join(claudeTemplates, "hooks", "preflight.sh");
-    const dst = ".claude/hooks/preflight.sh";
+    const src = path.join(claudeHooks, "bkit-preflight.sh");
+    const dst = ".claude/hooks/bkit-preflight.sh";
     if (fs.existsSync(src)) {
       const prevLen = ws.writes.length;
       writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
@@ -139,8 +145,8 @@ export function runClaudeModule(ctx: ModuleContext): void {
   // driver from first install onward (env vars BKIT_GATEGUARD / BKIT_ALLOW_CONFIG_EDIT
   // still tune behaviour, same as before).
   {
-    const src = path.join(claudeTemplates, "hooks", "gateguard.cjs");
-    const dst = ".claude/hooks/gateguard.cjs";
+    const src = path.join(claudeHooks, "bkit-gateguard.cjs");
+    const dst = ".claude/hooks/bkit-gateguard.cjs";
     if (fs.existsSync(src)) {
       const prevLen = ws.writes.length;
       writeTier2(src, dst, tokens, "slash-comment", dryRun, ws);
@@ -153,8 +159,8 @@ export function runClaudeModule(ctx: ModuleContext): void {
   // markered-text (slash-comment) — shell advisories (PreToolUse matcher `Bash`).
   // Covers what the permission table cannot express: URL hosts and shell-as-edit-channel.
   {
-    const src = path.join(claudeTemplates, "hooks", "guardrails.cjs");
-    const dst = ".claude/hooks/guardrails.cjs";
+    const src = path.join(claudeHooks, "bkit-guardrails.cjs");
+    const dst = ".claude/hooks/bkit-guardrails.cjs";
     if (fs.existsSync(src)) {
       const prevLen = ws.writes.length;
       writeTier2(src, dst, tokens, "slash-comment", dryRun, ws);
@@ -164,15 +170,15 @@ export function runClaudeModule(ctx: ModuleContext): void {
     }
   }
 
-  // cloud-bootstrap.sh belongs to the opt-in `cloud` module (runCloudModule); an install
-  // without `--auto=` ships zero cloud footprint. The SessionStart hook
-  // entry in .claude/settings.json is guarded (`test -f … || true`) so it no-ops
-  // when the script is absent. The `cloud-env-customize` advisory lives there too.
+  // cloud-bootstrap.sh ships as a copy-and-own template; an install without `--auto=`
+  // ships zero cloud footprint. The SessionStart hook entry in .claude/settings.json
+  // is guarded (`test -f … || true`) so it no-ops when the consumer has not adopted
+  // the script. The `cloud-env-customize` advisory lives in the cloud module.
 
   // .mcp.json — bkit owns only its tracker entry under `mcpServers`; every other key
   // (the consumer's own servers) is kept as-is.
   {
-    const mcpSrc = path.join(getTemplatesRoot(), ".mcp.json");
+    const mcpSrc = path.join(getSharedRoot(), ".mcp.json");
     const mcpDst = ".mcp.json";
     if (fs.existsSync(mcpSrc)) {
       const prevLen = ws.writes.length;
@@ -187,7 +193,7 @@ export function runClaudeModule(ctx: ModuleContext): void {
   // every install. Real values go in `.bkit/.env`. Not claude-specific, but the claude
   // module is the default-runs-everywhere module.
   {
-    const envExampleSrc = path.join(getTemplatesRoot(), ".bkit", ".env.example");
+    const envExampleSrc = path.join(getSharedRoot(), ".bkit", ".env.example");
     const envExampleDst = path.join(".bkit", ".env.example");
     if (fs.existsSync(envExampleSrc)) {
       const prevLen = ws.writes.length;
@@ -198,8 +204,8 @@ export function runClaudeModule(ctx: ModuleContext): void {
     }
   }
 
-  // Generated copy-paste-ready Claude-on-web setup doc — `.claude/cloud.md`.
-  // UNTRACKED + gitignored (see .bkit/templates/gitignore): writeClaudeCloudDoc
+  // Generated copy-paste-ready Claude-on-web setup doc — `.claude/bkit-cloud.md`.
+  // UNTRACKED + gitignored (see the shared payload's gitignore): writeClaudeCloudDoc
   // inlines REAL secret values resolved from the consumer's `.envrc` (dotenv
   // sources minus its unsets minus session-hijack keys, per install/cloud-env.ts), so
   // it is never committed and does NOT enter ws.writes / canonicalHashes / `bkit check`
@@ -207,7 +213,7 @@ export function runClaudeModule(ctx: ModuleContext): void {
   // writes secrets. Upgrade regenerates it via the same helper (see runUpgrade caller).
   if (!dryRun && writeClaudeCloudDoc(process.cwd(), tokens)) {
     console.log(
-      `${logPrefix} ${tag}claude: .claude/cloud.md (generated — gitignored, holds resolved secrets)`,
+      `${logPrefix} ${tag}claude: .claude/bkit-cloud.md (generated — gitignored, holds resolved secrets)`,
     );
   }
 }

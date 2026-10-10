@@ -16,7 +16,7 @@ const pkgRoot = getPkgRoot();
 
 // The three files named by D20 as the shipped surface for this bug.
 const TARGET_FILES = [
-  path.join(pkgRoot, ".bkit", "templates", "docs", "templates", "bkit-plan.md"),
+  path.join(pkgRoot, ".bkit", "core", "docs", "templates", "bkit-plan.md"),
   path.join(pkgRoot, "docs", "templates", "bkit-plan.md"),
 ];
 
@@ -26,11 +26,11 @@ const USER_PATH_RE = /\/(?:Users|home)\/[a-zA-Z0-9_.-]+\//;
 
 function auditTemplatePaths(): string[] {
   const names = fs
-    .readdirSync(path.join(pkgRoot, ".bkit", "templates", "docs", "templates"))
+    .readdirSync(path.join(pkgRoot, ".bkit", "core", "docs", "templates"))
     .filter((name) => name.startsWith("bkit-audit-") && name.endsWith(".md"))
     .sort();
   return names.flatMap((name) => [
-    path.join(pkgRoot, ".bkit", "templates", "docs", "templates", name),
+    path.join(pkgRoot, ".bkit", "core", "docs", "templates", name),
     path.join(pkgRoot, "docs", "templates", name),
   ]);
 }

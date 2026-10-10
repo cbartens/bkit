@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getTemplatesRoot } from "../../shared/package-roots";
+import { getSharedRoot, getTemplatesRoot, templateRelPath } from "../../shared/package-roots";
 import {
   stripBkitBlock,
   detectGitignoreBlockDuplicates,
@@ -13,7 +13,6 @@ import {
   detectTier2TextDrift,
 } from "./files";
 import { runPreflight } from "./index";
-import { isTemplate } from "../../install/template-copies";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,19 +63,23 @@ describe("stripBkitBlock", () => {
 
 describe("templates are never drift-checked", () => {
   it("MARKERED_TEXT_DRIFT_PATHS holds no template path", () => {
-    expect(MARKERED_TEXT_DRIFT_PATHS.filter((p) => isTemplate(p))).toEqual([]);
+    expect(
+      MARKERED_TEXT_DRIFT_PATHS.filter((p) =>
+        fs.existsSync(path.join(getTemplatesRoot(), templateRelPath(p))),
+      ),
+    ).toEqual([]);
   });
 
-  it("an adopted .prettierignore, .vale.ini or ci.yml raises no drift or marker advisory", () => {
+  it("an adopted .prettierignore, .vale.ini or bkit-ci.yml raises no drift or marker advisory", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");
     fs.writeFileSync(path.join(tmpDir, ".prettierignore"), "node_modules\n", "utf-8");
     fs.writeFileSync(path.join(tmpDir, ".vale.ini"), "# bkit:start\nStylesPath = x\n# bkit:end\n");
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "# bkit:start main-lag-warning\nname: mine\n# bkit:end main-lag-warning\n",
     );
-    const { advisories } = runPreflight(makeModules("lint"), tmpDir);
+    const { advisories } = runPreflight(makeModules("claude"), tmpDir);
     const ids = advisories.map((f) => f.id);
     expect(ids).not.toContain("tier2-text-drift");
     expect(ids.some((id) => id.startsWith("prettierignore-"))).toBe(false);
@@ -89,7 +92,7 @@ describe("templates are never drift-checked", () => {
 
 describe("detectTier2TextDrift — .gitignore", () => {
   /** The shipped `gitignore` template (stored dot-less), its managed block and the lines after it. */
-  const template = () => fs.readFileSync(path.join(getTemplatesRoot(), "gitignore"), "utf-8");
+  const template = () => fs.readFileSync(path.join(getSharedRoot(), "gitignore"), "utf-8");
   const significant = (text: string) =>
     text
       .split("\n")
@@ -110,7 +113,7 @@ describe("detectTier2TextDrift — .gitignore", () => {
     const finding = detectTier2TextDrift(tmpDir, ".gitignore");
     expect(finding).toMatchObject({ id: "tier2-text-drift", severity: "advisory" });
     expect(finding!.detect).toContain(".gitignore has a bkit-managed block missing 1 line(s)");
-    expect(finding!.action).toContain(".bkit/templates/gitignore");
+    expect(finding!.action).toContain(".bkit/shared/gitignore");
   });
 
   it("stays quiet on a .gitignore carrying the whole block, with consumer lines outside it", () => {
@@ -172,7 +175,7 @@ describe("detectPlaywrightReporterHostile", () => {
   function writeCiYml(content: string): void {
     const dir = path.join(tmpDir, ".github", "workflows");
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "ci.yml"), content, "utf-8");
+    fs.writeFileSync(path.join(dir, "bkit-ci.yml"), content, "utf-8");
   }
 
   it("flags when consumer step runs `playwright test --reporter=line`", () => {
@@ -209,7 +212,7 @@ describe("detectPlaywrightReporterHostile", () => {
     expect(f).toBeNull();
   });
 
-  it("returns null when ci.yml does not exist", () => {
+  it("returns null when bkit-ci.yml does not exist", () => {
     const f = detectPlaywrightReporterHostile(tmpDir);
     expect(f).toBeNull();
   });

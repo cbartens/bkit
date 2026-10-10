@@ -19,10 +19,10 @@ const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gg-cursor-"));
 afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
 const HOOK = path.join(GENERATED, "cursor.cjs");
 const CLAUDE_HOOK = path.join(GENERATED, "claude.cjs");
-fs.writeFileSync(HOOK, readTemplate(path.resolve(".bkit/templates/.cursor/hooks/gateguard.cjs")));
+fs.writeFileSync(HOOK, readTemplate(path.resolve(".bkit/core/.cursor/hooks/bkit-gateguard.cjs")));
 fs.writeFileSync(
   CLAUDE_HOOK,
-  readTemplate(path.resolve(".bkit/templates/.claude/hooks/gateguard.cjs")),
+  readTemplate(path.resolve(".bkit/core/.claude/hooks/bkit-gateguard.cjs")),
 );
 
 let workspace: string;

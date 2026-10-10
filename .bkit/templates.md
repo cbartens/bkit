@@ -1,6 +1,6 @@
 # Templates — copy and own
 
-{{BKIT_MANAGED_MARKER}}
+<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Every template bkit ships and never installs — what each does, where to copy it, how to install the tool behind it.
@@ -17,31 +17,33 @@
 <!-- prettier-ignore -->
 | Tool | Copy from | To | Output you commit |
 | --- | --- | --- | --- |
-| CI workflow | `.bkit/templates/.github/workflows/ci.yml` | `.github/workflows/ci.yml` | that file |
+| CI workflow | `.bkit/templates/.github/workflows/bkit-ci.yml` | `.github/workflows/bkit-ci.yml` | that file |
 | Cloud-agent workflow | `.bkit/templates/.github/workflows/bkit-cloud.yml` | `.github/workflows/bkit-cloud.yml` | that file |
 | Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
 | Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |
 | lint-staged | `.bkit/templates/.lintstagedrc.json` | `.lintstagedrc.json` | that file |
 | Vale | `.bkit/templates/.vale.ini`, `.bkit/templates/.vale/styles/House/` | `.vale.ini`, `.vale/styles/House/` | `.vale.ini` + the four House styles |
-| slop-scan | `.bkit/templates/slop-scan.config.json` | `slop-scan.config.json` | that file |
+| slop-scan | `.bkit/templates/slop-scan.config.json`, `.bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs` | `slop-scan.config.json`, `scripts/slop/bkit-slop-type-suppression.mjs` | both files |
 | direnv | `.bkit/templates/.envrc` | `.envrc` | that file |
 | Cursor editor + cloud agent | `.bkit/templates/.cursor/settings.json`, `environment.json`, `Dockerfile` | same paths under `.cursor/` | the files you use |
 | Renovate rules | `.bkit/templates/.github/renovate.json5` | `.github/renovate.json5` | that file |
-| Renovate self-hosted runner | `.bkit/templates/.github/workflows/renovate.yml` | `.github/workflows/renovate.yml` | that file |
+| Renovate self-hosted runner | `.bkit/templates/.github/workflows/bkit-renovate.yml` | `.github/workflows/bkit-renovate.yml` | that file |
 | Dependabot | `.bkit/templates/.github/dependabot.yml` | `.github/dependabot.yml` | that file |
 | Serena | `.bkit/templates/scripts/serena/`, `.bkit/templates/.serena/project.yml` | `scripts/serena/`, `.serena/project.yml`, merge `bkit-serena.mcp.json` into `.mcp.json` | `project.yml` only |
 | graphify | `.bkit/templates/scripts/graphify/`, `.bkit/templates/.graphifyignore`, `.bkit/templates/docs/capabilities.md` | same paths at the repo root | `docs/capabilities.md` |
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
-| Context-fetch blocks | `.bkit/templates/context/<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
+| Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
+| Cloud SessionStart hook | `.bkit/templates/.claude/hooks/cloud-bootstrap.sh` | `.claude/hooks/cloud-bootstrap.sh` | that file |
+| Licence | `.bkit/templates/LICENSE.md` | — | read it; the copies in `.bkit/templates/` are MIT-0 |
 
 Placeholders. Copies keep them raw; replace each in your copy:
 
 <!-- prettier-ignore -->
 | Placeholder | In | Put | Typical value |
 | --- | --- | --- | --- |
-| `{{DEFAULT_BRANCH}}` | `ci.yml` (`on.push` / `on.pull_request` branches; stub comments) | your default branch | `origin/HEAD`, else `main` |
-| `{{NODE_VERSION}}` | `ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
+| `main` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments) | your default branch | `origin/HEAD`, else `main` |
+| `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
@@ -86,7 +88,7 @@ Placeholders. Each sits on a commented assignment line or an env default in the 
 | `your-gcp-project-id`, `your-service-name` | `cloudrun.md` (`GCP_PROJECT_ID`, `GCP_SERVICE`) | GCP project id; optional service name |
 | `^your-e2e-job-name$` | `playwright.md` (`E2E_JOB_RE`) | anchored job name of that lane only |
 | `^your-maestro-e2e-job-name$`, `Your per-flow results step\|Your failure classification step` | `maestro.md` (`MAESTRO_JOB_RE`, `MAESTRO_STEPS`) | anchored regex matching the Maestro lanes' job names; `\|`-separated names of the steps that print results |
-| `dev`, `ci.yml` | `github.md` `context=diff` (`BASELINE_BRANCH`, `BASELINE_WORKFLOW`) | trunk branch, CI workflow file |
+| `dev`, `bkit-ci.yml` | `github.md` `context=diff` (`BASELINE_BRANCH`, `BASELINE_WORKFLOW`) | trunk branch, CI workflow file |
 | `apps/mobile` | `expo.md`, both blocks (`EXPO_APP_DIR`) | the EAS-linked app folder |
 | `serena-agent==1.7.0` | `serena.md` | the Serena version you run locally |
 
@@ -95,7 +97,7 @@ Adopt:
 1. Copy the file's blocks below `<!-- bkit:end -->` in `.agents/context.md`: each fetch block you want, its provision block, its `allowed-domains` and `mcp-servers` blocks (several of each merge).
 2. Replace the placeholders. Commit non-secret selectors inline so cloud agents inherit them.
 3. Set the secret env vars locally (app env via `.envrc`, not `.bkit/.env`) and in each cloud dashboard (`.bkit/cloud.md`).
-4. `bkit install` → the provision recipes reach `.claude/cloud.md`'s setup script, the domains reach the cloud allowlist and local fetch permissions, the MCP names reach every host's allow rules.
+4. `bkit install` → the provision recipes reach `.claude/bkit-cloud.md`'s setup script, the domains reach the cloud allowlist and local fetch permissions, the MCP names reach every host's allow rules.
 
 - Without credentials each block self-skips: `exit 0` plus `[context-fetch:<name>] skipped — …` on stderr. `/bkit-debug` narrates that as not checked, never as clean.
 - `bkit check` advisories point at these files: `context-fetch-missing`, `context-fetch-context-missing`, `context-fetch-source-not-enabled`, `context-fetch-provision-missing`.
@@ -135,23 +137,23 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 - `lint:prose` runs `bkit ci prose`: Vale over every `*.md` outside `node_modules/`. Narrow it with repeatable `--glob=<pattern>` (`*`, `**`, `?`, relative to the repo root), e.g. `bkit ci prose --glob='docs/*.md' --glob='.agents/*.md'`.
 - Non-Node stack → point each gate at your own commands; keep the gate names.
 
-## CI workflow — `ci.yml`
+## CI workflow — `bkit-ci.yml`
 
-Parallel lanes `bkit-tests-static` (typecheck, prettier, Vale, slop, actionlint, `bkit check`) and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone, plus the commented FULL CI SCAFFOLD REFERENCE for the other tiers. Workflows care: `/bkit-ship` waits on its runs and merges only when the `bkit.capstoneJob` job (default `bkit-tests-check`) is present and green at the head; `bkit setup protect-main` makes that job the required check; `bkit-cloud.yml` triggers on a workflow named `CI`. `bkit install` reads your copy for advisories (`ci-yml-missing-token-env`, `bkit-stub-*`, `ci-yml-missing-actionlint`, `ci-yml-capstone-contract-drift`). Reference: https://docs.github.com/en/actions.
+Parallel lanes `bkit-tests-static` (typecheck, prettier, Vale, slop, actionlint, `bkit check`) and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone, plus the commented FULL CI SCAFFOLD REFERENCE for the other tiers. Workflows care: `/bkit-ship` waits on its runs and merges only when the `bkit.capstoneJob` job (default `bkit-tests-check`) is present and green at the head; `bkit setup protect-main` makes that job the required check; `bkit-cloud.yml` triggers on a workflow named `bkit-ci`. `bkit install` reads your copy for advisories (`ci-yml-missing-token-env`, `bkit-stub-*`, `ci-yml-missing-actionlint`, `ci-yml-capstone-contract-drift`). Reference: https://docs.github.com/en/actions.
 
 - Install: nothing beyond the gate tool scripts above, a `test` script, and `packageManager` in `package.json` (`pnpm/action-setup` reads it; do not add `with: version:`).
 - Secrets: `BKIT_GH_TOKEN_INSTALL` (`read:packages`) → `docs/deployments.md` § Consumer CI auth.
-- Adapt: `{{DEFAULT_BRANCH}}`, `{{NODE_VERSION}}`. Non-Node repo → replace the Node / pnpm setup, install and check steps with your stack's.
+- Adapt: `main`, `{{NODE_VERSION}}`. Non-Node repo → replace the Node / pnpm setup, install and check steps with your stack's.
 - Capstone: `bkit-tests-check` `needs:` every lane and runs on `!cancelled()`, never `always()`. Each lane you adopt from the reference goes into its `needs:` and its assert, or that lane's failure cannot red the merge. It asserts each lane's executed-test count once the lane writes one (the `Run Unit Tests` step comment shows the vitest form); an unreported count is a warning, a count of 0 a failure. Renaming the job → set `bkit.capstoneJob`.
 - Adopt a scaffold lane only when its tier exists (`docs/testing.md`). Each `# bkit-stub:<id> —` header raises an install advisory until you enable or delete that stub.
-- Keep the `name: CI` line, or rename `workflows: [CI]` in `bkit-cloud.yml` and set `bkit.ciWorkflow` to the new file name.
+- Keep the `name: bkit-ci` line, or rename `workflows: [bkit-ci]` in `bkit-cloud.yml` and set `bkit.ciWorkflow` to the new file name.
 - Keep `fetch-depth: 0` on the static lane: `slop:delta` checks the PR base out as a worktree.
 
 ## Cloud-agent workflow — `bkit-cloud.yml`
 
 Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; failed `dev` CI → `/bkit-debug {FID}`; `workflow_dispatch` runs any phase. A `context` job resolves phase + arg once, then two runner jobs, each skipped without its secret: `claude` (`claude-code-action`, https://github.com/anthropics/claude-code-action) and `opencode` (`opencode run`, https://opencode.ai/docs/github/). Runs bkit workflows; `bkit install --auto=claude|opencode` points at it. Full recipe: `.bkit/cloud.md` § Post-CI auto-routing.
 
-- Install: `bkit install --auto=claude` (writes `.claude/hooks/cloud-bootstrap.sh`) or `--auto=opencode` (needs `--opencode=<provider>` first). Both need `--tracker=github`.
+- Install: `bkit install --auto=claude` (points at the `.claude/hooks/cloud-bootstrap.sh` template) or `--auto=opencode` (needs `--opencode=<provider>` first). Both need `--tracker=github`.
 - Secrets: `ANTHROPIC_API_KEY` + the Claude GitHub App (`/install-github-app`) for `claude`; `OPENCODE_PROVIDER_KEY` for `opencode`. Repo Actions permissions: read and write, PR creation allowed.
 - Adapt: `{{CLOUD_RUNNER}}` in all three jobs.
 - Traps: the file runs bkit by command name, so a changed invocation reaches you only as a changed template path on `bkit upgrade` — diff it on every upgrade. The opencode install version is a plain argument no updater bumps. Keep the file out of updater `ignorePaths` so action pins refresh.
@@ -201,7 +203,7 @@ vale sync
 
 - Copy `.vale.ini` and all four `.vale/styles/House/*.yml`.
 - `.gitignore`: `.vale/styles/write-good` (`vale sync` downloads it; the House styles stay tracked).
-- CI: the `ci.yml` template installs a pinned Vale and runs `vale sync`. Cursor: the `Dockerfile` template installs it.
+- CI: the `bkit-ci.yml` template installs a pinned Vale and runs `vale sync`. Cursor: the `Dockerfile` template installs it.
 - Adapt: add `[glob]` scope blocks for your own docs; turn rules off per path, not globally.
 - Traps: no Vale on `PATH` → `lint:prose` prints a skip line and the prose gate is not enforcing. A missing `write-good` is copied from the main worktree, else `vale sync` runs; when both fail it prints a loud skip warning. Keep the `.bkit/templates/**` block (rules off for the copies).
 
@@ -211,16 +213,17 @@ vale sync
 
 ```bash
 pnpm add -D slop-scan@^0.3.0
-bkit install --typescript
+mkdir -p scripts/slop
+cp .bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs scripts/slop/
 ```
 
-- `--typescript` writes the plugin the config loads (`./.bkit/scripts/bkit-slop-type-suppression.mjs`, rules `boundary/type-suppression`, `boundary/gate-suppression`). No plugin → drop the `plugins` entry and both `boundary/*` rules.
+- The plugin is a template: copy `scripts/slop/bkit-slop-type-suppression.mjs` and point the config's `plugins` entry at it (`boundary/type-suppression`, `boundary/gate-suppression`). No plugin → drop the `plugins` entry and both `boundary/*` rules.
 - Adapt: `ignores` for generated / vendored trees; per-file `overrides` with a reason, never a rule disabled repo-wide.
 - Traps: keep `**/.bkit/templates/**` in `ignores`, or copied `.mjs` / `.py` count as net-new slop on the upgrade commit.
 
 ## direnv — `.envrc`
 
-Loads `.bkit/.env` on `cd`, so local sessions see `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`, tracker keys. bkit reads your `.envrc` (its `dotenv*` and `unset` lines, never executed) to fill the env blocks of `.claude/cloud.md` / `.cursor/cloud.md`; preflight's direnv advisories key on it. Reference: https://direnv.net/docs/installation.html.
+Loads `.bkit/.env` on `cd`, so local sessions see `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`, tracker keys. bkit reads your `.envrc` (its `dotenv*` and `unset` lines, never executed) to fill the env blocks of `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md`; preflight's direnv advisories key on it. Reference: https://direnv.net/docs/installation.html.
 
 ```bash
 brew install direnv     # then add the shell hook from the link
@@ -249,13 +252,13 @@ gh api -X PUT 'repos/{owner}/{repo}/vulnerability-alerts'
 gh api -X PUT 'repos/{owner}/{repo}/automated-security-fixes'
 ```
 
-Renovate (Mend) — commit `.github/renovate.json5` on the default branch, then install the App at https://github.com/apps/renovate (GitHub UI only; no `gh` equivalent). Renovate (self-hosted) — also copy `renovate.yml`, then set its platform token (fine-grained PAT; permissions → `docs/deployments.md` § Dependency updaters):
+Renovate (Mend) — commit `.github/renovate.json5` on the default branch, then install the App at https://github.com/apps/renovate (GitHub UI only; no `gh` equivalent). Renovate (self-hosted) — also copy `bkit-renovate.yml`, then set its platform token (fine-grained PAT; permissions → `docs/deployments.md` § Dependency updaters):
 
 ```bash
 gh secret set BKIT_GH_TOKEN
 ```
 
-- Examples ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them). Your copied workflows (`ci.yml`, `bkit-cloud.yml`) stay in scope so their pins refresh.
+- Examples ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them). Your copied workflows (`bkit-ci.yml`, `bkit-cloud.yml`) stay in scope so their pins refresh.
 - `enabled: false` on a Renovate package rule does not stop digest pinning; use `ignorePaths` to keep Renovate off a file.
 - Land config on default branch before bot runs. Examples set `baseBranchPatterns: ["dev"]`.
 - App install, self-hosted token, private-package host rule, CVE handling → `docs/deployments.md` § Dependency updaters.

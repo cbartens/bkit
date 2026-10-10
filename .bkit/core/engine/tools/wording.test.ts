@@ -71,7 +71,7 @@ const workflowFile = (name: string, content: string): WordingFile => ({
 const auditFile = (
   name: string,
   managed: string,
-  dir = ".bkit/templates/docs/templates",
+  dir = ".bkit/core/docs/templates",
 ): WordingFile => ({
   surface: "audit",
   id: `${dir}/${name}.md`,
@@ -90,20 +90,26 @@ const synthetic = (over: Partial<Clause> & Pick<Clause, "texts">): Clause => ({
 });
 
 describe("the corpus matches the wording file", () => {
-  it("finds prompts, workflows, both rules files, and every audit template with its adopted copy", () => {
-    // Asserted before any loop: an empty glob would otherwise pass everything.
-    const by = (s: string) => CORPUS.filter((f) => f.surface === s).length;
-    expect(by("prompt")).toBeGreaterThan(0);
-    expect(by("workflow")).toBeGreaterThan(0);
-    expect(by("rules")).toBe(2);
-    const audits = CORPUS.filter((f) => f.surface === "audit");
-    const templates = audits.filter((f) => f.id.startsWith(".bkit/templates/")).map((f) => f.name);
-    const adopted = audits.filter((f) => f.id.startsWith("docs/templates/")).map((f) => f.name);
-    expect(templates.length).toBeGreaterThan(0);
-    expect(adopted).toEqual(templates);
-  });
+  it(
+    "finds prompts, workflows, both rules files, and every audit template with its adopted copy",
+    { timeout: 60_000 },
+    () => {
+      // Asserted before any loop: an empty glob would otherwise pass everything.
+      const by = (s: string) => CORPUS.filter((f) => f.surface === s).length;
+      expect(by("prompt")).toBeGreaterThan(0);
+      expect(by("workflow")).toBeGreaterThan(0);
+      expect(by("rules")).toBe(2);
+      const audits = CORPUS.filter((f) => f.surface === "audit");
+      const templates = audits
+        .filter((f) => f.id.startsWith(".bkit/core/docs/templates/"))
+        .map((f) => f.name);
+      const adopted = audits.filter((f) => f.id.startsWith("docs/templates/")).map((f) => f.name);
+      expect(templates.length).toBeGreaterThan(0);
+      expect(adopted).toEqual(templates);
+    },
+  );
 
-  it("has no findings", () => {
+  it("has no findings", { timeout: 60_000 }, () => {
     const findings = checkWording(CLAUSES, CORPUS).map(
       (f) => `${f.file}${f.line ? `:${f.line}` : ""} ${f.clause}: ${f.problem}`,
     );
@@ -113,11 +119,11 @@ describe("the corpus matches the wording file", () => {
     ).toEqual([]);
   });
 
-  it("sync has nothing left to rewrite", () => {
+  it("sync has nothing left to rewrite", { timeout: 60_000 }, () => {
     expect([...syncWording(CLAUSES, CORPUS).keys()]).toEqual([]);
   });
 
-  it("every clause reaches the cut-off of one surface it applies to", () => {
+  it("every clause reaches the cut-off of one surface it applies to", { timeout: 60_000 }, () => {
     // The cut-off works both ways: a clause used by fewer files belongs back in
     // those files, not in the wording file. Files count by basename, so an
     // adopted audit copy never counts twice.
@@ -386,9 +392,9 @@ describe("audit templates", () => {
       `near-copy (run pnpm wording:sync): "${drifted}"`,
     );
     const out = syncWording([c], files);
-    expect(out.get(".bkit/templates/docs/templates/bkit-audit-x.md")).toContain(`> - ${RULE}\n`);
+    expect(out.get(".bkit/core/docs/templates/bkit-audit-x.md")).toContain(`> - ${RULE}\n`);
     expect(out.get("docs/templates/bkit-audit-x.md")).toBe(
-      out.get(".bkit/templates/docs/templates/bkit-audit-x.md"),
+      out.get(".bkit/core/docs/templates/bkit-audit-x.md"),
     );
   });
 

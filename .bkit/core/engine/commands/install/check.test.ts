@@ -35,14 +35,14 @@ describe("detectInstalledModules — sentinel-file module detection", () => {
     expect(mods.has("opencode")).toBe(true);
   });
 
-  it("detects lint via the owned slop-scan plugin", () => {
-    touch(".bkit/scripts/bkit-slop-type-suppression.mjs");
-    expect(detectInstalledModules(cwd).has("lint")).toBe(true);
+  it("detects codex by its agents dir", () => {
+    mkdir(".codex/agents");
+    expect(detectInstalledModules(cwd).has("codex")).toBe(true);
   });
 
-  it("detects no module from adopted templates (ci.yml, .vale.ini, husky, lint configs)", () => {
+  it("detects no module from adopted templates (bkit-ci.yml, .vale.ini, husky, lint configs)", () => {
     for (const rel of [
-      ".github/workflows/ci.yml",
+      ".github/workflows/bkit-ci.yml",
       ".vale.ini",
       ".husky/pre-commit",
       ".husky/pre-push",

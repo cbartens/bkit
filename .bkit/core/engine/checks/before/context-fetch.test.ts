@@ -278,7 +278,7 @@ describe("detectContextFetchSourceNotEnabled", () => {
     // vercel IS enabled (its name appears in the unnamed block body) — not named.
     expect(f?.detect).not.toContain("vercel");
     expect(f?.action).toContain("context-fetch:none intentional");
-    expect(f?.action).toContain(".bkit/templates/context/supabase.md");
+    expect(f?.action).toContain(".bkit/templates/context/bkit-supabase.md");
   });
 
   it("detects supabase use via an @supabase/* dependency (no config.toml)", () => {

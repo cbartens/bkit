@@ -15,9 +15,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { getWorkflowsRoot } from "../../shared/package-roots";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-const WORKFLOWS_DIR = path.resolve(REPO_ROOT, ".bkit/workflows");
+const WORKFLOWS_DIR = getWorkflowsRoot();
 
 const WORKFLOW_FILES = [
   "bkit-auto.md",

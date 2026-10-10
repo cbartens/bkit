@@ -15,7 +15,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-const SHIP_MD = path.join(REPO_ROOT, ".bkit/workflows/bkit-ship.md");
+const SHIP_MD = path.join(REPO_ROOT, ".bkit/core/workflows/bkit-ship.md");
 
 function readShip(): string {
   return fs.readFileSync(SHIP_MD, "utf-8");
@@ -294,7 +294,7 @@ describe("every workflow writes its own workflow-started row (#492)", () => {
   for (const workflow of ["design", "plan", "build", "debug", "ship"]) {
     it(`bkit-${workflow}.md opens its run with bkit workflows start --workflow=${workflow}`, () => {
       const content = fs.readFileSync(
-        path.join(REPO_ROOT, `.bkit/workflows/bkit-${workflow}.md`),
+        path.join(REPO_ROOT, `.bkit/core/workflows/bkit-${workflow}.md`),
         "utf-8",
       );
       const calls = fences(content).filter((f) =>
@@ -318,7 +318,7 @@ describe("no workflow bash block appends to status.jsonl or .bkit/issues.jsonl w
   for (const workflow of ["design", "plan", "build", "debug", "ship"]) {
     it(`bkit-${workflow}.md`, () => {
       const content = fs.readFileSync(
-        path.join(REPO_ROOT, `.bkit/workflows/bkit-${workflow}.md`),
+        path.join(REPO_ROOT, `.bkit/core/workflows/bkit-${workflow}.md`),
         "utf-8",
       );
       const hits = fences(content)
@@ -352,7 +352,7 @@ describe("bkit-ship.md — Step 6 SHIPPED row comes from bkit roadmap feature --
       '"{BKIT}" roadmap feature --root="{WORKTREE_PATH}" --workflow=ship --fid="{FID}" --step=ship-update-docs --strict',
     );
     const prompt = fs.readFileSync(
-      path.join(REPO_ROOT, ".bkit/prompts/bkit-ship-update-docs.md"),
+      path.join(REPO_ROOT, ".bkit/core/prompts/bkit-ship-update-docs.md"),
       "utf-8",
     );
     expect(prompt).not.toMatch(/issues\.jsonl/);
@@ -583,7 +583,7 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
   });
 
   it("gitignores routing sentinels in the rendered file and the template source", () => {
-    for (const rel of [".gitignore", ".bkit/templates/gitignore"]) {
+    for (const rel of [".gitignore", ".bkit/shared/gitignore"]) {
       const text = fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
       expect(text).toContain("docs/plans/*/logs/**/.deferred-blocked");
       expect(text).toContain("docs/plans/*/logs/**/.rebase-failed");

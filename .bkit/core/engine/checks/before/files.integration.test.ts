@@ -9,6 +9,7 @@ import type { WriteSet } from "../../install/write";
 import type { ModuleContext } from "../../install/modules/index";
 import { applyTokens } from "../../install/placeholders";
 import { detectTier2JsonDrift, detectTier2TextDrift } from "./files";
+import { findTemplateSource } from "../../shared/package-roots";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,7 +80,7 @@ describe("detectTier2JsonDrift advisory", () => {
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
     const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
     const relPath = ".cursor/hooks.json";
-    const templatePath = path.join(pkgRoot, ".bkit", "templates", relPath);
+    const templatePath = findTemplateSource(relPath)!;
     // Copy template as-is to consumer
     fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
     fs.copyFileSync(templatePath, path.join(tmpDir, relPath));
@@ -88,22 +89,12 @@ describe("detectTier2JsonDrift advisory", () => {
   });
 });
 
-describe("tier2-json-drift advisory for slop-scan.config.json (Task 19 unblocked)", () => {
-  it("advisory surfaces when consumer slop-scan.config.json is missing a required rules key", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
-    const relPath = "slop-scan.config.json";
-    // Read template and drop one key to trigger drift
-    const templatePath = path.join(pkgRoot, ".bkit", "templates", relPath);
-    const template = JSON.parse(fs.readFileSync(templatePath, "utf-8")) as {
-      rules?: Record<string, unknown>;
-      [k: string]: unknown;
-    };
-    // Remove one required rule from the consumer copy
-    const consumerRules = { ...template.rules };
-    delete consumerRules["defensive.async-noise"];
-    const driftContent = { ...template, rules: consumerRules };
-    fs.writeFileSync(path.join(tmpDir, relPath), JSON.stringify(driftContent, null, 2), "utf-8");
+describe("tier2-json-drift advisory on managed JSON, never on a template", () => {
+  it("advisory surfaces when the consumer's opencode.json is missing template keys", () => {
+    const relPath = path.join(".opencode", "opencode.json");
+    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
+    // Consumer has none of the bkit-managed keys (permission / plugin / provider / mcp).
+    fs.writeFileSync(path.join(tmpDir, relPath), JSON.stringify({ $schema: "x" }), "utf-8");
 
     const result = detectTier2JsonDrift(tmpDir, relPath);
     expect(result).not.toBeNull();
@@ -112,25 +103,12 @@ describe("tier2-json-drift advisory for slop-scan.config.json (Task 19 unblocked
     expect(result!.detect).toContain(relPath);
   });
 
-  it("no advisory when consumer slop-scan.config.json has all required rules", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
+  it("no advisory for a copy-and-own template (slop-scan.config.json)", () => {
+    // slop-scan.config.json ships as a template: install never writes or drift-checks a
+    // consumer's copy, so the detector has no package source to compare against.
     const relPath = "slop-scan.config.json";
-    const templatePath = path.join(pkgRoot, ".bkit", "templates", relPath);
-    // Consumer has template content + extra consumer rule
-    const template = JSON.parse(fs.readFileSync(templatePath, "utf-8")) as {
-      rules?: Record<string, unknown>;
-      [k: string]: unknown;
-    };
-    const consumerRules = {
-      ...template.rules,
-      "consumer.custom-rule": { enabled: true },
-    };
-    const consumerContent = { ...template, rules: consumerRules };
-    fs.writeFileSync(path.join(tmpDir, relPath), JSON.stringify(consumerContent, null, 2), "utf-8");
-
-    const result = detectTier2JsonDrift(tmpDir, relPath);
-    expect(result).toBeNull();
+    fs.writeFileSync(path.join(tmpDir, relPath), JSON.stringify({ rules: {} }), "utf-8");
+    expect(detectTier2JsonDrift(tmpDir, relPath)).toBeNull();
   });
 });
 
@@ -149,10 +127,7 @@ describe("Task 23 — detectTier2TextDrift block logic (AGENTS.md)", () => {
   })();
   const ROUTER_LINE = "> This file is a **workflow router only**. It does NOT execute workflows.";
   const readRendered = (): string =>
-    applyTokens(
-      fs.readFileSync(path.join(pkgRoot, ".bkit", "templates", relPath), "utf-8"),
-      makeCtx().tokens,
-    );
+    applyTokens(fs.readFileSync(findTemplateSource(relPath)!, "utf-8"), makeCtx().tokens);
   const writeConsumer = (content: string): void => {
     fs.writeFileSync(path.join(tmpDir, relPath), content, "utf-8");
   };

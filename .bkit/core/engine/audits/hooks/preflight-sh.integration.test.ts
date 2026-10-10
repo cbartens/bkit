@@ -18,12 +18,15 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { readTemplate } from "../../render/parts";
 
-const TEMPLATES = path.join(__dirname, "..", "..", "..", "..", "templates");
+const HOOK_SOURCES = path.join(__dirname, "..", "..", "..", "..", "core");
 const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-preflight-"));
 afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
 const [CLAUDE_HOOK, CURSOR_HOOK] = ["claude", "cursor"].map((host) => {
   const out = path.join(GENERATED, `${host}-preflight.sh`);
-  fs.writeFileSync(out, readTemplate(path.join(TEMPLATES, `.${host}`, "hooks", "preflight.sh")));
+  fs.writeFileSync(
+    out,
+    readTemplate(path.join(HOOK_SOURCES, `.${host}`, "hooks", "bkit-preflight.sh")),
+  );
   return out;
 });
 
@@ -98,12 +101,18 @@ describe("Cursor sessionStart preflight.sh runtime behaviour", () => {
 describe("preflight.sh — generated from one Linear guard", () => {
   it("both generated hooks carry the shared guard verbatim and never call bkit", () => {
     const guard = fs
-      .readFileSync(path.join(TEMPLATES, "hook-parts", "preflight-linear.sh"), "utf-8")
+      .readFileSync(path.join(HOOK_SOURCES, "hooks", "preflight-linear.sh"), "utf-8")
       .trimEnd();
     for (const hook of [CLAUDE_HOOK, CURSOR_HOOK]) {
       const text = fs.readFileSync(hook, "utf-8");
       expect(text, hook).toContain(guard);
-      expect(text, hook).not.toMatch(/\bbkit (?:runtime|context|ci)\b/);
+      // Prose may name the subcommands (a comment says "no bkit runtime"); only
+      // ACTIVE lines must never call one.
+      const code = text
+        .split("\n")
+        .filter((l) => !/^\s*#/.test(l))
+        .join("\n");
+      expect(code, hook).not.toMatch(/\bbkit (?:runtime|context|ci)\b/);
     }
   });
 });
@@ -111,7 +120,7 @@ describe("preflight.sh — generated from one Linear guard", () => {
 // ---------------------------------------------------------------------------
 // SessionStart hook (preflight.sh)
 //
-// The bash hook at .bkit/templates/.claude/hooks/preflight.sh runs as a
+// The bash hook at .bkit/core/.claude/hooks/bkit-preflight.sh runs as a
 // Claude SessionStart hook (a different surface from the install-time TS
 // preflight in checks/before/). Covered behaviour:
 //   - Brew-bin check is Darwin-gated (Linux sandbox / CI pass through).
@@ -128,10 +137,10 @@ const SESSIONSTART_HOOK_PATH = path.join(
   "..",
   "..",
   "..",
-  "templates",
+  "core",
   ".claude",
   "hooks",
-  "preflight.sh",
+  "bkit-preflight.sh",
 );
 
 describe("BAR-186 — SessionStart preflight.sh source-level checks", () => {

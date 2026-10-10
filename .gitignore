@@ -68,9 +68,9 @@ docs/plans/*/logs/**/.rebase-failed
 .claude/scheduled_tasks.lock
 
 # Cloud setup docs — `bkit install` inlines resolved .envrc secrets; never commit.
-# One per host: .claude/cloud.md (Claude Code web), .cursor/cloud.md (Cursor Background Agents)
-.claude/cloud.md
-.cursor/cloud.md
+# One per host: .claude/bkit-cloud.md (Claude Code web), .cursor/bkit-cloud.md (Cursor Background Agents)
+.claude/bkit-cloud.md
+.cursor/bkit-cloud.md
 
 # Claude native worktrees (isolation:worktree / EnterWorktree) — transient full-tree
 # copies; ignore or slop:delta double-counts the checkout

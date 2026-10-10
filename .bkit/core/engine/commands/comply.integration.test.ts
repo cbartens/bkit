@@ -95,13 +95,13 @@ describe("compliance grader — git-diff boundary (no-mirror-edit)", () => {
     expect(mirrorViolation!.evidence).toContain(".claude/agents/bkit-design.md");
   });
 
-  it("does NOT flag a .bkit/workflows/ edit (canonical source, not a mirror)", () => {
+  it("does NOT flag a .bkit/core/workflows/ edit (canonical source, not a mirror)", () => {
     gitInit(tmpDir);
 
     fs.writeFileSync(path.join(tmpDir, "README.md"), "# test\n");
     const parentSha = commit(tmpDir, "init");
 
-    const workflowsDir = path.join(tmpDir, ".bkit", "workflows");
+    const workflowsDir = path.join(tmpDir, ".bkit", "core", "workflows");
     fs.mkdirSync(workflowsDir, { recursive: true });
     fs.writeFileSync(path.join(workflowsDir, "bkit-ship.md"), "# workflow source\n");
     commit(tmpDir, "feat: edit canonical source");
@@ -251,6 +251,9 @@ describe("bkit comply — row labels", () => {
 
   function repoWithTwoCommits(): void {
     gitInit(tmpDir);
+    // The ledger dir install creates; appendComplianceRows is best-effort and does not
+    // create a missing parent.
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     // A package.json `bkit.repoSlug` is not a source for the label.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),

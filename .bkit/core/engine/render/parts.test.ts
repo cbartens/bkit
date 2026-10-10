@@ -6,7 +6,8 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { listFilesRecursive } from "../install/template-copies";
-import { getHookPartsRoot, getTemplatesRoot } from "../shared/package-roots";
+import { getCoreRoot, getHooksRoot } from "../shared/package-roots";
+import { listCoreTemplateFiles } from "../install/modules/core";
 import { readTemplate, renderParts } from "./parts";
 
 const PART_LINE = /\{\{BKIT_PART /;
@@ -45,32 +46,37 @@ describe("renderParts", () => {
 });
 
 describe("shipped hook templates", () => {
-  const root = getTemplatesRoot();
-  const partsDir = getHookPartsRoot();
+  const root = getCoreRoot();
+  const partsDir = getHooksRoot();
+  // The per-host hook sources; the part lines in prose (e.g. `.bkit/providers.md`)
+  // are examples, not templates.
+  const HOOK_DIRS = [".claude/hooks", ".cursor/hooks", ".codex/hooks", ".opencode/plugin"];
   const templates = listFilesRecursive(root)
     .map((abs) => path.relative(root, abs))
+    .filter((rel) => HOOK_DIRS.some((d) => rel.startsWith(d + path.sep)))
     .filter((rel) => PART_LINE.test(readRaw(rel)));
 
   function readRaw(rel: string): string {
     return fs.readFileSync(path.join(root, rel), "utf-8");
   }
 
-  it("the parts live outside the templates root, so install never copies them", () => {
-    expect(path.relative(root, partsDir).startsWith("..")).toBe(true);
-    expect(fs.existsSync(path.join(root, "hook-parts"))).toBe(false);
+  it("the parts sit outside the copied payload, so install never copies them", () => {
+    const copied = listCoreTemplateFiles(root).map((f) => path.relative(root, f.src));
+    expect(copied.some((rel) => rel.startsWith("hooks" + path.sep))).toBe(false);
+    expect(fs.existsSync(partsDir)).toBe(true);
   });
 
   it("the hook templates that splice parts are the nine host hooks", () => {
     expect(templates.map((t) => t.split(path.sep).join("/")).sort()).toEqual([
-      ".claude/hooks/gateguard.cjs",
-      ".claude/hooks/guardrails.cjs",
-      ".claude/hooks/preflight.sh",
-      ".codex/hooks/gateguard.cjs",
-      ".codex/hooks/guardrails.cjs",
-      ".cursor/hooks/gateguard.cjs",
-      ".cursor/hooks/guardrails.cjs",
-      ".cursor/hooks/preflight.sh",
-      ".opencode/plugin/gateguard.js",
+      ".claude/hooks/bkit-gateguard.cjs",
+      ".claude/hooks/bkit-guardrails.cjs",
+      ".claude/hooks/bkit-preflight.sh",
+      ".codex/hooks/bkit-gateguard.cjs",
+      ".codex/hooks/bkit-guardrails.cjs",
+      ".cursor/hooks/bkit-gateguard.cjs",
+      ".cursor/hooks/bkit-guardrails.cjs",
+      ".cursor/hooks/bkit-preflight.sh",
+      ".opencode/plugin/bkit-gateguard.js",
     ]);
   });
 

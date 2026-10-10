@@ -2,7 +2,7 @@
 // Each module function receives { dryRun, tokens, modelLookup, advisories, ws, … } (ModuleContext)
 // and emits writes into the shared WriteSet.
 //
-// Dispatch order: core → claude → cursor → opencode → codex → lint → cloud
+// Dispatch order: core → claude → cursor → opencode → codex → cloud
 // .bkit/version is written LAST — in postDispatch after ALL modules complete (MED-4).
 
 import * as fs from "node:fs";
@@ -12,15 +12,14 @@ import type { TokenMap } from "../placeholders.js";
 import type { ModuleFlag, CloudVariant } from "../../cli.js";
 import type { EffortMap } from "../../render/models.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
-import { getTemplatesRoot, getBkitDocsRoot } from "../../shared/package-roots.js";
+import { getCoreRoot, getSharedRoot } from "../../shared/package-roots.js";
 import { getInstallManifest, type IssueTracker } from "../manifest.js";
 import {
-  BKIT_CANONICAL_DOCS,
   BKIT_PREFIX,
   listCoreTemplateFiles,
+  listSharedTemplateFiles,
   runBkitDocs,
   runCoreModule,
-  runLintModule,
   seedCorePackageJsonScripts,
 } from "./core.js";
 import { renderClaudeAgentsCommands, runClaudeModule } from "./claude.js";
@@ -95,14 +94,14 @@ export type ModuleFn = (ctx: ModuleContext) => void;
 
 // ---------------------------------------------------------------------------
 // renderManagedOutputs — re-render the bkit-managed OUTPUT files that the
-// `bkit upgrade` template walk (runUpgrade over .bkit/templates/) does NOT cover:
+// `bkit upgrade` payload walk does NOT cover:
 // host agents/commands (source-rendered), the `.bkit/*.md` canonical docs
 // (runBkitDocs) and core's package.json scripts (seedCorePackageJsonScripts).
 // `.bkit/prompts.md` is markered → runBkitDocs block-merges it (managed block
 // refreshed, consumer `## Model Overrides` below bkit:end preserved).
 //
 // CRITICAL: docs stay single-source PACKAGE-side and are mirrored from
-// getBkitDocsRoot() — they are NEVER relocated into .bkit/templates/.
+// getBkitDocsRoot() — they are NEVER relocated into the payload folders.
 //
 // Doc writes land in ctx.ws (runBkitDocs uses the tier writers) so the caller can
 // refresh their canonicalHashes. Agent/command mirrors also push to ws.writes on
@@ -160,11 +159,10 @@ const RENDERED_MIRRORS: ReadonlyArray<[dir: string, ext: string]> = [
 
 /**
  * Every file bkit writes into `cwd` that carries the managed-version marker: the core
- * templates (listCoreTemplateFiles), the non-JSON non-generated manifest entries of every
+ * payload (listCoreTemplateFiles), the non-JSON non-generated manifest entries of every
  * module, and the rendered mirrors present on disk (agents, commands, the codex workflow
- * skills). JSON files carry none. A `.bkit/*.md` doc whose package source is the destination
- * (dogfood) is not rendered there, so it is left out. Paths only; whether each exists is the
- * caller's to check.
+ * skills). JSON files carry none. Paths only; whether each exists is the caller's to
+ * check.
  */
 export function listStampedFiles(cwd: string): StampedFile[] {
   const byPath = new Map<string, StampedFile>();
@@ -173,18 +171,12 @@ export function listStampedFiles(cwd: string): StampedFile[] {
     if (!byPath.has(rel)) byPath.set(rel, { path: rel, scope });
   };
 
-  for (const { dst, scope } of listCoreTemplateFiles(getTemplatesRoot())) add(dst, scope);
+  for (const { dst, scope } of listCoreTemplateFiles(getCoreRoot())) add(dst, scope);
+  for (const { dst, scope } of listSharedTemplateFiles(getSharedRoot())) add(dst, scope);
 
-  const canonicalDocs = new Set<string>(BKIT_CANONICAL_DOCS.map((n) => path.join(".bkit", n)));
   for (const entry of getInstallManifest()) {
     if (entry.format === "json" || entry.generated) continue;
     if (entry.path === path.join(".bkit", "version")) continue;
-    if (
-      canonicalDocs.has(path.normalize(entry.path)) &&
-      path.resolve(cwd, entry.path) === path.resolve(getBkitDocsRoot(), path.basename(entry.path))
-    ) {
-      continue;
-    }
     add(entry.path, entry.format === "markered-text" ? "block" : "whole");
   }
 
@@ -217,7 +209,6 @@ export const MODULE_REGISTRY: Partial<Record<ModuleFlag, ModuleFn>> = {
   cursor: runCursorModule,
   opencode: runOpencodeModule,
   codex: runCodexModule,
-  lint: runLintModule,
   cloud: runCloudModule,
   // "full" is never directly in the registry — resolveModules expands it to all modules
 };
@@ -229,7 +220,6 @@ export const MODULE_DISPATCH_ORDER: ModuleFlag[] = [
   "cursor",
   "opencode",
   "codex",
-  "lint",
   "cloud",
 ];
 

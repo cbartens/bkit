@@ -15,7 +15,7 @@
  * the host's `\$N` escape (Claude-Code-specific; these files also render to
  * `.cursor/commands/` and `.opencode/commands/`).
  *
- * Scope is workflows only. `bkit` commands, `.bkit/scripts/*` and
+ * Scope is workflows only. `bkit` commands, the copied scripts and
  * `.github/workflows/*.yml` are executed as programs, never expanded.
  */
 
@@ -25,7 +25,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-const WORKFLOW_DIR = ".bkit/workflows";
+const WORKFLOW_DIR = ".bkit/core/workflows";
 
 /** Every placeholder the host rewrites: `$0`–`$9`, `$ARGUMENTS`, `$ARGUMENTS[N]`. */
 const EXPANDED_PLACEHOLDER = /\$(?:[0-9]|ARGUMENTS\b)/g;

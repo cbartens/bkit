@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { deepContains } from "../../install/write.js";
 import { extractManagedBlock, stripManagedBlock } from "../../install/managed-block.js";
 import { readTemplate } from "../../render/parts.js";
-import { getTemplatesRoot, templateRelPath } from "../../shared/package-roots.js";
+import { findTemplateSource, getPkgRoot } from "../../shared/package-roots.js";
 /**
  * Strip out content inside bkit-managed block markers (HTML and slash style).
  * Used by detectors that need to inspect only consumer-owned content.
@@ -55,8 +55,8 @@ export function detectGitignoreBlockDuplicates(cwd) {
 // ---------------------------------------------------------------------------
 // [verbose ci] marker advisories (BAR-224)
 // ---------------------------------------------------------------------------
-// No presence detector for the ci.yml verbose-CI `env:`: ci.yml is the consumer's copy of
-// a template, so bkit never checks it.
+// No presence detector for the bkit-ci.yml verbose-CI `env:`: bkit-ci.yml is the
+// consumer's copy of a template, so bkit never checks it.
 /**
  * Advisory: consumer's Playwright invocation passes `--reporter=line`, which
  * overrides the configured reporter chain in `playwright.config.ts`. Under
@@ -64,11 +64,11 @@ export function detectGitignoreBlockDuplicates(cwd) {
  * surfaces — pure cost (artifact upload + storage) with zero diagnostic payoff.
  *
  * "Hostile" gap per the BAR-224 signal-vs-noise classification. Reads the consumer's
- * own ci.yml, active lines only: YAML comment lines are dropped first, so a commented
+ * own bkit-ci.yml, active lines only: YAML comment lines are dropped first, so a commented
  * template stub or a commented-out example never fires.
  */
 export function detectPlaywrightReporterHostile(cwd) {
-    const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+    const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
     if (!fs.existsSync(ciPath))
         return null;
     const content = fs.readFileSync(ciPath, "utf-8");
@@ -89,7 +89,7 @@ export function detectPlaywrightReporterHostile(cwd) {
     return {
         id: "playwright-reporter-line-override-hostile",
         severity: "advisory",
-        detect: ".github/workflows/ci.yml has a `playwright test` invocation that passes `--reporter=line`. Under `[verbose ci]` with `--trace=on`, trace artifacts are written but no reporter surfaces them — pure cost.",
+        detect: ".github/workflows/bkit-ci.yml has a `playwright test` invocation that passes `--reporter=line`. Under `[verbose ci]` with `--trace=on`, trace artifacts are written but no reporter surfaces them — pure cost.",
         action: 'Drop the `--reporter=line` flag so `playwright.config.ts`\'s configured reporter chain runs (typically `[list, html, github, json]`). Verbose-aware pattern: have `test:e2e` read `VERBOSE_CI` and append `--trace=on` to its own `playwright test` call (e.g. `TRACE=; [ "$VERBOSE_CI" = "1" ] && TRACE=--trace=on; playwright test $TRACE`), then run it plainly as `pnpm test:e2e` — do NOT pass `--trace=on` through a turbo / pnpm `-- --trace=on` passthrough, which appends to the script string and breaks any test:e2e ending in a bash construct (fi / done / esac). Never pass `--reporter`. Note that `--video` and `--screenshot` are NOT Playwright CLI flags (they\'re `use:` keys in playwright.config.ts); the trace.zip already captures snapshots / network / console / source. Default-mode output stays clean via the config\'s `list` reporter.',
     };
 }
@@ -100,8 +100,8 @@ export function detectPlaywrightReporterHostile(cwd) {
  */
 export function detectTier2JsonDrift(cwd, relPath) {
     const absPath = path.join(cwd, relPath);
-    const templatePath = path.join(getTemplatesRoot(), relPath);
-    if (!fs.existsSync(absPath) || !fs.existsSync(templatePath))
+    const templatePath = findTemplateSource(relPath);
+    if (!fs.existsSync(absPath) || templatePath === null || !fs.existsSync(templatePath))
         return null;
     let consumerDoc;
     let templateDoc;
@@ -138,8 +138,8 @@ export function detectTier2JsonDrift(cwd, relPath) {
  */
 export function detectTier2TextDrift(cwd, relPath) {
     const absPath = path.join(cwd, relPath);
-    const templatePath = path.join(getTemplatesRoot(), templateRelPath(relPath));
-    if (!fs.existsSync(absPath) || !fs.existsSync(templatePath))
+    const templatePath = findTemplateSource(relPath);
+    if (!fs.existsSync(absPath) || templatePath === null || !fs.existsSync(templatePath))
         return null;
     const templateBlock = extractManagedBlock(readTemplate(templatePath));
     if (templateBlock === null)
@@ -169,7 +169,7 @@ export function detectTier2TextDrift(cwd, relPath) {
         id: "tier2-text-drift",
         severity: "advisory",
         detect: `${relPath} has a bkit-managed block missing ${dropped.length} line(s) of the shipped template.`,
-        action: `Re-sync the bkit-managed block in ${relPath} from .bkit/templates/${templateRelPath(relPath)} ` +
+        action: `Re-sync the bkit-managed block in ${relPath} from ${path.relative(getPkgRoot(), templatePath)} ` +
             "(run `pnpm bkit install`, or copy the block between its `bkit:start`/`bkit:end` markers). " +
             "Content outside the markers is preserved.",
     };

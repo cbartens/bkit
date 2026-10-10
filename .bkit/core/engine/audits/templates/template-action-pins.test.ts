@@ -40,7 +40,7 @@ interface Pin {
  * action name -> every SHA-pinned `uses:` of it under `dir`.
  *
  * A list, not one entry: mid-Renovate-bump the repo legitimately pins one action
- * at two SHAs (a PR touches `ci.yml` before `claude.yml`), and a template pin
+ * at two SHAs (a PR touches `bkit-ci.yml` before `claude.yml`), and a template pin
  * matching EITHER is a pin the repo demonstrably runs.
  */
 function pins(dir: string): Map<string, Pin[]> {

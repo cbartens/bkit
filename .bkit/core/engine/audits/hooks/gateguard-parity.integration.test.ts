@@ -1,7 +1,7 @@
 // audits/hooks/gateguard-parity.integration.test.ts — one GateGuard behaviour table, every host.
 //
 // bkit generates the four hooks at install from one shared engine
-// (`.bkit/core/hook-parts/`) plus per-host parts, and they reach the model by
+// (`.bkit/core/hooks/`) plus per-host parts, and they reach the model by
 // different routes: Claude writes `hookSpecificOutput.additionalContext` to stdout,
 // Cursor writes `additional_context` with `permission: "allow"`, opencode writes to
 // stderr (and throws to block), Codex is Claude-shaped.
@@ -21,14 +21,14 @@ import { readTemplate } from "../../render/parts";
 const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gg-parity-"));
 afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
 const [CLAUDE_HOOK, CURSOR_HOOK, OPENCODE_PLUGIN, CODEX_HOOK] = [
-  [".claude/hooks/gateguard.cjs", "claude.cjs"],
-  [".cursor/hooks/gateguard.cjs", "cursor.cjs"],
+  [".claude/hooks/bkit-gateguard.cjs", "claude.cjs"],
+  [".cursor/hooks/bkit-gateguard.cjs", "cursor.cjs"],
   // `.mjs`: the plugin is an ES module, and the temp dir has no package.json saying so.
-  [".opencode/plugin/gateguard.js", "opencode.mjs"],
-  [".codex/hooks/gateguard.cjs", "codex.cjs"],
+  [".opencode/plugin/bkit-gateguard.js", "opencode.mjs"],
+  [".codex/hooks/bkit-gateguard.cjs", "codex.cjs"],
 ].map(([rel, name]) => {
   const out = path.join(GENERATED, name);
-  fs.writeFileSync(out, readTemplate(path.resolve(".bkit/templates", rel)));
+  fs.writeFileSync(out, readTemplate(path.resolve(".bkit/core", rel)));
   return out;
 });
 
@@ -253,7 +253,7 @@ describe("gateguard behaviour parity — template copies", () => {
 describe("gateguard behaviour parity — docs density advisory", () => {
   const cases: { file: string; expected: boolean; why: string }[] = [
     { file: "docs/architecture.md", expected: true, why: "a docs markdown file" },
-    { file: ".bkit/templates/docs/architecture.md", expected: true, why: "nested docs tree" },
+    { file: ".bkit/shared/docs/architecture.md", expected: true, why: "nested docs tree" },
     { file: "Documents/architecture.md", expected: false, why: "segment match, not substring" },
     {
       file: "docs/plans/202608/x/design.md",
@@ -379,7 +379,7 @@ describe("gateguard structural parity", () => {
 
   it("every host's generated block carries the shared engine verbatim", () => {
     const engine = fs
-      .readFileSync(path.resolve(".bkit/core/hook-parts/gateguard-engine.js"), "utf-8")
+      .readFileSync(path.resolve(".bkit/core/hooks/gateguard-engine.js"), "utf-8")
       .trimEnd();
     for (const host of HOSTS) expect(block(FILES[host]), host).toContain(engine);
   });

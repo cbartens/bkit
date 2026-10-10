@@ -25,6 +25,7 @@ import {
   validate,
   type TelemetryEvent,
 } from "./telemetry";
+import { getBkitDocsRoot } from "../shared/package-roots";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -558,7 +559,7 @@ describe("feature kind — .bkit/issues.jsonl (#380)", () => {
 
 // The spec's examples validate through the REAL codec.
 describe("jsonl.md examples — validated against the codec", () => {
-  const SPEC = path.resolve(import.meta.dirname, "..", "..", "..", "jsonl.md");
+  const SPEC = path.join(getBkitDocsRoot(), "jsonl.md");
 
   /** Pull every balanced JSON object out of the spec's ```jsonl fences. */
   function specExamples(): Array<Record<string, unknown>> {

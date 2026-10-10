@@ -25,7 +25,7 @@ import { writeTier2, writeTier2JsonContained } from "../../install/write.js";
 import { detectMarkerStyle } from "../../install/managed-block.js";
 import { applyTokens, resolveTokens } from "../../install/placeholders.js";
 import { readTemplate } from "../../render/parts.js";
-import { TEMPLATE_COPIES_DIR, getTemplatesRoot, getBkitDocsRoot, getPkgRoot, } from "../../shared/package-roots.js";
+import { TEMPLATE_COPIES_DIR, getCoreRoot, getSharedRoot, getBkitDocsRoot, getPkgRoot, } from "../../shared/package-roots.js";
 import { getInstallingVersion, requireOpencodeProvider, detectOpencodeProviders, } from "./install.js";
 import { setLogPrefix } from "../../shared/log-prefix.js";
 import { getInstallManifest, getModuleManifest, DEFAULT_ISSUE_TRACKER, parseIssueTracker, } from "../../install/manifest.js";
@@ -33,7 +33,7 @@ import { OPTIN_MODULES } from "../../install/manifest.js";
 import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, } from "../../install/cloud-env.js";
-import { isTemplate, syncTemplateCopies, formatTemplateChanges, } from "../../install/template-copies.js";
+import { syncTemplateCopies, formatTemplateChanges } from "../../install/template-copies.js";
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
 import { renderManagedOutputs } from "../../install/modules/index.js";
 import { reconcileMcpJson, enrichClaudeSettingsAllows } from "../../install/modules/claude.js";
@@ -150,7 +150,7 @@ export function runUpgrade(candidates, options) {
         //       json          → deep-merge  (writeTier2JsonContained, preserves consumer keys)
         //       byte-equal-text → whole-file/diff — even when the template carries markers
         //                         (install writes these verbatim via writeTier1).
-        //   - NO manifest entry: the install core-templates pass block-merges markered
+        //   - NO manifest entry: the install core payload pass block-merges markered
         //       MARKDOWN it manages as a directory (`docs/*.md`, `.agents/*.md`) where the
         //       consumer's prose lives after `bkit:end`; everything else (e.g. canonical
         //       `.vale/styles/**.yml`) is whole-file. So: markered `.md` → block-merge.
@@ -436,9 +436,20 @@ export async function runUpgradeCommand(upgradeFlags) {
             return;
     }
     console.log(`${LOG_PREFIX} Running upgrade${upgradeFlags.dryRun ? " (dry-run)" : ""}${upgradeFlags.nonInteractive ? " (non-interactive)" : ""}`);
-    // Collect bkit-managed template candidates from the package.
-    // Templates live in .bkit/templates/ — walk the directory for all files.
-    const tplRoot = getTemplatesRoot();
+    // Collect bkit-managed payload candidates from the package: `shared/` and
+    // `core/` hold every file install writes. `templates/` is excluded — it is
+    // copy-and-own, and syncTemplateCopies refreshes the consumer's copies instead.
+    const sharedRoot = getSharedRoot();
+    // Package-only core subtrees: engine/ (TypeScript source), workflows/ and
+    // prompts/ (rendered mirrors), .bkit/ (canonical docs, handled by
+    // renderManagedOutputs) and hooks/ (spliced into hooks at render time).
+    const CORE_SKIP_TOP_DIRS = new Set([
+        "engine",
+        "workflows",
+        "prompts",
+        ".bkit",
+        "hooks",
+    ]);
     // Manifest entry drives the per-file write strategy in runUpgrade:
     //   markered-text → block-merge, json → deep-merge (both preserve consumer
     //   content outside the managed region), byte-equal-text / unmanaged →
@@ -455,7 +466,7 @@ export async function runUpgradeCommand(upgradeFlags) {
         for (const entry of getModuleManifest(mod))
             optInPaths.add(entry.path);
     }
-    // Host/tooling modules (claude, cursor, lint) are never force-created by upgrade: they
+    // Host modules (claude, cursor, codex, opencode) are never force-created by upgrade: they
     // are gated on sentinel-detected installation, exactly like `bkit check` scopes its
     // drift gate. core + unmanaged files (docs/*.md, no manifest entry) always upgrade; the
     // opt-in modules keep their dest-presence gating just below.
@@ -486,60 +497,63 @@ export async function runUpgradeCommand(upgradeFlags) {
     const MCP_ROOT_RELPATH = ".mcp.json";
     const CURSOR_MCP_RELPATH = path.join(".cursor", "mcp.json");
     const candidates = [];
-    if (fs.existsSync(tplRoot)) {
-        const collectTemplates = (dir, rel) => {
-            for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-                const entRel = rel ? path.join(rel, ent.name) : ent.name;
-                const entAbs = path.join(dir, ent.name);
-                if (ent.isDirectory()) {
-                    collectTemplates(entAbs, entRel);
-                }
-                else if (ent.isFile()) {
-                    // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
-                    const relPath = remapTemplateDest(entRel);
-                    // `.claude/cloud.md` + `.cursor/cloud.md` are GENERATED output files
-                    // (writeClaudeCloudDoc / writeCursorCloudDoc), not templates to reconcile:
-                    // install/upgrade regenerate them with resolved secret values, so the raw
-                    // template is never a byte-match and the walk must never drift-flag or
-                    // overwrite them. Regenerated explicitly in the runUpgrade block below
-                    // (host-gated, non-dry-run).
-                    if (relPath === CLAUDE_CLOUD_RELPATH || relPath === CURSOR_CLOUD_RELPATH)
-                        continue;
-                    // Templates are never applied: upgrade refreshes the consumer's
-                    // `.bkit/templates/` copies instead (syncTemplateCopies below).
-                    if (isTemplate(relPath))
-                        continue;
-                    if (relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH)
-                        continue;
-                    // Skip opt-in-module files the consumer hasn't opted into (dest absent).
-                    if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
-                        continue;
-                    }
-                    const entry = entryByPath.get(relPath);
-                    // Skip host/tooling-module files when that module is not installed — upgrade updates
-                    // only what the consumer opted into, never force-creating a new module. opt-ins are
-                    // handled by the dest-presence check above; core + entry-less files always pass.
-                    const ownerModule = entry?.module;
-                    if (ownerModule &&
-                        ownerModule !== "core" &&
-                        !optInPaths.has(relPath) &&
-                        !installedModules.has(ownerModule)) {
-                        continue;
-                    }
-                    const contentOverride = relPath === OPENCODE_JSON_RELPATH && upgradeOpencodeProvider
-                        ? renderOpencodeJson(entAbs, upgradeTracker, upgradeOpencodeProvider, process.cwd())
-                        : undefined;
-                    candidates.push({
-                        relPath,
-                        templatePath: entAbs,
-                        format: entry?.format,
-                        contentOverride,
-                    });
-                }
+    const collectPayload = (dir, rel, skipTopDirs) => {
+        for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (rel === "" && ent.isDirectory() && skipTopDirs.has(ent.name))
+                continue;
+            const entRel = rel ? path.join(rel, ent.name) : ent.name;
+            const entAbs = path.join(dir, ent.name);
+            if (ent.isDirectory()) {
+                collectPayload(entAbs, entRel, skipTopDirs);
             }
-        };
-        collectTemplates(tplRoot, "");
-    }
+            else if (ent.isFile()) {
+                // Each payload root's LICENSE.md is package metadata, never an install source.
+                if (ent.name === "LICENSE.md")
+                    continue;
+                // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
+                const relPath = remapTemplateDest(entRel);
+                // `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` are GENERATED output files
+                // (writeClaudeCloudDoc / writeCursorCloudDoc), not payload files to reconcile:
+                // install/upgrade regenerate them with resolved secret values, so the raw
+                // source is never a byte-match and the walk must never drift-flag or
+                // overwrite them. Regenerated explicitly in the runUpgrade block below
+                // (host-gated, non-dry-run).
+                if (relPath === CLAUDE_CLOUD_RELPATH || relPath === CURSOR_CLOUD_RELPATH)
+                    continue;
+                if (relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH)
+                    continue;
+                // Skip opt-in-module files the consumer hasn't opted into (dest absent).
+                if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
+                    continue;
+                }
+                const entry = entryByPath.get(relPath);
+                // Skip host-module files when that module is not installed — upgrade updates
+                // only what the consumer opted into, never force-creating a new module. opt-ins are
+                // handled by the dest-presence check above; core + entry-less files always pass.
+                const ownerModule = entry?.module;
+                if (ownerModule &&
+                    ownerModule !== "core" &&
+                    !optInPaths.has(relPath) &&
+                    !installedModules.has(ownerModule)) {
+                    continue;
+                }
+                const contentOverride = relPath === OPENCODE_JSON_RELPATH && upgradeOpencodeProvider
+                    ? renderOpencodeJson(entAbs, upgradeTracker, upgradeOpencodeProvider, process.cwd())
+                    : undefined;
+                candidates.push({
+                    relPath,
+                    templatePath: entAbs,
+                    format: entry?.format,
+                    contentOverride,
+                });
+            }
+        }
+    };
+    if (fs.existsSync(sharedRoot))
+        collectPayload(sharedRoot, "", new Set());
+    const coreRoot = getCoreRoot();
+    if (fs.existsSync(coreRoot))
+        collectPayload(coreRoot, "", CORE_SKIP_TOP_DIRS);
     // Markered-text templates managed on upgrade are token-free, but resolve real
     // tokens when possible so any future token-bearing block stays correct.
     const tokens = await resolveTokens(process.cwd()).catch(() => undefined);
@@ -568,8 +582,7 @@ export async function runUpgradeCommand(upgradeFlags) {
         const allProviders = detectOpencodeProviders(process.cwd());
         const otherProviders = allProviders.filter((p) => p !== upgradeOpencodeProvider);
         if (otherProviders.length > 0) {
-            const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
-            const jsonSrc = path.join(opencodeTplDir, "opencode.json");
+            const jsonSrc = path.join(sharedRoot, ".opencode", "opencode.json");
             if (fs.existsSync(jsonSrc)) {
                 const upgradeWs = { writes: [] };
                 for (const provider of otherProviders) {
@@ -582,15 +595,15 @@ export async function runUpgradeCommand(upgradeFlags) {
             }
         }
     }
-    // The template walk above only covers `.bkit/templates/` config. Re-render the
-    // bkit-managed OUTPUT files install also produces but that are NOT templates — host
-    // agents/commands (source-rendered from .bkit/prompts + .bkit/workflows), the
+    // The payload walk above only covers the written payload files. Re-render the
+    // bkit-managed OUTPUT files install also produces but that are NOT payload — host
+    // agents/commands (source-rendered from core/prompts + core/workflows), the
     // `.bkit/*.md` canonical docs (runBkitDocs) and core's package.json scripts (the
     // bkit:gate:* names, add-if-missing). These are
     // bkit-owned, force-overwritten output. Only the hosts the consumer installed are
     // re-rendered (detected by their agents dir). `.bkit/prompts.md` is markered → runBkitDocs
     // block-merges it: managed block refreshed, consumer `## Model Overrides` below bkit:end
-    // preserved. Docs stay single-source PACKAGE-side, never in templates/.
+    // preserved. Docs stay single-source PACKAGE-side, never in the payload walk.
     const renderModules = detectInstalledHostModules(process.cwd());
     // Demanded only when opencode is one of the detected hosts — see requireOpencodeProvider.
     const renderProvider = renderModules.has("opencode")
@@ -664,7 +677,7 @@ export async function runUpgradeCommand(upgradeFlags) {
     ]) {
         if (!renderModules.has(host))
             continue;
-        const src = path.join(tplRoot, relPath);
+        const src = path.join(sharedRoot, relPath);
         if (!fs.existsSync(src))
             continue;
         reconcileMcpJson(src, path.join(process.cwd(), relPath), upgradeTracker, upgradeFlags.dryRun, mcpWs);
@@ -672,7 +685,7 @@ export async function runUpgradeCommand(upgradeFlags) {
     for (const w of mcpWs.writes) {
         console.log(`${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${path.relative(process.cwd(), w.path)} (tracker MCP entry)`);
     }
-    // Regenerate `.claude/cloud.md` (excluded from the template walk above — it is a
+    // Regenerate `.claude/bkit-cloud.md` (excluded from the payload walk above — it is a
     // generated, untracked, secret-bearing OUTPUT file). Claude-host-gated so upgrade
     // never force-creates it for a non-claude repo; non-dry-run so `bkit check` never
     // writes resolved secrets. Rotated secrets / version bumps reach the paste doc via
@@ -682,15 +695,15 @@ export async function runUpgradeCommand(upgradeFlags) {
     let upgradeClaudeAllowDerived = null;
     if (!upgradeFlags.dryRun && renderModules.has("claude") && tokens) {
         if (writeClaudeCloudDoc(process.cwd(), tokens)) {
-            console.log(`${LOG_PREFIX} upgrade: .claude/cloud.md (regenerated — gitignored, holds resolved secrets)`);
+            console.log(`${LOG_PREFIX} upgrade: .claude/bkit-cloud.md (regenerated — gitignored, holds resolved secrets)`);
         }
     }
-    // Same for `.cursor/cloud.md` — cursor-host-gated twin (see writeCursorCloudDoc).
+    // Same for `.cursor/bkit-cloud.md` — cursor-host-gated twin (see writeCursorCloudDoc).
     // Uses upgradeTracker so the Linear/GitHub env-var policy matches the installed
-    // tracker; excluded from the template walk above for the same reason as the Claude doc.
+    // tracker; excluded from the payload walk above for the same reason as the Claude doc.
     if (!upgradeFlags.dryRun && renderModules.has("cursor") && tokens) {
         if (writeCursorCloudDoc(process.cwd(), tokens, upgradeTracker)) {
-            console.log(`${LOG_PREFIX} upgrade: .cursor/cloud.md (regenerated — gitignored, holds resolved secrets)`);
+            console.log(`${LOG_PREFIX} upgrade: .cursor/bkit-cloud.md (regenerated — gitignored, holds resolved secrets)`);
         }
     }
     // Network allowlist + MCP allows — OpenCode from renderOpencodeJson; Claude enrich

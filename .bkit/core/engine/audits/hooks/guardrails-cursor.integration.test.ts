@@ -12,7 +12,7 @@ import { readTemplate } from "../../render/parts";
 const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gr-cursor-"));
 afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
 const HOOK = path.join(GENERATED, "guardrails.cjs");
-fs.writeFileSync(HOOK, readTemplate(path.resolve(".bkit/templates/.cursor/hooks/guardrails.cjs")));
+fs.writeFileSync(HOOK, readTemplate(path.resolve(".bkit/core/.cursor/hooks/bkit-guardrails.cjs")));
 
 function run(payload: unknown): {
   status: number | null;
@@ -153,12 +153,12 @@ describe("cursor guardrails.cjs — managed-block boundary", () => {
 // The hook is shipped per host as a self-contained file, so each host's mirror is its
 // template as install renders it (shared parts spliced in, managed-version marker
 // resolved). Same shape as audits/hooks/gateguard-dogfood.integration.test.ts for
-// gateguard.cjs.
+// bkit-gateguard.cjs.
 describe("T6 — guardrails.cjs installed mirror is its rendered template", () => {
   const PAIRS: ReadonlyArray<readonly [string, string, string]> = [
-    ["cursor", ".bkit/templates/.cursor/hooks/guardrails.cjs", ".cursor/hooks/guardrails.cjs"],
-    ["claude", ".bkit/templates/.claude/hooks/guardrails.cjs", ".claude/hooks/guardrails.cjs"],
-    ["codex", ".bkit/templates/.codex/hooks/guardrails.cjs", ".codex/hooks/guardrails.cjs"],
+    ["cursor", ".bkit/core/.cursor/hooks/bkit-guardrails.cjs", ".cursor/hooks/guardrails.cjs"],
+    ["claude", ".bkit/core/.claude/hooks/bkit-guardrails.cjs", ".claude/hooks/guardrails.cjs"],
+    ["codex", ".bkit/core/.codex/hooks/bkit-guardrails.cjs", ".codex/hooks/guardrails.cjs"],
   ];
 
   for (const [host, template, mirror] of PAIRS) {

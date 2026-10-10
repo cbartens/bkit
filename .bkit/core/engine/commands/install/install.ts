@@ -103,8 +103,7 @@ export function getInstallingVersion(): string {
 
 /**
  * Render a resolved module set back into valid CLI flags for
- * recovery-hint text. Skips core (implicit), maps lint to --typescript and opt-ins to
- * their value-flag spellings.
+ * recovery-hint text. Skips core (implicit) and spells opt-ins with their value flags.
  */
 export function modulesToCliFlags(
   mods: Set<ModuleFlag>,
@@ -116,7 +115,6 @@ export function modulesToCliFlags(
   if (mods.has("cursor")) out.push("--cursor");
   if (mods.has("opencode")) out.push(`--opencode=${opencodeProvider ?? "<provider>"}`);
   if (mods.has("codex")) out.push("--codex");
-  if (mods.has("lint")) out.push("--typescript");
   if (mods.has("cloud")) out.push(`--auto=${cloudVariant ?? "<variant>"}`);
   return out.join(" ");
 }

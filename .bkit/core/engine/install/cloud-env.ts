@@ -1,7 +1,7 @@
 // install/cloud-env.ts — resolve a copy-paste-ready Claude Code on the web env-var block
 // by *following the consumer's `.envrc`*.
 //
-// The generated `.claude/cloud.md` (see runClaudeModule) inlines REAL SECRET
+// The generated `.claude/bkit-cloud.md` (see runClaudeModule) inlines REAL SECRET
 // VALUES so it is gitignored + chmod 600 and never committed. This module owns the
 // stack-agnostic resolution: it reads whatever dotenv files the repo's `.envrc`
 // sources, honours the `.envrc` `unset` lines, and drops session-hijack keys.
@@ -14,7 +14,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { IssueTracker } from "./manifest.js";
-import { getTemplatesRoot } from "../shared/package-roots.js";
+import { getSharedRoot } from "../shared/package-roots.js";
 import { applyTokens, type TokenMap } from "./placeholders.js";
 import { BKIT_EGRESS_SOURCES, type EgressSource } from "../shared/egress.js";
 import { sha256 } from "./version-file.js";
@@ -23,8 +23,8 @@ import { sha256 } from "./version-file.js";
 // (commands/install/install.ts) can exclude them — they are generated OUTPUT files, never
 // templates to reconcile. One per cloud host (Claude Code on the web / Cursor
 // Background Agents); both inline resolved secrets, both gitignored + chmod 600.
-export const CLAUDE_CLOUD_RELPATH = path.join(".claude", "cloud.md");
-export const CURSOR_CLOUD_RELPATH = path.join(".cursor", "cloud.md");
+export const CLAUDE_CLOUD_RELPATH = path.join(".claude", "bkit-cloud.md");
+export const CURSOR_CLOUD_RELPATH = path.join(".cursor", "bkit-cloud.md");
 
 // Session-hijack keys: exporting these into a cloud env redirects Claude Code's
 // OWN model calls onto API-key billing instead of the user's subscription
@@ -71,7 +71,7 @@ export const CLAUDE_CLOUD_POLICY: CloudEnvPolicy = {
 };
 
 // Cursor Background Agents: `BKIT_LINEAR_API_KEY` prepended for the Linear tracker
-// (preflight.sh calls the Linear GraphQL API and hard-fails without it); GitHub
+// (bkit-preflight.sh calls the Linear GraphQL API and hard-fails without it); GitHub
 // tracker uses the same GH baseline as Claude, minus the autocompact knob.
 const CURSOR_LINEAR_PLACEHOLDER: readonly [string, string] = [
   "BKIT_LINEAR_API_KEY",
@@ -584,7 +584,7 @@ export function resolveClaudeDerivedAllows(cwd: string): string[] {
 export const NETWORK_ALLOWLIST_RELPATH = path.join(".cursor", "allowlist.json");
 
 /**
- * Write `.cursor/allowlist.json` for Cursor `guardrails.cjs` (runtime curl/wget host
+ * Write `.cursor/allowlist.json` for Cursor `bkit-guardrails.cjs` (runtime curl/wget host
  * checks). Claude/OpenCode bake the same domain set into their own configs at
  * install/upgrade — they do not read this file. Call only when the cursor module
  * is installed (do not create `.cursor/` for claude-only consumers).
@@ -790,7 +790,7 @@ export function renderCloudUserSettings(cwd: string): string {
 }
 
 /**
- * Generate `.claude/cloud.md` — a copy-paste-ready Claude Code on the web setup doc
+ * Generate `.claude/bkit-cloud.md` — a copy-paste-ready Claude Code on the web setup doc
  * with the env-var block resolved to REAL VALUES from the consumer's `.envrc`.
  *
  * The file is gitignored + chmod 600 and holds live secrets: it is UNTRACKED (not
@@ -803,7 +803,7 @@ export function renderCloudUserSettings(cwd: string): string {
  * template is absent). Never logs the resolved values.
  */
 export function writeClaudeCloudDoc(cwd: string, tokens: TokenMap): boolean {
-  const src = path.join(getTemplatesRoot(), ".claude", "cloud.md");
+  const src = path.join(getSharedRoot(), ".claude", "bkit-cloud.md");
   if (!fs.existsSync(src)) return false;
   const res = resolveCloudEnvVars(cwd);
   // UTC day drives the cache-bust; renderCloudCacheBust reads the PRIOR dst below to
@@ -828,7 +828,7 @@ export function writeClaudeCloudDoc(cwd: string, tokens: TokenMap): boolean {
 }
 
 /**
- * Render the `@@CURSOR_CONTEXT_FETCH@@` region of `.cursor/cloud.md`: the consumer's
+ * Render the `@@CURSOR_CONTEXT_FETCH@@` region of `.cursor/bkit-cloud.md`: the consumer's
  * `context-fetch:provision` recipes formatted for the Cursor mechanic, or "" when none
  * are enabled. On Claude these CLIs are baked into the pasted setup script (see
  * renderCloudContextFetchProvision); Cursor has no setup script, so — to keep the two
@@ -888,8 +888,8 @@ export function renderCursorNetworkAllowlist(cwd: string): string {
 }
 
 /**
- * Generate `.cursor/cloud.md` — the Cursor Cloud Agents analogue of
- * `.claude/cloud.md`. Both describe the SAME bkit cloud environment; only the
+ * Generate `.cursor/bkit-cloud.md` — the Cursor Cloud Agents analogue of
+ * `.claude/bkit-cloud.md`. Both describe the SAME bkit cloud environment; only the
  * mechanics differ. On Claude the doc carries a pasted setup script + network
  * selector; on Cursor the toolchain lives in `.cursor/Dockerfile` + the per-snapshot
  * `.cursor/environment.json` `install` (both committed, nothing to paste), so this doc
@@ -897,7 +897,7 @@ export function renderCursorNetworkAllowlist(cwd: string): string {
  * the consumer's `.envrc` (Cursor policy — Linear tracker adds `BKIT_LINEAR_API_KEY`, no
  * autocompact knob) and surfaces any context-fetch CLIs for parity.
  *
- * Like `.claude/cloud.md` it is gitignored + chmod 600 and UNTRACKED (never pushed to
+ * Like `.claude/bkit-cloud.md` it is gitignored + chmod 600 and UNTRACKED (never pushed to
  * any WriteSet / manifest / canonicalHashes) — its values are machine-local and
  * expected to differ, so it never enters `bkit check` drift or the upgrade template
  * walk. Shared by install (runCursorModule) and upgrade. Callers MUST guard on
@@ -906,7 +906,7 @@ export function renderCursorNetworkAllowlist(cwd: string): string {
  * is absent). Never logs the resolved values.
  */
 export function writeCursorCloudDoc(cwd: string, tokens: TokenMap, tracker: IssueTracker): boolean {
-  const src = path.join(getTemplatesRoot(), ".cursor", "cloud.md");
+  const src = path.join(getSharedRoot(), ".cursor", "bkit-cloud.md");
   if (!fs.existsSync(src)) return false;
   const policy = cursorCloudPolicy(tracker);
   const res = resolveCloudEnvVars(cwd, policy);

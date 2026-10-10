@@ -6,7 +6,7 @@
 // Mend App install is one-click via GitHub UI (https://github.com/apps/renovate).
 // No `gh api` equivalent exists. Land this file on the default branch before
 // installing the App. Self-hosted runner: copy
-// `.bkit/templates/.github/workflows/renovate.yml` as well, and suspend the
+// `.bkit/templates/.github/workflows/bkit-renovate.yml` as well, and suspend the
 // Mend App for this repo so both do not open the same PRs.
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
@@ -78,7 +78,7 @@
   // the scan. To keep Renovate off a file entirely, list it here:
   // a packageRule `enabled: false` suppresses version bumps, but the github-actions
   // manager still scans the file and applies tag->SHA pinDigests. Workflows you
-  // copied from `.bkit/templates/` (ci.yml, bkit-cloud.yml, renovate.yml) are yours —
+  // copied from `.bkit/templates/` (bkit-ci.yml, bkit-cloud.yml, bkit-renovate.yml) are yours —
   // leave them out of ignorePaths so their action pins refresh.
   ignorePaths: [
     "**/node_modules/**",
@@ -221,7 +221,7 @@
     // comment, or the dockerfile manager can't map the digest to its tag.
     // Reviewed manually.
     // NOTE: version+checksum-paired installer fetches (e.g. the Vale tarball
-    // sha256, the pinned actionlint download-script SHA in ci.yml) are NOT
+    // sha256, the pinned actionlint download-script SHA in bkit-ci.yml) are NOT
     // Renovate-managed — it cannot recompute a tarball checksum — so bump those
     // version+sha pairs by hand. See docs/deployments.md § GitHub Actions pinning.
     // ─────────────────────────────────────────────────────────────────────

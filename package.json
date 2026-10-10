@@ -8,22 +8,15 @@
     "bkit": "./dist/cli.js"
   },
   "files": [
+    ".bkit/core",
+    ".bkit/shared",
+    ".bkit/templates",
     "dist",
-    ".bkit",
-    ".agents",
     "README.md",
     "CHANGELOG.md",
     "!.bkit/core/engine/**/*.test.ts",
     "!.bkit/core/engine/**/*.integration.test.ts",
-    "!.bkit/core/engine/**/__snapshots__",
-    "!.bkit/.env",
-    "!.bkit/.env.example",
-    "!.bkit/scripts",
-    "!.bkit/version",
-    "!.bkit/advisories.md",
-    "!.bkit/friction.jsonl",
-    "!.bkit/stats.jsonl",
-    "!.bkit/wording.md"
+    "!.bkit/core/engine/**/__snapshots__"
   ],
   "engines": {
     "node": ">=20"
@@ -51,7 +44,7 @@
     "lint": "bash -c 'if [ -f eslint.config.js ] || [ -f eslint.config.mjs ] || [ -f .eslintrc.json ]; then npx eslint .; else echo \"[bkit] no eslint config - skipping lint (bkit typechecks with tsc and scans with slop-scan)\"; fi'",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint:prose": "bkit ci prose --glob='.agents/*.md' --glob='.bkit/*.md' --glob='.bkit/workflows/**/*.md' --glob='.bkit/prompts/**/*.md' --glob='docs/*.md' --glob='.bkit/templates/docs/**/*.md' --glob='*.md'",
+    "lint:prose": "bkit ci prose --glob='.agents/*.md' --glob='.bkit/core/.bkit/*.md' --glob='.bkit/core/workflows/**/*.md' --glob='.bkit/core/prompts/**/*.md' --glob='.bkit/core/.agents/*.md' --glob='.bkit/shared/docs/**/*.md' --glob='.bkit/core/docs/**/*.md' --glob='.bkit/templates/**/*.md' --glob='docs/*.md' --glob='*.md'",
     "lint:slop": "slop-scan scan .",
     "slop:delta": "bkit ci slop",
     "bkit:lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
@@ -102,7 +95,7 @@
       "openrouter"
     ],
     "capstoneJob": "bkit-tests-check",
-    "ciWorkflow": "ci.yml",
+    "ciWorkflow": "bkit-ci.yml",
     "roadmapNext": 25
   }
 }

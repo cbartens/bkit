@@ -69,7 +69,7 @@ describe("detectCiYmlMissingTokenEnv", () => {
   const writeCi = (steps: string) => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       `\njobs:\n  build:\n    steps:\n${steps}\n`,
       "utf-8",
     );
@@ -125,7 +125,7 @@ describe("detectCiYmlMissingTokenEnv", () => {
     expect(result!.detect).toContain("BKIT_GH_TOKEN_INSTALL env mapping");
   });
 
-  it("returns null when ci.yml is absent", () => {
+  it("returns null when bkit-ci.yml is absent", () => {
     expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
   });
 
@@ -259,14 +259,14 @@ describe("detectTestIntegrationEnv", () => {
   });
 
   it("returns null when the CI workflow lane provisions the real-service env", () => {
-    // Script is env-agnostic; the ci.yml job that runs test:integration provisions the env.
+    // Script is env-agnostic; the bkit-ci.yml job that runs test:integration provisions the env.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       '{"scripts":{"test:integration":"vitest run --config vitest.integration.config.ts --passWithNoTests"}}',
     );
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       [
         "jobs:",
         "  integration:",
@@ -299,7 +299,7 @@ describe("detectTestIntegrationEnv", () => {
     );
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "jobs:\n  integration:\n    steps:\n      - run: turbo run test:integration\n",
     );
     expect(detectTestIntegrationEnv(tmpDir)!.id).toBe("test-integration-env-not-asserted");
@@ -318,7 +318,7 @@ describe("detectGhaFloatingTags", () => {
   it("returns null when no workflow uses floating tags", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "jobs:\n  run:\n    steps:\n      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1\n",
     );
     expect(detectGhaFloatingTags(tmpDir)).toBeNull();
@@ -327,7 +327,7 @@ describe("detectGhaFloatingTags", () => {
   it("flags floating-tag uses across multiple workflow files", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4.0.2\n",
     );
     fs.writeFileSync(
@@ -337,7 +337,7 @@ describe("detectGhaFloatingTags", () => {
     const result = detectGhaFloatingTags(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("gha-actions-floating-tags");
-    expect(result!.detect).toContain("ci.yml");
+    expect(result!.detect).toContain("bkit-ci.yml");
     expect(result!.detect).toContain("release.yml");
   });
 });
@@ -347,14 +347,14 @@ describe("detectGhaFloatingTags", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectRunLevelsNotComposed", () => {
-  it("returns null when ci.yml is absent", () => {
+  it("returns null when bkit-ci.yml is absent", () => {
     expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
   });
 
-  it("returns null when ci.yml has no Detect Direct Push step (no primitives to compose)", () => {
+  it("returns null when bkit-ci.yml has no Detect Direct Push step (no primitives to compose)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "jobs:\n  bkit-tests:\n    runs-on: ubuntu-latest\n",
     );
     expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
@@ -363,7 +363,7 @@ describe("detectRunLevelsNotComposed", () => {
   it("flags when Detect Direct Push step exists but no sibling workflow references the outputs", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "      - name: Detect Direct Push\n        run: echo detect\n",
     );
     const result = detectRunLevelsNotComposed(tmpDir);
@@ -374,7 +374,7 @@ describe("detectRunLevelsNotComposed", () => {
   it("returns null when a sibling workflow references should_force_build", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "      - name: Detect Direct Push\n",
     );
     fs.writeFileSync(
@@ -384,10 +384,10 @@ describe("detectRunLevelsNotComposed", () => {
     expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
   });
 
-  it("flags when ci.yml only SETS the outputs (echo to $GITHUB_OUTPUT), no gate reads them", () => {
+  it("flags when bkit-ci.yml only SETS the outputs (echo to $GITHUB_OUTPUT), no gate reads them", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "      - name: Detect Direct Push\n" +
         '        run: echo "should_force_build=true" >> "$GITHUB_OUTPUT"\n',
     );
@@ -399,17 +399,17 @@ describe("detectRunLevelsNotComposed", () => {
   it("flags when the example E2E gate is present but commented out (shipped bkit-stub:e2e)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "      - name: Detect Direct Push\n" +
         "      #   if: steps.detect.outputs.should_run_full == 'true'\n",
     );
     expect(detectRunLevelsNotComposed(tmpDir)).not.toBeNull();
   });
 
-  it("returns null when a consumer enables an in-ci.yml gate reading the outputs", () => {
+  it("returns null when a consumer enables an in-bkit-ci.yml gate reading the outputs", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "      - name: Detect Direct Push\n" +
         "      - name: Run E2E Tests\n" +
         "        if: steps.detect.outputs.should_run_full == 'true'\n",
@@ -464,7 +464,7 @@ describe("detectBkitCloudYmlAlwaysTrueGate", () => {
 describe("detectCiYmlMissingActionlint", () => {
   function writeCi(content: string) {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), content);
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"), content);
   }
   const MANAGED_NO_ACTIONLINT =
     "name: CI\n" +
@@ -474,14 +474,14 @@ describe("detectCiYmlMissingActionlint", () => {
     "    steps:\n" +
     "      - run: pnpm test\n";
 
-  it("returns null when ci.yml is absent", () => {
+  it("returns null when bkit-ci.yml is absent", () => {
     expect(detectCiYmlMissingActionlint(tmpDir)).toBeNull();
   });
-  it("returns null when ci.yml was not adopted from bkit's template (no bkit-tests job)", () => {
+  it("returns null when bkit-ci.yml was not adopted from bkit's template (no bkit-tests job)", () => {
     writeCi("name: CI\njobs:\n  test:\n    runs-on: ubuntu-latest\n");
     expect(detectCiYmlMissingActionlint(tmpDir)).toBeNull();
   });
-  it("fires on an adopted ci.yml with no actionlint step", () => {
+  it("fires on an adopted bkit-ci.yml with no actionlint step", () => {
     writeCi(MANAGED_NO_ACTIONLINT);
     const f = detectCiYmlMissingActionlint(tmpDir);
     expect(f?.id).toBe("ci-yml-missing-actionlint");
@@ -500,16 +500,16 @@ describe("detectCiYmlMissingActionlint", () => {
 describe("detectCiYmlRunInjection", () => {
   function writeCi(content: string) {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), content);
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"), content);
   }
   const ADOPTED =
     "name: CI\n" + "jobs:\n" + "  bkit-tests:\n" + "    runs-on: ubuntu-latest\n" + "    steps:\n";
 
-  it("returns null when ci.yml is absent", () => {
+  it("returns null when bkit-ci.yml is absent", () => {
     expect(detectCiYmlRunInjection(tmpDir)).toBeNull();
   });
 
-  it("returns null when ci.yml was not adopted from bkit's template (no bkit-tests job)", () => {
+  it("returns null when bkit-ci.yml was not adopted from bkit's template (no bkit-tests job)", () => {
     writeCi(
       "name: CI\njobs:\n  test:\n    steps:\n" +
         '      - run: |\n        MSG="${{ github.event.pull_request.title }}"\n',
@@ -576,7 +576,7 @@ describe("detectCiYmlRunInjection", () => {
     expect(detectCiYmlRunInjection(tmpDir)).toBeNull();
   });
 
-  it("does NOT trip on the shipped ci.yml template (already env-indirected)", () => {
+  it("does NOT trip on the shipped bkit-ci.yml template (already env-indirected)", () => {
     const tplPath = path.resolve(
       import.meta.dirname,
       "..",
@@ -586,7 +586,7 @@ describe("detectCiYmlRunInjection", () => {
       "templates",
       ".github",
       "workflows",
-      "ci.yml",
+      "bkit-ci.yml",
     );
     writeCi(fs.readFileSync(tplPath, "utf-8"));
     expect(detectCiYmlRunInjection(tmpDir)).toBeNull();
@@ -600,9 +600,9 @@ describe("detectCiYmlRunInjection", () => {
 describe("detectCiYmlCapstoneContractDrift", () => {
   function writeCi(content: string) {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), content);
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"), content);
   }
-  // An adopted ci.yml whose capstone carries all three load-bearing invariants.
+  // An adopted bkit-ci.yml whose capstone carries all three load-bearing invariants.
   const GOOD =
     "name: CI\n" +
     "concurrency:\n" +
@@ -632,12 +632,12 @@ describe("detectCiYmlCapstoneContractDrift", () => {
       "templates",
       ".github",
       "workflows",
-      "ci.yml",
+      "bkit-ci.yml",
     ),
     "utf-8",
   );
 
-  it("returns null when ci.yml is absent", () => {
+  it("returns null when bkit-ci.yml is absent", () => {
     expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
   });
   it("returns null when there is no bkit-tests-check capstone", () => {

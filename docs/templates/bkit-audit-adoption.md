@@ -223,4 +223,4 @@ PENDING
 ## Project Instructions
 
 - **Package (Step 2):** this repo is the package. Read `.bkit/core/`, `.bkit/shared/`, `.bkit/templates/` from the repo root, not `node_modules`; the installed copies they land as are the dogfood. Repo-root adopted copies (`scripts/<tool>/`, `.husky/`, `.github/workflows/`, `slop-scan.config.json`) stay byte-identical to `.bkit/templates/` unless the difference is deliberate → each difference in Step 9 (b).
-- **Audits (Step 7):** `docs/templates/` copies carry this repo's `Project Instructions`; the managed part must equal `.bkit/templates/docs/templates/` (`.bkit/core/engine/audits/templates/templates.test.ts`).
+- **Audits (Step 7):** `docs/templates/` copies carry this repo's `Project Instructions`; the managed part must equal `.bkit/core/docs/templates/` (`.bkit/core/engine/audits/templates/templates.test.ts`).

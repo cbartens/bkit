@@ -1,17 +1,16 @@
 // install/template-copies.integration.test.ts — templates are templates.
 //
-// Install and upgrade copy exactly the template set (isTemplate) into the consumer's
-// `.bkit/templates/`, raw, and never hash the copies. Paths that became templates
-// lose their `.bkit/version` hashes once, after which install, check and upgrade
-// write nothing for them. Uninstall removes the copies folder.
+// Install and upgrade copy the whole templates root into the consumer's
+// `.bkit/templates/`, raw, and never hash the copies. Uninstall removes the copies
+// folder.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatchModules, type ModuleContext } from "./modules/index";
-import { formatTemplateChanges, isTemplate, syncTemplateCopies } from "./template-copies";
-import { listFilesRecursive, remapTemplateDest } from "./template-copies";
+import { formatTemplateChanges, syncTemplateCopies } from "./template-copies";
+import { listFilesRecursive } from "./template-copies";
 import { getPkgRoot, getTemplatesRoot } from "../shared/package-roots";
 import { readBkitVersion } from "./version-file";
 import { runUninstall } from "../commands/install/uninstall";
@@ -51,7 +50,6 @@ function shippedTemplates(): string[] {
   const root = getTemplatesRoot();
   return listFilesRecursive(root)
     .map((abs) => path.relative(root, abs))
-    .filter((rel) => isTemplate(remapTemplateDest(rel)))
     .sort();
 }
 
@@ -75,30 +73,34 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-describe("isTemplate", () => {
-  it("covers the template set and leaves owned files out", () => {
+describe("the templates root is the copy-and-own set", () => {
+  it("holds the renamed workflows, hooks, context blocks and the slop plugin", () => {
     for (const p of [
-      ".github/workflows/ci.yml",
+      ".github/workflows/bkit-ci.yml",
       ".github/workflows/bkit-cloud.yml",
+      ".github/workflows/bkit-renovate.yml",
       ".husky/pre-push",
       ".vale.ini",
       ".vale/styles/House/LLMSlop.yml",
       ".prettierignore",
       ".envrc",
       ".cursor/Dockerfile",
+      ".claude/hooks/cloud-bootstrap.sh",
       "scripts/graphify/bkit-graphify.sh",
+      "scripts/slop/bkit-slop-type-suppression.mjs",
+      "context/bkit-github.md",
+      "LICENSE.md",
     ]) {
-      expect(isTemplate(p), p).toBe(true);
+      expect(fs.existsSync(path.join(getTemplatesRoot(), p)), p).toBe(true);
     }
     for (const p of [
       ".mcp.json",
-      ".cursor/mcp.json",
-      ".bkit/.env.example",
-      ".claude/hooks/preflight.sh",
-      ".bkit/scripts/bkit-slop-type-suppression.mjs",
+      ".claude/settings.json",
+      ".claude/hooks/bkit-preflight.sh",
       "AGENTS.md",
+      "gitignore",
     ]) {
-      expect(isTemplate(p), p).toBe(false);
+      expect(fs.existsSync(path.join(getTemplatesRoot(), p)), p).toBe(false);
     }
   });
 });
@@ -109,7 +111,7 @@ describe("install copies the template set into .bkit/templates/", () => {
 
     expect(copiedTemplates()).toEqual(shippedTemplates());
 
-    const ci = path.join(".github", "workflows", "ci.yml");
+    const ci = path.join(".github", "workflows", "bkit-ci.yml");
     const copy = fs.readFileSync(path.join(tmpDir, COPIES, ci));
     expect(copy.equals(fs.readFileSync(path.join(getTemplatesRoot(), ci)))).toBe(true);
     expect(copy.toString("utf-8")).toContain("{{DEFAULT_BRANCH}}");

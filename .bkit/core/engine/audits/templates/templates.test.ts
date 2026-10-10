@@ -13,6 +13,8 @@ import { describe, expect, it } from "vitest";
 import { extractManagedBlock } from "../../install/managed-block";
 
 const TEMPLATES_ROOT = path.resolve(".bkit/templates");
+const CORE_ROOT = path.resolve(".bkit/core");
+const SHARED_ROOT = path.resolve(".bkit/shared");
 
 function templatePath(...parts: string[]): string {
   return path.join(TEMPLATES_ROOT, ...parts);
@@ -38,23 +40,25 @@ function countMatches(content: string, pattern: RegExp): number {
 
 function listAuditTemplates(): string[] {
   return fs
-    .readdirSync(templatePath("docs", "templates"))
+    .readdirSync(path.join(CORE_ROOT, "docs", "templates"))
     .filter((name) => name.startsWith("bkit-audit-") && name.endsWith(".md"))
     .sort()
     .map((name) => path.posix.join("docs/templates", name));
 }
 
-const GROUP_A_MD_FILES = [
-  "AGENTS.md",
-  "CLAUDE.md",
-  ".agents/rules.md",
-  ".agents/docs.md",
-  ".agents/skills.md",
-  "docs/templates/bkit-plan.md",
-  ...listAuditTemplates(),
+const GROUP_A_MD_FILES: Array<[root: string, rel: string]> = [
+  [CORE_ROOT, "AGENTS.md"],
+  [SHARED_ROOT, "CLAUDE.md"],
+  [CORE_ROOT, ".agents/rules.md"],
+  [CORE_ROOT, ".agents/docs.md"],
+  [CORE_ROOT, ".agents/skills.md"],
+  [CORE_ROOT, "docs/templates/bkit-plan.md"],
+  ...listAuditTemplates().map((rel): [string, string] => [CORE_ROOT, rel]),
 ];
 
-const GROUP_A_MDC_FILES = [".cursor/rules/00-shared-rules.mdc"];
+const GROUP_A_MDC_FILES: Array<[root: string, rel: string]> = [
+  [SHARED_ROOT, ".cursor/rules/bkit-rules.mdc"],
+];
 
 describe("audit templates — managed block plus consumer stub", () => {
   const audits = listAuditTemplates();
@@ -67,7 +71,7 @@ describe("audit templates — managed block plus consumer stub", () => {
   });
 
   it.each(audits)("%s keeps project instructions outside the managed block", (relPath) => {
-    const content = readTemplate(relPath);
+    const content = fs.readFileSync(path.join(CORE_ROOT, relPath), "utf-8");
     expect(content).toContain("{{BKIT_MANAGED_MARKER}}");
     expect(content).not.toContain("bkit:managed v");
     const end = content.indexOf("<!-- bkit:end -->");
@@ -80,7 +84,7 @@ describe("audit templates — managed block plus consumer stub", () => {
   it.each(audits)(
     "%s dogfood managed block differs only by the managed-version stamp",
     (relPath) => {
-      const template = readTemplate(relPath);
+      const template = fs.readFileSync(path.join(CORE_ROOT, relPath), "utf-8");
       const dogfood = fs.readFileSync(path.resolve(relPath), "utf-8");
       const stamp = dogfood.match(
         /^<!-- bkit:managed v\S+ — do NOT edit; run `bkit upgrade` to refresh -->$/m,
@@ -98,15 +102,16 @@ describe("audit templates — managed block plus consumer stub", () => {
 });
 
 describe("Group A templates — html-comment markers (md/mdc files)", () => {
-  for (const relPath of [...GROUP_A_MD_FILES, ...GROUP_A_MDC_FILES]) {
+  for (const [root, relPath] of [...GROUP_A_MD_FILES, ...GROUP_A_MDC_FILES]) {
+    const read = () => fs.readFileSync(path.join(root, relPath), "utf-8");
     it(`${relPath}: has exactly one <!-- bkit:start --> and one <!-- bkit:end -->`, () => {
-      const content = readTemplate(relPath);
+      const content = read();
       expect(countMatches(content, /^<!-- bkit:start -->$/m)).toBe(1);
       expect(countMatches(content, /^<!-- bkit:end -->$/m)).toBe(1);
     });
 
     it(`${relPath}: bkit:start appears before bkit:end`, () => {
-      const content = readTemplate(relPath);
+      const content = read();
       const startIdx = content.indexOf("<!-- bkit:start -->");
       const endIdx = content.indexOf("<!-- bkit:end -->");
       expect(startIdx).toBeGreaterThanOrEqual(0);
@@ -114,7 +119,7 @@ describe("Group A templates — html-comment markers (md/mdc files)", () => {
     });
 
     it(`${relPath}: extractManagedBlock returns non-null non-empty content`, () => {
-      const content = readTemplate(relPath);
+      const content = read();
       const block = extractManagedBlock(content, "html-comment");
       expect(block).not.toBeNull();
       expect(block!.length).toBeGreaterThan(0);
@@ -126,9 +131,9 @@ describe("Group A templates — html-comment markers (md/mdc files)", () => {
 // Group B — templates bkit never writes (no markers; see audits/templates/templates-content.test.ts)
 // ---------------------------------------------------------------------------
 
-describe("Group B templates — ci.yml", () => {
-  it("ci.yml bkit-tests-static job-level env carries the verbose-CI wiring", () => {
-    const content = readTemplate(".github/workflows/ci.yml");
+describe("Group B templates — bkit-ci.yml", () => {
+  it("bkit-ci.yml bkit-tests-static job-level env carries the verbose-CI wiring", () => {
+    const content = readTemplate(".github/workflows/bkit-ci.yml");
     const env = content.match(
       /^ {2}bkit-tests-static:\n[\s\S]*?^ {4}env:\n([\s\S]*?)^ {4}steps:/m,
     )?.[1];
@@ -138,8 +143,8 @@ describe("Group B templates — ci.yml", () => {
     expect(env!).toContain("BKIT_GH_TOKEN_INSTALL");
   });
 
-  it("ci.yml install step writes the GH Packages auth token via pnpm config set (user-level, before install)", () => {
-    const content = readTemplate(".github/workflows/ci.yml");
+  it("bkit-ci.yml install step writes the GH Packages auth token via pnpm config set (user-level, before install)", () => {
+    const content = readTemplate(".github/workflows/bkit-ci.yml");
     expect(content).toMatch(
       /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$BKIT_GH_TOKEN_INSTALL/,
     );
@@ -221,7 +226,7 @@ describe("slop-scan.config.json — required core rules (JSON deep-containment)"
     // load ("plugin not loaded"), wedging lint:slop. Guard rule+plugin together.
     const content = readTemplate("slop-scan.config.json");
     const data = JSON.parse(content) as { plugins?: Record<string, string> };
-    expect(data.plugins?.boundary).toBe("./.bkit/scripts/bkit-slop-type-suppression.mjs");
+    expect(data.plugins?.boundary).toBe("./scripts/slop/bkit-slop-type-suppression.mjs");
   });
 });
 

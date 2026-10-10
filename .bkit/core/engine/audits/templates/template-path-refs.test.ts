@@ -5,8 +5,9 @@
 // that reads or runs one by path breaks the day the consumer does, so the
 // mechanics a workflow needs live in `bkit <noun> <verb>` commands instead, and
 // settings come from `package.json` `bkit`. The forbidden names come from every
-// file in the templates folder that `isTemplate` accepts, so a new template is
-// covered without editing this test.
+// file in the templates folder, so a new template is covered without editing this
+// test. Names a written payload file also carries (settings.json, hooks.json) stay
+// ordinary prose.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -14,8 +15,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
-import { isTemplate } from "../../install/template-copies";
-import { getTemplatesRoot } from "../../shared/package-roots";
+import { getCoreRoot, getSharedRoot, getTemplatesRoot } from "../../shared/package-roots";
 
 const repo = path.resolve(__dirname, "../../../../..");
 
@@ -29,17 +29,38 @@ function shippedPaths(): string[] {
   );
 }
 
+/** Package-only subtrees under `core/` that never land in a consumer repo. */
+const CORE_PACKAGE_ONLY = new Set(["engine", "workflows", "prompts", ".bkit", "hooks"]);
+
+/** Every payload file install can write, at its consumer path, `/`-separated. */
+function payloadPaths(): string[] {
+  const out: string[] = [];
+  for (const [root, skipTop] of [
+    [getSharedRoot(), new Set<string>()],
+    [getCoreRoot(), CORE_PACKAGE_ONLY],
+  ] as const) {
+    if (!fs.existsSync(root)) continue;
+    for (const abs of listFilesRecursive(root)) {
+      const rel = path.relative(root, abs);
+      const top = rel.split(path.sep)[0]!;
+      if (rel.split(path.sep).length > 1 && skipTop.has(top)) continue;
+      if (path.basename(rel) === "LICENSE.md") continue;
+      out.push(remapTemplateDest(rel).split(path.sep).join("/"));
+    }
+  }
+  return out;
+}
+
 /**
  * Literal strings that name a template path:
- * - every template's full path (`.github/workflows/ci.yml`, `docs/capabilities.md`);
+ * - every template's full path (`.github/workflows/bkit-ci.yml`, `docs/capabilities.md`);
  * - every top-level folder holding only templates, with its slash (`.husky/`, `scripts/`);
- * - every template file name with an extension that no owned file shares (`ci.yml`);
+ * - every template file name with an extension that no owned file shares (`bkit-ci.yml`);
  *   a bare word like `pre-commit` is ordinary prose, and `settings.json` is also an owned file.
  */
 function forbiddenNames(): string[] {
-  const shipped = shippedPaths();
-  const templates = shipped.filter((rel) => isTemplate(rel));
-  const owned = shipped.filter((rel) => !isTemplate(rel));
+  const templates = shippedPaths();
+  const owned = payloadPaths();
   const topFolders = [
     ...new Set(templates.filter((rel) => rel.includes("/")).map((rel) => rel.split("/")[0]!)),
   ].filter((top) => !owned.some((rel) => rel.startsWith(`${top}/`)));
@@ -56,14 +77,17 @@ function forbiddenNames(): string[] {
  */
 const ALLOWED: Array<{ file: string; text: string; why: string }> = [
   {
-    file: ".bkit/prompts/bkit-design-review-1.md",
+    file: ".bkit/core/prompts/bkit-design-review-1.md",
     text: "`docs/capabilities.md` when present",
     why: "an optional read: the prior-art search uses the capability map only when the consumer adopted the graphify template, and treats an empty result as inconclusive",
   },
 ];
 
 function corpus(): Array<{ file: string; text: string }> {
-  const dirs = [path.join(repo, ".bkit", "workflows"), path.join(repo, ".bkit", "prompts")];
+  const dirs = [
+    path.join(repo, ".bkit", "core", "workflows"),
+    path.join(repo, ".bkit", "core", "prompts"),
+  ];
   const files = dirs.flatMap((d) =>
     listDir(d)
       .filter((f) => f.endsWith(".md"))
@@ -74,9 +98,9 @@ function corpus(): Array<{ file: string; text: string }> {
 }
 
 describe("no workflow or prompt names a template path", () => {
-  it("derives the forbidden list from every template isTemplate accepts", () => {
+  it("derives the forbidden list from every template file", () => {
     const names = forbiddenNames();
-    const templates = shippedPaths().filter((rel) => isTemplate(rel));
+    const templates = shippedPaths();
     expect(templates.length).toBeGreaterThan(0);
     for (const rel of templates) expect(names, rel).toContain(rel);
     for (const rel of [
@@ -87,11 +111,13 @@ describe("no workflow or prompt names a template path", () => {
       "docs/capabilities.md",
       ".github/renovate.json5",
       ".github/dependabot.yml",
-      "context/vercel.md",
+      "context/bkit-vercel.md",
+      "scripts/slop/bkit-slop-type-suppression.mjs",
     ]) {
       expect(names, rel).toContain(rel);
     }
-    expect(names).toContain("ci.yml");
+    expect(names).toContain("bkit-ci.yml");
+    expect(names).toContain("bkit-renovate.yml");
     expect(names).toContain(".husky/");
     expect(names).toContain("scripts/");
     expect(names).not.toContain("settings.json");
@@ -106,8 +132,12 @@ describe("no workflow or prompt names a template path", () => {
 
   it("reads every workflow and prompt", () => {
     const files = corpus().map((c) => c.file);
-    expect(files.filter((f) => f.startsWith(".bkit/workflows/")).length).toBeGreaterThanOrEqual(6);
-    expect(files.filter((f) => f.startsWith(".bkit/prompts/")).length).toBeGreaterThan(10);
+    expect(
+      files.filter((f) => f.startsWith(path.join(".bkit", "core", "workflows"))).length,
+    ).toBeGreaterThanOrEqual(6);
+    expect(
+      files.filter((f) => f.startsWith(path.join(".bkit", "core", "prompts"))).length,
+    ).toBeGreaterThan(10);
   });
 
   it.each(corpus())("$file names no template path", ({ file, text }) => {

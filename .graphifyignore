@@ -71,9 +71,14 @@
 # .serena/ self-ignores only its cache and project.local.yml, so the rest of it
 # is visible to graphify; it is another agent's working state either way.
 .agents/skills/
-# bkit repo only: .bkit/core/engine and .bkit/scripts are source; the install payload and
-# the committed compiler output stay out.
+# bkit repo only: .bkit/core/engine and .bkit/core/hooks are source; the install
+# payload and the committed compiler output stay out.
+.bkit/shared/
 .bkit/templates/
+.bkit/core/.claude/
+.bkit/core/.codex/
+.bkit/core/.cursor/
+.bkit/core/.opencode/
 dist/
 .claude/
 .codex/

@@ -30,7 +30,7 @@ name: bkit-cloud
 
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [bkit-ci]
     branches: ['feat/**', 'dev']
     types: [completed]
   workflow_dispatch:
@@ -322,14 +322,14 @@ jobs:
               fi
               # Stale-run guard: HEAD_SHA is current iff it is the headSha of the
               # most recent COMPLETED CI run on dev ([skip ci] close commits never
-              # appear in gh run list). --workflow ci.yml (filename), not `CI`
+              # appear in gh run list). --workflow bkit-ci.yml (filename), not `bkit-ci`
               # (display name).
-              LATEST_CI_SHA=$(gh run list --branch dev --workflow ci.yml --status completed --limit 10 \
+              LATEST_CI_SHA=$(gh run list --branch dev --workflow bkit-ci.yml --status completed --limit 10 \
                 --json headSha --jq '.[0].headSha // empty' 2>/dev/null || echo "")
               # an empty LATEST_CI_SHA disables the staleness check (fail-open)
-              # and emits a ::warning:: naming the ci.yml filename requirement.
+              # and emits a ::warning:: naming the bkit-ci.yml filename requirement.
               if [ -z "$LATEST_CI_SHA" ]; then
-                echo "::warning::gh run list --branch dev --workflow ci.yml returned no completed runs — stale-run guard disabled for this dispatch (proceeding, fail-open). If this persists, verify the consumer CI workflow file is named ci.yml (\`gh workflow view ci.yml\`)."
+                echo "::warning::gh run list --branch dev --workflow bkit-ci.yml returned no completed runs — stale-run guard disabled for this dispatch (proceeding, fail-open). If this persists, verify the consumer CI workflow file is named bkit-ci.yml (\`gh workflow view ci.yml\`)."
               fi
               if [ -n "$LATEST_CI_SHA" ] && [ "$HEAD_SHA" != "$LATEST_CI_SHA" ]; then
                 # A DIFFERENT FID's dev CI failure may have superseded this run
@@ -475,7 +475,7 @@ jobs:
 
       # Installs the vale binary for cloud-bootstrap.sh's `vale sync` and the dispatched
       # phase's lint:prose (as the cloud.md web env's setup script does). Pinned tarball +
-      # SHA mirror ci.yml.
+      # SHA mirror bkit-ci.yml.
       - name: Install vale
         env:
           VALE_VERSION: "3.9.1"

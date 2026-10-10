@@ -72,11 +72,11 @@ function readRepo(rel: string): string {
 }
 
 const WORKFLOW_FILES = [
-  ".bkit/workflows/bkit-build.md",
-  ".bkit/workflows/bkit-debug.md",
-  ".bkit/workflows/bkit-plan.md",
-  ".bkit/workflows/bkit-design.md",
-  ".bkit/workflows/bkit-ship.md",
+  ".bkit/core/workflows/bkit-build.md",
+  ".bkit/core/workflows/bkit-debug.md",
+  ".bkit/core/workflows/bkit-plan.md",
+  ".bkit/core/workflows/bkit-design.md",
+  ".bkit/core/workflows/bkit-ship.md",
 ];
 
 const realFiles = () =>

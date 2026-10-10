@@ -1,5 +1,5 @@
-// install/template-copies.ts — the consumer's `.bkit/templates/` copies: which package files are
-// templates (isTemplate), and the sync that refreshes the copies.
+// install/template-copies.ts — the consumer's `.bkit/templates/` copies: the sync that
+// refreshes them, and the dotfile remap they share with the install/upgrade walk.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -24,49 +24,13 @@ export function listFilesRecursive(dir: string): string[] {
 
 // The dotfile remap: the one table lives in shared/package-roots.ts (NPM_STRIP_REMAP); the
 // module install pass (install/modules/index.ts) and the `bkit upgrade` template walk both
-// call this, so they never disagree about how a template basename maps to its dest.
+// call this, so they never disagree about how a payload basename maps to its dest.
 export function remapTemplateDest(rel: string): string {
   const dir = path.dirname(rel);
   const base = path.basename(rel);
   const mapped = NPM_STRIP_REMAP[base];
   if (mapped === undefined) return rel;
   return dir === "." ? mapped : path.join(dir, mapped);
-}
-
-/**
- * Templates. Install and upgrade copy them into the consumer's `.bkit/templates/`
- * and never apply them. A consumer copies the file into the repo and owns it.
- */
-const TEMPLATE_EXACT = new Set([
-  ".github/renovate.json5",
-  ".github/dependabot.yml",
-  ".github/workflows/renovate.yml",
-  ".github/workflows/ci.yml",
-  ".github/workflows/bkit-cloud.yml",
-  ".husky/pre-commit",
-  ".husky/pre-push",
-  ".vale.ini",
-  ".lintstagedrc.json",
-  "slop-scan.config.json",
-  ".prettierignore",
-  ".envrc",
-  ".cursor/settings.json",
-  ".cursor/environment.json",
-  ".cursor/Dockerfile",
-  ".graphifyignore",
-  ".serena/project.yml",
-  "docs/capabilities.md",
-]);
-
-export function isTemplate(relPath: string): boolean {
-  const norm = relPath.split(path.sep).join("/");
-  if (TEMPLATE_EXACT.has(norm)) return true;
-  if (norm.startsWith(".vale/styles/House/")) return true;
-  // One context-fetch file per provider, copied below `bkit:end` in `.agents/context.md`.
-  if (norm.startsWith("context/")) return true;
-  // Root `scripts/` in the templates holds only per-tool examples (`scripts/<tool>/`).
-  // bkit's own scripts live under `.bkit/scripts/`.
-  return norm === "scripts" || norm.startsWith("scripts/");
 }
 
 /** Template paths (relative to `.bkit/templates/`) a sync changed, added or removed. */
@@ -76,7 +40,7 @@ export interface TemplateCopyChanges {
   removed: string[];
 }
 
-// Copy the template set (isTemplate) from the package into the consumer's
+// Copy the whole templates root from the package into the consumer's
 // `.bkit/templates/`, raw: no token substitution, so the copy is the package bytes and
 // `git diff .bkit/templates` on an upgrade commit is the template changelog. Byte-compares
 // first, keeps the source mode (hooks and scripts are executable), and prunes copies that
@@ -94,7 +58,6 @@ export function syncTemplateCopies(
   const shipped = new Set<string>();
   for (const srcPath of listFilesRecursive(srcRoot)) {
     const rel = path.relative(srcRoot, srcPath);
-    if (!isTemplate(remapTemplateDest(rel))) continue;
     shipped.add(rel);
     const dstPath = path.join(dstRoot, rel);
     const exists = fs.existsSync(dstPath);

@@ -1,23 +1,18 @@
-// install/modules/core.ts — the core module: core templates, the canonical `.bkit/*.md` docs,
-// package.json gate scripts and `.bkit/version` (written last, in postDispatch). Also the
-// lint module (--typescript) and the file helpers every host renderer shares.
+// install/modules/core.ts — the core module: the core payload blocks, the canonical
+// `.bkit/*.md` docs, package.json gate scripts and `.bkit/version` (written last, in
+// postDispatch). Also the file helpers every host renderer shares.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-  writeTier1,
-  writeTier2,
-  ensurePackageJsonScripts,
-  ensureDir,
-  type WriteSet,
-} from "../write.js";
+import { writeTier1, writeTier2, ensurePackageJsonScripts, type WriteSet } from "../write.js";
 import { readBkitVersion, writeBkitVersion, hashFile } from "../version-file.js";
 import type { TokenMap } from "../placeholders.js";
-import { remapTemplateDest, isTemplate, syncTemplateCopies } from "../template-copies.js";
+import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
 import {
   getPkgRoot,
-  getTemplatesRoot,
+  getCoreRoot,
+  getSharedRoot,
   getBkitDocsRoot,
   TEMPLATE_COPIES_DIR,
 } from "../../shared/package-roots.js";
@@ -91,118 +86,101 @@ export function removeOrphans(
 }
 
 // ---------------------------------------------------------------------------
-// Core template files — directories/basenames owned ONLY by core module.
-// These are templates that don't belong to the lint/claude/cursor modules.
+// Core payload — the files install writes from `core/`, at their
+// folder-relative dest paths. The package-only subtrees (engine/, workflows/,
+// prompts/, .bkit/, hooks/), the root LICENSE.md and the shared/ and
+// templates/ payloads are NOT part of this walk: the host modules write their
+// own hook files (sourced from `core/`), and `runBkitDocs` mirrors the
+// reference docs.
 // ---------------------------------------------------------------------------
 
-// Top-level template directories/files that belong to core (not other modules)
-const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents", ".bkit", "scripts"]);
+/** A core-owned payload file and how install writes it. */
+interface CoreTemplateFile {
+  /** Absolute source path. */
+  src: string;
+  /** Consumer-relative destination. */
+  dst: string;
+  /** `block`: writeTier2 refreshes the managed block. `whole`: writeTier1. */
+  scope: "block" | "whole";
+  /** Block-scope marker style. */
+  marker: "html-comment" | "slash-comment";
+}
 
-// Top-level template files (non-directory) that belong to core.
-// `gitignore` is stored dot-less (npm strips a literal `.gitignore`); `.gitattributes`
-// is stored with its dot (npm does not strip it) — see remapTemplateDest / NPM_STRIP_REMAP.
-// CLAUDE.md is NOT here: it belongs to the `claude` module (a Claude-Code-only root
-// redirect, the analog of Cursor's .cursor/rules/00-shared-rules.mdc) — runClaudeModule
-// emits it. AGENTS.md (cross-host dispatch router) stays core.
-const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "gitignore", ".gitattributes"]);
+/** The markered-text `.agents/*.md` blocks core owns. */
+const CORE_AGENT_FILES = ["context.md", "docs.md", "rules.md", "skills.md"] as const;
 
-// Files inside the .agents/ and .bkit/ subtemplate dirs that another module writes —
-// skip in the core templates pass to avoid double-recording them in the WriteSet.
-// `.bkit/.env.example` is written by the claude module (writeTier1).
-const SUBTEMPLATE_MODULE_OWNED = new Set([".env.example"]);
-
-// Files that live under a core-owned template dir (e.g. `.bkit/scripts/`) but are
-// NOT shipped by the plain core pass — skip them there so the right owner writes them.
-const SLOP_PLUGIN = "bkit-slop-type-suppression.mjs";
-
-const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
-  // The slop-scan plugin belongs to the `lint` module (--typescript); a consumer without
-  // it never receives the file. runLintModule emits it as Tier 1.
-  path.join(".bkit", "scripts", SLOP_PLUGIN),
-]);
-
-// Template subdirectories that belong to non-core modules (skip in core pass)
-const NON_CORE_TEMPLATE_DIRS = new Set([
-  ".github",
-  ".vale",
-  ".vale.ini",
-  ".husky",
-  ".prettierignore",
-  ".cursor",
-  ".claude",
-  ".opencode",
-]);
+// The two shared-root files core writes: stored in `shared/`, owned by the core
+// manifest, written as html-comment managed blocks.
+const CORE_SHARED_FILES: ReadonlyArray<readonly [rel: string, dst: string]> = [
+  ["gitignore", ".gitignore"],
+  [".gitattributes", ".gitattributes"],
+];
 
 // ---------------------------------------------------------------------------
-// guardTemplatesRoot — fail-loud guard for the resolved templates root.
+// guardCoreRoot — fail-loud guard for the resolved core payload root.
 // Exported so tests can inject an arbitrary (non-existent) path and assert
-// the guard fires for ANY missing root — not just the literal ".bkit/templates"
+// the guard fires for ANY missing root — not just the literal ".bkit/core"
 // string. This keeps the assertion valid across any future path changes.
 //
 // Called by runCoreTemplates (below) before any FS access.
 // ---------------------------------------------------------------------------
 
-export function guardTemplatesRoot(root: string, logPrefix = "[bkit-modules]"): void {
+export function guardCoreRoot(root: string, logPrefix = "[bkit-modules]"): void {
   if (!fs.existsSync(root)) {
-    console.error(`${logPrefix} Templates root not found at ${root} — package corrupt?`);
+    console.error(`${logPrefix} Core root not found at ${root} — package corrupt?`);
     process.exit(1);
   }
 }
 
-/** A core-owned template and how install writes it. */
-interface CoreTemplateFile {
-  /** Absolute template path. */
-  src: string;
-  /** Consumer-relative destination. */
-  dst: string;
-  /** `block`: writeTier2 refreshes the html-comment managed block. `whole`: writeTier1. */
-  scope: "block" | "whole";
-}
-
-// The core-owned templates (top-level AGENTS.md / .gitignore / .gitattributes, docs/,
-// .agents/, .bkit/scripts/). Each other module handles its own template files directly.
-// `.agents/` templates are sourced from the templates tree, never from bkit's own dogfood
-// `.agents/*.md`; COPY_EXCLUDE lists their basenames so copyAdditive never writes them.
-export function listCoreTemplateFiles(root: string): CoreTemplateFile[] {
+/**
+ * The core-owned payload files, sourced from `root` (defaults to the resolved
+ * core root). Every file under `core/docs/templates/` is included; `AGENTS.md`
+ * and the `.agents/*.md` doctrine files are the block-merged rest.
+ */
+export function listCoreTemplateFiles(root: string = getCoreRoot()): CoreTemplateFile[] {
   const out: CoreTemplateFile[] = [];
-  for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
-    const name = ent.name;
-    if (NON_CORE_TEMPLATE_DIRS.has(name)) continue;
-    if (ent.isFile() && CORE_TEMPLATE_FILES.has(name)) {
-      // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
-      out.push({ src: path.join(root, name), dst: remapTemplateDest(name), scope: "block" });
-    } else if (ent.isDirectory() && CORE_TEMPLATE_DIRS.has(name)) {
-      collectCoreTemplateDir(path.join(root, name), name, out);
+  const agentsDir = path.join(root, ".agents");
+  for (const name of CORE_AGENT_FILES) {
+    const src = path.join(agentsDir, name);
+    if (fs.existsSync(src)) {
+      out.push({ src, dst: path.join(".agents", name), scope: "block", marker: "html-comment" });
     }
+  }
+  const agentsMd = path.join(root, "AGENTS.md");
+  if (fs.existsSync(agentsMd)) {
+    out.push({ src: agentsMd, dst: "AGENTS.md", scope: "block", marker: "html-comment" });
+  }
+  for (const abs of listFilesRecursive(path.join(root, "docs", "templates"))) {
+    out.push({
+      src: abs,
+      dst: path.relative(root, abs),
+      scope: "block",
+      marker: "html-comment",
+    });
   }
   return out;
 }
 
-function collectCoreTemplateDir(srcDir: string, relBase: string, out: CoreTemplateFile[]): void {
-  for (const ent of fs.readdirSync(srcDir, { withFileTypes: true })) {
-    // Skip subtemplate files another module writes (e.g. .bkit/.env.example).
-    if (
-      ent.isFile() &&
-      (relBase === ".agents" || relBase === ".bkit") &&
-      SUBTEMPLATE_MODULE_OWNED.has(ent.name)
-    ) {
-      continue;
-    }
-    const srcPath = path.join(srcDir, ent.name);
-    const relPath = path.join(relBase, ent.name);
-    if (ent.isDirectory()) {
-      collectCoreTemplateDir(srcPath, relPath, out);
-    } else if (ent.isFile()) {
-      // Templates live under core dirs (scripts/, docs/) but are not installed.
-      if (isTemplate(relPath)) continue;
-      // Skip opt-in-module-owned files that happen to live under a core dir.
-      if (CORE_TEMPLATE_PATH_EXCLUDE.has(relPath)) continue;
-      // `.bkit/scripts/*` are bkit-owned whole files with no consumer region: Tier 1,
-      // overwritten and drift-checked whole, as the upgrade engine treats them.
-      const scope = relBase === path.join(".bkit", "scripts") ? "whole" : "block";
-      out.push({ src: srcPath, dst: relPath, scope });
-    }
+/**
+ * The shared payload files core writes, sourced from `root` (defaults to the
+ * resolved shared root): the `docs/*.md` managed blocks and the two shared-root
+ * files the core manifest owns.
+ */
+export function listSharedTemplateFiles(root: string = getSharedRoot()): CoreTemplateFile[] {
+  const out: CoreTemplateFile[] = [];
+  for (const [rel, dst] of CORE_SHARED_FILES) {
+    const src = path.join(root, rel);
+    if (fs.existsSync(src)) out.push({ src, dst, scope: "block", marker: "html-comment" });
   }
+  for (const name of listMdFiles(path.join(root, "docs"))) {
+    out.push({
+      src: path.join(root, "docs", name),
+      dst: path.join("docs", name),
+      scope: "block",
+      marker: "html-comment",
+    });
+  }
+  return out;
 }
 
 function runCoreTemplates(
@@ -211,13 +189,14 @@ function runCoreTemplates(
   ws: WriteSet,
   logPrefix: string,
 ): void {
-  const root = getTemplatesRoot();
-  guardTemplatesRoot(root, logPrefix);
+  const root = getCoreRoot();
+  guardCoreRoot(root, logPrefix);
   const tag = dryRun ? "[dry-run] " : "";
-  for (const { src, dst, scope } of listCoreTemplateFiles(root)) {
+  const files = [...listCoreTemplateFiles(root), ...listSharedTemplateFiles()];
+  for (const { src, dst, scope, marker } of files) {
     const prevLen = ws.writes.length;
     if (scope === "whole") writeTier1(src, dst, tokens, dryRun, ws);
-    else writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+    else writeTier2(src, dst, tokens, marker, dryRun, ws);
     if (ws.writes.length > prevLen) {
       console.log(`${logPrefix} ${tag}core: ${dst}`);
     }
@@ -229,8 +208,8 @@ function runCoreTemplates(
 // ---------------------------------------------------------------------------
 
 // Tier-2-style `.agents/*.md` files (rules/friction/docs/skills) are excluded:
-// they ship as templates under `.bkit/templates/.agents/` and are installed by the
-// templates pass.
+// they ship as core payload blocks under `.bkit/core/.agents/` and are written by
+// the core templates pass.
 const COPY_EXCLUDE = new Set([
   "skills",
   "scripts",
@@ -240,8 +219,8 @@ const COPY_EXCLUDE = new Set([
   "docs.md",
   "skills.md",
   "context.md",
-  // .env.example is written by the claude module (writeTier1 from the template at
-  // .bkit/templates/.bkit/.env.example).
+  // .env.example is written by the claude module (writeTier1 from the shared payload at
+  // .bkit/shared/.bkit/.env.example).
   ".env.example",
 ]);
 
@@ -249,22 +228,25 @@ const COPY_EXCLUDE = new Set([
 // default skip-if-exists is wrong for canonical bkit-owned content).
 //
 // EMPTY: the bkit-authoring docs / engine data (prompts.md, workflows.md, providers.md,
-// cloud.md) live package-side under `.bkit/` and are read directly from there at
-// runtime (getBkitDocsRoot). They are not `.agents/` files, so there is nothing to
+// cloud.md) live package-side under `.bkit/core/.bkit/` and are read directly from there
+// at runtime (getBkitDocsRoot). They are not `.agents/` files, so there is nothing to
 // force-overwrite HERE. Their consumer-side mirrors (under `.bkit/`, not `.agents/`)
 // are written by `runBkitDocs` (see BKIT_CANONICAL_DOCS below). This set is the
 // extension point for a canonical consumer-side `.agents/` file.
 export const CANONICAL_OVERWRITE_RELPATHS = new Set<string>([]);
 
-// Canonical bkit-authored reference docs that live package-side under `.bkit/`.
-// They are read from there at runtime (getBkitDocsRoot) AND mirrored into the
-// consumer's `.bkit/` on every install so a consumer can read them in-repo without
-// spelunking node_modules. Force-overwritten (Tier 1) — bkit owns them, so a
-// consumer edit is replaced. Source of truth is the package's own `.bkit/<name>`.
-// Every entry ships in the tarball under `.bkit/`. (`advisories.md` is a regenerated runtime
-// artifact and `friction.md` is a consumer-owned seed — neither belongs here.)
+// Canonical bkit-authored reference docs that live package-side under
+// `.bkit/core/.bkit/`. They are read from there at runtime (getBkitDocsRoot) AND
+// mirrored into the consumer's `.bkit/` on every install so a consumer can read them
+// in-repo without spelunking node_modules. Force-overwritten (Tier 1) — bkit owns
+// them, so a consumer edit is replaced. Source of truth is the package's own
+// `.bkit/core/.bkit/<name>`. (`advisories.md` is a regenerated runtime artifact,
+// `wording.md` is repo-only tooling and `friction.md` is a consumer-owned seed —
+// none belongs here.)
 export const BKIT_CANONICAL_DOCS = [
   "cloud.md",
+  "comparison.md",
+  "install.md",
   "jsonl.md",
   "providers.md",
   "prompts.md",
@@ -276,8 +258,8 @@ export const BKIT_CANONICAL_DOCS = [
 
 // Mirror the package's canonical `.bkit/*.md` docs into the consumer's `.bkit/`.
 // Tier 1 (force-overwrite + ws-tracked for dry-run/install parity). Each source carries
-// the `{{BKIT_MANAGED_MARKER}}` token. Skipped in dogfood: getBkitDocsRoot() resolves to
-// <cwd>/.bkit, so the source is the destination and stays unrendered.
+// the `{{BKIT_MANAGED_MARKER}}` token. Skipped in dogfood: the consumer destination
+// resolves to the repo's own installed copies, never the package source.
 export function runBkitDocs(
   dryRun: boolean,
   tokens: TokenMap,
@@ -296,7 +278,6 @@ export function runBkitDocs(
     // missing src).
     if (!fs.existsSync(srcPath)) continue;
     const dstPath = path.join(".bkit", name);
-    if (path.resolve(dstPath) === path.resolve(srcPath)) continue;
     const prevLen = ws.writes.length;
     if (formatByPath.get(path.join(".bkit", name)) === "markered-text") {
       writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
@@ -581,19 +562,19 @@ export function runCoreModule(ctx: ModuleContext): void {
     );
   }
 
-  // 2. Core templates pass (only core-owned template files: AGENTS.md, CLAUDE.md, .gitignore, docs/)
-  // Each other module handles its own template files directly.
-  console.log(`${logPrefix} ${tag}Running core templates pass`);
+  // 2. Core payload pass (AGENTS.md, `.agents/*.md`, `docs/templates/**`, the two
+  // shared-root files core owns). Each host module writes its own hook files.
+  console.log(`${logPrefix} ${tag}Running core payload pass`);
   runCoreTemplates(dryRun, ctx.tokens, ws, logPrefix);
 
-  // 3b. bkit canonical docs pass — mirror the package's `.bkit/*.md` reference docs
-  // (cloud/IDEs/prompts/trackers/workflows/README) into the consumer's `.bkit/` so
-  // they are readable in-repo. Force-overwrite (Tier 1); no-op in dogfood.
+  // 3b. bkit canonical docs pass — mirror the package's reference docs
+  // (cloud/IDEs/prompts/trackers/workflows/README/install/comparison) into the
+  // consumer's `.bkit/` so they are readable in-repo. Force-overwrite (Tier 1).
   console.log(`${logPrefix} ${tag}Running bkit docs pass`);
   runBkitDocs(dryRun, ctx.tokens, ws, logPrefix);
 
-  // 3b2. Template copies — the template set into the consumer's `.bkit/templates/`
-  // (never applied to the repo; no-op in dogfood).
+  // 3b2. Template copies — the whole templates root into the consumer's
+  // `.bkit/templates/` (never applied to the repo; no-op in dogfood).
   console.log(`${logPrefix} ${tag}Running template copies pass`);
   const templateChanges = syncTemplateCopies(cwd, { dryRun, ws });
   for (const [verb, paths] of Object.entries(templateChanges)) {
@@ -698,27 +679,3 @@ export function runCoreModule(ctx: ModuleContext): void {
 // ---------------------------------------------------------------------------
 
 export const BKIT_PREFIX = "bkit-";
-
-// ---------------------------------------------------------------------------
-// runLintModule — the owned slop-scan type-suppression plugin. The tool scripts and
-// devDeps, slop-scan.config.json, .prettierignore, .lintstagedrc.json, the Vale config
-// and the husky hooks ship as templates (`.bkit/templates.md`).
-// ---------------------------------------------------------------------------
-
-export function runLintModule(ctx: ModuleContext): void {
-  const { dryRun, tokens, ws, logPrefix } = ctx;
-  const tag = dryRun ? "[dry-run] " : "";
-
-  // Not in the core template walk: ships only with --typescript.
-  // Tier 1 (bkit-owned, force-overwritten; writeTier1 copies the source mode). Listed
-  // in CORE_TEMPLATE_PATH_EXCLUDE so the core pass skips it.
-  const scriptSrc = path.join(getTemplatesRoot(), ".bkit", "scripts", SLOP_PLUGIN);
-  if (!fs.existsSync(scriptSrc)) return;
-  const scriptDst = path.join(".bkit", "scripts", SLOP_PLUGIN);
-  ensureDir(path.dirname(scriptDst));
-  const prevLen = ws.writes.length;
-  writeTier1(scriptSrc, scriptDst, tokens, dryRun, ws);
-  if (ws.writes.length > prevLen) {
-    console.log(`${logPrefix} ${tag}lint: ${scriptDst}`);
-  }
-}

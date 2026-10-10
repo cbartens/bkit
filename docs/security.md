@@ -73,15 +73,15 @@ Must be a **classic** GitHub PAT with `read:packages` scope. Fine-grained PATs c
 - NEVER log or print the token. `detectShellToken` (Phase 3) checks presence only.
 - `git status` before every commit — `.env*` in `.gitignore`, must never be staged.
 
-### `.claude/cloud.md` + `.cursor/cloud.md` — generated, hold live secrets
+### `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` — generated, hold live secrets
 
-`bkit install` / `upgrade` generate `.claude/cloud.md` (Claude Code on the web) and `.cursor/cloud.md` (Cursor Cloud Agents) with the dashboard env/secret block resolved to **REAL secret values**. Both share one resolver (`.bkit/core/engine/install/cloud-env.ts`); a per-cloud policy differs only in baseline tokens (Cursor+Linear adds `BKIT_LINEAR_API_KEY`) and constants (Claude adds `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`). Rules:
+`bkit install` / `upgrade` generate `.claude/bkit-cloud.md` (Claude Code on the web) and `.cursor/bkit-cloud.md` (Cursor Cloud Agents) with the dashboard env/secret block resolved to **REAL secret values**. Both share one resolver (`.bkit/core/engine/install/cloud-env.ts`); a per-cloud policy differs only in baseline tokens (Cursor+Linear adds `BKIT_LINEAR_API_KEY`) and constants (Claude adds `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`). Rules:
 
 - **Gitignored + `chmod 600`. NEVER commit.** Deliberately UNTRACKED — absent from WriteSet / manifest / `canonicalHashes` — so no `bkit check` drift or upgrade template walk (machine-local values expected to differ). `bkit uninstall` deletes them when the respective host is removed.
 - **Resolution follows consumer `.envrc`** — bkit reads sourced dotenv files, honours `unset` lines. No hardcoded stack-specific key list; knowledge stays in consumer `.envrc` (stack-independent shipped surface).
 - **Session-hijack keys always dropped** from the block: `ANTHROPIC_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` — exporting them redirects the agent's own model calls to API-key billing vs subscription.
 - Empty-valued keys skipped; absent baseline tokens (`BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`) → placeholder, never fabricated.
-- **Cursor secret type:** the `.cursor/cloud.md` doc directs you to add each as a **Runtime Secret** (loaded as an env var but redacted from the agent's transcript) in the Cloud Agents dashboard → Secrets tab — so tools read the value while the agent transcript never sees it.
+- **Cursor secret type:** the `.cursor/bkit-cloud.md` doc directs you to add each as a **Runtime Secret** (loaded as an env var but redacted from the agent's transcript) in the Cloud Agents dashboard → Secrets tab — so tools read the value while the agent transcript never sees it.
 
 ## Shell Injection
 

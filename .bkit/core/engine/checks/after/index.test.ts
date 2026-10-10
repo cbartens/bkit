@@ -742,9 +742,9 @@ describe("challenge-tests", () => {
     });
 
     it("formatChecklist for single blocker renders 1/1 count correctly", () => {
-      // Use lint module (not core) so not-git-repo does not fire alongside no-package-json
+      // Use a host module (not core) so not-git-repo does not fire alongside no-package-json
       fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-      const { blockers } = runPreflight(makeModules("lint"), tmpDir);
+      const { blockers } = runPreflight(makeModules("claude"), tmpDir);
 
       // Only no-package-json fires
       expect(blockers).toHaveLength(1);

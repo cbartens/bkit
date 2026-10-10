@@ -25,8 +25,7 @@ import { stripManagedBlock, detectMarkerStyle } from "../../install/managed-bloc
 import { readTemplate } from "../../render/parts.js";
 import { getInstallManifest, } from "../../install/manifest.js";
 import { isConsumerModified, readBkitVersion } from "../../install/version-file.js";
-import { getPkgRoot, getTemplatesRoot, TEMPLATE_COPIES_DIR } from "../../shared/package-roots.js";
-import { isTemplate } from "../../install/template-copies.js";
+import { getPkgRoot, getSharedRoot, findTemplateSource, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
 import { removeOpencodeProviderBlock, renderOpencodeJson } from "../../install/modules/opencode.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, resolveClaudeDerivedAllows, } from "../../install/cloud-env.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
@@ -169,18 +168,19 @@ const CORE_TEMPLATE_DOCTRINE = [
     { path: ".agents/skills.md", format: "markered-text", module: "core" },
 ];
 /**
- * The top-level `docs/*.md` the core templates pass installs: each carries bkit's managed
+ * The top-level `docs/*.md` the core payload pass installs: each carries bkit's managed
  * block (`bkit:start` / `bkit:end`, managed marker inside), so uninstall strips the block
- * and keeps the consumer's content, exactly like `.agents/*.md`. `docs/capabilities.md` is
- * a template (copied, never installed) and is left alone.
+ * and keeps the consumer's content, exactly like `.agents/*.md`. The payload's
+ * `shared/docs/` holds only these block docs; `docs/capabilities.md` is a template
+ * (copied, never installed) and is left alone.
  */
 function coreDocEntries() {
-    const dir = path.join(getTemplatesRoot(), "docs");
+    const dir = path.join(getSharedRoot(), "docs");
     if (!fs.existsSync(dir))
         return [];
     return fs
         .readdirSync(dir, { withFileTypes: true })
-        .filter((e) => e.isFile() && e.name.endsWith(".md") && !isTemplate(path.join("docs", e.name)))
+        .filter((e) => e.isFile() && e.name.endsWith(".md"))
         .map((e) => ({
         path: path.join("docs", e.name),
         format: "markered-text",
@@ -194,7 +194,7 @@ export function buildDecisionTable(modules, ctx) {
     const moduleList = modules instanceof Set
         ? [...modules].filter((m) => 
         // Includes the opt-in add-ons (cloud) a Set caller passes.
-        ["core", "claude", "cursor", "lint", "opencode", "codex", "cloud"].includes(m))
+        ["core", "claude", "cursor", "opencode", "codex", "cloud"].includes(m))
         : modules;
     const entries = [
         ...getInstallManifest(moduleList),
@@ -388,7 +388,7 @@ export async function runUninstall(modules, ctx) {
     const moduleList = modules instanceof Set
         ? [...modules].filter((m) => 
         // Includes the opt-in add-ons (cloud) a Set caller passes.
-        ["core", "claude", "cursor", "lint", "opencode", "codex", "cloud"].includes(m))
+        ["core", "claude", "cursor", "opencode", "codex", "cloud"].includes(m))
         : modules;
     // Nuke confirmation
     if (ctx.nuke && !ctx.yes && !ctx.dryRun) {
@@ -439,9 +439,9 @@ export async function runUninstall(modules, ctx) {
                     try {
                         if (summary.format === "json") {
                             // JSON deep-containment: strip bkit-owned scope, preserve consumer keys
-                            const templatePath = path.join(getTemplatesRoot(), summary.file);
-                            if (!fs.existsSync(templatePath)) {
-                                // No template — preserve as-is
+                            const templatePath = findTemplateSource(summary.file);
+                            if (templatePath === null || !fs.existsSync(templatePath)) {
+                                // No payload source — preserve as-is
                                 console.warn(`${ctx.logPrefix} no template found for ${summary.file} — preserving`);
                                 result.preserved.push(summary.file);
                                 break;
@@ -520,8 +520,8 @@ export async function runUninstall(modules, ctx) {
                                 .join("\n")
                                 .trim();
                             let isBkitOnlyScaffold = false;
-                            const markeredTemplatePath = path.join(getTemplatesRoot(), summary.file);
-                            if (fs.existsSync(markeredTemplatePath)) {
+                            const markeredTemplatePath = findTemplateSource(summary.file);
+                            if (markeredTemplatePath !== null && fs.existsSync(markeredTemplatePath)) {
                                 const templateContent = readTemplate(markeredTemplatePath);
                                 const templateStripped = stripManagedBlock(templateContent, detectMarkerStyle(templateContent) ?? style);
                                 isBkitOnlyScaffold = normResidual(stripped) === normResidual(templateStripped);
@@ -571,7 +571,7 @@ export async function runUninstall(modules, ctx) {
     if (!ctx.dryRun) {
         const mirrorDirs = [
             // Each host's mirror dirs are gated on its own module so a targeted
-            // uninstall (e.g. --typescript / --auto) leaves other hosts
+            // uninstall (e.g. --claude / --auto) leaves other hosts
             // untouched — symmetric with install. A bare/full uninstall populates
             // moduleList with every host, so all mirrors are still swept then.
             ...(moduleList.includes("claude") ? [".claude/commands", ".claude/agents"] : []),
@@ -653,27 +653,11 @@ export async function runUninstall(modules, ctx) {
             }
         }
     }
-    // Clean up bkit-owned scripts under .bkit/scripts/ (every shipped script is `bkit-*` and
-    // fully bkit-owned). They install via the core templates pass, not the manifest, so they
-    // are globbed, not listed. A full/core uninstall only, symmetric with how the core
-    // templates pass installs them.
+    // Full/core uninstall: the consumer's template copies (`.bkit/templates/`) are
+    // bkit's folder, refreshed whole on every install and upgrade, so they go whole.
+    // Never in dogfood, where that folder is bkit's own template source. Adopted copies
+    // elsewhere in the repo stay.
     if (moduleList.includes("core")) {
-        const scriptsDir = path.join(ctx.cwd, ".bkit", "scripts");
-        if (fs.existsSync(scriptsDir)) {
-            for (const f of fs.readdirSync(scriptsDir)) {
-                if (!f.startsWith("bkit-"))
-                    continue;
-                const rel = path.join(".bkit", "scripts", f);
-                result.deleted.push(rel);
-                if (!ctx.dryRun) {
-                    fs.rmSync(path.join(scriptsDir, f), { force: true });
-                    console.log(`${ctx.logPrefix} delete: ${rel}`);
-                }
-            }
-        }
-        // The consumer's template copies (`.bkit/templates/`) are bkit's folder, refreshed
-        // whole on every install and upgrade, so they go whole. Never in dogfood, where that
-        // folder is bkit's own template source. Adopted copies elsewhere in the repo stay.
         const templatesDir = path.join(ctx.cwd, TEMPLATE_COPIES_DIR);
         if (path.resolve(ctx.cwd) !== getPkgRoot() && fs.existsSync(templatesDir)) {
             result.deleted.push(TEMPLATE_COPIES_DIR);
@@ -684,7 +668,7 @@ export async function runUninstall(modules, ctx) {
         }
     }
     // Prune bkit-authored dirs left empty by the deletions above (e.g. .claude/agents,
-    // .claude/hooks, .bkit/scripts). Candidates are the parent
+    // .claude/hooks). Candidates are the parent
     // dirs of everything deleted, plus their ancestors; each is removed ONLY when it is actually
     // empty (never touches a dir still holding consumer files), deepest-first so the removal
     // cascades up. Skipped in dry-run — nothing was deleted, so nothing is empty to report.

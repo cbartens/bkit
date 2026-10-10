@@ -9,8 +9,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { getWorkflowsRoot } from "../../shared/package-roots";
 
-const SHIP_MD = path.resolve(".bkit/workflows/bkit-ship.md");
+const SHIP_MD = path.join(getWorkflowsRoot(), "bkit-ship.md");
 const BKIT_BIN = path.resolve("dist/cli.js");
 const FID = "999-test-fid";
 

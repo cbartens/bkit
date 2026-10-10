@@ -218,7 +218,7 @@
     }
   },
   "plugin": [
-    ".opencode/plugin/gateguard.js"
+    ".opencode/plugin/bkit-gateguard.js"
   ],
   "provider": {
     "openrouter": {

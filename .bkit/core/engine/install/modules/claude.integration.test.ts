@@ -12,6 +12,7 @@ import type { ModuleContext } from "./index";
 import { writeBkitVersion } from "../version-file";
 import { getPkgRoot } from "../../shared/package-roots";
 import type { PreflightFinding } from "../../checks/before/index";
+import { getBkitDocsRoot } from "../../shared/package-roots";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -90,7 +91,7 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
       $schema: "https://json.schemastore.org/claude-code-settings.json",
       hooks: {
         SessionStart: [
-          { hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] },
+          { hooks: [{ type: "command", command: "bash .claude/hooks/bkit-preflight.sh" }] },
         ],
         Stop: [{ hooks: [{ type: "command", command: "echo 'Consumer Stop hook'" }] }],
       },
@@ -138,7 +139,7 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
       $schema: "https://json.schemastore.org/claude-code-settings.json",
       hooks: {
         SessionStart: [
-          { hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] },
+          { hooks: [{ type: "command", command: "bash .claude/hooks/bkit-preflight.sh" }] },
         ],
       },
       customKey: "consumer-value",
@@ -173,7 +174,7 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
 // ---------------------------------------------------------------------------
 describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
   const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-  const template = path.resolve(scriptsDir, "..", "..", "..", "..", "templates", ".mcp.json");
+  const template = path.resolve(scriptsDir, "..", "..", "..", "..", "shared", ".mcp.json");
   const githubEntry = (
     JSON.parse(fs.readFileSync(template, "utf-8")) as { mcpServers: Record<string, unknown> }
   ).mcpServers.github;
@@ -236,20 +237,13 @@ describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
 // gateguard markered-text — install engine, for both the claude and opencode twins.
 // ---------------------------------------------------------------------------
 
-describe("gateguard.cjs / gateguard.js markered-text — install engine (#422)", () => {
-  const CJS_REL = path.join(".claude", "hooks", "gateguard.cjs");
-  const JS_REL = path.join(".opencode", "plugin", "gateguard.js");
+describe("bkit-gateguard.cjs / bkit-gateguard.js markered-text — install engine (#422)", () => {
+  const CJS_REL = path.join(".claude", "hooks", "bkit-gateguard.cjs");
+  const JS_REL = path.join(".opencode", "plugin", "bkit-gateguard.js");
 
   // Resolve the real opencode model lookup from prompts.md (same source used at install
   // time) — runOpencodeModule's agent/command render pass requires it populated.
-  const PROMPTS_MD = path.resolve(
-    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
-    "..",
-    "..",
-    "..",
-    "..",
-    "prompts.md",
-  );
+  const PROMPTS_MD = path.join(getBkitDocsRoot(), "prompts.md");
   const OPENCODE_MODEL_LOOKUP = buildOpencodeModelLookup(PROMPTS_MD, "opencode-zen");
   const EFFORT_MAP = parseEffortMap(PROMPTS_MD);
 
@@ -282,17 +276,19 @@ describe("gateguard.cjs / gateguard.js markered-text — install engine (#422)",
     for (const rel of [
       CJS_REL,
       JS_REL,
-      path.join(".claude", "hooks", "guardrails.cjs"),
-      path.join(".claude", "hooks", "preflight.sh"),
+      path.join(".claude", "hooks", "bkit-guardrails.cjs"),
+      path.join(".claude", "hooks", "bkit-preflight.sh"),
     ]) {
       expect(read(rel), rel).not.toContain("{{BKIT_PART");
     }
     expect(read(CJS_REL)).toContain("function firstTouchAdvice(");
     expect(read(JS_REL)).toContain("function firstTouchAdvice(");
-    expect(read(path.join(".claude", "hooks", "guardrails.cjs"))).toContain(
+    expect(read(path.join(".claude", "hooks", "bkit-guardrails.cjs"))).toContain(
       "function shellEditTargets(",
     );
-    expect(read(path.join(".claude", "hooks", "preflight.sh"))).toContain("api.linear.app/graphql");
+    expect(read(path.join(".claude", "hooks", "bkit-preflight.sh"))).toContain(
+      "api.linear.app/graphql",
+    );
   });
 
   it("an existing hook gets the shared parts in its managed block; the driver below it stays", () => {
@@ -408,7 +404,7 @@ describe("Scenario: .bkit/.env.example (owned) and .envrc (template)", () => {
 
     // Simulate the core module writing .gitignore (use the template directly)
     const pkgRoot = getPkgRoot();
-    const gitignoreTemplate = path.join(pkgRoot, ".bkit", "templates", "gitignore");
+    const gitignoreTemplate = path.join(pkgRoot, ".bkit", "shared", "gitignore");
     const gitignoreDst = path.join(tmpDir, ".gitignore");
     if (fs.existsSync(gitignoreTemplate)) {
       fs.writeFileSync(gitignoreDst, fs.readFileSync(gitignoreTemplate, "utf-8"), "utf-8");
@@ -432,7 +428,7 @@ describe("Scenario: .bkit/.env.example (owned) and .envrc (template)", () => {
     process.chdir(tmpDir);
 
     const pkgRoot = getPkgRoot();
-    const gitignoreTemplate = path.join(pkgRoot, ".bkit", "templates", "gitignore");
+    const gitignoreTemplate = path.join(pkgRoot, ".bkit", "shared", "gitignore");
     const gitignoreDst = path.join(tmpDir, ".gitignore");
     if (fs.existsSync(gitignoreTemplate)) {
       // First install

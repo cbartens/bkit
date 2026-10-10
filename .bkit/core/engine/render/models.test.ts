@@ -17,6 +17,7 @@ import {
   parseModelLookupForColumn,
   opencodeProviderId,
 } from "./models";
+import { getBkitDocsRoot, getPromptsRoot } from "../shared/package-roots";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,8 +41,8 @@ function makeSubagentsMd(
 
 describe("parseModelLookup", () => {
   it("parses one row per agent file in .bkit/prompts/", () => {
-    const lookup = parseModelLookup(".bkit/prompts.md");
-    const agentFiles = fs.readdirSync(".bkit/prompts").filter((f) => f.endsWith(".md"));
+    const lookup = parseModelLookup(path.join(getBkitDocsRoot(), "prompts.md"));
+    const agentFiles = fs.readdirSync(getPromptsRoot()).filter((f) => f.endsWith(".md"));
     expect(lookup.size).toBe(agentFiles.length);
     for (const [name, model] of lookup) {
       expect(name).toBeTruthy();
@@ -50,11 +51,11 @@ describe("parseModelLookup", () => {
   });
 
   it("all .bkit/prompts/ files have a lookup row", () => {
-    const lookup = parseModelLookup(".bkit/prompts.md");
-    const agentFiles = fs.readdirSync(".bkit/prompts").filter((f) => f.endsWith(".md"));
+    const lookup = parseModelLookup(path.join(getBkitDocsRoot(), "prompts.md"));
+    const agentFiles = fs.readdirSync(getPromptsRoot()).filter((f) => f.endsWith(".md"));
     const missingNames: string[] = [];
     for (const f of agentFiles) {
-      const content = fs.readFileSync(path.join(".bkit/prompts", f), "utf-8");
+      const content = fs.readFileSync(path.join(getPromptsRoot(), f), "utf-8");
       const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
       if (!fmMatch) continue;
       const parsed = parseFrontmatter(fmMatch[1]);
@@ -83,7 +84,7 @@ describe("parseModelLookup", () => {
   });
 
   it("all parsed model values have no backticks", () => {
-    const lookup = parseModelLookup(".bkit/prompts.md");
+    const lookup = parseModelLookup(path.join(getBkitDocsRoot(), "prompts.md"));
     for (const [, model] of lookup) {
       expect(model).not.toMatch(/`/);
     }
@@ -95,7 +96,7 @@ describe("parseModelLookup", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseEffortMap", () => {
-  const effortMap = parseEffortMap(".bkit/prompts.md");
+  const effortMap = parseEffortMap(path.join(getBkitDocsRoot(), "prompts.md"));
 
   it("parses Default | Claude | Cursor | OpenCode", () => {
     for (const col of ["Default", "Claude", "Cursor", "OpenCode"]) {
@@ -146,8 +147,11 @@ describe("parseEffortMap", () => {
 
 describe("buildOpencodeModelLookup — default column reader", () => {
   it("parses one row per agent file in .bkit/prompts/", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
-    const agentFiles = fs.readdirSync(".bkit/prompts").filter((f) => f.endsWith(".md"));
+    const lookup = buildOpencodeModelLookup(
+      path.join(getBkitDocsRoot(), "prompts.md"),
+      "opencode-zen",
+    );
+    const agentFiles = fs.readdirSync(getPromptsRoot()).filter((f) => f.endsWith(".md"));
     expect(lookup.size).toBe(agentFiles.length);
     for (const [name, model] of lookup) {
       expect(name).toBeTruthy();
@@ -156,11 +160,14 @@ describe("buildOpencodeModelLookup — default column reader", () => {
   });
 
   it("all .bkit/prompts/ files have an opencode model entry", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
-    const agentFiles = fs.readdirSync(".bkit/prompts").filter((f) => f.endsWith(".md"));
+    const lookup = buildOpencodeModelLookup(
+      path.join(getBkitDocsRoot(), "prompts.md"),
+      "opencode-zen",
+    );
+    const agentFiles = fs.readdirSync(getPromptsRoot()).filter((f) => f.endsWith(".md"));
     const missingNames: string[] = [];
     for (const f of agentFiles) {
-      const content = fs.readFileSync(path.join(".bkit/prompts", f), "utf-8");
+      const content = fs.readFileSync(path.join(getPromptsRoot(), f), "utf-8");
       const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
       if (!fmMatch) continue;
       const parsed = parseFrontmatter(fmMatch[1]);
@@ -171,8 +178,11 @@ describe("buildOpencodeModelLookup — default column reader", () => {
   });
 
   it("count matches parseModelLookup count (same catalog)", () => {
-    const cursorLookup = parseModelLookup(".bkit/prompts.md");
-    const opencodeLookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
+    const cursorLookup = parseModelLookup(path.join(getBkitDocsRoot(), "prompts.md"));
+    const opencodeLookup = buildOpencodeModelLookup(
+      path.join(getBkitDocsRoot(), "prompts.md"),
+      "opencode-zen",
+    );
     expect(opencodeLookup.size).toBe(cursorLookup.size);
   });
 
@@ -186,7 +196,10 @@ describe("buildOpencodeModelLookup — default column reader", () => {
   });
 
   it("all parsed opencode model values have no backticks", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
+    const lookup = buildOpencodeModelLookup(
+      path.join(getBkitDocsRoot(), "prompts.md"),
+      "opencode-zen",
+    );
     for (const [, model] of lookup) {
       expect(model).not.toMatch(/`/);
     }
@@ -204,7 +217,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   // OpenRouter opus+sonnet collapse onto V4.1 Flash (clears both Claude targets).
   // Haiku stays on the cheapest sufficient pin; convergent stays a distinct family.
   it("openrouter: v4.1-flash opus+sonnet, glm-5.3-flash haiku, kimi-k3 convergent", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
+    const lookup = buildOpencodeModelLookup(
+      path.join(getBkitDocsRoot(), "prompts.md"),
+      "openrouter",
+    );
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek/deepseek-v4.1-flash");
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek/deepseek-v4.1-flash");
     expect(lookup.get("bkit-design-summary")).toBe("z-ai/glm-5.3-flash");
@@ -218,7 +234,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
 
   // Convergent is not a DeepSeek slug; haiku is not V4 Flash.
   it("openrouter: convergent is kimi-k3; frozen/dated v4-pro slugs stay off the column", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
+    const lookup = buildOpencodeModelLookup(
+      path.join(getBkitDocsRoot(), "prompts.md"),
+      "openrouter",
+    );
     const pins = [...lookup.values()];
     expect(pins).not.toContain("deepseek/deepseek-v4-pro");
     expect(pins).not.toContain("deepseek/deepseek-v4-pro-0813");
@@ -230,14 +249,17 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   // This column exists to carry work when the Claude quota is spent — a Claude pin
   // there defeats its purpose regardless of score.
   it("openrouter: no Claude model is pinned in the column", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
+    const lookup = buildOpencodeModelLookup(
+      path.join(getBkitDocsRoot(), "prompts.md"),
+      "openrouter",
+    );
     for (const model of lookup.values()) {
       expect(model).not.toMatch(/anthropic|claude/i);
     }
   });
 
   it("ollama (cloud): kimi-k2.7-code opus+sonnet, deepseek-v4.1-flash haiku, deepseek-v4-pro convergent", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "ollama");
+    const lookup = buildOpencodeModelLookup(path.join(getBkitDocsRoot(), "prompts.md"), "ollama");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("kimi-k2.7-code");
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("kimi-k2.7-code");
     expect(lookup.get("bkit-design-summary")).toBe("deepseek-v4.1-flash");
@@ -249,20 +271,23 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
 
   it("every allowlisted provider ships a curated column (all four)", () => {
     for (const provider of ["openrouter", "ollama", "opencode-zen", "opencode-go"]) {
-      const lookup = buildOpencodeModelLookup(".bkit/prompts.md", provider);
+      const lookup = buildOpencodeModelLookup(path.join(getBkitDocsRoot(), "prompts.md"), provider);
       expect(lookup.size).toBeGreaterThan(0);
     }
   });
 
   it("unknown provider throws — no column, no substitute", () => {
-    expect(() => buildOpencodeModelLookup(".bkit/prompts.md", "acme")).toThrow(
-      /no prompts.md . Models column/,
-    );
+    expect(() =>
+      buildOpencodeModelLookup(path.join(getBkitDocsRoot(), "prompts.md"), "acme"),
+    ).toThrow(/no prompts.md . Models column/);
   });
 
   it("opencode-zen: curated OpenCode Zen column (opencode/<id> — models.dev built-in id)", () => {
     // CLI key is opencode-zen; agent pins use the OpenCode built-in provider id `opencode`.
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
+    const lookup = buildOpencodeModelLookup(
+      path.join(getBkitDocsRoot(), "prompts.md"),
+      "opencode-zen",
+    );
     expect(lookup.size).toBeGreaterThan(0);
     // Cells are bare; the pin is built by formatModelPin, which maps the bkit gateway key
     // `opencode-zen` onto the OpenCode-side provider id `opencode` — NOT a pass-through.
@@ -280,7 +305,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   it("opencode-go: curated OpenCode Go column (deepseek-v4-pro / deepseek-v4.1-flash)", () => {
     // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go catalog is
     // invisible to /zen/v1/models — sourced via models.dev.
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-go");
+    const lookup = buildOpencodeModelLookup(
+      path.join(getBkitDocsRoot(), "prompts.md"),
+      "opencode-go",
+    );
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) {
       expect(model).not.toMatch(/^opencode-go\//);
@@ -374,8 +402,11 @@ describe("model overrides (consumer-owned, below bkit:end)", () => {
 
 describe("parseModelLookupForColumn regression — header-addressed", () => {
   it("cursor column resolves to the same values as parseModelLookup (no positional shift)", () => {
-    const cursorViaOld = parseModelLookup(".bkit/prompts.md");
-    const cursorViaNew = parseModelLookupForColumn(".bkit/prompts.md", "Cursor");
+    const cursorViaOld = parseModelLookup(path.join(getBkitDocsRoot(), "prompts.md"));
+    const cursorViaNew = parseModelLookupForColumn(
+      path.join(getBkitDocsRoot(), "prompts.md"),
+      "Cursor",
+    );
     expect(cursorViaNew.size).toBe(cursorViaOld.size);
     for (const [name, model] of cursorViaOld) {
       expect(cursorViaNew.get(name)).toBe(model);
@@ -384,8 +415,11 @@ describe("parseModelLookupForColumn regression — header-addressed", () => {
 
   it("returns a different set of values for 'opencode model' vs 'Cursor model'", () => {
     // This guards against the column parser accidentally reading the same column for both hosts.
-    const cursorLookup = parseModelLookup(".bkit/prompts.md");
-    const opencodeLookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
+    const cursorLookup = parseModelLookup(path.join(getBkitDocsRoot(), "prompts.md"));
+    const opencodeLookup = buildOpencodeModelLookup(
+      path.join(getBkitDocsRoot(), "prompts.md"),
+      "opencode-zen",
+    );
     // At least some values must differ (opencode uses ollama/*, cursor uses various)
     let diffCount = 0;
     for (const [name] of cursorLookup) {

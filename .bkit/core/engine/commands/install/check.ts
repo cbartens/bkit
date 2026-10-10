@@ -11,9 +11,9 @@ import { LOG_PREFIX } from "../../shared/log-prefix.js";
 
 /**
  * Installed-module set, detected by sentinel-file presence. Always core, plus the installed
- * subset of {claude, cursor, opencode, codex, lint}. Two callers:
+ * subset of {claude, cursor, opencode, codex}. Two callers:
  *   - `bkit check` — scopes the drift gate, so a `--cursor`-only repo does not
- *     report `.claude/**` as drift, and a `--claude`-only repo is not flagged for lint files.
+ *     report `.claude/**` as drift.
  *   - `bkit upgrade` — scopes the template walk, so upgrade does NOT force-create files for a
  *     module the consumer never installed.
  *
@@ -30,11 +30,6 @@ export function detectInstalledModules(cwd: string): Set<ModuleFlag> {
   if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
   if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
   if (fs.existsSync(path.join(cwd, ".codex", "agents"))) mods.add("codex");
-  // lint (the --typescript toolchain): the owned slop-scan plugin. Its configs
-  // (slop-scan.config.json, .prettierignore) are templates, not sentinels.
-  if (fs.existsSync(path.join(cwd, ".bkit", "scripts", "bkit-slop-type-suppression.mjs"))) {
-    mods.add("lint");
-  }
   return mods;
 }
 
@@ -42,8 +37,8 @@ export function detectInstalledModules(cwd: string): Set<ModuleFlag> {
 // Host agent/command mirrors push would-writes into ws.writes (content drift OR
 // orphan delete). A stale managed-version marker on any stamped file ALSO surfaces as
 // the bkit-managed-stale Phase-3 blocker, which counts as drift here. A missing owned
-// hook file (owned-hook-missing) fails check too, by name (cloud-bootstrap.sh is never
-// in ws.writes). Other Phase-3 blockers are install-only.
+// hook file (owned-hook-missing) fails check too, by name. Other Phase-3 blockers
+// are install-only.
 //
 // Gate on `severity === "blocker"`, NOT mere id-presence: detectManagedStale is
 // branch-scoped (downgraded to `advisory` off main/dev), so on a feature branch the

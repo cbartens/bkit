@@ -12,7 +12,7 @@
     "**/.bkit/templates/**"
   ],
   "plugins": {
-    "boundary": "./.bkit/scripts/bkit-slop-type-suppression.mjs"
+    "boundary": "./scripts/slop/bkit-slop-type-suppression.mjs"
   },
   "rules": {
     "comments.placeholder-comments": {
@@ -70,7 +70,7 @@
       }
     },
     {
-      "files": [".bkit/scripts/bkit-slop-type-suppression.mjs"],
+      "files": ["scripts/slop/bkit-slop-type-suppression.mjs"],
       "rules": {
         "boundary/type-suppression": {
           "enabled": false
@@ -81,7 +81,7 @@
       }
     },
     {
-      "files": [".opencode/plugin/gateguard.js"],
+      "files": [".opencode/plugin/bkit-gateguard.js"],
       "rules": {
         "defensive.empty-catch": {
           "enabled": false
@@ -90,10 +90,10 @@
     },
     {
       "files": [
-        "**/.claude/hooks/gateguard.cjs",
-        "**/.cursor/hooks/gateguard.cjs",
-        "**/.codex/hooks/gateguard.cjs",
-        "**/.opencode/plugin/gateguard.js"
+        "**/.claude/hooks/bkit-gateguard.cjs",
+        "**/.cursor/hooks/bkit-gateguard.cjs",
+        "**/.codex/hooks/bkit-gateguard.cjs",
+        "**/.opencode/plugin/bkit-gateguard.js"
       ],
       "rules": {
         "structure.duplicate-function-signatures": {
@@ -103,9 +103,9 @@
     },
     {
       "files": [
-        "**/.claude/hooks/guardrails.cjs",
-        "**/.cursor/hooks/guardrails.cjs",
-        "**/.codex/hooks/guardrails.cjs"
+        "**/.claude/hooks/bkit-guardrails.cjs",
+        "**/.cursor/hooks/bkit-guardrails.cjs",
+        "**/.codex/hooks/bkit-guardrails.cjs"
       ],
       "rules": {
         "defensive.empty-catch": {

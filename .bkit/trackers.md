@@ -1,9 +1,9 @@
 # Trackers
 
-{{BKIT_MANAGED_MARKER}}
+<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
-> **Purpose:** Reference for inline tracker-block model in `.bkit/workflows/bkit-*.md` and `.bkit/prompts/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents marker contract + cross-cutting per-tracker conventions only.
+> **Purpose:** Reference for inline tracker-block model in `.bkit/core/workflows/bkit-*.md` and `.bkit/core/prompts/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents marker contract + cross-cutting per-tracker conventions only.
 >
 > **Rules:**
 >
@@ -12,11 +12,11 @@
 > - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another. Label semantics live in `.bkit/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
 > - Ships to consumers: describe the CURRENT setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - Three trackers: `github` (default), `linear` (opt-in), `none` (no tracker wired).
-> - New tracker (Jira, etc.): add enum to `.bkit/core/engine/install/manifest.ts`; document MCP under `mcpServers.<name>` in `.bkit/templates/.mcp.json` and `.bkit/templates/.cursor/mcp.json`; add `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every call site (extend pair resolver in `.bkit/core/engine/render/trackers.ts`). No `none` marker — no-tracker content is `false`.
+> - New tracker (Jira, etc.): add enum to `.bkit/core/engine/install/manifest.ts`; document MCP under `mcpServers.<name>` in `.bkit/shared/.mcp.json` and `.bkit/shared/.cursor/mcp.json`; add `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every call site (extend pair resolver in `.bkit/core/engine/render/trackers.ts`). No `none` marker — no-tracker content is `false`.
 
 ## Marker contract
 
-Workflow and prompt sources carry wired tracker variants inline. Installer reads `bkit.issueTracker` from consumer manifest, resolves markers when mirroring `.bkit/workflows/bkit-*.md` to every host's commands / skills and `.bkit/prompts/bkit-*.md` to every host's agents (`.bkit/core/engine/render/trackers.ts`). Mirrors clean — no markers survive.
+Workflow and prompt sources carry wired tracker variants inline. Installer reads `bkit.issueTracker` from consumer manifest, resolves markers when mirroring `.bkit/core/workflows/bkit-*.md` to every host's commands / skills and `.bkit/core/prompts/bkit-*.md` to every host's agents (`.bkit/core/engine/render/trackers.ts`). Mirrors clean — no markers survive.
 
 Prompt frontmatter `tools:` lists: every marker MUST be a YAML comment (`  # <!-- bkit:tracker github start -->`) — a bare `<!--` line is invalid YAML; installer strips the `# ` with the marker. A pair inside the YAML list MUST end with a `false` block, and every block (incl. `false`) MUST hold at least one list item — the `none` stub and an empty block both break the YAML. `bkit-utility-update-roadmap` carries `- Bash` in all three blocks for this.
 

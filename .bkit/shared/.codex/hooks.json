@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .codex/hooks/bkit-gateguard.cjs && node .codex/hooks/bkit-gateguard.cjs || true",
+            "statusMessage": "bkit GateGuard"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .codex/hooks/bkit-guardrails.cjs && node .codex/hooks/bkit-guardrails.cjs || true",
+            "statusMessage": "bkit guardrails"
+          }
+        ]
+      }
+    ]
+  }
+}

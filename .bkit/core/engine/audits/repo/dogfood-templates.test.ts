@@ -1,7 +1,7 @@
 // audits/repo/dogfood-templates.test.ts — this repo adopts its own templates the way a consumer does.
 //
-// Every template (`isTemplate`) has an entry below. An adopted copy at the repo root must equal
-// the template after applying that entry's edits, in order. Each edit is one of:
+// Every file in the templates root has an entry below. An adopted copy at the repo root must
+// equal the template after applying that entry's edits, in order. Each edit is one of:
 //   placeholder — a value `.bkit/templates.md` tells a consumer to fill;
 //   adapt       — an adaptation `.bkit/templates.md` sanctions (app roots, rows, lanes, stubs);
 //   bkit-only   — a need of this repo with no consumer equivalent.
@@ -11,7 +11,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { isTemplate } from "../../install/template-copies";
 import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
 import { getPkgRoot, getTemplatesRoot } from "../../shared/package-roots";
 
@@ -29,14 +28,18 @@ type Op =
    * file) becomes the copy's text from `copy[0]` up to `copy[1]`. Equal template anchors mark an
    * insertion point.
    */
-  | { region: { template: [string, string | null]; copy: [string, string | null] } };
+  | { region: { template: [string, string | null]; copy: [string, string | null] } }
+  /** The copy's rendered managed-version marker line replaces the template's token line. */
+  | { managedMarker: true };
 
 type Edit = Op & { kind: Kind; what: string };
 
 type Entry =
   | { status: "adopted"; edits: Edit[] }
   | { status: "not-adopted"; what: string }
-  | { status: "generated"; what: string };
+  | { status: "generated"; what: string }
+  /** The repo root has its own file under the same name; it is not an adopted copy. */
+  | { status: "distinct"; what: string };
 
 const identical: Entry = { status: "adopted", edits: [] };
 
@@ -71,7 +74,21 @@ const CHECKOUT =
   "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n";
 
 const ADOPTED: Record<string, Entry> = {
-  ".github/workflows/ci.yml": {
+  ".claude/hooks/cloud-bootstrap.sh": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "placeholder",
+        what: "managed-version marker",
+        managedMarker: true,
+      },
+    ],
+  },
+  "LICENSE.md": {
+    status: "distinct",
+    what: "the repo root LICENSE.md is bkit's own PolyForm licence, not the MIT-0 template copy",
+  },
+  ".github/workflows/bkit-ci.yml": {
     status: "adopted",
     edits: [
       {
@@ -168,7 +185,7 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
-  ".github/workflows/renovate.yml": identical,
+  ".github/workflows/bkit-renovate.yml": identical,
   ".github/renovate.json5": {
     status: "adopted",
     edits: [
@@ -248,21 +265,21 @@ const ADOPTED: Record<string, Entry> = {
       },
       {
         kind: "bkit-only",
-        what: "the template sources of the shipped hooks share their mirrors' opt-outs",
-        fill: '"files": [".opencode/plugin/gateguard.js"]',
-        with: '"files": [".bkit/templates/.opencode/plugin/gateguard.js", ".opencode/plugin/gateguard.js"]',
+        what: "the core hook sources share their mirrors' opt-outs",
+        fill: '"files": [".opencode/plugin/bkit-gateguard.js"]',
+        with: '"files": [\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-gateguard.js"\n      ]',
       },
       {
         kind: "bkit-only",
-        what: "the template sources of the shipped hooks share their mirrors' opt-outs",
-        fill: '      "files": [\n        "**/.claude/hooks/gateguard.cjs",\n',
-        with: '      "files": [\n        ".bkit/templates/.claude/hooks/gateguard.cjs",\n        ".bkit/templates/.cursor/hooks/gateguard.cjs",\n        ".bkit/templates/.codex/hooks/gateguard.cjs",\n        ".bkit/templates/.opencode/plugin/gateguard.js",\n        ".bkit/core/hook-parts/gateguard-engine.js",\n        ".bkit/core/hook-parts/gateguard-edit-payload.js",\n        "**/.claude/hooks/gateguard.cjs",\n',
+        what: "the core hook sources share their mirrors' opt-outs",
+        fill: '      "files": [\n        "**/.claude/hooks/bkit-gateguard.cjs",\n',
+        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.cursor/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.codex/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/hooks/gateguard-engine.js",\n        ".bkit/core/hooks/gateguard-edit-payload.js",\n        "**/.claude/hooks/bkit-gateguard.cjs",\n',
       },
       {
         kind: "bkit-only",
-        what: "the template sources of the shipped hooks share their mirrors' opt-outs",
-        fill: '      "files": [\n        "**/.claude/hooks/guardrails.cjs",\n',
-        with: '      "files": [\n        ".bkit/templates/.claude/hooks/guardrails.cjs",\n        ".bkit/templates/.cursor/hooks/guardrails.cjs",\n        ".bkit/templates/.codex/hooks/guardrails.cjs",\n        ".bkit/core/hook-parts/guardrails-shell.js",\n        ".bkit/core/hook-parts/guardrails-tiers.js",\n        "**/.claude/hooks/guardrails.cjs",\n',
+        what: "the core hook sources share their mirrors' opt-outs",
+        fill: '      "files": [\n        "**/.claude/hooks/bkit-guardrails.cjs",\n',
+        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.cursor/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.codex/hooks/bkit-guardrails.cjs",\n        ".bkit/core/hooks/guardrails-shell.js",\n        ".bkit/core/hooks/guardrails-tiers.js",\n        "**/.claude/hooks/bkit-guardrails.cjs",\n',
       },
       {
         kind: "bkit-only",
@@ -298,9 +315,9 @@ const ADOPTED: Record<string, Entry> = {
     edits: [
       {
         kind: "bkit-only",
-        what: ".bkit/core/engine and .bkit/scripts are source; dist/ is committed",
+        what: ".bkit/core/engine and .bkit/core/hooks are source; dist/ is committed",
         fill: ".agents/skills/\n.bkit/\n",
-        with: ".agents/skills/\n# bkit repo only: .bkit/core/engine and .bkit/scripts are source; the install payload and\n# the committed compiler output stay out.\n.bkit/templates/\ndist/\n",
+        with: ".agents/skills/\n# bkit repo only: .bkit/core/engine and .bkit/core/hooks are source; the install\n# payload and the committed compiler output stay out.\n.bkit/shared/\n.bkit/templates/\n.bkit/core/.claude/\n.bkit/core/.codex/\n.bkit/core/.cursor/\n.bkit/core/.opencode/\ndist/\n",
       },
     ],
   },
@@ -310,9 +327,9 @@ const ADOPTED: Record<string, Entry> = {
       { kind: "placeholder", what: "project name", fill: '"your-repo"', with: '"bkit"' },
       {
         kind: "bkit-only",
-        what: ".bkit/core/engine and .bkit/scripts are source",
+        what: ".bkit/core/engine and .bkit/core/hooks are source",
         fill: '  - ".bkit/**"\n',
-        with: '  # bkit repo only: .bkit/core/engine and .bkit/scripts are source; the install payload stays out.\n  - ".bkit/templates/**"\n',
+        with: '  # bkit repo only: .bkit/core/engine and .bkit/core/hooks are source; the install payload stays out.\n  - ".bkit/shared/**"\n  - ".bkit/templates/**"\n  - ".bkit/core/.claude/**"\n  - ".bkit/core/.codex/**"\n  - ".bkit/core/.cursor/**"\n  - ".bkit/core/.opencode/**"\n',
       },
       {
         kind: "adapt",
@@ -353,7 +370,7 @@ const ADOPTED: Record<string, Entry> = {
         kind: "adapt",
         what: "source roots",
         fill: 'ROOTS = ("apps", "packages", "tooling", "scripts")',
-        with: 'ROOTS = (".bkit/core/engine", ".bkit/scripts", "scripts")',
+        with: 'ROOTS = (".bkit/core/engine", "scripts")',
       },
     ],
   },
@@ -451,6 +468,7 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
+  "scripts/slop/bkit-slop-type-suppression.mjs": identical,
   "scripts/serena/bkit-serena-mcp.sh": identical,
   "scripts/serena/bkit-serena.mcp.json": identical,
 };
@@ -485,6 +503,13 @@ function apply(template: string, copy: string, edits: Edit[], rel: string): stri
       const stub = new RegExp(`^[ \\t]*# bkit-stub:${edit.dropStub} —.*\\n(?:.+\\n)*\\n`, "gm");
       expect(text.match(stub)?.length ?? 0, `${label}: stub blocks`).toBe(1);
       text = text.replace(stub, "");
+    } else if ("managedMarker" in edit) {
+      const copyLine = copy.split("\n").find((l) => l.includes("bkit:managed v"));
+      expect(copyLine, `${label}: copy carries a managed-version marker`).toBeTruthy();
+      expect(text, `${label}: template carries the marker token`).toContain(
+        "{{BKIT_MANAGED_MARKER}}",
+      );
+      text = text.replace(/^.*\{\{BKIT_MANAGED_MARKER\}\}.*$/m, copyLine!);
     } else {
       const [ts, te] = span(text, edit.region.template[0], edit.region.template[1], label);
       const [cs, ce] =
@@ -499,7 +524,7 @@ function templatePaths(): string[] {
   const root = getTemplatesRoot();
   return listFilesRecursive(root)
     .map((abs) => remapTemplateDest(path.relative(root, abs)).split(path.sep).join("/"))
-    .filter((rel) => isTemplate(rel) && !rel.startsWith("context/"))
+    .filter((rel) => !rel.startsWith("context/"))
     .sort();
 }
 
@@ -518,7 +543,7 @@ describe("this repo adopts its own templates", () => {
       return;
     }
     expect(fs.existsSync(copyPath), rel).toBe(true);
-    if (entry.status === "generated") return;
+    if (entry.status === "generated" || entry.status === "distinct") return;
     const template = fs.readFileSync(path.join(templatesRoot, rel), "utf-8");
     const copy = fs.readFileSync(copyPath, "utf-8");
     expect(copy).toBe(apply(template, copy, entry.edits, rel));

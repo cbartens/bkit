@@ -6,7 +6,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readTemplate } from "../../render/parts";
 import type { WriteSet } from "../write";
 import { parseModelLookup, parseEffortMap } from "../../render/models";
-import { listFilesRecursive, remapTemplateDest, isTemplate } from "../template-copies";
+import { listFilesRecursive, remapTemplateDest } from "../template-copies";
+import { getBkitDocsRoot, getPkgRoot, getTemplatesRoot } from "../../shared/package-roots";
 import { runCoreModule } from "./core";
 import { renderOpencodeJson } from "./opencode";
 import { dispatchModules, type ModuleContext } from "./index";
@@ -76,19 +77,9 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("install never writes or flags an adopted template copy", () => {
-  const ALL = new Set<import("../../cli").ModuleFlag>([
-    "core",
-    "claude",
-    "cursor",
-    "lint",
-    "cloud",
-  ]);
-  const bkitDir = path.resolve(
-    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
-    "../../../..",
-  );
+  const ALL = new Set<import("../../cli").ModuleFlag>(["core", "claude", "cursor", "cloud"]);
   // The cursor module renders agents, so it needs the real model catalog.
-  const promptsMd = path.join(bkitDir, "prompts.md");
+  const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
   const hostCtx = (overrides: Partial<ModuleContext>): ModuleContext =>
     makeCtx({
       modelLookup: parseModelLookup(promptsMd),
@@ -96,10 +87,10 @@ describe("install never writes or flags an adopted template copy", () => {
       ...overrides,
     });
   const templatePaths = (): string[] => {
-    const root = path.join(bkitDir, "templates");
+    const root = getTemplatesRoot();
     return listFilesRecursive(root)
       .map((abs) => remapTemplateDest(path.relative(root, abs)))
-      .filter((rel) => isTemplate(rel));
+      .filter((rel) => path.basename(rel) !== "LICENSE.md");
   };
 
   it("an adopted copy of every template stays byte-identical, with no write and no advisory for it", () => {
@@ -159,12 +150,12 @@ describe("module dispatch: --claude seeds only .claude/** + core", () => {
   });
 });
 
-describe("module dispatch: --typescript seeds core + lint only", () => {
-  it("--typescript writes core + the slop plugin; nothing under Cursor/Claude/Husky", () => {
+describe("module dispatch: --core alone seeds no host or tooling file", () => {
+  it("core writes the core payload; nothing under Cursor/Claude/Husky/GitHub", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws });
 
-    dispatchModules(new Set(["core", "lint"]), ctx);
+    dispatchModules(new Set(["core"]), ctx);
 
     // Filter out internal payload paths (.bkit/templates/** are template copies)
     const consumerOutputPaths = ws.writes
@@ -178,45 +169,13 @@ describe("module dispatch: --typescript seeds core + lint only", () => {
       expect(p).not.toMatch(/[/\\]\.cursor[/\\]/);
       expect(p).not.toMatch(/[/\\]\.claude[/\\]/);
       expect(p).not.toMatch(/[/\\]\.husky[/\\]/);
+      expect(p).not.toMatch(/[/\\]\.github[/\\]workflows[/\\]/);
     }
-    expect(consumerOutputPaths).toContain(
-      path.join(".bkit", "scripts", "bkit-slop-type-suppression.mjs"),
-    );
+    expect(consumerOutputPaths).toContain("AGENTS.md");
   });
 });
 
-describe("--typescript footprint (#265)", () => {
-  const TOOL_SCRIPTS = [
-    "typecheck",
-    "lint",
-    "format:check",
-    "lint:prose",
-    "lint:slop",
-    "slop:delta",
-  ];
-
-  it("writes only the owned slop plugin: no tool config, tool script, devDep or prepare", () => {
-    dispatchModules(new Set(["core", "lint"]), makeCtx({}));
-    expect(
-      fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-type-suppression.mjs")),
-    ).toBe(true);
-    for (const rel of [
-      "slop-scan.config.json",
-      ".prettierignore",
-      ".lintstagedrc.json",
-      ".vale.ini",
-      ".husky/pre-push",
-      ".github/workflows/ci.yml",
-    ]) {
-      expect(fs.existsSync(path.join(tmpDir, rel)), rel).toBe(false);
-    }
-    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
-    for (const name of [...TOOL_SCRIPTS, "prepare"]) {
-      expect(pkg.scripts?.[name], name).toBeUndefined();
-    }
-    expect(pkg.devDependencies).toBeUndefined();
-  });
-
+describe("core payload footprint (#265)", () => {
   it("a fresh --claude install seeds every bkit:gate:* name and no tool script or devDep", () => {
     dispatchModules(new Set(["core", "claude"]), makeCtx({}));
     const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
@@ -227,7 +186,7 @@ describe("--typescript footprint (#265)", () => {
 
 describe("module dispatch: --full ≡ no flags (writeset equality)", () => {
   it("--full and no flags produce the same set of modules dispatched", () => {
-    const moduleSet = new Set<import("../../cli").ModuleFlag>(["core", "claude", "lint"]);
+    const moduleSet = new Set<import("../../cli").ModuleFlag>(["core", "claude"]);
 
     // Run 1: fresh tmpdir (beforeEach already set up)
     const cwd1 = process.cwd();
@@ -263,25 +222,25 @@ describe("module dispatch: --core is implicit before any other module", () => {
     const realWs = makeWriteSet();
     const ctx = makeCtx({ ws: realWs });
 
-    // Dispatch core + lint (core must run first per MODULE_DISPATCH_ORDER)
-    dispatchModules(new Set(["core", "lint"]), ctx);
+    // Dispatch core (core must run first per MODULE_DISPATCH_ORDER)
+    dispatchModules(new Set(["core"]), ctx);
 
     const paths = realWs.writes.map((e) => e.path);
     const agentsMdIdx = paths.indexOf("AGENTS.md");
-    const slopPluginIdx = paths.indexOf(
-      path.join(".bkit", "scripts", "bkit-slop-type-suppression.mjs"),
+    const docsTemplateIdx = paths.findIndex((p) =>
+      p.endsWith(path.join("docs", "templates", "bkit-plan.md")),
     );
     // .bkit-version is written in postDispatch — AFTER all module writes
     const bkitVersionIdx = paths.findIndex((p) => p.endsWith(path.join(".bkit", "version")));
     expect(agentsMdIdx).toBeGreaterThanOrEqual(0);
-    expect(agentsMdIdx).toBeLessThan(slopPluginIdx);
-    expect(slopPluginIdx).toBeLessThan(bkitVersionIdx);
+    expect(agentsMdIdx).toBeLessThan(docsTemplateIdx);
+    expect(docsTemplateIdx).toBeLessThan(bkitVersionIdx);
   });
 });
 
 describe("module dispatch: idempotence — second install --full produces zero writes", () => {
   it("running dispatchModules twice stabilises: third run = zero writes (true idempotence)", () => {
-    const moduleSet = new Set<import("../../cli").ModuleFlag>(["core", "lint"]);
+    const moduleSet = new Set<import("../../cli").ModuleFlag>(["core"]);
 
     // First run — creates files from scratch
     const ws1 = makeWriteSet();
@@ -387,8 +346,8 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
     const ctx = makeCtx({ ws });
 
     // Exclude cursor: applyT3 requires a populated modelLookup which the test helper omits.
-    // Core + claude + lint covers all consumer-facing non-cursor modules.
-    dispatchModules(new Set(["core", "claude", "lint"]), ctx);
+    // Core + claude covers all consumer-facing non-cursor modules.
+    dispatchModules(new Set(["core", "claude"]), ctx);
 
     const versionFile = path.join(tmpDir, ".bkit", "version");
     expect(fs.existsSync(versionFile)).toBe(true);
@@ -412,7 +371,7 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
     const ctx = makeCtx({ ws });
 
     // Exclude cursor: applyT3 requires a populated modelLookup which the test helper omits.
-    dispatchModules(new Set(["core", "claude", "lint"]), ctx);
+    dispatchModules(new Set(["core", "claude"]), ctx);
 
     const versionFile = path.join(tmpDir, ".bkit", "version");
     const parsed = readBkitVersion(versionFile);
@@ -440,14 +399,14 @@ describe(".husky/pre-push is the consumer's file", () => {
     fs.writeFileSync(prePushPath, fixtureContent, "utf-8");
 
     const ctx = makeCtx({});
-    dispatchModules(new Set(["core", "lint"]), ctx);
+    dispatchModules(new Set(["core"]), ctx);
 
     expect(fs.readFileSync(prePushPath, "utf-8")).toBe(fixtureContent);
     expect(ctx.advisories.some((f) => f.detect.includes(".husky/pre-push"))).toBe(false);
   });
 
   it("install does not create .husky/pre-push when absent", () => {
-    dispatchModules(new Set(["core", "lint"]), makeCtx({}));
+    dispatchModules(new Set(["core"]), makeCtx({}));
     expect(fs.existsSync(path.join(tmpDir, ".husky", "pre-push"))).toBe(false);
   });
 });
@@ -462,8 +421,8 @@ describe(".husky/pre-push is the consumer's file", () => {
 //
 //   Claude   .claude/settings.json          permissions.deny / .ask  — prefix patterns
 //   opencode .opencode/opencode.json        permission.bash / .read  — globs, last-match-wins
-//   Cursor   .cursor/hooks/guardrails.cjs                            — regexes in a script
-//   Codex    .codex/hooks/guardrails.cjs                             — same engine, Claude-family envelope
+//   Cursor   .cursor/hooks/bkit-guardrails.cjs                            — regexes in a script
+//   Codex    .codex/hooks/bkit-guardrails.cjs                             — same engine, Claude-family envelope
 //
 // This file is the single table they all satisfy: a gate added here fails every host
 // that lacks it.
@@ -473,8 +432,8 @@ describe(".husky/pre-push is the consumer's file", () => {
 // `additionalContext` — the gate fires and informs, it cannot stop the command. Deny
 // blocks for real on all four.
 describe("permissions-parity", () => {
-  const CLAUDE_SETTINGS = ".bkit/templates/.claude/settings.json";
-  const OPENCODE_JSON = ".bkit/templates/.opencode/opencode.json";
+  const CLAUDE_SETTINGS = path.resolve(".bkit/shared/.claude/settings.json");
+  const OPENCODE_JSON = path.resolve(".bkit/shared/.opencode/opencode.json");
   // Each host's hook as install generates it (shared parts spliced in).
   const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-perm-parity-"));
   afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
@@ -483,7 +442,7 @@ describe("permissions-parity", () => {
       const out = path.join(GENERATED, `${host}.cjs`);
       fs.writeFileSync(
         out,
-        readTemplate(path.resolve(`.bkit/templates/.${host}/hooks/guardrails.cjs`)),
+        readTemplate(path.resolve(`.bkit/core/.${host}/hooks/bkit-guardrails.cjs`)),
       );
       return out;
     },
@@ -577,7 +536,10 @@ describe("permissions-parity", () => {
   }
 
   function cursorVerdict(payload: unknown): Verdict {
+    // Run from the package root: the hook reads `.cursor/allowlist.json` relative to
+    // process.cwd(), and the suite's top-level beforeEach has chdir'd to a temp consumer.
     const res = spawnSync("node", [GUARDRAILS], {
+      cwd: getPkgRoot(),
       input: JSON.stringify(payload),
       encoding: "utf-8",
     });
@@ -593,6 +555,7 @@ describe("permissions-parity", () => {
    */
   function codexVerdict(cmd: string): Verdict {
     const res = spawnSync("node", [CODEX_GUARDRAILS], {
+      cwd: getPkgRoot(),
       input: JSON.stringify({ tool_name: "Bash", tool_input: { command: cmd } }),
       encoding: "utf-8",
     });
@@ -665,6 +628,7 @@ describe("permissions-parity", () => {
     const payload =
       host === "cursor" ? { command: cmd } : { tool_name: "Bash", tool_input: { command: cmd } };
     const res = spawnSync("node", [script], {
+      cwd: getPkgRoot(),
       input: JSON.stringify(payload),
       encoding: "utf-8",
     });
@@ -741,7 +705,7 @@ describe("permissions-parity", () => {
     // Every host allows a fetch to an ALLOWLISTED host with no interruption — the common
     // path, and the one context-fetch blocks take. They differ only on an UNDECLARED host:
     //
-    //   Cursor    asks   — parses the URL host in guardrails.cjs
+    //   Cursor    asks   — parses the URL host in bkit-guardrails.cjs
     //   opencode  asks   — `curl *: ask` + `curl *{domain}*: allow`, substring not host-parsed
     //   Claude    advises — a permission table cannot match a URL host
     //   Codex     advises — parses `permissionDecision: "ask"` but does not implement it

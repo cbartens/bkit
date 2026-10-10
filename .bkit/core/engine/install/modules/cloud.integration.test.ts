@@ -67,12 +67,13 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
   const dockerRel = path.join(".cursor", "Dockerfile");
   const envRel = path.join(".cursor", "environment.json");
 
-  it("cloud=claude: writes only cloud-bootstrap.sh and points the setup advisory at the workflow template", () => {
+  it("cloud=claude: writes no files and points the setup advisory at the workflow template", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws, cloudVariant: "claude" });
     runCloudModule(ctx);
 
-    expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(true);
+    expect(ws.writes).toEqual([]);
+    expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, dockerRel))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, envRel))).toBe(false);
@@ -152,6 +153,7 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     const ctx = makeCtx({ dryRun: true, cloudVariant: "claude" });
     runCloudModule(ctx);
 
+    expect(ctx.ws.writes).toEqual([]);
     expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
     expect(ctx.advisories.find((a) => a.id === "bkit-cloud-setup")).toBeDefined();
   });
@@ -159,8 +161,8 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
   it("the default module set does NOT ship cloud scaffolding", () => {
     // `cursor` is omitted — its applyT3 transform process.exit(1)s on the empty
     // modelLookup in this harness (see the dispatch tests above).
-    dispatchModules(new Set(["core", "claude", "lint"]), makeCtx({}));
-    // claude is in the set — cloud-bootstrap.sh is in --cloud, not claude.
+    dispatchModules(new Set(["core", "claude"]), makeCtx({}));
+    // cloud-bootstrap.sh ships as a template, never written by any module.
     expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
   });
 });

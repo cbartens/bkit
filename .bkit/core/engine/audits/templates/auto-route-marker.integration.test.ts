@@ -12,7 +12,7 @@
 // involved in reading labels.
 //
 // This file EXECUTES the real close line — sliced out of the shipped
-// `.bkit/workflows/*.md` — against the built `bkit` in a fixture repo, and asserts
+// `.bkit/core/workflows/*.md` — against the built `bkit` in a fixture repo, and asserts
 // on the subject it committed. The merge and re-trigger subjects are pinned in
 // commands/workflow/prs.test.ts and runs.test.ts.
 
@@ -31,7 +31,7 @@ const MONTH = "202610";
 const hasTools = spawnSync("bash", ["--version"]).status === 0;
 
 const readWorkflow = (file: string) =>
-  fs.readFileSync(path.join(REPO_ROOT, ".bkit/workflows", file), "utf8");
+  fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "workflows", file), "utf8");
 
 /** The one fenced line that runs `workflows close` for a phase. */
 function closeLine(file: string, workflow: string): string {

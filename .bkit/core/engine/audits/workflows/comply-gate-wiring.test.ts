@@ -20,7 +20,7 @@ import { describe, expect, it } from "vitest";
 const PHASES = ["design", "plan", "build", "debug", "ship"] as const;
 
 function readWorkflow(name: string): string {
-  const p = path.resolve(__dirname, "../../../../../.bkit/workflows", name);
+  const p = path.resolve(__dirname, "../../../../../.bkit/core/workflows", name);
   return fs.readFileSync(p, "utf8");
 }
 

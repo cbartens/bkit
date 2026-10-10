@@ -33,7 +33,7 @@ import {
 
 // __dirname-anchored (G4) — resolves regardless of vitest's invocation cwd.
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
-const SHIP_MD_PATH = path.join(REPO_ROOT, ".bkit/workflows/bkit-ship.md");
+const SHIP_MD_PATH = path.join(REPO_ROOT, ".bkit/core/workflows/bkit-ship.md");
 const shipMd = fs.readFileSync(SHIP_MD_PATH, "utf-8");
 
 // ---------------------------------------------------------------------------

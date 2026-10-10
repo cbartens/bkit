@@ -96,7 +96,7 @@ describe("detectNotGitRepo", () => {
 
   it("returns null when --core NOT requested (even if .git/ absent)", () => {
     // No core flag — not-git-repo should NOT fire
-    expect(detectNotGitRepo(tmpDir, makeModules("lint"))).toBeNull();
+    expect(detectNotGitRepo(tmpDir, makeModules("claude"))).toBeNull();
   });
 });
 

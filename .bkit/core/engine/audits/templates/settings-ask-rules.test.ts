@@ -18,7 +18,7 @@ describe("shipped settings carry no curl/wget ask rule", () => {
     "..",
   );
 
-  for (const rel of [".claude/settings.json", ".bkit/templates/.claude/settings.json"]) {
+  for (const rel of [".claude/settings.json", ".bkit/shared/.claude/settings.json"]) {
     it(`${rel} has no curl/wget ask row`, () => {
       const doc = JSON.parse(fs.readFileSync(path.join(pkgRoot, rel), "utf-8")) as {
         permissions: { ask: string[] };

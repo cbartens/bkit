@@ -41,7 +41,7 @@
 | --- | --- | --- |
 | `tsc` (TypeScript compiler) | `tsconfig.json` | Compiles `.bkit/core/engine/**/*.ts` → `dist/**/*.js` (same folders); committed `dist/` is the published artifact |
 | `tsc` (test files) | `tsconfig.test.json` | Type-checks the engine including `*.test.ts` with Vitest's bundler resolution, no emit (`pnpm bkit:typecheck:tests`, run by `pnpm typecheck`) |
-| `bkit:check:dist` npm script | `bkit-tests-static` lane ("Assert Dist Freshness") + source-repo pre-push | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale. Source-repo only; not in the consumer `ci.yml` template |
+| `bkit:check:dist` npm script | `bkit-tests-static` lane ("Assert Dist Freshness") + source-repo pre-push | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale. Source-repo only; not in the consumer `bkit-ci.yml` template |
 | Runtime `dependencies` | none in `package.json` | bkit ships with no runtime dependency. Anything reachable from `dist/` at consumer runtime belongs in `dependencies`, never `devDependencies` |
 
 ## Execution Hosts
@@ -93,7 +93,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 <!-- prettier-ignore -->
 | Surface | Config file | Trigger |
 | --- | --- | --- |
-| Self-gating CI | `.github/workflows/ci.yml` | Push to `dev` / `main`, PRs into them, `workflow_dispatch` (manual, feat branches) |
+| Self-gating CI | `.github/workflows/bkit-ci.yml` | Push to `dev` / `main`, PRs into them, `workflow_dispatch` (manual, feat branches) |
 | Release publish | `.github/workflows/release.yml` | Git tag push |
 | Cloud-agent lane | `.github/workflows/bkit-cloud.yml` | Opt-in (`bkit install --auto=…`); dual claude + opencode jobs, each secret-gated |
 

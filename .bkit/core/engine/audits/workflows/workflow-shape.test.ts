@@ -1,4 +1,4 @@
-// Workflow shapes the reviews pinned: each test reads the shipped `.bkit/workflows/*.md`
+// Workflow shapes the reviews pinned: each test reads the shipped `.bkit/core/workflows/*.md`
 // and fails when the shape a command or route depends on is gone.
 
 import * as fs from "node:fs";
@@ -11,7 +11,7 @@ const PHASES = ["design", "plan", "build", "debug", "ship"] as const;
 const ALL = ["auto", ...PHASES] as const;
 
 const workflow = (name: string) =>
-  fs.readFileSync(path.join(REPO_ROOT, ".bkit", "workflows", `bkit-${name}.md`), "utf-8");
+  fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "workflows", `bkit-${name}.md`), "utf-8");
 
 /** The text of one `## ` section, found by a pattern on its heading line. */
 function section(text: string, heading: RegExp): string {

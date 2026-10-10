@@ -13,8 +13,8 @@ import * as path from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import { isTemplate, syncTemplateCopies } from "../../install/template-copies";
-import { getTemplatesRoot } from "../../shared/package-roots";
+import { syncTemplateCopies } from "../../install/template-copies";
+import { getCoreRoot, getTemplatesRoot } from "../../shared/package-roots";
 import type { WriteSet } from "../../install/write";
 
 const CONTEXT_DIR = path.join(getTemplatesRoot(), "context");
@@ -63,7 +63,13 @@ afterAll(() => fs.rmSync(scratch, { recursive: true, force: true }));
 describe(".bkit/templates/context/", () => {
   it("ships the provider set", () => {
     expect(files).toEqual(
-      expect.arrayContaining(["expo.md", "github.md", "maestro.md", "playwright.md", "vercel.md"]),
+      expect.arrayContaining([
+        "bkit-expo.md",
+        "bkit-github.md",
+        "bkit-maestro.md",
+        "bkit-playwright.md",
+        "bkit-vercel.md",
+      ]),
     );
     expect(files.length).toBeGreaterThanOrEqual(13);
   });
@@ -117,15 +123,14 @@ describe(".bkit/templates/context/", () => {
   it("names no consumer: no gether / bartens string in the context templates", () => {
     const sources = [
       ...files.map((f) => path.join(CONTEXT_DIR, f)),
-      path.join(getTemplatesRoot(), ".agents", "context.md"),
+      path.join(getCoreRoot(), ".agents", "context.md"),
     ];
     for (const abs of sources) {
       expect(fs.readFileSync(abs, "utf-8"), abs).not.toMatch(/\b(?:gether|c?bartens)\b/i);
     }
   });
 
-  it("isTemplate covers them and install copies them into .bkit/templates/context/", () => {
-    for (const f of files) expect(isTemplate(`context/${f}`), f).toBe(true);
+  it("install copies them into .bkit/templates/context/", () => {
     const cwd = fs.mkdtempSync(path.join(scratch, "consumer-"));
     const ws: WriteSet = { writes: [] };
     const changes = syncTemplateCopies(cwd, { dryRun: false, ws });

@@ -9,20 +9,21 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { getBkitDocsRoot, getPromptsRoot, getWorkflowsRoot } from "../../shared/package-roots";
 
-const PROMPTS_INDEX = path.resolve(".bkit/prompts.md");
-const WORKFLOWS_INDEX = path.resolve(".bkit/workflows.md");
+const PROMPTS_INDEX = path.join(getBkitDocsRoot(), "prompts.md");
+const WORKFLOWS_INDEX = path.join(getBkitDocsRoot(), "workflows.md");
 
 // Canonical catalog entry names = sorted `.md` basenames (extension stripped),
 // computed once from disk (e.g. "bkit-design-review-1").
 const mdRe = /\.md$/;
 const PROMPT_NAMES = fs
-  .readdirSync(path.resolve(".bkit/prompts"))
+  .readdirSync(getPromptsRoot())
   .filter((f) => mdRe.test(f))
   .map((f) => f.replace(mdRe, ""))
   .sort();
 const WORKFLOW_NAMES = fs
-  .readdirSync(path.resolve(".bkit/workflows"))
+  .readdirSync(getWorkflowsRoot())
   .filter((f) => mdRe.test(f))
   .map((f) => f.replace(mdRe, ""))
   .sort();

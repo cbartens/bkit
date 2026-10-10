@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as os from "node:os";
-import { guardTemplatesRoot, removeOrphans } from "./core";
+import { guardCoreRoot, removeOrphans } from "./core";
 
 // Every non-test source in `dir`, concatenated — read as text to inspect the constant bodies
 // without executing the modules (avoids import side-effects and keeps tests fast).
@@ -48,15 +48,15 @@ describe("runCoreModule first-install advisory (BAR-141: structured finding)", (
 });
 
 // ---------------------------------------------------------------------------
-// WS1-T5 — fail-loud templates-root guard (path-agnostic)
+// WS1-T5 — fail-loud core-root guard (path-agnostic)
 //
 // This test injects a completely arbitrary non-existent path so the assertion
-// remains valid after any future templates-root changes. It does NOT
-// hard-code ".bkit/templates" — the guard must fire for ANY missing resolved
+// remains valid after any future core-root changes. It does NOT
+// hard-code ".bkit/core" — the guard must fire for ANY missing resolved
 // root, not just the current literal.
 // ---------------------------------------------------------------------------
 
-describe("guardTemplatesRoot — fail-loud on missing templates root", () => {
+describe("guardCoreRoot — fail-loud on missing core root", () => {
   let exitSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -75,18 +75,18 @@ describe("guardTemplatesRoot — fail-loud on missing templates root", () => {
   it("calls process.exit(1) when the injected root does not exist", () => {
     // Use a clearly non-existent, path-agnostic path — no .agents/templates literal.
     const nonExistentRoot = path.join("/tmp", "bkit-guard-test-nonexistent-root-xyz123");
-    expect(() => guardTemplatesRoot(nonExistentRoot)).toThrow("process.exit called");
+    expect(() => guardCoreRoot(nonExistentRoot)).toThrow("process.exit called");
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it("emits the correct error message including the injected path", () => {
     const nonExistentRoot = path.join("/tmp", "bkit-guard-test-nonexistent-root-xyz123");
     try {
-      guardTemplatesRoot(nonExistentRoot, "[bkit-modules]");
+      guardCoreRoot(nonExistentRoot, "[bkit-modules]");
     } catch {
       // expected
     }
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Templates root not found at"));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Core root not found at"));
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(nonExistentRoot));
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("package corrupt?"));
   });
@@ -94,7 +94,7 @@ describe("guardTemplatesRoot — fail-loud on missing templates root", () => {
   it("does NOT exit when the root exists", () => {
     // Use a real existing path — the repo root is guaranteed to exist.
     const existingRoot = path.resolve(".");
-    expect(() => guardTemplatesRoot(existingRoot)).not.toThrow();
+    expect(() => guardCoreRoot(existingRoot)).not.toThrow();
     expect(exitSpy).not.toHaveBeenCalled();
   });
 });

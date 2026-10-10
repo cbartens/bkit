@@ -1,5 +1,5 @@
 /**
- * audits/templates/template-ci-yml.test.ts — the template `ci.yml`, filled in the way
+ * audits/templates/template-ci-yml.test.ts — the template `bkit-ci.yml`, filled in the way
  * `.bkit/templates.md` tells a consumer to, is a valid workflow, and the ship gate finds
  * its capstone by the job names it actually declares.
  *
@@ -18,7 +18,7 @@ import { runsCommand } from "../../commands/workflow/runs";
 import { readBkitConfig } from "../../shared/settings";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-const TEMPLATE = path.join(REPO_ROOT, ".bkit", "templates", ".github", "workflows", "ci.yml");
+const TEMPLATE = path.join(REPO_ROOT, ".bkit", "templates", ".github", "workflows", "bkit-ci.yml");
 const GH_FIXTURES = path.join(REPO_ROOT, "tests", "fixtures", "gh");
 
 const dirs: string[] = [];
@@ -38,7 +38,7 @@ function filledTemplate(): string {
     .replaceAll("{{DEFAULT_BRANCH}}", "main")
     .replaceAll("{{NODE_VERSION}}", "22");
   expect(text).not.toMatch(/\{\{[A-Z_]+\}\}/);
-  const file = path.join(tmp(), "ci.yml");
+  const file = path.join(tmp(), "bkit-ci.yml");
   fs.writeFileSync(file, text);
   return file;
 }
@@ -55,7 +55,7 @@ interface Job {
   needs?: string | string[];
 }
 
-describe("template ci.yml, filled in", () => {
+describe("template bkit-ci.yml, filled in", () => {
   it("parses as YAML, with the capstone needing every other job", () => {
     const doc = parseYaml(filledTemplate());
     const jobs = doc.jobs as Record<string, Job>;
@@ -197,28 +197,28 @@ jobs:
   });
 
   it("canonical CI template has zero foreign `cbartens/bkit/...` uses", () => {
-    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");
     expect(scanForeignBkitUses(content)).toEqual([]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Task 6.1 — ci.yml template registry-auth assertion (BAR-138)
+// Task 6.1 — bkit-ci.yml template registry-auth assertion (BAR-138)
 // ---------------------------------------------------------------------------
 
-describe("ci.yml template registry-auth assertion (Task 6.1 — BAR-138)", () => {
+describe("bkit-ci.yml template registry-auth assertion (Task 6.1 — BAR-138)", () => {
   // BAR-138: The consumer CI template uses GitHub Packages registry auth
   // (.npmrc + BKIT_GH_TOKEN_INSTALL env var), not a git auth-shim
   // (git config --global url.insteadOf).
 
-  it("ci.yml template exists", () => {
-    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
+  it("bkit-ci.yml template exists", () => {
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml");
     expect(fs.existsSync(templatePath), `template must exist at ${templatePath}`).toBe(true);
   });
 
-  it("ci.yml template does NOT contain a git auth-shim (BAR-138)", () => {
-    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
+  it("bkit-ci.yml template does NOT contain a git auth-shim (BAR-138)", () => {
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");
     // Auth-shim strings must be absent
     expect(content).not.toContain("git config --global url.");
@@ -226,8 +226,8 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — BAR-138)", () =>
     expect(content).not.toContain("Configure private-repo auth");
   });
 
-  it("ci.yml template install step carries env: BKIT_GH_TOKEN_INSTALL for registry auth (BAR-138)", () => {
-    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
+  it("bkit-ci.yml template install step carries env: BKIT_GH_TOKEN_INSTALL for registry auth (BAR-138)", () => {
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");
     // BKIT_GH_TOKEN_INSTALL must be present as the env var for registry auth
     expect(content).toContain("BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}");

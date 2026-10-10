@@ -210,7 +210,7 @@ describe("renderCloudEnvNotes", () => {
   });
 });
 
-// The generated .claude/cloud.md template carries the sentinels the module
+// The generated .claude/bkit-cloud.md template carries the sentinels the module
 // substitutes at install/upgrade time.
 describe("template generation sentinels", () => {
   const pkgRoot = path.resolve(
@@ -221,7 +221,7 @@ describe("template generation sentinels", () => {
     "..",
   );
   const template = fs.readFileSync(
-    path.join(pkgRoot, ".bkit", "templates", ".claude", "cloud.md"),
+    path.join(pkgRoot, ".bkit", "shared", ".claude", "bkit-cloud.md"),
     "utf-8",
   );
 
@@ -317,17 +317,17 @@ describe("renderCloudCacheBust", () => {
   });
 
   it("increments the counter when the prior doc has today's date", () => {
-    write(".claude/cloud.md", "#!/bin/bash\n# cache-bust 2026-07-14-1\nset -euo pipefail\n");
+    write(".claude/bkit-cloud.md", "#!/bin/bash\n# cache-bust 2026-07-14-1\nset -euo pipefail\n");
     expect(renderCloudCacheBust(tmpDir, "2026-07-14")).toBe("# cache-bust 2026-07-14-2");
   });
 
   it("resets the counter to 1 when the prior doc is from an earlier date", () => {
-    write(".claude/cloud.md", "#!/bin/bash\n# cache-bust 2026-07-13-5\nset -euo pipefail\n");
+    write(".claude/bkit-cloud.md", "#!/bin/bash\n# cache-bust 2026-07-13-5\nset -euo pipefail\n");
     expect(renderCloudCacheBust(tmpDir, "2026-07-14")).toBe("# cache-bust 2026-07-14-1");
   });
 
   it("starts at 1 when the prior doc has no cache-bust line (pre-feature doc)", () => {
-    write(".claude/cloud.md", "#!/bin/bash\nset -euo pipefail\n");
+    write(".claude/bkit-cloud.md", "#!/bin/bash\nset -euo pipefail\n");
     expect(renderCloudCacheBust(tmpDir, "2026-07-14")).toBe("# cache-bust 2026-07-14-1");
   });
 });
@@ -341,7 +341,7 @@ describe("writeClaudeCloudDoc — end-to-end render (real template)", () => {
 
   it("emits a cache-bust line and leaves NO unreplaced @@CLOUD_ sentinels", () => {
     expect(writeClaudeCloudDoc(tmpDir, TOKENS)).toBe(true);
-    const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
+    const out = fs.readFileSync(path.join(tmpDir, ".claude", "bkit-cloud.md"), "utf-8");
     // Cache-bust comment sits directly after the shebang, dated today, counter 1.
     expect(out).toMatch(/#!\/bin\/bash\n# cache-bust \d{4}-\d{2}-\d{2}-1\nset -euo pipefail\n/);
     // No sentinel leaks into the shipped paste doc.
@@ -351,13 +351,13 @@ describe("writeClaudeCloudDoc — end-to-end render (real template)", () => {
   it("advances the counter on a same-day regeneration", () => {
     writeClaudeCloudDoc(tmpDir, TOKENS);
     writeClaudeCloudDoc(tmpDir, TOKENS);
-    const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
+    const out = fs.readFileSync(path.join(tmpDir, ".claude", "bkit-cloud.md"), "utf-8");
     expect(out).toMatch(/# cache-bust \d{4}-\d{2}-\d{2}-2\n/);
   });
 
   it("renders the always-Custom block with shipped hosts when no allowed-domains are declared", () => {
     writeClaudeCloudDoc(tmpDir, TOKENS);
-    const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
+    const out = fs.readFileSync(path.join(tmpDir, ".claude", "bkit-cloud.md"), "utf-8");
     // The tick instruction reaches the zero-declared path too. Without it a
     // zero-declaration consumer drops to a bare Custom list and loses PyPI, crates.io,
     // the Go proxy and the cloud SDK hosts the "also include defaults" tick preserves.
@@ -372,7 +372,7 @@ describe("writeClaudeCloudDoc — end-to-end render (real template)", () => {
         "<!-- allowed-domains:start -->\nsentry.io\n*.vercel.com\n<!-- allowed-domains:end -->\n",
     );
     writeClaudeCloudDoc(tmpDir, TOKENS);
-    const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
+    const out = fs.readFileSync(path.join(tmpDir, ".claude", "bkit-cloud.md"), "utf-8");
     expect(out).toContain("Set to **Custom**");
     expect(out).toContain("Also include default list");
     expect(out).toMatch(/sentry\.io\n\*\.sentry\.io/);
@@ -453,7 +453,7 @@ describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllow
 });
 
 // ---------------------------------------------------------------------------
-// Cursor Background Agents — the twin of `.claude/cloud.md`. Same `.envrc`-following
+// Cursor Background Agents — the twin of `.claude/bkit-cloud.md`. Same `.envrc`-following
 // resolver, a Cursor-specific env-var policy, and a doc that carries no setup-script
 // mechanics (the toolchain lives in `.cursor/Dockerfile` + `environment.json`).
 // ---------------------------------------------------------------------------
@@ -619,7 +619,7 @@ describe("cursor template generation sentinels", () => {
     "..",
   );
   const template = fs.readFileSync(
-    path.join(pkgRoot, ".bkit", "templates", ".cursor", "cloud.md"),
+    path.join(pkgRoot, ".bkit", "shared", ".cursor", "bkit-cloud.md"),
     "utf-8",
   );
 
@@ -654,7 +654,7 @@ describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
     write(".envrc", "dotenv_if_exists .bkit/.env");
     write(".bkit/.env", "BKIT_GH_TOKEN=real");
     expect(writeCursorCloudDoc(tmpDir, TOKENS, "linear")).toBe(true);
-    const dst = path.join(tmpDir, ".cursor", "cloud.md");
+    const dst = path.join(tmpDir, ".cursor", "bkit-cloud.md");
     const out = fs.readFileSync(dst, "utf-8");
     expect(out).not.toMatch(/@@[A-Z_]+@@/);
     expect(out).toContain("test-repo");
@@ -667,12 +667,12 @@ describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
     write(".bkit/.env", "BKIT_GH_TOKEN=real");
 
     writeCursorCloudDoc(tmpDir, TOKENS, "linear");
-    const linearOut = fs.readFileSync(path.join(tmpDir, ".cursor", "cloud.md"), "utf-8");
+    const linearOut = fs.readFileSync(path.join(tmpDir, ".cursor", "bkit-cloud.md"), "utf-8");
     expect(linearOut).toContain("BKIT_LINEAR_API_KEY=");
     expect(linearOut).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
 
     writeCursorCloudDoc(tmpDir, TOKENS, "github");
-    const githubOut = fs.readFileSync(path.join(tmpDir, ".cursor", "cloud.md"), "utf-8");
+    const githubOut = fs.readFileSync(path.join(tmpDir, ".cursor", "bkit-cloud.md"), "utf-8");
     // The env-var paste block must not carry BKIT_LINEAR_API_KEY on the GitHub tracker. (The
     // prose still mentions LINEAR_ISSUE_ID as an injected var — assert on the block line.)
     expect(githubOut).not.toMatch(/^BKIT_LINEAR_API_KEY=/m);

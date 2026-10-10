@@ -13,10 +13,11 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { BKIT_BUILD_GATES, BKIT_DEBUG_GATES, BKIT_GATE_SCRIPTS } from "../../install/manifest.js";
+import { getPromptsRoot, getWorkflowsRoot } from "../../shared/package-roots";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-const PROMPTS_DIR = path.resolve(REPO_ROOT, ".bkit/prompts");
-const WORKFLOWS_DIR = path.resolve(REPO_ROOT, ".bkit/workflows");
+const PROMPTS_DIR = getPromptsRoot();
+const WORKFLOWS_DIR = getWorkflowsRoot();
 
 // The canonical authoring surfaces. Host renders under .claude/ .cursor/
 // .opencode/ are generated from these by `bkit install` and are not inspected.
@@ -28,7 +29,7 @@ function canonicalFiles(): Array<{ rel: string; body: string }> {
       out.push({ rel: path.relative(REPO_ROOT, abs), body: fs.readFileSync(abs, "utf-8") });
     }
   }
-  for (const rel of [".bkit/workflows.md", ".bkit/prompts.md"]) {
+  for (const rel of [".bkit/core/.bkit/workflows.md", ".bkit/core/.bkit/prompts.md"]) {
     out.push({ rel, body: fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8") });
   }
   return out;
@@ -46,13 +47,13 @@ const BANNED = [
 // occurrence fails the audit.
 const EXEMPT: Array<{ rel: string; pattern: string; context: string }> = [
   {
-    rel: ".bkit/workflows.md",
+    rel: ".bkit/core/.bkit/workflows.md",
     pattern: "pnpm turbo",
     context:
       "§ Local gate scripts — shows the turbo form as an example of what a consumer PUTS IN the script value, which is the point of the indirection",
   },
   {
-    rel: ".bkit/workflows.md",
+    rel: ".bkit/core/.bkit/workflows.md",
     pattern: "--filter='...[origin/dev]'",
     context: "§ Local gate scripts — same example",
   },
@@ -68,13 +69,13 @@ const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
   [".bkit/templates/.husky/pre-commit", "pnpm bkit:gate:format"],
   [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:static-unit"],
   [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:static"],
-  [".bkit/prompts/bkit-build-plan-execute.md", "pnpm bkit:gate:static"],
-  [".bkit/prompts/bkit-build-plan-gaps-remediate.md", "pnpm bkit:gate:static-unit"],
-  [".bkit/prompts/bkit-build-challenge-remediate.md", "pnpm bkit:gate:static-unit"],
-  [".bkit/prompts/bkit-debug-failure-remediate.md", "pnpm bkit:gate:static-unit"],
-  [".bkit/prompts/bkit-build-challenge-tests.md", "pnpm bkit:gate:static-unit"],
-  [".bkit/prompts/bkit-build-plan-verify.md", "pnpm bkit:gate:static-unit"],
-  [".bkit/prompts/bkit-ship-conflict-resolve.md", "pnpm bkit:gate:install-static-unit-build"],
+  [".bkit/core/prompts/bkit-build-plan-execute.md", "pnpm bkit:gate:static"],
+  [".bkit/core/prompts/bkit-build-plan-gaps-remediate.md", "pnpm bkit:gate:static-unit"],
+  [".bkit/core/prompts/bkit-build-challenge-remediate.md", "pnpm bkit:gate:static-unit"],
+  [".bkit/core/prompts/bkit-debug-failure-remediate.md", "pnpm bkit:gate:static-unit"],
+  [".bkit/core/prompts/bkit-build-challenge-tests.md", "pnpm bkit:gate:static-unit"],
+  [".bkit/core/prompts/bkit-build-plan-verify.md", "pnpm bkit:gate:static-unit"],
+  [".bkit/core/prompts/bkit-ship-conflict-resolve.md", "pnpm bkit:gate:install-static-unit-build"],
   // bkit-build.md / bkit-debug.md are NOT listed: they run the gate through
   // `bkit tests run --gate=<candidate>...`, which picks the deepest declared
   // candidate itself. The PROBES block below covers them.
@@ -134,7 +135,7 @@ describe("bkit-local-gate-audit (#437)", () => {
 
   for (const { workflow, gates, stopsAt, sites } of PROBES) {
     describe(`${workflow} runs the deepest declared gate (through ${stopsAt})`, () => {
-      const body = fs.readFileSync(path.join(REPO_ROOT, ".bkit/workflows", workflow), "utf-8");
+      const body = fs.readFileSync(path.join(REPO_ROOT, ".bkit/core/workflows", workflow), "utf-8");
       const blocks = testBlocks(body);
 
       it(`passes every candidate, in descending depth, at each of its ${sites} call site(s)`, () => {

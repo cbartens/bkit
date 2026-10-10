@@ -61,7 +61,7 @@ describe("runPreflight", () => {
     // because each detector is called once. But we can verify the dedup logic by
     // checking no duplicates exist in the output.
     fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");
-    const { blockers, advisories } = runPreflight(makeModules("lint"), tmpDir);
+    const { blockers, advisories } = runPreflight(makeModules("claude"), tmpDir);
     const allIds = [...blockers, ...advisories].map((f) => f.id);
     const uniqueIds = [...new Set(allIds)];
     expect(allIds).toEqual(uniqueIds);
@@ -101,7 +101,7 @@ describe("runPreflight", () => {
   it("not-git-repo does NOT fire when --core is not requested", () => {
     // No package.json, no .git, but no --core either — not-git-repo should not fire
     fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");
-    const { blockers } = runPreflight(makeModules("lint"), tmpDir);
+    const { blockers } = runPreflight(makeModules("claude"), tmpDir);
     expect(blockers.some((f) => f.id === "not-git-repo")).toBe(false);
   });
 });

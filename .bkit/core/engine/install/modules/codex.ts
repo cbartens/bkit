@@ -5,7 +5,12 @@ import * as path from "node:path";
 import { writeTier2, writeTier2JsonContained, ensureDir } from "../write.js";
 import { managedVersionMarker, stampManagedVersion } from "../version-file.js";
 import { applyCodexAgent, parseFrontmatter } from "../../render/hosts.js";
-import { getTemplatesRoot, getWorkflowsRoot, getPromptsRoot } from "../../shared/package-roots.js";
+import {
+  getCoreRoot,
+  getSharedRoot,
+  getWorkflowsRoot,
+  getPromptsRoot,
+} from "../../shared/package-roots.js";
 import { type IssueTracker, DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import type { ModuleContext } from "./index.js";
@@ -18,7 +23,7 @@ import {
 } from "./core.js";
 
 /**
- * Convert a workflow orchestrator (`.bkit/workflows/*.md`) into a Codex SKILL.md.
+ * Convert a workflow orchestrator (`.bkit/core/workflows/*.md`) into a Codex SKILL.md.
  *
  * Codex requires `name` and `description` in the skill frontmatter; the workflows already
  * carry `description`, so `name` is added and the body is kept verbatim (it is the whole
@@ -159,11 +164,12 @@ export function runCodexModule(ctx: ModuleContext): void {
 
   renderCodexAgentsSkills(ctx);
 
-  const codexTplDir = path.join(getTemplatesRoot(), ".codex");
+  const codexShared = path.join(getSharedRoot(), ".codex");
+  const codexHooks = path.join(getCoreRoot(), ".codex", "hooks");
 
   // --- hooks.json — Tier-2 deep-contained (consumers may add their own event groups) ---
   {
-    const jsonSrc = path.join(codexTplDir, "hooks.json");
+    const jsonSrc = path.join(codexShared, "hooks.json");
     const jsonDst = ".codex/hooks.json";
     if (fs.existsSync(jsonSrc)) {
       if (!dryRun) ensureDir(path.dirname(jsonDst));
@@ -173,10 +179,10 @@ export function runCodexModule(ctx: ModuleContext): void {
     }
   }
 
-  // --- gateguard.cjs — Tier-2 markered-text, twin of the Claude hook ---
+  // --- bkit-gateguard.cjs — Tier-2 markered-text, twin of the Claude hook ---
   {
-    const hookSrc = path.join(codexTplDir, "hooks", "gateguard.cjs");
-    const hookDst = ".codex/hooks/gateguard.cjs";
+    const hookSrc = path.join(codexHooks, "bkit-gateguard.cjs");
+    const hookDst = ".codex/hooks/bkit-gateguard.cjs";
     if (fs.existsSync(hookSrc)) {
       if (!dryRun) ensureDir(path.dirname(hookDst));
       const prevLen = ws.writes.length;
@@ -185,13 +191,13 @@ export function runCodexModule(ctx: ModuleContext): void {
     }
   }
 
-  // --- guardrails.cjs — Tier-2 markered-text, twin of the Cursor hook ---
+  // --- bkit-guardrails.cjs — Tier-2 markered-text, twin of the Cursor hook ---
   // Registered on matcher `Bash` in hooks.json above. Same decision engine as Cursor;
   // the deny tier blocks, the ask tier is advisory because Codex parses but does not
   // implement `permissionDecision: "ask"`.
   {
-    const railSrc = path.join(codexTplDir, "hooks", "guardrails.cjs");
-    const railDst = ".codex/hooks/guardrails.cjs";
+    const railSrc = path.join(codexHooks, "bkit-guardrails.cjs");
+    const railDst = ".codex/hooks/bkit-guardrails.cjs";
     if (fs.existsSync(railSrc)) {
       if (!dryRun) ensureDir(path.dirname(railDst));
       const prevLen = ws.writes.length;

@@ -28,15 +28,15 @@ import { describe, expect, it } from "vitest";
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 
 const WORKFLOW_FILES = [
-  ".bkit/workflows/bkit-auto.md",
-  ".bkit/workflows/bkit-build.md",
-  ".bkit/workflows/bkit-debug.md",
-  ".bkit/workflows/bkit-design.md",
-  ".bkit/workflows/bkit-plan.md",
-  ".bkit/workflows/bkit-ship.md",
+  ".bkit/core/workflows/bkit-auto.md",
+  ".bkit/core/workflows/bkit-build.md",
+  ".bkit/core/workflows/bkit-debug.md",
+  ".bkit/core/workflows/bkit-design.md",
+  ".bkit/core/workflows/bkit-plan.md",
+  ".bkit/core/workflows/bkit-ship.md",
 ] as const;
 
-const SPEC_FILE = ".bkit/workflows.md";
+const SPEC_FILE = ".bkit/core/.bkit/workflows.md";
 const ALL_FILES = [...WORKFLOW_FILES, SPEC_FILE] as const;
 
 // Both markers are h6 headings. Detection is the heading form only.
@@ -65,9 +65,9 @@ describe("issue text is joined, filtered and cut only by bkit issues text", () =
   const RELATED_JOIN = 'issues text --description-file="{OUTBOX}/related-description.md"';
   const PHASES = WORKFLOW_FILES.filter((rel) => !rel.endsWith("bkit-auto.md"));
   const SWEEPS = [
-    ".bkit/workflows/bkit-debug.md",
-    ".bkit/workflows/bkit-design.md",
-    ".bkit/workflows/bkit-plan.md",
+    ".bkit/core/workflows/bkit-debug.md",
+    ".bkit/core/workflows/bkit-design.md",
+    ".bkit/core/workflows/bkit-plan.md",
   ];
 
   for (const rel of PHASES) {
@@ -105,7 +105,7 @@ describe("nothing bkit ships can carry a live cut marker", () => {
   // Naming the token INLINE is allowed, and that is the point of whole-line detection:
   // a step, a spec paragraph or a subagent prompt can describe the mechanism without
   // arming it. Emitting the marker on its own line is what stays prohibited.
-  const PROMPT_DIR = ".bkit/prompts";
+  const PROMPT_DIR = ".bkit/core/prompts";
   const PROMPT_FILES = fs
     .readdirSync(path.join(REPO_ROOT, PROMPT_DIR))
     .filter((name) => name.endsWith(".md"))

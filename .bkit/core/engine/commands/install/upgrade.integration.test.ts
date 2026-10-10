@@ -23,7 +23,7 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runUpgrade, updateCanonicalHashesAfterUpgrade, type UpgradeCandidate } from "./upgrade";
-import { listFilesRecursive, remapTemplateDest, isTemplate } from "../../install/template-copies";
+import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
 import { listStampedFiles } from "../../install/modules/index";
 import { readInstallingVersion } from "../../install/modules/core";
 import { getTemplatesRoot } from "../../shared/package-roots";
@@ -108,7 +108,7 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
             SessionStart: [
               {
                 matcher: "",
-                hooks: [{ type: "command", command: ".cursor/hooks/preflight.sh" }],
+                hooks: [{ type: "command", command: ".cursor/hooks/bkit-preflight.sh" }],
               },
             ],
           },
@@ -128,7 +128,7 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
             SessionStart: [
               {
                 matcher: "",
-                hooks: [{ type: "command", command: ".cursor/hooks/preflight.sh" }],
+                hooks: [{ type: "command", command: ".cursor/hooks/bkit-preflight.sh" }],
               },
             ],
             PostToolUse: [{ matcher: "Edit", hooks: [{ type: "command", command: "echo done" }] }],
@@ -333,7 +333,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     expect(result.status).toBe(0);
   });
 
-  it("install --typescript does not write Serena or graphify examples", () => {
+  it("install --claude does not write Serena or graphify examples", () => {
     expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -341,7 +341,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
       "utf-8",
     );
     fs.mkdirSync(path.join(tmpDir, ".git"));
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--typescript"], {
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -397,7 +397,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     const owned = "{ stale: true }\n";
     fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), owned, "utf-8");
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "renovate.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-renovate.yml"),
       "name: Renovate\n",
       "utf-8",
     );
@@ -406,7 +406,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
 
     expect(fs.readFileSync(path.join(tmpDir, ".github", "renovate.json5"), "utf-8")).toBe(owned);
     expect(
-      fs.readFileSync(path.join(tmpDir, ".github", "workflows", "renovate.yml"), "utf-8"),
+      fs.readFileSync(path.join(tmpDir, ".github", "workflows", "bkit-renovate.yml"), "utf-8"),
     ).toBe("name: Renovate\n");
   });
 
@@ -563,7 +563,6 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
     const root = getTemplatesRoot();
     return listFilesRecursive(root)
       .map((abs) => remapTemplateDest(path.relative(root, abs)))
-      .filter((rel) => isTemplate(rel))
       .sort();
   }
 
@@ -575,7 +574,7 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
       JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
       "utf-8",
     );
-    const hosts = ["--claude", "--cursor", "--codex", "--opencode=openrouter", "--typescript"];
+    const hosts = ["--claude", "--cursor", "--codex", "--opencode=openrouter"];
     // --auto=cursor needs the Linear tracker.
     for (const lane of ["--auto=claude", "--auto=cursor", "--auto=opencode"]) {
       const tracker = lane === "--auto=cursor" ? "--tracker=linear" : "--tracker=github";
@@ -598,7 +597,7 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
       JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
       "utf-8",
     );
-    expect(runCli(["install", "--claude", "--cursor", "--typescript"]).status).toBe(0);
+    expect(runCli(["install", "--claude", "--cursor"]).status).toBe(0);
 
     const owned: Record<string, string> = {};
     for (const rel of templatePaths()) owned[rel] = `consumer's own ${rel}\n`;
@@ -696,7 +695,7 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
       JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
       "utf-8",
     );
-    const hosts = ["--claude", "--cursor", "--codex", "--opencode=openrouter", "--typescript"];
+    const hosts = ["--claude", "--cursor", "--codex", "--opencode=openrouter"];
     const install = runCli(["install", ...hosts, "--auto=claude", "--tracker=github"]);
     expect(install.status, install.out).toBe(0);
   }
@@ -834,7 +833,7 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     const uninstalledModuleFiles = [
       ".cursor/mcp.json",
       ".cursor/settings.json",
-      ".github/workflows/ci.yml",
+      ".github/workflows/bkit-ci.yml",
       ".vale.ini",
       ".husky/pre-commit",
     ];
@@ -1060,8 +1059,8 @@ describe("#422 — gateguard markered-text upgrade round-trip (site-9 regression
     const install = runCli(["install", "--claude", "--opencode=opencode-go", "--tracker=github"]);
     expect(install.status, `install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
 
-    const cjsPath = path.join(tmpDir, ".claude", "hooks", "gateguard.cjs");
-    const jsPath = path.join(tmpDir, ".opencode", "plugin", "gateguard.js");
+    const cjsPath = path.join(tmpDir, ".claude", "hooks", "bkit-gateguard.cjs");
+    const jsPath = path.join(tmpDir, ".opencode", "plugin", "bkit-gateguard.js");
     const cjsOriginal = fs.readFileSync(cjsPath, "utf-8");
     const jsOriginal = fs.readFileSync(jsPath, "utf-8");
     expect(cjsOriginal).toContain("// bkit:start");
@@ -1342,7 +1341,7 @@ describe("upgrade-preservation", () => {
   // ---------------------------------------------------------------------------
 
   describe("upgrade of an owned whole-file candidate", () => {
-    const REL = ".bkit/scripts/bkit-owned.sh";
+    const REL = ".bkit/owned/bkit-owned.sh";
 
     it("auto-updates when there is no consumer drift", () => {
       const old = "script v1\n";
@@ -1394,7 +1393,7 @@ describe("upgrade-preservation", () => {
       const result = runUpgrade(
         [
           {
-            relPath: ".bkit/scripts/bkit-owned.sh",
+            relPath: ".bkit/owned/bkit-owned.sh",
             templatePath,
             format: "byte-equal-text",
           },
@@ -1411,10 +1410,10 @@ describe("upgrade-preservation", () => {
         },
       );
 
-      const after = fs.readFileSync(path.join(tmpDir, ".bkit/scripts/bkit-owned.sh"), "utf-8");
+      const after = fs.readFileSync(path.join(tmpDir, ".bkit/owned/bkit-owned.sh"), "utf-8");
       expect(after).toContain("dev|main");
       expect(after).not.toContain("{{DEFAULT_BRANCH}}");
-      expect(result.updated).toContain(".bkit/scripts/bkit-owned.sh"); // written (new)
+      expect(result.updated).toContain(".bkit/owned/bkit-owned.sh"); // written (new)
     });
   });
 });
@@ -1658,11 +1657,11 @@ describe("upgrade-render", () => {
       const tsxBin = getTsxBin();
       expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
-      const install = runBkit(["install", "--claude", "--typescript"]);
+      const install = runBkit(["install", "--claude"]);
       expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
 
       // Whole-file managed (Tier 1, no markers) → drift-detected via diffFile.
-      const rel = ".bkit/scripts/bkit-slop-type-suppression.mjs";
+      const rel = ".bkit/.env.example";
       const abs = path.join(tmpDir, rel);
       const versionPath = path.join(tmpDir, ".bkit", "version");
       const recordedHash = (): string | undefined =>

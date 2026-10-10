@@ -111,23 +111,23 @@ describe("detectBkitStubs", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("returns empty when neither ci.yml nor pre-commit exist", () => {
+  it("returns empty when neither bkit-ci.yml nor pre-commit exist", () => {
     expect(detectBkitStubs(tmpDir)).toEqual([]);
   });
 
-  it("returns empty when ci.yml has no bkit-stub sentinels", () => {
+  it("returns empty when bkit-ci.yml has no bkit-stub sentinels", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "name: CI\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm test\n",
     );
     expect(detectBkitStubs(tmpDir)).toEqual([]);
   });
 
-  it("returns one finding per sentinel present in ci.yml", () => {
+  it("returns one finding per sentinel present in bkit-ci.yml", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       [
         "name: CI",
         "      # bkit-stub:auto-force-e2e — header",
@@ -146,7 +146,7 @@ describe("detectBkitStubs", () => {
   it("does not fire when the sentinel line has been removed (block left uncommented in place)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       ["name: CI", "      - name: Auto Force E2E", "        run: echo enabled"].join("\n"),
     );
     expect(detectBkitStubs(tmpDir)).toEqual([]);
@@ -155,7 +155,7 @@ describe("detectBkitStubs", () => {
   it("does not match partial-prefix ids (e.g. e2e-paths step id does not trigger e2e advisory)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "      id: e2e-paths\n      run: echo ok\n",
     );
     expect(detectBkitStubs(tmpDir)).toEqual([]);
@@ -167,10 +167,10 @@ describe("detectBkitStubs", () => {
   it("does not fire on prose back-references that merely cite a stub id", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       [
         "name: CI",
-        // provenance note on an already-enabled lane (bkit's own ci.yml)
+        // provenance note on an already-enabled lane (bkit's own bkit-ci.yml)
         "      # bkit-stub:coverage scaffold shipped to consumers. See testing.md.",
         // cross-reference between blocks (shipped in the consumer template)
         "# bkit-stub:coverage integration report posts from HERE, not bkit-tests-unit.",
@@ -184,7 +184,7 @@ describe("detectBkitStubs", () => {
   it("still fires on the header form regardless of indentation", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       [
         "name: CI",
         "# bkit-stub:coverage — Report vitest coverage on PRs.",
@@ -197,7 +197,7 @@ describe("detectBkitStubs", () => {
   it("flags vercel-enabled-without-e2e pair conflict", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       [
         "      - name: Await Vercel Preview",
         "        run: echo enabled",
@@ -214,7 +214,7 @@ describe("detectBkitStubs", () => {
   it("flags e2e-enabled-without-vercel pair conflict", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       [
         "      - name: Run E2E Tests",
         "        run: pnpm test:e2e",
@@ -302,7 +302,7 @@ describe("buildDepUpdaterSetupAdvisory", () => {
 describe("detectWorkflowLintToolsMissing", () => {
   function writeWorkflow() {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), "name: CI\n");
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"), "name: bkit-ci\n");
   }
 
   it("returns null when the repo has no workflows", () => {

@@ -172,7 +172,7 @@ describe("real workflow sources", () => {
     for (const tracker of ["github", "linear", "none"] as const) {
       it(`${wf} resolves cleanly for ${tracker}`, () => {
         const src = fs.readFileSync(
-          path.join(REPO_ROOT, ".bkit", "workflows", `${wf}.md`),
+          path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`),
           "utf-8",
         );
         const r = substituteWorkflow(src, tracker);
@@ -187,7 +187,10 @@ describe("real workflow sources", () => {
 
   it("every github block has a matching linear block; no legacy none markers remain", () => {
     for (const wf of workflows) {
-      const src = fs.readFileSync(path.join(REPO_ROOT, ".bkit", "workflows", `${wf}.md`), "utf-8");
+      const src = fs.readFileSync(
+        path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`),
+        "utf-8",
+      );
       const count = (re: RegExp) => (src.match(re) ?? []).length;
       const gh = count(/<!--\s*bkit:tracker\s+github\s+start\s*-->/g);
       const ln = count(/<!--\s*bkit:tracker\s+linear\s+start\s*-->/g);
@@ -221,7 +224,10 @@ describe("real workflow sources", () => {
 
   for (const wf of workflows) {
     it(`${wf} leaks no tracker-only token into the none render (#202 guard)`, () => {
-      const src = fs.readFileSync(path.join(REPO_ROOT, ".bkit", "workflows", `${wf}.md`), "utf-8");
+      const src = fs.readFileSync(
+        path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`),
+        "utf-8",
+      );
       const out = substituteWorkflow(src, "none").output;
       const leaked = TRACKER_ONLY_TOKENS.filter((t) => out.includes(t));
       expect(leaked, `${wf} none render leaks tracker-only tokens: ${leaked.join(", ")}`).toEqual(
@@ -238,7 +244,10 @@ describe("real workflow sources", () => {
     /<!--\s*bkit:tracker\s+github\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+github\s+end\s*-->\s*<!--\s*bkit:tracker\s+linear\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+linear\s+end\s*-->/g;
   for (const wf of workflows) {
     it(`${wf} has no identical github/linear pair (should be a true block)`, () => {
-      const src = fs.readFileSync(path.join(REPO_ROOT, ".bkit", "workflows", `${wf}.md`), "utf-8");
+      const src = fs.readFileSync(
+        path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`),
+        "utf-8",
+      );
       const identical: string[] = [];
       let m: RegExpExecArray | null;
       PAIR_RE.lastIndex = 0;
@@ -258,7 +267,7 @@ describe("real workflow sources", () => {
 // ---------------------------------------------------------------------------
 
 describe("real prompt sources", () => {
-  const PROMPTS_DIR = path.join(REPO_ROOT, ".bkit", "prompts");
+  const PROMPTS_DIR = path.join(REPO_ROOT, ".bkit", "core", "prompts");
   const prompts = fs.readdirSync(PROMPTS_DIR).filter((f) => f.endsWith(".md"));
 
   for (const tracker of ["github", "linear", "none"] as const) {
@@ -317,7 +326,7 @@ describe("real prompt sources", () => {
 describe("issue-scan call sites (#135)", () => {
   const scanned = ["bkit-design", "bkit-plan", "bkit-debug"];
   const read = (wf: string) =>
-    fs.readFileSync(path.join(REPO_ROOT, ".bkit", "workflows", `${wf}.md`), "utf-8");
+    fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`), "utf-8");
 
   for (const wf of scanned) {
     it(`${wf} wires a github scan that fetches each hit's comments`, () => {

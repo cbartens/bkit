@@ -80,7 +80,7 @@ const stub = (args: string[], vars: Record<string, string> = {}) => {
   return { status: res.status, stdout: res.stdout, output: res.stdout + res.stderr };
 };
 const RUNS_URL = (sha: string) =>
-  `/repos/example/example/actions/workflows/ci.yml/runs?head_sha=${sha}`;
+  `/repos/example/example/actions/workflows/bkit-ci.yml/runs?head_sha=${sha}`;
 
 describe("fixture gh stub", () => {
   it("runs?head_sha=green-capstone returns the captured workflow_runs list", () => {
@@ -183,7 +183,9 @@ describe("bkit runs gate", () => {
     fixtureGh();
     const r = await gate(tmp(), "--head=conflicting-no-run");
     expect(r.code).toBe(10);
-    expect(r.err).toContain("no run of ci.yml exists at head conflicting-no-run (total_count=0)");
+    expect(r.err).toContain(
+      "no run of bkit-ci.yml exists at head conflicting-no-run (total_count=0)",
+    );
   });
 
   it("rejects runs that have not completed (11)", async () => {
@@ -209,7 +211,7 @@ describe("bkit runs gate", () => {
     fixtureGh();
     const r = await gate(tmp(), "--head=superseded-green-target");
     expect(r.code).toBe(10);
-    expect(r.err).toContain("no run of ci.yml exists at head superseded-green-target");
+    expect(r.err).toContain("no run of bkit-ci.yml exists at head superseded-green-target");
   });
 
   it("rejects a run without the capstone job (13)", async () => {
@@ -437,7 +439,7 @@ describe("bkit runs gate", () => {
       fixtureGh();
       const r = await gate(tmp(), "--head=release-pr-only", "--event=push");
       expect(r.code).toBe(10);
-      expect(r.err).toContain("no run of ci.yml (event=push) exists at head release-pr-only");
+      expect(r.err).toContain("no run of bkit-ci.yml (event=push) exists at head release-pr-only");
     });
 
     it("without --event the in-flight pull_request run reads as in progress (11)", async () => {
@@ -793,10 +795,10 @@ describe("bkit runs mirror", () => {
     // Head, event and repo reach the run query; no run at the head sends the
     // superseded-head probe to the default branch, dev.
     expect(log).toContain(
-      "api /repos/example/example/actions/workflows/ci.yml/runs?head_sha=release-pr-only&event=push",
+      "api /repos/example/example/actions/workflows/bkit-ci.yml/runs?head_sha=release-pr-only&event=push",
     );
     expect(log).toContain(
-      "api /repos/example/example/actions/workflows/ci.yml/runs?branch=dev&status=success&per_page=1&event=push",
+      "api /repos/example/example/actions/workflows/bkit-ci.yml/runs?branch=dev&status=success&per_page=1&event=push",
     );
     expect(log).not.toContain("repo view");
   });
@@ -1091,7 +1093,7 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     gitIn(cwd, "config", "user.name", "t");
     if (opts.ciFile) {
       fs.mkdirSync(path.join(cwd, ".github/workflows"), { recursive: true });
-      fs.writeFileSync(path.join(cwd, ".github/workflows/ci.yml"), "name: CI\n");
+      fs.writeFileSync(path.join(cwd, ".github/workflows/bkit-ci.yml"), "name: bkit-ci\n");
     }
     if (opts.capstone) {
       fs.writeFileSync(
@@ -1327,8 +1329,8 @@ describe("bkit runs declared", () => {
     expect(r.code).toBe(1);
     expect(r.json).toEqual({
       declared: false,
-      ciWorkflow: "ci.yml",
-      path: ".github/workflows/ci.yml",
+      ciWorkflow: "bkit-ci.yml",
+      path: ".github/workflows/bkit-ci.yml",
     });
     fs.writeFileSync(
       path.join(cwd, "package.json"),
@@ -1336,7 +1338,7 @@ describe("bkit runs declared", () => {
     );
     fs.mkdirSync(path.join(cwd, ".github/workflows"), { recursive: true });
     // The default file does not count once another name is configured.
-    fs.writeFileSync(path.join(cwd, ".github/workflows/ci.yml"), "");
+    fs.writeFileSync(path.join(cwd, ".github/workflows/bkit-ci.yml"), "");
     r = await cli(cwd, ["declared"]);
     expect(r.code).toBe(1);
     expect(r.json.ciWorkflow).toBe("build.yml");
@@ -1345,17 +1347,17 @@ describe("bkit runs declared", () => {
     expect(r.code).toBe(0);
   });
 
-  it("the default ci.yml counts when no bkit.ciWorkflow is configured", async () => {
+  it("the default bkit-ci.yml counts when no bkit.ciWorkflow is configured", async () => {
     const cwd = tmp();
     fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ name: "x" }));
     fs.mkdirSync(path.join(cwd, ".github/workflows"), { recursive: true });
-    fs.writeFileSync(path.join(cwd, ".github/workflows/ci.yml"), "");
+    fs.writeFileSync(path.join(cwd, ".github/workflows/bkit-ci.yml"), "");
     const r = await cli(cwd, ["declared"]);
     expect(r.code).toBe(0);
     expect(r.json).toEqual({
       declared: true,
-      ciWorkflow: "ci.yml",
-      path: ".github/workflows/ci.yml",
+      ciWorkflow: "bkit-ci.yml",
+      path: ".github/workflows/bkit-ci.yml",
     });
   });
 });

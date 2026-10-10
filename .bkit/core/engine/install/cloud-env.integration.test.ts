@@ -67,12 +67,12 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
     expect(BKIT_SHIPPED_NETWORK_DOMAINS).toContain(probe);
 
     // 1 — Claude cloud paste fence (apex + wildcard)
-    const claudeCloud = read(path.join(".claude", "cloud.md"));
+    const claudeCloud = read(path.join(".claude", "bkit-cloud.md"));
     expect(claudeCloud).toContain(`\n${probe}\n`);
     expect(claudeCloud).toContain(`\n*.${probe}\n`);
 
     // 2 — Cursor cloud paste fence (exact hosts, no wildcard)
-    const cursorCloud = read(path.join(".cursor", "cloud.md"));
+    const cursorCloud = read(path.join(".cursor", "bkit-cloud.md"));
     expect(cursorCloud).toContain(probe);
     expect(cursorCloud).not.toContain(`*.${probe}`);
 
@@ -94,12 +94,12 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
 
     // Absence leg: the installed hook carries no domain array of its own (same as the
     // template assertion).
-    const hook = read(path.join(".cursor", "hooks", "guardrails.cjs"));
+    const hook = read(path.join(".cursor", "hooks", "bkit-guardrails.cjs"));
     expect(hook).not.toContain("SHIPPED_NETWORK_BASES");
 
     // Every shipped HOST reaches the Cursor surfaces, not just the one probe.
     for (const host of BKIT_SHIPPED_NETWORK_HOSTS) {
-      expect(cursorCloud, `${host} missing from .cursor/cloud.md`).toContain(host);
+      expect(cursorCloud, `${host} missing from .cursor/bkit-cloud.md`).toContain(host);
     }
   }, 180_000);
 });
@@ -123,7 +123,7 @@ describe("T14 — the provenance field contributes no bkit check drift", () => {
         timeout: 120_000,
       });
 
-    expect(run(["install", "--claude", "--typescript"]).status).toBe(0);
+    expect(run(["install", "--claude"]).status).toBe(0);
 
     const writeCount = (out: string) => /(\d+) write\(s\) would occur/.exec(out)?.[1] ?? "unknown";
 

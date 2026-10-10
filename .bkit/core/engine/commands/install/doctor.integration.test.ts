@@ -93,7 +93,7 @@ describe("bkit doctor — integration", () => {
     expect(result.stdout).toContain("[bkit-doctor]");
   });
 
-  it("prints Templates root line (WS5-T1)", () => {
+  it("prints Payload roots line (WS5-T1)", () => {
     if (!fs.existsSync(tsxBin)) return;
 
     seedMinimalConsumer(tmpDir);
@@ -105,7 +105,7 @@ describe("bkit doctor — integration", () => {
       env: { ...process.env, BKIT_GH_TOKEN_INSTALL: "test-token" },
     });
 
-    expect(result.stdout).toContain("[bkit-doctor] Templates root:");
+    expect(result.stdout).toContain("[bkit-doctor] Payload roots:");
   });
 
   it("emits bkit-version-pin-stale advisory when installed version > on-disk version", () => {
@@ -276,8 +276,8 @@ describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
   it("no drift advisory when consumer is fully contained", () => {
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
     const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
-    const templateSettings = path.join(pkgRoot, ".bkit", "templates", ".claude", "settings.json");
-    const templateHooks = path.join(pkgRoot, ".bkit", "templates", ".cursor", "hooks.json");
+    const templateSettings = path.join(pkgRoot, ".bkit", "shared", ".claude", "settings.json");
+    const templateHooks = path.join(pkgRoot, ".bkit", "shared", ".cursor", "hooks.json");
 
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });

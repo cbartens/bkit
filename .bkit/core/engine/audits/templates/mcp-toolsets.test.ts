@@ -2,7 +2,7 @@
 //
 // Asserts the `github` MCP server's `X-MCP-Toolsets` header includes `actions` (the
 // CI/Actions + artifact-download MCP fallback map the gh->MCP fallback lane uses) in
-// both the live `.mcp.json` and the shipped `.bkit/templates/.mcp.json`, and that the
+// both the live `.mcp.json` and the shipped `.bkit/shared/.mcp.json`, and that the
 // two agree through the real render path (`buildMcpJson`): bkit owns only the tracker
 // entry of `.mcp.json`, rendered tracker-filtered, so the live copy omits the `linear`
 // block the raw template carries.
@@ -15,7 +15,7 @@ import { getPkgRoot } from "../../shared/package-roots.js";
 
 const pkgRoot = getPkgRoot();
 const LIVE_MCP_JSON = path.join(pkgRoot, ".mcp.json");
-const TEMPLATE_MCP_JSON = path.join(pkgRoot, ".bkit", "templates", ".mcp.json");
+const TEMPLATE_MCP_JSON = path.join(pkgRoot, ".bkit", "shared", ".mcp.json");
 
 describe("bkit-mcp-toolsets — actions toolset (#341 C1)", () => {
   it("both .mcp.json and the template exist", () => {

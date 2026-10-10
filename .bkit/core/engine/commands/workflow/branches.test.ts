@@ -17,7 +17,7 @@ vi.mock("../../shared/timeouts", async (importOriginal) => {
 });
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-const GITATTRIBUTES = path.join(REPO_ROOT, ".bkit/templates/.gitattributes");
+const GITATTRIBUTES = path.join(REPO_ROOT, ".bkit/shared/.gitattributes");
 
 const dirs: string[] = [];
 afterEach(() => {

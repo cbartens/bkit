@@ -461,7 +461,7 @@ describe("bkit steps gate checks attempt / strategy / scope where the step write
   });
 
   it("ROW_FIELDS lists exactly the fields each workflow's `steps done|finish` call writes", () => {
-    const dir = path.join(REPO_ROOT, ".bkit", "workflows");
+    const dir = path.join(REPO_ROOT, ".bkit", "core", "workflows");
     const written: Record<string, string[]> = {};
     /** A finish call's `--agent` writes `strategy` when its prompt's header declares one. */
     const agentWritesStrategy = (line: string) =>

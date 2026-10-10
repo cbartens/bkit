@@ -1,15 +1,15 @@
-// install/template-copies.test.ts — Templates-root resolution regression tests.
+// install/template-copies.test.ts — Payload-root resolution regression tests.
 //
 // Coverage targets:
 //   getTemplatesRoot() three-context resolution
-//   guardTemplatesRoot() empty-string / falsy-root edge case
+//   guardCoreRoot() empty-string / falsy-root edge case
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPkgRoot, getTemplatesRoot, ENGINE_SUBPATH } from "../shared/package-roots";
-import { guardTemplatesRoot } from "./modules/core";
+import { guardCoreRoot } from "./modules/core";
 import { remapTemplateDest } from "./template-copies";
 
 // ---------------------------------------------------------------------------
@@ -95,19 +95,19 @@ describe("getTemplatesRoot() — context resolution regression tests", () => {
 });
 
 // ---------------------------------------------------------------------------
-// guardTemplatesRoot() — empty-string edge case
+// guardCoreRoot() — empty-string edge case
 //
 // Existing tests cover:
 //   - process.exit(1) on non-existent injected root
 //   - error message content (injected path + "package corrupt?")
 //   - no-exit when root exists
 //
-// Missing: empty string — guardTemplatesRoot("") must fire the guard since
+// Missing: empty string — guardCoreRoot("") must fire the guard since
 // an empty string path maps to cwd which is NOT the templates root.
 // This mirrors the fail-loud contract for any falsy/missing resolved path.
 // ---------------------------------------------------------------------------
 
-describe("guardTemplatesRoot — additional edge cases", () => {
+describe("guardCoreRoot — additional edge cases", () => {
   let exitSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -125,24 +125,24 @@ describe("guardTemplatesRoot — additional edge cases", () => {
 
   it("calls process.exit(1) for an empty string path (falsy root)", () => {
     // fs.existsSync("") returns false on all platforms — guard must fire
-    expect(() => guardTemplatesRoot("")).toThrow("process.exit called");
+    expect(() => guardCoreRoot("")).toThrow("process.exit called");
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it("emits error message for empty string path", () => {
     try {
-      guardTemplatesRoot("", "[bkit-test]");
+      guardCoreRoot("", "[bkit-test]");
     } catch {
       // expected — process.exit mock throws
     }
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Templates root not found at"));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Core root not found at"));
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("package corrupt?"));
   });
 
   it("includes the provided logPrefix in the error message", () => {
     const customPrefix = "[bkit-custom-prefix]";
     try {
-      guardTemplatesRoot("/tmp/bkit-templates-root-nonexistent-xyz", customPrefix);
+      guardCoreRoot("/tmp/bkit-templates-root-nonexistent-xyz", customPrefix);
     } catch {
       // expected
     }
@@ -151,7 +151,7 @@ describe("guardTemplatesRoot — additional edge cases", () => {
 
   it("does NOT exit when passed the actual templates root (which exists in test context)", () => {
     const existingRoot = getTemplatesRoot();
-    expect(() => guardTemplatesRoot(existingRoot)).not.toThrow();
+    expect(() => guardCoreRoot(existingRoot)).not.toThrow();
     expect(exitSpy).not.toHaveBeenCalled();
   });
 
@@ -163,10 +163,10 @@ describe("guardTemplatesRoot — additional edge cases", () => {
     const existingFilePath = path.join(tmpDir, "sentinel.txt");
     fs.writeFileSync(existingFilePath, "not a dir", "utf-8");
 
-    // guardTemplatesRoot uses fs.existsSync — a file that exists passes the guard.
+    // guardCoreRoot uses fs.existsSync — a file that exists passes the guard.
     // This is by design: the guard catches the "package corrupt" case where the
     // templates directory was never installed; a file at that path is a separate anomaly.
-    expect(() => guardTemplatesRoot(existingFilePath)).not.toThrow();
+    expect(() => guardCoreRoot(existingFilePath)).not.toThrow();
     expect(exitSpy).not.toHaveBeenCalled();
   });
 });

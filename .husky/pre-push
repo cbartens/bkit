@@ -6,7 +6,7 @@
 # format:check + prose + the enforcing slop gate) plus the bkit drift gate (no
 # Docker/network) — the full deterministic mirror of CI. Heavier tiers run in CI, NOT
 # here: integration + E2E -> bkit-tests (gated on web_affected / run_e2e); @live ->
-# bkit-tests-live; "did the planned tiers run?" -> bkit-tests-check. See ci.yml § FULL
+# bkit-tests-live; "did the planned tiers run?" -> bkit-tests-check. See bkit-ci.yml § FULL
 # CI SCAFFOLD REFERENCE — keep slow/network/deploy checks OUT. Turbo monorepos: scope
 # tests inside the `bkit:gate*` scripts with
 # `--filter="...[origin/<default>]"`; never add integration/E2E/@live.

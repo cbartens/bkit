@@ -1,11 +1,11 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`consumer CI template (.bkit/templates/.github/workflows/ci.yml) > snapshot matches expected template content (regression guard) 1`] = `
+exports[`consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml) > snapshot matches expected template content (regression guard) 1`] = `
 "# Example. Copy into the repo and own it.
 # bkit install does not write this file and does not overwrite a copy.
 # The job-level \`env:\` of bkit-tests-static is where the \`[verbose ci]\` commit marker is
 # read; keep it if you want verbose-CI support.
-name: CI
+name: bkit-ci
 
 on:
   workflow_dispatch:
@@ -743,7 +743,7 @@ jobs:
 # Long logic → a script. deployments.md § Workflow-file limits.
 #
 # ORDER + gating (needs: + result guards). Each TIER is its own parallel LANE (job) — the proven
-# shape bkit's own ci.yml (bkit-tests-static/unit/integration) and consumer repos run;
+# shape bkit's own bkit-ci.yml (bkit-tests-static/unit/integration) and consumer repos run;
 # NOT steps in one monolithic tests job. Bring a lane to life only if that tier applies to your repo.
 #
 # The graph is FLAT AND WIDE for static/unit/build/integration: scope fans out, capstone joins.

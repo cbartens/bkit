@@ -23,6 +23,7 @@ import type { ModuleFlag, CloudVariant } from "../../cli";
 import { dispatchModules, type ModuleContext } from "../../install/modules/index";
 import { parseModelLookup, buildOpencodeModelLookup, parseEffortMap } from "../../render/models";
 import type { WriteSet } from "../../install/write";
+import { getBkitDocsRoot } from "../../shared/package-roots";
 
 let tmpDir: string;
 let originalCwd: string;
@@ -129,7 +130,7 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
     if (!fs.existsSync(getTsxBin())) return;
     expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
-    const gateguard = path.join(tmpDir, ".opencode", "plugin", "gateguard.js");
+    const gateguard = path.join(tmpDir, ".opencode", "plugin", "bkit-gateguard.js");
     const original = fs.readFileSync(gateguard, "utf-8");
     expect(original).toContain('const EDIT_TOOLS = new Set(["write", "edit", "patch"]);');
     fs.writeFileSync(
@@ -143,14 +144,14 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
 
     const check = runBkit(["check"]);
     expect(check.status).toBe(1);
-    expect(`${check.stdout}${check.stderr}`).toContain(".opencode/plugin/gateguard.js");
+    expect(`${check.stdout}${check.stderr}`).toContain(".opencode/plugin/bkit-gateguard.js");
   });
 
   it("tampered gateguard.js OUTSIDE the managed block → check exits 0 (consumer-owned)", () => {
     if (!fs.existsSync(getTsxBin())) return;
     expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
-    const gateguard = path.join(tmpDir, ".opencode", "plugin", "gateguard.js");
+    const gateguard = path.join(tmpDir, ".opencode", "plugin", "bkit-gateguard.js");
     fs.appendFileSync(gateguard, "\n// consumer's own extra logic\n", "utf-8");
 
     const check = runBkit(["check"]);
@@ -288,20 +289,20 @@ describe("check-owned-hooks", () => {
 
     it("requires the hook files of each installed host, and only those", () => {
       expect(paths(["claude"]).sort()).toEqual([
-        ".claude/hooks/gateguard.cjs",
-        ".claude/hooks/guardrails.cjs",
-        ".claude/hooks/preflight.sh",
+        ".claude/hooks/bkit-gateguard.cjs",
+        ".claude/hooks/bkit-guardrails.cjs",
+        ".claude/hooks/bkit-preflight.sh",
       ]);
       expect(paths(["cursor"]).sort()).toEqual([
-        ".cursor/hooks/gateguard.cjs",
-        ".cursor/hooks/guardrails.cjs",
-        ".cursor/hooks/preflight.sh",
+        ".cursor/hooks/bkit-gateguard.cjs",
+        ".cursor/hooks/bkit-guardrails.cjs",
+        ".cursor/hooks/bkit-preflight.sh",
       ]);
       expect(paths(["codex"]).sort()).toEqual([
-        ".codex/hooks/gateguard.cjs",
-        ".codex/hooks/guardrails.cjs",
+        ".codex/hooks/bkit-gateguard.cjs",
+        ".codex/hooks/bkit-guardrails.cjs",
       ]);
-      expect(paths(["opencode"])).toEqual([".opencode/plugin/gateguard.js"]);
+      expect(paths(["opencode"])).toEqual([".opencode/plugin/bkit-gateguard.js"]);
     });
 
     it("a host that is not installed is not required", () => {
@@ -310,29 +311,23 @@ describe("check-owned-hooks", () => {
     });
 
     it("present files are not reported", () => {
-      touch(dir, ".codex/hooks/gateguard.cjs");
-      touch(dir, ".codex/hooks/guardrails.cjs");
+      touch(dir, ".codex/hooks/bkit-gateguard.cjs");
+      touch(dir, ".codex/hooks/bkit-guardrails.cjs");
       expect(paths(["codex"])).toEqual([]);
     });
 
-    it("requires cloud-bootstrap.sh only when bkit.cloudAgents is claude", () => {
-      // Every claude settings.json references cloud-bootstrap.sh, so the reference alone is not a signal.
+    it("never requires cloud-bootstrap.sh — it is a copy-and-own template", () => {
+      // The `.claude/settings.json` SessionStart entry references cloud-bootstrap.sh
+      // guarded (`test -f … || true`), but the script ships as a template: no module
+      // writes it, so a missing copy is the consumer's choice, never a check failure.
       touch(dir, ".claude/settings.json");
-      expect(paths([])).toEqual([]);
-
-      fs.writeFileSync(
-        path.join(dir, "package.json"),
-        JSON.stringify({ name: "x", bkit: { cloudAgents: "cursor" } }),
-      );
-      expect(paths([])).toEqual([]);
-
-      fs.writeFileSync(
-        path.join(dir, "package.json"),
-        JSON.stringify({ name: "x", bkit: { cloudAgents: "claude" } }),
-      );
-      expect(findMissingOwnedHooks(dir, new Set<ModuleFlag>(["core"]))).toEqual([
-        { path: ".claude/hooks/cloud-bootstrap.sh", restoreFlag: "--auto=claude" },
-      ]);
+      for (const cloudAgents of ["cursor", "claude"]) {
+        fs.writeFileSync(
+          path.join(dir, "package.json"),
+          JSON.stringify({ name: "x", bkit: { cloudAgents } }),
+        );
+        expect(findMissingOwnedHooks(dir, new Set<ModuleFlag>(["core"]))).toEqual([]);
+      }
     });
 
     it("detectOwnedHookMissing is a blocker naming every missing file, null when none", () => {
@@ -341,7 +336,7 @@ describe("check-owned-hooks", () => {
         findMissingOwnedHooks(dir, new Set<ModuleFlag>(["core", "opencode"])),
       );
       expect(finding?.severity).toBe("blocker");
-      expect(finding?.detect).toContain(".opencode/plugin/gateguard.js");
+      expect(finding?.detect).toContain(".opencode/plugin/bkit-gateguard.js");
     });
   });
 
@@ -376,11 +371,10 @@ describe("check-owned-hooks", () => {
     });
 
     it.each([
-      ".claude/hooks/guardrails.cjs",
-      ".cursor/hooks/gateguard.cjs",
-      ".codex/hooks/guardrails.cjs",
-      ".opencode/plugin/gateguard.js",
-      ".claude/hooks/cloud-bootstrap.sh",
+      ".claude/hooks/bkit-guardrails.cjs",
+      ".cursor/hooks/bkit-gateguard.cjs",
+      ".codex/hooks/bkit-guardrails.cjs",
+      ".opencode/plugin/bkit-gateguard.js",
     ])("missing %s → check exits 1 and names it", (rel) => {
       if (!haveTsx) return;
       const abs = path.join(dir, rel);
@@ -490,7 +484,6 @@ describe("dry-run-parity", () => {
   }
 
   runParityCheck(new Set(["core", "claude"]), "claude");
-  runParityCheck(new Set(["core", "lint"]), "lint");
   runParityCheck(new Set(["core"]), "core");
 
   // ---------------------------------------------------------------------------
@@ -535,8 +528,9 @@ describe("dry-run-parity", () => {
 
       expect(checkPaths).toEqual(installPaths);
       const writtenPaths = applied(installPaths);
-      // cloud=claude ships cloud-bootstrap.sh only; the cloud workflow is a template
-      expect(writtenPaths.some((p) => p.includes("cloud-bootstrap.sh"))).toBe(true);
+      // cloud=claude writes no files: cloud-bootstrap.sh, the workflow and the Cursor
+      // Background Agent files are all copy-and-own templates.
+      expect(writtenPaths.some((p) => p.includes("cloud-bootstrap.sh"))).toBe(false);
       expect(
         writtenPaths.some((p) => p === path.join(".github", "workflows", "bkit-cloud.yml")),
       ).toBe(false);
@@ -588,14 +582,7 @@ describe("dry-run-parity", () => {
   // ---------------------------------------------------------------------------
 
   describe("check ≡ install writeset parity — --opencode=opencode-go (Task 2.2)", () => {
-    const PROMPTS_MD = path.resolve(
-      import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
-      "..",
-      "..",
-      "..",
-      "..",
-      "prompts.md",
-    );
+    const PROMPTS_MD = path.join(getBkitDocsRoot(), "prompts.md");
     const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
     const OPENCODE_MODEL_LOOKUP = buildOpencodeModelLookup(PROMPTS_MD, "opencode-zen");
     const EFFORT_MAP = parseEffortMap(PROMPTS_MD);
@@ -638,11 +625,12 @@ describe("dry-run-parity", () => {
       // on content drift (same path-set on dry-run and install).
       expect(checkPaths).toEqual(installPaths);
 
-      // The tier-writer paths for opencode are opencode.json (Tier-2) and gateguard.js (Tier-1)
+      // The tier-writer paths for opencode are opencode.json (Tier-2) and
+      // bkit-gateguard.js (Tier-1)
       expect(installPaths.some((p) => p === path.join(".opencode", "opencode.json"))).toBe(true);
-      expect(installPaths.some((p) => p === path.join(".opencode", "plugin", "gateguard.js"))).toBe(
-        true,
-      );
+      expect(
+        installPaths.some((p) => p === path.join(".opencode", "plugin", "bkit-gateguard.js")),
+      ).toBe(true);
     });
   });
 });

@@ -3,7 +3,7 @@
  *
  * Boundary: real bash + real fs + the built `bkit roadmap feature` (dist/, no
  * mocks for the happy path). Runs the EXACT Step 6 `roadmap feature --strict`
- * line shipped in `.bkit/workflows/bkit-ship.md` — the SHIPPED row append, and
+ * line shipped in `.bkit/core/workflows/bkit-ship.md` — the SHIPPED row append, and
  * the exit that stops the step when the row did not land.
  */
 
@@ -14,7 +14,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
-const SHIP_MD = path.join(REPO_ROOT, ".bkit", "workflows", "bkit-ship.md");
+const SHIP_MD = path.join(REPO_ROOT, ".bkit", "core", "workflows", "bkit-ship.md");
 const BKIT_BIN = path.join(REPO_ROOT, "dist", "cli.js");
 const FID = "412-export-csv";
 

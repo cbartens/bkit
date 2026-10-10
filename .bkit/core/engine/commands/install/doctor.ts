@@ -11,7 +11,7 @@ import {
 import { type ModuleFlag } from "../../cli.js";
 import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
-import { getTemplatesRoot } from "../../shared/package-roots.js";
+import { getCoreRoot, getSharedRoot, getTemplatesRoot } from "../../shared/package-roots.js";
 import { runPreflight } from "../../checks/before/index.js";
 import {
   runPostInstallCheck,
@@ -122,7 +122,9 @@ export async function runDoctor(
 ): Promise<void> {
   setLogPrefix("[bkit-doctor]");
   console.log(`${LOG_PREFIX} Running advisory scan (no managed-file writes)`);
-  console.log(`${LOG_PREFIX} Templates root: ${getTemplatesRoot()}`);
+  console.log(
+    `${LOG_PREFIX} Payload roots: core=${getCoreRoot()} shared=${getSharedRoot()} templates=${getTemplatesRoot()}`,
+  );
   const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
   const allFindings = runPostInstallCheck([...preflightAdvisories, ...blockers], process.cwd());
   // Broken install: the opencode host is on disk but neither provider signal survives.

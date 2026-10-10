@@ -16,8 +16,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
+import { getWorkflowsRoot } from "../../shared/package-roots";
 
-const WORKFLOWS_DIR = path.resolve(".bkit/workflows");
+const WORKFLOWS_DIR = getWorkflowsRoot();
 const MONTH = "202605";
 const FID = "68-digital-agent-mvp";
 const BKIT_BIN = path.resolve("dist/cli.js");
@@ -238,6 +239,7 @@ describe("archive/ is unreachable from the lookups that read these artefacts", (
   it.each(cases)("$name does not match archived files", ({ cmd }) => {
     const root = makeRoot();
     write(root, `docs/plans/${MONTH}/${FID}-plan.md`, "LIVE\n");
+    write(root, `docs/plans/${MONTH}/${FID}-plan-1.md`, "LIVE SUB\n");
     write(root, `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`, "DRAFT\n");
     write(root, `docs/plans/${MONTH}/archive/20260801T134500Z-${FID}-plan.md`, "OLD\n");
     write(root, `docs/plans/${MONTH}/archive/20260801T134500Z-${FID}-plan-1.md`, "OLD SUB\n");

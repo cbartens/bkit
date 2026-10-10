@@ -38,7 +38,7 @@ function write(file: string, content: string): void {
 }
 
 function landLine(workflow: "design" | "plan"): string {
-  const md = fs.readFileSync(path.resolve(`.bkit/workflows/bkit-${workflow}.md`), "utf-8");
+  const md = fs.readFileSync(path.resolve(`.bkit/core/workflows/bkit-${workflow}.md`), "utf-8");
   const line = md
     .split("\n")
     .map((l) => l.trim())

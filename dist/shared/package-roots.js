@@ -1,6 +1,7 @@
 // shared/package-roots.ts — resolves the bkit package root and the roots under it
-// (templates, workflows, prompts, the `.bkit/` docs) from wherever the engine runs.
+// (core, shared, templates) from wherever the engine runs.
 // Imports allowed: node:path, node:url, node:fs only.
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 // ---------------------------------------------------------------------------
@@ -38,13 +39,30 @@ export function getPkgRoot() {
         : path.resolve(engineDir, "..");
 }
 // ---------------------------------------------------------------------------
-// getTemplatesRoot — canonical templates root resolver.
-// The ONLY place in the codebase that encodes the templates sub-path literal.
-// Resolves to <pkgRoot>/.bkit/templates.
+// The three payload roots. Each folder carries one licence and one install
+// behaviour; a file's path inside its folder is where it lands in the consumer
+// repo.
+//
+//   core/       PolyForm. Written and kept current. engine/, workflows/,
+//               prompts/, .bkit/, hooks/ and every LICENSE.md are skipped
+//               by install; the rest is copied at its folder-relative path.
+//   shared/     MIT-0. Written and kept current: bkit's blocks and keys inside
+//               files the consumer also edits, plus small whole files.
+//   templates/  MIT-0. Copy-and-own only: never applied to the repo, copied raw
+//               into the consumer's `.bkit/templates/` by syncTemplateCopies.
+// ---------------------------------------------------------------------------
+export function getCoreRoot() {
+    return path.join(getPkgRoot(), ".bkit", "core");
+}
+export function getSharedRoot() {
+    return path.join(getPkgRoot(), ".bkit", "shared");
+}
+// ---------------------------------------------------------------------------
+// getTemplatesRoot — the copy-and-own templates root.
 //
 // The consumer keeps its copies of the template set at the same relative path,
-// TEMPLATE_COPIES_DIR (install/modules/index.ts syncTemplateCopies). In dogfood the two are
-// the same folder.
+// TEMPLATE_COPIES_DIR (install/template-copies.ts syncTemplateCopies). In
+// dogfood the two are the same folder.
 // ---------------------------------------------------------------------------
 export const TEMPLATE_COPIES_DIR = path.join(".bkit", "templates");
 export function getTemplatesRoot() {
@@ -53,20 +71,20 @@ export function getTemplatesRoot() {
 // npm hard-excludes files literally named `.gitignore` and `.npmignore` from
 // packed tarballs (by basename, anywhere in the tree), regardless of the `files`
 // field. Those — and ONLY those — are stored without the leading dot in
-// `.bkit/templates/` and remapped to their dotted dest at install/upgrade time.
+// `.bkit/shared/` and remapped to their dotted dest at install/upgrade time.
 //
 // Any OTHER dotfile (`.gitattributes`, `.prettierignore`, `.mcp.json`, …) packs
-// fine with its dot, so it is stored dotted in the template tree and needs NO
-// remap. Do not add such names here — store the template with its real name.
+// fine with its dot, so it is stored dotted in the payload tree and needs NO
+// remap. Do not add such names here — store the file with its real name.
 //
-// Template basename → dest basename. The single source of truth for the dotfile
-// remap: remapTemplateDest (commands/install/install.ts) reads it forward, templateRelPath
-// below reads it backward.
+// Source basename → dest basename. The single source of truth for the dotfile
+// remap: remapTemplateDest (install/template-copies.ts) reads it forward,
+// templateRelPath below reads it backward.
 export const NPM_STRIP_REMAP = {
     gitignore: ".gitignore",
     npmignore: ".npmignore",
 };
-/** The template path, relative to the templates root, a consumer-relative dest is written from. */
+/** The payload path, relative to its root, a consumer-relative dest is written from. */
 export function templateRelPath(dest) {
     const base = path.basename(dest);
     const src = Object.keys(NPM_STRIP_REMAP).find((k) => NPM_STRIP_REMAP[k] === base);
@@ -75,8 +93,24 @@ export function templateRelPath(dest) {
     const dir = path.dirname(dest);
     return dir === "." ? src : path.join(dir, src);
 }
+/**
+ * The absolute source path backing a consumer-relative dest, or `null` when no
+ * payload root carries it. Checks `shared/` then `core/`, applying the dotfile
+ * remap. Root-level `LICENSE.md` files are never install sources.
+ */
+export function findTemplateSource(relPath) {
+    if (path.basename(relPath) === "LICENSE.md")
+        return null;
+    const rel = templateRelPath(relPath);
+    for (const root of [getSharedRoot(), getCoreRoot()]) {
+        const p = path.join(root, rel);
+        if (fs.existsSync(p))
+            return p;
+    }
+    return null;
+}
 // ---------------------------------------------------------------------------
-// Mirror-source roots. `.bkit/workflows` and `.bkit/prompts` are the canonical
+// Mirror-source roots. `core/workflows` and `core/prompts` are the canonical
 // SOURCE for the `.claude/*` and `.cursor/*` mirrors. They live only in the bkit
 // package — never copied into a consumer — so the install engine resolves them
 // package-relative (via getPkgRoot()), not from the consumer's cwd. In dogfood
@@ -84,24 +118,22 @@ export function templateRelPath(dest) {
 // regeneration works unchanged.
 // ---------------------------------------------------------------------------
 export function getWorkflowsRoot() {
-    return path.join(getPkgRoot(), ".bkit", "workflows");
+    return path.join(getCoreRoot(), "workflows");
 }
 export function getPromptsRoot() {
-    return path.join(getPkgRoot(), ".bkit", "prompts");
+    return path.join(getCoreRoot(), "prompts");
 }
-// `.bkit/` root holds bkit-authoring reference docs + engine data (e.g.
-// prompts.md's Cursor model-lookup table) alongside core/engine/, workflows/, prompts/,
-// templates/. This is the runtime read root (package-side). The reference docs
-// (cloud/IDEs/prompts/trackers/workflows/README.md) are ALSO force-overwritten
-// into the consumer's own `.bkit/` on install — a readable mirror — by
-// runBkitDocs (install/modules/index.ts); engine data and core/engine/ stay package-only.
+// `core/.bkit/` holds bkit-authoring reference docs (e.g. prompts.md's Cursor
+// model-lookup table). This is the runtime read root (package-side). The
+// reference docs are ALSO force-overwritten into the consumer's own `.bkit/` on
+// install — a readable mirror — by runBkitDocs (install/modules/core.ts).
 // Shared hook code spliced into each host's hook template at render time
 // (render/parts.ts). Package-only: never copied into a consumer.
-export function getHookPartsRoot() {
-    return path.join(getPkgRoot(), ".bkit", "core", "hook-parts");
+export function getHooksRoot() {
+    return path.join(getPkgRoot(), ".bkit", "core", "hooks");
 }
 export function getBkitDocsRoot() {
-    return path.join(getPkgRoot(), ".bkit");
+    return path.join(getCoreRoot(), ".bkit");
 }
 // ---------------------------------------------------------------------------
 // isDogfood — true when bkit is running inside its own repo (in-repo install).

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "test -f .codex/hooks/gateguard.cjs && node .codex/hooks/gateguard.cjs || true",
+            "command": "test -f .codex/hooks/bkit-gateguard.cjs && node .codex/hooks/bkit-gateguard.cjs || true",
             "statusMessage": "bkit GateGuard"
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "test -f .codex/hooks/guardrails.cjs && node .codex/hooks/guardrails.cjs || true",
+            "command": "test -f .codex/hooks/bkit-guardrails.cjs && node .codex/hooks/bkit-guardrails.cjs || true",
             "statusMessage": "bkit guardrails"
           }
         ]

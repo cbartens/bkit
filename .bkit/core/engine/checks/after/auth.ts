@@ -225,7 +225,7 @@ export const BKIT_GH_TOKEN_INSTALL_MISSING_ACTION =
   "Then set the BKIT_GH_TOKEN_INSTALL secret on this repo. The token must be a GitHub PAT (classic or fine-grained) with read:packages scope (classic) OR Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens\n\n" +
   "Run ONE of these to set it:\n\n" +
   "    gh secret set BKIT_GH_TOKEN_INSTALL --body='<paste-token-here>'\n\n" +
-  "Ensure the install step in .github/workflows/ci.yml writes the token before install:\n\n" +
+  "Ensure the install step in .github/workflows/bkit-ci.yml writes the token before install:\n\n" +
   "    - name: Install Dependencies\n" +
   "      run: |\n" +
   '        pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n' +
@@ -237,7 +237,7 @@ export const BKIT_GH_TOKEN_INSTALL_MISSING_ACTION =
 
 export const BKIT_GH_TOKEN_INSTALL_UNKNOWN_ACTION =
   "Could not auto-check BKIT_GH_TOKEN_INSTALL secret (gh CLI unavailable, unauthenticated, or this isn't a GitHub repo yet).\n\n" +
-  "Manually verify the BKIT_GH_TOKEN_INSTALL secret exists on the consumer's GitHub repo. It is required for the CI install step (`pnpm config set` + `pnpm install`) to authenticate against the GitHub Packages npm registry when installing @cbartens/bkit. bkit's ci.yml template (.bkit/templates/.github/workflows/ci.yml) carries that step; copy it into your own .github/workflows/ci.yml when you adopt the template.\n\n" +
+  "Manually verify the BKIT_GH_TOKEN_INSTALL secret exists on the consumer's GitHub repo. It is required for the CI install step (`pnpm config set` + `pnpm install`) to authenticate against the GitHub Packages npm registry when installing @cbartens/bkit. bkit's ci.yml template (.bkit/templates/.github/workflows/bkit-ci.yml) carries that step; copy it into your own .github/workflows/bkit-ci.yml when you adopt the template.\n\n" +
   "IMPORTANT — pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution and 401s on download (ERR_PNPM_FETCH_401). The template's install step writes the token via `pnpm config set` (the shell expands $BKIT_GH_TOKEN_INSTALL to the literal token before pnpm stores it in user-level config); if BKIT_GH_TOKEN_INSTALL is unset there, that write is empty and the install 401s.\n\n" +
   "Once `gh` is installed and authenticated, get your token and export it:\n\n" +
   "    export BKIT_GH_TOKEN_INSTALL=$(gh auth token)\n\n" +

@@ -1,5 +1,5 @@
 // audits/hooks/gateguard-claude.integration.test.ts — behavioural tests for the shipped GateGuard
-// PreToolUse hook (.bkit/templates/.claude/hooks/gateguard.cjs). Spawns the hook as
+// PreToolUse hook (.bkit/core/.claude/hooks/bkit-gateguard.cjs). Spawns the hook as
 // install generates it (shared parts spliced in) with node, feeds a PreToolUse payload
 // on stdin, and asserts the stdout contract:
 //   - advisory by default (additionalContext, no permissionDecision)
@@ -22,7 +22,7 @@ import { readTemplate } from "../../render/parts";
 const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gg-claude-"));
 afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
 const HOOK = path.join(GENERATED, "gateguard.cjs");
-fs.writeFileSync(HOOK, readTemplate(path.resolve(".bkit/templates/.claude/hooks/gateguard.cjs")));
+fs.writeFileSync(HOOK, readTemplate(path.resolve(".bkit/core/.claude/hooks/bkit-gateguard.cjs")));
 
 let sessionCounter = 0;
 // Unique per test + per run (pid) so the OS-temp dedup state never bleeds across
@@ -274,8 +274,8 @@ describe("gateguard hook — docs/*.md density advisory (#422)", () => {
     expect(hookOutput(r)["additionalContext"]).not.toContain("docs/*.md authoring");
   });
 
-  it("matches a nested docs/ tree via segment match (.bkit/templates/docs/architecture.md)", () => {
-    const r = run(editPayload(".bkit/templates/docs/architecture.md", newSession()));
+  it("matches a nested docs/ tree via segment match (.bkit/shared/docs/architecture.md)", () => {
+    const r = run(editPayload(".bkit/shared/docs/architecture.md", newSession()));
     expect(r.status).toBe(0);
     expect(hookOutput(r)["additionalContext"]).toContain("docs/*.md authoring");
   });

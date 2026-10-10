@@ -1,7 +1,7 @@
 /**
  * audits/workflows/block-locality-audit.test.ts
  *
- * Audits every fenced shell block in `.bkit/workflows/**` and `.bkit/prompts/**`
+ * Audits every fenced shell block in `.bkit/core/workflows/**` and `.bkit/core/prompts/**`
  * for BLOCK LOCALITY:
  *
  *   Every `$VAR` referenced inside a fenced shell block must be assigned
@@ -36,7 +36,7 @@ const SHELL_LANGS = new Set(["bash", "sh", "shell", "zsh"]);
 
 function auditedFiles(): string[] {
   const out: string[] = [];
-  for (const dir of [".bkit/workflows", ".bkit/prompts"]) {
+  for (const dir of [".bkit/core/workflows", ".bkit/core/prompts"]) {
     const abs = path.join(REPO_ROOT, dir);
     if (!fs.existsSync(abs)) continue;
     for (const f of fs.readdirSync(abs).sort()) {
@@ -290,7 +290,7 @@ function tally(findings: Finding[]): Record<string, Record<string, number>> {
 // ---------------------------------------------------------------------------
 
 /**
- * Scope: the bkit SOURCE of truth only — `.bkit/workflows/` and `.bkit/prompts/`.
+ * Scope: the bkit SOURCE of truth only — `.bkit/core/workflows/` and `.bkit/core/prompts/`.
  *
  * Not audited: the host-render mirrors (`.claude/commands/`, `.cursor/commands/`,
  * `.opencode/commands/`, output of `bkit install`) and `.bkit/templates/`
@@ -300,9 +300,9 @@ function tally(findings: Finding[]): Record<string, Record<string, number>> {
 describe("#440: audit scope is bkit source, never the rendered mirrors", () => {
   const MIRRORS = [".claude/commands", ".cursor/commands", ".opencode/commands", ".bkit/templates"];
 
-  it("audits only .bkit/workflows and .bkit/prompts", () => {
+  it("audits only .bkit/core/workflows and .bkit/core/prompts", () => {
     const stray = auditedFiles().filter(
-      (f) => !f.startsWith(".bkit/workflows/") && !f.startsWith(".bkit/prompts/"),
+      (f) => !f.startsWith(".bkit/core/workflows/") && !f.startsWith(".bkit/core/prompts/"),
     );
     expect(stray).toEqual([]);
   });
@@ -314,8 +314,8 @@ describe("#440: audit scope is bkit source, never the rendered mirrors", () => {
 
   it("does cover the whole source corpus", () => {
     const files = auditedFiles();
-    expect(files.filter((f) => f.startsWith(".bkit/workflows/")).length).toBeGreaterThan(5);
-    expect(files.filter((f) => f.startsWith(".bkit/prompts/")).length).toBeGreaterThan(40);
+    expect(files.filter((f) => f.startsWith(".bkit/core/workflows/")).length).toBeGreaterThan(5);
+    expect(files.filter((f) => f.startsWith(".bkit/core/prompts/")).length).toBeGreaterThan(40);
   });
 });
 
@@ -377,7 +377,7 @@ describe("#440: the detector itself works", () => {
     const md = [
       "```bash",
       "REPO_ROOT=/tmp",
-      '. "$REPO_ROOT/.bkit/scripts/some-lib.sh"',
+      '. "$REPO_ROOT/.bkit/core/engine/some-lib.sh"',
       'echo "$LIB_VALUE"',
       "```",
     ].join("\n");
@@ -438,7 +438,7 @@ describe("#440: the detector itself works", () => {
   });
 
   it("still fires when a real shipped block loses its assignment", () => {
-    const rel = ".bkit/workflows/bkit-ship.md";
+    const rel = ".bkit/core/workflows/bkit-ship.md";
     const content = fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
     expect(auditContent(rel, content)).toEqual([]);
 

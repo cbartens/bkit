@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { writeTier2, writeTier2JsonContained, ensureDir } from "../write.js";
 import { stampManagedVersion } from "../version-file.js";
 import { applyT1, applyT2, applyT3 } from "../../render/hosts.js";
-import { getTemplatesRoot, getWorkflowsRoot, getPromptsRoot } from "../../shared/package-roots.js";
+import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from "../../shared/package-roots.js";
 import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { writeCursorCloudDoc, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, } from "../cloud-env.js";
@@ -72,8 +72,9 @@ export function runCursorModule(ctx) {
     // re-renders them identically — bkit-owned output, force-overwritten.
     renderCursorAgentsCommands(ctx);
     // Tier 2 JSON (contained) — deep-containment: hooks.json
-    const cursorTemplates = path.join(getTemplatesRoot(), ".cursor");
-    const hooksSrc = path.join(cursorTemplates, "hooks.json");
+    const cursorShared = path.join(getSharedRoot(), ".cursor");
+    const cursorHooks = path.join(getCoreRoot(), ".cursor", "hooks");
+    const hooksSrc = path.join(cursorShared, "hooks.json");
     const hooksDst = ".cursor/hooks.json";
     if (fs.existsSync(hooksSrc)) {
         const prevLen = ws.writes.length;
@@ -88,11 +89,8 @@ export function runCursorModule(ctx) {
     // markers is preserved. `.cursor/Dockerfile` is a template (`.bkit/templates.md`).
     {
         const markeredFiles = [
-            [path.join(cursorTemplates, "hooks", "preflight.sh"), ".cursor/hooks/preflight.sh"],
-            [
-                path.join(cursorTemplates, "rules", "00-shared-rules.mdc"),
-                ".cursor/rules/00-shared-rules.mdc",
-            ],
+            [path.join(cursorHooks, "bkit-preflight.sh"), ".cursor/hooks/bkit-preflight.sh"],
+            [path.join(cursorShared, "rules", "bkit-rules.mdc"), ".cursor/rules/bkit-rules.mdc"],
         ];
         for (const [src, dst] of markeredFiles) {
             if (!fs.existsSync(src))
@@ -109,8 +107,8 @@ export function runCursorModule(ctx) {
     // only the decision engine between the markers; consumers own the stdin/stdout driver
     // from first install onward, same split as the two GateGuard hooks.
     {
-        const src = path.join(cursorTemplates, "hooks", "guardrails.cjs");
-        const dst = ".cursor/hooks/guardrails.cjs";
+        const src = path.join(cursorHooks, "bkit-guardrails.cjs");
+        const dst = ".cursor/hooks/bkit-guardrails.cjs";
         if (fs.existsSync(src)) {
             const prevLen = ws.writes.length;
             writeTier2(src, dst, tokens, "slash-comment", dryRun, ws);
@@ -123,8 +121,8 @@ export function runCursorModule(ctx) {
     // Same managed block as the Claude twin; the driver outside it adapts Cursor's
     // payload (relative file_path, no subagent marker) and emits Cursor's shape.
     {
-        const src = path.join(cursorTemplates, "hooks", "gateguard.cjs");
-        const dst = ".cursor/hooks/gateguard.cjs";
+        const src = path.join(cursorHooks, "bkit-gateguard.cjs");
+        const dst = ".cursor/hooks/bkit-gateguard.cjs";
         if (fs.existsSync(src)) {
             const prevLen = ws.writes.length;
             writeTier2(src, dst, tokens, "slash-comment", dryRun, ws);
@@ -135,7 +133,7 @@ export function runCursorModule(ctx) {
     }
     // .cursor/mcp.json — same per-entry ownership as .mcp.json (reconcileMcpJson).
     {
-        const cursorMcpSrc = path.join(cursorTemplates, "mcp.json");
+        const cursorMcpSrc = path.join(cursorShared, "mcp.json");
         const cursorMcpDst = path.join(".cursor", "mcp.json");
         if (fs.existsSync(cursorMcpSrc)) {
             const prevLen = ws.writes.length;
@@ -145,7 +143,7 @@ export function runCursorModule(ctx) {
             }
         }
     }
-    // Cursor-only runtime curl/wget allowlist (guardrails.cjs reads `.cursor/allowlist.json`).
+    // Cursor-only runtime curl/wget allowlist (bkit-guardrails.cjs reads `.cursor/allowlist.json`).
     // Same domain set as Claude WebFetch / OpenCode bash allows — sourced from tooling
     // defaults ∪ consumer `allowed-domains`. Not under `.bkit/` (IDE-scoped artifact).
     // Cursor CLI / cloud-agent MCP allows (`.cursor/cli.json`) from consumer `mcp-servers` —
@@ -175,14 +173,14 @@ export function runCursorModule(ctx) {
             'Alternative: `launchctl setenv BKIT_GH_TOKEN "$BKIT_GH_TOKEN"` (session-scoped; must re-run after reboot) ' +
             "then relaunch from Dock.",
     });
-    // Generated copy-paste-ready Cursor Background Agents setup doc — `.cursor/cloud.md`.
-    // Twin of `.claude/cloud.md` (runClaudeModule): UNTRACKED + gitignored, inlines REAL
+    // Generated copy-paste-ready Cursor Background Agents setup doc — `.cursor/bkit-cloud.md`.
+    // Twin of `.claude/bkit-cloud.md` (runClaudeModule): UNTRACKED + gitignored, inlines REAL
     // secret values resolved from `.envrc` under the Cursor env-var policy (Linear tracker
     // adds BKIT_LINEAR_API_KEY, no autocompact knob). Never enters ws.writes / canonicalHashes /
     // `bkit check` drift — values are machine-local and expected to differ. Skipped on
     // dry-run (`bkit check`) so a read-only check never writes secrets. Upgrade regenerates
     // it via the same helper (see runUpgrade caller).
     if (!dryRun && writeCursorCloudDoc(process.cwd(), tokens, issueTracker)) {
-        console.log(`${logPrefix} ${tag}cursor: .cursor/cloud.md (generated — gitignored, holds resolved secrets)`);
+        console.log(`${logPrefix} ${tag}cursor: .cursor/bkit-cloud.md (generated — gitignored, holds resolved secrets)`);
     }
 }

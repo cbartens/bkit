@@ -164,7 +164,7 @@ Phase 3 detects missing/misconfigured `BKIT_GH_TOKEN_INSTALL` at four surfaces; 
 | `detectNpmrcAuth` | `.npmrc` `@cbartens` registry mapping (token lives in pnpm user-level config, not here) |
 | `detectNpmrcAuthTokenLine` | `.npmrc` `_authToken` line (401s on pnpm >=10.34.3) |
 | `detectGhSecret` | GitHub Actions secret |
-| `detectCiYmlMissingTokenEnv` | `ci.yml` install step lacks the token `env:` wiring — blocker when `.npmrc` authenticates to GH Packages but the step is unwired |
+| `detectCiYmlMissingTokenEnv` | `bkit-ci.yml` install step lacks the token `env:` wiring — blocker when `.npmrc` authenticates to GH Packages but the step is unwired |
 | `detectVercelEnv` | Vercel preview and production env vars |
 
 See `docs/deployments.md` for the full presence matrix and `docs/security.md` for token-handling rules.

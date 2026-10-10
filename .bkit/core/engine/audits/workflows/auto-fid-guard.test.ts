@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { FID_PATTERNS, fromBranch, fromMarker } from "../../commands/workflow/fids";
+import { getWorkflowsRoot } from "../../shared/package-roots";
 
 // ---------------------------------------------------------------------------
 // auto-fid-guard
@@ -28,7 +29,7 @@ import { FID_PATTERNS, fromBranch, fromMarker } from "../../commands/workflow/fi
 //        the well-formed FID each tracker mints.
 describe("auto-fid-guard", () => {
   const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-  const AUTO = fs.readFileSync(path.resolve(REPO_ROOT, ".bkit/workflows/bkit-auto.md"), "utf-8");
+  const AUTO = fs.readFileSync(path.join(getWorkflowsRoot(), "bkit-auto.md"), "utf-8");
 
   /** Every ```bash block body in bkit-auto.md. */
   const BASH_BLOCKS = [...AUTO.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]!);

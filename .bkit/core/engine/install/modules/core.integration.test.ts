@@ -18,7 +18,7 @@ import {
   runBkitDocs,
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
-import { getPkgRoot } from "../../shared/package-roots";
+import { getBkitDocsRoot, getPkgRoot } from "../../shared/package-roots";
 import { BKIT_GATE_SCRIPTS } from "../manifest";
 import { readManagedVersion } from "../version-file";
 import { applyTokens } from "../placeholders";
@@ -84,17 +84,16 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
-  // Test file lives in `.bkit/core/engine/install/modules/`, so `../../../..` is the package `.bkit/` docs root —
-  // the same source runBkitDocs copies from (getBkitDocsRoot).
-  const PKG_DOCS_ROOT = path.resolve(
-    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
-    "../../../..",
-  );
+  // The package's canonical docs source (getBkitDocsRoot) — what runBkitDocs copies from.
+  const PKG_DOCS_ROOT = getBkitDocsRoot();
   const DOCS = [
     "cloud.md",
+    "comparison.md",
+    "install.md",
     "jsonl.md",
     "providers.md",
     "prompts.md",
+    "templates.md",
     "trackers.md",
     "workflows.md",
     "README.md",
@@ -103,7 +102,7 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
   const rendered = (name: string): string =>
     applyTokens(fs.readFileSync(path.join(PKG_DOCS_ROOT, name), "utf-8"), makeCtx().tokens);
 
-  it("force-overwrites the seven package .bkit/*.md docs into the consumer's .bkit/, rendered", () => {
+  it("force-overwrites the ten package .bkit/*.md docs into the consumer's .bkit/, rendered", () => {
     const ctx = makeCtx();
     runCoreModule(ctx);
     flushPostDispatch(ctx);
@@ -119,15 +118,15 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     }
   });
 
-  it("leaves a doc unrendered, and unchecked, where its package source is the destination (dogfood)", () => {
+  it("mirrors the docs into the repo's own .bkit/ in dogfood too", () => {
     const doc = path.join(".bkit", "workflows.md");
     expect(listStampedFiles(tmpDir).map((f) => f.path)).toContain(doc);
-    expect(listStampedFiles(getPkgRoot()).map((f) => f.path)).not.toContain(doc);
+    expect(listStampedFiles(getPkgRoot()).map((f) => f.path)).toContain(doc);
 
     process.chdir(getPkgRoot());
     const ws = makeWriteSet();
     runBkitDocs(true, makeCtx().tokens, ws, "[test]");
-    expect(ws.writes).toEqual([]);
+    expect(ws.writes.map((w) => String(w.path))).toContain(doc);
   });
 
   it("is idempotent: a second core run writes none of the docs again", () => {
@@ -195,11 +194,13 @@ describe("core package.json scripts — bkit:gate:* names, add-if-missing", () =
     expect(readPkg().scripts).toBeUndefined();
   });
 
-  it("re-points a superseded bkit slop:delta value without seeding the tool scripts", () => {
-    writePkg({ scripts: { "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh" } });
+  it("leaves a superseded bkit slop:delta value in place (add-if-missing; no migration code)", () => {
+    // bkit seeds a gate name only when it is missing (#489 removed migration code),
+    // so a declared value — even a retired one — is the consumer's and is never rewritten.
+    writePkg({ scripts: { "slop:delta": "bash scripts/slop/bkit-slop-delta.sh" } });
     dispatchModules(new Set(["core"]), makeCtx({}));
     const scripts = readPkg().scripts ?? {};
-    expect(scripts["slop:delta"]).toBe("bkit ci slop");
+    expect(scripts["slop:delta"]).toBe("bash scripts/slop/bkit-slop-delta.sh");
     expect(scripts.typecheck).toBeUndefined();
     expect(scripts["lint:prose"]).toBeUndefined();
   });
@@ -417,10 +418,10 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
     const consumerRules = fs.readFileSync(path.join(tmpDir, ".agents", "rules.md"), "utf-8");
 
     // Template content (what consumers SHOULD get) lives in the package's
-    // .bkit/templates/.agents/rules.md — resolve from the running package root.
+    // .bkit/core/.agents/rules.md — resolve from the running package root.
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
     const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
-    const templatePath = path.join(pkgRoot, ".bkit", "templates", ".agents", "rules.md");
+    const templatePath = path.join(pkgRoot, ".bkit", "core", ".agents", "rules.md");
     const template = applyTokens(fs.readFileSync(templatePath, "utf-8"), ctx.tokens);
 
     // Both files have markers — the inner block content must match (modulo
@@ -454,7 +455,7 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
   it("rules.md is reachable via the templates pass — no additive leak path", () => {
     // Simulates a brand-new consumer: no .agents/ exists. After runCoreModule,
     // the only writer of `.agents/rules.md` should be the templates pass
-    // (sourced from `.bkit/templates/.agents/rules.md`), not copyAdditive.
+    // (sourced from `.bkit/core/.agents/rules.md`), not copyAdditive.
     const ctx = makeCtx();
     runCoreModule(ctx);
     flushPostDispatch(ctx);

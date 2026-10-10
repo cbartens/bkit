@@ -17,7 +17,7 @@ import { CONTEXT_FETCH_CONTEXTS } from "../../checks/before/context-fetch";
 describe("context-fetch-contexts", () => {
   const REPO_ROOT = path.resolve(__dirname, "../../../../..");
   const CONFIG_MD = path.join(REPO_ROOT, ".agents/context.md");
-  const CONFIG_TEMPLATE = path.join(REPO_ROOT, ".bkit/templates/.agents/context.md");
+  const CONFIG_TEMPLATE = path.join(REPO_ROOT, ".bkit/core/.agents/context.md");
 
   describe("context-fetch context vocabulary", () => {
     it("the consumer-facing table lists exactly CONTEXT_FETCH_CONTEXTS", () => {

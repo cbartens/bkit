@@ -104,7 +104,7 @@
 
 ## Commit-message force tags
 
-Bkit `ci.yml` recognises tags below. Case-sensitive, literal `[...]` form; may appear anywhere in source string. Tags compose — multiple on same commit / PR title fire independently.
+Bkit `bkit-ci.yml` recognises tags below. Case-sensitive, literal `[...]` form; may appear anywhere in source string. Tags compose — multiple on same commit / PR title fire independently.
 
 **Where to put the tag — read carefully:**
 
@@ -124,7 +124,7 @@ Bkit `ci.yml` recognises tags below. Case-sensitive, literal `[...]` form; may a
 
 **Two deploy-forcing markers only: `[force build]` + `[force full]`.** No granular `[force e2e]` / `[force live]` — they would be silent no-ops gated behind `web_affected`. `[force full]` = single gate-bypass ("validate everything") → one effective `web_affected` drives integration + e2e + @live uniformly.
 
-- **Precedence — `[skip ci]` / `[skip actions]` hard-vetoes any force marker.** `[skip ci]` commit never dispatches (native GitHub suppression, before `ci.yml`) — no force marker un-suppresses. To validate would-be-skipped commit: drop `[skip ci]`, push with `[force full]`.
+- **Precedence — `[skip ci]` / `[skip actions]` hard-vetoes any force marker.** `[skip ci]` commit never dispatches (native GitHub suppression, before `bkit-ci.yml`) — no force marker un-suppresses. To validate would-be-skipped commit: drop `[skip ci]`, push with `[force full]`.
 - **`[force cache]` orthogonal** — busts task-runner _replay_ (e.g. turbo `TURBO_FORCE=1`), different axis from _which lanes run_. Never folded into `[force full]`. Combine `[force full] [force cache]` for "everything, fresh."
 - **Marker parity (deploy-forcing set).** e2e / @live lanes resolve per-SHA deployment → marker that force-runs them MUST **also** force host build, or lane dies at "resolve deployment URL". Host build-cancel script (e.g. Vercel `ignoreCommand`) MUST honor **every** marker in the deploy-forcing set (`[force build]` + `[force full]` shipped, plus any consumer marker widening a deploy-backed lane); assert in CI (`grep -qF` over cancel script). `[force cache]` / `[verbose ci]` / `[skip ci]` test-plane-only — NOT honored by cancel script.
 - **Match a signature, not a spelling.** Value-list marker (`[platform web ios]`) is invisible to a substring test for `[platform web]` → match the opening token (`[platform `) on BOTH sides. Assertion pinned to one spelling stays green while the cancel script kills the build the marker asked for.
@@ -145,7 +145,7 @@ Confirm both before running phase closes from a cloud agent session.
 
 ## Run-level decision matrix
 
-Bkit ships a **mostly flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers once, computes `run_level` / optional `run_migration` / `tenant_target`, emits `bkit-test-plan` JSON) fans out to every lane — `bkit-tests-static` / `-unit` / `-build-web` / `-build-ios` / `-build-android` / `-integration` / `-e2e-web` / `-e2e-ios` / `-e2e-android` / `-live-web` / `-migration` / `-reset` / `-cleanup` — and `bkit-tests-check` joins them. `bkit-tests-deploy` runs after the capstone, on a push to the default branch only, and is not required. Static/unit/integration/build wait only on the planner. **Ordering edges:** when `bkit-tests-migration` owns the shared-remote migration apply, every lane that hits that database `needs:` it with `result != 'failure'`. `bkit-tests-reset` sits after migration and before those lanes. Do **not** gate `bkit-tests-live-web` behind static/unit/integration/e2e. Adopt only the lanes this repo has. Lane names and the adopt order: `testing.md` § CI test tiers. Before CI speed spend: **measure job graph, find pole**. The jobs above the reference in `ci.yml` are the any-repo starter. The **FULL CI SCAFFOLD REFERENCE** names each target job's `needs`, `if`, and step order. When a starter stub disagrees with that reference, follow the reference.
+Bkit ships a **mostly flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers once, computes `run_level` / optional `run_migration` / `tenant_target`, emits `bkit-test-plan` JSON) fans out to every lane — `bkit-tests-static` / `-unit` / `-build-web` / `-build-ios` / `-build-android` / `-integration` / `-e2e-web` / `-e2e-ios` / `-e2e-android` / `-live-web` / `-migration` / `-reset` / `-cleanup` — and `bkit-tests-check` joins them. `bkit-tests-deploy` runs after the capstone, on a push to the default branch only, and is not required. Static/unit/integration/build wait only on the planner. **Ordering edges:** when `bkit-tests-migration` owns the shared-remote migration apply, every lane that hits that database `needs:` it with `result != 'failure'`. `bkit-tests-reset` sits after migration and before those lanes. Do **not** gate `bkit-tests-live-web` behind static/unit/integration/e2e. Adopt only the lanes this repo has. Lane names and the adopt order: `testing.md` § CI test tiers. Before CI speed spend: **measure job graph, find pole**. The jobs above the reference in `bkit-ci.yml` are the any-repo starter. The **FULL CI SCAFFOLD REFERENCE** names each target job's `needs`, `if`, and step order. When a starter stub disagrees with that reference, follow the reference.
 
 <!-- prettier-ignore -->
 | Run level | When | Runs | Defers |
@@ -183,7 +183,7 @@ Each tier = **own parallel lane** (job) — `bkit-tests-static` / `-unit` / `-in
 
 **Shared resource: reset first, clean up last** (optional). WHEN: 2+ lanes use ONE long-lived resource. `bkit-tests-reset` runs after scope + migration, takes a lease, and puts the resource in its known state before any of those lanes start. `bkit-tests-cleanup` runs last, `if: always()`, and releases the lease. The lease is what serialises an overlapping PR and `dev` push. The planner names at most one target; an empty target skips both jobs. Capstone reds if a planned reset skipped or either job failed. DROP both when the resource is provisioned fresh per run (`testing.md` § Provision backing services fresh — the preferred answer).
 
-**Runner size = per-lane lever, ONLY for pole.** Flat graph → one lane defines wall-clock (commonly E2E). Larger runner (more vCPU/RAM) raises internal parallelism (more workers, concurrent E2E projects) → can cut long lane substantially; scope via `runs-on: <your-larger-runner-label>` to **one** lane, default runner elsewhere. Two caveats: (1) **higher per-minute rate** — confirm before adopting (may not appear until first invoice). [Depot](https://depot.dev/docs/github-actions/runner-types) labels (e.g. `depot-ubuntu-24.04-8`) ~30% cheaper than GitHub-hosted; `ci.yml`, `bkit-cloud.yml` and `renovate.yml` are templates you own, so set `runs-on` in your copy. (2) **Zero wall-clock** when aimed at non-pole lane: consumer measured bigger E2E runner **+0.0 min** while `@live` stayed pole — worth ~7 min ONLY after `@live` gate removed and E2E became pole. Measure first, re-measure after: pole moves. (3) **A label that does not exist does not fail — it queues.** Typo'd / retired label → no error anywhere, job queued indefinitely, run neither reds nor completes. Label set in exactly ONE place, every `runs-on:` derived from it, planner fails closed on no label.
+**Runner size = per-lane lever, ONLY for pole.** Flat graph → one lane defines wall-clock (commonly E2E). Larger runner (more vCPU/RAM) raises internal parallelism (more workers, concurrent E2E projects) → can cut long lane substantially; scope via `runs-on: <your-larger-runner-label>` to **one** lane, default runner elsewhere. Two caveats: (1) **higher per-minute rate** — confirm before adopting (may not appear until first invoice). [Depot](https://depot.dev/docs/github-actions/runner-types) labels (e.g. `depot-ubuntu-24.04-8`) ~30% cheaper than GitHub-hosted; `bkit-ci.yml`, `bkit-cloud.yml` and `bkit-renovate.yml` are templates you own, so set `runs-on` in your copy. (2) **Zero wall-clock** when aimed at non-pole lane: consumer measured bigger E2E runner **+0.0 min** while `@live` stayed pole — worth ~7 min ONLY after `@live` gate removed and E2E became pole. Measure first, re-measure after: pole moves. (3) **A label that does not exist does not fail — it queues.** Typo'd / retired label → no error anywhere, job queued indefinitely, run neither reds nor completes. Label set in exactly ONE place, every `runs-on:` derived from it, planner fails closed on no label.
 
 **Cut per-request cost before peak concurrency.** Fan-out multiplies every per-request call to a shared external service: a per-navigation auth call became 3,500 `GET /auth/v1/user` in 4 minutes under a 12-lane fan-out, stalling the provider and reddening the `@live` lane on a **separate machine**. Audit those calls before widening — verify locally first (JWKS) and hit the service only when the local check cannot decide. Cheaper than either lever below.
 
@@ -195,7 +195,7 @@ Capture turbo stdout and stderr separately. Merging with `2>&1` puts the banner 
 
 `bkit-tests-scope` affected-graph (monorepo) forces `web_affected=true` on **real global dependency** change. Turbo attributes any changed root-level path outside workspace / undeclared `globalDependency` (`docs/**`, `README`, `LICENSE`, …) to root `//` (`FileChanged`). Fallback keying on _any_ `//` `FileChanged` can't distinguish global-dep bump from docs-only diff → over-triggers: e2e scheduled, ignore-command cancels docs-only preview, `Await Deployment` reds e2e on **every** docs-only push.
 
-Fix at source: gate global-dep force on **real** global-dep change. Intersect changed root files against `turbo.json` `globalDependencies` / `globalEnv` (+ root lockfile + `package.json`); force `web_affected` ONLY on match. Turbo-pinned `//` (docs, metadata, non-triggering root dirs) must **not** force. Narrow `docs/**`-only guard = same idea, incomplete (`README`-only still over-triggers) — prefer `globalDependencies` intersection. Consumer `ci.yml` (adopted template, `bkit-stub:affected-graph`); port fix per monorepo. Orthogonal to `[force full]` (deliberately bypasses `web_affected`).
+Fix at source: gate global-dep force on **real** global-dep change. Intersect changed root files against `turbo.json` `globalDependencies` / `globalEnv` (+ root lockfile + `package.json`); force `web_affected` ONLY on match. Turbo-pinned `//` (docs, metadata, non-triggering root dirs) must **not** force. Narrow `docs/**`-only guard = same idea, incomplete (`README`-only still over-triggers) — prefer `globalDependencies` intersection. Consumer `bkit-ci.yml` (adopted template, `bkit-stub:affected-graph`); port fix per monorepo. Orthogonal to `[force full]` (deliberately bypasses `web_affected`).
 
 ### Promotion-lag warning (`Check Default Branch Lags Dev`)
 
@@ -207,7 +207,7 @@ CI on `dev` proves code good; nothing checks good code reached default branch. G
 
 `Check Default Branch Lags Dev` (`bkit-tests-static` lane) closes blind spot: every `dev` push diffs `renovate.json5`, `renovate.json`, `.github/workflows/**` vs default branch → `::warning::` + `$GITHUB_STEP_SUMMARY` if stale. **Non-blocking** nudge; keys ONLY consumed-from-default-branch surfaces. Clear: `dev` → default-branch PR.
 
-Ships in the `ci.yml` template as the `Check Default Branch Lags Dev` step; `bkit upgrade` lists `ci.yml` when it changes. Safe even without default-branch-behind-`dev` gating: `dev` pushes only, self-skips when default branch is `dev`/unset.
+Ships in the `bkit-ci.yml` template as the `Check Default Branch Lags Dev` step; `bkit upgrade` lists `bkit-ci.yml` when it changes. Safe even without default-branch-behind-`dev` gating: `dev` pushes only, self-skips when default branch is `dev`/unset.
 
 ### One CI run per dev commit (release PR mirrors the `dev` push run)
 
@@ -264,7 +264,7 @@ Undocumented, and invisible to the toolchain — file stays valid YAML, passes `
 
 **Auto-route contract:** the `bkit [auto route]` free-tier gate marker is threaded by `/bkit-ship` onto the squash-merge `--subject` (not just the sync-merge commit) whenever the issue carries `bkit:auto` — this is what admits `dev`-triggered runs through the existing `bkit-cloud.yml` gate; there is no second gate path. The `[skip ci]` ship-DONE close commit that follows the squash merge never carries the marker and never triggers CI, so it cannot interact with this trigger. Trust surface, kill switch and the cap's tamper caveat → `docs/security.md` § CI Auto-Route Trust.
 
-**Docs-only-diff precondition:** the `dev`-trigger path routes every post-merge CI failure to `/bkit-debug`. This is only correct for docs-only diffs if the consumer's `ci.yml` deploy-await step treats a host-cancelled build as skip, not red (skip e2e, stay green; e.g. Vercel `CANCELED`) — if a consumer reds on a host-cancelled build, every docs-only squash-merge to `dev` false-dispatches `/bkit-debug` and burns loop-cap budget. Verify this per consumer before relying on the `dev` trigger.
+**Docs-only-diff precondition:** the `dev`-trigger path routes every post-merge CI failure to `/bkit-debug`. This is only correct for docs-only diffs if the consumer's `bkit-ci.yml` deploy-await step treats a host-cancelled build as skip, not red (skip e2e, stay green; e.g. Vercel `CANCELED`) — if a consumer reds on a host-cancelled build, every docs-only squash-merge to `dev` false-dispatches `/bkit-debug` and burns loop-cap budget. Verify this per consumer before relying on the `dev` trigger.
 
 **Consumer-repo acceptance note:** the full happy-path loop (squash-merge → post-merge CI → `workflow_run` → `/bkit-debug` dispatch → fix PR → re-merge) is only exercisable on consumer repos with `bkit-cloud.yml` installed and its dispatch secrets wired (see `BKIT_GH_TOKEN_INSTALL` — presence matrix, below, and the cloud-agent auth surfaces in `docs/security.md`). A consumer without `bkit-cloud.yml` installed, or without CI running on `push: branches: [dev]`, never emits the `workflow_run` event this trigger depends on — the feature degrades to a silent no-op, not a failure.
 
@@ -293,7 +293,7 @@ The merge gate (`bkit runs gate`) asserts the capstone job's `conclusion=success
 To unwind a bad ship surface (the gate command, managed config, or rewritten `bkit-ship.md`) without downgrading unrelated fixes:
 
 1. **Pin the previous `@cbartens/bkit`** in `package.json` (the sliding `@v{N}` tag auto-receives patches; a regression lands via the tag, so pin to the last known-good immutable `v{N}.x.y` or `@<sha>` — see § Sliding major-version tag). Re-install and confirm `bkit check` reports no drift.
-2. **Hold `bkit upgrade` for `.bkit/workflows/bkit-ship.md`** until the regression is fixed upstream. The gate (`bkit runs gate`) and ship's waits ship inside the `@cbartens/bkit` package (`dist/`), not as files in your repo, so the version pin in step 1 is what rolls them back. Other bkit upgrades are independent.
+2. **Hold `bkit upgrade` for `.bkit/core/workflows/bkit-ship.md`** until the regression is fixed upstream. The gate (`bkit runs gate`) and ship's waits ship inside the `@cbartens/bkit` package (`dist/`), not as files in your repo, so the version pin in step 1 is what rolls them back. Other bkit upgrades are independent.
 3. **Audit any `BKIT_SHIP_GATE_OVERRIDE` rows** in `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` written in the interim. Each `type:"ship-gate-override"` row is a sanctioned escape that turned a refusal into a merge — treat every row as a PR whose capstone was NOT green at the merged head and re-verify it against the pinned-good gate (`bkit runs gate --head=<sha>`). `[bkit-runs] override honoured for head …` is the matching `docs/observability.md` grep key.
 4. **No per-workflow pin/revert exists**; the package pin + selective `bkit upgrade` hold is the recovery path. Document any incident in `docs/failures.jsonl`.
 
@@ -371,12 +371,12 @@ Elevated-permission workflows (`packages: write`, `id-token: write`, `contents: 
 | Updater | Copy | When |
 | --- | --- | --- |
 | Renovate (rules) | `.bkit/templates/.github/renovate.json5` → `.github/renovate.json5` | Default. Grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. |
-| Renovate (self-hosted runner) | `.bkit/templates/.github/workflows/renovate.yml` → `.github/workflows/renovate.yml` | Mend's 3 GB runner OOMs (`kernel-out-of-memory`) on a large pnpm graph. `ubuntu-latest` is ~16 GB. Edit `runs-on` in the copy. |
+| Renovate (self-hosted runner) | `.bkit/templates/.github/workflows/bkit-renovate.yml` → `.github/workflows/bkit-renovate.yml` | Mend's 3 GB runner OOMs (`kernel-out-of-memory`) on a large pnpm graph. `ubuntu-latest` is ~16 GB. Edit `runs-on` in the copy. |
 | Dependabot | `.bkit/templates/.github/dependabot.yml` → `.github/dependabot.yml` | First-party GitHub. No App. One PR per package. No lockfile-maintenance job. |
 
 Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips the install-time absence advisory.
 
-**Hands off bkit-owned trees.** Renovate: ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them; scanning them is noise). A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file, so use `ignorePaths`. Workflows you copied from `.bkit/templates/` (`ci.yml`, `bkit-cloud.yml`, `renovate.yml`) are yours: leave them out of that list so their pins refresh.
+**Hands off bkit-owned trees.** Renovate: ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them; scanning them is noise). A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file, so use `ignorePaths`. Workflows you copied from `.bkit/templates/` (`bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml`) are yours: leave them out of that list so their pins refresh.
 
 **Land config on the default branch before the bot runs.** GitHub Apps and Dependabot read config from the default branch. The example sets `baseBranchPatterns: ["dev"]` (PRs land on `dev`) and `useBaseBranchConfig: "merge"` (edits on `dev` apply to dev-targeted runs). `useBaseBranchConfig` itself is read from the default branch, so it needs one merge there before dev-side edits take effect.
 
@@ -420,7 +420,7 @@ Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs 
 
 When Renovate is the updater, leave alerts on and turn security updates and version updates off so Dependabot does not open competing PRs.
 
-**Runner labels for bkit workflows.** `ci.yml`, `bkit-cloud.yml` and `renovate.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in both jobs: replace it with a label (e.g. `ubuntu-latest`).
+**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml` and `bkit-renovate.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in both jobs: replace it with a label (e.g. `ubuntu-latest`).
 
 ### Manual CVE handling (when an alert fires)
 
@@ -483,8 +483,8 @@ Gate fails locally → fix + re-stage; do NOT `--no-verify` or amend over failed
 Source-repo only. Any `.bkit/core/engine/**/*.ts` change MUST include `pnpm build && git add dist/` in same commit.
 
 - Hooks run `typecheck` + `test`, NOT `pnpm build`. Source-repo pre-push runs `pnpm bkit:check:dist` (blocks stale `dist/`) but does not commit freshened `dist/` — run `pnpm build && git add dist/` manually.
-- CI `bkit-tests-static` "Assert Dist Freshness" (`pnpm bkit:check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) — `.github/workflows/ci.yml` only.
-- Consumer template `.bkit/templates/.github/workflows/ci.yml` omits freshness (tarball install, no recompile). Do not add there.
+- CI `bkit-tests-static` "Assert Dist Freshness" (`pnpm bkit:check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) — `.github/workflows/bkit-ci.yml` only.
+- Consumer template `.bkit/templates/.github/workflows/bkit-ci.yml` omits freshness (tarball install, no recompile). Do not add there.
 
 ### `.husky/pre-push` bkit check gate
 
@@ -541,10 +541,10 @@ All other docs-only intermediates (start-workflow, summary, install-skills, upda
 
 ### Manual CI trigger on feat branches (`workflow_dispatch`)
 
-`ci.yml` has `workflow_dispatch:` (no inputs). Auto-fire only on push to `main`/`dev` or PR targeting them — feat branch without open PR → no run.
+`bkit-ci.yml` has `workflow_dispatch:` (no inputs). Auto-fire only on push to `main`/`dev` or PR targeting them — feat branch without open PR → no run.
 
 ```bash
-gh workflow run ci.yml --ref feat/{FID}
+gh workflow run bkit-ci.yml --ref feat/{FID}
 gh run list --branch feat/{FID} --limit 3
 ```
 
@@ -577,7 +577,7 @@ The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it t
 
 ### Consumer CI auth — user-level `pnpm config set` (canonical)
 
-Before install: `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` + `pnpm install`, step `env: BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}`. `.npmrc` = registry mapping only; pnpm >=10.34.3 401s on project `.npmrc` substitution (KN-CORE-7). No composite action, no cross-org `uses:`. Template: `.bkit/templates/.github/workflows/ci.yml`; consumer detail: README §"Adding a new consumer — checklist" / §"Consumer CI auth".
+Before install: `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` + `pnpm install`, step `env: BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}`. `.npmrc` = registry mapping only; pnpm >=10.34.3 401s on project `.npmrc` substitution (KN-CORE-7). No composite action, no cross-org `uses:`. Template: `.bkit/templates/.github/workflows/bkit-ci.yml`; consumer detail: README §"Adding a new consumer — checklist" / §"Consumer CI auth".
 
 ### Sliding major-version tag
 

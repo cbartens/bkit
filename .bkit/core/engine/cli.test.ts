@@ -1,6 +1,6 @@
 // cli.test.ts — CLI dispatch surface (module flags + comply/telemetry verbs).
 // Surface: install requires ≥1 module flag (guard lives in main(), not parseArgs);
-// core implicit; --typescript expands to lint; --auto is the cloud flag;
+// core implicit; --auto is the cloud flag;
 // the internal module names (--core, --lint, --cloud) are unknown flags.
 // comply verb: --phase=<design|plan|build|debug|ship>.
 // telemetry verb: `bkit telemetry summary`.
@@ -91,9 +91,9 @@ describe("parseArgs — module flags", () => {
     expect(result.moduleFlags.has("cursor")).toBe(true);
   });
 
-  it("hosts compose: --claude --cursor --typescript → both hosts + lint + core", () => {
-    const result = parseArgs(["install", "--claude", "--cursor", "--typescript"]);
-    expect([...result.modules].sort()).toEqual(["claude", "core", "cursor", "lint"]);
+  it("hosts compose: --claude --cursor --codex → every named host + core", () => {
+    const result = parseArgs(["install", "--claude", "--cursor", "--codex"]);
+    expect([...result.modules].sort()).toEqual(["claude", "codex", "core", "cursor"]);
   });
 
   it("bare `install` records zero module flags (the ≥1 guard lives in main())", () => {
@@ -139,33 +139,32 @@ describe("parseArgs — module flags", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — internal module names are not flags", () => {
-  for (const flag of ["--core", "--lint", "--cloud", "--cloud=claude"]) {
+  for (const flag of ["--core", "--lint", "--cloud", "--cloud=claude", "--typescript"]) {
     it(`${flag} → Unknown flag`, () => {
       const msg = expectExit(() => parseArgs(["install", flag]));
       expect(msg).toMatch(/Unknown flag/);
     });
   }
+
+  it("uninstall --typescript → Unknown flag (the retired lint module's flag)", () => {
+    const msg = expectExit(() => parseArgs(["uninstall", "--typescript"]));
+    expect(msg).toMatch(/Unknown flag/);
+  });
 });
 
 // ---------------------------------------------------------------------------
-// --typescript: the owned slop-scan plugin (internal `lint`)
+// Host composition
 // ---------------------------------------------------------------------------
 
-describe("parseArgs — --typescript", () => {
-  it("install --typescript → {lint, core}; moduleFlags = {lint}", () => {
-    const result = parseArgs(["install", "--typescript"]);
-    expect([...result.modules].sort()).toEqual(["core", "lint"]);
-    expect([...result.moduleFlags]).toEqual(["lint"]);
+describe("parseArgs — host composition", () => {
+  it("install --claude --codex composes with hosts", () => {
+    const result = parseArgs(["install", "--claude", "--codex"]);
+    expect([...result.modules].sort()).toEqual(["claude", "codex", "core"]);
   });
 
-  it("install --typescript composes with hosts", () => {
-    const result = parseArgs(["install", "--claude", "--typescript"]);
-    expect([...result.modules].sort()).toEqual(["claude", "core", "lint"]);
-  });
-
-  it("uninstall --typescript → {lint} only (targeted, core preserved)", () => {
-    const result = parseArgs(["uninstall", "--typescript"]);
-    expect([...result.modules]).toEqual(["lint"]);
+  it("uninstall --codex → {codex} only (targeted, core preserved)", () => {
+    const result = parseArgs(["uninstall", "--codex"]);
+    expect([...result.modules]).toEqual(["codex"]);
   });
 });
 
@@ -178,7 +177,7 @@ describe("resolveModules — verb-aware resolution", () => {
 
   it("install: named modules + implicit core", () => {
     expect([...resolveModules(set("claude"), "install")].sort()).toEqual(["claude", "core"]);
-    expect([...resolveModules(set("lint"), "install")].sort()).toEqual(["core", "lint"]);
+    expect([...resolveModules(set("codex"), "install")].sort()).toEqual(["codex", "core"]);
   });
 
   it("install: empty flags → core only (main() guards the empty case)", () => {
@@ -187,14 +186,14 @@ describe("resolveModules — verb-aware resolution", () => {
 
   it("uninstall (bare): every module incl. opt-ins + core (zero footprint)", () => {
     const all = resolveModules(set(), "uninstall");
-    for (const m of ["core", "claude", "cursor", "lint", "cloud", "opencode"] as ModuleFlag[]) {
+    for (const m of ["core", "claude", "cursor", "cloud", "opencode", "codex"] as ModuleFlag[]) {
       expect(all.has(m), `bare uninstall should include ${m}`).toBe(true);
     }
   });
 
   it("uninstall (targeted): named modules ONLY — core is NOT added", () => {
     expect([...resolveModules(set("claude"), "uninstall")]).toEqual(["claude"]);
-    expect([...resolveModules(set("lint"), "uninstall")]).toEqual(["lint"]);
+    expect([...resolveModules(set("codex"), "uninstall")]).toEqual(["codex"]);
     expect([...resolveModules(set("cloud"), "uninstall")]).toEqual(["cloud"]);
   });
 
@@ -243,7 +242,6 @@ describe("printUsage — help output", () => {
     expect(output).toContain("--claude");
     expect(output).toContain("--cursor");
     expect(output).toContain("--opencode=");
-    expect(output).toContain("--typescript");
     expect(output).toContain("renovate.json5");
     expect(output).toContain("dependabot.yml");
     expect(output).toContain("--auto=");
@@ -251,7 +249,7 @@ describe("printUsage — help output", () => {
 
   it("documents compose + core examples", () => {
     const output = usage();
-    expect(output).toContain("--claude --cursor --typescript");
+    expect(output).toContain("--claude --cursor");
     expect(output).toMatch(/[Cc]ore \(implicit/);
   });
 
@@ -292,15 +290,9 @@ describe("parseArgs — uninstall verb", () => {
 
   it("bare uninstall → all modules incl. opt-in add-ons + core (zero footprint)", () => {
     const result = parseArgs(["uninstall"]);
-    for (const m of ["core", "claude", "cursor", "lint", "cloud", "opencode"] as ModuleFlag[]) {
+    for (const m of ["core", "claude", "cursor", "cloud", "opencode", "codex"] as ModuleFlag[]) {
       expect(result.modules.has(m), `bare uninstall should include ${m}`).toBe(true);
     }
-  });
-
-  it("uninstall --typescript → lint ONLY (targeted leaves core)", () => {
-    const result = parseArgs(["uninstall", "--typescript"]);
-    expect([...result.modules]).toEqual(["lint"]);
-    expect(result.modules.has("core")).toBe(false);
   });
 
   it("uninstall --claude → claude ONLY (no core)", () => {

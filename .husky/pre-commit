@@ -5,7 +5,7 @@
 # FAST local gate only: format staged files (seconds). Heavier gates
 # (typecheck/unit/format:check/prose) and the enforcing slop gate (slop:delta) are in
 # pre-push; integration/E2E/@live run ONLY in CI (bkit-tests / bkit-tests-live, enforced
-# by bkit-tests-check) — see ci.yml § FULL CI SCAFFOLD REFERENCE. Rule: anything needing
+# by bkit-tests-check) — see bkit-ci.yml § FULL CI SCAFFOLD REFERENCE. Rule: anything needing
 # a deployed URL, a DB, or >a few seconds belongs in a CI tier, not a hook. (lint:slop is `slop-scan scan` — report-only, never
 # fails; the gate that fails on NEW findings is `slop:delta`, which runs in pre-push.)
 #

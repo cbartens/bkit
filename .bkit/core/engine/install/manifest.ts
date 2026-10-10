@@ -44,7 +44,7 @@ export interface ManifestEntry {
   generated?: boolean;
 }
 
-export type ModuleName = "core" | "claude" | "cursor" | "opencode" | "codex" | "lint" | "cloud";
+export type ModuleName = "core" | "claude" | "cursor" | "opencode" | "codex" | "cloud";
 
 // ---------------------------------------------------------------------------
 // Issue tracker
@@ -81,8 +81,9 @@ export function parseIssueTracker(value: unknown): IssueTracker | null {
 
 /**
  * Cloud-agent automation chosen by the consumer (opt-in).
- * - `claude`  — `bkit install --auto=claude` writes `.claude/hooks/cloud-bootstrap.sh`; the
- *               consumer copies the `.github/workflows/bkit-cloud.yml` template. Requires `tracker=github`.
+ * - `claude`  — `bkit install --auto=claude` writes no file; the consumer copies the
+ *               `.github/workflows/bkit-cloud.yml` and `.claude/hooks/cloud-bootstrap.sh`
+ *               templates. Requires `tracker=github`.
  * - `cursor`  — `bkit install --auto=cursor` writes no file; the consumer copies the
  *               `.cursor/Dockerfile` + `.cursor/environment.json` templates. Requires `tracker=linear`.
  * - `opencode` — `bkit install --auto=opencode` writes no file; the consumer copies the same
@@ -123,11 +124,13 @@ const CORE_MANIFEST: ManifestEntry[] = [
   // their own attributes outside the block, so this is markered-text (not whole-file).
   { path: ".gitattributes", format: "markered-text", module: "core" },
   { path: ".bkit/version", format: "byte-equal-text", module: "core" },
-  // Canonical bkit-authored reference docs. They live package-side under `.bkit/`
-  // and are read from there at runtime (getBkitDocsRoot); these consumer copies are
-  // force-overwritten mirrors (writeTier1) so a consumer can read them in-repo. Whole
-  // file is bkit-owned → byte-equal-text (refreshed every install).
+  // Canonical bkit-authored reference docs. They live package-side under
+  // `.bkit/core/.bkit/` and are read from there at runtime (getBkitDocsRoot); these
+  // consumer copies are force-overwritten mirrors (writeTier1) so a consumer can read
+  // them in-repo. Whole file is bkit-owned → byte-equal-text (refreshed every install).
   { path: ".bkit/cloud.md", format: "byte-equal-text", module: "core" },
+  { path: ".bkit/comparison.md", format: "byte-equal-text", module: "core" },
+  { path: ".bkit/install.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/jsonl.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/prompts.md", format: "markered-text", module: "core" },
@@ -143,28 +146,28 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
   // Emitted by runClaudeModule (a root file, outside the .claude/ dir walk).
   { path: "CLAUDE.md", format: "markered-text", module: "claude" },
   { path: ".claude/settings.json", format: "json", module: "claude" },
-  { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
+  { path: ".claude/hooks/bkit-preflight.sh", format: "markered-text", module: "claude" },
   // GateGuard advisory PreToolUse hook — markered-text (slash-comment): bkit owns
   // only the advisory engine between `// bkit:start` / `// bkit:end`; the stdin/
   // stdout driver outside the block is consumer-owned from first install onward, so
   // a consumer can add their own advisories without losing them on upgrade. Wired
   // in .claude/settings.json.
   {
-    path: ".claude/hooks/gateguard.cjs",
+    path: ".claude/hooks/bkit-gateguard.cjs",
     format: "markered-text",
     module: "claude",
   },
-  // guardrails.cjs — Tier-2 markered-text, twin of the Cursor/Codex hooks.
+  // bkit-guardrails.cjs — Tier-2 markered-text, twin of the Cursor/Codex hooks.
   // PreToolUse matcher `Bash`. ADVISORY ONLY: covers URL hosts and shell-as-edit-channel;
   // never denies or asks.
   {
-    path: ".claude/hooks/guardrails.cjs",
+    path: ".claude/hooks/bkit-guardrails.cjs",
     format: "markered-text",
     module: "claude",
   },
-  // .claude/hooks/cloud-bootstrap.sh is in the opt-in `cloud` module (CLOUD_MANIFEST).
+  // .claude/hooks/cloud-bootstrap.sh ships as a copy-and-own template.
   // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`),
-  // so a default install without the script no-ops.
+  // so a consumer who has not adopted the script no-ops.
   // bkit owns only its tracker entry under `mcpServers` (reconcileMcpJson); every other
   // key is the consumer's.
   { path: ".mcp.json", format: "json", module: "claude" },
@@ -179,7 +182,7 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
 // bkit:gate:* — the local gate workflows, prompts and hooks run
 //
 // ONE CHAIN. Each gate is the previous gate plus its own tier; the NAME and the
-// VALUE describe the same sequence. Tier vocabulary is the `ci.yml` job ids
+// VALUE describe the same sequence. Tier vocabulary is the `bkit-ci.yml` job ids
 // (bkit-tests-static / -unit / -integration / -e2e / -live). Where a step is not a
 // tier (`format`, the ship gate) the name spells out the actual steps.
 //
@@ -195,7 +198,7 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
 // `gate-missing-called-scripts` advisory names any that are missing.
 //
 // The SAME names are what the git hook templates run (`.husky/pre-commit`,
-// `.husky/pre-push`). `ci.yml` does NOT call the gates; it calls the scripts directly.
+// `.husky/pre-push`). `bkit-ci.yml` does NOT call the gates; it calls the scripts directly.
 //
 // `lint:slop` is in no gate: `slop-scan scan` is report-only and never fails. The gate
 // that fails on new findings is `slop:delta`.
@@ -289,14 +292,14 @@ export const BKIT_OPTIONAL_GATES: ReadonlyArray<{
 
 const CURSOR_MANIFEST: ManifestEntry[] = [
   { path: ".cursor/hooks.json", format: "json", module: "cursor" },
-  { path: ".cursor/hooks/preflight.sh", format: "markered-text", module: "cursor" },
+  { path: ".cursor/hooks/bkit-preflight.sh", format: "markered-text", module: "cursor" },
   // Destructive-op + secret-exposure gates (parity with Claude permissions / OpenCode
   // permission map) — markered-text (slash-comment), same ownership split as the two
   // GateGuard hooks: bkit owns only the decision engine between the markers, the
   // stdin/stdout driver outside them is consumer-owned from first install onward, so a
   // consumer can add their own gates without losing them on upgrade.
   {
-    path: ".cursor/hooks/guardrails.cjs",
+    path: ".cursor/hooks/bkit-guardrails.cjs",
     format: "markered-text",
     module: "cursor",
   },
@@ -305,18 +308,18 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
   // asserted by a parity test). Wired in .cursor/hooks.json → preToolUse
   // (matcher "Write"), without failClosed.
   {
-    path: ".cursor/hooks/gateguard.cjs",
+    path: ".cursor/hooks/bkit-gateguard.cjs",
     format: "markered-text",
     module: "cursor",
   },
-  // Curl/wget host allowlist read at runtime by guardrails.cjs. No template backs it —
+  // Curl/wget host allowlist read at runtime by bkit-guardrails.cjs. No template backs it —
   // `writeNetworkAllowlistArtifact` (install/cloud-env.ts) computes the domain set from the
   // consumer's own config, so it is `generated` and its hash is in `canonicalHashes`.
   { path: ".cursor/allowlist.json", format: "byte-equal-text", module: "cursor", generated: true },
   // Cursor CLI / cloud-agent MCP allows — `writeCursorCliPermissionsArtifact`
   // (install/cloud-env.ts) renders it from the consumer's `mcp-servers` block; same contract.
   { path: ".cursor/cli.json", format: "byte-equal-text", module: "cursor", generated: true },
-  { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
+  { path: ".cursor/rules/bkit-rules.mdc", format: "markered-text", module: "cursor" },
   // Same per-entry ownership as `.mcp.json` (reconcileMcpJson).
   { path: ".cursor/mcp.json", format: "json", module: "cursor" },
   // Mirrors from .agents/ — managed dynamically; not listed individually.
@@ -330,9 +333,9 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
 // ownership-mixed: consumers add their own provider keys, model lists, and mcp entries,
 // so bkit must reconverge only the bkit-managed keys on upgrade (KN-17).
 //
-// gateguard.js is markered-text (slash-comment) — bkit owns only the advisory engine
+// bkit-gateguard.js is markered-text (slash-comment) — bkit owns only the advisory engine
 // between the markers; the exported plugin driver outside the block is consumer-owned
-// from first install onward, same split as .claude/hooks/gateguard.cjs.
+// from first install onward, same split as .claude/hooks/bkit-gateguard.cjs.
 //
 // Dir names: .opencode/agents/ and .opencode/commands/ (plural) per opencode.ai/docs.
 // Spike initially observed singular; official docs are plural — plural is correct.
@@ -340,9 +343,9 @@ export const OPENCODE_MANIFEST: ManifestEntry[] = [
   // opencode.json — Tier-2 json (deep-contained, ownership-mixed, reconverged on upgrade).
   // writeTier2JsonContained throws on malformed destination (KN-19 guard).
   { path: ".opencode/opencode.json", format: "json", module: "opencode" },
-  // gateguard.js — Tier-2 markered-text (slash-comment); see comment above.
+  // bkit-gateguard.js — Tier-2 markered-text (slash-comment); see comment above.
   {
-    path: ".opencode/plugin/gateguard.js",
+    path: ".opencode/plugin/bkit-gateguard.js",
     format: "markered-text",
     module: "opencode",
   },
@@ -359,20 +362,20 @@ export const CODEX_MANIFEST: ManifestEntry[] = [
   // hooks.json — Tier-2 json (deep-contained): bkit owns the PreToolUse GateGuard entry,
   // consumers may add their own event groups alongside it.
   { path: ".codex/hooks.json", format: "json", module: "codex" },
-  // gateguard.cjs — Tier-2 markered-text, twin of the Claude hook (same stdin/stdout
+  // bkit-gateguard.cjs — Tier-2 markered-text, twin of the Claude hook (same stdin/stdout
   // contract); differs only in tool name (apply_patch) and V4A patch-envelope parsing.
   {
-    path: ".codex/hooks/gateguard.cjs",
+    path: ".codex/hooks/bkit-gateguard.cjs",
     format: "markered-text",
     module: "codex",
   },
-  // guardrails.cjs — Tier-2 markered-text, twin of the Cursor hook (same decision
+  // bkit-guardrails.cjs — Tier-2 markered-text, twin of the Cursor hook (same decision
   // engine). Registered on matcher `Bash`, Codex's shell tool name. Codex parses but
   // does not implement `permissionDecision: "ask"`, so the deny tier blocks for real
   // and the ask tier is emitted as advisory `additionalContext` — the documented
   // divergence asserted in install/modules/index.integration.test.ts.
   {
-    path: ".codex/hooks/guardrails.cjs",
+    path: ".codex/hooks/bkit-guardrails.cjs",
     format: "markered-text",
     module: "codex",
   },
@@ -381,22 +384,12 @@ export const CODEX_MANIFEST: ManifestEntry[] = [
 ];
 
 // Cloud agent integration is opt-in — NOT in a default install, so a default install
-// ships ZERO cloud footprint. The module is split by variant:
-//
-//   cloud=claude (tracker=github):
-//   - cloud-bootstrap.sh    — Claude Code on the web SessionStart install hook
-//                              (no-op unless CLAUDE_CODE_REMOTE=true).
-//
-//   cloud=opencode (tracker=github), cloud=cursor (tracker=linear): no files.
-//
-// The cloud workflow (bkit-cloud.yml) and the Cursor Background Agent files
+// ships ZERO cloud footprint. Every variant writes no files: the cloud workflow
+// (bkit-cloud.yml), cloud-bootstrap.sh and the Cursor Background Agent files
 // (.cursor/Dockerfile, .cursor/environment.json) ship as templates
-// (`.bkit/templates.md`); the consumer copies and owns them.
-//
-// Uninstall removes ONLY the recorded variant's files.
-export const CLOUD_MANIFEST_CLAUDE: ManifestEntry[] = [
-  { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "cloud" },
-];
+// (`.bkit/templates.md`); the consumer copies and owns them. Each variant only
+// records `bkit.cloudAgents` and prints its setup advisories.
+export const CLOUD_MANIFEST_CLAUDE: ManifestEntry[] = [];
 
 export const CLOUD_MANIFEST_OPENCODE: ManifestEntry[] = [];
 
@@ -411,22 +404,6 @@ const CLOUD_MANIFEST: ManifestEntry[] = [
   ...CLOUD_MANIFEST_CURSOR,
 ];
 
-// --typescript: the owned slop-scan type-suppression plugin, the one file
-// `slop-scan.config.json` references that bkit keeps current. The tool scripts and
-// devDeps, slop-scan.config.json, .prettierignore, .lintstagedrc.json, the Vale config
-// and the husky hooks ship as templates (`.bkit/templates.md`); the consumer copies
-// and owns them.
-const LINT_MANIFEST: ManifestEntry[] = [
-  // Excluded from the core template walk so it ships only with --typescript.
-  // Tier 1 (bkit-owned, force-overwritten). Mirrors .bkit/templates/.bkit/scripts/.
-  // See CORE_TEMPLATE_PATH_EXCLUDE.
-  {
-    path: ".bkit/scripts/bkit-slop-type-suppression.mjs",
-    format: "byte-equal-text",
-    module: "lint",
-  },
-];
-
 // ---------------------------------------------------------------------------
 // Module registry
 // ---------------------------------------------------------------------------
@@ -437,7 +414,6 @@ const MODULE_MANIFESTS: Record<ModuleName, ManifestEntry[]> = {
   cursor: CURSOR_MANIFEST,
   opencode: OPENCODE_MANIFEST,
   codex: CODEX_MANIFEST,
-  lint: LINT_MANIFEST,
   cloud: CLOUD_MANIFEST,
 };
 

@@ -2,7 +2,7 @@
 //
 // Asserts that the `bkit:start`→`bkit:end` managed block in bkit's own
 // `.agents/rules.md` byte-equals the same block in the canonical template at
-// `.bkit/templates/.agents/rules.md`, as install renders it (managed-version marker
+// `.bkit/core/.agents/rules.md`, as install renders it (managed-version marker
 // resolved).
 //
 // D3 constraint: compare the MANAGED BLOCK ONLY (between `<!-- bkit:start -->`
@@ -48,9 +48,9 @@ function extractManagedBlock(filePath: string, content: string): string {
 describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", () => {
   const pkgRoot = getPkgRoot();
   const agentsRulesPath = path.join(pkgRoot, ".agents", "rules.md");
-  const templateRulesPath = path.join(pkgRoot, ".bkit", "templates", ".agents", "rules.md");
+  const templateRulesPath = path.join(pkgRoot, ".bkit", "core", ".agents", "rules.md");
 
-  it("both .agents/rules.md and .bkit/templates/.agents/rules.md exist", () => {
+  it("both .agents/rules.md and .bkit/core/.agents/rules.md exist", () => {
     expect(fs.existsSync(agentsRulesPath), `Missing: ${agentsRulesPath}`).toBe(true);
     expect(fs.existsSync(templateRulesPath), `Missing: ${templateRulesPath}`).toBe(true);
   });
@@ -90,7 +90,7 @@ describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", ()
     // months from now when someone follows the pointer.
     for (const securityPath of [
       path.join(pkgRoot, "docs", "security.md"),
-      path.join(pkgRoot, ".bkit", "templates", "docs", "security.md"),
+      path.join(pkgRoot, ".bkit", "shared", "docs", "security.md"),
     ]) {
       const block = extractManagedBlock(securityPath, fs.readFileSync(securityPath, "utf-8"));
       expect(block, `dangling pointer: ${securityPath}`).toContain(
@@ -110,7 +110,7 @@ describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", ()
 
     expect(
       bullets,
-      ".bkit/templates/.agents/rules.md must carry no project rules below bkit:end",
+      ".bkit/core/.agents/rules.md must carry no project rules below bkit:end",
     ).toEqual([]);
   });
 });

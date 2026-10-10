@@ -93,7 +93,7 @@ describe("modules-upgrade", () => {
 
   describe("cursor-v1-schema sanity", () => {
     it("template has version===1, hooks.sessionStart/sessionStop arrays, no __bkit__", () => {
-      const templatePath = path.resolve(__dirname, "../../../templates/.cursor/hooks.json");
+      const templatePath = path.resolve(__dirname, "../../../shared/.cursor/hooks.json");
       expect(fs.existsSync(templatePath)).toBe(true);
       const doc = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
       expect(doc.version).toBe(1);
@@ -123,7 +123,7 @@ describe("modules-upgrade", () => {
             options: { baseURL: "http://localhost:11434/v1" },
           },
         },
-        plugins: [".opencode/plugin/gateguard.js"],
+        plugins: [".opencode/plugin/bkit-gateguard.js"],
       };
       fs.writeFileSync(templatePath, JSON.stringify(template, null, 2) + "\n", "utf-8");
 
@@ -144,7 +144,7 @@ describe("modules-upgrade", () => {
         },
         // Consumer added their own mcp config
         mcp: { myServer: { command: "npx", args: ["-y", "my-mcp-server"] } },
-        plugins: [".opencode/plugin/gateguard.js"],
+        plugins: [".opencode/plugin/bkit-gateguard.js"],
       };
       fs.writeFileSync(consumerPath, JSON.stringify(consumerDoc, null, 2) + "\n", "utf-8");
 
@@ -160,7 +160,7 @@ describe("modules-upgrade", () => {
       // Consumer's mcp config preserved
       expect(afterDoc.mcp?.myServer?.command).toBe("npx");
       // Plugin still wired
-      expect(afterDoc.plugins).toContain(".opencode/plugin/gateguard.js");
+      expect(afterDoc.plugins).toContain(".opencode/plugin/bkit-gateguard.js");
     });
 
     it("opencode.json reconverge is idempotent", () => {
@@ -173,7 +173,7 @@ describe("modules-upgrade", () => {
             options: { baseURL: "http://localhost:11434/v1" },
           },
         },
-        plugins: [".opencode/plugin/gateguard.js"],
+        plugins: [".opencode/plugin/bkit-gateguard.js"],
       };
       fs.writeFileSync(templatePath, JSON.stringify(template, null, 2) + "\n", "utf-8");
 
@@ -186,7 +186,7 @@ describe("modules-upgrade", () => {
             options: { baseURL: "http://localhost:11434/v1" },
           },
         },
-        plugins: [".opencode/plugin/gateguard.js"],
+        plugins: [".opencode/plugin/bkit-gateguard.js"],
         customKey: "consumer-value",
       };
       fs.writeFileSync(consumerPath, JSON.stringify(consumerDoc, null, 2) + "\n", "utf-8");

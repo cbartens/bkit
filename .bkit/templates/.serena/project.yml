@@ -136,8 +136,8 @@ ignored_paths:
   - ".slop-scan-base/**"
   - ".claude/worktrees/**"
   # Agent harness, not application code. gateguard exists three times over —
-  # .claude/hooks/gateguard.cjs and .cursor/hooks/gateguard.cjs are byte-
-  # identical and .opencode/plugin/gateguard.js is the same logic as an ES
+  # .claude/hooks/bkit-gateguard.cjs and .cursor/hooks/bkit-gateguard.cjs are byte-
+  # identical and .opencode/plugin/bkit-gateguard.js is the same logic as an ES
   # module — so one symbol answers three times. Left in, this is also what the
   # language server reaches first: `serena project health-check` picked
   # alreadyWarned() out of gateguard as the repo's sample symbol.

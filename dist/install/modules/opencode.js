@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { writeTier2, deepMergeJson, ensureDir } from "../write.js";
 import { stampManagedVersion } from "../version-file.js";
 import { applyOpencodeAgent, applyOpencodeCommand } from "../../render/hosts.js";
-import { getTemplatesRoot, getWorkflowsRoot, getPromptsRoot } from "../../shared/package-roots.js";
+import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from "../../shared/package-roots.js";
 import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { resolveNetworkAllowlist, extractMcpServers, networkAllowlistBases } from "../cloud-env.js";
@@ -101,7 +101,7 @@ export function renderOpencodeAgentsCommands(ctx) {
 //
 // Additive alongside always-on claude/cursor: .opencode/agents/*.md (via applyOpencodeAgent),
 // .opencode/commands/*.md (via applyOpencodeCommand + tracker substitution),
-// .opencode/opencode.json (Tier-2 deep-contained), .opencode/plugin/gateguard.js (Tier-1).
+// .opencode/opencode.json (Tier-2 deep-contained), .opencode/plugin/bkit-gateguard.js (Tier-1).
 //
 // Dir names: .opencode/agents/ and .opencode/commands/ (plural) per opencode.ai/docs.
 // Spike initially observed singular; official docs are plural — plural is correct.
@@ -434,8 +434,8 @@ export function runOpencodeModule(ctx) {
     renderOpencodeAgentsCommands(ctx);
     // --- opencode.json — Tier-2 deep-contained (reconverged on upgrade) ---
     {
-        const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
-        const jsonSrc = path.join(opencodeTplDir, "opencode.json");
+        const opencodeShared = path.join(getSharedRoot(), ".opencode");
+        const jsonSrc = path.join(opencodeShared, "opencode.json");
         const jsonDst = ".opencode/opencode.json";
         if (fs.existsSync(jsonSrc)) {
             // Render the template with tracker-filtered mcp + provider config, then reconcile it into
@@ -450,11 +450,11 @@ export function runOpencodeModule(ctx) {
             }
         }
     }
-    // --- gateguard.js — Tier-2 markered-text (slash-comment); see install/manifest.ts ---
+    // --- bkit-gateguard.js — Tier-2 markered-text (slash-comment); see install/manifest.ts ---
     {
-        const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
-        const pluginSrc = path.join(opencodeTplDir, "plugin", "gateguard.js");
-        const pluginDst = ".opencode/plugin/gateguard.js";
+        const opencodeCore = path.join(getCoreRoot(), ".opencode", "plugin");
+        const pluginSrc = path.join(opencodeCore, "bkit-gateguard.js");
+        const pluginDst = ".opencode/plugin/bkit-gateguard.js";
         if (fs.existsSync(pluginSrc)) {
             // dryRun-gated — writeTier2 honours dryRun, so the dir is only needed for a real
             // write; `bkit check` stays read-only when gateguard's parent dir is absent.

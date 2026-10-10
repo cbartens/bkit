@@ -51,7 +51,7 @@ function makeModules(...flags: string[]): Set<ModuleFlag> {
 describe("Scenario 1 — blocker: no package.json → exit 1, zero writes", () => {
   it("runPreflight returns no-package-json blocker when package.json is absent", () => {
     // tmpDir has no package.json
-    const { blockers } = runPreflight(makeModules("core", "lint"), tmpDir);
+    const { blockers } = runPreflight(makeModules("core", "claude"), tmpDir);
     expect(blockers.some((f) => f.id === "no-package-json")).toBe(true);
     expect(blockers[0]!.severity).toBe("blocker");
     // no-git-repo fires here too (--core + no .git) — that is correct behaviour
@@ -87,16 +87,12 @@ describe("Scenario 1 — blocker: no package.json → exit 1, zero writes", () =
 
     expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
-    const result = spawnSync(
-      tsxBin,
-      [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 30_000,
-      },
-    );
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--cursor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 30_000,
+    });
 
     expect(result.status).toBe(1);
     // The blocker checklist must be the cause of exit-1 (not an unrelated crash).
@@ -130,14 +126,14 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
   });
 
   it("runPreflight returns advisory findings for seeded conditions", () => {
-    const { blockers, advisories } = runPreflight(makeModules("core", "lint"), tmpDir);
+    const { blockers, advisories } = runPreflight(makeModules("core", "claude"), tmpDir);
     expect(blockers).toHaveLength(0);
     const ids = advisories.map((f) => f.id);
     expect(ids).toContain("gitignore-block-duplicates");
   });
 
   it("formatChecklist renders a numbered checklist for multiple advisories", () => {
-    const { advisories } = runPreflight(makeModules("core", "lint"), tmpDir);
+    const { advisories } = runPreflight(makeModules("core", "claude"), tmpDir);
     expect(advisories.length).toBeGreaterThan(0);
     const banner = formatChecklist(advisories);
     expect(banner).toBeTruthy();
@@ -150,13 +146,13 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
   });
 
   it("formatChecklist includes the instructions header for AI agents", () => {
-    const { advisories } = runPreflight(makeModules("core", "lint"), tmpDir);
+    const { advisories } = runPreflight(makeModules("core", "claude"), tmpDir);
     const banner = formatChecklist(advisories);
     expect(banner).toContain("INSTRUCTIONS FOR AN AI AGENT");
   });
 
   it("runPostInstallCheck adds gh-bkit-token-unset-shell when token is unset", () => {
-    const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
+    const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "claude"), tmpDir);
 
     // Temporarily unset BKIT_GH_TOKEN_INSTALL
     const savedToken = process.env.BKIT_GH_TOKEN_INSTALL;
@@ -172,7 +168,7 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
   });
 
   it("full pipeline: combined Phase 1 + Phase 3 findings all appear in final banner", () => {
-    const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
+    const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "claude"), tmpDir);
     expect(preflightAdvisories.length).toBeGreaterThan(0);
 
     const savedToken = process.env.BKIT_GH_TOKEN_INSTALL;
@@ -198,7 +194,7 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
   });
 
   it("no duplicate ids in the final checklist", () => {
-    const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
+    const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "claude"), tmpDir);
     const postFindings = runPostInstallCheck(preflightAdvisories, tmpDir);
     const ids = postFindings.map((f) => f.id);
     const uniqueIds = [...new Set(ids)];
@@ -229,7 +225,7 @@ describe("Scenario 3 — bkit check: Phase 3 detectors run for parity with insta
   });
 
   it("runPostInstallCheck includes Phase 3 detector findings (gh-bkit-token-unset-shell when token unset)", () => {
-    const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
+    const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "claude"), tmpDir);
     const savedToken = process.env.BKIT_GH_TOKEN_INSTALL;
     delete process.env.BKIT_GH_TOKEN_INSTALL;
 
@@ -245,7 +241,7 @@ describe("Scenario 3 — bkit check: Phase 3 detectors run for parity with insta
   });
 
   it("formatChecklist renders Phase 1 advisories", () => {
-    const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
+    const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "claude"), tmpDir);
     const banner = formatChecklist(preflightAdvisories);
     expect(banner).toBeTruthy();
     expect(banner).toContain("gitignore-block-duplicates");
@@ -301,16 +297,12 @@ describe("Scenario 5 — full install smoke against scratch consumer", () => {
     );
     expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
-    const result = spawnSync(
-      tsxBin,
-      [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 60_000,
-      },
-    );
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--cursor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
 
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(result.status, `install crashed:\n${combined}`).toBe(0);
@@ -347,16 +339,12 @@ describe("Scenario 5b — docs/roadmap.md is consumer-owned: bkit install never 
     );
     expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
-    const installResult = spawnSync(
-      tsxBin,
-      [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 60_000,
-      },
-    );
+    const installResult = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--cursor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
     const installCombined = `${installResult.stdout ?? ""}\n${installResult.stderr ?? ""}`;
     expect(installResult.status, `install crashed:\n${installCombined}`).toBe(0);
 
@@ -389,16 +377,16 @@ describe("Scenario 5b — docs/roadmap.md is consumer-owned: bkit install never 
 // ---------------------------------------------------------------------------
 
 describe("Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)", () => {
-  it("runPostInstallCheck includes blocker-severity finding when ci.yml missing token and .npmrc references token", () => {
+  it("runPostInstallCheck includes blocker-severity finding when bkit-ci.yml missing token and .npmrc references token", () => {
     // Seed: .npmrc references ${BKIT_GH_TOKEN_INSTALL} → ci-yml-missing-token-env elevated to blocker
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "test", version: "0.0.0" }),
     );
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    // ci.yml has pnpm install but no BKIT_GH_TOKEN_INSTALL env mapping
+    // bkit-ci.yml has pnpm install but no BKIT_GH_TOKEN_INSTALL env mapping
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm install\n",
       "utf-8",
     );
@@ -421,7 +409,7 @@ describe("Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)", () => 
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "test" }));
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "steps:\n  - run: pnpm install\n",
     );
     fs.writeFileSync(
@@ -442,7 +430,7 @@ describe("Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)", () => 
 
 describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.T9)", () => {
   it("bkit install exits 1 when Phase 3 blocker detected + recovery line in output", () => {
-    // Set up consumer with Phase 3 blocker condition: ci.yml missing token env + .npmrc with token
+    // Set up consumer with Phase 3 blocker condition: bkit-ci.yml missing token env + .npmrc with token
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({
@@ -454,9 +442,9 @@ describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.
     );
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    // ci.yml missing BKIT_GH_TOKEN_INSTALL env mapping
+    // bkit-ci.yml missing BKIT_GH_TOKEN_INSTALL env mapping
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm install --frozen-lockfile\n",
     );
     // .npmrc that references ${BKIT_GH_TOKEN_INSTALL} — triggers blocker escalation
@@ -475,7 +463,7 @@ describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.
     );
     expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--typescript"], {
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: {
@@ -504,7 +492,7 @@ describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.
 describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (P2.T10)", () => {
   it("--auto-revert: exits 1, auto-revert message present, Tier-1 writes reverted", () => {
     // Set up consumer with Phase 3 blocker condition (same as Scenario 7):
-    // ci.yml missing BKIT_GH_TOKEN_INSTALL env + .npmrc referencing ${BKIT_GH_TOKEN_INSTALL}
+    // bkit-ci.yml missing BKIT_GH_TOKEN_INSTALL env + .npmrc referencing ${BKIT_GH_TOKEN_INSTALL}
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({
@@ -516,9 +504,9 @@ describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (
     );
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    // ci.yml missing BKIT_GH_TOKEN_INSTALL env mapping — triggers blocker in Phase 3
+    // bkit-ci.yml missing BKIT_GH_TOKEN_INSTALL env mapping — triggers blocker in Phase 3
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
       "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm install --frozen-lockfile\n",
     );
     // .npmrc that references ${BKIT_GH_TOKEN_INSTALL} — escalates to blocker
@@ -592,16 +580,12 @@ describe("MCP config — fresh install and a consumer's own file", () => {
     );
     expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
-    const result = spawnSync(
-      tsxBin,
-      [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 60_000,
-      },
-    );
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--cursor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
 
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(result.status, `install crashed:\n${combined}`).toBe(0);
@@ -651,7 +635,7 @@ describe("MCP config — fresh install and a consumer's own file", () => {
 
     const result = spawnSync(
       tsxBin,
-      [bkitInstallPath, "install", "--claude", "--cursor", "--typescript", "--tracker=github"],
+      [bkitInstallPath, "install", "--claude", "--cursor", "--tracker=github"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -730,16 +714,12 @@ describe("MCP config — fresh install and a consumer's own file", () => {
     );
     expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
-    const result = spawnSync(
-      tsxBin,
-      [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 60_000,
-      },
-    );
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--cursor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
 
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(result.status, `install crashed:\n${combined}`).toBe(0);
@@ -940,9 +920,9 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
     expect(`${r.stdout}\n${r.stderr}`).toMatch(/takes no module flags/i);
   });
 
-  it("`bkit upgrade --typescript` (stray module flag) errors", () => {
+  it("`bkit upgrade --claude` (stray module flag) errors", () => {
     if (!fs.existsSync(tsxPath())) return;
-    const r = run(["upgrade", "--typescript"]);
+    const r = run(["upgrade", "--claude"]);
     expect(r.status).toBe(1);
     expect(`${r.stdout}\n${r.stderr}`).toMatch(/takes no module flags/i);
   });
@@ -975,17 +955,17 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
     expect(fs.existsSync(path.join(tmp, ".bkit"))).toBe(false);
   });
 
-  it("`bkit install --typescript` writes no ci.yml, .vale.ini or hooks (templates); no host dirs", () => {
+  it("`bkit install --claude` writes no bkit-ci.yml, .vale.ini or hooks (templates); no .cursor", () => {
     if (!fs.existsSync(tsxPath())) return;
-    const r = run(["install", "--typescript"]);
+    const r = run(["install", "--claude"]);
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
-    expect(fs.existsSync(path.join(tmp, ".github", "workflows", "ci.yml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, ".github", "workflows", "bkit-ci.yml"))).toBe(false);
     expect(fs.existsSync(path.join(tmp, ".vale.ini"))).toBe(false);
     expect(fs.existsSync(path.join(tmp, ".husky", "pre-commit"))).toBe(false);
     expect(
-      fs.existsSync(path.join(tmp, ".bkit", "templates", ".github", "workflows", "ci.yml")),
+      fs.existsSync(path.join(tmp, ".bkit", "templates", ".github", "workflows", "bkit-ci.yml")),
     ).toBe(true);
-    expect(fs.existsSync(path.join(tmp, ".claude"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, ".claude"))).toBe(true);
     expect(fs.existsSync(path.join(tmp, ".cursor"))).toBe(false);
   });
 
@@ -1113,7 +1093,7 @@ describe("T10 — claudeAllowDerived survives a real install", () => {
   });
 
   const install = (tsxBin: string, bkitInstallPath: string) =>
-    spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--typescript"], {
+    spawnSync(tsxBin, [bkitInstallPath, "install", "--claude"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },

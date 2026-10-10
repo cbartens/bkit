@@ -55,13 +55,13 @@ const write = (cwd: string, rel: string, body: string) => {
   fs.writeFileSync(path.join(cwd, rel), body);
 };
 
-/** A git repo with a CI workflow (`ci.yml` unless named) and optional `package.json` `bkit` settings. */
+/** A git repo with a CI workflow (`bkit-ci.yml` unless named) and optional `package.json` `bkit` settings. */
 function repo(opts: { bkit?: Record<string, unknown>; ci?: string | null; ciName?: string } = {}) {
   const cwd = mkdir("bkit-setup-");
   spawnSync("git", ["init", "-q"], { cwd });
   if (opts.bkit) write(cwd, "package.json", JSON.stringify({ name: "x", bkit: opts.bkit }));
   if (opts.ci !== null)
-    write(cwd, `.github/workflows/${opts.ciName ?? "ci.yml"}`, opts.ci ?? CI_YML);
+    write(cwd, `.github/workflows/${opts.ciName ?? "bkit-ci.yml"}`, opts.ci ?? CI_YML);
   return cwd;
 }
 
@@ -128,7 +128,7 @@ describe("bkit setup protect-main — apply", () => {
       repo: "o/r",
       branch: "main",
       requiredCheck: "bkit-tests-check",
-      ciWorkflow: "ci.yml",
+      ciWorkflow: "bkit-ci.yml",
       dryRun: false,
       applied: true,
       payload: protectionPayload("bkit-tests-check"),
@@ -213,7 +213,7 @@ describe("bkit setup protect-main — pre-flight", () => {
     const gh = fakeGh();
     const r = await run(cwd, []);
     expect(r.code).toBe(4);
-    expect(r.err).toContain(`${path.join(".github", "workflows", "ci.yml")} not found`);
+    expect(r.err).toContain(`${path.join(".github", "workflows", "bkit-ci.yml")} not found`);
     expect(gh.calls()).not.toContain("-X PUT");
   });
 

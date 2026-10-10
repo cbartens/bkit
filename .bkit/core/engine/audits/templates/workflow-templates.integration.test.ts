@@ -1,4 +1,4 @@
-// audits/templates/workflow-templates.integration.test.ts — the shipped `bkit-cloud.yml` and `ci.yml`
+// audits/templates/workflow-templates.integration.test.ts — the shipped `bkit-cloud.yml` and `bkit-ci.yml`
 // workflow templates.
 
 import * as fs from "node:fs";
@@ -205,13 +205,13 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
 // pnpm/action-setup@v4 single-SoT enforcement (KN-3)
 // ---------------------------------------------------------------------------
 
-describe("KN-3 regression: ci.yml files must NOT set `with.version:` for pnpm action", () => {
+describe("KN-3 regression: bkit-ci.yml files must NOT set `with.version:` for pnpm action", () => {
   const SCRIPTS_DIR = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
   // this file is at <PKG_ROOT>/.bkit/core/engine/install/modules — five levels up to PKG_ROOT
   const PKG_ROOT = path.resolve(SCRIPTS_DIR, "..", "..", "..", "..", "..");
 
-  it("ci.yml template does NOT set both `with.version:` and rely on packageManager (KN-3)", () => {
-    const tplPath = path.join(PKG_ROOT, ".bkit/templates/.github/workflows/ci.yml");
+  it("bkit-ci.yml template does NOT set both `with.version:` and rely on packageManager (KN-3)", () => {
+    const tplPath = path.join(PKG_ROOT, ".bkit/templates/.github/workflows/bkit-ci.yml");
     const tpl = fs.readFileSync(tplPath, "utf-8");
     // pnpm/action-setup@v4 errors if `with.version:` is set when consumer
     // also has package.json#packageManager. Template MUST NOT set `version:`
@@ -221,8 +221,8 @@ describe("KN-3 regression: ci.yml files must NOT set `with.version:` for pnpm ac
     expect(tpl).not.toMatch(/pnpm\/action-setup@v4[^-]*?with:[^-]*?version:/s);
   });
 
-  it("bkit's own .github/workflows/ci.yml does NOT set `with.version:` for pnpm action (KN-3)", () => {
-    const ciPath = path.join(PKG_ROOT, ".github/workflows/ci.yml");
+  it("bkit's own .github/workflows/bkit-ci.yml does NOT set `with.version:` for pnpm action (KN-3)", () => {
+    const ciPath = path.join(PKG_ROOT, ".github/workflows/bkit-ci.yml");
     const ci = fs.readFileSync(ciPath, "utf-8");
     // Same guard — stops at next step boundary so setup-node's `with: node-version:`
     // does not produce a false positive.

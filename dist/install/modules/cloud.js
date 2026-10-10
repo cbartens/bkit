@@ -1,9 +1,9 @@
-// install/modules/cloud.ts — the cloud module (`--auto=<variant>`): the post-CI auto-routing
-// workflow and the cloud-agent config.
+// install/modules/cloud.ts — the cloud module (`--auto=<variant>`): records the
+// variant and prints the post-CI auto-routing setup advisories. It writes no files:
+// every cloud file (the workflow, cloud-bootstrap.sh, the Cursor Dockerfile /
+// environment) ships as a copy-and-own template.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { writeTier2 } from "../write.js";
-import { getTemplatesRoot } from "../../shared/package-roots.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -46,44 +46,21 @@ const CLOUD_WORKFLOW_ADOPT_STEP = "  - Copy `.bkit/templates/.github/workflows/b
 // ---------------------------------------------------------------------------
 //
 // NOT shipped by a default install — opt-in via `bkit install --auto=<variant>`,
-// so a default install ships ZERO cloud footprint. Variant-split:
-//
-//   cloud=claude (tracker=github):
-//   - `.claude/hooks/cloud-bootstrap.sh`   — Claude Code on the web SessionStart install
-//        hook (Tier 2 markered; no-op unless CLAUDE_CODE_REMOTE=true).
-//
-//   cloud=opencode (tracker=github), cloud=cursor (tracker=linear): no files.
-//
-// Every variant records `bkit.cloudAgents` and prints its setup advisories. The cloud
-// workflow (bkit-cloud.yml) and the Cursor Background Agent files (.cursor/Dockerfile,
-// .cursor/environment.json) are templates the advisories point at.
+// so a default install ships ZERO cloud footprint. Every variant records
+// `bkit.cloudAgents` and prints its setup advisories; none writes a file. The cloud
+// workflow (bkit-cloud.yml), cloud-bootstrap.sh and the Cursor Background Agent
+// files (.cursor/Dockerfile, .cursor/environment.json) are templates the advisories
+// point at.
 //
 // Variant constraints are enforced in commands/install/install.ts before dispatch (tracker mismatch
 // = hard error). The context's cloudVariant carries the chosen variant.
 export function runCloudModule(ctx) {
-    const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
-    const tag = dryRun ? "[dry-run] " : "";
-    const templates = getTemplatesRoot();
+    const { dryRun, advisories } = ctx;
     // Default to "claude" (the Claude/GitHub path) when cloudVariant is not set.
     // Callers should always pass cloudVariant.
     const variant = ctx.cloudVariant ?? "claude";
     if (variant === "claude") {
         // --- cloud=claude: GitHub-tracker path ---
-        // Claude Code on the web SessionStart install hook — Tier 2 markered.
-        {
-            const src = path.join(templates, ".claude", "hooks", "cloud-bootstrap.sh");
-            const dst = ".claude/hooks/cloud-bootstrap.sh";
-            if (fs.existsSync(src)) {
-                const prevLen = ws.writes.length;
-                writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
-                if (ws.writes.length > prevLen) {
-                    console.log(`${logPrefix} ${tag}cloud: ${dst}`);
-                    if (!dryRun && fs.existsSync(dst)) {
-                        fs.chmodSync(dst, 0o755);
-                    }
-                }
-            }
-        }
         // Record the variant so the post-install advisory and `bkit check` stay consistent.
         setConsumerBkitField("cloudAgents", "claude", dryRun);
         // Advisory — cloud=claude setup checklist (App required; id-token: write).

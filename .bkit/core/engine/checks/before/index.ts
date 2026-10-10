@@ -6,8 +6,7 @@
 //   readBkitVersion       — from install/version-file.ts (version pin reader)
 //   deepContains          — from install/write.ts (JSON containment primitive)
 //   extractManagedBlock   — from install/managed-block.ts (marker block extraction)
-//   getTemplatesRoot      — from shared/package-roots.ts (templates root resolver, no cycle)
-//   templateRelPath       — from shared/package-roots.ts (dest → template path, the dotfile remap)
+//   findTemplateSource    — from shared/package-roots.ts (dest → payload source, the dotfile remap)
 //   parseIssueTracker     — from install/manifest.ts (pure data, no cycle)
 //   readTemplate          — from render/parts.ts (template with its shared parts spliced in)
 

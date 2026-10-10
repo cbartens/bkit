@@ -1,5 +1,7 @@
 # bkit — Pipeline Reference & Comparison to Agentic Design Patterns
 
+<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 > [!CAUTION]
 > **Purpose:** Human-facing reference. Five-phase pipeline + every subagent (execution order), bkit vs Antonio Gulli's _Agentic Design Patterns_. Evaluation, onboarding, outreach — not agent workflow doc-matrix.
 >
@@ -8,7 +10,7 @@
 > - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
 > - Keep prose factual; house / write-good linters apply to `*.md`; no hype adjectives.
-> - Pipeline or subagents change → update Part 1 to match `.bkit/workflows/*` and `.bkit/prompts.md`.
+> - Pipeline or subagents change → update Part 1 to match `.bkit/core/workflows/*` and `.bkit/core/.bkit/prompts.md`.
 
 ## What this is
 
@@ -118,7 +120,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 
 ### CI test scaffold (runs on every PR + push)
 
-The template `ci.yml` (copied into `.bkit/templates/`, adopted and owned by the consumer) is static: two lanes run in parallel and the `bkit-tests-check` capstone joins them as the single branch-protection check. No planner. The capstone fails unless both lanes concluded `success`, and fails a unit lane that reports zero executed tests.
+The template `bkit-ci.yml` (copied into `.bkit/templates/`, adopted and owned by the consumer) is static: two lanes run in parallel and the `bkit-tests-check` capstone joins them as the single branch-protection check. No planner. The capstone fails unless both lanes concluded `success`, and fails a unit lane that reports zero executed tests.
 
 ```
 bkit-tests-static   (typecheck, format, prose lint, slop, actionlint, bkit check)
@@ -313,4 +315,4 @@ Most partials = deliberate scope. Per-task `Done when:` shipped in plan template
 
 ---
 
-Source: bkit workflow and prompt definitions (`.bkit/workflows/*`, `.bkit/prompts.md`) and the Gulli differential review of _Agentic Design Patterns_.
+Source: bkit workflow and prompt definitions (`.bkit/core/workflows/*`, `.bkit/core/.bkit/prompts.md`) and the Gulli differential review of _Agentic Design Patterns_.

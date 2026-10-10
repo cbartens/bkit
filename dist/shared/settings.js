@@ -5,7 +5,7 @@
 import { DEFAULT_ISSUE_TRACKER, parseIssueTracker, } from "../install/manifest.js";
 import { readPackageJson } from "./package-json.js";
 export const CONFIG_DEFAULTS = {
-    ciWorkflow: "ci.yml",
+    ciWorkflow: "bkit-ci.yml",
     capstoneJob: "bkit-tests-check",
     worktreeCopy: [".env", ".env.local"],
     worktreeInstall: true,

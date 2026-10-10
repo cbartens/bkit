@@ -18,8 +18,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { getPromptsRoot } from "../../shared/package-roots";
 
-const PROMPTS_DIR = path.resolve(".bkit/prompts");
+const PROMPTS_DIR = getPromptsRoot();
 
 /** The closed set. Adding a fourth verb is a doctrine change, not a drive-by edit. */
 const VERBS = [

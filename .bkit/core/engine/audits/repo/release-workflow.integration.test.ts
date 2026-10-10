@@ -60,7 +60,9 @@ describe("published tarball excludes test sources (BAR-138, real `npm pack` insp
   it("tarball still contains the load-bearing payload (dist/, README.md, .bkit/templates/)", () => {
     expect(manifestFiles.some((p) => p === "dist/cli.js")).toBe(true);
     expect(manifestFiles.some((p) => p === "README.md")).toBe(true);
-    expect(manifestFiles.some((p) => p === ".bkit/templates/.github/workflows/ci.yml")).toBe(true);
+    expect(manifestFiles.some((p) => p === ".bkit/templates/.github/workflows/bkit-ci.yml")).toBe(
+      true,
+    );
     expect(manifestFiles.some((p) => p === ".bkit/templates/.github/renovate.json5")).toBe(true);
   });
 });

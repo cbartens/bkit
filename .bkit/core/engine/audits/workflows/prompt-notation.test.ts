@@ -26,7 +26,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-const PROMPT_DIR = ".bkit/prompts";
+const PROMPT_DIR = ".bkit/core/prompts";
 
 /**
  * Closed vocabulary: values that name a state, verdict, severity or mode.

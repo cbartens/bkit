@@ -232,7 +232,7 @@ export function readChangelogVersionDelta(version: string): string | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Re-run token-surface + ci.yml + vale-sync detectors after writes.
+ * Re-run token-surface + bkit-ci.yml + vale-sync detectors after writes.
  *
  * - Intra-phase dedup: Phase 3 findings are deduped by id (first occurrence wins).
  * - Cross-phase dedup: Phase 3 wins on id conflict (re-detection is more accurate).
@@ -467,7 +467,7 @@ export function runPostInstallCheck(
   const cloudDashboardsAdvisory = buildCloudDashboardsAdvisory(cwd);
   if (cloudDashboardsAdvisory) phase3.push(cloudDashboardsAdvisory);
 
-  // ci.yml missing token env
+  // bkit-ci.yml missing token env
   const ciYml = detectCiYmlMissingTokenEnv(cwd);
   if (ciYml) phase3.push(ciYml);
 
@@ -485,16 +485,16 @@ export function runPostInstallCheck(
   const opencodeYmlDrift = detectOpencodeYmlProviderDrift(cwd);
   if (opencodeYmlDrift) phase3.push(opencodeYmlDrift);
 
-  // ci.yml missing actionlint (GHA-aware lint; yaml.safe_load is not sufficient).
+  // bkit-ci.yml missing actionlint (GHA-aware lint; yaml.safe_load is not sufficient).
   const ciActionlint = detectCiYmlMissingActionlint(cwd);
   if (ciActionlint) phase3.push(ciActionlint);
 
-  // ci.yml untrusted input inlined into a run: body (GHA script-injection sink). Nothing
+  // bkit-ci.yml untrusted input inlined into a run: body (GHA script-injection sink). Nothing
   // back-fills the template's env-indirection fix onto a copy adopted before it.
   const ciRunInjection = detectCiYmlRunInjection(cwd);
   if (ciRunInjection) phase3.push(ciRunInjection);
 
-  // ci.yml capstone drifted from canonical contract (warning-only presence checks).
+  // bkit-ci.yml capstone drifted from canonical contract (warning-only presence checks).
   const capstoneDrift = detectCiYmlCapstoneContractDrift(cwd);
   if (capstoneDrift) phase3.push(capstoneDrift);
 

@@ -1,5 +1,5 @@
 // audits/hooks/gateguard-opencode.test.ts — behavioural tests for the opencode GateGuard
-// plugin (.bkit/templates/.opencode/plugin/gateguard.js).
+// plugin (.bkit/core/.opencode/plugin/bkit-gateguard.js).
 //
 // Tests the plugin function directly by importing it and simulating the opencode
 // plugin API (client.session.get + hook inputs). No stdin/stdout — the plugin is
@@ -32,7 +32,7 @@ afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
 const PLUGIN_PATH = path.join(GENERATED, "gateguard.mjs");
 fs.writeFileSync(
   PLUGIN_PATH,
-  readTemplate(path.resolve(".bkit/templates/.opencode/plugin/gateguard.js")),
+  readTemplate(path.resolve(".bkit/core/.opencode/plugin/bkit-gateguard.js")),
 );
 
 // Dynamic import used to allow env var injection before the module runs.
@@ -581,10 +581,10 @@ describe("gateguard plugin — docs/*.md density advisory (#422)", () => {
     expect(result.stderrCaptured).not.toContain("docs/*.md authoring");
   });
 
-  it("matches a nested docs/ tree via segment match (.bkit/templates/docs/architecture.md)", async () => {
+  it("matches a nested docs/ tree via segment match (.bkit/shared/docs/architecture.md)", async () => {
     const plugin = await loadPlugin();
     const session = newSession();
-    const { hookInput, output } = editHookInput(".bkit/templates/docs/architecture.md", session);
+    const { hookInput, output } = editHookInput(".bkit/shared/docs/architecture.md", session);
     const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
@@ -593,7 +593,7 @@ describe("gateguard plugin — docs/*.md density advisory (#422)", () => {
 
   it("twin parity: isDocsPath + docAuthoringAdvisory are byte-identical between the two hooks", () => {
     const jsSrc = fs.readFileSync(PLUGIN_PATH, "utf-8");
-    const cjsSrc = readTemplate(path.resolve(".bkit/templates/.claude/hooks/gateguard.cjs"));
+    const cjsSrc = readTemplate(path.resolve(".bkit/core/.claude/hooks/bkit-gateguard.cjs"));
 
     const extract = (src: string, fnStart: string) => {
       const start = src.indexOf(fnStart);

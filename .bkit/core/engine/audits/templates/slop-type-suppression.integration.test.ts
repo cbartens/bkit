@@ -5,7 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 // Behaviour test for the shipped `boundary/type-suppression` slop-scan plugin
-// (.bkit/scripts/bkit-slop-type-suppression.mjs). It runs the REAL slop-scan
+// (scripts/slop/bkit-slop-type-suppression.mjs). It runs the REAL slop-scan
 // against a temp corpus wired the way the shipped slop-scan.config.json wires it
 // — a JSON config that loads the plugin by relative path — so the whole chain is
 // exercised: plugin loads via slop-scan's loader, the JSON `plugins` ref
@@ -19,7 +19,9 @@ const PLUGIN_SRC = path.resolve(
   "..",
   "..",
   "..",
+  "..",
   "scripts",
+  "slop",
   "bkit-slop-type-suppression.mjs",
 );
 
@@ -101,7 +103,7 @@ function scanFlagged(options: Record<string, unknown> = {}): string[] {
     .sort();
 }
 
-describe("boundary/type-suppression slop rule (.bkit/scripts/bkit-slop-type-suppression.mjs)", () => {
+describe("boundary/type-suppression slop rule (scripts/slop/bkit-slop-type-suppression.mjs)", () => {
   it("flags casts and ts-suppression directives; ignores single casts, comments, and test files", () => {
     expect(scanFlagged()).toEqual([
       "src/any.ts",
@@ -165,7 +167,7 @@ function scanGateFlagged(): string[] {
     .sort();
 }
 
-describe("boundary/gate-suppression slop rule (.bkit/scripts/bkit-slop-type-suppression.mjs)", () => {
+describe("boundary/gate-suppression slop rule (scripts/slop/bkit-slop-type-suppression.mjs)", () => {
   it("flags skipped/focused tests and blanket lint disables; ignores targeted disables, .fit(), comments, and clean tests", () => {
     expect(scanGateFlagged()).toEqual([
       "src/blanket.ts",

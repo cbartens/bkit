@@ -22,7 +22,7 @@ import {
   readBkitVersion,
   type BkitVersion,
 } from "../../install/version-file";
-import { getTemplatesRoot } from "../../shared/package-roots";
+import { getCoreRoot } from "../../shared/package-roots";
 
 let tmpDir: string;
 
@@ -437,7 +437,7 @@ describe("runUpgrade — markered-text (#422)", () => {
   it("the shipped hook template upgrades to its generated form: shared parts spliced into the block", () => {
     writeFile(REL, "// bkit:start\nold engine\n// bkit:end\n// consumer driver\n");
     writeBkitVersionInDir(makeVersion({}));
-    const templatePath = path.join(getTemplatesRoot(), ".claude", "hooks", "gateguard.cjs");
+    const templatePath = path.join(getCoreRoot(), ".claude", "hooks", "bkit-gateguard.cjs");
 
     const result = runUpgrade([{ relPath: REL, templatePath, format: "markered-text" }], {
       nonInteractive: false,

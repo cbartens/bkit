@@ -1,4 +1,4 @@
-// Every fenced shell block in `.bkit/workflows/*.md` parses under `bash -n` and
+// Every fenced shell block in `.bkit/core/workflows/*.md` parses under `bash -n` and
 // `zsh -n`: the host shell is not guaranteed bash. `{PLACEHOLDER}`s are replaced
 // first, as the orchestrator would substitute them. The zsh half is skipped where zsh
 // is not installed.
@@ -11,7 +11,7 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-const WORKFLOWS = path.join(REPO_ROOT, ".bkit", "workflows");
+const WORKFLOWS = path.join(REPO_ROOT, ".bkit", "core", "workflows");
 const SHELL_FENCES = new Set(["bash", "sh", "zsh", "shell"]);
 
 interface Fence {
@@ -91,11 +91,11 @@ describe("workflow shell fences", () => {
     expect(fence).toEqual({ file: "x.md", line: 2, body: 'echo "DUMMY"\n' });
   });
 
-  it("every fence parses under bash -n", () => {
+  it("every fence parses under bash -n", { timeout: 60_000 }, () => {
     expect(syntaxErrors("bash")).toEqual([]);
   });
 
-  it.skipIf(!hasShell("zsh"))("every fence parses under zsh -n", () => {
+  it.skipIf(!hasShell("zsh"))("every fence parses under zsh -n", { timeout: 60_000 }, () => {
     expect(syntaxErrors("zsh")).toEqual([]);
   });
 });

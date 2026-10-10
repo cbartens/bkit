@@ -46,7 +46,7 @@ export function isMirrorPath(posixPath) {
 // ---------------------------------------------------------------------------
 /**
  * Basename patterns for quality-gate configs (lint / format / types / test / slop).
- * Mirrors `GATE_CONFIG_PATTERNS` in `gateguard.cjs` — kept in sync via the
+ * Mirrors `GATE_CONFIG_PATTERNS` in `bkit-gateguard.cjs` — kept in sync via the
  * generated `.cjs` drift test.  Editing these configs to silence a gate is the
  * "weaken-the-gate" anti-pattern; prefer targeted per-file opt-outs.
  */

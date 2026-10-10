@@ -25,8 +25,8 @@ describe("bkit's own package.json", () => {
     expect(ownBkit()?.capstoneJob).toBe("bkit-tests-check");
   });
 
-  it("declares bkit.ciWorkflow 'ci.yml'", () => {
-    expect(ownBkit()?.ciWorkflow).toBe("ci.yml");
+  it("declares bkit.ciWorkflow 'bkit-ci.yml'", () => {
+    expect(ownBkit()?.ciWorkflow).toBe("bkit-ci.yml");
   });
 
   // Code 16 is opt-in (a lane whose `if:` is event-scoped cannot run pre-merge).

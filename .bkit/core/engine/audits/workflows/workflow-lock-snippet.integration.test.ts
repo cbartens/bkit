@@ -12,8 +12,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { getWorkflowsRoot } from "../../shared/package-roots";
 
-const WORKFLOWS_DIR = path.resolve(".bkit/workflows");
+const WORKFLOWS_DIR = getWorkflowsRoot();
 const BKIT_BIN = path.resolve("dist/cli.js");
 const MONTH = "202605";
 const OTHER_MONTH = "202608";

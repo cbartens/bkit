@@ -2,7 +2,7 @@
  * audits/workflows/verdict-vocabulary.test.ts
  *
  * A verdict vocabulary is declared ONCE, in the producing agent's output template
- * (`.bkit/prompts/<agent>.md`):
+ * (`.bkit/core/prompts/<agent>.md`):
  *
  *     Verdict: PASS | CONCERNS | FAIL
  *
@@ -26,8 +26,8 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-const WORKFLOW_DIR = ".bkit/workflows";
-const PROMPT_DIR = ".bkit/prompts";
+const WORKFLOW_DIR = ".bkit/core/workflows";
+const PROMPT_DIR = ".bkit/core/prompts";
 
 /**
  * Verdict variables the workflow computes itself (exit codes, a command's

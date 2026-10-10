@@ -18,13 +18,21 @@ import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 
-/** Manifest-listed `.md` files — the docs `bkit install` writes into a consumer repo. */
+/**
+ * Manifest-listed `.md` files — the docs `bkit install` writes into a consumer repo.
+ * A `.bkit/<doc>.md` consumer mirror is scanned at its package source,
+ * `.bkit/core/.bkit/<doc>.md`.
+ */
 function manifestMarkdown(): string[] {
   const src = fs.readFileSync(
     path.join(REPO_ROOT, ".bkit/core/engine/install/manifest.ts"),
     "utf-8",
   );
-  return Array.from(src.matchAll(/\{\s*path:\s*"([^"]+\.md)"/g)).map((m) => m[1]);
+  return Array.from(src.matchAll(/\{\s*path:\s*"([^"]+\.md)"/g)).map((m) =>
+    m[1].startsWith(".bkit/")
+      ? path.posix.join(".bkit/core/.bkit", m[1].slice(".bkit/".length))
+      : m[1],
+  );
 }
 
 /** Every `.md` under a directory, relative to the repo root. Nested templates ship too. */
@@ -43,6 +51,8 @@ function walkMarkdown(dir: string): string[] {
 /** The `docs/` payload templates + the canonical copies that seed them. */
 const PAYLOAD_DOCS = [
   ...walkMarkdown(path.join(REPO_ROOT, ".bkit/templates/docs")),
+  ...walkMarkdown(path.join(REPO_ROOT, ".bkit/shared/docs")),
+  ...walkMarkdown(path.join(REPO_ROOT, ".bkit/core/docs/templates")),
   "docs/deployments.md",
   "docs/testing.md",
   "docs/security.md",
@@ -81,8 +91,8 @@ function offenders(rel: string, re: RegExp): string[] {
 describe("shipped docs carry no internal identifiers", () => {
   it("enumerates the shipped markdown corpus (not vacuous)", () => {
     expect(FILES.length).toBeGreaterThan(8);
-    expect(FILES).toContain(".bkit/workflows.md");
-    expect(FILES).toContain(".bkit/cloud.md");
+    expect(FILES).toContain(".bkit/core/.bkit/workflows.md");
+    expect(FILES).toContain(".bkit/core/.bkit/cloud.md");
   });
 
   for (const rel of FILES) {
@@ -97,7 +107,7 @@ describe("shipped docs carry no internal identifiers", () => {
 });
 
 /**
- * The execution surfaces — `.bkit/workflows/*.md` and `.bkit/prompts/*.md` — are
+ * The execution surfaces — `.bkit/core/workflows/*.md` and `.bkit/core/prompts/*.md` — are
  * rendered into every consumer's host directories, so the same rule applies (neither is
  * manifest-listed).
  *
@@ -106,9 +116,9 @@ describe("shipped docs carry no internal identifiers", () => {
  */
 const EXECUTION_SURFACES = ["workflows", "prompts"].flatMap((dir) =>
   fs
-    .readdirSync(path.join(REPO_ROOT, ".bkit", dir))
+    .readdirSync(path.join(REPO_ROOT, ".bkit", "core", dir))
     .filter((f) => f.endsWith(".md"))
-    .map((f) => `.bkit/${dir}/${f}`),
+    .map((f) => `.bkit/core/${dir}/${f}`),
 );
 
 /**
@@ -132,8 +142,8 @@ function allLines(rel: string, re: RegExp): string[] {
 
 describe("execution surfaces carry no internal identifiers or step cross-refs", () => {
   it("enumerates workflows and prompts (not vacuous)", () => {
-    expect(EXECUTION_SURFACES).toContain(".bkit/workflows/bkit-ship.md");
-    expect(EXECUTION_SURFACES).toContain(".bkit/prompts/bkit-plan-generate.md");
+    expect(EXECUTION_SURFACES).toContain(".bkit/core/workflows/bkit-ship.md");
+    expect(EXECUTION_SURFACES).toContain(".bkit/core/prompts/bkit-plan-generate.md");
     expect(EXECUTION_SURFACES.length).toBeGreaterThan(20);
   });
 
@@ -169,7 +179,7 @@ const HISTORY_PROSE =
 
 describe("seeded config templates carry no internal identifiers or history prose", () => {
   it("enumerates the seeded config corpus (not vacuous)", () => {
-    expect(SEEDED_CONFIG).toContain(".bkit/templates/.github/workflows/ci.yml");
+    expect(SEEDED_CONFIG).toContain(".bkit/templates/.github/workflows/bkit-ci.yml");
     expect(SEEDED_CONFIG).toContain(".bkit/templates/.github/workflows/bkit-cloud.yml");
     expect(SEEDED_CONFIG).toContain(".bkit/templates/.github/renovate.json5");
     expect(SEEDED_CONFIG.length).toBeGreaterThan(5);

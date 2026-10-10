@@ -22,8 +22,9 @@ import * as path from "node:path";
 import { DEFAULT_ISSUE_TRACKER } from "../install/manifest";
 import { substituteWorkflow } from "./trackers";
 import { stampManagedVersion } from "../install/version-file";
+import { getBkitDocsRoot } from "../shared/package-roots";
 
-const effortMap = parseEffortMap(".bkit/prompts.md");
+const effortMap = parseEffortMap(path.join(getBkitDocsRoot(), "prompts.md"));
 const lookup = new Map([["a", "gpt-6-astra"]]);
 const md = (fm: string, body = "Body.") => `---\n${fm}\n---\n${body}\n`;
 
@@ -230,9 +231,7 @@ describe("T3 — subagent frontmatter rewrite", () => {
     ["build-plan", "composer-2.5"],
     ["design-synthesize", "claude-opus-4-8-thinking-high"],
   ]);
-  const effortMap = parseEffortMap(
-    path.join(import.meta.dirname ?? ".", "..", "..", "..", "prompts.md"),
-  );
+  const effortMap = parseEffortMap(path.join(getBkitDocsRoot(), "prompts.md"));
 
   it("emits name, description, model, tools (passthrough) + effort from Cursor column", () => {
     const input = `---\nname: build-plan\ndescription: Execute plan tasks\neffort: medium\ntools:\n  - Read\n  - Edit\npermissionMode: default\nmaxTurns: 20\n---\nBody here.\n`;
@@ -456,8 +455,7 @@ describe("applyOpencodeAgent", () => {
     ["build-plan", "qwen2.5:7b"],
     ["design-synthesize", "qwen2.5:14b"],
   ]);
-  const promptsMd = path.join(import.meta.dirname ?? ".", "..", "..", "..", "prompts.md");
-  const effortMap = parseEffortMap(promptsMd);
+  const effortMap = parseEffortMap(path.join(getBkitDocsRoot(), "prompts.md"));
 
   it("emits mode: subagent, name, description, model", () => {
     const input = `---\nname: build-plan\ndescription: Execute plan tasks\neffort: medium\nmodel: claude-sonnet-4-6\ntools:\n  - Read\n  - Edit\npermissionMode: acceptEdits\nmaxTurns: 100\n---\nBody here.\n`;
@@ -619,7 +617,7 @@ describe("applyOpencodeAgent", () => {
 // ---------------------------------------------------------------------------
 
 describe("#386: line 1 of a rendered command is a description, never the marker", () => {
-  const src = path.join(REPO_ROOT, ".bkit/workflows");
+  const src = path.join(REPO_ROOT, ".bkit/core/workflows");
   const files = fs.readdirSync(src).filter((f) => f.startsWith("bkit-") && f.endsWith(".md"));
 
   it("covers the whole workflow corpus", () => {

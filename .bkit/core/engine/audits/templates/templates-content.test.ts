@@ -6,15 +6,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { isTemplate } from "../../install/template-copies";
-import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
+import { listFilesRecursive } from "../../install/template-copies";
 import { BKIT_GATE_SCRIPTS } from "../../install/manifest";
+import { getBkitDocsRoot } from "../../shared/package-roots";
 
-const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/ci.yml");
+const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml");
 const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/.prettierignore");
 const CONSUMER_RENOVATE_TEMPLATE = path.resolve(".bkit/templates/.github/renovate.json5");
 
-describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () => {
+describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)", () => {
   let content: string;
   content = fs.readFileSync(CONSUMER_CI_TEMPLATE, "utf-8");
 
@@ -261,7 +261,7 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/minimumReleaseAge:\s*"1 day"/);
   });
 
-  it("does not fence renovate.yml (the consumer owns that runner)", () => {
+  it("does not fence bkit-renovate.yml (the consumer owns that runner)", () => {
     expect(content).not.toMatch(/"\.github\/workflows\/renovate\.yml"/);
   });
 
@@ -326,8 +326,8 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
   });
 });
 
-describe("self-hosted renovate workflow template (.bkit/templates/.github/workflows/renovate.yml) (#325)", () => {
-  const WORKFLOW = path.resolve(".bkit/templates/.github/workflows/renovate.yml");
+describe("self-hosted renovate workflow template (.bkit/templates/.github/workflows/bkit-renovate.yml) (#325)", () => {
+  const WORKFLOW = path.resolve(".bkit/templates/.github/workflows/bkit-renovate.yml");
   const content = fs.readFileSync(WORKFLOW, "utf-8");
 
   it("template file exists", () => {
@@ -406,7 +406,7 @@ describe("example dependabot template (.bkit/templates/.github/dependabot.yml)",
 });
 
 describe(".bkit/.env.example keys are BKIT_-prefixed (direnv isolation)", () => {
-  const ENV_EXAMPLE = path.resolve(".bkit/templates/.bkit/.env.example");
+  const ENV_EXAMPLE = path.resolve(".bkit/shared/.bkit/.env.example");
   const content = fs.readFileSync(ENV_EXAMPLE, "utf-8");
   const assigned = [...content.matchAll(/^([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]);
 
@@ -457,10 +457,14 @@ describe("templates", () => {
 
   // JSON has no comment syntax; `.bkit/templates.md` covers those.
   it("every template that can carry a comment says it is an example bkit install does not write", () => {
+    // LICENSE.md is a licence text, and cloud-bootstrap.sh keeps its install-hook
+    // header; both are the user's once copied, but neither carries the example banner.
     const templates = listFilesRecursive(root)
       .map((abs) => path.relative(root, abs))
-      .filter((rel) => isTemplate(rel) && !rel.endsWith(".json"));
-    expect(templates).toContain(path.join(".github", "workflows", "ci.yml"));
+      .filter((rel) => !rel.endsWith(".json"))
+      .filter((rel) => rel !== "LICENSE.md")
+      .filter((rel) => rel !== path.join(".claude", "hooks", "cloud-bootstrap.sh"));
+    expect(templates).toContain(path.join(".github", "workflows", "bkit-ci.yml"));
     for (const rel of templates) {
       const text = fs.readFileSync(path.join(root, rel), "utf-8");
       expect(text, rel).toMatch(/Example/);
@@ -469,10 +473,12 @@ describe("templates", () => {
   });
 
   it("no template carries a bkit:start / bkit:end block (bkit never writes a template)", () => {
+    // cloud-bootstrap.sh is the one exception: it ships byte-for-byte as the hook the
+    // cloud module used to write, markers included, and the consumer edits outside them.
     const templates = listFilesRecursive(root)
       .map((abs) => path.relative(root, abs))
-      .filter((rel) => isTemplate(remapTemplateDest(rel)));
-    expect(templates).toContain(path.join(".github", "workflows", "ci.yml"));
+      .filter((rel) => rel !== path.join(".claude", "hooks", "cloud-bootstrap.sh"));
+    expect(templates).toContain(path.join(".github", "workflows", "bkit-ci.yml"));
     for (const rel of templates) {
       expect(fs.readFileSync(path.join(root, rel), "utf-8"), rel).not.toMatch(
         /^[ \t]*(?:#|\/\/)?[ \t]*(?:<!--[ \t]*)?bkit:(?:start|end)\b/m,
@@ -500,7 +506,7 @@ describe("templates", () => {
 });
 
 describe(".bkit/templates.md gate tool scripts (consumers copy and run them)", () => {
-  const doc = fs.readFileSync(path.resolve(".bkit/templates.md"), "utf-8");
+  const doc = fs.readFileSync(path.join(getBkitDocsRoot(), "templates.md"), "utf-8");
   const section = doc.slice(doc.indexOf("## Gate tool scripts"));
   const block = /```json\n([\s\S]*?)\n```/.exec(section);
   const scripts = JSON.parse(block?.[1] ?? "{}") as Record<string, string>;

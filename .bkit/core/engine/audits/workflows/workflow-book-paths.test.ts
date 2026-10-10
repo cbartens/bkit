@@ -12,8 +12,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { getWorkflowsRoot } from "../../shared/package-roots";
 
-const WORKFLOWS_DIR = path.resolve(".bkit/workflows");
+const WORKFLOWS_DIR = getWorkflowsRoot();
 
 const workflowFiles = fs
   .readdirSync(WORKFLOWS_DIR)

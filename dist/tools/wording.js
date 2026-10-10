@@ -104,16 +104,16 @@ export function parseWording(md) {
 // ---------------------------------------------------------------------------
 // Corpus
 // ---------------------------------------------------------------------------
-const RULES_FILES = [".bkit/templates/.agents/rules.md", ".agents/rules.md"];
+const RULES_FILES = [".bkit/core/.agents/rules.md", ".agents/rules.md"];
 /** Audit templates, then the repo's adopted copies (same basenames, same managed block). */
-const AUDIT_DIRS = [".bkit/templates/docs/templates", "docs/templates"];
+const AUDIT_DIRS = [".bkit/core/docs/templates", "docs/templates"];
 const AUDIT_FILE = /^bkit-audit-.+\.md$/;
 /** Every file the wording file governs, read from `root`. */
 export function loadCorpus(root) {
     const files = [];
     for (const [surface, dir] of [
-        ["prompt", ".bkit/prompts"],
-        ["workflow", ".bkit/workflows"],
+        ["prompt", path.join(".bkit", "core", "prompts")],
+        ["workflow", path.join(".bkit", "core", "workflows")],
     ]) {
         for (const f of fs
             .readdirSync(path.join(root, dir))
