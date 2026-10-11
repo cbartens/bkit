@@ -38,6 +38,7 @@ case "$verb" in
     done
     echo "https://github.com/o/r/pull/7" ;;
   merge) if [ -f "$d/view-after.json" ]; then cp "$d/view-after.json" "$d/view.json"; fi ;;
+  update-branch) ;;
   edit) ;;
   *) exit 1 ;;
 esac
@@ -636,6 +637,40 @@ describe("bkit prs merge", () => {
     gh.exit("view", 4);
     expect((await merge()).code).toBe(80);
     expect((await run(repo(), ["prs", "merge", "--number=x"])).code).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// update-branch
+// ---------------------------------------------------------------------------
+
+describe("bkit prs update-branch", () => {
+  const update = () => run(repo(), ["prs", "update-branch", "--number=7"]);
+  const updateCall = () => gh.calls().find((c) => c.startsWith("pr update-branch")) ?? "";
+
+  it("asks gh to refresh the PR head server-side", async () => {
+    const r = await update();
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ number: "7", updated: true });
+    expect(updateCall()).toBe("pr update-branch 7");
+  });
+
+  it("exits 80 when gh needs auth, and logs the MCP tool for the fallback", async () => {
+    gh.exit("update-branch", 4);
+    const r = await update();
+    expect(r.code).toBe(80);
+    expect(r.err).toContain("update_pull_request_branch");
+  });
+
+  it("exits 5 when gh fails, naming the 403 scope hint", async () => {
+    gh.exit("update-branch", 1);
+    const r = await update();
+    expect(r.code).toBe(5);
+    expect(r.err).toContain("403 = actions:write scope");
+  });
+
+  it("exits 2 on a bad --number", async () => {
+    expect((await run(repo(), ["prs", "update-branch", "--number=x"])).code).toBe(2);
   });
 });
 

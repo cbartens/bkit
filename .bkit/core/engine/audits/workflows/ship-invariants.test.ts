@@ -478,14 +478,14 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
     expect(programs.filter((p) => p.includes("${"))).toEqual([]);
   });
 
-  // `gh pr update-branch` carries an `|| { echo ...; exit 1; }` guard that routes a
-  // 403/network/protection failure to Failure Path.
-  it("F3: every fenced 'gh pr update-branch' call carries an error guard", () => {
-    const calls = fencedLinesByStep(readShip()).filter((l) =>
-      /gh\s+pr\s+update-branch\b/.test(l.line),
-    );
-    expect(calls.length).toBeGreaterThan(0);
-    expect(calls.filter((l) => !/\|\|\s*\{/.test(l.line)).map((l) => l.line)).toEqual([]);
+  // B1 integrates through the tested command: the raw `gh pr update-branch` shell
+  // call (with its hand-written `|| { … }` guard) is gone. A 403/network/protection
+  // failure now surfaces as the command's exit 5, which the step's non-zero route
+  // sends to Failure Path; exit 80 maps to `update_pull_request_branch`.
+  it("F3: B1 integrates through `bkit prs update-branch`, never a raw gh call", () => {
+    const lines = fencedLinesByStep(readShip()).map((l) => l.line);
+    expect(lines.filter((l) => /prs update-branch\b/.test(l)).length).toBeGreaterThan(0);
+    expect(lines.filter((l) => /gh\s+pr\s+update-branch\b/.test(l))).toEqual([]);
   });
 
   // Finding 5 (MEDIUM): gate code 11 (in progress — poll) must route to the poll

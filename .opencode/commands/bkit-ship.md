@@ -28,7 +28,7 @@ $ARGUMENTS
 > - **Locks:** Step 1 takes `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); Step 15 releases it via `bkit workflows close --flush --token=`, the **Failure Path** via `bkit workflows fail --token=`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed. **Dev lock:** `bkit branches switch`, `bkit workflows close --flush` and `bkit workflows handover --flush` hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout).
 > - **Status branch:** All steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`{STATUS}`). **If** `RUNTIME_DEVPUSHES` = true → `BOOK_ROOT` = `$REPO_ROOT`, **else** current working branch tree. Stage path-scoped via `bkit ledgers commit`; NEVER stage all files (`-A`) or blanket `docs/`. ONE commit per flush block: Commit + Push Bookkeeping → `docs({FID}): ship bookkeeping bkit [skip ci]` → push `{SHIP_BRANCH}` (pre-merge: docs, logs, ledgers, skill removals); Close Workflow → `docs({FID}): ship DONE bkit [skip ci]` → push `dev`, refused → close PR; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` → **If** `RUNTIME_DEVPUSHES` = true → push `dev`, **else** current branch; NEVER both.
 > - **Worktrees:** **If** `runtimeWorktrees` = true (mint mode) → Step 2 `cd`s into `.worktrees/{FID}`, **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
-> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
+> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
@@ -255,7 +255,7 @@ $ARGUMENTS
 
 1. **If** `MERGEABLE` = MERGEABLE (B1 — no textual conflict): refresh the PR head server-side → Step 5:
    ```bash
-   gh pr update-branch {PR_NUMBER} || { echo "[bkit-ship] gh pr update-branch failed for {PR_NUMBER} (403 = actions:write scope, network, branch protection) — PR head NOT integrated" >&2; exit 1; }
+   "{BKIT}" prs update-branch --number={PR_NUMBER}
    ```
 2. **If** `MERGEABLE` = CONFLICTING (B2 — textual conflict): resolve locally + push:
    1. **Subagent:** Invoke `/bkit-ship-conflict-resolve` using `Task` tool:
@@ -280,7 +280,7 @@ $ARGUMENTS
 ### 🔒 Gate 4 — Integrate
 
 - [ ] Path classified (B1 mergeable / B2 conflicting)
-- [ ] B1: `gh pr update-branch` attempted
+- [ ] B1: `bkit prs update-branch` attempted
 - [ ] B2: subagent invoked (`@bkit-ship-conflict-resolve`, no inline work); `steps finish` exit 0 (verdict in `PASS|FAIL`, step `ship-conflict-resolve` recorded)
 - [ ] B2: pushed to `{SHIP_BRANCH}` via `--force-with-lease` (ONLY step that force-pushes the branch)
 
@@ -530,7 +530,7 @@ $ARGUMENTS
 
 ### 🔒 Gate 13 — Switch to Dev
 
-- [ ] On `dev`, level with `origin/dev` (`branches switch` exit 0)
+- [ ] On `dev`, level with `origin/dev` (`branches switch` exit 0; a failed dependency install warns — `installed: false` — and is never fatal)
 - [ ] Mechanical checks passed (`steps finish` exit 0: step `ship-switch-to-dev` recorded)
 
 ---

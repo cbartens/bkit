@@ -1,4 +1,4 @@
-// bkit prs open|probe|merge|verbose-ci|scan-body|cross-check|transport-row —
+// bkit prs open|probe|merge|update-branch|verbose-ci|scan-body|cross-check|transport-row —
 // the pull-request side of a phase close, and the close audit trail.
 //
 // `gh` is the only transport `open` and `probe` drive. When it is missing or not
@@ -309,6 +309,25 @@ export function mergePr(cwd, o, log) {
         return result(EXIT_GH_FAILED, undefined, false);
     }
     return result(EXIT.OK, after.pr, false);
+}
+/**
+ * Request a server-side base-into-head refresh (ship Step 4 B1). GitHub authors
+ * the merge commit, so bkit cannot set its message and there is no local head to
+ * read back — ship's Step 9 poll observes the new head. gh missing →
+ * EXIT.USE_MCP (route through `update_pull_request_branch`).
+ */
+export function updateBranch(cwd, number, log) {
+    const res = runGh(cwd, ["pr", "update-branch", number]);
+    if (ghUnavailable(res)) {
+        log("gh unavailable for gh pr update-branch — update the branch through update_pull_request_branch");
+        return { code: EXIT.USE_MCP, out: null };
+    }
+    if (!res.ok) {
+        const detail = res.stderr.split("\n").at(-1) || `exit ${String(res.status)}`;
+        log(`gh pr update-branch ${number} failed: ${detail} (403 = actions:write scope, network, branch protection) — PR head NOT integrated`);
+        return { code: EXIT_GH_FAILED, out: null };
+    }
+    return { code: EXIT.OK, out: { number, updated: true } };
 }
 /** The latest row of `type` in the log, or undefined. */
 const lastRow = (rows, type) => rows.filter((r) => r.type === type).at(-1);
@@ -642,6 +661,26 @@ export const prsCommand = {
                 if (r.code !== EXIT.OK)
                     return r.code;
                 return ctx.flags.expectMerged === true && !r.out.merged ? EXIT_NOT_MERGED : EXIT.OK;
+            },
+        },
+        "update-branch": {
+            summary: "Refresh a PR's head from its base server-side (exit 80: use update_pull_request_branch).",
+            flags: [{ name: "number", type: "string", required: true, help: "the PR number" }],
+            output: {
+                number: "the PR number",
+                updated: "the update request succeeded (true even when already up to date)",
+            },
+            exitCodes: {
+                [EXIT_GH_FAILED]: "gh could not update the branch (403 = actions:write scope)",
+            },
+            run: (ctx) => {
+                const number = String(ctx.flags.number);
+                if (!/^[1-9][0-9]*$/.test(number))
+                    throw new CommandError(EXIT.USAGE, "--number must be a PR number");
+                const r = updateBranch(ctx.cwd, number, ctx.log);
+                if (r.out)
+                    ctx.emit(r.out);
+                return r.code;
             },
         },
         "verbose-ci": {
