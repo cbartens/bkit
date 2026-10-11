@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// guardrails.cjs — Cursor destructive-op + secret-exposure gates (parity with
+// bkit-guardrails.cjs — Cursor destructive-op + secret-exposure gates (parity with
 // Claude `.claude/settings.json` permissions deny/ask and OpenCode permission map).
 //
 // Wired from `.cursor/hooks.json`:
@@ -11,7 +11,7 @@
 // Fail-open: a single top-level catch allows on unexpected errors (same shape as gateguard).
 //
 // bkit generates the managed block at install: the shell detection and the deny / ask
-// tiers are shared with the Claude and Codex hooks (bkit's `hook-parts/`); the output
+// tiers are shared with the Claude and Codex hooks (bkit's `core/hooks/`); the output
 // shape and the read gate below are Cursor's own.
 //
 // OWNERSHIP: everything between the markers below is bkit-managed and is

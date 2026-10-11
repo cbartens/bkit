@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# preflight.sh — Claude Code SessionStart hook
+# bkit-preflight.sh — Claude Code SessionStart hook
 #
 # Validates Linear issue state before any background/cloud session does bkit
 # work. Refuses the session if the issue isn't approved for automation.
 #
 # Trigger:  LINEAR_ISSUE_ID env var present (proxy for non-IDE session).
-# Guards:   `Automated` label present; issue state not in {Cancelled, Done}.
+# Guards:   `bkit:auto` label present; issue state not in {Cancelled, Done}.
 # Setup:    See `.bkit/README.md` § Linear setup.
 #
 # IMPORTANT — Claude Code SessionStart hooks CANNOT block the session: any
@@ -13,6 +13,10 @@
 # Failures are surfaced via `additionalContext` (the agent reads + obeys the
 # HARD STOP instruction) AND `stderr` (visible to the user). Exit code is
 # informational only.
+#
+# bkit generates the managed block at install: the Linear guard is shared with the
+# Cursor hook (bkit's `hooks/preflight-linear.sh`); the trigger, the brew check
+# and the output shape below are Claude's own.
 
 # <!-- bkit:start -->
 

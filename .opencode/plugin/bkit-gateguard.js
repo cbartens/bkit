@@ -1,4 +1,4 @@
-// gateguard.js — bkit GateGuard plugin for opencode.
+// bkit-gateguard.js — bkit GateGuard plugin for opencode.
 //
 // Fires via `tool.execute.before` hook. On the FIRST touch of a given file in a
 // session it injects an investigation checklist into the model's context so the
@@ -32,7 +32,8 @@
 // `write` (file writes), `edit` (targeted edits) and `patch`. Guarded: write, edit,
 // patch. Bash is not guarded.
 //
-// Functional mirror of: .bkit/templates/.claude/hooks/gateguard.cjs
+// The engine inside the managed block is generated at install from bkit's
+// `core/hooks/gateguard-engine.js`, the same source as the Claude, Cursor and Codex hooks.
 //
 // OWNERSHIP: everything between the markers below is bkit-managed and is
 // overwritten on every `bkit install` / `bkit upgrade`. It is a pure advisory

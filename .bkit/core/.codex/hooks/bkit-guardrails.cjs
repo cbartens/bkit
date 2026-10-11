@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// guardrails.cjs — bkit destructive-op shell gates (Codex CLI).
+// bkit-guardrails.cjs — bkit destructive-op shell gates (Codex CLI).
 //
-// Twin of `.cursor/hooks/guardrails.cjs`: bkit generates the same shell detection and
-// deny / ask tiers into both at install (bkit's `hook-parts/`). Wired from
+// Twin of `.cursor/hooks/bkit-guardrails.cjs`: bkit generates the same shell detection and
+// deny / ask tiers into both at install (bkit's `core/hooks/`). Wired from
 // `.codex/hooks.json`, matcher `Bash` — Codex's canonical tool name for shell execution.
 //
 // TWO THINGS DIFFER FROM THE CURSOR TWIN:

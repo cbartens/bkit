@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# preflight.sh — Claude Code SessionStart hook
+# bkit-preflight.sh — Claude Code SessionStart hook
 #
 # Validates Linear issue state before any background/cloud session does bkit
 # work. Refuses the session if the issue isn't approved for automation.

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gateguard.cjs — bkit GateGuard advisory PreToolUse hook for Cursor.
+// bkit-gateguard.cjs — bkit GateGuard advisory PreToolUse hook for Cursor.
 //
 // On the FIRST touch of a given file in a session it injects an investigation
 // checklist into the model's context so the investigation happens BEFORE the edit.
@@ -36,9 +36,9 @@
 // Wired from `.cursor/hooks.json` → preToolUse (matcher "Write").
 //
 // OWNERSHIP: everything between the markers below is bkit-managed and is
-// overwritten on every `bkit install` / `bkit upgrade`. It is byte-identical to
-// the block in `.claude/hooks/gateguard.cjs` (asserted by a parity test) and is a
-// pure advisory engine only — no stdin read, no stdout write, no top-level
+// overwritten on every `bkit install` / `bkit upgrade`. bkit generates it from the
+// same shared parts as the block in `.claude/hooks/bkit-gateguard.cjs`, so the two are
+// byte-identical. It is a pure advisory engine only — no stdin read, no stdout write, no top-level
 // invocation. Add your own logic in the driver that follows the managed block:
 // call `bkitGateguard(payload)`, fold in your own checks, and call `emit()` once.
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// gateguard.cjs — bkit GateGuard advisory PreToolUse hook (Codex CLI).
+// bkit-gateguard.cjs — bkit GateGuard advisory PreToolUse hook (Codex CLI).
 //
-// Twin of `.claude/hooks/gateguard.cjs`. Codex's hook contract is the same family as
+// Twin of `.claude/hooks/bkit-gateguard.cjs`. Codex's hook contract is the same family as
 // Claude Code's — same stdin envelope (`tool_name`, `tool_input`, `session_id`, `cwd`),
 // same stdout shape (`hookSpecificOutput` with `permissionDecision` / `additionalContext`)
 // — so bkit generates the same advisory engine into it at install (bkit's
-// `hook-parts/gateguard-engine.js`). Two things differ and are handled below:
+// `core/hooks/gateguard-engine.js`). Two things differ and are handled below:
 //
 //   1. TOOL NAME. Codex reports file edits as `apply_patch`, never Edit/Write/MultiEdit.
 //   2. NO FILE PATH. The V4A patch envelope arrives in `tool_input.command`; the touched

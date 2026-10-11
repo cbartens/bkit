@@ -749,7 +749,7 @@ export async function runUninstall(
     }
   }
 
-  // Remove the generated `.claude/cloud.md` (untracked, gitignored — holds resolved
+  // Remove the generated `.claude/bkit-cloud.md` (untracked, gitignored — holds resolved
   // secrets). It is not in the manifest, so the table-driven pass never sees it;
   // delete it explicitly when the claude host is uninstalled so a live-secrets file
   // is never left behind. Pushed to result.deleted so a dry-run reports it too.

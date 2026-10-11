@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# preflight.sh — Cursor Cloud sessionStart hook (failClosed: true)
+# bkit-preflight.sh — Cursor Cloud sessionStart hook (failClosed: true)
 #
 # Validates Linear issue state before any background/cloud session does bkit
 # work. Refuses the session if the issue isn't approved for automation.
 #
 # Trigger:  is_background_agent === true (received via stdin JSON).
-# Guards:   `Automated` label present; issue state not in {Cancelled, Done}.
+# Guards:   `bkit:auto` label present; issue state not in {Cancelled, Done}.
 # Setup:    See `.bkit/README.md` § Linear setup.
 #
 # Cursor honours non-zero exit as a hard stop (failClosed: true) — non-zero
 # blocks the session before the agent starts. Failures are also surfaced via
 # `additional_context` so the user sees the reason.
+#
+# bkit generates the managed block at install: the Linear guard is shared with the
+# Claude hook (bkit's `hooks/preflight-linear.sh`); the trigger, the runtime
+# marker and the output shape below are Cursor's own.
 
 # <!-- bkit:start -->
 

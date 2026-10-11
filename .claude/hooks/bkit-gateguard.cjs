@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gateguard.cjs — bkit GateGuard advisory PreToolUse hook (Claude Code).
+// bkit-gateguard.cjs — bkit GateGuard advisory PreToolUse hook (Claude Code).
 //
 // Fires before Edit / Write / MultiEdit. On the FIRST touch of a given file in a
 // session it injects an investigation checklist into the model's context so the
@@ -27,10 +27,12 @@
 //
 //   BKIT_ALLOW_CONFIG_EDIT=1 → suppress the gate-config advisory (sanctioned edit).
 //
-// Host note: twinned. `.cursor/hooks/gateguard.cjs` shares this managed block
-// byte-for-byte (Cursor's preToolUse delivers `additional_context` on an allow);
-// `.opencode/plugin/gateguard.js` carries the same advisories in ES-module form.
-// See .bkit/providers.md § GateGuard.
+// Host note: one engine, four hosts. bkit generates this hook at install from one
+// shared engine (bkit's `core/hooks/gateguard-engine.js`) plus the parts that
+// differ per host. `.cursor/hooks/bkit-gateguard.cjs` carries this same managed block (Cursor's
+// preToolUse delivers `additional_context` on an allow); the Codex and opencode hooks
+// carry the same engine behind their own payload adapters. See .bkit/providers.md
+// § GateGuard.
 //
 // OWNERSHIP: everything between the markers below is bkit-managed and is
 // overwritten on every `bkit install` / `bkit upgrade`. It is a pure advisory

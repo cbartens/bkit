@@ -53,7 +53,7 @@ if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && command -v jq >/dev/null 2>&1; then
   TRUST_FILE="${CLAUDE_CONFIG_DIR:-${HOME:-}}/.claude.json"
   TRUSTED=$(jq -r --arg p "$TRUST_ROOT" '.projects[$p].hasTrustDialogAccepted // false' "$TRUST_FILE" 2>/dev/null || printf 'false')
   if [ "$TRUSTED" != "true" ]; then
-    log "WORKSPACE NOT TRUSTED at $TRUST_ROOT -- Claude Code is ignoring EVERY permissions.allow row in .claude/settings.json for this session (deny/ask still apply, so destructive-op gating is unaffected). This container clones to a different path than the setup script baked in. Fix: re-paste the setup script from .claude/cloud.md section 4, which re-stamps the cache-bust line and rebuilds the snapshot."
+    log "WORKSPACE NOT TRUSTED at $TRUST_ROOT -- Claude Code is ignoring EVERY permissions.allow row in .claude/settings.json for this session (deny/ask still apply, so destructive-op gating is unaffected). This container clones to a different path than the setup script baked in. Fix: re-paste the setup script from .claude/bkit-cloud.md section 4, which re-stamps the cache-bust line and rebuilds the snapshot."
   fi
 fi
 
@@ -143,7 +143,7 @@ fi
 if [ -f .agents/context.md ]; then
   BKIT="$REPO_ROOT/node_modules/.bin/bkit"
   if [ ! -x "$BKIT" ] || ! command -v jq >/dev/null 2>&1; then
-    log "context-fetch provisioning: SKIPPED — bkit (node_modules/.bin/bkit) or jq is missing. Fix: a working 'pnpm install' and the cloud setup script from .claude/cloud.md."
+    log "context-fetch provisioning: SKIPPED — bkit (node_modules/.bin/bkit) or jq is missing. Fix: a working 'pnpm install' and the cloud setup script from .claude/bkit-cloud.md."
   else
     PROVISION=$("$BKIT" context list-blocks 2>/dev/null | jq -r '.provision[]' 2>/dev/null || true)
     if [ -n "$PROVISION" ]; then

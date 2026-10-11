@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// guardrails.cjs — bkit shell advisories (Claude Code).
+// bkit-guardrails.cjs — bkit shell advisories (Claude Code).
 //
-// Twin of `.cursor/hooks/guardrails.cjs` and `.codex/hooks/guardrails.cjs`: bkit
+// Twin of `.cursor/hooks/bkit-guardrails.cjs` and `.codex/hooks/bkit-guardrails.cjs`: bkit
 // generates the same shell detection into all three at install (bkit's
-// `hook-parts/guardrails-shell.js`). Wired from `.claude/settings.json` → PreToolUse,
+// `core/hooks/guardrails-shell.js`). Wired from `.claude/settings.json` → PreToolUse,
 // matcher `Bash`.
 //
 // SCOPE — the two shell checks a command-PREFIX permission table cannot express:
