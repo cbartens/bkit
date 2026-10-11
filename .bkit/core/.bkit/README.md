@@ -117,7 +117,7 @@ BKIT_GH_TOKEN=""
 <!-- prettier-ignore -->
 | Variable | Tracker | Where read | Purpose |
 | --- | --- | --- | --- |
-| `BKIT_GH_TOKEN` | all | GitHub MCP server (`Authorization: Bearer`) | Issue/label/PR writes via MCP. Fine-grained PAT (Contents, PRs, Issues, Actions, Workflows, Metadata — R/W). |
+| `BKIT_GH_TOKEN` | all | GitHub MCP server (`Authorization: Bearer`) | Issue/label/PR writes via MCP. Fine-grained PAT when every target repo sits under one owner (Contents, PRs, Issues, Actions, Workflows, Metadata — R/W); classic PAT when one token must span owners (scopes `repo`, `workflow`, `read:org`, `project`, `security_events`). |
 | `GH_TOKEN` | all | `gh` CLI inside **CI workflow Bash only** (`GH_TOKEN: ${{ github.token }}`) | Not seeded in `.bkit/.env` — local `gh` uses `gh auth login` keyring. |
 | `GITHUB_ISSUE_ID` | github | Injected from PR body `<!-- bkit:issue=#NNN -->` | Linked GitHub issue. Injected automatically — do not set manually. |
 | `BKIT_ANTHROPIC_API_KEY` | all | Claude Code (headless / CI) | Required when Claude invoked outside interactive session (cloud automation, CI). |

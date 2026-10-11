@@ -228,7 +228,7 @@ export function buildGithubProjectAdvisory(cwd) {
         detect: `GitHub tracker is active but Projects v2 board status sync is not fully configured${missingPhrase}. ` +
             "Board sync silently no-ops — workflows never reflect phase on the project board.",
         action: "Board status sync is optional (workflows never gate on it) but invisible when half-configured. All three prerequisites are required:\n\n" +
-            "1. Add `bkit.githubProject` to package.json (org-owned board only — fine-grained PATs cannot reach user-owned projects):\n\n" +
+            "1. Add `bkit.githubProject` to package.json (org-owned board only — fine-grained PATs cannot reach user-owned projects, nor span orgs; use a classic PAT with `project` to cover more than one owner):\n\n" +
             '       "bkit": {\n' +
             '         "githubProject": {\n' +
             '           "owner": "<org>", "number": <project-number>,\n' +

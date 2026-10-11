@@ -387,7 +387,7 @@ Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips th
 
 **Renovate, self-hosted.** Copy the workflow example. Suspend the Mend App for this repo (Settings → Applications → Renovate → Configure → remove this repo) or both open `renovate/*` PRs. The cron wakes the bot daily; `renovate.json5` `schedule` still gates normal PRs. Do not narrow the cron to weekly, because `osvVulnerabilityAlerts` PRs need the daily wake.
 
-Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs do not trigger CI, so required checks and automerge never fire). Fine-grained PAT, this repo:
+Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs do not trigger CI, so required checks and automerge never fire). Use a **fine-grained** PAT when this repo is the only owner-scope bkit touches; use a **classic** PAT when the same token must cover more than one owner — fine-grained PATs cannot span organizations. Fine-grained permissions for this repo:
 
 <!-- prettier-ignore -->
 | Repository permission | Access |
@@ -400,7 +400,7 @@ Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs 
 | Dependabot alerts | Read |
 | Metadata | Read-only |
 
-`Commit statuses: Read and write` is what opens the PR. Without it Renovate creates the branch and 403s on commit status. There is no separate Checks permission on a fine-grained PAT. Org-owned tokens cannot read the owner email; set the Actions variable `RENOVATE_GIT_AUTHOR` (for example `Renovate Bot <renovate@your-domain>`).
+`Commit statuses: Read and write` is what opens the PR. Without it Renovate creates the branch and 403s on commit status. There is no separate Checks permission on a fine-grained PAT. Classic equivalent: scopes `repo`, `workflow`, `security_events` (plus `user:email` for commit authorship). Org-owned tokens cannot read the owner email; set the Actions variable `RENOVATE_GIT_AUTHOR` (for example `Renovate Bot <renovate@your-domain>`).
 
 **pnpm 11 on Mend's runner.** A large graph can OOM during `pnpm update --lockfile-only`. The example sets `minimumReleaseAge: "1 day"` and caps `PNPM_WORKERS`. To clear the per-install gate, set `minimumReleaseAge: 0` in `pnpm-workspace.yaml`. Deleting the key does not: pnpm 11 defaults it to 1440. Self-hosted on `ubuntu-latest` has the memory; the freshness setting is still yours to keep or drop.
 

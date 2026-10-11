@@ -122,7 +122,7 @@ Two flows — pick one. Both put `BKIT_GH_TOKEN` in shell for the GitHub MCP ser
 
 ```bash
 # Add to ~/.zshrc (or ~/.bashrc)
-export BKIT_GH_TOKEN=<fine-grained PAT>                 # GitHub MCP
+export BKIT_GH_TOKEN=<PAT — fine-grained (one owner) or classic (multiple owners)>   # GitHub MCP
 export BKIT_LINEAR_API_KEY=<Linear personal API key>        # Linear MCP + preflight
 
 # Reload

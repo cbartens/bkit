@@ -34,7 +34,10 @@ export const SESSION_HIJACK_KEYS = [
 // placeholder ONLY when absent from the resolved `.envrc` set — a present value
 // (e.g. BKIT_GH_TOKEN already in `.bkit/.env`) keeps its real resolved value.
 const BASELINE_TOKEN_PLACEHOLDERS = [
-    ["BKIT_GH_TOKEN", "<fine-grained PAT — see .bkit/cloud.md § BKIT_GH_TOKEN permissions>"],
+    [
+        "BKIT_GH_TOKEN",
+        "<PAT — fine-grained one owner / classic across owners; see .bkit/cloud.md § BKIT_GH_TOKEN token permissions>",
+    ],
 ];
 // Earlier-compaction override — a bkit constant, not a secret. Appended to the
 // block when not already resolved from a source file. Claude-harness-only knob —

@@ -288,7 +288,7 @@ gh api -X PUT 'repos/{owner}/{repo}/vulnerability-alerts'
 gh api -X PUT 'repos/{owner}/{repo}/automated-security-fixes'
 ```
 
-Renovate (Mend) — commit `.github/renovate.json5` on the default branch, then install the App at https://github.com/apps/renovate (GitHub UI only; no `gh` equivalent). Renovate (self-hosted) — also copy `bkit-renovate.yml`, then set its platform token (fine-grained PAT; permissions → `docs/deployments.md` § Dependency updaters):
+Renovate (Mend) — commit `.github/renovate.json5` on the default branch, then install the App at https://github.com/apps/renovate (GitHub UI only; no `gh` equivalent). Renovate (self-hosted) — also copy `bkit-renovate.yml`, then set its platform token (fine-grained PAT for one owner, classic across owners; permissions → `docs/deployments.md` § Dependency updaters):
 
 ```bash
 gh secret set BKIT_GH_TOKEN

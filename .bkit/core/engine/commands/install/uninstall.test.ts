@@ -524,6 +524,7 @@ describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
           github: {
             type: "remote",
             url: "https://api.githubcopilot.com/mcp/",
+            oauth: false,
             headers: {
               Authorization: "Bearer {env:BKIT_GH_TOKEN}",
               "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects",
