@@ -26,6 +26,7 @@ import {
   writeBkitVersion,
   sha256,
   isConsumerModified,
+  mergeCanonicalHashes,
   type BkitVersion,
 } from "../../install/version-file.js";
 import { writeTier2, writeTier2JsonContained, type WriteSet } from "../../install/write.js";
@@ -446,6 +447,8 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
  *         over consumer drift keeps its prior hash, so the next template change is
  *         a conflict, not a silent overwrite.
  *       - conflicts → never, for the same reason.
+ *   - entries whose path is no longer on disk are pruned (a retired or renamed
+ *     managed file leaves one behind), in both directions of the merge.
  *   - `pinnedVersion`: bump to the version just upgraded TO (`options.pinnedVersion`).
  *     Written here exactly as `install`/`check` do, so the next `bkit check` has no
  *     pin write.
@@ -472,7 +475,7 @@ export function updateCanonicalHashesAfterUpgrade(
 
   const seedablePaths = new Set([...result.updated, ...result.skippedSeedable]);
 
-  const newCanonicalHashes = { ...bkitVersion.canonicalHashes };
+  const fresh: Record<string, string> = {};
   for (const relPath of seedablePaths) {
     // Exclude .agents/ internal files (docs.md, friction.md, rules.md, skills.md,
     // .env.example etc.) from canonicalHashes — they are not consumer-facing files
@@ -483,8 +486,16 @@ export function updateCanonicalHashesAfterUpgrade(
     if (relPath.startsWith(TEMPLATE_COPIES_DIR + path.sep)) continue;
     const absolutePath = path.join(cwd, relPath);
     if (!fs.existsSync(absolutePath)) continue;
-    newCanonicalHashes[relPath] = sha256(fs.readFileSync(absolutePath, "utf-8"));
+    fresh[relPath] = sha256(fs.readFileSync(absolutePath, "utf-8"));
   }
+
+  // Fresh hashes overwrite; entries for paths gone from disk are pruned (a retired
+  // or renamed managed file leaves one behind — mergeCanonicalHashes).
+  const { canonicalHashes: newCanonicalHashes, pruned } = mergeCanonicalHashes(
+    cwd,
+    bkitVersion.canonicalHashes,
+    fresh,
+  );
 
   const pinnedVersion = options.pinnedVersion ?? bkitVersion.pinnedVersion;
 
@@ -493,9 +504,11 @@ export function updateCanonicalHashesAfterUpgrade(
     JSON.stringify([...options.claudeAllowDerived]) ===
       JSON.stringify(bkitVersion.claudeAllowDerived);
 
-  // Nothing to persist: no files processed AND the pin is current AND the record is unchanged.
+  // Nothing to persist: no files processed AND nothing pruned AND the pin is
+  // current AND the record is unchanged.
   if (
     seedablePaths.size === 0 &&
+    pruned === 0 &&
     pinnedVersion === bkitVersion.pinnedVersion &&
     webFetchUnchanged
   ) {

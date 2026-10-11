@@ -14,6 +14,7 @@ import {
   readManagedVersion,
   stampManagedVersion,
   MANAGED_MARKER_VERSION_RE,
+  mergeCanonicalHashes,
   type BkitVersion,
 } from "./version-file";
 
@@ -189,6 +190,42 @@ describe("P4.T4 — canonicalHashes + isConsumerModified", () => {
     expect(
       isConsumerModified(".github/workflows/bkit-ci.yml", filePath, parsed!.canonicalHashes),
     ).toBe(true);
+  });
+});
+
+describe("mergeCanonicalHashes — fresh overwrites, absent paths are pruned", () => {
+  it("drops an entry whose path is no longer on disk, and counts it", () => {
+    fs.writeFileSync(path.join(tmpDir, "live.md"), "live", "utf-8");
+    const { canonicalHashes, pruned } = mergeCanonicalHashes(
+      tmpDir,
+      { "live.md": "old", "retired/gone.md": "dead" },
+      {},
+    );
+    expect(canonicalHashes).toEqual({ "live.md": "old" });
+    expect(pruned).toBe(1);
+  });
+
+  it("fresh entries overwrite the existing hash for the same path", () => {
+    fs.writeFileSync(path.join(tmpDir, "live.md"), "live", "utf-8");
+    const { canonicalHashes, pruned } = mergeCanonicalHashes(
+      tmpDir,
+      { "live.md": "old" },
+      { "live.md": "new", "fresh.md": "fresh" },
+    );
+    expect(canonicalHashes).toEqual({ "live.md": "new", "fresh.md": "fresh" });
+    expect(pruned).toBe(0);
+  });
+
+  it("a merge with nothing absent prunes nothing", () => {
+    fs.writeFileSync(path.join(tmpDir, "a.md"), "a", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, "b.md"), "b", "utf-8");
+    const { canonicalHashes, pruned } = mergeCanonicalHashes(
+      tmpDir,
+      { "a.md": "a", "b.md": "b" },
+      {},
+    );
+    expect(Object.keys(canonicalHashes).sort()).toEqual(["a.md", "b.md"]);
+    expect(pruned).toBe(0);
   });
 });
 

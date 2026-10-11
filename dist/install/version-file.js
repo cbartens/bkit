@@ -96,6 +96,32 @@ export function isConsumerModified(relPath, absolutePath, canonicalHashes) {
         return true; // unknown → treat as modified to prevent silent overwrites
     return current !== recorded;
 }
+/**
+ * The merge both writers share (install's postDispatch and
+ * `updateCanonicalHashesAfterUpgrade`): fresh entries overwrite, and entries whose
+ * path is no longer on disk are dropped.
+ *
+ * A recorded hash is only ever consulted for a file that exists — drift detection
+ * reads the file, uninstall deletes it — so an entry for an absent path is dead
+ * bookkeeping, and a file recreated at that path later would be misclassified as
+ * bkit-owned. Retired and renamed managed files leave exactly such entries behind,
+ * and a pure merge would preserve them forever (the `.bkit/scripts/…` entry a #507
+ * move left is the observed case).
+ *
+ * `pruned` counts the dropped entries so callers can treat a prune-only merge as a
+ * change that is still worth writing.
+ */
+export function mergeCanonicalHashes(cwd, existing, fresh) {
+    const canonicalHashes = {};
+    let pruned = 0;
+    for (const [relPath, hash] of Object.entries(existing)) {
+        if (fs.existsSync(path.join(cwd, relPath)))
+            canonicalHashes[relPath] = hash;
+        else
+            pruned++;
+    }
+    return { canonicalHashes: { ...canonicalHashes, ...fresh }, pruned };
+}
 // ---------------------------------------------------------------------------
 // sha256 — content hashing for canonicalHashes
 // ---------------------------------------------------------------------------

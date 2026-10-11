@@ -5,7 +5,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeTier1, writeTier2, ensurePackageJsonScripts, type WriteSet } from "../write.js";
-import { readBkitVersion, writeBkitVersion, hashFile } from "../version-file.js";
+import {
+  readBkitVersion,
+  writeBkitVersion,
+  hashFile,
+  mergeCanonicalHashes,
+} from "../version-file.js";
 import type { TokenMap } from "../placeholders.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
@@ -526,18 +531,23 @@ export function runCoreModule(ctx: ModuleContext): void {
       if (hash) newCanonicalEntries[relPath] = hash;
     }
 
-    // Merge: existing hashes preserved, new writes overwrite (hashes stay current).
-    const canonicalHashes = { ...existingCanonical, ...newCanonicalEntries };
+    // Merge: existing hashes preserved, new writes overwrite (hashes stay current),
+    // and entries whose path is gone are pruned (mergeCanonicalHashes).
+    const { canonicalHashes, pruned } = mergeCanonicalHashes(
+      cwd,
+      existingCanonical,
+      newCanonicalEntries,
+    );
 
     // Decide whether a write is needed: version mismatch, first install, new canonical
-    // entries, or a changed claudeAllowDerived record.
+    // entries, a pruned stale entry, or a changed claudeAllowDerived record.
     const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
     const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
     const claudeAllowDerived = ctx.claudeAllowRecorded ?? existingVersion?.claudeAllowDerived ?? [];
     const derivedChanged =
       JSON.stringify(claudeAllowDerived) !==
       JSON.stringify(existingVersion?.claudeAllowDerived ?? []);
-    const needsWrite = versionChanged || hasNewEntries || derivedChanged;
+    const needsWrite = versionChanged || hasNewEntries || pruned > 0 || derivedChanged;
 
     if (needsWrite) {
       console.log(

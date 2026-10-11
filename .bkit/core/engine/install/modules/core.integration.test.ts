@@ -20,7 +20,7 @@ import {
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
 import { getBkitDocsRoot, getPkgRoot } from "../../shared/package-roots";
 import { BKIT_GATE_SCRIPTS } from "../manifest";
-import { readManagedVersion } from "../version-file";
+import { hashFile, readBkitVersion, readManagedVersion, writeBkitVersion } from "../version-file";
 import { applyTokens } from "../placeholders";
 
 // ---------------------------------------------------------------------------
@@ -424,6 +424,26 @@ describe(".bkit-version first-run signal extra-logging", () => {
     const combined2 = advisories2.map((a) => a.action).join("\n");
     expect(combined2).not.toContain("BKIT_GH_TOKEN_INSTALL");
     expect(combined2).not.toContain("First install detected");
+  });
+});
+
+describe(".bkit/version canonicalHashes — install prunes entries for absent paths", () => {
+  it("drops a stale entry a retired or renamed managed file left behind", () => {
+    const versionFile = path.join(tmpDir, ".bkit", "version");
+    fs.mkdirSync(path.dirname(versionFile), { recursive: true });
+    writeBkitVersion(versionFile, {
+      pinnedVersion: readInstallingVersion(),
+      canonicalHashes: { "retired/never-shipped-again.md": "dead-hash" },
+      claudeAllowDerived: [],
+    });
+
+    // dispatchModules flushes postDispatch (where .bkit/version is rewritten).
+    dispatchModules(new Set(["core"]), makeCtx());
+
+    const after = readBkitVersion(versionFile)!;
+    expect(after.canonicalHashes["retired/never-shipped-again.md"]).toBeUndefined();
+    // A file this run wrote is recorded with its current hash.
+    expect(after.canonicalHashes["AGENTS.md"]).toBe(hashFile(path.join(tmpDir, "AGENTS.md")));
   });
 });
 
