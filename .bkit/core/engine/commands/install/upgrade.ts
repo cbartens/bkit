@@ -68,6 +68,7 @@ import {
   writeCursorCliPermissionsArtifact,
 } from "../../install/cloud-env.js";
 import { syncTemplateCopies, formatTemplateChanges } from "../../install/template-copies.js";
+import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payload-links.js";
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
 import { type ModuleContext, renderManagedOutputs } from "../../install/modules/index.js";
 import { reconcileMcpJson, enrichClaudeSettingsAllows } from "../../install/modules/claude.js";
@@ -798,6 +799,16 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
   });
   const templateReport = formatTemplateChanges(templateChanges);
   if (templateReport) console.log(`${LOG_PREFIX} ${templateReport}`);
+
+  // Payload view links — the same sync install runs (`.bkit/core` + `.bkit/shared`
+  // point into the installed package). Never clobbers a real directory; a platform
+  // refusal is reported, never fatal. Throwaway WriteSet: links carry no hash.
+  const linkChanges = syncPayloadLinks(process.cwd(), {
+    dryRun: upgradeFlags.dryRun,
+    ws: { writes: [] },
+  });
+  const linkReport = formatPayloadLinkChanges(linkChanges);
+  if (linkReport) console.log(`${LOG_PREFIX} ${linkReport}`);
 
   // Re-render all installed provider blocks for upgrade.
   // The candidates walk above handles the ACTIVE provider's block via renderOpencodeJson.

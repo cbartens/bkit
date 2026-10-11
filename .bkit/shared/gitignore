@@ -89,4 +89,9 @@ playwright/.auth/
 # Local MCP / agent secrets — never commit
 .bkit/.env
 
+# Payload view links — `bkit install` / `upgrade` symlink these into
+# node_modules/@cbartens/bkit; they dangle on a fresh clone or in CI, so never commit.
+.bkit/core
+.bkit/shared
+
 # <!-- bkit:end -->

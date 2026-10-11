@@ -133,6 +133,15 @@ bkit check
 
 **Opt-in flags:** `--tracker=github|linear`, `--auto=claude|cursor` (cloud agents), `--opencode=<provider>` (additive opencode execution host — `openrouter`, `ollama`, `opencode-zen`, `opencode-go`). Dependency updaters: copy an example and own it. See [§ Optional post-install decisions](#optional-post-install-decisions).
 
+### Payload view links — `.bkit/core` + `.bkit/shared`
+
+Install and upgrade create two **relative symlinks** into the installed package, so the payload sources (workflows, prompts, hooks) are browsable in-repo: `.bkit/core` → `../node_modules/@cbartens/bkit/.bkit/core`, same shape for `shared`. Views, not copies — always the installed version, zero drift. Rules:
+
+- Both paths sit in the `.gitignore` managed block — they dangle on a fresh clone or in CI (no `node_modules`); `bkit install` / `upgrade` recreates them.
+- The `bkit` binary reads its payload from the package regardless; the links are browse-only. Editors resolve them to the `node_modules/…` paths.
+- A real directory at either path is never clobbered (advisory `payload-link-real-dir`) — remove it yourself and re-run install to get the link. A platform that refuses symlinks (Windows without Developer Mode) falls back to a junction, then to advisory `payload-link-failed` — never a failure.
+- `bkit uninstall` removes the links (symlinks only — consumer content stays).
+
 > **⚠️ Moving bkit versions: use `bkit upgrade --latest` (or `--to=<version>`).** Bumps `@cbartens/bkit` **and** resyncs `.agents/` payload + `.bkit/version` pin in one atomic step — two can never drift apart. Bare `pnpm add @cbartens/bkit` (or Renovate/Dependabot bump) only refreshes `package.json` + lockfile — does **not** resync; skipping resync reds CI on `bkit check` drift gate. If you bump package separately, run `bkit upgrade` afterward and commit resync alongside version bump in same PR.
 
 ### Local env setup
@@ -440,7 +449,7 @@ Use `bkit doctor` to:
 
 ## Uninstall
 
-`bkit uninstall` surgically removes bkit-managed content while preserving consumer customisations.
+`bkit uninstall` surgically removes bkit-managed content while preserving consumer customisations. The `.bkit/core` / `.bkit/shared` payload view links go with a full/core uninstall (symlinks only — a real directory at either path is consumer content and stays).
 
 ```bash
 # Uninstall EVERYTHING — all modules, including the cloud add-on if present.

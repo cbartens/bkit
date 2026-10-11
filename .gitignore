@@ -99,7 +99,18 @@ playwright/.auth/
 # Local MCP / agent secrets — never commit
 .bkit/.env
 
+# Payload view links — `bkit install` / `upgrade` symlink these into
+# node_modules/@cbartens/bkit; they dangle on a fresh clone or in CI, so never commit.
+.bkit/core
+.bkit/shared
+
 # <!-- bkit:end -->
+
+# Dogfood negations: `.bkit/core` + `.bkit/shared` are this repo's install SOURCE
+# (tracked). The managed block's consumer link-ignore above must never hide new
+# source files here — bkit the consumer's view links do not exist in bkit's own repo.
+!.bkit/core
+!.bkit/shared
 
 # Python bytecode. Python helpers under scripts/ regenerate this on import.
 __pycache__/

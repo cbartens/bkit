@@ -13,6 +13,7 @@ import {
 } from "../version-file.js";
 import type { TokenMap } from "../placeholders.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
+import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
 import {
   getPkgRoot,
@@ -498,6 +499,34 @@ export function runCoreModule(ctx: ModuleContext): void {
     }
   }
 
+  // 3b3. Payload view links — `.bkit/core` + `.bkit/shared` symlinks into the
+  // installed package (browse-only, gitignored; no-op in dogfood). A real
+  // directory or file at either path is never clobbered (advisory); a platform
+  // refusal is an advisory, never a failure.
+  const linkChanges = syncPayloadLinks(cwd, { dryRun, ws });
+  for (const rel of linkChanges.created) {
+    console.log(`${logPrefix} ${tag}payload link: ${rel}`);
+  }
+  for (const rel of linkChanges.repaired) {
+    console.log(`${logPrefix} ${tag}payload link repaired: ${rel}`);
+  }
+  for (const rel of linkChanges.skippedRealDir) {
+    advisories.push({
+      id: "payload-link-real-dir",
+      severity: "advisory",
+      detect: `${rel} is a real directory or file, not a view symlink into the installed package — left untouched.`,
+      action: `bkit never overwrites consumer content. The ${rel} view is a symlink into node_modules/@cbartens/bkit; if you want it, remove your own ${rel} by hand and re-run \`bkit install\`.`,
+    });
+  }
+  for (const rel of linkChanges.failed) {
+    advisories.push({
+      id: "payload-link-failed",
+      severity: "advisory",
+      detect: `could not create the ${rel} view symlink into the installed package (the platform refused).`,
+      action: `Browse-only — bkit reads its payload from the package regardless. To add the view by hand on POSIX: ln -s ../node_modules/@cbartens/bkit/${rel} ${rel}`,
+    });
+  }
+
   // 3c. The bkit:gate:* / bkit:deps:* package.json scripts (add-if-missing). The
   // advisories read the result.
   seedCorePackageJsonScripts(ctx);
@@ -526,6 +555,8 @@ export function runCoreModule(ctx: ModuleContext): void {
       if (relPath.startsWith(".agents" + path.sep)) continue;
       // Template copies carry no hash.
       if (relPath.startsWith(TEMPLATE_COPIES_DIR + path.sep)) continue;
+      // Payload view links carry no hash either — a symlink's bytes are the package's.
+      if (PAYLOAD_LINK_RELPATHS.has(relPath)) continue;
       if (!fs.existsSync(absPath)) continue;
       const hash = hashFile(absPath);
       if (hash) newCanonicalEntries[relPath] = hash;

@@ -248,6 +248,7 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `docs/templates/bkit-*.md` | core | `.bkit/core/docs/templates/` | Tier 2 html-comment |
 | `.gitattributes` | core | `.bkit/shared/.gitattributes` | Tier 2 html-comment (`merge=union` for the append-only ledgers) |
 | `.bkit/templates/**` | — | the whole `.bkit/templates/` root | Raw copies, refreshed on every install and upgrade; never hashed. Upgrade prints the changed paths. |
+| `.bkit/{core,shared}` | core | symlink into `node_modules/@cbartens/bkit/.bkit/{core,shared}` | View link, not a copy — browse the payload in-repo; always the installed version. Gitignored (dangles on a fresh clone / CI; install recreates). A real directory is never clobbered; `bkit uninstall` removes the link. |
 | `.bkit/{cloud,comparison,install,jsonl,LICENSE,providers,prompts,trackers,workflows,README}.md` | core | `.bkit/core/.bkit/` | Tier 1 (canonical-overwrite). The reference docs agents read at runtime, plus `LICENSE.md`: the PolyForm pair and Required Notice that travel with every file bkit writes (PolyForm's Notices section). |
 | `.claude/commands/bkit-*.md` | claude | `.bkit/core/workflows/` (byte-identical) | Host pass — always overwrite |
 | `.claude/agents/bkit-*.md` | claude | `.bkit/core/prompts/` (byte-identical) | Host pass — always overwrite |
@@ -386,8 +387,9 @@ Installed list: `.agents/skills.md`. Skills in `.agents/skills/` not listed → 
 
 ### In the installed package, not your repo
 
-`bkit install` does not copy these out of `node_modules`. Read them at the path below — a
-bare `.bkit/comparison.md` or `.bkit/core/prompts/` in your own repo will not resolve.
+`bkit install` does not copy these out of `node_modules`. Read them at the path below — or
+in-repo through the `.bkit/core` / `.bkit/shared` view links install creates (symlinks into
+the package, so editors resolve them to the `node_modules/…` paths).
 
 <!-- prettier-ignore -->
 | File | Purpose |
