@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write # required to push the sliding v{N} major-version tag (see step "Update sliding major-version tag")
-  packages: write
 
 # Prevent two publish runs racing against the same tag. cancel-in-progress: false
 # is deliberate — killing a mid-flight registry publish is unsafe; the duplicate run
@@ -19,8 +18,8 @@ concurrency:
 jobs:
   release:
     # No `environment:` protection is intentional for a single-maintainer project.
-    # Anyone with tag-push permission can trigger a publish; GITHUB_TOKEN is scoped to
-    # packages: write above. If a second maintainer is ever onboarded, add
+    # Anyone with tag-push permission can trigger a publish; the npmjs publish uses
+    # the BKIT_NPM_TOKEN repository secret. If a second maintainer is ever onboarded, add
     # `environment: production` here and enable required-reviewer in repo settings.
     runs-on: ubuntu-latest
     steps:
@@ -29,7 +28,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
-          registry-url: https://npm.pkg.github.com
+          registry-url: https://registry.npmjs.org
           scope: '@cbartens'
 
       # Pnpm version is resolved from package.json#packageManager (single SoT).
@@ -57,10 +56,10 @@ jobs:
       - name: Verify dist/ is fresh
         run: pnpm bkit:check:dist
 
-      - name: Publish to GitHub Packages
+      - name: Publish to npmjs
         run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.BKIT_NPM_TOKEN }}
 
       # Slides v{N} (e.g. `v1`) to point at the latest v{N}.x.y after a successful publish.
       # Matches the GitHub Actions community convention (actions/checkout@v4 etc.) so

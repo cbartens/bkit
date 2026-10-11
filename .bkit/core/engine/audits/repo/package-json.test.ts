@@ -1,5 +1,5 @@
-// audits/repo/package-json.test.ts — bkit's own package.json manifest invariants (BAR-138: GH Packages
-// distribution).
+// audits/repo/package-json.test.ts — bkit's own package.json manifest invariants (BAR-138; npmjs
+// distribution since #408).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -20,12 +20,12 @@ describe("package.json manifest invariants (BAR-138)", () => {
     expect(pkg.private).toBe(false);
   });
 
-  it("publishConfig.registry equals https://npm.pkg.github.com", () => {
-    expect(pkg.publishConfig?.registry).toBe("https://npm.pkg.github.com");
+  it("publishConfig.registry equals https://registry.npmjs.org/", () => {
+    expect(pkg.publishConfig?.registry).toBe("https://registry.npmjs.org/");
   });
 
-  it("publishConfig.access equals restricted", () => {
-    expect(pkg.publishConfig?.access).toBe("restricted");
+  it("publishConfig.access equals public", () => {
+    expect(pkg.publishConfig?.access).toBe("public");
   });
 
   it("repository.url is bare HTTPS (no git+ prefix)", () => {

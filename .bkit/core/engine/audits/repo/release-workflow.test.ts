@@ -1,5 +1,5 @@
 // audits/repo/release-workflow.test.ts — Structural assertions for .github/workflows/release.yml
-// (GH Packages distribution pipeline).
+// (npmjs distribution pipeline since #408).
 //
 // String-based structural assertions on the raw YAML file content (no YAML parser in
 // devDependencies).
@@ -38,8 +38,8 @@ describe("release.yml structural assertions (BAR-138)", () => {
   // Permissions
   // ---------------------------------------------------------------------------
 
-  it("permissions.packages is write", () => {
-    expect(content).toContain("packages: write");
+  it("permissions.packages is absent (npmjs publish needs no packages scope)", () => {
+    expect(content).not.toContain("packages: write");
   });
 
   it("permissions.contents is write (sliding v{N} tag step pushes back to origin)", () => {
@@ -74,7 +74,7 @@ describe("release.yml structural assertions (BAR-138)", () => {
   it("sliding tag step appears after npm publish (failed publish must not advance the sliding tag)", () => {
     // Anchor on `- name:` so we match the step declaration, not the prose
     // reference in the `permissions:` comment block above.
-    const publishIdx = lineIndex("- name: Publish to GitHub Packages");
+    const publishIdx = lineIndex("- name: Publish to npmjs");
     const slidingIdx = lineIndex("- name: Update sliding major-version tag");
     expect(publishIdx).toBeGreaterThan(-1);
     expect(slidingIdx).toBeGreaterThan(-1);
@@ -89,8 +89,8 @@ describe("release.yml structural assertions (BAR-138)", () => {
     expect(content).toContain("node-version: 20");
   });
 
-  it("setup-node step sets registry-url to https://npm.pkg.github.com", () => {
-    expect(content).toContain("registry-url: https://npm.pkg.github.com");
+  it("setup-node step sets registry-url to https://registry.npmjs.org", () => {
+    expect(content).toContain("registry-url: https://registry.npmjs.org");
   });
 
   it("setup-node step sets scope to @cbartens", () => {
@@ -168,8 +168,8 @@ describe("release.yml structural assertions (BAR-138)", () => {
     expect(content).not.toContain("pnpm publish");
   });
 
-  it("npm publish step env has NODE_AUTH_TOKEN referencing GITHUB_TOKEN", () => {
-    expect(content).toContain("NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}");
+  it("npm publish step env has NODE_AUTH_TOKEN referencing BKIT_NPM_TOKEN", () => {
+    expect(content).toContain("NODE_AUTH_TOKEN: ${{ secrets.BKIT_NPM_TOKEN }}");
   });
 
   it("npm publish step appears after pnpm bkit:check:dist", () => {

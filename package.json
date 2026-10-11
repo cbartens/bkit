@@ -2,7 +2,7 @@
   "name": "@cbartens/bkit",
   "version": "5.0.0",
   "private": false,
-  "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
+  "description": "Agent-stack consolidation CLI.",
   "type": "module",
   "bin": {
     "bkit": "./dist/cli.js"
@@ -27,8 +27,8 @@
     "url": "https://github.com/cbartens/bkit.git"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
-    "access": "restricted"
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
   },
   "license": "(PolyForm-Noncommercial-1.0.0 OR PolyForm-Small-Business-1.0.0)",
   "scripts": {
