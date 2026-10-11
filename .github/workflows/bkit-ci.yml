@@ -17,16 +17,16 @@ permissions:
   # bkit-tests-scope reads repos/{repo}/commits/{sha}/pulls.
   pull-requests: read
 
-# One run per branch or pull request. A newer run cancels the older one on every event.
-# A pull request keys on its number; a push or dispatch keys on the ref. A PR and a push to
-# dev therefore still overlap. A shared resource those two runs both touch is serialised by
-# the tenant lease (bkit-tests-reset), not by this group. A workflow_run observer sees the
+# One run per branch or pull request. A newer run cancels the older one on every event
+# except `main`, which QUEUES: a push to `main` is the release branch, and cancelling it
+# would strand a publish mid-run. A pull request keys on its number; a push or dispatch keys
+# on the ref, so a PR and a push to dev still overlap. A workflow_run observer sees the
 # latest run on that ref only. A push plans against the last green run on the branch, not
 # github.event.before, so a cancelled run's changes stay in scope.
 # See docs/deployments.md § "One run per branch or pull request".
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # ── bkit-tests-scope ─────────────────────────────────────────────────────
@@ -39,6 +39,12 @@ jobs:
     outputs:
       plan: ${{ steps.scope.outputs.plan }}
     steps:
+      # The planner resolves the push diff base against the branch's last green run, which
+      # needs git history. fetch-depth: 0 so `merge-base --is-ancestor` reaches that head.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
       - name: Read Markers
         id: markers
         # User-controlled text (commit message / PR title) arrives via env: (runtime
@@ -73,6 +79,33 @@ jobs:
           MARKERS_JSON=$(echo "$MARKERS" | tr ' ' '\n' | jq -R -s -c 'split("\n") | map(select(length > 0))' 2>/dev/null || echo "[]")
           echo "markers_present=$MARKERS_JSON" >> "$GITHUB_OUTPUT"
           echo "Markers detected: $MARKERS_JSON"
+
+      # The diff base every delta step uses: a PR against its base branch, a push against the
+      # branch's last green run (scripts/ci/lanes/resolve-push-base.mjs — a cancelled push's
+      # changes stay in scope), a dispatch against HEAD~1. deployments.md § One run per branch
+      # or pull request.
+      - name: Resolve Base Ref
+        id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$PR_BASE_SHA"; SOURCE="pr-base"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            BASE=$(node scripts/ci/lanes/resolve-push-base.mjs); SOURCE="last-green-run"
+          else
+            BASE=$(git rev-parse HEAD~1 2>/dev/null || echo ""); SOURCE="dispatch-head~1"
+          fi
+          {
+            echo "base=$BASE"
+            echo "source=$SOURCE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved diff base: ${BASE:-<none>} ($SOURCE)"
 
       - name: Decide Run Level
         id: level
@@ -154,6 +187,7 @@ jobs:
           DEPTH_SOURCE: ${{ steps.level.outputs.source }}
           WHETHER_REASON: ${{ steps.level.outputs.reason }}
           MARKERS: ${{ steps.markers.outputs.markers_present }}
+          BASE: ${{ steps.base.outputs.base }}
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
         run: |
@@ -162,6 +196,7 @@ jobs:
           PLAN_JSON=$(jq -cn \
             --arg schema "bkit-test-plan" \
             --arg run_level "${RUN_LEVEL:-none}" \
+            --arg base "${BASE:-}" \
             --argjson web_affected false \
             --argjson run_e2e false \
             --argjson run_live false \
@@ -175,6 +210,7 @@ jobs:
             '{
               schema: $schema,
               run_level: $run_level,
+              base: $base,
               web_affected: $web_affected,
               run_e2e: $run_e2e,
               run_live: $run_live,
@@ -190,7 +226,7 @@ jobs:
           # has()/!=null (NOT `.field // empty`): jq's // treats boolean false as absent,
           # so a legit run_live:false would read as a missing required field.
           FAIL=0
-          for field in schema run_level web_affected run_e2e run_live source reason; do
+          for field in schema run_level base web_affected run_e2e run_live source reason; do
             if ! echo "$PLAN_JSON" | jq -e --arg f "$field" 'has($f) and .[$f] != null' >/dev/null 2>&1; then
               echo "::error::Plan JSON missing required field: $field"
               FAIL=1
@@ -212,6 +248,7 @@ jobs:
           RUN_LEVEL=$(echo "$PLAN" | jq -r '.run_level')
           DEPTH=$(echo "$PLAN" | jq -r '.source')
           WHETHER=$(echo "$PLAN" | jq -r '.reason')
+          BASE=$(echo "$PLAN" | jq -r '.base')
           MARKERS=$(echo "$PLAN" | jq -r '.markers_present | join(", ")' 2>/dev/null || echo "")
           {
             echo "## CI Plan — \`bkit-tests-scope\` (single-package, no deploy/e2e/live)"
@@ -220,6 +257,7 @@ jobs:
             echo "| --- | --- |"
             echo "| schema | bkit-test-plan |"
             echo "| run_level | \`$RUN_LEVEL\` |"
+            echo "| base | \`${BASE:-<none>}\` |"
             echo "| source | \`$DEPTH\` |"
             echo "| reason | \`$WHETHER\` |"
             echo "| markers | ${MARKERS:-none} |"
@@ -438,13 +476,19 @@ jobs:
         run: pnpm lint:slop
 
       # The ENFORCING slop gate (lint:slop above is an advisory full-scan that never fails).
-      # PR-only: materialises the PR base as a worktree and fails on findings this PR ADDS or
-      # WORSENS vs base. Needs fetch-depth: 0 (set on checkout) so the base SHA is present.
+      # Runs on every event against the planner's base — a PR's base branch, or a push's last
+      # green run — and fails on findings this change ADDS or WORSENS vs base. Needs
+      # fetch-depth: 0 (set on checkout) so the base SHA is present to materialise as a worktree.
       - name: Run Slop Delta
-        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request'
+        if: steps.cache.outputs.skip != 'true'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: pnpm slop:delta "$BASE_SHA"
+          BASE_SHA: ${{ fromJSON(needs.bkit-tests-scope.outputs.plan).base }}
+        run: |
+          if [ -z "$BASE_SHA" ]; then
+            echo "::notice::no diff base resolved — skipping slop delta"
+            exit 0
+          fi
+          pnpm slop:delta "$BASE_SHA"
 
       # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
       # (${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts

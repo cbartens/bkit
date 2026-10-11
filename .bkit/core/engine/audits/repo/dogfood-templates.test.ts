@@ -81,6 +81,14 @@ const ADOPTED: Record<string, Entry> = {
     status: "adopted",
     edits: [
       {
+        kind: "adapt",
+        what: "no tenant lease or release promote: the default branch queues because a main push publishes",
+        region: {
+          template: ["# One run per branch or pull request.", "jobs:"],
+          copy: ["# One run per branch or pull request.", "jobs:"],
+        },
+      },
+      {
         kind: "placeholder",
         what: "default branch",
         fill: "branches: [{{DEFAULT_BRANCH}}, dev]",
@@ -160,6 +168,34 @@ const ADOPTED: Record<string, Entry> = {
         fill: `${CHECKOUT}        with:\n          # Full history needed for E2E / supabase stubs when enabled.\n          fetch-depth: 0\n`,
         with: CHECKOUT,
       },
+      {
+        kind: "adapt",
+        what: "slop delta runs on every event against the planner base (bkit has a planner)",
+        fill:
+          "      # The ENFORCING slop gate (lint:slop above is an advisory full-scan that never fails).\n" +
+          "      # PR-only: materialises the PR base as a worktree and fails on findings this PR ADDS or\n" +
+          "      # WORSENS vs base. Needs fetch-depth: 0 (set on checkout) so the base SHA is present.\n" +
+          "      - name: Run Slop Delta\n" +
+          "        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request'\n" +
+          "        env:\n" +
+          "          BASE_SHA: ${{ github.event.pull_request.base.sha }}\n" +
+          '        run: pnpm slop:delta "$BASE_SHA"\n',
+        with:
+          "      # The ENFORCING slop gate (lint:slop above is an advisory full-scan that never fails).\n" +
+          "      # Runs on every event against the planner's base — a PR's base branch, or a push's last\n" +
+          "      # green run — and fails on findings this change ADDS or WORSENS vs base. Needs\n" +
+          "      # fetch-depth: 0 (set on checkout) so the base SHA is present to materialise as a worktree.\n" +
+          "      - name: Run Slop Delta\n" +
+          "        if: steps.cache.outputs.skip != 'true'\n" +
+          "        env:\n" +
+          "          BASE_SHA: ${{ fromJSON(needs.bkit-tests-scope.outputs.plan).base }}\n" +
+          "        run: |\n" +
+          '          if [ -z "$BASE_SHA" ]; then\n' +
+          '            echo "::notice::no diff base resolved — skipping slop delta"\n' +
+          "            exit 0\n" +
+          "          fi\n" +
+          '          pnpm slop:delta "$BASE_SHA"\n',
+      },
     ],
   },
   ".github/workflows/bkit-cloud.yml": {
@@ -229,6 +265,20 @@ const ADOPTED: Record<string, Entry> = {
     ],
   },
   ".lintstagedrc.json": identical,
+  "scripts/ci/lanes/resolve-push-base.mjs": identical,
+  "scripts/ci/lanes/resolve-push-base.test.mjs": identical,
+  "scripts/ci/check-accepted-divergences.mjs": {
+    status: "not-adopted",
+    what: "the accepted-divergence guard is a consumer opt-in; bkit does not wire it into its own CI",
+  },
+  "scripts/ci/check-accepted-divergences.test.mjs": {
+    status: "not-adopted",
+    what: "ships with the opt-in guard",
+  },
+  "scripts/ci/accepted-divergences.json": {
+    status: "not-adopted",
+    what: "ships with the opt-in guard",
+  },
   ".vale.ini": {
     status: "adopted",
     edits: [

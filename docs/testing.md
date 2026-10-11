@@ -25,31 +25,33 @@ Graph **flat and wide** for static / unit / build / integration: scope fans out;
 ```
   bkit-tests-scope ─┬─ bkit-tests-static
     always-on        ├─ bkit-tests-unit
-    never skips      ├─ bkit-tests-build-web
-    (~15s)           ├─ bkit-tests-integration
-                     ├─ bkit-tests-build-ios
-                     ├─ bkit-tests-build-android
-                     └─ bkit-tests-migration ─→ bkit-tests-reset ─┬─→ bkit-tests-e2e-web
-                          always-on                   (lease)     ├─→ bkit-tests-live-web
-                                                                  ├─→ bkit-tests-e2e-ios
-                                                                  └─→ bkit-tests-e2e-android
+    never skips      ├─ bkit-tests-build-web ─────────────────────┐
+    (~15s)           ├─ bkit-tests-integration                    │
+                     ├─ bkit-tests-build-ios                      │
+                     ├─ bkit-tests-build-android                  │
+                     └─ bkit-tests-migration ─┬─→ bkit-tests-deploy (default-branch push only; promotes)
+                                              │            │
+                                              │            ▼
+                                              └─→ bkit-tests-reset ─┬─→ bkit-tests-e2e-web
+                                                    (lease)         ├─→ bkit-tests-live-web
+                                                                    ├─→ bkit-tests-e2e-ios
+                                                                    └─→ bkit-tests-e2e-android
                                           │
                                           ▼
                                bkit-tests-cleanup (always(); releases the lease)
                                           │
                                           ▼
-                               bkit-tests-check (needs: scope + every lane you have)
-                                          │
-                                          ▼
-                               bkit-tests-deploy (default-branch push only; not required)
+                               bkit-tests-check (needs: scope + every lane you have, deploy included)
 
   static/unit/integration/build-*: needs:[bkit-tests-scope]; if: run_level != 'none'
   bkit-tests-migration:            needs:[bkit-tests-scope]; no job-level if (always-on)
+  bkit-tests-deploy:               needs:[bkit-tests-migration, bkit-tests-build-web]; default-branch push only
   bkit-tests-reset:                needs:[scope, migration]; if: tenant_target != ''
   e2e-web / live-web / e2e-ios / e2e-android:
-                                   needs:[scope, migration, reset, <build>];
+                                   needs:[scope, migration, deploy, reset, <build>];
                                    if: !cancelled() && scope==success && <own gate>
-                                   && migration != 'failure' && reset != 'failure'
+                                   && migration != 'failure' && deploy != 'failure'
+                                   && reset != 'failure'
 ```
 
 Adopt only lanes your repo has. Add a lane the moment its tier exists, because a tier with no lane is a tier nothing gates. The jobs above the reference in `bkit-ci.yml` are the starter: `bkit-tests-static` and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone `/bkit-ship` merges on. Every lane you add joins the capstone's `needs:` and its assert. The reference is the target. A starter stub that still sits inside `bkit-tests-unit` is the pre-split shape.
@@ -60,16 +62,16 @@ Adopt in this order. Stop at the first tier this repo does not have. You write t
 2. Add `bkit-tests-scope`. Every later `if:` reads `plan`. One marker parse. Push base = last green run (`deployments.md` § One run).
 3. Move integration out of unit into `bkit-tests-integration`.
 4. Add `bkit-tests-build-web`. Compile, or create this SHA's deployment and publish `deployment_url` + `deployment_id` un-promoted on the default branch. Do not also enable `bkit-stub:vercel-await`.
-5. Add `bkit-tests-migration` when you have migrations. Remote apply of new migrations (e.g. `supabase db push --linked --include-all`) lives here, after the from-empty replay. Immutability and slop-delta use the planner base on every event.
+5. Add `bkit-tests-migration` when you have migrations. Remote apply of new migrations (e.g. `supabase db push --linked --include-all`) lives here, after the from-empty replay. On the default branch it waits for static / unit / integration / `build-web` before touching production's database. Immutability and slop-delta use the planner base on every event.
 6. Add `bkit-tests-reset` / `-cleanup` only when two or more lanes share one long-lived resource. Otherwise provision fresh and drop both.
 7. Add `bkit-tests-e2e-web`. Full suite on a PR and on a push. Feature → `dev` PR hits a local stack. `TEST_URL` only. A pass on retry is a failure.
 8. Add device build and device E2E only for a platform you ship. Same rule on a PR, a push, and a dispatch. `bkit-tests-e2e-ios` needs `build-ios` and `build-web`; android the same with its build lane.
 9. Add `bkit-tests-live-web` for a push to `dev` or the default branch when `web_affected`. Not a PR. Not a dispatch. Do not `needs:` static, unit, integration, or e2e.
 10. `bkit-tests-check` `needs:` every lane you kept. Sole required check. The assert is a script (§ Validated means executed).
-11. `bkit-tests-deploy` on a default-branch push, after the capstone. Promotes that exact `deployment_id`. Not required (`deployments.md` § Promote after the capstone).
+11. `bkit-tests-deploy` on a default-branch push, **before** the E2E / `@live` lanes. Promotes that exact `deployment_id`; each tenant lane `needs:` it and refuses unless production serves this run's build. Not a required check (`deployments.md` § Promote before the lanes).
 12. Health is `health.yml`, `workflow_run` after that CI success. A logging probe is a step inside each runtime lane, not a job.
 
-Scripts these files do not ship, so the plan names them and you write them: last-green base, marker parser, capstone assert, lease acquire and release.
+Scripts these files do not ship, so the plan names them and you write them: marker parser, capstone assert, lease acquire and release. The last-green push base ships as a template (`.bkit/templates/scripts/ci/lanes/resolve-push-base.mjs`, copied to `scripts/ci/lanes/`).
 
 - **`bkit-tests-scope`** (always-on) computes `run_level` (+ optional `run_migration`) + emits `bkit-test-plan` contract — what should run.
 - **`bkit-tests-static` / `-unit` / `-integration` / `-e2e-web`** — one **lane per tier**, separate parallel jobs. A platform suffix (`-web` / `-ios` / `-android`) is required when that tier exists for more than one platform; `static` / `unit` / `integration` / `migration` stay bare. Integration / web E2E gate on `web_affected` / `run_e2e`; each lane emits executed-count for capstone and (coverage tiers) posts own coverage comment. Start `-static` + `-unit`, add lane per tier (`deployments.md` § Parallel test lanes). E2E: do **not** put remote migration apply here, because that lives in `-migration`. Web E2E on a feature → `dev` PR hits a local stack with this PR's migrations; every other event hits the deployment. Same outcome rules everywhere (retries, traces, flake handling). A pass on retry is a failure. Target from `TEST_URL` alone. No spec filtered by tag.
@@ -79,9 +81,35 @@ Scripts these files do not ship, so the plan names them and you write them: last
 - **`bkit-tests-live-web`** runs `@live` against the deployed URL (`run_live`; drop the job if no deploy). Push to `dev` or the default branch only, when `web_affected`. Not a pull request. Not a dispatch. `needs:` planner + migration + reset + `bkit-tests-build-web`. Do **not** gate behind static / unit / integration / e2e. A planned failure reds the capstone. `/bkit-ship` still filters a job named `bkit-tests-live`; this name does not match, so the capstone is the gate.
 - **`bkit-tests-reset` / `bkit-tests-cleanup`** (optional; one shared long-lived resource) — reset takes the lease and puts the resource in its known state **before** any lane uses it; cleanup runs last, `if: always()`, and releases the lease. Planner names at most one target. Empty target skips both. Capstone reds if a planned reset skipped or either job failed. DROP both when the resource is provisioned fresh per run (§ Provision backing services fresh — the preferred answer).
 - **Logging probe** (optional step, not a lane) — inside each runtime lane, emit one marked event and ask the error tracker whether it arrived. e.g. Sentry. Skip when that lane did not run the probe.
-- **`bkit-tests-deploy`** (optional) — after the capstone, on a push to the default branch only. Promotes the exact `deployment_id` `bkit-tests-build-web` published. Not a required check. A red job means the previous deployment stays live.
+- **`bkit-tests-deploy`** (optional) — on a push to the default branch only, **before** the E2E / `@live` lanes. Promotes the exact `deployment_id` `bkit-tests-build-web` published; each tenant lane `needs:` it and starts by proving production serves this run's build (by deployment id). Carries its own `concurrency:` group (`cancel-in-progress: false`) and is not a required check. A red job means the previous deployment stays live.
 - **Health** (optional, separate workflow) — `workflow_run` after CI succeeds on the default branch; smoke the deployment this SHA promoted. Not a required check. Copy the stub to `.github/workflows/health.yml`.
 - **`bkit-tests-check`** capstone — `needs:` **all** lanes; fails if any expected tier skipped or executed zero → green required check = **validated**, not merely "nothing failed". Sole branch-protection required check.
+
+### Accepted divergences
+
+CI branches on the event in a few places. Each is a deliberate, recorded divergence from "one script runs everywhere" — not an accident. Every such site is registered so a new one is caught.
+
+**The guard.** A step that reads an event field (`github.event_name`, `github.ref`, `github.ref_name`, `github.base_ref`, `github.head_ref`, `github.event.head_commit.message`, `github.event.pull_request.title`) — and, by extension, a script / hook / test that reads `CI` or `GITHUB_*` or takes the pre-push revert path — must be listed in the registry (`scripts/ci/accepted-divergences.json`) with its decision and reason. The guard (`scripts/ci/check-accepted-divergences.mjs`) reds on an unregistered site, on a registered site that no longer exists, and on a decision missing from the table below. A new comparison inside an already-registered step is a new site.
+
+<!-- prettier-ignore -->
+| Decision | Rule |
+| --- | --- |
+| `one-run-per-branch` | Concurrency key is the PR number, else the ref; the default branch queues, every other event cancels the older run. |
+| `diff-base` | A PR plans against its base. A push plans against the branch's last green run. |
+| `pr-affected-only` | A PR runs lint, typecheck, format, unit, and integration for affected packages. A push runs everything. |
+| `b1-local-e2e-on-pr` | A feature → `dev` PR's web E2E hits a local stack with this PR's migrations. Every other event hits the deployment. |
+| `b3-live-push-only` | `@live` runs on `dev` / default-branch pushes and on dispatch only. |
+| `b4-remote-db-push` | Only `dev` / default-branch pushes apply migrations to a shared remote database. A PR never does. |
+| `main-basic-lanes-before-production-migration` | On a default-branch push, `bkit-tests-migration` waits for static / unit / integration / `build-web` before it pushes production's migrations. |
+| `release-promotes-first` | On a default-branch push the release promotes production before the E2E / `@live` lanes run; each refuses unless production serves this run's build. |
+| `promotion-lag` | A `dev` push notes when the default branch lags. It tests nothing. |
+| `ci-fresh-stack` | The local integration runner resets its database. CI's volume is already empty. Both start from the same state. |
+| `local-runner-stands-down` | The laptop E2E entrypoints are no-ops under `CI`. |
+| `human-confirmation` | A laptop reset of a remote tenant needs an explicit yes. The CI run is the approval. |
+| `revert-recovery` | A revert push skips the pre-push unit and integration tiers. CI still runs every tier. |
+| `output-channel` | CI prints annotations and job summaries. A terminal prints lines. |
+| `ci-strict-time-limits` | Unit time limits grow with a laptop's load. Under `CI` they stay fixed. |
+| `playwright-outcomes` | Same retries, traces, and flake handling on every machine. A pass on retry is a failure. The target comes from `TEST_URL` alone. No spec is filtered by tag. |
 
 ### Which resources may each lane touch?
 
@@ -100,7 +128,7 @@ Every lane must **declare** what it may reach; declaration enforced by lane env 
 | `bkit-tests-e2e-web` | none — **mocked** | ephemeral **local** (feature → `dev` PR) / the leased shared one (other events) | this SHA's deployment |
 | `bkit-tests-e2e-ios` / `-android` | the device host | the leased shared resource | the deployed backend |
 | `bkit-tests-live-web` | **real** | the deployed environment's **real** instance | **real** deployed URL |
-| `bkit-tests-deploy` | the host API | none | promotes the deployment the lanes tested |
+| `bkit-tests-deploy` | the host API | none | promotes the deployment the tenant lanes then test |
 
 Read table as rule: **`bkit-tests-live-web` and the device E2E lanes are the lanes that may spend real external quota**; **only those, plus push-side `-e2e-web`, may touch the shared long-lived resource**, and only between reset and cleanup. Everything else provisions its own (§ Provision backing services fresh).
 
@@ -279,7 +307,7 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 ### Smoke
 
 - After deploy, run a **fast, dependency-light** probe of the live surface (a handful of health / route / contract checks, or a tiny tagged browser subset) — breadth ("is the app fundamentally up?"), not depth.
-- It is an **observability gate, not a merge gate**: own workflow, never in branch protection. When `bkit-tests-deploy` promotes inside CI, this probe is the health workflow, not a second file (`deployments.md` § Smoke trigger plumbing, § Promote after the capstone).
+- It is an **observability gate, not a merge gate**: own workflow, never in branch protection. When `bkit-tests-deploy` promotes inside CI, this probe is the health workflow, not a second file (`deployments.md` § Smoke trigger plumbing, § Promote before the lanes).
 - **Not:** a smoke suite wired into branch protection, or one so heavy it can't run on every deploy.
 
 ## Design assertions are a dimension, not a lane

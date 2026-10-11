@@ -268,14 +268,19 @@ export function detectCiYmlCapstoneContractDrift(cwd: string): PreflightFinding 
   }
 
   // 2. One run per branch or pull request. A newer run cancels the older one on every
-  //    event. The group keys a PR on its number and a push on the ref — not github.run_id,
-  //    which never collides and so never cancels. A push then plans from the last green run.
+  //    event EXCEPT the default branch, which queues (a cancellation mid-promote could
+  //    strand production across two releases). The group keys a PR on its number and a push
+  //    on the ref — not github.run_id, which never collides and so never cancels. A push
+  //    then plans from the last green run.
+  //    Flagged: an unconditional cancel (the default branch would be cancelled too), a
+  //    PR-only cancel, or a group keyed on github.run_id.
+  const unconditionalCancel = /cancel-in-progress:\s*true(?:\s|$)/.test(code);
   const prOnlyCancel =
     /cancel-in-progress:\s*\$\{\{\s*github\.event_name\s*==\s*'pull_request'\s*\}\}/.test(code);
   const runIdGroup = /group:[^\n]*github\.run_id/.test(code);
-  if (/concurrency:/.test(code) && (prOnlyCancel || runIdGroup)) {
+  if (/concurrency:/.test(code) && (unconditionalCancel || prOnlyCancel || runIdGroup)) {
     missing.push(
-      "one run per branch or pull request — `cancel-in-progress: true`, group `ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}`. A PR-only cancel, or a group keyed on `github.run_id`, lets a superseded push keep running. A push plans from the last green run on the branch, so a cancelled run's changes stay in scope.",
+      "one run per branch or pull request, with the default branch QUEUING — `cancel-in-progress: ${{ github.ref != 'refs/heads/<default-branch>' }}`, group `ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}`. Cancelling the default branch mid-promote can strand production across two releases; a PR-only cancel, an unconditional cancel, or a group keyed on `github.run_id` also lets a superseded run keep running. A push plans from the last green run on the branch, so a cancelled run's changes stay in scope.",
     );
   }
 

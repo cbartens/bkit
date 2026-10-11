@@ -15,16 +15,18 @@ permissions:
   actions: read
   contents: read
 
-# One run per branch or pull request. A newer run cancels the older one on every event.
-# A pull request keys on its number; a push or dispatch keys on the ref. A PR and a push to
-# dev therefore still overlap. A shared resource those two runs both touch is serialised by
-# the tenant lease (bkit-tests-reset), not by this group. A workflow_run observer sees the
-# latest run on that ref only. A push plans against the last green run on the branch, not
-# github.event.before, so a cancelled run's changes stay in scope.
+# One run per branch or pull request. A newer run cancels the older one on every event
+# except the default branch, which QUEUES: that run promotes the deployment, and cancelling
+# it mid-promote could leave production split across two releases. A pull request
+# keys on its number; a push or dispatch keys on the ref, so a PR and a push to dev still
+# overlap. A shared resource those two runs both touch is serialised by the tenant lease
+# (bkit-tests-reset), not by this group. A workflow_run observer sees the latest run on that
+# ref only. A push plans against the last green run on the branch, not github.event.before,
+# so a cancelled run's changes stay in scope.
 # See docs/deployments.md § "One run per branch or pull request".
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/{{DEFAULT_BRANCH}}' }}
 
 jobs:
   # ── bkit-tests-static ────────────────────────────────────────────────────
@@ -751,24 +753,24 @@ jobs:
 #
 #   bkit-tests-scope ─┬─ bkit-tests-static
 #     always-on,       ├─ bkit-tests-unit
-#     never skips      ├─ bkit-tests-build-web ─────────────┐
-#     (~15s)           ├─ bkit-tests-integration            │
-#                      ├─ bkit-tests-build-ios              │
-#                      ├─ bkit-tests-build-android          │
-#                      └─ bkit-tests-migration ──→ bkit-tests-reset ──┬─→ bkit-tests-e2e-web
-#                           always-on                    (lease +      ├─→ bkit-tests-live-web
-#                           (replay plan-/path-gated;     known state)  ├─→ bkit-tests-e2e-ios
-#                            remote push on every                       └─→ bkit-tests-e2e-android
-#                            push to dev/main)
+#     never skips      ├─ bkit-tests-build-web ───────────────────┐
+#     (~15s)           ├─ bkit-tests-integration                  │
+#                      ├─ bkit-tests-build-ios                    │
+#                      ├─ bkit-tests-build-android                │
+#                      └─ bkit-tests-migration ─┬─→ bkit-tests-deploy (push to {{DEFAULT_BRANCH}} only; promotes)
+#                           always-on           │        │           (own concurrency group; not required)
+#                           (replay plan-/path- │        ▼
+#                            gated; remote push └─→ bkit-tests-reset ──┬─→ bkit-tests-e2e-web
+#                            on every push to               (lease +    ├─→ bkit-tests-live-web
+#                            dev/main; on the               known state)├─→ bkit-tests-e2e-ios
+#                            default branch waits                        └─→ bkit-tests-e2e-android
+#                            for the basic lanes)
 #                                          │
 #                                          ▼
 #                               bkit-tests-cleanup (always(); releases the lease)
 #                                          │
 #                                          ▼
-#                               bkit-tests-check  (needs: scope + ALL lanes; if: !cancelled())
-#                                          │
-#                                          ▼
-#                               bkit-tests-deploy (push to {{DEFAULT_BRANCH}} only; not required)
+#                               bkit-tests-check  (needs: scope + ALL lanes, deploy included; if: !cancelled())
 #
 #   Suffix rule: a lane takes a platform suffix when that tier exists for more than one
 #   platform. static / unit / integration / migration stay bare. build and e2e are
@@ -777,13 +779,16 @@ jobs:
 #
 #   static/unit/integration/build-*: needs:[bkit-tests-scope]; if: run_level != 'none'
 #   bkit-tests-migration:            needs:[bkit-tests-scope]; NO job-level if: (always-on)
+#   bkit-tests-deploy:               needs:[bkit-tests-migration, bkit-tests-build-web];
+#                                    push to {{DEFAULT_BRANCH}} only; own `concurrency:` group
 #   bkit-tests-reset:                needs:[scope, migration]; if: tenant_target != ''
 #   e2e-web / live-web / e2e-ios / e2e-android:
-#                                    needs:[scope, migration, reset, <build lane>];
+#                                    needs:[scope, migration, deploy, reset, <build lane>];
 #                                    if: !cancelled() && scope==success && <own gate>
-#                                    && migration != 'failure' && reset != 'failure'
+#                                    && migration != 'failure' && deploy != 'failure'
+#                                    && reset != 'failure'
 #                                    (!= 'failure' — not == 'success' — so a cancelled/skipped
-#                                    migration or reset does not cascade-skip the lane)
+#                                    migration, deploy or reset does not cascade-skip the lane)
 #
 # Do not gate bkit-tests-live-web behind static/unit/integration/e2e. Measure the pole first.
 # deployments.md § Parallel test lanes.
@@ -798,7 +803,9 @@ jobs:
 #     steps:
 #       - name: Checkout Repository          # [M] fetch-depth: 0 (turbo diffs need the base commit)
 #       - name: Install Turbo                # [M] npm i -g turbo@<ver> (bare, ~10-15s; no pnpm install)
-#       - name: Resolve Base Ref             # [M] deployments.md § One run per branch or pull request
+#       - name: Resolve Base Ref             # [M] push base = the branch's last green run; shipped:
+#       #     scripts/ci/lanes/resolve-push-base.mjs (falls back to github.event.before). deployments.md
+#       #     § One run per branch or pull request.
 # bkit-stub:affected-graph — [M] turbo changed-packages. Stdout ≠ stderr. deployments.md § turbo `//`.
 #       - name: Detect Affected Packages     # [M] sets web_affected / global_dep_changed
 #       - name: Read Markers                 # [U] one parse; lanes read plan.markers_present. deployments.md § Commit-message force tags.
@@ -853,6 +860,7 @@ jobs:
 #       - name: Run Slop Scan (delta)         # every event, against the planner base. deployments.md § One run.
 #       - name: Tear Down Base Worktree       # if: always()
 #       - name: Run bkit Check                # [U] drift gate (same as pre-push); catches --no-verify/web-edit/cloud drift
+#       - name: Check Accepted Divergences    # [U] node scripts/ci/check-accepted-divergences.mjs — every event-keyed step is registered; stale rows fail too. testing.md § Accepted divergences.
 #       - name: Pull Vercel Env Vars          # [D] preview vs prod env by branch; set CI_ENV_FILE; FAIL-FAST if critical secrets empty
 #       - name: Assert Environment Shape          # [D] env-shape checker (e.g. env-check.sh)
 #       # Resolve URL and remote db push are NOT steps in this catalogue.
@@ -1039,17 +1047,23 @@ jobs:
 #       #   scope==success always. run_level!=none => static+unit+build-web success.
 #       #   web_affected => integration success. run_e2e && web_affected => e2e-web success.
 #       #   run_live => live-web success. plan.run_native_<platform> => that build + e2e success.
-#       #   planned reset skipped, or reset/cleanup failed => red. run_level==none ([skip ci]; release mirror) asserts nothing —
+#       #   planned reset skipped, or reset/cleanup failed => red. A skipped or failed deploy on a
+#       #   default-branch push => red. run_level==none ([skip ci]; release mirror) asserts nothing —
 #       #   in mirror mode Mirror Push Run above owns the verdict.
 #       #   migration==success whenever scope succeeded.
 #       #   Declared + planned tier: <tier>_ran > 0. No entrypoint: assert nothing. Cache hit is not zero.
 #       #   Protect bkit-tests-check, not bkit-tests-scope.
 #
-# === JOB 5 — promote the deployment the lanes just tested ===
+# === JOB 5 — promote the release, then the tenant lanes test it ===
 # bkit-stub:bkit-tests-deploy — WHEN: the host can create a deployment without promoting it (e.g. Vercel).
-# needs: [bkit-tests-check, bkit-tests-build-web]. Push to {{DEFAULT_BRANCH}} only. NOT a required check.
-# Promotes the EXACT deployment_id bkit-tests-build-web published. Does not look the deployment up again
-# by SHA. A red job means the release did not happen; the previous deployment stays live.
+# needs: [bkit-tests-migration, bkit-tests-build-web]. Push to {{DEFAULT_BRANCH}} only. NOT a required check.
+# Own `concurrency:` group (`cancel-in-progress: false`), so two releases never overlap; the workflow-level
+# block queues on {{DEFAULT_BRANCH}} too. Runs BEFORE the E2E / @live lanes: each of those needs: it and
+# refuses unless production serves this run's build (by deployment id). Promotes the EXACT deployment_id
+# bkit-tests-build-web published. Does not look the deployment up again by SHA. A 409 is success only when
+# the body says this id is already current production. A red job means the release did not happen; the
+# previous deployment stays live. On a default-branch push the capstone needs: it, so a skipped or failed
+# deploy reds bkit-tests-check.
 # The host must not auto-build the default branch, and any "hold promotion until a check passes"
 # setting (e.g. Vercel Deployment Checks) stays empty — this job is the promotion.
 #

@@ -607,7 +607,7 @@ describe("detectCiYmlCapstoneContractDrift", () => {
     "name: CI\n" +
     "concurrency:\n" +
     "  group: ci-${{ github.workflow }}-${{ github.ref }}\n" +
-    "  cancel-in-progress: true\n" +
+    "  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}\n" +
     "jobs:\n" +
     "  bkit-tests-unit:\n" +
     "    outputs:\n" +
@@ -658,11 +658,23 @@ describe("detectCiYmlCapstoneContractDrift", () => {
   it("fires when concurrency cancels pull requests only", () => {
     writeCi(
       GOOD.replace(
-        "cancel-in-progress: true",
+        "cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}",
         "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
       ),
     );
     expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("one run per branch");
+  });
+
+  it("fires when concurrency cancels the default branch too (unconditional true)", () => {
+    writeCi(
+      GOOD.replace(
+        "cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}",
+        "cancel-in-progress: true",
+      ),
+    );
+    const action = detectCiYmlCapstoneContractDrift(tmpDir)?.action ?? "";
+    expect(action).toContain("one run per branch");
+    expect(action).toContain("QUEUING");
   });
 
   it("fires when the concurrency group is keyed on github.run_id", () => {

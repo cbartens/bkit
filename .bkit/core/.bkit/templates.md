@@ -18,6 +18,7 @@
 | Tool | Copy from | To | Output you commit |
 | --- | --- | --- | --- |
 | CI workflow | `.bkit/templates/.github/workflows/bkit-ci.yml` | `.github/workflows/bkit-ci.yml` | that file |
+| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/resolve-push-base.mjs`; `check-accepted-divergences.mjs` + `accepted-divergences.json`) |
 | Cloud-agent workflow | `.bkit/templates/.github/workflows/bkit-cloud.yml` | `.github/workflows/bkit-cloud.yml` | that file |
 | Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
 | Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |

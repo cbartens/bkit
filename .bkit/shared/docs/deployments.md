@@ -146,14 +146,14 @@ Confirm both before running phase closes from a cloud agent session.
 
 ## Run-level decision matrix
 
-Bkit ships a **mostly flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers once, computes `run_level` / optional `run_migration` / `tenant_target`, emits `bkit-test-plan` JSON) fans out to every lane — `bkit-tests-static` / `-unit` / `-build-web` / `-build-ios` / `-build-android` / `-integration` / `-e2e-web` / `-e2e-ios` / `-e2e-android` / `-live-web` / `-migration` / `-reset` / `-cleanup` — and `bkit-tests-check` joins them. `bkit-tests-deploy` runs after the capstone, on a push to the default branch only, and is not required. Static/unit/integration/build wait only on the planner. **Ordering edges:** when `bkit-tests-migration` owns the shared-remote migration apply, every lane that hits that database `needs:` it with `result != 'failure'`. `bkit-tests-reset` sits after migration and before those lanes. Do **not** gate `bkit-tests-live-web` behind static/unit/integration/e2e. Adopt only the lanes this repo has. Lane names and the adopt order: `testing.md` § CI test tiers. Before CI speed spend: **measure job graph, find pole**. The jobs above the reference in `bkit-ci.yml` are the any-repo starter. The **full CI scaffold reference** names each target job's `needs`, `if`, and step order. When a starter stub disagrees with that reference, follow the reference.
+Bkit ships a **mostly flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers once, computes `run_level` / optional `run_migration` / `tenant_target`, emits `bkit-test-plan` JSON) fans out to every lane — `bkit-tests-static` / `-unit` / `-build-web` / `-build-ios` / `-build-android` / `-integration` / `-e2e-web` / `-e2e-ios` / `-e2e-android` / `-live-web` / `-migration` / `-reset` / `-cleanup` — and `bkit-tests-check` joins them. `bkit-tests-deploy` runs on a push to the default branch only, promotes the release **before** the E2E / `@live` lanes run, and is not required. Static/unit/integration/build wait only on the planner. **Ordering edges:** when `bkit-tests-migration` owns the shared-remote migration apply, every lane that hits that database `needs:` it with `result != 'failure'`; on the default branch migration also waits for static / unit / integration / build-web before touching production's database. `bkit-tests-reset` sits after migration and before those lanes. On the default branch every tenant lane `needs:` `bkit-tests-deploy` and refuses unless production serves this run's build. Do **not** gate `bkit-tests-live-web` behind static/unit/integration/e2e. Adopt only the lanes this repo has. Lane names and the adopt order: `testing.md` § CI test tiers. Before CI speed spend: **measure job graph, find pole**. The jobs above the reference in `bkit-ci.yml` are the any-repo starter. The **full CI scaffold reference** names each target job's `needs`, `if`, and step order. When a starter stub disagrees with that reference, follow the reference.
 
 <!-- prettier-ignore -->
 | Run level | When | Runs | Defers |
 | --- | --- | --- | --- |
 | `none` | `[skip ci]` / `[skip actions]`, or `cache.outputs.skip == 'true'` (this SHA went green in the last 7 days); or release-PR mirror mode (the capstone copies the `dev` push run — § One CI run per dev commit). | Planner, then stop. | Every test lane. |
 | `partial` | Push to `dev` that came from a merged PR, and no `[force build]` / `[force full]`. | Static, unit, integration when `web_affected`, build lanes, migration. `@live` (`bkit-tests-live-web`) still runs on this push when `web_affected`. | `bkit-tests-e2e-web`. Deploy (not the default branch). |
-| `full` | Pull request; `workflow_dispatch`; push to `{{DEFAULT_BRANCH}}`; direct push to `dev` (no merged PR); `[force build]` / `[force full]`. | Partial's lanes, plus `bkit-tests-e2e-web` when `web_affected`. Same spec set as a push (`testing.md` § E2E on PRs). | `@live` off a PR and off a dispatch. `bkit-tests-deploy` only on a default-branch push, after the capstone, and it is not required. Health runs as `workflow_run` after CI. |
+| `full` | Pull request; `workflow_dispatch`; push to `{{DEFAULT_BRANCH}}`; direct push to `dev` (no merged PR); `[force build]` / `[force full]`. | Partial's lanes, plus `bkit-tests-e2e-web` when `web_affected`. Same spec set as a push (`testing.md` § E2E on PRs). | `@live` off a PR and off a dispatch. On a default-branch push, `bkit-tests-deploy` promotes **before** the E2E / `@live` lanes run; it is not required, and its own `concurrency:` group stops two releases overlapping. Health runs as `workflow_run` after CI. |
 
 Device lanes follow `plan.run_native_*`, not `run_level`. Same rule on a PR, a push (including `partial`), and a dispatch.
 
@@ -161,10 +161,10 @@ Device lanes follow `plan.run_native_*`, not `run_level`. Same rule on a PR, a p
 
 ```yaml
 group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
-cancel-in-progress: true
+cancel-in-progress: ${{ github.ref != 'refs/heads/{{DEFAULT_BRANCH}}' }}
 ```
 
-A newer run cancels the older one on every event. A pull request keys on its number; a push or dispatch keys on the ref, so a PR and a `dev` push still overlap. A `workflow_run` observer sees the latest run on that ref only.
+A newer run cancels the older one on every event **except the default branch, which queues**: that run promotes the deployment, so cancelling it mid-promote could strand production across two releases (§ Promote before the lanes). A pull request keys on its number; a push or dispatch keys on the ref, so a PR and a `dev` push still overlap. A `workflow_run` observer sees the latest run on that ref only.
 
 A push diffs against the head of the last successful CI run on that branch, not `github.event.before`. Fall back to `github.event.before` only when there is no such run or it is no longer an ancestor. A `workflow_dispatch` has no base commit: short-circuit the affected step to fully affected. `HEAD~1` is only for the delta gates on a dispatch. Markers are inert on dispatch; steer with inputs (§ Commit-message force tags). The planner parses markers once; every lane reads `plan.markers_present`. The only re-read of the commit or PR text is the workflow-level task-runner cache bust (e.g. `TURBO_FORCE`). Plan JSON: validate with `has()` / `!= null`. jq `//` treats `false` as absent and drops a real `run_live: false`.
 
@@ -231,7 +231,7 @@ Optional. A same-repo `dev` → `main` PR's head is the `dev` tip the `dev` push
 
 1. **A `dev` push resolves `run_level=full`.** Drop the merged-PR → `partial` arm from `Decide Run Level`; a `partial` push run skips E2E and the release PR inherits that.
 2. **A push run diffs against the last green push run's head**, not `github.event.before`. Else red run N, then an unrelated commit N+1, plans a green N+1 that never re-tests what N broke, and the mirror copies that green.
-3. **Promotion hangs off the push to `{{DEFAULT_BRANCH}}`** (`bkit-tests-deploy`; § Promote after the capstone), never off the PR check. Mirror = merge gate; default-branch push run = release gate.
+3. **Promotion hangs off the push to `{{DEFAULT_BRANCH}}`** (`bkit-tests-deploy`; § Promote before the lanes), never off the PR check. Mirror = merge gate; default-branch push run = release gate.
 
 **Operating it:**
 
@@ -334,13 +334,15 @@ If your host auto-deploys on push (Vercel / Netlify Git integration) while CI ap
 
 Latent until the first build-time DB read lands, so flag it in review when one is added. Note `bkit-tests-migration` proves migrations replay from empty **and** (on push) owns the remote apply; it still does nothing for build-vs-deploy host ordering, because this race is orthogonal to that gate (serialise migrate → deploy at the host).
 
-## Promote after the capstone (`bkit-tests-deploy`)
+## Promote before the lanes (`bkit-tests-deploy`)
 
-With `bkit-tests-deploy` adopted, the host does not auto-build the default branch. `bkit-tests-build-web` creates this SHA's deployment and leaves it un-promoted. The lanes test that URL. `bkit-tests-deploy` `needs: [bkit-tests-check, bkit-tests-build-web]`, runs on a push to the default branch only, and is not a required check. It promotes the exact `deployment_id` the build lane published. It does not look the deployment up again by SHA. A red deploy job means the previous deployment stays live.
+With `bkit-tests-deploy` adopted, the host does not auto-build the default branch. `bkit-tests-build-web` creates this SHA's deployment, polls it to ready, and publishes `deployment_url` + `deployment_id`; the production alias still serves the previous release. `bkit-tests-deploy` `needs: [bkit-tests-migration, bkit-tests-build-web]`, runs on a push to the default branch only, and is not a required check. It promotes the exact `deployment_id` the build lane published — it does not look the deployment up again by SHA — and a `409` is success only when the body says this id is already current production. On `{{DEFAULT_BRANCH}}` it runs **before** the E2E / `@live` lanes: each of those `needs:` it and starts by proving production serves this run's build (by deployment id), so a re-run after a rollback refuses instead of testing the old build and going green. A red deploy job means the release did not happen; production still serves the previous deployment.
+
+Two guards keep a release honest: the deploy job carries its own `concurrency:` group (`cancel-in-progress: false`, so two releases never overlap), and the workflow-level block queues on `{{DEFAULT_BRANCH}}` (§ One run per branch or pull request) so a newer push waits rather than cancelling a switch in flight. `bkit-tests-migration` waits for static / unit / integration / `build-web` before it touches production's database.
 
 Do not add a host-side "hold promotion until a named check passes" setting (e.g. Vercel Deployment Checks). That list stays empty. This job is the promotion. e.g. Vercel: `git.deploymentEnabled` for the default branch is false; auto-assign of production domains is off.
 
-Health (optional, `.github/workflows/health.yml`) runs on `workflow_run` after that CI run succeeds, and smokes the deployment this SHA promoted. Not a required check.
+The capstone `needs:` `bkit-tests-deploy`: on a default-branch push a skipped or failed deploy reds it. Health (optional, `.github/workflows/health.yml`) runs on `workflow_run` after that CI run succeeds, and smokes the deployment this SHA promoted. Not a required check.
 
 ## Disable GitHub Code Quality billing
 
