@@ -24,6 +24,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const VERCEL_API = "https://api.vercel.com";
 const SUPABASE_API = "https://api.supabase.com";
+const CURSOR_API = "https://api.cursor.com";
 // Seconds a remote "last updated" may trail the recorded push before it counts as an outside write.
 const CLOCK_SLACK = 120;
 const STATE_FILE = "bkit-secrets-state.json";
@@ -97,8 +98,10 @@ async function api(base, token, method, route, body) {
 
 // ── Stores ────────────────────────────────────────────────────────────────────
 // open(ctx) → { target, list(wanted), write(entries, onWritten), remove(names) }, or throws Skip.
-// list → Map NAME → { readable, fp?, updated? }: readable=false is a write-only store (parity from
-// the state file); readable with no fp means that value could not be read.
+// ctx = { env, value, store, root }. list → Map NAME → { readable, fp?, updated? }: readable=false is a
+// write-only store (parity from the state file); readable with no fp means that value could not be read.
+// Optional `protects(name)` on the adapter or its handle → true for platform-reserved names (never
+// written or deleted). A store is a built-in type (below) or `type: "custom"` + `module` (see loadConfig).
 
 const STORES = {
   github: {
@@ -393,6 +396,70 @@ const STORES = {
       };
     },
   },
+
+  cursor: {
+    label: "Cursor Cloud Agents secrets",
+    perEnv: false,
+    async open({ value, store }) {
+      const token =
+        process.env.CURSOR_API_KEY || value("CURSOR_API_KEY") || value("BKIT_CURSOR_API_KEY");
+      if (!token) throw new Error("need CURSOR_API_KEY (or BKIT_CURSOR_API_KEY) in the env files");
+      const call = (method, route, body) => api(CURSOR_API, token, method, route, body);
+      let envId = store.environmentId;
+      const envName = store.environment;
+      if (!envId) {
+        if (!envName)
+          throw new Error("need store option `environment` (name) or `environmentId` for cursor");
+        const items = (await call("GET", "/v1/environments"))?.items ?? [];
+        const match = items.find((e) => e.id === envName || e.name === envName);
+        if (!match)
+          throw new Error(
+            `Cursor environment "${envName}" not found (available: ${items.map((e) => e.name ?? e.id).join(", ") || "none"})`,
+          );
+        envId = match.id;
+      }
+      const base = `/v1/environments/${encodeURIComponent(envId)}/secrets`;
+      // Prefetch so `protects` can hide build_secret names during the engine's write pass.
+      let versions = (await call("GET", base))?.items ?? [];
+      // A name with several repo-scoped versions returns 409 without an explicit `?id=`.
+      const assertSingle = (n) => {
+        if (versions.filter((v) => v.name === n).length > 1)
+          throw new Error(
+            `${n}: several Cursor versions share this name (repo-scoped); the API needs an explicit version id — remove the extra versions in the Cursor dashboard`,
+          );
+      };
+      return {
+        target: envName || envId,
+        // build_secret versions exist only via the dashboard and cannot be written through the API.
+        protects: (n) => versions.some((v) => v.name === n && v.type === "build_secret"),
+        async list() {
+          versions = (await call("GET", base))?.items ?? [];
+          const live = new Map();
+          for (const v of versions)
+            live.set(v.name, {
+              readable: false,
+              updated: v.createdAt ? Date.parse(v.createdAt) / 1000 : undefined,
+            });
+          return live;
+        },
+        async write(list, onWritten) {
+          for (const e of list) {
+            assertSingle(e.name);
+            const type =
+              e.option === "environment_variable" ? "environment_variable" : "runtime_secret";
+            await call("PUT", `${base}/${encodeURIComponent(e.name)}`, { value: e.value, type });
+            onWritten(e.name);
+          }
+        },
+        async remove(names) {
+          for (const n of names) {
+            assertSingle(n);
+            await call("DELETE", `${base}/${encodeURIComponent(n)}`);
+          }
+        },
+      };
+    },
+  },
 };
 
 function readJson(p) {
@@ -418,6 +485,53 @@ function vercelCliToken() {
 
 const CONFIG_KEYS = new Set(["sources", "stores", "protected", "optional", "secrets"]);
 const SECRET_KEYS = new Set(["to", "from", "derive", "manual"]);
+const CUSTOM_STORE = "custom";
+
+// Resolve a store's adapter: a built-in STORES entry, or `type: "custom"` + `module` (repo-local).
+async function adapterFor(dir, name, opts) {
+  const type = opts.type ?? name;
+  if (type !== CUSTOM_STORE) {
+    if (!STORES[type])
+      throw new Error(
+        `bkit-secrets.config.mjs: store "${name}" has unknown type "${type}" (known: ${Object.keys(STORES).join(", ")}, ${CUSTOM_STORE})`,
+      );
+    return STORES[type];
+  }
+  if (!opts.module)
+    throw new Error(
+      `bkit-secrets.config.mjs: store "${name}" type "${CUSTOM_STORE}" needs a "module"`,
+    );
+  const file = path.resolve(dir, opts.module);
+  if (!fs.existsSync(file))
+    throw new Error(
+      `bkit-secrets.config.mjs: store "${name}" module "${opts.module}" not found at ${file}`,
+    );
+  const mod = await import(`${pathToFileURL(file).href}?t=${Date.now()}`);
+  const adapter = mod.default ?? mod;
+  const bad = (msg) => {
+    throw new Error(`bkit-secrets.config.mjs: store "${name}" module "${opts.module}": ${msg}`);
+  };
+  if (!adapter || typeof adapter !== "object") bad("default export must be an object");
+  if (typeof adapter.label !== "string") bad('needs a "label" string');
+  if (typeof adapter.open !== "function") bad('needs an "open" function');
+  if (adapter.perEnv !== undefined && typeof adapter.perEnv !== "boolean")
+    bad('"perEnv" must be a boolean');
+  for (const k of ["protects", "setOptions"])
+    if (adapter[k] !== undefined && typeof adapter[k] !== "function")
+      bad(`"${k}" must be a function`);
+  return adapter;
+}
+
+// The handle an adapter's open() returns: the engine's list / write / remove contract.
+function assertHandle(label, handle) {
+  const bad = (msg) => {
+    throw new Error(`${label}: open() ${msg}`);
+  };
+  if (!handle || typeof handle !== "object") bad("must return an object");
+  if (handle.target === undefined) bad('must return a "target"');
+  for (const m of ["list", "write", "remove"])
+    if (typeof handle[m] !== "function") bad(`must return a "${m}" function`);
+}
 
 // Validated config for repo tooling that needs the same scope (e.g. "which keys reach EAS"):
 //   const cfg = await loadConfig("scripts/secrets"); secretsFor(cfg, "eas")
@@ -428,14 +542,9 @@ export async function loadConfig(dir) {
     if (!CONFIG_KEYS.has(k)) throw new Error(`bkit-secrets.config.mjs: unknown key "${k}"`);
   if (!cfg.sources?.preview)
     throw new Error("bkit-secrets.config.mjs: sources.preview is required");
-  const stores = Object.entries(cfg.stores ?? {}).map(([name, opts]) => {
-    const type = opts.type ?? name;
-    if (!STORES[type])
-      throw new Error(
-        `bkit-secrets.config.mjs: store "${name}" has unknown type "${type}" (known: ${Object.keys(STORES).join(", ")})`,
-      );
-    return { name, opts, adapter: STORES[type] };
-  });
+  const stores = [];
+  for (const [name, opts] of Object.entries(cfg.stores ?? {}))
+    stores.push({ name, opts, adapter: await adapterFor(dir, name, opts) });
   const secrets = Object.entries(cfg.secrets ?? {}).map(([name, spec]) => {
     const s = typeof spec === "string" || Array.isArray(spec) ? { to: spec } : spec;
     for (const k of Object.keys(s))
@@ -512,13 +621,17 @@ function compare(fp, live, rec) {
 
 async function runTarget({ mode, store, env, cfg, src, state, root, log }) {
   const { adapter, name: storeName, opts } = store;
+  let handle;
   const isProtected = (n) =>
-    cfg.protected.has(n) || toArray(opts.protect).includes(n) || Boolean(adapter.protects?.(n));
+    cfg.protected.has(n) ||
+    toArray(opts.protect).includes(n) ||
+    Boolean(adapter.protects?.(n)) ||
+    Boolean(handle?.protects?.(n));
   const scoped = cfg.secrets.filter((s) => s.to.some((t) => t.store === storeName));
   const value = (k) => src.value(k, env);
-  let handle;
   try {
     handle = await adapter.open({ env, value, store: opts, root });
+    assertHandle(adapter.label, handle);
   } catch (err) {
     if (err instanceof Skip) {
       log(

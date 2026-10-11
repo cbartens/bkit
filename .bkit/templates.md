@@ -418,13 +418,15 @@ Do not run:
 
 ## Secrets sync — one source, every store
 
-Local gitignored env files = source of truth; `bkit-secrets.mjs sync` makes every store match, `drift` proves it. Needs Node >= 20 plus the CLI of each store used (`gh`, `eas`, `gcloud`); Vercel and Supabase go through their REST APIs.
+Local gitignored env files = source of truth; `bkit-secrets.mjs sync` makes every store match, `drift` proves it. Needs Node >= 20 plus the CLI of each store used (`gh`, `eas`, `gcloud`); Vercel, Supabase and Cursor go through their REST APIs.
 
 - Copy both files. Edit `bkit-secrets.config.mjs` only; `bkit-secrets.mjs` stays byte-identical across repos.
 - Config = one row per secret naming every store holding a copy: `DATABASE_URL: ["vercel", "gcp"]`. Options per row: `from` (env key differs from store name), `derive` (`"${APP_URL}/path"`), `manual` (copies no API reaches), `"eas:secret"` (per-store option).
 - Delete unused entries under `stores`; a store no row names is skipped.
 - `.gitignore`: `scripts/secrets/bkit-secrets-state.json`.
 - `.bkit/.env` overlay → agent / bkit tooling secrets only; app and stack credentials stay in app env files.
+- Cursor store: option `environment` (name) or `environmentId` picks the Cloud Agents environment (ids from `GET /v1/environments`); token `CURSOR_API_KEY` (or `BKIT_CURSOR_API_KEY`). Secrets are write-only; `NAME: "cursor:environment_variable"` writes a non-secret env var instead of a Runtime Secret. `build_secret` names exist only in the dashboard — never written or deleted. List only the names the cloud workflow needs: a first sync against a populated environment deletes every live name not listed (start with `--dry-run`).
+- Custom store: no upstream change → `type: "custom"` + `module` loads a repo-local adapter (see below).
 
 <!-- prettier-ignore -->
 | Command (`node scripts/secrets/bkit-secrets.mjs …`) | Does |
@@ -445,14 +447,14 @@ How `drift` proves a value without printing it:
 | Vercel (encrypted / plain) | per-variable API read (the list endpoint stays encrypted) | SHA-256 of live value vs source |
 | GCP Secret Manager | latest version | SHA-256 of live value vs source |
 | EAS (plaintext / sensitive) | `env:list --include-sensitive` | SHA-256 of live value vs source |
-| GitHub Actions, Supabase, Vercel sensitive, EAS `secret` | write-only | state-file fingerprint vs source (`not-pushed`); store's last-updated time after recorded push (`changed-elsewhere`) |
+| GitHub Actions, Supabase, Cursor, Vercel sensitive, EAS `secret` | write-only | state-file fingerprint vs source (`not-pushed`); store's last-updated time after recorded push (`changed-elsewhere`) |
 
 - No recorded push → `unverified`, never `ok`. First sync records one.
 - `bkit-secrets-state.json` = fingerprints + times only, per machine. Push from another machine or by hand → `changed-elsewhere` until next sync here.
 - `manual` copies listed on every `check` / `drift`; update by hand on rotation.
 - Vercel: branch-scoped preview vars left alone; an entry shared across environments is split before a write.
 
-New store type → entry in `STORES` of the template's `bkit-secrets.mjs` (`open` → `list` / `write` / `remove`; contract above it), never in a copy only.
+New store type → entry in `STORES` of the template's `bkit-secrets.mjs` (`open` → `list` / `write` / `remove`; contract above it), never in a copy only. A repo-local store needs no upstream change: `type: "custom"` + `module: "./stores/x.mjs"` (resolved against `scripts/secrets/`) loads a module whose default export carries `label` + `open` (optional `perEnv`, `protects`, `setOptions`); the engine validates the adapter at load and its `open()` handle at run.
 
 ## Prettier tables — keep table diffs to the changed row
 
