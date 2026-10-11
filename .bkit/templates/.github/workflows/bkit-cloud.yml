@@ -538,13 +538,14 @@ jobs:
 
       - name: Install opencode
         run: |
-          # Version-pinned via `--version`. No updater bumps this pin: take the new version from
-          # bkit's template when `bkit upgrade` lists this file, or bump it by hand.
-          # 2.0.x: the 2.0 line ships under the `@opencode/cli` package (npm latest 2.0.26);
-          # the 1.x line was `opencode-ai`. `opencode run` is headless-safe — it starts no
-          # shared background server, so the runner needs no daemon.
-          curl -fsSL --retry 3 --retry-all-errors https://opencode.ai/install | bash -s -- --version 2.0.26
-          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+          # Version-pinned. No updater bumps this pin: take the new version from bkit's
+          # template when `bkit upgrade` lists this file, or bump it by hand.
+          # 2.0.x ships ONLY on npm as `@opencode/cli` — there is no 2.x GitHub release (latest
+          # is v1.19.0), so the curl installer (https://opencode.ai/install downloads GitHub
+          # release binaries) cannot fetch 2.0.26. npm's postinstall selects the runner's
+          # platform binary.
+          npm install -g @opencode/cli@2.0.26
+          echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
 
       - name: Dispatch /bkit-auto on opencode runner
         env:

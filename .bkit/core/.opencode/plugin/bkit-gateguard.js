@@ -114,7 +114,7 @@ async function bkitGateGuardV1(hookInput, output) {
     const { tool, sessionID } = hookInput ?? {};
     if (!EDIT_TOOLS.has(tool)) return;
     const args = output?.args ?? {};
-    runBkitGateGuard(tool, args.path ?? args.file_path, sessionID);
+    runBkitGateGuard(tool, args.path ?? args.filePath ?? args.file_path, sessionID);
   } catch (err) {
     rethrowDenyMode(err);
   }

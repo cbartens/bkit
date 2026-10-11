@@ -629,6 +629,25 @@ describe("dual driver shape (OpenCode 1.x server() + 2.0 setup())", () => {
     expect(v1.stderrCaptured).toBe(v2.stderrCaptured);
   });
 
+  it("V1 driver reads the real 1.x arg key `filePath`", async () => {
+    // opencode 1.18.29+/1.19 send write/edit args as `{ filePath }`
+    // (packages/opencode/src/tool/write.ts:22, edit.ts:48). A `path`-only read no-ops,
+    // so GateGuard silently never fires on current 1.x.
+    const p = await loadPlugin();
+    const session = newSession();
+    const hookInput = { tool: "edit", sessionID: session, callID: "toolu_test_v1_filepath" };
+    const result = await invokeHookV1(
+      p,
+      orchestratorClient(),
+      hookInput,
+      { args: { filePath: "src/v1-filepath.ts" } },
+      { BKIT_GATEGUARD: undefined },
+    );
+    expect(result.threw).toBe(false);
+    expect(result.stderrCaptured).toContain("[bkit GateGuard]");
+    expect(isWarned(session, "src/v1-filepath.ts")).toBe(true);
+  });
+
   it("deny mode blocks the first touch on BOTH drivers", async () => {
     const p = await loadPlugin();
     const v1Input = editHookInput("src/twin-deny-a.ts", newSession());

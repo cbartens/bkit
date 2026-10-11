@@ -296,8 +296,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
       expect(formatModelPin("opencode", "opencode-zen", model)).toMatch(/^opencode\//);
       expect(formatModelPin("opencode", "opencode-zen", model)).not.toMatch(/^opencode-zen\//);
     }
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("kimi-k2.7-code"); // opus
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("kimi-k2.7-code"); // sonnet — qwen3.6-plus was strictly dominated (lower score, 4x cost)
+    // opus + sonnet pin deepseek-v4.1-flash — kimi-k2.7-code exposes no model variants, so a
+    // `variant:` pin there hard-errors on OpenCode 2.0 (V4.1 Flash exposes them).
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash"); // sonnet
     expect(lookup.get("bkit-design-summary")).toBe("glm-5.3-flash"); // haiku
     expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4-pro"); // convergent
   });

@@ -293,7 +293,7 @@ describe("launchApp — warns but still launches when app already running", () =
       // OpenCode 2.0's shared background server is why the fresh .bkit/.env is ignored.
       expect(msg).toMatch(/shared background server/i);
       expect(msg).toMatch(/2\.0/);
-      expect(msg).toMatch(/pkill -f opencode/);
+      expect(msg).toMatch(/opencode service stop/);
     } finally {
       delete process.env["BKIT_OPENCODE_BIN"];
       warnSpy.mockRestore();

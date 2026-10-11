@@ -96,11 +96,12 @@ export async function launchApp(app, cwd) {
             `and re-run: pnpm bkit ${app}` +
             (app === "opencode"
                 ? `\n\n  OpenCode 2.0 runs one shared background server for every client (TUI, web,\n` +
-                    `  desktop). The server captured its environment when it first started, so a\n` +
-                    `  newly opened window talks to that server and still sees the OLD env — the\n` +
-                    `  per-repo tokens in .bkit/.env are not picked up even after a fresh launch.\n` +
-                    `  Stop the server before re-launching (e.g. pkill -f opencode — which also\n` +
-                    `  quits the desktop app), then re-run: pnpm bkit opencode`
+                    `  desktop) and captures its environment once, at first start. A newly opened\n` +
+                    `  window talks to that server and still sees the OLD env, so the per-repo tokens\n` +
+                    `  in .bkit/.env are not picked up. Stop the shared server, then re-launch:\n` +
+                    `      opencode service stop && pnpm bkit opencode\n` +
+                    `  (that stops every opencode window, not just this one; quitting the app fully\n` +
+                    `  and re-running works too)`
                 : ""));
     }
     // Cursor: pass repo dir so it opens the folder. opencode: no positional needed

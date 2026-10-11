@@ -39,11 +39,16 @@ export function opencodeToolsBlock(toolsBlock) {
 }
 /**
  * OC1: opencode agent frontmatter rewrite.
- * Emits: mode, name, description, model, tools (Claude array → opencode object map).
- * The effort table's value for this agent is joined to the model as a `#variant`
- * (`provider/model#max`), which is how OpenCode 2.0 expresses thinking effort. Drops:
- * Claude-only fields (permissionMode, maxTurns, is_background, readonly) and the
- * original effort field. Hard-fails with non-zero exit if model lookup missing for name.
+ * Emits: mode, name, description, model, tools (Claude array → opencode object map),
+ * variant (the effort table's value for this agent, from the one shared "OpenCode"
+ * ladder). The variant is a SEPARATE field, not a `#`-suffix on the model: 1.x reads
+ * `variant:` natively, 2.0 joins `model` + `variant` internally, and a variant joined
+ * to the model string with `#` breaks 1.x (its model id lookup keeps the suffix). The
+ * ollama gateway is exempt from `variant:` — its provider builds model entries with no
+ * variants, so any variant there is a hard 2.0 error; omit it and let opencode use its
+ * own default. Drops: Claude-only fields (permissionMode, maxTurns, is_background,
+ * readonly) and the original effort field. Hard-fails with non-zero exit if model
+ * lookup missing for name.
  */
 export function applyOpencodeAgent(content, opencodeModelLookup, effortMap, provider) {
     const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
@@ -75,12 +80,16 @@ export function applyOpencodeAgent(content, opencodeModelLookup, effortMap, prov
     else {
         newFm += `description: ${description}\n`;
     }
-    // OpenCode 2.0 carries thinking effort as a model variant joined with `#`, not as a
-    // separate field. Program-keyed: every opencode gateway shares the one "OpenCode"
-    // ladder; the gateway is not consulted.
+    // Thinking effort is a model variant in its own `variant:` field. Program-keyed: every
+    // opencode gateway shares the one "OpenCode" ladder; the gateway is not consulted —
+    // except ollama, which cannot carry a variant at all (see the function docstring).
     const modelPin = formatModelPin("opencode", provider ?? "", opencodeModel);
-    const variant = effort && effortMap ? lookupEffort(effortMap, "opencode", effort) : null;
-    newFm += `model: ${variant ? `${modelPin}#${variant}` : modelPin}\n`;
+    newFm += `model: ${modelPin}\n`;
+    const variant = provider !== "ollama" && effort && effortMap
+        ? lookupEffort(effortMap, "opencode", effort)
+        : null;
+    if (variant)
+        newFm += `variant: ${variant}\n`;
     newFm += opencodeToolsBlock(toolsBlock);
     newFm += "---\n";
     return newFm + afterFm;

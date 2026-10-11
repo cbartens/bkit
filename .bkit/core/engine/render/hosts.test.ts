@@ -487,12 +487,13 @@ describe("applyOpencodeAgent", () => {
 
   it("emits mode: subagent, name, description, model", () => {
     const input = `---\nname: build-plan\ndescription: Execute plan tasks\neffort: medium\nmodel: claude-sonnet-4-6\ntools:\n  - Read\n  - Edit\npermissionMode: acceptEdits\nmaxTurns: 100\n---\nBody here.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "openrouter");
     expect(result).toContain("mode: subagent");
     expect(result).toContain("name: build-plan");
     expect(result).toContain("description: Execute plan tasks");
-    // effort: medium → the variant joins the model pin as `#high`.
-    expect(result).toContain("model: ollama/qwen2.5:7b#high");
+    // effort: medium → a separate `variant:` field (never a `#`-suffix on the model).
+    expect(result).toContain("model: openrouter/qwen2.5:7b\n");
+    expect(result).toContain("variant: high\n");
     expect(result).toContain("tools:");
   });
 
@@ -520,39 +521,51 @@ describe("applyOpencodeAgent", () => {
     expect(result).not.toContain("mcp__");
   });
 
-  it("joins effort: medium → model variant #high (OpenCode column ceilings out)", () => {
+  it("maps effort: medium → variant: high (OpenCode column ceilings out)", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
-    expect(result).toContain("model: ollama/qwen2.5:7b#high");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "openrouter");
+    expect(result).toContain("model: openrouter/qwen2.5:7b\n");
+    expect(result).toContain("variant: high\n");
+    expect(result).not.toContain("qwen2.5:7b#");
     expect(result).not.toContain("effort:");
     expect(result).not.toContain("reasoningEffort:");
   });
 
-  it("joins effort: high → model variant #max", () => {
+  it("maps effort: high → variant: max", () => {
     const input = `---\nname: design-synthesize\ndescription: desc\neffort: high\nmodel: claude-opus-4-8\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
-    expect(result).toContain("model: ollama/qwen2.5:14b#max");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "openrouter");
+    expect(result).toContain("model: openrouter/qwen2.5:14b\n");
+    expect(result).toContain("variant: max\n");
   });
 
-  it("joins effort: xhigh → model variant #max", () => {
+  it("maps effort: xhigh → variant: max", () => {
     const input = `---\nname: design-synthesize\ndescription: desc\neffort: xhigh\nmodel: claude-opus-4-8\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
-    expect(result).toContain("model: ollama/qwen2.5:14b#max");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "openrouter");
+    expect(result).toContain("variant: max\n");
   });
 
-  it("joins effort: low → model variant #none", () => {
+  it("maps effort: low → variant: none", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-haiku-4-5-20251001\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
-    expect(result).toContain("model: ollama/qwen2.5:7b#none");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "openrouter");
+    expect(result).toContain("variant: none\n");
   });
 
-  it("joins effort: max → model variant #max", () => {
+  it("maps effort: max → variant: max", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: max\nmodel: claude-opus-4-8\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
-    expect(result).toContain("model: ollama/qwen2.5:7b#max");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "openrouter");
+    expect(result).toContain("variant: max\n");
   });
 
-  it("opencode provider column: medium → #high, high/xhigh → #max, low → #none", () => {
+  it("omits the variant on the ollama gateway — its provider exposes no model variants", () => {
+    // ollama builds its catalog with no `variants` at all, so any `variant:` is a hard
+    // 2.0 error. The model runs at opencode's own default instead.
+    const input = `---\nname: build-plan\ndescription: desc\neffort: high\nmodel: claude-opus-4-8\n---\nBody.\n`;
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
+    expect(result).toContain("model: ollama/qwen2.5:7b\n");
+    expect(result).not.toContain("variant:");
+  });
+
+  it("opencode provider column: medium → variant high, high/xhigh → max, low → none", () => {
     const zaiLookup = new Map([
       ["build-plan", "glm-5.1"],
       ["design-synthesize", "glm-5.2"],
@@ -564,7 +577,7 @@ describe("applyOpencodeAgent", () => {
         effortMap,
         "openrouter",
       ),
-    ).toContain("model: openrouter/glm-5.1#high");
+    ).toContain("model: openrouter/glm-5.1\nvariant: high\n");
     expect(
       applyOpencodeAgent(
         `---\nname: design-synthesize\ndescription: desc\neffort: high\nmodel: claude-opus-5\n---\nBody.\n`,
@@ -572,7 +585,7 @@ describe("applyOpencodeAgent", () => {
         effortMap,
         "openrouter",
       ),
-    ).toContain("model: openrouter/glm-5.2#max");
+    ).toContain("model: openrouter/glm-5.2\nvariant: max\n");
     expect(
       applyOpencodeAgent(
         `---\nname: design-synthesize\ndescription: desc\neffort: xhigh\nmodel: claude-opus-5\n---\nBody.\n`,
@@ -580,7 +593,7 @@ describe("applyOpencodeAgent", () => {
         effortMap,
         "openrouter",
       ),
-    ).toContain("model: openrouter/glm-5.2#max");
+    ).toContain("model: openrouter/glm-5.2\nvariant: max\n");
     expect(
       applyOpencodeAgent(
         `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-haiku-4-5-20251001\n---\nBody.\n`,
@@ -588,7 +601,7 @@ describe("applyOpencodeAgent", () => {
         effortMap,
         "openrouter",
       ),
-    ).toContain("model: openrouter/glm-5.1#none");
+    ).toContain("model: openrouter/glm-5.1\nvariant: none\n");
   });
 
   it("drops Claude-only fields: permissionMode, maxTurns, is_background, readonly", () => {
