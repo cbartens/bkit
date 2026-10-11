@@ -44,6 +44,7 @@ maxTurns: 100
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Update roadmap; do not just analyse; do not write implementation code; NEVER append ledger rows.
+- **Completeness:** every `bkit:` marker pair intact; content outside `roadmap-analysis` unchanged.
 - **Tracker:** Read-only; never create, close, or relabel issues; recommend and let caller act.
 
 **Process:**
@@ -60,8 +61,7 @@ maxTurns: 100
 10. Group items sharing scope or blocking each other; group by domain boundaries, never token count; treat items done together as one list item.
 11. Per item → suggest bkit command to run (or call it too small for bkit process), and recommend model tier to use; recommend to use `@bkit-audit-generate` to generate audit reports.
 12. Update content in `docs/roadmap.md` between markers `<!-- bkit:roadmap-analysis start -->` and `<!-- bkit:roadmap-analysis end -->` only via `Edit`.
-13. Re-read `docs/roadmap.md` → assert every `bkit:` marker pair intact and everything outside `roadmap-analysis` block unchanged since refresh above, both `Notes` blocks included. **If** not intact → restore via `Edit`.
-14. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+13. Final return: Display output format verbatim as final message to user; do not summarise or trim.
 
 **Output format:**
 

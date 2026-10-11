@@ -40,17 +40,18 @@ maxTurns: 50
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Verify `docs/templates/bkit-plan.md` — all mandated sections present and populated.
+5. Verify `docs/templates/bkit-plan.md` — all mandated sections present and populated. Missing / broken → `CRITICAL`.
 6. Verify every `Agent Execution Runbook` task has scope, `Done when`, and verification step.
 7. Verify every scope item has both build task and verification task.
-8. Verify `Derived Test Matrix` ↔ `Agent Execution Runbook`: rows map 1:1 (bidirectional) to verification tasks. Gaps → add task or row.
+8. Verify `Derived Test Matrix` ↔ `Agent Execution Runbook`: rows map 1:1 (bidirectional) to verification tasks. Gaps → `CRITICAL` finding naming the task or row to add.
 9. Identify gaps, edge cases, untested assumptions, missing error handling.
 10. Replaced / superseded code → `Supersession Inventory` with DELETE / RETAIN-with-REASON. Missing → `CRITICAL`.
 11. Introduced capability → `Reuse Inventory` row per template. Missing row, empty `Search performed`, rejected `NEW` reason, or untraced `[NEW]` / `EXTEND` row → `CRITICAL`.
 12. `Out of Scope` entries `Exempt` per template. Required work parked out of scope = `Blocking` → `CRITICAL`.
 13. No task scopes edits inside `bkit:start` / `bkit:end` blocks; always edit below `bkit:end`.
 14. Sort findings: `CRITICAL` / OPTIONAL / OUT OF SCOPE.
-15. Update **Create** — set `Verdict` via `Edit`; mapping:
+15. Update **Create** — set `Failures` via `Edit` = `CRITICAL` count; do not count incomplete findings.
+16. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = scope complete.
     - `FAIL` = template broken or matrix-to-runbook mapping unrecoverable.
     - `CONCERNS` = `CRITICAL` gaps (apply via plan-update).

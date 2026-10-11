@@ -54,11 +54,11 @@ Lens: Pragmatic — existing code, minimal new infra, ship fastest.
 
 ## Approach A — [Name (e.g. "Single-table inheritance")] ⭐ Recommended
 
-[Summary (one sentence), `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility (future-change handling), Risk (main failure mode), Maintenance (ongoing cost)]
+[Summary (one sentence), `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility (future-change handling), Risk (main failure mode), Maintenance (ongoing cost), Reuse vs new (existing code / infra leveraged vs net-new)]
 
 ## Approach B — [Name]
 
-[Summary, `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility, Risk, Maintenance]
+[Summary, `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility, Risk, Maintenance, Reuse vs new]
 
 ## Approach C — [Name (optional)]
 

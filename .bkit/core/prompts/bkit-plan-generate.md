@@ -30,6 +30,7 @@ maxTurns: 100
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Generate plan; do not just analyse; do not build, install, or write code.
+- **Completeness:** plan carries every `docs/templates/bkit-plan.md` section; no `PENDING` left.
 - **Workstreams:** **If** input includes workstream directives → plan must cover only specified workstream scopes. Treat any provided parent design as context only, not backlog. Surface required workstream dependencies at top of plan.
 - **Audits:** **If** input includes audit findings → plan must cover only specified findings. Treat rest of audit report as context only, not backlog.
 - **No anchor authoring:** Do not author `<!-- bkit:anchor` block.
@@ -65,7 +66,6 @@ maxTurns: 100
 11. Execution:
     - `Agent Execution Runbook`.
     - `Verification Plan` from Test Matrix and Execution Runbook.
-12. Re-read **Create** → assert template structure intact per `docs/templates/bkit-plan.md`; no `PENDING` left. **If** not intact → restore via `Edit`.
 
 **Output format:**
 

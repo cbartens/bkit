@@ -118,7 +118,7 @@ Verify every return; do NOT assume success.
 ### no-commits
 
 - prompt: if-bash
-- except: bkit-ship-conflict-resolve
+- except: bkit-ship-conflict-resolve, bkit-debug-failure-remediate
 - position: header
 
 ```text
@@ -340,6 +340,15 @@ Produce **Create** output.
 Update **Create** — set `Verdict` via `Edit`; mapping:
 ```
 
+### set-failures
+
+- prompt: where-used
+- except: bkit-build-challenge-reconcile
+
+```text
+Update **Create** — set `Failures` via `Edit` = `CRITICAL` count; do not count incomplete findings.
+```
+
 ### display-verbatim
 
 - prompt: where-used
@@ -366,6 +375,10 @@ Display output format verbatim as final message to user; do NOT summarise or tri
 - prompt: where-used
 
 ```text
+**Output cap:** Apply max 500 token limit to **Create** prose; sections that list items verbatim are exempt.
+```
+
+```retired
 **Output cap:** Apply max 500 token limit to **Create** outputs; no other output limits.
 ```
 

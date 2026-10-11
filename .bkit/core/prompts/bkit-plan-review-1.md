@@ -40,7 +40,7 @@ maxTurns: 100
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Verify strict adherence to `docs/templates/bkit-plan.md` — all template-mandated sections present and populated.
+5. Verify strict adherence to `docs/templates/bkit-plan.md` — all template-mandated sections present and populated. Broken structure → `CRITICAL`.
 6. **If** `Acceptance Scenario` or `Derived Test Matrix` sections missing / vague → `CRITICAL`. Any `Open Questions & Assumptions` question off template shape → OPTIONAL findings naming missing parts.
 7. Verify plan reflects source — no drift, no omissions, no silent expansion.
    - Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced) → all design sections map to plan tasks or out-of-scope notes; declared non-goals excluded. Design-required sections parked out of scope / missing → `CRITICAL`.
@@ -52,7 +52,8 @@ maxTurns: 100
 11. `Suggested Scope Expansion`: From `related-*.md` context overlapping plan surfaces → candidates per template. Advisory only; never `CRITICAL`.
 12. `Agent Execution Runbook` tasks carry `Done when` per template. Missing / vague → `CRITICAL`.
 13. Sort findings into standard three categories (`CRITICAL` / OPTIONAL / OUT OF SCOPE).
-14. Update **Create** — set `Verdict` via `Edit`; mapping:
+14. Update **Create** — set `Failures` via `Edit` = `CRITICAL` count; do not count incomplete findings.
+15. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no `CRITICAL` items.
     - `FAIL` = template structure broken (sections missing / reordered); content gaps → `CRITICAL`.
     - `CONCERNS` = `CRITICAL` items flagged for orchestrator merge.
