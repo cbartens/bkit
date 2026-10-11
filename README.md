@@ -112,11 +112,9 @@ You need a GitHub repo, Node 20+, pnpm, and at least one of Claude Code, Cursor,
 
 **Easiest:** copy the [install prompt](.bkit/install.md#install--first-time) into your AI coding tool and let it do the setup.
 
-**By hand:** bkit is currently published to GitHub Packages, so you need a classic GitHub token with `read:packages` scope ([create one](https://github.com/settings/tokens)).
+**By hand:** no token or registry setup — bkit is public on npmjs and installs like any other package.
 
 ```bash
-echo "@cbartens:registry=https://npm.pkg.github.com" >> .npmrc
-pnpm config set "//npm.pkg.github.com/:_authToken=<your-token>"
 pnpm add -D @cbartens/bkit
 pnpm bkit install --claude    # pick your tools: --claude --cursor --codex --opencode=<provider>
 ```
@@ -127,7 +125,7 @@ Adopt the templates you want from `.bkit/templates/`, then open an issue and run
 /bkit-design ISSUE-123
 ```
 
-Full install, upgrade and CI/Vercel token setup: [`.bkit/install.md`](.bkit/install.md).
+Full install, upgrade and CI setup: [`.bkit/install.md`](.bkit/install.md).
 
 ## FAQ
 
