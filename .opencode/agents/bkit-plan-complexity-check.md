@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-plan-complexity-check
 description: Senior engineer estimating whether plans fit a single high-quality execution session.
-model: openrouter/deepseek/deepseek-v4.1-flash#high
+model: openrouter/deepseek/deepseek-v4.1-flash
+variant: high
 tools:
   read: true
   grep: true

@@ -79,7 +79,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Risks
 
-[Summarise: unresolved issues, fragile fixes, env/timing concerns to track but no action this cycle (informational; distinct from `Action Items` below); initially set to `PENDING`.]
+[Summarise: unresolved issues, fragile fixes, env / timing concerns to track but no action this cycle (informational; distinct from `Action Items` below); initially set to `PENDING`.]
 
 ## Action Items
 

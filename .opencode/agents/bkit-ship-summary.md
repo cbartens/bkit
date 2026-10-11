@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-ship-summary
 description: Senior reviewer evaluating ship cycles for completion and follow-up needs.
-model: openrouter/z-ai/glm-5.3-flash#max
+model: openrouter/z-ai/glm-5.3-flash
+variant: max
 tools:
   read: true
   write: true
@@ -65,7 +66,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Recommended Next Step
 
-[Copy-paste handoff. Advisory only, NEVER auto-trigger. `<ref>` = issue reference recovered from `FID` in Create path — numeric issue segment (`160-slug` → `#160`), prefixed issue segment (`abc-123-slug` → `ABC-123`), no issue segment i.e. no tracker wired (`my-branch-slug` → omit `<ref>`, emit `<cmd>` alone). `PASS|CONCERNS` → no command (feature merged; note any post-merge monitoring); `FAIL` → fix merge blocker, then `/bkit-ship`. Emit `text` block: `<cmd> <ref>` if any (else the plain line `No further bkit command — feature shipped.`), then `Brief: <post-merge follow-ups or the blocker — 1-3 lines>`. Initially set to `PENDING`.]
+[Copy-paste handoff. Advisory only, NEVER auto-trigger. `<ref>` = issue reference recovered from `FID` in Create path — numeric issue segment (`160-slug` → `#160`), prefixed issue segment (`abc-123-slug` → `ABC-123`), no issue segment i.e. no tracker wired (`my-branch-slug` → omit `<ref>`, emit `<cmd>` alone). `PASS|CONCERNS` → no command (feature merged; note any post-merge monitoring); `FAIL` → fix merge blocker, then `/bkit-ship`. Emit `text` block: **If** a `<ref>` exists → `<cmd> <ref>`; **Else** → the plain line `No further bkit command — feature shipped.`. Then `Brief: <post-merge follow-ups or the blocker — 1-3 lines>`. Initially set to `PENDING`.]
 
 ## Deferred & Out-of-Scope
 

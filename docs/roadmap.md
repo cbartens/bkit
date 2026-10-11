@@ -11,7 +11,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-09-16T08:59:40Z)_
+_(refreshed 2026-10-11T03:57:20Z)_
 
 ### Design
 

@@ -95,5 +95,5 @@ $ARGUMENTS
 ### 🔒 Gate 2 — Dispatch
 
 - [ ] `{REF}` derived (`#N` GitHub / `ABC-123` Linear)
-- [ ] Phase skill invoked with correct arguments (`{FID} {REF}` ship/debug, `{REF}` design/plan/build)
+- [ ] Phase skill invoked with correct arguments (`{FID} {REF}` ship / debug, `{REF}` design / plan / build)
 - [ ] Orchestrator exits and the dispatched skill owns the session

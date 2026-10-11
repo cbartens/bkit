@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-build-challenge-reconcile
 description: Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
-model: openrouter/deepseek/deepseek-v4.1-flash#max
+model: openrouter/deepseek/deepseek-v4.1-flash
+variant: max
 tools:
   read: true
   grep: true

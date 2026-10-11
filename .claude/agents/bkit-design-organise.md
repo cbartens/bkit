@@ -47,7 +47,7 @@ maxTurns: 100
 5. Group design work into workstreams at identified boundaries. No workstream target count; granularity follows logical seams.
 6. Per workstream: assign stable ID `WS-{N}`; identify `Requires` (other workstream IDs). `Requires` mandatory; empty `[]` only for root workstream without upstream prerequisites.
 7. Append workstream sections to **Create** output via `Edit` at end of file.
-8. Self-verify (mandatory before verdict; max 2 fix iterations, **If** still failing → `FAIL`):
+8. Self-verify before verdict (max 2 fix iterations); **If** still failing → `FAIL`:
    - Extract all major design elements: Architecture components, data model entities, component / flow items, decisions, open questions.
    - Confirm every element addressed in at least one workstream scope. **If** gap → assign to appropriate workstream and recheck.
    - Confirm every `Requires` ID refers to existing workstream. **If** dangling reference → fix and recheck.

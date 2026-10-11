@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-ship-deferred-sweep
 description: Senior reviewer gating ships on intended-vs-actual completeness and resurfacing declared deferred work.
-model: openrouter/deepseek/deepseek-v4.1-flash#max
+model: openrouter/deepseek/deepseek-v4.1-flash
+variant: max
 tools:
   read: true
   grep: true
@@ -43,7 +44,7 @@ tools:
 6. Scan plan `Acceptance Scenario` sections and `Done when` lines for intended deliverables → record each under `Planned vs Delivered` with where, when, and why and mark item `Planned`; unmet preconditions, build process steps, or merge conditions in plan (even as part of `Done when`) are advisory only → record under `Exempt Deferrals`. **If** no plan file exists → outcome as worded is the bar.
 7. Per intended deliverable item under `Planned vs Delivered` → assert codebase satisfies deliverable:
    - **If** satisfied (files exist, function signatures match, tests pass, behaviours observed) → mark item `Delivered` → continue.
-   - **Else** unmet gap → apply blocking tests:
+   - **Else** → apply blocking tests to the unmet gap:
      - **If** deliverable itself absent, stub only, or produces wrong observable result, shown by named files, symbols, or failing tests and NEVER inferred from plan sentences → mark item `Blocked`.
      - **If** guards removed / weakened (auth, validation, data-loss, secret handling), or paths known to be broken → mark item `Blocked`.
      - **If** shipped surfaces instruct consumers to run something that fails at runtime → mark item `Blocked`.

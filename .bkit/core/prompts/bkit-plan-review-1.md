@@ -43,7 +43,7 @@ maxTurns: 100
 5. Verify strict adherence to `docs/templates/bkit-plan.md` — all template-mandated sections present and populated.
 6. **If** `Acceptance Scenario` or `Derived Test Matrix` sections missing / vague → `CRITICAL`. Any `Open Questions & Assumptions` question off template shape → OPTIONAL findings naming missing parts.
 7. Verify plan reflects source — no drift, no omissions, no silent expansion.
-   - Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design sections map to plan tasks OR out-of-scope notes; declared non-goals excluded. Design-required sections parked out of scope / missing → `CRITICAL`.
+   - Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced) → all design sections map to plan tasks OR out-of-scope notes; declared non-goals excluded. Design-required sections parked out of scope / missing → `CRITICAL`.
    - Sub-plans: Respect declared coverage scopes if produced — flag only items inside their slice.
    - Expansion: Plan tasks with no source justification → `CRITICAL`.
 8. Cross-check architecture, knowledge, decisions.

@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-debug-summary
 description: Senior reviewer evaluating debug-loop outcome and remaining risk.
-model: openrouter/z-ai/glm-5.3-flash#max
+model: openrouter/z-ai/glm-5.3-flash
+variant: max
 tools:
   read: true
   write: true
@@ -79,7 +80,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Risks
 
-[Summarise: unresolved issues, fragile fixes, env/timing concerns to track but no action this cycle (informational; distinct from `Action Items` below); initially set to `PENDING`.]
+[Summarise: unresolved issues, fragile fixes, env / timing concerns to track but no action this cycle (informational; distinct from `Action Items` below); initially set to `PENDING`.]
 
 ## Action Items
 

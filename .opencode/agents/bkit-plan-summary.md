@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-plan-summary
 description: Senior reviewer evaluating completed plans for build-readiness.
-model: openrouter/z-ai/glm-5.3-flash#max
+model: openrouter/z-ai/glm-5.3-flash
+variant: max
 tools:
   read: true
   write: true

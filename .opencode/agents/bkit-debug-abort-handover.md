@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-debug-abort-handover
 description: Senior incident commander writing clear, calm handovers when automation cannot proceed.
-model: openrouter/deepseek/deepseek-v4.1-flash#high
+model: openrouter/deepseek/deepseek-v4.1-flash
+variant: high
 tools:
   read: true
   write: true
@@ -71,11 +72,11 @@ tools:
 
 ## Persistent Errors
 
-[Failed jobs/requirements, files, exact error messages, event sequence; initially set to `PENDING`.]
+[Failed jobs / requirements, files, exact error messages, event sequence; initially set to `PENDING`.]
 
 ## Recommended Next Steps
 
-[3-4 options ranked effort/impact. Each: ✅ FIXES, ❌ DOES NOT FIX, ⚠️ COST; initially set to `PENDING`.]
+[3-4 options ranked effort / impact. Each: ✅ FIXES, ❌ DOES NOT FIX, ⚠️ COST; initially set to `PENDING`.]
 
 ## Recommended Path
 

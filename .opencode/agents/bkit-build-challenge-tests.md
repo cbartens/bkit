@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-build-challenge-tests
 description: Senior QE engineer specialising in edge-case test design and regression coverage.
-model: openrouter/deepseek/deepseek-v4.1-flash#max
+model: openrouter/deepseek/deepseek-v4.1-flash
+variant: max
 tools:
   read: true
   grep: true

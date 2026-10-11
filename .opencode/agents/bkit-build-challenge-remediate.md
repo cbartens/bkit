@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-build-challenge-remediate
 description: Senior engineer applying targeted code fixes against prioritised review reports.
-model: openrouter/deepseek/deepseek-v4.1-flash#max
+model: openrouter/deepseek/deepseek-v4.1-flash
+variant: max
 tools:
   read: true
   grep: true
@@ -40,17 +41,17 @@ tools:
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Read challenge findings (priority `CRITICAL` → `HIGH` → `MEDIUM` → `LOW`, class architectural → mechanical) and all logs (`DONE` = done, `BLOCKED` = blocked) → find first finding NOT `DONE` → resume.
-5. Update **Create** after each finding — append `DONE` / `BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
-6. ANY finding with `class` = architectural → append `BLOCKED` → proceed to next.
-7. Implement in priority order — apply suggested remediation per finding (edit / create source) → append log → next finding.
+4. Read challenge findings (`priority` `CRITICAL` → `HIGH` → `MEDIUM` → `LOW`; `class` `architectural` → `mechanical`) and all logs (`DONE` = done, `BLOCKED` = blocked) → find first finding NOT `DONE` → resume.
+5. Update **Create** after each finding — append `DONE|BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
+6. ANY finding with `class` = `architectural` → append `BLOCKED` → proceed to next.
+7. Implement in `priority` order — apply suggested remediation per finding (edit / create source) → append log → next finding.
 8. Run `pnpm bkit:gate:static-unit` — ALL local tests MUST pass.
 9. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 10. For all `BLOCKED` findings (no later `DONE`) → name `Deferral Reason` per `.bkit/jsonl.md` and check justifications. **If** none valid = NOT valid deferral → FINISH work. **Else** → append deferral rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 11. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = every finding has `DONE` across logs AND local tests pass.
-    - `FAIL` = unable to remediate; any `class` = architectural or `CRITICAL` finding ends `BLOCKED` with NO later `DONE` OR local tests fail.
-    - `CONCERNS` = lower-severity findings end `BLOCKED` with NO later `DONE` across logs.
+    - `FAIL` = unable to remediate; any `class` = `architectural` or `CRITICAL` finding ends `BLOCKED` with NO later `DONE` OR local tests fail.
+    - `CONCERNS` = findings with lower `severity` end `BLOCKED` with NO later `DONE` across logs.
 
 **Output format:**
 

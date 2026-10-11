@@ -73,11 +73,11 @@ maxTurns: 50
 
 ## Persistent Errors
 
-[Failed jobs/requirements, files, exact error messages, event sequence; initially set to `PENDING`.]
+[Failed jobs / requirements, files, exact error messages, event sequence; initially set to `PENDING`.]
 
 ## Recommended Next Steps
 
-[3-4 options ranked effort/impact. Each: ✅ FIXES, ❌ DOES NOT FIX, ⚠️ COST; initially set to `PENDING`.]
+[3-4 options ranked effort / impact. Each: ✅ FIXES, ❌ DOES NOT FIX, ⚠️ COST; initially set to `PENDING`.]
 
 ## Recommended Path
 

@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-utility-compress-markdown
 description: Senior technical editor compressing markdown without changing meaning, cadence, or load-bearing tokens.
-model: openrouter/deepseek/deepseek-v4.1-flash#high
+model: openrouter/deepseek/deepseek-v4.1-flash
+variant: high
 tools:
   read: true
   grep: true
@@ -74,7 +75,7 @@ tools:
    - Dense token-efficient phrasing.
    - Strip redundant context already stated earlier.
    - Strip filler / hedging: "in order to" → "to"; "due to the fact that" → "because"; drop "very" / "really" / "simply" / "perhaps" / "it might be useful to".
-   - Strip articles where dense imperative style works → `Read the plan` → `Read plan`, `Update the file` → `Update file`; keep articles in set phrases → `in the same directory`, `at the time of merge`.
+   - Strip articles where dense imperative style works → `Read the plan` → `Read plan`; `Update the file` → `Update file`; keep articles in set phrases → `in the same directory`, `at the time of merge`.
    - Convert paragraphs → bullet points.
    - Convert multi-sentence run-ons → terse one-liners; preserve meaning.
    - Convert parallel content / labels → compact tables / value pairs / matrix-style enumerations; keep atomic instructions on one row, do NOT split across rows.

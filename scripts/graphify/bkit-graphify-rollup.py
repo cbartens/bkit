@@ -48,7 +48,7 @@ ap.add_argument("--min-weight", type=int, default=0,
                 help="drop cross-group edges lighter than this (0 = keep all)")
 ap.add_argument("--overlay",
                 help="JSON {path_prefix: [class, note]} painting drift status onto "
-                     "matching nodes. class is one of split/bypassed/gap.")
+                     "matching nodes. class is one of split|bypassed|gap.")
 args = ap.parse_args()
 
 raw = json.load(open(args.graph_json))
@@ -300,7 +300,7 @@ def read_overrides(doc_path):
     m = re.search(r"```json\n(.*?)```", body, re.S)
     if not m:
         raise SystemExit(f"[graph] {doc_path}: overrides block present but has no ```json fence. "
-                         "Refusing to overwrite it — fix or delete the block.")
+                         "Refusing to overwrite it; fix or delete the block.")
     try:
         return json.loads(m.group(1)), m.group(1).rstrip()
     except json.JSONDecodeError as e:
@@ -633,14 +633,14 @@ def eager_block(eager):
     Its own section, per file; NOT painted onto the diagrams.
     """
     if not eager:
-        return ["_No import-time scan — run with `--eager`._"]
+        return ["_No import-time scan; run with `--eager`._"]
     shown = [r for r in eager["files"] if r["downstream"] >= eager["min_downstream"]]
     hidden = len(eager["files"]) - len(shown)
     sites = sum(len(r["sites"]) for r in eager["files"])
     L = [
         f"{sites} module-scope side effects in {len(eager['files'])} of {eager['scanned']} "
         f"source files. A call here runs on **import**, not on first use, so every file "
-        f"downstream pays for it — under Jest that is a mandatory stub in tests that never "
+        f"downstream pays for it, because under Jest that is a mandatory stub in tests that never "
         f"touch the thing. Sorted by reach.",
         "",
         "<!-- prettier-ignore -->",
@@ -650,7 +650,7 @@ def eager_block(eager):
     L += [f"| `{r['file']}` | {', '.join(f'`{c}`' for c in r['callees'])} | "
           f"{r['downstream']} | {r['downstream_tests']} |" for r in shown]
     if hidden:
-        L += ["", f"{hidden} further file{'' if hidden == 1 else 's'} nothing imports — an "
+        L += ["", f"{hidden} further file{'' if hidden == 1 else 's'} nothing imports, though an "
                   "entrypoint is supposed to do work when it loads. In the JSON report only."]
     if eager.get("not_in_graph"):
         L += ["", f"> [!WARNING]", f"> {eager['not_in_graph']} scanned files are absent from "
@@ -665,13 +665,13 @@ def reachability_block(reach):
     Separate from the capability table: one row per dead URL and call site, no owner.
     """
     if reach is None:
-        return ["Not scanned — run the rollup with `--reachability`."]
+        return ["Not scanned; run the rollup with `--reachability`."]
     unreachable = reach.get("unreachable", {})
     stranded = reach.get("strandedHonoRoutes", [])
     n_sites = sum(len(d["sites"]) for d in unreachable.values())
     L = [
         "A request URL is a string inside a template literal, so nothing that reads types can",
-        "see that it has no server-side counterpart — `lint`, `check:type`, `knip` and",
+        "see that it has no server-side counterpart, because `lint`, `check:type`, `knip` and",
         "`slop:delta` all pass on a path that 404s. This is the one drift class no graph query",
         "finds either: a string is not an edge. Scanned every run by",
         "`scripts/ci/guards/assert-routes-reachable.mjs`; run it alone for the full served-route inventory.",
@@ -691,7 +691,7 @@ def reachability_block(reach):
     else:
         L += [
             f"**{len(unreachable)} path{'' if len(unreachable) == 1 else 's'} fetched but not served**"
-            f", across {n_sites} call site{'' if n_sites == 1 else 's'}. Each 404s at runtime — which",
+            f", across {n_sites} call site{'' if n_sites == 1 else 's'}. Each 404s at runtime, though which",
             "may be deliberate. Read this as a list to check, not a list of defects: a stub, a path",
             "served by something outside this repo, or a call behind a flag that never runs all look",
             "identical to the scan.",
@@ -733,7 +733,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "symbol, followed through `v1.ts` to the router file and its service imports. Attribution "
         "is per symbol, not per file, so a domain named only in a shared helper's comment is not "
         "credited to every page that imports the helper."
-    ) if ROUTES_MMD else "No route layer — run with `--surface`."
+    ) if ROUTES_MMD else "No route layer; run with `--surface`."
     order = {"split": 0, "gap": 1, "bypassed": 2, "budgeted": 3, "one": 4, "unchecked": 5}
     rows = sorted(rows, key=lambda r: (order.get(r["status"], 9), r["lane"], r["capability"]))
     counts = collections.Counter(r["status"] for r in rows)
@@ -766,31 +766,31 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "> - GENERATED — do NOT edit. `pnpm graph:update && pnpm graph:rollup` rewrites this file.",
         f"> - Source of truth: `{rules_path}`. Every status derived from live source, never typed.",
         "> - Add a capability = add a rule there: capability · lane · owner module · one LITERAL marker.",
-        "> - Markers LITERAL, never regex — `new Ratelimit(` as a regex is an unclosed group matching NOTHING.",
-        "> - Match the mechanism, not the name — `createClient(` misses an owner that aliases its import.",
+        "> - Markers LITERAL, never regex, because `new Ratelimit(` as a regex is an unclosed group matching NOTHING.",
+        "> - Match the mechanism, not the name, because `createClient(` misses an owner that aliases its import.",
         "> - Optional `scope` narrows the tree scanned when a marker means different things per package.",
-        "> - Optional `surface`: `product` (default) · `tests` (any `e2e/` dir + every `.test.`/`.spec.` file) · `all`. The two surfaces PARTITION the tree.",
+        "> - Optional `surface`: `product` (default) · `tests` (any `e2e/` dir + every `.test.` / `.spec.` file) · `all`. The two surfaces PARTITION the tree.",
         "> - Optional `budgets`: the EXACT non-owner site count allowed per scope prefix. Measured == declared everywhere ⇒ `budgeted`, which is NOT a warning.",
-        "> - A budget is not a shrug — `owned-query-shape-guard.test.ts` reds CI when the count moves EITHER way, and a site landing outside every declared prefix reads as over budget.",
-        "> - Test code is in `graph.json` on purpose (`.graphifyignore`) and out of every diagram here by rule (`is_test_code` in `bkit-graphify-rollup.py`): test folders, `.test.`/`.spec.` files, test-runner config. `hide_nodes` below is DIAGRAM-ONLY too, for whatever else a picture should not draw.",
-        "> - Status computed: no owner → `split`; owner absent → `gap`; owner present, others use marker → `bypassed`; else `one`. A `split`/`bypassed` at budget → `budgeted`.",
+        "> - A budget is not a shrug, because `owned-query-shape-guard.test.ts` reds CI when the count moves EITHER way, and a site landing outside every declared prefix reads as over budget.",
+        "> - Test code is in `graph.json` on purpose (`.graphifyignore`) and out of every diagram here by rule (`is_test_code` in `bkit-graphify-rollup.py`): test folders, `.test.` / `.spec.` files, test-runner config. `hide_nodes` below is DIAGRAM-ONLY too, for whatever else a picture should not draw.",
+        "> - Status computed: no owner → `split`; owner absent → `gap`; owner present, others use marker → `bypassed`; else `one`. A `split|bypassed` at budget → `budgeted`.",
         "> - Externals: `scripts/graphify/bkit-graph-external-rules.json` — `sdk` · `hosts` · `env`. SDK AND url = `split`.",
         "> - Import-time scan: `scripts/graphify/bkit-graph-eager-rules.json` lists only what is PURE. Unclassified = reported.",
-        "> - That scan reads SOURCE, not the graph — module-level initialiser calls are the one construct graphify drops.",
+        "> - That scan reads SOURCE, not the graph, because module-level initialiser calls are the one construct graphify drops.",
         "> - Nothing discovers an SDK itself; find gaps by listing non-workspace deps.",
         "> - Only the Overrides block is hand-maintained. It round-trips; malformed ABORTS the run.",
         "> - Colour = called capability, shared by its inbound edges. Grey = never called.",
         "> - Drift = dashed border + ONE amber box for all four. No ranking: each scan proves a shape, never an intent.",
-        "> - `budgeted` = SOLID border + blue box. Still drawn — a declared bypass is still a bypass — but it is settled, not an open question.",
+        "> - `budgeted` = SOLID border + blue box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.",
         "> - Which status is which: `split` fine dash · `bypassed` long dash · `dead` even dash · `gap` dotted · `budgeted` NO dash.",
-        "> - A fetched URL is a STRING, never an edge — `assert-routes-reachable.mjs` is the only check that sees it.",
-        f"> - Table rescanned every run, never stale. Diagrams from `graph.json` @ `{GRAPH_COMMIT[:9]}` — differs from HEAD ⇒ run `pnpm graph:update` FIRST.",
+        "> - A fetched URL is a STRING, never an edge, because `assert-routes-reachable.mjs` is the only check that sees it.",
+        f"> - Table rescanned every run, never stale. Diagrams from `graph.json` @ `{GRAPH_COMMIT[:9]}`; when that differs from HEAD ⇒ run `pnpm graph:update` FIRST.",
         "> - Detail-level module graph → `pnpm graph`. This doc is the altitude ABOVE that: capabilities, not files.",
         "",
         "## Status Vocabulary",
         "",
         "The first four are warnings, not verdicts, and they share one amber in the diagrams. Any",
-        "of them can turn out to be deliberate — the scans prove a shape, never an intent.",
+        "of them can turn out to be deliberate, because the scans prove a shape, never an intent.",
         "",
         "`budgeted` is what one of those four becomes once somebody has decided. The rule declares",
         "the EXACT number of non-owner sites allowed per scope prefix, its `note` says why that",
@@ -810,9 +810,9 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "<!-- prettier-ignore -->",
         "| Status | Meaning | Action |",
         "| --- | --- | --- |",
-        "| `split` | Two or more competing implementations, no single owner | Centralise — file an issue. Or budget it, with the reason in `note` |",
+        "| `split` | Two or more competing implementations, no single owner | Centralise; file an issue. Or budget it, with the reason in `note` |",
         "| `bypassed` | Owner exists, some callers skip it | Repoint the bypasses. Or budget them, with the reason in `note` |",
-        "| `dead` | A client fetches a path nothing serves. A WARNING — some are deliberate | Check the call site, then delete the call or serve the path |",
+        "| `dead` | A client fetches a path nothing serves. A WARNING, though some are deliberate | Check the call site, then delete the call or serve the path |",
         "| `gap` | Designed, not built. No owner yet | Name the owner BEFORE the first caller |",
         "| `budgeted` | A `split` or `bypassed` whose site count is declared, guarded and currently met | None — the CI guard owns it. Lower the budget when a site goes |",
         "| `one` | One implementation, every caller routes through it | None — keep it that way |",

@@ -107,6 +107,22 @@ function outsideCode(text: string, at: number): boolean {
   return !codeSpans(text).some(([a, b]) => at >= a && at < b);
 }
 
+/**
+ * `A` / `B` — two separately backticked vocabulary values joined by a spaced
+ * separator. The whitespace between the backticks keeps this form past the
+ * bare/backticked-union regexes, so it gets its own check: the union must be
+ * one tight backticked unit (`A|B`).
+ */
+function splitBacktickedEnums(text: string): string[] {
+  const bad: string[] = [];
+  for (const m of text.matchAll(/`([A-Z][A-Z0-9_]+)`\s*[/|]\s*`([A-Z][A-Z0-9_]+)`/g)) {
+    const [, a, b] = m;
+    if (!VOCABULARY.has(a!) || !VOCABULARY.has(b!)) continue;
+    bad.push(`${m[0]} — write \`${a}|${b}\``);
+  }
+  return bad;
+}
+
 describe("prompt notation: the scan reaches real prose", () => {
   it("finds prompt files with both prose and fenced lines", () => {
     const lines = promptLines();
@@ -166,6 +182,9 @@ describe("prompt notation: bracketed instructions inside a template are prose", 
           if (!outsideCode(span[0], m.index!)) continue;
           bad.push(`${line.file}:${line.no}: ${m[0]} — write \`${parts.join("|")}\``);
         }
+        for (const hit of splitBacktickedEnums(span[0])) {
+          bad.push(`${line.file}:${line.no}: ${hit}`);
+        }
       }
     }
     expect(bad).toEqual([]);
@@ -197,6 +216,9 @@ describe("prompt notation: closed-vocabulary tokens are backticked in prose", ()
         if (!parts.every((p) => VOCABULARY.has(p))) continue;
         if (!outsideCode(line.text, m.index!)) continue;
         bad.push(`${line.file}:${line.no}: ${m[0]} — write \`${parts.join("|")}\``);
+      }
+      for (const hit of splitBacktickedEnums(line.text)) {
+        bad.push(`${line.file}:${line.no}: ${hit}`);
       }
     }
     expect(bad).toEqual([]);

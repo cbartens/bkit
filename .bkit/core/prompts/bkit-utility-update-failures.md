@@ -39,9 +39,9 @@ maxTurns: 100
 1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `.bkit/jsonl.md`; skip missing.
 3. Fold `docs/failures.jsonl` ledger by `key`, highest `ts` wins → read ONLY winning rows where `status` is NOT `CLOSED`; NEVER read any other rows.
-4. Per remaining entry → check whether work is done; ALWAYS check codebase; NEVER trust entry claims. **If** done in code → set `status` to `CLOSED`, `references` naming evidence. **Else** not done **or** cannot be judged from code → leave open. For `category` `testing` same-`key` row count IS flake count; close ONLY on landed deterministic fix, NEVER on recent green run.
+4. Per remaining entry → check whether work is done; ALWAYS check codebase; NEVER trust entry claims. **If** done in code → set `status` to `CLOSED`, `references` naming evidence. **Else** → leave open (not done **or** cannot be judged from code). For `category` `testing` same-`key` row count IS flake count; close ONLY on landed deterministic fix, NEVER on recent green run.
 5. Per remaining entry → check file paths, symbols, flags, and commands against the codebase. **If** one replacement is unambiguous → replace locators. **If** stale and no single replacement → record `unresolved` under `Locators`; NEVER guess. A locator fix does NOT change `status`.
-6. **If** tracker wired → per remaining entry with `status` NOT `TRIAGED` / `CLOSED` → search for matching tracker issues. **If** matching issue found → set `status` to `TRIAGED`, add issue id to `references`; NEVER create, close or relabel issues.
+6. **If** tracker wired → per remaining entry with `status` NOT `TRIAGED|CLOSED` → search for matching tracker issues. **If** matching issue found → set `status` to `TRIAGED`, add issue id to `references`; NEVER create, close or relabel issues.
 7. Per `key` changed above → append ONE row to `docs/failures.jsonl` in `.bkit/jsonl.md` format with same `key` and updated values; copy unchanged field values verbatim.
 8. Rank what remains by `severity`, then age.
 9. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do NOT duplicate content and ONLY contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.

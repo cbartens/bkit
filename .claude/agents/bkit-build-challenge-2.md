@@ -42,7 +42,7 @@ maxTurns: 100
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/security.md`; skip missing.
-4. Update **Create** after each finding — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any `CRITICAL`-severity finding → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
+4. Update **Create** after each finding — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any `CRITICAL` finding → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 5. Read supplied diff fully. **If** input Context flags partial-diff → record `partial diff coverage` in verdict; limit findings to provided content.
 6. Explore security vectors — adversarial mindset on every modified surface:
    - Auth & AuthZ: missing checks, role / permission gaps, session / token handling, privilege escalation.

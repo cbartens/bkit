@@ -53,7 +53,7 @@ export const MARKERS = {
   analysisEnd: "<!-- bkit:roadmap-analysis end -->",
 } as const;
 
-const ANALYSIS_PLACEHOLDER = "_(no analysis yet — run @bkit-utility-update-roadmap to populate)_";
+const ANALYSIS_PLACEHOLDER = "_(no analysis yet; run @bkit-utility-update-roadmap to populate)_";
 const NOTES_PRE_PLACEHOLDER = "## Notes\n\n_(above the bkit list — yours, never overwritten)_";
 const NOTES_POST_PLACEHOLDER = "## Notes\n\n_(end of the board — yours, never overwritten)_";
 const BANNER =

@@ -22,8 +22,8 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Resume:** On start, fold `$BOOK_ROOT/.../status.jsonl` — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$BOOK_ROOT/.../status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Step 1 takes `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); Step 15 releases it via `bkit workflows close --flush --token=`, the **Failure Path** via `bkit workflows fail --token=`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed. **Dev lock:** `bkit branches switch`, `bkit workflows close --flush` and `bkit workflows handover --flush` hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout).
-> - **Status branch:** All steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`{STATUS}`). **If** `RUNTIME_DEVPUSHES` = true → `BOOK_ROOT` = `$REPO_ROOT`, **else** current working branch tree. Stage path-scoped via `bkit ledgers commit`; NEVER stage all files (`-A`) or blanket `docs/`. ONE commit per flush block: Commit + Push Bookkeeping → `docs({FID}): ship bookkeeping bkit [skip ci]` → push `{SHIP_BRANCH}` (pre-merge: docs, logs, ledgers, skill removals); Close Workflow → `docs({FID}): ship DONE bkit [skip ci]` → push `dev`, refused → close PR; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` → **If** `RUNTIME_DEVPUSHES` = true → push `dev`, **else** current branch; NEVER both.
-> - **Worktrees:** **If** `runtimeWorktrees` = true (mint mode) → Step 2 `cd`s into `.worktrees/{FID}`, **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
+> - **Status branch:** All steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`{STATUS}`). **If** `RUNTIME_DEVPUSHES` = true → `BOOK_ROOT` = `$REPO_ROOT`. **Else** → current working branch tree. Stage path-scoped via `bkit ledgers commit`; NEVER stage all files (`-A`) or blanket `docs/`. ONE commit per flush block: Commit + Push Bookkeeping → `docs({FID}): ship bookkeeping bkit [skip ci]` → push `{SHIP_BRANCH}` (pre-merge: docs, logs, ledgers, skill removals); Close Workflow → `docs({FID}): ship DONE bkit [skip ci]` → push `dev`, refused → close PR; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` → **If** `RUNTIME_DEVPUSHES` = true → push `dev`. **Else** → current branch. NEVER both.
+> - **Worktrees:** **If** `runtimeWorktrees` = true (mint mode) → Step 2 `cd`s into `.worktrees/{FID}`. **Else** → adopt current branch in place, `WORKTREE_PATH=$REPO_ROOT`. cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
 > - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 <!-- bkit:tracker github start -->
@@ -99,10 +99,10 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker false end -->
 3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
    <!-- bkit:tracker github start -->
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`; `labels` → `LABELS`; `body` → `DESCRIPTION`; `title` → `TITLE`; `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `COMMENTS`.
+   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`; `labels[].name` → `LABELS`; `description` → `DESCRIPTION`; `title` → `TITLE`; `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `COMMENTS`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker false start -->
    No tracker wired — set `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; the input artifact is built from the session prompt alone.
@@ -146,7 +146,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true end -->
    <!-- bkit:tracker github start -->
    `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   **If** `BOARD` = null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
+   **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
    `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
@@ -188,7 +188,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 <!-- bkit:tracker true start -->
 
-- [ ] Issue update attempted (phase label `bkit:ship`, status/state `In Progress`)
+- [ ] Issue update attempted (phase label `bkit:ship`, status / state `In Progress`)
 
 <!-- bkit:tracker true end -->
 
@@ -235,7 +235,7 @@ description: "Ship Feature — Autonomous merge and archive"
      **If** exit 80 → `create_pull_request` with the printed `title`, `body`, `base`, `head`. **If** any other non-zero exit → **Failure Path**. Re-run the `bkit prs probe` above → hold `number` as `PR_NUMBER`, `baseRefName` as `PR_BASE`, `state`. Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **Else** → **Failure Path**.
    - **Else** → **Failure Path**.
 5. **Route:**
-   - **If** `state` = MERGED → record the resume marker, then → Step 13:
+   - **If** `state` = MERGED → record the resume marker → Step 13:
      ```bash
      "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=ship-merged-on-entry >/dev/null
      ```
@@ -264,7 +264,7 @@ description: "Ship Feature — Autonomous merge and archive"
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: `ship-input-{RUN}.md`, step `ship-worktree-setup` recorded; `steps finish` exit 0: `ship-regression-guard`)
-- [ ] On `SHIP_BRANCH` (NOT `dev` / `main`), worktree created / resumed or adopted (NO rebase — Path A); naming warning emitted when not named for `FID` / `ISSUE_ID`
+- [ ] On `SHIP_BRANCH` (NOT `dev|main`), worktree created / resumed or adopted (NO rebase — Path A); naming warning emitted when not named for `FID` / `ISSUE_ID`
 - [ ] `PR_NUMBER` non-empty; `PR_BASE` = dev (opened by ship, `openedPr` row recorded, CI awaited — when no PR existed)
 - [ ] `ENTRY_HEAD` and `MERGEABLE` read; no PR CI failures confirmed
 
@@ -459,7 +459,7 @@ description: "Ship Feature — Autonomous merge and archive"
 "{BKIT}" steps gate --workflow=ship --step=ship-bookkeeping-push --placeholder=VALIDATED_HEAD={VALIDATED_HEAD}
 ```
 
-- [ ] Validated head resolved (`VALIDATED_HEAD`: `CODE_HEAD` while the PR head adds bookkeeping only and `dev` requires no status checks, else the PR head)
+- [ ] Validated head resolved: `VALIDATED_HEAD` = `CODE_HEAD` while the PR head adds bookkeeping only and `dev` requires no status checks; **Else** → the PR head
 - [ ] CI awaited only on code movement or `gate-refusal` re-entry; the duplicate-dispatch probe ran before any dispatch (row `ship-revalidate-dispatch` with `probe`, `reason`, `dispatched`); CI completed at the validated head (`runs revalidate` exit 0)
 
 ---
@@ -473,7 +473,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
    Route:
    - **If** exit 0 → hold `mergeHead` as `{GATE_HEAD}` → sub-step 2.
-   - **If** exit 11 (in progress — poll), 14 (stale green), 10 (no run), or 17 (non-bookkeeping change past `VALIDATED_HEAD`) — run counter routing:
+   - **If** exit 11 (in progress — poll), 14 (stale green), 10 (no run), or 17 (non-bookkeeping change past `VALIDATED_HEAD`) → run counter routing:
      ```bash
      REVALIDATE_ATTEMPT=$("{BKIT}" counters rows --file="{STATUS}" --workflow=ship --type=ship-revalidate-dispatch --position=next | jq -er .value) || exit 2
      "{BKIT}" counters route --name=REVALIDATE_ATTEMPT --value="$REVALIDATE_ATTEMPT" --limit=MAX_REVALIDATE_ATTEMPT --continue=step-9 --exceeded=failure-path
@@ -501,7 +501,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Hold `attempt` as `{MERGE_ATTEMPT}`.
 4. Route:
    - **If** `state` = MERGED → Step 13.
-   - **If** `state` != MERGED — run counter routing:
+   - **If** `state` != MERGED → run counter routing:
      ```bash
      "{BKIT}" counters route --name=MERGE_ATTEMPT --of=ship-merge-pr:current --file="{STATUS}" --workflow=ship --limit=MAX_MERGE_ATTEMPT --continue=step-11 --exceeded=failure-path
      ```
@@ -568,7 +568,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 **Run only if** `state` = MERGED.
 
-1. Switch to `dev` and bring it level with `origin/dev` under the dev lock — skipped when `RUNTIME_DEVPUSHES` != true — then finish:
+1. Switch to `dev` and bring it level with `origin/dev` under the dev lock when `RUNTIME_DEVPUSHES` = true, then finish:
    ```bash
    cd "{REPO_ROOT}" || exit 1
    "{BKIT}" branches switch --fid="{FID}" --dev-pushes="{RUNTIME_DEVPUSHES}" --worktrees="{RUNTIME_WORKTREES}" || exit 1
@@ -620,7 +620,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true end -->
    <!-- bkit:tracker github start -->
    `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do NOT close the issue.
-   **If** `BOARD` = null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
+   **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
    `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`. Do NOT set Done.
@@ -644,7 +644,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 <!-- bkit:tracker true start -->
 
-- [ ] Issue update attempted (phase label `bkit:merged`, status/state `In Review`; issue left open for human close)
+- [ ] Issue update attempted (phase label `bkit:merged`, status / state `In Review`; issue left open for human close)
 - [ ] Artifact link list and telemetry report embedded in `Step 15` comment
 
 <!-- bkit:tracker true end -->

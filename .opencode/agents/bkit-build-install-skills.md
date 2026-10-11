@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-build-install-skills
 description: Senior technical lead matching feature requirements to relevant installable skills.
-model: openrouter/deepseek/deepseek-v4.1-flash#high
+model: openrouter/deepseek/deepseek-v4.1-flash
+variant: high
 tools:
   read: true
   grep: true

@@ -10,6 +10,7 @@
 > **Rules:**
 >
 > - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Notation: one job per mark — `.bkit/prompts.md` § `Notation`.
 > - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
 > - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - **Never log PII.** Scrub sensitive fields at the source.
@@ -25,7 +26,7 @@ The workflow commits every captured payload inside an untrusted fence (`===== BE
 
 ## Scope
 
-No server-side telemetry pipeline, log drains, or tracing. Observability limited to CLI stdout/stderr — `bkit install` / `bkit check` in consumer environments, and the `bkit <noun> <verb>` workflow commands during agent runs.
+No server-side telemetry pipeline, log drains, or tracing. Observability limited to CLI stdout / stderr — `bkit install` / `bkit check` in consumer environments, and the `bkit <noun> <verb>` workflow commands during agent runs.
 
 ## Log Format
 
@@ -38,9 +39,9 @@ console.error("[bkit-comply] {Message}", {payload})
 console.error("[bkit-telemetry] {Message}", {payload})
 ```
 
-`[{Context}]` brackets are load-bearing — consumer CI log-drain / grep alerting depends on this pattern. NEVER drop the brackets.
+`[{Context}]` brackets are load-bearing, because consumer CI log-drain / grep alerting depends on this pattern. NEVER drop the brackets.
 
-One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-placeholders]` · `[bkit-status-holes]` · `[bkit-wording]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-roadmap]`. Workflow commands log as `[bkit-<noun>]` on stderr (`[bkit-locks]`, `[bkit-worktrees]`, `[bkit-runs]`, `[bkit-ledgers]`, …); their stdout is one JSON object, never a log line. New prefix only alongside new module or command noun; else reuse owning module's prefix.
+One prefix per verb / subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-placeholders]` · `[bkit-status-holes]` · `[bkit-wording]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-roadmap]`. Workflow commands log as `[bkit-<noun>]` on stderr (`[bkit-locks]`, `[bkit-worktrees]`, `[bkit-runs]`, `[bkit-ledgers]`, …); their stdout is one JSON object, never a log line. New prefix only alongside new module or command noun; else reuse owning module's prefix.
 
 ### `[bkit-comply]` prefix
 
@@ -82,18 +83,18 @@ Compliance grader stderr. Canonical grep patterns:
 
 ### `[bkit-roadmap]` prefix
 
-`docs/roadmap.md`/`.bkit/issues.jsonl` fold + close-hook fail-open lines. Every branch exits 0 — the roadmap tier never gates a workflow close or a ship. Canonical grep patterns:
+`docs/roadmap.md` / `.bkit/issues.jsonl` fold + close-hook fail-open lines. Every branch exits 0, because the roadmap tier never gates a workflow close or a ship. Canonical grep patterns:
 
 - `[bkit-roadmap] fold skipped` / `fold skipped on dev` — phase-close `bkit roadmap fold` exited non-zero (workflow-side fail-open line).
 - `[bkit-roadmap] append failed: {path}` — ledger row append to `.bkit/issues.jsonl` failed (best-effort; exit 0).
 - `[bkit-roadmap] could not write {path} — board left as-is (fail-open): {reason}` — `written` false.
 - `[bkit-roadmap] .bkit/issues.jsonl: N malformed line(s) skipped` — one bad line skips only that row.
-- `[bkit-roadmap] {message}` — fold bootstrap/self-heal lines.
+- `[bkit-roadmap] {message}` — fold bootstrap / self-heal lines.
 - `[bkit-roadmap] dev lock busy — skipping dev-side roadmap mirror (feat-side row already written)` / `dev push failed — feat-side row already written` — build / debug dev-side mirror fail-open.
 
 ### `[bkit-runs]` prefix — ship merge gate
 
-`bkit runs gate` stderr (Tier-1 merge gate). Brackets load-bearing — consumer CI log-drain grep key. stdout is the JSON result (`code`, `passed`, `overridden`, `reason`, `runUrl`, …); refusals carry the named exit code + run URL. Exit codes are the audit trail — every terminal route writes one, and ship Step 10 records a `ship-gate-refusal` row:
+`bkit runs gate` stderr (Tier-1 merge gate). Brackets load-bearing — consumer CI log-drain grep key. stdout is the JSON result (`code`, `passed`, `overridden`, `reason`, `runUrl`, …); refusals carry the named exit code + run URL. Exit codes are the audit trail, because every terminal route writes one, and ship Step 10 records a `ship-gate-refusal` row:
 
 <!-- prettier-ignore -->
 | Code | Meaning | Route |
@@ -111,7 +112,7 @@ Compliance grader stderr. Canonical grep patterns:
 | 20 | API error / rate limit / auth | refuse |
 | 80 | `gh` not on PATH | do it via the MCP fallback |
 
-Canonical grep patterns (the refusal itself is signalled by the process exit code; every refusal ends with the `required head:` block):
+The refusal itself is signalled by the process exit code; every refusal ends with the `required head:` block. Canonical grep patterns:
 
 - `[bkit-runs] capstone %s=success at head %s (run %s, %s)` — green at the checked head.
 - `[bkit-runs] head %s = validated %s + bookkeeping only — checking CI at the validated sha` — `--validated` carry-forward applied.
@@ -123,7 +124,7 @@ Canonical grep patterns (the refusal itself is signalled by the process exit cod
 - `[bkit-runs] rate limit exhausted (...)` / `[bkit-runs] API error (...)` — code 20 (rate-limit-shaped message distinguishes the dispatch path).
 - `[bkit-runs] override honoured for head %s (BKIT_SHIP_GATE_OVERRIDE matches refused head)` — sanctioned escape hatch; also writes a `ship-gate-override` `status.jsonl` row (`--file=`) for audit, or emits it to stderr when the file is absent or unwritable.
 
-The override is honoured ONLY when `BKIT_SHIP_GATE_OVERRIDE=<sha>` equals the EXACT head being refused — a SHA mismatch is ignored and the refusal stands. Audit the override rows (`status.jsonl` `type:"ship-gate-override"`) as part of consumer rollback (see `docs/deployments.md` § Ship gate + bookkeeping).
+The override is honoured ONLY when `BKIT_SHIP_GATE_OVERRIDE=<sha>` equals the EXACT head being refused, so a SHA mismatch is ignored and the refusal stands. Audit the override rows (`status.jsonl` `type:"ship-gate-override"`) as part of consumer rollback (see `docs/deployments.md` § Ship gate + bookkeeping).
 
 The same prefix carries the CI waits (`bkit runs wait`: one `attempt N: …` line per poll) and the CI-Dispatch Gate (`bkit runs dispatch`: `re-trigger commit or push failed — no verdict; route to the Failure Path`, `landed commit … inherited a CI-suppression token in its body`).
 
@@ -135,9 +136,9 @@ Release-PR capstone in mirror mode (`docs/deployments.md` § One CI run per dev 
 | Exit | Meaning |
 | --- | --- |
 | 0 | `dev` push run's capstone `success` at the PR head |
-| 1 | Push run red / cancelled / capstone absent or skipped (gate 12/13/15/16/other) |
+| 1 | Push run red / cancelled / capstone absent or skipped (gate 12 / 13 / 15 / 16 / other) |
 | 2 | Usage error |
-| 3 | No push run at the PR head within `--absent-minutes` (gate 10/14 — `[skip ci]` tip) |
+| 3 | No push run at the PR head within `--absent-minutes` (gate 10 / 14 — `[skip ci]` tip) |
 | 4 | Push run still in progress at `--max-minutes` |
 | 20 | Gate API error 3x in a row |
 
@@ -151,11 +152,11 @@ Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/
 
 - Blockers (Phase 1) → `stderr`, exit 1 before writes.
 - Advisories (Phase 1 + Phase 3) → numbered checklist after install.
-- `bkit check` (dry-run) → Phase 1 + Phase 3 advisories (read-only); exit 1 on Tier-1/Tier-2 drift. No writes.
+- `bkit check` (dry-run) → Phase 1 + Phase 3 advisories (read-only); exit 1 on Tier-1 / Tier-2 drift. No writes.
 
 ## Phase 3 Token-Surface Detectors
 
-Phase 3 detects missing/misconfigured `BKIT_GH_TOKEN_INSTALL` at four surfaces; actionable advisory text. Detector names = audit trail:
+Phase 3 detects missing / misconfigured `BKIT_GH_TOKEN_INSTALL` at four surfaces; actionable advisory text. Detector names = audit trail:
 
 <!-- prettier-ignore -->
 | Detector | Surface |
@@ -171,12 +172,12 @@ See `docs/deployments.md` for the full presence matrix and `docs/security.md` fo
 
 ## Runtime capability row
 
-Each phase workflow's Step 2 (Worktree Setup — the first point `{FID}`/`WORKTREE_PATH` are resolved) records the runtime capability table once as a `runtime-resolved` `status.jsonl` row: `bkit runtime row --file=` detects (`runtime`, `runtimeWorktrees`, `runtimeDevPushes`, `runtimeGithubCli` + its exit code and last stderr line) and appends in one call, and `bkit runtime assert` reads it back (exit 4 no row, 5 an unresolved field). The row is the durable, cross-block record later steps read `runtimeGithubCli` back from instead of re-probing `gh`. Row shape → `.bkit/workflows.md` § `status.jsonl`. `gh`-preflight loudness (never silent, non-blocking dual-lane signal) lives in `.claude/hooks/bkit-cloud-bootstrap.sh`.
+Each phase workflow's Step 2 (Worktree Setup — the first point `{FID}` / `WORKTREE_PATH` are resolved) records the runtime capability table once as a `runtime-resolved` `status.jsonl` row: `bkit runtime row --file=` detects (`runtime`, `runtimeWorktrees`, `runtimeDevPushes`, `runtimeGithubCli` + its exit code and last stderr line) and appends in one call, and `bkit runtime assert` reads it back (exit 4 no row, 5 an unresolved field). The row is the durable, cross-block record later steps read `runtimeGithubCli` back from instead of re-probing `gh`. Row shape → `.bkit/workflows.md` § `status.jsonl`. `gh`-preflight loudness (never silent, non-blocking dual-lane signal) lives in `.claude/hooks/bkit-cloud-bootstrap.sh`.
 
-The Close Workflow adds two more rows, both transport-agnostic: `transport-fallback` (one per gh->MCP transition, bounded max 1/run; `bkit prs transport-row --kind=fallback`) and `close-transport` (the shape that ran, the landed SHA, and the `bkit prs scan-body` post-close skip-token result; `--kind=close`). `bkit prs cross-check` fails an `mcp` close that recorded `runtimeGithubCli=false` but no fallback row. Row shapes → `.bkit/workflows.md` § `status.jsonl`.
+The Close Workflow adds two more rows, both transport-agnostic: `transport-fallback` (one per gh→MCP transition, bounded max 1/run; `bkit prs transport-row --kind=fallback`) and `close-transport`. The row records the shape that ran, the landed SHA, and the `bkit prs scan-body` post-close skip-token result; `--kind=close`. `bkit prs cross-check` fails an `mcp` close that recorded `runtimeGithubCli=false` but no fallback row. Row shapes → `.bkit/workflows.md` § `status.jsonl`.
 
 ## gh→MCP fallback lane + peripheral loudness
 
-Every phase workflow header (`bkit-{design,plan,build,debug,ship}.md`) carries an additive **gh→MCP fallback** rule (Flow 6): when a gh command on the PR/CI/merge surface is unavailable (`runtimeGithubCli=false` on the `runtime-resolved` row) or a `bkit` command exits 80, the agent uses the mapped MCP tool instead (`actions_list`/`actions_get`/`get_job_logs`/`download_workflow_run_artifact` require the `actions` MCP toolset, C1) — bounded to max 1 transition per run, recorded via `bkit prs transport-row --kind=fallback`, success-asserted by an independent re-read, with empty/zero MCP reads treated as INCONCLUSIVE (never authoritative absence) per D12. Trackers stay on MCP always (§6i) — the rule covers only the gh-covered surface.
+Every phase workflow header (`bkit-{design,plan,build,debug,ship}.md`) carries an additive **gh→MCP fallback** rule (Flow 6): when a gh command on the PR / CI / merge surface is unavailable (`runtimeGithubCli=false` on the `runtime-resolved` row) or a `bkit` command exits 80, the agent uses the mapped MCP tool instead (`actions_list` / `actions_get` / `get_job_logs` / `download_workflow_run_artifact` require the `actions` MCP toolset, C1) — bounded to max 1 transition per run, recorded via `bkit prs transport-row --kind=fallback`, success-asserted by an independent re-read, with empty / zero MCP reads treated as INCONCLUSIVE (never authoritative absence) per D12. Trackers stay on MCP always (§6i), because the rule covers only the gh-covered surface.
 
-`/bkit-debug`'s `context-fetch` narration (Step "Fetch Context") distinguishes `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` per block, every attempt — a self-skip `exit 0` (missing CLI/token, or a host blocked by the cloud Trusted-egress allowlist, `.agents/context.md` § Allowed domains) is never read as "no errors"; it is logged as unavailable, not clean. The same rule covers every context, so an absent CI or e2e artifact is "we did not look", never "CI was green": context coverage is narrated before any fetch runs (`bkit context list-blocks`) and persisted as `contextsConfigured` on the `context-fetch` status row (`bkit context finalise`), and `bkit-debug-failure-diagnose` is required to separate NOT CONFIGURED / self-skipped / actually-checked before drawing a conclusion. `context-fetch-context-missing` advises when an enabled consumer section covers only some contexts. Every machine-generated evidence artifact (`context-{ci,diff,e2e,runtime,web}-*`, `context-tests-local-*`, build's `build-subplan-gate-*`, plan's `related-deferrals.md` / `related-failures.md`) passes through `bkit context clamp` — capped in shell, footered when it truncates, and recorded as `clamped` on the step's `step-done` row with original and kept sizes (row shape + profile table → `.bkit/workflows.md` § Context artifact clamping). The tracker sweep artifacts (`related-issues.md`, `context-related-*`) are uncapped by decision. The narration half carries no automated assertion — verified manually (run `/bkit-debug` in a `RUNTIME_WORKTREES=false` runtime, confirm the loud narration) per the honest limit D3.
+`/bkit-debug`'s `context-fetch` narration (Step "Fetch Context") distinguishes `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` per block, every attempt — a self-skip `exit 0` is never read as "no errors"; it is logged as unavailable, not clean. A self-skip `exit 0` comes from missing CLI / token, or a host blocked by the cloud Trusted-egress allowlist (`.agents/context.md` § Allowed domains). The same rule covers every context, so an absent CI or e2e artifact is "we did not look", never "CI was green": context coverage is narrated before any fetch runs (`bkit context list-blocks`) and persisted as `contextsConfigured` on the `context-fetch` status row (`bkit context finalise`), and `bkit-debug-failure-diagnose` is required to separate NOT CONFIGURED / self-skipped / actually-checked before drawing a conclusion. `context-fetch-context-missing` advises when an enabled consumer section covers only some contexts. Every machine-generated evidence artifact (`context-{ci,diff,e2e,runtime,web}-*`, `context-tests-local-*`, build's `build-subplan-gate-*`, plan's `related-deferrals.md` / `related-failures.md`) passes through `bkit context clamp` — capped in shell, footered when it truncates, and recorded as `clamped` on the step's `step-done` row with original and kept sizes (row shape + profile table → `.bkit/workflows.md` § Context artifact clamping). The tracker sweep artifacts (`related-issues.md`, `context-related-*`) are uncapped by decision. The narration half carries no automated assertion — verified manually (run `/bkit-debug` in a `RUNTIME_WORKTREES=false` runtime, confirm the loud narration) per the honest limit D3.

@@ -43,7 +43,7 @@ maxTurns: 100
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Build task dependency graph from `Agent Execution Runbook`: per task, artefacts it produces and consumes (file, schema migration, exported function, prior task output). Runbook order = build order per template.
 6. Per consumed artefact: produced by earlier task or already in repo. Produced only by later task → `CRITICAL` (reorder). Produced by no task and absent from repo → `CRITICAL` (missing prerequisite). Cross-reference related issues for open blockers / prerequisite issues plan ignores → OPTIONAL.
-7. Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design-implied dependencies (e.g. "X depends on the migration in §Y") reflected as task dependencies. Missing dependencies → `CRITICAL`. Respect declared sub-plan coverage scopes if produced.
+7. Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced) → all design-implied dependencies (e.g. "X depends on the migration in §Y") reflected as task dependencies. Missing dependencies → `CRITICAL`. Respect declared sub-plan coverage scopes if produced.
 8. Cycle detection: tasks consuming each other's artefacts → `CRITICAL`.
 9. Verify strict adherence to `docs/templates/bkit-plan.md` — `Done when` criteria and template structure intact.
 10. Sort findings into standard three categories (`CRITICAL` / OPTIONAL / OUT OF SCOPE).

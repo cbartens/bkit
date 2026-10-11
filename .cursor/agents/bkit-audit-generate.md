@@ -48,7 +48,7 @@ tools:
 7. Populate `Pre-Flight / Dependencies`.
 8. Populate `Probe Steps`:
    - Tick steps `[x]` only once their `Done when` holds against repo.
-   - **If** surfaces absent → tick with explicit skip and evidence of absence; record where steps say, **Else** in `Checked`. Do NOT invent findings for absent surfaces.
+   - **If** surfaces absent → tick with explicit skip and evidence of absence; record where steps say, **Else** → `Checked`. Do NOT invent findings for absent surfaces.
 9. Populate `Findings`; ID `{slug}-{n}`.
 10. Populate `Report` from steps that feed each section.
 11. ONLY refine `Project Instructions` section in place; NEVER edit template above `<!-- bkit:end -->`. **If** heading missing → append `## Project Instructions`:

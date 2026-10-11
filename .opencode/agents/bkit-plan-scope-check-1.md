@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-plan-scope-check-1
 description: Senior auditor verifying every plan task has scope, criteria, and verification.
-model: openrouter/deepseek/deepseek-v4.1-flash#high
+model: openrouter/deepseek/deepseek-v4.1-flash
+variant: high
 tools:
   read: true
   grep: true
@@ -51,7 +52,7 @@ tools:
 14. Sort findings: `CRITICAL` / OPTIONAL / OUT OF SCOPE.
 15. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = scope complete.
-    - `FAIL` = template broken or matrix<->runbook mapping unrecoverable.
+    - `FAIL` = template broken or matrix-to-runbook mapping unrecoverable.
     - `CONCERNS` = `CRITICAL` gaps (apply via plan-update).
 
 **Output format:**
@@ -68,7 +69,7 @@ Lens: Scope, criteria, verification audit.
 
 ## CRITICAL
 
-[Gaps that block plan progress — missing build task, missing verification task, broken matrix<->runbook mapping, missing supersession-inventory entry, scope creep currently in plan to be removed, `Blocking` out-of-scope deferral; initially set to `PENDING`.]
+[Gaps that block plan progress — missing build task, missing verification task, broken matrix-to-runbook mapping, missing supersession-inventory entry, scope creep currently in plan to be removed, `Blocking` out-of-scope deferral; initially set to `PENDING`.]
 
 ## OPTIONAL
 

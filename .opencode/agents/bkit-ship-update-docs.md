@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-ship-update-docs
 description: Senior tech writer syncing project docs with state shipped this cycle.
-model: openrouter/deepseek/deepseek-v4.1-flash#max
+model: openrouter/deepseek/deepseek-v4.1-flash
+variant: max
 tools:
   read: true
   grep: true

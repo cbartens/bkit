@@ -49,7 +49,7 @@ maxTurns: 150
    - `Reword` → implement at current paths.
    - `Broken` already landed → log `DONE — already landed`.
    - `Broken` not landed → implement against current code or `BLOCKED`.
-7. Update **Create** after each task — append `DONE` / `BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
+7. Update **Create** after each task — append `DONE|BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
 8. Implement sequentially — edit / create source per task → at every gate confirm conditions met → append log → proceed. Honour plan `Reuse Inventory` when present: `EXTEND` row → modify named artifact, NEVER parallel file. Reusable artifact found mid-build → fold in and log, NEVER fork.
 9. Run `pnpm bkit:gate:static` — ALL local lint / typecheck MUST pass.
 10. Update **Create** — set `Verdict` via `Edit`; mapping:

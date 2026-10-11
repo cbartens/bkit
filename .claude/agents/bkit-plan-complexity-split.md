@@ -43,8 +43,8 @@ maxTurns: 100
 6. Name: `{plan-name}-1.md`, `{plan-name}-2.md`, etc.
 7. Copy ALL tasks (preserve `Done when` entry verbatim) from master into sub-plans. Task-linked rows (`Derived Test Matrix`, `Reuse Inventory`, `Supersession Inventory`, `Documentation Updates`) → sub-plan holding linked task. Copy into EVERY sub-plan: gate checkpoints; `Mandatory Tasks (Testing & Documentation)` and remaining sections scoped to its own tasks.
 8. Each sub-plan self-contained per `docs/templates/bkit-plan.md`, include `**Parent Plan:** {master-plan-path}`.
-9. Bidirectional links: Master<->sub-plans. Relative paths.
-10. Self-verify (mandatory before verdict; max 2 fix iterations, **If** still failing → `FAIL`):
+9. Bidirectional links: Master → sub-plans and sub-plans → Master. Relative paths.
+10. Self-verify before verdict (max 2 fix iterations); **If** still failing → `FAIL`:
     - Count tasks in original vs sum across sub-plans. **If** mismatch → fix in place, recount.
     - Confirm every task and task-linked row appears in exactly one sub-plan; gate checkpoints and `Mandatory Tasks (Testing & Documentation)` in every sub-plan.
     - Confirm every task's `Done when` entry survived copy verbatim.

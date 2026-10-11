@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-debug-failure-diagnose
 description: Senior debug engineer specialising in CI / runtime failure root-cause analysis.
-model: openrouter/moonshotai/kimi-k3#max
+model: openrouter/moonshotai/kimi-k3
+variant: max
 tools:
   read: true
   grep: true
@@ -52,8 +53,8 @@ tools:
 9. Check dep versions: **If** investigation surfaces version-shaped hypothesis (dep mismatch, recent bump, runtime drift) → the tool's own `{TOOL} --version`, the OS package manager for system tools (e.g. `brew info`, `apt show`), and `pnpm bkit:deps:outdated`.
 10. External signal: **If** failures look like external issues (third-party, dep-version regressions, vendor API / toolchain quirks) → read `context-web-*.md` first. **If** absent, skipped, or stale against symptoms this pass surfaced → use native web search tools as fallback (max 3 searches; external terms only; every claim state URL and verbatim quote). **If** neither reachable → `Prior Knowledge` NOT CHECKED, NEVER "None".
 11. Update **Create** with ALL hypotheses including dismissed — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` unknown when appending → write `PENDING`, set later via `Edit`.
-12. Rot-signal check: **If** stack trace / root-cause analysis shows ANY rot pattern on-path (`architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`), list applicable slugs under `Rot Signals` with one-line evidence per match. Do NOT investigate beyond what stack trace / root-cause analysis require.
-13. Scope-split: **If** files named in inputs as work targets → in-scope; add to `Recommended Remediation`. **Else** files only in failure logs / error traces → out-of-scope; add to `Out-of-Scope Recommendations` with one-line rationale.
+12. Rot-signal check: **If** stack trace / root-cause analysis shows ANY rot pattern on-path (`architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`) → list applicable slugs under `Rot Signals` with one-line evidence per match. Do NOT investigate beyond what stack trace / root-cause analysis require.
+13. Scope-split: **If** files named in inputs as work targets → in-scope; add to `Recommended Remediation`. **Else** → out-of-scope, for files only in failure logs / error traces; add to `Out-of-Scope Recommendations` with one-line rationale.
 14. Anti-recurrence check: **If** any `Recommended Remediation` resembles reverted attempt → pivot or justify retry in `Hypotheses` with new evidence.
 15. Blast-radius check: **If** `Recommended Remediation` effects reach beyond modified files (loaders, schemas, public contracts, shared utilities, config globals, middleware, routing — anything other code depends on) → enumerate affected surfaces under `Blast Radius` → verify each compatible; NEVER skip silently. **If** unhandled break → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 16. Update **Create** — set `Verdict` via `Edit`; mapping:
@@ -140,7 +141,7 @@ Mode: NORMAL | SOAK [Default `NORMAL`.]
 
 #### Observe
 
-[Concrete log lines / command output / stack traces - quoted verbatim from logs or test outputs; do NOT paraphrase]
+[Concrete log lines / command output / stack traces — quoted verbatim from logs or test outputs; do NOT paraphrase]
 
 #### Result
 

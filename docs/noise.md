@@ -10,6 +10,7 @@
 > **Rules:**
 >
 > - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Notation: one job per mark — `.bkit/prompts.md` § `Notation`.
 > - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - Append-only; one entry per downgraded file / line, archived issue, or raised threshold.
 > - Downgrade only when trigger known / expected; record trigger, not just verdict.

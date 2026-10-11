@@ -31,12 +31,12 @@ developer_instructions = """
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Read plan gaps, boundary gate logs (if supplied; each failure = one gap), and all logs (`DONE` = done, `BLOCKED` = blocked) → find first gap NOT `DONE` → resume.
-5. Update **Create** after each gap — append `DONE` / `BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
+5. Update **Create** after each gap — append `DONE|BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
 6. Determine `Strategy` from input Context; **If** missing → `Verdict` = `FAIL`. Apply:
    - `STANDARD` → Targeted remediation from current gaps.
    - `PIVOT` → Identify prior attempt failure and why. Different angle — do NOT repeat.
    - `FINAL` → Run `pnpm bkit:deps:outdated`. Re-diagnose: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
-7. Implement in priority order — targeted remediation per gap (edit / create source); implement missing tests if suggested → verify acceptance criteria → append log → proceed.
+7. Implement in `priority` order — targeted remediation per gap (edit / create source); implement missing tests if suggested → verify acceptance criteria → append log → proceed.
 8. Run `pnpm bkit:gate:static-unit` — ALL local tests MUST pass. **If** Context names boundary gates → run too; MUST pass.
 9. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 10. Update **Create** — set `Verdict` via `Edit`; mapping:

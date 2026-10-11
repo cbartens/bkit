@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-utility-update-roadmap
 description: Senior PM ranking next best items to work on from board and ledgers.
-model: openrouter/deepseek/deepseek-v4.1-flash#max
+model: openrouter/deepseek/deepseek-v4.1-flash
+variant: max
 tools:
   read: true
   grep: true

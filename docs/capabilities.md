@@ -9,31 +9,31 @@
 > - GENERATED — do NOT edit. `pnpm graph:update && pnpm graph:rollup` rewrites this file.
 > - Source of truth: `scripts/graphify/bkit-graph-drift-rules.json`. Every status derived from live source, never typed.
 > - Add a capability = add a rule there: capability · lane · owner module · one LITERAL marker.
-> - Markers LITERAL, never regex — `new Ratelimit(` as a regex is an unclosed group matching NOTHING.
-> - Match the mechanism, not the name — `createClient(` misses an owner that aliases its import.
+> - Markers LITERAL, never regex, because `new Ratelimit(` as a regex is an unclosed group matching NOTHING.
+> - Match the mechanism, not the name, because `createClient(` misses an owner that aliases its import.
 > - Optional `scope` narrows the tree scanned when a marker means different things per package.
-> - Optional `surface`: `product` (default) · `tests` (any `e2e/` dir + every `.test.`/`.spec.` file) · `all`. The two surfaces PARTITION the tree.
+> - Optional `surface`: `product` (default) · `tests` (any `e2e/` dir + every `.test.` / `.spec.` file) · `all`. The two surfaces PARTITION the tree.
 > - Optional `budgets`: the EXACT non-owner site count allowed per scope prefix. Measured == declared everywhere ⇒ `budgeted`, which is NOT a warning.
-> - A budget is not a shrug — `owned-query-shape-guard.test.ts` reds CI when the count moves EITHER way, and a site landing outside every declared prefix reads as over budget.
-> - Test code is in `graph.json` on purpose (`.graphifyignore`) and out of every diagram here by rule (`is_test_code` in `bkit-graphify-rollup.py`): test folders, `.test.`/`.spec.` files, test-runner config. `hide_nodes` below is DIAGRAM-ONLY too, for whatever else a picture should not draw.
-> - Status computed: no owner → `split`; owner absent → `gap`; owner present, others use marker → `bypassed`; else `one`. A `split`/`bypassed` at budget → `budgeted`.
+> - A budget is not a shrug, because `owned-query-shape-guard.test.ts` reds CI when the count moves EITHER way, and a site landing outside every declared prefix reads as over budget.
+> - Test code is in `graph.json` on purpose (`.graphifyignore`) and out of every diagram here by rule (`is_test_code` in `bkit-graphify-rollup.py`): test folders, `.test.` / `.spec.` files, test-runner config. `hide_nodes` below is DIAGRAM-ONLY too, for whatever else a picture should not draw.
+> - Status computed: no owner → `split`; owner absent → `gap`; owner present, others use marker → `bypassed`; else `one`. A `split|bypassed` at budget → `budgeted`.
 > - Externals: `scripts/graphify/bkit-graph-external-rules.json` — `sdk` · `hosts` · `env`. SDK AND url = `split`.
 > - Import-time scan: `scripts/graphify/bkit-graph-eager-rules.json` lists only what is PURE. Unclassified = reported.
-> - That scan reads SOURCE, not the graph — module-level initialiser calls are the one construct graphify drops.
+> - That scan reads SOURCE, not the graph, because module-level initialiser calls are the one construct graphify drops.
 > - Nothing discovers an SDK itself; find gaps by listing non-workspace deps.
 > - Only the Overrides block is hand-maintained. It round-trips; malformed ABORTS the run.
 > - Colour = called capability, shared by its inbound edges. Grey = never called.
 > - Drift = dashed border + ONE amber box for all four. No ranking: each scan proves a shape, never an intent.
-> - `budgeted` = SOLID border + blue box. Still drawn — a declared bypass is still a bypass — but it is settled, not an open question.
+> - `budgeted` = SOLID border + blue box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.
 > - Which status is which: `split` fine dash · `bypassed` long dash · `dead` even dash · `gap` dotted · `budgeted` NO dash.
-> - A fetched URL is a STRING, never an edge — `assert-routes-reachable.mjs` is the only check that sees it.
-> - Table rescanned every run, never stale. Diagrams from `graph.json` @ `3b8d94681` — differs from HEAD ⇒ run `pnpm graph:update` FIRST.
+> - A fetched URL is a STRING, never an edge, because `assert-routes-reachable.mjs` is the only check that sees it.
+> - Table rescanned every run, never stale. Diagrams from `graph.json` @ `367354f07`; when that differs from HEAD ⇒ run `pnpm graph:update` FIRST.
 > - Detail-level module graph → `pnpm graph`. This doc is the altitude ABOVE that: capabilities, not files.
 
 ## Status Vocabulary
 
 The first four are warnings, not verdicts, and they share one amber in the diagrams. Any
-of them can turn out to be deliberate — the scans prove a shape, never an intent.
+of them can turn out to be deliberate, because the scans prove a shape, never an intent.
 
 `budgeted` is what one of those four becomes once somebody has decided. The rule declares
 the EXACT number of non-owner sites allowed per scope prefix, its `note` says why that
@@ -53,9 +53,9 @@ and re-read the notes to dismiss them.
 <!-- prettier-ignore -->
 | Status | Meaning | Action |
 | --- | --- | --- |
-| `split` | Two or more competing implementations, no single owner | Centralise — file an issue. Or budget it, with the reason in `note` |
+| `split` | Two or more competing implementations, no single owner | Centralise; file an issue. Or budget it, with the reason in `note` |
 | `bypassed` | Owner exists, some callers skip it | Repoint the bypasses. Or budget them, with the reason in `note` |
-| `dead` | A client fetches a path nothing serves. A WARNING — some are deliberate | Check the call site, then delete the call or serve the path |
+| `dead` | A client fetches a path nothing serves. A WARNING, though some are deliberate | Check the call site, then delete the call or serve the path |
 | `gap` | Designed, not built. No owner yet | Name the owner BEFORE the first caller |
 | `budgeted` | A `split` or `bypassed` whose site count is declared, guarded and currently met | None — the CI guard owns it. Lower the budget when a site goes |
 | `one` | One implementation, every caller routes through it | None — keep it that way |
@@ -73,19 +73,19 @@ and re-read the notes to dismiss them.
 
 ## Unreachable API calls
 
-Not scanned — run the rollup with `--reachability`.
+Not scanned; run the rollup with `--reachability`.
 
 ## Import-time side effects
 
-12 module-scope side effects in 3 of 81 source files. A call here runs on **import**, not on first use, so every file downstream pays for it — under Jest that is a mandatory stub in tests that never touch the thing. Sorted by reach.
+12 module-scope side effects in 3 of 81 source files. A call here runs on **import**, not on first use, so every file downstream pays for it, because under Jest that is a mandatory stub in tests that never touch the thing. Sorted by reach.
 
 <!-- prettier-ignore -->
 | File | Evaluates at import | Downstream files | of which tests |
 | --- | --- | --- | --- |
-| `.bkit/core/engine/shared/protected-paths.ts` | `TEMPLATE_COPIES_DIR.split` | 114 | 69 |
-| `.bkit/core/engine/commands/workflow/branches.ts` | `LEDGERS.map` | 113 | 68 |
+| `.bkit/core/engine/shared/protected-paths.ts` | `TEMPLATE_COPIES_DIR.split` | 115 | 70 |
+| `.bkit/core/engine/commands/workflow/branches.ts` | `LEDGERS.map` | 114 | 69 |
 
-1 further file nothing imports — an entrypoint is supposed to do work when it loads. In the JSON report only.
+1 further file nothing imports, though an entrypoint is supposed to do work when it loads. In the JSON report only.
 
 ## Overrides
 
@@ -172,7 +172,7 @@ config:
     useMaxWidth: false
 ---
 flowchart LR
-  %% GENERATED by bkit-graphify-rollup.py from 3b8d9468109f63abf775104b3c0c9fe58f3dd253 — do not edit
+  %% GENERATED by bkit-graphify-rollup.py from 367354f07962c9e9fee97dbb7821c2656c009647 — do not edit
 ```
 
 ## Architecture — modules
@@ -191,7 +191,7 @@ config:
     useMaxWidth: false
 ---
 flowchart LR
-  %% GENERATED by bkit-graphify-rollup.py from 3b8d9468109f63abf775104b3c0c9fe58f3dd253 — do not edit
+  %% GENERATED by bkit-graphify-rollup.py from 367354f07962c9e9fee97dbb7821c2656c009647 — do not edit
   subgraph gncustom_health_checks["Health checks"]
     n_bkit_core_engine_checks_after_index[".bkit/core/engine/checks/after/index<br/>7 symbols · 1 files"]
     n_bkit_core_engine_checks_before_index[".bkit/core/engine/checks/before/index<br/>5 symbols · 1 files"]
@@ -204,7 +204,7 @@ flowchart LR
     n_bkit_core_engine_install_cloud_env[".bkit/core/engine/install/cloud-env<br/>49 symbols · 1 files"]
     n_bkit_core_engine_install_manifest[".bkit/core/engine/install/manifest<br/>28 symbols · 1 files"]
     n_bkit_core_engine_install_modules_index[".bkit/core/engine/install/modules/index<br/>10 symbols · 1 files"]
-    n_bkit_core_engine_install_version_file[".bkit/core/engine/install/version-file<br/>15 symbols · 1 files"]
+    n_bkit_core_engine_install_version_file[".bkit/core/engine/install/version-file<br/>16 symbols · 1 files"]
     n_bkit_core_engine_install_write[".bkit/core/engine/install/write<br/>13 symbols · 1 files"]
     n_bkit_core_engine_shared_package_roots[".bkit/core/engine/shared/package-roots<br/>15 symbols · 1 files"]
   end
@@ -244,8 +244,8 @@ flowchart LR
         n_bkit_core_engine_commands_workflow_issues["issues<br/>34 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_ledgers["ledgers<br/>35 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_locks["locks<br/>37 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_prs["prs<br/>43 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_repo["repo<br/>7 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_prs["prs<br/>49 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_repo["repo<br/>9 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_roadmap["roadmap<br/>37 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_runs["runs<br/>71 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_runtime["runtime<br/>16 symbols · 1 files"]
@@ -269,7 +269,7 @@ flowchart LR
     end
     n_bkit_core_engine_ledgers_status[".bkit/core/engine/ledgers/status<br/>20 symbols · 1 files"]
     subgraph gn_bkit_core_engine_render[".bkit/core/engine/render"]
-      n_bkit_core_engine_render_hosts["hosts<br/>14 symbols · 1 files"]
+      n_bkit_core_engine_render_hosts["hosts<br/>16 symbols · 1 files"]
       n_bkit_core_engine_render_models["models<br/>14 symbols · 1 files"]
     end
     n_bkit_core_engine_shared_settings[".bkit/core/engine/shared/settings<br/>5 symbols · 1 files"]
@@ -277,7 +277,7 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_branches -->|55| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_workflows -->|46| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_runs -->|44| n_bkit_core_engine_commands_lib
-  n_bkit_core_engine_commands_workflow_prs -->|37| n_bkit_core_engine_commands_lib
+  n_bkit_core_engine_commands_workflow_prs -->|43| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_workflows -->|28| n_bkit_core_engine_commands_workflow_locks
   n_bkit_core_engine_checks_after_index -->|21| n_bkit_core_engine_checks_after_ci_yml
   n_bkit_core_engine_checks_after_index -->|20| n_bkit_core_engine_checks_after_auth
@@ -292,11 +292,11 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_counters -->|15| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_steps -->|15| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_workflows -->|15| n_bkit_core_engine_ledgers_telemetry
+  n_bkit_core_engine_commands_install_upgrade -->|14| n_bkit_core_engine_install_version_file
   n_bkit_core_engine_commands_workflow_branches -->|14| n_bkit_core_engine_commands_workflow_locks
   n_bkit_core_engine_commands_install_upgrade -->|13| n_bkit_core_engine_install_manifest
   n_bkit_core_engine_commands_workflow_prs -->|13| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_harvest -->|12| n_bkit_core_engine_ledgers_telemetry
-  n_bkit_core_engine_commands_install_upgrade -->|12| n_bkit_core_engine_install_version_file
   n_bkit_core_engine_commands_workflow_ledgers -->|12| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_workflows -->|12| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_install_modules_claude -->|12| n_bkit_core_engine_install_write
@@ -308,6 +308,7 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_branches -->|11| n_bkit_core_engine_commands_workflow_prs
   n_bkit_core_engine_commands_workflow_context -->|11| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_issues -->|11| n_bkit_core_engine_commands_lib
+  n_bkit_core_engine_commands_workflow_repo -->|11| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_steps -->|11| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_workflow_workflows -->|11| n_bkit_core_engine_commands_workflow_issues
   n_bkit_core_engine_install_modules_opencode -->|11| n_bkit_core_engine_install_write
@@ -318,7 +319,6 @@ flowchart LR
   n_bkit_core_engine_commands_install_upgrade -->|10| n_bkit_core_engine_render_models
   n_bkit_core_engine_commands_workflow_branches -->|10| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_context -->|10| n_bkit_core_engine_commands_lib
-  n_bkit_core_engine_commands_workflow_repo -->|10| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_runs -->|10| n_bkit_core_engine_commands_workflow_fids
   n_bkit_core_engine_commands_workflow_runs -->|10| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_runtime -->|10| n_bkit_core_engine_commands_lib
@@ -339,6 +339,7 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_steps -->|9| n_bkit_core_engine_commands_workflow_locks
   n_bkit_core_engine_install_modules_claude -->|9| n_bkit_core_engine_shared_package_roots
   n_bkit_core_engine_install_modules_codex -->|9| n_bkit_core_engine_shared_package_roots
+  n_bkit_core_engine_install_modules_core -->|9| n_bkit_core_engine_install_version_file
   n_bkit_core_engine_install_modules_cursor -->|9| n_bkit_core_engine_shared_package_roots
   n_bkit_core_engine_install_modules_opencode -->|9| n_bkit_core_engine_shared_package_roots
   n_bkit_core_engine_checks_after_index -->|8| n_bkit_core_engine_checks_after_vercel
@@ -359,7 +360,6 @@ flowchart LR
   n_bkit_core_engine_commands_install_upgrade -->|7| n_bkit_core_engine_install_template_copies
   n_bkit_core_engine_commands_workflow_runs -->|7| n_bkit_core_engine_shared_settings
   n_bkit_core_engine_commands_workflow_workflows -->|7| n_bkit_core_engine_commands_workflow_branches
-  n_bkit_core_engine_install_modules_core -->|7| n_bkit_core_engine_install_version_file
   n_bkit_core_engine_install_modules_cursor -->|7| n_bkit_core_engine_install_write
   n_bkit_core_engine_install_modules_cursor -->|7| n_bkit_core_engine_render_hosts
   n_bkit_core_engine_install_modules_cursor -->|7| n_bkit_core_engine_install_cloud_env
@@ -454,11 +454,11 @@ flowchart LR
   linkStyle 15 stroke:#0891b2,stroke-width:2px
   linkStyle 16 stroke:#be123c,stroke-width:2px
   linkStyle 17 stroke:#65a30d,stroke-width:2px
-  linkStyle 18 stroke:#0e7490,stroke-width:2px
-  linkStyle 19 stroke:#b45309,stroke-width:2px
-  linkStyle 20 stroke:#0891b2,stroke-width:2px
-  linkStyle 21 stroke:#65a30d,stroke-width:2px
-  linkStyle 22 stroke:#bf3989,stroke-width:2px
+  linkStyle 18 stroke:#bf3989,stroke-width:2px
+  linkStyle 19 stroke:#0e7490,stroke-width:2px
+  linkStyle 20 stroke:#b45309,stroke-width:2px
+  linkStyle 21 stroke:#0891b2,stroke-width:2px
+  linkStyle 22 stroke:#65a30d,stroke-width:2px
   linkStyle 23 stroke:#be123c,stroke-width:2px
   linkStyle 24 stroke:#2563eb,stroke-width:2px
   linkStyle 25 stroke:#1a7f37,stroke-width:2px
@@ -470,16 +470,16 @@ flowchart LR
   linkStyle 31 stroke:#9a6700,stroke-width:2px
   linkStyle 32 stroke:#0891b2,stroke-width:2px
   linkStyle 33 stroke:#be123c,stroke-width:2px
-  linkStyle 34 stroke:#2563eb,stroke-width:2px
-  linkStyle 35 stroke:#4d7c0f,stroke-width:2px
-  linkStyle 36 stroke:#1a7f37,stroke-width:2px
-  linkStyle 37 stroke:#be123c,stroke-width:2px
-  linkStyle 38 stroke:#65a30d,stroke-width:2px
-  linkStyle 39 stroke:#be123c,stroke-width:2px
-  linkStyle 40 stroke:#5b8c00,stroke-width:2px
-  linkStyle 41 stroke:#be123c,stroke-width:2px
-  linkStyle 42 stroke:#0891b2,stroke-width:2px
-  linkStyle 43 stroke:#be123c,stroke-width:2px
+  linkStyle 34 stroke:#be123c,stroke-width:2px
+  linkStyle 35 stroke:#2563eb,stroke-width:2px
+  linkStyle 36 stroke:#4d7c0f,stroke-width:2px
+  linkStyle 37 stroke:#1a7f37,stroke-width:2px
+  linkStyle 38 stroke:#be123c,stroke-width:2px
+  linkStyle 39 stroke:#65a30d,stroke-width:2px
+  linkStyle 40 stroke:#be123c,stroke-width:2px
+  linkStyle 41 stroke:#5b8c00,stroke-width:2px
+  linkStyle 42 stroke:#be123c,stroke-width:2px
+  linkStyle 43 stroke:#0891b2,stroke-width:2px
   linkStyle 44 stroke:#be123c,stroke-width:2px
   linkStyle 45 stroke:#9a6700,stroke-width:2px
   linkStyle 46 stroke:#0891b2,stroke-width:2px
@@ -501,27 +501,27 @@ flowchart LR
   linkStyle 62 stroke:#0e7490,stroke-width:2px
   linkStyle 63 stroke:#5b8c00,stroke-width:2px
   linkStyle 64 stroke:#5b8c00,stroke-width:2px
-  linkStyle 65 stroke:#5b8c00,stroke-width:2px
+  linkStyle 65 stroke:#bf3989,stroke-width:2px
   linkStyle 66 stroke:#5b8c00,stroke-width:2px
-  linkStyle 67 stroke:#a21caf,stroke-width:2px
+  linkStyle 67 stroke:#5b8c00,stroke-width:2px
   linkStyle 68 stroke:#a21caf,stroke-width:2px
-  linkStyle 69 stroke:#5b8c00,stroke-width:2px
-  linkStyle 70 stroke:#c026d3,stroke-width:2px
-  linkStyle 71 stroke:#be123c,stroke-width:2px
-  linkStyle 72 stroke:#2563eb,stroke-width:2px
-  linkStyle 73 stroke:#9a6700,stroke-width:2px
-  linkStyle 74 stroke:#b45309,stroke-width:2px
-  linkStyle 75 stroke:#1a7f37,stroke-width:2px
-  linkStyle 76 stroke:#be123c,stroke-width:2px
+  linkStyle 69 stroke:#a21caf,stroke-width:2px
+  linkStyle 70 stroke:#5b8c00,stroke-width:2px
+  linkStyle 71 stroke:#c026d3,stroke-width:2px
+  linkStyle 72 stroke:#be123c,stroke-width:2px
+  linkStyle 73 stroke:#2563eb,stroke-width:2px
+  linkStyle 74 stroke:#9a6700,stroke-width:2px
+  linkStyle 75 stroke:#b45309,stroke-width:2px
+  linkStyle 76 stroke:#1a7f37,stroke-width:2px
   linkStyle 77 stroke:#be123c,stroke-width:2px
-  linkStyle 78 stroke:#b45309,stroke-width:2px
-  linkStyle 79 stroke:#5b8c00,stroke-width:2px
-  linkStyle 80 stroke:#0f766e,stroke-width:2px
-  linkStyle 81 stroke:#5b8c00,stroke-width:2px
-  linkStyle 82 stroke:#bf3989,stroke-width:2px
-  linkStyle 83 stroke:#9a6700,stroke-width:2px
-  linkStyle 84 stroke:#d73a4a,stroke-width:2px
-  linkStyle 85 stroke:#bf3989,stroke-width:2px
+  linkStyle 78 stroke:#be123c,stroke-width:2px
+  linkStyle 79 stroke:#b45309,stroke-width:2px
+  linkStyle 80 stroke:#5b8c00,stroke-width:2px
+  linkStyle 81 stroke:#0f766e,stroke-width:2px
+  linkStyle 82 stroke:#5b8c00,stroke-width:2px
+  linkStyle 83 stroke:#bf3989,stroke-width:2px
+  linkStyle 84 stroke:#9a6700,stroke-width:2px
+  linkStyle 85 stroke:#d73a4a,stroke-width:2px
   linkStyle 86 stroke:#1a7f37,stroke-width:2px
   linkStyle 87 stroke:#d73a4a,stroke-width:2px
   linkStyle 88 stroke:#bf3989,stroke-width:2px

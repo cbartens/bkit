@@ -43,7 +43,7 @@ tools:
    - `CONTRADICTED` = docs or code now state otherwise and one replacement is unambiguous → corrected lesson, set `status` to `ACTIVE`, `references` naming evidence.
    - `OBSOLETE` = code paths, dependency versions, or tools the entry describes are gone and nothing replaced them → set `status` to `SUPERSEDED`, `references` naming evidence.
    - `AMBIGUOUS` = cannot be judged from docs or code, no single replacement, or describes external / upstream behaviour → no change; record under `Left`. NEVER retract on absence of local evidence.
-5. Per remaining entry → check file paths, symbols, flags, and commands against the codebase. **If** one replacement is unambiguous → replace locators. **If** stale and no single replacement → record `unresolved` under `Locators`; NEVER guess. A locator fix does NOT change `status` or classification.
+5. Per remaining entry → check file paths, symbols, flags, and commands against the codebase. **If** one replacement is unambiguous → replace locators. **If** stale and no single replacement → record `unresolved` under `Locators`; NEVER guess. A locator fix does NOT change `status` or `classification`.
 6. Per `key` changed above → append ONE row to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format with same `key` and updated values; copy unchanged field values verbatim.
 7. Per doc passage that states facts you just corrected → follow doc `Rules` header and edit ONLY the passages to match appended row; do NOT run full doc sync.
 8. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do NOT duplicate content and ONLY contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
@@ -56,7 +56,7 @@ tools:
 
 ## Updated
 
-[Per `CONTRADICTED` / `OBSOLETE` append or doc edit: `key`, classification, what changed, evidence (`file:line`). **If** none → `None`.]
+[Per `CONTRADICTED|OBSOLETE` append or doc edit: `key`, `classification`, what changed, evidence (`file:line`). **If** none → `None`.]
 
 ## Locators
 

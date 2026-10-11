@@ -75,7 +75,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Synthesis Coverage
 
-[Summarise: brainstorms proposed N approaches; synthesis kept M; dropped which/why. Reasonable, or did good options get lost?; initially set to `PENDING`.]
+[Summarise: brainstorms proposed N approaches; synthesis kept M; dropped which / why. Reasonable, or did good options get lost?; initially set to `PENDING`.]
 
 ## Scope Alignment
 

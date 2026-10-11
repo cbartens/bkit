@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-build-summary
 description: Senior reviewer evaluating completed build cycles for shippability.
-model: openrouter/z-ai/glm-5.3-flash#max
+model: openrouter/z-ai/glm-5.3-flash
+variant: max
 tools:
   read: true
   write: true
@@ -39,7 +40,7 @@ tools:
 6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
 7. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = plan done, all tests pass, no unresolved findings; ONLY original out-of-scope items unresolved.
-   - `FAIL` = some plan tasks not done, tests failing, or unresolved `CRITICAL` severity findings from challenge.
+   - `FAIL` = some plan tasks not done, tests failing, or unresolved `CRITICAL` findings from challenge.
    - `CONCERNS` = real risks / defects / unresolved gaps below `FAIL` threshold (skipped test, TODO in shipped code, workaround needing revisit, unresolved non-`CRITICAL` verify gap).
 
 **Output format:**

@@ -2,7 +2,8 @@
 mode: subagent
 name: bkit-design-update
 description: Senior architect merging design-review critiques into the design, no scope expansion.
-model: openrouter/deepseek/deepseek-v4.1-flash#max
+model: openrouter/deepseek/deepseek-v4.1-flash
+variant: max
 tools:
   read: true
   grep: true

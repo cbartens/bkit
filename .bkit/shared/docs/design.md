@@ -10,6 +10,7 @@
 > **Rules:**
 >
 > - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Notation: one job per mark — `.bkit/prompts.md` § `Notation`.
 > - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
 > - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - No ad-hoc hex — theme tokens only; all colours MUST support Dark Mode.
@@ -17,10 +18,10 @@
 
 ## Machine-checked reference
 
-Sole hand-maintained source for token values — nothing generates it, so changing an expected value forces a human to restate intent in the same PR diff. Keeping the gate honest:
+Sole hand-maintained source for token values: nothing generates it, so changing an expected value forces a human to restate intent in the same PR diff. Keeping the gate honest:
 
-- **Select the table by its header row**, NEVER "any row containing a hex" — this doc may hold >1 hex table. Renaming the header renames the contract; update the parser in the same change.
-- **Assert each implementation separately** (stylesheet variables, theme object, rendered style guide) — a red names its own culprit.
+- **Select the table by its header row**, NEVER "any row containing a hex", because this doc may hold >1 hex table. Renaming the header renames the contract; update the parser in the same change.
+- **Assert each implementation separately** (stylesheet variables, theme object, rendered style guide), so a red names its own culprit.
 - **No silent gap.** Every implementation token maps to a row here OR to an explicit "intentionally undocumented" entry with a reason. A dropped token MUST red, not vanish.
 - **Transcribed != ratified.** A row read out of the implementation is tautological on day one — mark it so until a human confirms the value is intended.
 
