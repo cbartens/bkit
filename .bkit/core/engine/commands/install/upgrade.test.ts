@@ -531,10 +531,16 @@ describe("P4.T6 — --non-interactive upgrade auto-apply", () => {
 describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
   it("records the on-disk hash of upgraded files in .bkit-version", () => {
     const newContent = "new template content\n";
-    writeBkitVersionInDir(makeVersion({ ".claude/agents/bkit-old.md": sha256("old\n") }));
+    writeBkitVersionInDir(
+      makeVersion({
+        ".claude/agents/bkit-old.md": sha256("old\n"),
+        "retired/gone.md": sha256("was shipped once\n"),
+      }),
+    );
     // The dest file exists on disk (runUpgrade just wrote/merged it) — the hash is
     // taken from disk, NOT the template, so block/scope-merged files record correctly.
     writeFile(".claude/agents/bkit-foo.md", newContent);
+    writeFile(".claude/agents/bkit-old.md", "old\n");
 
     const result = {
       updated: [".claude/agents/bkit-foo.md"],
@@ -547,8 +553,9 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     const updated = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
     expect(updated).not.toBeNull();
     expect(updated!.canonicalHashes[".claude/agents/bkit-foo.md"]).toBe(sha256(newContent));
-    // Previous entry retained
+    // A live previous entry is retained; an entry for an absent path is pruned.
     expect(updated!.canonicalHashes[".claude/agents/bkit-old.md"]).toBe(sha256("old\n"));
+    expect(updated!.canonicalHashes["retired/gone.md"]).toBeUndefined();
   });
 
   it("is a no-op in dry-run mode", () => {
@@ -654,6 +661,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
 
   it("does not rewrite .bkit-version when the pin is already current and no files processed", () => {
     writeBkitVersionInDir(makeVersion({ "x.md": sha256("x") }));
+    writeFile("x.md", "x");
     const result = { updated: [], conflicts: [], skipped: [], skippedSeedable: [] };
 
     updateCanonicalHashesAfterUpgrade(result, {
