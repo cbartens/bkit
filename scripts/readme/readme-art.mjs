@@ -105,10 +105,11 @@ function hero(t) {
     ["/bkit-design", "design", [3, 2], "approved"],
     ["/bkit-plan", "plan", [3, 2], "approved"],
     ["/bkit-build", "build", [2, 2], "tests pass"],
+    ["/bkit-debug", "debug", [2, 2], "fixed"],
     ["/bkit-ship", "ship", [1, 2], "live"],
   ];
   rows.forEach(([cmd, p, [a, z], status], i) => {
-    const y = cy + 82 + i * 42;
+    const y = cy + 76 + i * 36;
     b += text(cx + 22, y, cmd, { size: 17, fill: t[p], font: MONO, weight: 600 });
     b += dots(cx + 170, y - 6, a, t[p], 6, 16);
     b += dots(cx + 170 + a * 16 + 10, y - 6, z, t[p], 6, 16);
@@ -161,10 +162,11 @@ function social(t) {
     ["/bkit-design", "design", [3, 2], "approved"],
     ["/bkit-plan", "plan", [3, 2], "approved"],
     ["/bkit-build", "build", [2, 2], "tests pass"],
+    ["/bkit-debug", "debug", [2, 2], "fixed"],
     ["/bkit-ship", "ship", [1, 2], "live"],
   ];
   rows.forEach(([cmd, p, [a, z], status], i) => {
-    const y = cy + 118 + i * 70;
+    const y = cy + 108 + i * 62;
     b += text(cx + 28, y, cmd, { size: 22, fill: t[p], font: MONO, weight: 600 });
     b += dots(cx + 222, y - 7, a, t[p], 7, 20);
     b += dots(cx + 222 + a * 20 + 12, y - 7, z, t[p], 7, 20);
@@ -581,46 +583,61 @@ function pipeline(t) {
 function features(t) {
   const W = 1000;
   const rows = [
-    [
-      "Does the work",
-      "design",
-      [
-        ["A workflow per job", "Design, plan, build, debug", "and ship — a command each"],
+    {
+      name: "Design",
+      key: "design",
+      cmd: "/bkit-design",
+      tiles: [
         ["Independent review", "Agents check work they", "didn't write themselves"],
-        ["Self-fixing builds", "Reads the error, fixes it,", "re-tests, remembers the fix"],
-        ["35 audits", "Security, privacy, cost,", "accessibility and more"],
-      ],
-    ],
-    [
-      "Keeps you in control",
-      "gate",
-      [
-        ["Your sign-off", "Approve design and plan;", "nothing ships without you"],
-        ["Guardrails", "Risky commands blocked;", "reviewers can read, not edit"],
-        ["Honest CI", "Parallel test lanes; green", "means every test ran"],
-        ["Quality checks", "Same checks on commit,", "on push and in CI"],
-      ],
-    ],
-    [
-      "Fits how you work",
-      "plan",
-      [
+        ["Three rival designs", "Three agents propose,", "two critique — one design"],
         ["Any AI tool", "Claude Code, Cursor, Codex", "or opencode — switch freely"],
-        ["Laptop to cloud", "Start at your desk, carry", "on from your phone or CI"],
-        ["Parallel features", "Each runs in its own", "copy of the repo"],
-        ["Skills on demand", "Installed for the feature,", "removed when it ships"],
+        ["Your sign-off", "Approve design and plan;", "nothing ships without you"],
       ],
-    ],
-    [
-      "Built-in know-how",
-      "build",
-      [
-        ["Docs + memory", "Docs kept up to date, plus", "lessons agents read first"],
+    },
+    {
+      name: "Plan",
+      key: "plan",
+      cmd: "/bkit-plan",
+      tiles: [
+        ["Five reviewers", "A plan stress-tested", "before any code"],
+        ["Scope kept tight", "Right-sized work, tasks", "in the right order"],
+        ["35 audits", "Findings feed straight", "into the plan"],
         ["Best model per job", "Each agent pinned to the", "right model, on every tool"],
-        ["Work stats", "Every run measured against", "your last five"],
-        ["Templates to adopt", "Secrets sync, Serena,", "graphify, Renovate"],
       ],
-    ],
+    },
+    {
+      name: "Build",
+      key: "build",
+      cmd: "/bkit-build",
+      tiles: [
+        ["Writes + verifies", "Code checked against", "the plan"],
+        ["Hunts bugs + holes", "Edge cases, auth holes,", "broken error paths"],
+        ["Quality checks", "Typecheck, lint, prose,", "on commit, push and CI"],
+        ["Parallel features", "Each runs in its own", "copy of the repo"],
+      ],
+    },
+    {
+      name: "Debug",
+      key: "debug",
+      cmd: "/bkit-debug",
+      tiles: [
+        ["Self-fixing builds", "Reads the error, fixes it,", "re-tests, remembers the fix"],
+        ["Root cause first", "Diagnoses before it", "changes anything"],
+        ["Honest CI", "Parallel test lanes; green", "means every test ran"],
+        ["Context fetch", "Pulls logs, diffs, runtime", "and web on a failure"],
+      ],
+    },
+    {
+      name: "Ship",
+      key: "ship",
+      cmd: "/bkit-ship",
+      tiles: [
+        ["Nothing dropped", "Checks the whole plan", "was delivered"],
+        ["Docs + memory", "Docs kept up to date, plus", "lessons agents read first"],
+        ["Skills on demand", "Installed for the feature,", "removed when it ships"],
+        ["Laptop to cloud", "Start at your desk, carry", "on from your phone or CI"],
+      ],
+    },
   ];
   const M = 24,
     G = 12,
@@ -629,10 +646,16 @@ function features(t) {
     RH = 150;
   const H = M + rows.length * RH - 12 + M - 14;
   let b = `<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
-  rows.forEach(([label, key, tiles], r) => {
+  rows.forEach(({ name, key, cmd, tiles }, r) => {
     const ry = M + r * RH;
     const col = t[key];
-    b += text(M + 4, ry + 14, label.toUpperCase(), { size: 13, weight: 700, fill: col, ls: 1.4 });
+    b += text(M + 4, ry + 14, name.toUpperCase(), { size: 13, weight: 700, fill: col, ls: 1.4 });
+    b += text(M + 4 + name.length * 9.5 + 16, ry + 14, cmd, {
+      size: 13,
+      weight: 600,
+      fill: t.muted,
+      font: MONO,
+    });
     tiles.forEach(([title, l1, l2], i) => {
       const x = M + i * (TW + G),
         y = ry + 26;
@@ -647,7 +670,7 @@ function features(t) {
     W,
     H,
     b,
-    "What ships with bkit: ready-made workflows, independent review, self-fixing builds, 35 audits, human sign-off, guardrails, honest CI, quality checks, any AI tool, laptop to cloud, parallel features, skills on demand, docs and memory kept current, best model per job, work stats, templates to adopt.",
+    "What ships with bkit, one coloured row per phase. Design: independent review, three rival designs, runs on any AI tool, your sign-off. Plan: five reviewers, scope kept tight, 35 audits, best model per job. Build: writes and verifies, hunts bugs and security holes, quality checks, parallel features. Debug: self-fixing builds, root cause first, honest CI, context fetch. Ship: nothing quietly dropped, docs and memory, skills on demand, laptop to cloud.",
   );
 }
 
