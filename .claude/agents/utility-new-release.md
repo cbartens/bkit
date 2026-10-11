@@ -5,6 +5,7 @@ effort: medium
 model: claude-sonnet-5-5
 tools:
   - Read
+  - mcp__serena__*
   - Write
   - Edit
   - Bash
