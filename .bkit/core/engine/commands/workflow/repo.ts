@@ -6,6 +6,7 @@
 // trails `origin/dev`, the main checkout, and the bkit binary every later block
 // calls ride along so Step 1 is one call.
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { parseRemoteUrlToSlug } from "../../ledgers/telemetry.js";
@@ -49,6 +50,28 @@ export function behindDev(cwd: string): { behindDev: number | null; divergedAgo:
   return { behindDev: Number(behind), divergedAgo: ago || null };
 }
 
+/**
+ * The bkit binary every later block calls: the repo-pinned one first — it matches
+ * the version this repo installed — else `bkit` on PATH (a checkout whose
+ * node_modules was pruned, or a globally installed bkit). The pinned path is
+ * returned even when nothing exists, so the failure names the expected location.
+ */
+export function resolveBkitBinary(root: string): string {
+  const pinned = path.join(root, "node_modules", ".bin", "bkit");
+  if (fs.existsSync(pinned)) return pinned;
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (dir === "") continue;
+    const candidate = path.join(dir, "bkit");
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      // keep looking
+    }
+  }
+  return pinned;
+}
+
 export const repoCommand: CommandSpec = {
   noun: "repo",
   summary: "Repo facts for Step 1: owner/repo, current branch, and how far it trails dev.",
@@ -77,7 +100,7 @@ export const repoCommand: CommandSpec = {
         behindDev: "commits on origin/dev not in HEAD (null when origin/dev is unknown locally)",
         divergedAgo: "age of the merge-base with origin/dev, e.g. '3 days ago' (null when unknown)",
         repoRoot: "the main checkout (the same from any worktree)",
-        bkit: "the bkit binary the workflow blocks call: <repoRoot>/node_modules/.bin/bkit",
+        bkit: "the bkit binary the workflow blocks call: <repoRoot>/node_modules/.bin/bkit, else `bkit` on PATH",
         outboxRoot: "<git common dir>/bkit-outbox: per-run scratch files, never committed",
       },
       exitCodes: {
@@ -120,7 +143,7 @@ export const repoCommand: CommandSpec = {
           branch,
           ...behind,
           repoRoot: root,
-          bkit: path.join(root, "node_modules", ".bin", "bkit"),
+          bkit: resolveBkitBinary(root),
           outboxRoot: path.join(common ?? path.join(root, ".git"), "bkit-outbox"),
         });
         if (branch === null && ctx.flags.allowDetached !== true) {

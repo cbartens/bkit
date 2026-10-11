@@ -45,6 +45,7 @@ reasoningEffort: max
 6. Run the Tier-2 auto-resolver BEFORE any hand-classification — it clears every append-only ledger and the dependency lockfile deterministically, leaving only conflicts that need judgement:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   [ -x "$BKIT" ] || BKIT="$(command -v bkit || echo "$BKIT")"
    "$BKIT" branches rebase && echo "TIER2_COMPLETE" || echo "TIER2_REFUSED"
    ```
    **If** `TIER2_COMPLETE` → the rebase already ran to completion; skip to the verify gate → append log entry. **Else** → the rebase is still in progress with the unresolvable paths conflicted; continue to classification. Do NOT `git rebase --abort` here — the `FAIL` branch owns that.

@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
-import { repoCommand, splitSlug } from "./repo";
+import { repoCommand, resolveBkitBinary, splitSlug } from "./repo";
 
 const dirs: string[] = [];
 const tmp = (prefix: string) => {
@@ -62,6 +62,34 @@ describe("splitSlug", () => {
     ["", null],
   ])("%j -> %j", (slug, expected) => {
     expect(splitSlug(slug)).toEqual(expected);
+  });
+});
+
+describe("resolveBkitBinary", () => {
+  it("prefers the repo-pinned binary over anything on PATH", () => {
+    const root = tmp("bkit-root-");
+    const pinned = path.join(root, "node_modules", ".bin");
+    fs.mkdirSync(pinned, { recursive: true });
+    fs.writeFileSync(path.join(pinned, "bkit"), "", { mode: 0o755 });
+    const onPath = tmp("bkit-path-");
+    fs.writeFileSync(path.join(onPath, "bkit"), "", { mode: 0o755 });
+    vi.stubEnv("PATH", onPath);
+    expect(resolveBkitBinary(root)).toBe(path.join(pinned, "bkit"));
+  });
+
+  it("falls back to `bkit` on PATH when the repo has no pinned binary", () => {
+    const root = tmp("bkit-root-");
+    const onPath = tmp("bkit-path-");
+    const bin = path.join(onPath, "bkit");
+    fs.writeFileSync(bin, "", { mode: 0o755 });
+    vi.stubEnv("PATH", onPath);
+    expect(resolveBkitBinary(root)).toBe(bin);
+  });
+
+  it("names the pinned location when neither exists", () => {
+    const root = tmp("bkit-root-");
+    vi.stubEnv("PATH", tmp("bkit-path-"));
+    expect(resolveBkitBinary(root)).toBe(path.join(root, "node_modules", ".bin", "bkit"));
   });
 });
 
@@ -160,6 +188,9 @@ describe("bkit repo info", () => {
 describe("bkit repo info — where bkit, the repo root and the outbox live", () => {
   it("prints the main checkout, the bkit binary there, and the outbox in the git common dir", async () => {
     git(cwd, "remote", "add", "origin", "https://github.com/o/r.git");
+    const pinned = path.join(cwd, "node_modules", ".bin");
+    fs.mkdirSync(pinned, { recursive: true });
+    fs.writeFileSync(path.join(pinned, "bkit"), "", { mode: 0o755 });
     const r = await run([]);
     expect(r.code).toBe(0);
     expect(r.json.repoRoot).toBe(cwd);
@@ -169,6 +200,9 @@ describe("bkit repo info — where bkit, the repo root and the outbox live", () 
 
   it("from a worktree, still names the main checkout and its outbox", async () => {
     git(cwd, "remote", "add", "origin", "https://github.com/o/r.git");
+    const pinned = path.join(cwd, "node_modules", ".bin");
+    fs.mkdirSync(pinned, { recursive: true });
+    fs.writeFileSync(path.join(pinned, "bkit"), "", { mode: 0o755 });
     const wt = path.join(cwd, ".worktrees", "1-x");
     git(cwd, "worktree", "add", "-q", wt, "-b", "feat/1-y");
     const out: string[] = [];
