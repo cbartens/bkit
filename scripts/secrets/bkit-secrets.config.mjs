@@ -58,5 +58,7 @@ export default {
     BKIT_GH_TOKEN_INSTALL: "github",
     // Fine-grained write token: self-hosted Renovate's platform auth (opens PRs, pushes renovate/* branches).
     BKIT_GH_TOKEN: "github",
+    // npm automation token (read + write on the @cbartens scope): release.yml publishes @cbartens/bkit to npmjs.
+    BKIT_NPM_TOKEN: "github",
   },
 };
