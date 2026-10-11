@@ -17,8 +17,8 @@ One `### {name}` section per clause:
 
 | Line                              | Meaning                                                                                                                                           |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `- prompt: {mode}`                | Applies to `.bkit/prompts/*.md`                                                                                                                   |
-| `- workflow: {mode}`              | Applies to `.bkit/workflows/*.md`                                                                                                                 |
+| `- prompt: {mode}`                | Applies to `.bkit/core/prompts/*.md`                                                                                                              |
+| `- workflow: {mode}`              | Applies to `.bkit/core/workflows/*.md`                                                                                                            |
 | `- rules: {mode}`                 | Applies to the `bkit:start` / `bkit:end` block of `.agents/rules.md` and its template                                                             |
 | `- audit: {mode}`                 | Applies to the `bkit:start` / `bkit:end` block of `.bkit/core/docs/templates/bkit-audit-*.md` and this repo's adopted copies in `docs/templates/` |
 | `- except: {name}, …`             | Files (basename, no `.md`) that word it differently on purpose                                                                                    |

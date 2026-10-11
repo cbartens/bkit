@@ -80,7 +80,7 @@ describe("ruleNoMirrorEdit", () => {
   });
 
   it("does NOT flag .claude/hooks/ (not a mirror dir)", () => {
-    expect(ruleNoMirrorEdit([".claude/hooks/gateguard.cjs"])).toBeNull();
+    expect(ruleNoMirrorEdit([".claude/hooks/bkit-gateguard.cjs"])).toBeNull();
   });
 
   it("does NOT flag .claude/settings.json", () => {

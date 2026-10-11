@@ -85,8 +85,8 @@ describe("isMirrorPath", () => {
     expect(isMirrorPath(".claude/settings.json")).toBe(false);
   });
 
-  it("does NOT flag .claude/hooks/gateguard.cjs (hooks dir, not agents/commands)", () => {
-    expect(isMirrorPath(".claude/hooks/gateguard.cjs")).toBe(false);
+  it("does NOT flag .claude/hooks/bkit-gateguard.cjs (hooks dir, not agents/commands)", () => {
+    expect(isMirrorPath(".claude/hooks/bkit-gateguard.cjs")).toBe(false);
   });
 
   it("MIRROR_PATH_PREFIXES has exactly 6 entries", () => {

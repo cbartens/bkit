@@ -640,7 +640,7 @@ export async function runUninstall(modules, ctx) {
             }
         }
     }
-    // Same for the Cursor twin `.cursor/cloud.md` (writeCursorCloudDoc) — untracked,
+    // Same for the Cursor twin `.cursor/bkit-cloud.md` (writeCursorCloudDoc) — untracked,
     // gitignored, holds resolved secrets; delete it explicitly when the cursor host is
     // uninstalled so a live-secrets file is never left behind.
     if (moduleList.includes("cursor")) {

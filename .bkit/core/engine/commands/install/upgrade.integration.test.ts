@@ -665,7 +665,7 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
 // The inventory is what a real install writes: every file git would track after an
 // install with every host and the claude cloud lane, minus JSON (no comment syntax) and
 // the template copies (bkit never applies them). Gitignored generated files
-// (`.claude/cloud.md`, `.bkit/advisories.md`) fall out with git's own ignore rules.
+// (`.claude/bkit-cloud.md`, `.bkit/advisories.md`) fall out with git's own ignore rules.
 // ---------------------------------------------------------------------------
 
 describe("#489 — managed-version marker on every file bkit writes", () => {

@@ -543,7 +543,7 @@ describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
     ) + "\n";
 
   it("deletes a 100%-bkit markered-text file (residual == shipped scaffold, not a dead husk)", () => {
-    // .claude/hooks/preflight.sh is a shebang + bkit header wrapping a managed block — 100% bkit.
+    // .claude/hooks/bkit-preflight.sh is a shebang + bkit header wrapping a managed block — 100% bkit.
     // A pristine install strips to a residual identical to the template scaffold → delete.
     const rel = ".claude/hooks/bkit-preflight.sh";
     writeFile(rel, fs.readFileSync(findTemplateSource(rel)!, "utf-8"));

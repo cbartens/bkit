@@ -163,12 +163,12 @@ export function runCloudModule(ctx: ModuleContext): void {
       detect:
         "Cloud env config splits across the repo (`.cursor/Dockerfile` + `.cursor/environment.json`, copied from `.bkit/templates/.cursor/`) and the Cursor Cloud Agents dashboard (secrets, manual).",
       action:
-        "Copy-paste-ready values (resolved from your `.envrc`) are written to `.cursor/cloud.md` (gitignored) on every install.\n\n" +
+        "Copy-paste-ready values (resolved from your `.envrc`) are written to `.cursor/bkit-cloud.md` (gitignored) on every install.\n\n" +
         "IN THE CLOUD AGENTS DASHBOARD (https://cursor.com/dashboard/cloud-agents → your environment → Secrets tab) — add each as a **Runtime Secret** (loaded as an env var, redacted from the agent's transcript):\n" +
         "  - `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`.\n" +
         "  - Tracker secret (Linear): `BKIT_LINEAR_API_KEY` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session — don't hardcode.\n" +
         "  - First session after Dockerfile changes rebuilds the image; subsequent sessions reuse cached layers.\n\n" +
-        "Full recipe in bkit's `cloud.md`; the paste-ready block is in `.cursor/cloud.md`.",
+        "Full recipe in bkit's `cloud.md`; the paste-ready block is in `.cursor/bkit-cloud.md`.",
     });
   }
 }

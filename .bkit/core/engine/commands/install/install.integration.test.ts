@@ -16,6 +16,8 @@ import { formatChecklist, runPostInstallCheck } from "../../checks/after/index";
 import { detectOpencodeProviders } from "./install";
 import type { ModuleFlag } from "../../cli";
 import { resolveNetworkAllowlist } from "../../install/cloud-env";
+import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
+import { getCoreRoot, getSharedRoot, getTemplatesRoot } from "../../shared/package-roots";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -312,6 +314,92 @@ describe("Scenario 5 — full install smoke against scratch consumer", () => {
     expect(fs.existsSync(path.join(tmpDir, ".claude", "agents"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".cursor", "agents"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".bkit", "version"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #507 — the payload folders: a full install (every host + tracker) writes every
+// file in `.bkit/core/` and `.bkit/shared/` at its path-rule destination, except
+// the package-only parts; no template lands outside the consumer's
+// `.bkit/templates/`; and the only LICENSE.md files are `.bkit/LICENSE.md` (the
+// PolyForm notice) and the MIT-0 one inside `.bkit/templates/`.
+// ---------------------------------------------------------------------------
+
+describe("#507 — full install writes core/ and shared/, never a template or a stray LICENSE.md", () => {
+  // Top-level folders of `.bkit/core/` that never land in a consumer repo.
+  const CORE_PACKAGE_ONLY = new Set(["engine", "workflows", "prompts", "hooks"]);
+
+  const relFiles = (root: string): string[] =>
+    listFilesRecursive(root).map((abs) => path.relative(root, abs));
+
+  // Consumer-repo files, `/`-separated, outside .git/ and node_modules/.
+  const consumerFiles = (dir: string): string[] =>
+    listFilesRecursive(dir)
+      .map((abs) => path.relative(dir, abs).split(path.sep).join("/"))
+      .filter((rel) => !rel.startsWith(".git/") && !rel.startsWith("node_modules/"));
+
+  it("every payload file lands, no template does, and only the two expected LICENSE.md files exist", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "scratch-consumer", version: "0.0.0", packageManager: "pnpm@10.4.1" }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const here = path.dirname(new URL(import.meta.url).pathname);
+    const tsxBin = path.resolve(here, "../../../../../node_modules/.bin/tsx");
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
+    const result = spawnSync(
+      tsxBin,
+      [
+        path.resolve(here, "../../cli.ts"),
+        "install",
+        "--claude",
+        "--cursor",
+        "--codex",
+        "--opencode=openrouter",
+        "--tracker=github",
+      ],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 120_000,
+      },
+    );
+    expect(result.status, `install failed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+
+    const missing: string[] = [];
+    for (const [root, skipTop] of [
+      [getCoreRoot(), CORE_PACKAGE_ONLY],
+      [getSharedRoot(), new Set<string>()],
+    ] as const) {
+      for (const rel of relFiles(root)) {
+        if (skipTop.has(rel.split(path.sep)[0]!)) continue;
+        // A folder's own licence stays in the package; `.bkit/LICENSE.md` is the notice.
+        if (rel === "LICENSE.md") continue;
+        const dest = remapTemplateDest(rel);
+        if (!fs.existsSync(path.join(tmpDir, dest))) missing.push(`${rel} -> ${dest}`);
+      }
+    }
+    expect(missing, "payload files the install did not write").toEqual([]);
+
+    const templates = relFiles(getTemplatesRoot()).filter((rel) => !rel.startsWith("context"));
+    const writtenTemplates = templates
+      .filter((rel) => rel !== "LICENSE.md")
+      .filter((rel) => fs.existsSync(path.join(tmpDir, remapTemplateDest(rel))));
+    expect(writtenTemplates, "templates written into the repo").toEqual([]);
+    for (const rel of templates) {
+      expect(fs.existsSync(path.join(tmpDir, ".bkit", "templates", rel)), rel).toBe(true);
+    }
+
+    for (const dir of CORE_PACKAGE_ONLY) {
+      expect(fs.existsSync(path.join(tmpDir, dir)), `${dir}/ leaked into the repo`).toBe(false);
+    }
+
+    const licences = consumerFiles(tmpDir)
+      .filter((rel) => path.posix.basename(rel) === "LICENSE.md")
+      .sort();
+    expect(licences).toEqual([".bkit/LICENSE.md", ".bkit/templates/LICENSE.md"]);
   });
 });
 

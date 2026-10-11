@@ -156,9 +156,9 @@ describe("cursor guardrails.cjs — managed-block boundary", () => {
 // bkit-gateguard.cjs.
 describe("T6 — guardrails.cjs installed mirror is its rendered template", () => {
   const PAIRS: ReadonlyArray<readonly [string, string, string]> = [
-    ["cursor", ".bkit/core/.cursor/hooks/bkit-guardrails.cjs", ".cursor/hooks/guardrails.cjs"],
-    ["claude", ".bkit/core/.claude/hooks/bkit-guardrails.cjs", ".claude/hooks/guardrails.cjs"],
-    ["codex", ".bkit/core/.codex/hooks/bkit-guardrails.cjs", ".codex/hooks/guardrails.cjs"],
+    ["cursor", ".bkit/core/.cursor/hooks/bkit-guardrails.cjs", ".cursor/hooks/bkit-guardrails.cjs"],
+    ["claude", ".bkit/core/.claude/hooks/bkit-guardrails.cjs", ".claude/hooks/bkit-guardrails.cjs"],
+    ["codex", ".bkit/core/.codex/hooks/bkit-guardrails.cjs", ".codex/hooks/bkit-guardrails.cjs"],
   ];
 
   for (const [host, template, mirror] of PAIRS) {

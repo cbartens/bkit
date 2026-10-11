@@ -189,7 +189,7 @@ describe("bkit-local-gate-audit (#437)", () => {
       scripts?: Record<string, string>;
     };
     const declared = pkg.scripts ?? {};
-    // Mirrors PNPM_NOT_A_SCRIPT in runLintModule: pnpm's own subcommands and
+    // Mirrors PNPM_NOT_A_SCRIPT in install/modules/core.ts: pnpm's own subcommands and
     // node_modules binaries pnpm resolves directly are not package.json scripts.
     const subcommands = new Set([
       "install",
