@@ -273,7 +273,7 @@ Pre-edit advisory hook, on all four hosts (Claude Code, Cursor, Codex, opencode)
 | Host | Implementation | File | Registration |
 | --- | --- | --- | --- |
 | Claude Code | `bkit-gateguard.cjs` (CJS) | `.claude/hooks/bkit-gateguard.cjs` | `.claude/settings.json` → `hooks.PreToolUse` on `Edit\|Write\|MultiEdit` |
-| opencode | `bkit-gateguard.js` (ESM) | `.opencode/plugin/bkit-gateguard.js` | `.opencode/opencode.json` → `plugin` array (opencode plugin spec — the key is `plugin`, singular; `plugins` is silently ignored and disables GateGuard) |
+| opencode | `bkit-gateguard.js` (ESM) | `.opencode/plugin/bkit-gateguard.js` | `.opencode/opencode.json` → `plugin` array, spec `./plugin/bkit-gateguard.js` (config-file-relative; opencode 2.0 reads a bare `.opencode/…` spec as an npm package and fails to load — the plugin also auto-loads from `.opencode/plugin/`) |
 | Cursor | `bkit-gateguard.cjs` (CJS) — managed block generated from the same parts as the Claude twin, so byte-identical | `.cursor/hooks/bkit-gateguard.cjs` | `.cursor/hooks.json` → `preToolUse` (matcher `Write`), no `failClosed` — an advisory hook that fails closed would block the edit it only meant to comment on |
 | Codex | `bkit-gateguard.cjs` (CJS) — Claude's stdin/stdout contract; parses the `apply_patch` envelope for target paths | `.codex/hooks/bkit-gateguard.cjs` | `.codex/hooks.json` → `hooks.PreToolUse` on `apply_patch` |
 | Cursor | `bkit-guardrails.cjs` (CJS) — destructive-op / secret-exposure gates, the Cursor equivalent of Claude's `permissions` and opencode's `permission` map | `.cursor/hooks/bkit-guardrails.cjs` | `.cursor/hooks.json` → `beforeShellExecution` + `preToolUse` (`Read\|TabRead`), both `failClosed` |

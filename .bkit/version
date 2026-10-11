@@ -21,7 +21,7 @@
     "docs/architecture.md": "690a045db5c29184c02dcf573198e6b08f95abd6f6d8bf56f372182dc017253a",
     "docs/technology.md": "484275441ed2119b83b34b8150a3fa605100f0e9f19d802bcc70def5aa57907a",
     ".bkit/.env.example": "c862b8e0d4ee211e73a1e8622e65b559213116a96e93efbef3e2dedb1751cba9",
-    ".opencode/opencode.json": "ea7a236c76026c113ab3dd7eccbdb3b1ec3d5272bf78cc5753774bd652cf3cd2",
+    ".opencode/opencode.json": "da74457f5faf1e20aa9f0e3ded96cac446315d3a34332cdc78142fb40254ec38",
     "docs/design.md": "1f5defe26f178b4189a785c007d89c599914f982cd906b9332f69ca1ae7aaeba",
     ".claude/commands/bkit-auto.md": "303f17df29d6b92b33005800dc37b53c1772863caa3f5f08b18a46493ce31dba",
     ".claude/commands/bkit-build.md": "e54154e58fdc9339a0d789985156ce465b12e6e192cf6fed38003b8c0cd176f7",

@@ -403,7 +403,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
 
   it("uses the 'plugin' key (singular), not 'plugins' (opencode schema)", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
-    expect(parsed.plugin).toContain(".opencode/plugin/bkit-gateguard.js");
+    expect(parsed.plugin).toContain("./plugin/bkit-gateguard.js");
     expect(parsed.plugins).toBeUndefined();
   });
 
@@ -539,7 +539,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
       expect(block.options?.baseURL).toBeUndefined();
       expect(block.options?.apiKey).toBe("{env:BKIT_OPENCODE_API_KEY}");
       expect(Object.keys(block)).toEqual(["options"]);
-      expect(parsed.plugin).toContain(".opencode/plugin/bkit-gateguard.js");
+      expect(parsed.plugin).toContain("./plugin/bkit-gateguard.js");
       expect(JSON.stringify(parsed)).not.toContain("@@OPENCODE");
     }
     // Zen CLI key must NOT invent a custom `opencode-zen` block — models.dev id is `opencode`.
@@ -557,7 +557,7 @@ describe("reconcileOpencodeJson — preserves existing provider order", () => {
     fs.writeFileSync(
       DST,
       JSON.stringify(
-        { plugin: [".opencode/plugin/bkit-gateguard.js"], provider: providers },
+        { plugin: ["./plugin/bkit-gateguard.js"], provider: providers },
         null,
         2,
       ) + "\n",
