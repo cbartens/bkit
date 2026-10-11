@@ -128,9 +128,9 @@ function couldNotRun(res: ReturnType<typeof spawnSync>, viaNpx: boolean): boolea
 const tail = (text: string) => text.trim().split("\n").slice(-20).join("\n");
 
 /**
- * Run `body`, then `cleanup` even if SIGINT / SIGTERM arrives meanwhile, then let
- * the signal take its default effect. Without the listeners Node dies on the
- * signal and leaves the base worktree registered in the repo.
+ * Run `body`, then `cleanup` even if SIGINT / SIGTERM arrives meanwhile, then terminate as
+ * the signal would. Without the listeners Node dies on the signal and leaves the base
+ * worktree registered in the repo.
  */
 async function withCleanup<T>(body: () => T, cleanup: () => void): Promise<T> {
   const received: NodeJS.Signals[] = [];
@@ -140,10 +140,21 @@ async function withCleanup<T>(body: () => T, cleanup: () => void): Promise<T> {
     return body();
   } finally {
     cleanup();
-    // A signal that arrived during a blocking spawn is dispatched on the next tick.
-    await new Promise((resolve) => setImmediate(resolve));
+    // A signal that arrived during a blocking spawn is dispatched on a later loop turn, and
+    // one turn is not always enough: on Node 20 the first `setImmediate` runs before the
+    // listener is called, so the signal looks absent and the process would run to completion
+    // (reproduced on node:20). Give the loop a bounded number of turns to deliver a pending
+    // signal before deciding.
+    for (let turn = 0; turn < 10 && received.length === 0; turn++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
     for (const sig of CLEANUP_SIGNALS) process.off(sig, onSignal);
-    if (received[0]) process.kill(process.pid, received[0]);
+    if (received[0]) {
+      // Exit with the conventional 128+signo rather than re-raising: Node keeps the libuv
+      // signal watcher installed after the last listener is removed, so `process.kill(self,
+      // sig)` is swallowed and the process runs to completion. A shell reads the same 143.
+      process.exit(128 + (os.constants.signals[received[0]] ?? 0));
+    }
   }
 }
 
