@@ -14,7 +14,7 @@ tools:
   - mcp__github__list_issues
   - mcp__github__issue_read
 ---
-<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior PM ranking next best items to work on from board and ledgers.
 **Scope:** As specified by input or session prompt.
