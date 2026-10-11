@@ -37,9 +37,8 @@ export function choosePushBase({ lastGreenSha, beforeSha, isAncestor }) {
 export const LOOKBACK_DAYS = 14;
 
 /**
- * The newest run in a list, by run number. The list's own order is NOT trusted: GitHub has
- * answered a `status=success` query out of order, and a push run diffed against a months-old
- * base would score everyone else's work as its own delta.
+ * The newest run in a list, by run number. The list's own order is NOT trusted — pick the
+ * highest `run_number`, never the first row returned.
  */
 export function newestRunSha(runs) {
   let newest = null;
@@ -62,7 +61,7 @@ function lastGreenPushSha(repo, branch, now = new Date()) {
     { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
   );
   // No run list (gh missing, API or auth failure) is not fatal: the caller falls back to
-  // event.before, the base every push run used before this script. The reason is logged.
+  // event.before. The reason is logged.
   if (error || status !== 0) {
     const reason = error ? error.message : String(stderr).split("\n")[0];
     console.error(
