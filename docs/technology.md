@@ -33,7 +33,7 @@
 | Technology | Version | Usage |
 | --- | --- | --- |
 | pnpm | tracks `package.json#packageManager` (single SoT; Corepack-resolved) | Monorepo / consumer package management |
-| GitHub Packages npm registry | `npm.pkg.github.com` | Distribution target for `@cbartens/bkit` (see `docs/decisions.jsonl` DE-3) |
+| npm registry | `https://registry.npmjs.org` | Distribution target for `@cbartens/bkit` |
 
 ## Build & Output
 

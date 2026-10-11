@@ -267,7 +267,7 @@ Undocumented, and invisible to the toolchain, because the file stays valid YAML,
 
 **Docs-only-diff precondition:** the `dev`-trigger path routes every post-merge CI failure to `/bkit-debug`. This is only correct for docs-only diffs if the consumer's `bkit-ci.yml` deploy-await step treats a host-cancelled build as skip, not red (skip e2e, stay green; e.g. Vercel `CANCELED`), but if a consumer reds on a host-cancelled build, every docs-only squash-merge to `dev` false-dispatches `/bkit-debug` and burns loop-cap budget. Verify this per consumer before relying on the `dev` trigger.
 
-**Consumer-repo acceptance note:** the full happy-path loop (squash-merge → post-merge CI → `workflow_run` → `/bkit-debug` dispatch → fix PR → re-merge) is only exercisable on consumer repos with `bkit-cloud.yml` installed and its dispatch secrets wired (see `BKIT_GH_TOKEN_INSTALL` — presence matrix, below, and the cloud-agent auth surfaces in `docs/security.md`). A consumer without `bkit-cloud.yml` installed, or without CI running on `push: branches: [dev]`, never emits the `workflow_run` event this trigger depends on, so the feature degrades to a silent no-op, not a failure.
+**Consumer-repo acceptance note:** the full happy-path loop (squash-merge → post-merge CI → `workflow_run` → `/bkit-debug` dispatch → fix PR → re-merge) is only exercisable on consumer repos with `bkit-cloud.yml` installed and its dispatch secrets wired (see the cloud-agent auth surfaces in `docs/security.md`). A consumer without `bkit-cloud.yml` installed, or without CI running on `push: branches: [dev]`, never emits the `workflow_run` event this trigger depends on, so the feature degrades to a silent no-op, not a failure.
 
 ## Ship gate + bookkeeping
 
@@ -400,12 +400,7 @@ Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs 
 | Dependabot alerts | Read |
 | Metadata | Read-only |
 
-`Commit statuses: Read and write` is what opens the PR. Without it Renovate creates the branch and 403s on commit status. There is no separate Checks permission on a fine-grained PAT. Keep `BKIT_GH_TOKEN` separate from `BKIT_GH_TOKEN_INSTALL` (`read:packages` only). Org-owned tokens cannot read the owner email; set the Actions variable `RENOVATE_GIT_AUTHOR` (for example `Renovate Bot <renovate@your-domain>`).
-
-**Private package.** `@cbartens/bkit` is on `npm.pkg.github.com`. Lockfile regen resolves it for every bump. Without a read token, regen 401s and CI fails `pnpm install --frozen-lockfile`.
-
-- Mend: add `BKIT_GH_TOKEN_INSTALL` as a Mend repository secret and tick "used during the scan as an environment variable". Uncomment the `hostRules` `token` line in `renovate.json5`.
-- Self-hosted: leave that line commented. The example workflow sets `RENOVATE_HOST_RULES` from the Actions secret. An uncommented Mend-style line adds an empty-token rule and 401s.
+`Commit statuses: Read and write` is what opens the PR. Without it Renovate creates the branch and 403s on commit status. There is no separate Checks permission on a fine-grained PAT. Org-owned tokens cannot read the owner email; set the Actions variable `RENOVATE_GIT_AUTHOR` (for example `Renovate Bot <renovate@your-domain>`).
 
 **pnpm 11 on Mend's runner.** A large graph can OOM during `pnpm update --lockfile-only`. The example sets `minimumReleaseAge: "1 day"` and caps `PNPM_WORKERS`. To clear the per-install gate, set `minimumReleaseAge: 0` in `pnpm-workspace.yaml`. Deleting the key does not: pnpm 11 defaults it to 1440. Self-hosted on `ubuntu-latest` has the memory; the freshness setting is still yours to keep or drop.
 
@@ -438,22 +433,6 @@ Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs immediately again
 <!-- bkit:end -->
 
 ## Project
-
-### `BKIT_GH_TOKEN_INSTALL` — presence matrix
-
-`BKIT_GH_TOKEN_INSTALL` (classic `read:packages`) required at four surfaces; missing any breaks install / CI. Phase 3 detectors mirror those four. Fifth surface only with Renovate — undetectable (Mend dashboard, off-repo). Do not confuse with **`BKIT_GH_TOKEN`** — broader fine-grained write PAT (GitHub MCP + self-hosted Renovate platform auth). `BKIT_GH_TOKEN` cannot auth GitHub Packages (fine-grained 403), so the registry / lockfile stays on `BKIT_GH_TOKEN_INSTALL`. Self-hosted Renovate surface (repo Actions secret) also undetectable.
-
-<!-- prettier-ignore -->
-| Surface | Where to set | Symptom if missing | bkit detector |
-| --- | --- | --- | --- |
-| Local shell | `.bkit/.env` (gitignored, scaffolded by `bkit install`) → `BKIT_GH_TOKEN_INSTALL=<classic PAT>`; auto-loaded via direnv (`brew install direnv` and shell hook and `direnv allow`) | `pnpm install` 401 against `npm.pkg.github.com` (sometimes opaque against `npmjs.org`) | `detectShellToken` and `detectMissingDotenv` and `detectBlankDotenvKeys` (Phase 3) |
-| `.npmrc` (registry mapping only) | `@cbartens:registry=https://npm.pkg.github.com` — the auth token is **NOT** stored here; write it once to pnpm's user-level config: `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` (pnpm >=10.34.3 401s on a project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` ref — see KN-CORE-7) | Missing registry mapping → 401; a leftover `_authToken` line → 401 and shadows the user-level token | `detectNpmrcAuth` and `detectNpmrcLegacyAuthToken` (Phase 3) |
-| GitHub Actions secret | `gh secret set BKIT_GH_TOKEN_INSTALL --body=$BKIT_GH_TOKEN_INSTALL` AND an install step that runs `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` before `pnpm install`, with `env: { BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }} }` | CI 401 on `@cbartens/bkit` fetch on next push | `detectGhSecret` and `detectCiYmlMissingTokenEnv` (Phase 3, blocker when `.npmrc` authenticates to GH Packages but the step is unwired) |
-| Vercel env (preview and production) | `vercel env add BKIT_GH_TOKEN_INSTALL preview` and `vercel env add BKIT_GH_TOKEN_INSTALL production`, **plus** a `vercel.json` `installCommand: pnpm config set //npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL && pnpm install` (Vercel cannot run a pre-install shell step) | Vercel preview / production deploy 401, because Vercel runs `pnpm install` in a separate container, no GH-secret inheritance; without the installCommand the token never reaches pnpm's auth config | `detectVercelEnv("preview" \| "production")` (Phase 3) |
-| Renovate (Mend hosted) | Mend repository secret at https://developer.mend.io/github/&lt;owner&gt;/&lt;repo&gt; → Settings → Secrets, then uncomment `token` in `.github/renovate.json5` `hostRules`. Self-hosted: leave that line commented; the workflow sets `RENOVATE_HOST_RULES` | Every Renovate dependency PR fails CI with `ERR_PNPM_OUTDATED_LOCKFILE`, because Renovate can't regenerate `pnpm-lock.yaml` without resolving the private `@cbartens/bkit`. The CI Actions secret is NOT visible to Mend's runner | None — off-repo (Mend dashboard). See § Dependency updaters |
-| Renovate self-hosted platform auth — the **general** `BKIT_GH_TOKEN` (same one that drives the MCP server), set as a repo Actions secret; a **different** token from `BKIT_GH_TOKEN_INSTALL` | Repo Actions secret `BKIT_GH_TOKEN` — fine-grained PAT (Contents/PRs/Workflows/Issues **RW** and Metadata **R**), or a GitHub App token via `actions/create-github-app-token`; keep separate from `BKIT_GH_TOKEN_INSTALL` (least privilege) | No Renovate PRs open / the scheduled Actions run 401s. (With `GITHUB_TOKEN` instead, PRs open but never trigger CI, so `platformAutomerge` never fires.) | None — repo Actions secret bkit does not read. See § Dependency updaters |
-
-Token must be a GitHub PAT with `read:packages` scope (classic) or `Packages: read` permission (fine-grained). Generate at <https://github.com/settings/tokens>.
 
 ### Pre-push checklist
 
@@ -577,10 +556,6 @@ The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it t
 - **`--auto=opencode` requires `tracker=github`.**
 - **Single fanned-out `OPENCODE_PROVIDER_KEY`** under committed `opencode.json` `envVar`; no `BKIT_ANTHROPIC_API_KEY` in opencode job. GHA-injection hardened, with `PHASE` / `ARG` via `env:`; `ARG` validated `^[0-9A-Za-z.*/-]+$`.
 - **SHA pins** follow § GitHub Actions pinning; your updater refreshes them in your copy. **`bkit [auto route]` gate** — commit-tag taxonomy.
-
-### Consumer CI auth — user-level `pnpm config set` (canonical)
-
-Before install: `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` + `pnpm install`, step `env: BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}`. `.npmrc` = registry mapping only; pnpm >=10.34.3 401s on project `.npmrc` substitution (KN-CORE-7). No composite action, no cross-org `uses:`. Template: `.bkit/templates/.github/workflows/bkit-ci.yml`; consumer detail: README §"Adding a new consumer — checklist" / §"Consumer CI auth".
 
 ### Sliding major-version tag
 

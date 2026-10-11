@@ -17,7 +17,7 @@
 
 ## Supply-Chain (GitHub Actions)
 
-Action SHA-pinning and the dependency-update pipeline (Renovate / Dependabot, private-registry read-auth, CVE handling) are CI/CD pipeline rules → canonical home `deployments.md` § Dependency updaters; this section keeps only the security invariant.
+Action SHA-pinning and the dependency-update pipeline (Renovate / Dependabot, CVE handling) are CI/CD pipeline rules → canonical home `deployments.md` § Dependency updaters; this section keeps only the security invariant.
 
 **Token isolation:** Renovate PRs use a restricted `GITHUB_TOKEN` with no access to the cloud lane's model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`) — `bkit-cloud.yml` will not dispatch on them by design. A compromised dependency PR cannot reach agent API credentials.
 
@@ -49,7 +49,7 @@ No database, server, or user-auth surface. Security concerns: secrets management
 
 ### `.bkit/.env` scope
 
-`.bkit/.env` (gitignored, auto-loaded via `.envrc` / direnv) holds **bkit and agent-tooling secrets ONLY**: tracker / cloud-agent tokens (`BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`, `BKIT_LINEAR_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `BKIT_CURSOR_API_KEY`) and opencode provider keys (`BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`).
+`.bkit/.env` (gitignored, auto-loaded via `.envrc` / direnv) holds **bkit and agent-tooling secrets ONLY**: tracker / cloud-agent tokens (`BKIT_GH_TOKEN`, `BKIT_LINEAR_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `BKIT_CURSOR_API_KEY`) and opencode provider keys (`BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`).
 
 App / stack credentials do not belong here — runtime keys and `/bkit-debug` observability tokens (deploy-host, DB log-read, etc.) live in app env files (e.g. `apps/web/.env.local`, sourced by `.envrc`). Never re-add stack creds to `.bkit/.env`. Runtime-log source config → `.agents/context.md` (see `docs/observability.md`).
 
@@ -60,19 +60,9 @@ App / stack credentials do not belong here — runtime keys and `/bkit-debug` ob
 <!-- prettier-ignore -->
 | Credential | Scope | Notes |
 | --- | --- | --- |
-| `BKIT_GH_TOKEN_INSTALL` | Registry read-auth for `@cbartens/bkit` | Classic PAT, `read:packages`. Required at four surfaces — see `docs/deployments.md` for the presence matrix. |
-| `BKIT_GH_TOKEN` | GitHub MCP server; self-hosted Renovate platform auth | Broader fine-grained write PAT. **Cannot** authenticate to GitHub Packages (fine-grained PATs 403 there), so registry auth stays on `BKIT_GH_TOKEN_INSTALL`. Keep the two separate (least privilege). |
-| `NODE_AUTH_TOKEN` | `npm publish` in `release.yml` | Set from `${{ secrets.GITHUB_TOKEN }}` (auto-injected) with `permissions: packages: write`. Never persisted outside the CI job. |
+| `BKIT_GH_TOKEN` | GitHub MCP server; self-hosted Renovate platform auth | Fine-grained write PAT, scoped to the target repo. |
 | opencode provider keys | opencode host model access | Referenced as `{env:KEY}` in `.opencode/opencode.json` — never inlined. In CI the single `OPENCODE_PROVIDER_KEY` secret fans out to the configured provider's env-var name. |
 | `BKIT_ANTHROPIC_API_KEY` / `BKIT_CURSOR_API_KEY` / `BKIT_LINEAR_API_KEY` | Cloud agents and tracker | Optional; opt-in surfaces only. |
-
-### `BKIT_GH_TOKEN_INSTALL`
-
-Must be a **classic** GitHub PAT with `read:packages` scope. Fine-grained PATs cannot auth GitHub Packages npm — never substitute (`bkit install` Phase 3 states classic; `docs/deployments.md` § presence matrix scaffolds `<classic PAT>`).
-
-- NEVER commit the token literally. Committed `.npmrc` carries ONLY registry mapping; token → pnpm user-level config via `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` (not project `.npmrc`, because pnpm >=10.34.3 401s on env-substitution; see `docs/knowledge.jsonl` KN-CORE-7).
-- NEVER log or print the token. `detectShellToken` (Phase 3) checks presence only.
-- `git status` before every commit — `.env*` in `.gitignore`, must never be staged.
 
 ### `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` — generated, hold live secrets
 
@@ -81,7 +71,7 @@ Must be a **classic** GitHub PAT with `read:packages` scope. Fine-grained PATs c
 - **Gitignored + `chmod 600`. NEVER commit.** Deliberately UNTRACKED — absent from WriteSet / manifest / `canonicalHashes` — so no `bkit check` drift or upgrade template walk (machine-local values expected to differ). `bkit uninstall` deletes them when the respective host is removed.
 - **Resolution follows consumer `.envrc`** — bkit reads sourced dotenv files, honours `unset` lines. No hardcoded stack-specific key list; knowledge stays in consumer `.envrc` (stack-independent shipped surface).
 - **Session-hijack keys always dropped** from the block: `ANTHROPIC_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, because exporting them redirects the agent's own model calls to API-key billing vs subscription.
-- Empty-valued keys skipped; absent baseline tokens (`BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`) → placeholder, never fabricated.
+- Empty-valued keys skipped; absent baseline tokens (`BKIT_GH_TOKEN`) → placeholder, never fabricated.
 - **Cursor secret type:** the `.cursor/bkit-cloud.md` doc directs you to add each as a **Runtime Secret** (loaded as an env var but redacted from the agent's transcript) in the Cloud Agents dashboard → Secrets tab, so tools read the value while the agent transcript never sees it.
 
 ## Shell Injection

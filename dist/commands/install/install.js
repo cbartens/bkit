@@ -12,7 +12,6 @@ import { runPreflight } from "../../checks/before/index.js";
 import { formatChecklist, readChangelogVersionDelta, runPostInstallCheck, writeAdvisoriesArtifact, } from "../../checks/after/index.js";
 import { findMissingOwnedHooks, detectOwnedHookMissing } from "../../checks/after/managed.js";
 import { resolveTokens } from "../../install/placeholders.js";
-import { migrateNpmrc, npmrcAuthTokenFinding } from "../../install/npmrc-migration.js";
 import { parseModelLookup, applyModelOverrides, buildOpencodeModelLookup, parseEffortMap, } from "../../render/models.js";
 import { getBkitDocsRoot } from "../../shared/package-roots.js";
 import { runUninstall } from "./uninstall.js";
@@ -288,18 +287,6 @@ export async function runInstall(args) {
     const advisories = [
         ...preflightAdvisories,
     ];
-    // One-time migration: bkit moved from GitHub Packages to the public npm registry.
-    // Drop a stale `@cbartens:registry=` mapping from the consumer `.npmrc` and flag a
-    // leftover `//npm.pkg.github.com/:_authToken=` line for manual deletion. Never runs
-    // on `bkit check` (dryRun) — a check writes nothing.
-    if (!dryRun) {
-        const npmrc = migrateNpmrc(process.cwd(), false);
-        if (npmrc.removedRegistry) {
-            console.log(`${LOG_PREFIX} migrated .npmrc: removed the obsolete @cbartens GitHub Packages registry mapping`);
-        }
-        if (npmrc.hasAuthToken)
-            advisories.push(npmrcAuthTokenFinding());
-    }
     const ws = { writes: [] };
     const postDispatch = [];
     // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4) — see

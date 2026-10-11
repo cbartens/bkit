@@ -154,21 +154,17 @@ Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/
 - Advisories (Phase 1 + Phase 3) → numbered checklist after install.
 - `bkit check` (dry-run) → Phase 1 + Phase 3 advisories (read-only); exit 1 on Tier-1 / Tier-2 drift. No writes.
 
-## Phase 3 Token-Surface Detectors
+## Phase 3 Credential + Migration Findings
 
-Phase 3 detects missing / misconfigured `BKIT_GH_TOKEN_INSTALL` at four surfaces; actionable advisory text. Detector names = audit trail:
+Phase 3 emits credential findings as advisory text. Finding ids = audit trail:
 
 <!-- prettier-ignore -->
-| Detector | Surface |
-| --- | --- |
-| `detectShellToken` | Local shell env var |
-| `detectNpmrcAuth` | `.npmrc` `@cbartens` registry mapping (token lives in pnpm user-level config, not here) |
-| `detectNpmrcAuthTokenLine` | `.npmrc` `_authToken` line (401s on pnpm >=10.34.3) |
-| `detectGhSecret` | GitHub Actions secret |
-| `detectCiYmlMissingTokenEnv` | `bkit-ci.yml` install step lacks the token `env:` wiring — blocker when `.npmrc` authenticates to GH Packages but the step is unwired |
-| `detectVercelEnv` | Vercel preview and production env vars |
-
-See `docs/deployments.md` for the full presence matrix and `docs/security.md` for token-handling rules.
+| Finding | Source | Surface |
+| --- | --- | --- |
+| `detectShellGhMcpToken` | `checks/after/auth.ts` | `BKIT_GH_TOKEN` missing / empty in the shell — gated on a configured `github` MCP server |
+| `detectGhSecret` | `checks/after/auth.ts` | GitHub Actions repo secret presence |
+| `detectCiRouterSecrets` | `checks/after/auth.ts` | `bkit-cloud.yml` installed but its `ANTHROPIC_API_KEY` repo secret unset |
+| `buildCloudDashboardsAdvisory` | `checks/after/auth.ts` | Cloud-dashboard secret checklist (GitHub Actions + Cursor + Claude) |
 
 ## Runtime capability row
 

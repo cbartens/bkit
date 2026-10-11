@@ -226,7 +226,7 @@ cp .bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs scripts/slop/
 
 ## direnv — `.envrc`
 
-Loads `.bkit/.env` on `cd`, so local sessions see `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`, tracker keys. bkit reads your `.envrc` (its `dotenv*` and `unset` lines, never executed) to fill the env blocks of `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md`; preflight's direnv advisories key on it. Reference: https://direnv.net/docs/installation.html.
+Loads `.bkit/.env` on `cd`, so local sessions see `BKIT_GH_TOKEN`, tracker keys. bkit reads your `.envrc` (its `dotenv*` and `unset` lines, never executed) to fill the env blocks of `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md`; preflight's direnv advisories key on it. Reference: https://direnv.net/docs/installation.html.
 
 ```bash
 brew install direnv     # then add the shell hook from the link
@@ -273,7 +273,7 @@ launchctl getenv BKIT_OPENROUTER_API_KEY    # bootstrap proof
 Editor defaults (`settings.json`: prettier format-on-save, extension recommendations) and the Cursor Cloud Agent image (`environment.json` → `Dockerfile` + per-snapshot `install`). Cloud agents run bkit workflows; `bkit install --auto=cursor` (needs `--tracker=linear`) points at the two cloud files. Reference: https://cursor.com/docs/cloud-agent/setup.
 
 - `Dockerfile`: the `bkit toolchain` section installs what bkit's workflows use (git, jq, python3, gh, pinned Vale, corepack-pinned pnpm). Adapt `FROM`, the Node major and repo extras outside it.
-- `environment.json` `install`: writes the `BKIT_GH_TOKEN_INSTALL` auth line, `pnpm install --frozen-lockfile`, `vale sync` when `.vale.ini` exists.
+- `environment.json` `install`: `pnpm install --frozen-lockfile`, then `vale sync` when `.vale.ini` exists.
 - Secrets: Cloud Agents dashboard → Runtime Secrets (`.bkit/cloud.md`).
 - Traps: the corepack pnpm pin must match `packageManager`. Keep the `bkit toolchain` section as shipped so the template diff on upgrade stays readable.
 

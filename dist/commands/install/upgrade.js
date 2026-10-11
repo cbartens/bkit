@@ -34,7 +34,6 @@ import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, } from "../../install/cloud-env.js";
 import { syncTemplateCopies, formatTemplateChanges } from "../../install/template-copies.js";
-import { migrateNpmrc } from "../../install/npmrc-migration.js";
 import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payload-links.js";
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
 import { renderManagedOutputs } from "../../install/modules/index.js";
@@ -443,18 +442,6 @@ export async function runUpgradeCommand(upgradeFlags) {
         const handled = await runSelfBump(upgradeFlags, process.cwd());
         if (handled)
             return;
-    }
-    // One-time migration: bkit moved from GitHub Packages to the public npm registry. Drop
-    // a stale `@cbartens:registry=` mapping from the consumer `.npmrc` and flag a leftover
-    // `//npm.pkg.github.com/:_authToken=` line for manual deletion. Never writes on --dry-run.
-    if (!upgradeFlags.dryRun) {
-        const npmrc = migrateNpmrc(process.cwd(), false);
-        if (npmrc.removedRegistry) {
-            console.log(`${LOG_PREFIX} migrated .npmrc: removed the obsolete @cbartens GitHub Packages registry mapping`);
-        }
-        if (npmrc.hasAuthToken) {
-            console.warn(`${LOG_PREFIX} advisory: .npmrc still carries a //npm.pkg.github.com/:_authToken= line — remove it (bkit no longer needs GitHub Packages auth).`);
-        }
     }
     console.log(`${LOG_PREFIX} Running upgrade${upgradeFlags.dryRun ? " (dry-run)" : ""}${upgradeFlags.nonInteractive ? " (non-interactive)" : ""}`);
     // Collect bkit-managed payload candidates from the package: `shared/` and
