@@ -394,6 +394,18 @@ export async function runInstall(args) {
     else {
         console.log(`${LOG_PREFIX} Done. ${totalWrites} write(s).`);
     }
+    // Phase 2 has completed its writes. Re-run Phase 1 detection and use its result for the
+    // post-install checklist, so the banner reflects the state on disk AFTER the writes.
+    // Otherwise a drift finding Phase 2 just resolved (tier2-json-drift, tier2-text-drift,
+    // bkit-version-pin-stale) is still reported as unresolved, contradicting the "Done"
+    // banner above. `check` (dryRun) wrote nothing, so its Phase 1 findings already describe
+    // the current state and are kept as-is. Module-accumulated advisories (pushed during
+    // dispatch) are preserved; only the Phase 1 seeds are replaced, in their original order.
+    if (!dryRun) {
+        const moduleAdvisories = advisories.slice(preflightAdvisories.length);
+        const { advisories: freshPreflightAdvisories } = runPreflight(effectiveModules, process.cwd(), undefined, issueTracker);
+        ctx.advisories = [...freshPreflightAdvisories, ...moduleAdvisories];
+    }
     // --- Phase 3: Post-install checks (re-detect + unified output) ---
     // Runs for both install AND check — detectors are read-only, so check produces
     // the same advisory set as install would emit against the same filesystem state.
@@ -410,14 +422,15 @@ export async function runInstall(args) {
     catch (err) {
         void err; // Non-fatal — changelog header is informational
     }
-    const postFindings = runPostInstallCheck(ctx.advisories, process.cwd());
+    const suppressed = [];
+    const postFindings = runPostInstallCheck(ctx.advisories, process.cwd(), suppressed);
     // check only: install has just written every hook file of the modules it dispatched, and a
     // missing bkit-cloud-bootstrap.sh after `install --claude` is not that run's fault.
     const missingHooks = dryRun ? findMissingOwnedHooks(process.cwd(), effectiveModules) : [];
     const missingHooksFinding = detectOwnedHookMissing(missingHooks);
     if (missingHooksFinding)
         postFindings.push(missingHooksFinding);
-    const banner = formatChecklist(postFindings);
+    const banner = formatChecklist(postFindings, suppressed);
     if (banner)
         console.log(banner);
     writeAdvisoriesArtifact(postFindings, {
@@ -425,6 +438,7 @@ export async function runInstall(args) {
         mode: dryRun ? "check" : "install",
         version: getInstallingVersion(),
         logPrefix: LOG_PREFIX,
+        suppressed,
     });
     // Check mode: exit 1 on drift (see reportCheckDrift).
     if (dryRun) {

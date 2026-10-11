@@ -88,21 +88,6 @@
     ".agents/skills/**",
   ],
 
-  // Private-registry read auth for `@cbartens/bkit` on npm.pkg.github.com.
-  // Renovate resolves the whole workspace to regenerate the lockfile and needs
-  // a read token for this host to do so.
-  // Mend: uncomment `token` and add BKIT_GH_TOKEN_INSTALL as a Mend repository
-  // secret with "used during the scan as an environment variable" ticked.
-  // Self-hosted: leave `token` commented; the example workflow injects
-  // RENOVATE_HOST_RULES from the Actions secret instead. Do not commit a literal token.
-  // hostRules: [
-  //   {
-  //     matchHost: "npm.pkg.github.com",
-  //     hostType: "npm",
-  //     token: "{{ secrets.BKIT_GH_TOKEN_INSTALL }}",
-  //   },
-  // ],
-
   // Caps on open and hourly PRs.
   prConcurrentLimit: 10,
   prHourlyLimit: 4,

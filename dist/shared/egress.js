@@ -129,7 +129,7 @@ export const BKIT_EGRESS_SOURCES = [
     {
         id: "pkg-github",
         kind: "package-registry",
-        hosts: ["npm.pkg.github.com", "raw.githubusercontent.com"],
+        hosts: ["raw.githubusercontent.com"],
         bases: ["github.com", "githubusercontent.com"],
     },
     { id: "skills-sh", kind: "skills", hosts: ["skills.sh"], bases: ["skills.sh"] },

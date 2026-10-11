@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 # Context
 
@@ -87,8 +87,11 @@ MCP servers whose **every tool** (reads and writes) agents run without a prompt,
 ## Enabled blocks
 
 <!-- bkit dogfood: GitHub Actions, no deploy, no e2e lane. `runtime` and
-     `e2e` absent => `NOT CONFIGURED`. `web` enabled (tavily). Domains = docs
-     and tooling hosts bkit authoring reaches beyond the shipped registry. -->
+     `e2e` absent => `NOT CONFIGURED`. `web` enabled (tavily). Domains =
+     the platforms bkit integrates with (agent hosts, model gateways,
+     trackers, MCP, skills) — listed for inventory even where the egress
+     registry already derives them — plus docs / tooling hosts bkit
+     authoring reaches beyond the shipped registry. -->
 
 <!-- context-fetch:none e2e -->
 
@@ -197,12 +200,6 @@ command -v serena >/dev/null 2>&1 || {
 
 <!-- allowed-domains:start -->
 
-<!-- Agent hosts + MCP -->
-
-chatgpt.com
-agents.md
-agentskills.io
-
 <!-- Model picks (.bkit/providers.md) -->
 
 livebench.ai
@@ -210,6 +207,29 @@ artificialanalysis.ai
 lmarena.ai
 designarena.ai
 datacurve.ai
+
+<!-- Agent hosts (bkit install targets) -->
+
+claude.com
+anthropic.com
+openai.com
+chatgpt.com
+cursor.com
+opencode.ai
+
+<!-- Model gateways + catalogs -->
+
+models.dev
+openrouter.ai
+ollama.com
+
+<!-- Trackers, their MCP + skills -->
+
+githubcopilot.com
+linear.app
+skills.sh
+agents.md
+agentskills.io
 
 <!-- CI, containers, dependency bots -->
 

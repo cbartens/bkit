@@ -1,8 +1,8 @@
 {
   "name": "@cbartens/bkit",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "private": false,
-  "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
+  "description": "Agent-stack consolidation CLI.",
   "type": "module",
   "bin": {
     "bkit": "./dist/cli.js"
@@ -27,8 +27,8 @@
     "url": "https://github.com/cbartens/bkit.git"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
-    "access": "restricted"
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
   },
   "license": "(PolyForm-Noncommercial-1.0.0 OR PolyForm-Small-Business-1.0.0)",
   "scripts": {
@@ -51,7 +51,7 @@
     "slop:delta": "bkit ci slop",
     "bkit:lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
     "test": "vitest run",
-    "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/core/engine/{cli,commands/analysis,install/cloud-env,commands/comply,commands/harvest,commands/install/install,commands/launch,install/manifest,install/managed-block,shared/package-roots,shared/protected-paths,checks/after/index,checks/after/auth,checks/after/ci-yml,checks/after/github,checks/after/managed,checks/after/tools,checks/after/vercel,checks/before/index,checks/before/context-fetch,checks/before/env,checks/before/files,checks/before/mcp,checks/before/repo,checks/before/version,ledgers/status,ledgers/telemetry,install/write,install/placeholders,install/template-copies,render/trackers,render/hosts,render/models,commands/install/uninstall,commands/install/upgrade,install/version-file,tools/wording}.ts' --coverage.include='.bkit/core/engine/commands/**/*.ts' --coverage.include='.bkit/core/engine/shared/{settings,package-json,package-manager,timeouts}.ts' --coverage.thresholds.branches=70",
+    "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/core/engine/{cli,commands/analysis,install/cloud-env,commands/comply,commands/harvest,commands/install/install,commands/launch,install/manifest,install/managed-block,shared/package-roots,shared/protected-paths,checks/after/index,checks/after/auth,checks/after/ci-yml,checks/after/github,checks/after/managed,checks/after/tools,checks/after/suppression,checks/before/index,checks/before/context-fetch,checks/before/env,checks/before/files,checks/before/mcp,checks/before/repo,checks/before/version,ledgers/status,ledgers/telemetry,install/write,install/placeholders,install/template-copies,render/trackers,render/hosts,render/models,commands/install/uninstall,commands/install/upgrade,install/version-file,tools/wording}.ts' --coverage.include='.bkit/core/engine/commands/**/*.ts' --coverage.include='.bkit/core/engine/shared/{settings,package-json,package-manager,timeouts}.ts' --coverage.thresholds.branches=70",
     "bkit:test:bats": "bash -c 'if command -v bats >/dev/null 2>&1; then bats tests/*.bats; else echo \"[bkit] bats missing - skipping bats suite (install bats to enable)\" >&2; fi'",
     "build": "tsc && chmod +x dist/cli.js",
     "bkit:check:dist": "rm -rf dist && tsc && chmod +x dist/cli.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",

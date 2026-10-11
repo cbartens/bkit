@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: write # required to push the sliding v{N} major-version tag (see step "Update sliding major-version tag")
-  packages: write
+  id-token: write # OIDC trusted publishing — the npmjs publish uses no long-lived token
 
 # Prevent two publish runs racing against the same tag. cancel-in-progress: false
 # is deliberate — killing a mid-flight registry publish is unsafe; the duplicate run
@@ -19,17 +19,19 @@ concurrency:
 jobs:
   release:
     # No `environment:` protection is intentional for a single-maintainer project.
-    # Anyone with tag-push permission can trigger a publish; GITHUB_TOKEN is scoped to
-    # packages: write above. If a second maintainer is ever onboarded, add
-    # `environment: production` here and enable required-reviewer in repo settings.
+    # Anyone with tag-push permission can trigger a publish; the npmjs publish authenticates
+    # with OIDC trusted publishing (id-token: write) and no long-lived token. If a second
+    # maintainer is ever onboarded, add `environment: production` here and enable
+    # required-reviewer in repo settings.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
-          registry-url: https://npm.pkg.github.com
+          # >= 22.14 ships npm >= 11.5.1, the floor for OIDC trusted publishing.
+          node-version: 24
+          registry-url: https://registry.npmjs.org
           scope: '@cbartens'
 
       # Pnpm version is resolved from package.json#packageManager (single SoT).
@@ -57,10 +59,12 @@ jobs:
       - name: Verify dist/ is fresh
         run: pnpm bkit:check:dist
 
-      - name: Publish to GitHub Packages
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # OIDC trusted publishing: no token env — the npm CLI exchanges the id-token for a
+      # short-lived publish token. npmjs.com → package → Settings → Trusted publishing
+      # names this workflow file (release.yml). --provenance attaches the signed build
+      # attestation linking the tarball to this repo + run (needs a public repo).
+      - name: Publish to npmjs
+        run: npm publish --provenance
 
       # Slides v{N} (e.g. `v1`) to point at the latest v{N}.x.y after a successful publish.
       # Matches the GitHub Actions community convention (actions/checkout@v4 etc.) so

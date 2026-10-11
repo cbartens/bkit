@@ -98,7 +98,7 @@ function pruneEmptyDirs(root: string): void {
 
 /** One-line pointer to the template docs, shared by the install and upgrade messages. */
 export const TEMPLATES_POINTER =
-  "Templates: see .bkit/templates.md; copies live in .bkit/templates/ (if your own gates scan the repo, ignore .bkit/templates/).";
+  "Templates (adopt, do not skip): read .bkit/templates.md; bkit never applies templates, so adopt each copy in .bkit/templates/ unless adoption would break existing functionality — state which you did not adopt and why. (If your own gates scan the repo, ignore .bkit/templates/.)";
 
 /**
  * The upgrade report for a template sync: one line per changed, added or removed

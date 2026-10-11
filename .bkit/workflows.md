@@ -1,6 +1,6 @@
 # Workflows
 
-<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Agent-pipeline reference — workflow conventions, execution patterns, IDE integration, subagent catalog.
@@ -785,10 +785,14 @@ GitHub Actions: `push.head_commit.message` vs `pull_request.title`. Template bki
 <!-- prettier-ignore -->
 | `PUSH_MODE` | When | CI event fired by debug push | Marker surface | Mechanism |
 | --- | --- | --- | --- | --- |
-| `LOCAL` | Debug invoked on a `dev` / `main` failure (no PR involved) | `push` event reads `head_commit.message` | **Commit message** | `bkit [verbose ci]` appended conditionally via `VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"` immediately before the relevant commits in `bkit-debug.md` (Step 6 `fix`, Step 7 `soak`, Step 9 `summary`, Step 10 `close-workflow`, Step 10 `create-pr`). PR-mode runs skip the suffix (`pull_request` events ignore commit messages). Self-clearing per push — non-debug pushes return to default. |
+| `LOCAL` | Debug invoked on a `dev` / `main` failure, or a feature branch with no open PR | `push` event reads `head_commit.message` | **Commit message** | `bkit [verbose ci]` appended conditionally via `VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"` immediately before the relevant commits in `bkit-debug.md` (Step 6 `fix`, Step 7 `soak`, Step 9 `summary`, Step 10 `close-workflow`, Step 10 `create-pr`). PR-mode runs skip the suffix (`pull_request` events ignore commit messages). Self-clearing per push — non-debug pushes return to default. |
 | `PR` | Debug invoked on a feature branch with an open PR (the dominant case) | `pull_request.synchronize` reads `pull_request.title` | **PR title** | Step 8 (Push Remediation) runs `gh pr edit --title` to idempotently append `bkit [verbose ci]` to the PR title (skip if already present) immediately before the push. Step 10 (Close Workflow) sub-step 1 strips it via `sed` + `gh pr edit` on a successful close. Failure Path / handover **do not strip** — the post-handover human investigator wants continued verbose CI. |
 
 Both paths idempotent — re-run skips when present; orphan markers cleaned by next debug Step 10 strip on successful close.
+
+**Close PR-create decision:** the Step-1 `PUSH_MODE` does **not** gate PR creation — Step 10 probes live PR state (`bkit prs probe --head="{BRANCH}" --base=dev`), sets `TRIGGER_PR` from `{PR_OPEN}`, adopts a mid-run PR (`bkit prs open --existing=reuse`) rather than blind-creating into the Failure Path, then the gate asserts the dispatched `pull_request` run on every feature-branch close. `PUSH_MODE` = marker-surface hint only.
+
+**Invariant:** a successful debug/build close leaves a PR to `dev` (created or adopted) with a run the gate asserts; the Failure Path leaves the `[skip ci]` handover + abort-guard and dispatches no CI.
 
 **Cleanup invariant:** PR-title marker stripped on successful `/bkit-debug` close (Step 10, `PUSH_MODE = PR`). Failure Path / handover preserve intentionally — post-handover investigator wants continued verbose CI. Cleanup via: (a) next `/bkit-debug` close success, (b) manual strip, (c) PR merge — squash subject inherits `bkit [verbose ci]` → one post-merge dev CI verbose (harmless, recovery evidence).
 
@@ -1156,7 +1160,7 @@ Outcome-verification gate: after final loud push, confirms bkit CI check dispatc
 
 - **Build Step 18:** close-workflow commit → `bkit branches push --mode=feature --require-ci` (no PR yet, no CI) → `bkit prs open` (the PR creation fires CI) → `bkit runs dispatch --pr=`.
 - **Debug Step 10 PR-mode:** close-workflow push (sub-step 2, `--require-ci`) = CI trigger; gate in sub-step 6.
-- **Debug Step 10 LOCAL-mode:** create-pr push (sub-step 5, `--require-ci`) = CI trigger; gate in sub-step 6, which re-derives `AUTO_ROUTE_SUFFIX` in its own block.
+- **Debug Step 10 LOCAL-mode:** create-pr push (sub-step 6, `--require-ci`) = CI trigger, its block re-deriving `AUTO_ROUTE_SUFFIX`; gate in sub-step 7.
 - **Ship:** OUT of scope. Step 15 reads the squash commit's CI with `bkit runs gate --head=<SQUASH_SHA>` and records `ship-merge-ci`. CI-Dispatch at ship would mask "essential tests skipped" signal ship backstops.
 - **Ship Step 9 duplicate-dispatch probe (not the gate):** `bkit runs wait --head=<VALIDATED_HEAD> --branch= --until=present --dispatch-if-absent` probes for a CI-workflow run at that head, presence only (`SHIP_PROBE_ATTEMPTS` x `SHIP_PROBE_INTERVAL_S`), and runs `gh workflow run {bkit.ciWorkflow}` only on no-run. The head move it follows (Path B `bkit prs update-branch`) already fires `pull_request` at the same SHA, and the template `bkit-ci.yml` groups `pull_request` by PR number but `workflow_dispatch` by ref — different groups, so neither cancels the other and both runs complete. The probe carries no outcome vocabulary and is never a pass condition (no `self-healed`/`no-ci` path exists at ship): the head-anchored completion poll (`--until=completed`) and `bkit runs gate` at Gate 10 still own the verdict, so the "masks essential tests skipped" objection does not apply. Probe `err` → dispatch. Row `ship-revalidate-dispatch` records `probe` / `dispatched` / `attempts`. The 60s budget is load-bearing: a `pull_request` run surfacing after it reproduces the duplicate this probe removes. Auto-fired runs typically appear ~10-20s after the push, but auto-fire is intermittent, so the probe MUST keep failing safe to dispatch rather than reading a slow or absent run as "no CI".
 - **Ship Gate 10 + squash `--body ""`:** merge — squash subject = dev HEAD.
@@ -1223,7 +1227,7 @@ Rationale: invariant **contextual** — bkit pushes `[skip ci]` intermediately (
 | --- | --- | --- | --- |
 | `/bkit-build` | 18 (close-workflow) | Final commit `chore({FID}): close-workflow`, no skip tags + `bkit branches push --require-ci` + `bkit prs open` + CI-Dispatch poll | Drops `bkit [skip ci]` from the existing status commit; the PR creation on that head fires `pull_request`; gate confirms dispatch |
 | `/bkit-debug` | 10 (close-workflow) PR-mode | Final commit `chore({FID}): close-workflow`, no skip tags + `git push` + CI-Dispatch poll | PR-mode: close-workflow push is the CI-triggering push; gate in sub-step 6 |
-| `/bkit-debug` | 10 (close-workflow) LOCAL-mode | Separate create-pr push in sub-step 5 + CI-Dispatch poll | LOCAL-mode: create-pr push is the CI-triggering push; gate in sub-step 6 |
+| `/bkit-debug` | 10 (close-workflow) LOCAL-mode | Separate create-pr push in sub-step 6 + CI-Dispatch poll | LOCAL-mode: create-pr push is the CI-triggering push; gate in sub-step 7 |
 | `/bkit-ship` | 10 (merge-pr) | `bkit prs merge` (`gh pr merge --squash --body ""`) — squash subject becomes dev HEAD, body empty | `gh pr merge` is the only API; empty body strips PR-body `bkit [skip ci]` from the squash subject. Step 15 then gates the squash commit with `bkit runs gate --squash-of=<PR>` (not a CI-Dispatch Gate) |
 | `/bkit-ship` | 8 (pre-merge bookkeeping) | `docs({FID}): ship bookkeeping bkit [skip ci]` pushed to `{SHIP_BRANCH}` | Docs, logs, ledgers, skill removals ride the PR; CI carried forward from `CODE_HEAD` by the gate's `--validated`, so no run is spent on them. |
 | `/bkit-ship` | 15 (post-merge close) | `docs({FID}): ship DONE bkit [skip ci]` → `dev`, or a `ship-close/{FID}` PR when `dev` refuses the push | Post-merge status / telemetry only; PR already merged, dev's CI fired by Step 10, no re-trigger needed. |

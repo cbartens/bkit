@@ -54,9 +54,9 @@ export default {
   secrets: {
     // Read by claude.yml and the bkit-cloud.yml claude job; the env key carries the BKIT_ prefix.
     ANTHROPIC_API_KEY: { to: "github", from: "BKIT_ANTHROPIC_API_KEY" },
-    // Classic read:packages: the cloud agent's `bkit install` + self-hosted Renovate's npm host rule.
-    BKIT_GH_TOKEN_INSTALL: "github",
     // Fine-grained write token: self-hosted Renovate's platform auth (opens PRs, pushes renovate/* branches).
     BKIT_GH_TOKEN: "github",
+    // npm automation token (read + write on the @cbartens scope): release.yml publishes @cbartens/bkit to npmjs.
+    BKIT_NPM_TOKEN: "github",
   },
 };

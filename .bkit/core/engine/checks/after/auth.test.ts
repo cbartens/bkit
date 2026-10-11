@@ -5,11 +5,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  detectShellToken,
   detectShellGhMcpToken,
   hasGithubMcpServer,
-  detectNpmrcAuth,
-  detectNpmrcAuthTokenLine,
   detectGhSecret,
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
@@ -60,27 +57,6 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// detectShellToken
-// ---------------------------------------------------------------------------
-
-describe("detectShellToken", () => {
-  it("returns 'present' when BKIT_GH_TOKEN_INSTALL is set and non-empty", () => {
-    process.env.BKIT_GH_TOKEN_INSTALL = "some-token-value";
-    expect(detectShellToken()).toBe("present");
-  });
-
-  it("returns 'missing' when BKIT_GH_TOKEN_INSTALL is not set", () => {
-    delete process.env.BKIT_GH_TOKEN_INSTALL;
-    expect(detectShellToken()).toBe("missing");
-  });
-
-  it("B4: returns 'empty' when BKIT_GH_TOKEN_INSTALL is set to empty string (differentiates from unset)", () => {
-    process.env.BKIT_GH_TOKEN_INSTALL = "";
-    expect(detectShellToken()).toBe("empty");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // detectShellGhMcpToken (BKIT_GH_TOKEN — GitHub MCP auth)
 // ---------------------------------------------------------------------------
 
@@ -98,6 +74,13 @@ describe("detectShellGhMcpToken", () => {
   it("returns 'empty' when BKIT_GH_TOKEN is set to empty string", () => {
     process.env.BKIT_GH_TOKEN = "";
     expect(detectShellGhMcpToken()).toBe("empty");
+  });
+
+  it("'empty' and 'missing' are distinct values (not equal)", () => {
+    process.env.BKIT_GH_TOKEN = "";
+    expect(detectShellGhMcpToken()).not.toBe("missing");
+    delete process.env.BKIT_GH_TOKEN;
+    expect(detectShellGhMcpToken()).not.toBe("empty");
   });
 });
 
@@ -142,102 +125,25 @@ describe("hasGithubMcpServer", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectNpmrcAuth
-// ---------------------------------------------------------------------------
-
-describe("detectNpmrcAuth", () => {
-  // Registry-mapping-only is the correct shape — the auth token lives in
-  // pnpm's user-level config (pnpm config set), NOT in the project .npmrc.
-  it("returns 'present' when .npmrc has only the @cbartens registry mapping", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n",
-      "utf-8",
-    );
-    expect(detectNpmrcAuth(tmpDir)).toBe("present");
-  });
-
-  it("returns 'present' when .npmrc has the registry mapping plus an authToken line", () => {
-    // Still 'present' for the registry check; the authToken line is flagged separately.
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
-      "utf-8",
-    );
-    expect(detectNpmrcAuth(tmpDir)).toBe("present");
-  });
-
-  it("returns 'missing' when .npmrc exists but lacks the @cbartens registry mapping", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
-      "utf-8",
-    );
-    expect(detectNpmrcAuth(tmpDir)).toBe("missing");
-  });
-
-  it("returns 'missing' when .npmrc has only an unrelated registry", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "registry=https://registry.npmjs.org/\n",
-      "utf-8",
-    );
-    expect(detectNpmrcAuth(tmpDir)).toBe("missing");
-  });
-
-  it("returns 'unknown' (silent skip) when .npmrc is absent", () => {
-    expect(detectNpmrcAuth(tmpDir)).toBe("unknown");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectNpmrcAuthTokenLine
-// ---------------------------------------------------------------------------
-
-describe("detectNpmrcAuthTokenLine", () => {
-  it("returns true when .npmrc carries a GH Packages auth-token line", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
-      "utf-8",
-    );
-    expect(detectNpmrcAuthTokenLine(tmpDir)).toBe(true);
-  });
-
-  it("returns false for a registry-only .npmrc (the correct shape)", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n",
-      "utf-8",
-    );
-    expect(detectNpmrcAuthTokenLine(tmpDir)).toBe(false);
-  });
-
-  it("returns false when .npmrc is absent", () => {
-    expect(detectNpmrcAuthTokenLine(tmpDir)).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // detectGhSecret
 // ---------------------------------------------------------------------------
 
 describe("detectGhSecret", () => {
-  it("returns 'present' when gh CLI reports BKIT_GH_TOKEN_INSTALL exists", () => {
-    execSync.mockReturnValue("BKIT_GH_TOKEN_INSTALL\n");
-    expect(detectGhSecret()).toBe("present");
+  it("returns 'present' when gh CLI reports the named secret exists", () => {
+    execSync.mockReturnValue("ANTHROPIC_API_KEY\n");
+    expect(detectGhSecret("ANTHROPIC_API_KEY")).toBe("present");
   });
 
-  it("returns 'missing' when gh CLI reports no BKIT_GH_TOKEN_INSTALL", () => {
+  it("returns 'missing' when gh CLI reports no such secret", () => {
     execSync.mockReturnValue("OTHER_SECRET\n");
-    expect(detectGhSecret()).toBe("missing");
+    expect(detectGhSecret("ANTHROPIC_API_KEY")).toBe("missing");
   });
 
   it("returns 'unknown' when gh CLI throws", () => {
     execSync.mockImplementation(() => {
       throw new Error("command not found: gh");
     });
-    expect(detectGhSecret()).toBe("unknown");
+    expect(detectGhSecret("ANTHROPIC_API_KEY")).toBe("unknown");
   });
 });
 
@@ -281,7 +187,7 @@ describe("detectCiRouterSecrets", () => {
     expect(findings.map((f) => f.id)).toEqual(["anthropic-api-key-secret-missing"]);
   });
 
-  it("Linear tracker: returns empty when both secrets are present", () => {
+  it("Linear tracker: returns empty when the required secret is present", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "linear" } }),
@@ -330,6 +236,13 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(buildCloudDashboardsAdvisory(tmpDir)).not.toBeNull();
   });
 
+  it("never mentions the retired BKIT_GH_TOKEN_INSTALL install token", () => {
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    const result = buildCloudDashboardsAdvisory(tmpDir);
+    expect(result!.detect).not.toContain("BKIT_GH_TOKEN_INSTALL");
+    expect(result!.action).not.toContain("BKIT_GH_TOKEN_INSTALL");
+  });
+
   it("github tracker: omits BKIT_LINEAR_API_KEY from the secrets checklist (issue #138)", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -374,144 +287,5 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result).not.toBeNull();
     expect(result!.action).toContain("BKIT_LINEAR_API_KEY");
     expect(result!.action).not.toContain("BKIT_ANTHROPIC_API_KEY");
-  });
-});
-
-describe("B4 — detectShellToken differentiates unset from empty-string", () => {
-  it("returns 'present' when BKIT_GH_TOKEN_INSTALL is set and non-empty", () => {
-    process.env.BKIT_GH_TOKEN_INSTALL = "ghp_sometoken";
-    expect(detectShellToken()).toBe("present");
-  });
-
-  it("returns 'missing' when BKIT_GH_TOKEN_INSTALL is undefined (unset)", () => {
-    delete process.env.BKIT_GH_TOKEN_INSTALL;
-    expect(detectShellToken()).toBe("missing");
-  });
-
-  it("returns 'empty' when BKIT_GH_TOKEN_INSTALL is set to empty string", () => {
-    process.env.BKIT_GH_TOKEN_INSTALL = "";
-    expect(detectShellToken()).toBe("empty");
-  });
-
-  it("'empty' and 'missing' are distinct values (not equal)", () => {
-    process.env.BKIT_GH_TOKEN_INSTALL = "";
-    expect(detectShellToken()).not.toBe("missing");
-    delete process.env.BKIT_GH_TOKEN_INSTALL;
-    expect(detectShellToken()).not.toBe("empty");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Advisory auth shape (user-level pnpm config set)
-//
-// Advisory text must prescribe the user-level auth shape
-//   `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"`
-// and must NOT prescribe committing an `_authToken=${BKIT_GH_TOKEN_INSTALL}` line in the project
-// .npmrc as the auth mechanism — pnpm >=10.34.3 401s on that env-substitution (the
-// line is flagged for removal by detectNpmrcAuthTokenLine, never prescribed).
-//
-// The POSIX-fallback `${VAR:-default}` form never appears (pnpm cannot parse it).
-// ---------------------------------------------------------------------------
-
-describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-liner", () => {
-  it("gh-bkit-token-secret-unknown action text instructs `export BKIT_GH_TOKEN_INSTALL=$(gh auth token)`", () => {
-    const src = fs.readFileSync(path.join(__dirname, "auth.ts"), "utf-8");
-    expect(src).toContain("export BKIT_GH_TOKEN_INSTALL=$(gh auth token)");
-  });
-
-  it("advisory strings prescribe the user-level `pnpm config set` auth shape", () => {
-    for (const f of ["../../install/modules/core.ts", "index.ts"]) {
-      const src = fs.readFileSync(path.join(__dirname, f), "utf-8");
-      expect(src, `${f} must prescribe the user-level pnpm config set auth shape`).toMatch(
-        /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$BKIT_GH_TOKEN_INSTALL/,
-      );
-    }
-  });
-
-  it("no advisory string anywhere in scripts prescribes the broken ${BKIT_GH_TOKEN_INSTALL:-} form", () => {
-    const scripts = [
-      ...["../../install/modules", ".", "../before"].flatMap((dir) =>
-        fs
-          .readdirSync(path.join(__dirname, dir))
-          .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
-          .map((f) => path.join(dir, f)),
-      ),
-      "../../cli.ts",
-    ];
-    for (const f of scripts) {
-      const p = path.join(__dirname, f);
-      if (!fs.existsSync(p)) continue;
-      const src = fs.readFileSync(p, "utf-8");
-      expect(
-        src,
-        `${f} must not prescribe \${BKIT_GH_TOKEN_INSTALL:-} (pnpm cannot parse :-)`,
-      ).not.toMatch(/_authToken=\\?\$\{BKIT_GH_TOKEN_INSTALL:-\}/);
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Task C1 — Installer advisory action constants (BAR-138, in checks/after/)
-// ---------------------------------------------------------------------------
-
-// Every non-test source in `dir`, concatenated — read as text to inspect the constant bodies
-// without executing the modules (avoids import side-effects and keeps tests fast).
-function readSources(dir: string): string {
-  return fs
-    .readdirSync(dir)
-    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
-    .sort()
-    .map((f) => fs.readFileSync(path.join(dir, f), "utf-8"))
-    .join("\n");
-}
-
-// The constants live in checks/after/ (Phase 3 owner), not install/modules/.
-const POSTINSTALL_SRC = readSources(path.resolve(".bkit/core/engine/checks/after"));
-
-const MODULES_SRC = readSources(path.resolve(".bkit/core/engine/install/modules"));
-
-describe("BKIT_GH_TOKEN_INSTALL_MISSING action strings (in checks/after/)", () => {
-  // The action string is now embedded in the const BKIT_GH_TOKEN_INSTALL_MISSING_ACTION
-  const match = POSTINSTALL_SRC.match(
-    /const BKIT_GH_TOKEN_INSTALL_MISSING_ACTION\s*=\s*([\s\S]*?)(?=\nconst |\nexport )/,
-  );
-  const body = match ? match[1] : POSTINSTALL_SRC;
-
-  it("postinstall source contains .npmrc registry line", () => {
-    expect(POSTINSTALL_SRC).toContain("@cbartens:registry=https://npm.pkg.github.com");
-  });
-
-  it("postinstall source prescribes the user-level pnpm config set auth shape (#274)", () => {
-    expect(POSTINSTALL_SRC).toContain(
-      'pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"',
-    );
-    expect(POSTINSTALL_SRC).toContain("BKIT_GH_TOKEN_INSTALL");
-  });
-
-  it("postinstall source contains read:packages scope reference", () => {
-    expect(POSTINSTALL_SRC).toContain("read:packages");
-  });
-
-  it("BKIT_GH_TOKEN_INSTALL_MISSING action keeps the token out of the committed .npmrc (#274)", () => {
-    // The committed project .npmrc carries only the registry mapping; the auth token is
-    // written to pnpm's user-level config — so the action must NOT prescribe the
-    // env-substitution `_authToken=${BKIT_GH_TOKEN_INSTALL}` line that 401s on pnpm >=10.34.3.
-    expect(body).not.toContain("//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}");
-  });
-
-  it("postinstall source does NOT contain git insteadOf shim language", () => {
-    expect(POSTINSTALL_SRC).not.toContain("git config --global url.");
-  });
-
-  it("BKIT_GH_TOKEN_INSTALL_MISSING_INSTRUCTIONS is absent from install/modules/", () => {
-    expect(MODULES_SRC).not.toContain("BKIT_GH_TOKEN_INSTALL_MISSING_INSTRUCTIONS");
-  });
-
-  it("BKIT_GH_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS is absent from install/modules/", () => {
-    expect(MODULES_SRC).not.toContain("BKIT_GH_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS");
-  });
-
-  it("VERCEL_AUTH_INSTRUCTIONS is absent from install/modules/", () => {
-    expect(MODULES_SRC).not.toContain("VERCEL_AUTH_INSTRUCTIONS");
   });
 });

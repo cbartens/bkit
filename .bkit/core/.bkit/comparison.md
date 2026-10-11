@@ -197,6 +197,8 @@ Output: PR to `dev`. Heaviest phase — most steps verify rather than produce. C
 
 Output: remediated commit on feature branch. Two modes — normal (diagnose → remediate localisable failure) and soak (one accumulating-context instrument-or-fix loop for non-localisable / runtime-only failures). Normal escalates to soak when diagnose can't localise, or normal loop exhausts three strategies; observation logging (`[DEBUG-OBSERVE]`) inside soak, stripped before fix ships.
 
+**Context fetch.** Per failed attempt, `/bkit-debug` runs each `context-fetch` bash block below `<!-- bkit:end -->` in `.agents/context.md` — failing CI logs, the diff since the last green run, end-to-end reports, runtime errors (Sentry, Vercel, Supabase, Stripe and more) and web search (Tavily) — writing one artifact per context and narrating `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` before fetching. Fail-soft and block-driven: bkit hardcodes no CI host, workflow filename or test framework, and a context with no block is never read as a clean result.
+
 **Normal mode**
 
 <!-- prettier-ignore -->
@@ -287,7 +289,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | Exception Handling & Recovery | Already does | Universal failure path, bounded retries (3), 3600s timeouts, runaway-turn caps, human handover. |
 | Human-in-the-Loop | Already does | Mandatory hard stops after design / plan / ship; "recommend, do not decide." |
 | Resource-Aware Optimization | Already does | Effort-to-model tiering with explicit per-agent pins. |
-| Context Engineering | Already does | Phase doc-matrix, lazy-load, output caps, stubbed-output pattern. |
+| Context Engineering | Already does | Phase doc-matrix, lazy-load, output caps, stubbed-output pattern; consumer `context-fetch` blocks add CI, diff, e2e, runtime and web signal in debug. |
 | Memory Management | Partial | Filesystem and grep episodic memory (`status.jsonl`, knowledge / decisions). No vector retrieval, by scale choice. |
 | Learning & Adaptation | Partial | `friction.jsonl` drives human-reviewed prompt edits; entries carry confidence, scope, and last-confirmed fields. No auto prompt-tuning — deliberate, to keep humans in the loop. |
 | Goal Setting & Monitoring | Partial | Issue = goal, phase labels = state, verdicts = criteria. No measurable per-task Definition of Done yet. |
@@ -305,6 +307,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 - **Cross-model diversity where breadth beats depth.** Design brainstorm, design review, plan scope-check groups pair Opus + Sonnet (Grok + Composer on Cursor) → two reasoners review same work. Depth-sensitive lenses (plan review, build challenge) stay on top tier.
 - **Resume-from-state as single source of truth.** `status.jsonl` makes every run inspectable and restartable; book treats this only obliquely under memory.
 - **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; book treats HITL as one option.
+- **Fail-soft external context in debug.** Provider-agnostic `context-fetch` blocks (CI logs, diff, e2e, runtime, web) feed `/bkit-debug`; each self-skips to a narrated `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` state, so a context with no block is never read as a clean result.
 - **Explicit per-agent model pins.** Immune to session-default drift.
 - **Provider- and host-portable execution.** Per-agent pins → `bkit install --opencode=<provider>` adds opencode host alongside Claude/Cursor — harness unchanged; inference backend moves. Same five-phase gated parallel pipeline on four providers (OpenRouter, Ollama, opencode Zen + Go gateways). Curated per-agent pins; models mirror Claude tier by default, CoT reasoners swapped for convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
 - **Cross-host/provider continuity.** State in `status.jsonl`, plan/design docs under `docs/plans/`, tracker issue — not vendor session. Every host renders from same `.bkit/` source → phase or resumed run moves across IDE/provider mid-feature with identical gates, hooks, per-agent pins: exhaust Claude weekly limit or free-tier quota → continue on another host, no re-setup. Single-vendor frameworks tie run to starting session.

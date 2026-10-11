@@ -1,6 +1,6 @@
 # bkit — Agent Workflow System
 
-<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 **bkit** wires Claude Code (and Cursor) into five-phase tracker-integrated cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts additive: `.claude/` + `.cursor/` always render (direct Anthropic); `bkit install --opencode=<provider>` adds opencode for non-Anthropic backends — four providers: `openrouter`, `ollama`, `opencode-zen` + `opencode-go` (opencode-native gateways; auth via `BKIT_OPENCODE_API_KEY`) — same harness, inference backend only changes (see `.bkit/providers.md` § Hosts + Providers).
 
@@ -162,25 +162,19 @@ Full Linear ↔ Cursor setup: <https://linear.app/docs/cursor>.
 
 `.agents/` = **canonical**. `bkit install` regenerates host outputs (`.claude/**`, `.cursor/**`) and rewrites bkit-managed blocks across consumer repo.
 
-First-time install, `BKIT_GH_TOKEN_INSTALL` / `.npmrc` / GHA / Vercel auth, uninstall: `.bkit/install.md`. Ongoing ops below.
+First-time install and upgrade, uninstall: `.bkit/install.md`. Ongoing ops below.
 
 ### Upgrade — paste into your AI
 
-Prefer `bkit upgrade --latest` (bumps package **and** resyncs managed files) — do **not** only `pnpm add`. Replace `<ENV-FILE-PATH>` if token not already loaded (direnv / `.bkit/.env`).
+Prefer `bkit upgrade --latest` (bumps package **and** resyncs managed files) — do **not** only `pnpm add`.
 
 ````text
 Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resync.
-1. Ensure `BKIT_GH_TOKEN_INSTALL` is available for the GitHub Packages bump. If not already in the environment, load without leaking (`source` is a shell builtin — not file I/O). `source` and the command MUST be the SAME Bash invocation:
-   ```bash
-   set -a; source <ENV-FILE-PATH> 2>/dev/null; set +a; \
-     pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL" && \
-     bkit upgrade --latest
-   ```
-   If token already exported (direnv / shell profile), skip `source`:
+1. Bump and resync in one step (no token — npmjs is public). If `bkit` is not on PATH, use `pnpm bkit`:
    ```bash
    bkit upgrade --latest
    ```
-   If `bkit` not on PATH: `pnpm bkit upgrade --latest`. Do **not** only `pnpm add @cbartens/bkit@latest` — that refreshes the package without resyncing managed files.
+   Do **not** only `pnpm add @cbartens/bkit@latest` — that refreshes the package without resyncing managed files.
 2. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
 3. Read the template changes `bkit upgrade` printed (or `git diff .bkit/templates`), then `.bkit/templates.md`. bkit never applies templates, so adoption is your job: adopt each change unless it would break existing functionality. For any change not adopted, state which and why.
 4. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
@@ -248,6 +242,7 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `docs/templates/bkit-*.md` | core | `.bkit/core/docs/templates/` | Tier 2 html-comment |
 | `.gitattributes` | core | `.bkit/shared/.gitattributes` | Tier 2 html-comment (`merge=union` for the append-only ledgers) |
 | `.bkit/templates/**` | — | the whole `.bkit/templates/` root | Raw copies, refreshed on every install and upgrade; never hashed. Upgrade prints the changed paths. |
+| `.bkit/{core,shared}` | core | symlink into `node_modules/@cbartens/bkit/.bkit/{core,shared}` | View link, not a copy — browse the payload in-repo; always the installed version. Gitignored (dangles on a fresh clone / CI; install recreates). A real directory is never clobbered; `bkit uninstall` removes the link. |
 | `.bkit/{cloud,comparison,install,jsonl,LICENSE,providers,prompts,trackers,workflows,README}.md` | core | `.bkit/core/.bkit/` | Tier 1 (canonical-overwrite). The reference docs agents read at runtime, plus `LICENSE.md`: the PolyForm pair and Required Notice that travel with every file bkit writes (PolyForm's Notices section). |
 | `.claude/commands/bkit-*.md` | claude | `.bkit/core/workflows/` (byte-identical) | Host pass — always overwrite |
 | `.claude/agents/bkit-*.md` | claude | `.bkit/core/prompts/` (byte-identical) | Host pass — always overwrite |
@@ -386,13 +381,14 @@ Installed list: `.agents/skills.md`. Skills in `.agents/skills/` not listed → 
 
 ### In the installed package, not your repo
 
-`bkit install` does not copy these out of `node_modules`. Read them at the path below — a
-bare `.bkit/comparison.md` or `.bkit/core/prompts/` in your own repo will not resolve.
+`bkit install` does not copy these out of `node_modules`. Read them at the path below — or
+in-repo through the `.bkit/core` / `.bkit/shared` view links install creates (symlinks into
+the package, so editors resolve them to the `node_modules/…` paths).
 
 <!-- prettier-ignore -->
 | File | Purpose |
 | --- | --- |
-| `.bkit/install.md` | First-time install, auth (`BKIT_GH_TOKEN_INSTALL` / `.npmrc` / GHA / Vercel), install lifecycle, uninstall |
+| `.bkit/install.md` | First-time install and upgrade, install lifecycle, uninstall |
 | `.bkit/comparison.md` | Pipeline reference + comparison to agentic design patterns / peer frameworks |
 | `node_modules/@cbartens/bkit/.bkit/core/workflows/` | Canonical slash-command source (rendered into `.claude/commands/`, `.cursor/commands/`, `.opencode/commands/`) |
 | `node_modules/@cbartens/bkit/.bkit/core/prompts/` | Canonical subagent source (rendered into `.claude/agents/`, `.cursor/agents/`, `.opencode/agents/`) |

@@ -9,51 +9,102 @@ import { getPkgRoot } from "../../shared/package-roots.js";
 import { detectOpencodeYmlProviderDrift } from "../../install/modules/opencode.js";
 import { TEMPLATES_POINTER } from "../../install/template-copies.js";
 import { detectManagedStale } from "./managed.js";
-import { AGENT_INLINE_SOURCE_GUIDANCE, BKIT_GH_TOKEN_INSTALL_MISSING_ACTION, BKIT_GH_TOKEN_INSTALL_UNKNOWN_ACTION, buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectGhSecret, detectNpmrcAuth, detectNpmrcAuthTokenLine, detectShellGhMcpToken, detectShellToken, hasGithubMcpServer, } from "./auth.js";
-import { VERCEL_MISSING_ACTION, detectVercelEnv, detectVercelInstallCommandMissingAuth, detectVercelProject, } from "./vercel.js";
+import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectShellGhMcpToken, hasGithubMcpServer, } from "./auth.js";
 import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildTrackerSetupAdvisory, detectActionsWritePermissions, detectGithubProjectFieldIdFormat, detectMainBranchProtection, readConsumerIssueTracker, } from "./github.js";
 import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
-import { detectBkitCloudYmlAlwaysTrueGate, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlMissingTokenEnv, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
+import { detectBkitCloudYmlAlwaysTrueGate, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
 // ---------------------------------------------------------------------------
 // formatChecklist — pure renderer
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Shared advisory text — the console checklist (`formatChecklist`) and the
+// `.bkit/advisories.md` artifact (`renderAdvisoriesMarkdown`) render the SAME
+// words; only the medium decoration differs (`#` / `**` / `>` in markdown, the
+// `===` banner in the console). One source, so the two can never drift.
+// ---------------------------------------------------------------------------
+/** Title line, shared by both surfaces. */
+export const ADVISORIES_TITLE = "bkit advisories";
+/** Agent instruction line, shared by both surfaces. */
+export const ADVISORIES_AGENT_INSTRUCTIONS = "INSTRUCTIONS FOR AN AI AGENT — copy this file (or specific items) into a coding assistant to apply each item. Each ACTION is self-contained.";
+/** `N finding(s) — B blocker, A advisory.` — the summary both surfaces print. */
+export function advisoriesSummary(findings) {
+    const blockerCount = findings.filter((f) => f.severity === "blocker").length;
+    const advisoryCount = findings.filter((f) => f.severity === "advisory").length;
+    return `${findings.length} finding(s) — ${blockerCount} blocker, ${advisoryCount} advisory.`;
+}
 /**
- * Format a list of findings into the post-install checklist banner.
- * Returns `""` when findings is empty — callers can `if (banner)` to stay silent.
- * No console.log inside — caller logs.
+ * The suppressed-advisory lines both surfaces print. One entry per opt-out, so a package
+ * that dismissed an advisory is never silently invisible. Returns `[]` when nothing was
+ * suppressed — callers then emit no such block.
+ */
+export function suppressedNoteLines(suppressed) {
+    if (suppressed.length === 0)
+        return [];
+    const n = suppressed.length;
+    return [
+        `${n} advisor${n === 1 ? "y" : "ies"} suppressed by bkit.ignoreAdvisories:`,
+        ...suppressed.map((note) => `- ${note.id} (${note.scope})`),
+    ];
+}
+/**
+ * Format a list of findings into the post-install console checklist.
+ * Returns `""` when findings AND suppressed are both empty — callers can `if (banner)` to
+ * stay silent. No console.log inside — caller logs.
+ *
+ * Same content as `renderAdvisoriesMarkdown`: title, summary, agent instructions
+ * and template pointer are the shared strings; only the separators differ from
+ * the markdown form.
  *
  * Format per finding:
  *   --- i/N [severity] id ---
- *   DETECT: ...
- *   ACTION: ...
+ *   Detect: ...
+ *   Action: ...
+ *
+ * `suppressed` is appended as its own block (see `suppressedNoteLines`) — a dismissed
+ * advisory stays visible even when nothing else fired.
  */
-export function formatChecklist(findings) {
-    if (findings.length === 0)
+export function formatChecklist(findings, suppressed = []) {
+    if (findings.length === 0 && suppressed.length === 0)
         return "";
     const banner = "=".repeat(58);
     const total = findings.length;
     const lines = [];
-    lines.push(`\n${banner}`);
-    lines.push(`[bkit] Post-install checklist (${total} item${total === 1 ? "" : "s"})`);
+    lines.push("");
     lines.push(banner);
-    lines.push("\nINSTRUCTIONS FOR AN AI AGENT — copy this entire block into a\n" +
-        "coding assistant to apply each item. Each ACTION is self-contained.\n" +
-        `\n${TEMPLATES_POINTER}\n`);
+    lines.push(ADVISORIES_TITLE);
+    lines.push(banner);
+    lines.push("");
+    if (findings.length > 0) {
+        lines.push(advisoriesSummary(findings));
+        lines.push("");
+        lines.push(ADVISORIES_AGENT_INSTRUCTIONS);
+        lines.push("");
+        lines.push(TEMPLATES_POINTER);
+        lines.push("");
+    }
     for (let i = 0; i < findings.length; i++) {
         const f = findings[i];
-        lines.push(`\n--- ${i + 1}/${total} [${f.severity}] ${f.id} ---`);
-        lines.push(`DETECT: ${f.detect}`);
-        lines.push(`ACTION: ${f.action}`);
+        lines.push(`--- ${i + 1}/${total} [${f.severity}] ${f.id} ---`);
+        lines.push(`Detect: ${f.detect}`);
+        lines.push(`Action: ${f.action}`);
+        lines.push("");
     }
-    lines.push(`\n${banner}\n`);
+    const suppressedLines = suppressedNoteLines(suppressed);
+    if (suppressedLines.length > 0) {
+        lines.push(...suppressedLines);
+        lines.push("");
+    }
+    lines.push(banner);
+    lines.push("");
     return lines.join("\n");
 }
 /**
  * Render findings as a markdown artifact suitable for `.bkit/advisories.md`.
- * Mirrors `formatChecklist` content but in markdown form so the file can be
- * referenced and revisited between installs. Overwritten on every run.
+ * Renders the SAME content as `formatChecklist` (shared title, summary, agent
+ * instructions, template pointer and suppressed block) in markdown form, so the file can
+ * be referenced and revisited between installs. Overwritten on every run.
  */
-export function renderAdvisoriesMarkdown(findings, opts) {
+export function renderAdvisoriesMarkdown(findings, opts, suppressed = []) {
     const lines = [];
     // This is a generated, gitignored artifact — not authored prose. Advisory
     // strings (and reproduced config snippets like `.vale.ini`'s `write-good.So =
@@ -62,26 +113,26 @@ export function renderAdvisoriesMarkdown(findings, opts) {
     // skip the husky hooks fail on a file the consumer cannot edit.
     lines.push("<!-- vale off -->");
     lines.push("");
-    lines.push("# bkit advisories");
+    lines.push(`# ${ADVISORIES_TITLE}`);
     lines.push("");
     lines.push(`_bkit: ${opts.version}_  `);
     lines.push(`_Mode: ${opts.mode}_`);
     lines.push("");
     lines.push("> Auto-generated by `bkit install` / `bkit check` / `bkit doctor`. Overwritten on each run.");
     lines.push("");
-    if (findings.length === 0) {
+    if (findings.length === 0 && suppressed.length === 0) {
         lines.push("**No advisories.** Last run was clean.");
         lines.push("");
         return lines.join("\n");
     }
-    const blockerCount = findings.filter((f) => f.severity === "blocker").length;
-    const advisoryCount = findings.filter((f) => f.severity === "advisory").length;
-    lines.push(`${findings.length} finding(s) — ${blockerCount} blocker, ${advisoryCount} advisory.`);
-    lines.push("");
-    lines.push("> INSTRUCTIONS FOR AN AI AGENT — copy this file (or specific items) into a coding assistant to apply each item. Each ACTION is self-contained.");
-    lines.push("");
-    lines.push(`> ${TEMPLATES_POINTER}`);
-    lines.push("");
+    if (findings.length > 0) {
+        lines.push(advisoriesSummary(findings));
+        lines.push("");
+        lines.push(`> ${ADVISORIES_AGENT_INSTRUCTIONS}`);
+        lines.push("");
+        lines.push(`> ${TEMPLATES_POINTER}`);
+        lines.push("");
+    }
     const total = findings.length;
     for (let i = 0; i < total; i++) {
         const f = findings[i];
@@ -90,6 +141,11 @@ export function renderAdvisoriesMarkdown(findings, opts) {
         lines.push(`**Detect:** ${f.detect}`);
         lines.push("");
         lines.push(`**Action:** ${f.action}`);
+        lines.push("");
+    }
+    const suppressedLines = suppressedNoteLines(suppressed);
+    if (suppressedLines.length > 0) {
+        lines.push(...suppressedLines);
         lines.push("");
     }
     return lines.join("\n");
@@ -107,7 +163,7 @@ export function writeAdvisoriesArtifact(findings, opts) {
         const content = renderAdvisoriesMarkdown(findings, {
             mode: opts.mode,
             version: opts.version,
-        });
+        }, opts.suppressed ?? []);
         fs.writeFileSync(filePath, content);
         const n = findings.length;
         console.log(`${opts.logPrefix} Wrote .bkit/advisories.md (${n} item${n === 1 ? "" : "s"}).`);
@@ -120,11 +176,17 @@ export function writeAdvisoriesArtifact(findings, opts) {
 // Changelog version-delta header (A7)
 // ---------------------------------------------------------------------------
 /**
- * Read the bkit CHANGELOG.md (from the package root) and extract the section
- * header for `version`. Returns a formatted version-delta string for display
- * in post-install output, or null if CHANGELOG.md is absent or version not found.
+ * Read the bkit CHANGELOG.md (from the package root) and extract the release
+ * delta for `version`: the header line plus the section's lead summary (the
+ * prose before the first `###` sub-heading). Returns a formatted string for
+ * display in post-install output, or null if CHANGELOG.md is absent or the
+ * version is not found.
  *
  * Version header format in CHANGELOG.md: `## [X.Y.Z] — YYYY-MM-DD`
+ *
+ * Bounded on purpose: an install/check banner must not dump a whole release
+ * section. When a section has no lead paragraph the sub-heading names stand in,
+ * so the banner is never an empty header.
  */
 export function readChangelogVersionDelta(version) {
     try {
@@ -132,13 +194,35 @@ export function readChangelogVersionDelta(version) {
         if (!fs.existsSync(changelogPath))
             return null;
         const content = fs.readFileSync(changelogPath, "utf-8");
-        // Find the header for this version
+        const lines = content.split(/\r?\n/);
+        // Find the header line for this version.
         const versionEscaped = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const headerRe = new RegExp(`^## \\[${versionEscaped}\\][^\n]*`, "m");
-        const match = content.match(headerRe);
-        if (!match)
+        const headerRe = new RegExp(`^## \\[${versionEscaped}\\]`);
+        const start = lines.findIndex((line) => headerRe.test(line));
+        if (start === -1)
             return null;
-        return `[bkit] What's new in v${version}: ${match[0].replace(/^## /, "")}`;
+        // The section runs to the next top-level `## ` header (or EOF).
+        let end = lines.length;
+        for (let i = start + 1; i < lines.length; i++) {
+            if (/^## /.test(lines[i])) {
+                end = i;
+                break;
+            }
+        }
+        const section = lines.slice(start + 1, end);
+        const header = lines[start].replace(/^## /, "");
+        // Lead summary: the prose between the header and the first `###` sub-heading.
+        const firstSub = section.findIndex((line) => /^### /.test(line));
+        const leadEnd = firstSub === -1 ? section.length : firstSub;
+        let summary = section.slice(0, leadEnd).join("\n").trim();
+        if (!summary) {
+            summary = section
+                .filter((line) => /^### /.test(line))
+                .map((line) => line.replace(/^### /, "").trim())
+                .join(", ");
+        }
+        const headline = `[bkit] What's new in v${version}: ${header}`;
+        return summary ? `${headline}\n${summary}` : headline;
     }
     catch {
         return null;
@@ -148,7 +232,7 @@ export function readChangelogVersionDelta(version) {
 // runPostInstallCheck — main Phase 3 entry point
 // ---------------------------------------------------------------------------
 /**
- * Re-run token-surface + bkit-ci.yml + vale-sync detectors after writes.
+ * Re-run credential + bkit-ci.yml + vale-sync detectors after writes.
  *
  * - Intra-phase dedup: Phase 3 findings are deduped by id (first occurrence wins).
  * - Cross-phase dedup: Phase 3 wins on id conflict (re-detection is more accurate).
@@ -158,35 +242,22 @@ export function readChangelogVersionDelta(version) {
  * same advisory set against the same filesystem state regardless of caller.
  *
  * cwd defaults to process.cwd().
+ *
+ * Pass `suppressed` to collect the advisories a package opted out of via
+ * `bkit.ignoreAdvisories` (one note per id + owning package); the caller renders them with
+ * `suppressedNoteLines` so a dismissal stays visible. Omitted by callers that do not render.
  */
-export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd()) {
+export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), suppressed) {
     const phase3 = [];
+    const onSuppressed = suppressed
+        ? (note) => suppressed.push(note)
+        : undefined;
     // Managed-version marker gate — in `bkit check`, a blocker on main/dev (or a PR into
     // them) and a non-blocking advisory on feature branches when any stamped file's marker
     // drifts from the installed version. No-op in real install/upgrade (re-stamped Phase 2).
     const managedStale = detectManagedStale(cwd);
     if (managedStale)
         phase3.push(managedStale);
-    // Shell token
-    const shellStatus = detectShellToken();
-    if (shellStatus === "missing") {
-        phase3.push({
-            id: "gh-bkit-token-unset-shell",
-            severity: "advisory",
-            detect: "BKIT_GH_TOKEN_INSTALL is not set in the shell environment (undefined).",
-            action: "Set BKIT_GH_TOKEN_INSTALL in .bkit/.env (canonical local-secrets file, gitignored), then have direnv auto-load it on cd:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set BKIT_GH_TOKEN_INSTALL=<classic PAT, read:packages scope>\n    direnv allow                                 # one-time per repo; requires `brew install direnv` + shell hook\n\nThen restart your editor (Claude Code / Cursor) so the new env reaches MCP servers. Generate the PAT at: https://github.com/settings/tokens (Tokens (classic)). Fine-grained PATs are rejected by GitHub Packages with HTTP 403 — must be classic.\n\nFallback (if direnv unavailable): export BKIT_GH_TOKEN_INSTALL=<your-pat> in ~/.zshrc / ~/.bashrc.\n\n" +
-                AGENT_INLINE_SOURCE_GUIDANCE,
-        });
-    }
-    else if (shellStatus === "empty") {
-        phase3.push({
-            id: "gh-bkit-token-empty-shell",
-            severity: "advisory",
-            detect: 'BKIT_GH_TOKEN_INSTALL is set to an empty string (BKIT_GH_TOKEN_INSTALL=""). `pnpm config set` will write an empty auth token, producing a 401 on the next install.',
-            action: 'Set a non-empty BKIT_GH_TOKEN_INSTALL in .bkit/.env (canonical local-secrets file), then `direnv allow` and restart your shell so the new value loads. An empty string is distinct from unset, but both make `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` store an empty token, so pnpm sends no auth header and the GH Packages registry returns 401 on download. Safest fix: set a real token in .bkit/.env, then re-run the `pnpm config set` line.\n\n' +
-                AGENT_INLINE_SOURCE_GUIDANCE,
-        });
-    }
     // BKIT_GH_TOKEN shell env — authenticates the GitHub MCP server
     // (`Authorization: Bearer ${BKIT_GH_TOKEN}` in .mcp.json), which powers the entire
     // tracker + PR + Projects MCP surface. Only flags when a github MCP server is
@@ -207,89 +278,6 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd()) {
                 severity: "advisory",
                 detect: 'BKIT_GH_TOKEN is set to an empty string (BKIT_GH_TOKEN=""). The GitHub MCP server sends an empty bearer token and fails to authenticate — distinct from unset, same effect.',
                 action: "Set a non-empty BKIT_GH_TOKEN in .bkit/.env (fine-grained PAT with Contents / Pull requests / Issues / Actions read & write), then `direnv allow` and restart your editor so MCP servers reload.",
-            });
-        }
-    }
-    // .npmrc auth
-    const npmrcStatus = detectNpmrcAuth(cwd);
-    if (npmrcStatus === "missing") {
-        phase3.push({
-            id: "npmrc-missing-gh-packages",
-            severity: "advisory",
-            detect: ".npmrc exists but is missing the required @cbartens registry mapping.",
-            action: "Add this line to .npmrc at the repo root (the auth token is NOT stored here):\n\n" +
-                "    @cbartens:registry=https://npm.pkg.github.com\n\n" +
-                "The token lives in pnpm's user-level config — write it once with:\n\n" +
-                '    pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n\n' +
-                "pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution (it 401s on download), which is why the token must NOT go in .npmrc.",
-        });
-    }
-    // "unknown" (absent) → silent skip per spec
-    // .npmrc auth-token line. The committed project .npmrc must NOT carry
-    // `//npm.pkg.github.com/:_authToken=…`: pnpm >=10.34.3 401s on it AND it shadows the
-    // user-level token written by `pnpm config set` (project config wins).
-    if (detectNpmrcAuthTokenLine(cwd)) {
-        phase3.push({
-            id: "npmrc-authtoken-line",
-            severity: "advisory",
-            detect: ".npmrc carries a `//npm.pkg.github.com/:_authToken=…` line. pnpm >=10.34.3 401s on a project-.npmrc auth token (ERR_PNPM_FETCH_401), and via config precedence (project > user) it shadows the token written by `pnpm config set`.",
-            action: "Remove the `//npm.pkg.github.com/:_authToken=…` line from .npmrc — keep ONLY the registry mapping:\n\n" +
-                "    @cbartens:registry=https://npm.pkg.github.com\n\n" +
-                "Then write the token into pnpm's user-level config instead (CI does this in its install step):\n\n" +
-                '    pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n\n' +
-                "`pnpm config set` stores the shell-expanded literal token in pnpm's user-level config — version-proof across pnpm 10.x and 11.x.",
-        });
-    }
-    // GH secret
-    const ghSecretStatus = detectGhSecret();
-    if (ghSecretStatus === "missing") {
-        phase3.push({
-            id: "gh-bkit-token-secret-missing",
-            severity: "advisory",
-            detect: "gh secret list confirms BKIT_GH_TOKEN_INSTALL secret is NOT set on this GitHub repo.",
-            action: BKIT_GH_TOKEN_INSTALL_MISSING_ACTION,
-        });
-    }
-    else if (ghSecretStatus === "unknown") {
-        phase3.push({
-            id: "gh-bkit-token-secret-unknown",
-            severity: "advisory",
-            detect: "Could not verify BKIT_GH_TOKEN_INSTALL secret (gh CLI unavailable, unauthenticated, or not a GitHub repo).",
-            action: BKIT_GH_TOKEN_INSTALL_UNKNOWN_ACTION,
-        });
-    }
-    // Vercel env (only if a Vercel project is detected)
-    if (detectVercelProject(cwd)) {
-        const previewStatus = detectVercelEnv("preview", cwd);
-        if (previewStatus === "missing") {
-            phase3.push({
-                id: "vercel-env-missing-preview",
-                severity: "advisory",
-                detect: "vercel.json detected but BKIT_GH_TOKEN_INSTALL is absent from Vercel preview environment.",
-                action: VERCEL_MISSING_ACTION,
-            });
-        }
-        const productionStatus = detectVercelEnv("production", cwd);
-        if (productionStatus === "missing") {
-            phase3.push({
-                id: "vercel-env-missing-production",
-                severity: "advisory",
-                detect: "vercel.json detected but BKIT_GH_TOKEN_INSTALL is absent from Vercel production environment.",
-                action: VERCEL_MISSING_ACTION,
-            });
-        }
-        // "unknown" → silent skip (CLI absent / unauthed)
-        // Vercel installCommand auth. The env var alone is not enough: a registry-only .npmrc
-        // carries no token on pnpm
-        // >=10.34.3 and Vercel cannot run a pre-install shell step, so each vercel.json must
-        // authenticate via its installCommand or the @cbartens/bkit download 401s.
-        const vercelNoAuth = detectVercelInstallCommandMissingAuth(cwd);
-        if (vercelNoAuth.length > 0) {
-            phase3.push({
-                id: "vercel-installcommand-missing-auth",
-                severity: "advisory",
-                detect: `${vercelNoAuth.join(", ")} ${vercelNoAuth.length === 1 ? "has" : "have"} no installCommand that authenticates to the GitHub Packages registry. Vercel runs pnpm install with no pre-install shell step, so the @cbartens/bkit download 401s on pnpm >=10.34.3 even when BKIT_GH_TOKEN_INSTALL is set in the Vercel env.`,
-                action: VERCEL_MISSING_ACTION,
             });
         }
     }
@@ -359,10 +347,6 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd()) {
     const cloudDashboardsAdvisory = buildCloudDashboardsAdvisory(cwd);
     if (cloudDashboardsAdvisory)
         phase3.push(cloudDashboardsAdvisory);
-    // bkit-ci.yml missing token env
-    const ciYml = detectCiYmlMissingTokenEnv(cwd);
-    if (ciYml)
-        phase3.push(ciYml);
     // GHA action SHA pinning (KN-3). Updater configs are consumer-owned examples.
     const gha = detectGhaFloatingTags(cwd);
     if (gha)
@@ -392,7 +376,7 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd()) {
         phase3.push(capstoneDrift);
     // @live/@smoke-tagged tests whose owning package declares no test:live/test:smoke
     // script — "no CI home".
-    const taggedNoHome = detectTaggedTestsWithoutCiHome(cwd);
+    const taggedNoHome = detectTaggedTestsWithoutCiHome(cwd, onSuppressed);
     if (taggedNoHome)
         phase3.push(taggedNoHome);
     // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
@@ -402,7 +386,7 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd()) {
     for (const f of detectTurboIntegrationInputs(cwd))
         phase3.push(f);
     // test:integration runtime env (KN-23 false-confidence loop).
-    const integrationEnv = detectTestIntegrationEnv(cwd);
+    const integrationEnv = detectTestIntegrationEnv(cwd, onSuppressed);
     if (integrationEnv)
         phase3.push(integrationEnv);
     // Consumer composed run-levels on bkit primitives (else docs/deployments.md matrix is doc-only).

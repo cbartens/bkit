@@ -69,11 +69,11 @@ describe("Scenario 1 — blocker: no package.json → exit 1, zero writes", () =
     expect(banner).toContain("no-package-json");
   });
 
-  it("formatChecklist banner contains DETECT and ACTION sections", () => {
+  it("formatChecklist banner contains Detect and Action sections", () => {
     const { blockers } = runPreflight(makeModules("core"), tmpDir);
     const banner = formatChecklist(blockers);
-    expect(banner).toContain("DETECT:");
-    expect(banner).toContain("ACTION:");
+    expect(banner).toContain("Detect:");
+    expect(banner).toContain("Action:");
   });
 
   it("spawning bkit-install with no package.json exits 1 and produces zero output files", () => {
@@ -141,8 +141,8 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     expect(banner).toBeTruthy();
     // Each finding renders with severity and id markers
     expect(banner).toContain("[advisory]");
-    expect(banner).toContain("DETECT:");
-    expect(banner).toContain("ACTION:");
+    expect(banner).toContain("Detect:");
+    expect(banner).toContain("Action:");
     // Numbered: 1/N format
     expect(banner).toMatch(/--- \d+\/\d+ \[advisory\]/);
   });
@@ -153,19 +153,26 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     expect(banner).toContain("INSTRUCTIONS FOR AN AI AGENT");
   });
 
-  it("runPostInstallCheck adds gh-bkit-token-unset-shell when token is unset", () => {
+  it("runPostInstallCheck adds gh-mcp-token-unset-shell when BKIT_GH_TOKEN is unset", () => {
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "claude"), tmpDir);
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { github: { type: "http" } } }),
+    );
 
-    // Temporarily unset BKIT_GH_TOKEN_INSTALL
-    const savedToken = process.env.BKIT_GH_TOKEN_INSTALL;
-    delete process.env.BKIT_GH_TOKEN_INSTALL;
+    // Temporarily unset BKIT_GH_TOKEN and CI
+    const savedToken = process.env.BKIT_GH_TOKEN;
+    const savedCi = process.env.CI;
+    delete process.env.BKIT_GH_TOKEN;
+    delete process.env.CI;
 
     try {
       const postFindings = runPostInstallCheck(preflightAdvisories, tmpDir);
       const ids = postFindings.map((f) => f.id);
-      expect(ids).toContain("gh-bkit-token-unset-shell");
+      expect(ids).toContain("gh-mcp-token-unset-shell");
     } finally {
-      if (savedToken !== undefined) process.env.BKIT_GH_TOKEN_INSTALL = savedToken;
+      if (savedToken !== undefined) process.env.BKIT_GH_TOKEN = savedToken;
+      if (savedCi !== undefined) process.env.CI = savedCi;
     }
   });
 
@@ -173,26 +180,33 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "claude"), tmpDir);
     expect(preflightAdvisories.length).toBeGreaterThan(0);
 
-    const savedToken = process.env.BKIT_GH_TOKEN_INSTALL;
-    delete process.env.BKIT_GH_TOKEN_INSTALL;
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { github: { type: "http" } } }),
+    );
+    const savedToken = process.env.BKIT_GH_TOKEN;
+    const savedCi = process.env.CI;
+    delete process.env.BKIT_GH_TOKEN;
+    delete process.env.CI;
 
     let postFindings: ReturnType<typeof runPostInstallCheck>;
     try {
       postFindings = runPostInstallCheck(preflightAdvisories, tmpDir);
     } finally {
-      if (savedToken !== undefined) process.env.BKIT_GH_TOKEN_INSTALL = savedToken;
+      if (savedToken !== undefined) process.env.BKIT_GH_TOKEN = savedToken;
+      if (savedCi !== undefined) process.env.CI = savedCi;
     }
 
     // Phase 1 findings should be present in the combined output
     const ids = postFindings.map((f) => f.id);
     expect(ids).toContain("gitignore-block-duplicates");
     // Phase 3 shell token finding should also be present
-    expect(ids).toContain("gh-bkit-token-unset-shell");
+    expect(ids).toContain("gh-mcp-token-unset-shell");
 
     const banner = formatChecklist(postFindings);
     expect(banner).toBeTruthy();
     expect(banner).toContain("gitignore-block-duplicates");
-    expect(banner).toContain("gh-bkit-token-unset-shell");
+    expect(banner).toContain("gh-mcp-token-unset-shell");
   });
 
   it("no duplicate ids in the final checklist", () => {
@@ -226,20 +240,27 @@ describe("Scenario 3 — bkit check: Phase 3 detectors run for parity with insta
     fs.writeFileSync(path.join(tmpDir, ".husky", "pre-commit"), "#!/bin/sh\npnpm test\n", "utf-8");
   });
 
-  it("runPostInstallCheck includes Phase 3 detector findings (gh-bkit-token-unset-shell when token unset)", () => {
+  it("runPostInstallCheck includes Phase 3 detector findings (gh-mcp-token-unset-shell when BKIT_GH_TOKEN unset)", () => {
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "claude"), tmpDir);
-    const savedToken = process.env.BKIT_GH_TOKEN_INSTALL;
-    delete process.env.BKIT_GH_TOKEN_INSTALL;
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { github: { type: "http" } } }),
+    );
+    const savedToken = process.env.BKIT_GH_TOKEN;
+    const savedCi = process.env.CI;
+    delete process.env.BKIT_GH_TOKEN;
+    delete process.env.CI;
 
     let findings: ReturnType<typeof runPostInstallCheck>;
     try {
       findings = runPostInstallCheck(preflightAdvisories, tmpDir);
     } finally {
-      if (savedToken !== undefined) process.env.BKIT_GH_TOKEN_INSTALL = savedToken;
+      if (savedToken !== undefined) process.env.BKIT_GH_TOKEN = savedToken;
+      if (savedCi !== undefined) process.env.CI = savedCi;
     }
 
-    // Phase 3 ran: gh-bkit-token-unset-shell must appear when token is missing.
-    expect(findings.map((f) => f.id)).toContain("gh-bkit-token-unset-shell");
+    // Phase 3 ran: gh-mcp-token-unset-shell must appear when the token is missing.
+    expect(findings.map((f) => f.id)).toContain("gh-mcp-token-unset-shell");
   });
 
   it("formatChecklist renders Phase 1 advisories", () => {
@@ -460,55 +481,58 @@ describe("Scenario 5b — docs/roadmap.md is consumer-owned: bkit install never 
 // ---------------------------------------------------------------------------
 // Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)
 //
-// When Phase 3 detects a blocker-severity finding (e.g. ci-yml-missing-token-env
-// elevated to blocker), bkit install must exit 1 and print a recovery line.
+// When Phase 3 detects a blocker-severity finding (e.g. a stale managed-version
+// marker on a protected branch), bkit install must exit 1 and print a recovery line.
 // ---------------------------------------------------------------------------
 
 describe("Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)", () => {
-  it("runPostInstallCheck includes blocker-severity finding when bkit-ci.yml missing token and .npmrc references token", () => {
-    // Seed: .npmrc references ${BKIT_GH_TOKEN_INSTALL} → ci-yml-missing-token-env elevated to blocker
+  it("runPostInstallCheck surfaces a blocker-severity finding for a stale managed-version marker", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "test", version: "0.0.0" }),
     );
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    // bkit-ci.yml has pnpm install but no BKIT_GH_TOKEN_INSTALL env mapping
+    // A stamped file bkit will not re-render this run (claude host not installed) with a
+    // marker that differs from the installed bkit version → stale managed marker.
+    fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
-      "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm install\n",
-      "utf-8",
-    );
-    // .npmrc references ${BKIT_GH_TOKEN_INSTALL} → elevates ci-yml finding to blocker
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
+      path.join(tmpDir, ".claude", "agents", "bkit-stale.md"),
+      "<!-- bkit:managed v1.0.0 — stale — do not edit -->\n\nstale content\n",
       "utf-8",
     );
 
-    const findings = runPostInstallCheck([], tmpDir);
-    const blocker = findings.find((f) => f.severity === "blocker");
-    expect(blocker).toBeDefined();
-    expect(blocker!.id).toBe("ci-yml-missing-token-env");
+    const savedRef = process.env.GITHUB_REF_NAME;
+    process.env.GITHUB_REF_NAME = "dev"; // protected branch → blocker severity
+    try {
+      const findings = runPostInstallCheck([], tmpDir);
+      const blocker = findings.find((f) => f.severity === "blocker");
+      expect(blocker).toBeDefined();
+      expect(blocker!.id).toBe("bkit-managed-stale");
+    } finally {
+      if (savedRef === undefined) delete process.env.GITHUB_REF_NAME;
+      else process.env.GITHUB_REF_NAME = savedRef;
+    }
   });
 
   it("Phase 3 blocker findings are distinguished from advisories (severity=blocker)", () => {
-    // Verify that the existing blocker escalation logic in detectCiYmlMissingTokenEnv
-    // produces a severity=blocker finding — this is the trigger for exit-1 in commands/install/install.ts
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "test" }));
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
-      "steps:\n  - run: pnpm install\n",
-    );
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
+      path.join(tmpDir, ".claude", "agents", "bkit-stale.md"),
+      "<!-- bkit:managed v1.0.0 — stale — do not edit -->\n\nstale content\n",
+      "utf-8",
     );
 
-    const findings = runPostInstallCheck([], tmpDir);
-    const blockerFindings = findings.filter((f) => f.severity === "blocker");
-    expect(blockerFindings.length).toBeGreaterThan(0);
-    expect(blockerFindings[0]!.id).toBe("ci-yml-missing-token-env");
+    const savedRef = process.env.GITHUB_REF_NAME;
+    process.env.GITHUB_REF_NAME = "dev"; // protected branch → blocker severity
+    try {
+      const findings = runPostInstallCheck([], tmpDir);
+      const blockerFindings = findings.filter((f) => f.severity === "blocker");
+      expect(blockerFindings.length).toBeGreaterThan(0);
+      expect(blockerFindings[0]!.id).toBe("bkit-managed-stale");
+    } finally {
+      if (savedRef === undefined) delete process.env.GITHUB_REF_NAME;
+      else process.env.GITHUB_REF_NAME = savedRef;
+    }
   });
 });
 
@@ -518,7 +542,8 @@ describe("Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)", () => 
 
 describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.T9)", () => {
   it("bkit install exits 1 when Phase 3 blocker detected + recovery line in output", () => {
-    // Set up consumer with Phase 3 blocker condition: bkit-ci.yml missing token env + .npmrc with token
+    // Set up a Phase 3 blocker condition: a stale bkit-managed marker on a host that
+    // this run does NOT install (claude), so Phase 2 never re-renders it.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({
@@ -529,16 +554,10 @@ describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.
       }),
     );
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    // bkit-ci.yml missing BKIT_GH_TOKEN_INSTALL env mapping
+    fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
-      "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm install --frozen-lockfile\n",
-    );
-    // .npmrc that references ${BKIT_GH_TOKEN_INSTALL} — triggers blocker escalation
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
+      path.join(tmpDir, ".claude", "agents", "bkit-stale.md"),
+      "<!-- bkit:managed v1.0.0 — stale — do not edit -->\n\nstale content\n",
     );
 
     const bkitInstallPath = path.resolve(
@@ -551,14 +570,14 @@ describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.
     );
     expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude"], {
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--cursor"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: {
         ...process.env,
         NODE_NO_WARNINGS: "1",
-        // Override BKIT_GH_TOKEN_INSTALL to avoid shell-token advisory overlapping
-        BKIT_GH_TOKEN_INSTALL: "fake-token-for-test",
+        // Protected branch → the stale managed marker is a blocker.
+        GITHUB_REF_NAME: "dev",
       },
       timeout: 60_000,
     });
@@ -579,8 +598,8 @@ describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.
 
 describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (P2.T10)", () => {
   it("--auto-revert: exits 1, auto-revert message present, Tier-1 writes reverted", () => {
-    // Set up consumer with Phase 3 blocker condition (same as Scenario 7):
-    // bkit-ci.yml missing BKIT_GH_TOKEN_INSTALL env + .npmrc referencing ${BKIT_GH_TOKEN_INSTALL}
+    // Set up a Phase 3 blocker condition (same as Scenario 7): a stale bkit-managed
+    // marker on a host this run does NOT install (claude).
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({
@@ -591,16 +610,10 @@ describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (
       }),
     );
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    // bkit-ci.yml missing BKIT_GH_TOKEN_INSTALL env mapping — triggers blocker in Phase 3
+    fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
-      "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm install --frozen-lockfile\n",
-    );
-    // .npmrc that references ${BKIT_GH_TOKEN_INSTALL} — escalates to blocker
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
+      path.join(tmpDir, ".claude", "agents", "bkit-stale.md"),
+      "<!-- bkit:managed v1.0.0 — stale — do not edit -->\n\nstale content\n",
     );
 
     const bkitInstallPath = path.resolve(
@@ -617,14 +630,14 @@ describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (
     const versionFilePath = path.join(tmpDir, ".bkit", "version");
     expect(fs.existsSync(versionFilePath)).toBe(false);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--auto-revert"], {
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--cursor", "--auto-revert"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: {
         ...process.env,
         NODE_NO_WARNINGS: "1",
-        // Set BKIT_GH_TOKEN_INSTALL so the shell-token advisory doesn't interfere
-        BKIT_GH_TOKEN_INSTALL: "fake-token-for-test",
+        // Protected branch → the stale managed marker is a blocker.
+        GITHUB_REF_NAME: "dev",
       },
       timeout: 60_000,
     });
@@ -965,7 +978,7 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
     return spawnSync(tsxPath(), [installPath(), ...args], {
       cwd: tmp,
       encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1", BKIT_GH_TOKEN_INSTALL: "fake-token-for-test" },
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
       timeout: 60_000,
     });
   }
@@ -1128,7 +1141,7 @@ describe("opencodeProviders persist block — sequential installs (issue #281 Ta
     return spawnSync(tsxPath(), [installPath(), ...args], {
       cwd: tmp,
       encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1", BKIT_GH_TOKEN_INSTALL: "fake-token-for-test" },
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
       timeout: 60_000,
     });
   }

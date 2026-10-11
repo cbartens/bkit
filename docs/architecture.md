@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 # Architecture
 
@@ -20,7 +20,7 @@
 
 ## What bkit Is
 
-bkit = **CLI tool + agent-stack payload** as npm package (`@cbartens/bkit` via GitHub Packages):
+bkit = **CLI tool + agent-stack payload** as npm package (`@cbartens/bkit` on npmjs):
 
 1. **Producer repo (this repo):** canonical `.bkit/` payload — engine (`.bkit/core/engine`), mirrors (`.bkit/workflows`, `.bkit/prompts`), authoring docs (`.bkit/docs`), consumer templates (`.bkit/templates`).
 2. **Consumer repos:** devDependency; `pnpm bkit install` regenerates IDE mirrors + bkit-managed blocks. Mirror sources + authoring docs read package-relative from installed `.bkit/` — NOT copied into consumer `.agents/`.
@@ -106,8 +106,8 @@ pnpm bkit install [--module-flags] [--auto-revert]
     │   └─ On any error    → earlier modules' files stay written, .bkit/version not re-pinned — re-run install (idempotent)
     │
     └─ Phase 3: Post-install re-detection + commit
-        ├─ Token-surface detectors (BKIT_GH_TOKEN_INSTALL at 4 surfaces)
-        ├─ Checks on the consumer's own bkit-ci.yml (token env, actionlint, run injection, capstone contract, bkit-stub)
+        ├─ Credential detectors (GitHub MCP token, cloud router secrets)
+        ├─ Checks on the consumer's own bkit-ci.yml (actionlint, run injection, capstone contract, bkit-stub)
         ├─ Vale package sync check
         ├─ Render unified advisory checklist
         ├─ Phase 3 blockers → exit 1 with recovery line; --auto-revert calls runUninstall first
@@ -133,7 +133,6 @@ CLI verbs:
 ```
 Consumer repo
 ├── package.json            # devDependencies: { "@cbartens/bkit": "^4.0.0" }
-├── .npmrc                  # @cbartens:registry=npm.pkg.github.com (registry only; token in pnpm user-level config)
 ├── .claude/settings.json   # json format — deep-containment (template scope ⊆ consumer)
 ├── .cursor/hooks.json      # json format — Cursor v1 keyed-object; deep-containment
 ├── .agents/                # Cross-IDE agent runtime, populated by `pnpm bkit install`
@@ -200,4 +199,4 @@ Sensing is on-disk-first: every phase close full-regenerates the board from the 
 
 ## Distribution
 
-`@cbartens/bkit` published to GitHub Packages on every git tag via `.github/workflows/release.yml`. Consumers auth with `BKIT_GH_TOKEN_INSTALL` PAT (`read:packages`). See `docs/deployments.md` (four-surface matrix) + `docs/decisions.jsonl` DE-3.
+`@cbartens/bkit` published publicly to npmjs (`https://registry.npmjs.org`) on every git tag via `.github/workflows/release.yml` (npm OIDC trusted publishing — no long-lived token). Consumers install with no registry mapping or PAT. See `docs/deployments.md` § Dependency updaters.

@@ -26,7 +26,7 @@ AI coding agents are fast, but on their own they skip the parts that make softwa
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-features-dark.svg">
-    <img alt="What ships with bkit: ready-made workflows, independent review, self-fixing builds, 35 audits, your sign-off, guardrails, honest CI, quality checks, any AI tool, laptop to cloud, parallel features, skills on demand, docs and memory kept current, best model per job, work stats, templates to adopt." src=".github/assets/bkit-features-light.svg" width="100%">
+    <img alt="What ships with bkit, one coloured row per phase. Design: independent review, three rival designs, runs on any AI tool, your sign-off. Plan: five reviewers, scope kept tight, 35 audits, best model per job. Build: writes and verifies, hunts bugs and security holes, quality checks, parallel features. Debug: self-fixing builds, root cause first, honest CI, context fetch. Ship: nothing quietly dropped, docs and memory, skills on demand, laptop to cloud." src=".github/assets/bkit-features-light.svg" width="100%">
   </picture>
 </p>
 
@@ -40,7 +40,7 @@ One command per job. Each one runs a team of specialised agents, 48 in total, so
 | Work out how to build it | `/bkit-design` | Three agents propose different approaches, two more critique them, and you get one design to approve. |
 | Plan the work | `/bkit-plan` | A step-by-step plan, stress-tested by five reviewers before any code is written. You approve it. |
 | Build it | `/bkit-build` | Writes the code, checks it against the plan, hunts for bugs and security holes, runs the tests, and opens a pull request. |
-| Fix what broke | `/bkit-debug` | Reads the failure logs, finds the cause, fixes it, re-tests, and writes down the lesson. |
+| Fix what broke | `/bkit-debug` | Gathers external context from your platforms (CI, error trackers, hosting, databases and more), finds the cause, fixes it, re-tests, and writes down the lesson. |
 | Ship it | `/bkit-ship` | Checks nothing was missed, waits for every test to pass, updates the docs, and merges once you say so. |
 | Health check | 35 audits | Security, privacy, accessibility, performance, reliability, cost and more. Findings feed straight into `/bkit-plan`. |
 | Housekeeping | utility agents | Keep docs, decisions, known issues and the roadmap current. |
@@ -73,6 +73,7 @@ One command per job. Each one runs a team of specialised agents, 48 in total, so
 
 - **Everything is checked by an agent that didn't write it.** An AI checking its own work tends to approve it. bkit gives every design, plan and code change to separate reviewers, each with one job (one hunts bugs, another security holes). They never see each other's verdicts, and several review groups mix models on purpose, so one model's blind spot is less likely to get past all of them.
 - **Broken builds fix themselves, and stay fixed.** When tests fail you don't get a wall of red text. `/bkit-debug` finds the cause, fixes it and re-runs the tests, then records the lesson so the next debug session reads it first.
+- **Debug starts from outside evidence, not a guess.** `/bkit-debug` gathers external context from the platforms you already use — CI, error trackers, hosting, databases, web search — so it diagnoses from the real failure rather than its memory. Ready-made templates cover the common services, and each one is easy to customise, extend or leave out.
 - **A green tick means every test ran.** The CI template runs test lanes side by side and fails the build if any planned lane was skipped, so a half-finished run can't pass as tested.
 
 ### It fits how you work
@@ -112,11 +113,9 @@ You need a GitHub repo, Node 20+, pnpm, and at least one of Claude Code, Cursor,
 
 **Easiest:** copy the [install prompt](.bkit/install.md#install--first-time) into your AI coding tool and let it do the setup.
 
-**By hand:** bkit is currently published to GitHub Packages, so you need a classic GitHub token with `read:packages` scope ([create one](https://github.com/settings/tokens)).
+**By hand:** no token or registry setup — bkit is public on npmjs and installs like any other package.
 
 ```bash
-echo "@cbartens:registry=https://npm.pkg.github.com" >> .npmrc
-pnpm config set "//npm.pkg.github.com/:_authToken=<your-token>"
 pnpm add -D @cbartens/bkit
 pnpm bkit install --claude    # pick your tools: --claude --cursor --codex --opencode=<provider>
 ```
@@ -127,7 +126,7 @@ Adopt the templates you want from `.bkit/templates/`, then open an issue and run
 /bkit-design ISSUE-123
 ```
 
-Full install, upgrade and CI/Vercel token setup: [`.bkit/install.md`](.bkit/install.md).
+Full install, upgrade and CI setup: [`.bkit/install.md`](.bkit/install.md).
 
 ## FAQ
 

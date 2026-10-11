@@ -267,7 +267,7 @@ Undocumented, and invisible to the toolchain, because the file stays valid YAML,
 
 **Docs-only-diff precondition:** the `dev`-trigger path routes every post-merge CI failure to `/bkit-debug`. This is only correct for docs-only diffs if the consumer's `bkit-ci.yml` deploy-await step treats a host-cancelled build as skip, not red (skip e2e, stay green; e.g. Vercel `CANCELED`), but if a consumer reds on a host-cancelled build, every docs-only squash-merge to `dev` false-dispatches `/bkit-debug` and burns loop-cap budget. Verify this per consumer before relying on the `dev` trigger.
 
-**Consumer-repo acceptance note:** the full happy-path loop (squash-merge → post-merge CI → `workflow_run` → `/bkit-debug` dispatch → fix PR → re-merge) is only exercisable on consumer repos with `bkit-cloud.yml` installed and its dispatch secrets wired (see `BKIT_GH_TOKEN_INSTALL` — presence matrix, below, and the cloud-agent auth surfaces in `docs/security.md`). A consumer without `bkit-cloud.yml` installed, or without CI running on `push: branches: [dev]`, never emits the `workflow_run` event this trigger depends on, so the feature degrades to a silent no-op, not a failure.
+**Consumer-repo acceptance note:** the full happy-path loop (squash-merge → post-merge CI → `workflow_run` → `/bkit-debug` dispatch → fix PR → re-merge) is only exercisable on consumer repos with `bkit-cloud.yml` installed and its dispatch secrets wired (see the cloud-agent auth surfaces in `docs/security.md`). A consumer without `bkit-cloud.yml` installed, or without CI running on `push: branches: [dev]`, never emits the `workflow_run` event this trigger depends on, so the feature degrades to a silent no-op, not a failure.
 
 ## Ship gate + bookkeeping
 
@@ -400,12 +400,7 @@ Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs 
 | Dependabot alerts | Read |
 | Metadata | Read-only |
 
-`Commit statuses: Read and write` is what opens the PR. Without it Renovate creates the branch and 403s on commit status. There is no separate Checks permission on a fine-grained PAT. Keep `BKIT_GH_TOKEN` separate from `BKIT_GH_TOKEN_INSTALL` (`read:packages` only). Org-owned tokens cannot read the owner email; set the Actions variable `RENOVATE_GIT_AUTHOR` (for example `Renovate Bot <renovate@your-domain>`).
-
-**Private package.** `@cbartens/bkit` is on `npm.pkg.github.com`. Lockfile regen resolves it for every bump. Without a read token, regen 401s and CI fails `pnpm install --frozen-lockfile`.
-
-- Mend: add `BKIT_GH_TOKEN_INSTALL` as a Mend repository secret and tick "used during the scan as an environment variable". Uncomment the `hostRules` `token` line in `renovate.json5`.
-- Self-hosted: leave that line commented. The example workflow sets `RENOVATE_HOST_RULES` from the Actions secret. An uncommented Mend-style line adds an empty-token rule and 401s.
+`Commit statuses: Read and write` is what opens the PR. Without it Renovate creates the branch and 403s on commit status. There is no separate Checks permission on a fine-grained PAT. Org-owned tokens cannot read the owner email; set the Actions variable `RENOVATE_GIT_AUTHOR` (for example `Renovate Bot <renovate@your-domain>`).
 
 **pnpm 11 on Mend's runner.** A large graph can OOM during `pnpm update --lockfile-only`. The example sets `minimumReleaseAge: "1 day"` and caps `PNPM_WORKERS`. To clear the per-install gate, set `minimumReleaseAge: 0` in `pnpm-workspace.yaml`. Deleting the key does not: pnpm 11 defaults it to 1440. Self-hosted on `ubuntu-latest` has the memory; the freshness setting is still yours to keep or drop.
 

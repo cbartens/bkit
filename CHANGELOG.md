@@ -6,6 +6,23 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [5.0.1] — 2026-10-12
+
+### Changed
+
+- **`@cbartens/bkit` publishes to the public npm registry** (#408). Installs resolve from `https://registry.npmjs.org` with no token, no `@cbartens:registry` `.npmrc` mapping and no GitHub Packages auth; GitHub Packages is no longer updated. Releases publish through npm OIDC trusted publishing with a signed build-provenance attestation.
+
+### Added
+
+- **Payload view links: `.bkit/core` and `.bkit/shared` symlink into the installed package** (#525). `bkit install` and `bkit upgrade` create both as relative links to `node_modules/@cbartens/bkit/.bkit/{core,shared}`, so the workflow / prompt / hook sources are browsable from the consumer repo. Views, not copies — always the installed version, never hashed, and `bkit check` flags a missing or broken link as drift. Both paths join the managed `.gitignore` block (they dangle on a fresh clone or in CI) and `BKIT_GITIGNORE_LINES`. A real directory or file at either path is never clobbered (advisory `payload-link-real-dir`); a platform that refuses symlinks (Windows without Developer Mode) falls back to a junction, then to advisory `payload-link-failed` — never a failure. `bkit uninstall` removes the links (symlinks only). Hand-rolled links from before this release keep working — re-pointed only if they resolve elsewhere — and the duplicates advisory asks you to drop the consumer-side `.gitignore` lines the managed block now covers.
+- **Dismiss an advisory per package.** A detector can be right in general and still fire where the condition is deliberately not applicable — a rule-linter whose test titles mention `@live`, an integration lane mocked by design. `package.json` `bkit.ignoreAdvisories: string[]` opts a package out of an advisory id. The check runs inside each detector and drops only the owning package, so a sibling package's real finding still fires; a `blocker` is never suppressible. Suppressions print one line in the console banner and `.bkit/advisories.md`. Wired for `tagged-tests-no-ci-home` (the package holding the test file) and `test-integration-env-not-asserted` (the repo root — the only manifest that detector reads).
+
+### Removed
+
+- **GitHub Packages install-auth machinery** (#408). `BKIT_GH_TOKEN_INSTALL`, the four-surface token presence matrix, the `.npmrc` registry-mapping migration, and the CI / Vercel / cloud / Renovate install-auth steps are gone; the templates that wired them (`bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml`) no longer reference them. `BKIT_GH_TOKEN` (GitHub MCP + self-hosted Renovate platform auth) is unchanged.
+
+---
+
 ## [5.0.0] — 2026-10-11
 
 bkit owns only what a workflow step runs or parses (#489). Everything a person or another tool runs — the CI workflow, git hooks, lint and prose configs, editor and cloud-agent setup, dependency updaters, helper scripts — ships as a template the consumer copies and owns. Every file bkit ships is in one of three groups: an owned file, an owned block in a shared file, or a template, copied to `.bkit/templates/`.

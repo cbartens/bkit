@@ -34,6 +34,7 @@ import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, } from "../../install/cloud-env.js";
 import { syncTemplateCopies, formatTemplateChanges } from "../../install/template-copies.js";
+import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payload-links.js";
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
 import { renderManagedOutputs } from "../../install/modules/index.js";
 import { reconcileMcpJson, enrichClaudeSettingsAllows } from "../../install/modules/claude.js";
@@ -359,8 +360,8 @@ async function resolveLatestPublishedVersion(cwd) {
     const r = spawnSync("pnpm", ["view", "@cbartens/bkit", "version"], { cwd, encoding: "utf-8" });
     if (r.status !== 0 || !r.stdout || !r.stdout.trim()) {
         console.error(`${LOG_PREFIX} could not resolve the latest @cbartens/bkit version from the registry ` +
-            `(pnpm view exit ${r.status ?? "null"}). Ensure GitHub Packages read auth (BKIT_GH_TOKEN_INSTALL, ` +
-            `classic PAT, read:packages), or pin a version with --to=<version>.`);
+            `(pnpm view exit ${r.status ?? "null"}). Check your network / registry access, ` +
+            `or pin a version with --to=<version>.`);
         process.exit(1);
     }
     return r.stdout.trim();
@@ -419,7 +420,7 @@ export async function runSelfBump(flags, cwd) {
     });
     if (add.status !== 0) {
         console.error(`${LOG_PREFIX} \`${addCmd}\` failed (exit ${add.status ?? "null"}). ` +
-            `Most common cause: GitHub Packages auth — set BKIT_GH_TOKEN_INSTALL (classic PAT, read:packages). Nothing re-rendered.`);
+            `Check your network / registry access. Nothing re-rendered.`);
         process.exit(1);
     }
     // Re-exec the just-installed (NEW) bkit so IT renders + re-pins, not this old process.
@@ -580,6 +581,16 @@ export async function runUpgradeCommand(upgradeFlags) {
     const templateReport = formatTemplateChanges(templateChanges);
     if (templateReport)
         console.log(`${LOG_PREFIX} ${templateReport}`);
+    // Payload view links — the same sync install runs (`.bkit/core` + `.bkit/shared`
+    // point into the installed package). Never clobbers a real directory; a platform
+    // refusal is reported, never fatal. Throwaway WriteSet: links carry no hash.
+    const linkChanges = syncPayloadLinks(process.cwd(), {
+        dryRun: upgradeFlags.dryRun,
+        ws: { writes: [] },
+    });
+    const linkReport = formatPayloadLinkChanges(linkChanges);
+    if (linkReport)
+        console.log(`${LOG_PREFIX} ${linkReport}`);
     // Re-render all installed provider blocks for upgrade.
     // The candidates walk above handles the ACTIVE provider's block via renderOpencodeJson.
     // For each ADDITIONAL installed provider, reconcile their template block into opencode.json

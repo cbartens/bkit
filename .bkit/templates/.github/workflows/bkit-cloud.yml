@@ -154,7 +154,6 @@ jobs:
           ref: dev
           fetch-depth: 0
           # The auto-provided GITHUB_TOKEN inherits the `permissions:` block above.
-          # Do not swap in BKIT_GH_TOKEN_INSTALL — it has no access to the consumer repo.
           token: ${{ github.token }}
 
       - name: Configure git user
@@ -470,7 +469,6 @@ jobs:
           ref: dev
           fetch-depth: 0
           # The auto-provided GITHUB_TOKEN inherits the `permissions:` block above.
-          # Do not swap in BKIT_GH_TOKEN_INSTALL — it has no access to the consumer repo.
           token: ${{ github.token }}
 
       # Installs the vale binary for bkit-cloud-bootstrap.sh's `vale sync` and the dispatched

@@ -6,79 +6,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { readPackageJson } from "../../shared/package-json.js";
 import type { PreflightFinding } from "../before/index.js";
+import { isAdvisorySuppressed, type SuppressionReporter } from "./suppression.js";
 
 // ---------------------------------------------------------------------------
 // Other post-install detectors
 // ---------------------------------------------------------------------------
-
-/**
- * Detect whether the bkit-ci.yml install step is wired to authenticate to GH Packages.
- * Returns null if no bkit-ci.yml, no `pnpm install` step, or the step is correctly wired
- * (no false positives).
- *
- * On pnpm >=10.34.3 the correct shape requires BOTH:
- *   (1) a `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` step that
- *       writes the token into pnpm's user-level config before install, AND
- *   (2) the `BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}` env mapping that feeds it.
- * Either missing → the next install 401s on download. Severity is "blocker" when the
- * project .npmrc shows the repo authenticates to GH Packages (registry mapping or a
- * ${BKIT_GH_TOKEN_INSTALL} ref); otherwise "advisory". Phase 3 does not exit-1
- * (writes already happened).
- */
-export function detectCiYmlMissingTokenEnv(cwd: string): PreflightFinding | null {
-  const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
-  if (!fs.existsSync(ciPath)) return null;
-  const content = fs.readFileSync(ciPath, "utf-8");
-
-  // Require an install step before flagging (avoid false positives).
-  if (!content.includes("pnpm install")) return null;
-
-  // Env mapping (whitespace/quoting variations):
-  //   BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }} | "${{ … }}" | ${{secrets.BKIT_GH_TOKEN_INSTALL}}
-  const hasTokenEnv =
-    /BKIT_GH_TOKEN_INSTALL\s*:\s*["']?\$\{\{\s*secrets\.BKIT_GH_TOKEN_INSTALL\s*\}\}["']?/.test(
-      content,
-    );
-  // User-level auth step: `pnpm config set "//npm.pkg.github.com/:_authToken=…"`.
-  const hasConfigSet = /pnpm\s+config\s+set\s+["']?\/\/npm\.pkg\.github\.com\/:_authToken=/.test(
-    content,
-  );
-  // Correctly wired → no finding.
-  if (hasTokenEnv && hasConfigSet) return null;
-
-  // Blocker when .npmrc shows the repo authenticates to GH Packages — next run 401s.
-  const npmrcPath = path.join(cwd, ".npmrc");
-  let npmrcUsesGhPackages = false;
-  if (fs.existsSync(npmrcPath)) {
-    const npmrcContent = fs.readFileSync(npmrcPath, "utf-8");
-    npmrcUsesGhPackages =
-      npmrcContent.includes("@cbartens:registry=") ||
-      npmrcContent.includes("${BKIT_GH_TOKEN_INSTALL}");
-  }
-
-  const missing: string[] = [];
-  if (!hasConfigSet) missing.push("a `pnpm config set` auth step");
-  if (!hasTokenEnv) missing.push("the BKIT_GH_TOKEN_INSTALL env mapping");
-  const missingText = missing.join(" and ");
-
-  return {
-    id: "ci-yml-missing-token-env",
-    severity: npmrcUsesGhPackages ? "blocker" : "advisory",
-    detect: npmrcUsesGhPackages
-      ? `.github/workflows/bkit-ci.yml has a pnpm install step but is missing ${missingText}, and .npmrc authenticates to the GitHub Packages registry. The next CI run will 401 on the @cbartens/bkit download.`
-      : `.github/workflows/bkit-ci.yml has a pnpm install step but is missing ${missingText}.`,
-    action:
-      "Update the install step in .github/workflows/bkit-ci.yml to write the auth token into pnpm's user-level config BEFORE install:\n\n" +
-      "    - name: Install Dependencies\n" +
-      "      run: |\n" +
-      '        pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n' +
-      "        pnpm install --frozen-lockfile\n" +
-      "      env:\n" +
-      "        BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}\n\n" +
-      "pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution (it 401s on download), so the token must be set via `pnpm config set` — the shell expands $BKIT_GH_TOKEN_INSTALL to the literal token before pnpm stores it in user-level config, version-proof across pnpm 10.x and 11.x.\n\n" +
-      "Also confirm the secret exists: `gh secret list | grep BKIT_GH_TOKEN_INSTALL`. If absent: `gh secret set BKIT_GH_TOKEN_INSTALL --body=$BKIT_GH_TOKEN_INSTALL`.",
-  };
-}
 
 /**
  * Detect the always-true `if:` gate in `.github/workflows/bkit-cloud.yml`: a `|`
@@ -444,8 +376,15 @@ function tagUsedInTestTitle(text: string, tag: string, mask: Uint8Array): boolea
  * Only flags a tag when the convention is ACTIVE in the repo (at least one package
  * declares the script); a silent no-op otherwise. WARNING-only; the capstone's
  * `run_live => live_ran > 0` assertion is the runtime check.
+ *
+ * A package whose own `package.json` opts out (`bkit.ignoreAdvisories`) is dropped from the
+ * list and reported via `onSuppressed`; sibling packages keep flagging, because the finding
+ * aggregates every affected package into one entry.
  */
-export function detectTaggedTestsWithoutCiHome(cwd: string): PreflightFinding | null {
+export function detectTaggedTestsWithoutCiHome(
+  cwd: string,
+  onSuppressed?: SuppressionReporter,
+): PreflightFinding | null {
   const testFiles: string[] = [];
   const packageJsons: string[] = [];
   walkRepoForHomeCheck(cwd, testFiles, packageJsons);
@@ -477,6 +416,7 @@ export function detectTaggedTestsWithoutCiHome(cwd: string): PreflightFinding | 
   };
 
   const homeless = new Map<string, Set<string>>(); // tag -> set of "pkgdir (needs `script`)"
+  const suppressedPkgs = new Set<string>(); // pkgs opted out — one note each, however many files
   for (const file of testFiles) {
     let text: string;
     try {
@@ -493,7 +433,15 @@ export function detectTaggedTestsWithoutCiHome(cwd: string): PreflightFinding | 
       const pj = nearestPkg(path.dirname(file));
       if (!pj) continue;
       if (typeof pkgScripts.get(pj)?.[script] !== "string") {
-        const rel = path.relative(cwd, path.dirname(pj)) || ".";
+        const pkgDir = path.dirname(pj);
+        const rel = path.relative(cwd, pkgDir) || ".";
+        if (isAdvisorySuppressed(pkgDir, "tagged-tests-no-ci-home", "advisory")) {
+          if (!suppressedPkgs.has(rel)) {
+            suppressedPkgs.add(rel);
+            onSuppressed?.({ id: "tagged-tests-no-ci-home", scope: rel });
+          }
+          continue; // drop only this package; a sibling package keeps flagging
+        }
         if (!homeless.has(tag)) homeless.set(tag, new Set());
         homeless.get(tag)?.add(rel);
       }
@@ -518,7 +466,9 @@ export function detectTaggedTestsWithoutCiHome(cwd: string): PreflightFinding | 
     action:
       "Give each tagged suite a CI home — add the matching script to the package's package.json so the live/smoke tier actually invokes it:\n\n" +
       lines.join("\n") +
-      '\n\nExample: `"test:live": "vitest run --project live"` (or your runner\'s tag filter). The bkit-tests-check capstone\'s `run_live => live_ran > 0` assertion is the runtime backstop; this catches it earlier.',
+      '\n\nExample: `"test:live": "vitest run --project live"` (or your runner\'s tag filter). The bkit-tests-check capstone\'s `run_live => live_ran > 0` assertion is the runtime backstop; this catches it earlier.' +
+      "\n\nFalse positive? A title that only MENTIONS the tag (a rule linter describing it, a meta/guard test naming the scenario) is indistinguishable from a real tagged test. Opt that package out in its package.json — per-package, and it drops only that package from this list:\n\n" +
+      '    "bkit": { "ignoreAdvisories": ["tagged-tests-no-ci-home"] }',
   };
 }
 
@@ -582,13 +532,23 @@ export function detectTurboIntegrationInputs(cwd: string): PreflightFinding[] {
  * string itself, (2) the CI workflow job that invokes `test:integration` (an
  * env-agnostic script provisioned at the lane), (3) the vitest integration config the
  * script points at (home of the documented in-file guard).
+ *
+ * Root-scoped opt-out: this detector reads only the root `package.json`, so a `bkit.ignoreAdvisories`
+ * entry there drops the finding and reports it via `onSuppressed`.
  */
-export function detectTestIntegrationEnv(cwd: string): PreflightFinding | null {
+export function detectTestIntegrationEnv(
+  cwd: string,
+  onSuppressed?: SuppressionReporter,
+): PreflightFinding | null {
   const read = readPackageJson(cwd);
   if (!read.ok) return null;
   const pkg = read.pkg as { scripts?: Record<string, string> };
   const script = pkg.scripts?.["test:integration"];
   if (!script) return null;
+  if (isAdvisorySuppressed(cwd, "test-integration-env-not-asserted", "advisory")) {
+    onSuppressed?.({ id: "test-integration-env-not-asserted", scope: "." });
+    return null;
+  }
   const realServiceHints = [
     "TEST_REAL_APIS",
     "SUPABASE_SERVICE_ROLE",
@@ -637,7 +597,9 @@ export function detectTestIntegrationEnv(cwd: string): PreflightFinding | null {
       "Confirm integration tests actually exercise real services — otherwise the CI integration step (your own, or the one in bkit's bkit-ci.yml template once adopted) is a no-op (KN-23 false-confidence loop). Provision the real-service env at ANY one of these layers (all are recognised):\n\n" +
       '  - script: "test:integration": "TEST_REAL_APIS=true SUPABASE_URL=$SUPABASE_DEV_URL vitest run --config=vitest.integration.config.ts"\n' +
       "  - CI lane: set `TEST_REAL_APIS` / export the service-role URL / chain `supabase start` around `turbo run test:integration` in the `.github/workflows/*.yml` job that runs it (keeps local `pnpm test:integration` env-agnostic)\n" +
-      "  - vitest integration config: document/enforce the per-file `TEST_REAL_APIS` guard in the config the script `--config`s to.",
+      "  - vitest integration config: document/enforce the per-file `TEST_REAL_APIS` guard in the config the script `--config`s to.\n\n" +
+      "Mocked by design (real-service coverage lives in E2E)? Opt out in the root package.json:\n\n" +
+      '    "bkit": { "ignoreAdvisories": ["test-integration-env-not-asserted"] }',
   };
 }
 

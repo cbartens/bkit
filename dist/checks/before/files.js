@@ -29,6 +29,8 @@ const BKIT_GITIGNORE_LINES = [
     ".husky/_",
     ".bkit/advisories.md",
     ".bkit/.env",
+    ".bkit/core",
+    ".bkit/shared",
 ];
 export function detectGitignoreBlockDuplicates(cwd) {
     const gitignorePath = path.join(cwd, ".gitignore");

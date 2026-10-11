@@ -44,7 +44,7 @@ graphify-out/
 
 # <!-- bkit:start -->
 
-# <!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 # Worktrees, plan logs, per-run sentinels. Sentinels are written mid-run, read by
 # the same run's Failure Path, cleared at next Step 1 — never bookkeeping, so
@@ -99,7 +99,18 @@ playwright/.auth/
 # Local MCP / agent secrets — never commit
 .bkit/.env
 
+# Payload view links — `bkit install` / `upgrade` symlink these into
+# node_modules/@cbartens/bkit; they dangle on a fresh clone or in CI, so never commit.
+.bkit/core
+.bkit/shared
+
 # <!-- bkit:end -->
+
+# Dogfood negations: `.bkit/core` + `.bkit/shared` are this repo's install SOURCE
+# (tracked). The managed block's consumer link-ignore above must never hide new
+# source files here — bkit the consumer's view links do not exist in bkit's own repo.
+!.bkit/core
+!.bkit/shared
 
 # Python bytecode. Python helpers under scripts/ regenerate this on import.
 __pycache__/

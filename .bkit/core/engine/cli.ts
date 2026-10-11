@@ -538,8 +538,9 @@ Usage:
                                  Hosts compose: --claude --cursor --codex --opencode=<provider>.
   bkit check                     Dry-run — drift-check everything already installed (no
                                  module flags). Exits 1 when a managed file needs
-                                 re-rendering. Templates (.bkit/templates/) are never
-                                 drift-checked once copied — the copy is yours. The CI gate.
+                                 re-rendering. Copies under .bkit/templates/ are refreshed by
+                                 install/upgrade and checked for staleness — adopt one by
+                                 copying it elsewhere; that copy is yours. The CI gate.
   bkit upgrade [--to=<version>|--latest] [--auto-apply] [--dry-run]
                                  Upgrade everything installed (no module flags). Diffs old
                                  vs new templates; conflict list emitted to stderr. Use
@@ -554,7 +555,7 @@ Usage:
                                  No flags = full removal — ALL modules incl. opt-in add-ons
                                  (cloud/opencode) + core. Consumer-owned updater configs
                                  (renovate.json5, dependabot.yml, bkit-renovate.yml) are left in place. Consumer-modified
-                                 files, the docs/ payload, and generated artefacts
+                                 files, your own files under docs/, and generated artefacts
                                  (.bkit/advisories.md, .bkit/friction.jsonl) are preserved (use
                                  --nuke to force-remove manifest-listed files). Target with the
                                  same module flags as install (e.g. uninstall --claude); a
@@ -703,11 +704,6 @@ macOS GUI-isolation note (launchctl fallback):
   For a persistent approach that re-reads the tokens file on every change, copy the
   launchd template set (see \`.bkit/templates.md\` § Launchd GUI environment). Rotation
   then needs no re-bootstrap — prefer \`bkit cursor\` / \`bkit opencode\` for the dynamic model.
-
-Consumer CI auth:
-  Set BKIT_GH_TOKEN_INSTALL in GitHub Actions secrets (classic PAT with read:packages scope —
-  fine-grained PATs are not currently supported by GitHub Packages npm registry).
-  See README.md ## Consumer CI auth for setup steps.
 
 Docs: https://github.com/cbartens/bkit/blob/main/README.md` + commandsUsage(),
   );

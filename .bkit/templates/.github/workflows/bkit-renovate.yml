@@ -95,11 +95,6 @@ jobs:
           # allowedEnv") and Renovate does nothing. Mend allows these via its safeEnv
           # preset; self-hosted must set it explicitly. Glob covers any future PNPM_* var.
           RENOVATE_ALLOWED_ENV: "PNPM_*"
-          # Private-registry read auth for the restricted @cbartens/bkit package.
-          # Leave the hostRules token line in renovate.json5 commented. BKIT_GH_TOKEN_INSTALL
-          # (read:packages) is a repo Actions secret. See docs/deployments.md § Dependency updaters.
-          RENOVATE_HOST_RULES: >-
-            [{"matchHost":"npm.pkg.github.com","hostType":"npm","token":"${{ secrets.BKIT_GH_TOKEN_INSTALL }}"}]
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
           RENOVATE_DRY_RUN: ${{ inputs.dryRun || 'null' }}
           # This env block declares NO ANTHROPIC_API_KEY / BKIT_LINEAR_API_KEY

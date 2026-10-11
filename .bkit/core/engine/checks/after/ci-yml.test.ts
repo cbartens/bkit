@@ -5,7 +5,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  detectCiYmlMissingTokenEnv,
   detectTurboIntegrationInputs,
   detectTestIntegrationEnv,
   detectGhaFloatingTags,
@@ -16,6 +15,7 @@ import {
   detectTaggedTestsWithoutCiHome,
   detectRunLevelsNotComposed,
 } from "./ci-yml";
+import type { SuppressionNote } from "./suppression";
 
 // ---------------------------------------------------------------------------
 // Module-level mock for node:child_process
@@ -59,112 +59,6 @@ afterEach(() => {
   execSync.mockReset();
   execFileSync.mockReset();
   spawnSync.mockReset();
-});
-
-// ---------------------------------------------------------------------------
-// detectCiYmlMissingTokenEnv
-// ---------------------------------------------------------------------------
-
-describe("detectCiYmlMissingTokenEnv", () => {
-  const writeCi = (steps: string) => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
-      `\njobs:\n  build:\n    steps:\n${steps}\n`,
-      "utf-8",
-    );
-  };
-  // Canonical install step: pnpm config set (user-level auth) + env mapping.
-  const CONFIG_SET =
-    '          pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"';
-  const INSTALL = "          pnpm install --frozen-lockfile";
-  const ENV_BLOCK =
-    "        env:\n          BKIT_GH_TOKEN_INSTALL: \${{ secrets.BKIT_GH_TOKEN_INSTALL }}";
-  const correctStep = `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n${ENV_BLOCK}`;
-
-  it("returns null when install step has both pnpm config set and env mapping", () => {
-    writeCi(correctStep);
-    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
-  });
-
-  it("returns null when env mapping uses quotes (with config set)", () => {
-    writeCi(
-      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          BKIT_GH_TOKEN_INSTALL: "\${{ secrets.BKIT_GH_TOKEN_INSTALL }}"`,
-    );
-    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
-  });
-
-  it("returns null when env mapping has no inner spaces (with config set)", () => {
-    writeCi(
-      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          BKIT_GH_TOKEN_INSTALL: \${{secrets.BKIT_GH_TOKEN_INSTALL}}`,
-    );
-    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
-  });
-
-  it("returns advisory finding when install step has neither config set nor env mapping", () => {
-    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("ci-yml-missing-token-env");
-    expect(result!.severity).toBe("advisory");
-  });
-
-  it("flags when env mapping present but the pnpm config set auth step is missing (#274 new-shape gap)", () => {
-    writeCi(
-      `      - name: Install Dependencies\n${INSTALL.replace(/^ {10}/, "        run: ")}\n${ENV_BLOCK}`,
-    );
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.detect).toContain("pnpm config set");
-  });
-
-  it("flags when pnpm config set present but env mapping is missing", () => {
-    writeCi(`      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}`);
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.detect).toContain("BKIT_GH_TOKEN_INSTALL env mapping");
-  });
-
-  it("returns null when bkit-ci.yml is absent", () => {
-    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
-  });
-
-  it("elevates to blocker when .npmrc maps the @cbartens registry and wiring is incomplete", () => {
-    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n",
-      "utf-8",
-    );
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.severity).toBe("blocker");
-    expect(result!.detect).toContain("401");
-  });
-
-  it("elevates to blocker when .npmrc carries a ${BKIT_GH_TOKEN_INSTALL} ref and wiring is incomplete", () => {
-    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
-      "utf-8",
-    );
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result!.severity).toBe("blocker");
-  });
-
-  it("stays advisory when .npmrc has no GH Packages signal", () => {
-    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
-    fs.writeFileSync(path.join(tmpDir, ".npmrc"), "save-exact=true\n", "utf-8");
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result!.severity).toBe("advisory");
-  });
-
-  it("stays advisory when .npmrc is absent", () => {
-    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result!.severity).toBe("advisory");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -303,6 +197,33 @@ describe("detectTestIntegrationEnv", () => {
       "jobs:\n  integration:\n    steps:\n      - run: turbo run test:integration\n",
     );
     expect(detectTestIntegrationEnv(tmpDir)!.id).toBe("test-integration-env-not-asserted");
+  });
+
+  it("returns null and reports a root note when the root package opts out", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        scripts: { "test:integration": "vitest run --config vitest.integration.config.ts" },
+        bkit: { ignoreAdvisories: ["test-integration-env-not-asserted"] },
+      }),
+    );
+    const notes: SuppressionNote[] = [];
+    expect(detectTestIntegrationEnv(tmpDir, (n) => notes.push(n))).toBeNull();
+    expect(notes).toEqual([{ id: "test-integration-env-not-asserted", scope: "." }]);
+  });
+
+  it("still fires when the opt-out names a different advisory id", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        scripts: { "test:integration": "vitest run --config vitest.integration.config.ts" },
+        bkit: { ignoreAdvisories: ["tagged-tests-no-ci-home"] },
+      }),
+    );
+    const notes: SuppressionNote[] = [];
+    const found = detectTestIntegrationEnv(tmpDir, (n) => notes.push(n));
+    expect(found?.id).toBe("test-integration-env-not-asserted");
+    expect(notes).toEqual([]);
   });
 });
 
@@ -736,6 +657,18 @@ describe("detectTaggedTestsWithoutCiHome", () => {
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, content);
   }
+  function writePkgBkit(
+    relDir: string,
+    scripts: Record<string, string>,
+    ignoreAdvisories: string[],
+  ) {
+    const dir = path.join(tmpDir, relDir);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: relDir || "root", scripts, bkit: { ignoreAdvisories } }),
+    );
+  }
 
   it("returns null when there are no test files", () => {
     writePkg("", { "test:live": "vitest" });
@@ -804,5 +737,54 @@ describe("detectTaggedTestsWithoutCiHome", () => {
       ].join("\n"),
     );
     expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
+  });
+
+  it("drops the opted-out package while a sibling package still fires", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkg("apps/web", { test: "vitest" }); // a real homeless tagged test
+    writeTest("apps/web/real.test.ts", 'it("does the thing @live", () => {});');
+    // The false alarm: a test title that only MENTIONS the tag.
+    writePkgBkit("tooling/eslint", { test: "vitest run" }, ["tagged-tests-no-ci-home"]);
+    writeTest(
+      "tooling/eslint/rule.test.ts",
+      'it("R1: @live title in a non-.live. file is a filename/title mismatch", () => {});',
+    );
+
+    const notes: SuppressionNote[] = [];
+    const found = detectTaggedTestsWithoutCiHome(tmpDir, (n) => notes.push(n));
+    expect(found?.id).toBe("tagged-tests-no-ci-home");
+    expect(found?.severity).toBe("advisory");
+    expect(found?.action).toContain("apps/web");
+    expect(found?.action).not.toContain("tooling/eslint");
+    expect(notes).toEqual([{ id: "tagged-tests-no-ci-home", scope: "tooling/eslint" }]);
+  });
+
+  it("returns null and reports one note per package when every homeless package opts out", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkgBkit("tooling/eslint", { test: "vitest run" }, ["tagged-tests-no-ci-home"]);
+    writeTest("tooling/eslint/a.test.ts", 'it("mentions @live here", () => {});');
+    writeTest("tooling/eslint/b.test.ts", 'it("and @live again", () => {});'); // same package
+
+    const notes: SuppressionNote[] = [];
+    expect(detectTaggedTestsWithoutCiHome(tmpDir, (n) => notes.push(n))).toBeNull();
+    expect(notes).toEqual([{ id: "tagged-tests-no-ci-home", scope: "tooling/eslint" }]);
+  });
+
+  it("still fires when the opt-out names a different advisory id", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkgBkit("tooling/eslint", { test: "vitest run" }, ["test-integration-env-not-asserted"]);
+    writeTest("tooling/eslint/rule.test.ts", 'it("uses @live", () => {});');
+
+    const notes: SuppressionNote[] = [];
+    const found = detectTaggedTestsWithoutCiHome(tmpDir, (n) => notes.push(n));
+    expect(found?.action).toContain("tooling/eslint");
+    expect(notes).toEqual([]);
+  });
+
+  it("says how to dismiss the advisory in its action text", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkg("tooling/eslint", { test: "vitest run" });
+    writeTest("tooling/eslint/rule.test.ts", 'it("uses @live", () => {});');
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)?.action).toContain("ignoreAdvisories");
   });
 });

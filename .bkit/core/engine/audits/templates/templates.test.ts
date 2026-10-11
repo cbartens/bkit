@@ -140,14 +140,14 @@ describe("Group B templates — bkit-ci.yml", () => {
     expect(env).toBeDefined();
     expect(env!).toContain("VERBOSE_CI");
     expect(env!).toContain("TURBO_LOG_LEVEL");
-    expect(env!).toContain("BKIT_GH_TOKEN_INSTALL");
+    expect(env!).not.toContain("BKIT_GH_TOKEN_INSTALL");
   });
 
-  it("bkit-ci.yml install step writes the GH Packages auth token via pnpm config set (user-level, before install)", () => {
+  it("bkit-ci.yml install step runs a plain pnpm install (no GH Packages auth)", () => {
     const content = readTemplate(".github/workflows/bkit-ci.yml");
-    expect(content).toMatch(
-      /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$BKIT_GH_TOKEN_INSTALL/,
-    );
+    expect(content).toContain("pnpm install --frozen-lockfile");
+    expect(content).not.toMatch(/npm\.pkg\.github\.com/);
+    expect(content).not.toContain("BKIT_GH_TOKEN_INSTALL");
   });
 });
 

@@ -55,11 +55,6 @@ if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && command -v jq >/dev/null 2>&1; then
 fi
 
 if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
-  # Writes the GH Packages auth token into pnpm's user-level config before install,
-  # alongside the project .npmrc auth token line.
-  if [ -n "${BKIT_GH_TOKEN_INSTALL:-}" ]; then
-    pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL" || log "pnpm config set failed (non-blocking)"
-  fi
   log "pnpm install --frozen-lockfile"
   pnpm install --frozen-lockfile --prefer-offline || log "pnpm install failed (non-blocking)"
 fi

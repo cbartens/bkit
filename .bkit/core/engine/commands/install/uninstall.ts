@@ -38,6 +38,7 @@ import {
   findTemplateSource,
   TEMPLATE_COPIES_DIR,
 } from "../../shared/package-roots.js";
+import { PAYLOAD_LINKS } from "../../install/payload-links.js";
 import { removeOpencodeProviderBlock, renderOpencodeJson } from "../../install/modules/opencode.js";
 import {
   CLAUDE_CLOUD_RELPATH,
@@ -789,6 +790,28 @@ export async function runUninstall(
       if (!ctx.dryRun) {
         fs.rmSync(templatesDir, { recursive: true, force: true });
         console.log(`${ctx.logPrefix} delete: ${TEMPLATE_COPIES_DIR}/`);
+      }
+    }
+  }
+
+  // Full/core uninstall: the payload view links (`.bkit/core`, `.bkit/shared`) are
+  // bkit-created symlinks into the package and go with it. Symlinks ONLY — a real
+  // directory or file at that path is consumer content (install's no-clobber guard)
+  // and stays. Never in dogfood, where `.bkit/core` is bkit's own source.
+  if (moduleList.includes("core") && path.resolve(ctx.cwd) !== getPkgRoot()) {
+    for (const { relPath } of PAYLOAD_LINKS) {
+      const linkAbs = path.join(ctx.cwd, relPath);
+      let st: fs.Stats | null = null;
+      try {
+        st = fs.lstatSync(linkAbs);
+      } catch {
+        st = null; // absent
+      }
+      if (st?.isSymbolicLink() !== true) continue;
+      result.deleted.push(relPath);
+      if (!ctx.dryRun) {
+        fs.rmSync(linkAbs, { force: true });
+        console.log(`${ctx.logPrefix} delete: ${relPath} (payload view link)`);
       }
     }
   }

@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 # Technology
 
@@ -33,7 +33,7 @@
 | Technology | Version | Usage |
 | --- | --- | --- |
 | pnpm | tracks `package.json#packageManager` (single SoT; Corepack-resolved) | Monorepo / consumer package management |
-| GitHub Packages npm registry | `npm.pkg.github.com` | Distribution target for `@cbartens/bkit` (see `docs/decisions.jsonl` DE-3) |
+| npm registry | `https://registry.npmjs.org` | Distribution target for `@cbartens/bkit` |
 
 ## Build & Output
 

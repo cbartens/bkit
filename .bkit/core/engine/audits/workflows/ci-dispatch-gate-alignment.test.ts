@@ -190,3 +190,41 @@ describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () 
     expect(block!).not.toMatch(/REVALIDATE_ATTEMPT=\$\(jq\b/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 5. Debug's close decides PR-creation from LIVE PR state, not Step-1 PUSH_MODE
+//
+// `PUSH_MODE` is written once at Step 1: it cannot see a PR opened mid-run and
+// drifts under context compaction. The close probes `bkit prs probe` and sets
+// `TRIGGER_PR` from the answer, adopts a PR that appeared with
+// `bkit prs open --existing=reuse`, and runs the gate on every feature-branch
+// close so a missing run trips the Failure Path instead of passing silently.
+// ---------------------------------------------------------------------------
+describe("bkit-debug.md — close decides from live PR state", () => {
+  it("probes the live PR for the close branch (head + base=dev)", () => {
+    const probe = fences(debugMd).find(
+      (f) => /"\{BKIT\}" prs probe\b/.test(f) && /--head="?\{BRANCH\}"?/.test(f),
+    );
+    expect(probe, "close `bkit prs probe` block not found").toBeDefined();
+    expect(probe!).toContain("--base=dev");
+  });
+
+  it("adopts a PR opened mid-run instead of blind-creating", () => {
+    const open = fences(debugMd).find((f) => /"\{BKIT\}" prs open\b/.test(f));
+    expect(open, "close `bkit prs open` block not found").toBeDefined();
+    expect(open!).toContain("--existing=reuse");
+  });
+
+  it("sets TRIGGER_PR from {PR_OPEN}, never from the Step-1 PUSH_MODE", () => {
+    const start = debugMd.indexOf("Set `TRIGGER_PR`");
+    expect(start, "TRIGGER_PR decision block not found").toBeGreaterThan(-1);
+    const block = debugMd.slice(start, start + 400);
+    expect(block).toContain("`{PR_OPEN}` = 1");
+    expect(block).not.toContain("`PUSH_MODE` = PR");
+    expect(block).not.toContain("`PUSH_MODE` = LOCAL");
+  });
+
+  it("runs the CI-Dispatch gate on every feature-branch close", () => {
+    expect(debugMd).toMatch(/\*\*Run only if\*\* `\{PR_OPEN\}` = 1 \*\*or\*\* `TRIGGER_PR` = 1/);
+  });
+});

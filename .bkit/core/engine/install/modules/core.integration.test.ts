@@ -350,7 +350,7 @@ describe("detectNoopGates — bkit check warns on a gate that checks nothing", (
 // Advisories copy-paste safety (no backslash-escape sequences)
 // ---------------------------------------------------------------------------
 
-describe("MED-5: first-install advisory BKIT_GH_TOKEN_INSTALL block has no broken backslash-escape sequences", () => {
+describe("MED-5: first-install advisory block has no broken backslash-escape sequences", () => {
   it("advisories emitted on first install contain no literal \\$ sequence (backslash-dollar)", () => {
     // Ensure no .bkit-version exists (first install scenario)
     const versionFile = path.join(tmpDir, ".bkit", "version");
@@ -363,8 +363,8 @@ describe("MED-5: first-install advisory BKIT_GH_TOKEN_INSTALL block has no broke
 
     const combined = advisories.map((a) => a.action).join("\n");
 
-    // Must contain the BKIT_GH_TOKEN_INSTALL setup (confirming it's the first-install block)
-    expect(combined).toContain("BKIT_GH_TOKEN_INSTALL");
+    // Must contain the first-install setup block (confirming it's the first-install block)
+    expect(combined).toContain("Post-install steps");
 
     // Must NOT contain a literal backslash-dollar sequence.
     expect(combined).not.toContain("\\$");
@@ -378,15 +378,17 @@ describe("MED-5: first-install advisory BKIT_GH_TOKEN_INSTALL block has no broke
     const ctx = makeCtx({ advisories });
     dispatchModules(new Set(["core"]), ctx);
 
-    // The first-install advisory should have structured action text
+    // The first-install advisory should have structured action text and no longer
+    // prescribe the retired GitHub Packages install token.
     const firstInstallAdvisory = advisories.find((a) => a.id === "first-install-postinstall-steps");
     expect(firstInstallAdvisory).toBeDefined();
-    expect(firstInstallAdvisory?.action).toContain("BKIT_GH_TOKEN_INSTALL");
+    expect(firstInstallAdvisory?.action).toContain("package.json");
+    expect(firstInstallAdvisory?.action).not.toContain("BKIT_GH_TOKEN_INSTALL");
   });
 });
 
 describe(".bkit-version first-run signal extra-logging", () => {
-  it("first install (no .bkit-version) emits BKIT_GH_TOKEN_INSTALL setup in advisories", () => {
+  it("first install (no .bkit-version) emits post-install setup in advisories", () => {
     const advisories: PreflightFinding[] = [];
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws, advisories });
@@ -398,9 +400,9 @@ describe(".bkit-version first-run signal extra-logging", () => {
     // dispatchModules flushes postDispatch (where .bkit-version is written)
     dispatchModules(new Set(["core"]), ctx);
 
-    // advisories should contain BKIT_GH_TOKEN_INSTALL setup
+    // advisories should contain the post-install setup
     const combined = advisories.map((a) => a.action).join("\n");
-    expect(combined).toContain("BKIT_GH_TOKEN_INSTALL");
+    expect(combined).toContain("Post-install steps");
     expect(combined).toContain("package.json");
   });
 

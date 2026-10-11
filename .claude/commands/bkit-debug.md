@@ -1,7 +1,7 @@
 ---
 description: "Debug Feature — Autonomous diagnosis and remediation"
 ---
-<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 # Debug Feature (Workflow 4/5)
 
@@ -475,22 +475,29 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    "{BKIT}" branches push --mode=feature --require-ci >/dev/null
    ```
    Hold the close's `parentSha` as `{CLOSE_PARENT}`.
-3. **Run only if** `PUSH_MODE` = LOCAL — record the close row and audit the landed commit; `{LIVE_SKIPPED}` = `--field="testsLiveSkipped=No live tests ran, runtime-only defects not gated (not declared or opted out)."` when `TEST_SCOPE` lacks `live`, else empty:
+3. Probe live PR state (`{PR_OPEN}` = 0 with no probe when `BRANCH` = `dev` **or** `main`):
    ```bash
-   "{BKIT}" steps done --file="{STATUS}" --workflow=debug --step=debug-close-workflow --parent-sha={CLOSE_PARENT} {LIVE_SKIPPED} --commit=none >/dev/null || exit 1
-   "{BKIT}" prs transport-row --file="{STATUS}" --kind=close --shape=push --sha={CLOSE_PARENT} --scan --cross-check=gh
+   "{BKIT}" prs probe --head="{BRANCH}" --base=dev
    ```
+   - **If** exit 0 → `{PR_OPEN}` = 1; hold `number` as `{PR_NUMBER}`, `url` as `{PR_URL}`.
+   - **If** exit 1 → `{PR_OPEN}` = 0.
+   - **If** exit 80 → `list_pull_requests` (head `{BRANCH}`, base `dev`, state open) → found → `{PR_OPEN}` = 1 with its `number` / `url`; none → `{PR_OPEN}` = 0; record via `"{BKIT}" prs transport-row --file="{STATUS}" --kind=fallback --asserted-by=<re-read>`.
+   - **Else** → **Failure Path**.
+   - **If** `{PR_OPEN}` = 0 → record the close row and audit the landed commit; `{LIVE_SKIPPED}` = `--field="testsLiveSkipped=No live tests ran, runtime-only defects not gated (not declared or opted out)."` when `TEST_SCOPE` lacks `live`, else empty:
+     ```bash
+     "{BKIT}" steps done --file="{STATUS}" --workflow=debug --step=debug-close-workflow --parent-sha={CLOSE_PARENT} {LIVE_SKIPPED} --commit=none >/dev/null || exit 1
+     "{BKIT}" prs transport-row --file="{STATUS}" --kind=close --shape=push --sha={CLOSE_PARENT} --scan --cross-check=gh
+     ```
 4. Set `TRIGGER_PR`:
    - **If** `BRANCH` = `dev` **or** `main` → push to trigger branch (CI fires) → `TRIGGER_PR` = 0.
-   - **If** `PUSH_MODE` = PR → push fires `pull_request` event → `TRIGGER_PR` = 0.
-   - **If** `PUSH_MODE` = LOCAL → `TRIGGER_PR` = 1.
-   - **Else** → **Failure Path**.
-5. **If** `TRIGGER_PR` = 1 → create PR (body names `docs/plans/{YYYYMM}/{FID}-plan.md` if present):
+   - **If** `{PR_OPEN}` = 1 → the close push fires `pull_request` → `TRIGGER_PR` = 0.
+   - **Else** → `TRIGGER_PR` = 1.
+5. **If** `TRIGGER_PR` = 1 → create or adopt the PR (body names `docs/plans/{YYYYMM}/{FID}-plan.md` if present); `--existing=reuse` adopts a PR that appeared since sub-step 3:
    ```bash
-   "{BKIT}" prs open --fid={FID} --title="feat({FID}): debug-remediated" --issue="{ISSUE_ID}" --plan=docs/plans/{YYYYMM}/{FID}-plan.md
+   "{BKIT}" prs open --fid={FID} --title="feat({FID}): debug-remediated" --issue="{ISSUE_ID}" --existing=reuse --plan=docs/plans/{YYYYMM}/{FID}-plan.md
    ```
    Route:
-   - **If** exit 0 → hold `number` as `{PR_NUMBER}`, `url` as `{PR_URL}`.
+   - **If** exit 0 → hold `number` as `{PR_NUMBER}`, `url` as `{PR_URL}` (created, or the adopted PR).
    - **If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → its number as `{PR_NUMBER}`, URL as `{PR_URL}`.
    - **Else** → **Failure Path**.
 6. **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head (`{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry):
@@ -499,7 +506,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    git add -A && git commit --allow-empty -m "chore({FID}): create-pr bkit [verbose ci]${AUTO_ROUTE_SUFFIX}" || exit 1
    "{BKIT}" branches push --mode=feature --require-ci
    ```
-7. **Run only if** `PUSH_MODE` = PR **or** `TRIGGER_PR` = 1 — CI-Dispatch Gate on the pushed head; it records `{DISPATCH_ROW}`, cross-checks the transport and records the close transport. `{DISPATCH_ROW}` = `--step=debug-close-workflow {LIVE_SKIPPED}` in `PUSH_MODE` = PR, `--step=debug-create-pr --artifact={PR_URL}` after a created PR; `{LABEL_FLAGS}` as in sub-step 6:
+7. **Run only if** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 — CI-Dispatch Gate on the pushed head; it records `{DISPATCH_ROW}`, cross-checks the transport and records the close transport. `{DISPATCH_ROW}` = `--step=debug-close-workflow {LIVE_SKIPPED}` when `{PR_OPEN}` = 1, `--step=debug-create-pr --artifact={PR_URL}` after a created PR; `{LABEL_FLAGS}` as in sub-step 6:
    ```bash
    "{BKIT}" runs dispatch --pr={PR_NUMBER} --fid={FID} {LABEL_FLAGS} --file="{STATUS}" --workflow=debug {DISPATCH_ROW} {CI_REENTRY}
    ```
@@ -528,7 +535,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 "{BKIT}" steps gate --file="{STATUS}" --workflow=debug --step=debug-close-workflow
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: `debug-close-workflow` row, with `testsLiveSkipped` if no live test, `ciDispatch` if PR-mode)
+- [ ] Mechanical checks passed (`steps gate` exit 0: `debug-close-workflow` row, with `testsLiveSkipped` if no live test, `ciDispatch` on every feature-branch close)
 - [ ] PR title `[verbose ci]` stripped (if `PUSH_MODE` = PR)
 
 
@@ -537,7 +544,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] No-leak Assertion passed (no `[DEBUG-OBSERVE]` lines survive)
 - [ ] Close committed and pushed (`workflows close` committed telemetry on `feat/{FID}`; `branches push --require-ci` exit 0)
-- [ ] Trigger-PR determined (`TRIGGER_PR`); if PR created: `PR_URL`, `PR_NUMBER` held, step `debug-create-pr` recorded with the PR URL and `ciDispatch`, changes pushed
+- [ ] `TRIGGER_PR` set from the live `prs probe` (`{PR_OPEN}`), not Step-1 `PUSH_MODE`; if a PR was created or adopted: `PR_URL`, `PR_NUMBER` held, step `debug-create-pr` recorded with the PR URL and `ciDispatch`, changes pushed
 - [ ] CI-Dispatch gate ran (`runs dispatch` exit 0, close transport recorded)
 - [ ] Final return displayed (`debug-summary.md` content verbatim)
 

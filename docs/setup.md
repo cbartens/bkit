@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
@@ -29,7 +29,7 @@ Run each host (`claude`, `opencode`, `codex`) in its own terminal window — not
 
 <!-- bkit:end -->
 
-> Consumer first-time install / auth (`BKIT_GH_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → `.bkit/install.md`. Upgrade paste + ongoing CLI → `.bkit/README.md`. Cloud-agent setup (Claude Code on the web, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md`.
+> Consumer first-time install / upgrade → `.bkit/install.md`. Upgrade paste + ongoing CLI → `.bkit/README.md`. Cloud-agent setup (Claude Code on the web, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md`.
 
 ## Required tools
 
@@ -53,7 +53,7 @@ brew install direnv
 echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc   # zsh; bash: ~/.bashrc
 
 # One-time per repo clone
-cp .bkit/.env.example .bkit/.env   # fill BKIT_GH_TOKEN_INSTALL, BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY (+ optional BKIT_ANTHROPIC_API_KEY / BKIT_CURSOR_API_KEY)
+cp .bkit/.env.example .bkit/.env   # fill BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY (+ optional BKIT_ANTHROPIC_API_KEY / BKIT_CURSOR_API_KEY)
 direnv allow                            # trust .envrc; auto-loads on subsequent cd
 
 # Verify
@@ -88,7 +88,6 @@ pnpm exec bkit doctor        # token + advisory sweep (read-only, never fails)
 
 ## Troubleshooting
 
-- **`pnpm install` 401 / 404 on `@cbartens/bkit`** — `BKIT_GH_TOKEN_INSTALL` unset (`echo "${BKIT_GH_TOKEN_INSTALL:-MISSING}"`), or token never written to pnpm user-level config. pnpm >=10.34.3 401s on project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` ref — run `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` (see `docs/knowledge.jsonl` KN-CORE-7).
 - **`bkit check` reports `.bkit/version` drift** — `pnpm add -D @cbartens/bkit@<new>` without `pnpm exec bkit install`. Re-run install; commit resync.
 - **Linear preflight blocks session** — issue missing `bkit:auto` or in `Done` / `Cancelled`. Add `bkit:auto`, set non-terminal state. (All labels use `bkit:` prefix.)
 - **Lockfile rebase conflict in workflow** — Tier 2 auto-resolver `bkit branches rebase` takes the rebase target's copy and regenerates it (pnpm, npm, yarn, bun, cargo, go, uv); see `.bkit/workflows.md` § Rebase Conflict Tiering.

@@ -40,7 +40,6 @@ export const SESSION_HIJACK_KEYS = [
 // (e.g. BKIT_GH_TOKEN already in `.bkit/.env`) keeps its real resolved value.
 const BASELINE_TOKEN_PLACEHOLDERS: ReadonlyArray<readonly [string, string]> = [
   ["BKIT_GH_TOKEN", "<fine-grained PAT — see .bkit/cloud.md § BKIT_GH_TOKEN permissions>"],
-  ["BKIT_GH_TOKEN_INSTALL", "<classic PAT with read:packages>"],
 ];
 
 // Earlier-compaction override — a bkit constant, not a secret. Appended to the

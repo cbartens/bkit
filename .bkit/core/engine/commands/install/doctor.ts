@@ -18,6 +18,7 @@ import {
   formatChecklist,
   writeAdvisoriesArtifact,
 } from "../../checks/after/index.js";
+import type { SuppressionNote } from "../../checks/after/suppression.js";
 import { parseDotenv } from "../../install/cloud-env.js";
 
 /**
@@ -126,7 +127,12 @@ export async function runDoctor(
     `${LOG_PREFIX} Payload roots: core=${getCoreRoot()} shared=${getSharedRoot()} templates=${getTemplatesRoot()}`,
   );
   const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
-  const allFindings = runPostInstallCheck([...preflightAdvisories, ...blockers], process.cwd());
+  const suppressed: SuppressionNote[] = [];
+  const allFindings = runPostInstallCheck(
+    [...preflightAdvisories, ...blockers],
+    process.cwd(),
+    suppressed,
+  );
   // Broken install: the opencode host is on disk but neither provider signal survives.
   // `bkit check` and `bkit upgrade` exit 1 with the fix; doctor reports it here and does
   // not enforce.
@@ -142,7 +148,7 @@ export async function runDoctor(
     }
   }
 
-  const banner = formatChecklist(allFindings);
+  const banner = formatChecklist(allFindings, suppressed);
   if (banner) {
     console.log(banner);
   } else {
@@ -153,6 +159,7 @@ export async function runDoctor(
     mode: "doctor",
     version: getInstallingVersion(),
     logPrefix: LOG_PREFIX,
+    suppressed,
   });
 
   // opencode host diagnostics: report required tools and cred presence per provider.
