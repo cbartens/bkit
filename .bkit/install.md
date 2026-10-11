@@ -360,7 +360,7 @@ interface PreflightFinding {
 }
 ```
 
-Findings rendered as `--- i/N [severity] id ---` with `DETECT:` and `ACTION:` sections — copy-paste whole banner into coding assistant to apply fixes in sequence.
+Findings render as `--- i/N [severity] id ---` with `Detect:` and `Action:` lines. The console banner and the `.bkit/advisories.md` artifact render the same text — copy either into a coding assistant to apply fixes in sequence.
 
 For four-surface token sweep, see [§ Consumer CI auth](#consumer-ci-auth).
 

@@ -66,15 +66,40 @@ import {
 // formatChecklist — pure renderer
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Shared advisory text — the console checklist (`formatChecklist`) and the
+// `.bkit/advisories.md` artifact (`renderAdvisoriesMarkdown`) render the SAME
+// words; only the medium decoration differs (`#` / `**` / `>` in markdown, the
+// `===` banner in the console). One source, so the two can never drift.
+// ---------------------------------------------------------------------------
+
+/** Title line, shared by both surfaces. */
+export const ADVISORIES_TITLE = "bkit advisories";
+
+/** Agent instruction line, shared by both surfaces. */
+export const ADVISORIES_AGENT_INSTRUCTIONS =
+  "INSTRUCTIONS FOR AN AI AGENT — copy this file (or specific items) into a coding assistant to apply each item. Each ACTION is self-contained.";
+
+/** `N finding(s) — B blocker, A advisory.` — the summary both surfaces print. */
+export function advisoriesSummary(findings: PreflightFinding[]): string {
+  const blockerCount = findings.filter((f) => f.severity === "blocker").length;
+  const advisoryCount = findings.filter((f) => f.severity === "advisory").length;
+  return `${findings.length} finding(s) — ${blockerCount} blocker, ${advisoryCount} advisory.`;
+}
+
 /**
- * Format a list of findings into the post-install checklist banner.
+ * Format a list of findings into the post-install console checklist.
  * Returns `""` when findings is empty — callers can `if (banner)` to stay silent.
  * No console.log inside — caller logs.
  *
+ * Same content as `renderAdvisoriesMarkdown`: title, summary, agent instructions
+ * and template pointer are the shared strings; only the separators differ from
+ * the markdown form.
+ *
  * Format per finding:
  *   --- i/N [severity] id ---
- *   DETECT: ...
- *   ACTION: ...
+ *   Detect: ...
+ *   Action: ...
  */
 export function formatChecklist(findings: PreflightFinding[]): string {
   if (findings.length === 0) return "";
@@ -83,23 +108,28 @@ export function formatChecklist(findings: PreflightFinding[]): string {
   const total = findings.length;
   const lines: string[] = [];
 
-  lines.push(`\n${banner}`);
-  lines.push(`[bkit] Post-install checklist (${total} item${total === 1 ? "" : "s"})`);
+  lines.push("");
   lines.push(banner);
-  lines.push(
-    "\nINSTRUCTIONS FOR AN AI AGENT — copy this entire block into a\n" +
-      "coding assistant to apply each item. Each ACTION is self-contained.\n" +
-      `\n${TEMPLATES_POINTER}\n`,
-  );
+  lines.push(ADVISORIES_TITLE);
+  lines.push(banner);
+  lines.push("");
+  lines.push(advisoriesSummary(findings));
+  lines.push("");
+  lines.push(ADVISORIES_AGENT_INSTRUCTIONS);
+  lines.push("");
+  lines.push(TEMPLATES_POINTER);
+  lines.push("");
 
   for (let i = 0; i < findings.length; i++) {
     const f = findings[i]!;
-    lines.push(`\n--- ${i + 1}/${total} [${f.severity}] ${f.id} ---`);
-    lines.push(`DETECT: ${f.detect}`);
-    lines.push(`ACTION: ${f.action}`);
+    lines.push(`--- ${i + 1}/${total} [${f.severity}] ${f.id} ---`);
+    lines.push(`Detect: ${f.detect}`);
+    lines.push(`Action: ${f.action}`);
+    lines.push("");
   }
 
-  lines.push(`\n${banner}\n`);
+  lines.push(banner);
+  lines.push("");
 
   return lines.join("\n");
 }
@@ -112,7 +142,8 @@ export type AdvisoriesMode = "install" | "check" | "doctor";
 
 /**
  * Render findings as a markdown artifact suitable for `.bkit/advisories.md`.
- * Mirrors `formatChecklist` content but in markdown form so the file can be
+ * Renders the SAME content as `formatChecklist` (shared title, summary, agent
+ * instructions and template pointer) in markdown form, so the file can be
  * referenced and revisited between installs. Overwritten on every run.
  */
 export function renderAdvisoriesMarkdown(
@@ -127,7 +158,7 @@ export function renderAdvisoriesMarkdown(
   // skip the husky hooks fail on a file the consumer cannot edit.
   lines.push("<!-- vale off -->");
   lines.push("");
-  lines.push("# bkit advisories");
+  lines.push(`# ${ADVISORIES_TITLE}`);
   lines.push("");
   lines.push(`_bkit: ${opts.version}_  `);
   lines.push(`_Mode: ${opts.mode}_`);
@@ -143,13 +174,9 @@ export function renderAdvisoriesMarkdown(
     return lines.join("\n");
   }
 
-  const blockerCount = findings.filter((f) => f.severity === "blocker").length;
-  const advisoryCount = findings.filter((f) => f.severity === "advisory").length;
-  lines.push(`${findings.length} finding(s) — ${blockerCount} blocker, ${advisoryCount} advisory.`);
+  lines.push(advisoriesSummary(findings));
   lines.push("");
-  lines.push(
-    "> INSTRUCTIONS FOR AN AI AGENT — copy this file (or specific items) into a coding assistant to apply each item. Each ACTION is self-contained.",
-  );
+  lines.push(`> ${ADVISORIES_AGENT_INSTRUCTIONS}`);
   lines.push("");
   lines.push(`> ${TEMPLATES_POINTER}`);
   lines.push("");

@@ -83,8 +83,8 @@ describe("formatChecklist", () => {
     ];
     const result = formatChecklist(findings);
     expect(result).toContain("--- 1/1 [advisory] test-finding ---");
-    expect(result).toContain("DETECT: Something was detected.");
-    expect(result).toContain("ACTION: Do something to fix it.");
+    expect(result).toContain("Detect: Something was detected.");
+    expect(result).toContain("Action: Do something to fix it.");
   });
 
   it("renders correct format for multiple findings with sequential numbering", () => {
@@ -104,8 +104,14 @@ describe("formatChecklist", () => {
       { id: "x", severity: "advisory", detect: "d", action: "a" },
     ];
     const result = formatChecklist(findings);
-    expect(result).toContain("[bkit] Post-install checklist");
+    expect(result).toContain("bkit advisories");
     expect(result).toContain("INSTRUCTIONS FOR AN AI AGENT");
+  });
+
+  it("carries the template-adoption directive, not just a locator", () => {
+    const result = formatChecklist([{ id: "x", severity: "advisory", detect: "d", action: "a" }]);
+    expect(result).toContain("adopt each copy in .bkit/templates/");
+    expect(result).toContain("state which you did not adopt and why");
   });
 });
 
@@ -161,6 +167,8 @@ describe("renderAdvisoriesMarkdown", () => {
     expect(md).toContain("_Mode: doctor_");
     expect(md).toContain("2 finding(s) — 1 blocker, 1 advisory.");
     expect(md).toContain("INSTRUCTIONS FOR AN AI AGENT");
+    expect(md).toContain("adopt each copy in .bkit/templates/");
+    expect(md).toContain("state which you did not adopt and why");
     expect(md).toContain("## 1/2 [blocker] a-blocker");
     expect(md).toContain("**Detect:** Detect A");
     expect(md).toContain("**Action:** Action A");
@@ -622,32 +630,32 @@ describe("challenge-tests", () => {
 
       const result = formatChecklist(findings);
       expect(result).toMatchInlineSnapshot(`
-      "
-      ==========================================================
-      [bkit] Post-install checklist (2 items)
-      ==========================================================
+        "
+        ==========================================================
+        bkit advisories
+        ==========================================================
 
-      INSTRUCTIONS FOR AN AI AGENT — copy this entire block into a
-      coding assistant to apply each item. Each ACTION is self-contained.
+        2 finding(s) — 0 blocker, 2 advisory.
 
-      Templates: see .bkit/templates.md; copies live in .bkit/templates/ (if your own gates scan the repo, ignore .bkit/templates/).
+        INSTRUCTIONS FOR AN AI AGENT — copy this file (or specific items) into a coding assistant to apply each item. Each ACTION is self-contained.
 
+        Templates (adopt, do not skip): read .bkit/templates.md; bkit never applies templates, so adopt each copy in .bkit/templates/ unless adoption would break existing functionality — state which you did not adopt and why. (If your own gates scan the repo, ignore .bkit/templates/.)
 
-      --- 1/2 [advisory] example-preflight-advisory ---
-      DETECT: .husky/pre-commit exists but has no bkit-managed block markers.
-      ACTION: bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has \`# bkit:start\` / \`# bkit:end\` markers around the bkit section.
+        --- 1/2 [advisory] example-preflight-advisory ---
+        Detect: .husky/pre-commit exists but has no bkit-managed block markers.
+        Action: bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has \`# bkit:start\` / \`# bkit:end\` markers around the bkit section.
 
-      --- 2/2 [advisory] gh-bkit-token-unset-shell ---
-      DETECT: BKIT_GH_TOKEN_INSTALL is not set in the shell environment.
-      ACTION: Export BKIT_GH_TOKEN_INSTALL in your shell profile (e.g. ~/.zshrc or ~/.bashrc):
+        --- 2/2 [advisory] gh-bkit-token-unset-shell ---
+        Detect: BKIT_GH_TOKEN_INSTALL is not set in the shell environment.
+        Action: Export BKIT_GH_TOKEN_INSTALL in your shell profile (e.g. ~/.zshrc or ~/.bashrc):
 
-          export BKIT_GH_TOKEN_INSTALL=<your-pat>
+            export BKIT_GH_TOKEN_INSTALL=<your-pat>
 
-      The token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens
+        The token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens
 
-      ==========================================================
-      "
-    `);
+        ==========================================================
+        "
+      `);
     });
 
     it("matches inline snapshot for a single blocker finding", () => {
@@ -663,24 +671,24 @@ describe("challenge-tests", () => {
 
       const result = formatChecklist(findings);
       expect(result).toMatchInlineSnapshot(`
-      "
-      ==========================================================
-      [bkit] Post-install checklist (1 item)
-      ==========================================================
+        "
+        ==========================================================
+        bkit advisories
+        ==========================================================
 
-      INSTRUCTIONS FOR AN AI AGENT — copy this entire block into a
-      coding assistant to apply each item. Each ACTION is self-contained.
+        1 finding(s) — 1 blocker, 0 advisory.
 
-      Templates: see .bkit/templates.md; copies live in .bkit/templates/ (if your own gates scan the repo, ignore .bkit/templates/).
+        INSTRUCTIONS FOR AN AI AGENT — copy this file (or specific items) into a coding assistant to apply each item. Each ACTION is self-contained.
 
+        Templates (adopt, do not skip): read .bkit/templates.md; bkit never applies templates, so adopt each copy in .bkit/templates/ unless adoption would break existing functionality — state which you did not adopt and why. (If your own gates scan the repo, ignore .bkit/templates/.)
 
-      --- 1/1 [blocker] no-package-json ---
-      DETECT: package.json not found in the current directory.
-      ACTION: Run \`npm init -y\` to create a minimal package.json, or copy one from an existing project, then re-run \`pnpm bkit install\`.
+        --- 1/1 [blocker] no-package-json ---
+        Detect: package.json not found in the current directory.
+        Action: Run \`npm init -y\` to create a minimal package.json, or copy one from an existing project, then re-run \`pnpm bkit install\`.
 
-      ==========================================================
-      "
-    `);
+        ==========================================================
+        "
+      `);
     });
 
     it("returns empty string (not a whitespace-only string) for empty findings array", () => {
@@ -703,16 +711,16 @@ describe("challenge-tests", () => {
       }
     });
 
-    it("each finding section has DETECT and ACTION starting at column 0", () => {
+    it("each finding section has Detect and Action starting at column 0", () => {
       const findings: PreflightFinding[] = [
         { id: "test", severity: "advisory", detect: "Detected thing.", action: "Fix the thing." },
       ];
       const result = formatChecklist(findings);
       const lines = result.split("\n");
-      const detectLine = lines.find((l) => l.startsWith("DETECT:"));
-      const actionLine = lines.find((l) => l.startsWith("ACTION:"));
-      expect(detectLine).toBe("DETECT: Detected thing.");
-      expect(actionLine).toBe("ACTION: Fix the thing.");
+      const detectLine = lines.find((l) => l.startsWith("Detect:"));
+      const actionLine = lines.find((l) => l.startsWith("Action:"));
+      expect(detectLine).toBe("Detect: Detected thing.");
+      expect(actionLine).toBe("Action: Fix the thing.");
     });
   });
 
@@ -737,8 +745,8 @@ describe("challenge-tests", () => {
       expect(banner).not.toBe("");
       expect(banner).toContain("[blocker]");
       expect(banner).toContain("no-package-json");
-      expect(banner).toContain("DETECT:");
-      expect(banner).toContain("ACTION:");
+      expect(banner).toContain("Detect:");
+      expect(banner).toContain("Action:");
     });
 
     it("formatChecklist for single blocker renders 1/1 count correctly", () => {
@@ -752,7 +760,7 @@ describe("challenge-tests", () => {
 
       const banner = formatChecklist(blockers);
       expect(banner).toContain("--- 1/1 [blocker] no-package-json ---");
-      expect(banner).toContain("[bkit] Post-install checklist (1 item)");
+      expect(banner).toContain("bkit advisories");
     });
 
     it("detectShellToken returns 'missing' when env var is deleted (spy observation)", () => {
@@ -885,8 +893,8 @@ describe("formatChecklist format contract", () => {
     const banner = formatChecklist(findings);
     expect(banner).toContain("--- 1/2 [advisory] test-advisory-one ---");
     expect(banner).toContain("--- 2/2 [advisory] test-advisory-two ---");
-    expect(banner).toContain("DETECT: Something detected.");
-    expect(banner).toContain("ACTION: Do something about it.");
+    expect(banner).toContain("Detect: Something detected.");
+    expect(banner).toContain("Action: Do something about it.");
   });
 
   it("renders blockers with [blocker] marker in the divider", () => {

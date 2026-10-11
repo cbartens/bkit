@@ -69,11 +69,11 @@ describe("Scenario 1 — blocker: no package.json → exit 1, zero writes", () =
     expect(banner).toContain("no-package-json");
   });
 
-  it("formatChecklist banner contains DETECT and ACTION sections", () => {
+  it("formatChecklist banner contains Detect and Action sections", () => {
     const { blockers } = runPreflight(makeModules("core"), tmpDir);
     const banner = formatChecklist(blockers);
-    expect(banner).toContain("DETECT:");
-    expect(banner).toContain("ACTION:");
+    expect(banner).toContain("Detect:");
+    expect(banner).toContain("Action:");
   });
 
   it("spawning bkit-install with no package.json exits 1 and produces zero output files", () => {
@@ -141,8 +141,8 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     expect(banner).toBeTruthy();
     // Each finding renders with severity and id markers
     expect(banner).toContain("[advisory]");
-    expect(banner).toContain("DETECT:");
-    expect(banner).toContain("ACTION:");
+    expect(banner).toContain("Detect:");
+    expect(banner).toContain("Action:");
     // Numbered: 1/N format
     expect(banner).toMatch(/--- \d+\/\d+ \[advisory\]/);
   });
