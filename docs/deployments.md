@@ -212,11 +212,13 @@ Ships in the `bkit-ci.yml` template as the `Check Default Branch Lags Dev` step;
 
 ### One CI run per dev commit (release PR mirrors the `dev` push run)
 
-Optional. A same-repo `dev` → `main` PR's head is the `dev` tip the `dev` push run already tests, because a full PR run repeats the slowest run in the repo. Mirror mode runs it once.
+Optional. A same-repo promotion PR into the default branch — head `dev`, or a `release/*` branch cut at the `dev` tip — has the same head the `dev` push run already tests, so a full PR run repeats the slowest run in the repo. Mirror mode runs it once.
 
-- **Planner** (`Decide Release Mirror`, `bkit-tests-scope`): `pull_request` + head repo == this repo + `head_ref == dev` + base == default branch → `mirror_push_run=true`, `run_level=none`, `run_e2e` / `run_live` / `run_migration` / `web_affected=false`. Every lane skips. Field is required in the plan (`false` otherwise). Fork PRs and every other head / base pair keep the normal plan.
+- **Planner** (`Decide Release Mirror`, `bkit-tests-scope`): `pull_request` + head repo == this repo + base == default branch + `head_ref` is a promotion branch (`dev`, or `release/*`) → `mirror_push_run=true`, `run_level=none`, `run_e2e` / `run_live` / `run_migration` / `web_affected=false`. Every lane skips. Field is required in the plan (`false` otherwise). Fork PRs and every other head / base pair keep the normal plan.
 - **Capstone** (`Mirror Push Run`, `bkit-tests-check`, before `Assert Test Plan Followed`): `bkit runs mirror --head <PR head sha> --branch dev --max-minutes 170`. Waits for the `dev` push run at that SHA (each poll is `bkit runs gate --event push`) and passes only when its capstone passed. The step runs bkit, so the job needs a checkout and installed dependencies, both ungated. Neither step `continue-on-error`.
 - **Never skip the PR's required check instead.** A skipped required check can read as passed on the PR while the push run is red.
+- **`release/*` resolves the push run by SHA.** A `release/*` head with no green `dev` push run (extra commits past the `dev` tip) fails the mirror red (exit `3`) — safe, not silent.
+- **bkit's own CI adopts this.** `Decide Release Mirror` accepts `dev` and `release/*`; `Decide Run Level` has no merged-PR → `light` arm, so every `dev` push resolves `full` (precondition 1); the capstone's `Mirror Push Run` runs `bkit runs mirror --head="$PR_HEAD_SHA" --branch=dev --max-minutes=170`.
 
 <!-- prettier-ignore -->
 | Push run at PR head | PR `bkit-tests-check` | `bkit runs mirror` exit |

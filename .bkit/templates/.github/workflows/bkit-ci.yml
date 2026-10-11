@@ -797,8 +797,11 @@ jobs:
 #       #     run_e2e = run_level==full && web_affected_eff. run_live = push dev/main && web_affected_eff (@live stays PUSH-ONLY — real LLM/email side effects; a docs-only/empty [force full] push reaches it via web_affected_eff, NOT off a PR/dispatch).
 #       #     run_migration: true when migration/seed/seed-generator paths changed (or workflow_dispatch / no-usable-base → run-to-be-safe). Orthogonal to run_level — a run_level=none run can still need replay. Emits into the plan so migration-lane heavy steps gate per-step (job stays always-on).
 #       - name: Decide Release Mirror        # [U] OPTIONAL — one CI run per dev commit. mirror_push_run = pull_request
-#       #     && head.repo.full_name == github.repository && head_ref == 'dev' && base_ref == the default branch
-#       #     (head_ref via env:, injection-safe). True → LAST word in the plan: run_level=none, run_e2e/run_live/
+#       #     && head.repo.full_name == github.repository && base_ref == the default branch && head_ref is a
+#       #     promotion branch — 'dev', or 'release/*' when the repo promotes via a release branch (bkit's own
+#       #     does: main only moves via a release/* → main PR). head_ref via env:, injection-safe. The capstone's
+#       #     bkit runs mirror resolves the push run BY SHA, so a release/* head with no green dev push run fails
+#       #     red (exit 3), never silently passes. True → LAST word in the plan: run_level=none, run_e2e/run_live/
 #       #     run_migration/web_affected=false, so every lane skips (migration lane included — it is always-on, so
 #       #     its replay steps must read run_migration) and the capstone copies the dev push run's verdict (JOB 4).
 #       #     The release PR head IS the dev tip that push run is testing; re-testing it doubles the slowest run.

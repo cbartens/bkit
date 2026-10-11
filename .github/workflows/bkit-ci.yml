@@ -12,10 +12,10 @@ on:
     branches: [main, dev]
 
 permissions:
+  # bkit-tests-scope reads the branch's last green run; the capstone's Mirror Push Run
+  # reads the dev push run at the promotion PR head. Both are actions: read.
   actions: read
   contents: read
-  # bkit-tests-scope reads repos/{repo}/commits/{sha}/pulls.
-  pull-requests: read
 
 # One run per branch or pull request. A newer run cancels the older one on every event
 # except the default branch, which QUEUES (the template's one-run rule exempts the default
@@ -111,12 +111,9 @@ jobs:
       - name: Decide Run Level
         id: level
         env:
-          GH_TOKEN: ${{ github.token }}
           MARKERS: ${{ steps.markers.outputs.markers_present }}
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
         run: |
           # Compute into shell vars, then write once at the end. A single grouped
           # redirect avoids SC2129 (bkit's actionlint runs with no suppress config).
@@ -148,26 +145,12 @@ jobs:
             RUN_LEVEL="full"; DEPTH_SOURCE="main-carveout"; WHETHER_REASON="ran-because:push-main"
             echo "✅ push main → run_level=full (main-carveout)"
           elif [ "$REF" = "refs/heads/dev" ]; then
-            # Merged-PR dev push (PR already ran full) → light. Direct dev push with no
-            # merged PR behind it → escalate to full.
-            # API error → full (run-to-be-safe).
-            set +e
-            PR_RESPONSE=$(gh api "repos/$REPO/commits/$SHA/pulls" 2>&1)
-            GH_EC=$?
-            set -e
-            if [ "$GH_EC" -ne 0 ]; then
-              echo "::warning::commits/{sha}/pulls failed (exit $GH_EC) — defaulting to full (run-to-be-safe)"
-              RUN_LEVEL="full"; DEPTH_SOURCE="fallback-on-api-error"; WHETHER_REASON="ran-because:dev-push-api-error"
-            else
-              MERGED_PR=$(echo "$PR_RESPONSE" | jq -r '.[0].number // empty' 2>/dev/null || echo "")
-              if [ -n "$MERGED_PR" ]; then
-                RUN_LEVEL="light"; DEPTH_SOURCE="auto-via-gh-api"; WHETHER_REASON="ran-because:dev-push-merged-pr-$MERGED_PR"
-                echo "✅ dev push: merged PR #$MERGED_PR → run_level=light"
-              else
-                RUN_LEVEL="full"; DEPTH_SOURCE="auto-via-gh-api"; WHETHER_REASON="ran-because:dev-push-direct-escalated"
-                echo "✅ dev push: no merged PR (direct) → run_level=full (escalated)"
-              fi
-            fi
+            # Precondition 1 of release-PR mirror mode (docs/deployments.md § One CI run per
+            # dev commit): EVERY dev push resolves full. A merged-PR dev push must not go
+            # light — a promotion PR mirrors this push run's verdict, so a light push (tiers
+            # skipped) would be inherited by the release PR. See Decide Release Mirror below.
+            RUN_LEVEL="full"; DEPTH_SOURCE="dev-push"; WHETHER_REASON="ran-because:dev-push-full"
+            echo "✅ dev push → run_level=full"
           else
             # Other refs (non-dev, non-main push).
             RUN_LEVEL="light"; DEPTH_SOURCE="event:push"; WHETHER_REASON="ran-because:push-other-ref"
@@ -179,6 +162,41 @@ jobs:
             echo "reason=$WHETHER_REASON"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Decide Release Mirror
+        id: mirror
+        # OPTIONAL — one CI run per dev commit (docs/deployments.md § One CI run per dev
+        # commit). A same-repo promotion PR (dev, or release/* into the default branch) has a
+        # head the dev push run already tested, so it mirrors that run instead of re-running
+        # the suite. True → the LAST word in the plan (Generate Test Plan): run_level=none,
+        # every lane skips, and the capstone's Mirror Push Run copies the dev push run's
+        # verdict. bkit promotes via release/* → main, so dev alone never matches; bkit runs
+        # mirror resolves the push run BY SHA — a release/* head with no green dev push run
+        # fails red (exit 3), never silently passes. Field is REQUIRED in the plan (false when
+        # off). See the template scaffold's FULL CI SCAFFOLD REFERENCE for the general shape.
+        env:
+          # User-controlled text (branch names) arrives via env: (runtime expansion,
+          # injection-safe) — never inlined into the run: body.
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          MIRROR="false"
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$HEAD_REPO" = "$REPO" ] \
+             && [ -n "$DEFAULT_BRANCH" ] && [ "$BASE_REF" = "$DEFAULT_BRANCH" ]; then
+            case "$HEAD_REF" in
+              dev|release/*) MIRROR="true" ;;
+            esac
+          fi
+          echo "mirror_push_run=$MIRROR" >> "$GITHUB_OUTPUT"
+          if [ "$MIRROR" = "true" ]; then
+            echo "✅ promotion PR ($HEAD_REF → $BASE_REF) → mirror_push_run=true (plan run_level=none)"
+          else
+            echo "promotion mirror not applicable → mirror_push_run=false"
+          fi
+
       - name: Generate Test Plan
         id: scope
         # Prior-step outputs arrive via env: so JSON-array values keep their inner quotes
@@ -187,17 +205,28 @@ jobs:
           RUN_LEVEL: ${{ steps.level.outputs.run_level }}
           DEPTH_SOURCE: ${{ steps.level.outputs.source }}
           WHETHER_REASON: ${{ steps.level.outputs.reason }}
+          MIRROR_PUSH_RUN: ${{ steps.mirror.outputs.mirror_push_run }}
           MARKERS: ${{ steps.markers.outputs.markers_present }}
           BASE: ${{ steps.base.outputs.base }}
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
         run: |
+          # Release-PR mirror (Decide Release Mirror) is the LAST word: a same-repo
+          # promotion PR mirrors the dev push run at its head, so every lane skips and the
+          # capstone's Mirror Push Run owns the verdict. web_affected / run_e2e / run_live
+          # stay false (single package, no deploy) — already the constant below.
+          if [ "${MIRROR_PUSH_RUN:-false}" = "true" ]; then
+            RUN_LEVEL="none"
+            DEPTH_SOURCE="release-mirror"
+            WHETHER_REASON="skipped-because:release-pr-mirror"
+          fi
           # Single package, no deploy: web_affected / run_e2e / run_live /
           # global_dep_changed are constant false; the fields stay in the plan contract.
           PLAN_JSON=$(jq -cn \
             --arg schema "bkit-test-plan" \
             --arg run_level "${RUN_LEVEL:-none}" \
             --arg base "${BASE:-}" \
+            --argjson mirror_push_run "${MIRROR_PUSH_RUN:-false}" \
             --argjson web_affected false \
             --argjson run_e2e false \
             --argjson run_live false \
@@ -212,6 +241,7 @@ jobs:
               schema: $schema,
               run_level: $run_level,
               base: $base,
+              mirror_push_run: $mirror_push_run,
               web_affected: $web_affected,
               run_e2e: $run_e2e,
               run_live: $run_live,
@@ -227,7 +257,7 @@ jobs:
           # has()/!=null (NOT `.field // empty`): jq's // treats boolean false as absent,
           # so a legit run_live:false would read as a missing required field.
           FAIL=0
-          for field in schema run_level base web_affected run_e2e run_live source reason; do
+          for field in schema run_level base mirror_push_run web_affected run_e2e run_live source reason; do
             if ! echo "$PLAN_JSON" | jq -e --arg f "$field" 'has($f) and .[$f] != null' >/dev/null 2>&1; then
               echo "::error::Plan JSON missing required field: $field"
               FAIL=1
@@ -250,6 +280,7 @@ jobs:
           DEPTH=$(echo "$PLAN" | jq -r '.source')
           WHETHER=$(echo "$PLAN" | jq -r '.reason')
           BASE=$(echo "$PLAN" | jq -r '.base')
+          MIRROR=$(echo "$PLAN" | jq -r '.mirror_push_run')
           MARKERS=$(echo "$PLAN" | jq -r '.markers_present | join(", ")' 2>/dev/null || echo "")
           {
             echo "## CI Plan — \`bkit-tests-scope\` (single-package, no deploy/e2e/live)"
@@ -258,13 +289,18 @@ jobs:
             echo "| --- | --- |"
             echo "| schema | bkit-test-plan |"
             echo "| run_level | \`$RUN_LEVEL\` |"
+            echo "| mirror_push_run | \`$MIRROR\` |"
             echo "| base | \`${BASE:-<none>}\` |"
             echo "| source | \`$DEPTH\` |"
             echo "| reason | \`$WHETHER\` |"
             echo "| markers | ${MARKERS:-none} |"
             echo ""
             if [ "$RUN_LEVEL" = "none" ]; then
-              echo "> ⏭️ **test lanes skipped** — $WHETHER"
+              if [ "$MIRROR" = "true" ]; then
+                echo "> 🪞 **release-PR mirror** — every lane skipped; \`bkit-tests-check\` copies the dev push run's verdict."
+              else
+                echo "> ⏭️ **test lanes skipped** — $WHETHER"
+              fi
             else
               echo "> ✅ **test lanes run** (run_level=\`$RUN_LEVEL\`); no web / e2e / live tiers."
             fi
@@ -722,13 +758,46 @@ jobs:
   # bkit.capstoneJob). Needs every lane; if: !cancelled(), never always(). Asserts
   # bkit-tests-scope succeeded and, when run_level != none, every test lane succeeded and
   # unit + integration each executed >0 tests. bkit-tests-scope is the planner, not a
-  # lane: SCOPE_RESULT asserts it by name, outside the per-lane loop.
+  # lane: SCOPE_RESULT asserts it by name, outside the per-lane loop. In release-PR mirror
+  # mode (plan.mirror_push_run) every lane is skipped: Mirror Push Run copies the dev push
+  # run's capstone verdict — the step IS the verdict, never run_level=none alone, because a
+  # skipped required check can read as passed on the PR.
   bkit-tests-check:
     needs: [bkit-tests-scope, bkit-tests-static, bkit-tests-unit, bkit-tests-integration]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    # Mirror mode waits for the dev push run (--max-minutes 170), so raise the job ceiling
+    # to 180 only then; null-safe when the planner failed before emitting a plan. Otherwise
+    # the job just installs and asserts.
+    timeout-minutes: ${{ needs.bkit-tests-scope.outputs.plan && fromJSON(needs.bkit-tests-scope.outputs.plan).mirror_push_run && 180 || 5 }}
     steps:
+      # Mirror Push Run runs bkit, so the job needs a checkout and installed dependencies.
+      # Both are ungated — the assert also reads the plan off the checkout, and gating a
+      # checkout on a plan that may be absent is fragile.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Mirror Push Run
+        # OPTIONAL (Decide Release Mirror in bkit-tests-scope). Runs BEFORE the assert;
+        # neither step is continue-on-error. Waits for the dev push run at the PR head and
+        # passes only when its capstone passed — reds when that run failed, was cancelled,
+        # its capstone is absent/skipped, or no push run appears within 10 min (a [skip ci]
+        # tip dispatches none). See docs/deployments.md § One CI run per dev commit.
+        if: fromJSON(needs.bkit-tests-scope.outputs.plan).mirror_push_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # PR head SHA (the dev tip the push run tested) via env:, injection-safe.
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm bkit runs mirror --head="$PR_HEAD_SHA" --branch=dev --max-minutes=170
+
       - name: Assert Test Plan Followed
         env:
           PLAN: ${{ needs.bkit-tests-scope.outputs.plan }}

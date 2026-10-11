@@ -97,9 +97,9 @@ const ADOPTED: Record<string, Entry> = {
       },
       {
         kind: "adapt",
-        what: "pull-requests: read for the planner",
+        what: "no pull-requests scope: the merged-PR API call is gone; the planner and the mirror both read actions runs",
         fill: "permissions:\n  actions: read\n  contents: read\n\n",
-        with: "permissions:\n  actions: read\n  contents: read\n  # bkit-tests-scope reads repos/{repo}/commits/{sha}/pulls.\n  pull-requests: read\n\n",
+        with: "permissions:\n  # bkit-tests-scope reads the branch's last green run; the capstone's Mirror Push Run\n  # reads the dev push run at the promotion PR head. Both are actions: read.\n  actions: read\n  contents: read\n\n",
       },
       {
         kind: "adapt",
