@@ -177,11 +177,17 @@ export function writeAdvisoriesArtifact(findings, opts) {
 // Changelog version-delta header (A7)
 // ---------------------------------------------------------------------------
 /**
- * Read the bkit CHANGELOG.md (from the package root) and extract the section
- * header for `version`. Returns a formatted version-delta string for display
- * in post-install output, or null if CHANGELOG.md is absent or version not found.
+ * Read the bkit CHANGELOG.md (from the package root) and extract the release
+ * delta for `version`: the header line plus the section's lead summary (the
+ * prose before the first `###` sub-heading). Returns a formatted string for
+ * display in post-install output, or null if CHANGELOG.md is absent or the
+ * version is not found.
  *
  * Version header format in CHANGELOG.md: `## [X.Y.Z] — YYYY-MM-DD`
+ *
+ * Bounded on purpose: an install/check banner must not dump a whole release
+ * section. When a section has no lead paragraph the sub-heading names stand in,
+ * so the banner is never an empty header.
  */
 export function readChangelogVersionDelta(version) {
     try {
@@ -189,13 +195,35 @@ export function readChangelogVersionDelta(version) {
         if (!fs.existsSync(changelogPath))
             return null;
         const content = fs.readFileSync(changelogPath, "utf-8");
-        // Find the header for this version
+        const lines = content.split(/\r?\n/);
+        // Find the header line for this version.
         const versionEscaped = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const headerRe = new RegExp(`^## \\[${versionEscaped}\\][^\n]*`, "m");
-        const match = content.match(headerRe);
-        if (!match)
+        const headerRe = new RegExp(`^## \\[${versionEscaped}\\]`);
+        const start = lines.findIndex((line) => headerRe.test(line));
+        if (start === -1)
             return null;
-        return `[bkit] What's new in v${version}: ${match[0].replace(/^## /, "")}`;
+        // The section runs to the next top-level `## ` header (or EOF).
+        let end = lines.length;
+        for (let i = start + 1; i < lines.length; i++) {
+            if (/^## /.test(lines[i])) {
+                end = i;
+                break;
+            }
+        }
+        const section = lines.slice(start + 1, end);
+        const header = lines[start].replace(/^## /, "");
+        // Lead summary: the prose between the header and the first `###` sub-heading.
+        const firstSub = section.findIndex((line) => /^### /.test(line));
+        const leadEnd = firstSub === -1 ? section.length : firstSub;
+        let summary = section.slice(0, leadEnd).join("\n").trim();
+        if (!summary) {
+            summary = section
+                .filter((line) => /^### /.test(line))
+                .map((line) => line.replace(/^### /, "").trim())
+                .join(", ");
+        }
+        const headline = `[bkit] What's new in v${version}: ${header}`;
+        return summary ? `${headline}\n${summary}` : headline;
     }
     catch {
         return null;
