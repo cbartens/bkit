@@ -466,11 +466,11 @@ Indented for readability — **on disk each row = single physical line** (§ Wri
   "step": "plan-generate",
   "subagent": "bkit-plan-generate",
   "model": "claude-opus-4-8",
-  "key": "bkit-distribution-via-github-packages",
-  "summary": "distribute @cbartens/bkit via the GitHub Packages npm registry",
-  "description": "move @cbartens/bkit off the github: git-dep install onto the GitHub Packages npm registry",
-  "rationale": "eliminates four friction classes of the git-dep model: two-surface git auth, the CI auth shim, the prepare:tsc OOM trap, and pnpm dropping the version pin",
-  "alternatives": "npmjs.org public (package is private), continue git-dep, Releases tarball, vendor per-consumer, dual-publish git+registry",
+  "key": "bkit-distribution-via-npmjs",
+  "summary": "publish @cbartens/bkit publicly on npmjs",
+  "description": "publish @cbartens/bkit publicly on npmjs; consumers install with no registry mapping, PAT, or CI/Vercel env",
+  "rationale": "public install needs no registry mapping or token; release.yml publishes from CI via npm OIDC trusted publishing",
+  "alternatives": "private registry with a read token, git-dependency install, Releases tarball, vendor per-consumer",
   "status": "ACTIVE",
   "references": ["ISSUE-138", "ISSUE-130", "package.json", ".github/workflows/release.yml"]
 }

@@ -93,7 +93,7 @@ describe("detectBlankDotenvKeys", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=\nBKIT_GH_TOKEN_INSTALL=\nBKIT_LINEAR_API_KEY=\n",
+      "BKIT_GH_TOKEN=\nBKIT_LINEAR_API_KEY=\n",
       "utf-8",
     );
     const findings = detectBlankDotenvKeys(tmpDir);
@@ -107,7 +107,7 @@ describe("detectBlankDotenvKeys", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=\nBKIT_GH_TOKEN_INSTALL=\nBKIT_LINEAR_API_KEY=\n",
+      "BKIT_GH_TOKEN=\nBKIT_LINEAR_API_KEY=\n",
       "utf-8",
     );
     const ids = detectBlankDotenvKeys(tmpDir, "github").map((f) => f.id);
@@ -119,7 +119,7 @@ describe("detectBlankDotenvKeys", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=ghp_test\nBKIT_GH_TOKEN_INSTALL=ghp_bkit\nBKIT_LINEAR_API_KEY=\n",
+      "BKIT_GH_TOKEN=ghp_test\nBKIT_LINEAR_API_KEY=\n",
       "utf-8",
     );
     const findings = detectBlankDotenvKeys(tmpDir);
@@ -127,11 +127,11 @@ describe("detectBlankDotenvKeys", () => {
     expect(findings[0]!.id).toBe("mcp-env-blank-key-bkit_linear_api_key");
   });
 
-  it("returns empty array when all three keys are set and non-empty", () => {
+  it("returns empty array when both keys are set and non-empty", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=ghp_test\nBKIT_GH_TOKEN_INSTALL=ghp_bkit\nBKIT_LINEAR_API_KEY=lin_key\n",
+      "BKIT_GH_TOKEN=ghp_test\nBKIT_LINEAR_API_KEY=lin_key\n",
       "utf-8",
     );
     expect(detectBlankDotenvKeys(tmpDir)).toEqual([]);
@@ -139,11 +139,7 @@ describe("detectBlankDotenvKeys", () => {
 
   it("returns advisory for absent key (key not in file at all)", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=ghp_test\nBKIT_GH_TOKEN_INSTALL=ghp_bkit\n",
-      "utf-8",
-    );
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "BKIT_GH_TOKEN=ghp_test\n", "utf-8");
     const findings = detectBlankDotenvKeys(tmpDir);
     expect(findings).toHaveLength(1);
     expect(findings[0]!.id).toBe("mcp-env-blank-key-bkit_linear_api_key");
@@ -281,7 +277,7 @@ describe("[mcp-env] detector outputs", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=\nBKIT_GH_TOKEN_INSTALL=\nBKIT_LINEAR_API_KEY=\n",
+      "BKIT_GH_TOKEN=\nBKIT_LINEAR_API_KEY=\n",
       "utf-8",
     );
     const ids = detectBlankDotenvKeys(tmpDir).map((f) => f.id);

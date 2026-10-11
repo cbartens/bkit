@@ -172,7 +172,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: cbartens/bkit/.github/actions/setup-auth@v1
         with:
-          token: \${{ secrets.BKIT_GH_TOKEN_INSTALL }}
+          token: \${{ secrets.EXAMPLE_TOKEN }}
       - uses: cbartens/bkit/.github/actions/setup-auth@v1.0.2
 `;
     expect(scanForeignBkitUses(sample)).toEqual([
@@ -191,7 +191,7 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
         env:
-          BKIT_GH_TOKEN_INSTALL: \${{ secrets.BKIT_GH_TOKEN_INSTALL }}
+          EXAMPLE_TOKEN: \${{ secrets.EXAMPLE_TOKEN }}
 `;
     expect(scanForeignBkitUses(sample)).toEqual([]);
   });
@@ -208,9 +208,8 @@ jobs:
 // ---------------------------------------------------------------------------
 
 describe("bkit-ci.yml template registry-auth assertion (Task 6.1 — BAR-138)", () => {
-  // bkit is now public on the npm registry; the consumer CI template no longer
-  // carries the GitHub Packages auth ceremony (.npmrc + BKIT_GH_TOKEN_INSTALL env
-  // var), and it still must not carry a git auth-shim (git config --global
+  // bkit resolves from npmjs; the consumer CI template must carry no
+  // registry-auth ceremony and no git auth-shim (git config --global
   // url.insteadOf).
 
   it("bkit-ci.yml template exists", () => {

@@ -319,7 +319,7 @@ export function readChangelogVersionDelta(version: string): string | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Re-run token-surface + bkit-ci.yml + vale-sync detectors after writes.
+ * Re-run credential + bkit-ci.yml + vale-sync detectors after writes.
  *
  * - Intra-phase dedup: Phase 3 findings are deduped by id (first occurrence wins).
  * - Cross-phase dedup: Phase 3 wins on id conflict (re-detection is more accurate).

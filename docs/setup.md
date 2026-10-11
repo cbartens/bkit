@@ -88,7 +88,6 @@ pnpm exec bkit doctor        # token + advisory sweep (read-only, never fails)
 
 ## Troubleshooting
 
-- **`pnpm install` cannot resolve `@cbartens/bkit`** — a lockfile entry still pinned to `npm.pkg.github.com`; run the migration in `.bkit/install.md` § Migrating from GitHub Packages.
 - **`bkit check` reports `.bkit/version` drift** — `pnpm add -D @cbartens/bkit@<new>` without `pnpm exec bkit install`. Re-run install; commit resync.
 - **Linear preflight blocks session** — issue missing `bkit:auto` or in `Done` / `Cancelled`. Add `bkit:auto`, set non-terminal state. (All labels use `bkit:` prefix.)
 - **Lockfile rebase conflict in workflow** — Tier 2 auto-resolver `bkit branches rebase` takes the rebase target's copy and regenerates it (pnpm, npm, yarn, bun, cargo, go, uv); see `.bkit/workflows.md` § Rebase Conflict Tiering.

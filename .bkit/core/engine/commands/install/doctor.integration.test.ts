@@ -319,7 +319,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=\nBKIT_GH_TOKEN_INSTALL=\nBKIT_LINEAR_API_KEY=\n",
+      "BKIT_GH_TOKEN=\nBKIT_LINEAR_API_KEY=\n",
       "utf-8",
     );
 
@@ -338,7 +338,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=\nBKIT_GH_TOKEN_INSTALL=\nBKIT_LINEAR_API_KEY=\n",
+      "BKIT_GH_TOKEN=\nBKIT_LINEAR_API_KEY=\n",
       "utf-8",
     );
 
@@ -353,7 +353,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=ghp_test\nBKIT_GH_TOKEN_INSTALL=ghp_bkit\nBKIT_LINEAR_API_KEY=lin_key\n",
+      "BKIT_GH_TOKEN=ghp_test\nBKIT_LINEAR_API_KEY=lin_key\n",
       "utf-8",
     );
 
