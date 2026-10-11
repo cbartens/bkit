@@ -267,7 +267,7 @@ Per host, outside the parts: Claude `gateguard` / `guardrails` — `require` + `
 
 ### GateGuard
 
-Pre-edit advisory hook, on all four hosts (Claude Code, Cursor, Codex, opencode). First file touch per session → investigation checklist; gate-config paths (tsconfig/eslint/prettier/vitest/vale/slop/lint-staged) → "fix code, don't weaken gate" advisory, except under a consumer's `.bkit/templates/` (reference copies; in bkit's own repo, package name `@cbartens/bkit`, that folder is the template source and stays guarded); new-file writes → reuse-over-duplicate nudge; `docs/**.md` (not `docs/plans/`) → density advisory appended. **fail-open**, **subagents included**, dedup `(session, file)` via OS-temp state, 24h TTL.
+Pre-edit advisory hook, on all four hosts (Claude Code, Cursor, Codex, opencode). First file touch per session → investigation checklist; gate-config paths (JS/TS: tsconfig/eslint/prettier/vitest/jest/vale/slop/lint-staged; Python: pyproject.toml/ruff/flake8/mypy; Go: golangci; Rust: clippy/rustfmt) → "fix code, don't weaken gate" advisory, except under a consumer's `.bkit/templates/` (reference copies; in bkit's own repo, package name `@cbartens/bkit`, that folder is the template source and stays guarded); new-file writes → reuse-over-duplicate nudge; `docs/**.md` (not `docs/plans/`) → density advisory appended. **fail-open**, **subagents included**, dedup `(session, file)` via OS-temp state, 24h TTL.
 
 <!-- prettier-ignore -->
 | Host | Implementation | File | Registration |

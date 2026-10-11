@@ -201,6 +201,23 @@ describe("gateguard behaviour parity — advisory content", () => {
         expect(r.advisory).toContain("quality-gate config");
       });
 
+      // Non-JS ecosystems: their linters / formatters gate the same way, so an
+      // edit to their config gets the same advisory.
+      it.each([
+        "pyproject.toml",
+        "ruff.toml",
+        ".ruff.toml",
+        ".flake8",
+        "mypy.ini",
+        ".golangci.yml",
+        ".golangci.toml",
+        "clippy.toml",
+        "rustfmt.toml",
+      ])("a %s gate config gets the weaken-the-gate advisory", async (file) => {
+        const r = await run(host, { file, session: newSession() });
+        expect(r.advisory).toContain("quality-gate config");
+      });
+
       it("BKIT_ALLOW_CONFIG_EDIT=1 downgrades a gate config to the normal checklist", async () => {
         const r = await run(host, {
           file: "tsconfig.json",

@@ -3,10 +3,12 @@
 
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
 // A matching path gets the gate-config advisory instead of the first-touch checklist.
+// JS / TS first, then the other ecosystems' gate configs (Python, Go, Rust).
 const GATE_CONFIG_PATTERNS = [
   /^tsconfig(\..+)?\.json$/,
   /^vitest\.config\.[mc]?[jt]s$/,
   /^vite\.config\.[mc]?[jt]s$/,
+  /^jest\.config\.[mc]?[jt]s$/,
   /^eslint\.config\.[mc]?[jt]s$/,
   /^\.eslintrc(\.(json|js|cjs|ya?ml))?$/,
   /^\.prettierrc(\.(json|js|cjs|mjs|ya?ml|toml))?$/,
@@ -17,6 +19,14 @@ const GATE_CONFIG_PATTERNS = [
   /^slop-scan\.config\.json$/,
   /^\.lintstagedrc(\.(json|js|cjs|mjs|ya?ml))?$/,
   /^lint-staged\.config\.[mc]?js$/,
+  /^pyproject\.toml$/,
+  /^ruff\.toml$/,
+  /^\.ruff\.toml$/,
+  /^\.flake8$/,
+  /^mypy\.ini$/,
+  /^\.golangci\.(ya?ml|toml|json)$/,
+  /^clippy\.toml$/,
+  /^rustfmt\.toml$/,
 ];
 
 // A path under `.bkit/templates/` (bkit's reference copies, refreshed on every upgrade)
