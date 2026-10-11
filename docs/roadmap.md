@@ -15,6 +15,7 @@ _(refreshed 2026-10-11T03:57:20Z)_
 
 ### Design
 
+<!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
@@ -33,6 +34,7 @@ _(none)_
 
 ### Shipped _(last 10)_
 
+<!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 380-roadmap-analysis-refresh | Roadmap ledger, two-tier generated board, fold + cadence + on-demand utility | 1787868628424 |

@@ -138,7 +138,7 @@ One verb scheme across every step in `bkit-ci.yml`, so a red run can be triaged 
 
 <!-- prettier-ignore -->
 | Verb | Means |
-|---|---|
+| --- | --- |
 | `Assert` | a red here is a real failure |
 | `Check` | looks and reports, cannot red the lane |
 | `Run` | invokes a named tool or suite |

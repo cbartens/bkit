@@ -215,6 +215,16 @@
         "Authorization": "Bearer {env:BKIT_GH_TOKEN}",
         "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects"
       }
+    },
+    "serena": {
+      "type": "local",
+      "command": [
+        "{env:HOME}/.local/bin/serena",
+        "start-mcp-server",
+        "--context",
+        "ide",
+        "--project-from-cwd"
+      ]
     }
   },
   "plugin": [

@@ -181,6 +181,20 @@ rm -f "$RESP"
 
 <!-- context-fetch:end -->
 
+<!-- context-fetch:provision serena -->
+
+```bash
+# Install the Serena MCP server in cloud if absent (self-guarded; no-op when present).
+# The setup script runs as ROOT: uv's default $HOME-relative paths land in /root (mode 0700),
+# unreadable to the session user — pin the tool venv and its bin dir to world-readable paths.
+command -v serena >/dev/null 2>&1 || {
+  UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin \
+    uv tool install serena-agent==1.7.0 && chmod -R a+rX /opt/uv-tools
+}
+```
+
+<!-- context-fetch:end -->
+
 <!-- allowed-domains:start -->
 
 <!-- Agent hosts + MCP -->

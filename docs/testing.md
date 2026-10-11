@@ -138,7 +138,7 @@ One verb scheme across every step in `bkit-ci.yml`, so a red run can be triaged 
 
 <!-- prettier-ignore -->
 | Verb | Means |
-|---|---|
+| --- | --- |
 | `Assert` | a red here is a real failure |
 | `Check` | looks and reports, cannot red the lane |
 | `Run` | invokes a named tool or suite |
@@ -438,7 +438,7 @@ When adding bkit-managed file types or scope keys, extend fixture — single sou
 
 <!-- prettier-ignore -->
 | Shape | Proves |
-|---|---|
+| --- | --- |
 | Single-package repo | Every verb, drift gate, option matrix, uninstall symmetry; `bkit upgrade --to=<v>` self-bump runs `pnpm add -D` WITHOUT `-w` |
 | pnpm workspace root, bkit as root devDependency | `bkit upgrade --to=<v>` self-bump runs `pnpm add -D -w` and succeeds against the real registry |
 

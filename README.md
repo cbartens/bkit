@@ -34,15 +34,16 @@ AI coding agents are fast, but on their own they skip the parts that make softwa
 
 One command per job. Each one runs a team of specialised agents, 48 in total, so you don't have to write prompts or remember steps.
 
-| Job                      | Command        | What happens                                                                                                              |
-| ------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Work out how to build it | `/bkit-design` | Three agents propose different approaches, two more critique them, and you get one design to approve.                     |
-| Plan the work            | `/bkit-plan`   | A step-by-step plan, stress-tested by five reviewers before any code is written. You approve it.                          |
-| Build it                 | `/bkit-build`  | Writes the code, checks it against the plan, hunts for bugs and security holes, runs the tests, and opens a pull request. |
-| Fix what broke           | `/bkit-debug`  | Reads the failure logs, finds the cause, fixes it, re-tests, and writes down the lesson.                                  |
-| Ship it                  | `/bkit-ship`   | Checks nothing was missed, waits for every test to pass, updates the docs, and merges once you say so.                    |
-| Health check             | 35 audits      | Security, privacy, accessibility, performance, reliability, cost and more. Findings feed straight into `/bkit-plan`.      |
-| Housekeeping             | utility agents | Keep docs, decisions, known issues and the roadmap current.                                                               |
+<!-- prettier-ignore -->
+| Job | Command | What happens |
+| --- | --- | --- |
+| Work out how to build it | `/bkit-design` | Three agents propose different approaches, two more critique them, and you get one design to approve. |
+| Plan the work | `/bkit-plan` | A step-by-step plan, stress-tested by five reviewers before any code is written. You approve it. |
+| Build it | `/bkit-build` | Writes the code, checks it against the plan, hunts for bugs and security holes, runs the tests, and opens a pull request. |
+| Fix what broke | `/bkit-debug` | Reads the failure logs, finds the cause, fixes it, re-tests, and writes down the lesson. |
+| Ship it | `/bkit-ship` | Checks nothing was missed, waits for every test to pass, updates the docs, and merges once you say so. |
+| Health check | 35 audits | Security, privacy, accessibility, performance, reliability, cost and more. Findings feed straight into `/bkit-plan`. |
+| Housekeeping | utility agents | Keep docs, decisions, known issues and the roadmap current. |
 
 ## How it works
 
@@ -94,15 +95,16 @@ One command per job. Each one runs a team of specialised agents, 48 in total, so
 
 bkit installs only what its workflows run. Everything else, the things you or another tool run, ships as a template: install puts the latest set in your `.bkit/templates/`, and every upgrade lists which ones changed. Copy in what you want and own it; bkit never writes over your copy. The install prompt asks your AI to adopt what fits. Catalogue, install steps and known traps: [`.bkit/templates.md`](.bkit/templates.md).
 
-| Template               | What it gives you                                                                                                                                                                                                                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **CI pipeline**        | Parallel test lanes (quick checks, unit, build, integration, database migrations, end-to-end), so a run takes as long as the slowest lane, not all of them added up. One final check is the only one branch protection needs.                                                        |
-| **Quality checks**     | Type checking, formatting, a prose checker, a scanner for junk code AI tends to write, and a workflow-file checker, wired into git hooks and CI. Your `bkit:gate:*` scripts in `package.json` define what "the checks" are, and the gates audit flags any check that can never fail. |
-| **Cloud agents**       | When CI finishes, a cloud agent picks up: ship on green, debug on red. No laptop needed.                                                                                                                                                                                             |
-| **Dependency updates** | Ready-made Renovate or Dependabot setups: grouped minor updates, pinned GitHub Actions, and security fixes that skip the weekly queue.                                                                                                                                               |
-| **Secrets sync**       | One local file holds every key. One command pushes them to Vercel, GitHub Actions, Google Cloud, Supabase and Expo; another proves every copy matches without printing a value.                                                                                                      |
-| **Serena**             | Lets agents look up code the way your editor does ("where is this used?") instead of guessing from text search. Read-only.                                                                                                                                                           |
-| **graphify**           | Draws a map of how your codebase fits together (`docs/capabilities.md`), so agents check what already exists before building it again.                                                                                                                                               |
+<!-- prettier-ignore -->
+| Template | What it gives you |
+| --- | --- |
+| **CI pipeline** | Parallel test lanes (quick checks, unit, build, integration, database migrations, end-to-end), so a run takes as long as the slowest lane, not all of them added up. One final check is the only one branch protection needs. |
+| **Quality checks** | Type checking, formatting, a prose checker, a scanner for junk code AI tends to write, and a workflow-file checker, wired into git hooks and CI. Your `bkit:gate:*` scripts in `package.json` define what "the checks" are, and the gates audit flags any check that can never fail. |
+| **Cloud agents** | When CI finishes, a cloud agent picks up: ship on green, debug on red. No laptop needed. |
+| **Dependency updates** | Ready-made Renovate or Dependabot setups: grouped minor updates, pinned GitHub Actions, and security fixes that skip the weekly queue. |
+| **Secrets sync** | One local file holds every key. One command pushes them to Vercel, GitHub Actions, Google Cloud, Supabase and Expo; another proves every copy matches without printing a value. |
+| **Serena** | Lets agents look up code the way your editor does ("where is this used?") instead of guessing from text search. Read-only. |
+| **graphify** | Draws a map of how your codebase fits together (`docs/capabilities.md`), so agents check what already exists before building it again. |
 
 ## Quick start
 
@@ -156,16 +158,17 @@ GitHub Issues or Linear.
 
 ## Documentation
 
-| Read                                         | For                                                                |
-| -------------------------------------------- | ------------------------------------------------------------------ |
-| [`.bkit/install.md`](.bkit/install.md)       | Install, upgrade, token and CI auth, uninstall, recovery           |
-| [`.bkit/README.md`](.bkit/README.md)         | Day-to-day use: running workflows, environment, tracker setup, CLI |
-| [`.bkit/workflows.md`](.bkit/workflows.md)   | Every workflow step, verdict and contract                          |
-| [`.bkit/providers.md`](.bkit/providers.md)   | Tool and provider differences, model pins                          |
-| [`.bkit/cloud.md`](.bkit/cloud.md)           | Cloud agents: Claude Code on the web, Cursor, opencode             |
-| [`.bkit/templates.md`](.bkit/templates.md)   | Templates ready to adopt                                           |
-| [`.bkit/comparison.md`](.bkit/comparison.md) | Full pipeline reference and agentic-patterns comparison            |
-| [`CHANGELOG.md`](CHANGELOG.md)               | What changed in each release                                       |
+<!-- prettier-ignore -->
+| Read | For |
+| --- | --- |
+| [`.bkit/install.md`](.bkit/install.md) | Install, upgrade, token and CI auth, uninstall, recovery |
+| [`.bkit/README.md`](.bkit/README.md) | Day-to-day use: running workflows, environment, tracker setup, CLI |
+| [`.bkit/workflows.md`](.bkit/workflows.md) | Every workflow step, verdict and contract |
+| [`.bkit/providers.md`](.bkit/providers.md) | Tool and provider differences, model pins |
+| [`.bkit/cloud.md`](.bkit/cloud.md) | Cloud agents: Claude Code on the web, Cursor, opencode |
+| [`.bkit/templates.md`](.bkit/templates.md) | Templates ready to adopt |
+| [`.bkit/comparison.md`](.bkit/comparison.md) | Full pipeline reference and agentic-patterns comparison |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed in each release |
 
 ## License
 
