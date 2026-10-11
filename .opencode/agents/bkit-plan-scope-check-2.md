@@ -40,7 +40,7 @@ tools:
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Verify `docs/templates/bkit-plan.md` — all mandated sections present and populated.
+5. Verify `docs/templates/bkit-plan.md` — all mandated sections present and populated. Missing / broken → `CRITICAL`.
 6. Verify every `Agent Execution Runbook` task has scope, `Done when`, and verification step.
 7. Verify every scope item has both build task and verification task.
 8. Verify `Derived Test Matrix` ↔ `Agent Execution Runbook`: rows map 1:1 (bidirectional) to verification tasks. Gaps → `CRITICAL` finding naming the task or row to add.

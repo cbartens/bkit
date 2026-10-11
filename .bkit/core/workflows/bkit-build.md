@@ -412,7 +412,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🔒 Gate 8 — Plan Gaps Remediate
 
-- [ ] `Strategy` computed before invocation (`STRATEGY`)
+- [ ] Strategy computed before invocation (`STRATEGY`)
 - [ ] Subagent invoked (`@bkit-build-plan-gaps-remediate`, no inline work)
 - [ ] Source files modified
 - [ ] Mechanical checks passed (`steps finish` exit 0: verdict valid, `strategy` recorded)
@@ -612,7 +612,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🔒 Gate 15 — Failure Diagnose
 
-- [ ] `Strategy` computed before invocation (`STRATEGY`)
+- [ ] Strategy computed before invocation (`STRATEGY`)
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
 - [ ] Mechanical checks passed (`steps finish` exit 0)
 

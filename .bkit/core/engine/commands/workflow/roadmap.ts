@@ -122,6 +122,7 @@ const cell = (v: unknown) =>
 function table(rows: Row[]): string[] {
   if (rows.length === 0) return ["_(none)_"];
   return [
+    "<!-- prettier-ignore -->",
     "| FID | Title | Last-transition (ts) |",
     "| --- | --- | --- |",
     ...rows.map(

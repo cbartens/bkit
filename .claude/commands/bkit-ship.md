@@ -220,8 +220,8 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: `ship-input-{RUN}.md`, step `ship-worktree-setup` recorded; `steps finish` exit 0: `ship-regression-guard`)
 - [ ] On `SHIP_BRANCH` (not `dev|main`), worktree created / resumed or adopted (no rebase — Path A); naming warning emitted when not named for `FID` / `ISSUE_ID`
-- [ ] `PR_NUMBER` non-empty; `PR_BASE` = dev (opened by ship, `openedPr` row recorded, CI awaited — when no PR existed)
-- [ ] `ENTRY_HEAD` and `MERGEABLE` read; no PR CI failures confirmed
+- [ ] PR number non-empty (`PR_NUMBER`); `PR_BASE` = dev (opened by ship, `openedPr` row recorded, CI awaited — when no PR existed)
+- [ ] Entry head and mergeable read (`ENTRY_HEAD`, `MERGEABLE`); no PR CI failures confirmed
 
 ---
 

@@ -17,6 +17,7 @@ import {
   mergeCanonicalHashes,
   type BkitVersion,
 } from "./version-file";
+import { getTemplatesRoot } from "../shared/package-roots";
 
 let tmpDir: string;
 
@@ -226,6 +227,21 @@ describe("mergeCanonicalHashes — fresh overwrites, absent paths are pruned", (
     );
     expect(Object.keys(canonicalHashes).sort()).toEqual(["a.md", "b.md"]);
     expect(pruned).toBe(0);
+  });
+
+  it("drops an entry whose path belongs to the copy-and-own template set", () => {
+    // A template-set path is never bkit-owned: install copies it byte-for-byte into
+    // `.bkit/templates/` and never writes the consumer's own copy, so it must carry
+    // no ownership hash even when the adopted copy stays on disk.
+    const rel = "scripts/serena/bkit-serena-mcp.sh";
+    expect(fs.existsSync(path.join(getTemplatesRoot(), rel))).toBe(true);
+    const onDisk = path.join(tmpDir, rel);
+    fs.mkdirSync(path.dirname(onDisk), { recursive: true });
+    fs.writeFileSync(onDisk, "adopted copy", "utf-8");
+
+    const { canonicalHashes, pruned } = mergeCanonicalHashes(tmpDir, { [rel]: "stale" }, {});
+    expect(canonicalHashes).toEqual({});
+    expect(pruned).toBe(1);
   });
 });
 

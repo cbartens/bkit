@@ -313,7 +313,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: `context-fetch` row with `verdict`, `attempt`, `artifacts`, `contextsConfigured`, `clamped`)
-- [ ] `context-fetch` blocks enumerated with ordinal, context and name (`FETCH_BLOCKS`); coverage narrated before fetching (`runtime` / `ci` / `diff` / `e2e` / `web` each `CONFIGURED` or `NOT CONFIGURED`)
+- [ ] Context-fetch blocks enumerated with ordinal, context and name (`FETCH_BLOCKS`); coverage narrated before fetching (`runtime` / `ci` / `diff` / `e2e` / `web` each `CONFIGURED` or `NOT CONFIGURED`)
 - [ ] Every enumerated block customised and run through `bkit context run-block`, or narrated `NOT RUN` (unknown context, empty body); every outcome narrated `CHECKED` / `SELF-SKIPPED` / neither — no silent block
 
 
@@ -350,7 +350,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ### 🔒 Gate 5 — Failure Diagnose
 
-- [ ] `Strategy` computed before invocation (`STRATEGY`)
+- [ ] Strategy computed before invocation (`STRATEGY`)
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
 - [ ] Mechanical checks passed (`steps finish` exit 0: verdict valid, `Mode` in `NORMAL|SOAK`, `strategy` recorded)
 

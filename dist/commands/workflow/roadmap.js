@@ -93,6 +93,7 @@ function table(rows) {
     if (rows.length === 0)
         return ["_(none)_"];
     return [
+        "<!-- prettier-ignore -->",
         "| FID | Title | Last-transition (ts) |",
         "| --- | --- | --- |",
         ...rows.map((r) => `| ${cell(r.key)} | ${cell(or(r.summary, r.key))} | ${cell(or(r.shippedAt, r.ts))} |`),

@@ -14,6 +14,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { parseJson } from "../shared/json.js";
+import { getTemplatesRoot, templateRelPath } from "../shared/package-roots.js";
 // ---------------------------------------------------------------------------
 // Parse
 // ---------------------------------------------------------------------------
@@ -99,14 +100,20 @@ export function isConsumerModified(relPath, absolutePath, canonicalHashes) {
 /**
  * The merge both writers share (install's postDispatch and
  * `updateCanonicalHashesAfterUpgrade`): fresh entries overwrite, and entries whose
- * path is no longer on disk are dropped.
+ * path is no longer on disk — or that belong to the copy-and-own template set —
+ * are dropped.
  *
  * A recorded hash is only ever consulted for a file that exists — drift detection
  * reads the file, uninstall deletes it — so an entry for an absent path is dead
  * bookkeeping, and a file recreated at that path later would be misclassified as
- * bkit-owned. Retired and renamed managed files leave exactly such entries behind,
- * and a pure merge would preserve them forever (the `.bkit/scripts/…` entry a #507
- * move left is the observed case).
+ * bkit-owned. A template-set path is never a file bkit owns: install copies it
+ * byte-for-byte into `.bkit/templates/` and never writes the consumer's own copy,
+ * so it must carry no ownership hash. Retired and renamed managed files leave such
+ * entries behind, and a pure merge would preserve them forever (the
+ * `.bkit/scripts/…` entry a #507 move left and the `scripts/graphify/**` +
+ * `scripts/serena/bkit-serena-mcp.sh` entries a #489 move left are the observed
+ * cases; the latter survive the absent-path prune because the adopted copy stays on
+ * disk).
  *
  * `pruned` counts the dropped entries so callers can treat a prune-only merge as a
  * change that is still worth writing.
@@ -115,12 +122,17 @@ export function mergeCanonicalHashes(cwd, existing, fresh) {
     const canonicalHashes = {};
     let pruned = 0;
     for (const [relPath, hash] of Object.entries(existing)) {
-        if (fs.existsSync(path.join(cwd, relPath)))
-            canonicalHashes[relPath] = hash;
-        else
+        if (!fs.existsSync(path.join(cwd, relPath)) || isTemplateSetPath(relPath)) {
             pruned++;
+            continue;
+        }
+        canonicalHashes[relPath] = hash;
     }
     return { canonicalHashes: { ...canonicalHashes, ...fresh }, pruned };
+}
+/** True when `dest` is a member of the package's copy-and-own template set. */
+function isTemplateSetPath(dest) {
+    return fs.existsSync(path.join(getTemplatesRoot(), templateRelPath(dest)));
 }
 // ---------------------------------------------------------------------------
 // sha256 — content hashing for canonicalHashes
