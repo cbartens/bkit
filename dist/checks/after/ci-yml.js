@@ -9,68 +9,6 @@ import { isAdvisorySuppressed } from "./suppression.js";
 // Other post-install detectors
 // ---------------------------------------------------------------------------
 /**
- * Detect whether the bkit-ci.yml install step is wired to authenticate to GH Packages.
- * Returns null if no bkit-ci.yml, no `pnpm install` step, or the step is correctly wired
- * (no false positives).
- *
- * On pnpm >=10.34.3 the correct shape requires BOTH:
- *   (1) a `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` step that
- *       writes the token into pnpm's user-level config before install, AND
- *   (2) the `BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}` env mapping that feeds it.
- * Either missing → the next install 401s on download. Severity is "blocker" when the
- * project .npmrc shows the repo authenticates to GH Packages (registry mapping or a
- * ${BKIT_GH_TOKEN_INSTALL} ref); otherwise "advisory". Phase 3 does not exit-1
- * (writes already happened).
- */
-export function detectCiYmlMissingTokenEnv(cwd) {
-    const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
-    if (!fs.existsSync(ciPath))
-        return null;
-    const content = fs.readFileSync(ciPath, "utf-8");
-    // Require an install step before flagging (avoid false positives).
-    if (!content.includes("pnpm install"))
-        return null;
-    // Env mapping (whitespace/quoting variations):
-    //   BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }} | "${{ … }}" | ${{secrets.BKIT_GH_TOKEN_INSTALL}}
-    const hasTokenEnv = /BKIT_GH_TOKEN_INSTALL\s*:\s*["']?\$\{\{\s*secrets\.BKIT_GH_TOKEN_INSTALL\s*\}\}["']?/.test(content);
-    // User-level auth step: `pnpm config set "//npm.pkg.github.com/:_authToken=…"`.
-    const hasConfigSet = /pnpm\s+config\s+set\s+["']?\/\/npm\.pkg\.github\.com\/:_authToken=/.test(content);
-    // Correctly wired → no finding.
-    if (hasTokenEnv && hasConfigSet)
-        return null;
-    // Blocker when .npmrc shows the repo authenticates to GH Packages — next run 401s.
-    const npmrcPath = path.join(cwd, ".npmrc");
-    let npmrcUsesGhPackages = false;
-    if (fs.existsSync(npmrcPath)) {
-        const npmrcContent = fs.readFileSync(npmrcPath, "utf-8");
-        npmrcUsesGhPackages =
-            npmrcContent.includes("@cbartens:registry=") ||
-                npmrcContent.includes("${BKIT_GH_TOKEN_INSTALL}");
-    }
-    const missing = [];
-    if (!hasConfigSet)
-        missing.push("a `pnpm config set` auth step");
-    if (!hasTokenEnv)
-        missing.push("the BKIT_GH_TOKEN_INSTALL env mapping");
-    const missingText = missing.join(" and ");
-    return {
-        id: "ci-yml-missing-token-env",
-        severity: npmrcUsesGhPackages ? "blocker" : "advisory",
-        detect: npmrcUsesGhPackages
-            ? `.github/workflows/bkit-ci.yml has a pnpm install step but is missing ${missingText}, and .npmrc authenticates to the GitHub Packages registry. The next CI run will 401 on the @cbartens/bkit download.`
-            : `.github/workflows/bkit-ci.yml has a pnpm install step but is missing ${missingText}.`,
-        action: "Update the install step in .github/workflows/bkit-ci.yml to write the auth token into pnpm's user-level config BEFORE install:\n\n" +
-            "    - name: Install Dependencies\n" +
-            "      run: |\n" +
-            '        pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n' +
-            "        pnpm install --frozen-lockfile\n" +
-            "      env:\n" +
-            "        BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}\n\n" +
-            "pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution (it 401s on download), so the token must be set via `pnpm config set` — the shell expands $BKIT_GH_TOKEN_INSTALL to the literal token before pnpm stores it in user-level config, version-proof across pnpm 10.x and 11.x.\n\n" +
-            "Also confirm the secret exists: `gh secret list | grep BKIT_GH_TOKEN_INSTALL`. If absent: `gh secret set BKIT_GH_TOKEN_INSTALL --body=$BKIT_GH_TOKEN_INSTALL`.",
-    };
-}
-/**
  * Detect the always-true `if:` gate in `.github/workflows/bkit-cloud.yml`: a `|`
  * block scalar wrapping ${{ }}. GitHub Actions sees extra characters around ${{ }}
  * (the block scalar's newlines) and evaluates the whole condition to a non-empty

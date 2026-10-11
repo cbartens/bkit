@@ -9,11 +9,10 @@ import { getPkgRoot } from "../../shared/package-roots.js";
 import { detectOpencodeYmlProviderDrift } from "../../install/modules/opencode.js";
 import { TEMPLATES_POINTER } from "../../install/template-copies.js";
 import { detectManagedStale } from "./managed.js";
-import { AGENT_INLINE_SOURCE_GUIDANCE, BKIT_GH_TOKEN_INSTALL_MISSING_ACTION, BKIT_GH_TOKEN_INSTALL_UNKNOWN_ACTION, buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectGhSecret, detectNpmrcAuth, detectNpmrcAuthTokenLine, detectShellGhMcpToken, detectShellToken, hasGithubMcpServer, } from "./auth.js";
-import { VERCEL_MISSING_ACTION, detectVercelEnv, detectVercelInstallCommandMissingAuth, detectVercelProject, } from "./vercel.js";
+import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectShellGhMcpToken, hasGithubMcpServer, } from "./auth.js";
 import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildTrackerSetupAdvisory, detectActionsWritePermissions, detectGithubProjectFieldIdFormat, detectMainBranchProtection, readConsumerIssueTracker, } from "./github.js";
 import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
-import { detectBkitCloudYmlAlwaysTrueGate, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlMissingTokenEnv, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
+import { detectBkitCloudYmlAlwaysTrueGate, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
 // ---------------------------------------------------------------------------
 // formatChecklist — pure renderer
 // ---------------------------------------------------------------------------
@@ -259,26 +258,6 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     const managedStale = detectManagedStale(cwd);
     if (managedStale)
         phase3.push(managedStale);
-    // Shell token
-    const shellStatus = detectShellToken();
-    if (shellStatus === "missing") {
-        phase3.push({
-            id: "gh-bkit-token-unset-shell",
-            severity: "advisory",
-            detect: "BKIT_GH_TOKEN_INSTALL is not set in the shell environment (undefined).",
-            action: "Set BKIT_GH_TOKEN_INSTALL in .bkit/.env (canonical local-secrets file, gitignored), then have direnv auto-load it on cd:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set BKIT_GH_TOKEN_INSTALL=<classic PAT, read:packages scope>\n    direnv allow                                 # one-time per repo; requires `brew install direnv` + shell hook\n\nThen restart your editor (Claude Code / Cursor) so the new env reaches MCP servers. Generate the PAT at: https://github.com/settings/tokens (Tokens (classic)). Fine-grained PATs are rejected by GitHub Packages with HTTP 403 — must be classic.\n\nFallback (if direnv unavailable): export BKIT_GH_TOKEN_INSTALL=<your-pat> in ~/.zshrc / ~/.bashrc.\n\n" +
-                AGENT_INLINE_SOURCE_GUIDANCE,
-        });
-    }
-    else if (shellStatus === "empty") {
-        phase3.push({
-            id: "gh-bkit-token-empty-shell",
-            severity: "advisory",
-            detect: 'BKIT_GH_TOKEN_INSTALL is set to an empty string (BKIT_GH_TOKEN_INSTALL=""). `pnpm config set` will write an empty auth token, producing a 401 on the next install.',
-            action: 'Set a non-empty BKIT_GH_TOKEN_INSTALL in .bkit/.env (canonical local-secrets file), then `direnv allow` and restart your shell so the new value loads. An empty string is distinct from unset, but both make `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` store an empty token, so pnpm sends no auth header and the GH Packages registry returns 401 on download. Safest fix: set a real token in .bkit/.env, then re-run the `pnpm config set` line.\n\n' +
-                AGENT_INLINE_SOURCE_GUIDANCE,
-        });
-    }
     // BKIT_GH_TOKEN shell env — authenticates the GitHub MCP server
     // (`Authorization: Bearer ${BKIT_GH_TOKEN}` in .mcp.json), which powers the entire
     // tracker + PR + Projects MCP surface. Only flags when a github MCP server is
@@ -299,89 +278,6 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
                 severity: "advisory",
                 detect: 'BKIT_GH_TOKEN is set to an empty string (BKIT_GH_TOKEN=""). The GitHub MCP server sends an empty bearer token and fails to authenticate — distinct from unset, same effect.',
                 action: "Set a non-empty BKIT_GH_TOKEN in .bkit/.env (fine-grained PAT with Contents / Pull requests / Issues / Actions read & write), then `direnv allow` and restart your editor so MCP servers reload.",
-            });
-        }
-    }
-    // .npmrc auth
-    const npmrcStatus = detectNpmrcAuth(cwd);
-    if (npmrcStatus === "missing") {
-        phase3.push({
-            id: "npmrc-missing-gh-packages",
-            severity: "advisory",
-            detect: ".npmrc exists but is missing the required @cbartens registry mapping.",
-            action: "Add this line to .npmrc at the repo root (the auth token is NOT stored here):\n\n" +
-                "    @cbartens:registry=https://npm.pkg.github.com\n\n" +
-                "The token lives in pnpm's user-level config — write it once with:\n\n" +
-                '    pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n\n' +
-                "pnpm >=10.34.3 does not authenticate a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution (it 401s on download), which is why the token must NOT go in .npmrc.",
-        });
-    }
-    // "unknown" (absent) → silent skip per spec
-    // .npmrc auth-token line. The committed project .npmrc must NOT carry
-    // `//npm.pkg.github.com/:_authToken=…`: pnpm >=10.34.3 401s on it AND it shadows the
-    // user-level token written by `pnpm config set` (project config wins).
-    if (detectNpmrcAuthTokenLine(cwd)) {
-        phase3.push({
-            id: "npmrc-authtoken-line",
-            severity: "advisory",
-            detect: ".npmrc carries a `//npm.pkg.github.com/:_authToken=…` line. pnpm >=10.34.3 401s on a project-.npmrc auth token (ERR_PNPM_FETCH_401), and via config precedence (project > user) it shadows the token written by `pnpm config set`.",
-            action: "Remove the `//npm.pkg.github.com/:_authToken=…` line from .npmrc — keep ONLY the registry mapping:\n\n" +
-                "    @cbartens:registry=https://npm.pkg.github.com\n\n" +
-                "Then write the token into pnpm's user-level config instead (CI does this in its install step):\n\n" +
-                '    pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n\n' +
-                "`pnpm config set` stores the shell-expanded literal token in pnpm's user-level config — version-proof across pnpm 10.x and 11.x.",
-        });
-    }
-    // GH secret
-    const ghSecretStatus = detectGhSecret();
-    if (ghSecretStatus === "missing") {
-        phase3.push({
-            id: "gh-bkit-token-secret-missing",
-            severity: "advisory",
-            detect: "gh secret list confirms BKIT_GH_TOKEN_INSTALL secret is NOT set on this GitHub repo.",
-            action: BKIT_GH_TOKEN_INSTALL_MISSING_ACTION,
-        });
-    }
-    else if (ghSecretStatus === "unknown") {
-        phase3.push({
-            id: "gh-bkit-token-secret-unknown",
-            severity: "advisory",
-            detect: "Could not verify BKIT_GH_TOKEN_INSTALL secret (gh CLI unavailable, unauthenticated, or not a GitHub repo).",
-            action: BKIT_GH_TOKEN_INSTALL_UNKNOWN_ACTION,
-        });
-    }
-    // Vercel env (only if a Vercel project is detected)
-    if (detectVercelProject(cwd)) {
-        const previewStatus = detectVercelEnv("preview", cwd);
-        if (previewStatus === "missing") {
-            phase3.push({
-                id: "vercel-env-missing-preview",
-                severity: "advisory",
-                detect: "vercel.json detected but BKIT_GH_TOKEN_INSTALL is absent from Vercel preview environment.",
-                action: VERCEL_MISSING_ACTION,
-            });
-        }
-        const productionStatus = detectVercelEnv("production", cwd);
-        if (productionStatus === "missing") {
-            phase3.push({
-                id: "vercel-env-missing-production",
-                severity: "advisory",
-                detect: "vercel.json detected but BKIT_GH_TOKEN_INSTALL is absent from Vercel production environment.",
-                action: VERCEL_MISSING_ACTION,
-            });
-        }
-        // "unknown" → silent skip (CLI absent / unauthed)
-        // Vercel installCommand auth. The env var alone is not enough: a registry-only .npmrc
-        // carries no token on pnpm
-        // >=10.34.3 and Vercel cannot run a pre-install shell step, so each vercel.json must
-        // authenticate via its installCommand or the @cbartens/bkit download 401s.
-        const vercelNoAuth = detectVercelInstallCommandMissingAuth(cwd);
-        if (vercelNoAuth.length > 0) {
-            phase3.push({
-                id: "vercel-installcommand-missing-auth",
-                severity: "advisory",
-                detect: `${vercelNoAuth.join(", ")} ${vercelNoAuth.length === 1 ? "has" : "have"} no installCommand that authenticates to the GitHub Packages registry. Vercel runs pnpm install with no pre-install shell step, so the @cbartens/bkit download 401s on pnpm >=10.34.3 even when BKIT_GH_TOKEN_INSTALL is set in the Vercel env.`,
-                action: VERCEL_MISSING_ACTION,
             });
         }
     }
@@ -451,10 +347,6 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     const cloudDashboardsAdvisory = buildCloudDashboardsAdvisory(cwd);
     if (cloudDashboardsAdvisory)
         phase3.push(cloudDashboardsAdvisory);
-    // bkit-ci.yml missing token env
-    const ciYml = detectCiYmlMissingTokenEnv(cwd);
-    if (ciYml)
-        phase3.push(ciYml);
     // GHA action SHA pinning (KN-3). Updater configs are consumer-owned examples.
     const gha = detectGhaFloatingTags(cwd);
     if (gha)

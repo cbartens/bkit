@@ -516,19 +516,8 @@ export function runCoreModule(ctx) {
             severity: "advisory",
             detect: "First install detected (.bkit/version was absent).",
             action: "Post-install steps:\n\n" +
-                "1. Add BKIT_GH_TOKEN_INSTALL to your GitHub Actions repository secrets:\n" +
-                "   - Create a classic PAT with `read:packages` scope (fine-grained PATs are\n" +
-                "     not currently supported by GitHub Packages npm registry).\n" +
-                "   - GitHub Settings → Secrets and variables → Actions → New repository secret\n" +
-                "   - Name: BKIT_GH_TOKEN_INSTALL\n" +
-                "   - See README.md ## Consumer CI auth for full setup.\n\n" +
-                "2. Add a `.npmrc` at your repo root with the @cbartens registry mapping (the\n" +
-                "   auth token is NOT stored here — it goes in pnpm's user-level config):\n" +
-                "     @cbartens:registry=https://npm.pkg.github.com\n\n" +
-                "3. Write the token into pnpm's user-level config (run once; CI does this in its\n" +
-                "   install step). pnpm >=10.34.3 401s on a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} ref:\n" +
-                '     pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n\n' +
-                "4. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
+                "1. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
+                "2. See `.bkit/install.md` for consumer setup and README.md ## Consumer CI auth for CI.\n\n" +
                 "Note: bkit seeded the bkit:gate:* / bkit:deps:* package.json scripts every workflow\n" +
                 "runs (existing values are never touched). The tool scripts they chain (typecheck,\n" +
                 "lint, format:check, lint:prose, slop:delta) and the devDeps those need are yours to\n" +

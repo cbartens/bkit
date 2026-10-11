@@ -300,61 +300,35 @@ describe("writeAdvisoriesArtifact", () => {
 
 describe("runPostInstallCheck deduplication", () => {
   it("deduplicates findings within Phase 3 when same id appears multiple times", () => {
-    // Cross-phase dedup: if preflightAdvisories has an id that Phase 3 also emits,
-    // Phase 3 wins (its entry replaces preflight's).
-    // Set up: shell token missing → Phase 3 will emit gh-bkit-token-unset-shell
-    delete process.env.BKIT_GH_TOKEN_INSTALL;
-
-    // Simulate a preflight advisory with the same id
-    const preflightAdvisories: PreflightFinding[] = [
-      {
-        id: "gh-bkit-token-unset-shell",
-        severity: "advisory",
-        detect: "Old preflight detect text",
-        action: "Old preflight action",
-      },
-    ];
-
-    const result = runPostInstallCheck(preflightAdvisories, tmpDir);
-
-    // Should appear exactly once
-    const matches = result.filter((f) => f.id === "gh-bkit-token-unset-shell");
-    expect(matches).toHaveLength(1);
-    // Phase 3 wins — the detect text should NOT be the old preflight text
-    expect(matches[0]!.detect).not.toBe("Old preflight detect text");
-  });
-
-  it("gh-bkit-token-unset-shell is emitted when BKIT_GH_TOKEN_INSTALL is unset", () => {
-    delete process.env.BKIT_GH_TOKEN_INSTALL;
-    const result = runPostInstallCheck([], tmpDir);
-    expect(result.some((f) => f.id === "gh-bkit-token-unset-shell")).toBe(true);
-  });
-
-  it("npmrc-missing-gh-packages is emitted when .npmrc exists but lacks required lines", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "registry=https://registry.npmjs.org/\n",
-      "utf-8",
-    );
-    // Ensure token is set so only npmrc advisory fires
-    process.env.BKIT_GH_TOKEN_INSTALL = "test";
-    const result = runPostInstallCheck([], tmpDir);
-    expect(result.some((f) => f.id === "npmrc-missing-gh-packages")).toBe(true);
-  });
-
-  it("no finding is emitted for .npmrc when file is absent (silent skip)", () => {
-    process.env.BKIT_GH_TOKEN_INSTALL = "test";
-    // No .npmrc file
-    const result = runPostInstallCheck([], tmpDir);
-    expect(result.some((f) => f.id === "npmrc-missing-gh-packages")).toBe(false);
+    // Two Phase-3 detectors emit the same id → dedupeById keeps the first occurrence.
+    const spyVale = vi.spyOn(tools, "detectValePackageNotSynced").mockReturnValue({
+      id: "phase3-dup-id",
+      severity: "advisory",
+      detect: "first Phase 3 occurrence",
+      action: "first action",
+    });
+    const spyLint = vi.spyOn(tools, "detectWorkflowLintToolsMissing").mockReturnValue({
+      id: "phase3-dup-id",
+      severity: "advisory",
+      detect: "second Phase 3 occurrence",
+      action: "second action",
+    });
+    try {
+      const result = runPostInstallCheck([], tmpDir);
+      const matches = result.filter((f) => f.id === "phase3-dup-id");
+      expect(matches).toHaveLength(1);
+      // First occurrence (detectValePackageNotSynced) wins.
+      expect(matches[0]!.detect).toBe("first Phase 3 occurrence");
+    } finally {
+      spyVale.mockRestore();
+      spyLint.mockRestore();
+    }
   });
 
   it("B2: cross-phase dedup is position-stable — preflight order preserved, Phase 3 appended", () => {
     // When Phase 3 supersedes a preflight id, the surviving entry appears at the back of
     // the list (Phase 3 position): preflight findings (not superseded) first, Phase 3
     // findings second.
-    process.env.BKIT_GH_TOKEN_INSTALL = "test"; // token present → no shell-token finding from Phase 3
-
     const preflightAdvisories: PreflightFinding[] = [
       { id: "example-preflight-advisory", severity: "advisory", detect: "p1", action: "a1" },
       { id: "prettierignore-no-markers", severity: "advisory", detect: "p2", action: "a2" },
@@ -374,7 +348,6 @@ describe("runPostInstallCheck deduplication", () => {
   });
 
   it("deduplicates duplicate ids within incoming preflightAdvisories (intra-preflight dedup)", () => {
-    process.env.BKIT_GH_TOKEN_INSTALL = "test";
     // Two entries with the same id — only the first should survive.
     const preflightAdvisories: PreflightFinding[] = [
       { id: "example-preflight-advisory", severity: "advisory", detect: "first", action: "a1" },
@@ -387,7 +360,6 @@ describe("runPostInstallCheck deduplication", () => {
   });
 
   it("collects suppression notes from the detectors when the out-param is passed", () => {
-    process.env.BKIT_GH_TOKEN_INSTALL = "test";
     // The convention must be active for the tagged-test detector to run at all.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -492,7 +464,7 @@ describe("readChangelogVersionDelta", () => {
 //   The blocker path through the public function API (no tsx subprocess).
 describe("challenge-tests", () => {
   const { formatChecklist, runPostInstallCheck } = postinstall;
-  const { detectShellToken } = auth;
+  const { detectShellGhMcpToken } = auth;
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -614,69 +586,55 @@ describe("challenge-tests", () => {
 
   describe("runPostInstallCheck — intra-phase Phase 3 deduplication", () => {
     it("drops the second occurrence when two Phase-3 detectors would produce the same id", () => {
-      // We spy on detectValePackageNotSynced to emit a finding with id
-      // "npmrc-missing-gh-packages" — the same id that detectNpmrcAuth emits
-      // when .npmrc exists but is malformed. This forces two entries with the
-      // same id into the phase3 array before dedup, exercising the intra-phase
-      // dedupeById path in runPostInstallCheck.
-
-      process.env.BKIT_GH_TOKEN_INSTALL = "test-token";
-
-      // Write a malformed .npmrc so detectNpmrcAuth emits "npmrc-missing-gh-packages"
-      fs.writeFileSync(path.join(tmpDir, ".npmrc"), "# empty\n", "utf-8");
-
-      // Spy on detectValePackageNotSynced to also return "npmrc-missing-gh-packages"
+      // Two Phase-3 detectors emit the same id, forcing two entries into the phase3
+      // array before dedup — exercising the intra-phase dedupeById path.
       const spyVale = vi.spyOn(tools, "detectValePackageNotSynced").mockReturnValue({
-        id: "npmrc-missing-gh-packages",
+        id: "phase3-dup-id",
         severity: "advisory",
-        detect: "Synthetic duplicate from vale spy",
-        action: "Synthetic action",
+        detect: "first Phase 3 occurrence",
+        action: "first action",
       });
-
-      // gh CLI fails → "unknown" → no gh secret finding
-      execSync.mockImplementation(() => {
-        throw new Error("gh: command not found");
+      const spyLint = vi.spyOn(tools, "detectWorkflowLintToolsMissing").mockReturnValue({
+        id: "phase3-dup-id",
+        severity: "advisory",
+        detect: "second Phase 3 occurrence",
+        action: "second action",
       });
-
-      const result = runPostInstallCheck([], tmpDir);
-
-      // "npmrc-missing-gh-packages" must appear exactly once even though two
-      // detectors (detectNpmrcAuth + mocked detectValePackageNotSynced) emitted it
-      const matches = result.filter((f) => f.id === "npmrc-missing-gh-packages");
-      expect(matches).toHaveLength(1);
-
-      spyVale.mockRestore();
+      try {
+        const result = runPostInstallCheck([], tmpDir);
+        const matches = result.filter((f) => f.id === "phase3-dup-id");
+        expect(matches).toHaveLength(1);
+        expect(matches[0]!.detect).toBe("first Phase 3 occurrence");
+      } finally {
+        spyVale.mockRestore();
+        spyLint.mockRestore();
+      }
     });
 
     it("first occurrence wins when ids collide in Phase 3", () => {
-      // detectNpmrcAuth emits "npmrc-missing-gh-packages" first
-      // mocked detectValePackageNotSynced emits the same id second
-      // → first occurrence (from detectNpmrcAuth) must win per the contract
-      process.env.BKIT_GH_TOKEN_INSTALL = "test-token";
-      fs.writeFileSync(path.join(tmpDir, ".npmrc"), "# broken\n", "utf-8");
-
       const spyVale = vi.spyOn(tools, "detectValePackageNotSynced").mockReturnValue({
-        id: "npmrc-missing-gh-packages",
+        id: "phase3-dup-id",
+        severity: "advisory",
+        detect: "first occurrence — must win",
+        action: "first action",
+      });
+      const spyLint = vi.spyOn(tools, "detectWorkflowLintToolsMissing").mockReturnValue({
+        id: "phase3-dup-id",
         severity: "advisory",
         detect: "Second occurrence — must be dropped by intra-phase dedup",
         action: "Should not appear",
       });
-
-      execSync.mockImplementation(() => {
-        throw new Error("gh: command not found");
-      });
-
-      const result = runPostInstallCheck([], tmpDir);
-
-      const allMatches = result.filter((f) => f.id === "npmrc-missing-gh-packages");
-      // Exactly one — intra-phase dedup dropped the second
-      expect(allMatches).toHaveLength(1);
-      // First occurrence (detectNpmrcAuth) wins — the spy's text must not appear
-      expect(allMatches[0]!.detect).not.toBe(
-        "Second occurrence — must be dropped by intra-phase dedup",
-      );
-
-      spyVale.mockRestore();
+      try {
+        const result = runPostInstallCheck([], tmpDir);
+        const allMatches = result.filter((f) => f.id === "phase3-dup-id");
+        // Exactly one — intra-phase dedup dropped the second
+        expect(allMatches).toHaveLength(1);
+        // First occurrence wins — the spy's text must not appear
+        expect(allMatches[0]!.detect).toBe("first occurrence — must win");
+      } finally {
+        spyVale.mockRestore();
+        spyLint.mockRestore();
+      }
     });
   });
 
@@ -695,11 +653,10 @@ describe("challenge-tests", () => {
             "bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has `# bkit:start` / `# bkit:end` markers around the bkit section.",
         },
         {
-          id: "gh-bkit-token-unset-shell",
+          id: "example-second-advisory",
           severity: "advisory",
-          detect: "BKIT_GH_TOKEN_INSTALL is not set in the shell environment.",
-          action:
-            "Export BKIT_GH_TOKEN_INSTALL in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export BKIT_GH_TOKEN_INSTALL=<your-pat>\n\nThe token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens",
+          detect: "Second example was detected.",
+          action: "Fix the second example.",
         },
       ];
 
@@ -720,13 +677,9 @@ describe("challenge-tests", () => {
         Detect: .husky/pre-commit exists but has no bkit-managed block markers.
         Action: bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has \`# bkit:start\` / \`# bkit:end\` markers around the bkit section.
 
-        --- 2/2 [advisory] gh-bkit-token-unset-shell ---
-        Detect: BKIT_GH_TOKEN_INSTALL is not set in the shell environment.
-        Action: Export BKIT_GH_TOKEN_INSTALL in your shell profile (e.g. ~/.zshrc or ~/.bashrc):
-
-            export BKIT_GH_TOKEN_INSTALL=<your-pat>
-
-        The token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens
+        --- 2/2 [advisory] example-second-advisory ---
+        Detect: Second example was detected.
+        Action: Fix the second example.
 
         ==========================================================
         "
@@ -838,21 +791,25 @@ describe("challenge-tests", () => {
       expect(banner).toContain("bkit advisories");
     });
 
-    it("detectShellToken returns 'missing' when env var is deleted (spy observation)", () => {
+    it("detectShellGhMcpToken returns 'missing' when env var is deleted (spy observation)", () => {
       // Confirms the spy pattern is functional: call the real implementation and
       // verify result, then observe via spy that it was called.
-      delete process.env.BKIT_GH_TOKEN_INSTALL;
-      const spy = vi.spyOn(auth, "detectShellToken");
-      const result = detectShellToken();
+      delete process.env.BKIT_GH_TOKEN;
+      const spy = vi.spyOn(auth, "detectShellGhMcpToken");
+      const result = detectShellGhMcpToken();
       // The directly-imported function returns "missing"
       expect(result).toBe("missing");
       spy.mockRestore();
     });
 
-    it("runPostInstallCheck emits gh-bkit-token-unset-shell when BKIT_GH_TOKEN_INSTALL is explicitly deleted", () => {
-      // The env var is deleted explicitly (no ambient env state), and the output finding
-      // asserted.
-      delete process.env.BKIT_GH_TOKEN_INSTALL;
+    it("runPostInstallCheck emits gh-mcp-token-unset-shell when BKIT_GH_TOKEN is explicitly deleted", () => {
+      // A github MCP server must be configured for the advisory to fire, and CI unset.
+      delete process.env.BKIT_GH_TOKEN;
+      delete process.env.CI;
+      fs.writeFileSync(
+        path.join(tmpDir, ".mcp.json"),
+        JSON.stringify({ mcpServers: { github: { type: "http" } } }),
+      );
 
       // gh CLI unavailable → unknown (no additional gh-secret finding)
       execSync.mockImplementation(() => {
@@ -861,12 +818,12 @@ describe("challenge-tests", () => {
 
       const result = runPostInstallCheck([], tmpDir);
 
-      // gh-bkit-token-unset-shell must appear, proving detectShellToken was
-      // called and returned "missing" (env var is deleted → Boolean("") === false)
-      expect(result.some((f) => f.id === "gh-bkit-token-unset-shell")).toBe(true);
+      // gh-mcp-token-unset-shell must appear, proving detectShellGhMcpToken was
+      // called and returned "missing".
+      expect(result.some((f) => f.id === "gh-mcp-token-unset-shell")).toBe(true);
 
       // Confirm the finding has a non-empty detect and action
-      const finding = result.find((f) => f.id === "gh-bkit-token-unset-shell");
+      const finding = result.find((f) => f.id === "gh-mcp-token-unset-shell");
       expect(finding!.detect).toBeTruthy();
       expect(finding!.action).toBeTruthy();
     });
@@ -880,29 +837,32 @@ describe("challenge-tests", () => {
   describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () => {
     it("Phase 3 entry replaces preflight entry when ids match, and only one entry appears", () => {
       const preflightAdvisory: PreflightFinding = {
-        id: "gh-bkit-token-unset-shell",
+        id: "phase3-dup-id",
         severity: "advisory",
         detect: "PREFLIGHT DETECT TEXT — must NOT survive into output",
         action: "PREFLIGHT ACTION TEXT",
       };
 
-      // BKIT_GH_TOKEN_INSTALL unset → Phase 3 will emit its own gh-bkit-token-unset-shell
-      delete process.env.BKIT_GH_TOKEN_INSTALL;
-      execSync.mockImplementation(() => {
-        throw new Error("gh: command not found");
+      // A Phase-3 detector emits the same id → Phase 3 replaces the preflight entry.
+      const spyVale = vi.spyOn(tools, "detectValePackageNotSynced").mockReturnValue({
+        id: "phase3-dup-id",
+        severity: "advisory",
+        detect: "PHASE 3 DETECT TEXT — the winner",
+        action: "PHASE 3 ACTION TEXT",
       });
+      try {
+        const result = runPostInstallCheck([preflightAdvisory], tmpDir);
 
-      const result = runPostInstallCheck([preflightAdvisory], tmpDir);
-
-      const matches = result.filter((f) => f.id === "gh-bkit-token-unset-shell");
-      // Exactly one occurrence
-      expect(matches).toHaveLength(1);
-      // Phase 3 wins — detect text must NOT be the preflight text
-      expect(matches[0]!.detect).not.toBe("PREFLIGHT DETECT TEXT — must NOT survive into output");
-      // Phase 3 detect text is well-known
-      expect(matches[0]!.detect).toContain(
-        "BKIT_GH_TOKEN_INSTALL is not set in the shell environment",
-      );
+        const matches = result.filter((f) => f.id === "phase3-dup-id");
+        // Exactly one occurrence
+        expect(matches).toHaveLength(1);
+        // Phase 3 wins — detect text must NOT be the preflight text
+        expect(matches[0]!.detect).not.toBe("PREFLIGHT DETECT TEXT — must NOT survive into output");
+        // Phase 3 detect text wins
+        expect(matches[0]!.detect).toBe("PHASE 3 DETECT TEXT — the winner");
+      } finally {
+        spyVale.mockRestore();
+      }
     });
 
     it("preflight-only advisory survives when Phase 3 does not emit the same id", () => {
@@ -912,9 +872,6 @@ describe("challenge-tests", () => {
         detect: "Preflight husky detect",
         action: "Preflight husky action",
       };
-
-      process.env.BKIT_GH_TOKEN_INSTALL = "set";
-      execSync.mockReturnValue("BKIT_GH_TOKEN_INSTALL\n"); // gh secret present → no gh findings
 
       const result = runPostInstallCheck([uniquePreflightAdvisory], tmpDir);
 
@@ -929,9 +886,6 @@ describe("challenge-tests", () => {
         { id: "alpha", severity: "advisory", detect: "alpha detect", action: "alpha action" },
         { id: "beta", severity: "advisory", detect: "beta detect", action: "beta action" },
       ];
-
-      process.env.BKIT_GH_TOKEN_INSTALL = "set";
-      execSync.mockReturnValue("BKIT_GH_TOKEN_INSTALL\n"); // no GH secret missing
 
       const result = runPostInstallCheck(preflightAdvisories, tmpDir);
 

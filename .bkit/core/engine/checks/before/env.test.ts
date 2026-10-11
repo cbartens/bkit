@@ -89,7 +89,7 @@ describe("detectBlankDotenvKeys", () => {
     expect(detectBlankDotenvKeys(tmpDir)).toEqual([]);
   });
 
-  it("returns three advisories when .bkit/.env has all keys blank", () => {
+  it("returns two advisories when .bkit/.env has all required keys blank", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
@@ -97,10 +97,9 @@ describe("detectBlankDotenvKeys", () => {
       "utf-8",
     );
     const findings = detectBlankDotenvKeys(tmpDir);
-    expect(findings).toHaveLength(3);
+    expect(findings).toHaveLength(2);
     const ids = findings.map((f) => f.id);
     expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
-    expect(ids).toContain("mcp-env-blank-key-bkit_gh_token_install");
     expect(ids).toContain("mcp-env-blank-key-bkit_linear_api_key");
   });
 
@@ -113,7 +112,6 @@ describe("detectBlankDotenvKeys", () => {
     );
     const ids = detectBlankDotenvKeys(tmpDir, "github").map((f) => f.id);
     expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
-    expect(ids).toContain("mcp-env-blank-key-bkit_gh_token_install");
     expect(ids).not.toContain("mcp-env-blank-key-bkit_linear_api_key");
   });
 
@@ -288,7 +286,6 @@ describe("[mcp-env] detector outputs", () => {
     );
     const ids = detectBlankDotenvKeys(tmpDir).map((f) => f.id);
     expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
-    expect(ids).toContain("mcp-env-blank-key-bkit_gh_token_install");
     expect(ids).toContain("mcp-env-blank-key-bkit_linear_api_key");
   });
 

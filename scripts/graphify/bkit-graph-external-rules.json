@@ -10,7 +10,7 @@
     {
       "provider": "GitHub",
       "sdk": [],
-      "hosts": ["api.github.com", "api.githubcopilot.com", "npm.pkg.github.com"],
+      "hosts": ["api.github.com", "api.githubcopilot.com"],
       "env": []
     },
     { "provider": "Linear", "sdk": [], "hosts": ["api.linear.app", "mcp.linear.app"], "env": [] },

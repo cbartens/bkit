@@ -1,7 +1,7 @@
 // audits/templates/templates-content.test.ts — Snapshot/diff tests for seeded template files.
 // (BAR-138: verifies consumer CI template uses registry-based auth)
 // Sibling of audits/templates/templates.test.ts which enforces marker PRESENCE; this file
-// enforces template CONTENT (BKIT_GH_TOKEN_INSTALL, renovate baseBranchPatterns, etc.).
+// enforces template CONTENT (renovate baseBranchPatterns, etc.).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -31,27 +31,16 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     expect(content).not.toContain("git config --global url.");
   });
 
-  it("install step carries env: BKIT_GH_TOKEN_INSTALL block", () => {
-    expect(content).toContain("BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}");
+  it("install step no longer carries a BKIT_GH_TOKEN_INSTALL env block (public npm)", () => {
+    expect(content).not.toContain("BKIT_GH_TOKEN_INSTALL");
   });
 
-  it("env: BKIT_GH_TOKEN_INSTALL appears under the install step (after pnpm install --frozen-lockfile)", () => {
-    // Note: BKIT_GH_TOKEN_INSTALL is declared at BOTH job-level (so subsequent pnpm/npx
-    // steps don't emit ".npmrc env substitution failed" warnings) AND at the
-    // install step itself (explicit, plus required by the BAR-138 contract).
-    // This assertion locates the step-level declaration adjacent to the install
-    // command, ignoring any earlier job-level occurrence.
+  it("install step runs a plain pnpm install --frozen-lockfile (no registry auth)", () => {
     const lines = content.split("\n");
     const installLineIdx = lines.findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
-    const envTokenIdx = lines.findIndex(
-      (l, i) =>
-        i > installLineIdx &&
-        l.includes("BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}"),
-    );
     expect(installLineIdx).toBeGreaterThan(-1);
-    expect(envTokenIdx).toBeGreaterThan(installLineIdx);
-    // Must be within the next 3 lines (env: block is directly under run:)
-    expect(envTokenIdx - installLineIdx).toBeLessThanOrEqual(3);
+    expect(content).not.toMatch(/pnpm config set/);
+    expect(content).not.toMatch(/npm\.pkg\.github\.com/);
   });
 
   it("still contains pnpm install --frozen-lockfile", () => {
@@ -320,9 +309,9 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     );
   });
 
-  it("keeps the hostRules token commented so self-hosted env auth is not doubled", () => {
-    expect(content).not.toMatch(/^\s*hostRules:/m);
-    expect(content).toMatch(/\/\/\s*hostRules:/);
+  it("no longer carries a GitHub Packages read-auth hostRules anchor", () => {
+    expect(content).not.toMatch(/hostRules:/);
+    expect(content).not.toMatch(/npm\.pkg\.github\.com/);
   });
 });
 
@@ -366,10 +355,10 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
     expect(content).not.toMatch(/token:\s*\$\{\{\s*github\.token\s*\}\}/);
   });
 
-  it("injects private-registry auth via RENOVATE_HOST_RULES from BKIT_GH_TOKEN_INSTALL", () => {
-    expect(content).toMatch(/RENOVATE_HOST_RULES:/);
-    expect(content).toMatch(/npm\.pkg\.github\.com/);
-    expect(content).toMatch(/secrets\.BKIT_GH_TOKEN_INSTALL/);
+  it("no longer injects private-registry auth (bkit is on the public npm registry)", () => {
+    expect(content).not.toMatch(/RENOVATE_HOST_RULES:/);
+    expect(content).not.toMatch(/npm\.pkg\.github\.com/);
+    expect(content).not.toMatch(/secrets\.BKIT_GH_TOKEN_INSTALL/);
   });
 
   it("scopes to this repo only (no org-wide autodiscover)", () => {
@@ -410,9 +399,9 @@ describe(".bkit/.env.example keys are BKIT_-prefixed (direnv isolation)", () => 
   const content = fs.readFileSync(ENV_EXAMPLE, "utf-8");
   const assigned = [...content.matchAll(/^([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]);
 
-  it("assigns BKIT_GH_TOKEN and BKIT_GH_TOKEN_INSTALL, not GH_BKIT_*", () => {
+  it("assigns BKIT_GH_TOKEN (and no retired install token), not GH_BKIT_*", () => {
     expect(assigned).toContain("BKIT_GH_TOKEN");
-    expect(assigned).toContain("BKIT_GH_TOKEN_INSTALL");
+    expect(assigned).not.toContain("BKIT_GH_TOKEN_INSTALL");
     expect(assigned).not.toContain("GH_BKIT_TOKEN");
     expect(assigned).not.toContain("GH_BKIT_TOKEN_INSTALL");
   });

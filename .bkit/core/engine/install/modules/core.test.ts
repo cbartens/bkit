@@ -40,10 +40,11 @@ describe("runCoreModule first-install advisory (BAR-141: structured finding)", (
     expect(action).not.toContain("onlyBuiltDependencies");
   });
 
-  it("first-install advisory action references read:packages scope", () => {
+  it("first-install advisory action no longer references GitHub Packages install auth", () => {
     const startIdx = MODULES_SRC.indexOf("first-install-postinstall-steps");
     const block = MODULES_SRC.slice(startIdx, startIdx + 1500);
-    expect(block).toContain("read:packages");
+    expect(block).not.toContain("BKIT_GH_TOKEN_INSTALL");
+    expect(block).not.toContain("read:packages");
   });
 });
 

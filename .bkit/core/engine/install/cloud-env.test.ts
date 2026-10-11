@@ -156,16 +156,16 @@ describe("resolveCloudEnvVars", () => {
     expect(res.hijackDropped).toContain("BKIT_ANTHROPIC_API_KEY");
     expect(map["BKIT_ANTHROPIC_API_KEY"]).toBeUndefined();
     expect(res.emptySkipped).toContain("EMPTY_VAR");
-    // BKIT_GH_TOKEN present → not a placeholder; BKIT_GH_TOKEN_INSTALL absent → placeholder.
-    expect(res.placeholders).toEqual(["BKIT_GH_TOKEN_INSTALL"]);
+    // BKIT_GH_TOKEN present → not a placeholder; no other baseline key.
+    expect(res.placeholders).toEqual([]);
   });
 
-  it("returns an empty resolution (both baseline placeholders) when no .envrc exists", () => {
+  it("returns an empty resolution (the sole baseline placeholder) when no .envrc exists", () => {
     write("package.json", JSON.stringify({ name: "x" }));
     const res = resolveCloudEnvVars(tmpDir);
     expect(res.hasEnvrc).toBe(false);
     expect(res.included).toEqual([]);
-    expect(res.placeholders).toEqual(["BKIT_GH_TOKEN", "BKIT_GH_TOKEN_INSTALL"]);
+    expect(res.placeholders).toEqual(["BKIT_GH_TOKEN"]);
   });
 });
 
@@ -176,7 +176,6 @@ describe("renderCloudEnvBlock", () => {
     const block = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir));
     const lines = block.split("\n");
     expect(lines).toContain("BKIT_GH_TOKEN=real");
-    expect(lines).toContain("BKIT_GH_TOKEN_INSTALL=<classic PAT with read:packages>");
     expect(lines).toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70");
   });
 
@@ -201,7 +200,6 @@ describe("renderCloudEnvNotes", () => {
     expect(notes).toContain("SECRET_DROP");
     expect(notes).toContain("BKIT_ANTHROPIC_API_KEY");
     expect(notes).toContain("EMPTY");
-    expect(notes).toContain("BKIT_GH_TOKEN_INSTALL"); // placeholder
   });
 
   it("emits a no-.envrc message when none exists", () => {
@@ -533,17 +531,13 @@ describe("cloudAutoModeEnvironment / renderCloudUserSettings", () => {
 describe("cursorCloudPolicy", () => {
   it("linear tracker: prepends BKIT_LINEAR_API_KEY, keeps GH baseline, no autocompact constant", () => {
     const p = cursorCloudPolicy("linear");
-    expect(p.baseline.map(([n]) => n)).toEqual([
-      "BKIT_LINEAR_API_KEY",
-      "BKIT_GH_TOKEN",
-      "BKIT_GH_TOKEN_INSTALL",
-    ]);
+    expect(p.baseline.map(([n]) => n)).toEqual(["BKIT_LINEAR_API_KEY", "BKIT_GH_TOKEN"]);
     expect(p.constants).toEqual([]);
   });
 
   it("github tracker: GH baseline only (no BKIT_LINEAR_API_KEY), no autocompact constant", () => {
     const p = cursorCloudPolicy("github");
-    expect(p.baseline.map(([n]) => n)).toEqual(["BKIT_GH_TOKEN", "BKIT_GH_TOKEN_INSTALL"]);
+    expect(p.baseline.map(([n]) => n)).toEqual(["BKIT_GH_TOKEN"]);
     expect(p.constants).toEqual([]);
   });
 

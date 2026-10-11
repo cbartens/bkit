@@ -704,11 +704,6 @@ macOS GUI-isolation note (launchctl fallback):
   launchd template set (see \`.bkit/templates.md\` § Launchd GUI environment). Rotation
   then needs no re-bootstrap — prefer \`bkit cursor\` / \`bkit opencode\` for the dynamic model.
 
-Consumer CI auth:
-  Set BKIT_GH_TOKEN_INSTALL in GitHub Actions secrets (classic PAT with read:packages scope —
-  fine-grained PATs are not currently supported by GitHub Packages npm registry).
-  See README.md ## Consumer CI auth for setup steps.
-
 Docs: https://github.com/cbartens/bkit/blob/main/README.md` + commandsUsage(),
   );
 }

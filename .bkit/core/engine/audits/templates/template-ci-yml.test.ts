@@ -204,13 +204,14 @@ jobs:
 });
 
 // ---------------------------------------------------------------------------
-// Task 6.1 — bkit-ci.yml template registry-auth assertion (BAR-138)
+// Task 6.1 — bkit-ci.yml template carries NO GitHub Packages registry auth
 // ---------------------------------------------------------------------------
 
 describe("bkit-ci.yml template registry-auth assertion (Task 6.1 — BAR-138)", () => {
-  // BAR-138: The consumer CI template uses GitHub Packages registry auth
-  // (.npmrc + BKIT_GH_TOKEN_INSTALL env var), not a git auth-shim
-  // (git config --global url.insteadOf).
+  // bkit is now public on the npm registry; the consumer CI template no longer
+  // carries the GitHub Packages auth ceremony (.npmrc + BKIT_GH_TOKEN_INSTALL env
+  // var), and it still must not carry a git auth-shim (git config --global
+  // url.insteadOf).
 
   it("bkit-ci.yml template exists", () => {
     const templatePath = path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml");
@@ -226,23 +227,11 @@ describe("bkit-ci.yml template registry-auth assertion (Task 6.1 — BAR-138)", 
     expect(content).not.toContain("Configure private-repo auth");
   });
 
-  it("bkit-ci.yml template install step carries env: BKIT_GH_TOKEN_INSTALL for registry auth (BAR-138)", () => {
+  it("bkit-ci.yml template no longer carries the GitHub Packages auth ceremony", () => {
     const templatePath = path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");
-    // BKIT_GH_TOKEN_INSTALL must be present as the env var for registry auth
-    expect(content).toContain("BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}");
-    // BKIT_GH_TOKEN_INSTALL is declared at job-level too (so non-install pnpm steps
-    // don't emit ".npmrc env substitution failed" warnings). Locate the step-
-    // level declaration adjacent to the install command, skipping any earlier
-    // job-level occurrence.
-    const lines = content.split("\n");
-    const installLine = lines.findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
-    const envTokenLine = lines.findIndex(
-      (l, i) =>
-        i > installLine &&
-        l.includes("BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}"),
-    );
-    expect(installLine).toBeGreaterThan(-1);
-    expect(envTokenLine).toBeGreaterThan(installLine);
+    expect(content).not.toContain("BKIT_GH_TOKEN_INSTALL");
+    expect(content).not.toContain("pnpm config set");
+    expect(content).not.toContain("npm.pkg.github.com");
   });
 });

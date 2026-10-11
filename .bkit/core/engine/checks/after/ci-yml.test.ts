@@ -5,7 +5,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  detectCiYmlMissingTokenEnv,
   detectTurboIntegrationInputs,
   detectTestIntegrationEnv,
   detectGhaFloatingTags,
@@ -60,112 +59,6 @@ afterEach(() => {
   execSync.mockReset();
   execFileSync.mockReset();
   spawnSync.mockReset();
-});
-
-// ---------------------------------------------------------------------------
-// detectCiYmlMissingTokenEnv
-// ---------------------------------------------------------------------------
-
-describe("detectCiYmlMissingTokenEnv", () => {
-  const writeCi = (steps: string) => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"),
-      `\njobs:\n  build:\n    steps:\n${steps}\n`,
-      "utf-8",
-    );
-  };
-  // Canonical install step: pnpm config set (user-level auth) + env mapping.
-  const CONFIG_SET =
-    '          pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"';
-  const INSTALL = "          pnpm install --frozen-lockfile";
-  const ENV_BLOCK =
-    "        env:\n          BKIT_GH_TOKEN_INSTALL: \${{ secrets.BKIT_GH_TOKEN_INSTALL }}";
-  const correctStep = `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n${ENV_BLOCK}`;
-
-  it("returns null when install step has both pnpm config set and env mapping", () => {
-    writeCi(correctStep);
-    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
-  });
-
-  it("returns null when env mapping uses quotes (with config set)", () => {
-    writeCi(
-      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          BKIT_GH_TOKEN_INSTALL: "\${{ secrets.BKIT_GH_TOKEN_INSTALL }}"`,
-    );
-    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
-  });
-
-  it("returns null when env mapping has no inner spaces (with config set)", () => {
-    writeCi(
-      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          BKIT_GH_TOKEN_INSTALL: \${{secrets.BKIT_GH_TOKEN_INSTALL}}`,
-    );
-    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
-  });
-
-  it("returns advisory finding when install step has neither config set nor env mapping", () => {
-    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("ci-yml-missing-token-env");
-    expect(result!.severity).toBe("advisory");
-  });
-
-  it("flags when env mapping present but the pnpm config set auth step is missing (#274 new-shape gap)", () => {
-    writeCi(
-      `      - name: Install Dependencies\n${INSTALL.replace(/^ {10}/, "        run: ")}\n${ENV_BLOCK}`,
-    );
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.detect).toContain("pnpm config set");
-  });
-
-  it("flags when pnpm config set present but env mapping is missing", () => {
-    writeCi(`      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}`);
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.detect).toContain("BKIT_GH_TOKEN_INSTALL env mapping");
-  });
-
-  it("returns null when bkit-ci.yml is absent", () => {
-    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
-  });
-
-  it("elevates to blocker when .npmrc maps the @cbartens registry and wiring is incomplete", () => {
-    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n",
-      "utf-8",
-    );
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.severity).toBe("blocker");
-    expect(result!.detect).toContain("401");
-  });
-
-  it("elevates to blocker when .npmrc carries a ${BKIT_GH_TOKEN_INSTALL} ref and wiring is incomplete", () => {
-    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
-      "utf-8",
-    );
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result!.severity).toBe("blocker");
-  });
-
-  it("stays advisory when .npmrc has no GH Packages signal", () => {
-    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
-    fs.writeFileSync(path.join(tmpDir, ".npmrc"), "save-exact=true\n", "utf-8");
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result!.severity).toBe("advisory");
-  });
-
-  it("stays advisory when .npmrc is absent", () => {
-    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
-    const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result!.severity).toBe("advisory");
-  });
 });
 
 // ---------------------------------------------------------------------------

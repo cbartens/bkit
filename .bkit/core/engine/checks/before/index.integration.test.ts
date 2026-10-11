@@ -47,7 +47,7 @@ function runCheckWithTrackerSwitch(dir: string): string {
     cwd: dir,
     encoding: "utf-8",
     timeout: 60_000,
-    env: { ...process.env, BKIT_GH_TOKEN_INSTALL: "test-token" },
+    env: { ...process.env },
   });
   return `${result.stdout ?? ""}${result.stderr ?? ""}`;
 }

@@ -343,7 +343,6 @@ describe("Scenario: .bkit/.env.example (owned) and .envrc (template)", () => {
     expect(fs.existsSync(envExamplePath)).toBe(true);
     const content = fs.readFileSync(envExamplePath, "utf-8");
     expect(content).toContain("BKIT_GH_TOKEN=");
-    expect(content).toContain("BKIT_GH_TOKEN_INSTALL=");
     expect(content).toContain("BKIT_LINEAR_API_KEY=");
   });
 
