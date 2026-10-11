@@ -18,6 +18,7 @@ import {
 } from "./index";
 import { detectBkitVersionMajorDowngrade, detectBkitVersionPinStale } from "../before/version";
 import * as postinstall from "./index";
+import type { SuppressionNote } from "./suppression";
 
 // ---------------------------------------------------------------------------
 // Module-level mock for node:child_process
@@ -113,6 +114,32 @@ describe("formatChecklist", () => {
     expect(result).toContain("adopt each copy in .bkit/templates/");
     expect(result).toContain("state which you did not adopt and why");
   });
+
+  it("appends one suppressed line per dismissal", () => {
+    const result = formatChecklist(
+      [{ id: "x", severity: "advisory", detect: "d", action: "a" }],
+      [{ id: "tagged-tests-no-ci-home", scope: "tooling/eslint" }],
+    );
+    expect(result).toContain("1 advisory suppressed by bkit.ignoreAdvisories:");
+    expect(result).toContain("- tagged-tests-no-ci-home (tooling/eslint)");
+  });
+
+  it("renders the suppressed block even when no findings remain", () => {
+    const result = formatChecklist(
+      [],
+      [
+        { id: "tagged-tests-no-ci-home", scope: "tooling/eslint" },
+        { id: "test-integration-env-not-asserted", scope: "." },
+      ],
+    );
+    expect(result).toContain("bkit advisories");
+    expect(result).toContain("2 advisories suppressed by bkit.ignoreAdvisories:");
+    expect(result).toContain("- test-integration-env-not-asserted (.)");
+  });
+
+  it("stays silent when there is nothing to report", () => {
+    expect(formatChecklist([], [])).toBe("");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -188,6 +215,26 @@ describe("renderAdvisoriesMarkdown", () => {
       version: "1.0.0",
     });
     expect(md).toContain("3 finding(s) — 2 blocker, 1 advisory.");
+  });
+
+  it("renders the suppressed block and drops the clean-run stub", () => {
+    const md = renderAdvisoriesMarkdown([], { mode: "check", version: "5.0.0" }, [
+      { id: "tagged-tests-no-ci-home", scope: "tooling/eslint" },
+    ]);
+    expect(md).not.toContain("**No advisories.**");
+    expect(md).toContain("1 advisory suppressed by bkit.ignoreAdvisories:");
+    expect(md).toContain("- tagged-tests-no-ci-home (tooling/eslint)");
+  });
+
+  it("renders no suppressed block when nothing was dismissed", () => {
+    const md = renderAdvisoriesMarkdown(
+      [{ id: "x", severity: "advisory", detect: "d", action: "a" }],
+      {
+        mode: "check",
+        version: "5.0.0",
+      },
+    );
+    expect(md).not.toContain("suppressed by bkit.ignoreAdvisories");
   });
 });
 
@@ -337,6 +384,34 @@ describe("runPostInstallCheck deduplication", () => {
     const matches = result.filter((f) => f.id === "example-preflight-advisory");
     expect(matches).toHaveLength(1);
     expect(matches[0]!.detect).toBe("first"); // first occurrence wins
+  });
+
+  it("collects suppression notes from the detectors when the out-param is passed", () => {
+    process.env.BKIT_GH_TOKEN_INSTALL = "test";
+    // The convention must be active for the tagged-test detector to run at all.
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "root", scripts: { "test:live": "vitest" } }),
+    );
+    const pkgDir = path.join(tmpDir, "tooling", "eslint");
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pkgDir, "package.json"),
+      JSON.stringify({
+        name: "eslint",
+        scripts: { test: "vitest run" },
+        bkit: { ignoreAdvisories: ["tagged-tests-no-ci-home"] },
+      }),
+    );
+    fs.writeFileSync(path.join(pkgDir, "rule.test.ts"), 'it("uses @live", () => {});');
+
+    const suppressed: SuppressionNote[] = [];
+    const result = runPostInstallCheck([], tmpDir, suppressed);
+
+    expect(result.some((f) => f.id === "tagged-tests-no-ci-home")).toBe(false);
+    expect(suppressed).toEqual([{ id: "tagged-tests-no-ci-home", scope: "tooling/eslint" }]);
+    // Omitting the out-param is the previous contract — no throw, nothing collected.
+    expect(() => runPostInstallCheck([], tmpDir)).not.toThrow();
   });
 });
 

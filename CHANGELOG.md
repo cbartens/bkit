@@ -6,6 +6,14 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Dismiss an advisory per package.** A detector can be right in general and still fire where the condition is deliberately not applicable — a rule-linter whose test titles mention `@live`, an integration lane mocked by design. `package.json` `bkit.ignoreAdvisories: string[]` opts a package out of an advisory id. The check runs inside each detector and drops only the owning package, so a sibling package's real finding still fires; a `blocker` is never suppressible. Suppressions print one line in the console banner and `.bkit/advisories.md`. Wired for `tagged-tests-no-ci-home` (the package holding the test file) and `test-integration-env-not-asserted` (the repo root — the only manifest that detector reads).
+
+---
+
 ## [5.0.0] — 2026-10-11
 
 bkit owns only what a workflow step runs or parses (#489). Everything a person or another tool runs — the CI workflow, git hooks, lint and prose configs, editor and cloud-agent setup, dependency updaters, helper scripts — ships as a template the consumer copies and owns. Every file bkit ships is in one of three groups: an owned file, an owned block in a shared file, or a template, copied to `.bkit/templates/`.

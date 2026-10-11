@@ -99,7 +99,8 @@ export async function runDoctor(modules, opencodeProvider) {
     console.log(`${LOG_PREFIX} Running advisory scan (no managed-file writes)`);
     console.log(`${LOG_PREFIX} Payload roots: core=${getCoreRoot()} shared=${getSharedRoot()} templates=${getTemplatesRoot()}`);
     const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
-    const allFindings = runPostInstallCheck([...preflightAdvisories, ...blockers], process.cwd());
+    const suppressed = [];
+    const allFindings = runPostInstallCheck([...preflightAdvisories, ...blockers], process.cwd(), suppressed);
     // Broken install: the opencode host is on disk but neither provider signal survives.
     // `bkit check` and `bkit upgrade` exit 1 with the fix; doctor reports it here and does
     // not enforce.
@@ -113,7 +114,7 @@ export async function runDoctor(modules, opencodeProvider) {
             });
         }
     }
-    const banner = formatChecklist(allFindings);
+    const banner = formatChecklist(allFindings, suppressed);
     if (banner) {
         console.log(banner);
     }
@@ -125,6 +126,7 @@ export async function runDoctor(modules, opencodeProvider) {
         mode: "doctor",
         version: getInstallingVersion(),
         logPrefix: LOG_PREFIX,
+        suppressed,
     });
     // opencode host diagnostics: report required tools and cred presence per provider.
     // Never echoes key values — only reports present/absent.

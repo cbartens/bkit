@@ -16,6 +16,7 @@ import {
   detectTaggedTestsWithoutCiHome,
   detectRunLevelsNotComposed,
 } from "./ci-yml";
+import type { SuppressionNote } from "./suppression";
 
 // ---------------------------------------------------------------------------
 // Module-level mock for node:child_process
@@ -303,6 +304,33 @@ describe("detectTestIntegrationEnv", () => {
       "jobs:\n  integration:\n    steps:\n      - run: turbo run test:integration\n",
     );
     expect(detectTestIntegrationEnv(tmpDir)!.id).toBe("test-integration-env-not-asserted");
+  });
+
+  it("returns null and reports a root note when the root package opts out", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        scripts: { "test:integration": "vitest run --config vitest.integration.config.ts" },
+        bkit: { ignoreAdvisories: ["test-integration-env-not-asserted"] },
+      }),
+    );
+    const notes: SuppressionNote[] = [];
+    expect(detectTestIntegrationEnv(tmpDir, (n) => notes.push(n))).toBeNull();
+    expect(notes).toEqual([{ id: "test-integration-env-not-asserted", scope: "." }]);
+  });
+
+  it("still fires when the opt-out names a different advisory id", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        scripts: { "test:integration": "vitest run --config vitest.integration.config.ts" },
+        bkit: { ignoreAdvisories: ["tagged-tests-no-ci-home"] },
+      }),
+    );
+    const notes: SuppressionNote[] = [];
+    const found = detectTestIntegrationEnv(tmpDir, (n) => notes.push(n));
+    expect(found?.id).toBe("test-integration-env-not-asserted");
+    expect(notes).toEqual([]);
   });
 });
 
@@ -736,6 +764,18 @@ describe("detectTaggedTestsWithoutCiHome", () => {
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, content);
   }
+  function writePkgBkit(
+    relDir: string,
+    scripts: Record<string, string>,
+    ignoreAdvisories: string[],
+  ) {
+    const dir = path.join(tmpDir, relDir);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: relDir || "root", scripts, bkit: { ignoreAdvisories } }),
+    );
+  }
 
   it("returns null when there are no test files", () => {
     writePkg("", { "test:live": "vitest" });
@@ -804,5 +844,54 @@ describe("detectTaggedTestsWithoutCiHome", () => {
       ].join("\n"),
     );
     expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
+  });
+
+  it("drops the opted-out package while a sibling package still fires", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkg("apps/web", { test: "vitest" }); // a real homeless tagged test
+    writeTest("apps/web/real.test.ts", 'it("does the thing @live", () => {});');
+    // The false alarm: a test title that only MENTIONS the tag.
+    writePkgBkit("tooling/eslint", { test: "vitest run" }, ["tagged-tests-no-ci-home"]);
+    writeTest(
+      "tooling/eslint/rule.test.ts",
+      'it("R1: @live title in a non-.live. file is a filename/title mismatch", () => {});',
+    );
+
+    const notes: SuppressionNote[] = [];
+    const found = detectTaggedTestsWithoutCiHome(tmpDir, (n) => notes.push(n));
+    expect(found?.id).toBe("tagged-tests-no-ci-home");
+    expect(found?.severity).toBe("advisory");
+    expect(found?.action).toContain("apps/web");
+    expect(found?.action).not.toContain("tooling/eslint");
+    expect(notes).toEqual([{ id: "tagged-tests-no-ci-home", scope: "tooling/eslint" }]);
+  });
+
+  it("returns null and reports one note per package when every homeless package opts out", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkgBkit("tooling/eslint", { test: "vitest run" }, ["tagged-tests-no-ci-home"]);
+    writeTest("tooling/eslint/a.test.ts", 'it("mentions @live here", () => {});');
+    writeTest("tooling/eslint/b.test.ts", 'it("and @live again", () => {});'); // same package
+
+    const notes: SuppressionNote[] = [];
+    expect(detectTaggedTestsWithoutCiHome(tmpDir, (n) => notes.push(n))).toBeNull();
+    expect(notes).toEqual([{ id: "tagged-tests-no-ci-home", scope: "tooling/eslint" }]);
+  });
+
+  it("still fires when the opt-out names a different advisory id", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkgBkit("tooling/eslint", { test: "vitest run" }, ["test-integration-env-not-asserted"]);
+    writeTest("tooling/eslint/rule.test.ts", 'it("uses @live", () => {});');
+
+    const notes: SuppressionNote[] = [];
+    const found = detectTaggedTestsWithoutCiHome(tmpDir, (n) => notes.push(n));
+    expect(found?.action).toContain("tooling/eslint");
+    expect(notes).toEqual([]);
+  });
+
+  it("says how to dismiss the advisory in its action text", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkg("tooling/eslint", { test: "vitest run" });
+    writeTest("tooling/eslint/rule.test.ts", 'it("uses @live", () => {});');
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)?.action).toContain("ignoreAdvisories");
   });
 });

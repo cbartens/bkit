@@ -410,14 +410,15 @@ export async function runInstall(args) {
     catch (err) {
         void err; // Non-fatal — changelog header is informational
     }
-    const postFindings = runPostInstallCheck(ctx.advisories, process.cwd());
+    const suppressed = [];
+    const postFindings = runPostInstallCheck(ctx.advisories, process.cwd(), suppressed);
     // check only: install has just written every hook file of the modules it dispatched, and a
     // missing bkit-cloud-bootstrap.sh after `install --claude` is not that run's fault.
     const missingHooks = dryRun ? findMissingOwnedHooks(process.cwd(), effectiveModules) : [];
     const missingHooksFinding = detectOwnedHookMissing(missingHooks);
     if (missingHooksFinding)
         postFindings.push(missingHooksFinding);
-    const banner = formatChecklist(postFindings);
+    const banner = formatChecklist(postFindings, suppressed);
     if (banner)
         console.log(banner);
     writeAdvisoriesArtifact(postFindings, {
@@ -425,6 +426,7 @@ export async function runInstall(args) {
         mode: dryRun ? "check" : "install",
         version: getInstallingVersion(),
         logPrefix: LOG_PREFIX,
+        suppressed,
     });
     // Check mode: exit 1 on drift (see reportCheckDrift).
     if (dryRun) {

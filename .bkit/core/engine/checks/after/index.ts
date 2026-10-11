@@ -61,6 +61,7 @@ import {
   detectTestIntegrationEnv,
   detectTurboIntegrationInputs,
 } from "./ci-yml.js";
+import { type SuppressionNote, type SuppressionReporter } from "./suppression.js";
 
 // ---------------------------------------------------------------------------
 // formatChecklist — pure renderer
@@ -88,9 +89,23 @@ export function advisoriesSummary(findings: PreflightFinding[]): string {
 }
 
 /**
+ * The suppressed-advisory lines both surfaces print. One entry per opt-out, so a package
+ * that dismissed an advisory is never silently invisible. Returns `[]` when nothing was
+ * suppressed — callers then emit no such block.
+ */
+export function suppressedNoteLines(suppressed: SuppressionNote[]): string[] {
+  if (suppressed.length === 0) return [];
+  const n = suppressed.length;
+  return [
+    `${n} advisor${n === 1 ? "y" : "ies"} suppressed by bkit.ignoreAdvisories:`,
+    ...suppressed.map((note) => `- ${note.id} (${note.scope})`),
+  ];
+}
+
+/**
  * Format a list of findings into the post-install console checklist.
- * Returns `""` when findings is empty — callers can `if (banner)` to stay silent.
- * No console.log inside — caller logs.
+ * Returns `""` when findings AND suppressed are both empty — callers can `if (banner)` to
+ * stay silent. No console.log inside — caller logs.
  *
  * Same content as `renderAdvisoriesMarkdown`: title, summary, agent instructions
  * and template pointer are the shared strings; only the separators differ from
@@ -100,9 +115,15 @@ export function advisoriesSummary(findings: PreflightFinding[]): string {
  *   --- i/N [severity] id ---
  *   Detect: ...
  *   Action: ...
+ *
+ * `suppressed` is appended as its own block (see `suppressedNoteLines`) — a dismissed
+ * advisory stays visible even when nothing else fired.
  */
-export function formatChecklist(findings: PreflightFinding[]): string {
-  if (findings.length === 0) return "";
+export function formatChecklist(
+  findings: PreflightFinding[],
+  suppressed: SuppressionNote[] = [],
+): string {
+  if (findings.length === 0 && suppressed.length === 0) return "";
 
   const banner = "=".repeat(58);
   const total = findings.length;
@@ -113,18 +134,26 @@ export function formatChecklist(findings: PreflightFinding[]): string {
   lines.push(ADVISORIES_TITLE);
   lines.push(banner);
   lines.push("");
-  lines.push(advisoriesSummary(findings));
-  lines.push("");
-  lines.push(ADVISORIES_AGENT_INSTRUCTIONS);
-  lines.push("");
-  lines.push(TEMPLATES_POINTER);
-  lines.push("");
+  if (findings.length > 0) {
+    lines.push(advisoriesSummary(findings));
+    lines.push("");
+    lines.push(ADVISORIES_AGENT_INSTRUCTIONS);
+    lines.push("");
+    lines.push(TEMPLATES_POINTER);
+    lines.push("");
+  }
 
   for (let i = 0; i < findings.length; i++) {
     const f = findings[i]!;
     lines.push(`--- ${i + 1}/${total} [${f.severity}] ${f.id} ---`);
     lines.push(`Detect: ${f.detect}`);
     lines.push(`Action: ${f.action}`);
+    lines.push("");
+  }
+
+  const suppressedLines = suppressedNoteLines(suppressed);
+  if (suppressedLines.length > 0) {
+    lines.push(...suppressedLines);
     lines.push("");
   }
 
@@ -143,12 +172,13 @@ export type AdvisoriesMode = "install" | "check" | "doctor";
 /**
  * Render findings as a markdown artifact suitable for `.bkit/advisories.md`.
  * Renders the SAME content as `formatChecklist` (shared title, summary, agent
- * instructions and template pointer) in markdown form, so the file can be
- * referenced and revisited between installs. Overwritten on every run.
+ * instructions, template pointer and suppressed block) in markdown form, so the file can
+ * be referenced and revisited between installs. Overwritten on every run.
  */
 export function renderAdvisoriesMarkdown(
   findings: PreflightFinding[],
   opts: { mode: AdvisoriesMode; version: string },
+  suppressed: SuppressionNote[] = [],
 ): string {
   const lines: string[] = [];
   // This is a generated, gitignored artifact — not authored prose. Advisory
@@ -168,18 +198,20 @@ export function renderAdvisoriesMarkdown(
   );
   lines.push("");
 
-  if (findings.length === 0) {
+  if (findings.length === 0 && suppressed.length === 0) {
     lines.push("**No advisories.** Last run was clean.");
     lines.push("");
     return lines.join("\n");
   }
 
-  lines.push(advisoriesSummary(findings));
-  lines.push("");
-  lines.push(`> ${ADVISORIES_AGENT_INSTRUCTIONS}`);
-  lines.push("");
-  lines.push(`> ${TEMPLATES_POINTER}`);
-  lines.push("");
+  if (findings.length > 0) {
+    lines.push(advisoriesSummary(findings));
+    lines.push("");
+    lines.push(`> ${ADVISORIES_AGENT_INSTRUCTIONS}`);
+    lines.push("");
+    lines.push(`> ${TEMPLATES_POINTER}`);
+    lines.push("");
+  }
 
   const total = findings.length;
   for (let i = 0; i < total; i++) {
@@ -189,6 +221,12 @@ export function renderAdvisoriesMarkdown(
     lines.push(`**Detect:** ${f.detect}`);
     lines.push("");
     lines.push(`**Action:** ${f.action}`);
+    lines.push("");
+  }
+
+  const suppressedLines = suppressedNoteLines(suppressed);
+  if (suppressedLines.length > 0) {
+    lines.push(...suppressedLines);
     lines.push("");
   }
 
@@ -207,16 +245,21 @@ export function writeAdvisoriesArtifact(
     mode: AdvisoriesMode;
     version: string;
     logPrefix: string;
+    suppressed?: SuppressionNote[];
   },
 ): void {
   const dir = path.join(opts.cwd, ".bkit");
   const filePath = path.join(dir, "advisories.md");
   try {
     fs.mkdirSync(dir, { recursive: true });
-    const content = renderAdvisoriesMarkdown(findings, {
-      mode: opts.mode,
-      version: opts.version,
-    });
+    const content = renderAdvisoriesMarkdown(
+      findings,
+      {
+        mode: opts.mode,
+        version: opts.version,
+      },
+      opts.suppressed ?? [],
+    );
     fs.writeFileSync(filePath, content);
     const n = findings.length;
     console.log(`${opts.logPrefix} Wrote .bkit/advisories.md (${n} item${n === 1 ? "" : "s"}).`);
@@ -269,12 +312,20 @@ export function readChangelogVersionDelta(version: string): string | null {
  * same advisory set against the same filesystem state regardless of caller.
  *
  * cwd defaults to process.cwd().
+ *
+ * Pass `suppressed` to collect the advisories a package opted out of via
+ * `bkit.ignoreAdvisories` (one note per id + owning package); the caller renders them with
+ * `suppressedNoteLines` so a dismissal stays visible. Omitted by callers that do not render.
  */
 export function runPostInstallCheck(
   preflightAdvisories: PreflightFinding[],
   cwd: string = process.cwd(),
+  suppressed?: SuppressionNote[],
 ): PreflightFinding[] {
   const phase3: PreflightFinding[] = [];
+  const onSuppressed: SuppressionReporter | undefined = suppressed
+    ? (note) => suppressed.push(note)
+    : undefined;
 
   // Managed-version marker gate — in `bkit check`, a blocker on main/dev (or a PR into
   // them) and a non-blocking advisory on feature branches when any stamped file's marker
@@ -527,7 +578,7 @@ export function runPostInstallCheck(
 
   // @live/@smoke-tagged tests whose owning package declares no test:live/test:smoke
   // script — "no CI home".
-  const taggedNoHome = detectTaggedTestsWithoutCiHome(cwd);
+  const taggedNoHome = detectTaggedTestsWithoutCiHome(cwd, onSuppressed);
   if (taggedNoHome) phase3.push(taggedNoHome);
 
   // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
@@ -537,7 +588,7 @@ export function runPostInstallCheck(
   for (const f of detectTurboIntegrationInputs(cwd)) phase3.push(f);
 
   // test:integration runtime env (KN-23 false-confidence loop).
-  const integrationEnv = detectTestIntegrationEnv(cwd);
+  const integrationEnv = detectTestIntegrationEnv(cwd, onSuppressed);
   if (integrationEnv) phase3.push(integrationEnv);
 
   // Consumer composed run-levels on bkit primitives (else docs/deployments.md matrix is doc-only).

@@ -6,6 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { readPackageJson } from "../../shared/package-json.js";
 import type { PreflightFinding } from "../before/index.js";
+import { isAdvisorySuppressed, type SuppressionReporter } from "./suppression.js";
 
 // ---------------------------------------------------------------------------
 // Other post-install detectors
@@ -444,8 +445,15 @@ function tagUsedInTestTitle(text: string, tag: string, mask: Uint8Array): boolea
  * Only flags a tag when the convention is ACTIVE in the repo (at least one package
  * declares the script); a silent no-op otherwise. WARNING-only; the capstone's
  * `run_live => live_ran > 0` assertion is the runtime check.
+ *
+ * A package whose own `package.json` opts out (`bkit.ignoreAdvisories`) is dropped from the
+ * list and reported via `onSuppressed`; sibling packages keep flagging, because the finding
+ * aggregates every affected package into one entry.
  */
-export function detectTaggedTestsWithoutCiHome(cwd: string): PreflightFinding | null {
+export function detectTaggedTestsWithoutCiHome(
+  cwd: string,
+  onSuppressed?: SuppressionReporter,
+): PreflightFinding | null {
   const testFiles: string[] = [];
   const packageJsons: string[] = [];
   walkRepoForHomeCheck(cwd, testFiles, packageJsons);
@@ -477,6 +485,7 @@ export function detectTaggedTestsWithoutCiHome(cwd: string): PreflightFinding | 
   };
 
   const homeless = new Map<string, Set<string>>(); // tag -> set of "pkgdir (needs `script`)"
+  const suppressedPkgs = new Set<string>(); // pkgs opted out — one note each, however many files
   for (const file of testFiles) {
     let text: string;
     try {
@@ -493,7 +502,15 @@ export function detectTaggedTestsWithoutCiHome(cwd: string): PreflightFinding | 
       const pj = nearestPkg(path.dirname(file));
       if (!pj) continue;
       if (typeof pkgScripts.get(pj)?.[script] !== "string") {
-        const rel = path.relative(cwd, path.dirname(pj)) || ".";
+        const pkgDir = path.dirname(pj);
+        const rel = path.relative(cwd, pkgDir) || ".";
+        if (isAdvisorySuppressed(pkgDir, "tagged-tests-no-ci-home", "advisory")) {
+          if (!suppressedPkgs.has(rel)) {
+            suppressedPkgs.add(rel);
+            onSuppressed?.({ id: "tagged-tests-no-ci-home", scope: rel });
+          }
+          continue; // drop only this package; a sibling package keeps flagging
+        }
         if (!homeless.has(tag)) homeless.set(tag, new Set());
         homeless.get(tag)?.add(rel);
       }
@@ -518,7 +535,9 @@ export function detectTaggedTestsWithoutCiHome(cwd: string): PreflightFinding | 
     action:
       "Give each tagged suite a CI home — add the matching script to the package's package.json so the live/smoke tier actually invokes it:\n\n" +
       lines.join("\n") +
-      '\n\nExample: `"test:live": "vitest run --project live"` (or your runner\'s tag filter). The bkit-tests-check capstone\'s `run_live => live_ran > 0` assertion is the runtime backstop; this catches it earlier.',
+      '\n\nExample: `"test:live": "vitest run --project live"` (or your runner\'s tag filter). The bkit-tests-check capstone\'s `run_live => live_ran > 0` assertion is the runtime backstop; this catches it earlier.' +
+      "\n\nFalse positive? A title that only MENTIONS the tag (a rule linter describing it, a meta/guard test naming the scenario) is indistinguishable from a real tagged test. Opt that package out in its package.json — per-package, and it drops only that package from this list:\n\n" +
+      '    "bkit": { "ignoreAdvisories": ["tagged-tests-no-ci-home"] }',
   };
 }
 
@@ -582,13 +601,23 @@ export function detectTurboIntegrationInputs(cwd: string): PreflightFinding[] {
  * string itself, (2) the CI workflow job that invokes `test:integration` (an
  * env-agnostic script provisioned at the lane), (3) the vitest integration config the
  * script points at (home of the documented in-file guard).
+ *
+ * Root-scoped opt-out: this detector reads only the root `package.json`, so a `bkit.ignoreAdvisories`
+ * entry there drops the finding and reports it via `onSuppressed`.
  */
-export function detectTestIntegrationEnv(cwd: string): PreflightFinding | null {
+export function detectTestIntegrationEnv(
+  cwd: string,
+  onSuppressed?: SuppressionReporter,
+): PreflightFinding | null {
   const read = readPackageJson(cwd);
   if (!read.ok) return null;
   const pkg = read.pkg as { scripts?: Record<string, string> };
   const script = pkg.scripts?.["test:integration"];
   if (!script) return null;
+  if (isAdvisorySuppressed(cwd, "test-integration-env-not-asserted", "advisory")) {
+    onSuppressed?.({ id: "test-integration-env-not-asserted", scope: "." });
+    return null;
+  }
   const realServiceHints = [
     "TEST_REAL_APIS",
     "SUPABASE_SERVICE_ROLE",
@@ -637,7 +666,9 @@ export function detectTestIntegrationEnv(cwd: string): PreflightFinding | null {
       "Confirm integration tests actually exercise real services — otherwise the CI integration step (your own, or the one in bkit's bkit-ci.yml template once adopted) is a no-op (KN-23 false-confidence loop). Provision the real-service env at ANY one of these layers (all are recognised):\n\n" +
       '  - script: "test:integration": "TEST_REAL_APIS=true SUPABASE_URL=$SUPABASE_DEV_URL vitest run --config=vitest.integration.config.ts"\n' +
       "  - CI lane: set `TEST_REAL_APIS` / export the service-role URL / chain `supabase start` around `turbo run test:integration` in the `.github/workflows/*.yml` job that runs it (keeps local `pnpm test:integration` env-agnostic)\n" +
-      "  - vitest integration config: document/enforce the per-file `TEST_REAL_APIS` guard in the config the script `--config`s to.",
+      "  - vitest integration config: document/enforce the per-file `TEST_REAL_APIS` guard in the config the script `--config`s to.\n\n" +
+      "Mocked by design (real-service coverage lives in E2E)? Opt out in the root package.json:\n\n" +
+      '    "bkit": { "ignoreAdvisories": ["test-integration-env-not-asserted"] }',
   };
 }
 

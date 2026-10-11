@@ -362,6 +362,24 @@ interface PreflightFinding {
 
 Findings render as `--- i/N [severity] id ---` with `Detect:` and `Action:` lines. The console banner and the `.bkit/advisories.md` artifact render the same text — copy either into a coding assistant to apply fixes in sequence.
 
+**Dismissing an advisory (per package).** A detector can be right in general and still fire where the condition is deliberately not applicable — a rule-linter whose test titles mention `@live`, an integration lane mocked by design. Opt the owning package out in its `package.json`:
+
+```json
+{
+  "bkit": {
+    "ignoreAdvisories": ["tagged-tests-no-ci-home"]
+  }
+}
+```
+
+<!-- prettier-ignore -->
+| Rule | Behaviour |
+| --- | --- |
+| Scope | Per package, read from the **owning** package's `package.json` — the package holding the test file for `tagged-tests-no-ci-home`, the repo root for `test-integration-env-not-asserted` (the only manifest it reads). A sibling package with a real finding stays flagged. |
+| Severity | Advisory only. A `blocker` is never suppressible, whatever the manifest says. |
+| Visibility | The console banner and `.bkit/advisories.md` carry one suppressed-advisory line per dismissal (`N advisory` / `N advisories`), so a stale opt-out cannot hide a finding silently. |
+| Coverage | Wired for `tagged-tests-no-ci-home` and `test-integration-env-not-asserted`. No other advisory is suppressible; an id matching no advisory is ignored. |
+
 For four-surface token sweep, see [§ Consumer CI auth](#consumer-ci-auth).
 
 ## Optional post-install decisions
