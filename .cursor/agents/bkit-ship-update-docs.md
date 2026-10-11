@@ -52,11 +52,11 @@ tools:
 
 ## Files Modified
 
-[List of `docs/*.md` paths edited. **If** no blockers → `None`.]
+[List of `docs/*.md` paths edited. **If** none → `None`.]
 
 ## Drift Resolved
 
-[Per file: which pass(es) applied, which gaps closed. **If** no blockers → `None`.]
+[Per file: which pass(es) applied, which gaps closed. **If** none → `None`.]
 
 ## Pending Items
 
@@ -64,7 +64,7 @@ tools:
 
 ## Blockers
 
-[Per blocker: Id and reason. `FAIL` requires >=1 blocker. **If** no blockers → `None`.]
+[Per blocker: Id and reason. **If** no blockers → `None`.]
 ```
 
 > ⛔ **STOP after syncing docs and producing output. Do not code, modify implementation, or deploy.**

@@ -45,11 +45,11 @@ Lens: Optimal-tradeoff — best long-term shape ignoring legacy constraints.
 
 ## Approach A — [Name (e.g. "Single-table inheritance")] ⭐ Recommended
 
-[Summary (one sentence), `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility (future-change handling), Risk (main failure mode), Maintenance (ongoing cost)]
+[Summary (one sentence), `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility (future-change handling), Risk (main failure mode), Maintenance (ongoing cost), Friction vs ideal (migration cost, surfaces touched, breaks)]
 
 ## Approach B — [Name]
 
-[Summary, `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility, Risk, Maintenance]
+[Summary, `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility, Risk, Maintenance, Friction vs ideal]
 
 ## Approach C — [Name (optional)]
 

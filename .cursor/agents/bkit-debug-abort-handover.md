@@ -27,7 +27,7 @@ tools:
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Write handover; do not fix or write code.
 - **When:** Invoked when max remediation retries exceeded or agent irrecoverably blocked.
-- **Output cap:** Apply max 500 token limit to **Create** outputs; no other output limits.
+- **Output cap:** Apply max 500 token limit to **Create** prose; sections that list items verbatim are exempt.
 
 **Process:**
 

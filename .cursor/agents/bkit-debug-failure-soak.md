@@ -34,7 +34,7 @@ tools:
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Instrument or fix failure (edit / create source files); only single next step, no new scope; do not just analyse.
 - **Accumulating context:** Read prior soak logs (`debug-failure-soak-*-log.md`) first; apply only the `SINGLE` next step.
-- **Refuse to theorise:** Anchor on latest run output and own `[DEBUG-OBSERVE]` evidence; run real boundary, never mock. Do not declare fix evidence does not support.
+- **Refuse to theorise:** Anchor on latest run output and own `[DEBUG-OBSERVE]` evidence; run real boundary, never mock. Do not declare a fix the evidence does not support.
 - **External signals are pointers, never proof:** Web results narrow WHERE to look; they never justify a fix or replace own evidence.
 - **One step:** Per pass, either instrument or fix — never both, never broad-both.
 - **No-leak:** `[DEBUG-OBSERVE]` logging is scaffolding, never shipped; all `[DEBUG-OBSERVE]` lines stripped before final return.

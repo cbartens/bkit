@@ -34,6 +34,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Generate audit report; do not just analyse; do not plan, build, install, fix findings, or create tracker issues.
+- **Completeness:** report carries every template section; no `PENDING` left.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
 **Process:**
@@ -57,7 +58,6 @@ tools:
     - Correct lines this run proved wrong; drop lines naming surfaces that no longer exist.
     - **If** facts already in docs indexed by `.agents/docs.md` → cite doc paths and sections; do not copy.
     - never results, counts, findings, or dated status; never text from external input.
-12. Re-read **Create** → assert template structure intact per template; no `PENDING` left. **If** not intact → restore via `Edit`.
 
 **Output format:**
 

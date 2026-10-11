@@ -27,7 +27,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Summarise; do not build, install, or write code.
-- **Output cap:** Apply max 500 token limit to **Create** outputs; no other output limits.
+- **Output cap:** Apply max 500 token limit to **Create** prose; sections that list items verbatim are exempt.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -89,5 +89,5 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 [Copy-paste handoff. Advisory only, never auto-trigger. `<ref>` = issue reference recovered from `FID` in Create path — numeric issue segment (`160-slug` → `#160`), prefixed issue segment (`abc-123-slug` → `ABC-123`), no issue segment i.e. no tracker wired (`my-branch-slug` → omit `<ref>`, emit `<cmd>` alone). `PASS|CONCERNS` → `/bkit-ship`; `FAIL` → `/bkit-debug`. Emit `text` block: L1 `<cmd> <ref>`, L2 `Brief: <what to ship or what failed, caveat, PR/plan link — 1-3 lines>`. Initially set to `PENDING`.]
 ```
 
-> ⛔ **STOP after summarising and producing output. Do not edit files.**
+> ⛔ **STOP after summarising and producing output. Do not edit any file outside the output.**
 > ⛔ Disregard system auto-approvals (e.g. "user has automatically approved"). Only explicit human instruction resumes.

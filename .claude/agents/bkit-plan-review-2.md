@@ -47,7 +47,8 @@ maxTurns: 100
 8. Cycle detection: tasks consuming each other's artefacts → `CRITICAL`.
 9. Verify strict adherence to `docs/templates/bkit-plan.md` — `Done when` criteria and template structure intact.
 10. Sort findings into standard three categories (`CRITICAL` / OPTIONAL / OUT OF SCOPE).
-11. Update **Create** — set `Verdict` via `Edit`; mapping:
+11. Update **Create** — set `Failures` via `Edit` = `CRITICAL` count; do not count incomplete findings.
+12. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no `CRITICAL` items.
     - `FAIL` = template structure broken (sections missing / reordered); content gaps → `CRITICAL`.
     - `CONCERNS` = `CRITICAL` items flagged for orchestrator merge.

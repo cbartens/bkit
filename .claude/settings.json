@@ -5,6 +5,7 @@
       "Skill(*)",
       "Bash(*)",
       "mcp__github__*",
+      "mcp__claude_ai_Linear__*",
       "WebSearch",
       "Bash(git push --force-with-lease:*)",
       "Read(./.env.example)",

@@ -51,7 +51,8 @@ tools:
 11. `Suggested Scope Expansion`: From `related-*.md` context overlapping plan surfaces → candidates per template. Advisory only; never `CRITICAL`.
 12. `Agent Execution Runbook` tasks carry `Done when` per template. Missing / vague → `CRITICAL`.
 13. Sort findings into standard three categories (`CRITICAL` / OPTIONAL / OUT OF SCOPE).
-14. Update **Create** — set `Verdict` via `Edit`; mapping:
+14. Update **Create** — set `Failures` via `Edit` = `CRITICAL` count; do not count incomplete findings.
+15. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no `CRITICAL` items.
     - `FAIL` = template structure broken (sections missing / reordered); content gaps → `CRITICAL`.
     - `CONCERNS` = `CRITICAL` items flagged for orchestrator merge.

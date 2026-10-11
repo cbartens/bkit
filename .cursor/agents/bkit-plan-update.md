@@ -53,7 +53,6 @@ tools:
     - `PASS` = all `CRITICAL` applied; OPTIONAL applied on merit.
     - `CONCERNS` = some OPTIONAL skipped.
     - `FAIL` = findings contradictory and unresolvable, plan unanimously rejected by all lenses.
-13. Re-read **Create** → assert template structure intact per `docs/templates/bkit-plan.md`. **If** not intact → set `Verdict` = `FAIL` via `Edit`.
 
 **Output format:**
 

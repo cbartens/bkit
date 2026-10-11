@@ -52,8 +52,6 @@ tools:
    - `CONCERNS` = some OPTIONAL items skipped.
    - `FAIL` = findings contradictory and unresolvable, design unanimously rejected by all lenses.
 
-10. Re-read **Create** output → assert design structure intact. **If** not intact → set `Verdict` = `FAIL` via `Edit`.
-
 **Output format:**
 
 ```markdown
