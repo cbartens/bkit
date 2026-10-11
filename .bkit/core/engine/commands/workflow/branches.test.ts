@@ -1219,7 +1219,7 @@ describe("branches switch", { timeout: GIT_TIMEOUT }, () => {
     expect(git(clone, "config", "--get", "core.bare").out).toBe("false");
   });
 
-  it("installs dependencies when there is a package.json, and a failed install only warns", async () => {
+  it("installs dependencies when there is a package.json, and a failed install stops ship (16)", async () => {
     const ok = shipped("switch-install");
     write(ok.clone, "package.json", "{}\n");
     const good = await run(ok.clone, ARGS, {
@@ -1232,22 +1232,11 @@ describe("branches switch", { timeout: GIT_TIMEOUT }, () => {
     const failed = await run(bad.clone, ARGS, {
       PATH: withBin(stubBin({ [PACKAGE_RUNNER]: "exit 1" })),
     });
-    // The merge already landed: a failed install must not abort the close.
-    expect(failed.code).toBe(0);
+    expect(failed.code).toBe(16);
     expect(failed.json).toMatchObject({ switched: true, installed: false });
     expect(failed.err).toContain("dependency install failed");
-    expect(failed.err).toContain("run it yourself");
-    // The dev lock is released on the warn exit too.
+    // The dev lock is released on the failure exit too.
     expect(fs.existsSync(path.join(bad.clone, ".bkit", ".dev.lock"))).toBe(false);
-
-    const gone = shipped("switch-install-missing");
-    write(gone.clone, "package.json", "{}\n");
-    const noRunner = await run(gone.clone, ARGS, {
-      PATH: stubBin({ git: `exec "${REAL_GIT}" "$@"` }),
-    });
-    expect(noRunner.code).toBe(0);
-    expect(noRunner.json).toMatchObject({ switched: true, installed: false });
-    expect(noRunner.err).toContain("could not run");
   });
 });
 

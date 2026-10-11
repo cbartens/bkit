@@ -63,6 +63,7 @@ export const EXIT_ANCHOR_SKIP = 12;
 export const EXIT_NO_FILE = 13;
 export const EXIT_PULL_FAILED = 14;
 export const EXIT_RUNTIME_REFUSED = 15;
+export const EXIT_INSTALL_FAILED = 16;
 export const EXIT_LAND_STOPPED = 17;
 export const EXIT_LANDED_UNVERIFIED = 18;
 export const EXIT_LOCK_LEFT = 19;
@@ -813,13 +814,13 @@ async function switchVerb(ctx: RunContext): Promise<number> {
     }
     out.installed = install(ctx, root);
     ctx.emit(out);
-    return EXIT.OK;
+    return out.installed === false ? EXIT_INSTALL_FAILED : EXIT.OK;
   } finally {
     releaseLock(lock.path, { workflow: "ship", fid, token: lock.token });
   }
 }
 
-/** Frozen install in the main checkout: false (logged, never fatal) when it failed or could not run, null when there is nothing to install. */
+/** Frozen install in the main checkout: false (logged) when it failed or could not run, null when there is nothing to install. */
 function install(ctx: RunContext, root: string): boolean | null {
   if (!fs.existsSync(path.join(root, "package.json"))) return null;
   const argv = installCommand({ frozen: true });
@@ -828,8 +829,8 @@ function install(ctx: RunContext, root: string): boolean | null {
   const couldNotRun = res.error !== undefined || COULD_NOT_RUN_EXIT_CODES.has(res.status ?? -1);
   ctx.log(
     couldNotRun
-      ? `${argv.join(" ")} could not run — dependencies not installed; continuing without them (run it yourself in ${root})`
-      : `${argv.join(" ")} exited ${String(res.status)} — dependency install failed; continuing without it (run it yourself in ${root})`,
+      ? `${argv.join(" ")} could not run — dependencies not installed`
+      : `${argv.join(" ")} exited ${String(res.status)} — dependency install failed`,
   );
   return false;
 }
@@ -1384,7 +1385,7 @@ export const branchesCommand: CommandSpec = {
         ahead: "local dev commits that were ahead of origin/dev (all skip-CI, rebased and pushed)",
         pushed: "true when those commits were pushed",
         installed:
-          "dependency install result: true, false (failed — warned, never fatal), null (no package.json)",
+          "dependency install result: true, false (failed, exit 16), null (no package.json)",
         skipped: "dev-pushes-false when the runtime does not push dev (null otherwise)",
       },
       exitCodes: {
@@ -1393,6 +1394,7 @@ export const branchesCommand: CommandSpec = {
         [EXIT_PUSH_FAILED]: "pushing the rebased local dev commits failed",
         [EXIT_PULL_FAILED]: "git pull failed: local dev is not level with origin/dev",
         [EXIT_RUNTIME_REFUSED]: "--dev-pushes=true with --worktrees=false",
+        [EXIT_INSTALL_FAILED]: "dependency install failed or the package manager could not run",
       },
       run: switchVerb,
     },
