@@ -1,6 +1,6 @@
-// gate-paths.generated.cjs — AUTO-GENERATED from .bkit/src/bkit-paths-policy.ts
+// gate-paths.generated.cjs — AUTO-GENERATED from .bkit/core/engine/shared/protected-paths.ts
 // DO NOT EDIT BY HAND — regenerate via `generateGatePathsCjs()` then commit.
-// Drift is detected by bkit-paths-policy.test.ts (Vitest).
+// Drift is detected by .bkit/core/engine/shared/protected-paths.test.ts (Vitest).
 "use strict";
 
 /** Prefixes for bkit-managed IDE mirror directories. */
@@ -35,10 +35,25 @@ const GATE_CONFIG_PATTERNS = [
   /^lint-staged\.config\.[mc]?js$/,
 ];
 
-/** Returns true if the file basename matches any gate-config pattern. */
-function isGateConfig(posixPath) {
+/** The consumer's template copies — reference copies, not the repo's gate config. */
+const TEMPLATE_COPIES_PREFIX = ".bkit/templates/";
+
+/**
+ * Returns true if the file basename matches any gate-config pattern. Pass `dogfood` = true
+ * in bkit's own repo, where `.bkit/templates/` is the template source and stays guarded.
+ */
+function isGateConfig(posixPath, dogfood) {
+  const inTemplateCopies =
+    posixPath.startsWith(TEMPLATE_COPIES_PREFIX) || posixPath.includes("/" + TEMPLATE_COPIES_PREFIX);
+  if (inTemplateCopies && !dogfood) return false;
   const base = posixPath.split("/").pop() || posixPath;
   return GATE_CONFIG_PATTERNS.some((re) => re.test(base));
 }
 
-module.exports = { MIRROR_PATH_PREFIXES, isMirrorPath, GATE_CONFIG_PATTERNS, isGateConfig };
+module.exports = {
+  MIRROR_PATH_PREFIXES,
+  isMirrorPath,
+  GATE_CONFIG_PATTERNS,
+  TEMPLATE_COPIES_PREFIX,
+  isGateConfig,
+};

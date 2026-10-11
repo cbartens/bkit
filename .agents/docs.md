@@ -1,17 +1,20 @@
 <!-- bkit:start -->
 
+<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+
 # Document Index
 
 > [!CAUTION]
-> **Purpose:** Index of repo docs (`docs/` and `.agents/`) for agents. Phase columns tell agents what to read per workflow.
+> **Purpose:** Index of repo docs (`docs/`, `.agents/`, and `.bkit/` catalogs) for agents. Phase columns tell agents what to read per workflow.
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Describe current state / rules, NOT reasons / history; state what to do, NOT why. ONLY exceptions: Docs where purpose IS the record.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, not reasons / history; state what to do, not why. only exceptions: Docs where purpose is the record.
 > - Read only docs relevant to current workflow / step / task.
 > - Follow workflow based reading suggestions first, then read more docs as step / task warrants.
-> - One row per doc — phase columns and one-line scope. Pointers only — do NOT duplicate text from indexed docs.
+> - Phase columns cover workflows only; audits and utilities pick docs as step / task warrants.
+> - One row per doc — phase columns and one-line scope. Pointers only — do not duplicate text from indexed docs.
 > - Local project docs → `Project Documents` below the bkit-managed block; universal docs stay in-block.
 > - When two docs cover the same topic, that's a bug — pick a canonical home, link from the other.
 >
@@ -22,25 +25,30 @@
 <!-- prettier-ignore -->
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
-| `.agents/config.md` | — | — | — | ● | — | Agent / tooling config bkit parses, debug-fetch runtime-log contract, cloud CLI provisioning. |
-| `.agents/skills.md` | — | — | ● | — | — | Registry of installed agent skills and install/update commands. |
+| `.bkit/workflows.md` | ● | ● | ● | ● | ● | Workflow catalog — when to run and when not to run each command (§ When to Run). |
+| `.bkit/prompts.md` | ● | ● | ● | ● | ● | Subagent catalog — name, scope, effort, model, `maxTurns`. |
+| `.agents/skills.md` | — | — | ● | — | — | Registry of installed agent skills and install / update commands. |
+| `.agents/context.md` | ○ | ○ | ○ | ● | ○ | How to reach information outside repo — deployment logs, CI runs, e2e evidence, web search, cloud egress allowlist, CLI provisioning. |
 | `docs/architecture.md` | ● | ● | ● | ○ | ○ | System design — service boundaries, deployment topology, integration sketch. |
 | `docs/technology.md` | ● | ● | ○ | ○ | ○ | Chosen frameworks, libraries, styling systems, coding conventions. WHY a choice was made → `decisions.jsonl`. |
-| `docs/data-schema.md` | ○ | ○ | ● | ○ | ○ | Active production database schema — tables, columns, RLS, indices, triggers. |
+| `docs/data-schema.md` | ○ | ○ | ● | ○ | ○ | Active production database schema — entities / tables, fields, access policies (e.g. RLS), indices, functions, triggers. |
 | `docs/security.md` | ● | ● | ● | ○ | ○ | Authentication, authorization, input validation, rate limiting, secrets management, PII handling, untrusted-content threat model. |
 | `docs/design.md` | ○ | ○ | ○ | — | — | Design system — palette, typography, components, spacing, a11y, layout tokens. |
-| `docs/testing.md` | ○ | ● | ● | ● | — | Testing strategy — tier boundaries, framework choices, naming conventions, CI execution. |
-| `docs/deployments.md` | ○ | ○ | ○ | ● | ● | Deployment / environment config / CI/CD pipeline rules — secrets sync, branch protection, run-level tiers. |
+| `docs/testing.md` | ○ | ● | ● | ● | — | Testing strategy — tier boundaries, framework choices, naming conventions, CI lane graph (names, needs, when a lane runs). |
+| `docs/deployments.md` | ○ | ○ | ○ | ● | ● | Deployment / CI/CD — secrets, branch protection, one-run concurrency, push base, promote after the capstone. |
 | `docs/observability.md` | ○ | ○ | ● | ● | ○ | Logging architecture, correlation tracing, telemetry pipelines, log drains. |
-| `docs/warnings.md` | — | — | ○ | ● | — | Registry of intentional log-level downgrades with rationale. |
+| `docs/noise.md` | — | — | ○ | ● | ○ | Registry of intentional signal downgrades — log levels, error-tracker archives / mutes, alert thresholds. |
 | `docs/decisions.jsonl` | ● | ● | ○ | ○ | ○ | ADRs — what was decided, why, discarded alternatives. Append-only. |
 | `docs/knowledge.jsonl` | ○ | ● | ● | ● | ○ | Lessons, traps, post-mortems, gotchas (symptom → root cause → fix). Append-only. |
-| `docs/plans/template.md` | — | ● | — | — | — | Plan template — pre-flight, gates, runbook, verification, rollback. Clone for every new plan. |
-| `docs/completed.md` | — | — | — | — | ● | Ledger of shipped plans — one entry per merged feature. Append-only. |
-| `docs/deferrals.jsonl` | ○ | ○ | ○ | ○ | — | Ledger of deferred issues and future feature ideas. Append-only. |
 | `docs/failures.jsonl` | ○ | ○ | ○ | ○ | ○ | Ledger of discovered bugs. Append-only. |
+| `docs/deferrals.jsonl` | ○ | ○ | ○ | ○ | — | Ledger of deferred issues and future feature ideas. Append-only. |
+| `docs/plans/{YYYYMM}/*.md` | ○ | ● | ● | ○ | ○ | Feature designs and plans. |
+| `docs/audits/{YYYYMM}/*.md` | — | ○ | ○ | — | — | Audit reports. `/bkit-plan` reads a design, these reports, or both. |
+| `docs/roadmap.md` | ○ | ○ | ○ | ○ | ○ | Phase board and best-next-step analysis. |
+| `.bkit/issues.jsonl` | ○ | ○ | ○ | ○ | ○ | Feature-state ledger. Folded into `docs/roadmap.md`. Append-only. |
+| `docs/templates/bkit-plan.md` | — | ● | — | — | — | Plan template — pre-flight, gates, runbook, verification, rollback. |
+| `docs/templates/bkit-audit-*.md` | — | ○ | — | — | — | Audit templates. Use with `@bkit-audit-generate` to generate reports. |
 | `.bkit/jsonl.md` | ○ | ○ | ○ | ○ | ○ | Row format for the `*.jsonl` ledgers — envelope, per-kind fields, dedup tuples, write idiom. |
-| `docs/audits/*.md` | ○ | ○ | — | — | — | Audit reports written by `bkit` — list actual audits in `Project Documents`. |
 | `docs/setup.md` | — | — | — | — | — | Local dev — CLIs, configuration, secrets, troubleshooting. Humans only. |
 
 > `Project Documents` below `bkit:end` is consumer-owned — `bkit install` never overwrites it, `bkit check` drift stays clean. Add project-specific docs there.
@@ -52,3 +60,16 @@
 <!-- prettier-ignore -->
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
+| `.bkit/README.md` | ○ | ○ | ○ | ○ | ○ | Operator guide — workflow run, prerequisites, env, tracker setup, CLI. |
+| `.bkit/providers.md` | ○ | ○ | ○ | ○ | ○ | IDE host differences — install transforms, hosts, providers, model pins. |
+| `.bkit/trackers.md` | ○ | ○ | ○ | ○ | ○ | Tracker marker contract — `github` / `linear` / `none` blocks in workflow sources. |
+| `.bkit/templates.md` | — | — | ○ | — | ○ | Copy-and-own templates — what each does, how to install. Never installed. |
+| `.bkit/cloud.md` | ○ | ○ | ○ | ○ | ○ | Cloud agents — Claude on the web, Cursor Cloud, opencode. Setup and support matrix. |
+| `.bkit/friction.jsonl` | ○ | ○ | ○ | ○ | ○ | Observed workflow friction. Drained by `bkit harvest`. |
+| `.bkit/stats.jsonl` | ○ | ○ | ○ | ○ | ○ | Run telemetry — `compliance`, `outcome`, `counter`. Append-only. |
+| `README.md` | — | — | — | — | ○ | Package page — pitch, what ships, quick start. Humans only. |
+| `.bkit/install.md` | — | — | — | — | ○ | First-time install / upgrade paste, token + CI + Vercel auth, install lifecycle, uninstall. |
+| `.bkit/comparison.md` | — | — | — | — | — | Pipeline in execution order, plus peer comparison. Humans only. |
+| `CHANGELOG.md` | — | — | — | ○ | ○ | Release record — notable changes per version. |
+| `docs/consumers.md` | — | — | — | — | — | Maintainer-local dogfood checkout paths. `bkit harvest` reads it. Not shipped. |
+| `docs/capabilities.md` | ○ | ○ | — | — | — | Capability register + module map, generated by `pnpm graph:rollup` (graphify). Confirms presence, never absence. |

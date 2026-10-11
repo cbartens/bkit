@@ -1,20 +1,24 @@
 # Trackers
 
+<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+
 > [!CAUTION]
-> **Purpose:** Reference for inline tracker-block model in `.bkit/workflows/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents marker contract + cross-cutting per-tracker conventions only.
+> **Purpose:** Reference for inline tracker-block model in `.bkit/core/workflows/bkit-*.md` and `.bkit/core/prompts/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents marker contract + cross-cutting per-tracker conventions only.
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
-> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another. Label semantics live in `.bkit/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
-> - Ships to consumers: describe the CURRENT setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, not reasons / history; state what to do, not why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another. Label semantics live in `.bkit/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
+> - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - Three trackers: `github` (default), `linear` (opt-in), `none` (no tracker wired).
-> - New tracker (Jira, etc.): add enum to `.bkit/src/bkit-manifest.ts`; document MCP under `mcpServers.<name>` in `.bkit/templates/.mcp.json` and `.bkit/templates/.cursor/mcp.json`; add `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every call site (extend pair resolver in `.bkit/src/bkit-trackers.ts`). No `none` marker — no-tracker content is `false`.
+> - New tracker (Jira, etc.): add enum to `.bkit/core/engine/install/manifest.ts`; document MCP under `mcpServers.<name>` in `.bkit/shared/.mcp.json` and `.bkit/shared/.cursor/mcp.json`; add `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every call site (extend pair resolver in `.bkit/core/engine/render/trackers.ts`). No `none` marker — no-tracker content is `false`.
 
 ## Marker contract
 
-Workflow sources carry wired tracker variants inline. Installer reads `bkit.issueTracker` from consumer manifest, resolves markers when mirroring to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md` (`.bkit/src/bkit-trackers.ts`). Mirrors clean — no markers survive.
+Workflow and prompt sources carry wired tracker variants inline. Installer reads `bkit.issueTracker` from consumer manifest, resolves markers when mirroring `.bkit/core/workflows/bkit-*.md` to every host's commands / skills and `.bkit/core/prompts/bkit-*.md` to every host's agents (`.bkit/core/engine/render/trackers.ts`). Mirrors clean — no markers survive.
+
+Prompt frontmatter `tools:` lists: every marker must be a YAML comment (`  # <!-- bkit:tracker github start -->`) — a bare `<!--` line is invalid YAML; installer strips the `# ` with the marker. A pair inside the YAML list must end with a `false` block, and every block (incl. `false`) must hold at least one list item — the `none` stub and an empty block both break the YAML. `bkit-utility-update-roadmap` carries `- Bash` in all three blocks for this.
 
 ### Per-tracker pair (`github` / `linear`)
 
@@ -33,10 +37,10 @@ Resolution: `github` → github block; `linear` → linear block; `none` → pai
 
 ### Conditional blocks (`bkit:tracker true` / `bkit:tracker false`)
 
-Boolean tracker-presence gates for tracker-agnostic content. ONLY no-tracker markers — no `none` marker.
+Boolean tracker-presence gates for tracker-agnostic content. only no-tracker markers — no `none` marker.
 
 - `<!-- bkit:tracker true start/end -->` — kept when tracker connected (`github` or `linear`); **removed entirely under `none`** (no stub). Shared content e.g. comment `{BODY}` fence identical for github/linear.
-- `<!-- bkit:tracker false start/end -->` — kept ONLY under `none`; removed when wired. Substantive no-tracker behaviour (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`). `false` directly after `github`/`linear` pair = pair's `none` rendering; standalone `false` resolved on its own.
+- `<!-- bkit:tracker false start/end -->` — kept only under `none`; removed when wired. Substantive no-tracker behaviour (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`). `false` directly after `github`/`linear` pair = pair's `none` rendering; standalone `false` resolved on its own.
 
 ```text
 <!-- bkit:tracker true start -->
@@ -44,9 +48,9 @@ Boolean tracker-presence gates for tracker-agnostic content. ONLY no-tracker mar
 <!-- bkit:tracker true end -->
 ```
 
-Conditionals resolved AFTER pair pass — pair nested inside kept `true` resolves first. Removed block consumes leading newline + indentation (no blank gap). Unbalanced `start`/`end` = orphan.
+Conditionals resolved after pair pass — pair nested inside kept `true` resolves first. Removed block consumes leading newline + indentation (no blank gap). Unbalanced `start`/`end` = orphan.
 
-**Numbered-step rule:** never wrap numbered list item's NUMBER inside `true` block — under `none` whole item vanishes → numbering gap (`1, 6, 7`). Numbered step with tracker-only body: keep `N.` outside markers; pair `true` body with trailing `false` stub. Put `false` on SAME line as `true end`, single leading space before stub → inline (`N. _stub_`) not dangling continuation:
+**Numbered-step rule:** never wrap numbered list item's NUMBER inside `true` block — under `none` whole item vanishes → numbering gap (`1, 6, 7`). Numbered step with tracker-only body: keep `N.` outside markers; pair `true` body with trailing `false` stub. Put `false` on same line as `true end`, single leading space before stub → inline (`N. _stub_`) not dangling continuation:
 
 ```text
 N. <!-- bkit:tracker true start -->
@@ -64,21 +68,17 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | Interaction | Purpose | github | linear | none |
 | --- | --- | --- | --- | --- |
 | `rule-block` | CAUTION-block tracker/labels/comments rules | rules prose | rules prose | "not configured" stub |
-| `issue-id-extraction` | Step 1 `ISSUE_ID` resolution + create-issue fallback | session prompt scan / `issue_write` create | session prompt scan / `save_issue` create | scan session prompt; else `ISSUE_ID=""` |
+| `issue-id-extraction` | Step 1 `ISSUE_ID` resolution. No match → stop. Never creates an issue | session prompt scan; no match → stop | session prompt scan; no match → stop | scan session prompt; else `ISSUE_ID=""` |
 | `fid-format` | FID slug regex assertion | `^[0-9]+-[a-z0-9-]+$` | `^[a-z]+-[0-9]+-[a-z0-9-]+$` | no strict assert |
-| `issue-read` | Read state + labels + body + comments | `issue_read` get / get_comments | `get_issue` / `list_comments` | skip (vars empty) |
-| `issue-scan` | Bounded related-issue scan at design/plan/debug entry — writes each hit's body + comments under a `## #{number} — {title} ({state})` heading to a file (advisory, top 10, never gates); broad keyword search in title+body, all states | `search_issues` + per-hit `get_comments` | `list_issues` + per-hit `list_comments` | skip stub (no scan) |
+| `issue-read` | Read state + labels + body + comments | `issue_read` `get` / `get_comments` | `get_issue` / `list_comments` | skip (vars empty) |
+| `issue-scan` | Bounded related-issue scan at design/plan/debug entry — writes each hit's body + comments under a `## #{number} — {title} ({state})` heading to a file (advisory, top 10, never gates); broad keyword search in title+body, all states | `search_issues` for ranking only + per-hit `issue_read` `get` / `get_comments` | `list_issues` + per-hit `list_comments` | skip stub (no scan) |
 | `issue-update-phase` | Step 1: set phase label + active state | `issue_write` labels | `save_issue` state+labels | skip |
 | `issue-update-review` | phase Close hand-off (non-terminal) | no-op (label carries) | `save_issue` In Review | skip |
 | `issue-update-failed` | Failure Path additive `bkit:failed` | `issue_write` labels | `save_issue` In Review | skip |
 | `issue-update-debug` | `/bkit-debug` Step 1 additive `bkit:debug` | `issue_write` labels | `save_issue` In Review | skip |
 | `issue-update-merged` | Ship terminal — `bkit:merged` + In Review (issue left open; human closes) | `issue_write` `bkit:merged` (no close) | `save_issue` In Review | skip |
 | `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add/update item | no-op (state carries) | skip |
-| `comment-post-step` | NEW comment per workflow step | `add_issue_comment` | `save_comment` | skip |
-| `comment-on-issue` | NEW comment on an arbitrary issue | `add_issue_comment` (`{TARGET_ISSUE_ID}`) | `save_comment` (`{TARGET_ISSUE_ID}`) | skip |
-| `list-milestone-issues` | Enumerate workstream issues in the parent's milestone/project (design Step 9) | `search_issues` `milestone:"{title}"` | `list_issues` `projectId`+`projectMilestoneId` | empty |
-| `assign-milestone-issue` | Create a workstream issue assigned to the parent's milestone/project — never a sub-issue (design Step 9) | `issue_write` create + `milestone` number | `save_issue` `projectId`+`projectMilestoneId` | skip |
-| `set-blocked-by` | Set `blockedBy` edges | issue-body marker block | `save_issue` blockedBy | skip |
+| `comment-post-step` | new comment per workflow step | `add_issue_comment` | `save_comment` | skip |
 | `issue-blockers-check` | Gate on open blockers | parse body marker → read states | `get_issue` relations | skip |
 | `kill-switch-check` | Terminate if `bkit:auto` absent | label check | label check | inactive |
 | `pr-body-metadata` | Parse PR-body issue/FID marker | `pull_request_read` + parse | same (GitHub PR) | FID-only, no fail-closed |
@@ -88,8 +88,8 @@ Phase-label set + additive-label semantics: `.bkit/workflows.md` § Tracker Inte
 
 ## github — Projects v2 board (optional)
 
-`issue-update-status` reads `package.json` `bkit.githubProject` = `{ owner (org login), number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` (non-secret, committed). Absent → board sync skipped (best-effort, never gates). Discover ids once: `gh api /orgs/{owner}/projectsV2/{number}/fields --jq '.[] | select(.name=="Status")'` (Status field numeric `id` → `statusFieldId`; each option raw `id` → option id, e.g. `47fc9ee4`; `PVTSSF_…` node id from `gh project field-list` is NOT field id — `projects_write` rejects it). Requires `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `GH_BKIT_TOKEN` org Projects R/W. Org-owned boards only — fine-grained PATs cannot reach user-owned projects. `value` = single-select **option id**, not option name. Failure → retry once after 5s, then continue. `doneOptionId` is **reserved and never written** — ship terminal sets `reviewOptionId`, and a human moves the item to Done on acceptance (§ `issue-update-merged` in `.bkit/workflows.md`).
+`issue-update-status` reads `package.json` `bkit.githubProject` = `{ owner (org login), number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` (non-secret, committed). Absent → board sync skipped (best-effort, never gates). Discover ids once: `gh api /orgs/{owner}/projectsV2/{number}/fields --jq '.[] | select(.name=="Status")'` (Status field numeric `id` → `statusFieldId`; each option raw `id` → option id, e.g. `47fc9ee4`; `PVTSSF_…` node id from `gh project field-list` is not field id — `projects_write` rejects it). Requires `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `BKIT_GH_TOKEN` org Projects R/W. Org-owned boards only — fine-grained PATs cannot reach user-owned projects. `value` = single-select **option id**, not option name. Failure → retry once after 5s, then continue. `doneOptionId` is **reserved and never written** — ship terminal sets `reviewOptionId`, and a human moves the item to Done on acceptance (§ `issue-update-merged` in `.bkit/workflows.md`).
 
 ## linear — notes
 
-Linear `ISSUE_ID`s carry team prefix (e.g. `TEAM-123`) — FID inherits (`team-123-slug`). GitHub FIDs numeric-only (`123-slug`). Cross-provider scripts MUST tolerate both shapes. `LINEAR_TEAM` = `bkit.linearTeam` from manifest. No separate project board — issue state (`In Progress` / `In Review` / `Done`) carries status → `issue-update-status` no-op.
+Linear `ISSUE_ID`s carry team prefix (e.g. `TEAM-123`) — FID inherits (`team-123-slug`). GitHub FIDs numeric-only (`123-slug`). Cross-provider scripts must tolerate both shapes. `LINEAR_TEAM` = `bkit.linearTeam` from manifest. No separate project board — issue state (`In Progress` / `In Review` / `Done`) carries status → `issue-update-status` no-op.

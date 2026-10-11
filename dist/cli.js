@@ -1,0 +1,692 @@
+#!/usr/bin/env node
+// cli.ts — the `bkit` bin: parseArgs + printUsage for the v4-3 module-flag CLI surface, and
+// main(), which dispatches each verb to its command and runs when this file is executed.
+import * as fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import { ISSUE_TRACKERS, parseIssueTracker } from "./install/manifest.js";
+import { COMMANDS } from "./commands/registry.js";
+import { LOG_PREFIX, setLogPrefix } from "./shared/log-prefix.js";
+import { runCommand } from "./commands/lib.js";
+import { launchApp } from "./commands/launch.js";
+import { runStatus, runDoctor } from "./commands/install/doctor.js";
+import { runComplyCommand } from "./commands/comply.js";
+import { runHarvestCommand } from "./commands/harvest.js";
+import { runAnalysisCommand } from "./commands/analysis.js";
+import { runTelemetryCommand } from "./commands/telemetry.js";
+import { runUpgradeCommand } from "./commands/install/upgrade.js";
+import { runUninstallCommand } from "./commands/install/uninstall.js";
+import { runInstall } from "./commands/install/install.js";
+import { OPTIN_MODULES } from "./install/manifest.js";
+import { OPENCODE_PROVIDERS } from "./shared/egress.js";
+/** Cloud-agent variant chosen via `--auto=<variant>`. */
+export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"];
+/** Narrow an unknown string to `CloudVariant` or return `null` if invalid. */
+export function parseCloudVariant(value) {
+    return typeof value === "string" && CLOUD_VARIANTS.includes(value)
+        ? value
+        : null;
+}
+/**
+ * The first words `parseArgs` treats as a verb. A `bkit <noun> <verb>` command whose
+ * noun is also listed here routes only when its second word is one of its verbs.
+ */
+export const CLASSIC_VERBS = new Set([
+    "install",
+    "check",
+    "doctor",
+    "status",
+    "uninstall",
+    "upgrade",
+    "comply",
+    "harvest",
+    "analysis",
+    "telemetry",
+    "cursor",
+    "opencode",
+    "help",
+]);
+// ---------------------------------------------------------------------------
+// telemetry — sub-verb for bkit telemetry <subverb>
+// ---------------------------------------------------------------------------
+/** Valid sub-verbs accepted by `bkit telemetry <subverb>`. */
+export const TELEMETRY_SUBVERBS = ["summary"];
+/** Narrow an unknown string to `TelemetrySubverb` or return null if invalid. */
+export function parseTelemetrySubverb(value) {
+    return typeof value === "string" && TELEMETRY_SUBVERBS.includes(value)
+        ? value
+        : null;
+}
+// ---------------------------------------------------------------------------
+// comply — compliance grader phases
+// ---------------------------------------------------------------------------
+/** Valid workflow phases accepted by `bkit comply --phase <phase>`. */
+export const COMPLY_PHASES = ["design", "plan", "build", "debug", "ship"];
+/** Narrow an unknown string to `ComplyPhase` or return null if invalid. */
+export function parseComplyPhase(value) {
+    return typeof value === "string" && COMPLY_PHASES.includes(value)
+        ? value
+        : null;
+}
+// Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing) is
+// intercepted by a dedicated branch in parseArgs before this set is consulted; the
+// generic check only ever validates claude/cursor/codex. `full`, `core` and `cloud`
+// are NOT accepted as bare flags: use `--auto=<claude|cursor>`; core is implicit.
+// There is no dependency-updater flag. Copy an example; CI warns when none is present.
+const MODULE_FLAGS = new Set(["claude", "cursor", "opencode", "codex"]);
+// ALL_MODULES — every non-opt-in module, core first. Used to expand a bare/full
+// uninstall (which additionally pulls in the opt-in add-ons below for zero footprint).
+const ALL_MODULES = ["core", "claude", "cursor"];
+/**
+ * Resolve the explicit module-flag set into the concrete module set to dispatch.
+ * `flags` holds the internal module names the user explicitly named — core is NOT
+ * among them (it is implicit). The install "≥1 flag required" rule is enforced by the
+ * caller (commands/install/install.ts main), not here.
+ *
+ *   install / check / upgrade / doctor / status → core implicit + the named modules.
+ *   uninstall (bare)     → every module incl. opt-in add-ons + core (zero footprint).
+ *   uninstall (targeted) → the named modules ONLY (core is removed only by a bare
+ *                          uninstall — a targeted uninstall must not strip the shared
+ *                          foundation, e.g. `uninstall --claude` keeps AGENTS.md).
+ */
+export function resolveModules(flags, verb) {
+    if (verb === "uninstall") {
+        if (flags.size === 0) {
+            const out = new Set(ALL_MODULES);
+            for (const m of OPTIN_MODULES)
+                out.add(m);
+            return out;
+        }
+        return new Set(flags);
+    }
+    const out = new Set(flags);
+    out.add("core");
+    return out;
+}
+function defaultUninstallFlags() {
+    return {
+        dryRun: false,
+        force: false,
+        nuke: false,
+        yes: false,
+        autoRevert: false,
+    };
+}
+function defaultUpgradeFlags() {
+    return { nonInteractive: false, dryRun: false, toVersion: null, latest: false };
+}
+/**
+ * Parse argv (process.argv.slice(2)) into a ParsedArgs object.
+ * Rejects unknown verbs and flags with process.exit(1).
+ */
+export function parseArgs(argv) {
+    const args = [...argv];
+    let verb = "help";
+    // Verb extraction
+    const firstArg = args[0];
+    if (firstArg === "install" ||
+        firstArg === "check" ||
+        firstArg === "doctor" ||
+        firstArg === "status" ||
+        firstArg === "uninstall" ||
+        firstArg === "upgrade") {
+        verb = firstArg;
+        args.shift();
+    }
+    else if (firstArg === "comply") {
+        verb = "comply";
+        args.shift();
+    }
+    else if (firstArg === "harvest") {
+        verb = "harvest";
+        args.shift();
+        // harvest takes no flags — reject any remaining args
+        if (args.length > 0 && !args[0]?.startsWith("-")) {
+            console.error(`[bkit] \`bkit harvest\` takes no positional args. Run \`bkit help\` for usage.`);
+            process.exit(1);
+        }
+    }
+    else if (firstArg === "analysis") {
+        verb = "analysis";
+        args.shift();
+        // analysis takes no flags — reject any remaining positional args
+        if (args.length > 0 && !args[0]?.startsWith("-")) {
+            console.error(`[bkit] \`bkit analysis\` takes no positional args. Run \`bkit help\` for usage.`);
+            process.exit(1);
+        }
+    }
+    else if (firstArg === "telemetry") {
+        verb = "telemetry";
+        args.shift();
+    }
+    else if (firstArg === "cursor" || firstArg === "opencode") {
+        verb = firstArg;
+        args.shift();
+        // Launcher verbs take no flags — reject any remaining args up-front.
+        if (args.length > 0) {
+            console.error(`[bkit] \`bkit ${firstArg}\` takes no flags. Run \`bkit help\` for usage.`);
+            process.exit(1);
+        }
+    }
+    else if (firstArg === "help" || firstArg === "--help" || firstArg === "-h") {
+        verb = "help";
+        args.shift();
+    }
+    else if (firstArg !== undefined && !firstArg.startsWith("-")) {
+        console.error(`[bkit] Unknown verb: ${firstArg}. Run \`bkit help\` for usage.`);
+        process.exit(1);
+    }
+    // Accumulates the internal module names the user explicitly named (no core).
+    // resolveModules turns this into the dispatch set; main() reads it for the
+    // install/check/upgrade flag guards.
+    const moduleFlags = new Set();
+    const uninstallFlags = defaultUninstallFlags();
+    const upgradeFlags = defaultUpgradeFlags();
+    let tracker = null;
+    let cloudVariant = null;
+    let opencodeProvider = null;
+    let complyPhase = null;
+    let telemetrySubverb = null;
+    // For `telemetry` verb: extract the sub-verb from the first remaining positional arg
+    if (verb === "telemetry") {
+        const subVerbArg = args[0];
+        if (subVerbArg !== undefined && !subVerbArg.startsWith("-")) {
+            const parsed = parseTelemetrySubverb(subVerbArg);
+            if (parsed === null) {
+                console.error(`[bkit] Unknown telemetry sub-verb: "${subVerbArg}". Valid values: ${TELEMETRY_SUBVERBS.join(", ")}`);
+                process.exit(1);
+            }
+            telemetrySubverb = parsed;
+            args.shift();
+        }
+        else if (subVerbArg === undefined) {
+            console.error(`[bkit] \`bkit telemetry\` requires a sub-verb. Valid values: ${TELEMETRY_SUBVERBS.join(", ")}`);
+            process.exit(1);
+        }
+    }
+    for (const arg of args) {
+        // `--help` / `-h` after a verb (e.g. `bkit install --help`) prints usage.
+        if (arg === "--help" || arg === "-h") {
+            verb = "help";
+            break;
+        }
+        if (arg.startsWith("--")) {
+            const flag = arg.slice(2);
+            // Value-bearing flag: --tracker=<github|linear|none>
+            if (flag.startsWith("tracker=")) {
+                const value = flag.slice("tracker=".length);
+                const parsed = parseIssueTracker(value);
+                if (parsed === null) {
+                    console.error(`[bkit] Unknown tracker: "${value}". Valid values: ${ISSUE_TRACKERS.join(", ")}`);
+                    process.exit(1);
+                }
+                tracker = parsed;
+                continue;
+            }
+            // Value-bearing flag: --phase=<design|plan|build|debug|ship>
+            // `bkit comply` — the workflow phase being graded.
+            // `bkit telemetry summary` — the workflow to report a chain rollup for.
+            // Rejected for all other verbs.
+            if (flag.startsWith("phase=")) {
+                if (verb !== "comply" && verb !== "telemetry") {
+                    console.error(`[bkit] --phase is only valid with the \`comply\` and \`telemetry\` verbs. Run \`bkit help\` for usage.`);
+                    process.exit(1);
+                }
+                const value = flag.slice("phase=".length);
+                const parsed = parseComplyPhase(value);
+                if (parsed === null) {
+                    console.error(`[bkit] Unknown phase: "${value}". Valid values: ${COMPLY_PHASES.join(", ")}`);
+                    process.exit(1);
+                }
+                complyPhase = parsed;
+                continue;
+            }
+            if (flag === "phase") {
+                console.error(`[bkit] --phase requires a value: --phase=<${COMPLY_PHASES.join("|")}>. Run \`bkit help\` for usage.`);
+                process.exit(1);
+            }
+            // Value-bearing flag: --auto=<claude|cursor> — cloud-agent (auto-dispatch) lane;
+            // sets the internal `cloud` module. Bare `--auto` (no variant) is accepted only on
+            // uninstall (variant read from package.json).
+            if (flag === "auto") {
+                if (verb !== "uninstall") {
+                    console.error(`[bkit] --auto requires an explicit variant: --auto=claude, --auto=cursor, or --auto=opencode. Run \`bkit help\` for usage.`);
+                    process.exit(1);
+                }
+                // uninstall --auto: add the module flag without setting a cloudVariant.
+                moduleFlags.add("cloud");
+                continue;
+            }
+            if (flag.startsWith("auto=")) {
+                const value = flag.slice("auto=".length);
+                const parsed = parseCloudVariant(value);
+                if (parsed === null) {
+                    console.error(`[bkit] Unknown cloud variant: "${value}". Valid values: ${CLOUD_VARIANTS.join(", ")}`);
+                    process.exit(1);
+                }
+                cloudVariant = parsed;
+                moduleFlags.add("cloud");
+                continue;
+            }
+            // Value-bearing flag: --opencode=<provider>
+            // Additive opencode host opt-in. Supported providers: openrouter, ollama,
+            // opencode-zen + opencode-go (opencode-native gateways) (strict allowlist).
+            // A value is required (provider identifies which API key + base URL to configure).
+            if (flag === "opencode") {
+                if (verb !== "uninstall") {
+                    console.error(`[bkit] --opencode requires an explicit provider: --opencode=<provider> (e.g. --opencode=opencode-zen). Run \`bkit help\` for usage.`);
+                    process.exit(1);
+                }
+                // uninstall --opencode: add the module flag without requiring a provider value.
+                moduleFlags.add("opencode");
+                continue;
+            }
+            if (flag.startsWith("codex=")) {
+                console.error(`[bkit] --codex takes no value (got ${JSON.stringify("--" + flag)}). Codex CLI runs on one gateway (openai), so the flag is bare: --codex. Only --opencode is provider-pluggable.`);
+                process.exit(1);
+            }
+            if (flag.startsWith("opencode=")) {
+                const rawValue = flag.slice("opencode=".length);
+                if (!rawValue) {
+                    console.error(`[bkit] --opencode= requires a provider value (e.g. --opencode=opencode-zen). Run \`bkit help\` for usage.`);
+                    process.exit(1);
+                }
+                if (!OPENCODE_PROVIDERS.includes(rawValue)) {
+                    console.error(`[bkit] --opencode= unsupported provider ${JSON.stringify(rawValue)}. Supported: ${OPENCODE_PROVIDERS.join(", ")}.`);
+                    process.exit(1);
+                }
+                opencodeProvider = rawValue;
+                moduleFlags.add("opencode");
+                continue;
+            }
+            // Uninstall-specific flags (accepted for all verbs that use them)
+            if (flag === "dry-run") {
+                uninstallFlags.dryRun = true;
+                upgradeFlags.dryRun = true;
+                continue;
+            }
+            if (flag === "force") {
+                // Uninstall-only: force-delete whole-file owned files even if consumer-modified.
+                uninstallFlags.force = true;
+                continue;
+            }
+            if (flag === "nuke") {
+                uninstallFlags.nuke = true;
+                continue;
+            }
+            if (flag === "yes") {
+                uninstallFlags.yes = true;
+                continue;
+            }
+            if (flag === "auto-revert") {
+                uninstallFlags.autoRevert = true;
+                continue;
+            }
+            // Upgrade-specific flag: --auto-apply —
+            // auto-apply non-conflicting changes, emit the conflict list, exit non-zero on
+            // any conflict (CI-safe). The internal field is `nonInteractive`.
+            if (flag === "auto-apply") {
+                upgradeFlags.nonInteractive = true;
+                continue;
+            }
+            // Upgrade-specific atomic self-bump (see runSelfBump). `--to=<version>` pins a
+            // target @cbartens/bkit version; `--latest` resolves the newest published one.
+            // Either makes the package bump atomic with the re-render so a bumped package
+            // can never drift from its rendered mirrors. Verb/mutual-exclusion guards below.
+            if (flag.startsWith("to=")) {
+                upgradeFlags.toVersion = flag.slice("to=".length);
+                continue;
+            }
+            if (flag === "latest") {
+                upgradeFlags.latest = true;
+                continue;
+            }
+            // Bare module flags. opencode is intercepted above; only claude/cursor/codex
+            // reach here. Everything else hits the generic unknown-flag error.
+            const moduleFlag = flag;
+            if (!MODULE_FLAGS.has(moduleFlag)) {
+                console.error(`[bkit] Unknown flag: ${arg}. Run \`bkit help\` for usage.`);
+                process.exit(1);
+            }
+            moduleFlags.add(moduleFlag);
+            continue;
+        }
+        // Any other positional after verb
+        console.error(`[bkit] Unexpected argument: ${arg}. Run \`bkit help\` for usage.`);
+        process.exit(1);
+    }
+    // Self-bump flags (`--to=`/`--latest`) only apply to the `upgrade` verb, and the
+    // two are mutually exclusive (pin a version OR resolve the latest, not both).
+    if ((upgradeFlags.toVersion !== null || upgradeFlags.latest) && verb !== "upgrade") {
+        console.error("[bkit] `--to=<version>` / `--latest` are only valid for `bkit upgrade` (they atomically bump @cbartens/bkit, then re-render).");
+        process.exit(1);
+    }
+    if (upgradeFlags.toVersion !== null && upgradeFlags.latest) {
+        console.error("[bkit] `--to=<version>` and `--latest` are mutually exclusive — pin a version or resolve the latest, not both.");
+        process.exit(1);
+    }
+    if (upgradeFlags.toVersion !== null && upgradeFlags.toVersion.trim() === "") {
+        console.error("[bkit] `--to=` requires a version value, e.g. `--to=4.1.5`.");
+        process.exit(1);
+    }
+    // resolveModules is verb-aware: a bare uninstall expands to all modules + opt-ins +
+    // core (zero footprint); every other verb keeps core implicit + the named modules.
+    const modules = resolveModules(moduleFlags, verb);
+    return {
+        verb,
+        modules,
+        moduleFlags,
+        uninstallFlags,
+        upgradeFlags,
+        tracker,
+        cloudVariant,
+        opencodeProvider,
+        complyPhase,
+        telemetrySubverb,
+    };
+}
+export function printUsage() {
+    console.log(`bkit — agent-stack consolidation CLI
+
+Usage:
+  bkit install <module-flags>   Install (or re-sync) the named modules + the implicit
+                                 core foundation. At least one module flag is REQUIRED —
+                                 a bare \`bkit install\` errors (name the modules below).
+                                 Hosts compose: --claude --cursor --codex --opencode=<provider>.
+  bkit check                     Dry-run — drift-check everything already installed (no
+                                 module flags). Exits 1 when a managed file needs
+                                 re-rendering. Templates (.bkit/templates/) are never
+                                 drift-checked once copied — the copy is yours. The CI gate.
+  bkit upgrade [--to=<version>|--latest] [--auto-apply] [--dry-run]
+                                 Upgrade everything installed (no module flags). Diffs old
+                                 vs new templates; conflict list emitted to stderr. Use
+                                 --auto-apply for CI (apply non-conflicting; exit non-zero
+                                 on any conflict).
+                                 --to=<version> / --latest atomically BUMP @cbartens/bkit
+                                 (pnpm add), then re-render + re-pin in one step — so a
+                                 version bump can never drift from its rendered mirrors.
+                                 This is the supported way to move bkit versions; a bare
+                                 \`pnpm add @cbartens/bkit\` alone leaves mirrors stale.
+  bkit uninstall [module-flags] Remove bkit-managed files + strip managed blocks.
+                                 No flags = full removal — ALL modules incl. opt-in add-ons
+                                 (cloud/opencode) + core. Consumer-owned updater configs
+                                 (renovate.json5, dependabot.yml, bkit-renovate.yml) are left in place. Consumer-modified
+                                 files, the docs/ payload, and generated artefacts
+                                 (.bkit/advisories.md, .bkit/friction.jsonl) are preserved (use
+                                 --nuke to force-remove manifest-listed files). Target with the
+                                 same module flags as install (e.g. uninstall --claude); a
+                                 targeted uninstall leaves core untouched.
+  bkit doctor                   Read-only preflight + post-install advisory replay.
+                                 Diagnose token surfaces and config drift. Exits 0.
+  bkit status                   Read-only host/provider status. Reports current host+provider
+                                 (sampled from .opencode/opencode.json, .claude/, .cursor/).
+                                 Writes nothing. Exits 0.
+  bkit cursor                   Launch Cursor with .bkit/.env loaded into its environment.
+                                 macOS GUI apps launched from the Dock/Finder do not inherit
+                                 the login shell env (direnv stays shell-only), so MCP token
+                                 placeholders resolve empty. This verb execs the app binary
+                                 directly with the per-repo .bkit/.env merged in. Quit Cursor
+                                 before running — a running instance ignores the new env.
+                                 Override binary path via BKIT_CURSOR_BIN=<path>.
+  bkit opencode                 Same as \`bkit cursor\` but for the opencode desktop app.
+                                 Override binary path via BKIT_OPENCODE_BIN=<path>.
+  bkit comply --phase=<phase>   Run the compliance grader advisory step.
+                                 Checks the diff since parentSha for violations
+                                 (no-mirror-edit, skip-ci-not-head). Advisory only —
+                                 never gates a workflow. Appends kind:"compliance"
+                                 rows to .bkit/stats.jsonl. Fail-open: always exits 0.
+                                 Valid phases: design, plan, build, debug, ship.
+  bkit harvest                  Cross-repo harvest — COPIES consumer .bkit/stats.jsonl
+                                 and MOVES .bkit/friction.jsonl into harvest/ (COUNT-ONLY
+                                 for docs/deferrals.jsonl and docs/failures.jsonl).
+                                 Reads consumer paths from docs/consumers.md.
+                                 DESTRUCTIVE: harvested friction rows are REMOVED from
+                                 the consumer, but only after they are fsync'd and read
+                                 back from harvest/. stats.jsonl is never modified.
+                                 harvest/ accumulates and is never cleared — commit it,
+                                 as it is the only record of pruned rows. Never commits
+                                 in any repo. Deduplicates by per-kind composite
+                                 identity. Advisory + fail-open: exits 0.
+  bkit telemetry summary [--phase=<workflow>]
+                                 Per-workflow telemetry report: THIS run's metrics
+                                 (duration, size, friction/deferrals/failures added,
+                                 compliance) against med·5 — the median of the previous 5
+                                 same-workflow runs. The close step of every /bkit-*
+                                 workflow calls this and posts it to the tracker comment.
+                                 --phase=<workflow>: the workflow to report
+                                 (design|plan|build|debug|ship). Without it, prints the
+                                 ledger-health line only. Read-only: exits 0.
+  bkit analysis                 Cross-repo analysis — reports counts/rates/elapsed-time,
+                                 #183 size↔outcome regression, dispatch-size threshold,
+                                 counterSource trust labelling, per-rule compliance
+                                 rate over kind:"compliance" rows, and the
+                                 unjustified-deferral rate per (subagent, model)
+                                 over kind:"deferral" rows. Reads from harvest/,
+                                 .bkit/stats.jsonl and docs/deferrals.jsonl.
+                                 Advisory + inform-only: exits 0.
+  bkit help                     Print this message.
+
+Core (implicit — no flag; installed/upgraded on every install):
+  AGENTS.md (cross-host dispatch router), .agents/rules.md + .agents/context.md +
+  .agents/docs.md + .agents/skills.md managed blocks, .gitignore + .gitattributes managed
+  blocks, docs/, .bkit/*.md, .bkit/version, the template copies in .bkit/templates/, and
+  the bkit:gate:* / bkit:deps:* package.json scripts every workflow runs (added when
+  missing, never overwritten, left by uninstall). The tool scripts those gates chain
+  (typecheck, lint, format:check, lint:prose, slop:delta) and their devDeps are yours
+  to add: see .bkit/templates.md.
+
+Module flags (composable; symmetric install ↔ uninstall):
+  --claude        .claude/agents/ + .claude/commands/ (byte-identical mirror) + CLAUDE.md
+                  (root redirect to .agents/rules.md) + .claude settings/hooks + the
+                  tracker entry in .mcp.json + .bkit/.env.example.
+  --cursor        .cursor/agents/ + .cursor/commands/ (T1/T2/T3 transforms) +
+                  .cursor/rules/bkit-rules.mdc + .cursor settings.
+  --opencode=<provider>
+                  Additive opencode host. Each install ADDS a provider block to
+                  opencode.json; agent defaults track the last-installed (active) provider.
+                  Provider value is REQUIRED. Supported: openrouter, ollama,
+                  opencode-zen, opencode-go (opencode-native gateways;
+                  auth via BKIT_OPENCODE_API_KEY).
+                  Ships .opencode/** (agents, commands, opencode.json, bkit-gateguard.js).
+                  Configure your provider key; verify with \`bkit doctor\`. All installed
+                  providers tracked in bkit.opencodeProviders.
+  --codex         Codex CLI host. BARE flag — takes no value: Codex runs on one gateway
+                  (openai), so only --opencode is provider-pluggable. Ships .codex/agents/*.toml
+                  + .codex/hooks.json + .codex/hooks/bkit-gateguard.cjs, plus the workflow skills
+                  (.agents/skills/bkit-*/). Codex loads project-local hooks ONLY once the
+                  .codex/ layer is trusted — until then GateGuard is installed and never fires.
+
+Dependency updaters (copy an example and own it):
+  .bkit/templates/.github/renovate.json5
+  .bkit/templates/.github/workflows/bkit-renovate.yml   (self-hosted runner, optional)
+  .bkit/templates/.github/dependabot.yml
+  All templates and install steps: .bkit/templates.md
+
+  --auto=<claude|cursor|opencode>
+                  Cloud-agent (auto-dispatch) integration (opt-in). --auto=claude needs
+                  tracker=github + the ANTHROPIC_API_KEY repo secret + the Claude GitHub App; --auto=cursor
+                  needs tracker=linear; --auto=opencode needs tracker=github + a remote
+                  opencode provider (OPENCODE_PROVIDER_KEY). Bare --auto is accepted on
+                  uninstall only.
+
+Cross-cutting / modifiers:
+  --tracker=<name>      Wire issue tracker integration. Values: github, linear, none
+                        (default). Records bkit.issueTracker in package.json and substitutes
+                        tracker snippets into command mirrors. Switching is free (re-run with
+                        a new value). Does NOT own AGENTS.md (which is tracker-agnostic).
+
+Install flags:
+  --auto-revert         On a Phase 3 blocker, automatically run uninstall and exit 1.
+
+Upgrade flags:
+  --auto-apply          Apply non-conflicting changes; emit conflict list to stderr; exit
+                        non-zero when any conflict is detected (CI-safe).
+  --dry-run             Show what would change without writing.
+
+Uninstall flags:
+  --dry-run       Print decision table (FILE / DECISION / REASON) without writing.
+  --opencode=<provider>
+                  Surgical provider removal: removes that provider's block from
+                  opencode.json + drops it from bkit.opencodeProviders. Does NOT remove
+                  agents/commands/gateguard. If the removed provider was active, re-render
+                  agents by running bkit install --opencode=<remaining> or bkit upgrade.
+                  Bare --opencode (no value) tears down the entire opencode host.
+  --force         Delete owned whole-file files even if consumer modified them.
+  --nuke          Delete ALL bkit-managed files regardless of tier/hash (requires confirm).
+  --yes           Skip interactive confirm for --nuke.
+
+Examples:
+  bkit install --claude                       .claude/** + CLAUDE.md + core.
+  bkit install --claude --cursor              Both hosts + core.
+  bkit install --opencode=opencode-zen          opencode host (Zen built-in gateway, additive).
+  bkit install --opencode=opencode-go           opencode host (Go built-in gateway, additive).
+  bkit install --opencode=openrouter            add openrouter alongside an opencode gateway.
+  bkit install --opencode=ollama                Ollama cloud endpoint (BKIT_OLLAMA_API_KEY).
+  bkit uninstall --opencode=openrouter          remove openrouter block only; keep the gateway.
+  bkit install --tracker=github --auto=claude Claude cloud integration (GitHub tracker).
+  bkit check                                  Drift-check everything installed (CI gate).
+  bkit upgrade --auto-apply                   Upgrade installed files; CI-safe.
+  bkit uninstall                              Full uninstall (all modules; artefacts kept, --nuke to purge).
+  bkit uninstall --claude                     Remove the claude host only (core kept).
+  bkit cursor                                 Launch Cursor with .bkit/.env (MCP tokens).
+  bkit opencode                               Launch opencode with .bkit/.env (API key).
+
+macOS GUI-isolation note (launchctl fallback):
+  If you prefer launching via the Dock/Spotlight instead of \`bkit cursor\` / \`bkit opencode\`,
+  make the tokens visible to launchd-launched GUI apps with a one-shot setenv (does NOT
+  survive reboot — must re-run after each restart):
+    launchctl setenv BKIT_GH_TOKEN "$BKIT_GH_TOKEN"
+    launchctl setenv BKIT_OPENCODE_API_KEY "$BKIT_OPENCODE_API_KEY"   # etc.
+  For a persistent approach that re-reads the tokens file on every change, copy the
+  launchd template set (see \`.bkit/templates.md\` § Launchd GUI environment). Rotation
+  then needs no re-bootstrap — prefer \`bkit cursor\` / \`bkit opencode\` for the dynamic model.
+
+Consumer CI auth:
+  Set BKIT_GH_TOKEN_INSTALL in GitHub Actions secrets (classic PAT with read:packages scope —
+  fine-grained PATs are not currently supported by GitHub Packages npm registry).
+  See README.md ## Consumer CI auth for setup steps.
+
+Docs: https://github.com/cbartens/bkit/blob/main/README.md` + commandsUsage());
+}
+/** The `bkit <noun> <verb>` section of the usage text; empty while no command is registered. */
+function commandsUsage() {
+    if (COMMANDS.length === 0)
+        return "";
+    const width = Math.max(...COMMANDS.map((c) => c.noun.length));
+    return [
+        "",
+        "",
+        "Workflow commands (bkit <noun> <verb> --flags; JSON on stdout; bkit <noun> --help):",
+        ...COMMANDS.map((c) => `  bkit ${c.noun.padEnd(width)}  ${c.summary}`),
+    ].join("\n");
+}
+/**
+ * Validate the verb/module-flag combination before any dispatch
+ * work runs. `install` requires >=1 module flag (bare install errors);
+ * `check` / `upgrade` take NO module flags — they
+ * operate on everything already installed, so a stray flag is a hard error
+ * pointing at the no-flag form. Returns the error message to print, or `null`
+ * when the combination is valid.
+ */
+export function validateModuleFlagsForVerb(verb, moduleFlags) {
+    if (verb === "install" && moduleFlags.size === 0) {
+        return ("[bkit] `bkit install` requires at least one module flag. Name what to install: " +
+            "--claude, --cursor, --codex, --opencode=<provider> (plus opt-in " +
+            "--auto=<claude|cursor>). Run `bkit help` for usage.");
+    }
+    if ((verb === "check" || verb === "upgrade") && moduleFlags.size > 0) {
+        return (`[bkit] \`bkit ${verb}\` takes no module flags — it operates on everything already ` +
+            `installed. Re-run as \`bkit ${verb}\` (no module flags). Run \`bkit help\` for usage.`);
+    }
+    return null;
+}
+// The CLI entrypoint, run only when this file is executed and driven by real
+// argv/fs/process.exit side effects; install.integration.test.ts exercises it through
+// spawned processes. Pure decision logic lives in exported functions
+// (validateModuleFlagsForVerb above, validateCloudTrackerMatch in commands/install/install.ts)
+// for unit coverage.
+export async function main() {
+    const commandExit = await runCommand(process.argv.slice(2), COMMANDS, {
+        classicVerbs: CLASSIC_VERBS,
+    });
+    if (commandExit !== null) {
+        process.exitCode = commandExit;
+        return;
+    }
+    const { verb, modules, moduleFlags, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, complyPhase, telemetrySubverb, } = parseArgs(process.argv.slice(2));
+    // A bare `bkit` (no arguments) means no command was given: print usage and exit non-zero
+    // (2 = usage error), distinct from an explicit `bkit help` / `--help` (verb "help"), which
+    // prints the same usage and exits 0. parseArgs still defaults no-args to the "help" verb.
+    if (process.argv.slice(2).length === 0) {
+        printUsage();
+        process.exit(2);
+    }
+    if (verb === "help") {
+        printUsage();
+        return;
+    }
+    if (verb === "comply") {
+        runComplyCommand(complyPhase);
+        return;
+    }
+    if (verb === "harvest") {
+        runHarvestCommand();
+        return;
+    }
+    if (verb === "analysis") {
+        runAnalysisCommand();
+        return;
+    }
+    if (verb === "telemetry") {
+        runTelemetryCommand(telemetrySubverb, complyPhase);
+        return;
+    }
+    // Launcher verbs — exec the GUI app binary with .bkit/.env merged into the env
+    // so that MCP token placeholders (BKIT_GH_TOKEN, BKIT_OPENCODE_API_KEY, …) resolve correctly
+    // even when launched from the Dock/Finder (macOS GUI-isolation).
+    if (verb === "cursor" || verb === "opencode") {
+        await launchApp(verb, process.cwd());
+        return;
+    }
+    // install requires >=1 module flag; check/upgrade take NONE (validateModuleFlagsForVerb).
+    const moduleFlagsError = validateModuleFlagsForVerb(verb, moduleFlags);
+    if (moduleFlagsError) {
+        console.error(moduleFlagsError);
+        process.exit(1);
+    }
+    if (verb === "doctor") {
+        await runDoctor(modules, opencodeProvider);
+        return;
+    }
+    if (verb === "status") {
+        setLogPrefix("[bkit-status]");
+        runStatus(process.cwd(), LOG_PREFIX);
+        return;
+    }
+    if (verb === "upgrade") {
+        await runUpgradeCommand(upgradeFlags);
+        return;
+    }
+    if (verb === "uninstall") {
+        await runUninstallCommand(modules, opencodeProvider, uninstallFlags);
+        return;
+    }
+    await runInstall({ verb, modules, tracker, cloudVariant, opencodeProvider, uninstallFlags });
+}
+function isMainScript() {
+    if (!process.argv[1])
+        return false;
+    try {
+        const argvReal = fs.realpathSync(process.argv[1]);
+        const metaReal = fs.realpathSync(fileURLToPath(import.meta.url));
+        return argvReal === metaReal;
+    }
+    catch {
+        return false;
+    }
+}
+if (isMainScript()) {
+    main().catch((err) => {
+        console.error(`${LOG_PREFIX} Unhandled error: ${err.message}`);
+        process.exit(1);
+    });
+}

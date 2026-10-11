@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "Example. Copy into the repo and own it.",
+    "bkit install does not write this file and does not overwrite a copy.",
+    "Capability drift rules — the one hand-maintained input behind docs/capabilities.md.",
+    "Each rule is a literal marker for a capability's mechanism, plus the owner module every caller should use.",
+    "bkit-graph-drift.py derives status: no owner -> split; owner missing -> gap; owner present and other files match -> bypassed; else one.",
+    "Patterns are literal, never regex. A regex metacharacter in the marker matches nothing and reads as a clean result.",
+    "Optional scope: array of path prefixes. Optional surface: product (default), tests, or all.",
+    "Optional budgets: exact non-owner site count allowed per scope prefix. Measured == declared => budgeted.",
+    "Add a rule when a capability gets an owner. Statuses are computed, never typed in.",
+    "Replace the example rule. Do not leave it pointing at a file this repo does not have."
+  ],
+  "rules": [
+    {
+      "capability": "Managed-version marker",
+      "lane": "Install",
+      "owner": ".bkit/core/engine/install/version-file.ts",
+      "pattern": "do not edit; run",
+      "note": "Rendered mirrors are stamped through stampManagedVersion only."
+    },
+    {
+      "capability": "Tracker block substitution",
+      "lane": "Install",
+      "owner": ".bkit/core/engine/render/trackers.ts",
+      "pattern": "bkit:tracker",
+      "note": "Prompts and workflows carry tracker blocks; only the trackers module resolves them."
+    },
+    {
+      "capability": "Cursor API access",
+      "lane": "Providers",
+      "owner": ".bkit/core/engine/shared/egress.ts",
+      "pattern": "api.cursor.com",
+      "note": "Model catalog probes go through the registry."
+    }
+  ]
+}

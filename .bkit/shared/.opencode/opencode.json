@@ -1,0 +1,62 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "read": {
+      "*": "allow",
+      "*.env": "ask",
+      "*.env.*": "ask",
+      "*.env.example": "allow",
+      "*.pem": "deny",
+      "*.p12": "deny",
+      "*id_rsa": "deny"
+    },
+    "edit": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "task": "allow",
+    "websearch": "allow",
+    "webfetch": "ask",
+    "bash": {
+      "*": "allow",
+      "sudo *": "ask",
+      "brew install*": "ask",
+      "pnpm publish*": "ask",
+      "npm publish*": "ask",
+      "bun publish*": "ask",
+      "curl *": "ask",
+      "wget *": "ask",
+      "git reset --hard*": "ask",
+      "git clean -fd*": "ask",
+      "git clean -fdx*": "ask",
+      "git filter-branch*": "ask",
+      "git checkout -- .*": "ask",
+      "git restore .*": "ask",
+      "git stash drop*": "ask",
+      "git rebase -i*": "ask",
+      "gh repo delete*": "ask",
+      "gh pr close*": "ask",
+      "gh release delete*": "ask",
+      "chmod -R 777 /*": "deny",
+      "rm -rf /*": "deny",
+      "rm -rf ~/*": "deny",
+      "rm -rf $HOME/*": "deny",
+      "git push --force*": "deny",
+      "git push -f*": "deny",
+      "git push --force-with-lease*": "allow"
+    }
+  },
+  "mcp": {
+    "@@OPENCODE_TRACKER_MCP@@": {}
+  },
+  "plugin": ["./plugin/bkit-gateguard.js"],
+  "provider": {
+    "@@OPENCODE_PROVIDER_KEY@@": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "@@OPENCODE_PROVIDER_KEY@@",
+      "options": {
+        "baseURL": "@@OPENCODE_PROVIDER_BASE_URL@@",
+        "apiKey": "{env:@@OPENCODE_PROVIDER_ENV_VAR@@}"
+      }
+    }
+  }
+}

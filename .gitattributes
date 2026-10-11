@@ -1,5 +1,7 @@
 # <!-- bkit:start -->
 
+# <!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+
 # Append-only ledgers: union merge auto-concatenates both sides on conflict.
 # EVERY ledger bkit workflows append to is listed — one left out blocks a merge
 # over data that never conflicted, two branches having simply appended different
@@ -16,8 +18,9 @@ docs/knowledge.jsonl merge=union
 docs/decisions.jsonl merge=union
 docs/deferrals.jsonl merge=union
 docs/failures.jsonl  merge=union
+.bkit/issues.jsonl   merge=union
+docs/roadmap.md      merge=union
 .bkit/stats.jsonl    merge=union
-docs/completed.md   merge=union
 
 # `.bkit/friction.jsonl` is deliberately absent: it is the one ledger rows are
 # REMOVED from (`bkit harvest` drains it). Union would resurrect rows a drain

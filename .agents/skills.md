@@ -1,5 +1,7 @@
 <!-- bkit:start -->
 
+<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+
 # Skills
 
 > [!CAUTION]
@@ -7,11 +9,11 @@
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
-> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, not reasons / history; state what to do, not why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Only invoke skills relevant to current workflow / task / step.
-> - Discover via `npx skills find [query]` — do NOT hand-curate.
+> - Discover via `npx skills find [query]` — do not hand-curate.
 > - Update when adopting / retiring core technologies.
 > - Local project skills → `Project Skills` below the bkit-managed block; Universal Skills table stays in-block.
 > - Managed via [skills.sh](https://skills.sh). Installed to `.agents/skills/`.

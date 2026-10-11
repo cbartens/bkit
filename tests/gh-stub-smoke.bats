@@ -2,8 +2,8 @@
 # tests/gh-stub-smoke.bats — fixtures/gh stub-harness smoke test (#384 SP1 T2).
 #
 # Proves the PATH-shimmed `gh` (tests/fixtures/gh/bin/gh) dispatches argv → JSON
-# fixture deterministically. This is the foundation bkit-ship-gate.sh will rest on
-# (tests/ship-gate.bats). Run: bats tests/gh-stub-smoke.bats
+# fixture deterministically. `bkit runs gate` (commands/workflow/runs.test.ts) rests
+# on it. Run: bats tests/gh-stub-smoke.bats
 #
 # Lives in tests/ NOT tests/fixtures/gh/ because both runners glob `tests/*.bats`
 # (package.json test:bats and ci.yml) — a file one level deeper never runs.

@@ -2,5 +2,5 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "install": "pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL && pnpm install --frozen-lockfile && ([ ! -f .vale.ini ] || vale sync)"
+  "install": "pnpm config set //npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL && pnpm install --frozen-lockfile && ([ ! -f .vale.ini ] || vale sync)"
 }

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Example. Copy into ~/Library/LaunchAgents/ and own it. -->
+<!-- bkit install does not write this file and does not overwrite a copy. -->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>ai.bkit.launchd</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/sh</string>
+      <string>{{SCRIPT_PATH}}</string>
+      <string>{{ENV_FILE}}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>WatchPaths</key>
+    <array>
+      <string>{{ENV_FILE}}</string>
+    </array>
+    <key>StandardOutPath</key>
+    <string>/tmp/bkit-launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/bkit-launchd.log</string>
+  </dict>
+</plist>

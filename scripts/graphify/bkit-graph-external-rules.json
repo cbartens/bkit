@@ -1,0 +1,22 @@
+{
+  "_comment": [
+    "Example. Copy into the repo and own it.",
+    "bkit install does not write this file and does not overwrite a copy.",
+    "External API providers. sdk: import specifiers. env: variable holding a base URL. hosts: literal hostnames.",
+    "A provider may declare more than one. A hostname that matches no rule is still reported, named after the host.",
+    "Nothing here discovers an SDK on its own. List non-workspace dependencies and add a rule for each service client."
+  ],
+  "providers": [
+    {
+      "provider": "GitHub",
+      "sdk": [],
+      "hosts": ["api.github.com", "api.githubcopilot.com", "npm.pkg.github.com"],
+      "env": []
+    },
+    { "provider": "Linear", "sdk": [], "hosts": ["api.linear.app", "mcp.linear.app"], "env": [] },
+    { "provider": "Cursor", "sdk": [], "hosts": ["api.cursor.com"], "env": [] },
+    { "provider": "OpenRouter", "sdk": [], "hosts": ["openrouter.ai"], "env": [] },
+    { "provider": "Vercel", "sdk": [], "hosts": ["api.vercel.com"], "env": [] },
+    { "provider": "Supabase", "sdk": [], "hosts": ["api.supabase.com"], "env": [] }
+  ]
+}

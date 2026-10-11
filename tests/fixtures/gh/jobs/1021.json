@@ -1,0 +1,35 @@
+{
+  "total_count": 3,
+  "jobs": [
+    {
+      "id": 20011,
+      "name": "lint",
+      "head_sha": "release-push-green",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-07-28T10:00:30Z",
+      "completed_at": "2026-07-28T10:01:30Z",
+      "html_url": "https://github.com/example/example/actions/runs/1021/job/20011"
+    },
+    {
+      "id": 20012,
+      "name": "test",
+      "head_sha": "release-push-green",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-07-28T10:00:30Z",
+      "completed_at": "2026-07-28T10:04:00Z",
+      "html_url": "https://github.com/example/example/actions/runs/1021/job/20012"
+    },
+    {
+      "id": 20013,
+      "name": "bkit-tests-check",
+      "head_sha": "release-push-green",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-07-28T10:00:30Z",
+      "completed_at": "2026-07-28T10:04:30Z",
+      "html_url": "https://github.com/example/example/actions/runs/1021/job/20013"
+    }
+  ]
+}

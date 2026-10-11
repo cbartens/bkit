@@ -1,14 +1,17 @@
-# Dependabot configuration shipped by bkit.
-# Tier 3 (seed-or-print): bkit writes this file once if absent; if present
-# bkit will not overwrite — see install advisory `tier3-merge-suggested-dependabot.yml`
-# for the recommended merge.
+# Example Dependabot config. Copy it to `.github/dependabot.yml` and own it.
+# bkit install does not write this file and does not overwrite a copy.
+# Use this OR Renovate, not both.
 #
-# Important: GitHub reads .github/dependabot.yml ONLY from the default branch
-# (typically `main`). This file must be merged all the way through dev → main
-# before Dependabot will start opening PRs. PRs land on `dev` (per
-# `target-branch:` below), not on the branch where you committed this file.
+# GitHub reads .github/dependabot.yml ONLY from the default branch (typically
+# `main`). Merge it through to that branch before Dependabot opens PRs. PRs land
+# on `dev` (per `target-branch:` below).
 #
-# Reference: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# Repo settings (not in this file): enable the dependency graph and Dependabot
+# alerts. If this is your only updater, enable security updates. If you also run
+# Renovate, disable Dependabot version updates and security updates so the two
+# bots do not compete.
+#
+# Reference: https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference
 version: 2
 updates:
   # GitHub Actions — refreshes SHA-pinned `uses:` lines on upstream releases

@@ -1,0 +1,12 @@
+---
+description: Cross-IDE shared rules reference
+alwaysApply: true
+---
+
+<!-- bkit:start -->
+
+{{BKIT_MANAGED_MARKER}}
+
+- **Rules:** Read `.agents/rules.md` → FOLLOW ALL rules.
+
+<!-- bkit:end -->

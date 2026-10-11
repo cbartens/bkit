@@ -1,0 +1,21 @@
+{
+  "decisions": [
+    "one-run-per-branch",
+    "diff-base",
+    "pr-affected-only",
+    "b1-local-e2e-on-pr",
+    "b3-live-push-only",
+    "b4-remote-db-push",
+    "main-basic-lanes-before-production-migration",
+    "release-promotes-first",
+    "promotion-lag",
+    "ci-fresh-stack",
+    "local-runner-stands-down",
+    "human-confirmation",
+    "revert-recovery",
+    "output-channel",
+    "ci-strict-time-limits",
+    "playwright-outcomes"
+  ],
+  "sites": []
+}

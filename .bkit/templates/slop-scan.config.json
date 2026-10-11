@@ -8,24 +8,50 @@
     "**/*.generated.ts",
     "**/.agents/skills/**",
     "**/.claude/skills/**",
-    "**/.cursor/skills/**"
+    "**/.cursor/skills/**",
+    "**/.bkit/templates/**"
   ],
   "plugins": {
-    "boundary": "./.bkit/scripts/bkit-slop-type-suppression.mjs"
+    "boundary": "./scripts/slop/bkit-slop-type-suppression.mjs"
   },
   "rules": {
-    "comments.placeholder-comments": { "enabled": true, "weight": 1.5 },
-    "boundary/type-suppression": { "enabled": true },
-    "boundary/gate-suppression": { "enabled": true },
-    "structure.over-fragmentation": { "enabled": true },
-    "structure.directory-fanout-hotspot": { "enabled": true },
-    "structure.duplicate-function-signatures": { "enabled": true },
-    "structure.barrel-density": { "enabled": true },
-    "structure.pass-through-wrappers": { "enabled": true },
-    "defensive.empty-catch": { "enabled": true },
-    "defensive.error-swallowing": { "enabled": true },
-    "defensive.error-obscuring": { "enabled": true },
-    "defensive.async-noise": { "enabled": true }
+    "comments.placeholder-comments": {
+      "enabled": true,
+      "weight": 1.5
+    },
+    "boundary/type-suppression": {
+      "enabled": true
+    },
+    "boundary/gate-suppression": {
+      "enabled": true
+    },
+    "structure.over-fragmentation": {
+      "enabled": true
+    },
+    "structure.directory-fanout-hotspot": {
+      "enabled": true
+    },
+    "structure.duplicate-function-signatures": {
+      "enabled": true
+    },
+    "structure.barrel-density": {
+      "enabled": true
+    },
+    "structure.pass-through-wrappers": {
+      "enabled": true
+    },
+    "defensive.empty-catch": {
+      "enabled": true
+    },
+    "defensive.error-swallowing": {
+      "enabled": true
+    },
+    "defensive.error-obscuring": {
+      "enabled": true
+    },
+    "defensive.async-noise": {
+      "enabled": true
+    }
   },
   "overrides": [
     {
@@ -38,22 +64,56 @@
         "**/*.spec.js"
       ],
       "rules": {
-        "structure.duplicate-function-signatures": { "enabled": false },
-        "tests.duplicate-mock-setup": { "enabled": false },
-        "boundary/type-suppression": { "enabled": false }
+        "tests.duplicate-mock-setup": {
+          "enabled": false
+        }
       }
     },
     {
-      "files": [".bkit/scripts/bkit-slop-type-suppression.mjs"],
+      "files": ["scripts/slop/bkit-slop-type-suppression.mjs"],
       "rules": {
-        "boundary/type-suppression": { "enabled": false },
-        "boundary/gate-suppression": { "enabled": false }
+        "boundary/type-suppression": {
+          "enabled": false
+        },
+        "boundary/gate-suppression": {
+          "enabled": false
+        }
       }
     },
     {
-      "files": [".opencode/plugin/gateguard.js"],
+      "files": [".opencode/plugin/bkit-gateguard.js"],
       "rules": {
-        "defensive.empty-catch": { "enabled": false }
+        "defensive.empty-catch": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "files": [
+        "**/.claude/hooks/bkit-gateguard.cjs",
+        "**/.cursor/hooks/bkit-gateguard.cjs",
+        "**/.codex/hooks/bkit-gateguard.cjs",
+        "**/.opencode/plugin/bkit-gateguard.js"
+      ],
+      "rules": {
+        "structure.duplicate-function-signatures": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "files": [
+        "**/.claude/hooks/bkit-guardrails.cjs",
+        "**/.cursor/hooks/bkit-guardrails.cjs",
+        "**/.codex/hooks/bkit-guardrails.cjs"
+      ],
+      "rules": {
+        "defensive.empty-catch": {
+          "enabled": false
+        },
+        "structure.duplicate-function-signatures": {
+          "enabled": false
+        }
       }
     }
   ]

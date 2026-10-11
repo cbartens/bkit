@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # tests/fixtures/gh/bin/gh — PATH-shimmed `gh` stub for bats suites.
 #
-# Extends the existing PATH-shim idiom from tests/bkit-runtime.bats:44-58
-# (write fake `gh` to FAKE_BIN, chmod +x, prepend to PATH) with fixture-file
-# dispatch: argv URL → JSON file under tests/fixtures/gh/.
+# A suite prepends tests/fixtures/gh/bin to PATH; the stub dispatches by
+# fixture file: argv URL → JSON file under tests/fixtures/gh/.
 #
-# Recognised calls (mirrors bkit-ship-gate.sh's `gh api` boundary):
+# Recognised calls (mirrors `bkit runs gate`'s `gh api` boundary):
 #
 #   gh api /repos/{o}/{r}/actions/workflows/{wf}/runs?head_sha=<SHA>
 #       → cat tests/fixtures/gh/runs/<SHA>.json
@@ -33,12 +32,12 @@
 #                                stderr BEFORE the successful JSON output (runs
 #                                + jobs queries). Simulates real `gh` behaviour
 #                                under GH_DEBUG / deprecation headers / transport
-#                                notices. Finding-6 regression test: the old
-#                                `2>&1` capture in bkit-ship-gate.sh merged this
-#                                into stdout and corrupted jq parsing.
+#                                notices. Finding-6 regression test: a `2>&1`
+#                                capture merges this into stdout and corrupts
+#                                jq parsing.
 #
-# Anything else: exit 1 (matches the FAKE_BIN/gh precedent — fail loudly on
-# unrecognised calls so a missing boundary surfaces in the test).
+# Anything else: exit 1 — fail loudly on unrecognised calls so a missing
+# boundary surfaces in the test.
 
 set -u
 
@@ -47,8 +46,7 @@ RUNS_DIR="$FIXTURE_ROOT/runs"
 JOBS_DIR="$FIXTURE_ROOT/jobs"
 RATELIMIT_DIR="$FIXTURE_ROOT/ratelimit"
 
-# Not `gh api` → fall back to a generic non-zero (matches the bkit-runtime.bats
-# fake-gh idiom — only the calls we care about are wired).
+# Not `gh api` → a generic non-zero; only the calls the suites use are wired.
 if [ "$#" -lt 2 ] || [ "$1" != "api" ]; then
   exit 1
 fi
@@ -103,7 +101,7 @@ if [ "$URL" = "rate_limit" ]; then
   exit 1
 fi
 
-# Global API-error injection (code 20 in bkit-ship-gate.sh). Fires before URL
+# Global API-error injection (code 20 in `bkit runs gate`). Fires before URL
 # dispatch so EVERY non-rate_limit api call degrades. Two flavours:
 #   BKIT_FAKE_GH_API_ERROR=1 — generic (HTTP 500); rate_limit also fails.
 #   BKIT_FAKE_RATELIMITED=1  — rate-limit-shaped (HTTP 403 + reset); rate_limit

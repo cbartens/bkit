@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "Example. Copy into the repo and own it.",
+    "bkit install does not write this file and does not overwrite a copy.",
+    "Pure-builder allowlist for bkit-graph-eager.py. The list only says what is safe.",
+    "A call at module scope is reported unless something here declares it pure.",
+    "Pure means evaluating it allocates a value and touches nothing else.",
+    "pure: exact callee. pure_prefixes: callee starts with this. pure_methods: callee ends with this. pure_receivers: text before the last dot.",
+    "min_downstream: rows below this many downstream files stay in the JSON report and out of docs/capabilities.md."
+  ],
+  "min_downstream": 1,
+  "pure": [
+    "Array.from",
+    "Hono",
+    "Map",
+    "RegExp",
+    "Set",
+    "WeakMap",
+    "WeakSet",
+    "forwardRef",
+    "memo"
+  ],
+  "pure_receivers": ["app"],
+  "pure_prefixes": ["Intl.", "JSON.", "Object.", "StyleSheet.", "path.", "z."],
+  "pure_methods": [
+    ".and",
+    ".array",
+    ".extend",
+    ".omit",
+    ".optional",
+    ".partial",
+    ".pick",
+    ".strict"
+  ]
+}

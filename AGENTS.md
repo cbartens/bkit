@@ -2,16 +2,18 @@
 
 <!-- bkit:start -->
 
-- **Rules:** Read `.agents/rules.md` → FOLLOW ALL rules.
+<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+
+- **Rules:** Read `.agents/rules.md` → follow all rules.
 
 > [!CAUTION]
-> This file is a **workflow router only**. It does NOT execute workflows.
+> This file is a **workflow router only**. It does not execute workflows.
 
 ---
 
 ## Route
 
-### Step 1 — Extract from prompt XML (NOT MCP)
+### Step 1 — Extract from prompt XML (not MCP)
 
 **If** prompt contains `<LINEAR_ISSUE>` XML block (Linear integration):
 

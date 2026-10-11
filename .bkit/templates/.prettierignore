@@ -1,19 +1,21 @@
-# bkit:start
+# Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
 
 node_modules/
 dist/
 .agents/skills/
-# Canonical-overwrite content (CANONICAL_OVERWRITE_RELPATHS in bkit-modules.ts):
+# Canonical-overwrite content (CANONICAL_OVERWRITE_RELPATHS in bkit's install engine):
 # bkit force-overwrites these on every install, so consumer prettier must not
 # lint them. Width-sensitive rewrites would be reverted next install. The
 # .opencode agent + command mirrors are force-overwritten just like .claude /
 # .cursor (the managed-version marker and transform output are the source of
 # truth, not a prettier rewrite). .opencode/plugin/ is listed for the same
 # reason as .claude/ and .cursor/: its hook is a render of the template, and
-# leaving it lintable let prettier reformat the mirror but not the two ignored
+# leaving it lintable would let prettier reformat the mirror but not the two ignored
 # twins, silently diverging three copies that must stay byte-identical.
 .claude/
 .cursor/
+.codex/
 .opencode/agents/
 .opencode/commands/
 .opencode/plugin/
@@ -21,14 +23,19 @@ dist/
 .husky/_/
 *.tsbuildinfo
 pnpm-lock.yaml
-# bkit-seeded / reconciled JSON — bkit writes these with its own JSON.stringify
+# bkit-written / reconciled files — bkit writes these with its own JSON.stringify
 # layout (2-space, expanded arrays) and consumers have no prettier at install
 # time, so prettier must not reformat them or the next install / `bkit check`
-# would just revert the rewrite (permanent drift). Tier-3 byte-equal seeds plus
-# the Tier-2 reconciled .opencode/opencode.json.
+# would just revert the rewrite (permanent drift).
 .mcp.json
-.envrc
 .bkit/.env.example
 .opencode/opencode.json
-
-# bkit:end
+# Generated projection — `bkit roadmap fold` FULLY regenerates the
+# `roadmap-status` marker block on every workflow close, emitting unpadded
+# markdown tables. Prettier would re-pad them, so the committed board would
+# never be byte-equal to what the renderer emits and every close would carry a
+# formatting-only diff. The fold's output is the source of truth.
+docs/roadmap.md
+# bkit's reference copies of its templates — refreshed by `bkit upgrade`, never
+# formatted by this repo.
+.bkit/templates/

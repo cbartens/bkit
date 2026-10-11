@@ -1,7 +1,0 @@
-=== RED-vs-dev proof (#58 T2.7) — captured 2026-07-16T05:20:51Z ===
-dev's .bkit/scripts/bkit-counter-bus.sh: decide_next TEST_ATTEMPT "" 3 step-14 failure-path
-exit=0
-stdout=step-14
-stderr=/var/folders/td/lj74ml2d0jz3thjqszy13trh0000gn/T/tmp.IFXAd1efa7/dev-bus.sh: line 92: [: : integer expected
-Expected (hardened, this suite's contract): empty stdout, exit 2 (refused).
-Actual (dev, fail-open): stdout='step-14', exit=0 — an unset counter silently CONTINUES.

@@ -1,34 +1,27 @@
 {
   "name": "@cbartens/bkit",
-  "version": "4.12.0",
+  "version": "5.0.0",
   "private": false,
   "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",
   "bin": {
-    "bkit": "./dist/bkit-install.js"
+    "bkit": "./dist/cli.js"
   },
   "files": [
+    ".bkit/core",
+    ".bkit/shared",
+    ".bkit/templates",
     "dist",
-    ".bkit",
-    ".agents",
     "README.md",
     "CHANGELOG.md",
-    "!.bkit/src/*.test.ts",
-    "!.bkit/src/*.integration.test.ts",
-    "!.bkit/src/__snapshots__",
-    "!.bkit/.env",
-    "!.bkit/.env.example",
-    "!.bkit/scripts",
-    "!.bkit/version",
-    "!.bkit/advisories.md",
-    "!.bkit/friction.jsonl",
-    "!.bkit/stats.jsonl",
-    "!.bkit/consumers.md"
+    "!.bkit/core/engine/**/*.test.ts",
+    "!.bkit/core/engine/**/*.integration.test.ts",
+    "!.bkit/core/engine/**/__snapshots__"
   ],
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@10.34.3",
+  "packageManager": "pnpm@10.34.4",
   "repository": {
     "type": "git",
     "url": "https://github.com/cbartens/bkit.git"
@@ -37,38 +30,47 @@
     "registry": "https://npm.pkg.github.com",
     "access": "restricted"
   },
-  "license": "MIT",
+  "license": "(PolyForm-Noncommercial-1.0.0 OR PolyForm-Small-Business-1.0.0)",
   "scripts": {
     "bkit:gate:format": "pnpm lint-staged",
-    "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
+    "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm format:tables:check && pnpm lint:prose && pnpm slop:delta",
     "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test && pnpm test:coverage:unit && pnpm bkit:test:bats",
     "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build",
     "bkit:deps:outdated": "pnpm outdated",
     "bkit:deps:audit": "pnpm audit",
-    "bkit": "node dist/bkit-install.js",
-    "typecheck": "tsc --noEmit",
+    "bkit": "node dist/cli.js",
+    "typecheck": "tsc --noEmit && pnpm bkit:typecheck:tests",
+    "bkit:typecheck:tests": "tsc -p tsconfig.test.json",
     "lint": "bash -c 'if [ -f eslint.config.js ] || [ -f eslint.config.mjs ] || [ -f .eslintrc.json ]; then npx eslint .; else echo \"[bkit] no eslint config - skipping lint (bkit typechecks with tsc and scans with slop-scan)\"; fi'",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then if [ ! -d .vale/styles/write-good ]; then echo \"[bkit] .vale/styles/write-good absent (fresh checkout or worktree) - restoring\" >&2; G=$(git rev-parse --git-common-dir 2>/dev/null) && M=$(dirname \"$(cd \"$G\" && pwd)\") && [ -d \"$M/.vale/styles/write-good\" ] && mkdir -p .vale/styles && cp -R \"$M/.vale/styles/write-good\" .vale/styles/ || vale sync || true; fi; if [ -d .vale/styles/write-good ]; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .bkit -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/workflows .bkit/prompts -name \"*.md\" 2>/dev/null; find docs -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/templates/docs -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync\" >&2; fi; else echo \"[bkit] vale not installed - skipping prose lint (install vale, then run vale sync, to enable)\"; fi'",
+    "format:tables": "node scripts/prettier/bkit-insert-ignore.mjs .agents docs README.md .bkit/shared .bkit/core/.agents .bkit/core/docs",
+    "format:tables:check": "node scripts/prettier/bkit-insert-ignore.mjs --check .agents docs README.md .bkit/shared .bkit/core/.agents .bkit/core/docs",
+    "lint:prose": "bkit ci prose --glob='.agents/*.md' --glob='.bkit/core/.bkit/*.md' --glob='.bkit/core/workflows/**/*.md' --glob='.bkit/core/prompts/**/*.md' --glob='.bkit/core/.agents/*.md' --glob='.bkit/shared/docs/**/*.md' --glob='.bkit/core/docs/**/*.md' --glob='.bkit/templates/**/*.md' --glob='docs/*.md' --glob='*.md'",
     "lint:slop": "slop-scan scan .",
-    "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
+    "slop:delta": "bkit ci slop",
     "bkit:lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
     "test": "vitest run",
-    "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/src/bkit-{analysis,bkitignore,cli,cloud-env,comply,config-migrate,harvest,install,launch,manifest,package-json,paths,paths-policy,postinstall,preflight,status,telemetry,telemetry-lint,telemetry-normalise,tiers,tokens,trackers,uninstall,upgrade,version}.ts' --coverage.thresholds.branches=70",
+    "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/core/engine/{cli,commands/analysis,install/cloud-env,commands/comply,commands/harvest,commands/install/install,commands/launch,install/manifest,install/managed-block,shared/package-roots,shared/protected-paths,checks/after/index,checks/after/auth,checks/after/ci-yml,checks/after/github,checks/after/managed,checks/after/tools,checks/after/vercel,checks/before/index,checks/before/context-fetch,checks/before/env,checks/before/files,checks/before/mcp,checks/before/repo,checks/before/version,ledgers/status,ledgers/telemetry,install/write,install/placeholders,install/template-copies,render/trackers,render/hosts,render/models,commands/install/uninstall,commands/install/upgrade,install/version-file,tools/wording}.ts' --coverage.include='.bkit/core/engine/commands/**/*.ts' --coverage.include='.bkit/core/engine/shared/{settings,package-json,package-manager,timeouts}.ts' --coverage.thresholds.branches=70",
     "bkit:test:bats": "bash -c 'if command -v bats >/dev/null 2>&1; then bats tests/*.bats; else echo \"[bkit] bats missing - skipping bats suite (install bats to enable)\" >&2; fi'",
-    "build": "tsc && chmod +x dist/bkit-install.js",
-    "bkit:check:dist": "rm -rf dist && tsc && chmod +x dist/bkit-install.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
-    "bkit:audit:status": "tsx .bkit/src/bkit-status-hole-detector.ts docs/plans/*/logs/*/status.jsonl",
+    "build": "tsc && chmod +x dist/cli.js",
+    "bkit:check:dist": "rm -rf dist && tsc && chmod +x dist/cli.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
+    "graph": "bash scripts/graphify/bkit-graphify.sh build",
+    "graph:check": "bash scripts/graphify/bkit-graphify.sh check",
+    "graph:clean": "bash scripts/graphify/bkit-graphify.sh clean",
+    "graph:graphml": "bash scripts/graphify/bkit-graphify.sh graphml",
+    "graph:rollup": "bash scripts/graphify/bkit-graphify.sh rollup",
+    "graph:scoped": "bash scripts/graphify/bkit-graphify.sh scoped",
+    "graph:tree": "bash scripts/graphify/bkit-graphify.sh tree",
+    "graph:update": "bash scripts/graphify/bkit-graphify.sh update",
+    "bkit:audit:status": "tsx .bkit/core/engine/checks/status-holes.ts docs/plans/*/logs/*/status.jsonl",
+    "wording:sync": "tsx .bkit/core/engine/tools/wording.ts --write",
     "prepare": "husky"
-  },
-  "dependencies": {
-    "picomatch": "^4.0.4"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "@types/picomatch": "^4.0.3",
     "@vitest/coverage-v8": "^4.1.7",
+    "bkit": "link:.",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.0",
     "prettier": "^3.5.3",
@@ -76,10 +78,8 @@
     "tsx": "^4.19.2",
     "typescript": "^7.0.0",
     "vite": "^6.4.2",
-    "vitest": "^4.1.7"
-  },
-  "lint-staged": {
-    "*": "prettier --write --ignore-unknown"
+    "vitest": "^4.1.7",
+    "yaml": "^2.9.1"
   },
   "pnpm": {
     "overrides": {
@@ -89,15 +89,15 @@
   },
   "bkit": {
     "issueTracker": "github",
-    "depUpdater": "renovate",
     "cloudAgents": "claude",
     "githubProject": false,
-    "opencodeProvider": "opencode-go",
+    "opencodeProvider": "openrouter",
     "opencodeProviders": [
-      "opencode-go"
+      "opencode-go",
+      "openrouter"
     ],
-    "renovateRunner": "self",
     "capstoneJob": "bkit-tests-check",
-    "ciWorkflow": "ci.yml"
+    "ciWorkflow": "bkit-ci.yml",
+    "roadmapNext": 25
   }
 }

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Mcp(github:*)",
+      "Mcp(serena:*)"
+    ],
+    "deny": []
+  }
+}

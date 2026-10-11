@@ -1,18 +1,23 @@
 #!/usr/bin/env sh
+# bkit pre-commit. Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
+#
+# FAST local gate only: format staged files (seconds). Heavier gates
+# (typecheck/unit/format:check/prose) and the enforcing slop gate (slop:delta) are in
+# pre-push; integration/E2E/@live run ONLY in CI (bkit-tests / bkit-tests-live, enforced
+# by bkit-tests-check) — see bkit-ci.yml § FULL CI SCAFFOLD REFERENCE. Rule: anything needing
+# a deployed URL, a DB, or >a few seconds belongs in a CI tier, not a hook. (lint:slop is `slop-scan scan` — report-only, never
+# fails; the gate that fails on NEW findings is `slop:delta`, which runs in pre-push.)
+#
+# WHAT it runs lives in package.json `bkit:gate:format`, not here — the same script
+# the bkit agent workflows dispatch through; change the gate there. Add repo-specific
+# extras BELOW this line.
 set -e
-# WHAT this runs lives in package.json `bkit:gate:format` — the same script the agent
-# workflows dispatch through, so hooks and agents cannot drift. pre-commit stays fast:
-# format staged + prose. (lint:slop is report-only and never fails; the enforcing
-# `slop:delta` gate runs in pre-push via `bkit:gate`.)
 pnpm bkit:gate:format
 
-# bkit-repo only — block committing stale dist when a COMPILED `.bkit/src/*.ts` is
-# staged. Consumers don't compile TS and never run this gate.
-# Test files are excluded: they emit nothing into dist/, but bkit:check:dist rebuilds from
-# the WORKING TREE, so a test-only commit made while any source edit is still
-# uncommitted would fail on a diff it did not cause and cannot fix.
+# bkit repo only: a staged non-test `.bkit/core/engine/**/*.ts` runs the dist freshness check.
 if git diff --cached --name-only --diff-filter=ACM |
   grep -v '\.test\.ts$' |
-  grep -q '^\.bkit/src/.*\.ts$'; then
+  grep -q '^\.bkit/core/engine/.*\.ts$'; then
   pnpm bkit:check:dist < /dev/null
 fi

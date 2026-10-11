@@ -1,0 +1,23 @@
+{
+  "_comment": [
+    "Example. Copy into the repo and own it.",
+    "bkit install does not write this file and does not overwrite a copy.",
+    "Capability drift rules — the one hand-maintained input behind docs/capabilities.md.",
+    "Each rule is a literal marker for a capability's mechanism, plus the owner module every caller should use.",
+    "bkit-graph-drift.py derives status: no owner -> split; owner missing -> gap; owner present and other files match -> bypassed; else one.",
+    "Patterns are literal, never regex. A regex metacharacter in the marker matches nothing and reads as a clean result.",
+    "Optional scope: array of path prefixes. Optional surface: product (default), tests, or all.",
+    "Optional budgets: exact non-owner site count allowed per scope prefix. Measured == declared => budgeted.",
+    "Add a rule when a capability gets an owner. Statuses are computed, never typed in.",
+    "Replace the example rule. Do not leave it pointing at a file this repo does not have."
+  ],
+  "rules": [
+    {
+      "capability": "Example client",
+      "lane": "Platform",
+      "owner": "src/example-owner.ts",
+      "pattern": "new ExampleClient(",
+      "note": "Replace with a real mechanism marker and the one module every caller should use."
+    }
+  ]
+}

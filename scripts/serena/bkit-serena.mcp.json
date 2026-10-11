@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "serena": {
+      "type": "stdio",
+      "command": "${CLAUDE_PROJECT_DIR:-.}/scripts/serena/bkit-serena-mcp.sh",
+      "args": ["start-mcp-server", "--context", "claude-code", "--project-from-cwd"]
+    }
+  }
+}

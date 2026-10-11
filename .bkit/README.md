@@ -1,8 +1,10 @@
 # bkit — Agent Workflow System
 
-**bkit** wires Claude Code (and Cursor) into five-phase tracker-integrated cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts additive: `.claude/` + `.cursor/` always render (direct Anthropic); `bkit install --opencode=<provider>` adds opencode for non-Anthropic backends — four providers: `openrouter`, `ollama`, `opencode-zen` + `opencode-go` (opencode-native gateways; auth via `OPENCODE_API_KEY`) — same harness, inference backend only changes (see `.bkit/providers.md` § Hosts + Providers).
+<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
-README: what bkit does, env / tracker setup, upgrade paste + ongoing CLI. First-time install/auth deep-dive: `node_modules/@cbartens/bkit/README.md`. Workflow internals: `.bkit/workflows.md`; subagent metadata (effort, model, tools, `maxTurns`): `.bkit/prompts.md`.
+**bkit** wires Claude Code (and Cursor) into five-phase tracker-integrated cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts additive: `.claude/` + `.cursor/` always render (direct Anthropic); `bkit install --opencode=<provider>` adds opencode for non-Anthropic backends — four providers: `openrouter`, `ollama`, `opencode-zen` + `opencode-go` (opencode-native gateways; auth via `BKIT_OPENCODE_API_KEY`) — same harness, inference backend only changes (see `.bkit/providers.md` § Hosts + Providers).
+
+README: what bkit does, env / tracker setup, upgrade paste + ongoing CLI. First-time install/auth deep-dive: `.bkit/install.md`. Workflow internals: `.bkit/workflows.md`; subagent metadata (effort, model, tools, `maxTurns`): `.bkit/prompts.md`.
 
 ---
 
@@ -13,7 +15,7 @@ Typical cycle for `ISSUE-123` "Add feature X":
 1. **Tracker issue** with **`bkit:auto`** label + non-terminal state (`Backlog`, `In Progress`).
 2. **Trigger** — tracker comment (`@cursor /bkit-plan ISSUE-123`) or slash command (`/bkit-plan ISSUE-123`).
 3. **Workflow Step 1** — preflight checks `bkit:auto`, acquires `.lock`, sets `bkit:plan` + `In Progress`, creates workflow comment.
-4. **Step 2 — worktree** — git worktree at `.worktrees/issue-123-add-feature/` on `feat/issue-123-add-feature`. Env files (`.env*`) copied, `pnpm install --frozen-lockfile`.
+4. **Step 2 — worktree** — git worktree at `.worktrees/issue-123-add-feature/` on `feat/issue-123-add-feature`. Copies each `bkit.worktree.copy` path from the main checkout (a `package.json` setting; default `.env`, `.env.local`; exact paths, folders copy recursively; a missing one is logged, never fatal), then `pnpm install --frozen-lockfile` unless `bkit.worktree.install: false`.
 5. **Phase steps** — dispatches subagents (`@bkit-plan-generate`, then `@bkit-plan-review-1` ‖ `-2` ‖ `-3` parallel triplet, etc.). Each writes `docs/plans/{YYYYMM}/logs/{FID}/` (`{YYYYMM}` = canonical month bucket at design start), appends fenced section to tracker comment.
 6. **Phase summary** — verdict (`PASS` / `CONCERNS` / `FAIL`); commit `chore(issue-123-…): summary bkit [skip ci]` (design/plan) or `chore(issue-123-…): summary` (build/debug/ship) → push.
 7. **Close Workflow** — tracker `In Review`; phase label persists. `/bkit-design` / `/bkit-plan`: prune worktree, delete `feat/issue-123-…` (merged into `dev`). `/bkit-build` / `/bkit-debug`: worktree persists.
@@ -37,11 +39,24 @@ Throughout: workflows hold `.lock`, write `status.jsonl` (resume SoT), own track
 | Debug | `/bkit-debug` | 10 | Remediation commit on feature branch | No |
 | Ship | `/bkit-ship` | 13 | Squash-merged PR, issue `In Review` + `bkit:merged` (plans stay canonical at `docs/plans/{YYYYMM}/`) | Yes |
 
-Plus utilities: `/bkit-worktree-sync` (merge worktree branch into IDE branch), `/bkit-worktree-prune` (remove worktree, optionally branch).
-
 **Per-step detail, verdict routing, retry / timeout constants, label flips, status.jsonl shape, comment lifecycle:** `.bkit/workflows.md`.
 
 **Per-subagent scope, effort tier, tool surface, `maxTurns`, model assignment:** `.bkit/prompts.md`.
+
+---
+
+## Audits
+
+No `/bkit-audit` command and no phase label. More than 30 procedures ship as `docs/templates/bkit-audit-*.md`. Invoke `@bkit-audit-generate` and name exactly one template.
+
+<!-- prettier-ignore -->
+| Item | Contract |
+| --- | --- |
+| Report | `docs/audits/{YYYYMM}/{slug}.md`. `{slug}` = template basename without `bkit-audit-`. Same slug already in that month → `{slug}-{TIMESTAMP}.md` (`date -u +%Y%m%dT%H%M%SZ`). Never overwrite. |
+| Writes | The report (template through `bkit:end`) and that template's `Project Instructions` below `bkit:end`. Product code, config, and other docs stay untouched. Fixing findings starts at `/bkit-plan`. |
+| Plan input | `/bkit-plan` takes a design doc, one or more reports, or both. The session prompt or issue names which findings to plan (for example only `CRITICAL` and `HIGH`). The rest of each report stays context. |
+
+Each template's `Purpose` is its scope. Main ones: security, privacy, accessibility, architecture, performance, reliability, testing, database, LLM, cost. Full catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
 
 ---
 
@@ -52,10 +67,11 @@ Plus utilities: `/bkit-worktree-sync` (merge worktree branch into IDE branch), `
 <!-- prettier-ignore -->
 | Tool | Version | Used for |
 | --- | --- | --- |
-| `pnpm` | matches `package.json` `packageManager` | Workspace install (`pnpm install --frozen-lockfile`) in worktrees, lint/typecheck/test gates. Also bkit CLI (`bkit install`; `pnpm tsx .bkit/src/bkit-install.ts` in bkit dev). |
+| Node | >= 20 (`engines.node`) | Runs the bkit CLI. |
+| `pnpm` | matches `package.json` `packageManager` | Required in every consumer repo, whatever the stack: bkit installs and upgrades itself with pnpm, which makes the repo a pnpm repo. Runs the worktree install (`pnpm install --frozen-lockfile`) and the `bkit:gate:*` scripts. Non-Node stack → stub `package.json` whose `bkit:gate:*` scripts wrap the stack's own commands (e.g. `ruff check && pytest`). Also bkit CLI (`bkit install`; `pnpm tsx .bkit/core/engine/cli.ts` in bkit dev). |
 | `gh` | latest, authenticated | PR create / view / merge in `/bkit-build`, `/bkit-debug`, `/bkit-ship` |
 | `git` >= 2.5 | — | Worktree operations |
-| `jq` | latest | `status.jsonl` append in workflow Bash |
+| `jq` | latest | Reads the JSON that `bkit` commands print, in workflow Bash |
 | Claude Code CLI | latest | Local-IDE workflow execution |
 | Cursor (optional) | 2.4+ | Cloud Agent execution; honours `tools:` frontmatter allowlist |
 
@@ -80,9 +96,9 @@ Add to shell, Cursor Cloud Agent dashboard, `apps/web/.env.example` for contribu
 # ==========================================
 # BKIT: CURSOR CLAUDE GITHUB INTEGRATION
 # ==========================================
-CURSOR_API_KEY=""
-ANTHROPIC_API_KEY=""
-GH_BKIT_TOKEN=""
+BKIT_CURSOR_API_KEY=""
+BKIT_ANTHROPIC_API_KEY=""
+BKIT_GH_TOKEN=""
 ```
 
 **Linear tracker (`bkit install --tracker=linear`):**
@@ -91,22 +107,22 @@ GH_BKIT_TOKEN=""
 # ==========================================
 # BKIT: LINEAR CURSOR CLAUDE GITHUB INTEGRATION
 # ==========================================
-LINEAR_API_KEY=""
+BKIT_LINEAR_API_KEY=""
 LINEAR_WEBHOOK_SECRET=""
-CURSOR_API_KEY=""
-ANTHROPIC_API_KEY=""
-GH_BKIT_TOKEN=""
+BKIT_CURSOR_API_KEY=""
+BKIT_ANTHROPIC_API_KEY=""
+BKIT_GH_TOKEN=""
 ```
 
 <!-- prettier-ignore -->
 | Variable | Tracker | Where read | Purpose |
 | --- | --- | --- | --- |
-| `GH_BKIT_TOKEN` | all | GitHub MCP server (`Authorization: Bearer`) | Issue/label/PR writes via MCP. Fine-grained PAT (Contents, PRs, Issues, Actions, Workflows, Metadata — R/W). |
+| `BKIT_GH_TOKEN` | all | GitHub MCP server (`Authorization: Bearer`) | Issue/label/PR writes via MCP. Fine-grained PAT (Contents, PRs, Issues, Actions, Workflows, Metadata — R/W). |
 | `GH_TOKEN` | all | `gh` CLI inside **CI workflow Bash only** (`GH_TOKEN: ${{ github.token }}`) | Not seeded in `.bkit/.env` — local `gh` uses `gh auth login` keyring. |
 | `GITHUB_ISSUE_ID` | github | Injected from PR body `<!-- bkit:issue=#NNN -->` | Linked GitHub issue. Injected automatically — do not set manually. |
-| `ANTHROPIC_API_KEY` | all | Claude Code (headless / CI) | Required when Claude invoked outside interactive session (cloud automation, CI). |
-| `CURSOR_API_KEY` | all | Cursor Cloud Agent dashboard / programmatic invocation | Required for non-interactive Cursor sessions. |
-| `LINEAR_API_KEY` | linear | Preflight hooks (`.{claude,cursor}/hooks/preflight.sh`); workflow Linear MCP via OAuth fallback | Query issue state + labels for `Auto` gate; fail-fast if absent. |
+| `BKIT_ANTHROPIC_API_KEY` | all | Claude Code (headless / CI) | Required when Claude invoked outside interactive session (cloud automation, CI). |
+| `BKIT_CURSOR_API_KEY` | all | Cursor Cloud Agent dashboard / programmatic invocation | Required for non-interactive Cursor sessions. |
+| `BKIT_LINEAR_API_KEY` | linear | Preflight hooks (`.{claude,cursor}/hooks/bkit-preflight.sh`); workflow Linear MCP via OAuth fallback | Query issue state + labels for `Auto` gate; fail-fast if absent. |
 | `LINEAR_WEBHOOK_SECRET` | linear | Linear → Cursor integration backend | Verifies webhook signatures on `@cursor` mentions. Set in Linear ↔ Cursor integration config. |
 
 `LINEAR_ISSUE_ID` (Linear) and `GITHUB_ISSUE_ID` (GitHub) set automatically by workflow context — do not set manually.
@@ -146,7 +162,7 @@ Full Linear ↔ Cursor setup: <https://linear.app/docs/cursor>.
 
 `.agents/` = **canonical**. `bkit install` regenerates host outputs (`.claude/**`, `.cursor/**`) and rewrites bkit-managed blocks across consumer repo.
 
-First-time install, `GH_BKIT_TOKEN_INSTALL` / `.npmrc` / GHA / Vercel auth, uninstall, `.bkitignore`: package root `README.md` at `node_modules/@cbartens/bkit/README.md` (not copied to consumer repo root). Ongoing ops below.
+First-time install, `BKIT_GH_TOKEN_INSTALL` / `.npmrc` / GHA / Vercel auth, uninstall: `.bkit/install.md`. Ongoing ops below.
 
 ### Upgrade — paste into your AI
 
@@ -154,10 +170,10 @@ Prefer `bkit upgrade --latest` (bumps package **and** resyncs managed files) —
 
 ````text
 Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resync.
-1. Ensure `GH_BKIT_TOKEN_INSTALL` is available for the GitHub Packages bump. If not already in the environment, load without leaking (`source` is a shell builtin — not file I/O). `source` and the command MUST be the SAME Bash invocation:
+1. Ensure `BKIT_GH_TOKEN_INSTALL` is available for the GitHub Packages bump. If not already in the environment, load without leaking (`source` is a shell builtin — not file I/O). `source` and the command MUST be the SAME Bash invocation:
    ```bash
    set -a; source <ENV-FILE-PATH> 2>/dev/null; set +a; \
-     pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL" && \
+     pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL" && \
      bkit upgrade --latest
    ```
    If token already exported (direnv / shell profile), skip `source`:
@@ -166,7 +182,7 @@ Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resyn
    ```
    If `bkit` not on PATH: `pnpm bkit upgrade --latest`. Do **not** only `pnpm add @cbartens/bkit@latest` — that refreshes the package without resyncing managed files.
 2. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
-3. Read canonical templates at `node_modules/@cbartens/bkit/.bkit/templates/` (husky, CI, `.claude/settings.json`, `.cursor/`, renovate, vale, etc.). MUST reconcile against this repo and adopt unless adoption would break existing functionality — seed-or-print files (e.g. `ci.yml`) do NOT overwrite existing files, so adoption is your job. For any template not adopted, state which and why.
+3. Read the template changes `bkit upgrade` printed (or `git diff .bkit/templates`), then `.bkit/templates.md`. bkit never applies templates, so adoption is your job: adopt each change unless it would break existing functionality. For any change not adopted, state which and why.
 4. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
 ````
 
@@ -177,7 +193,7 @@ bkit upgrade              # re-render at CURRENT installed version (offline)
 bkit upgrade --latest     # bump @cbartens/bkit + resync in one step (or --to=<version>)
 bkit check                # drift gate — exits non-zero on drift
 bkit doctor               # advisories only; exits 0; no managed-file writes
-bkit install --claude --cursor --tooling   # (re)seed hosts + tooling; name ≥1 module
+bkit install --claude --cursor               # (re)seed hosts; name ≥1 module
 ```
 
 > **⚠️ Version bumps:** use `bkit upgrade --latest` (or `--to=<version>`). Bare `pnpm add @cbartens/bkit` / Renovate bumps refresh lockfile only — run `bkit upgrade` after and commit resync with the bump, or `bkit check` reds CI.
@@ -187,111 +203,102 @@ bkit install --claude --cursor --tooling   # (re)seed hosts + tooling; name ≥1
 bkit repo runs install script via `tsx` instead of published bin:
 
 ```bash
-pnpm tsx .bkit/src/bkit-install.ts install
-pnpm tsx .bkit/src/bkit-install.ts check
+pnpm tsx .bkit/core/engine/cli.ts install
+pnpm tsx .bkit/core/engine/cli.ts check
 ```
 
-CI drift gate (`.github/workflows/ci.yml`) fails PR if generated files diverge from `install` output.
+CI drift gate (`.github/workflows/bkit-ci.yml`) fails PR if generated files diverge from `install` output.
 
-## Three-tier file ownership
+## File ownership
 
-Three-tier model — different ownership without clobbering consumer customisations.
+bkit owns some files outright, owns one part of others, and ships the rest as templates it never applies.
 
 <!-- prettier-ignore -->
-| Tier | Semantics | Files |
+| Kind | Semantics | Files |
 | --- | --- | --- |
-| **Tier 1 — Fully managed** | Idempotent rewrite of whole file on every install. Consumer should not edit directly. | `.cursor/hooks.json`, `.vale/styles/House/**`, `.bkit/scripts/**` |
-| **Tier 2 — Managed-block** | bkit owns content between `bkit:start`/`bkit:end` markers. Consumer owns everything outside. File absent → write whole file. File present without markers → append block at EOF (exception: the hook scripts, see below). | `.vale.ini`, `.gitignore`, `.prettierignore`, `rules.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/hooks/preflight.sh`, `.cursor/hooks/preflight.sh`, `.claude/hooks/gateguard.cjs`, `.cursor/hooks/gateguard.cjs`, `.opencode/plugin/gateguard.js`, `.cursor/hooks/guardrails.cjs` |
-| **Tier 3 — Seed-or-print** | Write if absent. If present, print suggested diff to stdout (never overwrite). | `.husky/pre-commit`, `.husky/pre-push` (v2.0.4+), `slop-scan.config.json`, `.cursor/settings.json`, `.github/workflows/ci.yml` |
-| **Managed package.json keys** (v0.4.0) | Add-if-missing on `scripts` and `devDependencies`. Existing keys NEVER overwritten — consumer pins win. Drift via `bkit check` flags missing keys when parent module enabled. | All under `--typescript`: `scripts.typecheck` / `lint` / `format:check` / `lint:prose` / `lint:slop` / `slop:delta` / `bkit:gate:format` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` / `bkit:deps:outdated` / `bkit:deps:audit` / `prepare`; `devDependencies.prettier` + `slop-scan` + `lint-staged` + `husky`. Stack-agnostic `--ci` adds NO package.json keys. |
+| **Tier 1 — Fully managed** | Idempotent rewrite of whole file on every install. A consumer edit is overwritten. Uninstall deletes the file while it still matches the hash bkit recorded. | `.cursor/hooks.json`, `.bkit/*.md` (except `prompts.md`, Tier 2), `.bkit/.env.example`, `.cursor/allowlist.json`, `.cursor/cli.json` |
+| **Tier 2 — Managed-block** | bkit owns content between `bkit:start`/`bkit:end` markers. Consumer owns everything outside. File absent → write whole file. File present without markers → append block at EOF. A full uninstall strips the block and deletes a file left with nothing else; `docs/templates/bkit-*.md` are bkit's whole and are deleted. | `docs/*.md`, `docs/templates/bkit-*.md`, `.gitignore`, `.agents/rules.md`, `.agents/context.md`, `.agents/docs.md`, `.agents/skills.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/hooks/bkit-preflight.sh`, `.cursor/hooks/bkit-preflight.sh`, `.claude/hooks/bkit-gateguard.cjs`, `.cursor/hooks/bkit-gateguard.cjs`, `.opencode/plugin/bkit-gateguard.js`, `.cursor/hooks/bkit-guardrails.cjs`, `.codex/hooks/bkit-gateguard.cjs`, `.codex/hooks/bkit-guardrails.cjs` |
+| **Shared JSON** | bkit owns the keys its template sets; every other key is yours. `.mcp.json` / `.cursor/mcp.json`: bkit owns exactly one entry, `mcpServers.<tracker>`, and resets it to the template on every install and upgrade. | `.claude/settings.json`, `.opencode/opencode.json`, `.mcp.json`, `.cursor/mcp.json` |
+| **Seeded package.json scripts** | Every install and upgrade adds a missing name with bkit's default; a name already present is never touched, whatever its value. `bkit check` reports a missing name. Uninstall leaves them. | `scripts.bkit:gate:format` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` / `bkit:deps:outdated` / `bkit:deps:audit` |
+| **Templates** | Never written into your repo. Install and upgrade copy them, raw, into `.bkit/templates/`; you copy what you want and own it. Catalog: `.bkit/templates.md`. | `.github/workflows/bkit-ci.yml`, `.github/workflows/bkit-cloud.yml`, `.husky/*`, `.vale.ini`, `.vale/styles/House/*`, `.lintstagedrc.json`, `slop-scan.config.json`, `.prettierignore`, `.envrc`, `.cursor/{settings.json,environment.json,Dockerfile}`, dependency-updater examples, the per-provider context-fetch blocks (`context/bkit-*.md`), `scripts/slop/bkit-slop-type-suppression.mjs`, `LICENSE.md`. Also the tool `package.json` scripts (`typecheck`, `lint`, `format:check`, `lint:prose`, `lint:slop`, `slop:delta`, `prepare`) and devDeps (prettier, slop-scan, lint-staged, husky): `.bkit/templates.md` lists them, install never adds them. |
 
 **Marker syntax** format-specific:
 
-- Markdown / `.gitignore`: `<!-- bkit:start -->` / `<!-- bkit:end -->`
-- YAML / INI / shell: `# bkit:start` / `# bkit:end`
+- Markdown: `<!-- bkit:start -->` / `<!-- bkit:end -->`
+- Shell / `.gitignore` / `.gitattributes`: `# <!-- bkit:start -->` / `# <!-- bkit:end -->`
 - JS / TS ES modules: `// bkit:start` / `// bkit:end` (HTML comments are a syntax error in an ES module)
 
 Comment prefixes (`# `, `// `) before markers preserved on block updates.
 
-**Hook scripts — Tier 2 with a migration policy.** A `.claude/hooks/gateguard.cjs`, `.cursor/hooks/gateguard.cjs`, `.opencode/plugin/gateguard.js` or `.cursor/hooks/guardrails.cjs` that exists with no markers is not appended to blind: content hashing to a bkit release is replaced wholesale (ours, unmodified — it predates marker adoption); anything else gets the block appended plus printed wiring instructions, because bkit cannot add the call into a consumer-authored driver for them. bkit's block is a pure advisory engine — no stdin read, no stdout write, no top-level call — so it cannot collide with a consumer's own emitter.
+**Managed-version marker.** Every non-JSON file bkit writes carries `bkit:managed vX.Y.Z` — first line inside the `bkit:start` block, or near the top of a whole file — in its comment syntax: `<!-- … -->` (markdown), `# <!-- … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, TOML), `// …` (JS). The marker names the licence those files are under (PolyForm Noncommercial 1.0.0 / Small Business 1.0.0) and the licences index URL, so a copy passed on in a public repo carries the terms URL with it; the full texts and the Required Notice travel at `.bkit/LICENSE.md`. Install and upgrade restamp it; `bkit check` reports `bkit-managed-stale` for a marker that differs from the installed version (blocker on `main` / `dev`, advisory on feature branches). Templates carry no marker and no block.
+
+**Hook scripts.** Install generates each host's `bkit-preflight.sh`, `gateguard` and `guardrails` hook from its template plus the code the hosts share (`.bkit/core/hooks/`, `.bkit/providers.md` § Hooks). bkit's block in `.claude/hooks/bkit-gateguard.cjs`, `.cursor/hooks/bkit-gateguard.cjs`, `.opencode/plugin/bkit-gateguard.js` and the `bkit-guardrails.cjs` hooks is a pure advisory engine — no stdin read, no stdout write, no top-level call — so it cannot collide with a consumer's own emitter. Delivery is per host: Claude / Cursor / Codex inject the checklist before the edit, opencode appends it to the tool result in `execute.after` (`BKIT_GATEGUARD=deny` is the only pre-edit block) — see `.bkit/providers.md` § Hooks. A consumer file with no markers gets the block appended; wire its exported function into your driver.
 
 ### What install writes
 
 <!-- prettier-ignore -->
 | Path | Module | Source | Tier |
 | --- | --- | --- | --- |
-| `.agents/{rules,docs,skills}.md` | core | `.bkit/templates/.agents/` | Tier 2 html-comment (via templates pass — NOT additive payload copy) |
-| `.bkit/.env.example` | core | `.bkit/templates/.bkit/` | Tier 3 seed |
-| `.agents/` + `.bkit/` (payload cleanup/migration pass) | core | — | Removes relocated old-layout orphans (`.agents/workflows`, `.agents/prompts`, moved reference docs) and migrates `.agents/{.bkit-version,.env,.env.example,friction.md}` → `.bkit/` for old-layout consumers (content-preserving) |
-| `.bkit/version` | core | package.json version | Written LAST (partial installs detectable) |
-| `.gitignore` | core | `.bkit/templates/gitignore` | Tier 2 html-comment |
-| `AGENTS.md`, `CLAUDE.md` | core | `.bkit/templates/` | Tier 2 html-comment |
-| `docs/**` | core | `.bkit/templates/docs/` | Tier 2 html-comment |
-| `.agents/config.md` | core | `.bkit/templates/.agents/` | Tier 2 html-comment. Consumer `allowed-domains` block lives after `bkit:end`. |
-| `.gitattributes` | core | `.bkit/templates/.gitattributes` | Tier 2 html-comment (`merge=union` for the append-only ledgers) |
-| `.envrc` | core | `.bkit/templates/.envrc` | Tier 2 hash-comment |
-| `.mcp.json` | core | `.bkit/templates/.mcp.json` | Tier 2 JSON deep-containment (consumer servers preserved) |
-| `.bkit/{cloud,jsonl,providers,prompts,trackers,workflows,README}.md` | core | mirrored from the installed package | Tier 1 (canonical-overwrite). The reference docs agents read at runtime. |
-| `.bkit/scripts/*.sh` | core | `.bkit/templates/.bkit/scripts/` | Tier 1 (canonical-overwrite), executable. `bkit-ship-gate.sh`, `bkit-counter-bus.sh`, `bkit-counter-bus-config.sh`, `bkit-status-fold.sh`, `bkit-status-route.sh`, `bkit-rebase-resolve.sh`, `bkit-protect-main.sh`, `bkit-context-clamp.sh`, `bkit-runtime.sh`, `bkit-workflow-telemetry.sh`, `bkit-ship-timeouts.sh` — bkit-owned, no consumer-editable region; drift is re-rendered, not merged. |
-| `.claude/commands/bkit-*.md` | claude | `.bkit/workflows/` (byte-identical) | Host pass — always overwrite |
-| `.claude/agents/bkit-*.md` | claude | `.bkit/prompts/` (byte-identical) | Host pass — always overwrite |
-| `.claude/settings.json` | claude | `.bkit/templates/.claude/settings.json` | Tier 2 JSON deep-containment. Permission allow/deny/ask + SessionStart / PreToolUse hook wiring. |
-| `.claude/hooks/preflight.sh` | claude | `.bkit/templates/.claude/hooks/` | Tier 2 hash-comment |
-| `.claude/hooks/gateguard.cjs` | claude | `.bkit/templates/.claude/hooks/` | Tier 2 slash-comment (migration policy — see above) |
-| `.cursor/commands/bkit-*.md` | cursor | `.bkit/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
-| `.cursor/agents/bkit-*.md` | cursor | `.bkit/prompts/` (T3 transforms) | Host pass — always overwrite |
-| `.github/workflows/ci.yml` | ci | `.bkit/templates/.github/workflows/ci.yml` | Tier 3 (seed-or-print); tokens substituted on first write |
-| `.github/renovate.json5` | renovate | `.bkit/templates/.github/renovate.json5` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --dependency=renovate`** — not default. Phase-gated against `origin/<default-branch>`: Phase A lands file, prompts merge; Phase B (re-run after merge) prints GitHub App install URL. `baseBranches: ["dev"]` per bkit branch protection. **Mutually exclusive with `--dependabot`**. |
-| `.github/dependabot.yml` | dependabot | `.bkit/templates/.github/dependabot.yml` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --dependency=dependabot`** — not default. First-party GitHub; no App install or phase gate. **Mutually exclusive with `--renovate`**. Less monorepo-aware than Renovate but no third-party trust surface. |
-| `.bkit/scripts/bkit-set-dependabot.sh` | dependabot | `.bkit/templates/.bkit/scripts/bkit-set-dependabot.sh` | Tier 1 (canonical-overwrite), executable. Enables repo-level Dependabot state via `gh api`. Run once after `bkit install --dependency=dependabot`. |
-| `.vale.ini` | ci | `.bkit/templates/.vale.ini` | Tier 3 (seed-or-print). Stack-agnostic → ships with `--ci`. |
-| `.vale/styles/House/**` | ci | `.bkit/templates/.vale/styles/House/` | Tier 1 (fully managed). Ships with `--ci`. |
-| `slop-scan.config.json` | lint | `.bkit/templates/slop-scan.config.json` | Tier 3 (seed-or-print) |
-| `.bkit/scripts/bkit-slop-type-suppression.mjs` | lint | `.bkit/templates/.bkit/scripts/bkit-slop-type-suppression.mjs` | Tier 1 (canonical-overwrite). Slop plugin — `--typescript` only. |
-| `.bkit/scripts/bkit-slop-delta.sh` | lint | `.bkit/templates/.bkit/scripts/bkit-slop-delta.sh` | Tier 1 (canonical-overwrite), executable. `slop:delta` gate helper — `--typescript` only. |
-| `.prettierignore` | lint | `.bkit/templates/.prettierignore` | Tier 2 hash-comment |
-| `package.json#scripts.typecheck` | lint | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing). TS-exclusive, under `lint`. |
-| `package.json#scripts.lint` | lint | hardcoded default (`npx eslint .` if an eslint config is present, else a skip line) | Managed-key (add-if-missing). bkit ships no linter, but without this key `bkit:gate:static`'s `pnpm lint` falls through to whatever `lint` binary is on PATH and the gate goes green through the wrong program. Your own `lint` always wins. |
-| `package.json#scripts.format:check` / `lint:prose` / `lint:slop` / `slop:delta` | lint | hardcoded defaults | Managed-key (add-if-missing) |
-| `package.json#scripts.bkit:gate:format` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` | lint | hardcoded defaults | Managed-key (add-if-missing). What hooks, workflows and prompts run; the name states which tiers. |
-| `package.json#scripts.bkit:deps:outdated` / `bkit:deps:audit` | lint | hardcoded defaults | Managed-key (add-if-missing). Read-only dependency inspection the audit / diagnose agents call. |
-| `package.json#devDependencies.prettier` / `slop-scan` / `lint-staged` | lint | hardcoded version-specs (`^3.5.3`, `^0.3.0`, `^15.2.10`) | Managed-key (add-if-missing) |
-| `.husky/pre-commit` | git-hooks | `.bkit/templates/.husky/pre-commit` | Tier 3 (seed-or-print, v2.0.4+) |
-| `.husky/pre-push` | git-hooks | `.bkit/templates/.husky/pre-push` | Tier 3 (seed-or-print, v2.0.4+) |
-| `package.json#scripts.prepare` | git-hooks | hardcoded default (`husky install`) | Managed-key (add-if-missing) |
-| `package.json#devDependencies.husky` | git-hooks | hardcoded version-spec (`^9.1.7`) | Managed-key (add-if-missing) |
-| `.cursor/hooks.json` | cursor | `.bkit/templates/.cursor/hooks.json` | Tier 1 (fully managed) |
-| `.cursor/settings.json` | cursor | `.bkit/templates/.cursor/settings.json` | Tier 3 (seed-or-print) |
-| `.cursor/mcp.json` | cursor | `.bkit/templates/.cursor/mcp.json` | Tier 3 (seed-or-print) |
-| `.cursor/rules/00-shared-rules.mdc` | cursor | `.bkit/templates/.cursor/rules/` | Tier 2 html-comment |
-| `.cursor/hooks/preflight.sh` | cursor | `.bkit/templates/.cursor/hooks/` | Tier 2 hash-comment |
-| `.cursor/hooks/guardrails.cjs` | cursor | `.bkit/templates/.cursor/hooks/` | Tier 2 slash-comment (migration policy). Destructive-op + curl/wget host gates. |
-| `.cursor/hooks/gateguard.cjs` | cursor | `.bkit/templates/.cursor/hooks/` | Tier 2 slash-comment (migration policy) |
-| `.cursor/allowlist.json` | cursor | generated from tooling defaults + `.agents/config.md` allowed-domains | Tier 1 (canonical-overwrite). Curl/wget host allowlist `guardrails.cjs` reads at runtime. |
-| `.opencode/opencode.json` | opencode | `.bkit/templates/.opencode/opencode.json` | Tier 2 JSON deep-containment; `@@OPENCODE_*@@` sentinels rendered to the chosen tracker + provider. **Opt-in via `bkit install --opencode=<provider>`**. |
-| `.opencode/commands/bkit-*.md` | opencode | `.bkit/workflows/` | Host pass — always overwrite |
-| `.opencode/agents/bkit-*.md` | opencode | `.bkit/prompts/` | Host pass — always overwrite |
-| `.opencode/plugin/gateguard.js` | opencode | `.bkit/templates/.opencode/plugin/` | Tier 2 slash-comment (migration policy) |
+| `.agents/{rules,docs,context,skills}.md` | core | `.bkit/core/.agents/` | Tier 2 html-comment (via the core payload pass — not the additive `.agents/` copy). Consumer `context-fetch`, `allowed-domains` and `mcp-servers` blocks live below `bkit:end` in `context.md`; `Project Skills` below `bkit:end` in `skills.md`. |
+| `.bkit/version` | core | package.json version | Written last (partial installs detectable) |
+| `.gitignore` | core | `.bkit/shared/gitignore` | Tier 2 html-comment |
+| `AGENTS.md` | core | `.bkit/core/AGENTS.md` | Tier 2 html-comment |
+| `CLAUDE.md` | claude | `.bkit/shared/CLAUDE.md` | Tier 2 html-comment |
+| `docs/*.md` (blocks) | core | `.bkit/shared/docs/` | Tier 2 html-comment |
+| `docs/templates/bkit-*.md` | core | `.bkit/core/docs/templates/` | Tier 2 html-comment |
+| `.gitattributes` | core | `.bkit/shared/.gitattributes` | Tier 2 html-comment (`merge=union` for the append-only ledgers) |
+| `.bkit/templates/**` | — | the whole `.bkit/templates/` root | Raw copies, refreshed on every install and upgrade; never hashed. Upgrade prints the changed paths. |
+| `.bkit/{cloud,comparison,install,jsonl,LICENSE,providers,prompts,trackers,workflows,README}.md` | core | `.bkit/core/.bkit/` | Tier 1 (canonical-overwrite). The reference docs agents read at runtime, plus `LICENSE.md`: the PolyForm pair and Required Notice that travel with every file bkit writes (PolyForm's Notices section). |
+| `.claude/commands/bkit-*.md` | claude | `.bkit/core/workflows/` (byte-identical) | Host pass — always overwrite |
+| `.claude/agents/bkit-*.md` | claude | `.bkit/core/prompts/` (byte-identical) | Host pass — always overwrite |
+| `.claude/settings.json` | claude | `.bkit/shared/.claude/settings.json` | Tier 2 JSON deep-containment. Permission allow/deny/ask + SessionStart / PreToolUse hook wiring. |
+| `.claude/hooks/bkit-preflight.sh` | claude | `.bkit/core/.claude/hooks/` | Tier 2 html-comment (`# ` prefix) |
+| `.claude/hooks/bkit-gateguard.cjs` | claude | `.bkit/core/.claude/hooks/` | Tier 2 slash-comment |
+| `.mcp.json` | claude | `.bkit/shared/.mcp.json` | Shared JSON: bkit owns `mcpServers.<tracker>` only; absent file → the tracker-filtered render |
+| `.bkit/.env.example` | claude | `.bkit/shared/.bkit/.env.example` | Tier 1 (fully managed). Real values go in `.bkit/.env`. |
+| `.cursor/commands/bkit-*.md` | cursor | `.bkit/core/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
+| `.cursor/agents/bkit-*.md` | cursor | `.bkit/core/prompts/` (T3 transforms) | Host pass — always overwrite |
+| `package.json#scripts.bkit:gate:format` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` | core | hardcoded defaults | Seeded (add-if-missing; install and upgrade). What hooks, workflows and prompts run; the name states which tiers. The tool scripts the defaults chain (`typecheck`, `lint`, `format:check`, `lint:prose`, `slop:delta`) and their devDeps are templates: `.bkit/templates.md`. |
+| `package.json#scripts.bkit:deps:outdated` / `bkit:deps:audit` | core | hardcoded defaults | Seeded (add-if-missing; install and upgrade). Read-only dependency inspection the remediate / diagnose agents call. |
+| `.cursor/hooks.json` | cursor | `.bkit/shared/.cursor/hooks.json` | Tier 1 (fully managed) |
+| `.cursor/mcp.json` | cursor | `.bkit/shared/.cursor/mcp.json` | Shared JSON: bkit owns `mcpServers.<tracker>` only |
+| `.cursor/rules/bkit-rules.mdc` | cursor | `.bkit/shared/.cursor/rules/bkit-rules.mdc` | Tier 2 html-comment |
+| `.cursor/hooks/bkit-preflight.sh` | cursor | `.bkit/core/.cursor/hooks/` | Tier 2 html-comment (`# ` prefix) |
+| `.cursor/hooks/bkit-guardrails.cjs` | cursor | `.bkit/core/.cursor/hooks/` | Tier 2 slash-comment. Destructive-op + curl/wget host gates. |
+| `.cursor/hooks/bkit-gateguard.cjs` | cursor | `.bkit/core/.cursor/hooks/` | Tier 2 slash-comment |
+| `.cursor/allowlist.json` | cursor | derived from bkit's shipped egress registry, union `.agents/context.md` allowed-domains | Tier 1 (canonical-overwrite). Curl/wget host allowlist `bkit-guardrails.cjs` reads at runtime. |
+| `.cursor/cli.json` | cursor | derived from `.agents/context.md` mcp-servers | Tier 1 (canonical-overwrite). Cursor CLI / cloud-agent `Mcp(<server>:*)` allows. |
+| `.opencode/opencode.json` | opencode | `.bkit/shared/.opencode/opencode.json` | Tier 2 JSON deep-containment; `@@OPENCODE_*@@` sentinels rendered to the chosen tracker + provider. **Opt-in via `bkit install --opencode=<provider>`**. |
+| `.opencode/commands/bkit-*.md` | opencode | `.bkit/core/workflows/` | Host pass — always overwrite |
+| `.opencode/agents/bkit-*.md` | opencode | `.bkit/core/prompts/` | Host pass — always overwrite |
+| `.opencode/plugin/bkit-gateguard.js` | opencode | `.bkit/core/.opencode/plugin/` | Tier 2 slash-comment |
+| `.claude/hooks/bkit-cloud-bootstrap.sh` | — | `.bkit/templates/.claude/hooks/` | Copy-and-own template: no module writes it; adopt it from `.bkit/templates/` (the SessionStart entry runs it only when present). |
 
-### Optional post-install decisions (tracker + dependency updater + cloud agents)
+The cloud workflow and the Cursor Background Agent files are templates the `--auto` setup advisory points at.
 
-Three capabilities **opt-in**, excluded from default install: **issue tracker** (`--tracker=github|linear`), **dependency updater** (`--dependency=renovate` or `--dependency=dependabot`, mutually exclusive), **cloud agents** (`--auto=claude|cursor|opencode`, ships phase-routed `bkit-cloud.yml` + cloud env scaffolding — `cloud-bootstrap.sh`, Cursor `Dockerfile`/`environment.json` — default install ships zero cloud footprint). Default wires none; post-install advisory emits `tracker-setup-none` / `dep-updater-none` / `cloud-router-none`. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`, `bkit.cloudAgents`); `"none"` silences nudge. Cloud router split: each job inert without model-auth secret (`ANTHROPIC_API_KEY` claude, `OPENCODE_PROVIDER_KEY` opencode) + GHA write permissions + (Cursor) dashboard trigger; depends on opt-in GitHub tracker. Decide: run install → pick via flags above → or set `"none"` to silence. Full rationale: `node_modules/@cbartens/bkit/README.md` § Optional post-install decisions. bkit-repo dogfoods neither updater by default.
+### Optional post-install decisions (tracker + cloud agents)
+
+Two capabilities **opt-in**, excluded from default install: **issue tracker** (`--tracker=github|linear`), **cloud agents** (`--auto=claude|cursor|opencode`: records the choice and points at the copy-and-own templates — `bkit-cloud.yml`, `.claude/hooks/bkit-cloud-bootstrap.sh`, and the Cursor `Dockerfile`/`environment.json`; default install ships zero cloud footprint). Default wires neither; post-install advisory emits `tracker-setup-none` / `cloud-router-none`. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.cloudAgents`); `"none"` silences the nudge. Cloud router split: each job inert without model-auth secret (`BKIT_ANTHROPIC_API_KEY` claude, `OPENCODE_PROVIDER_KEY` opencode) + GHA write permissions + (Cursor) dashboard trigger; depends on opt-in GitHub tracker.
+
+**Dependency updaters.** Copy one example and own it: `.bkit/templates/.github/renovate.json5`, `.bkit/templates/.github/workflows/bkit-renovate.yml` (self-hosted runner only), or `.bkit/templates/.github/dependabot.yml`. `bkit.depUpdater: "none"` skips the install-time absence advisory. `bkit check` emits `dep-updater-absent` and `dep-updater-both`. See `docs/deployments.md` § Dependency updaters.
+
+**All templates.** Copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
 
 ### dogfood rule — updater PRs against workflows (only if you opt in)
 
-bkit dogfoods templates: `.bkit/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit copy) must stay byte-equal where they overlap. Updater scans `.github/workflows/` only, not template path. Applies ONLY if bkit-repo opted into updater. When updater PR opens against bkit workflows:
+bkit dogfoods templates: `.bkit/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit copy) must stay byte-equal where they overlap. Updater scans `.github/workflows/` only, not template path. Applies only if bkit-repo opted into updater. When updater PR opens against bkit workflows:
 
 1. Before merge, edit matching `.bkit/templates/.github/workflows/*.yml` with same SHA bump (one `Edit` per file).
-2. Run `pnpm test` (`bkit-templates-content.test.ts` snapshot regenerates via `pnpm vitest run .bkit/src/bkit-templates-content.test.ts -u` if ci.yml shape changed; commit snapshot).
+2. Run `pnpm test` (`.bkit/core/engine/audits/templates/templates-content.test.ts` snapshot regenerates via `pnpm vitest run .bkit/core/engine/audits/templates/templates-content.test.ts -u` if bkit-ci.yml shape changed; commit snapshot).
 3. Push template-side change to updater PR branch (or follow-up commit on `dev` if branch read-only).
 
-Consumers: no templates; `.github/workflows/ci.yml` Tier 3 (seed-or-print) → updater bumps survive install. `bkit-cloud.yml` Tier 1 (auto-overwrite) → consumers get new SHA pins on `bkit install`. Shipped `renovate.json5` has `matchFileNames: [".github/workflows/bkit-cloud.yml"]` + `enabled: false`; shipped `dependabot.yml` covers `github-actions` at `/` (consumers tune ignore patterns for bkit-managed files if needed).
+Consumers: `.github/workflows/bkit-ci.yml` and `bkit-cloud.yml` are your copies of templates, so updater bumps survive install and upgrade. New pins in the templates arrive in `.bkit/templates/` on `bkit upgrade`; adopt them like any other template change.
 
 ---
 
 ## Triggering workflows
 
-Three paths: Linear comment (cloud), Claude Code (interactive local), Cursor (interactive local). Same workflow from `.bkit/workflows/` — compute source and orchestrator model differ.
+Three paths: Linear comment (cloud), Claude Code (interactive local), Cursor (interactive local). Same workflow from `.bkit/core/workflows/` — compute source and orchestrator model differ.
 
 ### From a tracker comment (cloud — Cursor Cloud Agent)
 
@@ -303,13 +310,13 @@ Three paths: Linear comment (cloud), Claude Code (interactive local), Cursor (in
 @cursor /bkit-ship ISSUE-123
 ```
 
-`@cursor` = **Cursor's standard Linear integration** — not bkit hook; bkit runs no Linear webhook. Native integration spawns Cloud Agent, posts session URL as Linear comment; agent runs bkit workflow because Cursor cloud agents read root `AGENTS.md`, routing `/bkit-*` to `.bkit/workflows/`. Progress in subsequent comments per step.
+`@cursor` = **Cursor's standard Linear integration** — not bkit hook; bkit runs no Linear webhook. Native integration spawns Cloud Agent, posts session URL as Linear comment; agent runs bkit workflow because Cursor cloud agents read root `AGENTS.md`, routing `/bkit-*` to `.bkit/core/workflows/`. Progress in subsequent comments per step.
 
 **GitHub tracker:** PR-label trigger — Cursor Automations "Pull request label changed". `bkit:auto` on PR (from `bkit-build`) triggers dispatch; phase label (`bkit:plan`, `bkit:build`, etc.) selects workflow. Issue comments via GitHub MCP. `/bkit-design` / `/bkit-plan` no PR → local-IDE-only on Cursor cloud for GitHub tracker.
 
-**Requirements (Linear):** `Auto` label + non-terminal state. `LINEAR_API_KEY`, `CURSOR_API_KEY`, `ANTHROPIC_API_KEY`, `GH_BKIT_TOKEN` in Cursor Cloud Agent dashboard.
+**Requirements (Linear):** `Auto` label + non-terminal state. `BKIT_LINEAR_API_KEY`, `BKIT_CURSOR_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `BKIT_GH_TOKEN` in Cursor Cloud Agent dashboard.
 
-**Requirements (GitHub):** `GH_BKIT_TOKEN`, `CURSOR_API_KEY`, `ANTHROPIC_API_KEY` in dashboard. Cursor GitHub App on repo/org. `GITHUB_ISSUE_ID` from PR body `<!-- bkit:issue=#NNN -->` — no manual setup.
+**Requirements (GitHub):** `BKIT_GH_TOKEN`, `BKIT_CURSOR_API_KEY`, `BKIT_ANTHROPIC_API_KEY` in dashboard. Cursor GitHub App on repo/org. `GITHUB_ISSUE_ID` from PR body `<!-- bkit:issue=#NNN -->` — no manual setup.
 
 ### From Claude Code (interactive — local)
 
@@ -325,7 +332,7 @@ Slash commands at repo root:
 
 Claude reads issue, comments, plan files via tracker MCP.
 
-**Requirements:** `GH_BKIT_TOKEN`, active Claude Code session (subscription or `ANTHROPIC_API_KEY`). `LINEAR_API_KEY` when `bkit.issueTracker = "linear"`. Session model = orchestrator pin in `.bkit/prompts.md` § Orchestrators (`Claude` column) — set via `/model` before invoking; not duplicated here.
+**Requirements:** `BKIT_GH_TOKEN`, active Claude Code session (subscription or `BKIT_ANTHROPIC_API_KEY`). `BKIT_LINEAR_API_KEY` when `bkit.issueTracker = "linear"`. Session model = orchestrator pin in `.bkit/prompts.md` § Orchestrators (`Claude` column) — set via `/model` before invoking; not duplicated here.
 
 ### From Cursor (interactive — local)
 
@@ -337,7 +344,7 @@ Cursor 2.4+ honours `.cursor/commands/bkit-*.md` and `.cursor/agents/bkit-*.md`:
 
 Orchestrator reads `.cursor/commands/` workflow. Subagents via `Task`, `model:` from frontmatter (no host override).
 
-**Requirements:** `GH_BKIT_TOKEN` (GitHub, default) or `LINEAR_API_KEY` (Linear). Cursor account in good standing.
+**Requirements:** `BKIT_GH_TOKEN` (GitHub, default) or `BKIT_LINEAR_API_KEY` (Linear). Cursor account in good standing.
 
 ---
 
@@ -364,47 +371,51 @@ Installed list: `.agents/skills.md`. Skills in `.agents/skills/` not listed → 
 | --- | --- |
 | `.agents/rules.md` | Universal agent rules — read first by every workflow |
 | `.bkit/workflows.md` | Workflow pipeline reference (steps, verdicts, contracts) |
-| `.bkit/prompts.md` | Per-subagent description, effort tier, model, `maxTurns` |
+| `.bkit/prompts.md` | Per-subagent description, effort tier, model, `maxTurns`. Audit template catalogue (§ Audit (Ad-hoc)). |
 | `.agents/docs.md` | Document index and phase-matrix (what to read per phase) |
 | `.agents/skills.md` | Installed skills registry |
-| `.bkit/providers.md` | Host differences (Claude/Cursor/opencode), transform rules, additive install, provider model IDs, network allowlist encodings (`.cursor/allowlist.json` vs baked settings) |
+| `.bkit/providers.md` | Host differences (Claude/Cursor/opencode), transform rules, additive install, provider model IDs, pin process (§ Selecting pins), network allowlist encodings (`.cursor/allowlist.json` vs baked settings) |
 | `.bkit/friction.jsonl` | Friction ledger — orchestrator-observed recovery moments. Created on first append by a phase workflow, not by install; drained by `bkit harvest` only. Row shape: `.bkit/jsonl.md`. |
 | `docs/plans/{YYYYMM}/` | Canonical month bucket — `{FID}-design.md`, `{FID}-plan.md` (+ `-N.md` if split). Files never move; `{YYYYMM}` = creation month at design start. Created by the design phase. |
+| `docs/templates/bkit-audit-*.md` | Read-only audit procedures, one per lens. Run with `@bkit-audit-generate`. |
+| `docs/audits/{YYYYMM}/` | Audit reports. Input to `/bkit-plan`, with or without a design. |
 | `docs/plans/{YYYYMM}/logs/{FID}/` | Per-run workflow logs (status, subagent outputs). Delete-eligible — bulk cleanup `rm -rf docs/plans/{YYYYMM}/logs/`. Canonical artifacts unaffected. |
-| `docs/audits/` | Audit reports from `bkit-utility-audit-*` agents. Created on the first audit run. |
-| `docs/completed.md` | Shipped features index |
+| `.bkit/issues.jsonl` | Issue-state ledger — appended at every phase close. Append-only. |
+| `docs/roadmap.md` | Phase-sectioned board + analysis. No tracker list — a wired tracker shows its own issues. Two consumer `## Notes` blocks (above the bkit list, last after analysis) survive every regenerate. Consumer-owned — never seeded/overwritten by `bkit install` |
 | `docs/deferrals.jsonl` | Deferred items |
 
 ### In the installed package, not your repo
 
-`bkit install` does NOT copy these out of `node_modules`. Read them at the path below — a
-bare `.bkit/comparison.md` or `.bkit/prompts/` in your own repo will not resolve.
+`bkit install` does not copy these out of `node_modules`. Read them at the path below — a
+bare `.bkit/comparison.md` or `.bkit/core/prompts/` in your own repo will not resolve.
 
 <!-- prettier-ignore -->
 | File | Purpose |
 | --- | --- |
-| `node_modules/@cbartens/bkit/.bkit/comparison.md` | Pipeline reference + comparison to agentic design patterns / peer frameworks |
-| `node_modules/@cbartens/bkit/.bkit/workflows/` | Canonical slash-command source (rendered into `.claude/commands/`, `.cursor/commands/`, `.opencode/commands/`) |
-| `node_modules/@cbartens/bkit/.bkit/prompts/` | Canonical subagent source (rendered into `.claude/agents/`, `.cursor/agents/`, `.opencode/agents/`) |
-| `node_modules/@cbartens/bkit/.bkit/templates/` | Bootstrap files copied / managed by `bkit install` (see § What install writes) |
-| `node_modules/@cbartens/bkit/dist/bkit-install.js` | Install engine — renders host outputs and applies templates (`.bkit/src/bkit-install.ts` is the TypeScript source, not shipped as such) |
+| `.bkit/install.md` | First-time install, auth (`BKIT_GH_TOKEN_INSTALL` / `.npmrc` / GHA / Vercel), install lifecycle, uninstall |
+| `.bkit/comparison.md` | Pipeline reference + comparison to agentic design patterns / peer frameworks |
+| `node_modules/@cbartens/bkit/.bkit/core/workflows/` | Canonical slash-command source (rendered into `.claude/commands/`, `.cursor/commands/`, `.opencode/commands/`) |
+| `node_modules/@cbartens/bkit/.bkit/core/prompts/` | Canonical subagent source (rendered into `.claude/agents/`, `.cursor/agents/`, `.opencode/agents/`) |
+| `node_modules/@cbartens/bkit/.bkit/{core,shared}/` | Sources `bkit install` writes from (see § What install writes) |
+| `node_modules/@cbartens/bkit/.bkit/templates/` | Copy-and-own templates copied raw into the consumer's `.bkit/templates/` (see `.bkit/templates.md`) |
+| `node_modules/@cbartens/bkit/dist/cli.js` | Install engine — renders host outputs and applies templates (`.bkit/core/engine/cli.ts` is the TypeScript source, not shipped as such) |
 
 ---
 
 ## Editing workflows or prompts
 
-Edit `.bkit/workflows/` (orchestrators) or `.bkit/prompts/` (subagents), then re-run install:
+Edit `.bkit/core/workflows/` (orchestrators) or `.bkit/core/prompts/` (subagents), then re-run install:
 
 ```bash
 # Edit source
-vim .bkit/workflows/bkit-build.md
+vim .bkit/core/workflows/bkit-build.md
 
 # Regenerate (run dist binary; faster than tsx and matches what consumers run)
-pnpm build && node dist/bkit-install.js install
+pnpm build && node dist/cli.js install
 
 # Commit both source and generated output together
-git add .bkit/workflows/bkit-build.md .claude/commands/bkit-build.md .cursor/commands/bkit-build.md
+git add .bkit/core/workflows/bkit-build.md .claude/commands/bkit-build.md .cursor/commands/bkit-build.md
 git commit -m "chore: update build command"
 ```
 
-New subagent? Update `.bkit/prompts.md` with row (frontmatter rationale + `maxTurns` calibration + model assignment) before re-run install — single source of truth for agent metadata; CI drift gate enforces consistency.
+New subagent? Update `.bkit/core/.bkit/prompts.md` (the package source; install mirrors it to `.bkit/prompts.md`) with row (frontmatter rationale + `maxTurns` calibration + model assignment) before re-run install — single source of truth for agent metadata; CI drift gate enforces consistency.

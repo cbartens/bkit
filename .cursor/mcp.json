@@ -4,8 +4,13 @@
       "type": "http",
       "url": "https://api.githubcopilot.com/mcp/",
       "headers": {
-        "Authorization": "Bearer ${GH_BKIT_TOKEN}"
+        "Authorization": "Bearer ${BKIT_GH_TOKEN}"
       }
+    },
+    "serena": {
+      "type": "stdio",
+      "command": "${HOME}/.local/bin/serena",
+      "args": ["start-mcp-server", "--context", "ide", "--project-from-cwd"]
     }
   }
 }

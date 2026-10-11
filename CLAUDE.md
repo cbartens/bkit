@@ -2,8 +2,10 @@
 
 <!-- bkit:start -->
 
+<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+
 - **Rules:** Read `.agents/rules.md` → FOLLOW ALL rules.
 
-**Memory hygiene:** Claude Code auto-memories (`MEMORY.md` + `memory/*.md`) point to `docs/*.md`, NEVER duplicate. Any facts in docs, save pointers (path + section + one-line hook), do NOT copy.
+**Memory hygiene:** Claude Code auto-memories (`MEMORY.md` + `memory/*.md`) are POINTERS, never copies. Facts in `docs/*.md`, `.agents/rules.md`, or `CLAUDE.md` → ONLY save path, section, and one-line hook. Issue states → query tracker or `docs/roadmap.md`; NEVER snapshot into memory.
 
 <!-- bkit:end -->

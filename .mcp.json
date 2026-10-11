@@ -4,9 +4,14 @@
       "type": "http",
       "url": "https://api.githubcopilot.com/mcp/",
       "headers": {
-        "Authorization": "Bearer ${GH_BKIT_TOKEN}",
+        "Authorization": "Bearer ${BKIT_GH_TOKEN}",
         "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects,actions"
       }
+    },
+    "serena": {
+      "type": "stdio",
+      "command": "${CLAUDE_PROJECT_DIR:-.}/scripts/serena/bkit-serena-mcp.sh",
+      "args": ["start-mcp-server", "--context", "claude-code", "--project-from-cwd"]
     }
   }
 }

@@ -1,17 +1,43 @@
 #!/usr/bin/env sh
-# bkit pre-push (Tier-3 seed-or-print — modify freely). FAST deterministic gates only:
-# the `bkit:gate` script (typecheck + unit tests + format:check + prose + the enforcing
-# slop gate) plus the bkit drift gate (no Docker/network). This is the full deterministic
-# mirror of CI, so a green push can't red-CI on those gates. Heavier tiers run in CI, NOT
-# here: integration + E2E -> bkit-tests (gated on web_affected / run_e2e); @live ->
-# bkit-tests-live; "did the planned tiers run?" -> bkit-tests-check. See ci.yml § FULL CI
-# SCAFFOLD REFERENCE — keep slow/network/deploy checks OUT so a green push never implies
-# more than these gates verified. Turbo monorepos: scope tests inside the `bkit:gate*`
-# scripts with `--filter="...[origin/<default>]"`; never add integration/E2E/@live.
+# bkit pre-push. Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
 #
-# Revert-branch bypass: rolling back leaves the tree intentionally inconsistent (deleted
-# files referenced by surviving tests) — skip the suite so recovery lands; lint + typecheck still run.
+# FAST deterministic gates only: the `bkit:gate` script (typecheck + unit tests +
+# format:check + prose + the enforcing slop gate) plus the bkit drift gate (no
+# Docker/network) — the full deterministic mirror of CI. Heavier tiers run in CI, NOT
+# here: integration + E2E -> bkit-tests (gated on web_affected / run_e2e); @live ->
+# bkit-tests-live; "did the planned tiers run?" -> bkit-tests-check. See bkit-ci.yml § FULL
+# CI SCAFFOLD REFERENCE — keep slow/network/deploy checks OUT. Turbo monorepos: scope
+# tests inside the `bkit:gate*` scripts with
+# `--filter="...[origin/<default>]"`; never add integration/E2E/@live.
+#
+# Revert-branch bypass: on a revert branch the suite is skipped; lint + typecheck still run.
 set -e
+
+# ── delete-only push: nothing leaves this machine, so there is nothing to gate ──
+# `git push origin --delete <branch>` runs this hook too. Git feeds one line per ref on
+# stdin — "<local-ref> <local-sha> <remote-ref> <remote-sha>" — and a deleted ref has an
+# all-zero local sha. When EVERY line is a delete, the push carries no commits. A push
+# mixing a delete with a real update still gates, and so does an empty ref list. Reading
+# stdin here is safe: every later command redirects from /dev/null. `[ -t 0 ]` keeps a
+# hand-run hook from hanging.
+PUSH_SAW_REF=0
+PUSH_HAS_COMMITS=0
+if [ ! -t 0 ]; then
+  while read -r _push_local_ref push_local_sha _push_remote_ref _push_remote_sha; do
+    [ -n "$push_local_sha" ] || continue
+    PUSH_SAW_REF=1
+    case "$push_local_sha" in
+      *[!0]*) PUSH_HAS_COMMITS=1 ;;
+    esac
+  done
+fi
+if [ "$PUSH_SAW_REF" = "1" ] && [ "$PUSH_HAS_COMMITS" = "0" ]; then
+  echo "[pre-push] delete-only push — no commits to check, gates skipped" >&2
+  exit 0
+fi
+# ── end delete-only push
+
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 HEAD_SUBJECT=$(git log -1 --pretty=%s 2>/dev/null || echo "")
 IS_REVERT=0
@@ -22,16 +48,16 @@ case "$HEAD_SUBJECT" in
   'Revert "'*) IS_REVERT=1 ;;
 esac
 
-# CI-suppressor HEAD guard. A [skip ci]-class token on the HEAD commit of a branch with an
-# OPEN PR silences GitHub's pull_request trigger -> empty statusCheckRollup -> a PR that
-# merges without ever running CI. The workflow CI-Dispatch gate only covers the push it
-# makes at close; this backstops MANUAL pushes (rebase + force-push, post-close commits).
-# Conditioned on an open PR so it never blocks sanctioned [skip ci] pushes with no PR
-# (mid-loop status, abort handover). dev/main exempt; gh absent -> allow (backstop only).
+# CI-suppressor HEAD guard: blocks a push whose HEAD commit carries a [skip ci]-class
+# token while the branch has an OPEN PR (that token silences GitHub's pull_request
+# trigger). Covers manual pushes (rebase + force-push, post-close commits). No open PR
+# -> allowed ([skip ci] pushes for mid-loop status, abort handover). dev/main exempt;
+# gh absent -> allow. `bkit ci skip-token` exits 0 when HEAD's message carries one of
+# the tokens GitHub honours; bkit owns that list.
 case "$BRANCH" in
   dev|main) ;;
   *)
-    if git log -1 --pretty=%B | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+    if pnpm -s bkit ci skip-token < /dev/null > /dev/null; then
       if command -v gh >/dev/null 2>&1; then
         # strip hook-injected GIT_DIR/GIT_WORK_TREE so gh resolves the repo from cwd (worktree-safe)
         OPEN_PR=$(env -u GIT_DIR -u GIT_WORK_TREE gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
@@ -48,11 +74,9 @@ case "$BRANCH" in
 esac
 
 # WHAT each gate runs lives in package.json, not here — the same `bkit:gate*` scripts
-# the bkit agent workflows and prompts dispatch through, so a human push and an agent
-# run enforce the identical set. Edit the scripts, not this hook. Repo-specific extras
-# go BELOW this block.
-# Revert path drops the suite only: prose and slop:delta stay (md prose is unaffected
-# by deleted code; removals show as 'resolved', never 'added').
+# the bkit agent workflows and prompts dispatch through. Edit the scripts, not this
+# hook. Repo-specific extras go BELOW this block.
+# Revert path drops the suite only: prose and slop:delta still run.
 if [ "$IS_REVERT" = "1" ]; then
   echo "[pre-push] revert branch/commit detected — skipping the test suite"
   pnpm bkit:gate:static < /dev/null
@@ -61,7 +85,7 @@ else
 fi
 
 # bkit mirror-drift gate — fails fast if `.agents/*` was edited without `bkit install`
-# regenerating the `.claude/*`/`.cursor/*`/`.husky/*` mirrors (same check CI runs).
+# regenerating the `.claude/*`/`.cursor/*` mirrors (same check CI runs).
 # Outside the gate scripts: it validates the bkit install, not your source.
 # Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
 pnpm bkit check < /dev/null
