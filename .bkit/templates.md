@@ -46,7 +46,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 | `main` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments) | your default branch | `origin/HEAD`, else `main` |
 | `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
-| `{{SCRIPT_PATH}}` | `ai.bkit.launchd.plist` (`ProgramArguments`) | absolute path to the loader script | `/path/to/repo/scripts/launchd/bkit-launchd-env.sh` |
+| `{{SCRIPT_PATH}}` | `ai.bkit.launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/path/to/repo/scripts/launchd/bkit-launchd-env.sh` |
 | `{{ENV_FILE}}` | `ai.bkit.launchd.plist` (`ProgramArguments`, `WatchPaths`) | absolute path to your env file | `/Users/<you>/.config/bkit/launchd.env` |
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
@@ -263,6 +263,7 @@ launchctl getenv BKIT_OPENROUTER_API_KEY    # bootstrap proof
 - `WatchPaths` re-runs the loader on every env-file write → rotate a token by editing the file, no re-bootstrap.
 - Log `~/Library/Logs/bkit-launchd.log` records key names only, never values. `BKIT_LAUNCHD_LOG` and `BKIT_LAUNCHD_ENV` override the log and env-file defaults.
 - Loader self-skips (log line + `exit 0`) when the env file is absent or `launchctl` is off `PATH` (Linux CI).
+- launchd cannot exec a loader under `~/Documents`, `~/Desktop` or `~/Downloads`: macOS TCC denies it and `/tmp/bkit-launchd.log` reads `Operation not permitted`. Repo under one of those → keep the adopted copy in git but place the loader launchd runs at `~/.config/bkit/bkit-launchd-env.sh` (or another unprotected path) and point `{{SCRIPT_PATH}}` there.
 - Env-file rules: blank lines and `#` comments ignored; optional `export ` prefix; key must match `[A-Za-z0-9_]`; matching surrounding quotes stripped from the value.
 - `launchctl setenv` reaches apps launched after the load; a running app keeps its environment until relaunch.
 - Remove: `launchctl bootout gui/$UID ~/Library/LaunchAgents/ai.bkit.launchd.plist`.
