@@ -18,4 +18,12 @@
 
 Optional, copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
 
+## Agent hosts
+
+Run each host (`claude`, `opencode`, `codex`) in its own terminal window — NOT inside an IDE or a desktop app.
+
+- Separate processes: restart one host without quitting the others.
+- Terminal sessions inherit the direnv-loaded `.bkit/.env`; GUI-launched apps do not (`.bkit/providers.md` § macOS GUI-isolation).
+- macOS: Ghostty.
+
 <!-- bkit:end -->

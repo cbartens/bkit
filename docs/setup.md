@@ -18,6 +18,14 @@
 
 Optional, copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
 
+## Agent hosts
+
+Run each host (`claude`, `opencode`, `codex`) in its own terminal window — NOT inside an IDE or a desktop app.
+
+- Separate processes: restart one host without quitting the others.
+- Terminal sessions inherit the direnv-loaded `.bkit/.env`; GUI-launched apps do not (`.bkit/providers.md` § macOS GUI-isolation).
+- macOS: Ghostty.
+
 <!-- bkit:end -->
 
 > Consumer first-time install/auth (`BKIT_GH_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → `.bkit/install.md`. Upgrade paste + ongoing CLI → `.bkit/README.md`. Cloud-agent setup (Claude Code on the web, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md`.
