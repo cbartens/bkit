@@ -28,6 +28,7 @@
 
 - Ledger row can record a flake exists; useful part = mechanism (never one line).
 - Standing danger: read flake as timing → widen timeout; reported error usually consequence; timeout bump before trace read turns real bug into slow green.
+- Load-scaled budget on shared dev machines: sampled once at config/worker load → stale mid-run (load ramp from a second session starves late files); re-read per test file (vitest `vi.setConfig` in a setup file, jest `jest.setTimeout` in setup), same base + cap, factor pinned 1 on CI. Freshness fix = mechanism fix, not a widen. Reference: app-gether-life #1392 (`tooling/vitest/timeout-budget.setup.ts`, `apps/mobile/jest.setup.js`).
 - Target failure: **a skip, quarantine, or wider timeout standing in for a named mechanism.**
 
 **Applies when:** suite runs more than once (CI or local repeat). None → one `N/A` row with evidence, never "clean".
