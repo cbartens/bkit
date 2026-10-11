@@ -237,7 +237,7 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
 // The claude and codex hook commands are `test -f <file> && node <file> || true`. `bkit check`
 // exits 1 and names a missing file.
 // The required set follows what is installed: the hook files of each detected host, plus
-// `.claude/hooks/cloud-bootstrap.sh` only when `bkit.cloudAgents` is `claude`.
+// `.claude/hooks/bkit-cloud-bootstrap.sh` only when `bkit.cloudAgents` is `claude`.
 //
 // Strategy: unit-test findMissingOwnedHooks against hand-built trees, then spawn the real
 // install + check binaries against a tmpdir consumer for the exit code and message.
@@ -316,8 +316,8 @@ describe("check-owned-hooks", () => {
       expect(paths(["codex"])).toEqual([]);
     });
 
-    it("never requires cloud-bootstrap.sh — it is a copy-and-own template", () => {
-      // The `.claude/settings.json` SessionStart entry references cloud-bootstrap.sh
+    it("never requires bkit-cloud-bootstrap.sh — it is a copy-and-own template", () => {
+      // The `.claude/settings.json` SessionStart entry references bkit-cloud-bootstrap.sh
       // guarded (`test -f … || true`), but the script ships as a template: no module
       // writes it, so a missing copy is the consumer's choice, never a check failure.
       touch(dir, ".claude/settings.json");
@@ -389,12 +389,12 @@ describe("check-owned-hooks", () => {
       }
     });
 
-    it("claude host without the cloud module → no cloud-bootstrap.sh required", () => {
+    it("claude host without the cloud module → no bkit-cloud-bootstrap.sh required", () => {
       if (!haveTsx) return;
       const claudeOnly = makeConsumer("bkit-owned-hooks-claude-");
       try {
         expect(runBkit(claudeOnly, ["install", "--claude"]).status).toBe(0);
-        expect(fs.existsSync(path.join(claudeOnly, ".claude/hooks/cloud-bootstrap.sh"))).toBe(
+        expect(fs.existsSync(path.join(claudeOnly, ".claude/hooks/bkit-cloud-bootstrap.sh"))).toBe(
           false,
         );
         const check = runBkit(claudeOnly, ["check"]);
@@ -528,9 +528,9 @@ describe("dry-run-parity", () => {
 
       expect(checkPaths).toEqual(installPaths);
       const writtenPaths = applied(installPaths);
-      // cloud=claude writes no files: cloud-bootstrap.sh, the workflow and the Cursor
+      // cloud=claude writes no files: bkit-cloud-bootstrap.sh, the workflow and the Cursor
       // Background Agent files are all copy-and-own templates.
-      expect(writtenPaths.some((p) => p.includes("cloud-bootstrap.sh"))).toBe(false);
+      expect(writtenPaths.some((p) => p.includes("bkit-cloud-bootstrap.sh"))).toBe(false);
       expect(
         writtenPaths.some((p) => p === path.join(".github", "workflows", "bkit-cloud.yml")),
       ).toBe(false);
@@ -572,7 +572,7 @@ describe("dry-run-parity", () => {
       expect(checkPaths).toEqual(installPaths);
       const writtenPaths = applied(installPaths);
       // cloud=opencode writes no files: the cloud workflow is a template
-      expect(writtenPaths.some((p) => p.includes("cloud-bootstrap.sh"))).toBe(false);
+      expect(writtenPaths.some((p) => p.includes("bkit-cloud-bootstrap.sh"))).toBe(false);
       expect(writtenPaths).not.toContain(path.join(".github", "workflows", "bkit-cloud.yml"));
     });
   });

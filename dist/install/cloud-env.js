@@ -253,7 +253,7 @@ export function renderCorepackLine(cwd) {
  * enabled below `<!-- bkit:end -->` in `.agents/context.md`. Stack-agnostic: bkit
  * hardcodes no CLI names — the install recipe lives in the consumer's context.md,
  * co-located with the fetch block that needs the CLI. `bkit context list-blocks` returns
- * the same list as `provision`, which `.claude/hooks/cloud-bootstrap.sh` runs, so the web
+ * the same list as `provision`, which `.claude/hooks/bkit-cloud-bootstrap.sh` runs, so the web
  * setup-script snapshot and the per-session hook provision the same CLIs. Returns one
  * string per block (bash body).
  */
@@ -598,7 +598,7 @@ export function renderCloudNetworkAllowlist(cwd) {
  * Observed on the current image (`/home/user/<repo-name>`, agent running as uid=0
  * with `HOME=/root`) and NOT a documented contract: no environment variable in the
  * container names the repo root. The setup script bakes the resolved path and
- * `cloud-bootstrap.sh` checks the DISCOVERED one, warning loudly on mismatch.
+ * `bkit-cloud-bootstrap.sh` checks the DISCOVERED one, warning loudly on mismatch.
  */
 const CLOUD_REPO_PARENT = "/home/user";
 /** The path {@link renderCloudWorkspaceTrust} bakes into the setup script. */

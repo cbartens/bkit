@@ -59,7 +59,7 @@
           },
           {
             "type": "command",
-            "command": "test -f .claude/hooks/cloud-bootstrap.sh && bash .claude/hooks/cloud-bootstrap.sh || true"
+            "command": "test -f .claude/hooks/bkit-cloud-bootstrap.sh && bash .claude/hooks/bkit-cloud-bootstrap.sh || true"
           }
         ]
       }

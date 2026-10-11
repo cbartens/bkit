@@ -334,7 +334,7 @@ const CONTEXT_FETCH_BASE_TOOLS = new Set<string>([
  * so in cloud that CLI is absent, the block's own guard trips, and it self-skips
  * with a silent `exit 0` — `/bkit-debug` fetches NO runtime logs for that source.
  * Both the `.claude/bkit-cloud.md` web setup-script snapshot and
- * `.claude/hooks/cloud-bootstrap.sh` provision from the SAME `context-fetch:provision`
+ * `.claude/hooks/bkit-cloud-bootstrap.sh` provision from the SAME `context-fetch:provision`
  * recipes.
  *
  * Keyed on the block's OWN `command -v <cli>` self-guard, so a curl/jq/API block (no
@@ -424,6 +424,6 @@ export function detectContextFetchProvisionMissing(cwd: string): PreflightFindin
     id: "context-fetch-provision-missing",
     severity: "advisory",
     detect: `\`.agents/context.md\` enable${plural ? "" : "s"} context-fetch block${plural ? "s" : ""} that self-guard${plural ? "" : "s"} on a stack CLI but ship${plural ? "" : "s"} no matching \`<!-- context-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\`: ${list}. bkit installs no stack CLIs itself, so in cloud the CLI is absent, the block's own \`command -v\` guard trips, and it self-skips (silent \`exit 0\`) — \`/bkit-debug\` fetches no runtime logs for ${plural ? "those sources" : "that source"} (reads as "clean", not "not wired up").`,
-    action: `For each flagged block, add a sibling \`<!-- context-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\` — SAME name as the fetch block — whose bash body installs the CLI, self-guarded and install-only: \`command -v ${firstCli} >/dev/null 2>&1 || <install ${firstCli}>\` (e.g. \`pnpm add -g ${firstCli}\` for an npm-published CLI). If \`.bkit/templates/context/\` ships a ready-made \`context-fetch:provision ${firstName}\` recipe, copy that. Then re-run \`bkit install\` so the recipe bakes into \`.claude/bkit-cloud.md\`'s setup script; \`.claude/hooks/cloud-bootstrap.sh\` runs the same recipe on gh-runner / resumed sessions. A block that fetches via an MCP tool or only universal tools (curl/jq/date) needs no provision.`,
+    action: `For each flagged block, add a sibling \`<!-- context-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\` — SAME name as the fetch block — whose bash body installs the CLI, self-guarded and install-only: \`command -v ${firstCli} >/dev/null 2>&1 || <install ${firstCli}>\` (e.g. \`pnpm add -g ${firstCli}\` for an npm-published CLI). If \`.bkit/templates/context/\` ships a ready-made \`context-fetch:provision ${firstName}\` recipe, copy that. Then re-run \`bkit install\` so the recipe bakes into \`.claude/bkit-cloud.md\`'s setup script; \`.claude/hooks/bkit-cloud-bootstrap.sh\` runs the same recipe on gh-runner / resumed sessions. A block that fetches via an MCP tool or only universal tools (curl/jq/date) needs no provision.`,
   };
 }

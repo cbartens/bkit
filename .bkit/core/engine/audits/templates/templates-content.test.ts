@@ -457,13 +457,11 @@ describe("templates", () => {
 
   // JSON has no comment syntax; `.bkit/templates.md` covers those.
   it("every template that can carry a comment says it is an example bkit install does not write", () => {
-    // LICENSE.md is a licence text, and cloud-bootstrap.sh keeps its install-hook
-    // header; both are the user's once copied, but neither carries the example banner.
+    // LICENSE.md is a licence text: the user's once copied, but it carries no example banner.
     const templates = listFilesRecursive(root)
       .map((abs) => path.relative(root, abs))
       .filter((rel) => !rel.endsWith(".json"))
-      .filter((rel) => rel !== "LICENSE.md")
-      .filter((rel) => rel !== path.join(".claude", "hooks", "cloud-bootstrap.sh"));
+      .filter((rel) => rel !== "LICENSE.md");
     expect(templates).toContain(path.join(".github", "workflows", "bkit-ci.yml"));
     for (const rel of templates) {
       const text = fs.readFileSync(path.join(root, rel), "utf-8");
@@ -473,11 +471,7 @@ describe("templates", () => {
   });
 
   it("no template carries a bkit:start / bkit:end block (bkit never writes a template)", () => {
-    // cloud-bootstrap.sh is the one exception: it ships byte-for-byte as the hook the
-    // cloud module used to write, markers included, and the consumer edits outside them.
-    const templates = listFilesRecursive(root)
-      .map((abs) => path.relative(root, abs))
-      .filter((rel) => rel !== path.join(".claude", "hooks", "cloud-bootstrap.sh"));
+    const templates = listFilesRecursive(root).map((abs) => path.relative(root, abs));
     expect(templates).toContain(path.join(".github", "workflows", "bkit-ci.yml"));
     for (const rel of templates) {
       expect(fs.readFileSync(path.join(root, rel), "utf-8"), rel).not.toMatch(

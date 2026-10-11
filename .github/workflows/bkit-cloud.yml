@@ -473,7 +473,7 @@ jobs:
           # Do not swap in BKIT_GH_TOKEN_INSTALL — it has no access to the consumer repo.
           token: ${{ github.token }}
 
-      # Installs the vale binary for cloud-bootstrap.sh's `vale sync` and the dispatched
+      # Installs the vale binary for bkit-cloud-bootstrap.sh's `vale sync` and the dispatched
       # phase's lint:prose (as the cloud.md web env's setup script does). Pinned tarball +
       # SHA mirror bkit-ci.yml.
       - name: Install vale

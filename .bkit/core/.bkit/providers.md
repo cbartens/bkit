@@ -364,7 +364,7 @@ Both: `"type": "http"`, `"url": "https://api.githubcopilot.com/mcp/"`, `"headers
 | Where env config lives | Claude app (per-environment), NOT in repo | In repo (`.cursor/`) |
 | Custom base image | Not supported — setup script layers on top of Anthropic-managed Ubuntu 24.04 | Supported — `.cursor/Dockerfile` |
 | Cold-start cache | Snapshot keyed by setup-script body hash (~7d TTL) | Docker image layers |
-| Per-snapshot install | `.claude/hooks/cloud-bootstrap.sh` (SessionStart, fires when `CLAUDE_CODE_REMOTE=true`) | `.cursor/environment.json` → `install` |
+| Per-snapshot install | `.claude/hooks/bkit-cloud-bootstrap.sh` (SessionStart, fires when `CLAUDE_CODE_REMOTE=true`) | `.cursor/environment.json` → `install` |
 | Build env | Setup script (paste-in via Claude app UI) | `.cursor/Dockerfile` (Cursor Cloud builds custom image) |
 | Install/start | n/a (handled by bootstrap hook) | `.cursor/environment.json` → `install`, `start`, `terminals[]`, `env`, `ports` |
 | Port forwarding | n/a | `.cursor/environment.json` → `terminals[].ports` |

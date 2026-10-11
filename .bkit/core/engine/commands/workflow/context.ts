@@ -703,7 +703,7 @@ export const contextCommand: CommandSpec = {
         coverage: "blocks per context (runtime, ci, diff, e2e, web)",
         contextsConfigured: "contexts with at least one block, in narration order",
         provision:
-          "bash body of each context-fetch:provision block below bkit:end, in file order (cloud-bootstrap.sh runs them)",
+          "bash body of each context-fetch:provision block below bkit:end, in file order (bkit-cloud-bootstrap.sh runs them)",
       },
       run: (ctx) => {
         const blocks = fetchBlocks(consumerSection(readContextMd(ctx) ?? ""));

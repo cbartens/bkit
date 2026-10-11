@@ -477,7 +477,7 @@ export async function runInstall(
   }
   const postFindings = runPostInstallCheck(ctx.advisories, process.cwd());
   // check only: install has just written every hook file of the modules it dispatched, and a
-  // missing cloud-bootstrap.sh after `install --claude` is not that run's fault.
+  // missing bkit-cloud-bootstrap.sh after `install --claude` is not that run's fault.
   const missingHooks = dryRun ? findMissingOwnedHooks(process.cwd(), effectiveModules) : [];
   const missingHooksFinding = detectOwnedHookMissing(missingHooks);
   if (missingHooksFinding) postFindings.push(missingHooksFinding);

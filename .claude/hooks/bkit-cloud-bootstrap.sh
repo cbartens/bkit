@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# cloud-bootstrap.sh — Claude Code SessionStart hook
+# bkit-cloud-bootstrap.sh — Claude Code SessionStart hook
+# Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
 #
 # Project install for cloud sessions: runs `pnpm install` and `vale sync` so a
 # fresh Claude Code on the web session has dependencies + vale styles ready.
@@ -14,9 +16,8 @@
 # informational only (docs.claude.com/docs/en/hooks.md). Failures are surfaced
 # via stderr.
 #
-# bkit owns the install logic between the `# <!-- bkit:start -->` and
-# `# <!-- bkit:end -->` markers below. Add your own repo-specific install
-# steps OUTSIDE that block — see examples at the bottom of this file.
+# The `bkit baseline install` section below is bkit's starting point; the whole
+# file is yours now — add your own steps anywhere (examples at the bottom).
 
 set -euo pipefail
 
@@ -32,11 +33,7 @@ log() { printf '[cloud-bootstrap] %s\n' "$*" >&2; }
 REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 cd "$REPO_ROOT"
 
-# <!-- bkit:start -->
-
-# <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
-
-# --- bkit baseline install (managed; do not edit) --------------------------
+# --- bkit baseline install --------------------------------------------------
 
 # Workspace-trust check + drift alarm.
 #
@@ -158,10 +155,8 @@ if [ -f .agents/context.md ]; then
   fi
 fi
 
-# <!-- bkit:end -->
-
-# --- Consumer extensions ---------------------------------------------------
-# Add per-repo install steps here. Examples:
+# --- Per-repo install steps -------------------------------------------------
+# Add your own steps here. Examples:
 #
 # Docker daemon — PREREQUISITE for any containerised local stack below. Cloud
 # sessions ship the docker CLI but no init system, so nothing starts the daemon

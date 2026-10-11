@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# cloud-bootstrap-preflight.bats — Unit tests for the gh-preflight block in
-# cloud-bootstrap.sh.
+# bkit-cloud-bootstrap-preflight.bats — Unit tests for the gh-preflight block in
+# bkit-cloud-bootstrap.sh.
 #
 # Covers: prefers the sanctioned GH_TOKEN env var over `--with-token`;
 # records RUNTIME_GITHUBCLI loudly (always, not just on failure); emits a loud
@@ -8,15 +8,14 @@
 # (both keyed off BKIT_GH_TOKEN) can authenticate — never a hook hard-stop
 # (SessionStart hooks cannot block the session).
 #
-# Run: bats tests/cloud-bootstrap-preflight.bats
+# Run: bats tests/bkit-cloud-bootstrap-preflight.bats
 # Requires: bats >= 1.0
 
 REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-# Template-relative by default:
-# edits land in .bkit/templates/.claude/hooks/;
-# the installed .claude/hooks/ mirror is produced by `bkit install`,
-# deferred to the batch mirror regen (Sub-Plan 6).
-BOOTSTRAP_SH="${BKIT_CLOUD_BOOTSTRAP_SH:-$REPO_ROOT/.bkit/templates/.claude/hooks/cloud-bootstrap.sh}"
+# The template is the source of truth; this repo's adopted copy
+# (.claude/hooks/bkit-cloud-bootstrap.sh) is kept byte-equal to it by
+# dogfood-templates.test.ts.
+BOOTSTRAP_SH="${BKIT_CLOUD_BOOTSTRAP_SH:-$REPO_ROOT/.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh}"
 
 setup() {
   FAKE_BIN="$(mktemp -d)"

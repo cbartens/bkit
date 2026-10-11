@@ -1244,7 +1244,7 @@ Shell `curl` / `wget` are **not** on the Claude `ask` list — they run under `B
 
 ### Cloud sessions — what actually applies
 
-`permissions.allow` **grants** capability — applied only after the workspace trust dialog, never shown in a cloud (`-p` / SDK) session. Untrusted → every `allow` row above ignored, sole notice one stderr line no cloud session surfaces; `deny` / `ask` still apply. `bkit install` writes `projects[<repo path>].hasTrustDialogAccepted` into `~/.claude.json` from the generated setup script (`.claude/bkit-cloud.md` § 4) — root, pre-clone, pre-Claude, snapshotted. `.claude/hooks/cloud-bootstrap.sh` re-checks the discovered repo root each session and warns on mismatch.
+`permissions.allow` **grants** capability — applied only after the workspace trust dialog, never shown in a cloud (`-p` / SDK) session. Untrusted → every `allow` row above ignored, sole notice one stderr line no cloud session surfaces; `deny` / `ask` still apply. `bkit install` writes `projects[<repo path>].hasTrustDialogAccepted` into `~/.claude.json` from the generated setup script (`.claude/bkit-cloud.md` § 4) — root, pre-clone, pre-Claude, snapshotted. `.claude/hooks/bkit-cloud-bootstrap.sh` re-checks the discovered repo root each session and warns on mismatch.
 
 Auto mode **drops** broad allow rules granting arbitrary code execution — blanket `Bash(*)`, wildcarded interpreters, package-manager run commands, `Agent` / `Monitor` rules; narrow rows (`Bash(npm test)`) survive. `Bash(*)` is a non-auto-mode mechanism only; auto mode runs on classifier verdicts + `autoMode.environment`. Classifier reads `autoMode` from user / managed settings **only** — never `.claude/settings.json` / `.claude/settings.local.json`, so the setup script seeds it host-side.
 
@@ -1309,7 +1309,7 @@ and holds its `bkit` key as `{BKIT}` (plus `repoRoot` as `{REPO_ROOT}`, `outboxR
 | `counters` | `derive`, `rows`, `run`, `route`, `max` | attempt counters (step rows or typed audit rows), run number, `MAX_*` routing (`route --of=<step>:<pos>` derives the value) |
 | `steps` | `done`, `finish`, `verdict`, `gate`, `stub` | `step-done` row + commit; the one-call step ending (§ Step endings); verdict header read; mechanical gate items (placeholders, FID, lock, artifacts, the row's `attempt` / `strategy` / `scope`); seeding a versioned artifact with a PENDING header |
 | `ledgers` | `commit`, `union`, `only-bookkeeping` | path-scoped bookkeeping staging, ledger union, carry-forward check |
-| `context` | `clamp`, `clamp-log`, `ledger-scan`, `list-blocks`, `run-block`, `finalise` | artifact clamping, plan ledger scan, debug `context-fetch`, `cloud-bootstrap.sh` provision recipes (`list-blocks` → `provision`) |
+| `context` | `clamp`, `clamp-log`, `ledger-scan`, `list-blocks`, `run-block`, `finalise` | artifact clamping, plan ledger scan, debug `context-fetch`, `bkit-cloud-bootstrap.sh` provision recipes (`list-blocks` → `provision`) |
 | `roadmap` | `fold`, `feature`, `mirror` | `docs/roadmap.md` re-render; append a phase's `kind:"feature"` row then re-render (`--strict`: exit 1 when it did not land); build / debug close: the row in the worktree, then on dev under the dev lock |
 | `workstreams` | `parse`, `comment` | design Step 10 advisory comment |
 | `skills` | `prune` | ship Step 7 skill prune |

@@ -65,7 +65,7 @@ OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `
 | Vitest | `^4.1.7` | Unit (`*.test.ts`) and integration (`*.integration.test.ts`) test runner |
 | `@vitest/coverage-v8` | `^4.1.7` | Per-tier coverage; branch-threshold gate on the unit run (`test:coverage:unit`) |
 | `yaml` | `^2.9` | Test-only YAML parsing (template workflows parsed in-process; no python / ruby) |
-| bats | via `npx --yes bats` (no devDep) | Shell tier — `tests/*.bats`, for logic that lives in shell (the cloud-bootstrap hook's `gh` preflight, the `gh` stub harness) |
+| bats | via `npx --yes bats` (no devDep) | Shell tier — `tests/*.bats`, for logic that lives in shell (the bkit-cloud-bootstrap hook's `gh` preflight, the `gh` stub harness) |
 | Real-filesystem fixtures | `os.tmpdir()` scratch dirs | Integration tests spawn `bkit` against temporary consumer directories — no mock `fs` |
 
 See `docs/testing.md` for tier boundaries, CI execution order, and spawning patterns.

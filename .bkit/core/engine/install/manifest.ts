@@ -82,7 +82,7 @@ export function parseIssueTracker(value: unknown): IssueTracker | null {
 /**
  * Cloud-agent automation chosen by the consumer (opt-in).
  * - `claude`  — `bkit install --auto=claude` writes no file; the consumer copies the
- *               `.github/workflows/bkit-cloud.yml` and `.claude/hooks/cloud-bootstrap.sh`
+ *               `.github/workflows/bkit-cloud.yml` and `.claude/hooks/bkit-cloud-bootstrap.sh`
  *               templates. Requires `tracker=github`.
  * - `cursor`  — `bkit install --auto=cursor` writes no file; the consumer copies the
  *               `.cursor/Dockerfile` + `.cursor/environment.json` templates. Requires `tracker=linear`.
@@ -169,7 +169,7 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
     format: "markered-text",
     module: "claude",
   },
-  // .claude/hooks/cloud-bootstrap.sh ships as a copy-and-own template.
+  // .claude/hooks/bkit-cloud-bootstrap.sh ships as a copy-and-own template.
   // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`),
   // so a consumer who has not adopted the script no-ops.
   // bkit owns only its tracker entry under `mcpServers` (reconcileMcpJson); every other
@@ -389,7 +389,7 @@ export const CODEX_MANIFEST: ManifestEntry[] = [
 
 // Cloud agent integration is opt-in — NOT in a default install, so a default install
 // ships ZERO cloud footprint. Every variant writes no files: the cloud workflow
-// (bkit-cloud.yml), cloud-bootstrap.sh and the Cursor Background Agent files
+// (bkit-cloud.yml), bkit-cloud-bootstrap.sh and the Cursor Background Agent files
 // (.cursor/Dockerfile, .cursor/environment.json) ship as templates
 // (`.bkit/templates.md`); the consumer copies and owns them. Each variant only
 // records `bkit.cloudAgents` and prints its setup advisories.

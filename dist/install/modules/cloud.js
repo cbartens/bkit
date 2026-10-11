@@ -1,6 +1,6 @@
 // install/modules/cloud.ts — the cloud module (`--auto=<variant>`): records the
 // variant and prints the post-CI auto-routing setup advisories. It writes no files:
-// every cloud file (the workflow, cloud-bootstrap.sh, the Cursor Dockerfile /
+// every cloud file (the workflow, bkit-cloud-bootstrap.sh, the Cursor Dockerfile /
 // environment) ships as a copy-and-own template.
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -48,7 +48,7 @@ const CLOUD_WORKFLOW_ADOPT_STEP = "  - Copy `.bkit/templates/.github/workflows/b
 // NOT shipped by a default install — opt-in via `bkit install --auto=<variant>`,
 // so a default install ships ZERO cloud footprint. Every variant records
 // `bkit.cloudAgents` and prints its setup advisories; none writes a file. The cloud
-// workflow (bkit-cloud.yml), cloud-bootstrap.sh and the Cursor Background Agent
+// workflow (bkit-cloud.yml), bkit-cloud-bootstrap.sh and the Cursor Background Agent
 // files (.cursor/Dockerfile, .cursor/environment.json) are templates the advisories
 // point at.
 //
@@ -83,10 +83,10 @@ export function runCloudModule(ctx) {
         advisories.push({
             id: "cloud-env-customize",
             severity: "advisory",
-            detect: "Cloud env config splits across the repo (`.claude/hooks/cloud-bootstrap.sh`, bkit-managed) and the Claude app dashboard (setup script + env vars + auth tokens, manual).",
+            detect: "Cloud env config splits across the repo (`.claude/hooks/bkit-cloud-bootstrap.sh`, a copy-and-own template you adopt) and the Claude app dashboard (setup script + env vars + auth tokens, manual).",
             action: "Two locations to touch — full recipe in bkit's `cloud.md`.\n\n" +
-                "IN REPO (Tier 2 markered; bkit owns content between `# <!-- bkit:start -->` and `# <!-- bkit:end -->`; consumer customises outside):\n" +
-                "  - `.claude/hooks/cloud-bootstrap.sh`: add repo-specific install steps after the bkit:end marker (Supabase start, turbo prebuild, etc. — examples inlined).\n\n" +
+                "IN REPO (copy-and-own; bkit never writes it):\n" +
+                "  - Adopt `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` as `.claude/hooks/bkit-cloud-bootstrap.sh` and edit it freely — the baseline runs `pnpm install` / `vale sync` and the gh login on each cloud session; add your own repo-specific steps (Supabase start, turbo prebuild, etc. — examples inlined). The `.claude/settings.json` SessionStart entry runs it only when present (`test -f … || true`).\n\n" +
                 "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
                 "  - Name: the repo name (e.g. `acme-web`) — one environment per repo, since secrets are per-repo.\n" +
                 "  - Setup script: paste from bkit's `cloud.md` § Setup script (installs vale + gh + corepack-pinned pnpm — exact versions live in cloud.md, not duplicated here).\n" +

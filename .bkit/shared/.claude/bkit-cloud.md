@@ -85,7 +85,7 @@ echo "cloud env ready: $(vale --version), $(gh --version | head -1), jq $(jq --v
 ```
 
 Keep total runtime under ~5 minutes or the snapshot won't build. `pnpm install`
-and `vale sync` are **not** here — they belong in `.claude/hooks/cloud-bootstrap.sh`
+and `vale sync` are **not** here — they belong in `.claude/hooks/bkit-cloud-bootstrap.sh`
 (installed by `bkit install --auto=claude`) so they re-run on resumed sessions.
 
 ## 5 · Verify (first session)
@@ -104,7 +104,7 @@ jq -r --arg p "$(git rev-parse --show-toplevel)" \
 ```
 
 `true` = allow rows apply. `MISSING` = this container clones to a different path
-than the setup script baked in; `.claude/hooks/cloud-bootstrap.sh` warns each
+than the setup script baked in; `.claude/hooks/bkit-cloud-bootstrap.sh` warns each
 session — re-paste the setup script to fix the snapshot.
 
 Your `/bkit-*` skills and bkit subagents load automatically from the committed

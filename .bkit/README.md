@@ -272,13 +272,13 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `.opencode/commands/bkit-*.md` | opencode | `.bkit/core/workflows/` | Host pass — always overwrite |
 | `.opencode/agents/bkit-*.md` | opencode | `.bkit/core/prompts/` | Host pass — always overwrite |
 | `.opencode/plugin/bkit-gateguard.js` | opencode | `.bkit/core/.opencode/plugin/` | Tier 2 slash-comment |
-| `.claude/hooks/cloud-bootstrap.sh` | — | `.bkit/templates/.claude/hooks/` | Copy-and-own template: no module writes it; adopt it from `.bkit/templates/` (the SessionStart entry runs it only when present). |
+| `.claude/hooks/bkit-cloud-bootstrap.sh` | — | `.bkit/templates/.claude/hooks/` | Copy-and-own template: no module writes it; adopt it from `.bkit/templates/` (the SessionStart entry runs it only when present). |
 
 The cloud workflow and the Cursor Background Agent files are templates the `--auto` setup advisory points at.
 
 ### Optional post-install decisions (tracker + cloud agents)
 
-Two capabilities **opt-in**, excluded from default install: **issue tracker** (`--tracker=github|linear`), **cloud agents** (`--auto=claude|cursor|opencode`: records the choice and points at the copy-and-own templates — `bkit-cloud.yml`, `.claude/hooks/cloud-bootstrap.sh`, and the Cursor `Dockerfile`/`environment.json`; default install ships zero cloud footprint). Default wires neither; post-install advisory emits `tracker-setup-none` / `cloud-router-none`. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.cloudAgents`); `"none"` silences the nudge. Cloud router split: each job inert without model-auth secret (`BKIT_ANTHROPIC_API_KEY` claude, `OPENCODE_PROVIDER_KEY` opencode) + GHA write permissions + (Cursor) dashboard trigger; depends on opt-in GitHub tracker.
+Two capabilities **opt-in**, excluded from default install: **issue tracker** (`--tracker=github|linear`), **cloud agents** (`--auto=claude|cursor|opencode`: records the choice and points at the copy-and-own templates — `bkit-cloud.yml`, `.claude/hooks/bkit-cloud-bootstrap.sh`, and the Cursor `Dockerfile`/`environment.json`; default install ships zero cloud footprint). Default wires neither; post-install advisory emits `tracker-setup-none` / `cloud-router-none`. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.cloudAgents`); `"none"` silences the nudge. Cloud router split: each job inert without model-auth secret (`BKIT_ANTHROPIC_API_KEY` claude, `OPENCODE_PROVIDER_KEY` opencode) + GHA write permissions + (Cursor) dashboard trigger; depends on opt-in GitHub tracker.
 
 **Dependency updaters.** Copy one example and own it: `.bkit/templates/.github/renovate.json5`, `.bkit/templates/.github/workflows/bkit-renovate.yml` (self-hosted runner only), or `.bkit/templates/.github/dependabot.yml`. `bkit.depUpdater: "none"` skips the install-time absence advisory. `bkit check` emits `dep-updater-absent` and `dep-updater-both`. See `docs/deployments.md` § Dependency updaters.
 

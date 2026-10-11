@@ -85,7 +85,7 @@ describe("the templates root is the copy-and-own set", () => {
       ".prettierignore",
       ".envrc",
       ".cursor/Dockerfile",
-      ".claude/hooks/cloud-bootstrap.sh",
+      ".claude/hooks/bkit-cloud-bootstrap.sh",
       "scripts/graphify/bkit-graphify.sh",
       "scripts/slop/bkit-slop-type-suppression.mjs",
       "context/bkit-github.md",

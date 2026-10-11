@@ -50,7 +50,7 @@ describe(".claude/hooks/bkit-gateguard.cjs ownership (markered-text: consumer ow
 
 // ---------------------------------------------------------------------------
 // Cloud manifests — every variant writes no file: the cloud workflow,
-// cloud-bootstrap.sh and the Cursor Background Agent files are templates.
+// bkit-cloud-bootstrap.sh and the Cursor Background Agent files are templates.
 // ---------------------------------------------------------------------------
 
 describe("cloud manifests", () => {
@@ -180,10 +180,12 @@ describe("getInstallManifest", () => {
     expect(promptsEntry!.format).toBe("markered-text");
   });
 
-  it("cloud owns no manifest entry (cloud-bootstrap.sh is a copy-and-own template)", () => {
+  it("cloud owns no manifest entry (bkit-cloud-bootstrap.sh is a copy-and-own template)", () => {
     expect(getInstallManifest(["cloud"])).toEqual([]);
     expect(
-      getInstallManifest(["claude"]).find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh"),
+      getInstallManifest(["claude"]).find(
+        (e) => e.path === ".claude/hooks/bkit-cloud-bootstrap.sh",
+      ),
     ).toBeUndefined();
   });
 });
@@ -199,7 +201,7 @@ describe("getModuleManifest", () => {
     for (const m of ALL_MODULES) {
       const entries = getModuleManifest(m);
       if (m === "cloud") {
-        // Every cloud file (workflow, cloud-bootstrap.sh, Cursor Dockerfile /
+        // Every cloud file (workflow, bkit-cloud-bootstrap.sh, Cursor Dockerfile /
         // environment.json) ships as a copy-and-own template.
         expect(entries, m).toEqual([]);
         continue;

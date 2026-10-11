@@ -126,7 +126,7 @@ export function runClaudeModule(ctx) {
             }
         }
     }
-    // cloud-bootstrap.sh ships as a copy-and-own template; an install without `--auto=`
+    // bkit-cloud-bootstrap.sh ships as a copy-and-own template; an install without `--auto=`
     // ships zero cloud footprint. The SessionStart hook entry in .claude/settings.json
     // is guarded (`test -f … || true`) so it no-ops when the consumer has not adopted
     // the script. The `cloud-env-customize` advisory lives in the cloud module.

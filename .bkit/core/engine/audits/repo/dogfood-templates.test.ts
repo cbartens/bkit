@@ -28,9 +28,7 @@ type Op =
    * file) becomes the copy's text from `copy[0]` up to `copy[1]`. Equal template anchors mark an
    * insertion point.
    */
-  | { region: { template: [string, string | null]; copy: [string, string | null] } }
-  /** The copy's rendered managed-version marker line replaces the template's token line. */
-  | { managedMarker: true };
+  | { region: { template: [string, string | null]; copy: [string, string | null] } };
 
 type Edit = Op & { kind: Kind; what: string };
 
@@ -74,16 +72,7 @@ const CHECKOUT =
   "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n";
 
 const ADOPTED: Record<string, Entry> = {
-  ".claude/hooks/cloud-bootstrap.sh": {
-    status: "adopted",
-    edits: [
-      {
-        kind: "placeholder",
-        what: "managed-version marker",
-        managedMarker: true,
-      },
-    ],
-  },
+  ".claude/hooks/bkit-cloud-bootstrap.sh": identical,
   "LICENSE.md": {
     status: "distinct",
     what: "the repo root LICENSE.md is bkit's own PolyForm licence, not the MIT-0 template copy",
@@ -503,13 +492,6 @@ function apply(template: string, copy: string, edits: Edit[], rel: string): stri
       const stub = new RegExp(`^[ \\t]*# bkit-stub:${edit.dropStub} —.*\\n(?:.+\\n)*\\n`, "gm");
       expect(text.match(stub)?.length ?? 0, `${label}: stub blocks`).toBe(1);
       text = text.replace(stub, "");
-    } else if ("managedMarker" in edit) {
-      const copyLine = copy.split("\n").find((l) => l.includes("bkit:managed v"));
-      expect(copyLine, `${label}: copy carries a managed-version marker`).toBeTruthy();
-      expect(text, `${label}: template carries the marker token`).toContain(
-        "{{BKIT_MANAGED_MARKER}}",
-      );
-      text = text.replace(/^.*\{\{BKIT_MANAGED_MARKER\}\}.*$/m, copyLine!);
     } else {
       const [ts, te] = span(text, edit.region.template[0], edit.region.template[1], label);
       const [cs, ce] =

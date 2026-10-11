@@ -63,7 +63,7 @@ afterEach(() => {
 
 describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => {
   const routerRel = path.join(".github", "workflows", "bkit-cloud.yml");
-  const bootstrapRel = path.join(".claude", "hooks", "cloud-bootstrap.sh");
+  const bootstrapRel = path.join(".claude", "hooks", "bkit-cloud-bootstrap.sh");
   const dockerRel = path.join(".cursor", "Dockerfile");
   const envRel = path.join(".cursor", "environment.json");
 
@@ -162,7 +162,7 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     // `cursor` is omitted — its applyT3 transform process.exit(1)s on the empty
     // modelLookup in this harness (see the dispatch tests above).
     dispatchModules(new Set(["core", "claude"]), makeCtx({}));
-    // cloud-bootstrap.sh ships as a template, never written by any module.
+    // bkit-cloud-bootstrap.sh ships as a template, never written by any module.
     expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
   });
 });
