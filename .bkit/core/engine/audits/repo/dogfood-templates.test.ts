@@ -460,6 +460,15 @@ const ADOPTED: Record<string, Entry> = {
   "scripts/slop/bkit-slop-type-suppression.mjs": identical,
   "scripts/serena/bkit-serena-mcp.sh": identical,
   "scripts/serena/bkit-serena.mcp.json": identical,
+  "scripts/launchd/bkit-launchd-env.sh": identical,
+  "scripts/launchd/ai.bkit.launchd.plist": {
+    status: "not-adopted",
+    what: "machine-local LaunchAgent plist lives in ~/Library/LaunchAgents/",
+  },
+  "scripts/launchd/launchd.env.example": {
+    status: "not-adopted",
+    what: "machine-local secrets env file lives in ~/.config/bkit/launchd.env",
+  },
 };
 
 function countOf(text: string, needle: string): number {

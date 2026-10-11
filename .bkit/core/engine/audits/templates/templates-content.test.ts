@@ -499,6 +499,74 @@ describe("templates", () => {
   });
 });
 
+describe("launchd GUI-env templates (.bkit/templates/scripts/launchd/)", () => {
+  const SCRIPT = path.resolve(".bkit/templates/scripts/launchd/bkit-launchd-env.sh");
+  const PLIST = path.resolve(".bkit/templates/scripts/launchd/ai.bkit.launchd.plist");
+  const ENV_EXAMPLE = path.resolve(".bkit/templates/scripts/launchd/launchd.env.example");
+
+  it("ships the loader, the LaunchAgent plist and the env example", () => {
+    expect(fs.existsSync(SCRIPT)).toBe(true);
+    expect(fs.existsSync(PLIST)).toBe(true);
+    expect(fs.existsSync(ENV_EXAMPLE)).toBe(true);
+  });
+
+  describe("bkit-launchd-env.sh", () => {
+    const content = fs.readFileSync(SCRIPT, "utf-8");
+
+    it("is POSIX shell with strict error checking", () => {
+      expect(content.startsWith("#!/usr/bin/env sh\n")).toBe(true);
+      expect(content).toContain("set -eu");
+    });
+
+    it("reads the env file from the positional arg or BKIT_LAUNCHD_ENV", () => {
+      expect(content).toContain("${1:-${BKIT_LAUNCHD_ENV:-");
+    });
+
+    it("checks key identifiers against [A-Za-z0-9_]", () => {
+      expect(content).toContain("*[!A-Za-z0-9_]*");
+    });
+
+    it("skips without launchctl on PATH (Linux CI)", () => {
+      expect(content).toContain("command -v launchctl");
+      expect(content).toContain("launchctl not found");
+    });
+
+    it("hands the value to launchctl, but logs key names only", () => {
+      expect(content).toContain('launchctl setenv "$key" "$val"');
+      const logLine = content.split("\n").find((l) => l.includes("[bkit-launchd] setenv"));
+      expect(logLine).toBeDefined();
+      expect(logLine).not.toContain("$val");
+    });
+  });
+
+  describe("ai.bkit.launchd.plist", () => {
+    const content = fs.readFileSync(PLIST, "utf-8");
+
+    it("is a LaunchAgent that loads at login and re-runs on env-file writes", () => {
+      expect(content).toContain("<key>Label</key>");
+      expect(content).toContain("<string>ai.bkit.launchd</string>");
+      expect(content).toContain("<key>ProgramArguments</key>");
+      expect(content).toContain("<key>RunAtLoad</key>");
+      expect(content).toContain("<key>WatchPaths</key>");
+    });
+
+    it("keeps {{SCRIPT_PATH}} / {{ENV_FILE}} raw for the consumer to fill", () => {
+      expect(content).toContain("{{SCRIPT_PATH}}");
+      expect(content).toContain("{{ENV_FILE}}");
+    });
+  });
+
+  describe("launchd.env.example", () => {
+    const content = fs.readFileSync(ENV_EXAMPLE, "utf-8");
+
+    it("ships example BKIT_ token keys with empty values", () => {
+      expect(content).toMatch(/^BKIT_OPENROUTER_API_KEY=""/m);
+      expect(content).toMatch(/^BKIT_GH_TOKEN=""/m);
+      expect(content).toMatch(/^# BKIT_ANTHROPIC_API_KEY=""/m);
+    });
+  });
+});
+
 describe(".bkit/templates.md gate tool scripts (consumers copy and run them)", () => {
   const doc = fs.readFileSync(path.join(getBkitDocsRoot(), "templates.md"), "utf-8");
   const section = doc.slice(doc.indexOf("## Gate tool scripts"));

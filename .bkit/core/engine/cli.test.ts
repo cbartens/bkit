@@ -536,6 +536,12 @@ describe("printUsage — launcher verbs in help text", () => {
   it("mentions launchctl fallback", () => {
     expect(usage()).toContain("launchctl");
   });
+
+  it("points the persistent launchd setup at the template docs", () => {
+    const output = usage();
+    expect(output).toContain("launchd template set");
+    expect(output).toContain("`.bkit/templates.md` § Launchd GUI environment");
+  });
 });
 
 describe("printUsage — status + opencode in help text", () => {

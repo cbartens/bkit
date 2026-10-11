@@ -25,6 +25,7 @@
 | Vale | `.bkit/templates/.vale.ini`, `.bkit/templates/.vale/styles/House/` | `.vale.ini`, `.vale/styles/House/` | `.vale.ini` + the four House styles |
 | slop-scan | `.bkit/templates/slop-scan.config.json`, `.bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs` | `slop-scan.config.json`, `scripts/slop/bkit-slop-type-suppression.mjs` | both files |
 | direnv | `.bkit/templates/.envrc` | `.envrc` | that file |
+| Launchd GUI env | `.bkit/templates/scripts/launchd/` | `scripts/launchd/bkit-launchd-env.sh`, `~/Library/LaunchAgents/ai.bkit.launchd.plist`, `~/.config/bkit/launchd.env` | `scripts/launchd/bkit-launchd-env.sh` only |
 | Cursor editor + cloud agent | `.bkit/templates/.cursor/settings.json`, `environment.json`, `Dockerfile` | same paths under `.cursor/` | the files you use |
 | Renovate rules | `.bkit/templates/.github/renovate.json5` | `.github/renovate.json5` | that file |
 | Renovate self-hosted runner | `.bkit/templates/.github/workflows/bkit-renovate.yml` | `.github/workflows/bkit-renovate.yml` | that file |
@@ -45,6 +46,8 @@ Placeholders. Copies keep them raw; replace each in your copy:
 | `{{DEFAULT_BRANCH}}` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments) | your default branch | `origin/HEAD`, else `main` |
 | `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
+| `{{SCRIPT_PATH}}` | `ai.bkit.launchd.plist` (`ProgramArguments`) | absolute path to the loader script | `/path/to/repo/scripts/launchd/bkit-launchd-env.sh` |
+| `{{ENV_FILE}}` | `ai.bkit.launchd.plist` (`ProgramArguments`, `WatchPaths`) | absolute path to your env file | `/Users/<you>/.config/bkit/launchd.env` |
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
 - **What changed on upgrade.** `bkit upgrade` lists changed / added / removed template paths. For each one you adopted: `diff .bkit/templates/<path> <path>`, merge what you want (placeholder lines differ by design). `git diff .bkit/templates` in the upgrade commit = the package change.
@@ -231,6 +234,38 @@ direnv allow
 ```
 
 - Adapt: one `dotenv_if_exists <path>` line per extra env file; `unset` keys that must stay out of the shell (they are dropped from the cloud env blocks too).
+
+## Launchd GUI environment — tokens for Dock-launched apps
+
+Dock/Spotlight launches start under `launchd`, which never runs the login shell or direnv → GUI apps (opencode desktop, Cursor) start without `BKIT_*` and provider calls fail on authentication. The template set pairs a loader script with a machine-local env file; the LaunchAgent runs the loader at login and again on every write to that file.
+
+<!-- prettier-ignore -->
+| File | Copy from | To | Commit |
+| --- | --- | --- | --- |
+| Loader | `.bkit/templates/scripts/launchd/bkit-launchd-env.sh` | `scripts/launchd/bkit-launchd-env.sh` | that file |
+| LaunchAgent | `.bkit/templates/scripts/launchd/ai.bkit.launchd.plist` | `~/Library/LaunchAgents/ai.bkit.launchd.plist` | never (machine-local) |
+| Tokens | `.bkit/templates/scripts/launchd/launchd.env.example` | `~/.config/bkit/launchd.env` | never (machine-local) |
+
+```bash
+cp .bkit/templates/scripts/launchd/bkit-launchd-env.sh scripts/launchd/
+chmod +x scripts/launchd/bkit-launchd-env.sh
+mkdir -p ~/.config/bkit
+cp .bkit/templates/scripts/launchd/launchd.env.example ~/.config/bkit/launchd.env
+chmod 600 ~/.config/bkit/launchd.env     # tokens stay owner-only
+# fill in the tokens, then place the agent:
+cp .bkit/templates/scripts/launchd/ai.bkit.launchd.plist ~/Library/LaunchAgents/
+# replace {{SCRIPT_PATH}} and {{ENV_FILE}} with absolute paths in the copied plist
+launchctl bootout gui/$UID ~/Library/LaunchAgents/ai.bkit.launchd.plist 2>/dev/null || true
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/ai.bkit.launchd.plist
+launchctl getenv BKIT_OPENROUTER_API_KEY    # bootstrap proof
+```
+
+- `WatchPaths` re-runs the loader on every env-file write → rotate a token by editing the file, no re-bootstrap.
+- Log `~/Library/Logs/bkit-launchd.log` records key names only, never values. `BKIT_LAUNCHD_LOG` and `BKIT_LAUNCHD_ENV` override the log and env-file defaults.
+- Loader self-skips (log line + `exit 0`) when the env file is absent or `launchctl` is off `PATH` (Linux CI).
+- Env-file rules: blank lines and `#` comments ignored; optional `export ` prefix; key must match `[A-Za-z0-9_]`; matching surrounding quotes stripped from the value.
+- `launchctl setenv` reaches apps launched after the load; a running app keeps its environment until relaunch.
+- Remove: `launchctl bootout gui/$UID ~/Library/LaunchAgents/ai.bkit.launchd.plist`.
 
 ## Cursor — `settings.json`, `environment.json`, `Dockerfile`
 

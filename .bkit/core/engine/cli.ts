@@ -700,9 +700,9 @@ macOS GUI-isolation note (launchctl fallback):
   survive reboot — must re-run after each restart):
     launchctl setenv BKIT_GH_TOKEN "$BKIT_GH_TOKEN"
     launchctl setenv BKIT_OPENCODE_API_KEY "$BKIT_OPENCODE_API_KEY"   # etc.
-  For a persistent approach, add a RunAtLoad LaunchAgent plist under
-  ~/Library/LaunchAgents/ that calls setenv for each key. This requires manual rotation
-  whenever tokens change — prefer \`bkit cursor\` / \`bkit opencode\` for the dynamic model.
+  For a persistent approach that re-reads the tokens file on every change, copy the
+  launchd template set (see \`.bkit/templates.md\` § Launchd GUI environment). Rotation
+  then needs no re-bootstrap — prefer \`bkit cursor\` / \`bkit opencode\` for the dynamic model.
 
 Consumer CI auth:
   Set BKIT_GH_TOKEN_INSTALL in GitHub Actions secrets (classic PAT with read:packages scope —
