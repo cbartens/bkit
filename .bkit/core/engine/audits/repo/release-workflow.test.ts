@@ -49,6 +49,10 @@ describe("release.yml structural assertions (BAR-138)", () => {
     expect(content).toContain("contents: write");
   });
 
+  it("permissions.id-token is write (OIDC trusted publishing)", () => {
+    expect(content).toContain("id-token: write");
+  });
+
   // ---------------------------------------------------------------------------
   // Sliding major-version tag step (v1.0.3+)
   // ---------------------------------------------------------------------------
@@ -85,8 +89,8 @@ describe("release.yml structural assertions (BAR-138)", () => {
   // setup-node step
   // ---------------------------------------------------------------------------
 
-  it("setup-node step uses node-version 20", () => {
-    expect(content).toContain("node-version: 20");
+  it("setup-node step uses node-version 24 (npm >= 11.5.1 for OIDC trusted publishing)", () => {
+    expect(content).toContain("node-version: 24");
   });
 
   it("setup-node step sets registry-url to https://registry.npmjs.org", () => {
@@ -168,8 +172,9 @@ describe("release.yml structural assertions (BAR-138)", () => {
     expect(content).not.toContain("pnpm publish");
   });
 
-  it("npm publish step env has NODE_AUTH_TOKEN referencing BKIT_NPM_TOKEN", () => {
-    expect(content).toContain("NODE_AUTH_TOKEN: ${{ secrets.BKIT_NPM_TOKEN }}");
+  it("npm publish authenticates via OIDC, not a token (no token env)", () => {
+    expect(content).not.toMatch(/NODE_AUTH_TOKEN\s*:/);
+    expect(content).not.toContain("secrets.BKIT_NPM_TOKEN");
   });
 
   it("npm publish step appears after pnpm bkit:check:dist", () => {
