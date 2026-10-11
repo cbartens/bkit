@@ -3,8 +3,9 @@
 // bkit generates the four hooks at install from one shared engine
 // (`.bkit/core/hooks/`) plus per-host parts, and they reach the model by
 // different routes: Claude writes `hookSpecificOutput.additionalContext` to stdout,
-// Cursor writes `additional_context` with `permission: "allow"`, opencode writes to
-// stderr (and throws to block), Codex is Claude-shaped.
+// Cursor writes `additional_context` with `permission: "allow"`, opencode appends the
+// checklist to the tool result in its after-execute hook (and throws from before to
+// block), Codex is Claude-shaped.
 //
 // Every row runs against every host's GENERATED hook (the template as install renders
 // it) through an adapter that normalises the delivery mechanism away. A behaviour that
@@ -108,45 +109,49 @@ async function runOpencode(c: Call): Promise<Outcome> {
     else process.env[k] = v;
   }
 
-  let captured = "";
-  const originalWrite = process.stderr.write.bind(process.stderr);
-  process.stderr.write = ((chunk: string | Uint8Array) => {
-    captured += chunk.toString();
-    return true;
-  }) as typeof process.stderr.write;
-
   let blocked = false;
   let thrownMessage = "";
+  let advisory = "";
   try {
-    // Drive the plugin as OpenCode 2.0 does: setup(ctx) registers the execute.before
-    // hook, then the runner calls it with one event (`tool` / `input` / `sessionID`).
+    // Drive the plugin as OpenCode 2.0 does: setup(ctx) registers the before + after
+    // hooks, then the runner calls before (block/allow) and, on success, after with a
+    // fresh `result`. The advisory is what the after hook appends to `result.content`,
+    // which the host reads back into the model's tool result.
     const { default: plugin } = await import(pathToFileURL(OPENCODE_PLUGIN).href);
-    let registered: ((event: object) => Promise<void>) | null = null;
+    const hooks: Record<string, (event: object) => Promise<void>> = {};
     await plugin.setup({
       tool: {
-        hook: async (_name: string, cb: (event: object) => Promise<void>) => {
-          registered = cb;
+        hook: async (name: string, cb: (event: object) => Promise<void>) => {
+          hooks[name] = cb;
         },
       },
     });
+    const event = {
+      tool: c.kind === "create" ? "write" : "edit",
+      sessionID: c.session,
+      id: "parity-call",
+      input: { path: c.file },
+    };
     try {
-      await registered!({
-        tool: c.kind === "create" ? "write" : "edit",
-        sessionID: c.session,
-        input: { path: c.file },
-      });
+      if (hooks["execute.before"]) await hooks["execute.before"](event);
     } catch (e) {
       blocked = true;
       thrownMessage = (e as Error).message;
     }
+    if (!blocked) {
+      const result: { content: { type: string; text: string }[] } = { content: [] };
+      if (hooks["execute.after"]) {
+        await hooks["execute.after"]({ ...event, status: "completed", result });
+      }
+      advisory = result.content.map((part) => part.text).join("");
+    }
   } finally {
-    process.stderr.write = originalWrite;
     for (const [k, v] of Object.entries(saved)) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }
   }
-  return { advisory: blocked ? thrownMessage : captured, blocked };
+  return { advisory: blocked ? thrownMessage : advisory, blocked };
 }
 
 /**

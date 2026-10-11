@@ -122,48 +122,43 @@ function editHookInput(filePath: string, sessionID: string) {
 interface HookResult {
   threw: boolean;
   error: Error | null;
-  stderrCaptured: string;
+  /** The checklist the host surfaces to the model in the tool result, or "". */
+  advice: string;
 }
 
-/** Run `fn` with `env` applied and stderr captured; restore both afterwards. */
-async function capture(
-  fn: () => Promise<void>,
+/** Run `fn` with `env` applied; restore the environment afterwards. */
+async function withEnv<T>(
   env: Record<string, string | undefined>,
-): Promise<HookResult> {
+  fn: () => Promise<T>,
+): Promise<T> {
   const savedEnv: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(env)) {
     savedEnv[k] = process.env[k];
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
-
-  let stderrCaptured = "";
-  const originalStderrWrite = process.stderr.write.bind(process.stderr);
-  process.stderr.write = (chunk: string | Uint8Array) => {
-    stderrCaptured += chunk.toString();
-    return true;
-  };
-
-  let threw = false;
-  let error: Error | null = null;
-
   try {
-    await fn();
-  } catch (err) {
-    threw = true;
-    error = err instanceof Error ? err : new Error(String(err));
+    return await fn();
   } finally {
     for (const [k, v] of Object.entries(savedEnv)) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }
-    process.stderr.write = originalStderrWrite;
   }
-
-  return { threw, error, stderrCaptured };
 }
 
-/** The plugin as OpenCode 2.0 drives it: `setup(ctx)` → `ctx.tool.hook("execute.before")`. */
+function toError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+type HookFn = (input: unknown, output: unknown) => Promise<void>;
+
+/**
+ * The plugin as OpenCode 2.0 drives it. Registers whatever `setup()` declares, then
+ * runs the pair the host runs around one tool call: `execute.before` (block or allow)
+ * then, on success, `execute.after` with a fresh `result`. The advisory is the text
+ * the after hook appends to `event.result.content` — the model's tool result.
+ */
 async function invokeHook(
   plugin: { setup: (ctx: object) => Promise<void> },
   _client: object,
@@ -171,28 +166,44 @@ async function invokeHook(
   output: { args?: unknown },
   env: Record<string, string | undefined> = {},
 ): Promise<HookResult> {
-  return capture(async () => {
-    const event = {
-      tool: hookInput.tool,
-      sessionID: hookInput.sessionID,
-      input: (output?.args as object | undefined) ?? {},
-    };
-    // Holder object: a plain `let` reassigned inside the hook closure narrows to
-    // `null` at the call site (TS cannot see the callback ran).
-    const holder: { cb: ((e: object) => Promise<void>) | null } = { cb: null };
+  return withEnv(env, async () => {
+    const hooks: Record<string, HookFn> = {};
     const ctx = {
       tool: {
-        hook: async (_name: string, cb: (e: object) => Promise<void>) => {
-          holder.cb = cb;
+        hook: async (name: string, cb: HookFn) => {
+          hooks[name] = cb;
         },
       },
     };
     await plugin.setup(ctx);
-    if (typeof holder.cb === "function") await holder.cb(event);
-  }, env);
+    const event = {
+      tool: hookInput.tool,
+      sessionID: hookInput.sessionID,
+      id: hookInput.callID,
+      input: (output?.args as object | undefined) ?? {},
+    };
+    try {
+      if (hooks["execute.before"]) await hooks["execute.before"](event, {});
+    } catch (err) {
+      return { threw: true, error: toError(err), advice: "" };
+    }
+    const result: { content: { type: string; text: string }[] } = { content: [] };
+    if (hooks["execute.after"]) {
+      await hooks["execute.after"]({ ...event, status: "completed", result }, {});
+    }
+    return {
+      threw: false,
+      error: null,
+      advice: result.content.map((part) => part.text).join(""),
+    };
+  });
 }
 
-/** The plugin as OpenCode 1.x drives it: `server()` → `tool.execute.before(input, output)`. */
+/**
+ * The plugin as OpenCode 1.x drives it: `server()` → `tool.execute.before` (args on
+ * `output.args`) then `tool.execute.after` (args on `input.args`, result text on
+ * `output.output`).
+ */
 async function invokeHookV1(
   plugin: { server: () => Promise<Record<string, unknown>> },
   _client: object,
@@ -200,14 +211,23 @@ async function invokeHookV1(
   output: object,
   env: Record<string, string | undefined> = {},
 ): Promise<HookResult> {
-  return capture(async () => {
-    const hooks = await plugin.server();
-    const beforeHook = hooks["tool.execute.before"] as (
-      hookInput: object,
-      output: object,
-    ) => Promise<void>;
-    if (typeof beforeHook === "function") await beforeHook(hookInput, output);
-  }, env);
+  return withEnv(env, async () => {
+    const hooks = (await plugin.server()) as Record<string, HookFn>;
+    try {
+      const before = hooks["tool.execute.before"];
+      if (typeof before === "function") await before(hookInput, output);
+    } catch (err) {
+      return { threw: true, error: toError(err), advice: "" };
+    }
+    const afterOutput = { title: "", output: "", metadata: {} };
+    const afterInput = {
+      ...(hookInput as Record<string, unknown>),
+      args: (output as { args?: unknown }).args,
+    };
+    const after = hooks["tool.execute.after"];
+    if (typeof after === "function") await after(afterInput, afterOutput);
+    return { threw: false, error: null, advice: afterOutput.output };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -273,9 +293,72 @@ describe("gateguard opencode plugin — advisory mode (default)", () => {
       BKIT_GATEGUARD: undefined,
     });
     expect(result.threw).toBe(false);
-    expect(result.stderrCaptured).toContain("[bkit GateGuard]");
-    expect(result.stderrCaptured).toContain("foo-does-not-exist.ts");
-    expect(result.stderrCaptured).toContain("Bolt-on drift");
+    expect(result.advice).toContain("[bkit GateGuard]");
+    expect(result.advice).toContain("foo-does-not-exist.ts");
+    expect(result.advice).toContain("Bolt-on drift");
+  });
+
+  it("keeps the reuse checklist when the write CREATES the file (pre-write snapshot)", async () => {
+    // Reproduces the live defect the after-hook channel introduced: by the time
+    // execute.after runs, the write has created the file, so an existsSync new-file
+    // test would wrongly report "existing" and emit the investigation checklist. The
+    // pre-write snapshot captured in execute.before must survive.
+    const session = newSession();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gg-oc-newfile-"));
+    const target = path.join(dir, "created.ts");
+    try {
+      const hooks: Record<string, (input: unknown, output: unknown) => Promise<void>> = {};
+      const ctx = {
+        tool: {
+          hook: async (name: string, cb: (i: unknown, o: unknown) => Promise<void>) => {
+            hooks[name] = cb;
+          },
+        },
+      };
+      await plugin.setup(ctx);
+      const event = {
+        tool: "write",
+        sessionID: session,
+        id: "toolu_created_file",
+        input: { path: target },
+      };
+      await withEnv({ BKIT_GATEGUARD: undefined }, async () => {
+        // before: the file does not exist yet
+        await hooks["execute.before"]!(event, {});
+        // the host runs the write, which creates the file
+        fs.writeFileSync(target, "export const x = 1;\n");
+        const result: { content: { type: string; text: string }[] } = { content: [] };
+        await hooks["execute.after"]!({ ...event, status: "completed", result }, {});
+        const advice = result.content.map((part) => part.text).join("");
+        expect(advice).toContain("[bkit GateGuard]");
+        expect(advice).toContain("Bolt-on drift");
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("(V1) keeps the reuse checklist when the write CREATES the file (pre-write snapshot)", async () => {
+    const session = newSession();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gg-oc-newfile-v1-"));
+    const target = path.join(dir, "created.ts");
+    try {
+      const hooks = (await plugin.server()) as Record<
+        string,
+        (input: unknown, output: unknown) => Promise<void>
+      >;
+      const hookInput = { tool: "write", sessionID: session, callID: "toolu_created_file_v1" };
+      await withEnv({ BKIT_GATEGUARD: undefined }, async () => {
+        await hooks["tool.execute.before"]!(hookInput, { args: { path: target } });
+        fs.writeFileSync(target, "export const x = 1;\n");
+        const afterOutput = { title: "", output: "", metadata: {} };
+        await hooks["tool.execute.after"]!({ ...hookInput, args: { path: target } }, afterOutput);
+        expect(afterOutput.output).toContain("[bkit GateGuard]");
+        expect(afterOutput.output).toContain("Bolt-on drift");
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("emits investigation checklist on a write to an EXISTING file", async () => {
@@ -285,8 +368,8 @@ describe("gateguard opencode plugin — advisory mode (default)", () => {
       BKIT_GATEGUARD: undefined,
     });
     expect(result.threw).toBe(false);
-    expect(result.stderrCaptured).toContain("investigation");
-    expect(result.stderrCaptured).not.toContain("Bolt-on drift");
+    expect(result.advice).toContain("investigation");
+    expect(result.advice).not.toContain("Bolt-on drift");
   });
 
   it("emits investigation checklist on first edit to a file", async () => {
@@ -296,8 +379,8 @@ describe("gateguard opencode plugin — advisory mode (default)", () => {
       BKIT_GATEGUARD: undefined,
     });
     expect(result.threw).toBe(false);
-    expect(result.stderrCaptured).toContain("[bkit GateGuard]");
-    expect(result.stderrCaptured).toContain("bar.ts");
+    expect(result.advice).toContain("[bkit GateGuard]");
+    expect(result.advice).toContain("bar.ts");
   });
 
   it("dedups: second write to the same file in the same session emits nothing", async () => {
@@ -307,13 +390,13 @@ describe("gateguard opencode plugin — advisory mode (default)", () => {
     const first = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
-    expect(first.stderrCaptured).toContain("[bkit GateGuard]");
+    expect(first.advice).toContain("[bkit GateGuard]");
 
     const second = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
     expect(second.threw).toBe(false);
-    expect(second.stderrCaptured).toBe("");
+    expect(second.advice).toBe("");
   });
 
   it("warns again for a different file in the same session", async () => {
@@ -327,7 +410,7 @@ describe("gateguard opencode plugin — advisory mode (default)", () => {
     const r = await invokeHook(plugin, orchestratorClient(), second.hookInput, second.output, {
       BKIT_GATEGUARD: undefined,
     });
-    expect(r.stderrCaptured).toContain("b.ts");
+    expect(r.advice).toContain("b.ts");
   });
 });
 
@@ -360,7 +443,7 @@ describe("gateguard opencode plugin — deny mode", () => {
     // Second: dedup'd, no throw
     const retry = await invokeHook(plugin, orchestratorClient(), hookInput, output, env);
     expect(retry.threw).toBe(false);
-    expect(retry.stderrCaptured).toBe("");
+    expect(retry.advice).toBe("");
   });
 });
 
@@ -369,14 +452,14 @@ describe("gateguard opencode plugin — deny mode", () => {
 // ---------------------------------------------------------------------------
 
 describe("gateguard opencode plugin — off mode", () => {
-  it("BKIT_GATEGUARD=off: no stderr, no throw, no dedup state written", async () => {
+  it("BKIT_GATEGUARD=off: no advice, no throw, no dedup state written", async () => {
     const session = newSession();
     const { hookInput, output } = writeHookInput("src/off.ts", session);
     const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: "off",
     });
     expect(result.threw).toBe(false);
-    expect(result.stderrCaptured).toBe("");
+    expect(result.advice).toBe("");
     // No dedup state written
     expect(isWarned(session, "src/off.ts")).toBe(false);
   });
@@ -399,7 +482,7 @@ describe("gateguard opencode plugin — subagents are NOT exempt", () => {
       BKIT_GATEGUARD: undefined,
     });
     expect(result.threw).toBe(false);
-    expect(result.stderrCaptured).toBe("");
+    expect(result.advice).toBe("");
   });
 
   it("a subagent session editing a file DOES get the advisory (exemption removed)", async () => {
@@ -412,7 +495,7 @@ describe("gateguard opencode plugin — subagents are NOT exempt", () => {
       BKIT_GATEGUARD: undefined,
     });
     expect(result.threw).toBe(false);
-    expect(result.stderrCaptured).toContain("[bkit GateGuard]");
+    expect(result.advice).toContain("[bkit GateGuard]");
   });
 
   it("orchestrator session gets the advisory too — same treatment either way", async () => {
@@ -422,7 +505,7 @@ describe("gateguard opencode plugin — subagents are NOT exempt", () => {
       BKIT_GATEGUARD: undefined,
     });
     expect(result.threw).toBe(false);
-    expect(result.stderrCaptured).toContain("[bkit GateGuard]");
+    expect(result.advice).toContain("[bkit GateGuard]");
   });
 });
 
@@ -437,7 +520,7 @@ describe("gateguard opencode plugin — gate-config advisory", () => {
     const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
-    expect(result.stderrCaptured).toContain("quality-gate config");
+    expect(result.advice).toContain("quality-gate config");
   });
 
   it.each([
@@ -453,7 +536,7 @@ describe("gateguard opencode plugin — gate-config advisory", () => {
     const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
-    expect(result.stderrCaptured).toContain("quality-gate config");
+    expect(result.advice).toContain("quality-gate config");
   });
 
   it("BKIT_ALLOW_CONFIG_EDIT=1 downgrades config edit to normal checklist", async () => {
@@ -463,8 +546,8 @@ describe("gateguard opencode plugin — gate-config advisory", () => {
       BKIT_GATEGUARD: undefined,
       BKIT_ALLOW_CONFIG_EDIT: "1",
     });
-    expect(result.stderrCaptured).toContain("[bkit GateGuard]");
-    expect(result.stderrCaptured).not.toContain("quality-gate config");
+    expect(result.advice).toContain("[bkit GateGuard]");
+    expect(result.advice).not.toContain("quality-gate config");
   });
 
   it("source file is not treated as gate config", async () => {
@@ -473,7 +556,7 @@ describe("gateguard opencode plugin — gate-config advisory", () => {
     const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
-    expect(result.stderrCaptured).not.toContain("quality-gate config");
+    expect(result.advice).not.toContain("quality-gate config");
   });
 });
 
@@ -482,7 +565,7 @@ describe("gateguard opencode plugin — gate-config advisory", () => {
 // ---------------------------------------------------------------------------
 
 describe("gateguard opencode plugin — fail-open cases", () => {
-  it("missing file path (no args.path) is ignored — no throw, no stderr", async () => {
+  it("missing file path (no args.path) is ignored — no throw, no advice", async () => {
     const session = newSession();
     const result = await invokeHook(
       plugin,
@@ -492,7 +575,7 @@ describe("gateguard opencode plugin — fail-open cases", () => {
       { BKIT_GATEGUARD: undefined },
     );
     expect(result.threw).toBe(false);
-    expect(result.stderrCaptured).toBe("");
+    expect(result.advice).toBe("");
   });
 
   it("null args object is ignored — no throw", async () => {
@@ -505,7 +588,7 @@ describe("gateguard opencode plugin — fail-open cases", () => {
       { BKIT_GATEGUARD: undefined },
     );
     expect(result.threw).toBe(false);
-    expect(result.stderrCaptured).toBe("");
+    expect(result.advice).toBe("");
   });
 
   it("session.get() rejection → fail-open (treats as orchestrator, emits advisory)", async () => {
@@ -528,8 +611,8 @@ describe("gateguard opencode plugin — fail-open cases", () => {
     // Fail-open: no unexpected throw (advisory emitted is acceptable)
     // The advisory is still emitted (fail-open = treat as orchestrator, not off)
     expect(result.threw).toBe(false);
-    // In advisory mode, stderr should contain the checklist (fail-open = apply advisory)
-    expect(result.stderrCaptured).toContain("[bkit GateGuard]");
+    // In advisory mode, the tool result should contain the checklist (fail-open = apply advisory)
+    expect(result.advice).toContain("[bkit GateGuard]");
   });
 
   it("non-edit tool (bash) is ignored", async () => {
@@ -545,7 +628,7 @@ describe("gateguard opencode plugin — fail-open cases", () => {
     expect(result.threw).toBe(false);
     // No advisory since bash is not an edit tool
     // (note: subagent check happens first, but orchestrator session so continues to tool check)
-    expect(result.stderrCaptured).toBe("");
+    expect(result.advice).toBe("");
   });
 });
 
@@ -592,7 +675,7 @@ describe("dual driver shape (OpenCode 1.x server() + 2.0 setup())", () => {
     expect(typeof p.server).toBe("function");
   });
 
-  it("2.0 setup() registers the execute.before hook", async () => {
+  it("2.0 setup() registers the before (deny) and after (advisory) hooks", async () => {
     const p = await loadPlugin();
     const calls: string[] = [];
     const ctx = {
@@ -603,13 +686,14 @@ describe("dual driver shape (OpenCode 1.x server() + 2.0 setup())", () => {
       },
     };
     await p.setup(ctx);
-    expect(calls).toEqual(["execute.before"]);
+    expect(calls).toEqual(["execute.before", "execute.after"]);
   });
 
-  it("1.x server() returns the tool.execute.before hook", async () => {
+  it("1.x server() returns the tool.execute.before + tool.execute.after hooks", async () => {
     const p = await loadPlugin();
     const hooks = await p.server();
     expect(typeof hooks["tool.execute.before"]).toBe("function");
+    expect(typeof hooks["tool.execute.after"]).toBe("function");
   });
 
   it("both drivers emit the same advisory for the same edit", async () => {
@@ -624,9 +708,9 @@ describe("dual driver shape (OpenCode 1.x server() + 2.0 setup())", () => {
     });
     expect(v1.threw).toBe(false);
     expect(v2.threw).toBe(false);
-    expect(v1.stderrCaptured).toContain("[bkit GateGuard]");
+    expect(v1.advice).toContain("[bkit GateGuard]");
     // Same checklist text either way (session id is not embedded in the advisory).
-    expect(v1.stderrCaptured).toBe(v2.stderrCaptured);
+    expect(v1.advice).toBe(v2.advice);
   });
 
   it("V1 driver reads the real 1.x arg key `filePath`", async () => {
@@ -644,7 +728,7 @@ describe("dual driver shape (OpenCode 1.x server() + 2.0 setup())", () => {
       { BKIT_GATEGUARD: undefined },
     );
     expect(result.threw).toBe(false);
-    expect(result.stderrCaptured).toContain("[bkit GateGuard]");
+    expect(result.advice).toContain("[bkit GateGuard]");
     expect(isWarned(session, "src/v1-filepath.ts")).toBe(true);
   });
 
@@ -677,7 +761,7 @@ describe("gateguard plugin — docs/*.md density advisory (#422)", () => {
     const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
-    expect(result.stderrCaptured).toContain("docs/*.md authoring");
+    expect(result.advice).toContain("docs/*.md authoring");
   });
 
   it("does NOT match a Documents/ ancestor (segment match, not substring)", async () => {
@@ -687,7 +771,7 @@ describe("gateguard plugin — docs/*.md density advisory (#422)", () => {
     const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
-    expect(result.stderrCaptured).not.toContain("docs/*.md authoring");
+    expect(result.advice).not.toContain("docs/*.md authoring");
   });
 
   it("excludes docs/plans/ (plan template governs those, not the docs register)", async () => {
@@ -700,7 +784,7 @@ describe("gateguard plugin — docs/*.md density advisory (#422)", () => {
     const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
-    expect(result.stderrCaptured).not.toContain("docs/*.md authoring");
+    expect(result.advice).not.toContain("docs/*.md authoring");
   });
 
   it("does NOT match docs/knowledge.jsonl (gated on .md)", async () => {
@@ -710,7 +794,7 @@ describe("gateguard plugin — docs/*.md density advisory (#422)", () => {
     const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
-    expect(result.stderrCaptured).not.toContain("docs/*.md authoring");
+    expect(result.advice).not.toContain("docs/*.md authoring");
   });
 
   it("matches a nested docs/ tree via segment match (.bkit/shared/docs/architecture.md)", async () => {
@@ -720,7 +804,7 @@ describe("gateguard plugin — docs/*.md density advisory (#422)", () => {
     const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
-    expect(result.stderrCaptured).toContain("docs/*.md authoring");
+    expect(result.advice).toContain("docs/*.md authoring");
   });
 
   it("twin parity: isDocsPath + docAuthoringAdvisory are byte-identical between the two hooks", () => {

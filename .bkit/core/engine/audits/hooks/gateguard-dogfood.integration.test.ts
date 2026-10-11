@@ -80,17 +80,19 @@ function codexAdvisory(file: string): string {
 }
 
 function opencodeAdvisory(file: string): string {
-  // The plugin is an ES module whose advisory channel is stderr: run it in a child
-  // that captures stderr and prints it to stdout. Driven as OpenCode 2.0 does —
-  // setup(ctx) registers the execute.before hook, then the runner calls it once.
+  // The plugin is an ES module whose advisory rides the tool result: run it in a child
+  // that drives execute.before (block/allow), then execute.after with a fresh result,
+  // and prints the text the after hook appended to `result.content`. Driven as OpenCode
+  // 2.0 does. (A deny-mode throw is printed instead, matching the host's error channel.)
   const code = [
     `const { default: plugin } = await import(${JSON.stringify(pathToFileURL(OPENCODE).href)});`,
-    `let out = "";`,
-    `process.stderr.write = (s) => { out += s; return true; };`,
-    `let cb = null;`,
-    `await plugin.setup({ tool: { hook: async (_n, f) => { cb = f; } } });`,
-    `await cb({ tool: "edit", sessionID: ${JSON.stringify(session())}, input: { path: ${JSON.stringify(file)} } });`,
-    `process.stdout.write(out);`,
+    `const hooks = {};`,
+    `await plugin.setup({ tool: { hook: async (n, f) => { hooks[n] = f; } } });`,
+    `const event = { tool: "edit", sessionID: ${JSON.stringify(session())}, input: { path: ${JSON.stringify(file)} } };`,
+    `const result = { content: [] };`,
+    `try { if (hooks["execute.before"]) await hooks["execute.before"](event); } catch (e) { process.stdout.write(String((e && e.message) || e)); process.exit(0); }`,
+    `if (hooks["execute.after"]) await hooks["execute.after"]({ ...event, status: "completed", result });`,
+    `process.stdout.write(result.content.map((p) => p.text).join(""));`,
   ].join("\n");
   const res = spawnSync("node", ["--input-type=module", "-e", code], { encoding: "utf-8" });
   return res.stdout;

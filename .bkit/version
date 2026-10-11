@@ -302,7 +302,7 @@
     ".cursor/hooks/bkit-gateguard.cjs": "6797dddc973d8f9d1430be5959156c95dcd50ae46ec037ddd26ad8c2521ff301",
     ".cursor/hooks/bkit-guardrails.cjs": "0c3523b406bee154d93b6687277169d168301f755c8951da41ec95b23cf19e88",
     ".cursor/hooks/bkit-preflight.sh": "2a36706139d02db25b73a02455624608537eda7513d9b60c12b9af4d4dae8cde",
-    ".opencode/plugin/bkit-gateguard.js": "0103d13935f9811fff66dc6558d9b57588d169ac06497d2f215c7f72c9410d41",
+    ".opencode/plugin/bkit-gateguard.js": "f113d5237c59bdfdbe3f191b1fc31ffecdc313793e12b6e3fca02ff5ca0f5b9a",
     ".bkit/LICENSE.md": "f8b64af72c7ab46f0dc46a359d06d64f077aa6cd03739107dd289530ae4cdcb2"
   },
   "claudeAllowDerived": [
