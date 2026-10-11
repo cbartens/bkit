@@ -13,7 +13,7 @@ tools:
   bash: true
 reasoningEffort: max
 ---
-<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer judging whether changes landed since the plan was written leave it executable.
 **Scope:** As specified by input and Read / Update / Create section.

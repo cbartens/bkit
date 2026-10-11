@@ -4,6 +4,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readPackageJson } from "../../shared/package-json.js";
 import type { PreflightFinding } from "../before/index.js";
 
 // ---------------------------------------------------------------------------
@@ -578,14 +579,9 @@ export function detectTurboIntegrationInputs(cwd: string): PreflightFinding[] {
  * script points at (home of the documented in-file guard).
  */
 export function detectTestIntegrationEnv(cwd: string): PreflightFinding | null {
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return null;
-  let pkg: { scripts?: Record<string, string> };
-  try {
-    pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as typeof pkg;
-  } catch {
-    return null;
-  }
+  const read = readPackageJson(cwd);
+  if (!read.ok) return null;
+  const pkg = read.pkg as { scripts?: Record<string, string> };
   const script = pkg.scripts?.["test:integration"];
   if (!script) return null;
   const realServiceHints = [

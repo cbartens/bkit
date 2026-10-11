@@ -3,6 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getTemplatesRoot } from "../../shared/package-roots.js";
+import { readPackageJson } from "../../shared/package-json.js";
 /**
  * Line-anchored consumer opt-out marker for the context-fetch advisories. A repo
  * that legitimately enables no runtime-log source places this below
@@ -97,13 +98,10 @@ const CONTEXT_FETCH_BACKEND_EVIDENCE = {
 };
 /** Every dependency name across the four package.json dependency fields. */
 function readDependencyNames(cwd) {
-    let pkg;
-    try {
-        pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8"));
-    }
-    catch {
+    const read = readPackageJson(cwd);
+    if (!read.ok)
         return [];
-    }
+    const pkg = read.pkg;
     const names = [];
     for (const field of [
         "dependencies",

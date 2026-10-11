@@ -91,6 +91,7 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     "comparison.md",
     "install.md",
     "jsonl.md",
+    "LICENSE.md",
     "providers.md",
     "prompts.md",
     "templates.md",
@@ -102,7 +103,7 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
   const rendered = (name: string): string =>
     applyTokens(fs.readFileSync(path.join(PKG_DOCS_ROOT, name), "utf-8"), makeCtx().tokens);
 
-  it("force-overwrites the ten package .bkit/*.md docs into the consumer's .bkit/, rendered", () => {
+  it("force-overwrites the package .bkit/*.md docs into the consumer's .bkit/, rendered", () => {
     const ctx = makeCtx();
     runCoreModule(ctx);
     flushPostDispatch(ctx);
@@ -118,15 +119,39 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     }
   });
 
+  it("writes .bkit/LICENSE.md with both PolyForm texts, the Required Notice and the MIT-0 pointer", () => {
+    const ctx = makeCtx();
+    runCoreModule(ctx);
+    flushPostDispatch(ctx);
+
+    const licence = fs.readFileSync(path.join(tmpDir, ".bkit", "LICENSE.md"), "utf-8");
+    expect(licence).toContain("# PolyForm Noncommercial License 1.0.0");
+    expect(licence).toContain("# PolyForm Small Business License 1.0.0");
+    expect(licence).toContain(
+      "Required Notice: Copyright 2026 Christian Bartens (https://github.com/cbartens/bkit)",
+    );
+    expect(licence).toContain("`.bkit/shared/` and `.bkit/templates/` are MIT-0");
+  });
+
   it("mirrors the docs into the repo's own .bkit/ in dogfood too", () => {
     const doc = path.join(".bkit", "workflows.md");
     expect(listStampedFiles(tmpDir).map((f) => f.path)).toContain(doc);
     expect(listStampedFiles(getPkgRoot()).map((f) => f.path)).toContain(doc);
 
     process.chdir(getPkgRoot());
-    const ws = makeWriteSet();
-    runBkitDocs(true, makeCtx().tokens, ws, "[test]");
-    expect(ws.writes.map((w) => String(w.path))).toContain(doc);
+    // A clean upgrade leaves the mirror equal to the source, so make it differ to
+    // prove the dry-run resolves the consumer destination (the repo's own .bkit/),
+    // never the package source. Restored in finally — the dry-run writes nothing.
+    const abs = path.join(getPkgRoot(), doc);
+    const original = fs.readFileSync(abs, "utf-8");
+    fs.writeFileSync(abs, `${original}\nstale mirror\n`, "utf-8");
+    try {
+      const ws = makeWriteSet();
+      runBkitDocs(true, makeCtx().tokens, ws, "[test]");
+      expect(ws.writes.map((w) => String(w.path))).toContain(doc);
+    } finally {
+      fs.writeFileSync(abs, original, "utf-8");
+    }
   });
 
   it("is idempotent: a second core run writes none of the docs again", () => {
@@ -403,13 +428,13 @@ describe(".bkit-version first-run signal extra-logging", () => {
 });
 
 // ---------------------------------------------------------------------------
-// COPY_EXCLUDE: Tier-2-style `.agents/*.md` files must NOT be additively copied
-// from the package payload — they ship as templates and the templates pass owns
-// them. A consumer rules.md never carries bkit's `## Project Rules` content from
-// outside the bkit:start/end block.
+// bkit-source `.agents/*.md` files must NOT leak to consumers: the package ships
+// no `.agents/` payload (only `.bkit/core/.agents/` sources), and the templates
+// pass is the only writer, so a consumer rules.md never carries bkit's
+// out-of-block content.
 // ---------------------------------------------------------------------------
 
-describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to consumers", () => {
+describe("bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to consumers", () => {
   it("first install matches the template (no out-of-block content from bkit's source rules.md)", () => {
     const ctx = makeCtx();
     runCoreModule(ctx);
@@ -454,8 +479,8 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
 
   it("rules.md is reachable via the templates pass — no additive leak path", () => {
     // Simulates a brand-new consumer: no .agents/ exists. After runCoreModule,
-    // the only writer of `.agents/rules.md` should be the templates pass
-    // (sourced from `.bkit/core/.agents/rules.md`), not copyAdditive.
+    // the only writer of `.agents/rules.md` is the templates pass (sourced from
+    // `.bkit/core/.agents/rules.md`).
     const ctx = makeCtx();
     runCoreModule(ctx);
     flushPostDispatch(ctx);

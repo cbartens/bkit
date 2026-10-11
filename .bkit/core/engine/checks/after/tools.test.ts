@@ -60,21 +60,19 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("detectValePackageNotSynced", () => {
-  it("returns null when vale is not on PATH (execSync throws)", () => {
-    execSync.mockImplementation(() => {
-      throw new Error("vale: command not found");
-    });
+  it("returns null when vale is not on PATH (spawn exits non-zero)", () => {
+    spawnSync.mockReturnValue({ status: 1, stdout: "" } as ReturnType<typeof spawnSync>);
     expect(detectValePackageNotSynced(tmpDir)).toBeNull();
   });
 
   it("returns null when vale is on PATH and write-good styles exist", () => {
-    execSync.mockReturnValue("vale version 3.0.0\n");
+    spawnSync.mockReturnValue({ status: 0, stdout: "" } as ReturnType<typeof spawnSync>);
     fs.mkdirSync(path.join(tmpDir, ".vale", "styles", "write-good"), { recursive: true });
     expect(detectValePackageNotSynced(tmpDir)).toBeNull();
   });
 
   it("returns finding when vale is on PATH but write-good styles are absent", () => {
-    execSync.mockReturnValue("vale version 3.0.0\n");
+    spawnSync.mockReturnValue({ status: 0, stdout: "" } as ReturnType<typeof spawnSync>);
     fs.writeFileSync(path.join(tmpDir, ".vale.ini"), "Packages = write-good\n");
     // No .vale/styles/write-good directory
     const result = detectValePackageNotSynced(tmpDir);
@@ -86,7 +84,7 @@ describe("detectValePackageNotSynced", () => {
   });
 
   it("points at the .vale.ini template before vale sync when the repo has no .vale.ini", () => {
-    execSync.mockReturnValue("vale version 3.0.0\n");
+    spawnSync.mockReturnValue({ status: 0, stdout: "" } as ReturnType<typeof spawnSync>);
     const result = detectValePackageNotSynced(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("vale-package-not-synced");
@@ -310,15 +308,12 @@ describe("detectWorkflowLintToolsMissing", () => {
   });
   it("returns null when both actionlint and shellcheck are on PATH", () => {
     writeWorkflow();
-    execSync.mockReturnValue("ok"); // every `<tool> --version` succeeds
+    spawnSync.mockReturnValue({ status: 0, stdout: "" } as ReturnType<typeof spawnSync>);
     expect(detectWorkflowLintToolsMissing(tmpDir)).toBeNull();
   });
   it("fires (advisory) when a tool is missing, naming it", () => {
     writeWorkflow();
-    execSync.mockImplementation((cmd: string) => {
-      if (cmd.startsWith("actionlint")) throw new Error("not found");
-      return "ok";
-    });
+    spawnSync.mockImplementation((cmd: string) => ({ status: cmd === "actionlint" ? 1 : 0 }));
     const f = detectWorkflowLintToolsMissing(tmpDir);
     expect(f?.id).toBe("workflow-lint-tools-missing");
     expect(f?.severity).toBe("advisory");

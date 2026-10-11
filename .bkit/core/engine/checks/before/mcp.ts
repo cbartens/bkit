@@ -2,6 +2,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseJson } from "../../shared/json.js";
 import type { IssueTracker } from "../../install/manifest.js";
 import type { PreflightFinding } from "./index.js";
 
@@ -46,12 +47,9 @@ export function detectMissingMcpServers(
   const absPath = path.join(cwd, relPath);
   if (!fs.existsSync(absPath)) return [];
 
-  let doc: Record<string, unknown>;
-  try {
-    doc = JSON.parse(fs.readFileSync(absPath, "utf-8")) as Record<string, unknown>;
-  } catch {
-    return []; // malformed JSON — skip silently
-  }
+  const parsed = parseJson(fs.readFileSync(absPath, "utf-8"));
+  if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null) return []; // malformed JSON — skip silently
+  const doc = parsed.value as Record<string, unknown>;
 
   const mcpServers =
     doc.mcpServers !== null && typeof doc.mcpServers === "object" && !Array.isArray(doc.mcpServers)
@@ -102,12 +100,9 @@ export function detectExtraMcpServers(
   const absPath = path.join(cwd, relPath);
   if (!fs.existsSync(absPath)) return [];
 
-  let doc: Record<string, unknown>;
-  try {
-    doc = JSON.parse(fs.readFileSync(absPath, "utf-8")) as Record<string, unknown>;
-  } catch {
-    return []; // malformed JSON — skip silently
-  }
+  const parsed = parseJson(fs.readFileSync(absPath, "utf-8"));
+  if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null) return []; // malformed JSON — skip silently
+  const doc = parsed.value as Record<string, unknown>;
 
   const mcpServers =
     doc.mcpServers !== null && typeof doc.mcpServers === "object" && !Array.isArray(doc.mcpServers)

@@ -1,8 +1,8 @@
 // checks/before/version.ts — the `.bkit/version` pin against the installing version.
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { readBkitVersion } from "../../install/version-file.js";
+import { readPackageJson } from "../../shared/package-json.js";
 import type { PreflightFinding } from "./index.js";
 
 // ---------------------------------------------------------------------------
@@ -28,22 +28,12 @@ export function detectBkitVersionMajorDowngrade(
 }
 
 export function detectBkitVersionPinStale(cwd: string): PreflightFinding | null {
-  const installedPkgPath = path.join(cwd, "node_modules", "@cbartens", "bkit", "package.json");
-  const versionFile = path.join(cwd, ".bkit", "version");
+  const read = readPackageJson(path.join(cwd, "node_modules", "@cbartens", "bkit"));
+  if (!read.ok) return null;
+  const version = read.pkg["version"];
+  const installedVersion = typeof version === "string" ? version : "";
 
-  if (!fs.existsSync(installedPkgPath)) return null;
-
-  let installedVersion: string;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(installedPkgPath, "utf-8")) as {
-      version?: string;
-    };
-    installedVersion = pkg.version ?? "";
-  } catch {
-    return null;
-  }
-
-  const onDiskVersion = readBkitVersion(versionFile)?.pinnedVersion ?? "";
+  const onDiskVersion = readBkitVersion(path.join(cwd, ".bkit", "version"))?.pinnedVersion ?? "";
 
   if (!installedVersion || !onDiskVersion) return null;
 

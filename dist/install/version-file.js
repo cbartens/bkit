@@ -13,6 +13,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
+import { parseJson } from "../shared/json.js";
 // ---------------------------------------------------------------------------
 // Parse
 // ---------------------------------------------------------------------------
@@ -26,13 +27,10 @@ export function parseBkitVersion(content) {
     const trimmed = content.trim();
     if (!trimmed.startsWith("{"))
         return null;
-    let parsed;
-    try {
-        parsed = JSON.parse(trimmed);
-    }
-    catch {
+    const json = parseJson(trimmed);
+    if (!json.ok || typeof json.value !== "object" || json.value === null)
         return null;
-    }
+    const parsed = json.value;
     const pinnedVersion = typeof parsed.pinnedVersion === "string" ? parsed.pinnedVersion : "";
     const hashes = parsed.canonicalHashes;
     const canonicalHashes = hashes && typeof hashes === "object" && !Array.isArray(hashes) ? { ...hashes } : {};
@@ -125,7 +123,7 @@ export const MANAGED_MARKER_LINE_RE = /^(?:<!-- |# <!-- |\/\/ )bkit:managed v[^\
 export const MANAGED_MARKER_VERSION_RE = /bkit:managed v(\S+)/;
 /** Build the managed-version marker for a given version, in the given comment syntax. */
 export function managedVersionMarker(version, form = "html") {
-    const text = `bkit:managed v${version} — do NOT edit; run \`bkit upgrade\` to refresh`;
+    const text = `bkit:managed v${version} — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run \`bkit upgrade\` to refresh`;
     if (form === "slash")
         return `// ${text}`;
     return form === "hash" ? `# <!-- ${text} -->` : `<!-- ${text} -->`;

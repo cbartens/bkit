@@ -423,10 +423,9 @@ describe("updating a row — supersede by same-key append", () => {
   it("fold orders ISO-string and missing ts deterministically, whatever the file order", () => {
     const missing = frictionEvent("k", { status: "OPEN" } as Partial<TelemetryEvent>);
     delete (missing as { ts?: number }).ts;
-    const iso = frictionEvent("k", {
-      ts: "2026-07-15T10:29:57Z" as unknown as number,
-      status: "TRIAGED",
-    } as Partial<TelemetryEvent>);
+    // Legacy rows carry an ISO-string ts; build it as a raw record and cast once.
+    const isoOverrides: Record<string, unknown> = { ts: "2026-07-15T10:29:57Z", status: "TRIAGED" };
+    const iso = frictionEvent("k", isoOverrides as Partial<TelemetryEvent>);
     const numeric = frictionEvent("k", {
       ts: Date.parse("2026-07-15T10:30:00Z"),
       status: "CLOSED",
@@ -994,9 +993,9 @@ describe("outcome — shape and inline-jq parity", () => {
     expect(validate(outcomeEvent({ planSource: "brief" } as Partial<TelemetryEvent>)).ok).toBe(
       true,
     );
-    const bad = validate(
-      outcomeEvent({ planSource: "plan" } as unknown as Partial<TelemetryEvent>),
-    );
+    // An invalid planSource; build it as a raw record and cast once.
+    const invalid: Record<string, unknown> = { planSource: "plan" };
+    const bad = validate(outcomeEvent(invalid as Partial<TelemetryEvent>));
     expect(bad.ok).toBe(false);
   });
 

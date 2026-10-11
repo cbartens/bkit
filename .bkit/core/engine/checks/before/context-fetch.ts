@@ -4,6 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getTemplatesRoot } from "../../shared/package-roots.js";
+import { readPackageJson } from "../../shared/package-json.js";
 import type { PreflightFinding } from "./index.js";
 
 /**
@@ -105,15 +106,9 @@ const CONTEXT_FETCH_BACKEND_EVIDENCE: Record<string, (cwd: string) => boolean> =
 
 /** Every dependency name across the four package.json dependency fields. */
 function readDependencyNames(cwd: string): string[] {
-  let pkg: Record<string, unknown>;
-  try {
-    pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8")) as Record<
-      string,
-      unknown
-    >;
-  } catch {
-    return [];
-  }
+  const read = readPackageJson(cwd);
+  if (!read.ok) return [];
+  const pkg = read.pkg;
   const names: string[] = [];
   for (const field of [
     "dependencies",

@@ -267,15 +267,9 @@ export function git(cwd, args) {
     return res.ok ? res.stdout : null;
 }
 /** `JSON.parse` as a result instead of a throw; each caller says what bad input means for it. */
-export function parseJson(raw) {
-    try {
-        return { ok: true, value: JSON.parse(raw) };
-    }
-    catch {
-        // Not JSON: the result says so, and the caller reports it in its own terms.
-        return { ok: false };
-    }
-}
+// Shared with the files that are not commands (checks, install): re-exported here
+// for the command modules that already import it from this module.
+export { parseJson } from "../shared/json.js";
 /**
  * Run a tool other than git, never throwing. Hook-exported GIT_* vars are scrubbed
  * so gh and friends answer for `cwd`; `input` goes to stdin.

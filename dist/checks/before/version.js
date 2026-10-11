@@ -1,7 +1,7 @@
 // checks/before/version.ts — the `.bkit/version` pin against the installing version.
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { readBkitVersion } from "../../install/version-file.js";
+import { readPackageJson } from "../../shared/package-json.js";
 // ---------------------------------------------------------------------------
 // Advisory detectors
 // ---------------------------------------------------------------------------
@@ -23,19 +23,12 @@ export function detectBkitVersionMajorDowngrade(cwd, installingVersion) {
     };
 }
 export function detectBkitVersionPinStale(cwd) {
-    const installedPkgPath = path.join(cwd, "node_modules", "@cbartens", "bkit", "package.json");
-    const versionFile = path.join(cwd, ".bkit", "version");
-    if (!fs.existsSync(installedPkgPath))
+    const read = readPackageJson(path.join(cwd, "node_modules", "@cbartens", "bkit"));
+    if (!read.ok)
         return null;
-    let installedVersion;
-    try {
-        const pkg = JSON.parse(fs.readFileSync(installedPkgPath, "utf-8"));
-        installedVersion = pkg.version ?? "";
-    }
-    catch {
-        return null;
-    }
-    const onDiskVersion = readBkitVersion(versionFile)?.pinnedVersion ?? "";
+    const version = read.pkg["version"];
+    const installedVersion = typeof version === "string" ? version : "";
+    const onDiskVersion = readBkitVersion(path.join(cwd, ".bkit", "version"))?.pinnedVersion ?? "";
     if (!installedVersion || !onDiskVersion)
         return null;
     // Compare semver: installed > onDisk → pin is stale

@@ -14,6 +14,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
+import { parseJson } from "../shared/json.js";
 
 // ---------------------------------------------------------------------------
 // Schema types
@@ -62,12 +63,9 @@ export interface BkitVersion {
 export function parseBkitVersion(content: string): BkitVersion | null {
   const trimmed = content.trim();
   if (!trimmed.startsWith("{")) return null;
-  let parsed: Partial<BkitVersion>;
-  try {
-    parsed = JSON.parse(trimmed) as Partial<BkitVersion>;
-  } catch {
-    return null;
-  }
+  const json = parseJson(trimmed);
+  if (!json.ok || typeof json.value !== "object" || json.value === null) return null;
+  const parsed = json.value as Partial<BkitVersion>;
   const pinnedVersion = typeof parsed.pinnedVersion === "string" ? parsed.pinnedVersion : "";
   const hashes = parsed.canonicalHashes;
   const canonicalHashes =
@@ -174,6 +172,11 @@ export function hashFile(filePath: string): string | null {
 //   hash   `# <!-- bkit:managed vX.Y.Z — … -->`  shell, `.gitignore`, `.env.example`, TOML
 //   slash  `// bkit:managed vX.Y.Z — …`          JS (`.cjs` / `.js` / `.mjs`)
 //
+// The marker names the licence the bkit-written files are under (PolyForm Noncommercial
+// or Small Business, the pair `.bkit/LICENSE.md` carries in full) and the licences-index
+// URL, so a copy passed on in a public repo carries the terms URL with it (PolyForm's
+// Notices section). `.bkit/LICENSE.md` is written by runBkitDocs (install/modules/core.ts).
+//
 // Rendered agents / commands / skills are stamped at render (stampManagedVersion);
 // every other file carries the `{{BKIT_MANAGED_MARKER}}` token in its source, which
 // applyTokens (install/placeholders.ts) resolves to the form its comment prefix selects. The
@@ -193,7 +196,7 @@ export const MANAGED_MARKER_VERSION_RE = /bkit:managed v(\S+)/;
 
 /** Build the managed-version marker for a given version, in the given comment syntax. */
 export function managedVersionMarker(version: string, form: ManagedMarkerForm = "html"): string {
-  const text = `bkit:managed v${version} — do NOT edit; run \`bkit upgrade\` to refresh`;
+  const text = `bkit:managed v${version} — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run \`bkit upgrade\` to refresh`;
   if (form === "slash") return `// ${text}`;
   return form === "hash" ? `# <!-- ${text} -->` : `<!-- ${text} -->`;
 }

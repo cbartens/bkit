@@ -3,6 +3,7 @@
 // run levels, turbo inputs and the integration env.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readPackageJson } from "../../shared/package-json.js";
 // ---------------------------------------------------------------------------
 // Other post-install detectors
 // ---------------------------------------------------------------------------
@@ -554,16 +555,10 @@ export function detectTurboIntegrationInputs(cwd) {
  * script points at (home of the documented in-file guard).
  */
 export function detectTestIntegrationEnv(cwd) {
-    const pkgPath = path.join(cwd, "package.json");
-    if (!fs.existsSync(pkgPath))
+    const read = readPackageJson(cwd);
+    if (!read.ok)
         return null;
-    let pkg;
-    try {
-        pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-    }
-    catch {
-        return null;
-    }
+    const pkg = read.pkg;
     const script = pkg.scripts?.["test:integration"];
     if (!script)
         return null;

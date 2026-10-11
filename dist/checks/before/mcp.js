@@ -1,6 +1,7 @@
 // checks/before/mcp.ts — the MCP servers the configured tracker needs: missing and extra.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseJson } from "../../shared/json.js";
 // ---------------------------------------------------------------------------
 // Advisory: missing MCP server entries in .mcp.json / .cursor/mcp.json
 // ---------------------------------------------------------------------------
@@ -37,13 +38,10 @@ export function detectMissingMcpServers(cwd, relPath, issueTracker) {
     const absPath = path.join(cwd, relPath);
     if (!fs.existsSync(absPath))
         return [];
-    let doc;
-    try {
-        doc = JSON.parse(fs.readFileSync(absPath, "utf-8"));
-    }
-    catch {
+    const parsed = parseJson(fs.readFileSync(absPath, "utf-8"));
+    if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null)
         return []; // malformed JSON — skip silently
-    }
+    const doc = parsed.value;
     const mcpServers = doc.mcpServers !== null && typeof doc.mcpServers === "object" && !Array.isArray(doc.mcpServers)
         ? doc.mcpServers
         : null;
@@ -85,13 +83,10 @@ export function detectExtraMcpServers(cwd, relPath, issueTracker) {
     const absPath = path.join(cwd, relPath);
     if (!fs.existsSync(absPath))
         return [];
-    let doc;
-    try {
-        doc = JSON.parse(fs.readFileSync(absPath, "utf-8"));
-    }
-    catch {
+    const parsed = parseJson(fs.readFileSync(absPath, "utf-8"));
+    if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null)
         return []; // malformed JSON — skip silently
-    }
+    const doc = parsed.value;
     const mcpServers = doc.mcpServers !== null && typeof doc.mcpServers === "object" && !Array.isArray(doc.mcpServers)
         ? doc.mcpServers
         : null;

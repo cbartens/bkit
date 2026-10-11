@@ -197,11 +197,19 @@ describe("P4.T4 — canonicalHashes + isConsumerModified", () => {
 // ---------------------------------------------------------------------------
 
 describe("managedVersionMarker", () => {
-  it("builds an inert HTML comment carrying the version and the NOT-edit warning", () => {
+  it("builds an inert HTML comment carrying the version, the licence notice and the NOT-edit warning", () => {
     const m = managedVersionMarker("4.0.0");
-    expect(m).toBe("<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->");
+    expect(m).toBe(
+      "<!-- bkit:managed v4.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->",
+    );
     expect(m.startsWith("<!--")).toBe(true);
     expect(m.endsWith("-->")).toBe(true);
+  });
+
+  it("names the licence and its URL so a passed-on copy carries the terms URL (PolyForm Notices)", () => {
+    const m = managedVersionMarker("4.0.0");
+    expect(m).toContain("PolyForm Noncommercial 1.0.0 / Small Business 1.0.0");
+    expect(m).toContain("https://polyformproject.org/licenses/");
   });
 
   it("round-trips through the extraction regex", () => {

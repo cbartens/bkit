@@ -642,79 +642,8 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Task 10 — bkit uninstall --claude consumer-key survival
-// PREREQ: Task 19 reclassification (sub-plan B) — reclassify .claude/settings.json
-// and .cursor/hooks.json to format: "json" in install/manifest.ts to activate the
-// stripTier2JsonScope dispatch path in commands/install/uninstall.ts case 2.
-// Until Task 19 lands, these tests are skipped stubs so sub-plan B only needs
-// to flip the skip gate.
+// bkit uninstall --claude / --cursor consumer-key survival is covered by the
+// stripTier2JsonScope unit tests (uninstall.test.ts) and the JSON-format
+// uninstall integration test above. Task 19 landed: both settings files are
+// format: "json" in install/manifest.ts.
 // ---------------------------------------------------------------------------
-
-describe.skip("bkit uninstall --claude consumer-key survival (PREREQ: Task 19 reclassification)", () => {
-  // PREREQ: Task 19 reclassification — reclassify .claude/settings.json to
-  // format: "json" in install/manifest.ts so commands/install/uninstall.ts case 2 dispatches
-  // to stripTier2JsonScope instead of falling through to "preserve".
-  it("strips template scope; retains consumer-added hooks.Stop and failClosed byte-identical", () => {
-    // Setup: write a schema-clean v2.0.0 .claude/settings.json with bkit-owned
-    // hooks.SessionStart block PLUS consumer-added hooks.Stop and failClosed.
-    const settingsContent = {
-      $schema: "https://json.schemastore.org/claude-code-settings.json",
-      hooks: {
-        SessionStart: [
-          { hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] },
-        ],
-        Stop: [{ hooks: [{ type: "command", command: "postflight.sh" }] }],
-      },
-      failClosed: true,
-    };
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".claude", "settings.json"),
-      JSON.stringify(settingsContent, null, 2),
-      "utf-8",
-    );
-    // TODO (Task 19): invoke bkit uninstall --claude against tmpDir and assert:
-    // 1. hooks.SessionStart is removed (template scope stripped)
-    // 2. hooks.Stop is present byte-identical
-    // 3. failClosed is present byte-identical
-    // 4. No __bkit__ key in output (v2.0.0 schema-clean)
-    expect(true).toBe(true); // placeholder — flip to real assertion after Task 19
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Task 10 — bkit uninstall --cursor consumer-key survival
-// PREREQ: Task 19 reclassification (sub-plan B) — see above note.
-// ---------------------------------------------------------------------------
-
-describe.skip("bkit uninstall --cursor consumer-key survival (PREREQ: Task 19 reclassification)", () => {
-  // PREREQ: Task 19 reclassification — reclassify .cursor/hooks.json to
-  // format: "json" in install/manifest.ts so commands/install/uninstall.ts case 2 dispatches
-  // to stripTier2JsonScope.
-  it("strips hooks.sessionStart/hooks.sessionStop; retains consumer-only top-level + nested keys byte-identical", () => {
-    // Setup: write a schema-clean v2.0.0 .cursor/hooks.json (Cursor v1 keyed-object)
-    // with bkit-owned sessionStart/sessionStop PLUS consumer-added hooks.Stop.
-    const hooksContent = {
-      version: 1,
-      hooks: {
-        sessionStart: [{ command: "echo '[bkit] session started'" }],
-        sessionStop: [{ command: "echo '[bkit] session stopped'" }],
-        Stop: [{ command: "postflight.sh" }],
-      },
-      loop_limit: 10,
-    };
-    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".cursor", "hooks.json"),
-      JSON.stringify(hooksContent, null, 2),
-      "utf-8",
-    );
-    // TODO (Task 19): invoke bkit uninstall --cursor against tmpDir and assert:
-    // 1. hooks.sessionStart is removed (template scope stripped)
-    // 2. hooks.sessionStop is removed (template scope stripped)
-    // 3. hooks.Stop is present byte-identical
-    // 4. loop_limit is present byte-identical
-    // 5. version field preserved
-    expect(true).toBe(true); // placeholder — flip to real assertion after Task 19
-  });
-});

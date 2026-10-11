@@ -15,7 +15,7 @@ tools:
   github_issue_read: true
 reasoningEffort: max
 ---
-<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior PM ranking next best items to work on from board and ledgers.
 **Scope:** As specified by input or session prompt.

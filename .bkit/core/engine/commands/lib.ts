@@ -350,14 +350,9 @@ export function git(cwd: string, args: string[]): string | null {
 }
 
 /** `JSON.parse` as a result instead of a throw; each caller says what bad input means for it. */
-export function parseJson(raw: string): { ok: true; value: unknown } | { ok: false } {
-  try {
-    return { ok: true, value: JSON.parse(raw) as unknown };
-  } catch {
-    // Not JSON: the result says so, and the caller reports it in its own terms.
-    return { ok: false };
-  }
-}
+// Shared with the files that are not commands (checks, install): re-exported here
+// for the command modules that already import it from this module.
+export { parseJson } from "../shared/json.js";
 
 export interface ToolResult {
   /** False when the binary is not on PATH (or could not be spawned). */

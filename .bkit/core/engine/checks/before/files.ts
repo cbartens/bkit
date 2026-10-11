@@ -7,6 +7,7 @@ import { deepContains, type JsonValue } from "../../install/write.js";
 import { extractManagedBlock, stripManagedBlock } from "../../install/managed-block.js";
 import { readTemplate } from "../../render/parts.js";
 import { findTemplateSource, getPkgRoot } from "../../shared/package-roots.js";
+import { parseJson } from "../../shared/json.js";
 import type { PreflightFinding } from "./index.js";
 
 /**
@@ -112,14 +113,12 @@ export function detectTier2JsonDrift(cwd: string, relPath: string): PreflightFin
   const absPath = path.join(cwd, relPath);
   const templatePath = findTemplateSource(relPath);
   if (!fs.existsSync(absPath) || templatePath === null || !fs.existsSync(templatePath)) return null;
-  let consumerDoc: JsonValue;
-  let templateDoc: JsonValue;
-  try {
-    consumerDoc = JSON.parse(fs.readFileSync(absPath, "utf-8")) as JsonValue;
-    templateDoc = JSON.parse(fs.readFileSync(templatePath, "utf-8")) as JsonValue;
-  } catch {
-    return null; // malformed JSON — handled elsewhere
-  }
+  // Malformed JSON on either side is handled elsewhere; a parse failure is not drift.
+  const consumerParsed = parseJson(fs.readFileSync(absPath, "utf-8"));
+  const templateParsed = parseJson(fs.readFileSync(templatePath, "utf-8"));
+  if (!consumerParsed.ok || !templateParsed.ok) return null;
+  const consumerDoc = consumerParsed.value as JsonValue;
+  const templateDoc = templateParsed.value as JsonValue;
   const result = deepContains(templateDoc, consumerDoc);
   if (result.ok) return null;
   const details = [

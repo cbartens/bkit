@@ -6,6 +6,7 @@ import { deepContains } from "../../install/write.js";
 import { extractManagedBlock, stripManagedBlock } from "../../install/managed-block.js";
 import { readTemplate } from "../../render/parts.js";
 import { findTemplateSource, getPkgRoot } from "../../shared/package-roots.js";
+import { parseJson } from "../../shared/json.js";
 /**
  * Strip out content inside bkit-managed block markers (HTML and slash style).
  * Used by detectors that need to inspect only consumer-owned content.
@@ -103,15 +104,13 @@ export function detectTier2JsonDrift(cwd, relPath) {
     const templatePath = findTemplateSource(relPath);
     if (!fs.existsSync(absPath) || templatePath === null || !fs.existsSync(templatePath))
         return null;
-    let consumerDoc;
-    let templateDoc;
-    try {
-        consumerDoc = JSON.parse(fs.readFileSync(absPath, "utf-8"));
-        templateDoc = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
-    }
-    catch {
-        return null; // malformed JSON — handled elsewhere
-    }
+    // Malformed JSON on either side is handled elsewhere; a parse failure is not drift.
+    const consumerParsed = parseJson(fs.readFileSync(absPath, "utf-8"));
+    const templateParsed = parseJson(fs.readFileSync(templatePath, "utf-8"));
+    if (!consumerParsed.ok || !templateParsed.ok)
+        return null;
+    const consumerDoc = consumerParsed.value;
+    const templateDoc = templateParsed.value;
     const result = deepContains(templateDoc, consumerDoc);
     if (result.ok)
         return null;

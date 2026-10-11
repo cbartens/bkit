@@ -5,7 +5,7 @@
 // message instead of reading as an empty one.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseJson } from "../commands/lib.js";
+import { parseJson } from "./json.js";
 /** `dir/package.json` as an object, or why it could not be read as one. */
 export function readPackageJson(dir) {
     const file = path.join(dir, "package.json");

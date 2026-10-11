@@ -3,23 +3,24 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import type { PreflightFinding } from "../before/index.js";
+
+/** True when `cmd --version` runs (binary on PATH, exits 0). */
+function toolVersionRuns(cmd: string): boolean {
+  const res = spawnSync(cmd, ["--version"], {
+    stdio: ["ignore", "ignore", "ignore"],
+    timeout: 5000,
+  });
+  return res.status === 0;
+}
 
 /**
  * Detect whether vale is installed but write-good styles are not synced.
  * Returns null if vale is not on PATH (silent skip — not an error).
  */
 export function detectValePackageNotSynced(cwd: string): PreflightFinding | null {
-  try {
-    execSync("vale --version", {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 5000,
-    });
-  } catch {
-    return null; // vale not on PATH — silent skip
-  }
+  if (!toolVersionRuns("vale")) return null; // vale not on PATH — silent skip
 
   if (fs.existsSync(path.join(cwd, ".vale", "styles", "write-good"))) return null;
 
@@ -58,15 +59,7 @@ export function detectWorkflowLintToolsMissing(cwd: string): PreflightFinding | 
   const hasWorkflow = fs.readdirSync(wfDir).some((f) => f.endsWith(".yml") || f.endsWith(".yaml"));
   if (!hasWorkflow) return null;
 
-  const onPath = (cmd: string): boolean => {
-    try {
-      execSync(`${cmd} --version`, { stdio: ["ignore", "pipe", "ignore"], timeout: 5000 });
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  const missing = ["actionlint", "shellcheck"].filter((t) => !onPath(t));
+  const missing = ["actionlint", "shellcheck"].filter((t) => !toolVersionRuns(t));
   if (missing.length === 0) return null;
 
   return {

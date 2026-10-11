@@ -178,4 +178,6 @@ If neither fits, email bkit@bartens.biz for a commercial licence.
 
 **The code bkit's agents write for you is yours.** The licences cover bkit itself, not what its agents produce in your repo.
 
+**Small pieces are MIT-0.** Everything in [`.bkit/shared/`](.bkit/shared/) and [`.bkit/templates/`](.bkit/templates/) is [MIT-0](https://opensource.org/license/mit-0): use it however you like, and a template you copy into your repo is yours. Every file bkit writes carries the licence and its URL in its marker, and the full PolyForm texts travel in the repo at [`.bkit/LICENSE.md`](.bkit/LICENSE.md) after install.
+
 Full terms: [`LICENSE.md`](LICENSE.md).

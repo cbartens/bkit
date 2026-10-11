@@ -207,34 +207,6 @@ function runCoreTemplates(
 // runCoreModule — core templates + .bkit/version (LAST)
 // ---------------------------------------------------------------------------
 
-// Tier-2-style `.agents/*.md` files (rules/friction/docs/skills) are excluded:
-// they ship as core payload blocks under `.bkit/core/.agents/` and are written by
-// the core templates pass.
-const COPY_EXCLUDE = new Set([
-  "skills",
-  "scripts",
-  "README.md",
-  "rules.md",
-  "friction.md",
-  "docs.md",
-  "skills.md",
-  "context.md",
-  // .env.example is written by the claude module (writeTier1 from the shared payload at
-  // .bkit/shared/.bkit/.env.example).
-  ".env.example",
-]);
-
-// Top-level `.agents/` files that bkit force-overwrites on install (copyAdditive's
-// default skip-if-exists is wrong for canonical bkit-owned content).
-//
-// EMPTY: the bkit-authoring docs / engine data (prompts.md, workflows.md, providers.md,
-// cloud.md) live package-side under `.bkit/core/.bkit/` and are read directly from there
-// at runtime (getBkitDocsRoot). They are not `.agents/` files, so there is nothing to
-// force-overwrite HERE. Their consumer-side mirrors (under `.bkit/`, not `.agents/`)
-// are written by `runBkitDocs` (see BKIT_CANONICAL_DOCS below). This set is the
-// extension point for a canonical consumer-side `.agents/` file.
-export const CANONICAL_OVERWRITE_RELPATHS = new Set<string>([]);
-
 // Canonical bkit-authored reference docs that live package-side under
 // `.bkit/core/.bkit/`. They are read from there at runtime (getBkitDocsRoot) AND
 // mirrored into the consumer's `.bkit/` on every install so a consumer can read them
@@ -242,12 +214,15 @@ export const CANONICAL_OVERWRITE_RELPATHS = new Set<string>([]);
 // them, so a consumer edit is replaced. Source of truth is the package's own
 // `.bkit/core/.bkit/<name>`. (`advisories.md` is a regenerated runtime artifact,
 // `wording.md` is repo-only tooling and `friction.md` is a consumer-owned seed —
-// none belongs here.)
+// none belongs here. `LICENSE.md` is the PolyForm notice that travels with every
+// file bkit writes: PolyForm's Notices section requires a passed-on copy to carry
+// the terms or their URL and the Required Notice line.)
 export const BKIT_CANONICAL_DOCS = [
   "cloud.md",
   "comparison.md",
   "install.md",
   "jsonl.md",
+  "LICENSE.md",
   "providers.md",
   "prompts.md",
   "templates.md",
@@ -329,46 +304,6 @@ export function readInstallingVersion(): string {
 export function trackMirrorWrite(ctx: ModuleContext, relPath: string, written: string[]): void {
   written.push(relPath);
   ctx.ws.writes.push({ path: relPath, action: "write" });
-}
-
-function copyAdditive(
-  src: string,
-  dst: string,
-  dryRun: boolean,
-  log: (rel: string) => void,
-  relRoot: string,
-): number {
-  let writes = 0;
-  if (!fs.existsSync(src)) return 0;
-  const stats = fs.statSync(src);
-  if (stats.isFile()) {
-    const relPath = path.relative(relRoot, dst);
-    const isCanonical = CANONICAL_OVERWRITE_RELPATHS.has(relPath);
-    if (fs.existsSync(dst)) {
-      if (!isCanonical) return 0;
-      const srcBuf = fs.readFileSync(src);
-      const dstBuf = fs.readFileSync(dst);
-      if (srcBuf.equals(dstBuf)) return 0;
-    }
-    if (!dryRun) {
-      fs.mkdirSync(path.dirname(dst), { recursive: true });
-      fs.copyFileSync(src, dst);
-      fs.chmodSync(dst, stats.mode);
-    }
-    log(relPath);
-    return 1;
-  }
-  if (!dryRun) fs.mkdirSync(dst, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    writes += copyAdditive(
-      path.join(src, entry.name),
-      path.join(dst, entry.name),
-      dryRun,
-      log,
-      relRoot,
-    );
-  }
-  return writes;
 }
 
 /**
@@ -522,45 +457,20 @@ export function runCoreModule(ctx: ModuleContext): void {
   const tag = dryRun ? "[dry-run] " : "";
   const cwd = process.cwd();
   const PKG_ROOT = getPkgRoot();
-  const PKG_AGENTS = path.join(PKG_ROOT, ".agents");
   const PKG_PACKAGE_JSON = path.join(PKG_ROOT, "package.json");
 
-  if (!fs.existsSync(PKG_AGENTS)) {
-    console.error(`${logPrefix} Packaged .agents/ not found at ${PKG_AGENTS} — package corrupt?`);
-    process.exit(1);
-  }
   if (!fs.existsSync(PKG_PACKAGE_JSON)) {
     console.error(`${logPrefix} package.json not found at ${PKG_PACKAGE_JSON} — package corrupt?`);
     process.exit(1);
   }
 
   const pkgVersion = JSON.parse(fs.readFileSync(PKG_PACKAGE_JSON, "utf-8")).version as string;
-  const target = path.join(cwd, ".agents");
 
   // Capture first-install signal NOW (before any writes) — used for the post-install banner.
   // The .bkit/version write happens in postDispatch, so a mid-install crash in a later
   // module leaves no .bkit/version on disk.
   const versionFile = path.join(cwd, ".bkit", "version");
   const isFirstInstall = !fs.existsSync(versionFile);
-
-  // 1. Additive .agents/ payload copy (core subdirs only, excluding COPY_EXCLUDE)
-  console.log(`${logPrefix} ${tag}Running core payload copy`);
-  for (const entry of fs.readdirSync(PKG_AGENTS, { withFileTypes: true })) {
-    if (COPY_EXCLUDE.has(entry.name)) continue;
-    const srcPath = path.join(PKG_AGENTS, entry.name);
-    const dstPath = path.join(target, entry.name);
-    copyAdditive(
-      srcPath,
-      dstPath,
-      dryRun,
-      (rel) => {
-        console.log(`${logPrefix} ${tag}copy: ${rel}`);
-        // Note: copyAdditive writes are internal .agents/ payload management (not consumer outputs).
-        // We log them but do NOT add to ws (ws tracks consumer output files for parity checks).
-      },
-      cwd,
-    );
-  }
 
   // 2. Core payload pass (AGENTS.md, `.agents/*.md`, `docs/templates/**`, the two
   // shared-root files core owns). Each host module writes its own hook files.
@@ -635,7 +545,6 @@ export function runCoreModule(ctx: ModuleContext): void {
       );
       ws.writes.push({ path: versionFile, action: "write" });
       if (!dryRun) {
-        fs.mkdirSync(target, { recursive: true });
         writeBkitVersion(versionFile, {
           pinnedVersion: pkgVersion,
           canonicalHashes,

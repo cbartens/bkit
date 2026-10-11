@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { parseJson } from "../commands/lib.js";
+import { parseJson } from "./json.js";
 
 export type PackageJsonRead =
   { ok: true; pkg: Record<string, unknown> } | { ok: false; reason: "missing" | "unparseable" };

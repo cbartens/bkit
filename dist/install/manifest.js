@@ -85,6 +85,10 @@ const CORE_MANIFEST = [
     { path: ".bkit/comparison.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/install.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/jsonl.md", format: "byte-equal-text", module: "core" },
+    // The PolyForm notice that travels with every file bkit writes (the managed-version
+    // marker names the licence and its URL; this file carries both full texts and the
+    // Required Notice). Sourced from `.bkit/core/.bkit/LICENSE.md`.
+    { path: ".bkit/LICENSE.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/prompts.md", format: "markered-text", module: "core" },
     { path: ".bkit/templates.md", format: "byte-equal-text", module: "core" },
