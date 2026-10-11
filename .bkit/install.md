@@ -2,19 +2,10 @@
 
 <!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
-First-time install and auth, upgrade, CI and Vercel auth, install lifecycle, uninstall and recovery. Ships in the package at `node_modules/@cbartens/bkit/.bkit/core/.bkit/install.md` and is mirrored into the consumer repo at `.bkit/install.md`. Ongoing ops and triggering workflows: `.bkit/README.md`.
+First-time install and upgrade, install lifecycle, uninstall and recovery. Ships in the package at `node_modules/@cbartens/bkit/.bkit/core/.bkit/install.md` and is mirrored into the consumer repo at `.bkit/install.md`. Ongoing ops and triggering workflows: `.bkit/README.md`.
 
 > [!IMPORTANT]
-> **`BKIT_GH_TOKEN_INSTALL` is required everywhere bkit installs.** Without it, `pnpm install` fails with an opaque 401 (or the silent-ignore-then-fall-back-to-npmjs footgun → 404). Set it in **all four** places before running `pnpm add -D @cbartens/bkit`:
->
-> 1. **Local shell** — pick one of two flows (see § Local env setup for details):
->    - **(A) Quick:** `export BKIT_GH_TOKEN_INSTALL=<classic PAT>` in `~/.zshrc` or `~/.bashrc`. Works immediately, single-step. Same token leaks into every shell.
->    - **(B) direnv + `.bkit/.env` (recommended for daily use):** `brew install direnv` once per machine, then `.bkit/.env` (gitignored, scaffolded by `bkit install`) auto-loads on `cd`. Tokens scoped to the repo, not your whole shell. Note: `.bkit/.env` only exists _after_ `bkit install` runs, so for the first install you need either (A) or a one-off `export` in the current shell.
-> 2. **`.npmrc` at repo root** — registry mapping only; token goes in pnpm user-level config via `pnpm config set` — see § Consumer CI auth below
-> 3. **GitHub Actions repo secret** — `gh secret set BKIT_GH_TOKEN_INSTALL --body=<token>` per consumer repo
-> 4. **Vercel env vars** (if applicable) — `vercel env add BKIT_GH_TOKEN_INSTALL preview/production`
->
-> **Use a classic PAT, not fine-grained.** GitHub Packages npm registry currently rejects fine-grained PATs with HTTP 403 even when `Packages: read` is granted (verified 2026-05). Until GitHub fixes this, classic with `read:packages` scope is the only working option.
+> **bkit installs from npmjs.** `@cbartens/bkit` is public on `https://registry.npmjs.org`; `pnpm add -D @cbartens/bkit` resolves with no registry mapping, PAT, or CI/Vercel env.
 
 ## Quick install / upgrade — paste into your AI
 
@@ -22,50 +13,33 @@ Two paste blocks below — **install** (first time) and **upgrade** (already on 
 
 ### Install — first time
 
-After creating a classic GitHub PAT with `read:packages` scope ([Tokens (classic)](https://github.com/settings/tokens)) and saving it as `BKIT_GH_TOKEN_INSTALL=<token>` in a local env file in this repo (e.g. `.env.local`, `apps/web/.env.preview`), copy the block below into Claude Code / Cursor / any coding agent. Replace `<ENV-FILE-PATH>` with your env file's path.
+No token or registry setup is needed — `@cbartens/bkit` is public on npmjs. Copy the block below into Claude Code / Cursor / any coding agent.
 
 ````text
 Install the latest `@cbartens/bkit` in this repo and finish setup.
-1. I've created a classic GitHub PAT with `read:packages` scope and saved it as `BKIT_GH_TOKEN_INSTALL=<token>` in `<ENV-FILE-PATH>` (e.g. `.env.local` or `apps/web/.env.preview`). Confirmed.
-2. Access `BKIT_GH_TOKEN_INSTALL` without leaking it into context: `source` is a shell builtin (not file I/O) — permission gates on `Read`/`grep`/`cat` do NOT see it. Pattern (same Bash invocation — shell state does NOT persist between tool calls):
+1. `@cbartens/bkit` is public on npmjs — no registry mapping, no PAT, no env. Confirmed.
+2. Install and seed hosts in one Bash call (`bkit install` requires named modules — core implicit; if `bkit` not on PATH use `pnpm bkit`):
    ```bash
-   set -a; source <ENV-FILE-PATH> 2>/dev/null; set +a; <command that needs the token>
-   ```
-   Verify without leaking: `echo "len=${#BKIT_GH_TOKEN_INSTALL}"`.
-3. Ensure root `.npmrc` has registry mapping only (token NOT stored here — pnpm >=10.34.3 401s on project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` substitution):
-   ```
-   @cbartens:registry=https://npm.pkg.github.com
-   ```
-   Then auth + install + seed hosts in one Bash call (`bkit install` requires named modules — core implicit; if `bkit` not on PATH use `pnpm bkit`):
-   ```bash
-   set -a; source <ENV-FILE-PATH>; set +a; \
-     pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL" && \
-     pnpm add -D @cbartens/bkit@latest && \
+   pnpm add -D @cbartens/bkit@latest && \
      bkit install --claude --cursor
    ```
    Writes `.agents/`, `.claude/`, `.cursor/` and the `bkit:gate:*` `package.json` scripts, and copies the templates (CI workflow, hooks, tool configs) into `.bkit/templates/` without applying them. `.bkit/templates.md` lists each template plus the tool scripts and devDeps the gates chain.
-4. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
-5. Read `.bkit/templates.md`, then compare each template in `.bkit/templates/` (CI workflows, git hooks, lint and Vale configs, Cursor config, dependency updaters, etc.) with this repo. bkit never applies templates, so adoption is your job: adopt unless adoption would break existing functionality. For any template not adopted, state which and why.
-6. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
+3. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
+4. Read `.bkit/templates.md`, then compare each template in `.bkit/templates/` (CI workflows, git hooks, lint and Vale configs, Cursor config, dependency updaters, etc.) with this repo. bkit never applies templates, so adoption is your job: adopt unless adoption would break existing functionality. For any template not adopted, state which and why.
+5. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
 ````
 
 ### Upgrade — already installed
 
-Same paste block ships in `.bkit/README.md` (mirrored into consumer repos on install — keep both in sync when editing). Copy when the repo already has `@cbartens/bkit`. Prefer `bkit upgrade --latest` (bumps the package **and** resyncs managed files) — do **not** only `pnpm add`. Replace `<ENV-FILE-PATH>` if the token is not already loaded in the shell (direnv / `.bkit/.env`).
+Same paste block ships in `.bkit/README.md` (mirrored into consumer repos on install — keep both in sync when editing). Copy when the repo already has `@cbartens/bkit`. Prefer `bkit upgrade --latest` (bumps the package **and** resyncs managed files) — do **not** only `pnpm add`. A repo resolving `@cbartens/bkit` from GitHub Packages migrates first ([§ Migrating from GitHub Packages](#migrating-from-github-packages)).
 
 ````text
 Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resync.
-1. Ensure `BKIT_GH_TOKEN_INSTALL` is available for the GitHub Packages bump. If not already in the environment, load without leaking (`source` is a shell builtin — not file I/O). `source` and the command MUST be the SAME Bash invocation:
-   ```bash
-   set -a; source <ENV-FILE-PATH> 2>/dev/null; set +a; \
-     pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL" && \
-     bkit upgrade --latest
-   ```
-   If token already exported (direnv / shell profile), skip `source`:
+1. Bump and resync in one step (no token — npmjs is public). If `bkit` is not on PATH, use `pnpm bkit`:
    ```bash
    bkit upgrade --latest
    ```
-   If `bkit` not on PATH: `pnpm bkit upgrade --latest`. Do **not** only `pnpm add @cbartens/bkit@latest` — that refreshes the package without resyncing managed files.
+   Do **not** only `pnpm add @cbartens/bkit@latest` — that refreshes the package without resyncing managed files.
 2. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
 3. Read the template changes `bkit upgrade` printed (or `git diff .bkit/templates`), then `.bkit/templates.md`. bkit never applies templates, so adoption is your job: adopt each change unless it would break existing functionality. For any change not adopted, state which and why.
 4. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
@@ -73,29 +47,41 @@ Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resyn
 
 ## Install
 
-bkit is distributed via **GitHub Packages npm registry** (`https://npm.pkg.github.com`). Add to a consumer repo:
+bkit is published publicly on **npmjs** (`https://registry.npmjs.org`). Add to a consumer repo:
 
 ```bash
-pnpm add -D @cbartens/bkit@^4.0.0
+pnpm add -D @cbartens/bkit
 ```
 
 ### Adding a new consumer — checklist
 
-Run these in order on a brand-new consumer repo. Each step links to its detail section below.
+Run these in order on a brand-new consumer repo.
 
 <!-- prettier-ignore -->
 | # | Step | Detail |
 | --- | --- | --- |
-| 1 | Create a classic PAT with `read:packages` (fine-grained PATs are rejected by GitHub Packages) | [§ Consumer CI auth](#consumer-ci-auth) step 1 |
-| 2 | Add `BKIT_GH_TOKEN_INSTALL` repo secret | [§ Consumer CI auth](#consumer-ci-auth) step 2 |
-| 3 | Commit `.npmrc` at repo root (registry mapping only; token goes in pnpm user-level config) | [§ Consumer CI auth](#consumer-ci-auth) step 3 |
-| 4 | Export `BKIT_GH_TOKEN_INSTALL` for the `pnpm add` step (one-off — `export BKIT_GH_TOKEN_INSTALL=<classic PAT>` in this shell only), then run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section) |
-| 5 | Run `bkit install --claude --cursor` to seed both hosts (writes `.bkit/.env.example`; `.envrc` is a template in `.bkit/templates/`) | [§ Install](#install) (this section) |
-| 5a | Set up direnv + `.bkit/.env` so every subsequent shell auto-loads `BKIT_GH_TOKEN_INSTALL`, `BKIT_GH_TOKEN`, `BKIT_LINEAR_API_KEY` | [§ Local env setup](#local-env-setup) |
-| 6 | If deploying to Vercel: add `BKIT_GH_TOKEN_INSTALL` to Vercel env vars | [§ Consumer Vercel auth](#consumer-vercel-auth) |
-| 7 | Push to a feature branch and verify CI runs green | — |
+| 1 | `pnpm add -D @cbartens/bkit` — no token, no registry mapping | this section |
+| 2 | Run `bkit install --claude --cursor` to seed both hosts (writes `.bkit/.env.example`; `.envrc` is a template in `.bkit/templates/`) | this section |
+| 3 | Set up direnv + `.bkit/.env` for `BKIT_GH_TOKEN` (GitHub MCP) and `BKIT_LINEAR_API_KEY` — no registry token | [§ Local env setup](#local-env-setup) |
+| 4 | Push to a feature branch and verify CI runs green | — |
 
-The `.github/workflows/bkit-ci.yml` template's install step writes token into pnpm user-level config (`pnpm config set …`) before `pnpm install` and carries `BKIT_GH_TOKEN_INSTALL` env block — only thing CI needs to authenticate `@cbartens/bkit` is `BKIT_GH_TOKEN_INSTALL` secret from step 2. No cross-org `uses:` reference; `bkit` stays private without affecting consumer auth.
+No CI step, secret, `.npmrc` mapping or Vercel env is needed — CI reaches npmjs anonymously. A repo resolving `@cbartens/bkit` from GitHub Packages: [§ Migrating from GitHub Packages](#migrating-from-github-packages).
+
+### Migrating from GitHub Packages
+
+A repo whose `@cbartens/bkit` lockfile entry resolves `npm.pkg.github.com` re-resolves against npmjs before bumping.
+
+1. Remove the registry mapping from root `.npmrc` (delete the whole `@cbartens:registry=…` line and its comment block).
+2. Re-resolve so the lockfile entry loses its `tarball:` URL, then bump:
+   ```bash
+   pnpm add -D @cbartens/bkit@latest
+   bkit upgrade            # resync managed files at the new version
+   ```
+3. Delete the now-unused install token from every surface it reached: `BKIT_GH_TOKEN_INSTALL` repo secret (`gh secret remove BKIT_GH_TOKEN_INSTALL`), Vercel preview + production env, the EAS/CI pre-install steps, and pnpm's user config (`pnpm config delete "//npm.pkg.github.com/:_authToken"`).
+4. Copy the current `.bkit/templates/.github/workflows/bkit-ci.yml` (the install step no longer writes a token) and drop the Vercel `installCommand` override.
+5. Run `bkit check` — the token-surface advisories ([§ Install lifecycle](#install-lifecycle)) clear once the apparatus is gone.
+
+Legacy detail for each surface: [§ Consumer CI auth](#consumer-ci-auth), [§ Consumer Vercel auth](#consumer-vercel-auth).
 
 ### Then in the consumer repo
 
@@ -146,13 +132,12 @@ Install and upgrade create two **relative symlinks** into the installed package,
 
 ### Local env setup
 
-Two flows — pick one. Both end with `BKIT_GH_TOKEN_INSTALL` and `BKIT_GH_TOKEN` in shell for pnpm and GitHub MCP. Linear repos also need `BKIT_LINEAR_API_KEY`. Use `gh auth login` for CLI.
+Two flows — pick one. Both put `BKIT_GH_TOKEN` in shell for the GitHub MCP server; Linear repos also need `BKIT_LINEAR_API_KEY`. `BKIT_GH_TOKEN_INSTALL` applies when `@cbartens/bkit` resolves from GitHub Packages ([§ Migrating from GitHub Packages](#migrating-from-github-packages)). Use `gh auth login` for CLI.
 
 #### Flow A — Shell export (quickest, no extra deps)
 
 ```bash
 # Add to ~/.zshrc (or ~/.bashrc)
-export BKIT_GH_TOKEN_INSTALL=<classic PAT, read:packages>      # pnpm → npm.pkg.github.com
 export BKIT_GH_TOKEN=<fine-grained PAT>                 # GitHub MCP
 export BKIT_LINEAR_API_KEY=<Linear personal API key>        # Linear MCP + preflight
 
@@ -178,7 +163,7 @@ echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc
 # 3. One-time per consumer repo (after `bkit install`)
 cp .bkit/templates/.envrc .envrc                                   # unless you already have one
 cp .bkit/.env.example .bkit/.env
-# Edit .bkit/.env: set BKIT_GH_TOKEN_INSTALL, BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY
+# Edit .bkit/.env: set BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY
 direnv allow                                                       # trust the .envrc
 
 # 4. Verify
@@ -190,7 +175,7 @@ After step 4, restart open Claude Code / Cursor sessions in this repo so new env
 
 `.bkit/.env` gitignored — never commit. Cloud sessions (Claude Code on the web, Cursor Background Agents): set same names in respective online dashboards; see `.bkit/cloud.md` § Environment variables. `bkit install` / `bkit check` advisories detect missing direnv, blank required keys, un-allowed `.envrc` — follow whichever fires.
 
-#### One-time per machine — register the GH Packages token with pnpm
+#### Register the GH Packages token with pnpm
 
 After either flow makes `BKIT_GH_TOKEN_INSTALL` available in shell, write into pnpm user-level auth config so local `pnpm install` resolves `@cbartens/bkit`:
 
@@ -235,6 +220,8 @@ In this example, `hooks.SessionStart` is bkit-declared scope (from template). `h
 - `.cursor/hooks.json` uses Cursor v1 keyed-object schema: `{"version": 1, "hooks": {"sessionStart": [...], "sessionStop": [...]}}`.
 
 ## Consumer CI auth
+
+> Applies when `@cbartens/bkit` resolves from GitHub Packages. See [§ Migrating from GitHub Packages](#migrating-from-github-packages).
 
 bkit resolves from **GitHub Packages npm registry**. Authentication requires:
 
@@ -389,7 +376,7 @@ Findings render as `--- i/N [severity] id ---` with `Detect:` and `Action:` line
 | Visibility | The console banner and `.bkit/advisories.md` carry one suppressed-advisory line per dismissal (`N advisory` / `N advisories`), so a stale opt-out cannot hide a finding silently. |
 | Coverage | Wired for `tagged-tests-no-ci-home` and `test-integration-env-not-asserted`. No other advisory is suppressible; an id matching no advisory is ignored. |
 
-For four-surface token sweep, see [§ Consumer CI auth](#consumer-ci-auth).
+The token-surface findings (`gh-bkit-token-*`, `npmrc-*`, `vercel-*`, `ci-yml-missing-token-env`) apply when `@cbartens/bkit` resolves from GitHub Packages. Four-surface token sweep: [§ Consumer CI auth](#consumer-ci-auth).
 
 ## Optional post-install decisions
 
@@ -440,7 +427,7 @@ bkit doctor
 
 Use `bkit doctor` to:
 
-- Check whether `BKIT_GH_TOKEN_INSTALL` is set in shell and on GitHub repo.
+- Check whether `BKIT_GH_TOKEN_INSTALL` is set in shell and on GitHub repo (GitHub Packages).
 - Surface `bkit-version-pin-stale` advisory (installed version ahead of `.bkit/version`).
 - Preview all advisories `bkit install` would show post-install, without triggering writes.
 - Verify environment ready before `bkit install` on new machine.
