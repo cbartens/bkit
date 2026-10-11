@@ -15,7 +15,9 @@
     "glob": "allow",
     "task": "allow",
     "websearch": "allow",
-    "webfetch": "ask",
+    "webfetch": {
+      "*": "ask"
+    },
     "bash": {
       "*": "allow",
       "sudo *": "ask",
