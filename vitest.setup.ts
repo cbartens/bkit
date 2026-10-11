@@ -1,9 +1,12 @@
 // vitest.setup.ts — runs in every test worker before its test files load.
 //
-// Two jobs: strip inherited git environment variables (below), and give the
-// integration suite a test budget that matches what it actually does (bottom).
+// Two jobs: strip inherited git environment variables (below), and give every
+// test file a budget that matches what it actually does, scaled by how contended
+// the machine is right now (bottom).
 //
 // `globals` is not enabled in vitest.config.ts, so these are imported, not free.
+import * as os from "node:os";
+
 import { expect, vi } from "vitest";
 
 // Strip inherited git environment variables so no test can accidentally operate
@@ -31,27 +34,40 @@ for (const key of Object.keys(process.env)) {
   }
 }
 
-// Give `*.integration.test.ts` a 30s budget; unit tests keep vitest's 5s default.
+// Budget: a base (5s unit / 30s integration) scaled by how contended the machine
+// is RIGHT NOW, re-read once per test file.
 //
-// WHY: 5s is a unit-test budget and the integration suite is not unit work — it
-// spawns the bkit CLI under `tsx` in a temp repo, so one `it` pays process
-// startup plus real fs and git work. Each is fast alone (all of
-// .bkit/core/engine/commands/install/upgrade.integration.test.ts runs in ~6s), but the full suite runs those
-// spawns in parallel and on a loaded machine they lose the race against 5s. It
-// surfaces as `Error: Test timed out in 5000ms` on a DIFFERENT test each run —
-// the upgrade and check-opencode integration tests traded places across 7 full-suite runs on
-// 2026-08-27 — which reads as a flaky product but is only ever a starved
-// subprocess. `pnpm test` is a pre-push gate (.husky/pre-push ->
-// bkit:gate:static-unit), so that starvation blocks pushes on a green tree, and
-// `--no-verify` is prohibited (.agents/rules.md).
+// WHY: both tiers spawn real subprocesses — `git`, `tsx`, the bkit CLI, fake
+// binaries — so a budget fixed when the run starts goes stale. The box ramps
+// under the run (a parallel agent session, a build), and a file that starts late
+// runs several times slower against a number read minutes earlier. That reads as
+// a flaky product but is only ever a starved subprocess: `Error: Test timed out
+// in 5000ms` on a DIFFERENT test each run, all green in isolation. `pnpm test` is
+// a pre-push gate (.husky/pre-push -> bkit:gate:static-unit), so that starvation
+// blocks pushes on a green tree, and `--no-verify` is prohibited
+// (.agents/rules.md). See docs/failures.jsonl
+// `subprocess-integration-tests-time-out-at-5000ms-under-high-load`.
 //
-// Scoped here rather than as a global `testTimeout` in vitest.config.ts so the
-// unit suite keeps the strict 5s ceiling: a unit test that needs longer is a
-// unit test doing real I/O, and that should still fail. The cost is that a
-// genuinely hung integration test now takes 30s to surface instead of 5s.
+// `loadavg[0] / cores` is load-per-core; the suite plans one worker per core, so
+// anything above 1 is contention from something else. CI pins the factor to 1 —
+// the box is dedicated there, so the gate stays strict (5s unit / 30s
+// integration) and a genuinely hung test still fails fast. The 12x ceiling keeps
+// a pathological reading from budgeting minutes.
 //
-// setupFiles run once per test FILE, so `testPath` here is that file.
-const testPath = expect.getState().testPath ?? "";
-if (testPath.endsWith(".integration.test.ts")) {
-  vi.setConfig({ testTimeout: 30_000 });
+// setupFiles run once per test FILE, so `testPath` here is that file, and the
+// re-read lands as each file starts.
+const CORES = Math.max(1, os.availableParallelism());
+const IS_CI = Boolean(process.env.CI);
+
+function loadFactor(): number {
+  if (IS_CI) return 1;
+  return Math.min(12, Math.max(1, os.loadavg()[0] / CORES));
 }
+
+const testPath = expect.getState().testPath ?? "";
+const isIntegration = testPath.endsWith(".integration.test.ts");
+const factor = loadFactor();
+vi.setConfig({
+  testTimeout: Math.ceil((isIntegration ? 30_000 : 5_000) * factor),
+  hookTimeout: Math.ceil((isIntegration ? 30_000 : 10_000) * factor),
+});
