@@ -24,11 +24,11 @@ Run each host (`claude`, `opencode`, `codex`) in its own terminal window — NOT
 
 - Separate processes: restart one host without quitting the others.
 - Terminal sessions inherit the direnv-loaded `.bkit/.env`; GUI-launched apps do not (`.bkit/providers.md` § macOS GUI-isolation).
-- macOS: Ghostty.
+- macOS: [Ghostty](https://ghostty.org).
 
 <!-- bkit:end -->
 
-> Consumer first-time install/auth (`BKIT_GH_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → `.bkit/install.md`. Upgrade paste + ongoing CLI → `.bkit/README.md`. Cloud-agent setup (Claude Code on the web, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md`.
+> Consumer first-time install / auth (`BKIT_GH_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → `.bkit/install.md`. Upgrade paste + ongoing CLI → `.bkit/README.md`. Cloud-agent setup (Claude Code on the web, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md`.
 
 ## Required tools
 
@@ -36,7 +36,7 @@ Run each host (`claude`, `opencode`, `codex`) in its own terminal window — NOT
 | Tool | Version | Used for |
 | --- | --- | --- |
 | `node` | `>=20` (matches `engines.node` / `.nvmrc`) | Runtime. |
-| `pnpm` | tracks `package.json#packageManager` (single SoT) — `corepack enable`, then `pnpm install` (Corepack resolves the pinned version) | Workspace install, lint/typecheck/test gates, bkit CLI. |
+| `pnpm` | tracks `package.json#packageManager` (single SoT) — `corepack enable`, then `pnpm install` (Corepack resolves the pinned version) | Workspace install, lint / typecheck / test gates, bkit CLI. |
 | `git` | `>=2.5` | Worktree operations. |
 | `gh` | latest, authenticated (`gh auth login`) | PR create / view / merge, CI run log fetch. |
 | `jq` | latest | Reads the JSON that `bkit` commands print, inside workflows. |
@@ -70,7 +70,7 @@ pnpm tsx .bkit/core/engine/cli.ts check                                # drift g
 vale sync                                                               # one-off; pulls lint:prose styles
 ```
 
-`install` requires ≥1 module flag — bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.
+`install` requires ≥1 module flag, because bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.
 
 Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude --cursor --typescript` (not the dogfood call).
 
@@ -87,8 +87,8 @@ pnpm exec bkit doctor        # token + advisory sweep (read-only, never fails)
 
 ## Troubleshooting
 
-- **`pnpm install` 401/404 on `@cbartens/bkit`** — `BKIT_GH_TOKEN_INSTALL` unset (`echo "${BKIT_GH_TOKEN_INSTALL:-MISSING}"`), or token never written to pnpm user-level config. pnpm >=10.34.3 401s on project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` ref — run `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` (see `docs/knowledge.jsonl` KN-CORE-7).
+- **`pnpm install` 401 / 404 on `@cbartens/bkit`** — `BKIT_GH_TOKEN_INSTALL` unset (`echo "${BKIT_GH_TOKEN_INSTALL:-MISSING}"`), or token never written to pnpm user-level config. pnpm >=10.34.3 401s on project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` ref — run `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` (see `docs/knowledge.jsonl` KN-CORE-7).
 - **`bkit check` reports `.bkit/version` drift** — `pnpm add -D @cbartens/bkit@<new>` without `pnpm exec bkit install`. Re-run install; commit resync.
-- **Linear preflight blocks session** — issue missing `bkit:auto` or in `Done`/`Cancelled`. Add `bkit:auto`, set non-terminal state. (All labels use `bkit:` prefix.)
+- **Linear preflight blocks session** — issue missing `bkit:auto` or in `Done` / `Cancelled`. Add `bkit:auto`, set non-terminal state. (All labels use `bkit:` prefix.)
 - **Lockfile rebase conflict in workflow** — Tier 2 auto-resolver `bkit branches rebase` takes the rebase target's copy and regenerates it (pnpm, npm, yarn, bun, cargo, go, uv); see `.bkit/workflows.md` § Rebase Conflict Tiering.
 - **Cloud snapshot stuck on stale vale (Claude)** — bump `# cache-bust YYYY-MM-DD-N` in setup script to force rebuild.

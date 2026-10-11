@@ -24,6 +24,6 @@ Run each host (`claude`, `opencode`, `codex`) in its own terminal window — NOT
 
 - Separate processes: restart one host without quitting the others.
 - Terminal sessions inherit the direnv-loaded `.bkit/.env`; GUI-launched apps do not (`.bkit/providers.md` § macOS GUI-isolation).
-- macOS: Ghostty.
+- macOS: [Ghostty](https://ghostty.org).
 
 <!-- bkit:end -->
