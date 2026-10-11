@@ -238,8 +238,14 @@ describe("runCommand", () => {
   it("leaves a classic verb alone unless the second word is one of the command's verbs", async () => {
     const h = harness();
     expect(await h.run(["status"])).toBeNull();
-    expect(await h.run(["status", "--help"])).toBeNull();
     expect(await h.run(["status", "count", "--fid=1"])).toBe(EXIT.OK);
+  });
+
+  it("still answers `--help` for a noun that is also a classic verb", async () => {
+    const h = harness();
+    expect(await h.run(["status", "--help"])).toBe(EXIT.OK);
+    expect(h.out[0]).toBe(commandHelp(STATUS_CMD));
+    expect(h.err).toEqual([]);
   });
 });
 

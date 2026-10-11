@@ -199,8 +199,9 @@ const isHelp = (arg) => arg === "--help" || arg === "-h";
  * Run `argv` (without the leading `bkit`) if it names a registered command.
  * Returns the exit code, or null when `argv` is not a command, so the caller falls
  * through to the classic verbs. A noun that is also a classic verb (`status`)
- * routes only when the second word is one of its verbs, so `bkit status` keeps
- * its classic meaning.
+ * routes only when the second word is one of its verbs or a help flag, so
+ * `bkit status` keeps its classic meaning while `bkit status --help` still lists
+ * the noun's own verbs.
  */
 export async function runCommand(argv, commands, options) {
     const io = options.io ?? processIo;
@@ -209,7 +210,7 @@ export async function runCommand(argv, commands, options) {
         return null;
     const verb = argv[1];
     const isVerb = verb !== undefined && Object.hasOwn(cmd.verbs, verb);
-    if (!isVerb && options.classicVerbs.has(cmd.noun))
+    if (!isVerb && options.classicVerbs.has(cmd.noun) && !isHelp(verb))
         return null;
     const tag = logTag(cmd.noun);
     if (!isVerb) {
