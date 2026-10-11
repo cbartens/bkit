@@ -61,9 +61,10 @@ jobs:
 
       # OIDC trusted publishing: no token env — the npm CLI exchanges the id-token for a
       # short-lived publish token. npmjs.com → package → Settings → Trusted publishing
-      # names this workflow file (release.yml).
+      # names this workflow file (release.yml). --provenance attaches the signed build
+      # attestation linking the tarball to this repo + run (needs a public repo).
       - name: Publish to npmjs
-        run: npm publish
+        run: npm publish --provenance
 
       # Slides v{N} (e.g. `v1`) to point at the latest v{N}.x.y after a successful publish.
       # Matches the GitHub Actions community convention (actions/checkout@v4 etc.) so

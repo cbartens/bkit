@@ -177,6 +177,10 @@ describe("release.yml structural assertions (BAR-138)", () => {
     expect(content).not.toContain("secrets.BKIT_NPM_TOKEN");
   });
 
+  it("npm publish attaches the provenance attestation (public repo + id-token: write)", () => {
+    expect(content).toContain("npm publish --provenance");
+  });
+
   it("npm publish step appears after pnpm bkit:check:dist", () => {
     const distIdx = lineIndex("pnpm bkit:check:dist");
     const publishIdx = lineIndex("npm publish");
