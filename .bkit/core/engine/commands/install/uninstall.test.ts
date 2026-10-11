@@ -176,7 +176,7 @@ describe("buildDecisionTable — markered-text format", () => {
   });
 
   it("strips only the managed blocks of .agents/context.md and .agents/skills.md, marker included", async () => {
-    const marker = "<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->";
+    const marker = "<!-- bkit:managed v4.0.0 — do not edit; run `bkit upgrade` to refresh -->";
     const consumer = "## Project Skills\n\nour own skills\n";
     for (const rel of [".agents/context.md", ".agents/skills.md"]) {
       writeFile(
@@ -196,7 +196,7 @@ describe("buildDecisionTable — markered-text format", () => {
   });
 
   describe("docs/", () => {
-    const marker = "<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->";
+    const marker = "<!-- bkit:managed v4.0.0 — do not edit; run `bkit upgrade` to refresh -->";
     const block = `<!-- bkit:start -->\n\n${marker}\n\n# Testing\n\nbkit doctrine\n\n<!-- bkit:end -->\n`;
 
     it("strips bkit's block, managed marker included, from docs/*.md and keeps the consumer's content", async () => {

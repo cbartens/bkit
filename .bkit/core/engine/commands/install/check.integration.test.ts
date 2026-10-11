@@ -700,7 +700,7 @@ describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () =>
     fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".claude", "agents", "bkit-foo.md"),
-      "---\nname: bkit-foo\n---\n<!-- bkit:managed v0.0.1 — do NOT edit; run `bkit upgrade` to refresh -->\n\nbody\n",
+      "---\nname: bkit-foo\n---\n<!-- bkit:managed v0.0.1 — do not edit; run `bkit upgrade` to refresh -->\n\nbody\n",
     );
 
     const dir = path.dirname(new URL(import.meta.url).pathname);

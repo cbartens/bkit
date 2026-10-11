@@ -10,7 +10,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior incident commander writing clear, calm handovers when automation cannot proceed.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -67,7 +67,7 @@ maxTurns: 50
 
 [Table of attempts: `Strategy` (`STANDARD|PIVOT|FINAL`), what was tried, why it failed; initially set to `PENDING`.]
 
-## Verified Resolutions (DO NOT ROLL BACK)
+## Verified Resolutions (do not roll back)
 
 [Changes that are working — must not be reverted; initially set to `PENDING`.]
 

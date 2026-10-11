@@ -6,29 +6,29 @@
 >
 > **Rules:**
 >
-> - GENERATED — do NOT edit. `pnpm graph:update && pnpm graph:rollup` rewrites this file.
+> - Generated — do not edit. `pnpm graph:update && pnpm graph:rollup` rewrites this file.
 > - Source of truth: `scripts/graphify/bkit-graph-drift-rules.json`. Every status derived from live source, never typed.
-> - Add a capability = add a rule there: capability · lane · owner module · one LITERAL marker.
-> - Markers LITERAL, never regex, because `new Ratelimit(` as a regex is an unclosed group matching NOTHING.
+> - Add a capability = add a rule there: capability · lane · owner module · one literal marker.
+> - Markers literal, never regex, because `new Ratelimit(` as a regex is an unclosed group matching nothing.
 > - Match the mechanism, not the name, because `createClient(` misses an owner that aliases its import.
 > - Optional `scope` narrows the tree scanned when a marker means different things per package.
-> - Optional `surface`: `product` (default) · `tests` (any `e2e/` dir + every `.test.` / `.spec.` file) · `all`. The two surfaces PARTITION the tree.
-> - Optional `budgets`: the EXACT non-owner site count allowed per scope prefix. Measured == declared everywhere ⇒ `budgeted`, which is NOT a warning.
-> - A budget is not a shrug, because `owned-query-shape-guard.test.ts` reds CI when the count moves EITHER way, and a site landing outside every declared prefix reads as over budget.
-> - Test code is in `graph.json` on purpose (`.graphifyignore`) and out of every diagram here by rule (`is_test_code` in `bkit-graphify-rollup.py`): test folders, `.test.` / `.spec.` files, test-runner config. `hide_nodes` below is DIAGRAM-ONLY too, for whatever else a picture should not draw.
+> - Optional `surface`: `product` (default) · `tests` (any `e2e/` dir + every `.test.` / `.spec.` file) · `all`. The two surfaces partition the tree.
+> - Optional `budgets`: the exact non-owner site count allowed per scope prefix. Measured == declared everywhere ⇒ `budgeted`, which is not a warning.
+> - A budget is not a shrug, because `owned-query-shape-guard.test.ts` reds CI when the count moves either way, and a site landing outside every declared prefix reads as over budget.
+> - Test code is in `graph.json` on purpose (`.graphifyignore`) and out of every diagram here by rule (`is_test_code` in `bkit-graphify-rollup.py`): test folders, `.test.` / `.spec.` files, test-runner config. `hide_nodes` below is diagram-only too, for whatever else a picture should not draw.
 > - Status computed: no owner → `split`; owner absent → `gap`; owner present, others use marker → `bypassed`; else `one`. A `split|bypassed` at budget → `budgeted`.
-> - Externals: `scripts/graphify/bkit-graph-external-rules.json` — `sdk` · `hosts` · `env`. SDK AND url = `split`.
-> - Import-time scan: `scripts/graphify/bkit-graph-eager-rules.json` lists only what is PURE. Unclassified = reported.
-> - That scan reads SOURCE, not the graph, because module-level initialiser calls are the one construct graphify drops.
+> - Externals: `scripts/graphify/bkit-graph-external-rules.json` — `sdk` · `hosts` · `env`. SDK and url = `split`.
+> - Import-time scan: `scripts/graphify/bkit-graph-eager-rules.json` lists only what is pure. Unclassified = reported.
+> - That scan reads source, not the graph, because module-level initialiser calls are the one construct graphify drops.
 > - Nothing discovers an SDK itself; find gaps by listing non-workspace deps.
-> - Only the Overrides block is hand-maintained. It round-trips; malformed ABORTS the run.
+> - Only the Overrides block is hand-maintained. It round-trips; malformed aborts the run.
 > - Colour = called capability, shared by its inbound edges. Grey = never called.
-> - Drift = dashed border + ONE amber box for all four. No ranking: each scan proves a shape, never an intent.
-> - `budgeted` = SOLID border + blue box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.
-> - Which status is which: `split` fine dash · `bypassed` long dash · `dead` even dash · `gap` dotted · `budgeted` NO dash.
+> - Drift = dashed border + one amber box for all four. No ranking: each scan proves a shape, never an intent.
+> - `budgeted` = solid border + blue box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.
+> - Which status is which: `split` fine dash · `bypassed` long dash · `dead` even dash · `gap` dotted · `budgeted` no dash.
 > - A fetched URL is a STRING, never an edge, because `assert-routes-reachable.mjs` is the only check that sees it.
-> - Table rescanned every run, never stale. Diagrams from `graph.json` @ `367354f07`; when that differs from HEAD ⇒ run `pnpm graph:update` FIRST.
-> - Detail-level module graph → `pnpm graph`. This doc is the altitude ABOVE that: capabilities, not files.
+> - Table rescanned every run, never stale. Diagrams from `graph.json` @ `6d1f69336`; when that differs from HEAD ⇒ run `pnpm graph:update` first.
+> - Detail-level module graph → `pnpm graph`. This doc is the altitude above that: capabilities, not files.
 
 ## Status Vocabulary
 
@@ -36,7 +36,7 @@ The first four are warnings, not verdicts, and they share one amber in the diagr
 of them can turn out to be deliberate, because the scans prove a shape, never an intent.
 
 `budgeted` is what one of those four becomes once somebody has decided. The rule declares
-the EXACT number of non-owner sites allowed per scope prefix, its `note` says why that
+the exact number of non-owner sites allowed per scope prefix, its `note` says why that
 number is not zero, and `tooling/eslint/tests/owned-query-shape-guard.test.ts` reds CI the
 moment the count moves in either direction — too many (a copy appeared) or too few (the
 budget is stale). That guard is why the status can be quieter without being a place to
@@ -67,7 +67,7 @@ and re-read the notes to dismiss them.
 <!-- prettier-ignore -->
 | Lane | Capability | Owner | Marker | Surface | Status | Bypasses | Budget | Issue |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Install | Managed-version marker | `.bkit/core/engine/install/version-file.ts` | `do NOT edit; run` | `product` | `one` | 0 of 1 | — |  |
+| Install | Managed-version marker | `.bkit/core/engine/install/version-file.ts` | `do not edit; run` | `product` | `one` | 0 of 1 | — |  |
 | Install | Tracker block substitution | `.bkit/core/engine/render/trackers.ts` | `bkit:tracker` | `product` | `one` | 0 of 1 | — |  |
 | Providers | Cursor API access | `.bkit/core/engine/shared/egress.ts` | `api.cursor.com` | `product` | `one` | 0 of 1 | — |  |
 
@@ -137,7 +137,7 @@ rather than being silently dropped. Every `hide_nodes` entry needs a one-line re
 
 ## User-facing routes → backend capabilities
 
-0 routes across web and native, each linked to the service domains it reaches. The static import graph does NOT cross the HTTP boundary — a page imports `ui` and `validators`, never `services` — so the link is the endpoint literal at the calling symbol, followed through `v1.ts` to the router file and its service imports. Attribution is per symbol, not per file, so a domain named only in a shared helper's comment is not credited to every page that imports the helper.
+0 routes across web and native, each linked to the service domains it reaches. The static import graph does not cross the HTTP boundary — a page imports `ui` and `validators`, never `services` — so the link is the endpoint literal at the calling symbol, followed through `v1.ts` to the router file and its service imports. Attribution is per symbol, not per file, so a domain named only in a shared helper's comment is not credited to every page that imports the helper.
 
 To view online, paste only the lines inside the block below — not the fence lines — into [mermaid.live](https://mermaid.live/).
 
@@ -172,7 +172,7 @@ config:
     useMaxWidth: false
 ---
 flowchart LR
-  %% GENERATED by bkit-graphify-rollup.py from 367354f07962c9e9fee97dbb7821c2656c009647 — do not edit
+  %% Generated by bkit-graphify-rollup.py from 6d1f69336786d6c1a53cf8d3f5606b9294670d58 — do not edit
 ```
 
 ## Architecture — modules
@@ -191,7 +191,7 @@ config:
     useMaxWidth: false
 ---
 flowchart LR
-  %% GENERATED by bkit-graphify-rollup.py from 367354f07962c9e9fee97dbb7821c2656c009647 — do not edit
+  %% Generated by bkit-graphify-rollup.py from 6d1f69336786d6c1a53cf8d3f5606b9294670d58 — do not edit
   subgraph gncustom_health_checks["Health checks"]
     n_bkit_core_engine_checks_after_index[".bkit/core/engine/checks/after/index<br/>7 symbols · 1 files"]
     n_bkit_core_engine_checks_before_index[".bkit/core/engine/checks/before/index<br/>5 symbols · 1 files"]

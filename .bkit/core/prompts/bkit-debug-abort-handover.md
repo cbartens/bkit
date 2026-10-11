@@ -66,7 +66,7 @@ maxTurns: 50
 
 [Table of attempts: `Strategy` (`STANDARD|PIVOT|FINAL`), what was tried, why it failed; initially set to `PENDING`.]
 
-## Verified Resolutions (DO NOT ROLL BACK)
+## Verified Resolutions (do not roll back)
 
 [Changes that are working — must not be reverted; initially set to `PENDING`.]
 

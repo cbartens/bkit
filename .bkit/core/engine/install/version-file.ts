@@ -225,7 +225,7 @@ export const MANAGED_MARKER_VERSION_RE = /bkit:managed v(\S+)/;
 
 /** Build the managed-version marker for a given version, in the given comment syntax. */
 export function managedVersionMarker(version: string, form: ManagedMarkerForm = "html"): string {
-  const text = `bkit:managed v${version} — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run \`bkit upgrade\` to refresh`;
+  const text = `bkit:managed v${version} — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run \`bkit upgrade\` to refresh`;
   if (form === "slash") return `// ${text}`;
   return form === "hash" ? `# <!-- ${text} -->` : `<!-- ${text} -->`;
 }

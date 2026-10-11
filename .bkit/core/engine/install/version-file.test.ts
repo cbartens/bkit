@@ -234,10 +234,10 @@ describe("mergeCanonicalHashes — fresh overwrites, absent paths are pruned", (
 // ---------------------------------------------------------------------------
 
 describe("managedVersionMarker", () => {
-  it("builds an inert HTML comment carrying the version, the licence notice and the NOT-edit warning", () => {
+  it("builds an inert HTML comment carrying the version, the licence notice and the do-not-edit warning", () => {
     const m = managedVersionMarker("4.0.0");
     expect(m).toBe(
-      "<!-- bkit:managed v4.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->",
+      "<!-- bkit:managed v4.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->",
     );
     expect(m.startsWith("<!--")).toBe(true);
     expect(m.endsWith("-->")).toBe(true);

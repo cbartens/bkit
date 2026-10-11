@@ -57,7 +57,7 @@ const ANALYSIS_PLACEHOLDER = "_(no analysis yet; run @bkit-utility-update-roadma
 const NOTES_PRE_PLACEHOLDER = "## Notes\n\n_(above the bkit list — yours, never overwritten)_";
 const NOTES_POST_PLACEHOLDER = "## Notes\n\n_(end of the board — yours, never overwritten)_";
 const BANNER =
-  "> Generated tables — do NOT hand-edit the `bkit` tables; append to `.bkit/issues.jsonl` instead (an `ABANDONED` row hides a FID from every section). `## Notes` blocks are yours and are never overwritten. Everything above the first marker is also yours. notes-post is last. Analysis list length: `package.json` key `bkit.roadmapNext` (positive integer; absent or invalid → 25).";
+  "> Generated tables — do not hand-edit the `bkit` tables; append to `.bkit/issues.jsonl` instead (an `ABANDONED` row hides a FID from every section). `## Notes` blocks are yours and are never overwritten. Everything above the first marker is also yours. notes-post is last. Analysis list length: `package.json` key `bkit.roadmapNext` (positive integer; absent or invalid → 25).";
 
 /** Newest SHIPPED rows on the board; older ones stay in the ledger. */
 export const SHIPPED_ON_BOARD = 10;

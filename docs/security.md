@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 # Security
 
@@ -51,7 +51,7 @@ No database, server, or user-auth surface. Security concerns: secrets management
 
 `.bkit/.env` (gitignored, auto-loaded via `.envrc` / direnv) holds **bkit and agent-tooling secrets ONLY**: tracker / cloud-agent tokens (`BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`, `BKIT_LINEAR_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `BKIT_CURSOR_API_KEY`) and opencode provider keys (`BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`).
 
-App / stack credentials do NOT belong here — runtime keys AND `/bkit-debug` observability tokens (deploy-host, DB log-read, etc.) live in app env files (e.g. `apps/web/.env.local`, sourced by `.envrc`). Never re-add stack creds to `.bkit/.env`. Runtime-log source config → `.agents/context.md` (see `docs/observability.md`).
+App / stack credentials do not belong here — runtime keys and `/bkit-debug` observability tokens (deploy-host, DB log-read, etc.) live in app env files (e.g. `apps/web/.env.local`, sourced by `.envrc`). Never re-add stack creds to `.bkit/.env`. Runtime-log source config → `.agents/context.md` (see `docs/observability.md`).
 
 `LINEAR_ISSUE_ID` — per-session cloud injection; never in `.bkit/.env`.
 

@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 # Agent Prompts Index
 
@@ -45,7 +45,7 @@
 - **Removal = delete:** drop instruction outright; never leave removal explanations.
 - **Enforced elsewhere:** step numbers by `.bkit/core/engine/audits/repo/shipped-docs-refs.test.ts`, the managed-version marker by `.bkit/core/engine/audits/workflows/prompt-notation.test.ts`, shared sentences, the `**Rules:**` bullet, and the `.agents/rules.md` group headings by `.bkit/core/engine/tools/wording.test.ts` — the GateGuard advisory omits them because a test is the gate.
   - **No step numbers:** never cite a step number — this prompt's own, the workflow's, or a supplied template's step / gate. Numbering shifts the moment a step is inserted. Name the action or section instead, or signal through `Verdict` and let the orchestrator route.
-  - **Managed-version marker:** Rendered agents get injected `<!-- bkit:managed vX.Y.Z — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run \`bkit upgrade\` to refresh -->`after frontmatter (one blank line below), stamped at`bkit install`/`upgrade`by`stampManagedVersion`— not in sources. never add version line to source prompt.`bkit check`flags`bkit-managed-stale`on marker drift — hard blocker on`main`/`dev` (or PR into them); advisory on feature branches (inherited drift) — prevents silent outdated prompts on protected branches.
+  - **Managed-version marker:** Rendered agents get injected `<!-- bkit:managed vX.Y.Z — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run \`bkit upgrade\` to refresh -->`after frontmatter (one blank line below), stamped at`bkit install`/`upgrade`by`stampManagedVersion`— not in sources. never add version line to source prompt.`bkit check`flags`bkit-managed-stale`on marker drift — hard blocker on`main`/`dev` (or PR into them); advisory on feature branches (inherited drift) — prevents silent outdated prompts on protected branches.
 
 ### Notation
 

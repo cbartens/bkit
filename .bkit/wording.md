@@ -507,6 +507,10 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - anchored: yes
 
 ```text
+**Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, {{work}}, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields{{attempt?}}.
+```
+
+```retired
 **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, {{work}}, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit ONLY its header fields + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields{{attempt?}}.
 ```
 

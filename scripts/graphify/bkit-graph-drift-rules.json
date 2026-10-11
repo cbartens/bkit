@@ -16,7 +16,7 @@
       "capability": "Managed-version marker",
       "lane": "Install",
       "owner": ".bkit/core/engine/install/version-file.ts",
-      "pattern": "do NOT edit; run",
+      "pattern": "do not edit; run",
       "note": "Rendered mirrors are stamped through stampManagedVersion only."
     },
     {
