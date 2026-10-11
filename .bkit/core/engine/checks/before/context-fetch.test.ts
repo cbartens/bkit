@@ -266,7 +266,7 @@ describe("detectContextFetchSourceNotEnabled", () => {
     "```bash\naws logs filter-log-events --log-group-name app --limit 50\n```\n" +
     "<!-- context-fetch:end -->\n";
 
-  it("flags supabase when repo uses supabase but only a legacy vercel block is enabled (visitfrasercoast case)", () => {
+  it("flags supabase when repo uses supabase but only a legacy vercel block is enabled (consumer case)", () => {
     writeSupabaseConfig();
     writeVercelJson();
     writeConfig(MANAGED + UNNAMED_VERCEL_BLOCK);

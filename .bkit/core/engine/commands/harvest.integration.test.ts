@@ -495,11 +495,11 @@ describe("consumerPathToSlug — resolves from the consumer's git remote", () =>
 
   it("uses the remote, NOT the path — even under a dir named GitHub", () => {
     const dir = makeRepoWithRemote(
-      path.join(tmpDir, "Documents", "GitHub", "app-gether-life"),
-      "https://github.com/gether-life/app-gether-life.git",
+      path.join(tmpDir, "Documents", "GitHub", "acme-widgets"),
+      "https://github.com/acme-org/acme-widgets.git",
     );
-    // Not the path-derived `GitHub/app-gether-life`.
-    expect(consumerPathToSlug(dir)).toBe("gether-life/app-gether-life");
+    // Not the path-derived `GitHub/acme-widgets`.
+    expect(consumerPathToSlug(dir)).toBe("acme-org/acme-widgets");
   });
 
   it("is stable when the checkout moves", () => {
