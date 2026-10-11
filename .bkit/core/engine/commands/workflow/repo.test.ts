@@ -30,10 +30,11 @@ beforeEach(() => {
   const bin = tmp("bkit-repo-bin-");
   fs.writeFileSync(
     path.join(bin, "gh"),
-    '#!/bin/sh\nif [ "$1 $2" = "repo view" ] && [ -n "$FAKE_GH_REPO" ]; then echo "$FAKE_GH_REPO"; exit 0; fi\necho "gh: not authed" >&2; exit 1\n',
+    '#!/bin/sh\nif [ "$1 $2" = "repo view" ] && [ -n "$FAKE_GH_REPO" ]; then echo "$FAKE_GH_REPO"; exit 0; fi\nif [ "$1" = "api" ]; then\n  if [ -n "$FAKE_GH_API_FAIL" ]; then echo "gh: api failed" >&2; exit "$FAKE_GH_API_FAIL"; fi\n  echo \'{"enabled":true,"allowed_actions":"all"}\'; exit 0\nfi\necho "gh: not authed" >&2; exit 1\n',
     { mode: 0o755 },
   );
   vi.stubEnv("FAKE_GH_REPO", "");
+  vi.stubEnv("FAKE_GH_API_FAIL", "");
   vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
 });
 afterEach(() => {
@@ -216,5 +217,48 @@ describe("bkit repo info — where bkit, the repo root and the outbox live", () 
     expect(json.repoRoot).toBe(cwd);
     expect(json.bkit).toBe(path.join(cwd, "node_modules", ".bin", "bkit"));
     expect(json.outboxRoot).toBe(path.join(cwd, ".git", "bkit-outbox"));
+  });
+});
+
+describe("bkit repo preflight", () => {
+  async function preflight(...argv: string[]) {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await runCommand(["repo", "preflight", ...argv], [repoCommand], {
+      classicVerbs: new Set(),
+      cwd,
+      io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
+    });
+    return { code, json: out.length ? JSON.parse(out.join("")) : undefined, err: err.join("") };
+  }
+
+  it("reports the Actions permissions read is available, advisory false", async () => {
+    const r = await preflight("--owner-repo=o/r");
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      ownerRepo: "o/r",
+      actionsPermissionsReadable: true,
+      status: 0,
+      warning: null,
+    });
+  });
+
+  it("warns and carries on (exit 0, no MCP route) when the gh api read fails", async () => {
+    vi.stubEnv("FAKE_GH_API_FAIL", "1");
+    const r = await preflight("--owner-repo=o/r");
+    expect(r.code).toBe(0);
+    expect(r.json.actionsPermissionsReadable).toBe(false);
+    expect(r.json.warning).toContain("may 403");
+    expect(r.err).toContain("actions:write preflight");
+  });
+
+  it("resolves owner/repo from the origin remote when --owner-repo is absent", async () => {
+    git(cwd, "remote", "add", "origin", "https://github.com/o/r.git");
+    expect((await preflight()).json.ownerRepo).toBe("o/r");
+  });
+
+  it("exits 3 when owner/repo cannot be resolved, or the flag is malformed", async () => {
+    expect((await preflight()).code).toBe(3);
+    expect((await preflight("--owner-repo=o")).code).toBe(3);
   });
 });

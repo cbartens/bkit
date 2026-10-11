@@ -1,4 +1,5 @@
-// bkit repo info — the repo facts every phase workflow's Step 1 derives.
+// bkit repo info|preflight — the repo facts every phase workflow's Step 1 derives,
+// and the advisory dispatch-permission preflight ship's Step 1 runs.
 //
 // `owner/repo` comes from `gh repo view`; when gh is missing, unauthed, or
 // answers nothing, from the `origin` remote URL instead (the MCP fallback the
@@ -70,6 +71,25 @@ export function resolveBkitBinary(root: string): string {
     }
   }
   return pinned;
+}
+
+/**
+ * The Step 1 dispatch-permission preflight: can `gh` read this repo's Actions
+ * permissions? Advisory only — a false just warns that `gh workflow run` may 403;
+ * it never stops the run. gh missing or unauthed is not an error (the runtime row
+ * already recorded `runtimeGithubCli`, and the workflow falls back to MCP).
+ */
+export function actionsPermissionsReadable(
+  cwd: string,
+  ownerRepo: string,
+): { readable: boolean; status: number; detail: string } {
+  const res = runTool("gh", ["api", `repos/${ownerRepo}/actions/permissions`], cwd);
+  const detail =
+    res.stderr
+      .split("\n")
+      .filter((l) => l.trim() !== "")
+      .at(-1) ?? "";
+  return { readable: res.found && res.status === 0, status: res.status, detail };
 }
 
 export const repoCommand: CommandSpec = {
@@ -150,6 +170,49 @@ export const repoCommand: CommandSpec = {
           ctx.log("HEAD is detached — no current branch");
           return EXIT_DETACHED;
         }
+        return EXIT.OK;
+      },
+    },
+    preflight: {
+      summary:
+        "Advisory: whether gh can read the repo's Actions permissions (dispatch may 403 without them).",
+      flags: [
+        {
+          name: "owner-repo",
+          type: "string",
+          help: "owner/repo to check (default: resolved from gh, else the origin remote)",
+        },
+      ],
+      output: {
+        ownerRepo: "owner/repo checked",
+        actionsPermissionsReadable: "gh could read repos/<owner>/<repo>/actions/permissions",
+        status: "the gh api exit code (127 when gh is not on PATH)",
+        warning: "an advisory line when the read failed, else null",
+      },
+      exitCodes: {
+        [EXIT_NO_REPO]: "neither --owner-repo, gh, nor the origin remote named an owner/repo",
+      },
+      run: (ctx) => {
+        const given = typeof ctx.flags.ownerRepo === "string" ? ctx.flags.ownerRepo.trim() : "";
+        const resolved = given !== "" ? splitSlug(given) : null;
+        const ownerRepo =
+          given !== "" ? (resolved ? given : null) : (resolveOwnerRepo(ctx.cwd)?.ownerRepo ?? null);
+        if (ownerRepo === null) {
+          ctx.log("could not resolve owner/repo for the dispatch preflight");
+          return EXIT_NO_REPO;
+        }
+        const r = actionsPermissionsReadable(ctx.cwd, ownerRepo);
+        const detail = r.detail ? `: ${r.detail}` : "";
+        const warning = r.readable
+          ? null
+          : `actions:write preflight — gh could not read repos/${ownerRepo}/actions/permissions (exit ${String(r.status)}${detail}); gh workflow run may 403`;
+        if (warning) ctx.log(warning);
+        ctx.emit({
+          ownerRepo,
+          actionsPermissionsReadable: r.readable,
+          status: r.status,
+          warning,
+        });
         return EXIT.OK;
       },
     },

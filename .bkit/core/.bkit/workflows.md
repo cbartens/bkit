@@ -1093,12 +1093,14 @@ PR / CI reads and writes go through `bkit` commands (exit 80 → the mapped MCP 
 | Purpose | Call |
 | --- | --- |
 | `OWNER_REPO` (Step 1 of every phase) | `bkit repo info` (`gh`, else the origin remote) |
+| Dispatch-permission preflight (ship Step 1) | `bkit repo preflight --owner-repo` (advisory: warns and continues, exit 0) |
 | PR lookup, PR-mode detection | `bkit prs probe [--head= --base= --state= --number=]` |
 | PR creation (build Step 18, debug Step 10 LOCAL, design / plan PR close, ship Step 2 when no PR exists) | `bkit prs open` (base pinned `dev`, marker in body) |
 | CI presence / completion, CI-Dispatch Gate | `bkit runs wait`, `bkit runs dispatch` |
 | Ship merge gate, squash-commit CI | `bkit runs gate` |
 | Squash merge (ship Step 10; design / plan PR close) | `bkit prs merge` / `bkit branches land` → `gh pr merge {PR} --squash [--match-head-commit <head>] --subject "…" --body ""` — empty body strips feature `bkit [skip ci]` |
 | Path B refresh (ship Step 4 B1) | `bkit prs update-branch` |
+| PR check-rollup assert (ship Step 2) | `bkit prs checks --number` |
 | `bkit [verbose ci]` PR-title marker (debug Steps 8 / 10) | `gh pr edit --title` |
 
 Code PRs never merge locally; `/bkit-ship` merges with `bkit prs merge` (`gh pr merge` underneath).
@@ -1294,14 +1296,14 @@ and holds its `bkit` key as `{BKIT}` (plus `repoRoot` as `{REPO_ROOT}`, `outboxR
 <!-- prettier-ignore -->
 | Noun | Verbs | Covers |
 | --- | --- | --- |
-| `repo` | `info` | Step 1 owner/repo, branch, behind-`dev` notice, `{BKIT}` / `{REPO_ROOT}` / `{OUTBOX_ROOT}` |
+| `repo` | `info`, `preflight` | Step 1 owner/repo, branch, behind-`dev` notice, `{BKIT}` / `{REPO_ROOT}` / `{OUTBOX_ROOT}`; advisory dispatch-permission preflight |
 | `fids` | `check`, `parse`, `find` | FID format asserts; marker / branch FID recovery; the feature already logged for an issue (`find --issue`: exit 0 one, 1 none, 4 several) |
 | `runtime` | `detect`, `row`, `assert` | runtime capability table + `runtime-resolved` row |
 | `locks` | `acquire`, `release` | per-feature `.lock` and `.bkit/.dev.lock` |
 | `workflows` | `start`, `fail`, `handover`, `close`, `promote`, `links` | `workflow-started`; the Failure Path (`fail`: row, rebase abort, lock, sentinels, labels, failure comment; `handover --push` / ship's `--flush`); `close` (compliance grade, `workflow-done`, telemetry, report, artifact links, `--outbox`, `--message` commit; ship's `--flush` lands on dev); design / plan canonical promotion (`promote`) and close links (`links`) |
 | `worktrees` | `setup`, `remove` | Step 2 worktree create / resume / adopt (`--detect` asks the runtime), copy, install; teardown |
 | `branches` | `sync`, `push`, `land`, `rebase`, `switch`, `anchor-stamp`, `anchor-read` | docs-from-dev merge, base check, every push, design / plan close landing (local squash under the dev lock, or PR squash-merge; audit; lock release), Tier-2 rebase resolve, ship switch-to-dev, anchor block |
-| `prs` | `open`, `probe`, `merge`, `verbose-ci`, `scan-body`, `cross-check`, `transport-row` | PR create / lookup, squash merge (empty body, `--match-head`, auto-route suffix from `--label`), debug's verbose-CI title, close-transport audit (`transport-row --scan --cross-check`) |
+| `prs` | `open`, `probe`, `merge`, `update-branch`, `checks`, `verbose-ci`, `scan-body`, `cross-check`, `transport-row` | PR create / lookup, squash merge (empty body, `--match-head`, auto-route suffix from `--label`), server-side base refresh, check-rollup classification (green when present and none failed/pending), debug's verbose-CI title, close-transport audit (`transport-row --scan --cross-check`) |
 | `issues` | `text`, `labels`, `comment` | `ISSUE_TEXT` join + cut, label arithmetic + board payload, comment bodies (MCP posts them) |
 | `runs` | `wait`, `dispatch`, `gate`, `revalidate`, `context`, `mirror`, `declared` | CI polls, CI-Dispatch Gate (`--file` / `--step` record its row, `--label` the re-trigger suffix), ship merge gate (`--pr` / `--squash-of` heads, `--snapshot`, `--record`), ship Step 9 re-validate, auto Step 1 context, release-PR mirror, CI-workflow presence |
 | `tests` | `run` | deepest-declared `bkit:gate:*` run + saved log + verdict |

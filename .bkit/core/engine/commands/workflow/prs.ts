@@ -1,4 +1,4 @@
-// bkit prs open|probe|merge|update-branch|verbose-ci|scan-body|cross-check|transport-row —
+// bkit prs open|probe|merge|update-branch|checks|verbose-ci|scan-body|cross-check|transport-row —
 // the pull-request side of a phase close, and the close audit trail.
 //
 // `gh` is the only transport `open` and `probe` drive. When it is missing or not
@@ -458,6 +458,96 @@ export function updateBranch(
 }
 
 // ---------------------------------------------------------------------------
+// checks
+// ---------------------------------------------------------------------------
+
+/** Exit code (checks): the PR's check rollup could not be read. */
+export const EXIT_CHECKS_UNREADABLE = 4;
+
+export interface ChecksOut {
+  number: string;
+  total: number;
+  passing: number;
+  failed: number;
+  pending: number;
+  green: boolean;
+  failing: string[];
+}
+
+/** Conclusions / states a finished check may carry and still count as passing. */
+const PASS_STATES = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
+
+/**
+ * The PR's check rollup, classified (ship Step 2's post-open assert). `green` only
+ * when at least one check exists and none is failed or pending. A check run is
+ * open until `status` = `COMPLETED`; a commit status is open while its `state` is
+ * `PENDING` / `EXPECTED`. gh missing → EXIT.USE_MCP (read the rollup through
+ * `pull_request_read` `get_status`).
+ */
+export function checksFor(
+  cwd: string,
+  number: string,
+  log: (m: string) => void,
+): { code: number; out: ChecksOut | null } {
+  const res = runGh(cwd, ["pr", "view", number, "--json", "statusCheckRollup"]);
+  if (ghUnavailable(res)) {
+    log(
+      "gh unavailable for gh pr view --json statusCheckRollup — read the rollup through pull_request_read (get_status)",
+    );
+    return { code: EXIT.USE_MCP, out: null };
+  }
+  if (!res.ok) {
+    log(
+      `gh pr view ${number} failed: ${res.stderr.split("\n").at(-1) || `exit ${String(res.status)}`}`,
+    );
+    return { code: EXIT_CHECKS_UNREADABLE, out: null };
+  }
+  const parsed = parseJson(res.stdout);
+  if (!parsed.ok) {
+    log("gh pr view printed no JSON");
+    return { code: EXIT_CHECKS_UNREADABLE, out: null };
+  }
+  const rawRollup = (parsed.value as { statusCheckRollup?: unknown }).statusCheckRollup;
+  const checks = (Array.isArray(rawRollup) ? rawRollup : []) as Array<Record<string, unknown>>;
+  let passing = 0;
+  let failed = 0;
+  let pending = 0;
+  const failing: string[] = [];
+  for (const c of checks) {
+    const name = String(c.name ?? c.context ?? "").trim();
+    const status = String(c.status ?? "").toUpperCase();
+    const state = String(c.state ?? "").toUpperCase();
+    const conclusion = String(c.conclusion ?? "").toUpperCase();
+    // A check run carries `status`; a commit status carries `state`.
+    const open =
+      status !== "" ? status !== "COMPLETED" : state === "PENDING" || state === "EXPECTED";
+    if (open) {
+      pending++;
+    } else if (PASS_STATES.has(conclusion || state)) {
+      passing++;
+    } else {
+      failed++;
+      if (name) failing.push(name);
+    }
+  }
+  const green = checks.length > 0 && failed === 0 && pending === 0;
+  const out: ChecksOut = {
+    number,
+    total: checks.length,
+    passing,
+    failed,
+    pending,
+    green,
+    failing,
+  };
+  if (!green)
+    log(
+      `PR ${number} is not green: ${String(failed)} failed, ${String(pending)} pending, ${String(checks.length)} total`,
+    );
+  return { code: green ? EXIT.OK : EXIT.NO, out };
+}
+
+// ---------------------------------------------------------------------------
 // scan-body / cross-check / transport-row
 // ---------------------------------------------------------------------------
 
@@ -839,6 +929,31 @@ export const prsCommand: CommandSpec = {
           throw new CommandError(EXIT.USAGE, "--number must be a PR number");
         const r = updateBranch(ctx.cwd, number, ctx.log);
         if (r.out) ctx.emit(r.out);
+        return r.code;
+      },
+    },
+    checks: {
+      summary:
+        "A PR's check rollup, classified: green when present and none failed or pending (exit 80: use MCP).",
+      flags: [{ name: "number", type: "string", required: true, help: "the PR number" }],
+      output: {
+        number: "the PR number",
+        total: "checks in the rollup",
+        passing: "checks that finished successfully (SUCCESS | NEUTRAL | SKIPPED)",
+        failed: "checks that finished unsuccessfully",
+        pending: "checks not yet finished",
+        green: "total > 0 and no check failed or pending",
+        failing: "names of the failed checks",
+      },
+      exitCodes: {
+        [EXIT_CHECKS_UNREADABLE]: "gh could not read the PR's check rollup",
+      },
+      run: (ctx) => {
+        const number = String(ctx.flags.number);
+        if (!/^[1-9][0-9]*$/.test(number))
+          throw new CommandError(EXIT.USAGE, "--number must be a PR number");
+        const r = checksFor(ctx.cwd, number, ctx.log);
+        if (r.out) ctx.emit({ ...r.out });
         return r.code;
       },
     },

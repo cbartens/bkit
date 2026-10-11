@@ -675,6 +675,79 @@ describe("bkit prs update-branch", () => {
 });
 
 // ---------------------------------------------------------------------------
+// checks
+// ---------------------------------------------------------------------------
+
+describe("bkit prs checks", () => {
+  const rollup = (...checks: object[]) => gh.view({ statusCheckRollup: checks });
+  const checks = () => run(repo(), ["prs", "checks", "--number=7"]);
+
+  it("is green when every check finished successfully", async () => {
+    rollup(
+      { name: "bkit-tests-unit", status: "COMPLETED", conclusion: "SUCCESS" },
+      { context: "Vercel", state: "SUCCESS" },
+    );
+    const r = await checks();
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      number: "7",
+      total: 2,
+      passing: 2,
+      failed: 0,
+      pending: 0,
+      green: true,
+      failing: [],
+    });
+  });
+
+  it("is not green when a check failed, naming it (exit 1)", async () => {
+    rollup(
+      { name: "bkit-tests-unit", status: "COMPLETED", conclusion: "SUCCESS" },
+      { name: "bkit-tests-live", status: "COMPLETED", conclusion: "FAILURE" },
+    );
+    const r = await checks();
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({
+      total: 2,
+      passing: 1,
+      failed: 1,
+      green: false,
+      failing: ["bkit-tests-live"],
+    });
+  });
+
+  it("counts an unfinished check run and a PENDING commit status as pending", async () => {
+    rollup({ name: "a", status: "IN_PROGRESS" }, { context: "b", state: "PENDING" });
+    const r = await checks();
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ total: 2, pending: 2, green: false });
+  });
+
+  it("is not green on an empty rollup (total 0)", async () => {
+    rollup();
+    const r = await checks();
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ total: 0, green: false });
+  });
+
+  it("treats NEUTRAL and SKIPPED conclusions as passing", async () => {
+    rollup(
+      { name: "a", status: "COMPLETED", conclusion: "NEUTRAL" },
+      { name: "b", status: "COMPLETED", conclusion: "SKIPPED" },
+    );
+    expect((await checks()).json.green).toBe(true);
+  });
+
+  it("exits 4 when gh errors, 80 when it needs auth, 2 on a bad --number", async () => {
+    gh.exit("view", 1);
+    expect((await checks()).code).toBe(4);
+    gh.exit("view", 4);
+    expect((await checks()).code).toBe(80);
+    expect((await run(repo(), ["prs", "checks", "--number=x"])).code).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // verbose-ci
 // ---------------------------------------------------------------------------
 
