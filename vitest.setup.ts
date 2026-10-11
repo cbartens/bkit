@@ -1,13 +1,13 @@
 // vitest.setup.ts — runs in every test worker before its test files load.
 //
-// Two jobs: strip inherited git environment variables (below), and give every
-// test file a budget that matches what it actually does, scaled by how contended
-// the machine is right now (bottom).
+// Two jobs: strip inherited git environment variables (below), and re-read the
+// load-scaled test budget as each test file starts (bottom, via
+// vitest.timeout-budget.ts).
 //
 // `globals` is not enabled in vitest.config.ts, so these are imported, not free.
-import * as os from "node:os";
-
 import { expect, vi } from "vitest";
+
+import { tierTimeouts } from "./vitest.timeout-budget.ts";
 
 // Strip inherited git environment variables so no test can accidentally operate
 // on the real bkit repo.
@@ -34,40 +34,22 @@ for (const key of Object.keys(process.env)) {
   }
 }
 
-// Budget: a base (5s unit / 30s integration) scaled by how contended the machine
-// is RIGHT NOW, re-read once per test file.
+// Budget: re-read once per test file from `vitest.timeout-budget.ts`, scaled by how
+// contended the machine is RIGHT NOW.
 //
 // WHY: both tiers spawn real subprocesses — `git`, `tsx`, the bkit CLI, fake
-// binaries — so a budget fixed when the run starts goes stale. The box ramps
-// under the run (a parallel agent session, a build), and a file that starts late
-// runs several times slower against a number read minutes earlier. That reads as
-// a flaky product but is only ever a starved subprocess: `Error: Test timed out
-// in 5000ms` on a DIFFERENT test each run, all green in isolation. `pnpm test` is
-// a pre-push gate (.husky/pre-push -> bkit:gate:static-unit), so that starvation
-// blocks pushes on a green tree, and `--no-verify` is prohibited
-// (.agents/rules.md). See docs/failures.jsonl
-// `subprocess-integration-tests-time-out-at-5000ms-under-high-load`.
-//
-// `loadavg[0] / cores` is load-per-core; the suite plans one worker per core, so
-// anything above 1 is contention from something else. CI pins the factor to 1 —
-// the box is dedicated there, so the gate stays strict (5s unit / 30s
-// integration) and a genuinely hung test still fails fast. The 12x ceiling keeps
-// a pathological reading from budgeting minutes.
+// binaries — so a budget fixed when the run starts goes stale. The box ramps under
+// the run (a parallel agent session, a build), and a file that starts late runs
+// several times slower against a number read minutes earlier. That reads as a flaky
+// product but is only ever a starved subprocess: `Error: Test timed out in 5000ms`
+// on a DIFFERENT test each run, all green in isolation. `pnpm test` is a pre-push
+// gate (.husky/pre-push -> bkit:gate:static-unit), so that starvation blocks pushes
+// on a green tree, and `--no-verify` is prohibited (.agents/rules.md). See
+// docs/failures.jsonl `subprocess-integration-tests-time-out-at-5000ms-under-high-load`.
 //
 // setupFiles run once per test FILE, so `testPath` here is that file, and the
-// re-read lands as each file starts.
-const CORES = Math.max(1, os.availableParallelism());
-const IS_CI = Boolean(process.env.CI);
-
-function loadFactor(): number {
-  if (IS_CI) return 1;
-  return Math.min(12, Math.max(1, os.loadavg()[0] / CORES));
-}
-
+// re-read lands as each file starts. The config's own `...unitTimeouts()` sampled
+// the same budget once at load; this overrides it per file. CI pins the factor to 1
+// (in `loadFactor`), so the gate stays strict there.
 const testPath = expect.getState().testPath ?? "";
-const isIntegration = testPath.endsWith(".integration.test.ts");
-const factor = loadFactor();
-vi.setConfig({
-  testTimeout: Math.ceil((isIntegration ? 30_000 : 5_000) * factor),
-  hookTimeout: Math.ceil((isIntegration ? 30_000 : 10_000) * factor),
-});
+vi.setConfig(tierTimeouts(testPath.endsWith(".integration.test.ts")));

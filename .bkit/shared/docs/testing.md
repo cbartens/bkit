@@ -108,7 +108,7 @@ CI branches on the event in a few places. Each is a deliberate, recorded diverge
 | `human-confirmation` | A laptop reset of a remote tenant needs an explicit yes. The CI run is the approval. |
 | `revert-recovery` | A revert push skips the pre-push unit and integration tiers. CI still runs every tier. |
 | `output-channel` | CI prints annotations and job summaries. A terminal prints lines. |
-| `ci-strict-time-limits` | Unit time limits grow with a laptop's load. Under `CI` they stay fixed. |
+| `ci-strict-time-limits` | Unit time limits grow with a laptop's load, re-read as each test file starts so a mid-run ramp cannot starve late files. Under `CI` they stay fixed. |
 | `playwright-outcomes` | Same retries, traces, and flake handling on every machine. A pass on retry is a failure. The target comes from `TEST_URL` alone. No spec is filtered by tag. |
 
 ### Which resources may each lane touch?

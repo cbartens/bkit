@@ -1,5 +1,7 @@
 import { defineConfig } from "vitest/config";
 
+import { unitTimeouts } from "./vitest.timeout-budget.ts";
+
 export default defineConfig({
   test: {
     include: [".bkit/core/engine/**/*.test.ts", ".bkit/core/engine/**/*.integration.test.ts"],
@@ -7,6 +9,10 @@ export default defineConfig({
     // never hit the real repo when the suite runs from a git hook (see
     // vitest.setup.ts for the 2026-07-13 branch-hijack incident).
     setupFiles: ["./vitest.setup.ts"],
+    // Unit-tier limits scaled to the machine's load when the config loads. This spread is
+    // sampled ONCE; vitest.setup.ts re-reads the same budget as each test FILE starts, so a
+    // load ramp mid-run cannot starve late files past a stale limit (#1392).
+    ...unitTimeouts(),
     // Report-only coverage — dogfoods the bkit-stub:coverage scaffold shipped to
     // consumers. json-summary + json are load-bearing: vitest-coverage-report-action
     // reads coverage-summary.json and coverage-final.json. No thresholds by design
