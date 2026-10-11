@@ -42,7 +42,7 @@ reasoningEffort: max
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/testing.md`; skip missing.
 4. Identify untested: error paths, edge cases (empty / null / boundary / concurrent), security paths from challenge, integration points. **If** fixed bugs → write regression tests that would have caught them.
-5. Write test files: each `it` block tests ONE edge case, descriptive name. Match co-located conventions — same imports, helpers, naming as sibling `.test.ts` / `.test.tsx` (Vitest) or `.spec.ts` / `.spec.tsx` (Playwright).
+5. Write test files: one edge case per test, descriptive name. Match co-located conventions — same imports, helpers, naming as sibling test files (`docs/testing.md` names the stack's runner; e.g. `.test.ts` Vitest, `test_*.py` pytest, `*_test.go`).
 6. Co-locate with existing test files.
 7. Run `pnpm bkit:gate:static-unit` → append log at EOF via Bash `echo {log entry} >> {output}`. **If** `FAIL` on newly-added tests → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass. **If** failures in unrelated tests → do NOT block this agent's verdict.
 8. Update **Create** — set `Verdict` via `Edit`; mapping:

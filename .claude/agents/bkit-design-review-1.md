@@ -54,8 +54,8 @@ maxTurns: 100
    - **If** existing solution covers >80% of requirement → recommend it over custom code; note remaining 20% gap.
    - **If** design `Reuse & Prior Art` verdict is `NEW` where candidate covers capability, or reason is cleaner-fresh / messy-existing / close-but-different → `CONCERNS`, name candidate.
 6. Stack feasibility — buildable with approved stack? Constraints?
-7. Library / API eval — maturity, bundle, types, license.
-8. Integration risk — monorepo fit, systems touched.
+7. Library / API eval — maturity, footprint (e.g. bundle / binary / image size where relevant), types where the language has them, license.
+8. Integration risk — systems touched, blast radius (monorepo fit where the repo is one).
 9. PoC approach — <=200 words. **If** can't be described that briefly → `Verdict` = `CONCERNS`.
 10. Unknowns / blockers needing experimentation.
 11. Update **Create** — set `Spike` via `Edit`; mapping:
@@ -88,11 +88,11 @@ Lens: Buildability — prior art, stack feasibility, library fit, integration ri
 
 ## Library / API Evaluation
 
-[Maturity, bundle size, type coverage, license; initially set to `PENDING`.]
+[Maturity, footprint (e.g. bundle / binary / image size where relevant), type coverage where the language has it, license; initially set to `PENDING`.]
 
 ## Integration Risk
 
-[Monorepo fit, systems touched, blast radius; initially set to `PENDING`.]
+[Systems touched, blast radius, monorepo fit where the repo is one; initially set to `PENDING`.]
 
 ## PoC Approach
 

@@ -44,7 +44,7 @@ developer_instructions = """
      - `docs/roadmap.md` → union both sides; leave duplicated marker blocks in place. Board regenerated from `.bkit/issues.jsonl` later this cycle; NEVER reason to emit `FAIL`.
      - Non-overlapping additive edits to same file → concatenate preserving both sides.
      - Formatting-only drift (whitespace, trailing newline, prettier output) → take post-rebase format.
-     - `package.json` dep-version bumped on one side only → take bump.
+     - Dependency manifest bump on one side only (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) → take bump.
      - Additive JSON array entries / object property additions with no key / position overlap → concatenate.
    - `Refused resolutions`:
      - Same function / method body edited both sides.

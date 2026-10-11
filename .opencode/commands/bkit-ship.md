@@ -530,7 +530,7 @@ $ARGUMENTS
 
 ### 🔒 Gate 13 — Switch to Dev
 
-- [ ] On `dev`, level with `origin/dev` (`branches switch` exit 0; a failed dependency install warns — `installed: false` — and is never fatal)
+- [ ] On `dev`, level with `origin/dev` (`branches switch` exit 0)
 - [ ] Mechanical checks passed (`steps finish` exit 0: step `ship-switch-to-dev` recorded)
 
 ---
