@@ -11,16 +11,16 @@
 >
 > **Rules:**
 >
-> - Read-only audit; NEVER edit code, config, or data.
-> - `Universal Instructions` apply to ALL projects; `Project Instructions` apply ONLY to this project.
+> - Read-only audit; never edit code, config, or data.
+> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
 > - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
 > - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
-> - Read this document ONCE at session start; do NOT trust session memory; do NOT re-read on every loop iteration.
-> - NEVER widen, narrow, or edit the CI accessibility gate or its allowlists; full-rule and platform audits are report-only.
-> - NEVER record an assistive-technology participant's name, contact, or health detail.
+> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
+> - never widen, narrow, or edit the CI accessibility gate or its allowlists; full-rule and platform audits are report-only.
+> - never record an assistive-technology participant's name, contact, or health detail.
 
 ## Universal Instructions
 
@@ -62,9 +62,9 @@ Target failure: **a gate that stays green while the unchecked surface is where t
 | Accessibility-statement wording vs behaviour | Privacy sweep; this audit checks the statement exists when a law requires it | `bkit-audit-privacy` |
 | Applying fixes / changing the gate or allowlists | Audit reports only | Plan from this report |
 
-### 🚨 Pre-Flight / Dependencies 🚨
+### Pre-Flight / Dependencies
 
-**CRITICAL:** Check off ALL core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. NEVER abort for a missing capability.
+**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
 #### Core
 
@@ -86,7 +86,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to `Probe Steps`.
+**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
 
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
@@ -97,7 +97,7 @@ Verify only when applicable.
 - [ ] **Step 2 — Gate:** Open gate specs and helpers. Record in `Gate`: checker rule set; route list + ready/settle selectors per route; each allowlist; gate-pinned vs audit-run checker version; rules checker changelog adds since previous report version (pinned old version under-reports newer WCAG 2.2 rules). Scope everything below against snapshot. **Done when:** snapshot in `Gate`, or no gate recorded.
 - [ ] **Step 3 — Laws:** Which laws apply = owner decision; record or unmade (`Project Instructions` names questions). Law requiring public accessibility statement, service info, feedback channel → check they exist. Statement wording vs behaviour → `bkit-audit-privacy`. **Done when:** `Laws` row per regime: applies · why · statement.
 - [ ] **Step 4 — Allowlists:** Per-offender keys, never runtime hash, never rule downgrade or route exclusion. Honest only if each entry re-read. Per entry: offender still there, reason still true, fixable now? No expiry/owner = permanent exemption = finding. Policy "new entry = finding, not fix" (`Project Instructions`) → new entry = finding. Stale (offender gone, key remains) = finding. **Done when:** `Allowlists` row per entry: still present · reason true · expiry or owner · verdict. Empty → one row `none`, key shape noted.
-- [ ] **Step 5 — Full Rules:** Gate runs small rule set as hard gate. This audit: everything report-only — no rule restriction, every route, every theme the app ships, WCAG 2.2 AA tag set not just defaults. Full run on gate-uncovered route → findings. Do NOT widen CI rule set — rank; widening = later plan. Same sequencing as `bkit-audit-dead-code`: report first, gate later. **Done when:** `Full Rules` counts per route and theme, each violation dispositioned.
+- [ ] **Step 5 — Full Rules:** Gate runs small rule set as hard gate. This audit: everything report-only — no rule restriction, every route, every theme the app ships, WCAG 2.2 AA tag set not just defaults. Full run on gate-uncovered route → findings. Do not widen CI rule set — rank; widening = later plan. Same sequencing as `bkit-audit-dead-code`: report first, gate later. **Done when:** `Full Rules` counts per route and theme, each violation dispositioned.
 - [ ] **Step 6 — Routes:** Diff gate route list vs every route. Each auth route: WCAG 2.2 3.3.8 Accessible Authentication — paste in every password/code field; `autocomplete` (`email`, `current-password`, `new-password`, `one-time-code` on code fields, also 1.3.5); CAPTCHA alternative not cognitive test; note magic-link/passkey sign-in. **Done when:** `Routes` row per route: in gate / not, 3.3.8 line per auth route.
 - [ ] **Step 7 — Emails:** Each transactional email the product sends (list from templates / send calls). Per message: `lang`; plain-text or real text alternative; image alt; layout tables `role="presentation"`; link text out of context; contrast. **Done when:** `Emails` row per message, or no email surface in `Checked`.
 - [ ] **Step 8 — Manual:** Not automatable. One pass per run on primary flows named in `Project Instructions` (none named → sign-in → first screen → core create action; record flows walked):
@@ -149,7 +149,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Findings`.
+**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
 
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
@@ -256,7 +256,7 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, STOP.
+**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
 
 - [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
 - [ ] **Summary:** names count per severity and the checker version.

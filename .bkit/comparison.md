@@ -7,8 +7,8 @@
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Keep prose factual; house / write-good linters apply to `*.md`; no hype adjectives.
 > - Pipeline or subagents change → update Part 1 to match `.bkit/core/workflows/*` and `.bkit/core/.bkit/prompts.md`.
 
@@ -211,7 +211,7 @@ Output: remediated commit on feature branch. Two modes — normal (diagnose → 
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
-| `bkit-debug-failure-soak` | Instrument-or-fix loop | One accumulating context against the failing boundary; each iteration EITHER adds `[DEBUG-OBSERVE]` instrumentation OR applies the smallest evidence-backed fix, stripping all scaffolding before declaring a fix. xhigh; bounded by `SOAK_ATTEMPT` (reset per soak entry). |
+| `bkit-debug-failure-soak` | Instrument-or-fix loop | One accumulating context against the failing boundary; each iteration either adds `[DEBUG-OBSERVE]` instrumentation or applies the smallest evidence-backed fix, stripping all scaffolding before declaring a fix. xhigh; bounded by `SOAK_ATTEMPT` (reset per soak entry). |
 
 **Escape hatch**
 

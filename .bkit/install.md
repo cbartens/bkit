@@ -271,7 +271,7 @@ set -a; source apps/web/.env.preview 2>/dev/null; set +a; <command that needs th
 - `<command>` (e.g. `pnpm view @cbartens/bkit`, `bkit check`) inherits `BKIT_GH_TOKEN_INSTALL` via environment.
 - Verify token loaded **without leaking value**: `echo "len=${#BKIT_GH_TOKEN_INSTALL}"`.
 
-**Caveat:** shell state does not persist between separate Bash tool calls. `source` and consuming command MUST run in **same** invocation — chain with `;` or `&&`. When directing another agent, name file path explicitly (e.g. _"source `apps/web/.env.preview` in-line; registry needs `BKIT_GH_TOKEN_INSTALL`"_).
+**Caveat:** shell state does not persist between separate Bash tool calls. `source` and consuming command must run in **same** invocation — chain with `;` or `&&`. When directing another agent, name file path explicitly (e.g. _"source `apps/web/.env.preview` in-line; registry needs `BKIT_GH_TOKEN_INSTALL`"_).
 
 ## Consumer Vercel auth
 
@@ -347,7 +347,7 @@ After writes, bkit re-runs token-surface and environment checks — some only ac
 
 Phase 1 and Phase 3 findings merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection more accurate post-write). Zero findings → no banner.
 
-**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus writes. Changes no managed file (regenerates `.bkit/advisories.md` artifact) and **exits 1 when any managed-file write would occur** in installed module — Tier-2 JSON deep-containment or markered-block drift, whole-file byte-equal mismatch, **host agent/command mirror content drift** (would-write / orphan delete), or when any file bkit writes (rendered agents / commands / skills, managed blocks, owned whole files) carries a stale managed-version marker (`bkit-managed-stale`). Gate covers the **installed** module set ({core, claude, cursor, codex} plus **opencode**, each detected by sentinel files). A missing `bkit:gate:*` name counts as a write. opencode gated: `.opencode/opencode.json` (provider block + tracker-filtered mcp + permission sandbox) and `bkit-gateguard.js` drift fail `check` — render inputs fall back to installed provider (`package.json` `bkit.opencodeProvider`, authoritative for `opencode-zen` / `opencode-go`; all installed providers tracked in `bkit.opencodeProviders: string[]`) and recorded tracker, so clean install across providers checks green (no false drift). Remaining **opt-in** module (cloud) is NOT drift-gated. A missing bkit-owned hook file also fails `check`, one line per file naming it and the `bkit install` flag that restores it: the hook files of every installed host (`.claude/hooks/*`, `.cursor/hooks/*`, `.codex/hooks/*`, `.opencode/plugin/bkit-gateguard.js`) — the hook commands skip a missing file (`test -f … || true`), so without this the guard would be off with no signal. Updater configs are not bkit files, so `bkit check` does not report them. Phase 3 stays read-only through read-only detector paths, not by being skipped.
+**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus writes. Changes no managed file (regenerates `.bkit/advisories.md` artifact) and **exits 1 when any managed-file write would occur** in installed module — Tier-2 JSON deep-containment or markered-block drift, whole-file byte-equal mismatch, **host agent/command mirror content drift** (would-write / orphan delete), or when any file bkit writes (rendered agents / commands / skills, managed blocks, owned whole files) carries a stale managed-version marker (`bkit-managed-stale`). Gate covers the **installed** module set ({core, claude, cursor, codex} plus **opencode**, each detected by sentinel files). A missing `bkit:gate:*` name counts as a write. opencode gated: `.opencode/opencode.json` (provider block + tracker-filtered mcp + permission sandbox) and `bkit-gateguard.js` drift fail `check` — render inputs fall back to installed provider (`package.json` `bkit.opencodeProvider`, authoritative for `opencode-zen` / `opencode-go`; all installed providers tracked in `bkit.opencodeProviders: string[]`) and recorded tracker, so clean install across providers checks green (no false drift). Remaining **opt-in** module (cloud) is not drift-gated. A missing bkit-owned hook file also fails `check`, one line per file naming it and the `bkit install` flag that restores it: the hook files of every installed host (`.claude/hooks/*`, `.cursor/hooks/*`, `.codex/hooks/*`, `.opencode/plugin/bkit-gateguard.js`) — the hook commands skip a missing file (`test -f … || true`), so without this the guard would be off with no signal. Updater configs are not bkit files, so `bkit check` does not report them. Phase 3 stays read-only through read-only detector paths, not by being skipped.
 
 **`PreflightFinding` shape** — stable contract for downstream tooling:
 
@@ -475,7 +475,7 @@ When `bkit install` detects **blocker-severity** finding in Phase 3 (e.g. `bkit-
   bkit uninstall <flags> && <fix the issue> && bkit install <flags>
 ```
 
-Advisories (non-blockers) informational only — do NOT trigger exit-1.
+Advisories (non-blockers) informational only — do not trigger exit-1.
 
 ### --auto-revert
 

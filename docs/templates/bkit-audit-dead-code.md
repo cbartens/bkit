@@ -11,16 +11,16 @@
 >
 > **Rules:**
 >
-> - Read-only audit; NEVER edit code, config, or data.
-> - `Universal Instructions` apply to ALL projects; `Project Instructions` apply ONLY to this project.
+> - Read-only audit; never edit code, config, or data.
+> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
 > - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
 > - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
-> - Read this document ONCE at session start; do NOT trust session memory; do NOT re-read on every loop iteration.
+> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - NEVER delete code, files, routes, schema objects, or dependencies. The report names the destination; applying it is the next step.
-> - A detector proves use, never absence. Dead only when every method that would have found a use found none, and the file was opened. NEVER write a finding from tool output alone.
+> - A detector proves use, never absence. Dead only when every method that would have found a use found none, and the file was opened. never write a finding from tool output alone.
 
 ## Universal Instructions
 
@@ -71,9 +71,9 @@ Dead code = control that looks live, is not: limiter on unset env var; E2E asser
 | Wiring a reachability scanner into CI | Gate change | `bkit-audit-gates` |
 | Deleting code, files, routes, schema, or dependencies | Audit reports only | Plan from this report |
 
-### 🚨 Pre-Flight / Dependencies 🚨
+### Pre-Flight / Dependencies
 
-**CRITICAL:** Check off ALL core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. NEVER abort for a missing capability.
+**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
 #### Core
 
@@ -97,7 +97,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to `Probe Steps`.
+**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
 
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
@@ -106,7 +106,7 @@ Verify only when applicable.
 
 - [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Detectors:** Compiled language → scanner sees module exports only; dead branch/parameter inside live function → compiler + linter. Read resolved config per workspace, not base: unused-local, unused-parameter, no-unreachable-code; linter unused-vars, unreachable, always-true/false (e.g. `@typescript-eslint/no-unnecessary-condition`). Workspace override or file disable switches one off silently. Detector off = finding → `bkit-audit-gates` (gate candidate). **Done when:** `Detectors` lists each config and resolved value.
-- [ ] **Step 3 — Reachability:** Ad hoc scanner, same resolved version both runs; record version. Do NOT add it as a dependency, and do NOT wire a CI gate this run. Report baseline-config readiness. Gate before `False Positives` exclusions encoded → structural noise → disabled. Do not encode test-only code as ignore entries or negated project patterns — plugins add test files as entries; production mode separates. Check scanner stderr before trusting: plugin load failure drops entry class → false unused files. Signal: files, exports, types, duplicates. Dependency categories → `Dependencies` pass, not mixed. Same version in production mode (or strict: implies production + each workspace uses only its own deps). Export used default run, unused production → test/config-only class. Report both runs side by side. **Done when:** version, both runs, plugin-load errors in `Reachability`.
+- [ ] **Step 3 — Reachability:** Ad hoc scanner, same resolved version both runs; record version. Do not add it as a dependency, and do not wire a CI gate this run. Report baseline-config readiness. Gate before `False Positives` exclusions encoded → structural noise → disabled. Do not encode test-only code as ignore entries or negated project patterns — plugins add test files as entries; production mode separates. Check scanner stderr before trusting: plugin load failure drops entry class → false unused files. Signal: files, exports, types, duplicates. Dependency categories → `Dependencies` pass, not mixed. Same version in production mode (or strict: implies production + each workspace uses only its own deps). Export used default run, unused production → test/config-only class. Report both runs side by side. **Done when:** version, both runs, plugin-load errors in `Reachability`.
 - [ ] **Step 4 — Dependencies:** Scanner dependency mode per workspace, categories the scanner offers (e.g. knip: unused, unlisted, unresolved, unlisted binaries, catalog entries unreferenced). Before unused verdict → search name across manifest scripts, config, CI. Config-only consumers (e.g. linter, formatter, CSS presets, bundler plugins, `@types/*`) = usual false hits. Unused = install/supply-chain surface; unlisted = hoisted from another workspace. Unlisted or advisory → `bkit-audit-dependencies`. **Done when:** `Dependencies` row per candidate: name · class · config-or-CI reader · verdict.
 - [ ] **Step 5 — Env Vars:** Text search only — env names are string literals; language server cannot see them. Every referenced env vs declared (examples, task runner, typed env schema — sources in `Project Instructions`). Referenced, never declared → control cannot switch on. Triage: platform-injected = fine; optional + safe default = fine (read default); gates control (absence disables limiter, auth, feature) = finding. Third group → path never executed in any environment. Omitted declaration source → `Process Improvements` gap. Gating var → `docs/failures.jsonl` via `@bkit-utility-update-failures`, and `bkit-audit-duplication`. **Done when:** `Env Vars` row per referenced-undeclared: group · absence effect · verdict.
 - [ ] **Step 6 — Config:** Deadness no scanner reports. (a) Feature flags stuck on/off; hardcoded or same every environment → branch never runs. Per flag: every read + value per environment; all same → other branch dead = finding. Age flags (`git log -S`); >90 days, rollout complete = finding even if environments differ. (b) Config keys no reader, or name removed object — search key; language server reads typed source only. (c) Default replaced in every environment by later layer = lying docs. Dead control → `docs/failures.jsonl` like `Env Vars`, not tidiness. **Done when:** `Config` row per flag/unread key: value per environment · age · verdict.
@@ -124,7 +124,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Findings`.
+**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
 
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
@@ -235,7 +235,7 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, STOP.
+**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
 
 - [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
 - [ ] **Summary:** names count per severity and candidate / surviving counts.

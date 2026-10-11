@@ -11,14 +11,14 @@
 >
 > **Rules:**
 >
-> - Read-only audit; NEVER edit code, config, or data.
-> - `Universal Instructions` apply to ALL projects; `Project Instructions` apply ONLY to this project.
+> - Read-only audit; never edit code, config, or data.
+> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
 > - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
 > - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
-> - Read this document ONCE at session start; do NOT trust session memory; do NOT re-read on every loop iteration.
+> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - Remote catalogue queries ONLY use `SELECT` (non-relational: read-only reads); writes run locally, or in explicitly rolled-back transactions; ALWAYS check remote unchanged.
 > - NEVER push schema to remote by hand; NEVER hard-delete; restore target = throwaway, deleted before report finishes.
 > - Every claim names the environment it ran against.
@@ -61,9 +61,9 @@ Migrations and integration tests exercise queries; neither verifies privileges, 
 | Request latency outside the DB | Hot paths | `bkit-audit-app-performance` |
 | Applying fixes | Audit reports only | Plan from this report |
 
-### 🚨 Pre-Flight / Dependencies 🚨
+### Pre-Flight / Dependencies
 
-**CRITICAL:** Check off ALL core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. NEVER abort for a missing capability.
+**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
 #### Core
 
@@ -85,7 +85,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to `Probe Steps`.
+**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
 
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
@@ -97,7 +97,7 @@ Verify only when applicable.
 - [ ] **Step 3 — Advisors:** Run platform security and performance advisors; each row = candidate, not finding. One line per lint the platform's advisor runs, even when clean (e.g. Supabase: unindexed FKs, duplicate indexes, per-row auth in policy, multiple permissive policies, mutable function `search_path`, extension in public schema, exposed table without row-level security, owner-rights view). No advisor → engine-appropriate subset by catalogue query; rest `N/A`. Cite platform fix pattern per finding. **Done when:** every row dispositioned in `Advisors`.
 - [ ] **Step 4 — Checklist:** Walk platform production checklist against production, not memory: transport encryption enforced, network restrictions, org MFA, >1 owner, point-in-time recovery where size / RPO needs it, compute sized for `Connections` peak. **Done when:** every item met / not met (finding) / not applicable (why).
 - [ ] **Step 5 — Inventory:** Count tables, migrations, extensions. Applied vs directory, both directions — drift invalidates downstream. Hosted major vs platform support window; extensions blocking next major. **Done when:** counts, drift, version in `Environment`.
-- [ ] **Step 6 — Grants:** Catalogue, NEVER migration text. Every function: definer-rights? executable by which client roles (e.g. `pg_proc` and ACL)? Definer-rights + anonymous-executable = finding unless body checks caller identity — read body. Every privileged function since previous report = candidate. Same for table / sequence grants to anonymous role. **Done when:** `Grants` lists every privileged function and anonymous grant with verdict.
+- [ ] **Step 6 — Grants:** Catalogue, never migration text. Every function: definer-rights? executable by which client roles (e.g. `pg_proc` and ACL)? Definer-rights + anonymous-executable = finding unless body checks caller identity — read body. Every privileged function since previous report = candidate. Same for table / sequence grants to anonymous role. **Done when:** `Grants` lists every privileged function and anonymous grant with verdict.
 - [ ] **Step 7 — Write Roles:** `Grants` = who may write; this = who code writes as. Per table whose writes need a role the request path lacks: every write site incl. SQL functions (search table name — language servers miss string literals) → client used (user-scoped = user role; admin = privileged role, e.g. Supabase service role) → compare with grant. Ungranted = finding; ungranted with error never read / dropped = `CRITICAL` (silent fail every call). **Done when:** `Write Roles` row per site: table · `file:line` · role at site · role granted · error checked · verdict.
 - [ ] **Step 8 — Coverage:** Every tenancy-scoped table: tenancy enforced at one recorded layer — DB row policy (e.g. Postgres RLS: control on, >=1 policy, deny default) or one app-layer scope every query goes through (e.g. Rails default scope, Django manager). Scope column, neither layer = finding. Control on, 0 policies = deny-all (safe, usually mistake). Coverage only; correctness → `bkit-audit-security`. Policy / scope test must fail when removed — denials can surface as silent zero rows. **Done when:** `Coverage` row per table: layer · policy count or scope · scope column · verdict.
 - [ ] **Step 9 — Exposure:** `Coverage` keys on scope columns; check other paths (coverage only): file-storage policies and public buckets; change-feed publications and row-level control per published table; owner-rights views bypassing caller policies (e.g. no `security_invoker`); API-served schemas with internal tables. **Done when:** `Exposure` row per surface with verdict.
@@ -108,13 +108,13 @@ Verify only when applicable.
 - [ ] **Step 14 — Capacity:** Series vs previous report: table sizes and rows, largest / unused indexes, seq scans on large tables, inspection-suite outputs (e.g. outliers, calls, index stats, bloat, vacuum stats, table stats, locks, blocking, long-running, replication slots, cache hit). Top 10 by total and mean time → query plan (e.g. `EXPLAIN (ANALYZE, BUFFERS)`) locally or rolled back; plan changes; stats reset time. Housekeeping tables (job history, HTTP logs, audit, auth audit) size, growth, purge. 32-bit key / sequence >50% of max. Disk vs limit, IO vs tier caps, cache hit ratios. Measure query time in DB, not app traces (network dominates). **Done when:** series in `Capacity`; each threshold breach = finding.
 - [ ] **Step 15 — Vacuum:** Vacuuming engine (e.g. Postgres) → transaction-ID age per DB and largest tables; dead-tuple ratio, last autovacuum / autoanalyze per hot table. Not vacuumed since previous report, or ID age climbing = finding. Other engine → its routine maintenance (e.g. SQLite `VACUUM`, InnoDB purge lag), or skip with evidence. **Done when:** numbers in `Capacity`, or skip recorded.
 - [ ] **Step 16 — Connections:** Connection limit and pooler size vs peak by application and role. Serverless direct connections → transaction-mode pooler, pool of 1, prepared statements off (or platform equivalent). Idle-in-transaction count and age. Statement and idle-in-transaction timeouts per client / admin role; neither = finding. **Done when:** numbers and each client constructor read in `Capacity`.
-- [ ] **Step 17 — Restore:** (a) From source, list every outbound side effect a clone fires (scheduled jobs, HTTP-calling triggers / functions, DB webhooks, foreign-data wrappers) and how each stops: logical restore stripping them first / fails closed in clone / unscheduled right after restore (harmless first run only). Reaches real users or payments without failing closed → no binary restore. No plan → finding, do NOT restore. (b) Restore latest backup to throwaway target; schema matches migrations; time taken and data lost; delete target. (c) Record backup type, retention, point-in-time recovery, RTO, RPO. No written targets = finding. Retention < time to notice silent corruption = finding. (d) Logical backup outside platform account: age; restore notes cover key material backups never contain. None = finding. **Done when:** `Restore` holds side-effect plan and result, or the replacing finding.
+- [ ] **Step 17 — Restore:** (a) From source, list every outbound side effect a clone fires (scheduled jobs, HTTP-calling triggers / functions, DB webhooks, foreign-data wrappers) and how each stops: logical restore stripping them first / fails closed in clone / unscheduled right after restore (harmless first run only). Reaches real users or payments without failing closed → no binary restore. No plan → finding, do not restore. (b) Restore latest backup to throwaway target; schema matches migrations; time taken and data lost; delete target. (c) Record backup type, retention, point-in-time recovery, RTO, RPO. No written targets = finding. Retention < time to notice silent corruption = finding. (d) Logical backup outside platform account: age; restore notes cover key material backups never contain. None = finding. **Done when:** `Restore` holds side-effect plan and result, or the replacing finding.
 - [ ] **Step 18 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per checklist item, advisor lint, inspection report → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
 - [ ] **Step 19 — Anything Else:** (a) Everything changed since previous report's commit touching DB (migrations, tables / columns, functions and grants, policies, extensions, scheduled jobs, buckets, publications, new DB clients) → one-line verdict each. (b) Bounded ~30 min pass: what a senior DBA flags that no step asks; read since previous run (incidents, new `docs/failures.jsonl` rows) — what would no step catch? Include anything catalogue / logs / advisors surfaced unchecked, with query for next run. **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Findings`.
+**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
 
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
@@ -213,7 +213,7 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, STOP.
+**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
 
 - [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
 - [ ] **Summary:** names count per severity and environments measured.

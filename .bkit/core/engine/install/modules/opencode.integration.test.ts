@@ -556,11 +556,8 @@ describe("reconcileOpencodeJson — preserves existing provider order", () => {
     fs.mkdirSync(".opencode", { recursive: true });
     fs.writeFileSync(
       DST,
-      JSON.stringify(
-        { plugin: ["./plugin/bkit-gateguard.js"], provider: providers },
-        null,
-        2,
-      ) + "\n",
+      JSON.stringify({ plugin: ["./plugin/bkit-gateguard.js"], provider: providers }, null, 2) +
+        "\n",
       "utf-8",
     );
   }

@@ -125,7 +125,7 @@ describe("Task 23 — detectTier2TextDrift block logic (AGENTS.md)", () => {
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
     return path.resolve(scriptsDir, "..", "..", "..", "..", "..");
   })();
-  const ROUTER_LINE = "> This file is a **workflow router only**. It does NOT execute workflows.";
+  const ROUTER_LINE = "> This file is a **workflow router only**. It does not execute workflows.";
   const readRendered = (): string =>
     applyTokens(fs.readFileSync(findTemplateSource(relPath)!, "utf-8"), makeCtx().tokens);
   const writeConsumer = (content: string): void => {

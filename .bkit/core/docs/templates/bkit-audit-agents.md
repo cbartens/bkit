@@ -11,17 +11,17 @@
 >
 > **Rules:**
 >
-> - Read-only audit; NEVER edit code, config, or data.
-> - `Universal Instructions` apply to ALL projects; `Project Instructions` apply ONLY to this project.
+> - Read-only audit; never edit code, config, or data.
+> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
 > - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
 > - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
-> - Read this document ONCE at session start; do NOT trust session memory; do NOT re-read on every loop iteration.
+> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - NEVER print or copy a token, key, or secret value; names, scopes, and presence only.
-> - NEVER run `bkit install` / `bkit upgrade`.
-> - NEVER call a tool-server tool; listing its tools only.
+> - never run `bkit install` / `bkit upgrade`.
+> - never call a tool-server tool; listing its tools only.
 > - Name the machine. User-level / local-override config absent on a fresh checkout → `Not Checked`.
 
 ## Universal Instructions
@@ -71,9 +71,9 @@ Each agent host reads its own permissions, hooks, tool servers, model picks; nob
 | bkit install state: version, `bkit check`, `bkit doctor`, hosts installed, managed blocks, templates adopted and wired | bkit adoption sweep | `bkit-audit-adoption` |
 | Changing config, or running `bkit install` / `bkit upgrade` | Audit reports only | Plan from this report |
 
-### 🚨 Pre-Flight / Dependencies 🚨
+### Pre-Flight / Dependencies
 
-**CRITICAL:** Check off ALL core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. NEVER abort for a missing capability.
+**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
 #### Core
 
@@ -93,7 +93,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to `Probe Steps`.
+**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
 
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
@@ -104,9 +104,9 @@ Verify only when applicable.
 - [ ] **Step 2 — Hosts and Layers:** Name machine and checkout. Hosts with repo config or in team use (e.g. Claude Code, Cursor, Codex, opencode). Per host: config file per layer (managed policy, user, repo shared, repo local override, flags / env); documented precedence. Findings: config for unused host; host in use with no repo config; local-override file tracked or not ignored. Fresh cloud checkout: no user / local layer → say so, not clean. **Done when:** `Hosts` row per host × layer: file, present, tracked / ignored, precedence.
 - [ ] **Step 3 — Instructions:** Per host: instruction files loaded at session start (e.g. `AGENTS.md`, `CLAUDE.md`, always-applied IDE rule files, per-directory files, imports). Findings: host reaching no shared rules; rule file / import → missing path. Contradictions, size → `bkit-audit-documentation`. **Done when:** `Instructions` row per host: files loaded, shared rules reached yes / no.
 - [ ] **Step 4 — Permissions:** Per host × layer: allow / ask / deny, default approval mode, sandbox mode, fetch / network allowlist. Findings: wildcard shell allow; arbitrary-text interpreter allow (e.g. `bash -c`, `node -e`, `python -c`); deny overridden by broader higher-precedence allow; approval-bypass mode in shared config outside a sandbox; fetch allowlist wider than needed per host matching rules (e.g. apex vs subdomain). `Parity` matrix: action × host → blocker: deny rule / hook / sandbox / prompt prose only / nothing. Minimum actions: force push, history rewrite, branch delete, hook skip (e.g. `--no-verify`), merge or push to protected branch, publish / release, delete outside the working tree, credential-file read (e.g. `.env*`), fetch to unlisted host, tool-server write to a shared or production system. Findings: blocked in one host, open in another; blocked by prompt prose only. **Done when:** `Permissions` row per host × layer; `Parity` matrix with no empty cell.
-- [ ] **Step 5 — Hooks:** Per host, each wired hook: event, matcher, command. Script exists, executable, interpreter present. Fire test: synthetic tool-call payload on stdin → record exit code / decision. Hook writing anything (telemetry, logs, state) → read, do NOT run. Findings: sole blocker for a `Parity` row fails open on crash / timeout / missing dependency; matcher misses a tool doing the same action (e.g. a tool server's shell tool). **Done when:** `Hooks` row per hook: wired, runnable, fires on fixture, fail mode.
+- [ ] **Step 5 — Hooks:** Per host, each wired hook: event, matcher, command. Script exists, executable, interpreter present. Fire test: synthetic tool-call payload on stdin → record exit code / decision. Hook writing anything (telemetry, logs, state) → read, do not run. Findings: sole blocker for a `Parity` row fails open on crash / timeout / missing dependency; matcher misses a tool doing the same action (e.g. a tool server's shell tool). **Done when:** `Hooks` row per hook: wired, runnable, fires on fixture, fail mode.
 - [ ] **Step 6 — Tool Servers:** Per host, each tool server (e.g. MCP): layer, transport (local command / remote URL), package pinned or floating (e.g. `npx -y pkg@latest`), publisher, credential source (env var name vs literal), credential scope vs need, toolsets enabled vs used, write tools pre-approved. List tools → hash names + descriptions. Findings: floating package; same server differing across hosts (token, toolsets, URL); server no workflow uses; hash changed since previous run with no version change. **Done when:** `Tool Servers` row per server × host, hashes recorded.
-- [ ] **Step 7 — Agents and Models:** Per host: agent definitions, commands, skills / plugins. Per agent: tool allowlist vs role; model pin vs provider's live catalogue (NEVER inferred from version digits). Per skill / plugin: source, pinned version, ships scripts. Findings: write tools on read-only role; dead pin; floating alias; same agent on different model classes across hosts, undocumented; unknown-source skill with scripts. **Done when:** `Agents` row per agent × host; skills listed.
+- [ ] **Step 7 — Agents and Models:** Per host: agent definitions, commands, skills / plugins. Per agent: tool allowlist vs role; model pin vs provider's live catalogue (never inferred from version digits). Per skill / plugin: source, pinned version, ships scripts. Findings: write tools on read-only role; dead pin; floating alias; same agent on different model classes across hosts, undocumented; unknown-source skill with scripts. **Done when:** `Agents` row per agent × host; skills listed.
 - [ ] **Step 8 — Secrets:** Agent config + env files agents load (e.g. `.envrc`, tool-server env files, agent-tooling env file). Findings: literal token in tracked file (file and line, never value); env file not ignored; app credential in agent-tooling env. Agent read of credential files → Step 4 `Parity`. **Done when:** `Secrets` row per file.
 - [ ] **Step 9 — Untrusted Input:** Per agent, command, skill, and automated agent run (CI job, scheduled or comment-triggered session) from Step 7: (a) text it reads that someone outside the team can write (e.g. issue / PR body and comments, fork commit messages, PR checkout files, CI logs, fetched pages, dependency READMEs and changelogs, tool-server results, inbound mail); (b) what it can do in the same session (shell, file write, push, merge, publish, tracker or tool-server write, outbound fetch), from Steps 4, 6, 7; (c) what stops a planted instruction: deny rule / hook / sandbox / human approval / read-only agent handing a summary to a separate writer / prompt prose only / nothing; (d) who can start the run (e.g. issue label, `@`-mention, comment command, `pull_request_target`). Read how prompts fence and label untrusted text as data; prose is defence-in-depth, never the stop. Exfiltration: same session holds a secret or private data and reaches a host or surface an outsider reads (fetch allowlist, tracker comment, PR body, public commit). Findings: (a) + write / push / shell with stop = prompt prose only or nothing (ASI01, LLM01); (a) + secret or private data + outsider-readable outbound; outsider can start a run that holds write credentials. Product model calls → `bkit-audit-llm`. **Done when:** `Untrusted Input` row per agent: untrusted sources · capabilities · who starts it · stop · verdict.
 - [ ] **Step 10 — bkit Gates:** `.bkit/version` absent → explicit skip with evidence. Else per installed bkit host: every permission and hook bkit writes (`.bkit/README.md` § File ownership) appears in Steps 4–5 and in `Parity`; same bkit gate enforced in one host, open in another → upstream bkit fix. Version, drift, hosts with no bkit install, managed blocks, templates → `bkit-audit-adoption`. **Done when:** `bkit` section lists bkit gates per host with verdict, or skip with evidence.
@@ -115,7 +115,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Findings`.
+**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
 
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
@@ -214,7 +214,7 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, STOP.
+**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
 
 - [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
 - [ ] **Summary:** names count per severity, machine, and hosts read.

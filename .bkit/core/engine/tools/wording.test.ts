@@ -172,8 +172,8 @@ describe("the rule groups the Rules clauses name exist", () => {
   it("rules-leaf names both groups and skips Orchestrator", () => {
     // The SKIP half is load-bearing: Orchestrator Rules carries the git / CI /
     // merge rules a leaf must not act on, including the inverse of No commits.
-    expect(clause("rules-leaf").texts[0]).toContain("FOLLOW ALL `Universal Rules`");
-    expect(clause("rules-leaf").texts[0]).toContain("SKIP `Orchestrator Rules`");
+    expect(clause("rules-leaf").texts[0]).toContain("follow all `Universal Rules`");
+    expect(clause("rules-leaf").texts[0]).toContain("skip `Orchestrator Rules`");
   });
 
   it("every Orchestrator subsection name is shared with Universal", () => {
@@ -208,7 +208,7 @@ describe("the prompts.md untrusted-input doctrine row", () => {
 
   it("the row names the universal policy", () => {
     expect(row, "the doctrine row is missing").toBeDefined();
-    expect(row).toContain("EVERY `.bkit/core/prompts/*.md`");
+    expect(row).toContain("every `.bkit/core/prompts/*.md`");
     expect(row).toContain("no exceptions, no selection step");
   });
 

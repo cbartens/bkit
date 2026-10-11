@@ -7,10 +7,10 @@
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
-> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
-> - Ships to consumers: describe the CURRENT setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, not reasons / history; state what to do, not why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
+> - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - One row per concern. Update when an IDE adds / changes a feature.
 > - Unlisted = identical across hosts; install copies byte-identical.
 > - Canonical format = Claude. All transforms = Claude → other.
@@ -27,7 +27,7 @@
 
 **Two axes — host != provider.** **Host** = program reading what bkit writes, identified by its dir (`.claude/`, `.cursor/`, `.opencode/`, `.codex/`). **Provider** = gateway tokens are bought through. Model IDs are per-provider → `prompts.md` § Models = one column per PROVIDER (shared provider = one column, never two). Thinking depth is per-host (field name + ladder set by host config format: `effort:` claude/cursor, a `variant:` field opencode, `model_reasoning_effort` codex) → § Effort = one column per HOST. Neither table grows as hosts x providers.
 
-**One provider per host = POLICY, not capability.** Nothing technical forces it — Cursor reaches Claude models, so does anything behind OpenRouter. Pin follows cost: each host runs on the gateway whose subscription is already paid. Subscription spent → switch **host**, NOT provider (the cheap gateway hangs off a different host).
+**One provider per host = POLICY, not capability.** Nothing technical forces it — Cursor reaches Claude models, so does anything behind OpenRouter. Pin follows cost: each host runs on the gateway whose subscription is already paid. Subscription spent → switch **host**, not provider (the cheap gateway hangs off a different host).
 
 <!-- prettier-ignore -->
 | Host | Provider | Why |
@@ -37,7 +37,7 @@
 | Codex CLI | `openai` | ChatGPT subscription |
 | opencode | **pick one**: `openrouter`, `ollama`, `opencode-zen`, `opencode-go` | no subscription — BYO key, so the choice is yours |
 
-Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-key host → pluggable, flag names the provider (`--opencode=<provider>`). Per-model deviation → consumer `## Model Overrides` below `bkit:end`; NO provider override.
+Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-key host → pluggable, flag names the provider (`--opencode=<provider>`). Per-model deviation → consumer `## Model Overrides` below `bkit:end`; no provider override.
 
 ### Codex CLI — three deviations
 
@@ -45,8 +45,8 @@ Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-
 | Concern | On Codex |
 | --- | --- |
 | Agent files | `.codex/agents/*.toml` (TOML, not markdown). Required: `name`, `description`, `developer_instructions`. Pin + rung: `model`, `model_reasoning_effort`. |
-| Workflows = SKILLS, invoked `$bkit-design` | NO project-scoped command surface — custom prompts are `~/.codex/prompts` only, not repo-shared, deprecated for skills (upstream declined repo-scoped prompts). bkit renders `.agents/skills/bkit-<workflow>/SKILL.md`, on Codex's skill path (`$REPO_ROOT/.agents/skills`). `.agents/` is shared → visible to every host. |
-| `tools:` NOT enforced | No per-agent tool allowlist upstream; `sandbox_mode` cannot substitute — every bkit agent is write-capable, so all would be `workspace-write`. Each agent gets the full built-in tool set regardless of declared `tools:`. GateGuard still gates, as everywhere. |
+| Workflows = SKILLS, invoked `$bkit-design` | no project-scoped command surface — custom prompts are `~/.codex/prompts` only, not repo-shared, deprecated for skills (upstream declined repo-scoped prompts). bkit renders `.agents/skills/bkit-<workflow>/SKILL.md`, on Codex's skill path (`$REPO_ROOT/.agents/skills`). `.agents/` is shared → visible to every host. |
+| `tools:` not enforced | No per-agent tool allowlist upstream; `sandbox_mode` cannot substitute — every bkit agent is write-capable, so all would be `workspace-write`. Each agent gets the full built-in tool set regardless of declared `tools:`. GateGuard still gates, as everywhere. |
 
 > **GateGuard needs the `.codex/` layer TRUSTED.** Codex loads project-local hooks only once trusted. Until then the hook is installed and never fires — present, proving nothing. Same for `bkit-guardrails.cjs`.
 >
@@ -54,13 +54,13 @@ Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-
 
 **Explicit host axis (no implicit full):** `bkit install` requires ≥1 module flag — bare `bkit install` errors. Every host explicit; hosts compose: `bkit install --claude --cursor --opencode=opencode-zen` installs all three (+ implicit core). `--opencode` cannot render without `=<provider>` (strict allowlist). Switch providers: re-run install. All hosts render from `.bkit/`; run state in `status.jsonl` + plan docs + tracker (never host session) — phase/resumed run moves across hosts/providers mid-feature with identical gates + per-agent pins: hit limit on one, continue on another. `bkit status` → installed hosts + active providers; `bkit doctor` → credentials + tool reachability.
 
-**Cheap models inside an IDE — no extension needed.** A host is its dir, NOT the window its process runs in. `bkit install --claude --cursor --opencode=openrouter` + opencode in the IDE's integrated terminal = every agent pin, GateGuard and the full workflow on OpenRouter while editing in Cursor. Supported path when the Claude subscription is spent.
+**Cheap models inside an IDE — no extension needed.** A host is its dir, not the window its process runs in. `bkit install --claude --cursor --opencode=openrouter` + opencode in the IDE's integrated terminal = every agent pin, GateGuard and the full workflow on OpenRouter while editing in Cursor. Supported path when the Claude subscription is spent.
 
-> **Curated-column status (COMPLETE).** All four allowlisted providers (`openrouter`, `ollama`, `opencode-zen`, `opencode-go`) ship curated per-agent model pins in `prompts.md` § Models → install ready-to-run. Both OpenAI-compatible providers + both opencode gateways curated after live catalog probe + per-model tool-calling smoke (`tools:` chat/completions round-trip emitting `tool_calls`; `/models` alone != proof). **opencode catalogs = models.dev, NOT `/zen/v1/models`** — REST endpoint returns Zen-only; cannot see Go-only models (`minimax-m3`, `qwen3.7-plus`, …); models.dev source of truth (`opencode` = Zen, `opencode-go` = Go). `opencode-go` curated from models.dev/Go endpoint; prefer pins within Go 5h window; `opencode-zen` existence-validated via models.dev. See § Models for live-probe recipe + tier rationale.
+> **Curated-column status (COMPLETE).** All four allowlisted providers (`openrouter`, `ollama`, `opencode-zen`, `opencode-go`) ship curated per-agent model pins in `prompts.md` § Models → install ready-to-run. Both OpenAI-compatible providers + both opencode gateways curated after live catalog probe + per-model tool-calling smoke (`tools:` chat/completions round-trip emitting `tool_calls`; `/models` alone != proof). **opencode catalogs = models.dev, not `/zen/v1/models`** — REST endpoint returns Zen-only; cannot see Go-only models (`minimax-m3`, `qwen3.7-plus`, …); models.dev source of truth (`opencode` = Zen, `opencode-go` = Go). `opencode-go` curated from models.dev/Go endpoint; prefer pins within Go 5h window; `opencode-zen` existence-validated via models.dev. See § Models for live-probe recipe + tier rationale.
 
-**Additive multi-provider install:** `bkit install --opencode=<provider>` additive — second provider ADDS block to `opencode.json`, keeps first. Agent frontmatter (`model:`) re-renders to last-installed (active) provider; other blocks stay for interactive switch/overrides. Installed providers → `bkit.opencodeProviders: string[]` in `package.json`; active → `bkit.opencodeProvider`. `bkit status` lists all, marks active; `bkit doctor` checks all credentials. Remove one: `bkit uninstall --opencode=<provider>` (surgical — block + array; if active removed, re-point via `bkit install --opencode=<new>` or `bkit upgrade`). `bkit uninstall --opencode` (bare) tears down entire opencode host.
+**Additive multi-provider install:** `bkit install --opencode=<provider>` additive — second provider adds block to `opencode.json`, keeps first. Agent frontmatter (`model:`) re-renders to last-installed (active) provider; other blocks stay for interactive switch/overrides. Installed providers → `bkit.opencodeProviders: string[]` in `package.json`; active → `bkit.opencodeProvider`. `bkit status` lists all, marks active; `bkit doctor` checks all credentials. Remove one: `bkit uninstall --opencode=<provider>` (surgical — block + array; if active removed, re-point via `bkit install --opencode=<new>` or `bkit upgrade`). `bkit uninstall --opencode` (bare) tears down entire opencode host.
 
-New host — row above + `run<Host>Module` (`.bkit/core/engine/install/modules/<host>.ts`) + manifest block (`.bkit/core/engine/install/manifest.ts`) + `.bkit/core/.<host>/hooks/` (the host config JSON in `.bkit/shared/.<host>/`) + GateGuard case in `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`. New provider ALSO needs `GATEWAY_COLUMN` (`.bkit/core/engine/render/models.ts`) + a curated `prompts.md` § Models column.
+New host — row above + `run<Host>Module` (`.bkit/core/engine/install/modules/<host>.ts`) + manifest block (`.bkit/core/engine/install/manifest.ts`) + `.bkit/core/.<host>/hooks/` (the host config JSON in `.bkit/shared/.<host>/`) + GateGuard case in `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`. New provider also needs `GATEWAY_COLUMN` (`.bkit/core/engine/render/models.ts`) + a curated `prompts.md` § Models column.
 
 ---
 
@@ -127,8 +127,8 @@ Persistent variant: `RunAtLoad` LaunchAgent plist (`~/Library/LaunchAgents/`) wi
 | --- | --- | --- | --- | --- |
 | `name` | required | required | required | kebab-case, must match filename. Identical. |
 | `description` | required | required | required | Identical. |
-| `effort` | required (`low` / `medium` / `high` / `xhigh` / `max` — last two model-gated, Opus-only on current models) | not supported | emitted as a separate `variant:` field | Drop on Cursor. `applyOpencodeAgent` reads the § Effort **OpenCode** column and writes it to `variant:` (NOT a `#`-suffix on the model — 1.x keeps the suffix in its model id and fails lookup); the OpenCode column ceilings out, so `medium`→`high`, `high` / `xhigh`→`max`, `max`→`max`, `low`→`none`. The **ollama** gateway omits `variant:` entirely: its provider builds models with no variants, so any variant there is a hard 2.0 error. |
-| `tools` | required (e.g. `[Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch]`) | supported (allowlist) + `disallowedTools` denylist | object map `{ <tool>: true }` | Identity mapping on Cursor (verified), NOT enforced by Cursor CLI 2026.10.01 (measured: a `tools: [Read]` subagent keeps `Shell` / `Write` / every MCP tool). opencode: built-ins lowercased; `mcp__<server>__<tool>` respelled `<server>_<tool>` (`mcp__serena__*` → `serena_*`). |
+| `effort` | required (`low` / `medium` / `high` / `xhigh` / `max` — last two model-gated, Opus-only on current models) | not supported | emitted as a separate `variant:` field | Drop on Cursor. `applyOpencodeAgent` reads the § Effort **OpenCode** column and writes it to `variant:` (not a `#`-suffix on the model — 1.x keeps the suffix in its model id and fails lookup); the OpenCode column ceilings out, so `medium`→`high`, `high` / `xhigh`→`max`, `max`→`max`, `low`→`none`. The **ollama** gateway omits `variant:` entirely: its provider builds models with no variants, so any variant there is a hard 2.0 error. |
+| `tools` | required (e.g. `[Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch]`) | supported (allowlist) + `disallowedTools` denylist | object map `{ <tool>: true }` | Identity mapping on Cursor (verified), not enforced by Cursor CLI 2026.10.01 (measured: a `tools: [Read]` subagent keeps `Shell` / `Write` / every MCP tool). opencode: built-ins lowercased; `mcp__<server>__<tool>` respelled `<server>_<tool>` (`mcp__serena__*` → `serena_*`). |
 | `permissionMode` | required (`acceptEdits` standard) | not supported | not supported | Drop on Cursor and opencode. |
 | `maxTurns` | required | not supported | not supported | Drop on Cursor and opencode. |
 | `model` | required (explicit Claude model ID — see `prompts.md` § Frontmatter Conventions effort→model mapping) | required | required (provider-prefixed, e.g. `openrouter/moonshotai/kimi-k3`) | Pinned per-agent. Claude locks model. Cursor drives runner via T3. opencode: `<provider>/<model-id>` (see `prompts.md` § Models, columns `OpenRouter` / `Ollama` / …). |
@@ -140,13 +140,13 @@ Persistent variant: `RunAtLoad` LaunchAgent plist (`~/Library/LaunchAgents/`) wi
 
 Identical across hosts. Process steps, verdict/findings (`## Verdict` / `## Findings`), `Read:` / `Write:` paths, `> ⛔ STOP` — unchanged. No transform.
 
-Cursor model assignment: § Models below — per-agent lookup, NOT effort-tier derived.
+Cursor model assignment: § Models below — per-agent lookup, not effort-tier derived.
 
 ---
 
 ## Models
 
-> **Effort vs model — different mechanisms.** Claude: `effort: low|medium|high|xhigh` = thinking-budget on pinned model. Cursor: explicit `model:` per agent; native-pool diversity (`cursor-grok-4.5-high` / `composer-2.5` — no API-pool defaults). **Per-agent model assignment canonical**; derive Cursor `model` from `prompts.md` § Models, NOT `effort` alone.
+> **Effort vs model — different mechanisms.** Claude: `effort: low|medium|high|xhigh` = thinking-budget on pinned model. Cursor: explicit `model:` per agent; native-pool diversity (`cursor-grok-4.5-high` / `composer-2.5` — no API-pool defaults). **Per-agent model assignment canonical**; derive Cursor `model` from `prompts.md` § Models, not `effort` alone.
 
 ### Cursor model catalog
 
@@ -184,7 +184,7 @@ Orchestrator model selection (per workflow, every provider) canonical in **`prom
 
 Dashboard label-based routing.
 
-> **Stale-risk:** dashboard label-routing UUIDs — distinct from `/v0/models` API IDs; may lag pins. Re-pull from Cloud dashboard before label routing. Per-subagent `model:` frontmatter uses API model-ID string, NOT these UUIDs.
+> **Stale-risk:** dashboard label-routing UUIDs — distinct from `/v0/models` API IDs; may lag pins. Re-pull from Cloud dashboard before label routing. Per-subagent `model:` frontmatter uses API model-ID string, not these UUIDs.
 
 <!-- prettier-ignore -->
 | Label | ID |
@@ -252,7 +252,7 @@ Both hosts: `/<filename-without-ext>` (`/bkit-build`, `/bkit-plan`, etc.). Ident
 | Stop hook config | `Stop` array | `stop[].loop_limit` (controls iteration cap; `null` = unlimited) |
 | Telemetry | Not part of host (custom in script) | Not part of host (custom in script — see `postflight.sh` log-drain pattern) |
 
-**Install behaviour:** hook scripts are **generated at install** (per host, NOT from `.agents/`). Semantic differences (blocking, stdin, output JSON) prevent one script for every host, so each host keeps a small hook source (`.bkit/core/.<host>/hooks/`, `.bkit/core/.opencode/plugin/`) holding only its module syntax, payload adapter and output shape. Code every host shares lives once in `.bkit/core/hooks/`; install splices it in wherever a template line reads `// {{BKIT_PART <file>}}` / `# {{BKIT_PART <file>}}` (`.bkit/core/engine/render/parts.ts`). The generated file is plain JS / bash with no runtime call into bkit, so it works without `node_modules`.
+**Install behaviour:** hook scripts are **generated at install** (per host, not from `.agents/`). Semantic differences (blocking, stdin, output JSON) prevent one script for every host, so each host keeps a small hook source (`.bkit/core/.<host>/hooks/`, `.bkit/core/.opencode/plugin/`) holding only its module syntax, payload adapter and output shape. Code every host shares lives once in `.bkit/core/hooks/`; install splices it in wherever a template line reads `// {{BKIT_PART <file>}}` / `# {{BKIT_PART <file>}}` (`.bkit/core/engine/render/parts.ts`). The generated file is plain JS / bash with no runtime call into bkit, so it works without `node_modules`.
 
 <!-- prettier-ignore -->
 | Part | Shared by | Holds |
@@ -278,7 +278,7 @@ Pre-edit advisory hook, on all four hosts (Claude Code, Cursor, Codex, opencode)
 | Codex | `bkit-gateguard.cjs` (CJS) — Claude's stdin/stdout contract; parses the `apply_patch` envelope for target paths | `.codex/hooks/bkit-gateguard.cjs` | `.codex/hooks.json` → `hooks.PreToolUse` on `apply_patch` |
 | Cursor | `bkit-guardrails.cjs` (CJS) — destructive-op / secret-exposure gates, the Cursor equivalent of Claude's `permissions` and opencode's `permission` map | `.cursor/hooks/bkit-guardrails.cjs` | `.cursor/hooks.json` → `beforeShellExecution` + `preToolUse` (`Read\|TabRead`), both `failClosed` |
 
-**Ownership:** both GateGuard files — and Cursor's `bkit-guardrails.cjs` — are **markered-text** (slash-comment: `// bkit:start` / `// bkit:end`). bkit owns only the advisory engine between the markers and reconverges it on every install / upgrade; the driver around it — Claude's stdin read + single `emit()`, opencode's exported `plugin` — is consumer-owned from first install onward, so consumer advisories survive upgrades. bkit's block is pure (no stdin, no stdout / stderr, no top-level call): Claude Code parses hook stdout as ONE JSON document, so two emitters would produce `{...}{...}` and the whole hook's output — bkit's included — is discarded. Marker-less file on upgrade → hash matches a bkit release: replaced wholesale; hash unknown: block appended plus printed wiring instructions. Uninstall strips the block, leaving the consumer's driver working. `bkit-guardrails.cjs` follows the identical split: bkit owns `bkitGuardrails(payload)`, which returns a decision object or `null` for no-opinion, and the consumer owns the stdin read and the single `emit()`.
+**Ownership:** both GateGuard files — and Cursor's `bkit-guardrails.cjs` — are **markered-text** (slash-comment: `// bkit:start` / `// bkit:end`). bkit owns only the advisory engine between the markers and reconverges it on every install / upgrade; the driver around it — Claude's stdin read + single `emit()`, opencode's exported `plugin` — is consumer-owned from first install onward, so consumer advisories survive upgrades. bkit's block is pure (no stdin, no stdout / stderr, no top-level call): Claude Code parses hook stdout as one JSON document, so two emitters would produce `{...}{...}` and the whole hook's output — bkit's included — is discarded. Marker-less file on upgrade → hash matches a bkit release: replaced wholesale; hash unknown: block appended plus printed wiring instructions. Uninstall strips the block, leaving the consumer's driver working. `bkit-guardrails.cjs` follows the identical split: bkit owns `bkitGuardrails(payload)`, which returns a decision object or `null` for no-opinion, and the consumer owns the stdin read and the single `emit()`.
 
 **Modes (env):** unset → advisory _[default]_; `BKIT_GATEGUARD=off` → disabled; `BKIT_GATEGUARD=deny` → deny first touch (checklist as reason), allow retry. `BKIT_ALLOW_CONFIG_EDIT=1` suppresses gate-config advisory.
 
@@ -296,7 +296,7 @@ Pre-edit advisory hook, on all four hosts (Claude Code, Cursor, Codex, opencode)
 | Concern | Claude | Cursor | opencode |
 | --- | --- | --- | --- |
 | File / secrets | `.claude/settings.json` → `permissions.{allow,deny,ask}` (`Read(./**/*.pem)` deny; `.env` variants ask; `.env.example` allow) | `.cursor/hooks/bkit-guardrails.cjs` via `preToolUse` (`Read\|TabRead`) — same deny/ask policy | `.opencode/opencode.json` → `permission.read` map |
-| Shell / destructive | `permissions.deny` / `ask` on force-push (not `--force-with-lease`), `rm -rf /*`, publish, destructive git/gh, etc. Shell `curl` / `wget` are NOT gated here — `permissions` cannot match a URL host, so only the `WebFetch` TOOL is allowlisted | `.cursor/hooks/bkit-guardrails.cjs` via `beforeShellExecution` — same deny/ask policy | `permission.bash` deny/ask map (same rules) |
+| Shell / destructive | `permissions.deny` / `ask` on force-push (not `--force-with-lease`), `rm -rf /*`, publish, destructive git/gh, etc. Shell `curl` / `wget` are not gated here — `permissions` cannot match a URL host, so only the `WebFetch` TOOL is allowlisted | `.cursor/hooks/bkit-guardrails.cjs` via `beforeShellExecution` — same deny/ask policy | `permission.bash` deny/ask map (same rules) |
 | Network fetch | `WebSearch` + tooling `WebFetch(domain:…)`; install/upgrade enriches from the shipped egress registry union consumer `allowed-domains` in `.agents/context.md` (stack hosts never shipped), recording what it wrote so it can later prune it | `curl`/`wget` ask unless host ∈ `.cursor/allowlist.json` (tooling ∪ consumer domains) | `websearch` allow + `webfetch: "ask"`; `curl *` ask then `curl *{domain}*` allow from same allowlist (baked into `opencode.json`) |
 | Granularity | Per-tool glob | Hook script (project-scoped, failClosed) | Per-path / per-command glob in `permission` |
 | Modes | `defaultMode: default \| acceptEdits \| plan \| bypassPermissions` | Implicit per-mode (Composer / Agent / Background) | `opencode --auto` + permission defaults |
@@ -361,7 +361,7 @@ Both: `"type": "http"`, `"url": "https://api.githubcopilot.com/mcp/"`, `"headers
 <!-- prettier-ignore -->
 | Concern | Claude Code on the web | Cursor Background Agents |
 | --- | --- | --- |
-| Where env config lives | Claude app (per-environment), NOT in repo | In repo (`.cursor/`) |
+| Where env config lives | Claude app (per-environment), not in repo | In repo (`.cursor/`) |
 | Custom base image | Not supported — setup script layers on top of Anthropic-managed Ubuntu 24.04 | Supported — `.cursor/Dockerfile` |
 | Cold-start cache | Snapshot keyed by setup-script body hash (~7d TTL) | Docker image layers |
 | Per-snapshot install | `.claude/hooks/bkit-cloud-bootstrap.sh` (SessionStart, fires when `CLAUDE_CODE_REMOTE=true`) | `.cursor/environment.json` → `install` |
@@ -391,7 +391,7 @@ Installed provider catalog changes. Look up model IDs before pinning in `.openco
 | Cursor | `curl https://api.cursor.com/v0/models -u "$BKIT_CURSOR_API_KEY:"` | `Cursor` column source. Catalog churns. Probed 2026-10-06: `cursor-grok-4.5-high`, `composer-2.5`, `claude-opus-5-thinking-high`, `claude-sonnet-5-thinking-high`/`-xhigh`, `gpt-5.6-*`, Fable 5. No Grok 4.7. No Opus 5.5 / Sonnet 5.5. |
 | OpenRouter | `curl https://openrouter.ai/api/v1/models` | **Public — no key.** Aggregator; `vendor/model` slugs (`:free` variants exist). Filter for tool-calling + coding models before pinning. |
 | Ollama | `curl https://ollama.com/v1/models -H "Authorization: Bearer $BKIT_OLLAMA_API_KEY"` | Hosted Ollama; cloud-tagged models (e.g. `qwen3.5:397b`, `kimi-k2.7-code`). |
-| OpenCode Zen / Go (opencode-native gateways) | `curl https://models.dev/api.json` — read providers `.opencode` (Zen) and `.["opencode-go"]` (Go) `.models` | **models.dev is the source of truth — NOT `/zen/v1/models`.** The REST catalog `curl https://opencode.ai/zen/v1/models` returns ONLY the Zen catalog and cannot see Go-only models (`minimax-m3`, `qwen3.7-plus`/`qwen3.7-max`, …), so it MUST NOT be used to curate the Go column. Two DISTINCT providers: `opencode` (name "OpenCode Zen", api `https://opencode.ai/zen/v1`) and `opencode-go` (name "OpenCode Go", api `https://opencode.ai/zen/**go**/v1` — nested under `/zen/`). Both auth via `BKIT_OPENCODE_API_KEY`. Tool-call smoke: `POST <api>/chat/completions` with a `tools:` payload (bare model id, e.g. `minimax-m3`). |
+| OpenCode Zen / Go (opencode-native gateways) | `curl https://models.dev/api.json` — read providers `.opencode` (Zen) and `.["opencode-go"]` (Go) `.models` | **models.dev is the source of truth — not `/zen/v1/models`.** The REST catalog `curl https://opencode.ai/zen/v1/models` returns only the Zen catalog and cannot see Go-only models (`minimax-m3`, `qwen3.7-plus`/`qwen3.7-max`, …), so it must not be used to curate the Go column. Two DISTINCT providers: `opencode` (name "OpenCode Zen", api `https://opencode.ai/zen/v1`) and `opencode-go` (name "OpenCode Go", api `https://opencode.ai/zen/**go**/v1` — nested under `/zen/`). Both auth via `BKIT_OPENCODE_API_KEY`. Tool-call smoke: `POST <api>/chat/completions` with a `tools:` payload (bare model id, e.g. `minimax-m3`). |
 
 **Model ID format:** opencode provider-prefixed frontmatter: `<provider>/<model-id>` (e.g. `openrouter/moonshotai/kimi-k3`, `ollama/kimi-k2.7-code`). Pins = `prompts.md` § Models — **one column per provider** (`OpenRouter`, `Ollama`, `OpenCode Zen`, `OpenCode Go`). Gateways: `opencode/<id>` Zen, `opencode-go/<id>` Go. CLI keys `opencode-zen` / `opencode-go`.
 
@@ -402,7 +402,7 @@ Installed provider catalog changes. Look up model IDs before pinning in `.openco
 
 **opencode-zen / opencode-go — two OpenCode built-in providers.** Both emit minimal `provider.<id>` with only `options.apiKey: "{env:BKIT_OPENCODE_API_KEY}"` (no npm driver, no baseURL). OpenCode resolves from models.dev — Go Qwen/MiniMax use Anthropic `/messages`, not openai-compatible `/chat/completions`. Zen keyed `opencode`; Go `opencode-go`. `bkit install --opencode=opencode-zen` (or `=opencode-go`) → `bkit.opencodeProvider` in `package.json`; legacy `opencode` → `opencode-zen` via `OPENCODE_PROVIDER_ALIASES`. Reinstall **replaces** seeded block (heals hijacked npm/baseURL). Set `BKIT_OPENCODE_API_KEY` in `.bkit/.env` (<https://opencode.ai/auth>). Columns from **models.dev**.
 
-**All four providers ship curated columns.** Tier design — **per-tier quality target, cheapest sufficient pin**. A tier cell is NOT "the same rung of this provider's ladder": it is the cheapest model that **reaches that tier's Claude score**, and reaching means _approaching_ — it does not have to beat it. Targets are the LiveBench Agentic Coding scores on the board below (opus `claude-opus-5` **65.2**, sonnet `claude-sonnet-5` **59.4**, haiku `claude-haiku-5-5` **~51**). The opus and sonnet targets stay the 5.0 scores although the 5.5 pins are on the CSV: `claude-opus-5-5` lands level at `xhigh` (65.4), and the `claude-sonnet-5-5` rows don't read cleanly (see the board). The haiku target is Haiku 5.5 at `xhigh`, the closest measured rung to the `high` effort the summary writers run at. Where a provider's ceiling sits under the sonnet target, opus+sonnet **collapse onto that ceiling** — spreading them across two rungs buys nothing and costs quality on the sonnet half. Where a cheap model already clears the haiku target, the haiku cell **stays cheap** — a $5/task flagship serving a read-and-emit summariser is waste, not safety.
+**All four providers ship curated columns.** Tier design — **per-tier quality target, cheapest sufficient pin**. A tier cell is not "the same rung of this provider's ladder": it is the cheapest model that **reaches that tier's Claude score**, and reaching means _approaching_ — it does not have to beat it. Targets are the LiveBench Agentic Coding scores on the board below (opus `claude-opus-5` **65.2**, sonnet `claude-sonnet-5` **59.4**, haiku `claude-haiku-5-5` **~51**). The opus and sonnet targets stay the 5.0 scores although the 5.5 pins are on the CSV: `claude-opus-5-5` lands level at `xhigh` (65.4), and the `claude-sonnet-5-5` rows don't read cleanly (see the board). The haiku target is Haiku 5.5 at `xhigh`, the closest measured rung to the `high` effort the summary writers run at. Where a provider's ceiling sits under the sonnet target, opus+sonnet **collapse onto that ceiling** — spreading them across two rungs buys nothing and costs quality on the sonnet half. Where a cheap model already clears the haiku target, the haiku cell **stays cheap** — a $5/task flagship serving a read-and-emit summariser is waste, not safety.
 
 ### Selecting pins
 
@@ -456,7 +456,7 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 
 **Score is necessary, not sufficient — operational shape decides ties.** Two properties carry real weight once scores are within noise: **endpoint count** (`/api/v1/models/<slug>/endpoints`) and **whether prompt caching applies without client configuration**. A single-endpoint model cannot be routed around a slow or down host and inherits that one provider's rate limits — disqualifying for a column whose whole job is to absorb work when the Claude quota is spent. Caching is the dominant latency and cost term for bkit workloads: without it every turn of a long agentic loop re-prefills the whole growing transcript.
 
-**Read caching from the provider docs, NOT from `supports_implicit_caching`.** That endpoint field is unreliable — it reports `false` on all 14 `kimi-k3` endpoints while OpenRouter's own [prompt-caching doc](https://openrouter.ai/docs/features/prompt-caching) states Moonshot caching is automated. The doc's per-provider sections are authoritative. Current contracts: **Moonshot, DeepSeek, Z.AI, Gemini 2.5+ cache automatically, no configuration**; **Anthropic, Alibaba Qwen require explicit `cache_control` breakpoints**, which bkit does not send — so an Alibaba-hosted pin gets no caching at all. Cache reads run ~0.03x-0.20x of input price; writes are free except on DeepSeek (charged at input price).
+**Read caching from the provider docs, not from `supports_implicit_caching`.** That endpoint field is unreliable — it reports `false` on all 14 `kimi-k3` endpoints while OpenRouter's own [prompt-caching doc](https://openrouter.ai/docs/features/prompt-caching) states Moonshot caching is automated. The doc's per-provider sections are authoritative. Current contracts: **Moonshot, DeepSeek, Z.AI, Gemini 2.5+ cache automatically, no configuration**; **Anthropic, Alibaba Qwen require explicit `cache_control` breakpoints**, which bkit does not send — so an Alibaba-hosted pin gets no caching at all. Cache reads run ~0.03x-0.20x of input price; writes are free except on DeepSeek (charged at input price).
 
 **Cache hits need the same endpoint twice — OpenRouter handles this with sticky routing.** After a cached request it pins the conversation to that provider, keyed by `session_id` / `prompt_cache_key` when sent, otherwise by hashing the first system message plus the first non-system message. Sticky sessions expire after **10 minutes of inactivity**, and sticky routing is disabled entirely when `provider.order` is set — do not pin a provider order on a cached model.
 
@@ -494,7 +494,7 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 | `claude-haiku-4-5` (thinking) | ~35 † | — | not pinned — under the ~51 haiku target |
 | `gpt-oss-120b` | ~10 † | — | **pinned nowhere** — below every target, haiku included |
 
-† **Estimated, not measured.** Model absent from the 2026-06-25 release; value bridged from its 2026-01-08 score via the mean delta of the three nearest-scoring models present in both releases. Cross-release scores are NOT comparable directly (LiveBench rotates questions — overlapping models moved −1.4 to −31.5), so treat † as a bracket, not a number. **Unmeasured entirely** (no anchor in either release, do not infer): `composer-2.5`, `qwen3.5-397b`, `qwen3-coder`, `qwen3.7-plus`, `glm-4.5-air`, `gpt-oss-20b`, `qwen3-coder:30b`.
+† **Estimated, not measured.** Model absent from the 2026-06-25 release; value bridged from its 2026-01-08 score via the mean delta of the three nearest-scoring models present in both releases. Cross-release scores are not comparable directly (LiveBench rotates questions — overlapping models moved −1.4 to −31.5), so treat † as a bracket, not a number. **Unmeasured entirely** (no anchor in either release, do not infer): `composer-2.5`, `qwen3.5-397b`, `qwen3-coder`, `qwen3.7-plus`, `glm-4.5-air`, `gpt-oss-20b`, `qwen3-coder:30b`.
 
 ### Per-tier lineup across providers
 

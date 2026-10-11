@@ -7,9 +7,9 @@
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
-> - Ships to consumers: describe the CURRENT setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, not reasons / history; state what to do, not why.
+> - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - Claude env config → Claude app; Cursor → `.cursor/` in-repo. Both have in-repo SessionStart guard.
 > - Update when either cloud's pre-installed toolchain or default allowlist changes. Sources: `code.claude.com/docs/en/claude-code-on-the-web` + `cursor.com/docs/cloud-agent/setup`.
 
@@ -22,7 +22,7 @@
 Three cloud stacks — each agent pairs with one tracker. Pick row for agent you run:
 
 <!-- prettier-ignore -->
-| Agent (the agent, not the editor) | Ways to launch a cloud agent | Tracker | NOT supported |
+| Agent (the agent, not the editor) | Ways to launch a cloud agent | Tracker | not supported |
 | --- | --- | --- | --- |
 | **Claude Code** (terminal — any IDE host) | **A)** Claude iOS / desktop app → Claude-on-web env (`.claude/hooks/bkit-cloud-bootstrap.sh` + the env defined in `claude.ai/code`) · **B)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick any phase + issue) · **C)** GitHub CI pass/fail → `bkit-cloud.yml` claude job · **D)** `@claude` mention on a GitHub issue / PR (`/install-github-app` required — **base requirement** for `cloud=claude`) | **GitHub** | **Linear** |
 | **opencode** (GitHub runner) | **A)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick any phase + issue) · **B)** GitHub CI pass/fail → `bkit-cloud.yml` opencode job (requires `OPENCODE_PROVIDER_KEY` secret) · **C)** reactive `/oc` comment handler (self-installed, not bkit — see § Reactive comment handlers) | **GitHub** | **Linear** |
@@ -32,7 +32,7 @@ Three cloud stacks — each agent pairs with one tracker. Pick row for agent you
 
 **Manual dispatch (Claude or opencode, path A):** GitHub → **Actions** → **bkit-cloud** → **Run workflow** → `phase` (`ship` / `debug` / `design` / `plan` / `build`) + `issue`. On-demand/smoke-test for `design` / `plan` / `build`; `ship` / `debug` normally CI-fired. Dispatched `/bkit-auto` orchestrator → matching phase skill → brief from GitHub issue (MCP).
 
-### Reactive comment handlers (`claude.yml` + `opencode.yml`) — separately managed, NOT bkit
+### Reactive comment handlers (`claude.yml` + `opencode.yml`) — separately managed, not bkit
 
 `.github/workflows/claude.yml` (the `@claude` handler) and `.github/workflows/opencode.yml` (the `/oc` handler) are **not bkit's**. Each is generated — and re-generated — by its own vendor tool; bkit ships **no template** for either, and `bkit install` / `upgrade` never writes, rewrites, or drift-gates them (both are absent from the bkit manifest). They coexist **additively** with `bkit-cloud.yml` (the CI-completion + `workflow_dispatch` lane, which bkit ships as a template): a comment fires the vendor handler; a CI run fires `bkit-cloud.yml`.
 
@@ -126,7 +126,7 @@ CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70
 
 Claude pairs with **GitHub** tracker (see § Cloud-agent support matrix) — no `BKIT_LINEAR_API_KEY` / `LINEAR_ISSUE_ID`. Set `BKIT_GH_TOKEN` for GitHub MCP; authenticate `gh` via `gh auth login --with-token` in bootstrap hook (env vars not visible during setup script — see § Notes).
 
-Optional (context-fetch — only if you use `.agents/context.md` blocks, e.g. copied from `.bkit/templates/context/`; tokens below are **examples**, set whatever operator creds YOUR enabled blocks need. Cloud-dashboard entries, not `.bkit/.env` — that file is bkit/agent tooling only. Non-secret selectors (`VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) commit in copied block so cloud agents inherit without dashboard entry. CLIs install from each block's `context-fetch:provision` sibling):
+Optional (context-fetch — only if you use `.agents/context.md` blocks, e.g. copied from `.bkit/templates/context/`; tokens below are **examples**, set whatever operator creds your enabled blocks need. Cloud-dashboard entries, not `.bkit/.env` — that file is bkit/agent tooling only. Non-secret selectors (`VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) commit in copied block so cloud agents inherit without dashboard entry. CLIs install from each block's `context-fetch:provision` sibling):
 
 ```
 VERCEL_TOKEN=<Vercel access token — https://vercel.com/account/settings/tokens>
@@ -168,7 +168,7 @@ Use **fine-grained** PAT scoped to target repo (or each consumer repo, comma-sep
 
 - Claude app warns "don't add secrets" — env vars visible to anyone with edit rights. Personal account = just you; team account = treat as low-trust.
 - `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70` triggers auto-compaction earlier than ~95% default — helpful on long cloud sessions.
-- **Env vars set in Claude app are NOT visible inside setup script.** Injected only after Claude Code starts → `SessionStart` hooks + interactive shell, not snapshot build. Tool needing token to bootstrap must inline it — leak you want to avoid. Avoided today: vale / gh / corepack don't need auth.
+- **Env vars set in Claude app are not visible inside setup script.** Injected only after Claude Code starts → `SessionStart` hooks + interactive shell, not snapshot build. Tool needing token to bootstrap must inline it — leak you want to avoid. Avoided today: vale / gh / corepack don't need auth.
 
 ### Setup script
 
@@ -343,7 +343,7 @@ BKIT_GH_TOKEN_INSTALL=<classic PAT with read:packages — consumer repos only>
 
 `LINEAR_ISSUE_ID` injected per-session by Cursor / Linear integration — do not hardcode.
 
-Optional (context-fetch — only if you use `.agents/context.md` blocks, e.g. copied from `.bkit/templates/context/`; tokens below are **examples**, set whatever operator creds YOUR enabled blocks need. Cloud-dashboard entries, not `.bkit/.env` — bkit/agent tooling only. Non-secret selectors (`VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) commit in copied block so cloud agents inherit without dashboard entry. CLIs install from each block's `context-fetch:provision` sibling):
+Optional (context-fetch — only if you use `.agents/context.md` blocks, e.g. copied from `.bkit/templates/context/`; tokens below are **examples**, set whatever operator creds your enabled blocks need. Cloud-dashboard entries, not `.bkit/.env` — bkit/agent tooling only. Non-secret selectors (`VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) commit in copied block so cloud agents inherit without dashboard entry. CLIs install from each block's `context-fetch:provision` sibling):
 
 ```
 VERCEL_TOKEN=<Vercel access token — https://vercel.com/account/settings/tokens>
@@ -463,9 +463,9 @@ The post-merge `dev` surface reuses the same free-tier gate: `/bkit-ship` thread
 
 Slash command takes two args: `$CI_STATUS` ∈ `{success, failure, pass, fail}` (normalised) and `$ARG` — a PR number (pre-merge) or a `{FID}` slug (post-merge `dev`, no open PR). Then:
 
-1. PR-number arg: reads `gh pr view $ARG` for `headRefName`, `headRefOid`, `state`. Refuses non-OPEN PRs. Slug arg: skips the PR lookup entirely.
-2. Extracts `{FID}` from the head branch (`feat/{FID}` convention). Slug arg: `{ARG}` IS the `{FID}`, allowlist-asserted before use. On the `dev` surface the workflow recovers it from the squash-merge commit scope (`feat({FID}): …`, tracker-agnostic), falling back to the linked PR body's `bkit:fid=` marker; either path failing → no-op, no dispatch.
-3. Stale-run guard. Pre-merge: compares latest CI run's `headSha` against the PR's current `headRefOid`. Post-merge `dev`: compares the most recently COMPLETED `dev` CI run's `headSha` against the triggering run's head SHA — a `git rev-parse origin/dev` comparison would mismatch on every legitimate dispatch, because ship's terminal close commit lands on `dev` while that CI run is still going. Close commits carry `[skip ci]`, so they never trigger CI and never become that most-recent-completed head. An empty run list fails OPEN (dispatches).
+1. PR-number arg: reads `gh pr view $ARG` for `headRefName`, `headRefOid`, `state`. Refuses non-open PRs. Slug arg: skips the PR lookup entirely.
+2. Extracts `{FID}` from the head branch (`feat/{FID}` convention). Slug arg: `{ARG}` is the `{FID}`, allowlist-asserted before use. On the `dev` surface the workflow recovers it from the squash-merge commit scope (`feat({FID}): …`, tracker-agnostic), falling back to the linked PR body's `bkit:fid=` marker; either path failing → no-op, no dispatch.
+3. Stale-run guard. Pre-merge: compares latest CI run's `headSha` against the PR's current `headRefOid`. Post-merge `dev`: compares the most recently COMPLETED `dev` CI run's `headSha` against the triggering run's head SHA — a `git rev-parse origin/dev` comparison would mismatch on every legitimate dispatch, because ship's terminal close commit lands on `dev` while that CI run is still going. Close commits carry `[skip ci]`, so they never trigger CI and never become that most-recent-completed head. An empty run list fails open (dispatches).
 4. Opt-in gate: refuses dispatch unless linked GitHub issue carries `bkit:auto` label.
 5. Appends `bkit-auto → /bkit-{ship,debug}` line to GitHub issue / PR comment thread.
 6. Invokes `/bkit-ship {FID}` (CI pass) or `/bkit-debug {FID} DEBUG_MODE=pr` (CI fail) via `Skill` / `Task` tool. Dispatched skill owns session lifecycle from there.
@@ -475,10 +475,10 @@ Skip conditions emit single GitHub-comment no-op line and exit 0 — only real f
 ## Operating notes
 
 - **Loop bound (pre-merge `feat/**`):** `/bkit-debug` enforces `MAX_DEBUG_ATTEMPT = 3` internally; router never counts attempts. After three red CI runs, debug fires handover path and stops dispatching.
-- **Loop bound (`dev`):** `MAX_DEV_DISPATCH_ATTEMPTS = 3` distinct failed CI SHAs per `{FID}`, all-time. This is the surface that needs a cross-session cap: `/bkit-debug` adopts `dev` in place, so its fix push re-reds `dev` CI and re-triggers this same router. Checked AND written by the ctx step of `bkit-cloud.yml`'s `context` job immediately before dispatch — the in-session counters reset on every new cloud dispatch and cannot bound a cross-session loop. The counter row (`type: "dev-dispatch"`) is committed to `dev` with `[skip ci]` before dispatch, and its presence on `origin/dev` is verified after one retry — a row landing nowhere durable would degrade the cap to unbounded. Exhausted → no-op + `::notice::` for operator review (delete the rows in `status.jsonl` to reset).
+- **Loop bound (`dev`):** `MAX_DEV_DISPATCH_ATTEMPTS = 3` distinct failed CI SHAs per `{FID}`, all-time. This is the surface that needs a cross-session cap: `/bkit-debug` adopts `dev` in place, so its fix push re-reds `dev` CI and re-triggers this same router. Checked and written by the ctx step of `bkit-cloud.yml`'s `context` job immediately before dispatch — the in-session counters reset on every new cloud dispatch and cannot bound a cross-session loop. The counter row (`type: "dev-dispatch"`) is committed to `dev` with `[skip ci]` before dispatch, and its presence on `origin/dev` is verified after one retry — a row landing nowhere durable would degrade the cap to unbounded. Exhausted → no-op + `::notice::` for operator review (delete the rows in `status.jsonl` to reset).
 - **GHA 6 h cap:** `3 x ~3600s` per debug attempt = well under GHA runner ceiling. Ship is short.
 - **Concurrency:** `cancel-in-progress` is `true` for `feat/**` (latest-wins) and `false` for `dev`, so an in-flight `/bkit-debug` finishes instead of being cancelled mid-run with a half-written `status.jsonl` or a held worktree lock. GHA queues at most one pending run per group; the queued run re-checks the dispatch cap when it starts, so the same `{FID}` needs no manual re-trigger. Cursor dashboard trigger → "latest-supersedes." Ship squash-merge atomic — mid-run cancels cannot corrupt PR state.
-- **`bkit-auto-dev` is ONE concurrency group for ALL FIDs.** GHA resolves `concurrency.group` from trigger-payload context before the ctx step derives the `{FID}`, so the group cannot be keyed on it. Two different FIDs failing `dev` CI near-simultaneously → queue-collapse can drop the older, different FID's pending run. The stale-run guard detects it (its head SHA no longer matches the most-recent-completed `dev` CI run) and writes a `dev-dispatch-dropped` row to the job summary plus a `::warning::`, rather than discarding it silently. Job summary, not a committed `status.jsonl`: this branch is only reached because `dev` already advanced, so committing the row would usually be a non-fast-forward and be lost in exactly the case it records.
+- **`bkit-auto-dev` is one concurrency group for all FIDs.** GHA resolves `concurrency.group` from trigger-payload context before the ctx step derives the `{FID}`, so the group cannot be keyed on it. Two different FIDs failing `dev` CI near-simultaneously → queue-collapse can drop the older, different FID's pending run. The stale-run guard detects it (its head SHA no longer matches the most-recent-completed `dev` CI run) and writes a `dev-dispatch-dropped` row to the job summary plus a `::warning::`, rather than discarding it silently. Job summary, not a committed `status.jsonl`: this branch is only reached because `dev` already advanced, so committing the row would usually be a non-fast-forward and be lost in exactly the case it records.
 - **Both clouds together:** nothing stops Claude + Cursor dispatching against same PR — they'd race. Pick one IDE per repo as auto-router (recommended: Claude via GHA, runner-resident and Anthropic-maintained). Leave Cursor for ad-hoc Linear-dispatch work.
 
 # Caveats (both clouds)

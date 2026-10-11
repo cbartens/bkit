@@ -11,15 +11,15 @@
 >
 > **Rules:**
 >
-> - Read-only audit; NEVER edit code, config, or data.
-> - `Universal Instructions` apply to ALL projects; `Project Instructions` apply ONLY to this project.
+> - Read-only audit; never edit code, config, or data.
+> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
 > - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
 > - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
-> - Read this document ONCE at session start; do NOT trust session memory; do NOT re-read on every loop iteration.
-> - Generated registers / graphs → verify-only mode or throwaway copy; NEVER regenerate a tracked file.
+> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
+> - Generated registers / graphs → verify-only mode or throwaway copy; never regenerate a tracked file.
 
 ## Universal Instructions
 
@@ -86,9 +86,9 @@ Identical-signature gates catch identical copies; divergent duplication hurts �
 
 Carry `COINCIDENTAL` and `RULE-OF-THREE-PENDING` forward in `Carried Forward` — a two-site finding is neither consolidated early nor rediscovered every run.
 
-### 🚨 Pre-Flight / Dependencies 🚨
+### Pre-Flight / Dependencies
 
-**CRITICAL:** Check off ALL core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. NEVER abort for a missing capability.
+**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
 #### Core
 
@@ -113,7 +113,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to `Probe Steps`.
+**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
 
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
@@ -124,21 +124,21 @@ Verify only when applicable.
 - [ ] **Step 2 — Detect:** List apps, packages, platforms; shared homes (utility / owner modules); capability register; duplication gates enforced and what each catches (e.g. identical-signature gate → identical copies only). **Done when:** surface map and existing gates in `Checked`, or `N/A` and STOP.
 - [ ] **Step 3 — Rule Altitude:** Hunt one conceptual operation inlined at N sites instead of called from one function, copies differing on load-bearing details: fallback chains (e.g. JS `a ?? b ?? c`, divergent terminal fallback or order); null vs falsy (e.g. JS `??` vs `||`, with / without trim, optional-chain guards); formatting (date / time / timezone, currency, name / initials, address); predicates ("is active / deleted / owner?" filters); defaults (same enum / config default hardcoded in several readers). Structural rules where possible, text search where not; keep rules under `tmp/`, paste each into report for next run. Subtraction per shared helper: references on helper (routed set) minus sites matching inline pattern (inline set) → inline-not-routed = unmigrated site. Counts before reference-graph change (e.g. project references added) = stale → re-take, never carry forward. **Done when:** `Inline Rules` row per rule: helper · routed · inline · unmigrated · verdict, with its search rule.
 - [ ] **Step 4 — Clones:** Clone detector over source roots, machine-readable output, three passes: Type-1 exact; Type-2 renamed (ignore identifiers / literals); Type-3 near-miss (e.g. similarity 0.85, syntax-tree mode). Duplication % per package as series vs previous report. Every hit = candidate for `Verify`, not finding. Multiple platforms → counterpart listing (functions with / without counterpart per side). Growth: exact pass baselined at previous report's commit → clones new since vs consolidated since, blame naming introducer; arrival faster than consolidation = finding. **Done when:** per-package %, growth, counterpart list in `Clones`.
-- [ ] **Step 5 — Capability Altitude:** Above file graph: capabilities, not files. Per capability: owner, callers, status, note. Status: `one` = one implementation, every caller routes through it; `bypassed` = owner exists, some callers skip it; `split` = 2+ competing implementations, no owner; `gap` = designed, not built. Three detectors — different findings: (a) literal-mechanism search for second mechanism (e.g. second SDK client constructor, rate limiter, email-send call, duplicated validation regex) — primary; symbol graph cannot see duplicated regex; (b) language-server references on each owner → caller set, `one` vs `bypassed`; (c) module-graph duplicate-symbol-name check — group callable nodes by name across distinct non-test source files, 3+ definitions = candidate; god-node list flags owner gone load-bearing. Register status ≠ measured status = finding; register is NOT edited. **Done when:** `Capabilities` row per capability: owner · callers · measured status · register status · verdict.
+- [ ] **Step 5 — Capability Altitude:** Above file graph: capabilities, not files. Per capability: owner, callers, status, note. Status: `one` = one implementation, every caller routes through it; `bypassed` = owner exists, some callers skip it; `split` = 2+ competing implementations, no owner; `gap` = designed, not built. Three detectors — different findings: (a) literal-mechanism search for second mechanism (e.g. second SDK client constructor, rate limiter, email-send call, duplicated validation regex) — primary; symbol graph cannot see duplicated regex; (b) language-server references on each owner → caller set, `one` vs `bypassed`; (c) module-graph duplicate-symbol-name check — group callable nodes by name across distinct non-test source files, 3+ definitions = candidate; god-node list flags owner gone load-bearing. Register status ≠ measured status = finding; register is not edited. **Done when:** `Capabilities` row per capability: owner · callers · measured status · register status · verdict.
 - [ ] **Step 6 — Restated Types:** Typed language with schema source (generated DB types, migrations, IDL) → per core table: hand-written types, validation schemas, route validators restating columns, enums, constraints. Not derived from source = finding. Diff vs source: column added, renamed, or nullable on one side only = live defect. **Done when:** `Types` row per restated type: source · derived? · drift · verdict, or skip with evidence.
 - [ ] **Step 7 — Libraries:** Literal search finds second client, not second library. List dependencies across every manifest doing one job: two date libraries, two validation libraries or two majors side by side, two HTTP clients, two markdown parsers. Dedupe check and resolution reason for every package at more than one version. Each = capability row with library as mechanism. **Done when:** `Libraries` lists every same-job pair and multi-version package with reason.
 - [ ] **Step 8 — Outside Code:** SQL: access-policy bodies and helper functions redefined across migrations vs one function. Shared config: type-checker, linter, styling presets copied between apps vs extending shared package. i18n: same string under several keys. List formats clone detector supports; run over migrations and config; text search the rest. **Done when:** every hit = candidate for `Verify`; absent surface in `Checked`.
 - [ ] **Step 9 — Wrong Abstractions:** Opposite failure: merge that landed and should not have. Shared helpers with boolean / mode parameters or per-caller branches (e.g. `if (caller === …)`, >2 option flags) and <3 callers. Callers serve different knowledge → recommend inlining back. `Verify` guards new merges; this reviews old ones. **Done when:** `Wrong Abstractions` row per helper: params · callers · knowledge · verdict.
 - [ ] **Step 10 — Coupling:** Per candidate set: co-change history (e.g. `git log --name-only`, code-maat). Always changed together → true duplicate, consolidate; changed separately → already diverged, decide which behaviour is right first. Reverse detector: file pairs in different packages, or one per platform, co-changing in >50% of commits with no import edge → paired-decision candidate. Comments tying two files by prose (e.g. `keep in sync`, `must match`, `mirrors`). Pair → straight to `Prevention`. **Done when:** `Coupling` row per candidate and pair: co-change share · import edge · verdict.
 - [ ] **Step 11 — Confidence:** Name tool behind every count. Grade claim types: second implementation exists = high (every site read, not matched); exact call-site counts = medium; "no production consumer" = medium, needs in-code corroboration; "does not exist" = high only when absent from schema and all source. Language server under-reports → false `one`: pace queries; re-run surprising low / empty count before recording; empty = inconclusive, corroborate with text search; mocked-module factory keys and packages outside project graph invisible. Module graph: confirms presence, never absence; misses callers in anonymous callbacks and module-level initialisers; manifest-driven or type-only edges can fake cross-package edges and cycles; stale resolution cache after path-alias change. Language server and text search agreeing on count = strongest evidence; disagreement names file to open. Count corrected mid-run → record which, from what, by what tool. **Done when:** `Method` grades every claim type and names tool per count, incl. corrections.
-- [ ] **Step 12 — Prevention:** Does a guard fail on re-implementation at both altitudes — inline rule expression outside its helper, and mechanism (constructor, send call, env name) outside its owner? Per-rule bespoke guard = one guard per consolidated field, forever; structural rule per pattern (owner-file ignores, rules checked in, seeded from Step 3 rules) plus literal search with owner allowlist (env names) covers both altitudes without language server. Record whether recorded decisions favour guard or sweep, and whether evidence since contradicts them. Do NOT build. **Done when:** `Prevention` states next step = guard or sweep, with evidence and the rules it would start from.
+- [ ] **Step 12 — Prevention:** Does a guard fail on re-implementation at both altitudes — inline rule expression outside its helper, and mechanism (constructor, send call, env name) outside its owner? Per-rule bespoke guard = one guard per consolidated field, forever; structural rule per pattern (owner-file ignores, rules checked in, seeded from Step 3 rules) plus literal search with owner allowlist (env names) covers both altitudes without language server. Record whether recorded decisions favour guard or sweep, and whether evidence since contradicts them. Do not build. **Done when:** `Prevention` states next step = guard or sweep, with evidence and the rules it would start from.
 - [ ] **Step 13 — Verify:** Open every candidate file; cite `file:line` for every survivor. Apply `Verdicts` checks; re-check previous `Carried Forward` rows (third copy → `DUPLICATE`). Rank survivors by blast radius × divergence × user-visibility. Per survivor name consolidation and home: rule → one function in correct shared package, inline copies removed; capability → one owner module with call contract, register row updated; wrong abstraction → inlined back; paired decision → paired-owner check or gate; drifted type or live defect → `docs/failures.jsonl` row, fix ahead of refactor; second library / version → `bkit-audit-dependencies`; deliberate bypass blocked on other work → register row naming blocker (unrecorded bypass reads `one` next run = false clean); one-off structural problem or missing module-graph evidence → `bkit-audit-architecture`. Consolidation changing shared signature → `Expected` names reference check first. **Done when:** every candidate has verdict, evidence, rank, and home.
 - [ ] **Step 14 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per standard, per clone type (Type-1 to Type-4), and per shape (rule, capability, paired decision) → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
 - [ ] **Step 15 — Anything Else:** (a) Everything changed since previous report's commit touching duplication (new shared helpers / owner modules, shared packages, cross-platform counterparts of screen or hook, validation schemas and route validators, migrations adding tables / enums / policies, new dependencies, config presets, i18n keys) → one-line verdict each. (b) Bounded ~30 min pass: what senior engineer owning shared packages flags that no step asks; read since previous run (incidents, new `docs/failures.jsonl` rows) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Findings`.
+**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
 
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
@@ -237,7 +237,7 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, STOP.
+**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
 
 - [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
 - [ ] **Summary:** names count per severity, count per verdict, and the guard-or-sweep call.

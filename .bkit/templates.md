@@ -7,8 +7,8 @@
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, not reasons / history; state what to do, not why.
 > - `bkit install` and `bkit upgrade` never write these files and never overwrite a copy.
 > - Adapt app roots, workspace package scope, rules JSON. Examples use `apps/web`, `apps/mobile`, `packages/api`, `@scope`.
 
@@ -142,7 +142,7 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 
 ## CI workflow — `bkit-ci.yml`
 
-Parallel lanes `bkit-tests-static` (typecheck, prettier, Vale, slop, actionlint, `bkit check`) and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone, plus the commented FULL CI SCAFFOLD REFERENCE for the other tiers. Workflows care: `/bkit-ship` waits on its runs and merges only when the `bkit.capstoneJob` job (default `bkit-tests-check`) is present and green at the head; `bkit setup protect-main` makes that job the required check; `bkit-cloud.yml` triggers on a workflow named `bkit-ci`. `bkit install` reads your copy for advisories (`ci-yml-missing-token-env`, `bkit-stub-*`, `ci-yml-missing-actionlint`, `ci-yml-capstone-contract-drift`). Reference: https://docs.github.com/en/actions.
+Parallel lanes `bkit-tests-static` (typecheck, prettier, Vale, slop, actionlint, `bkit check`) and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone, plus the commented full CI scaffold reference for the other tiers. Workflows care: `/bkit-ship` waits on its runs and merges only when the `bkit.capstoneJob` job (default `bkit-tests-check`) is present and green at the head; `bkit setup protect-main` makes that job the required check; `bkit-cloud.yml` triggers on a workflow named `bkit-ci`. `bkit install` reads your copy for advisories (`ci-yml-missing-token-env`, `bkit-stub-*`, `ci-yml-missing-actionlint`, `ci-yml-capstone-contract-drift`). Reference: https://docs.github.com/en/actions.
 
 - Install: nothing beyond the gate tool scripts above, a `test` script, and `packageManager` in `package.json` (`pnpm/action-setup` reads it; do not add `with: version:`).
 - Secrets: `BKIT_GH_TOKEN_INSTALL` (`read:packages`) → `docs/deployments.md` § Consumer CI auth.
@@ -180,7 +180,7 @@ chmod +x .husky/pre-commit .husky/pre-push
 pnpm add -D prettier@^3.5.3
 ```
 
-1. Copy `.prettierignore` BEFORE the first `prettier --write`. bkit writes `.claude/`, `.cursor/`, `.opencode/`, `.mcp.json`, `.bkit/.env.example`, `docs/roadmap.md` in its own layout; prettier reformatting them fights the next `bkit install` (`bkit check` drift).
+1. Copy `.prettierignore` before the first `prettier --write`. bkit writes `.claude/`, `.cursor/`, `.opencode/`, `.mcp.json`, `.bkit/.env.example`, `docs/roadmap.md` in its own layout; prettier reformatting them fights the next `bkit install` (`bkit check` drift).
 2. Add `format:check` (§ Gate tool scripts). Reference: https://prettier.io/docs/install.
 
 - Keep the `.bkit/templates/` line.
@@ -330,7 +330,7 @@ PyPI name `serena-agent`, CLI `serena`. PyPI `serena` is an unrelated package.
 - Keep `read_only: true`, `added_modes: ["no-memories"]`, and the full `excluded_tools` list from example → Serena stays lookup-only for agents. List excludes every tool that writes files / memories / project config, runs code or commands, or opens a browser. Serena edits bypass Edit / Write hooks. Removing an entry hands that tool to every bkit agent.
 - `--context codex` still lists excluded tools but refuses each call (`not active`).
 - Serena line numbers are 0-based → add 1 before citing `file:line`.
-- Small / empty answer for an exported symbol = query did not resolve, NOT "nothing uses it" → corroborate with text search.
+- Small / empty answer for an exported symbol = query did not resolve, not "nothing uses it" → corroborate with text search.
 - pnpm monorepo: cross-package references need `composite` + `references` in TypeScript project graph before language server follows them.
 
 ## graphify — map
@@ -390,7 +390,7 @@ graphify-out/
 - `docs/graphify-out/` = raw `graph.json`; `docs/graphify-out/reports/` = derived views.
 - Copy `.bkit/templates/docs/capabilities.md` → `docs/capabilities.md` before first rollup (Overrides block must exist) → `pnpm graph:rollup` rewrites it after.
 - Add capability → rule in `bkit-graph-drift-rules.json`: lane, owner module, one literal marker. Shipped rules JSON = one example row; replace it.
-- Marker = a literal ONLY the owner should contain (a host, a header, a marker string) — NEVER the owner's exported function name: every legitimate caller then reads as `bypassed`.
+- Marker = a literal only the owner should contain (a host, a header, a marker string) — never the owner's exported function name: every legitimate caller then reads as `bypassed`.
 
 `MMD_MIN_WEIGHT` (default 12, set in `bkit-graphify.sh`) drops light edges from the Mermaid views (`.mmd` files and the diagrams in `docs/capabilities.md`). One module per file → thinner edges → lower the default in your copy; an env override changes `docs/capabilities.md` per shell and fails `pnpm graph:check`. Iterate in mermaid.live; render internal-architecture diagram locally:
 

@@ -531,7 +531,7 @@ describe("bkit-ship.md — #363: the auto-route marker comes from labels re-read
     expect(reread, "no tracker re-read in Step 10").toBeGreaterThan(-1);
     expect(reread).toBeLessThan(merge);
     expect(step).toMatch(/"\{BKIT\}" prs merge [^\n]*\{LABEL_FLAGS\}/);
-    expect(step).toContain("NEVER carried forward from Step 1's `{LABELS}`");
+    expect(step).toContain("never carried forward from Step 1's `{LABELS}`");
   });
 });
 

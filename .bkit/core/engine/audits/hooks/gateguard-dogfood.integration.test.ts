@@ -331,7 +331,7 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
     "No step numbers": "audits/repo/shipped-docs-refs.test.ts",
     // the same test encodes the exclusion twice: FENCED_WORKFLOWS lists only
     // bkit-debug.md, and UNTRUSTED_ARTIFACTS excludes tracker dumps by lookahead
-    "Tracker content is NOT fenced": "commands/workflow/context.test.ts",
+    "Tracker content is not fenced": "commands/workflow/context.test.ts",
     // source prompts must carry no bkit:managed marker
     "Managed-version marker": "audits/workflows/prompt-notation.test.ts",
     // near-copies and hand-edited single copies fail the corpus check

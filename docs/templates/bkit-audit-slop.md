@@ -11,15 +11,15 @@
 >
 > **Rules:**
 >
-> - Read-only audit; NEVER edit code, config, or data.
-> - `Universal Instructions` apply to ALL projects; `Project Instructions` apply ONLY to this project.
+> - Read-only audit; never edit code, config, or data.
+> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
 > - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
 > - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
-> - Read this document ONCE at session start; do NOT trust session memory; do NOT re-read on every loop iteration.
-> - NEVER recommend adding suppression; scanner config stays byte-identical to committed one.
+> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
+> - never recommend adding suppression; scanner config stays byte-identical to committed one.
 
 ## Universal Instructions
 
@@ -65,16 +65,16 @@ Each suppression made sense in one PR; nothing re-reads them. Glob hiding one de
 - **KEEP:** intentional. Record reason beside suppression — reasonless `KEEP` = unexamined next run.
 - **OTHER:** fits none; say why. Same `OTHER` on 2 runs → propose new verdict in `Process Improvements`.
 
-**Rule of thumb:** real debt ONLY if you can name concrete bug hidden; else `KEEP`. Almost always `KEEP` (fixing degrades code): fail-open middleware, fire-and-forget / best-effort telemetry, tolerant parsing fallbacks, framework-required shapes, thin named data-access / predicate helpers, config-per-file dirs, intentional barrels, deliberate duplicate signatures, duplicated test mock setup.
+**Rule of thumb:** real debt only if you can name concrete bug hidden; else `KEEP`. Almost always `KEEP` (fixing degrades code): fail-open middleware, fire-and-forget / best-effort telemetry, tolerant parsing fallbacks, framework-required shapes, thin named data-access / predicate helpers, config-per-file dirs, intentional barrels, deliberate duplicate signatures, duplicated test mock setup.
 
 **Always `FIX`:**
 
 - Cast or escape-hatch type where data crosses boundary (SDK call, webhook payload, API response, DB client result) — hides drift boundary tests catch.
 - Disabled hook-dependency rule (e.g. `react-hooks/exhaustive-deps`) whose effect reads unlisted value. Read effect, not comment.
 
-### 🚨 Pre-Flight / Dependencies 🚨
+### Pre-Flight / Dependencies
 
-**CRITICAL:** Check off ALL core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. NEVER abort for a missing capability.
+**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
 #### Core
 
@@ -95,7 +95,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to `Probe Steps`.
+**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
 
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
@@ -104,7 +104,7 @@ Verify only when applicable.
 
 - [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Isolate:** Find scanner run (package scripts). Detached worktree off default branch (no new branch); clean `git status` before start; removed before report finishes. **Done when:** worktree path and clean status in `Checked`, or absent scanner recorded.
-- [ ] **Step 3 — Hidden Findings:** Pinned scanner, committed config → JSON baseline. Stripped config (build-artifact ignores only, no overrides, all rules on) under restore guard → scan → restore → `diff` byte-identical. Suppressed = in stripped, not baseline; stripped count NOT fix-list. Count override blocks. Restore fails → STOP; restore committed config; record finding. **Done when:** baseline / stripped / suppressed / override-block counts in `Counts`; config diff empty.
+- [ ] **Step 3 — Hidden Findings:** Pinned scanner, committed config → JSON baseline. Stripped config (build-artifact ignores only, no overrides, all rules on) under restore guard → scan → restore → `diff` byte-identical. Suppressed = in stripped, not baseline; stripped count not fix-list. Count override blocks. Restore fails → STOP; restore committed config; record finding. **Done when:** baseline / stripped / suppressed / override-block counts in `Counts`; config diff empty.
 - [ ] **Step 4 — Verdicts:** Read each suppressed site, not rule name → verdict. `DELETE` needs reference check: language-server references where available + text search basename (script / config refs language server lacks). Text search over-reports, language server under-reports → agreement = signal. Re-run every empty result once before `DELETE`. **Done when:** every suppressed finding has verdict and evidence.
 - [ ] **Step 5 — Code Suppressions:** Search source for disable comments, type-checker ignores, escape-hatch types, double casts, single casts / non-null assertions on boundary values, test-weakening markers, stray debug output, `TODO` / `FIXME` / `HACK`. Split product vs test code. Type-level tests: expected-error directive = assertion, not suppression. Drop comment-only hits and import renames. Then:
   - Disable naming a rule the resolved config lacks → suppresses nothing → `FIX`.
@@ -122,7 +122,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Findings`.
+**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
 
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
@@ -184,7 +184,7 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, STOP.
+**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
 
 - [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
 - [ ] **Summary:** names count per severity and baseline / stripped / suppressed counts.

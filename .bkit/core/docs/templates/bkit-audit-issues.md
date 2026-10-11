@@ -11,16 +11,16 @@
 >
 > **Rules:**
 >
-> - Read-only audit; NEVER edit code, config, or data.
-> - `Universal Instructions` apply to ALL projects; `Project Instructions` apply ONLY to this project.
+> - Read-only audit; never edit code, config, or data.
+> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
 > - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
 > - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
-> - Read this document ONCE at session start; do NOT trust session memory; do NOT re-read on every loop iteration.
-> - NEVER write tracker fields, labels, or comments; NEVER close, merge, or open issues. The report proposes size and priority.
-> - NEVER copy a personal-data value from an issue body into the report.
+> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
+> - never write tracker fields, labels, or comments; NEVER close, merge, or open issues. The report proposes size and priority.
+> - never copy a personal-data value from an issue body into the report.
 
 ## Universal Instructions
 
@@ -109,9 +109,9 @@ Two guards:
 
 Finding `CRITICAL`–`LOW` in another audit does not set priority. Two rules do. Severity orders inside `High` only (Step 8).
 
-### 🚨 Pre-Flight / Dependencies 🚨
+### Pre-Flight / Dependencies
 
-**CRITICAL:** Check off ALL core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. NEVER abort for a missing capability.
+**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
 #### Core
 
@@ -131,7 +131,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to `Probe Steps`.
+**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
 
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
@@ -140,7 +140,7 @@ Verify only when applicable.
 
 - [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Board:** Read every item. Assert read not truncated (count below limit; at limit → raise and re-read). Record lane names, size and priority field ids and option ids from live field list. Unused numeric estimate stays unused; size = estimate. Membership: diff open-issue list vs board. Open issue not on board = off-board; closed issue outside done lane = stale card; list each by number. Off-board stays in scope: Steps 3–10 treat as item with no lane, size, priority. **Done when:** item count, lanes, field ids, off-board, stale cards in `Board`, or `N/A` and STOP.
-- [ ] **Step 3 — Triage:** Read every open issue, not titles only. Short body prefix OK when summary front-loaded; open umbrella/milestone issues in full. While reading: stale = no activity 90 days AND body no longer true of code/plan (standing issue never stale for age); duplicate = same change twice or one wholly inside another; `Low` on 3+ passes and still true = won't-do candidate (standing excluded); ready-lane item missing acceptance criteria, defect reproduction, or test to write = not ready (still gets size/priority). Note each Rule 1 override for Step 6 with label correction. List stale/duplicate with merge target or stale reason. Closing = owner; this run does not close. Monthly clock → stale only. **Done when:** `Triage` lists stale, duplicates, won't-do, not-ready, overrides to rank.
+- [ ] **Step 3 — Triage:** Read every open issue, not titles only. Short body prefix OK when summary front-loaded; open umbrella/milestone issues in full. While reading: stale = no activity 90 days and body no longer true of code/plan (standing issue never stale for age); duplicate = same change twice or one wholly inside another; `Low` on 3+ passes and still true = won't-do candidate (standing excluded); ready-lane item missing acceptance criteria, defect reproduction, or test to write = not ready (still gets size/priority). Note each Rule 1 override for Step 6 with label correction. List stale/duplicate with merge target or stale reason. Closing = owner; this run does not close. Monthly clock → stale only. **Done when:** `Triage` lists stale, duplicates, won't-do, not-ready, overrides to rank.
 - [ ] **Step 4 — Links:** Per open issue record parent, milestone, blocked-by. Blocked-by: read all three — structured links (`Link API`), body block build gates on (e.g. GitHub `###### bkit:blocked-by start` / `end`), body prose ("blocked by #N", "after #N"). Flag: (1) Parent — child listed in parent body, no link (or reverse); open child, closed parent; open non-standing parent, all children closed → `Judgement Calls`. (2) Milestone — closed / past-due milestone with open issues; child with no or later milestone than parent; body / title names milestone, field empty; open milestone, no open issues. (3) Blocked-by — prose only; structured link vs body block disagree; closed blocker still listed; blocked issue in ready or later lane, blocker open; blocker off-board; cycle. Edges → Step 5 blocker rule, Step 6 parent / child moves. **Done when:** `Links` holds per-kind counts (with / without parent, milestone, blocker) and every flag, or `none`.
 - [ ] **Step 5 — In Flight:** Three sources: lanes in progress/review; open PRs; issues closed recently (shipped cluster still warm — next issue in cluster cheap). Record launch/milestone target and where written. None → say so; launch-gating keeps Rule 1 band. Count in-progress/in-review; age and last activity (commit, PR, comment). Flag older than service level expectation: 85th-percentile cycle time of issues closed last 90 days, start of work to close. Record how start taken. <20 closed → two weeks, say so. Stuck item lifts parent/children/siblings; list each lift as judgement call. Apply blocker rule to every Step 4 edge. **Done when:** `In Flight` holds counts, ages, target, blocker moves, stuck lifts.
 - [ ] **Step 6 — Rank:** Apply `Ranking Rules` to every in-scope issue. Record every Rule 1 override (label vs body) and label correction. Record every Rule 2 move with signal and launch target read. Band change since previous report without body/labels/in-flight change → one pass misapplied rule — say which. Maintenance check belonging as gate → `bkit-audit-gates`, not band here. Mini-pass → this step on unsized/unprioritised subset only. Monthly clock → eight-week launch moves and stuck lifts only. **Done when:** `Ranking` lists every override, move, band change.
@@ -154,7 +154,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Findings`.
+**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
 
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent. Monthly clock pass → Steps 7, 8, 9, and 10 explicit skip; Step 2 membership only.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
@@ -257,7 +257,7 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, STOP.
+**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
 
 - [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
 - [ ] **Summary:** names count per severity, the size and priority distribution before and after the proposal; off-board and broken-link counts.

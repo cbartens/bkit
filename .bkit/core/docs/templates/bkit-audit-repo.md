@@ -11,14 +11,14 @@
 >
 > **Rules:**
 >
-> - Read-only audit; NEVER edit code, config, or data.
-> - `Universal Instructions` apply to ALL projects; `Project Instructions` apply ONLY to this project.
+> - Read-only audit; never edit code, config, or data.
+> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
 > - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
 > - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
-> - Read this document ONCE at session start; do NOT trust session memory; do NOT re-read on every loop iteration.
+> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - NEVER delete, prune, push, drop a stash, or rewrite history; name the command, do not run it.
 > - NEVER copy a secret or personal-data value into the report; name the file and line.
 > - Name the machine. Local leftovers absent on a fresh checkout stay `Not Checked`.
@@ -77,9 +77,9 @@ Every task leaves a worktree, branch, stash, or scratch directory; nothing's job
 
 **Two traps.** Squash merge stays ahead of the integration branch by ancestry: check the pull request and `git cherry`, never `git branch --merged` alone. A worktree whose branch is fully merged can still hold uncommitted edits: `git status --porcelain` before REMOVE.
 
-### 🚨 Pre-Flight / Dependencies 🚨
+### Pre-Flight / Dependencies
 
-**CRITICAL:** Check off ALL core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. NEVER abort for a missing capability.
+**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
 #### Core
 
@@ -100,7 +100,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to `Probe Steps`.
+**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
 
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
@@ -112,7 +112,7 @@ Verify only when applicable.
 - [ ] **Step 3 — Worktrees:** `git worktree list --porcelain`. Per worktree: branch, ahead/behind integration branch, `git cherry`, pull-request state, uncommitted changes (`git status --porcelain`), last commit date, size (`du -sh`). Locked or files modified in the last day → KEEP or ASK, never REMOVE (agent may still be running). Also `git worktree prune --dry-run` for entries whose directory is gone. Never prune for real. **Done when:** `Worktrees` row per entry with verdict; totals in `Totals`.
 - [ ] **Step 4 — Branches:** Local: merged by ancestry, merged by squash (pull request merged, or `git cherry` all `-`), upstream gone, agent-prefix branches with no worktree. Remote: branches other than integration, production, dependency-update bot's, with pull-request state. Record delete-on-merge; when off, merged pull request leaves its branch. Unmerged with no pull request: every commit is RESCUE until shown otherwise. Open pull requests with no activity for 30 days, and old drafts. Tags no release or deploy uses. **Done when:** `Branches` row per item with verdict; counts in `Totals`.
 - [ ] **Step 5 — Stashes:** `git stash list` with dates, then `git stash show --stat` for each. Check whether changes already landed on integration branch. Stashes a commit hook creates when it fails: usually commit was retried — verify before REMOVE. **Done when:** `Stashes` row per stash with verdict.
-- [ ] **Step 6 — Leftovers:** Untracked (`git status --porcelain`) and ignored (`git ls-files --others --ignored --exclude-standard --directory`), each sized. Sort: regenerable (dependencies, task cache, coverage, test results, native build folders, tool caches) — REMOVE is safe, report the size; hand-made (notes, plans, backups, logs, scripts in the scratch directory) — group by age and type; open issue or plan references → KEEP; produced and not cleaned up — leftover REMOVE, producer is finding; stranded at root — find writer; tool defaulting to root → point elsewhere. Ignore file: rules matching nothing; leftovers untracked because no rule covers them. Scan secrets and personal data BEFORE any MOVE or REMOVE on scratch, root, or plan logs; scanner reports outside repo. Personal-data hits are candidates: test fixtures carry fake addresses. A real hit in a tracked file is not fixed by removing the file — it stays in history. Name the file and line, never the value. Hooks: hooks path resolves at the hook directory, each hook executable, and the install script installs them. A checkout where hooks silently do not run looks clean here while skipping every pre-commit control. **Done when:** `Leftovers` grouped with verdicts; scan result named; sizes in `Totals`.
+- [ ] **Step 6 — Leftovers:** Untracked (`git status --porcelain`) and ignored (`git ls-files --others --ignored --exclude-standard --directory`), each sized. Sort: regenerable (dependencies, task cache, coverage, test results, native build folders, tool caches) — REMOVE is safe, report the size; hand-made (notes, plans, backups, logs, scripts in the scratch directory) — group by age and type; open issue or plan references → KEEP; produced and not cleaned up — leftover REMOVE, producer is finding; stranded at root — find writer; tool defaulting to root → point elsewhere. Ignore file: rules matching nothing; leftovers untracked because no rule covers them. Scan secrets and personal data before any MOVE or REMOVE on scratch, root, or plan logs; scanner reports outside repo. Personal-data hits are candidates: test fixtures carry fake addresses. A real hit in a tracked file is not fixed by removing the file — it stays in history. Name the file and line, never the value. Hooks: hooks path resolves at the hook directory, each hook executable, and the install script installs them. A checkout where hooks silently do not run looks clean here while skipping every pre-commit control. **Done when:** `Leftovers` grouped with verdicts; scan result named; sizes in `Totals`.
 - [ ] **Step 7 — Layout:** Read where tracked files belong; find misfits. Size: largest blobs at `HEAD`. Committed generated output/logs → MOVE or REMOVE candidates. Record pack size as series. History size: deleted file still grows clones — repository sizer or blob sizes across all refs. Images/logs → recommend large-file storage or ignore; history rewrite owner's call (ASK). Secrets in history: scan all refs; list every sensitive file ever added (example env files expected). Verified live credential → `CRITICAL`: rotation first (rewrite does not reach existing clones). Name file and commit, never value. Toolchain agreement: runtime pin, engine field, package-manager field, CI setup, host build image, native build config; workspace dependency-version linter for cross-workspace drift or catalog bypass. Docs-versus-files → documentation audit; this step files versus each other. Accidental publish: every workspace package not meant for a registry is marked unpublishable (e.g. npm `private: true`, Cargo `publish = false`), and the root states the licence position. Attributes: end-of-line, generated-file linguist marks so review diffs collapse them, binary marks on images, and an editor config that agrees with the formatter. Placement: root files belonging to app/package, finished one-off scripts, drafts beside final doc, unlinked archive folders, near-empty packages. Naming: folders/files breaking neighbour conventions. Contribution scaffolding: owners file, pull-request and issue templates, contributing note — present and true; whether team needs them → owner (ASK). Template describing unfollowed process → MOVE or REMOVE. Owners file: propose paths that weaken a gate when edited → required human review; once exists, host owners-errors API must return none. Unimported file → dead-code audit; misplaced-but-wrong doc → documentation audit. **Done when:** `Layout` rows; pack size and largest history blobs in `Totals`.
 - [ ] **Step 8 — Posture:** Config audit asks settings vs docs; this step asks vs anchor standards. Read that audit's latest report first; do not duplicate findings. Shared settings: every run checks (local or cloud). Scorecard: each check's score as series. Keep binary artifacts, branch protection, code review, dependency-update tool, security policy here; token permissions, pinned dependencies, dangerous workflow → `bkit-audit-security`. Branch protection (integration, production): pull request required, required check required, force-push and deletion blocked, squash-only or linear history, bypass list — compare with production-merge-requires-PR rule. Security settings: secret scanning and push protection on; who may bypass push protection. Private repo: push protection may need paid secret-protection plan — say so if plan excludes it. Push protection blocks at server (hook bypass does not reach). Also dependency alerts, private vulnerability reporting, default automation token read-only, automation creating/approving pull requests off. Disclosure: security policy or private vulnerability reporting, and `/.well-known/security.txt` on production web origin with RFC contact/expiry fields and expiry ahead. People, 2FA, deploy keys, long-lived tokens → security audit; automation secrets/variables → config audit. Read their latest reports; confirm 2FA enforcement recorded. List accumulators like branches: installed apps and permissions, webhooks, environments. App over-scoped or webhook to unused service → REMOVE or ASK. **Done when:** `Posture` holds each setting met / finding / not applicable; scores in `Totals`.
 - [ ] **Step 9 — Verify:** Git state changes hourly. Record when each check ran; re-check every RESCUE and REMOVE at end. No finding without re-checkable evidence: command and output, or `file:line`. Destinations (name; do not act): REMOVE → exact command next step would run, batched for one review; RESCUE → what it holds, who would know, decision (push and open pull request, or drop on purpose); MOVE → move and every reference to update; ASK → who would know and question; OTHER → why no verdict fits; leftover something keeps producing → `docs/failures.jsonl` row against producer (report; do not write ledger); missing/stale ignore rule → line to add or remove; code or config nothing reaches → `bkit-audit-dead-code`; a doc that is wrong, not misplaced → `bkit-audit-documentation`; dependency-bot branch → `bkit-audit-dependencies`; secret in history, log, or leftover → `bkit-audit-security`, rotation first, file and commit only; personal data in log or leftover → `bkit-audit-privacy`; repository setting below standard → setting to change for owner, doc drift → `bkit-audit-config`; workflow-level scorecard failure → `bkit-audit-security`; toolchain versions disagree → file to change; host setting → `bkit-audit-config`; dependency versions → `bkit-audit-dependencies`. **Done when:** every RESCUE and REMOVE re-checked, with time, verdict, and destination.
@@ -121,7 +121,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Findings`.
+**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
 
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
@@ -208,7 +208,7 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, STOP.
+**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
 
 - [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
 - [ ] **Summary:** names count per severity, the machine, and the checkout.

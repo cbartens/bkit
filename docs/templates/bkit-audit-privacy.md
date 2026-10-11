@@ -11,15 +11,15 @@
 >
 > **Rules:**
 >
-> - Read-only audit; NEVER edit code, config, or data.
-> - `Universal Instructions` apply to ALL projects; `Project Instructions` apply ONLY to this project.
+> - Read-only audit; never edit code, config, or data.
+> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
 > - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
 > - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
-> - Read this document ONCE at session start; do NOT trust session memory; do NOT re-read on every loop iteration.
-> - Name each field and where it lives; NEVER copy a personal-data value into the report.
+> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
+> - Name each field and where it lives; never copy a personal-data value into the report.
 
 ## Universal Instructions
 
@@ -61,9 +61,9 @@ Privacy rules land with features; nothing re-reads them together. Drift: new tab
 | Store declarations in depth | Store sweep | `bkit-audit-app-store`, against this audit's inventory |
 | Changing retention / data / policy | Audit reports only | Plan from this report |
 
-### 🚨 Pre-Flight / Dependencies 🚨
+### Pre-Flight / Dependencies
 
-**CRITICAL:** Check off ALL core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. NEVER abort for a missing capability.
+**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
 #### Core
 
@@ -82,7 +82,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to `Probe Steps`.
+**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
 
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
@@ -95,7 +95,7 @@ Verify only when applicable.
 - [ ] **Step 4 — Children:** When product can hold children's data, state every run: how child is known (field / role / parent statement / not at all) and where; consent path per age band and rule setting it; child defaults (visibility, location, sharing, automated processing); age-threshold crossing (re-consent / role change / nothing); parent monitoring of a child (most children's rules require telling the child). **Done when:** answers in `Inventory`, or evidence product cannot hold children's data in `Checked`.
 - [ ] **Step 5 — Assessments:** Current impact assessment (DPIA / PIA) per inventory purpose; list uncovered. Children, new tech (language models), third-party data in content usually meet threshold. Features since previous report's commit vs assessment register; unassessed feature = finding. **Done when:** every purpose has assessment or finding.
 - [ ] **Step 6 — Recipients:** Find in code (SDK imports, outbound hosts), not docs: hosting, DB, error tracking, background jobs, email, payments, maps, model providers, anything new. Per recipient: what, why, how long kept. Verify every vendor-side control docs claim (e.g. zero-retention model calls, error-tracker scrub list) in code and tests. Per processor: processing agreement signed (children's-data assurance if required); sub-processor list URL, last checked, change notice; region and transfer mechanism; processor chain (routers fan out); exit plan (export, deletion on exit, replacement). **Done when:** `Recipients` row per system; undocumented one = finding.
-- [ ] **Step 7 — Retention:** Per inventory row: what deletes / anonymises it (scheduled job / worker / cascade / nothing); stated period vs enforcing mechanism. Good answer = period, enforcing job, and lawful basis. "Nothing removes it" = finding ONLY without a recorded decision in `docs/decisions.jsonl`. Exception: children's data needs a deletion timeframe regardless — most children's rules forbid indefinite keeping. Published retention policy required → check inventory against published text. **Done when:** `Retention` row per store: period · mechanism, or "no decision".
+- [ ] **Step 7 — Retention:** Per inventory row: what deletes / anonymises it (scheduled job / worker / cascade / nothing); stated period vs enforcing mechanism. Good answer = period, enforcing job, and lawful basis. "Nothing removes it" = finding only without a recorded decision in `docs/decisions.jsonl`. Exception: children's data needs a deletion timeframe regardless — most children's rules forbid indefinite keeping. Published retention policy required → check inventory against published text. **Done when:** `Retention` row per store: period · mechanism, or "no decision".
 - [ ] **Step 8 — Deletion:** Read account and tenant deletion code against inventory. Stores reached vs missed: email- / name-keyed rows, file objects, rows in other tenants naming the person. External systems from `Recipients`: does deleting our row delete theirs (payment customers, error-tracker user context, job payloads, backups)? Every run: after deleting a user, what still maps their id back to a person? Deletion test must go red on a missed store — "user can no longer sign in" is not a deletion test. **Done when:** `Deletion` lists every store reached / missed.
 - [ ] **Step 9 — Rights:** Per right, how it works today or that it doesn't: access and export (machine-readable where required); correction; partial erasure keeping the account (incl. parent for child); request from a third party named in content; objection and restriction; requester verification (incl. parent for child); response deadline per applicable regime; request log and complaints route. Automated actions with real effect (e.g. a model creating / changing / deleting user data) → "significant effect: yes / no" and reasoning. Right with no exercise path = owner decision, not defect. **Done when:** `Rights` line per right.
 - [ ] **Step 10 — Claims:** Read the privacy policy linked from sign-up and in-app privacy copy; compare each claim with `Inventory`, `Recipients`, `Retention`, `Deletion`, `Rights`. Unnamed processor, wrong retention period, unkept promise, unmentioned significant automated decision = finding. Store privacy declarations likewise once listings exist. Child members possible → child-readable policy and collection notices; notice to child when a parent can monitor. Terms, refund wording, accessibility statement likewise. **Done when:** `Claims` row per claim: matches / finding.
@@ -105,7 +105,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Findings`.
+**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
 
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
@@ -122,7 +122,7 @@ Verify only when applicable.
 | `MEDIUM` | Doc describes a store / processor wrongly; purpose without impact assessment; right without exercise path; missing breach-plan element |
 | `LOW` | Undocumented field already covered by deletion, retention, and processor list; wording drift changing no obligation |
 
-Scale per `.bkit/jsonl.md` § Severity. Within a severity: children's data first. No users yet → do NOT lower severity for empty production tables.
+Scale per `.bkit/jsonl.md` § Severity. Within a severity: children's data first. No users yet → do not lower severity for empty production tables.
 
 <!-- prettier-ignore -->
 | ID | Severity | Location | Evidence | Expected |
@@ -195,7 +195,7 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, STOP.
+**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
 
 - [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
 - [ ] **Summary:** names count per severity.

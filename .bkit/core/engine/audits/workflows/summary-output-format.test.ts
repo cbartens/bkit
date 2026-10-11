@@ -4,7 +4,7 @@
 // A leading verb names BOTH axes — coverage, and per-item treatment:
 //   Summarise:                              a synthesis; no per-item coverage promised
 //   List all items and summarise each:      every item appears, each one compressed
-//   List all items verbatim, do NOT summarise: every item appears, each one exact
+//   List all items verbatim, do not summarise: every item appears, each one exact
 //
 // The verb carries the whole contract; no placeholder restates it. This suite pins the
 // verb set AND rejects a restatement.
@@ -26,7 +26,7 @@ const PROMPTS_DIR = getPromptsRoot();
 const VERBS = [
   "Summarise:",
   "List all items and summarise each:",
-  "List all items verbatim, do NOT summarise:",
+  "List all items verbatim, do not summarise:",
 ] as const;
 
 /**

@@ -239,8 +239,8 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 <!-- prettier-ignore -->
 | Path | Module | Source | Tier |
 | --- | --- | --- | --- |
-| `.agents/{rules,docs,context,skills}.md` | core | `.bkit/core/.agents/` | Tier 2 html-comment (via the core payload pass — NOT the additive `.agents/` copy). Consumer `context-fetch`, `allowed-domains` and `mcp-servers` blocks live below `bkit:end` in `context.md`; `Project Skills` below `bkit:end` in `skills.md`. |
-| `.bkit/version` | core | package.json version | Written LAST (partial installs detectable) |
+| `.agents/{rules,docs,context,skills}.md` | core | `.bkit/core/.agents/` | Tier 2 html-comment (via the core payload pass — not the additive `.agents/` copy). Consumer `context-fetch`, `allowed-domains` and `mcp-servers` blocks live below `bkit:end` in `context.md`; `Project Skills` below `bkit:end` in `skills.md`. |
+| `.bkit/version` | core | package.json version | Written last (partial installs detectable) |
 | `.gitignore` | core | `.bkit/shared/gitignore` | Tier 2 html-comment |
 | `AGENTS.md` | core | `.bkit/core/AGENTS.md` | Tier 2 html-comment |
 | `CLAUDE.md` | claude | `.bkit/shared/CLAUDE.md` | Tier 2 html-comment |
@@ -286,7 +286,7 @@ Two capabilities **opt-in**, excluded from default install: **issue tracker** (`
 
 ### dogfood rule — updater PRs against workflows (only if you opt in)
 
-bkit dogfoods templates: `.bkit/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit copy) must stay byte-equal where they overlap. Updater scans `.github/workflows/` only, not template path. Applies ONLY if bkit-repo opted into updater. When updater PR opens against bkit workflows:
+bkit dogfoods templates: `.bkit/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit copy) must stay byte-equal where they overlap. Updater scans `.github/workflows/` only, not template path. Applies only if bkit-repo opted into updater. When updater PR opens against bkit workflows:
 
 1. Before merge, edit matching `.bkit/templates/.github/workflows/*.yml` with same SHA bump (one `Edit` per file).
 2. Run `pnpm test` (`.bkit/core/engine/audits/templates/templates-content.test.ts` snapshot regenerates via `pnpm vitest run .bkit/core/engine/audits/templates/templates-content.test.ts -u` if bkit-ci.yml shape changed; commit snapshot).
@@ -386,7 +386,7 @@ Installed list: `.agents/skills.md`. Skills in `.agents/skills/` not listed → 
 
 ### In the installed package, not your repo
 
-`bkit install` does NOT copy these out of `node_modules`. Read them at the path below — a
+`bkit install` does not copy these out of `node_modules`. Read them at the path below — a
 bare `.bkit/comparison.md` or `.bkit/core/prompts/` in your own repo will not resolve.
 
 <!-- prettier-ignore -->

@@ -11,16 +11,16 @@
 >
 > **Rules:**
 >
-> - Read-only audit; NEVER edit code, config, or data.
-> - `Universal Instructions` apply to ALL projects; `Project Instructions` apply ONLY to this project.
+> - Read-only audit; never edit code, config, or data.
+> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
 > - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
 > - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
-> - Read this document ONCE at session start; do NOT trust session memory; do NOT re-read on every loop iteration.
+> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - NEVER paste a secret or credential value into the report.
-> - Historical records (`docs/plans/**`, `docs/archive/**`, `docs/completed.md`) and existing ledger rows are citers only; NEVER edit them.
+> - Historical records (`docs/plans/**`, `docs/archive/**`, `docs/completed.md`) and existing ledger rows are citers only; never edit them.
 
 ## Universal Instructions
 
@@ -69,9 +69,9 @@ Docs are the record agents work from: memory points at them, plans cite them, co
 | Instruction files each agent host loads; agent permissions, hooks, tool servers | Agent config sweep | `bkit-audit-agents` |
 | Applying doc edits, appending ledger rows, editing memory | Audit reports only | Plan from this report |
 
-### 🚨 Pre-Flight / Dependencies 🚨
+### Pre-Flight / Dependencies
 
-**CRITICAL:** Check off ALL core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. NEVER abort for a missing capability.
+**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
 #### Core
 
@@ -93,7 +93,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to `Probe Steps`.
+**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
 
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
@@ -115,7 +115,7 @@ Verify only when applicable.
 - [ ] **Step 5 — Ledgers:** Rows cited by `key` (`.bkit/jsonl.md` § Key & References). Resolve winning row: fold by `key`, highest `ts` (§ Updating a Row). Legacy counter ids (e.g. `KN-<n>`, `DE-<n>`) = leftovers, not unique, survive in `references`; new citations keep appearing → runs every time. `references` may be string or list — accept both; reader assuming list silently skips string rows. Three candidate lists: cited legacy id resolves to nothing; cited legacy id resolves to >1 row; `key` cited next to ledger name no row has (also picks up job names — open each). Rows sharing `key` = updates, not duplicates. Only different keys claiming same legacy id = clash. For each real hit:
   - Live doc or code comment → report names citation change to row's `key`. This run does not edit.
   - `docs/completed.md` or plan → do not edit. Report names new version of owning row to append, with old id in `references`.
-  - Fact in no row → `git log -S` the old id. Report quotes historical text to restore, or ask maintainer. NEVER reconstruct rationale nobody wrote. Restoring = same-`key` append, next step. NEVER edit a line in place.
+  - Fact in no row → `git log -S` the old id. Report quotes historical text to restore, or ask maintainer. never reconstruct rationale nobody wrote. Restoring = same-`key` append, next step. never edit a line in place.
 
   Then choices recorded at all. List each external service, major library, and data-model choice visible in code; find its `docs/decisions.jsonl` row. No row = question for maintainer, not rationale to write. Choice code reversed needs newer row, same `key`; report names row to append. **Done when:** `Ledgers` lists every unresolved citation and every choice without a row.
 
@@ -137,7 +137,7 @@ Verify only when applicable.
 
   Cheap checks: tool versions in doc vs manifest and version files (e.g. `engines`, `packageManager`, `.nvmrc`, `.python-version`, `rust-toolchain.toml`); every binary a package script, git hook, or local CI runner calls is listed (hook dying on missing binary = usual first-day stop); required vs optional still right (nothing calls it, or platform retired → not required); every command and path in doc exists; every variable code reads is in example env or doc says where to get it, every example variable still read, doc names right example file and how loaded; doc says what agent needs that person already has (env trust in new worktree, language-server provisioning, which steps cloud session cannot run).
 
-  Full walk → fresh clone into temp directory, not worktree of this checkout (hides missing steps). Follow doc literally, in order. Every time you need something the doc did not say = finding. Goal states, in order, with time each takes: install succeeds; local app serves on doc's port and sign-in works; local static, unit, and integration gate passes; local end-to-end passes; mobile section, when doc has one, through simulator and emulator. Then new worktree of existing checkout through first test passing (agent path). Then which goal states cloud session can reach, and whether doc says which it cannot. Secrets: doc says where each comes from, and whether that works without asking a person. NEVER paste a value. **Done when:** `Setup` row per cheap check; when walk ran, time per goal state and every point doc was not enough.
+  Full walk → fresh clone into temp directory, not worktree of this checkout (hides missing steps). Follow doc literally, in order. Every time you need something the doc did not say = finding. Goal states, in order, with time each takes: install succeeds; local app serves on doc's port and sign-in works; local static, unit, and integration gate passes; local end-to-end passes; mobile section, when doc has one, through simulator and emulator. Then new worktree of existing checkout through first test passing (agent path). Then which goal states cloud session can reach, and whether doc says which it cannot. Secrets: doc says where each comes from, and whether that works without asking a person. never paste a value. **Done when:** `Setup` row per cheap check; when walk ran, time per goal state and every point doc was not enough.
 
 - [ ] **Step 8 — Runbooks:** Procedure exists for each, named by doc and section: production rollback, per host (web deploy, native update plus store build when those exist); database restore and point-in-time recovery; migration fails partway through push; secret rotation, per provider; failing or poisoned background-job queue; outage at primary dependency; user data export and deletion request. Walk every procedure with `Claims` checks: every command exists, every path real, every dashboard step still matches. Missing procedure = finding. Says who to tell but not what to run = finding. Destination: doc and section to add, also `bkit-audit-reliability`. **Done when:** `Runbooks` lists each procedure and its walk.
 - [ ] **Step 9 — Reference:** HTTP routes external or native client calls → generated, current reference (e.g. OpenAPI), not prose. Each background-event name and payload schema → generated or code-adjacent reference matching what is sent. Shared packages → API-doc validation over each entry point (e.g. TSDoc: broken `{@link}` references, exported symbols with no docs). Gap = finding; fix = generated reference, next step. **Done when:** `Reference` row per surface: present or gap.
@@ -157,7 +157,7 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Findings`.
+**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
 
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
@@ -264,7 +264,7 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, STOP.
+**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
 
 - [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
 - [ ] **Summary:** names count per severity.
