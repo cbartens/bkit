@@ -6,7 +6,7 @@ $ARGUMENTS
 
 # Auto
 
-<!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator — phase-routed auto-dispatcher.
 **Scope:** Route an invocation to the matching bkit phase skill.

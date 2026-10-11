@@ -6,7 +6,7 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
-## [Unreleased]
+## [5.0.0] — 2026-10-11
 
 bkit owns only what a workflow step runs or parses (#489). Everything a person or another tool runs — the CI workflow, git hooks, lint and prose configs, editor and cloud-agent setup, dependency updaters, helper scripts — ships as a template the consumer copies and owns. Every file bkit ships is in one of three groups: an owned file, an owned block in a shared file, or a template, copied to `.bkit/templates/`.
 

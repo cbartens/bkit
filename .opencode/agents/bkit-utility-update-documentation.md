@@ -12,7 +12,7 @@ tools:
   write: true
   edit: true
 ---
-<!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior tech writer syncing project docs with system state after multiple plans.
 **Scope:** As specified by input or session prompt.
