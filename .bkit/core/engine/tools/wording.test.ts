@@ -195,6 +195,30 @@ describe("the external-input clause keeps all three legs", () => {
   ])("%s", (leg) => expect(text).toContain(leg));
 });
 
+describe("the prompts.md untrusted-input doctrine row", () => {
+  // `.bkit/core/.bkit/prompts.md` ships to consumers, and its doctrine row is the
+  // deliverable the universal-coverage decision names — the artifact IS prose, so
+  // the wording is the behaviour (docs/testing.md § Pin the mechanism, the
+  // exception). The catalog sits outside the wording corpus, so without this block
+  // nothing reds if the row silently reverts to the retired scoped policy.
+  const catalog = fs.readFileSync(path.join(REPO_ROOT, ".bkit/core/.bkit/prompts.md"), "utf-8");
+  const row = catalog
+    .split("\n")
+    .find((l) => l.startsWith("| **Untrusted-input prompt-defense** |"));
+
+  it("the row names the universal policy", () => {
+    expect(row, "the doctrine row is missing").toBeDefined();
+    expect(row).toContain("EVERY `.bkit/core/prompts/*.md`");
+    expect(row).toContain("no exceptions, no selection step");
+  });
+
+  it("the retired scoped policy is not restated as current", () => {
+    // History ("reversing an earlier scoped rule") may stay; the claims may not.
+    expect(row).not.toContain("Scoped, NOT blanket");
+    expect(row).not.toContain("**Selection rule:**");
+  });
+});
+
 describe("the checker rejects what it should", () => {
   // Asserts the gate, not the corpus.
   const RULE = "**No commits:** Do NOT run `git commit` / `git add` / `git push` (caller does).";
