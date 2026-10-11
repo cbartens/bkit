@@ -118,15 +118,23 @@ async function runOpencode(c: Call): Promise<Outcome> {
   let blocked = false;
   let thrownMessage = "";
   try {
+    // Drive the plugin as OpenCode 2.0 does: setup(ctx) registers the execute.before
+    // hook, then the runner calls it with one event (`tool` / `input` / `sessionID`).
     const { default: plugin } = await import(pathToFileURL(OPENCODE_PLUGIN).href);
-    const hooks = plugin({
-      client: { session: { get: async () => ({ parentID: "", agentID: "a" }) } },
+    let registered: ((event: object) => Promise<void>) | null = null;
+    await plugin.setup({
+      tool: {
+        hook: async (_name: string, cb: (event: object) => Promise<void>) => {
+          registered = cb;
+        },
+      },
     });
     try {
-      await hooks["tool.execute.before"](
-        { tool: c.kind === "create" ? "write" : "edit", sessionID: c.session },
-        { args: { path: c.file } },
-      );
+      await registered!({
+        tool: c.kind === "create" ? "write" : "edit",
+        sessionID: c.session,
+        input: { path: c.file },
+      });
     } catch (e) {
       blocked = true;
       thrownMessage = (e as Error).message;

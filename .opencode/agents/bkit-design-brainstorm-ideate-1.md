@@ -2,14 +2,13 @@
 mode: subagent
 name: bkit-design-brainstorm-ideate-1
 description: Senior architect proposing 2-3 pragmatic design approaches — existing code, minimal new infra, explicit trade-offs.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash#max
 tools:
   read: true
   grep: true
   glob: true
   serena_*: true
   write: true
-reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 

@@ -36,7 +36,8 @@ fs.writeFileSync(
 );
 
 // Dynamic import used to allow env var injection before the module runs.
-// The plugin is a pure function of its input — it reads env vars at call time.
+// The plugin is a pure object — it reads env vars at call time, and exports the dual
+// shape OpenCode 1.x (`server()`) and 2.0 (`setup(ctx)`) each drive.
 async function loadPlugin() {
   const { default: plugin } = await import(pathToFileURL(PLUGIN_PATH).href);
   return plugin;
@@ -124,14 +125,11 @@ interface HookResult {
   stderrCaptured: string;
 }
 
-async function invokeHook(
-  pluginFn: (input: object) => object,
-  client: object,
-  hookInput: object,
-  output: object,
-  env: Record<string, string | undefined> = {},
+/** Run `fn` with `env` applied and stderr captured; restore both afterwards. */
+async function capture(
+  fn: () => Promise<void>,
+  env: Record<string, string | undefined>,
 ): Promise<HookResult> {
-  // Apply env vars
   const savedEnv: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(env)) {
     savedEnv[k] = process.env[k];
@@ -139,10 +137,9 @@ async function invokeHook(
     else process.env[k] = v;
   }
 
-  // Capture stderr
   let stderrCaptured = "";
   const originalStderrWrite = process.stderr.write.bind(process.stderr);
-  process.stderr.write = (chunk: string | Uint8Array, ...args: unknown[]) => {
+  process.stderr.write = (chunk: string | Uint8Array) => {
     stderrCaptured += chunk.toString();
     return true;
   };
@@ -151,28 +148,66 @@ async function invokeHook(
   let error: Error | null = null;
 
   try {
-    const hooks = pluginFn(client) as Record<string, unknown>;
-    const beforeHook = hooks["tool.execute.before"] as (
-      hookInput: object,
-      output: object,
-    ) => Promise<void>;
-    if (typeof beforeHook === "function") {
-      await beforeHook(hookInput, output);
-    }
+    await fn();
   } catch (err) {
     threw = true;
     error = err instanceof Error ? err : new Error(String(err));
   } finally {
-    // Restore env
     for (const [k, v] of Object.entries(savedEnv)) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }
-    // Restore stderr
     process.stderr.write = originalStderrWrite;
   }
 
   return { threw, error, stderrCaptured };
+}
+
+/** The plugin as OpenCode 2.0 drives it: `setup(ctx)` → `ctx.tool.hook("execute.before")`. */
+async function invokeHook(
+  plugin: { setup: (ctx: object) => Promise<void> },
+  _client: object,
+  hookInput: { tool: string; sessionID: string; callID?: string },
+  output: { args?: unknown },
+  env: Record<string, string | undefined> = {},
+): Promise<HookResult> {
+  return capture(async () => {
+    const event = {
+      tool: hookInput.tool,
+      sessionID: hookInput.sessionID,
+      input: (output?.args as object | undefined) ?? {},
+    };
+    // Holder object: a plain `let` reassigned inside the hook closure narrows to
+    // `null` at the call site (TS cannot see the callback ran).
+    const holder: { cb: ((e: object) => Promise<void>) | null } = { cb: null };
+    const ctx = {
+      tool: {
+        hook: async (_name: string, cb: (e: object) => Promise<void>) => {
+          holder.cb = cb;
+        },
+      },
+    };
+    await plugin.setup(ctx);
+    if (typeof holder.cb === "function") await holder.cb(event);
+  }, env);
+}
+
+/** The plugin as OpenCode 1.x drives it: `server()` → `tool.execute.before(input, output)`. */
+async function invokeHookV1(
+  plugin: { server: () => Promise<Record<string, unknown>> },
+  _client: object,
+  hookInput: object,
+  output: object,
+  env: Record<string, string | undefined> = {},
+): Promise<HookResult> {
+  return capture(async () => {
+    const hooks = await plugin.server();
+    const beforeHook = hooks["tool.execute.before"] as (
+      hookInput: object,
+      output: object,
+    ) => Promise<void>;
+    if (typeof beforeHook === "function") await beforeHook(hookInput, output);
+  }, env);
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +236,13 @@ function isWarned(sessionId: string, filePath: string): boolean {
 // Tests
 // ---------------------------------------------------------------------------
 
-let plugin: (input: object) => object;
+interface OpencodeGateGuardPlugin {
+  id: string;
+  setup: (ctx: object) => Promise<void>;
+  server: () => Promise<Record<string, unknown>>;
+}
+
+let plugin: OpencodeGateGuardPlugin;
 
 beforeEach(async () => {
   plugin = await loadPlugin();
@@ -524,12 +565,84 @@ describe("managed-block boundary", () => {
     expect(block).not.toContain("export");
   });
 
-  it("bkit:end precedes the exported plugin declaration", () => {
+  it("bkit:end precedes the driver + exported plugin declaration", () => {
     const src = fs.readFileSync(PLUGIN_PATH, "utf-8");
     const end = src.indexOf("// bkit:end");
-    const exportIdx = src.indexOf("export default function plugin");
     expect(end).toBeGreaterThanOrEqual(0);
-    expect(exportIdx).toBeGreaterThan(end);
+    expect(src.indexOf("const bkitGateGuardPlugin")).toBeGreaterThan(end);
+    expect(src.indexOf("export default bkitGateGuardPlugin")).toBeGreaterThan(end);
+  });
+
+  it("does NOT import a plugin package — @opencode/plugin only exists on 2.0", () => {
+    // A load-time import of a 2.0-only package would crash the module on 1.x.
+    const src = fs.readFileSync(PLUGIN_PATH, "utf-8");
+    expect(src).not.toMatch(/from\s+["']@opencode(-ai)?\/plugin["']/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dual driver shape — the one export both OpenCode 1.x and 2.0 load.
+// ---------------------------------------------------------------------------
+
+describe("dual driver shape (OpenCode 1.x server() + 2.0 setup())", () => {
+  it("default export carries id + setup + server", async () => {
+    const p = await loadPlugin();
+    expect(p.id).toBe("bkit-gateguard");
+    expect(typeof p.setup).toBe("function");
+    expect(typeof p.server).toBe("function");
+  });
+
+  it("2.0 setup() registers the execute.before hook", async () => {
+    const p = await loadPlugin();
+    const calls: string[] = [];
+    const ctx = {
+      tool: {
+        hook: async (name: string) => {
+          calls.push(name);
+        },
+      },
+    };
+    await p.setup(ctx);
+    expect(calls).toEqual(["execute.before"]);
+  });
+
+  it("1.x server() returns the tool.execute.before hook", async () => {
+    const p = await loadPlugin();
+    const hooks = await p.server();
+    expect(typeof hooks["tool.execute.before"]).toBe("function");
+  });
+
+  it("both drivers emit the same advisory for the same edit", async () => {
+    const p = await loadPlugin();
+    const v1Input = editHookInput("src/twin-driver.ts", newSession());
+    const v1 = await invokeHookV1(p, orchestratorClient(), v1Input.hookInput, v1Input.output, {
+      BKIT_GATEGUARD: undefined,
+    });
+    const v2Input = editHookInput("src/twin-driver.ts", newSession());
+    const v2 = await invokeHook(p, orchestratorClient(), v2Input.hookInput, v2Input.output, {
+      BKIT_GATEGUARD: undefined,
+    });
+    expect(v1.threw).toBe(false);
+    expect(v2.threw).toBe(false);
+    expect(v1.stderrCaptured).toContain("[bkit GateGuard]");
+    // Same checklist text either way (session id is not embedded in the advisory).
+    expect(v1.stderrCaptured).toBe(v2.stderrCaptured);
+  });
+
+  it("deny mode blocks the first touch on BOTH drivers", async () => {
+    const p = await loadPlugin();
+    const v1Input = editHookInput("src/twin-deny-a.ts", newSession());
+    const v1 = await invokeHookV1(p, orchestratorClient(), v1Input.hookInput, v1Input.output, {
+      BKIT_GATEGUARD: "deny",
+    });
+    const v2Input = editHookInput("src/twin-deny-b.ts", newSession());
+    const v2 = await invokeHook(p, orchestratorClient(), v2Input.hookInput, v2Input.output, {
+      BKIT_GATEGUARD: "deny",
+    });
+    expect(v1.threw).toBe(true);
+    expect(v1.error?.message).toContain("[bkit GateGuard]");
+    expect(v2.threw).toBe(true);
+    expect(v2.error?.message).toContain("[bkit GateGuard]");
   });
 });
 

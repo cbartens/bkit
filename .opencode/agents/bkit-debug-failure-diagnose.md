@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-debug-failure-diagnose
 description: Senior debug engineer specialising in CI / runtime failure root-cause analysis.
-model: openrouter/moonshotai/kimi-k3
+model: openrouter/moonshotai/kimi-k3#max
 tools:
   read: true
   grep: true
@@ -13,7 +13,6 @@ tools:
   bash: true
   webfetch: true
   websearch: true
-reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 

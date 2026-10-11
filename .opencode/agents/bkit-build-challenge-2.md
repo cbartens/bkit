@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-2
 description: Veteran security researcher probing diffs for auth holes, exploits, and data exposure.
-model: openrouter/moonshotai/kimi-k3
+model: openrouter/moonshotai/kimi-k3#max
 tools:
   read: true
   grep: true
@@ -11,7 +11,6 @@ tools:
   write: true
   edit: true
   bash: true
-reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 

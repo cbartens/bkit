@@ -47,6 +47,23 @@
   - **No step numbers:** NEVER cite a step number — this prompt's own, the workflow's, or a supplied template's step / gate. Numbering shifts the moment a step is inserted. Name the action or section instead, or signal through `Verdict` and let the orchestrator route.
   - **Managed-version marker:** Rendered agents get injected `<!-- bkit:managed vX.Y.Z — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run \`bkit upgrade\` to refresh -->`after frontmatter (one blank line below), stamped at`bkit install`/`upgrade`by`stampManagedVersion`— NOT in sources. NEVER add version line to source prompt.`bkit check`flags`bkit-managed-stale`on marker drift — hard blocker on`main`/`dev` (or PR into them); advisory on feature branches (inherited drift) — prevents silent outdated prompts on protected branches.
 
+### Notation
+
+One job per mark. Binds `.bkit/core/prompts/*.md`, `.bkit/core/workflows/*.md` and `docs/*.md`; the workflow and docs `Rules` headers point here instead of restating it.
+
+<!-- prettier-ignore -->
+| Mark | Its only job |
+| --- | --- |
+| `→` | "then / goes to": the result of a condition, the next step, key to value, or a pointer to a file. A line holding only a jump (`→ Step 11.`) is allowed. |
+| `.` | Ends a statement. It is the ONLY thing that ends an `**If**` condition's scope. |
+| `;` | Adds another instruction under the same rule or the same condition. Also splits lists of `A → B` pairs. |
+| `,` | Separates list items only. NEVER adds a second action after `→` — use `;`. |
+| `:` | Introduces a breakdown or a label (`**Label:**`, `**If** X:` followed by sub-cases). |
+| `—` | Attaches an explanation to the thing just named (term — what it is, step headings, empty table cells). NEVER stands in for "because", "so" or "but": write the word, which costs the same tokens. |
+| `-` | Hyphen for compound words and number ranges (`2-3`). NEVER a dash, NEVER an en dash `–`. |
+| `/` | "Any of these, treated the same". Spaced between words (`build / debug`). Unspaced ONLY in fixed terms (`I/O`, `CI/CD`, `try/catch`), rates (`1/run`) and inside backticks. Closed value sets are ONE tight backticked union (`DONE\|BLOCKED`), never a spaced slash between separately backticked values. Binds all three folders, not just prompts. |
+| `()` | A short note on the word just before it: its members, a definition, a reference, an example or a scope limit. NEVER a branch (`else …`, `**If**`), NEVER a second instruction, NEVER a reason. If the note needs one of those, it becomes its own sentence. |
+
 ## Frontmatter Conventions
 
 ```yaml
@@ -76,7 +93,7 @@ maxTurns: <int> # safety cap on agent turns (NOT runtime budget)
 
 Pinning `model:` locks agent model regardless of orchestrator session. Without pin, subagents inherit session default — `/bkit-plan` from Sonnet silently downgrades every Opus-tier agent.
 
-**Effort → host thinking (canonical):** Prompt `effort:` = row key in **Default**. **Keyed on HOST, NOT provider** — field name + ladder come from the host config format (`effort:` claude/cursor, `reasoningEffort:` opencode, `model_reasoning_effort` codex), not the model → every opencode provider shares the one **OpenCode** column. A provider key here THROWS (axis confusion, not a fallback). Codex ceilings `max`→`xhigh` (no higher rung). Install parses this table — no hardcoded ladders in TS. **opencode columns ceiling out, they do not downshift:** a provider below its tier target spends **more** thinking to close the gap, and can afford to — every non-Claude pin costs $0.03–$1.76 per agentic task vs Claude's $2.14–$5.34 (`providers.md` § Agentic-coding parity board). Haiku-tier summary writers run at `high` (OpenCode `max`): every non-Claude board score was measured with heavy thinking, so the haiku target compares like with like, and haiku-cell pins cost $0.03–$0.11 per task. **Effort and model are independent** — the `*-summary` writers run `claude-haiku-5-5` at `high` and source modifiers run `claude-sonnet-5-5` at `high`; the map above is the default model per rung, not a constraint. **Cursor stays identity with Default** — its thinking lever is the model-ID suffix (`cursor-grok-4.5-high`), not `effort:`, so ceiling-out happens at the pin.
+**Effort → host thinking (canonical):** Prompt `effort:` = row key in **Default**. **Keyed on HOST, NOT provider** — field name + ladder come from the host config format (`effort:` claude/cursor, a `#<variant>` on the `model` pin opencode, `model_reasoning_effort` codex), not the model → every opencode provider shares the one **OpenCode** column. A provider key here THROWS (axis confusion, not a fallback). Codex ceilings `max`→`xhigh` (no higher rung). Install parses this table — no hardcoded ladders in TS. **opencode columns ceiling out, they do not downshift:** a provider below its tier target spends **more** thinking to close the gap, and can afford to — every non-Claude pin costs $0.03–$1.76 per agentic task vs Claude's $2.14–$5.34 (`providers.md` § Agentic-coding parity board). Haiku-tier summary writers run at `high` (OpenCode `max`): every non-Claude board score was measured with heavy thinking, so the haiku target compares like with like, and haiku-cell pins cost $0.03–$0.11 per task. **Effort and model are independent** — the `*-summary` writers run `claude-haiku-5-5` at `high` and source modifiers run `claude-sonnet-5-5` at `high`; the map above is the default model per rung, not a constraint. **Cursor stays identity with Default** — its thinking lever is the model-ID suffix (`cursor-grok-4.5-high`), not `effort:`, so ceiling-out happens at the pin.
 
 <!-- prettier-ignore -->
 | Default | Claude | Cursor | OpenCode | Codex |
@@ -152,7 +169,7 @@ Canonical per-agent metadata — **single source of truth for model per agent**.
 
 > **`OpenAI` column — PROVISIONAL, not parity-proven.** Every other gateway column = live catalog probe + per-model tool-calling smoke. `OpenAI` cells mapped from documented role only (`gpt-6-astra` deep reasoning, `gpt-5.6-terra` balanced default). Haiku cells are board-picked: `gpt-6-luna` (LiveBench 51.2; `gpt-5.6-luna` measures 48.4), 2026-10-09, existence via models.dev only — no OpenAI key to probe. Re-pin from a real probe before relying on them. `gpt-5.4` / `gpt-5.4-mini` retired 2026-08-31.
 
-`Effort` + `Max Turns` cross-host: `Effort` = Claude `effort:` → opencode `reasoningEffort:` / Codex `model_reasoning_effort` at install; `Max Turns` = runaway cap (Claude today). `Anthropic` / `Effort` / `Max Turns` restate prompt-file frontmatter — parity enforced by `.bkit/core/engine/audits/workflows/models-table-parity.test.ts`. See § `maxTurns` calibration for workload rationale.
+`Effort` + `Max Turns` cross-host: `Effort` = Claude `effort:` → opencode `#<variant>` on the `model` pin / Codex `model_reasoning_effort` at install; `Max Turns` = runaway cap (Claude today). `Anthropic` / `Effort` / `Max Turns` restate prompt-file frontmatter — parity enforced by `.bkit/core/engine/audits/workflows/models-table-parity.test.ts`. See § `maxTurns` calibration for workload rationale.
 
 > **Context-window note:** Claude Code `model:` is the API ID. `claude-opus-5-5` and `claude-sonnet-5-5` are 1M context. Haiku pins `claude-haiku-5-5` (1M context). xhigh agents pin `claude-opus-5-5`.
 >

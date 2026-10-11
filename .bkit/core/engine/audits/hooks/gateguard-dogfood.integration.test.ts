@@ -81,12 +81,15 @@ function codexAdvisory(file: string): string {
 
 function opencodeAdvisory(file: string): string {
   // The plugin is an ES module whose advisory channel is stderr: run it in a child
-  // that captures stderr and prints it to stdout.
+  // that captures stderr and prints it to stdout. Driven as OpenCode 2.0 does —
+  // setup(ctx) registers the execute.before hook, then the runner calls it once.
   const code = [
     `const { default: plugin } = await import(${JSON.stringify(pathToFileURL(OPENCODE).href)});`,
     `let out = "";`,
     `process.stderr.write = (s) => { out += s; return true; };`,
-    `await plugin({})["tool.execute.before"]({ tool: "edit", sessionID: ${JSON.stringify(session())} }, { args: { path: ${JSON.stringify(file)} } });`,
+    `let cb = null;`,
+    `await plugin.setup({ tool: { hook: async (_n, f) => { cb = f; } } });`,
+    `await cb({ tool: "edit", sessionID: ${JSON.stringify(session())}, input: { path: ${JSON.stringify(file)} } });`,
     `process.stdout.write(out);`,
   ].join("\n");
   const res = spawnSync("node", ["--input-type=module", "-e", code], { encoding: "utf-8" });

@@ -2,13 +2,12 @@
 mode: subagent
 name: bkit-build-install-skills
 description: Senior technical lead matching feature requirements to relevant installable skills.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash#high
 tools:
   read: true
   grep: true
   glob: true
   bash: true
-reasoningEffort: high
 ---
 <!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 

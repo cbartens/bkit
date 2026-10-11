@@ -110,7 +110,15 @@ export async function launchApp(app: LaunchApp, cwd: string): Promise<void> {
       `[bkit] ${app} is already running — opening folder in a new window, but the\n` +
         `environment from .bkit/.env will NOT take effect (the running process keeps\n` +
         `its original env). If you need per-repo tokens, quit ${app} fully (Cmd+Q)\n` +
-        `and re-run: pnpm bkit ${app}`,
+        `and re-run: pnpm bkit ${app}` +
+        (app === "opencode"
+          ? `\n\n  OpenCode 2.0 runs one shared background server for every client (TUI, web,\n` +
+            `  desktop). The server captured its environment when it first started, so a\n` +
+            `  newly opened window talks to that server and still sees the OLD env — the\n` +
+            `  per-repo tokens in .bkit/.env are not picked up even after a fresh launch.\n` +
+            `  Stop the server before re-launching (e.g. pkill -f opencode — which also\n` +
+            `  quits the desktop app), then re-run: pnpm bkit opencode`
+          : ""),
     );
   }
 

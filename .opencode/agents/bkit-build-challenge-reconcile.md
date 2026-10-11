@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-reconcile
 description: Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash#max
 tools:
   read: true
   grep: true
@@ -10,7 +10,6 @@ tools:
   serena_*: true
   edit: true
   bash: true
-reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 

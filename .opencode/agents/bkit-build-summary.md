@@ -2,12 +2,11 @@
 mode: subagent
 name: bkit-build-summary
 description: Senior reviewer evaluating completed build cycles for shippability.
-model: openrouter/z-ai/glm-5.3-flash
+model: openrouter/z-ai/glm-5.3-flash#max
 tools:
   read: true
   write: true
   edit: true
-reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 

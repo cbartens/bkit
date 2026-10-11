@@ -38,10 +38,11 @@ export function opencodeToolsBlock(toolsBlock: string | null): string {
 
 /**
  * OC1: opencode agent frontmatter rewrite.
- * Emits: mode, name, description, model, tools (Claude array → opencode object map),
- * reasoningEffort (from prompts.md effort table via provider column). Drops: Claude-only
- * fields (permissionMode, maxTurns, is_background, readonly) and the original effort field.
- * Hard-fails with non-zero exit if model lookup missing for name.
+ * Emits: mode, name, description, model, tools (Claude array → opencode object map).
+ * The effort table's value for this agent is joined to the model as a `#variant`
+ * (`provider/model#max`), which is how OpenCode 2.0 expresses thinking effort. Drops:
+ * Claude-only fields (permissionMode, maxTurns, is_background, readonly) and the
+ * original effort field. Hard-fails with non-zero exit if model lookup missing for name.
  */
 export function applyOpencodeAgent(
   content: string,
@@ -81,13 +82,13 @@ export function applyOpencodeAgent(
   } else {
     newFm += `description: ${description}\n`;
   }
-  newFm += `model: ${formatModelPin("opencode", provider ?? "", opencodeModel)}\n`;
+  // OpenCode 2.0 carries thinking effort as a model variant joined with `#`, not as a
+  // separate field. Program-keyed: every opencode gateway shares the one "OpenCode"
+  // ladder; the gateway is not consulted.
+  const modelPin = formatModelPin("opencode", provider ?? "", opencodeModel);
+  const variant = effort && effortMap ? lookupEffort(effortMap, "opencode", effort) : null;
+  newFm += `model: ${variant ? `${modelPin}#${variant}` : modelPin}\n`;
   newFm += opencodeToolsBlock(toolsBlock);
-  if (effort && effortMap) {
-    // Program-keyed: every opencode gateway shares the one "OpenCode" ladder; the gateway
-    // is not consulted.
-    newFm += `reasoningEffort: ${lookupEffort(effortMap, "opencode", effort)}\n`;
-  }
   newFm += "---\n";
 
   return newFm + afterFm;
@@ -194,22 +195,21 @@ export function applyCodexAgent(
 export const OPENCODE_SESSION_PROMPT_ANCHOR = "**Session prompt:**\n\n$ARGUMENTS\n\n---\n\n";
 
 /**
- * Cursor/OpenCode command invocation rewrite (shared — also OC2 step 2 via
- * applyOpencodeCommand). Paired with applyT1 in the Cursor render pipeline.
- * - `Agent` tool → `Task` tool (subagent invocations)
- * - `Skill` tool → `Task` tool (slash-command invocations — Cursor/OpenCode
- *   `Task` covers both surfaces; Claude splits them into `Agent` + `Skill`)
+ * Command invocation rewrite, parameterised by the host's tool names. The rest of the
+ * rewrite (the `@name` → `/name` respelling on **Subagent:** lines) is host-agnostic.
+ * - `Agent` tool → the host's subagent tool (delegating to a child agent)
+ * - `Skill` tool → the host's skill tool (loading a slash-command skill)
  * - @name → /name on **Subagent:** lines:
  *   - bare `**Subagent:** @name` (exact line)
  *   - real workflow shape `**Subagent:** Invoke \`@name\`…` (incl. indented lists)
  * - Caution placeholder `Invoke using \`@name\`` → `\`/name\``
  * Does NOT rewrite body prose, npm scopes, emails, or gate-checklist `@agent` refs.
  */
-export function applyT2(content: string): string {
-  let result = content.replace(/`Agent` tool/g, "`Task` tool");
-  result = result.replace(/using `Agent` tool/g, "using `Task` tool");
-  result = result.replace(/`Skill` tool/g, "`Task` tool");
-  result = result.replace(/using `Skill` tool/g, "using `Task` tool");
+function rewriteInvocations(content: string, tools: { agent: string; skill: string }): string {
+  let result = content.replace(/`Agent` tool/g, `\`${tools.agent}\` tool`);
+  result = result.replace(/using `Agent` tool/g, `using \`${tools.agent}\` tool`);
+  result = result.replace(/`Skill` tool/g, `\`${tools.skill}\` tool`);
+  result = result.replace(/using `Skill` tool/g, `using \`${tools.skill}\` tool`);
   // Backticked `@agent` on any **Subagent:** line (numbered, list-indented, or bare).
   result = result.replace(/^([^\n]*?\*\*Subagent:\*\*[^\n]*?)`@([a-z][a-z0-9-]*)`/gm, "$1`/$2`");
   // Bare `@agent` immediately after **Subagent:** (exact-line form).
@@ -219,16 +219,35 @@ export function applyT2(content: string): string {
 }
 
 /**
+ * Cursor command invocation rewrite. Cursor's one `Task` tool covers BOTH the subagent
+ * and the skill surface, so both Claude tools rewrite to `Task`. Paired with applyT1 in
+ * the Cursor render pipeline.
+ */
+export function applyT2(content: string): string {
+  return rewriteInvocations(content, { agent: "Task", skill: "Task" });
+}
+
+/**
+ * OpenCode command invocation rewrite. OpenCode 2.0 splits the surfaces: delegating to a
+ * child agent uses the `subagent` tool, and loading a skill uses the dedicated `skill`
+ * tool. (OpenCode 1.x had a single `task` tool; 2.0 renamed it and added `skill`.)
+ */
+export function applyOpencodeToolRewrites(content: string): string {
+  return rewriteInvocations(content, { agent: "subagent", skill: "skill" });
+}
+
+/**
  * OC2: opencode command rewrite.
  * - Strips leading YAML frontmatter block (same as T1).
- * - Rewrites invocation spelling for opencode (same as T2 — see `applyT2`).
+ * - Rewrites invocation spelling for opencode (see `applyOpencodeToolRewrites` — the
+ *   `subagent` / `skill` tools, NOT Cursor's single `Task`).
  * - Prepends the session-prompt `$ARGUMENTS` anchor.
  */
 export function applyOpencodeCommand(content: string): string {
   // Step 1: strip frontmatter (same as T1)
   const stripped = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").replace(/^\n+/, "");
-  // Step 2: rewrite invocations (same as T2)
-  const result = applyT2(stripped);
+  // Step 2: rewrite invocations to opencode's tool names.
+  const result = applyOpencodeToolRewrites(stripped);
   // Step 3: prepend the session-prompt anchor so the slash-command args survive.
   return OPENCODE_SESSION_PROMPT_ANCHOR + result;
 }

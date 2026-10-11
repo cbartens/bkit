@@ -1,7 +1,7 @@
 // bkit-gateguard.js — bkit GateGuard plugin for opencode.
 //
-// Fires via `tool.execute.before` hook. On the FIRST touch of a given file in a
-// session it injects an investigation checklist into the model's context so the
+// Fires on opencode's before-execute tool hook. On the FIRST touch of a given file in
+// a session it injects an investigation checklist into the model's context so the
 // investigation happens BEFORE the edit. A second class of paths — quality-gate
 // configs — gets a stronger "fix the code, don't weaken the gate" advisory.
 // A write to a not-yet-existing path gets the reuse-over-duplicate checklist (rules.md
@@ -9,7 +9,7 @@
 //
 // CONTRACT — do not regress:
 //   - ADVISORY BY DEFAULT: writes the checklist to stderr, which opencode surfaces in
-//     the tool result the model reads — never blocks. tool.execute.before is
+//     the tool result the model reads — never blocks. The before-execute hook is
 //     block-or-allow only (return = allow, throw = block); it has no "inject context
 //     without blocking" primitive, so stderr is the advisory channel and the throw
 //     path is reserved for deny mode.
@@ -28,9 +28,8 @@
 //
 //   BKIT_ALLOW_CONFIG_EDIT=1 → suppress the gate-config advisory (sanctioned edit).
 //
-// opencode tool names (v1.16.x): no Edit/Write/MultiEdit tools; the edit surface is
-// `write` (file writes), `edit` (targeted edits) and `patch`. Guarded: write, edit,
-// patch. Bash is not guarded.
+// opencode tool names: the edit surface is `write`, `edit` and `patch`. The terminal
+// tool (`shell` in v2, `bash` before v2) is NOT guarded.
 //
 // The engine inside the managed block is generated at install from bkit's
 // `core/hooks/gateguard-engine.js`, the same source as the Claude, Cursor and Codex hooks.
@@ -49,8 +48,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-// opencode edit-like tool names (v1.16.x), lowercase in opencode's plugin API.
-// `bash` is NOT in this list.
+// opencode edit-like tool names, lowercase in opencode's plugin API.
+// The terminal tool (`shell` in v2, `bash` before v2) is NOT in this list.
 const EDIT_TOOLS = new Set(["write", "edit", "patch"]);
 
 // --- GateGuard engine: identical in every host's hook (bkit renders it from one source).
@@ -393,51 +392,81 @@ function bkitRepoRoot() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
 
-/** @param {import('@opencode-ai/plugin').PluginInput} input */
-export default function plugin(input) {
-  return {
-    "tool.execute.before": async (hookInput, output) => {
-      try {
-        if (process.env.BKIT_GATEGUARD === "off") return;
+// ---------------------------------------------------------------------------
+// Driver — the one export shape OpenCode 1.x and 2.0 both load.
+//
+//   - OpenCode 2.0 reads the default export's `id` and `setup()` and calls
+//     `ctx.tool.hook("execute.before", event => …)`. The event carries the tool name
+//     and its arguments as `event.tool` / `event.input`, plus `event.sessionID`.
+//   - OpenCode 1.18.29+ calls the default export's `server()` and uses the returned
+//     `"tool.execute.before"` hook, whose arguments are `(input, output)` with the
+//     tool arguments on `output.args`.
+//
+// Both call the same bkitGateguard() engine above (plus this repo's dogfood advisories),
+// so behaviour is identical across the two. The file deliberately imports NOTHING from
+// `@opencode/plugin`: the engine needs nothing from it, and that package only exists
+// on 2.0 — importing it would break the module load on 1.x.
+//
+// OpenCode 1.x earlier than 1.18.29 expects a FUNCTION default export; this file ships
+// the object form the 2.0 loader requires. On such a release, delete and reinstall the
+// plugin, or hand-port this driver to the function shape.
+// ---------------------------------------------------------------------------
 
-        const { tool, sessionID } = hookInput;
-        if (!EDIT_TOOLS.has(tool)) return;
-
-        // Subagents are NOT exempt. Dedup is per (session, file), and a subagent runs
-        // in its own session, so it gets the checklist once for a file the orchestrator
-        // already touched.
-
-        // Extract file path from tool args (opencode's write/edit/patch tools).
-        // The args object structure: write → { path, content }, edit → { path, ... },
-        // patch → { path, ... }. All use `path` as the file-path key.
-        const args = output?.args ?? {};
-        const filePath = args.path ?? args.file_path;
-
-        const result = bkitGateguard(tool, filePath, sessionID);
-        if (!result) return;
-
-        const dogfoodExtra = dogfoodAuthoringAdvisory(filePath || "");
-        if (dogfoodExtra) result.context = `${result.context}\n\n${dogfoodExtra}`;
-
-        if (result.mode === "deny") {
-          // Deny mode: throw to hard-block the tool call. The thrown message is
-          // model-visible in opencode's tool result surface.
-          throw new Error(result.context);
-        }
-        // Advisory mode: emit to stderr (opencode surfaces stderr in tool context).
-        // This delivers the checklist to the model without blocking the edit.
-        process.stderr.write(`\n${result.context}\n\n`);
-      } catch (err) {
-        // Re-throw only for deny mode (intentional block). All other errors: fail-open.
-        if (
-          process.env.BKIT_GATEGUARD === "deny" &&
-          err instanceof Error &&
-          err.message.includes("[bkit GateGuard]")
-        ) {
-          throw err;
-        }
-        // Fail-open: unexpected errors are swallowed and the tool call proceeds.
-      }
-    },
-  };
+/** Shared verdict path: engine → deny throw / stderr advisory; no advice fails open. */
+function runBkitGateGuard(tool, filePath, sessionID) {
+  const result = bkitGateguard(tool, filePath, sessionID);
+  if (!result) return;
+  const dogfoodExtra = dogfoodAuthoringAdvisory(filePath || "");
+  if (dogfoodExtra) result.context = `${result.context}\n\n${dogfoodExtra}`;
+  if (result.mode === "deny") throw new Error(result.context);
+  process.stderr.write(`\n${result.context}\n\n`);
 }
+
+/** Re-throw the deny-mode block; swallow every other error (fail-open). */
+function rethrowDenyMode(err) {
+  if (
+    process.env.BKIT_GATEGUARD === "deny" &&
+    err instanceof Error &&
+    err.message.includes("[bkit GateGuard]")
+  ) {
+    throw err;
+  }
+}
+
+/** OpenCode 1.x hook body: `(input, output)`, tool args on `output.args`. */
+async function bkitGateGuardV1(hookInput, output) {
+  try {
+    if (process.env.BKIT_GATEGUARD === "off") return;
+    const { tool, sessionID } = hookInput ?? {};
+    if (!EDIT_TOOLS.has(tool)) return;
+    const args = output?.args ?? {};
+    runBkitGateGuard(tool, args.path ?? args.file_path, sessionID);
+  } catch (err) {
+    rethrowDenyMode(err);
+  }
+}
+
+/** OpenCode 2.0 hook body: one mutable `event`, tool args on `event.input`. */
+async function bkitGateGuardV2(event) {
+  try {
+    if (process.env.BKIT_GATEGUARD === "off") return;
+    const tool = event?.tool;
+    if (!EDIT_TOOLS.has(tool)) return;
+    const input = event?.input ?? {};
+    runBkitGateGuard(tool, input.path ?? input.filePath ?? input.file_path, event?.sessionID);
+  } catch (err) {
+    rethrowDenyMode(err);
+  }
+}
+
+const bkitGateGuardPlugin = {
+  id: "bkit-gateguard",
+  async setup(ctx) {
+    await ctx.tool.hook("execute.before", bkitGateGuardV2);
+  },
+  async server() {
+    return { "tool.execute.before": bkitGateGuardV1 };
+  },
+};
+
+export default bkitGateGuardPlugin;

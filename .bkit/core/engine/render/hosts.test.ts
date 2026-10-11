@@ -12,6 +12,7 @@ import {
   applyT3,
   applyOpencodeAgent,
   applyOpencodeCommand,
+  applyOpencodeToolRewrites,
   OPENCODE_SESSION_PROMPT_ANCHOR,
   parseFrontmatter,
 } from "./hosts";
@@ -358,6 +359,29 @@ describe("Passthrough byte-equality", () => {
 });
 
 // ---------------------------------------------------------------------------
+// applyOpencodeToolRewrites — OpenCode 2.0 splits subagent / skill
+// ---------------------------------------------------------------------------
+
+describe("applyOpencodeToolRewrites", () => {
+  it("maps `Agent` → `subagent` and `Skill` → `skill` (not Cursor's single `Task`)", () => {
+    const input = "Use the `Agent` tool, then the `Skill` tool.\n";
+    const result = applyOpencodeToolRewrites(input);
+    expect(result).toBe("Use the `subagent` tool, then the `skill` tool.\n");
+    expect(result).not.toContain("`Task`");
+  });
+
+  it("maps the 'using `Agent` tool' / 'using `Skill` tool' spelled forms", () => {
+    const input = "using `Agent` tool and using `Skill` tool\n";
+    expect(applyOpencodeToolRewrites(input)).toBe("using `subagent` tool and using `skill` tool\n");
+  });
+
+  it("still respells @name → /name on **Subagent:** lines", () => {
+    const input = "**Subagent:** @bkit-build-plan-execute\n";
+    expect(applyOpencodeToolRewrites(input)).toBe("**Subagent:** /bkit-build-plan-execute\n");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // applyOpencodeCommand — OC2: strip frontmatter + rewrite invocations
 // ---------------------------------------------------------------------------
 
@@ -377,16 +401,18 @@ describe("applyOpencodeCommand", () => {
     expect(applyOpencodeCommand(input)).toBe(OPENCODE_SESSION_PROMPT_ANCHOR + input);
   });
 
-  it("rewrites `Agent` tool → `Task` tool", () => {
+  it("rewrites `Agent` tool → `subagent` tool (OpenCode 2.0 name)", () => {
     const input = `---\ndescription: x\n---\nUse the \`Agent\` tool here.\n`;
-    expect(applyOpencodeCommand(input)).toContain("`Task` tool");
+    expect(applyOpencodeCommand(input)).toContain("`subagent` tool");
     expect(applyOpencodeCommand(input)).not.toContain("`Agent` tool");
+    expect(applyOpencodeCommand(input)).not.toContain("`Task` tool");
   });
 
-  it("rewrites `Skill` tool → `Task` tool", () => {
+  it("rewrites `Skill` tool → `skill` tool (OpenCode 2.0 splits the surfaces)", () => {
     const input = `---\ndescription: x\n---\nUse the \`Skill\` tool here.\n`;
-    expect(applyOpencodeCommand(input)).toContain("`Task` tool");
+    expect(applyOpencodeCommand(input)).toContain("`skill` tool");
     expect(applyOpencodeCommand(input)).not.toContain("`Skill` tool");
+    expect(applyOpencodeCommand(input)).not.toContain("`Task` tool");
   });
 
   it("rewrites @name → /name ONLY on **Subagent:** lines (anchored)", () => {
@@ -400,7 +426,9 @@ describe("applyOpencodeCommand", () => {
     const input =
       "---\ndescription: x\n---\n1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n";
     const result = applyOpencodeCommand(input);
-    expect(result).toContain("**Subagent:** Invoke `/bkit-build-plan-execute` using `Task` tool:");
+    expect(result).toContain(
+      "**Subagent:** Invoke `/bkit-build-plan-execute` using `subagent` tool:",
+    );
     expect(result).not.toContain("`@bkit-build-plan-execute`");
   });
 
@@ -414,7 +442,7 @@ describe("applyOpencodeCommand", () => {
     const input =
       "---\ndescription: x\n---\n> - **Subagents:** Invoke using `@name` with `Agent` tool.\n";
     const result = applyOpencodeCommand(input);
-    expect(result).toContain("Invoke using `/name` with `Task` tool.");
+    expect(result).toContain("Invoke using `/name` with `subagent` tool.");
     expect(result).not.toContain("Invoke using `@name`");
   });
 
@@ -427,7 +455,7 @@ describe("applyOpencodeCommand", () => {
 
   it("rewrites using `Agent` tool form", () => {
     const input = `---\ndescription: x\n---\nInvoke using \`Agent\` tool.\n`;
-    expect(applyOpencodeCommand(input)).toContain("using `Task` tool");
+    expect(applyOpencodeCommand(input)).toContain("using `subagent` tool");
   });
 
   it("prepends the session-prompt $ARGUMENTS anchor at the very top (issue #278)", () => {
@@ -463,7 +491,8 @@ describe("applyOpencodeAgent", () => {
     expect(result).toContain("mode: subagent");
     expect(result).toContain("name: build-plan");
     expect(result).toContain("description: Execute plan tasks");
-    expect(result).toContain("model: ollama/qwen2.5:7b");
+    // effort: medium → the variant joins the model pin as `#high`.
+    expect(result).toContain("model: ollama/qwen2.5:7b#high");
     expect(result).toContain("tools:");
   });
 
@@ -491,41 +520,42 @@ describe("applyOpencodeAgent", () => {
     expect(result).not.toContain("mcp__");
   });
 
-  it("maps effort: medium → reasoningEffort: high (OpenCode column ceilings out)", () => {
+  it("joins effort: medium → model variant #high (OpenCode column ceilings out)", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\n---\nBody.\n`;
     const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
-    expect(result).toContain("reasoningEffort: high");
+    expect(result).toContain("model: ollama/qwen2.5:7b#high");
     expect(result).not.toContain("effort:");
+    expect(result).not.toContain("reasoningEffort:");
   });
 
-  it("maps effort: high → reasoningEffort: max", () => {
+  it("joins effort: high → model variant #max", () => {
     const input = `---\nname: design-synthesize\ndescription: desc\neffort: high\nmodel: claude-opus-4-8\n---\nBody.\n`;
     const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
-    expect(result).toContain("reasoningEffort: max");
+    expect(result).toContain("model: ollama/qwen2.5:14b#max");
   });
 
-  it("maps effort: xhigh → reasoningEffort: max", () => {
+  it("joins effort: xhigh → model variant #max", () => {
     const input = `---\nname: design-synthesize\ndescription: desc\neffort: xhigh\nmodel: claude-opus-4-8\n---\nBody.\n`;
     const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
-    expect(result).toContain("reasoningEffort: max");
+    expect(result).toContain("model: ollama/qwen2.5:14b#max");
   });
 
-  it("maps effort: low → reasoningEffort: none", () => {
+  it("joins effort: low → model variant #none", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-haiku-4-5-20251001\n---\nBody.\n`;
     const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
-    expect(result).toContain("reasoningEffort: none");
+    expect(result).toContain("model: ollama/qwen2.5:7b#none");
   });
 
-  it("maps effort: max → reasoningEffort: max", () => {
+  it("joins effort: max → model variant #max", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: max\nmodel: claude-opus-4-8\n---\nBody.\n`;
     const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
-    expect(result).toContain("reasoningEffort: max");
+    expect(result).toContain("model: ollama/qwen2.5:7b#max");
   });
 
-  it("opencode provider column: medium → high, high/xhigh → max", () => {
+  it("opencode provider column: medium → #high, high/xhigh → #max, low → #none", () => {
     const zaiLookup = new Map([
-      ["build-plan", "openrouter/glm-5.1"],
-      ["design-synthesize", "openrouter/glm-5.2"],
+      ["build-plan", "glm-5.1"],
+      ["design-synthesize", "glm-5.2"],
     ]);
     expect(
       applyOpencodeAgent(
@@ -534,7 +564,7 @@ describe("applyOpencodeAgent", () => {
         effortMap,
         "openrouter",
       ),
-    ).toContain("reasoningEffort: high");
+    ).toContain("model: openrouter/glm-5.1#high");
     expect(
       applyOpencodeAgent(
         `---\nname: design-synthesize\ndescription: desc\neffort: high\nmodel: claude-opus-5\n---\nBody.\n`,
@@ -542,7 +572,7 @@ describe("applyOpencodeAgent", () => {
         effortMap,
         "openrouter",
       ),
-    ).toContain("reasoningEffort: max");
+    ).toContain("model: openrouter/glm-5.2#max");
     expect(
       applyOpencodeAgent(
         `---\nname: design-synthesize\ndescription: desc\neffort: xhigh\nmodel: claude-opus-5\n---\nBody.\n`,
@@ -550,7 +580,7 @@ describe("applyOpencodeAgent", () => {
         effortMap,
         "openrouter",
       ),
-    ).toContain("reasoningEffort: max");
+    ).toContain("model: openrouter/glm-5.2#max");
     expect(
       applyOpencodeAgent(
         `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-haiku-4-5-20251001\n---\nBody.\n`,
@@ -558,7 +588,7 @@ describe("applyOpencodeAgent", () => {
         effortMap,
         "openrouter",
       ),
-    ).toContain("reasoningEffort: none");
+    ).toContain("model: openrouter/glm-5.1#none");
   });
 
   it("drops Claude-only fields: permissionMode, maxTurns, is_background, readonly", () => {

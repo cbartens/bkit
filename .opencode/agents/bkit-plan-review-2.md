@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-review-2
 description: Senior reviewer auditing plan task dependency correctness and design-coverage.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash#high
 tools:
   read: true
   grep: true
@@ -10,7 +10,6 @@ tools:
   serena_*: true
   write: true
   edit: true
-reasoningEffort: high
 ---
 <!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 

@@ -173,7 +173,7 @@ $ARGUMENTS
    ```bash
    "{BKIT}" issues text --description-file="{OUTBOX}/related-description.md" --comments-file="{OUTBOX}/related-comments.json"
    ```
-2. Launch all three subagents in parallel using `Task` tool:
+2. Launch all three subagents in parallel using `subagent` tool:
    - **Subagent:** Invoke `/bkit-design-brainstorm-ideate-1`
      Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
@@ -204,7 +204,7 @@ $ARGUMENTS
 
 ## 🧠 Step 4 — Generate Design
 
-1. **Subagent:** Invoke `/bkit-design-generate` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-design-generate` using `subagent` tool:
    Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Inputs carry distinct lenses — merge across them, do NOT collapse to a consensus.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/{FID}-design.md` (if present — superseded design; context ONLY, do NOT revise or treat as constraint).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`.
@@ -222,7 +222,7 @@ $ARGUMENTS
 
 ## 🧠 Step 5 — Design Review
 
-1. Launch both subagents in parallel using `Task` tool:
+1. Launch both subagents in parallel using `subagent` tool:
    - **Subagent:** Invoke `/bkit-design-review-1`
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
@@ -253,7 +253,7 @@ $ARGUMENTS
 
 **Run only if** Step 5 `SPIKE` = TRUE.
 
-1. **Subagent:** Invoke `/bkit-design-spike` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-design-spike` using `subagent` tool:
    Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Write throwaway probe code under `docs/plans/{YYYYMM}/logs/{FID}/spike/` ONLY; NEVER modify tracked source outside that directory.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md`.
@@ -271,7 +271,7 @@ $ARGUMENTS
 
 ## 🧠 Step 7 — Apply Review
 
-1. **Subagent:** Invoke `/bkit-design-update` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-design-update` using `subagent` tool:
    Context: You are a subagent in the Design phase applying review critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`; append `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md` **If** Step 5 `SPIKE` = TRUE.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md`.
@@ -289,7 +289,7 @@ $ARGUMENTS
 
 ## 🧠 Step 8 — Design Organise
 
-1. **Subagent:** Invoke `/bkit-design-organise` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-design-organise` using `subagent` tool:
    Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md`.
@@ -313,7 +313,7 @@ $ARGUMENTS
    "{BKIT}" workflows promote --workflow=design --fid={FID} --month={YYYYMM} --resolve
    ```
    Hold `final` as `{DESIGN_FINAL}`.
-2. **Subagent:** Invoke `/bkit-design-summary` using `Task` tool:
+2. **Subagent:** Invoke `/bkit-design-summary` using `subagent` tool:
    Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `{DESIGN_FINAL}` (highest v{N}), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/design-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-summary.md`.

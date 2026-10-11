@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-review-3
 description: Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
-model: openrouter/moonshotai/kimi-k3
+model: openrouter/moonshotai/kimi-k3#max
 tools:
   read: true
   grep: true
@@ -10,7 +10,6 @@ tools:
   serena_*: true
   write: true
   edit: true
-reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 

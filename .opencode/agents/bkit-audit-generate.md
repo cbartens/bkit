@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-audit-generate
 description: Senior auditor running one audit template into a report.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash#max
 tools:
   read: true
   grep: true
@@ -13,7 +13,6 @@ tools:
   bash: true
   webfetch: true
   websearch: true
-reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 

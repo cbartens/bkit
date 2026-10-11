@@ -279,6 +279,43 @@ describe("launchApp — warns but still launches when app already running", () =
       logSpy.mockRestore();
     }
   });
+
+  it("opencode: names the shared 2.0 background server as the reason env is stale", async () => {
+    const fakeBin = makeFakeBin("fake-opencode");
+    process.env["BKIT_OPENCODE_BIN"] = fakeBin;
+    mockSpawnSync.mockReturnValue({ status: 0, stdout: "99999\n", stderr: "" });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await launchApp("opencode", tmpDir);
+      const msg = String(warnSpy.mock.calls[0]![0]);
+      expect(msg).toMatch(/already running/i);
+      // OpenCode 2.0's shared background server is why the fresh .bkit/.env is ignored.
+      expect(msg).toMatch(/shared background server/i);
+      expect(msg).toMatch(/2\.0/);
+      expect(msg).toMatch(/pkill -f opencode/);
+    } finally {
+      delete process.env["BKIT_OPENCODE_BIN"];
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
+
+  it("cursor: does NOT mention the opencode background server", async () => {
+    const fakeBin = makeFakeBin("fake-cursor-2");
+    process.env["BKIT_CURSOR_BIN"] = fakeBin;
+    mockSpawnSync.mockReturnValue({ status: 0, stdout: "99999\n", stderr: "" });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await launchApp("cursor", tmpDir);
+      expect(String(warnSpy.mock.calls[0]![0])).not.toMatch(/shared background server/i);
+    } finally {
+      delete process.env["BKIT_CURSOR_BIN"];
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

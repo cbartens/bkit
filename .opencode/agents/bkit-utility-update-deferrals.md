@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-update-deferrals
 description: Senior editor closing deferrals the codebase has already resolved.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash#max
 tools:
   read: true
   grep: true
@@ -11,7 +11,6 @@ tools:
   write: true
   edit: true
   bash: true
-reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 

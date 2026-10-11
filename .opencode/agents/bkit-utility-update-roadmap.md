@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-update-roadmap
 description: Senior PM ranking next best items to work on from board and ledgers.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash#max
 tools:
   read: true
   grep: true
@@ -13,7 +13,6 @@ tools:
   bash: true
   github_list_issues: true
   github_issue_read: true
-reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->
 

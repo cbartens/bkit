@@ -84,7 +84,7 @@ $ARGUMENTS
    ```
 2. Derive `{REF}`. NEVER pass a bare `{FID}` or bare number — the dispatched workflow's Step 1 stops when no issue reference matches. It never creates an issue.
    `{REF}` = `{ISSUE_ID}` prefixed with `#`, unless it already starts with `#`. The `#` is REQUIRED.
-3. Invoke matching phase skill via `Task` tool → exit. Route by `{PHASE}`:
+3. Invoke matching phase skill via `skill` tool → exit. Route by `{PHASE}`:
    - `ship` → `/bkit-ship {FID} {REF}`
    - `debug` → `/bkit-debug {FID} {REF}`
    - `design` → `/bkit-design {REF}`
