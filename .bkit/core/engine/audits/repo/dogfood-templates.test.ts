@@ -82,7 +82,7 @@ const ADOPTED: Record<string, Entry> = {
     edits: [
       {
         kind: "adapt",
-        what: "no tenant lease or release promote: the default branch queues because a main push publishes",
+        what: "no tenant lease or deploy job: the default branch queues per the template's one-run rule (a release-capable run queues rather than cancels)",
         region: {
           template: ["# One run per branch or pull request.", "jobs:"],
           copy: ["# One run per branch or pull request.", "jobs:"],

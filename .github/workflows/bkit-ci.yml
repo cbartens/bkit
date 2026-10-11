@@ -18,11 +18,12 @@ permissions:
   pull-requests: read
 
 # One run per branch or pull request. A newer run cancels the older one on every event
-# except `main`, which QUEUES: a push to `main` is the release branch, and cancelling it
-# would strand a publish mid-run. A pull request keys on its number; a push or dispatch keys
-# on the ref, so a PR and a push to dev still overlap. A workflow_run observer sees the
-# latest run on that ref only. A push plans against the last green run on the branch, not
-# github.event.before, so a cancelled run's changes stay in scope.
+# except the default branch, which QUEUES (the template's one-run rule exempts the default
+# branch — a release-capable run queues rather than being cancelled mid-flight). A pull
+# request keys on its number; a push or dispatch keys on the ref, so a PR and a push to dev
+# still overlap. A workflow_run observer sees the latest run on that ref only. A push plans
+# against the last green run on the branch, not github.event.before, so a cancelled run's
+# changes stay in scope.
 # See docs/deployments.md § "One run per branch or pull request".
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
