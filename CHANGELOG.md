@@ -6,6 +6,20 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [5.0.3] — 2026-10-12
+
+### Fixed
+
+- **The static CI gate passes again on a fresh checkout** (#525). bkit >= 5.0.1 gitignores `.bkit/core` and `.bkit/shared` — browse-only symlinks into the installed package — yet `bkit check` still counts a missing link as drift, so a checkout that never ran `bkit install` reported write-drift and `bkit-tests-static` could never go green. The CI template and bkit's own workflow now recreate both links (the same relative targets install / upgrade write, never clobbering a real path) immediately before `Run bkit Check`, and the template-content snapshot is regenerated.
+
+### Changed
+
+- **The upgrade report names the consequence of a stale adopted template.** A changed template whose adopted copy also backs a gate now carries that consequence inline on its `changed:` line — first case: a stale `slop-scan.config.json` can redden the slop gate — so the run that sees the template change also sees the risk.
+- **Remote-access docs for the OpenCode host** (#531). `docs/setup.md` gains the OpenCode-over-Tailscale recipe: binding the service to the tailnet, `tailscale serve` HTTPS proxying, HTTP Basic auth with password rotation, and client pairing.
+- **The copied slop plugin carries a reachability note.** `.bkit/templates.md` warns that nothing imports the copied `bkit-slop-type-suppression.mjs`, so a reachability scanner reads it as dead — register it as an entry point.
+
+---
+
 ## [5.0.2] — 2026-10-12
 
 ### Added

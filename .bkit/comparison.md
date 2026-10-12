@@ -1,6 +1,6 @@
 # bkit — Pipeline Reference & Comparison to Agentic Design Patterns
 
-<!-- bkit:managed v5.0.2 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.3 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Human-facing reference. Five-phase pipeline + every subagent (execution order), bkit vs Antonio Gulli's _Agentic Design Patterns_. Evaluation, onboarding, outreach — not agent workflow doc-matrix.

@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.0.2 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.0.3 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-plan-complexity-check"
 description = "Senior engineer estimating whether plans fit a single high-quality execution session."
 model = "gpt-5.6-terra"
