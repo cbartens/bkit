@@ -254,7 +254,7 @@ function social(t) {
   // Hosts band
   b += text(L, 572, "Works with", { size: 21, fill: t.muted, weight: 600 });
   let hx = L + 124;
-  for (const h of ["Claude Code", "Cursor", "Codex", "opencode"]) {
+  for (const h of ["Claude Code", "Cursor", "Codex", "Antigravity", "opencode"]) {
     const w = h.length * 11.4 + 34;
     b += `<rect x="${hx}" y="546" width="${w}" height="40" rx="20" fill="${t.surface}" stroke="${t.border}"/>`;
     b += text(hx + w / 2, 573, h, { size: 19, fill: t.text, anchor: "middle", weight: 600 });
@@ -264,7 +264,7 @@ function social(t) {
     W,
     H,
     b,
-    "bkit — from vibe coding to production code. A senior engineering team's process, ready-made and battle-tested. Works with Claude Code, Cursor, Codex and opencode.",
+    "bkit — from vibe coding to production code. A senior engineering team's process, ready-made and battle-tested. Works with Claude Code, Cursor, Codex, Antigravity and opencode.",
   );
 }
 
@@ -635,7 +635,7 @@ function pipeline(t) {
   b += `<line x1="40" y1="620" x2="${W - 40}" y2="620" stroke="${t.border}"/>`;
   b += text(48, 661, "Runs on", { size: 17, fill: t.muted, weight: 600 });
   let hx = 128;
-  for (const h of ["Claude Code", "Cursor", "Codex", "opencode"]) {
+  for (const h of ["Claude Code", "Cursor", "Codex", "Antigravity", "opencode"]) {
     const w = h.length * 9.6 + 28;
     b += `<rect x="${hx}" y="638" width="${w}" height="34" rx="17" fill="${t.surface}" stroke="${t.border}"/>`;
     b += text(hx + w / 2, 661, h, { size: 16, fill: t.text, anchor: "middle", weight: 600 });
@@ -650,7 +650,7 @@ function pipeline(t) {
     W,
     H,
     b,
-    "The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 40 AI agents: 10 in design, 10 in plan, 11 in build, 5 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex and opencode.",
+    "The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 40 AI agents: 10 in design, 10 in plan, 11 in build, 5 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode.",
   );
 }
 
@@ -883,7 +883,7 @@ function features(t) {
       key: "gate",
       cmd: "",
       tiles: [
-        ["Any AI tool", "Claude Code, Cursor, Codex", "or opencode — switch freely"],
+        ["Any AI tool", "Claude Code, Cursor, Codex,", "Antigravity or opencode"],
         ["Best model per job", "Each agent pinned to the", "right model, on every tool"],
         ["Independent review", "Reviewers never see", "each other's verdicts"],
         ["Laptop to cloud", "Start at your desk, carry", "on from your phone or CI"],

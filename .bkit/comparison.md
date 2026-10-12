@@ -14,7 +14,7 @@
 
 ## What this is
 
-bkit turns a single coding-agent request into gated, peer-reviewed engineering. Five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — each fans out to specialised single-purpose subagents (48 in total, phases + audit + utilities). Many run parallel under different _lenses_ (bug review vs security review) → independent review before human sees output. Same pipeline on four hosts: Claude Code, Cursor, Codex, opencode.
+bkit turns a single coding-agent request into gated, peer-reviewed engineering. Five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — each fans out to specialised single-purpose subagents (48 in total, phases + audit + utilities). Many run parallel under different _lenses_ (bug review vs security review) → independent review before human sees output. Same pipeline on five hosts: Claude Code, Cursor, Codex, Google Antigravity, opencode.
 
 Beside those commands, 35 read-only audit templates live at `docs/templates/bkit-audit-*.md`. `@bkit-audit-generate` runs one and writes `docs/audits/{YYYYMM}/{slug}.md`. `/bkit-plan` takes a design, one or more of those reports, or both.
 
@@ -314,7 +314,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 - **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; book treats HITL as one option.
 - **Fail-soft external context in debug.** Provider-agnostic `context-fetch` blocks (CI logs, diff, e2e, runtime, web) feed `/bkit-debug`; each self-skips to a narrated `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` state, so a context with no block is never read as a clean result.
 - **Explicit per-agent model pins.** Immune to session-default drift.
-- **Provider- and host-portable execution.** Per-agent pins → `bkit install --codex` / `--opencode=<provider>` add Codex and opencode hosts alongside Claude/Cursor — harness unchanged; inference backend moves. Same five-phase gated parallel pipeline on four providers (OpenRouter, Ollama, opencode Zen + Go gateways). Curated per-agent pins; models mirror Claude tier by default, CoT reasoners swapped for convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
+- **Provider- and host-portable execution.** Per-agent pins → `bkit install --codex` / `--antigravity` / `--opencode=<provider>` add Codex, Google Antigravity and opencode hosts alongside Claude/Cursor — harness unchanged; inference backend moves. Same five-phase gated parallel pipeline on four BYO-key providers (OpenRouter, Ollama, opencode Zen + Go gateways) plus Google via Antigravity. Curated per-agent pins; models mirror Claude tier by default, CoT reasoners swapped for convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
 - **Cross-host/provider continuity.** State in `status.jsonl`, plan/design docs under `docs/plans/`, tracker issue — not vendor session. Every host renders from same `.bkit/` source → phase or resumed run moves across IDE/provider mid-feature with identical gates, hooks, per-agent pins: exhaust Claude weekly limit or free-tier quota → continue on another host, no re-setup. Single-vendor frameworks tie run to starting session.
 
 ### Known gaps, scoped as opportunities

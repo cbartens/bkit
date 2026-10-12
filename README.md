@@ -10,7 +10,7 @@
   <a href="https://www.npmjs.com/package/@cbartens/bkit"><img alt="npm version" src="https://img.shields.io/npm/v/@cbartens/bkit"></a>
   <a href="#license"><img alt="License: PolyForm Noncommercial or PolyForm Small Business" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%20%2F%20Small%20Business-blue"></a>
   <img alt="Node 20+" src="https://img.shields.io/badge/node-%E2%89%A520-339933">
-  <img alt="Works with Claude Code, Cursor, Codex and opencode" src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Codex%20%C2%B7%20opencode-8250df">
+  <img alt="Works with Claude Code, Cursor, Codex, Antigravity and opencode" src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Codex%20%C2%B7%20Antigravity%20%C2%B7%20opencode-8250df">
 </p>
 
 <p align="center">
@@ -48,7 +48,7 @@ Everything a senior team would otherwise write down over years, in files you can
 | Agents | >40 | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
 | Workflows | 6 | The five phases plus a cloud router. Every step ends in a checklist and a mechanical check before the next one starts. |
 | Agent rules | >70 | One shared rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
-| Guardrails | >10 hook files | Block dangerous commands and make agents investigate before they edit, on all four AI tools. |
+| Guardrails | >10 hook files | Block dangerous commands and make agents investigate before they edit, on all five AI tools. |
 | Audits | >30 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
 | Project docs | 10 + index | Architecture, data schema, deployments, testing, security, monitoring, design system, tech stack, setup, and an index telling each agent what to read at each step. |
 | Templates | >60 | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, and >10 ready-made connectors for your platforms. |
@@ -73,7 +73,7 @@ One command per job. Each one runs a team of specialised agents, so you don't ha
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-pipeline-dark.svg">
-    <img alt="The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 40 AI agents: 10 in design, 10 in plan, 11 in build, 5 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex and opencode." src=".github/assets/bkit-pipeline-light.svg" width="100%">
+    <img alt="The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 40 AI agents: 10 in design, 10 in plan, 11 in build, 5 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode." src=".github/assets/bkit-pipeline-light.svg" width="100%">
   </picture>
 </p>
 
@@ -134,7 +134,7 @@ Most AI tools forget everything when the chat ends. bkit keeps what it knows in 
 
 ### It fits how you work
 
-- **Never blocked by usage limits.** Out of Claude for the week? Carry on in Cursor, Codex or opencode, or on free models on your own machine through Ollama. Same feature, same checks, nothing to set up again.
+- **Never blocked by usage limits.** Out of Claude for the week? Carry on in Cursor, Codex, Antigravity or opencode, or on free models on your own machine through Ollama. Same feature, same checks, nothing to set up again.
 - **Start on your laptop, check in from your phone.** A feature started at your desk can continue in a cloud session (Claude Code on the web or the Claude app, Cursor cloud agents, or opencode on GitHub Actions), or start by itself when CI finishes: ship on green, debug on red. The cloud setup ships ready to adopt.
 - **Run several features at once.** Each one works in its own copy of the repo (a git worktree), so they never trip over each other.
 - **Your issue tracker is the control panel.** bkit reads the GitHub or Linear issue, posts progress as it goes, moves the issue along and links the pull request.
