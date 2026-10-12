@@ -285,6 +285,19 @@ jobs:
           done
           "$RUNNER_TEMP/actionlint" -color
 
+      # bkit >= 5.0.1 gitignores \`.bkit/core\` + \`.bkit/shared\` (browse-only symlinks into
+      # node_modules/@cbartens/bkit) yet \`bkit check\` counts a missing link as drift, so a
+      # fresh checkout that never runs \`bkit install\` can never pass the gate below.
+      # Recreate them exactly as install/upgrade does: relative targets, never clobber.
+      - name: Materialize bkit Payload View Links
+        if: steps.cache.outputs.skip != 'true'
+        run: |
+          for rel in core shared; do
+            if [ ! -L ".bkit/$rel" ] && [ ! -e ".bkit/$rel" ]; then
+              ln -s "../node_modules/@cbartens/bkit/.bkit/$rel" ".bkit/$rel"
+            fi
+          done
+
       - name: Run bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check

@@ -1,6 +1,6 @@
 # Templates — copy and own
 
-<!-- bkit:managed v5.0.2 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.3 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Every template bkit ships and never installs — what each does, where to copy it, how to install the tool behind it.
@@ -222,7 +222,7 @@ cp .bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs scripts/slop/
 
 - The plugin is a template: copy `scripts/slop/bkit-slop-type-suppression.mjs` and point the config's `plugins` entry at it (`boundary/type-suppression`, `boundary/gate-suppression`). No plugin → drop the `plugins` entry and both `boundary/*` rules.
 - Adapt: `ignores` for generated / vendored trees; per-file `overrides` with a reason, never a rule disabled repo-wide.
-- Traps: keep `**/.bkit/templates/**` in `ignores`, or copied `.mjs` / `.py` count as net-new slop on the upgrade commit.
+- Traps: keep `**/.bkit/templates/**` in `ignores`, or copied `.mjs` / `.py` count as net-new slop on the upgrade commit. Nothing imports the copied plugin — a reachability scanner (knip, ts-prune, vulture) reads it as dead: register it as an entry point, and where `scripts/` is its own scanner workspace, register there, not the root workspace.
 
 ## direnv — `.envrc`
 

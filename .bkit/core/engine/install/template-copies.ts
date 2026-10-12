@@ -101,12 +101,30 @@ export const TEMPLATES_POINTER =
   "Templates (adopt, do not skip): read .bkit/templates.md; bkit never applies templates, so adopt each copy in .bkit/templates/ unless adoption would break existing functionality — state which you did not adopt and why. (If your own gates scan the repo, ignore .bkit/templates/.)";
 
 /**
+ * Changed templates whose ADOPTED copy also backs a gate: the consequence of leaving it
+ * stale, keyed by template rel path. The upgrade line names it so the consequence reaches
+ * the same run that changed the copy — a stale adopted copy can redden a gate that a
+ * bkit-installed file trips, and the agent at that gate never sees this report.
+ */
+export const TEMPLATE_CHANGE_CONSEQUENCES: Readonly<Record<string, string>> = {
+  "slop-scan.config.json":
+    "your adopted copy's guardrails exemptions are now stale; your slop gate may go red",
+};
+
+/** `  changed: <dest>`, plus the consequence when that template's adopted copy backs a gate. */
+function formatChangedLine(rel: string): string {
+  const line = `  changed: ${path.join(TEMPLATE_COPIES_DIR, rel)}`;
+  const note = TEMPLATE_CHANGE_CONSEQUENCES[rel];
+  return note === undefined ? line : `${line} — ${note}`;
+}
+
+/**
  * The upgrade report for a template sync: one line per changed, added or removed
  * template, then where to read about adopting them. Empty when nothing changed.
  */
 export function formatTemplateChanges(changes: TemplateCopyChanges): string {
   const lines = [
-    ...changes.changed.map((p) => `  changed: ${path.join(TEMPLATE_COPIES_DIR, p)}`),
+    ...changes.changed.map(formatChangedLine),
     ...changes.added.map((p) => `  added:   ${path.join(TEMPLATE_COPIES_DIR, p)}`),
     ...changes.removed.map((p) => `  removed: ${path.join(TEMPLATE_COPIES_DIR, p)}`),
   ];

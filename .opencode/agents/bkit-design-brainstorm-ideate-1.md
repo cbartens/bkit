@@ -11,7 +11,7 @@ tools:
   serena_*: true
   write: true
 ---
-<!-- bkit:managed v5.0.2 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.3 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect proposing 2-3 pragmatic design approaches — existing code, minimal new infra, explicit trade-offs.
 **Scope:** As specified by input and Read / Update / Create section.
