@@ -86,7 +86,7 @@ function hero(t) {
     size: 21,
     fill: t.muted,
   });
-  b += text(66, 306, "Run by AI agents. Battle-tested over 1,600 commits.", {
+  b += text(66, 306, "Run by AI agents. Battle-tested over >1,000 commits.", {
     size: 21,
     fill: t.muted,
   });
@@ -125,7 +125,7 @@ function hero(t) {
     W,
     H,
     b,
-    "bkit — from vibe coding to production code. A senior engineering team's process, ready-made, run by AI agents and battle-tested over 1,600 commits.",
+    "bkit — from vibe coding to production code. A senior engineering team's process, ready-made, run by AI agents and battle-tested over more than 1,000 commits.",
   );
 }
 
@@ -623,7 +623,7 @@ function context(t) {
           ["rw", "rw", "rw", "rw", "rw"],
         ],
         ["Designs and plans", "docs/plans/ — what you approved", ["w", "rw", "r", "r", "r"]],
-        ["Audit reports", "docs/audits/ — findings from the 35 audits", ["", "r", "", "", ""]],
+        ["Audit reports", "docs/audits/ — findings from >30 audits", ["", "r", "", "", ""]],
         ["Code map", "Serena symbol lookup, docs/capabilities.md", ["r", "r", "r", "r", "r"]],
         [
           "Run state and stats",
@@ -770,7 +770,7 @@ function features(t) {
         ["Five reviewers", "Scope, order, regressions", "and testability checked"],
         ["Big work split", "Oversized plans become", "buildable sub-plans"],
         ["Learns from the past", "Past bugs and postponed", "work go to reviewers"],
-        ["35 audits", "Findings feed straight", "into the plan"],
+        [">30 audits", "Findings feed straight", "into the plan"],
       ],
     },
     {
@@ -849,7 +849,7 @@ function features(t) {
     W,
     H,
     b,
-    "What ships with bkit, one coloured row per phase. Design: three rival designs, probe code for the risky unknowns, reads your history, reviewed for failure modes. Plan: five reviewers, big work split up, learns from past bugs and postponed work, 35 audits. Build: writes and verifies, hunts bugs and security holes, checks the plan is still current, skills on demand. Debug: outside evidence from CI and your platforms, root cause first, hard-bug mode, knows when to stop. Ship: honest CI, nothing quietly dropped, docs and memory, never touches main. Every phase: any AI tool, best model per job, independent review, laptop to cloud.",
+    "What ships with bkit, one coloured row per phase. Design: three rival designs, probe code for the risky unknowns, reads your history, reviewed for failure modes. Plan: five reviewers, big work split up, learns from past bugs and postponed work, more than 30 audits. Build: writes and verifies, hunts bugs and security holes, checks the plan is still current, skills on demand. Debug: outside evidence from CI and your platforms, root cause first, hard-bug mode, knows when to stop. Ship: honest CI, nothing quietly dropped, docs and memory, never touches main. Every phase: any AI tool, best model per job, independent review, laptop to cloud.",
   );
 }
 

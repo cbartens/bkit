@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-hero-dark.svg">
-    <img alt="bkit — from vibe coding to production code. A senior engineering team's process, ready-made, run by AI agents and battle-tested over 1,600 commits." src=".github/assets/bkit-hero-light.svg" width="100%">
+    <img alt="bkit — from vibe coding to production code. A senior engineering team's process, ready-made, run by AI agents and battle-tested over more than 1,000 commits." src=".github/assets/bkit-hero-light.svg" width="100%">
   </picture>
 </p>
 
@@ -29,29 +29,29 @@ AI coding agents are fast, but on their own they skip the parts that make softwa
 - **For solo founders and makers** who have outgrown vibe coding: you get the habits of a senior engineering team without hiring one. You need to be able to read a plan and make a call, not write the code.
 - **For engineers** who want a proven agentic process instead of building their own: rules, prompts, workflows, guardrails, audits and a CI pipeline that already work together.
 
-**Battle-tested, not a weekend prompt pack.** bkit is built with bkit. Its rules, prompts and workflows have been refined over 1,600+ commits, 500+ issues and 150+ merged pull requests run through its own pipeline, and that history is recorded in 220+ lessons and 380+ decisions agents read before they start.
+**Battle-tested, not a weekend prompt pack.** bkit is built with bkit. Its rules, prompts and workflows have been refined over >1,000 commits, >500 issues and >100 merged pull requests run through its own pipeline, and that history is recorded in >200 lessons and >300 decisions agents read before they start.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-features-dark.svg">
-    <img alt="What ships with bkit, one coloured row per phase. Design: three rival designs, probe code for the risky unknowns, reads your history, reviewed for failure modes. Plan: five reviewers, big work split up, learns from past bugs and postponed work, 35 audits. Build: writes and verifies, hunts bugs and security holes, checks the plan is still current, skills on demand. Debug: outside evidence from CI and your platforms, root cause first, hard-bug mode, knows when to stop. Ship: honest CI, nothing quietly dropped, docs and memory, never touches main. Every phase: any AI tool, best model per job, independent review, laptop to cloud." src=".github/assets/bkit-features-light.svg" width="100%">
+    <img alt="What ships with bkit, one coloured row per phase. Design: three rival designs, probe code for the risky unknowns, reads your history, reviewed for failure modes. Plan: five reviewers, big work split up, learns from past bugs and postponed work, more than 30 audits. Build: writes and verifies, hunts bugs and security holes, checks the plan is still current, skills on demand. Debug: outside evidence from CI and your platforms, root cause first, hard-bug mode, knows when to stop. Ship: honest CI, nothing quietly dropped, docs and memory, never touches main. Every phase: any AI tool, best model per job, independent review, laptop to cloud." src=".github/assets/bkit-features-light.svg" width="100%">
   </picture>
 </p>
 
-## 200+ files of best practice, ready to use
+## >200 files of best practice, ready to use
 
 Everything a senior team would otherwise write down over years, in files you can read:
 
 <!-- prettier-ignore -->
 | What | How many | What it does for you |
 | --- | --- | --- |
-| Agents | 48 | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
+| Agents | >40 | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
 | Workflows | 6 | The five phases plus a cloud router. Every step ends in a checklist and a mechanical check before the next one starts. |
-| Agent rules | 78 | One shared rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
-| Guardrails | 14 hook files | Block dangerous commands and make agents investigate before they edit, on all four AI tools. |
-| Audits | 35 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
+| Agent rules | >70 | One shared rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
+| Guardrails | >10 hook files | Block dangerous commands and make agents investigate before they edit, on all four AI tools. |
+| Audits | >30 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
 | Project docs | 10 + index | Architecture, data schema, deployments, testing, security, monitoring, design system, tech stack, setup, and an index telling each agent what to read at each step. |
-| Templates | 60+ | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, and 13 ready-made connectors for your platforms. |
+| Templates | >60 | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, and >10 ready-made connectors for your platforms. |
 
 ## A ready-made workflow for every job
 
@@ -65,7 +65,7 @@ One command per job. Each one runs a team of specialised agents, so you don't ha
 | Build it | `/bkit-build` | Checks the plan still matches the code, writes it, verifies every task, hunts for bugs and security holes, adds edge-case tests, and opens a pull request. |
 | Fix what broke | `/bkit-debug` | Pulls evidence from CI and your platforms, finds the root cause, fixes it, re-tests and records the lesson. Hard runtime bugs get their own mode; if it can't fix something, it stops and writes you a clear handover. |
 | Ship it | `/bkit-ship` | Checks nothing planned was quietly dropped, waits for every test lane to pass, merges into `dev`, and updates the docs. |
-| Health check | 35 audits | One specialist checklist per area. Findings feed straight into `/bkit-plan`. |
+| Health check | >30 audits | One specialist checklist per area. Findings feed straight into `/bkit-plan`. |
 | Housekeeping | 7 utility agents | Keep docs, decisions, lessons and known bugs current, and rank what to work on next. |
 
 ## How it works
@@ -94,7 +94,7 @@ CI (continuous integration) is the robot that runs every check on every change, 
 
 - **Ready on day one.** Two lanes run side by side: quick checks (type checking, formatting, a prose checker, a scanner for junk code AI tends to write, a workflow-file checker, and `bkit check`) and unit tests.
 - **A green tick means every test ran.** One final check joins all lanes and is the only one branch protection needs. It fails if any lane failed, was skipped or cancelled, or ran zero tests, so a half-finished run can't pass as tested.
-- **Grows with your project.** 27 ready-to-enable building blocks: integration tests, end-to-end tests for web, iOS and Android, database migrations (locked once merged, with security-policy checks), coverage reports, waiting for preview deploys, live checks against the deployed site, smoke and health checks, and a planner that runs only what a change affects. `bkit check` reminds you of each one until you enable or delete it.
+- **Grows with your project.** >20 ready-to-enable building blocks: integration tests, end-to-end tests for web, iOS and Android, database migrations (locked once merged, with security-policy checks), coverage reports, waiting for preview deploys, live checks against the deployed site, smoke and health checks, and a planner that runs only what a change affects. `bkit check` reminds you of each one until you enable or delete it.
 - **Safe by default.** Every third-party action is pinned to an exact commit, the downloaded prose checker is checksum-verified, and pull-request titles never reach a script unescaped.
 - **Doesn't waste minutes.** A commit that already passed isn't re-tested, and a newer push cancels the older run, except on your production branch, where a deploy must never be cut off halfway.
 - **Wired into the workflows.** `/bkit-ship` merges only when the final check is green, `/bkit-debug` reads its failed logs, the cloud router starts from its result, and the gates audit flags any check that can never fail.
@@ -112,7 +112,7 @@ Most AI tools forget everything when the chat ends. bkit keeps what it knows in 
 
 - **Documentation that keeps itself current.** Install sets up the docs a professional project keeps: architecture, data schema, deployments, testing, security, monitoring, design system, tech stack and local setup. Agents fill them in as they work, `/bkit-ship` brings them up to date after every feature, and an index tells each agent which docs to read at each step. The docs stay current because the agents depend on them.
 - **Project memory agents actually read.** Four ledgers record lessons from every fix (`docs/knowledge.jsonl`), decisions and the reasons behind them (`docs/decisions.jsonl`), work consciously postponed (`docs/deferrals.jsonl`) and known bugs (`docs/failures.jsonl`). Planning reviewers see the past bugs and postponed work closest to the new feature, debug reads the lessons first, and `/bkit-ship` checks nothing postponed was quietly dropped.
-- **Evidence from outside, when it's needed.** Design searches your backlog for related issues and checks the web for feasibility. Debug pulls failed CI logs, the diff since the last green run, end-to-end reports and runtime errors. 13 ready-made connectors cover GitHub, Sentry, Vercel, Supabase, Stripe, Expo, Playwright, Maestro, Inngest, Resend, Cloud Run, Tavily web search and Serena, each easy to customise, extend or leave out. A connector that isn't set up is reported as such, never read as "all clear".
+- **Evidence from outside, when it's needed.** Design searches your backlog for related issues and checks the web for feasibility. Debug pulls failed CI logs, the diff since the last green run, end-to-end reports and runtime errors. >10 ready-made connectors cover GitHub, Sentry, Vercel, Supabase, Stripe, Expo, Playwright, Maestro, Inngest, Resend, Cloud Run, Tavily web search and Serena, each easy to customise, extend or leave out. A connector that isn't set up is reported as such, never read as "all clear".
 - **Progress lives in your repo, not a chat window.** Run state is saved after every step, so a crashed run resumes where it stopped, on any tool.
 
 ## What else you get
@@ -130,7 +130,7 @@ Most AI tools forget everything when the chat ends. bkit keeps what it knows in 
 - **It tests ideas before you commit to them.** When reviewers flag an unknown a design depends on, design writes throwaway probe code to settle it before you approve, and a design reviewer checks failure modes and monitoring, not just whether it can be built.
 - **Big features are split up.** A plan too big for one build becomes a sequence of smaller plans, and each is re-checked against the current code right before it's built.
 - **Numbers on your own work.** Every run records its time, size of change and retries in `.bkit/stats.jsonl`, and posts them to the issue next to the median of your last five runs.
-- **Health checks on demand.** 35 audit checklists act like hiring a specialist for a day.
+- **Health checks on demand.** >30 audit checklists act like hiring a specialist for a day.
 
 ### It fits how you work
 
@@ -153,9 +153,9 @@ bkit installs only what its workflows run. Everything else, the things you or an
 <!-- prettier-ignore -->
 | Template | What it gives you |
 | --- | --- |
-| **CI pipeline** | Two lanes ready to go and 27 building blocks for the rest ([above](#a-ci-pipeline-built-the-way-senior-teams-build-them)). One final check is the only one branch protection needs. |
+| **CI pipeline** | Two lanes ready to go and >20 building blocks for the rest ([above](#a-ci-pipeline-built-the-way-senior-teams-build-them)). One final check is the only one branch protection needs. |
 | **Quality checks** | Type checking, formatting, a prose checker, a scanner for junk code AI tends to write, and a workflow-file checker, wired into git hooks and CI. Your `bkit:gate:*` scripts in `package.json` define what "the checks" are, and the gates audit flags any check that can never fail. |
-| **Context connectors** | 13 ready-made connectors that let `/bkit-debug` read CI, error trackers, hosting, databases, payments, email, queues and the web. |
+| **Context connectors** | >10 ready-made connectors that let `/bkit-debug` read CI, error trackers, hosting, databases, payments, email, queues and the web. |
 | **Cloud agents** | When CI finishes, a cloud agent picks up: ship on green, debug on red. No laptop needed. |
 | **Dependency updates** | Ready-made Renovate or Dependabot setups: grouped minor updates, pinned GitHub Actions, and security fixes that skip the weekly queue. |
 | **Secrets sync** | One local file holds every key. One command pushes them to Vercel, GitHub Actions, Google Cloud, Supabase and Expo; another proves every copy matches without printing a value. |
@@ -206,7 +206,7 @@ GitHub Issues or Linear.
 - **Isolation.** Every run gets its own git worktree; a per-feature lock blocks duplicate runs of the same feature, and a short repo-wide lock serialises only the moments that write to `dev`.
 - **Resume from state, not session.** Run state lives in `status.jsonl` and `docs/plans/`. A crashed or interrupted run resumes from its last completed step, on any host.
 - **Mechanical step gates.** `bkit steps finish` checks each step's verdict and artifacts before the workflow moves on; build ticks a task only on a confirmed artifact; ship's deferred sweep fails the merge on an unplanned gap.
-- **Engine.** The `bkit` CLI is TypeScript in [`.bkit/core/engine/`](.bkit/core/engine/), built to `dist/`, covered by 3,200+ tests. `commands/` holds what you type; `install/`, `render/`, `checks/`, `ledgers/` and `shared/` hold the code underneath; `audits/` holds the tests that read shipped text.
+- **Engine.** The `bkit` CLI is TypeScript in [`.bkit/core/engine/`](.bkit/core/engine/), built to `dist/`, covered by >3,000 tests. `commands/` holds what you type; `install/`, `render/`, `checks/`, `ledgers/` and `shared/` hold the code underneath; `audits/` holds the tests that read shipped text.
 - **One source, every host.** `.bkit/` renders `.claude/`, `.cursor/`, `.codex/` and `.opencode/`. `bkit check` is the CI drift gate.
 - **Reviewer independence.** Parallel reviewers can't read sibling output. Design brainstorm, design review and plan scope-check groups also cross models (Opus + Sonnet on Claude; Grok + Composer on Cursor); depth-sensitive lenses (plan review, build challenge) stay on the top tier.
 - **Per-agent pins.** Model and effort per agent, per provider ([`.bkit/prompts.md`](.bkit/prompts.md) § Models), immune to the session default.
