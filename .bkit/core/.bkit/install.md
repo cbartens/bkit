@@ -13,12 +13,12 @@ Two paste blocks below — **install** (first time) and **upgrade** (already on 
 
 ### Install — first time
 
-No token or registry setup is needed — `@cbartens/bkit` is public on npmjs. Copy the block below into Claude Code / Cursor / any coding agent.
+No token or registry setup is needed — `@cbartens/bkit` is public on npmjs. Copy the block below into Claude Code / Cursor / Codex / opencode.
 
 ````text
 Install the latest `@cbartens/bkit` in this repo and finish setup.
 1. `@cbartens/bkit` is public on npmjs — no registry mapping, no PAT, no env. Confirmed.
-2. Install and seed hosts in one Bash call (`bkit install` requires named modules — core implicit; if `bkit` not on PATH use `pnpm bkit`):
+2. Install and seed hosts in one Bash call (`bkit install` requires named modules — core implicit; pick the hosts this repo uses from `--claude --cursor --codex --opencode=<provider>`; if `bkit` not on PATH use `pnpm bkit`):
    ```bash
    pnpm add -D @cbartens/bkit@latest && \
      bkit install --claude --cursor

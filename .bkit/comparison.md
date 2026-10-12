@@ -14,9 +14,9 @@
 
 ## What this is
 
-bkit turns a single coding-agent request into gated, peer-reviewed engineering. Five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — each fans out to specialised single-purpose subagents. Many run parallel under different _lenses_ (bug review vs security review) → independent review before human sees output.
+bkit turns a single coding-agent request into gated, peer-reviewed engineering. Five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — each fans out to specialised single-purpose subagents (48 in total, phases + audit + utilities). Many run parallel under different _lenses_ (bug review vs security review) → independent review before human sees output. Same pipeline on four hosts: Claude Code, Cursor, Codex, opencode.
 
-Beside those commands, more than 30 read-only audit templates live at `docs/templates/bkit-audit-*.md`. `@bkit-audit-generate` runs one and writes `docs/audits/{YYYYMM}/{slug}.md`. `/bkit-plan` takes a design, one or more of those reports, or both.
+Beside those commands, 35 read-only audit templates live at `docs/templates/bkit-audit-*.md`. `@bkit-audit-generate` runs one and writes `docs/audits/{YYYYMM}/{slug}.md`. `/bkit-plan` takes a design, one or more of those reports, or both.
 
 Part 1: every phase subagent in execution order, then the main audit templates. Part 2: bkit vs Gulli agentic patterns. Full audit catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
 
@@ -33,7 +33,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 │ workflow_run on feat/**  → ship (CI green) / debug (CI red)            │
 │ workflow_dispatch        → any phase (ship|debug|design|plan|build)    │
 │ Dispatches the matching /bkit-* skill — runs unattended in cloud       │
-│ (Claude Code on the web / Cursor Background Agents / opencode).        │
+│ (Claude Code on the web / Cursor cloud agents / opencode).               │
 │ Opt-in: `bkit install --auto=claude|cursor|opencode`. See `.bkit/cloud.md`. │
 └────────────────────────────────────────────────────────────────────────┘
                                   │
@@ -45,10 +45,12 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
      • pragmatic  • optimal-tradeoff  • risk / pre-mortem
   3. generate design     (synthesise across lenses + related issues)
   4. review × 2 (parallel, cross-tier models)
-     • feasibility (web)  • feasibility (cross-tier)
-  5. update design       (fold reviews back in)
-  6. organise            (decompose into workstreams + DAG)
-  7. summary             (tracker-facing)
+     • feasibility (web)  • operability (failure modes, observability, on-call)
+  5. spike               (only if review flags load-bearing unknowns:
+                         throwaway probe code, confined to the run's log folder)
+  6. update design       (fold reviews + spike back in)
+  7. organise            (decompose into workstreams + DAG)
+  8. summary             (tracker-facing)
 
 /bkit-plan ───── output: detailed plan ───────────────────────────────────────
   1. generate plan
@@ -66,21 +68,22 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
   9. summary             (tracker-facing)
 
 /bkit-build ─── output: code, PR to dev, CI takes over ──────────────────────
-  1. install-skills
-  2. execute build       (producer — implement tasks)
-  3. verify build        (critic — verify each task; tick only on confirmed artifacts)
+  1. plan-current        (plan still executable against code landed since it was written?)
+  2. install-skills
+  3. execute build       (producer — implement tasks)
+  4. verify build        (critic — verify each task; tick only on confirmed artifacts)
                          ↶ producer-critic loop, capped 3 attempts
-  4. gaps-remediate      (fix verifier gaps, re-verify)
-  5. verify build        (holistic second pass across whole plan)
-  6. challenge × 2 (parallel, distinct lenses, no sibling reads)
+  5. gaps-remediate      (fix verifier gaps, re-verify)
+  6. verify build        (holistic second pass across whole plan)
+  7. challenge × 2 (parallel, distinct lenses, no sibling reads)
     • bug-hunting  • security
-  7. challenge-reconcile (merge findings, severity + verdict max-wins)
-  8. challenge-remediate (classify-gate: architectural → FAIL; else fix + test)
-  9. challenge-tests     (edge-case tests for changed files)
-  10. run tests          (local tier: lint + typecheck + unit + slop:delta + bkit check;
+  8. challenge-reconcile (merge findings, severity + verdict max-wins)
+  9. challenge-remediate (classify-gate: architectural → FAIL; else fix + test)
+  10. challenge-tests    (edge-case tests for changed files)
+  11. run tests          (local tier: lint + typecheck + unit + slop:delta + bkit check;
                          no integration / e2e / @live — those run in CI)
     ↳ on test failure → /bkit-debug (debug-failure-diagnose + remediate)
-  11. summary            (tracker-facing + PR link)
+  12. summary            (tracker-facing + PR link)
   → PR opened; CI runs the full multi-tier scaffold (see "CI test scaffold" below)
 
 /bkit-debug ─── side-rail, invoked on test/CI failure ────────────────────────
@@ -148,8 +151,9 @@ Output: reviewed design (`docs/plans/{YYYYMM}/{FID}-design.md`). Hard stop for h
 | `bkit-design-brainstorm-ideate-3` | Risk / pre-mortem | Same task, failure-mode lens. Opus, high effort. |
 | `bkit-design-generate` | Synthesiser | Merges three brainstorms into one design. xhigh effort. Merges across lenses rather than collapsing to consensus. |
 | `bkit-design-review-1` | Feasibility (web) | Adversarial review with live web search; checks ecosystem feasibility per capability. Opus, high. |
-| `bkit-design-review-2` | Feasibility (cross-tier) | Same review in parallel, different model tier for independent judgement. |
-| `bkit-design-update` | Apply review | Folds both reviews back into the design. |
+| `bkit-design-review-2` | Operability (cross-tier) | Parallel review on a different model tier: failure modes, observability, on-call ergonomics. |
+| `bkit-design-spike` | Probe unknowns | Only when a review flags load-bearing unknowns: settles them with throwaway probe code, confined to the run's log folder. |
+| `bkit-design-update` | Apply review | Folds both reviews (and the spike, if run) back into the design. |
 | `bkit-design-organise` | Structure | Cleans and organises the final design doc. High effort. |
 | `bkit-design-summary` | Summarise | Writes the tracker-facing summary (capped, scannable). |
 
@@ -179,6 +183,7 @@ Output: PR to `dev`. Heaviest phase — most steps verify rather than produce. C
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
+| `bkit-build-plan-current` | Plan freshness | Judges whether changes landed since the plan was written leave it executable; findings feed execute. |
 | `bkit-build-install-skills` | Setup | Installs the skills the plan needs for this build. |
 | `bkit-build-plan-execute` | Producer | Implements the plan tasks. L-tier; iterates edit → lint/typecheck/test → edit. |
 | `bkit-build-plan-verify` | Critic | Verifies each task against the plan; ticks boxes only on confirmed artifacts. Producer-critic loop, capped at 3 attempts. |
@@ -249,7 +254,7 @@ No command and no phase label. One subagent, one template per run.
 
 `/bkit-plan` reads a design doc, one or more reports, or both. The invocation names which findings are in scope. The rest of each report stays context.
 
-More than 30 templates. Main ones:
+35 templates. Main ones:
 
 <!-- prettier-ignore -->
 | Template | Title | What it does |
@@ -273,7 +278,7 @@ Full catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
 
 Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Building Intelligent Systems_. Practitioner catalogue of agentic-AI patterns. Table maps all 21 named patterns + Context Engineering against bkit.
 
-22 patterns assessed: 12 fully implemented, 8 partial (scoped to code-shipping), 2 intentionally N/A. No foundational patterns missing.
+22 patterns assessed: 13 fully implemented, 7 partial (scoped to code-shipping), 2 intentionally N/A. No foundational patterns missing.
 
 <!-- prettier-ignore -->
 | Pattern (Gulli) | bkit status | Where / note |
@@ -284,7 +289,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | Reflection (producer-critic) | Already does | Build execute → verify → remediate loop; plan and design generate → review → update. |
 | Tool Use | Already does | Per-role minimum-capability tool allowlists — stricter than the book's additive model. |
 | Planning | Already does | `/bkit-plan` is a first-class artifact with a template and durable checkbox state. |
-| Multi-Agent Collaboration | Already does | 40+ subagents, orchestrator-as-coordinator; subagents are leaves (no nested orchestration). |
+| Multi-Agent Collaboration | Already does | 48 subagents, orchestrator-as-coordinator; subagents are leaves (no nested orchestration). |
 | Model Context Protocol (MCP) | Already does | Tracker MCP held at the workflow layer only — cleaner separation than the book's examples. |
 | Exception Handling & Recovery | Already does | Universal failure path, bounded retries (3), 3600s timeouts, runaway-turn caps, human handover. |
 | Human-in-the-Loop | Already does | Mandatory hard stops after design / plan / ship; "recommend, do not decide." |
@@ -292,10 +297,10 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | Context Engineering | Already does | Phase doc-matrix, lazy-load, output caps, stubbed-output pattern; consumer `context-fetch` blocks add CI, diff, e2e, runtime and web signal in debug. |
 | Memory Management | Partial | Filesystem and grep episodic memory (`status.jsonl`, knowledge / decisions). No vector retrieval, by scale choice. |
 | Learning & Adaptation | Partial | `friction.jsonl` drives human-reviewed prompt edits; entries carry confidence, scope, and last-confirmed fields. No auto prompt-tuning — deliberate, to keep humans in the loop. |
-| Goal Setting & Monitoring | Partial | Issue = goal, phase labels = state, verdicts = criteria. No measurable per-task Definition of Done yet. |
+| Goal Setting & Monitoring | Already does | Issue = goal, phase labels = state, verdicts = criteria. Per-task `Done when:` in the plan template; verifier ticks only on confirmed artifacts; deferred-sweep FAILs merge on any unplanned gap; `stats.jsonl` tracks every run. |
 | Knowledge Retrieval (RAG) | Partial | Deterministic doc-matrix retrieval plus web search in design review. No embedding RAG (Grep wins at repo scale). |
 | Reasoning Techniques | Partial | Extended thinking (CoT) plus parallel-pair-reconcile (a form of self-consistency). No formal ToT or ReAct trace. |
-| Guardrails / Safety | Partial | Tool sandbox, destructive-git bans, locks, verdict checks, and an advisory edit-investigation plus gate-config hook (GateGuard). No output validators yet. |
+| Guardrails / Safety | Partial | Tool sandbox, destructive-git bans, locks, verdict checks, and an advisory edit-investigation plus gate-config hook (GateGuard). `bkit steps finish` validates each step's verdict and artifacts structurally. No content-level output validators (e.g. safety classifiers). |
 | Evaluation & Monitoring | Partial | `friction` / `knowledge` logs, CI gates, and a catalog-parity drift check. No automated regression-fixture eval harness yet. |
 | Exploration & Discovery | Partial | Divergent brainstorm triplet plus feasibility search. No temperature-spread or vote-of-K. |
 | Inter-Agent Communication (A2A) | N/A by design | Agents communicate only via filesystem artifacts — deliberate, to preserve leaf-only and resume guarantees. |
@@ -309,12 +314,12 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 - **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; book treats HITL as one option.
 - **Fail-soft external context in debug.** Provider-agnostic `context-fetch` blocks (CI logs, diff, e2e, runtime, web) feed `/bkit-debug`; each self-skips to a narrated `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` state, so a context with no block is never read as a clean result.
 - **Explicit per-agent model pins.** Immune to session-default drift.
-- **Provider- and host-portable execution.** Per-agent pins → `bkit install --opencode=<provider>` adds opencode host alongside Claude/Cursor — harness unchanged; inference backend moves. Same five-phase gated parallel pipeline on four providers (OpenRouter, Ollama, opencode Zen + Go gateways). Curated per-agent pins; models mirror Claude tier by default, CoT reasoners swapped for convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
+- **Provider- and host-portable execution.** Per-agent pins → `bkit install --codex` / `--opencode=<provider>` add Codex and opencode hosts alongside Claude/Cursor — harness unchanged; inference backend moves. Same five-phase gated parallel pipeline on four providers (OpenRouter, Ollama, opencode Zen + Go gateways). Curated per-agent pins; models mirror Claude tier by default, CoT reasoners swapped for convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
 - **Cross-host/provider continuity.** State in `status.jsonl`, plan/design docs under `docs/plans/`, tracker issue — not vendor session. Every host renders from same `.bkit/` source → phase or resumed run moves across IDE/provider mid-feature with identical gates, hooks, per-agent pins: exhaust Claude weekly limit or free-tier quota → continue on another host, no re-setup. Single-vendor frameworks tie run to starting session.
 
 ### Known gaps, scoped as opportunities
 
-Most partials = deliberate scope. Per-task `Done when:` shipped in plan template. Two remain: automated eval harness with regression fixtures for closed friction items; optional self-consistency vote (quorum-of-N) for high-stakes reviews. Neither requires leaf-agent architecture change.
+Most partials = deliberate scope. Two remain: automated eval harness with regression fixtures for closed friction items; optional self-consistency vote (quorum-of-N) for high-stakes reviews. Neither requires leaf-agent architecture change.
 
 ---
 
