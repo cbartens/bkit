@@ -21,12 +21,13 @@ import { readTemplate } from "../../render/parts";
 
 const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gg-parity-"));
 afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
-const [CLAUDE_HOOK, CURSOR_HOOK, OPENCODE_PLUGIN, CODEX_HOOK] = [
+const [CLAUDE_HOOK, CURSOR_HOOK, OPENCODE_PLUGIN, CODEX_HOOK, ANTIGRAVITY_HOOK] = [
   [".claude/hooks/bkit-gateguard.cjs", "claude.cjs"],
   [".cursor/hooks/bkit-gateguard.cjs", "cursor.cjs"],
   // `.mjs`: the plugin is an ES module, and the temp dir has no package.json saying so.
   [".opencode/plugin/bkit-gateguard.js", "opencode.mjs"],
   [".codex/hooks/bkit-gateguard.cjs", "codex.cjs"],
+  [".agents/hooks/bkit-gateguard.cjs", "antigravity.cjs"],
 ].map(([rel, name]) => {
   const out = path.join(GENERATED, name);
   fs.writeFileSync(out, readTemplate(path.resolve(".bkit/core", rel)));
@@ -39,8 +40,8 @@ interface Outcome {
   blocked: boolean;
 }
 
-type Host = "claude" | "cursor" | "opencode" | "codex";
-const HOSTS: Host[] = ["claude", "cursor", "opencode", "codex"];
+type Host = "claude" | "cursor" | "opencode" | "codex" | "antigravity";
+const HOSTS: Host[] = ["claude", "cursor", "opencode", "codex", "antigravity"];
 
 let counter = 0;
 function newSession(): string {
@@ -179,10 +180,35 @@ function runCodex(c: Call): Outcome {
   };
 }
 
+/**
+ * Antigravity reports edits as `write_to_file` (create/overwrite) or
+ * `replace_file_content` (in-place edit), and passes the target in `tool_input.file_path`,
+ * resolved against the payload `cwd`.
+ */
+function runAntigravity(c: Call): Outcome {
+  const res = spawnSync("node", [ANTIGRAVITY_HOOK], {
+    input: JSON.stringify({
+      tool_name: c.kind === "create" ? "write_to_file" : "replace_file_content",
+      tool_input: { file_path: c.file },
+      session_id: c.session,
+      cwd: process.cwd(),
+    }),
+    encoding: "utf-8",
+    env: { ...process.env, BKIT_GATEGUARD: undefined, ...c.env },
+  });
+  const out = res.stdout.trim() ? JSON.parse(res.stdout.trim()) : {};
+  const hso = out.hookSpecificOutput ?? {};
+  return {
+    advisory: String(hso.additionalContext ?? hso.permissionDecisionReason ?? ""),
+    blocked: hso.permissionDecision === "deny",
+  };
+}
+
 async function run(host: Host, c: Call): Promise<Outcome> {
   if (host === "claude") return runClaude(c);
   if (host === "cursor") return runCursor(c);
   if (host === "codex") return runCodex(c);
+  if (host === "antigravity") return runAntigravity(c);
   return runOpencode(c);
 }
 
@@ -376,6 +402,7 @@ describe("gateguard structural parity", () => {
     cursor: CURSOR_HOOK,
     opencode: OPENCODE_PLUGIN,
     codex: CODEX_HOOK,
+    antigravity: ANTIGRAVITY_HOOK,
   };
 
   function block(file: string): string {

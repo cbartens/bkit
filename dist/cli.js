@@ -72,7 +72,7 @@ export function parseComplyPhase(value) {
 // generic check only ever validates claude/cursor/codex. `full`, `core` and `cloud`
 // are NOT accepted as bare flags: use `--auto=<claude|cursor>`; core is implicit.
 // There is no dependency-updater flag. Copy an example; CI warns when none is present.
-const MODULE_FLAGS = new Set(["claude", "cursor", "opencode", "codex"]);
+const MODULE_FLAGS = new Set(["claude", "cursor", "opencode", "codex", "antigravity"]);
 // ALL_MODULES — every non-opt-in module, core first. Used to expand a bare/full
 // uninstall (which additionally pulls in the opt-in add-ons below for zero footprint).
 const ALL_MODULES = ["core", "claude", "cursor"];
@@ -282,6 +282,10 @@ export function parseArgs(argv) {
             }
             if (flag.startsWith("codex=")) {
                 console.error(`[bkit] --codex takes no value (got ${JSON.stringify("--" + flag)}). Codex CLI runs on one gateway (openai), so the flag is bare: --codex. Only --opencode is provider-pluggable.`);
+                process.exit(1);
+            }
+            if (flag.startsWith("antigravity=")) {
+                console.error(`[bkit] --antigravity takes no value (got ${JSON.stringify("--" + flag)}). Antigravity runs on one gateway (google), so the flag is bare: --antigravity. Only --opencode is provider-pluggable.`);
                 process.exit(1);
             }
             if (flag.startsWith("opencode=")) {
@@ -495,6 +499,11 @@ Module flags (composable; symmetric install ↔ uninstall):
                   + .codex/hooks.json + .codex/hooks/bkit-gateguard.cjs, plus the workflow skills
                   (.agents/skills/bkit-*/). Codex loads project-local hooks ONLY once the
                   .codex/ layer is trusted — until then GateGuard is installed and never fires.
+  --antigravity   Google Antigravity IDE host. BARE flag — takes no value: Antigravity runs
+                  on one gateway (google). Ships .agents/prompts/bkit-*.md (subagent prompts)
+                  + .agents/skills/bkit-*/SKILL.md (workflow skills) + .agents/hooks.json
+                  + .agents/hooks/*.cjs + GEMINI.md. There is no native subagent tool: the
+                  orchestrator loads each prompt with view_file and runs it in-session.
 
 Dependency updaters (copy an example and own it):
   .bkit/templates/.github/renovate.json5
@@ -538,6 +547,8 @@ Uninstall flags:
 Examples:
   bkit install --claude                       .claude/** + CLAUDE.md + core.
   bkit install --claude --cursor              Both hosts + core.
+  bkit install --codex                        Codex CLI host (agents + workflow skills + hooks).
+  bkit install --antigravity                  Google Antigravity host (prompts + skills + hooks + GEMINI.md).
   bkit install --opencode=opencode-zen          opencode host (Zen built-in gateway, additive).
   bkit install --opencode=opencode-go           opencode host (Go built-in gateway, additive).
   bkit install --opencode=openrouter            add openrouter alongside an opencode gateway.
@@ -586,7 +597,7 @@ function commandsUsage() {
 export function validateModuleFlagsForVerb(verb, moduleFlags) {
     if (verb === "install" && moduleFlags.size === 0) {
         return ("[bkit] `bkit install` requires at least one module flag. Name what to install: " +
-            "--claude, --cursor, --codex, --opencode=<provider> (plus opt-in " +
+            "--claude, --cursor, --codex, --antigravity, --opencode=<provider> (plus opt-in " +
             "--auto=<claude|cursor>). Run `bkit help` for usage.");
     }
     if ((verb === "check" || verb === "upgrade") && moduleFlags.size > 0) {

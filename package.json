@@ -2,7 +2,7 @@
   "name": "@cbartens/bkit",
   "version": "5.0.3",
   "private": false,
-  "description": "From vibe coding to production code. A senior engineering team's process, ready-made: AI agents design, plan, build, review, fix and ship your features on Claude Code, Cursor, Codex and opencode.",
+  "description": "From vibe coding to production code. A senior engineering team's process, ready-made: AI agents design, plan, build, review, fix and ship your features on Claude Code, Cursor, Codex, Google Antigravity and opencode.",
   "keywords": [
     "ai-agents",
     "agentic-coding",
@@ -12,6 +12,8 @@
     "claude-code",
     "cursor",
     "codex",
+    "antigravity",
+    "gemini",
     "opencode",
     "ai-code-review",
     "code-review",

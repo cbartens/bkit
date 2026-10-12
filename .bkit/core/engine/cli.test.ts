@@ -166,6 +166,22 @@ describe("parseArgs — host composition", () => {
     const result = parseArgs(["uninstall", "--codex"]);
     expect([...result.modules]).toEqual(["codex"]);
   });
+
+  it("install --antigravity → antigravity + implicit core", () => {
+    const result = parseArgs(["install", "--antigravity"]);
+    expect([...result.modules].sort()).toEqual(["antigravity", "core"]);
+    expect(result.moduleFlags.has("antigravity")).toBe(true);
+  });
+
+  it("uninstall --antigravity → {antigravity} only (targeted, core preserved)", () => {
+    const result = parseArgs(["uninstall", "--antigravity"]);
+    expect([...result.modules]).toEqual(["antigravity"]);
+  });
+
+  it("--antigravity=<value> → rejected (bare flag, one gateway)", () => {
+    const msg = expectExit(() => parseArgs(["install", "--antigravity=gemini"]));
+    expect(msg).toMatch(/--antigravity takes no value/);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -186,7 +202,15 @@ describe("resolveModules — verb-aware resolution", () => {
 
   it("uninstall (bare): every module incl. opt-ins + core (zero footprint)", () => {
     const all = resolveModules(set(), "uninstall");
-    for (const m of ["core", "claude", "cursor", "cloud", "opencode", "codex"] as ModuleFlag[]) {
+    for (const m of [
+      "core",
+      "claude",
+      "cursor",
+      "cloud",
+      "opencode",
+      "codex",
+      "antigravity",
+    ] as ModuleFlag[]) {
       expect(all.has(m), `bare uninstall should include ${m}`).toBe(true);
     }
   });
@@ -290,7 +314,15 @@ describe("parseArgs — uninstall verb", () => {
 
   it("bare uninstall → all modules incl. opt-in add-ons + core (zero footprint)", () => {
     const result = parseArgs(["uninstall"]);
-    for (const m of ["core", "claude", "cursor", "cloud", "opencode", "codex"] as ModuleFlag[]) {
+    for (const m of [
+      "core",
+      "claude",
+      "cursor",
+      "cloud",
+      "opencode",
+      "codex",
+      "antigravity",
+    ] as ModuleFlag[]) {
       expect(result.modules.has(m), `bare uninstall should include ${m}`).toBe(true);
     }
   });

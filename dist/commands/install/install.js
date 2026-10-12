@@ -12,7 +12,7 @@ import { runPreflight } from "../../checks/before/index.js";
 import { formatChecklist, readChangelogVersionDelta, runPostInstallCheck, writeAdvisoriesArtifact, } from "../../checks/after/index.js";
 import { findMissingOwnedHooks, detectOwnedHookMissing } from "../../checks/after/managed.js";
 import { resolveTokens } from "../../install/placeholders.js";
-import { parseModelLookup, applyModelOverrides, buildOpencodeModelLookup, parseEffortMap, } from "../../render/models.js";
+import { parseModelLookup, applyModelOverrides, buildOpencodeModelLookup, buildAntigravityModelLookup, parseEffortMap, } from "../../render/models.js";
 import { getBkitDocsRoot } from "../../shared/package-roots.js";
 import { runUninstall } from "./uninstall.js";
 // ---------------------------------------------------------------------------
@@ -88,6 +88,8 @@ export function modulesToCliFlags(mods, opencodeProvider, cloudVariant) {
         out.push(`--opencode=${opencodeProvider ?? "<provider>"}`);
     if (mods.has("codex"))
         out.push("--codex");
+    if (mods.has("antigravity"))
+        out.push("--antigravity");
     if (mods.has("cloud"))
         out.push(`--auto=${cloudVariant ?? "<variant>"}`);
     return out.join(" ");
@@ -246,6 +248,7 @@ export async function runInstall(args) {
     let modelLookup = new Map();
     let opencodeModelLookup = new Map();
     let codexModelLookup = new Map();
+    let antigravityModelLookup = new Map();
     let effortMap = new Map();
     const promptsMdPath = path.join(getBkitDocsRoot(), "prompts.md");
     const consumerPromptsMdPath = path.join(process.cwd(), ".bkit", "prompts.md");
@@ -280,6 +283,16 @@ export async function runInstall(args) {
                 // Not fatal — codex module will fail per-file if a model is missing
             }
             applyModelOverrides(codexModelLookup, "openai", consumerPromptsMdPath);
+        }
+        if (effectiveModules.has("antigravity")) {
+            // Antigravity is nullary — one gateway (`google`), so there is nothing to detect.
+            try {
+                antigravityModelLookup = buildAntigravityModelLookup(promptsMdPath);
+            }
+            catch {
+                // Not fatal — antigravity module will fail per-file if a model is missing
+            }
+            applyModelOverrides(antigravityModelLookup, "google", consumerPromptsMdPath);
         }
         effortMap = parseEffortMap(promptsMdPath);
     }
@@ -359,6 +372,7 @@ export async function runInstall(args) {
         modelLookup,
         opencodeModelLookup,
         codexModelLookup,
+        antigravityModelLookup,
         effortMap,
         opencodeProvider: renderOpencodeProvider,
         advisories,

@@ -30,6 +30,7 @@ export function detectInstalledModules(cwd: string): Set<ModuleFlag> {
   if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
   if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
   if (fs.existsSync(path.join(cwd, ".codex", "agents"))) mods.add("codex");
+  if (fs.existsSync(path.join(cwd, ".agents", "prompts"))) mods.add("antigravity");
   return mods;
 }
 

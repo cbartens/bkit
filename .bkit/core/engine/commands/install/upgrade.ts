@@ -77,6 +77,7 @@ import {
   parseModelLookup,
   applyModelOverrides,
   buildOpencodeModelLookup,
+  buildAntigravityModelLookup,
   parseEffortMap,
 } from "../../render/models.js";
 
@@ -538,6 +539,7 @@ export function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
   if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
   if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
   if (fs.existsSync(path.join(cwd, ".codex", "agents"))) mods.add("codex");
+  if (fs.existsSync(path.join(cwd, ".agents", "prompts"))) mods.add("antigravity");
   return mods;
 }
 
@@ -855,6 +857,7 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
   let renderModelLookup: Map<string, string> = new Map();
   let renderOpencodeModelLookup: Map<string, string> = new Map();
   let renderCodexModelLookup: Map<string, string> = new Map();
+  let renderAntigravityModelLookup: Map<string, string> = new Map();
   let renderEffortMap: EffortMap = new Map();
   const pkgPromptsMd = path.join(getBkitDocsRoot(), "prompts.md");
   const consumerPromptsMd = path.join(process.cwd(), ".bkit", "prompts.md");
@@ -882,6 +885,14 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
       }
       applyModelOverrides(renderCodexModelLookup, "openai", consumerPromptsMd);
     }
+    if (renderModules.has("antigravity")) {
+      try {
+        renderAntigravityModelLookup = buildAntigravityModelLookup(pkgPromptsMd);
+      } catch {
+        // Not fatal — the antigravity module fails per-file if a model is missing
+      }
+      applyModelOverrides(renderAntigravityModelLookup, "google", consumerPromptsMd);
+    }
     renderEffortMap = parseEffortMap(pkgPromptsMd);
   }
   const renderWs: WriteSet = { writes: [] };
@@ -891,6 +902,7 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
     modelLookup: renderModelLookup,
     opencodeModelLookup: renderOpencodeModelLookup,
     codexModelLookup: renderCodexModelLookup,
+    antigravityModelLookup: renderAntigravityModelLookup,
     effortMap: renderEffortMap,
     opencodeProvider: renderProvider,
     advisories: [],

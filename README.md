@@ -164,7 +164,7 @@ bkit installs only what its workflows run. Everything else, the things you or an
 
 ## Quick start
 
-You need a GitHub repo, Node 20+, pnpm, and at least one of Claude Code, Cursor, Codex or opencode.
+You need a GitHub repo, Node 20+, pnpm, and at least one of Claude Code, Cursor, Codex, Google Antigravity or opencode.
 
 **Easiest:** copy the [install prompt](.bkit/install.md#install--first-time) into your AI coding tool and let it do the setup.
 
@@ -172,7 +172,7 @@ You need a GitHub repo, Node 20+, pnpm, and at least one of Claude Code, Cursor,
 
 ```bash
 pnpm add -D @cbartens/bkit
-pnpm bkit install --claude    # pick your tools: --claude --cursor --codex --opencode=<provider>
+pnpm bkit install --claude    # pick your tools: --claude --cursor --codex --antigravity --opencode=<provider>
 ```
 
 Adopt the templates you want from `.bkit/templates/`, then open an issue and run the first step from your AI tool:
@@ -192,7 +192,7 @@ No, but you do need to read a design and a plan and decide whether they're right
 bkit is heavier than a single prompt. For a one-off script or a quick experiment, just ask your AI. bkit pays off on a project you'll keep changing and want to trust.
 
 **What does it cost?**
-bkit is free for personal use, non-profits and small businesses (fewer than 100 people and under US$1M revenue); larger companies need a commercial licence ([License](#license)). It runs on AI subscriptions you already have (Claude, Cursor, ChatGPT for Codex), on pay-as-you-go providers through opencode, or on free local models. Several agents reviewing in parallel uses more of your quota than a single chat; that's the price of the second opinions.
+bkit is free for personal use, non-profits and small businesses (fewer than 100 people and under US$1M revenue); larger companies need a commercial licence ([License](#license)). It runs on AI subscriptions you already have (Claude, Cursor, ChatGPT for Codex, Google Antigravity), on pay-as-you-go providers through opencode, or on free local models. Several agents reviewing in parallel uses more of your quota than a single chat; that's the price of the second opinions.
 
 **Can it break my live site?**
 Not without your sign-off. Work happens in a separate copy of the repo, goes through a pull request, must pass every test, and merges into `dev`, never `main`.
@@ -207,7 +207,7 @@ GitHub Issues or Linear.
 - **Resume from state, not session.** Run state lives in `status.jsonl` and `docs/plans/`. A crashed or interrupted run resumes from its last completed step, on any host.
 - **Mechanical step gates.** `bkit steps finish` checks each step's verdict and artifacts before the workflow moves on; build ticks a task only on a confirmed artifact; ship's deferred sweep fails the merge on an unplanned gap.
 - **Engine.** The `bkit` CLI is TypeScript in [`.bkit/core/engine/`](.bkit/core/engine/), built to `dist/`, covered by >3,000 tests. `commands/` holds what you type; `install/`, `render/`, `checks/`, `ledgers/` and `shared/` hold the code underneath; `audits/` holds the tests that read shipped text.
-- **One source, every host.** `.bkit/` renders `.claude/`, `.cursor/`, `.codex/` and `.opencode/`. `bkit check` is the CI drift gate.
+- **One source, every host.** `.bkit/` renders `.claude/`, `.cursor/`, `.codex/`, `.agents/` (Antigravity) and `.opencode/`. `bkit check` is the CI drift gate.
 - **Reviewer independence.** Parallel reviewers can't read sibling output. Design brainstorm, design review and plan scope-check groups also cross models (Opus + Sonnet on Claude; Grok + Composer on Cursor); depth-sensitive lenses (plan review, build challenge) stay on the top tier.
 - **Per-agent pins.** Model and effort per agent, per provider ([`.bkit/prompts.md`](.bkit/prompts.md) § Models), immune to the session default.
 - **Against the literature.** bkit fully implements 13 of the 22 patterns in Antonio Gulli's _Agentic Design Patterns_, partly implements 7 (scoped to shipping code), leaves 2 out by design, and goes beyond the book in 8 places. Full mapping and every agent in execution order: [`.bkit/comparison.md`](.bkit/comparison.md).

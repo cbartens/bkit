@@ -377,6 +377,7 @@ describe("#507 — full install writes core/ and shared/, never a template or a 
         "--claude",
         "--cursor",
         "--codex",
+        "--antigravity",
         "--opencode=openrouter",
         "--tracker=github",
       ],

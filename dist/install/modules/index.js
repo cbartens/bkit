@@ -2,7 +2,7 @@
 // Each module function receives { dryRun, tokens, modelLookup, advisories, ws, … } (ModuleContext)
 // and emits writes into the shared WriteSet.
 //
-// Dispatch order: core → claude → cursor → opencode → codex → cloud
+// Dispatch order: core → claude → cursor → opencode → codex → antigravity → cloud
 // .bkit/version is written LAST — in postDispatch after ALL modules complete (MED-4).
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -13,6 +13,7 @@ import { renderClaudeAgentsCommands, runClaudeModule } from "./claude.js";
 import { renderCursorAgentsCommands, runCursorModule } from "./cursor.js";
 import { renderOpencodeAgentsCommands, runOpencodeModule } from "./opencode.js";
 import { CODEX_SKILLS_DIR, renderCodexAgentsSkills, runCodexModule } from "./codex.js";
+import { renderAntigravityAgentsSkills, runAntigravityModule } from "./antigravity.js";
 import { runCloudModule } from "./cloud.js";
 // ---------------------------------------------------------------------------
 // renderManagedOutputs — re-render the bkit-managed OUTPUT files that the
@@ -52,6 +53,8 @@ export function renderManagedOutputs(modules, ctx) {
         written.push(...renderOpencodeAgentsCommands(ctx));
     if (modules.has("codex"))
         written.push(...renderCodexAgentsSkills(ctx));
+    if (modules.has("antigravity"))
+        written.push(...renderAntigravityAgentsSkills(ctx));
     return written;
 }
 /** Rendered mirror dirs: every `bkit-*` file of the given extension in each is bkit's. */
@@ -63,6 +66,7 @@ const RENDERED_MIRRORS = [
     [".opencode/agents", ".md"],
     [".opencode/commands", ".md"],
     [".codex/agents", ".toml"],
+    [".agents/prompts", ".md"],
 ];
 /**
  * Every file bkit writes into `cwd` that carries the managed-version marker: the core
@@ -119,6 +123,7 @@ export const MODULE_REGISTRY = {
     cursor: runCursorModule,
     opencode: runOpencodeModule,
     codex: runCodexModule,
+    antigravity: runAntigravityModule,
     cloud: runCloudModule,
     // "full" is never directly in the registry — resolveModules expands it to all modules
 };
@@ -129,6 +134,7 @@ export const MODULE_DISPATCH_ORDER = [
     "cursor",
     "opencode",
     "codex",
+    "antigravity",
     "cloud",
 ];
 /**

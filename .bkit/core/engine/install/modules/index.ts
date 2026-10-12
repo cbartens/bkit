@@ -2,7 +2,7 @@
 // Each module function receives { dryRun, tokens, modelLookup, advisories, ws, … } (ModuleContext)
 // and emits writes into the shared WriteSet.
 //
-// Dispatch order: core → claude → cursor → opencode → codex → cloud
+// Dispatch order: core → claude → cursor → opencode → codex → antigravity → cloud
 // .bkit/version is written LAST — in postDispatch after ALL modules complete (MED-4).
 
 import * as fs from "node:fs";
@@ -26,6 +26,7 @@ import { renderClaudeAgentsCommands, runClaudeModule } from "./claude.js";
 import { renderCursorAgentsCommands, runCursorModule } from "./cursor.js";
 import { renderOpencodeAgentsCommands, runOpencodeModule } from "./opencode.js";
 import { CODEX_SKILLS_DIR, renderCodexAgentsSkills, runCodexModule } from "./codex.js";
+import { renderAntigravityAgentsSkills, runAntigravityModule } from "./antigravity.js";
 import { runCloudModule } from "./cloud.js";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +55,11 @@ export interface ModuleContext {
    * opencodeModelLookup because they read different gateway columns.
    */
   codexModelLookup?: Map<string, string>;
+  /**
+   * name -> BARE § Models `Google` cell, for `.agents/prompts/*.md`. Separate from the
+   * other lookups because it reads the Google gateway column.
+   */
+  antigravityModelLookup?: Map<string, string>;
   /**
    * Effort → provider thinking map from prompts.md (Default | Claude | Cursor | …).
    * Shared by Claude / Cursor / opencode transforms. Empty map when prompts.md absent.
@@ -130,6 +136,7 @@ export function renderManagedOutputs(modules: Set<ModuleFlag>, ctx: ModuleContex
   if (modules.has("cursor")) written.push(...renderCursorAgentsCommands(ctx));
   if (modules.has("opencode")) written.push(...renderOpencodeAgentsCommands(ctx));
   if (modules.has("codex")) written.push(...renderCodexAgentsSkills(ctx));
+  if (modules.has("antigravity")) written.push(...renderAntigravityAgentsSkills(ctx));
 
   return written;
 }
@@ -155,6 +162,7 @@ const RENDERED_MIRRORS: ReadonlyArray<[dir: string, ext: string]> = [
   [".opencode/agents", ".md"],
   [".opencode/commands", ".md"],
   [".codex/agents", ".toml"],
+  [".agents/prompts", ".md"],
 ];
 
 /**
@@ -209,6 +217,7 @@ export const MODULE_REGISTRY: Partial<Record<ModuleFlag, ModuleFn>> = {
   cursor: runCursorModule,
   opencode: runOpencodeModule,
   codex: runCodexModule,
+  antigravity: runAntigravityModule,
   cloud: runCloudModule,
   // "full" is never directly in the registry — resolveModules expands it to all modules
 };
@@ -220,6 +229,7 @@ export const MODULE_DISPATCH_ORDER: ModuleFlag[] = [
   "cursor",
   "opencode",
   "codex",
+  "antigravity",
   "cloud",
 ];
 

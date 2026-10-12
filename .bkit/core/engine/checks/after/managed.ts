@@ -174,11 +174,14 @@ export interface MissingOwnedHook {
 }
 
 /** Host modules whose manifest hook files a host config runs, and the flag that installs each. */
-const HOOK_HOST_FLAGS: ReadonlyArray<["claude" | "cursor" | "codex" | "opencode", string]> = [
+const HOOK_HOST_FLAGS: ReadonlyArray<
+  ["claude" | "cursor" | "codex" | "opencode" | "antigravity", string]
+> = [
   ["claude", "--claude"],
   ["cursor", "--cursor"],
   ["codex", "--codex"],
   ["opencode", "--opencode=<provider>"],
+  ["antigravity", "--antigravity"],
 ];
 
 /** Manifest paths a host runs as a hook: `.<host>/hooks/<file>` and `.opencode/plugin/<file>`. */

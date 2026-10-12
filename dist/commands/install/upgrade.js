@@ -38,7 +38,7 @@ import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payloa
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
 import { renderManagedOutputs } from "../../install/modules/index.js";
 import { reconcileMcpJson, enrichClaudeSettingsAllows } from "../../install/modules/claude.js";
-import { parseModelLookup, applyModelOverrides, buildOpencodeModelLookup, parseEffortMap, } from "../../render/models.js";
+import { parseModelLookup, applyModelOverrides, buildOpencodeModelLookup, buildAntigravityModelLookup, parseEffortMap, } from "../../render/models.js";
 /** Zero-value token map — markered-text templates managed on upgrade are token-free. */
 const EMPTY_TOKENS = {
     DEFAULT_BRANCH: "",
@@ -347,6 +347,8 @@ export function detectInstalledHostModules(cwd) {
         mods.add("opencode");
     if (fs.existsSync(path.join(cwd, ".codex", "agents")))
         mods.add("codex");
+    if (fs.existsSync(path.join(cwd, ".agents", "prompts")))
+        mods.add("antigravity");
     return mods;
 }
 /**
@@ -633,6 +635,7 @@ export async function runUpgradeCommand(upgradeFlags) {
     let renderModelLookup = new Map();
     let renderOpencodeModelLookup = new Map();
     let renderCodexModelLookup = new Map();
+    let renderAntigravityModelLookup = new Map();
     let renderEffortMap = new Map();
     const pkgPromptsMd = path.join(getBkitDocsRoot(), "prompts.md");
     const consumerPromptsMd = path.join(process.cwd(), ".bkit", "prompts.md");
@@ -663,6 +666,15 @@ export async function runUpgradeCommand(upgradeFlags) {
             }
             applyModelOverrides(renderCodexModelLookup, "openai", consumerPromptsMd);
         }
+        if (renderModules.has("antigravity")) {
+            try {
+                renderAntigravityModelLookup = buildAntigravityModelLookup(pkgPromptsMd);
+            }
+            catch {
+                // Not fatal — the antigravity module fails per-file if a model is missing
+            }
+            applyModelOverrides(renderAntigravityModelLookup, "google", consumerPromptsMd);
+        }
         renderEffortMap = parseEffortMap(pkgPromptsMd);
     }
     const renderWs = { writes: [] };
@@ -672,6 +684,7 @@ export async function runUpgradeCommand(upgradeFlags) {
         modelLookup: renderModelLookup,
         opencodeModelLookup: renderOpencodeModelLookup,
         codexModelLookup: renderCodexModelLookup,
+        antigravityModelLookup: renderAntigravityModelLookup,
         effortMap: renderEffortMap,
         opencodeProvider: renderProvider,
         advisories: [],

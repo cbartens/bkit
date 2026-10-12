@@ -24,6 +24,7 @@
 | Cursor | derived | `.cursor/agents/` | `.cursor/commands/` | `.cursor/settings.json` + `.cursor/environment.json` + `.cursor/Dockerfile` (templates, `.bkit/templates.md`) | `.cursor/hooks/` (registered in `.cursor/hooks.json`) | `bkit install --cursor` |
 | opencode | additive (opt-in) | `.opencode/agents/` | `.opencode/commands/` | `.opencode/opencode.json` | `.opencode/plugin/bkit-gateguard.js` (PreToolUse) | `bkit install --opencode=<provider>` |
 | Codex CLI | additive (opt-in) | `.codex/agents/` (TOML) | none — skills (below) | none (`openai` = reserved built-in id) | `.codex/hooks/bkit-gateguard.cjs` + `.codex/hooks/bkit-guardrails.cjs` (PreToolUse `apply_patch` / `Bash`, via `.codex/hooks.json`) | `bkit install --codex` |
+| Google Antigravity | additive (opt-in) | `.agents/prompts/` | none — skills (below) | `GEMINI.md` (workspace rule) | `.agents/hooks/bkit-gateguard.cjs` + `.agents/hooks/bkit-guardrails.cjs` (PreToolUse `write_to_file` / `replace_file_content` / `run_command`, via `.agents/hooks.json`) | `bkit install --antigravity` |
 
 **Two axes — host != provider.** **Host** = program reading what bkit writes, identified by its dir (`.claude/`, `.cursor/`, `.opencode/`, `.codex/`). **Provider** = gateway tokens are bought through. Model IDs are per-provider → `prompts.md` § Models = one column per PROVIDER (shared provider = one column, never two). Thinking depth is per-host (field name + ladder set by host config format: `effort:` claude/cursor, a `variant:` field opencode, `model_reasoning_effort` codex) → § Effort = one column per HOST. Neither table grows as hosts x providers.
 
@@ -35,6 +36,7 @@
 | Claude Code | `anthropic` | Claude subscription = cheapest path to Claude models |
 | Cursor | `cursor` | Cursor subscription covers its whole catalog |
 | Codex CLI | `openai` | ChatGPT subscription |
+| Google Antigravity | `google` | Antigravity free tier / Google subscription — cheapest path to Gemini |
 | opencode | **pick one**: `openrouter`, `ollama`, `opencode-zen`, `opencode-go` | no subscription — BYO key, so the choice is yours |
 
 Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-key host → pluggable, flag names the provider (`--opencode=<provider>`). Per-model deviation → consumer `## Model Overrides` below `bkit:end`; no provider override.
@@ -51,6 +53,19 @@ Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-
 > **GateGuard needs the `.codex/` layer TRUSTED.** Codex loads project-local hooks only once trusted. Until then the hook is installed and never fires — present, proving nothing. Same for `bkit-guardrails.cjs`.
 >
 > **Codex cannot prompt.** It parses `permissionDecision: "ask"` but does not implement it — an ask is recorded as an error and the call proceeds. `bkit-guardrails.cjs` therefore blocks the `deny` tier for real and emits the `ask` tier as advisory `additionalContext`: the gate fires and informs, it cannot stop the command. Every ask-tier command is already PROHIBITED in all five workflow headers, so no bkit workflow reaches one. Asserted in `.bkit/core/engine/install/modules/index.integration.test.ts`.
+
+### Google Antigravity — three deviations
+
+<!-- prettier-ignore -->
+| Concern | On Antigravity |
+| --- | --- |
+| Prompt files | `.agents/prompts/*.md` — frontmatter `name`/`description`, model pin from § Models `Google` column, `effort` from § Effort `Antigravity` column, `tools:` respelled to Antigravity tool names. |
+| Workflows = SKILLS at `.agents/skills/bkit-<workflow>/SKILL.md` | no project-scoped command surface; Antigravity auto-discovers `.agents/skills/`. Shared with Codex and third-party skills → every sweep is `bkit-` prefix scoped. |
+| No native subagent tool | the orchestrator loads each prompt in-session with `view_file` and executes its step contract; isolated runs use `run_command` (`agy`). `**Subagent:** @name` respells to `` `view_file` `.agents/prompts/name.md` `` rather than a `/name` slash command. |
+
+> **Antigravity tool names differ from Claude's.** `Read`→`view_file`, `Write`→`write_to_file`, `Edit`→`replace_file_content`, `Bash`→`run_command`, `Grep`→`grep_search`, `Glob`→`list_dir`, `WebSearch`→`search_web`, `WebFetch`→`read_url`. `mcp__<server>__<tool>` keeps its spelling. `applyAntigravityPrompt` / `antigravityToolsBlock` (`.bkit/core/engine/render/hosts.ts`) apply the map at render.
+>
+> **GateGuard + guardrails wired from `.agents/hooks.json`** (PreToolUse on `write_to_file` / `replace_file_content` / `run_command`). Same fail-open advisory engine as the other hosts; the deny tier blocks for real.
 
 **Explicit host axis (no implicit full):** `bkit install` requires ≥1 module flag — bare `bkit install` errors. Every host explicit; hosts compose: `bkit install --claude --cursor --opencode=opencode-zen` installs all three (+ implicit core). `--opencode` cannot render without `=<provider>` (strict allowlist). Switch providers: re-run install. All hosts render from `.bkit/`; run state in `status.jsonl` + plan docs + tracker (never host session) — phase/resumed run moves across hosts/providers mid-feature with identical gates + per-agent pins: hit limit on one, continue on another. `bkit status` → installed hosts + active providers; `bkit doctor` → credentials + tool reachability.
 
@@ -104,6 +119,7 @@ Persistent variant: `RunAtLoad` LaunchAgent plist (`~/Library/LaunchAgents/`) wi
 | Claude | `Agent` | `@` | `@bkit-build-plan-execute` invoked via `Agent` tool |
 | Cursor | `Task` | `/` | `/bkit-build-plan-execute` invoked via `Task` tool |
 | opencode | `/` (slash command) | `/` | `/bkit-build-plan-execute` invoked via opencode slash command |
+| Antigravity | `view_file` (in-session prompt load) | `.agents/prompts/` | `view_file` `.agents/prompts/bkit-build-plan-execute.md` |
 
 **Transform (Claude → Cursor, command bodies):**
 

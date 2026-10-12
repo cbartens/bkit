@@ -283,7 +283,7 @@ export function buildDecisionTable(
     modules instanceof Set
       ? ([...modules].filter((m) =>
           // Includes the opt-in add-ons (cloud) a Set caller passes.
-          ["core", "claude", "cursor", "opencode", "codex", "cloud"].includes(m),
+          ["core", "claude", "cursor", "opencode", "codex", "antigravity", "cloud"].includes(m),
         ) as ModuleName[])
       : (modules as ModuleName[]);
 
@@ -501,7 +501,7 @@ export async function runUninstall(
     modules instanceof Set
       ? ([...modules].filter((m) =>
           // Includes the opt-in add-ons (cloud) a Set caller passes.
-          ["core", "claude", "cursor", "opencode", "codex", "cloud"].includes(m),
+          ["core", "claude", "cursor", "opencode", "codex", "antigravity", "cloud"].includes(m),
         ) as ModuleName[])
       : (modules as ModuleName[]);
 
@@ -715,6 +715,9 @@ export async function runUninstall(
       // separately below: `.agents/skills/` is SHARED with third-party skills installed via
       // skills.sh, so the directory itself must never be removed wholesale.
       ...(moduleList.includes("codex") ? [".codex/agents"] : []),
+      // antigravity prompt mirrors (`.agents/prompts/bkit-*.md`). The workflow skills under
+      // `.agents/skills/bkit-*` are swept below, shared with codex and third-party skills.
+      ...(moduleList.includes("antigravity") ? [".agents/prompts"] : []),
     ];
     for (const dir of mirrorDirs) {
       const absDir = path.join(ctx.cwd, dir);
@@ -735,7 +738,8 @@ export async function runUninstall(
 
     // Workflow skills: `.agents/skills/` is SHARED with third-party skills installed via
     // skills.sh, so only the bkit-prefixed DIRECTORIES are removed — never the parent.
-    if (moduleList.includes("codex")) {
+    // Both codex and antigravity render their workflow entry points here.
+    if (moduleList.includes("codex") || moduleList.includes("antigravity")) {
       const skillsDir = path.join(ctx.cwd, ".agents", "skills");
       if (fs.existsSync(skillsDir)) {
         try {

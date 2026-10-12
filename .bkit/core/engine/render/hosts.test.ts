@@ -13,6 +13,10 @@ import {
   applyOpencodeAgent,
   applyOpencodeCommand,
   applyOpencodeToolRewrites,
+  applyAntigravityPrompt,
+  applyAntigravitySkill,
+  applyAntigravityToolRewrites,
+  antigravityToolsBlock,
   OPENCODE_SESSION_PROMPT_ANCHOR,
   parseFrontmatter,
 } from "./hosts";
@@ -693,4 +697,122 @@ describe("#386: line 1 of a rendered command is a description, never the marker"
       expect((out.match(/bkit:managed/g) ?? []).length).toBe(1);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Antigravity — tool map, prompt frontmatter, skill, invocation rewrite
+// ---------------------------------------------------------------------------
+
+describe("antigravityToolsBlock", () => {
+  it("maps Claude tool names to Antigravity's vocabulary, keeping list shape", () => {
+    const out = antigravityToolsBlock("tools:\n  - Read\n  - Write\n  - Edit\n  - Bash");
+    expect(out).toBe(
+      "tools:\n  - view_file\n  - write_to_file\n  - replace_file_content\n  - run_command\n",
+    );
+  });
+
+  it("maps Grep/Glob and the web tools", () => {
+    expect(antigravityToolsBlock("tools:\n  - Grep\n  - Glob\n  - WebSearch\n  - WebFetch")).toBe(
+      "tools:\n  - grep_search\n  - list_dir\n  - search_web\n  - read_url\n",
+    );
+  });
+
+  it("keeps MCP tool spelling unchanged", () => {
+    expect(antigravityToolsBlock("tools:\n  - mcp__serena__*\n  - Read")).toBe(
+      "tools:\n  - mcp__serena__*\n  - view_file\n",
+    );
+  });
+
+  it("supports the inline array form and returns '' for no tools", () => {
+    expect(antigravityToolsBlock("tools: [Read, Grep]")).toBe(
+      "tools:\n  - view_file\n  - grep_search\n",
+    );
+    expect(antigravityToolsBlock(null)).toBe("");
+    expect(antigravityToolsBlock("tools:\n")).toBe("");
+  });
+});
+
+describe("applyAntigravityPrompt", () => {
+  const lookup = new Map([["build-plan", "gemini-3.8-pro"]]);
+  const effortMap = parseEffortMap(path.join(getBkitDocsRoot(), "prompts.md"));
+
+  it("emits name, description, bare Google model and mapped tools", () => {
+    const input = `---\nname: build-plan\ndescription: Execute plan tasks\neffort: high\ntools:\n  - Read\n  - Edit\npermissionMode: acceptEdits\nmaxTurns: 150\n---\nBody.\n`;
+    const result = applyAntigravityPrompt(input, lookup, effortMap);
+    expect(result).toContain("name: build-plan");
+    expect(result).toContain("description: Execute plan tasks");
+    expect(result).toContain("model: gemini-3.8-pro\n");
+    expect(result).toContain("  - view_file\n");
+    expect(result).toContain("  - replace_file_content\n");
+    expect(result).not.toContain("permissionMode:");
+    expect(result).not.toContain("maxTurns:");
+  });
+
+  it("maps effort through the Antigravity column — xhigh and max ceiling at max", () => {
+    const eff = (e: string) =>
+      applyAntigravityPrompt(
+        `---\nname: build-plan\ndescription: d\neffort: ${e}\n---\nBody.\n`,
+        lookup,
+        effortMap,
+      ).match(/^effort: (.+)$/m)?.[1];
+    expect(eff("low")).toBe("low");
+    expect(eff("medium")).toBe("medium");
+    expect(eff("high")).toBe("high");
+    expect(eff("xhigh")).toBe("max");
+    expect(eff("max")).toBe("max");
+  });
+
+  it("exits non-zero when the Google model lookup is missing", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((code: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as never);
+    expect(() =>
+      applyAntigravityPrompt(`---\nname: nope\ndescription: d\n---\nBody.\n`, lookup),
+    ).toThrow("process.exit(1)");
+    exitSpy.mockRestore();
+  });
+
+  it("returns content unchanged when there is no frontmatter", () => {
+    const input = "# No frontmatter\nBody.\n";
+    expect(applyAntigravityPrompt(input, lookup)).toBe(input);
+  });
+});
+
+describe("applyAntigravityToolRewrites", () => {
+  it("respells `Agent` / `Skill` tools to `view_file`", () => {
+    const out = applyAntigravityToolRewrites("Use the `Agent` tool, then the `Skill` tool.\n");
+    expect(out).toBe("Use the `view_file` tool, then the `view_file` tool.\n");
+  });
+
+  it("resolves **Subagent:** @name to the prompt file loaded with view_file", () => {
+    const out = applyAntigravityToolRewrites(
+      "1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n",
+    );
+    expect(out).toContain(
+      "**Subagent:** Invoke `view_file` `.agents/prompts/bkit-build-plan-execute.md` using `view_file` tool:",
+    );
+    expect(out).not.toContain("`@bkit-build-plan-execute`");
+  });
+
+  it("leaves @name in body prose untouched", () => {
+    const input = "See @build-plan for details.\n";
+    expect(applyAntigravityToolRewrites(input)).toBe(input);
+  });
+});
+
+describe("applyAntigravitySkill", () => {
+  const wf =
+    '---\ndescription: "Build Feature — Autonomous implementation"\n---\n\n# Build\n\n**Subagent:** @bkit-build-challenge-1\n';
+
+  it("adds name, keeps the description and rewrites invocations in the body", () => {
+    const out = applyAntigravitySkill(wf, "bkit-build");
+    expect(out).toMatch(/^---\nname: bkit-build\n/);
+    expect(out).toContain('description: "Build Feature — Autonomous implementation"');
+    expect(out).toContain("**Subagent:** `view_file` `.agents/prompts/bkit-build-challenge-1.md`");
+  });
+
+  it("supplies frontmatter when the workflow has none", () => {
+    const out = applyAntigravitySkill("# Bare\n", "bkit-x");
+    expect(out).toMatch(/^---\nname: bkit-x\ndescription: .+\n---\n/);
+  });
 });

@@ -13,12 +13,12 @@ Two paste blocks below — **install** (first time) and **upgrade** (already on 
 
 ### Install — first time
 
-No token or registry setup is needed — `@cbartens/bkit` is public on npmjs. Copy the block below into Claude Code / Cursor / Codex / opencode.
+No token or registry setup is needed — `@cbartens/bkit` is public on npmjs. Copy the block below into Claude Code / Cursor / Codex / Antigravity / opencode.
 
 ````text
 Install the latest `@cbartens/bkit` in this repo and finish setup.
 1. `@cbartens/bkit` is public on npmjs — no registry mapping, no PAT, no env. Confirmed.
-2. Install and seed hosts in one Bash call (`bkit install` requires named modules — core implicit; pick the hosts this repo uses from `--claude --cursor --codex --opencode=<provider>`; if `bkit` not on PATH use `pnpm bkit`):
+2. Install and seed hosts in one Bash call (`bkit install` requires named modules — core implicit; pick the hosts this repo uses from `--claude --cursor --codex --antigravity --opencode=<provider>`; if `bkit` not on PATH use `pnpm bkit`):
    ```bash
    pnpm add -D @cbartens/bkit@latest && \
      bkit install --claude --cursor
@@ -84,6 +84,7 @@ No CI step, secret, `.npmrc` mapping or Vercel env is needed — CI reaches npmj
 bkit install --claude                    # .claude/** + CLAUDE.md + core
 bkit install --cursor                    # .cursor/** + core
 bkit install --codex                     # Codex CLI host + core
+bkit install --antigravity               # Google Antigravity host + core
 bkit install --opencode=opencode-go      # additive opencode host (opencode-native gateway) + core
 
 # A bare install errors — name at least one module:
@@ -99,7 +100,7 @@ bkit upgrade --latest                    # newest published; or --to=<version> t
 bkit check
 ```
 
-**Module flags** (composable; symmetric install ↔ uninstall): `--claude` `--cursor` `--codex` `--opencode=<provider>`. The CI workflow, the Vale config, the tool configs, the git hooks, the slop-scan type-suppression plugin (`scripts/slop/bkit-slop-type-suppression.mjs`), and the tool `package.json` scripts and devDeps are templates you copy from `.bkit/templates/` (`.bkit/templates.md`). Core, implicit on every install, seeds the `bkit:gate:*` / `bkit:deps:*` scripts every workflow runs (add-if-missing; a name already present is never touched); point their values at your stack, see `.bkit/README.md` § Required tools. Any other module flag is an unknown-flag error.
+**Module flags** (composable; symmetric install ↔ uninstall): `--claude` `--cursor` `--codex` `--antigravity` `--opencode=<provider>`. The CI workflow, the Vale config, the tool configs, the git hooks, the slop-scan type-suppression plugin (`scripts/slop/bkit-slop-type-suppression.mjs`), and the tool `package.json` scripts and devDeps are templates you copy from `.bkit/templates/` (`.bkit/templates.md`). Core, implicit on every install, seeds the `bkit:gate:*` / `bkit:deps:*` scripts every workflow runs (add-if-missing; a name already present is never touched); point their values at your stack, see `.bkit/README.md` § Required tools. Any other module flag is an unknown-flag error.
 
 **Opt-in flags:** `--tracker=github|linear`, `--auto=claude|cursor` (cloud agents), `--opencode=<provider>` (additive opencode execution host — `openrouter`, `ollama`, `opencode-zen`, `opencode-go`). Dependency updaters: copy an example and own it. See [§ Optional post-install decisions](#optional-post-install-decisions).
 
