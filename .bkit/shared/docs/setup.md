@@ -29,7 +29,7 @@ Run each host (`claude`, `opencode`, `codex`) in its own terminal window — not
 
 ## Remote access
 
-Reach a host terminal from another device over a private mesh VPN. Suggested services: [Tailscale](https://tailscale.com/) (mesh VPN; free Personal plan covers device-to-device access), [OpenLens](https://apps.apple.com/us/app/openlens-opencode-client/id6759910797) (OpenCode iOS client).
+Mostly relevant to the `opencode` host — `claude` / `cursor` / `codex` ship their own mobile / desktop clients. Reach an OpenCode host terminal from another device over a private mesh VPN. Suggested services: [Tailscale](https://tailscale.com/) (mesh VPN; free Personal plan covers device-to-device access), [OpenLens](https://apps.apple.com/us/app/openlens-opencode-client/id6759910797) (OpenCode iOS client).
 
 - Bind: `opencode service set hostname 0.0.0.0` (all interfaces) or the tailnet IP (tailnet only); `opencode service set port <port>`; `opencode service start` to apply. Loopback-only default keeps the service off the LAN; tailnet ACLs still apply.
 - HTTPS proxy: `tailscale serve --bg <port>` → `https://<host>.<tailnet>.ts.net`. Requires tailnet HTTPS certificates enabled (DNS page); publishes machine names to the certificate-transparency log (free).
