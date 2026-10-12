@@ -68,6 +68,8 @@ New host — row above + `run<Host>Module` (`.bkit/core/engine/install/modules/<
 
 **Root cause:** macOS GUI apps (Dock/Finder/Spotlight) run under `launchd` — **do not** inherit login-shell env. `direnv` exports from `.bkit/.env` stay shell-only. Token placeholders (`${BKIT_GH_TOKEN}` in `.cursor/mcp.json`, `{env:BKIT_OPENCODE_API_KEY}` in `.opencode/opencode.json`) resolve empty → MCP auth failures.
 
+**Shared service env (opencode):** `{env:…}` in `.opencode/opencode.json` resolves in OpenCode's background service — machine-global, one per user, env fixed at service start. Repo-local direnv `.env` is invisible (one repo's `apps/web/.env.local` never reaches another); service env = union of every repo's MCP tokens. Add / rotate a token → source it, then `opencode service restart`.
+
 **Fix — launcher verbs:** `bkit cursor` / `bkit opencode` exec app binary with `.bkit/.env` merged into child env. Dynamic, per-repo, zero global state.
 
 ```
