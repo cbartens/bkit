@@ -12,3 +12,4 @@
 {"type":"step-done","workflow":"design","step":"design-workstream-suggest","status":"DONE","at":"2026-10-12T04:51:39Z","parentSha":"e5ad54065d4a989c8d0dae32b4e1c504acfcf1cf","artifacts":[]}
 {"type":"step-done","workflow":"design","step":"design-close-workflow","status":"DONE","at":"2026-10-12T04:51:42Z","parentSha":"c1c2bf5527e625818f1394743f62f9c308879333","artifacts":[]}
 {"type":"workflow-done","workflow":"design","at":"2026-10-12T04:51:42Z"}
+{"type":"close-transport","shape":"local","sha":"3210bda11d43175919774bc5544eed49d7b07c6c","scanResult":"clean","at":"2026-10-12T04:53:46Z"}
