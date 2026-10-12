@@ -1,0 +1,19 @@
+{
+  "name": "bkit-explainer",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.34.4",
+  "devDependencies": {
+    "@cbartens/bkit": "5.0.2"
+  },
+  "scripts": {
+    "typecheck": "node --check logic.js && node --check data.js",
+    "test": "node --test",
+    "build": "echo 'build: not configured (fixture stub)'"
+  },
+  "bkit": {
+    "issueTracker": "github",
+    "capstoneJob": "bkit-tests-check",
+    "ciWorkflow": "bkit-ci.yml"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "bkit-explainer",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.34.4",
+  "devDependencies": {
+    "@cbartens/bkit": "5.0.2"
+  },
+  "scripts": {
+    "typecheck": "node --check logic.js && node --check data.js",
+    "test": "node --test",
+    "lint": "echo 'lint: not configured (fixture stub)'",
+    "format:check": "echo 'format:check: not configured (fixture stub)'",
+    "lint:prose": "echo 'lint:prose: not configured (fixture stub)'",
+    "slop:delta": "echo 'slop:delta: not configured (fixture stub)'",
+    "lint-staged": "echo 'lint-staged: not configured (fixture stub)'",
+    "build": "echo 'build: not configured (fixture stub)'",
+    "bkit:gate:format": "pnpm lint-staged",
+    "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
+    "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test",
+    "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build",
+    "bkit:deps:outdated": "pnpm outdated",
+    "bkit:deps:audit": "pnpm audit"
+  },
+  "bkit": {
+    "issueTracker": "github",
+    "capstoneJob": "bkit-tests-check",
+    "ciWorkflow": "bkit-ci.yml"
+  }
+}

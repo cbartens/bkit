@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>bkit explainer</title>
+  </head>
+  <body>
+    <div id="out">EMPTY</div>
+    <script src="data.js"></script>
+    <script src="logic.js"></script>
+    <script>
+      document.getElementById("out").textContent = JSON.stringify(
+        window.__BKIT_EXPLAINER__.evaluate(1),
+      );
+    </script>
+  </body>
+</html>

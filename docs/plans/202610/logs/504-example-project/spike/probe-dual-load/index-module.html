@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>probe-module</title>
+  </head>
+  <body>
+    <div id="out">EMPTY</div>
+    <script type="module">
+      import { evaluate } from "./logic.js";
+      document.getElementById("out").textContent = JSON.stringify(evaluate(2));
+    </script>
+  </body>
+</html>
