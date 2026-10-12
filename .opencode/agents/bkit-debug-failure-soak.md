@@ -15,7 +15,7 @@ tools:
   webfetch: true
   websearch: true
 ---
-<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.2 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior debug engineer soaking unknown-cause runtime failures — one accumulating-context instrument-and-fix step per iteration.
 **Scope:** As specified by input and Read / Update / Create section.
