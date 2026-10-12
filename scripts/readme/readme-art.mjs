@@ -36,8 +36,8 @@ function findBrowser() {
     if (c.includes("/") || c.includes("\\")) {
       if (existsSync(c)) return c;
     } else if (
-      spawnSync(process.platform === "win32" ? "where" : "which", [c], { stdio: "ignore" }).status ===
-      0
+      spawnSync(process.platform === "win32" ? "where" : "which", [c], { stdio: "ignore" })
+        .status === 0
     ) {
       return c;
     }
@@ -47,10 +47,7 @@ function findBrowser() {
 
 // The svg() helper writes width/height on the root element, so read the intrinsic size back off the
 // markup and screenshot the SVG at exactly that viewport.
-const dims = (s) => [
-  Number(s.match(/\bwidth="(\d+)"/)[1]),
-  Number(s.match(/\bheight="(\d+)"/)[1]),
-];
+const dims = (s) => [Number(s.match(/\bwidth="(\d+)"/)[1]), Number(s.match(/\bheight="(\d+)"/)[1])];
 
 function toPng(browser, svgPath, pngPath, width, height) {
   // A private profile per run: Chrome's default user-data-dir is single-instance, so back-to-back
