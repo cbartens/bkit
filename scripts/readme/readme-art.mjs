@@ -1,13 +1,89 @@
 // Renders the root README images (hero, features grid, pipeline, fences, context map), light + dark,
-// plus the repo's social preview card, into .github/assets/. Edit the copy below, then: node scripts/readme/readme-art.mjs
+// plus the repo's social preview card, into .github/assets/ as both .svg and .png. Edit the copy
+// below, then: node scripts/readme/readme-art.mjs
 // Text is not auto-wrapped: keep tile lines short and eyeball the output at ~880px.
-import { writeFileSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { writeFileSync, mkdirSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 
-const OUT =
-  process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".github", "assets");
+const OUT = resolve(
+  process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".github", "assets"),
+);
 mkdirSync(OUT, { recursive: true });
+
+// PNGs are rasterised with headless Chrome/Chromium, so the script needs no extra dependency.
+// Override the binary with CHROME_BIN (or PUPPETEER_EXECUTABLE_PATH) if auto-detection misses it.
+// Without a browser the SVGs still render and the PNG step is skipped with a warning.
+const BROWSER_CANDIDATES = [
+  process.env.CHROME_BIN,
+  process.env.PUPPETEER_EXECUTABLE_PATH,
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "google-chrome",
+  "chromium",
+].filter(Boolean);
+
+function findBrowser() {
+  for (const c of BROWSER_CANDIDATES) {
+    if (c.includes("/") || c.includes("\\")) {
+      if (existsSync(c)) return c;
+    } else if (
+      spawnSync(process.platform === "win32" ? "where" : "which", [c], { stdio: "ignore" }).status ===
+      0
+    ) {
+      return c;
+    }
+  }
+  return null;
+}
+
+// The svg() helper writes width/height on the root element, so read the intrinsic size back off the
+// markup and screenshot the SVG at exactly that viewport.
+const dims = (s) => [
+  Number(s.match(/\bwidth="(\d+)"/)[1]),
+  Number(s.match(/\bheight="(\d+)"/)[1]),
+];
+
+function toPng(browser, svgPath, pngPath, width, height) {
+  // A private profile per run: Chrome's default user-data-dir is single-instance, so back-to-back
+  // headless invocations otherwise collide and exit non-zero without writing the screenshot.
+  const profile = mkdtempSync(join(tmpdir(), "bkit-readme-png-"));
+  const base = [
+    "--hide-scrollbars",
+    "--disable-gpu",
+    "--no-sandbox",
+    `--user-data-dir=${profile}`,
+    "--force-device-scale-factor=1",
+    `--window-size=${width},${height}`,
+    `--screenshot=${pngPath}`,
+    pathToFileURL(svgPath).href,
+  ];
+  try {
+    // `--headless=new` on modern Chrome; fall back to the legacy flag for older builds. Chrome
+    // occasionally fails to exit (e.g. under heavy load), so cap each attempt: the screenshot is
+    // already on disk by then, and the timeout keeps the script from hanging on a stuck browser.
+    for (const mode of ["--headless=new", "--headless"]) {
+      rmSync(pngPath, { force: true });
+      spawnSync(browser, [mode, ...base], {
+        stdio: "ignore",
+        timeout: 30000,
+        killSignal: "SIGKILL",
+      });
+      if (existsSync(pngPath)) return;
+    }
+    throw new Error(`headless render failed: ${pngPath}`);
+  } finally {
+    rmSync(profile, { recursive: true, force: true });
+  }
+}
 
 const SANS =
   "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif";
@@ -130,9 +206,8 @@ function hero(t) {
 }
 
 // ---------- Social preview ----------
-// GitHub repo Settings → Social preview takes PNG/JPG only. To export:
-// "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
-//   --window-size=1280,640 --hide-scrollbars --screenshot=.github/assets/bkit-social.png .github/assets/bkit-social.svg
+// GitHub repo Settings → Social preview takes PNG/JPG only. `bkit-social.png` is emitted by the
+// headless-browser rasterisation at the end of this script; upload it there by hand.
 function social(t) {
   const W = 1280,
     H = 640,
@@ -853,13 +928,30 @@ function features(t) {
   );
 }
 
+// Write every image as SVG, then rasterise the same markup to a matching PNG, so the two never
+// drift apart.
+const browser = findBrowser();
+if (!browser)
+  console.error(
+    "[bkit] no Chrome/Chromium found — wrote SVGs only. Set CHROME_BIN to a browser to emit PNGs.",
+  );
+
+const images = [];
 for (const [name, t] of Object.entries(THEMES)) {
-  writeFileSync(join(OUT, `bkit-hero-${name}.svg`), hero(t));
-  writeFileSync(join(OUT, `bkit-pipeline-${name}.svg`), pipeline(t));
-  writeFileSync(join(OUT, `bkit-features-${name}.svg`), features(t));
-  writeFileSync(join(OUT, `bkit-fences-${name}.svg`), fences(t));
-  writeFileSync(join(OUT, `bkit-context-${name}.svg`), context(t));
+  images.push([`bkit-hero-${name}`, hero(t)]);
+  images.push([`bkit-pipeline-${name}`, pipeline(t)]);
+  images.push([`bkit-features-${name}`, features(t)]);
+  images.push([`bkit-fences-${name}`, fences(t)]);
+  images.push([`bkit-context-${name}`, context(t)]);
 }
-// One image: link previews have no light/dark switch, and dark reads on both.
-writeFileSync(join(OUT, "bkit-social.svg"), social(THEMES.dark));
-console.log("ok");
+// One social image: link previews have no light/dark switch, and dark reads on both.
+images.push(["bkit-social", social(THEMES.dark)]);
+
+for (const [name, markup] of images) {
+  const svgPath = join(OUT, `${name}.svg`);
+  writeFileSync(svgPath, markup);
+  if (!browser) continue;
+  const [w, h] = dims(markup);
+  toPng(browser, svgPath, join(OUT, `${name}.png`), w, h);
+}
+console.log(browser ? "ok (svg + png)" : "ok (svg only)");
