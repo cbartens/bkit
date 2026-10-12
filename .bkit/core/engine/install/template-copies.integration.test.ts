@@ -180,6 +180,22 @@ describe("formatTemplateChanges", () => {
     expect(text).toContain(".bkit/templates.md");
   });
 
+  it("names the consequence when a changed template's adopted copy backs a gate", () => {
+    const text = formatTemplateChanges({
+      changed: ["slop-scan.config.json"],
+      added: [],
+      removed: [],
+    });
+    expect(text).toContain(path.join(COPIES, "slop-scan.config.json"));
+    expect(text).toContain("slop gate may go red");
+  });
+
+  it("leaves a changed template with no gate consequence unannotated", () => {
+    const text = formatTemplateChanges({ changed: [".envrc"], added: [], removed: [] });
+    expect(text).toContain(path.join(COPIES, ".envrc"));
+    expect(text).not.toContain("slop gate may go red");
+  });
+
   it("is empty when nothing changed", () => {
     expect(formatTemplateChanges({ changed: [], added: [], removed: [] })).toBe("");
   });
