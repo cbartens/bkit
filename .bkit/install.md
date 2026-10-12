@@ -1,6 +1,6 @@
 # Install, upgrade, and operate bkit
 
-<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.2 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 First-time install and upgrade, install lifecycle, uninstall and recovery. Ships in the package at `node_modules/@cbartens/bkit/.bkit/core/.bkit/install.md` and is mirrored into the consumer repo at `.bkit/install.md`. Ongoing ops and triggering workflows: `.bkit/README.md`.
 
@@ -13,12 +13,12 @@ Two paste blocks below — **install** (first time) and **upgrade** (already on 
 
 ### Install — first time
 
-No token or registry setup is needed — `@cbartens/bkit` is public on npmjs. Copy the block below into Claude Code / Cursor / any coding agent.
+No token or registry setup is needed — `@cbartens/bkit` is public on npmjs. Copy the block below into Claude Code / Cursor / Codex / opencode.
 
 ````text
 Install the latest `@cbartens/bkit` in this repo and finish setup.
 1. `@cbartens/bkit` is public on npmjs — no registry mapping, no PAT, no env. Confirmed.
-2. Install and seed hosts in one Bash call (`bkit install` requires named modules — core implicit; if `bkit` not on PATH use `pnpm bkit`):
+2. Install and seed hosts in one Bash call (`bkit install` requires named modules — core implicit; pick the hosts this repo uses from `--claude --cursor --codex --opencode=<provider>`; if `bkit` not on PATH use `pnpm bkit`):
    ```bash
    pnpm add -D @cbartens/bkit@latest && \
      bkit install --claude --cursor
@@ -122,7 +122,7 @@ Two flows — pick one. Both put `BKIT_GH_TOKEN` in shell for the GitHub MCP ser
 
 ```bash
 # Add to ~/.zshrc (or ~/.bashrc)
-export BKIT_GH_TOKEN=<fine-grained PAT>                 # GitHub MCP
+export BKIT_GH_TOKEN=<PAT — fine-grained (one owner) or classic (multiple owners)>   # GitHub MCP
 export BKIT_LINEAR_API_KEY=<Linear personal API key>        # Linear MCP + preflight
 
 # Reload

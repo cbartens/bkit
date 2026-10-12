@@ -212,10 +212,11 @@ const OPENCODE_PROVIDER_BASE_URL_SENTINEL = "@@OPENCODE_PROVIDER_BASE_URL@@";
  * Resolves the @@OPENCODE_TRACKER_MCP@@ sentinel into the correct mcpServers entry
  * and fills in provider-specific fields.
  *
- * Also injects `curl *{domain}*` / `wget *{domain}*` **allow** rules (after the
- * template's `curl *` / `wget *` ask) for {@link resolveNetworkAllowlist} so
- * context-fetch / provider hosts do not prompt (OpenCode bash is last-match-wins), and
- * `<server>_*` allows for the consumer's `mcp-servers` block.
+ * Also injects derived **allow** rules for {@link resolveNetworkAllowlist} so
+ * context-fetch / provider hosts do not prompt on either fetch surface: `curl *{domain}*` /
+ * `wget *{domain}*` after the template's `curl *` / `wget *` ask (OpenCode bash is
+ * last-match-wins), and `*{domain}*` into the `permission.webfetch` URL map (after its
+ * `"*": "ask"`). Adds `<server>_*` allows for the consumer's `mcp-servers` block.
  */
 export function renderOpencodeJson(templatePath, tracker, provider, cwd = process.cwd()) {
     const raw = fs.readFileSync(templatePath, "utf-8");
@@ -229,10 +230,14 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
     // opencode's MCP schema differs from Claude/Cursor: remote servers use type "remote"
     // (NOT "http" — not in opencode's enum, which makes the whole config invalid) and read
     // secrets via {env:VAR} (NOT shell ${VAR}). See https://opencode.ai/config.json.
+    // github: "oauth": false disables opencode's automatic OAuth. api.githubcopilot.com/mcp/
+    // authenticates via the Authorization header and has no OAuth DCR, so a stale/empty
+    // {env:BKIT_GH_TOKEN} would otherwise surface as a "sign in" prompt whose flow fails with
+    // "dynamic auth not supported" instead of a clear 401. See opencode.ai/docs/mcp-servers.
     let mcpEntry;
     if (tracker === "github") {
         mcpEntry =
-            '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer {env:BKIT_GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
+            '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "oauth": false, "headers": { "Authorization": "Bearer {env:BKIT_GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
     }
     else if (tracker === "linear") {
         mcpEntry = '"linear": { "type": "remote", "url": "https://mcp.linear.app/mcp" }';
@@ -287,9 +292,16 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
     }
 }
 /**
- * Append curl/wget domain allows after template ask rules (OpenCode last-match-wins),
- * and one `<server>_*` allow per declared MCP server — opencode names MCP tools
- * `<server>_<tool>` and matches permission keys as globs against the tool name.
+ * Append derived allows for the consumer's resolved network allowlist (OpenCode
+ * last-match-wins), and one `<server>_*` allow per declared MCP server — opencode names
+ * MCP tools `<server>_<tool>` and matches permission keys as globs against the tool name.
+ *
+ * The allowlist is applied to BOTH fetch surfaces, so an allowlisted host does not prompt
+ * whichever path the agent takes:
+ *   - fetch tool — `permission.webfetch` is a URL-keyed map (`{ "*": "ask" }` from the
+ *     template); opencode matches the resource against the URL, so `*{base}*` allows it;
+ *   - shell fetch — `permission.bash` gains `curl *{base}*` / `wget *{base}*` after the
+ *     template's `curl *` / `wget *` ask.
  */
 function injectOpencodeDerivedAllows(parsed, cwd) {
     const permission = parsed.permission;
@@ -298,12 +310,20 @@ function injectOpencodeDerivedAllows(parsed, cwd) {
     for (const server of extractMcpServers(cwd)) {
         permission[`${server}_*`] = "allow";
     }
-    if (typeof permission.bash !== "object" || permission.bash === null)
-        return;
-    const bash = permission.bash;
-    for (const base of networkAllowlistBases(resolveNetworkAllowlist(cwd))) {
-        bash[`curl *${base}*`] = "allow";
-        bash[`wget *${base}*`] = "allow";
+    const bases = networkAllowlistBases(resolveNetworkAllowlist(cwd));
+    if (typeof permission.bash === "object" && permission.bash !== null) {
+        const bash = permission.bash;
+        for (const base of bases) {
+            bash[`curl *${base}*`] = "allow";
+            bash[`wget *${base}*`] = "allow";
+        }
+    }
+    // Fetch tool — opencode matches the webfetch resource against the requested URL.
+    if (typeof permission.webfetch === "object" && permission.webfetch !== null) {
+        const webfetch = permission.webfetch;
+        for (const base of bases) {
+            webfetch[`*${base}*`] = "allow";
+        }
     }
 }
 /**

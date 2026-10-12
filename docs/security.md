@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.2 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 # Security
 
@@ -60,7 +60,7 @@ App / stack credentials do not belong here — runtime keys and `/bkit-debug` ob
 <!-- prettier-ignore -->
 | Credential | Scope | Notes |
 | --- | --- | --- |
-| `BKIT_GH_TOKEN` | GitHub MCP server; self-hosted Renovate platform auth | Fine-grained write PAT, scoped to the target repo. |
+| `BKIT_GH_TOKEN` | GitHub MCP server; self-hosted Renovate platform auth | Write PAT. Fine-grained (one owner) when bkit touches a single repo/owner; classic when one token must span owners. |
 | opencode provider keys | opencode host model access | Referenced as `{env:KEY}` in `.opencode/opencode.json` — never inlined. In CI the single `OPENCODE_PROVIDER_KEY` secret fans out to the configured provider's env-var name. |
 | `BKIT_ANTHROPIC_API_KEY` / `BKIT_CURSOR_API_KEY` / `BKIT_LINEAR_API_KEY` | Cloud agents and tracker | Optional; opt-in surfaces only. |
 

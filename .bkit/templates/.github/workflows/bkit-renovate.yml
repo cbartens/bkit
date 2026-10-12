@@ -36,7 +36,7 @@ on:
     - cron: "17 6 * * *"
 
 # Least privilege: Renovate authenticates EVERY GitHub operation with BKIT_GH_TOKEN
-# below (a fine-grained PAT or App token — NOT GITHUB_TOKEN). The job GITHUB_TOKEN
+# below (a fine-grained or classic PAT, or an App token — NOT GITHUB_TOKEN). The job GITHUB_TOKEN
 # needs no write scope.
 permissions:
   contents: read
@@ -67,13 +67,15 @@ jobs:
       # then set `token: ${{ steps.app-token.outputs.token }}` below.
       - uses: renovatebot/github-action@dd5302ec17783b2fc721b19ae7209b57b1587765 # v46.1.17
         with:
-          # Fine-grained PAT secret (default). Repository permissions (this repo):
+          # PAT secret (default). FINE-GRAINED repository permissions (this repo):
           #   Contents: Read and write · Pull requests: Read and write ·
           #   Workflows: Read and write (the github-actions manager edits
           #   .github/workflows/* SHAs) · Issues: Read and write (Dependency Dashboard) ·
           #   Dependabot alerts: Read (GitHub's vulnerability feed) · Metadata: Read-only.
-          # (Personal-account tokens only: Account permission "Email addresses: Read" lets
-          # Renovate use your verified email as the git author — org-owned tokens have no
+          # CLASSIC alternative — when one token must span owners (fine-grained PATs cannot):
+          #   scopes `repo` · `workflow` · `security_events` (+ `user:email` for authorship).
+          # (Personal-account fine-grained tokens only: Account permission "Email addresses: Read"
+          # lets Renovate use your verified email as the git author — org-owned tokens have no
           # such permission, so set RENOVATE_GIT_AUTHOR below instead.)
           token: ${{ secrets.BKIT_GH_TOKEN }}
         env:
@@ -82,7 +84,7 @@ jobs:
           RENOVATE_AUTODISCOVER: "false"
           RENOVATE_PLATFORM: github
           # Commit author for Renovate's branches. Optional but recommended on ORG repos:
-          # org-owned fine-grained PATs cannot grant "Email addresses", so Renovate can't
+          # org-owned tokens cannot grant "Email addresses", so Renovate can't
           # read your email and falls back to the Mend bot author (Unverified commits).
           # Set the repo variable RENOVATE_GIT_AUTHOR (Settings -> Secrets and variables ->
           # Actions -> Variables), e.g. `Renovate Bot <renovate@your-domain>`. Leave the

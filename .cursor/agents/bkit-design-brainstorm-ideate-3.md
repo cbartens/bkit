@@ -10,7 +10,7 @@ tools:
   - mcp__serena__*
   - Write
 ---
-<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.2 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect proposing 2-3 design approaches framed by failure mode — scale, drift, on-call, handover.
 **Scope:** As specified by input and Read / Update / Create section.

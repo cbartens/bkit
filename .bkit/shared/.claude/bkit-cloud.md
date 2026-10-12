@@ -112,6 +112,6 @@ Your `/bkit-*` skills and bkit subagents load automatically from the committed
 
 ---
 
-`BKIT_GH_TOKEN` fine-grained PAT permissions, the `gh auth login --with-token`
+`BKIT_GH_TOKEN` PAT permissions (fine-grained vs classic), the `gh auth login --with-token`
 step, MCP OAuth flow, and the one-environment-per-repo rationale all live in
 `.bkit/cloud.md` § Claude Code on the web.

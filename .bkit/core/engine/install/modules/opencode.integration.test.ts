@@ -429,9 +429,10 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     const curlGhIdx = Object.keys(perm.bash).indexOf("curl *github.com*");
     expect(curlGhIdx).toBeGreaterThan(curlAskIdx);
     expect(perm.websearch).toBe("allow");
-    // OpenCode schema: webfetch/websearch are Action only (ask|allow|deny), not
-    // PermissionObjectConfig — URL maps fail validation (PermissionActionConfig).
-    expect(perm.webfetch).toBe("ask");
+    // webfetch is a URL-keyed map (opencode matches the resource against the requested
+    // URL); the template seeds `{ "*": "ask" }` and the resolved allowlist is layered on
+    // top (last-match-wins) — see injectOpencodeDerivedAllows.
+    expect(perm.webfetch["*"]).toBe("ask");
     // Destructive-git + delete commands gated to parity with the Claude host
     // (.claude/settings.json ask-list); opencode is never weaker than the Claude peer.
     for (const cmd of [
@@ -497,7 +498,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     }
   });
 
-  it("injects consumer allowed-domains as curl/wget allows (stack-agnostic)", () => {
+  it("injects consumer allowed-domains into both fetch surfaces (shell + fetch tool)", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-net-"));
     fs.mkdirSync(path.join(tmp, ".agents"), { recursive: true });
     fs.writeFileSync(
@@ -506,8 +507,16 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
       "utf-8",
     );
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter", tmp));
+    // Shell fetch.
     expect(parsed.permission.bash["curl *vercel.com*"]).toBe("allow");
     expect(parsed.permission.bash["wget *supabase.com*"]).toBe("allow");
+    // Fetch tool — the same bases must reach the webfetch URL map, or a host on the
+    // allowlist still prompts when the agent uses the fetch tool instead of a shell.
+    expect(parsed.permission.webfetch["*vercel.com*"]).toBe("allow");
+    expect(parsed.permission.webfetch["*supabase.com*"]).toBe("allow");
+    // Last-match-wins: the catch-all ask must precede the derived allows.
+    const wfKeys = Object.keys(parsed.permission.webfetch);
+    expect(wfKeys.indexOf("*vercel.com*")).toBeGreaterThan(wfKeys.indexOf("*"));
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 

@@ -6,6 +6,26 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [5.0.2] — 2026-10-12
+
+### Added
+
+- **Pluggable secrets-store adapters and a built-in Cursor store** (#529). `bkit-secrets.config.mjs` gains `type: "custom"` + `module`, which loads a repo-local adapter (validated at load, its `open()` handle validated at run) so a new platform needs no upstream engine change and `bkit-secrets.mjs` stays byte-identical across repos. A new built-in `cursor` store syncs Cursor Cloud Agents secrets over the REST API v1 (`cursor:environment_variable` per-row option): environment by name or id, write-only parity from the state file, a `protects(name)` handle guard for platform-reserved names such as `build_secret`, and a pre-checked multi-version ambiguity guard.
+- **OpenCode's fetch tool is gated from the same network allowlist as its shell** (#381). `permission.webfetch` becomes a URL-keyed map (`{ "*": "ask" }`) and `injectOpencodeDerivedAllows` adds `*{domain}*: allow` per resolved base (last-match-wins), mirroring the existing curl/wget globs — so a host on the allowlist no longer prompts on `%WebFetch`. Claude gates the fetch tool and not the shell; OpenCode now gates both, and the V1 object syntax is honoured natively and by 2.0's compat layer. Cursor shares the allowlist artifact and Codex inherits it (advisory — it cannot prompt). A new cross-surface parity test requires every derived base to reach Claude's WebFetch set, OpenCode's webfetch map **and** curl/wget globs, and Cursor's allowlist.
+- **bkit's own CI adopts release-PR mirror mode** (#528). A same-repo PR on `dev` / `release/*` against the default branch mirrors the push run onto the PR head (`bkit runs mirror --head=$PR_HEAD_SHA --branch=dev --max-minutes=170`) and the capstone checks out and installs that head. Every `dev` push now runs the full level (the merged-PR light arm is removed). The template scaffold and `docs/deployments.md` widen the predicate to `dev|release/*`.
+
+### Changed
+
+- **README and package metadata lead with audience, proof and CI template** (#505). A context-map image, a phase-true features grid and a pipeline diagram replace the earlier marketing copy; marketing numbers are rounded down and prefixed with `>`; `package.json` npm metadata (description, keywords, repository, bugs, homepage, publishConfig) is filled in for the public registry.
+- **PAT-type guidance across the secrets surfaces.** `.bkit/.env.example` and the preflight / post-install advisories now carry the decision rule — a fine-grained PAT when every target repo sits under one owner, a classic PAT when one token must span owners — plus a `launchd.env` re-sync warning after rotation (GUI and daemon apps do not inherit direnv exports). Matching wording lands in `bkit-renovate.yml`, `bkit-secrets.config.mjs` and `docs/security.md`.
+- **OpenCode environment handling docs** now explain how `{env:…}` resolves in the background service and that `.bkit/.env` is merged into child environments per repo.
+
+### Fixed
+
+- **A targeted `bkit uninstall --<module>` no longer leaves `.bkit/version` stale.** The uninstall deleted the module's files but kept their canonical hashes in the install-state manifest, so the very next `bkit check` — the documented CI drift gate — reported write-drift on `.bkit/version` and exited 1 until the consumer re-ran `bkit install`. A targeted uninstall now recomputes and rewrites the version pin, pruning the deleted paths, exactly as the core install and upgrade paths do. A full/core uninstall still deletes the manifest for a zero footprint.
+
+---
+
 ## [5.0.1] — 2026-10-12
 
 ### Changed

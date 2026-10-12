@@ -55,7 +55,7 @@ export function detectBlankDotenvKeys(cwd, tracker = "linear") {
     const REQUIRED_KEYS = [
         {
             key: "BKIT_GH_TOKEN",
-            description: "fine-grained PAT for the GitHub MCP server (Contents, Pull requests, Issues, Actions, Workflows, Metadata — read/write)",
+            description: "fine-grained PAT for the GitHub MCP server (Contents, Pull requests, Issues, Actions, Workflows, Metadata — read/write), or a classic PAT when one token must span owners",
         },
         // BKIT_LINEAR_API_KEY is required only under the Linear tracker.
         ...(tracker === "linear"

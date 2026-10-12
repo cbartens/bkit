@@ -68,6 +68,8 @@ New host — row above + `run<Host>Module` (`.bkit/core/engine/install/modules/<
 
 **Root cause:** macOS GUI apps (Dock/Finder/Spotlight) run under `launchd` — **do not** inherit login-shell env. `direnv` exports from `.bkit/.env` stay shell-only. Token placeholders (`${BKIT_GH_TOKEN}` in `.cursor/mcp.json`, `{env:BKIT_OPENCODE_API_KEY}` in `.opencode/opencode.json`) resolve empty → MCP auth failures.
 
+**Shared service env (opencode):** `{env:…}` in `.opencode/opencode.json` resolves in OpenCode's background service — machine-global, one per user, env fixed at service start. Repo-local direnv `.env` is invisible (one repo's `apps/web/.env.local` never reaches another); service env = union of every repo's MCP tokens. Add / rotate a token → source it, then `opencode service restart`.
+
 **Fix — launcher verbs:** `bkit cursor` / `bkit opencode` exec app binary with `.bkit/.env` merged into child env. Dynamic, per-repo, zero global state.
 
 ```
@@ -297,7 +299,7 @@ Advisory hook, on all four hosts (Claude Code, Cursor, Codex, opencode). Claude 
 | --- | --- | --- | --- |
 | File / secrets | `.claude/settings.json` → `permissions.{allow,deny,ask}` (`Read(./**/*.pem)` deny; `.env` variants ask; `.env.example` allow) | `.cursor/hooks/bkit-guardrails.cjs` via `preToolUse` (`Read\|TabRead`) — same deny/ask policy | `.opencode/opencode.json` → `permission.read` map |
 | Shell / destructive | `permissions.deny` / `ask` on force-push (not `--force-with-lease`), `rm -rf /*`, publish, destructive git/gh, etc. Shell `curl` / `wget` are not gated here — `permissions` cannot match a URL host, so only the `WebFetch` TOOL is allowlisted | `.cursor/hooks/bkit-guardrails.cjs` via `beforeShellExecution` — same deny/ask policy | `permission.bash` deny/ask map (same rules) |
-| Network fetch | `WebSearch` + tooling `WebFetch(domain:…)`; install/upgrade enriches from the shipped egress registry union consumer `allowed-domains` in `.agents/context.md` (stack hosts never shipped), recording what it wrote so it can later prune it | `curl`/`wget` ask unless host ∈ `.cursor/allowlist.json` (tooling ∪ consumer domains) | `websearch` allow + `webfetch: "ask"`; `curl *` ask then `curl *{domain}*` allow from same allowlist (baked into `opencode.json`) |
+| Network fetch | `WebSearch` + tooling `WebFetch(domain:…)`; install/upgrade enriches from the shipped egress registry union consumer `allowed-domains` in `.agents/context.md` (stack hosts never shipped), recording what it wrote so it can later prune it | `curl`/`wget` ask unless host ∈ `.cursor/allowlist.json` (tooling ∪ consumer domains) | `websearch` allow; `webfetch` URL map (`"*": ask` → `*{domain}*: allow`) for the fetch tool **and** `curl *`/`wget *` ask → `curl *{domain}*`/`wget *{domain}*` allow for shell, from the same allowlist (baked into `opencode.json`) |
 | Granularity | Per-tool glob | Hook script (project-scoped, failClosed) | Per-path / per-command glob in `permission` |
 | Modes | `defaultMode: default \| acceptEdits \| plan \| bypassPermissions` | Implicit per-mode (Composer / Agent / Background) | `opencode --auto` + permission defaults |
 | MCP server config | `.mcp.json` at repo root (`mcpServers.<name>.url`) | `.cursor/mcp.json` (same `mcpServers.<name>.url` shape) | `.opencode/opencode.json` → `mcp` |
@@ -306,7 +308,7 @@ Advisory hook, on all four hosts (Claude Code, Cursor, Codex, opencode). Claude 
 
 **Install behaviour:** template drops, host-specific encoding of the **same** shared policy. No single canonical JSON — three native forms kept in lockstep. Machine-local paths stay out of templates.
 
-### Network allowlist — one source, three encodings
+### Network allowlist — one source, four hosts
 
 **Source of truth:** bkit's own hosts come from the egress registry (`.bkit/core/engine/shared/egress.ts`) and must never be re-declared. Stack domains come from consumer `.agents/context.md` → `<!-- allowed-domains:start -->` **after** `<!-- bkit:end -->` (apex domains). Never ship Vercel/Supabase/Sentry/etc. into every consumer.
 
@@ -316,8 +318,9 @@ Advisory hook, on all four hosts (Claude Code, Cursor, Codex, opencode). Claude 
 | Host | Where the allowlist lives | Why that shape |
 | --- | --- | --- |
 | **Claude** | `.claude/settings.json` `WebFetch(domain:…)` allow rules; shell fetches host-checked by `.claude/hooks/bkit-guardrails.cjs` (advisory) | Claude has a first-class settings permission model. No separate allowlist file. Shell `curl` is not domain-gated at all — Claude rules match a command prefix, not a URL host, so `curl` runs under `Bash(*)` with `deny` + the auto-mode classifier as backstops. Prefer `WebFetch` for allowlisted hosts; context-fetch uses `curl` / CLI under `Bash(*)`. |
-| **OpenCode** | Baked into `.opencode/opencode.json` → `permission.bash`: `curl *` / `wget *` **ask**, then `curl *{domain}*` / `wget *{domain}*` **allow** (last-match-wins) | OpenCode `webfetch` is Action-only (`ask`\|`allow`\|`deny`) — cannot store a URL map. Domain exceptions for shell fetch live in `bash`. No separate allowlist file. |
+| **OpenCode** | Baked into `.opencode/opencode.json`: `permission.webfetch` URL map (`"*": "ask"` then `*{domain}*: allow`) for the fetch tool, and `permission.bash` `curl *`/`wget *` **ask** then `curl *{domain}*`/`wget *{domain}*` **allow** for shell fetch (last-match-wins on both) | Both fetch surfaces are domain-gated, so an allowlisted host does not prompt whichever path the agent takes. `webfetch` matches the resource against the requested URL, `bash` against the command string. No separate allowlist file. |
 | **Cursor** | Generated `.cursor/allowlist.json` read at **runtime** by `.cursor/hooks/bkit-guardrails.cjs` | Cursor has no project settings equivalent to Claude `permissions` / OpenCode `permission` for curl host globs. Parity is a **hook** (`beforeShellExecution`): ask on `curl`/`wget` unless the command contains a host from the allowlist. The JSON is Cursor-only by design (IDE-scoped artifact under `.cursor/`, not `.bkit/`). |
+| **Codex** | Reads the same `.cursor/allowlist.json` at runtime via `.codex/hooks/bkit-guardrails.cjs` | Codex has no project-level permission file. The hook host-parses `curl`/`wget` and emits an advisory `ask` — Codex cannot prompt, so the allowlist informs rather than enforces. |
 
 **Do not hand-edit** `.cursor/allowlist.json` — regenerate via install/upgrade after changing `allowed-domains`. Missing file ⇒ the hook resolves no hosts and every host reads as unknown; there is deliberately no list embedded in the hook, because a second copy drifts from the registry silently.
 

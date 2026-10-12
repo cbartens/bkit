@@ -14,6 +14,12 @@ import { dispatchModules, type ModuleContext } from "./index";
 import { BKIT_GATE_SCRIPTS } from "../manifest";
 import { readBkitVersion } from "../version-file";
 import { writeCursorCliPermissionsArtifact } from "../cloud-env";
+import {
+  networkAllowlistBases,
+  resolveClaudeDerivedAllows,
+  resolveNetworkAllowlist,
+  writeNetworkAllowlistArtifact,
+} from "../cloud-env";
 import { enrichClaudeSettingsAllows } from "./claude";
 
 // ---------------------------------------------------------------------------
@@ -817,6 +823,56 @@ describe("permissions-parity", () => {
       // later prune it.
       const webFetch = claudePermissions().allow.filter((a) => a.startsWith("WebFetch(domain:"));
       expect(webFetch).toEqual([]);
+    });
+
+    it("every derived base reaches BOTH fetch surfaces on every host (fetch tool + shell)", () => {
+      // The gap this closes: the derived set reached the OpenCode SHELL (curl/wget globs)
+      // but never the OpenCode fetch TOOL (`webfetch`), so an allowlisted host still
+      // prompted when the agent used the fetch tool. Every surface the allowlist encodes
+      // must carry every base — declared hosts included.
+      const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-net-parity-"));
+      try {
+        fs.mkdirSync(path.join(cwd, ".agents"), { recursive: true });
+        fs.writeFileSync(
+          path.join(cwd, ".agents", "context.md"),
+          "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nvercel.com\n<!-- allowed-domains:end -->\n",
+          "utf-8",
+        );
+        const bases = networkAllowlistBases(resolveNetworkAllowlist(cwd));
+        expect(bases).toContain("vercel.com"); // the declared host reached the derived set
+        expect(bases).toContain("github.com"); // the shipped set is present too
+
+        const claudeAllow = resolveClaudeDerivedAllows(cwd);
+        const opencodePerm = JSON.parse(
+          renderOpencodeJson(OPENCODE_JSON, "github", "openrouter", cwd),
+        ).permission as { bash: Record<string, string>; webfetch: Record<string, string> };
+        writeNetworkAllowlistArtifact(cwd, false);
+        const cursorDomains = (
+          JSON.parse(fs.readFileSync(path.join(cwd, ".cursor", "allowlist.json"), "utf-8")) as {
+            domains: string[];
+          }
+        ).domains;
+
+        const missing: string[] = [];
+        for (const base of bases) {
+          // Claude — fetch tool only (a permission table cannot match a URL host).
+          if (!claudeAllow.includes(`WebFetch(domain:${base})`))
+            missing.push(`claude tool:${base}`);
+          // OpenCode — fetch tool AND shell.
+          if (opencodePerm.webfetch[`*${base}*`] !== "allow") missing.push(`opencode tool:${base}`);
+          if (opencodePerm.bash[`curl *${base}*`] !== "allow") {
+            missing.push(`opencode shell curl:${base}`);
+          }
+          if (opencodePerm.bash[`wget *${base}*`] !== "allow") {
+            missing.push(`opencode shell wget:${base}`);
+          }
+          // Cursor — shell, read by the hook from this artifact.
+          if (!cursorDomains.includes(base)) missing.push(`cursor shell:${base}`);
+        }
+        expect(missing).toEqual([]);
+      } finally {
+        fs.rmSync(cwd, { recursive: true, force: true });
+      }
     });
   });
 

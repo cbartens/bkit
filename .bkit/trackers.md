@@ -1,6 +1,6 @@
 # Trackers
 
-<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.2 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Reference for inline tracker-block model in `.bkit/core/workflows/bkit-*.md` and `.bkit/core/prompts/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents marker contract + cross-cutting per-tracker conventions only.
@@ -88,7 +88,7 @@ Phase-label set + additive-label semantics: `.bkit/workflows.md` § Tracker Inte
 
 ## github — Projects v2 board (optional)
 
-`issue-update-status` reads `package.json` `bkit.githubProject` = `{ owner (org login), number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` (non-secret, committed). Absent → board sync skipped (best-effort, never gates). Discover ids once: `gh api /orgs/{owner}/projectsV2/{number}/fields --jq '.[] | select(.name=="Status")'` (Status field numeric `id` → `statusFieldId`; each option raw `id` → option id, e.g. `47fc9ee4`; `PVTSSF_…` node id from `gh project field-list` is not field id — `projects_write` rejects it). Requires `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `BKIT_GH_TOKEN` org Projects R/W. Org-owned boards only — fine-grained PATs cannot reach user-owned projects. `value` = single-select **option id**, not option name. Failure → retry once after 5s, then continue. `doneOptionId` is **reserved and never written** — ship terminal sets `reviewOptionId`, and a human moves the item to Done on acceptance (§ `issue-update-merged` in `.bkit/workflows.md`).
+`issue-update-status` reads `package.json` `bkit.githubProject` = `{ owner (org login), number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` (non-secret, committed). Absent → board sync skipped (best-effort, never gates). Discover ids once: `gh api /orgs/{owner}/projectsV2/{number}/fields --jq '.[] | select(.name=="Status")'` (Status field numeric `id` → `statusFieldId`; each option raw `id` → option id, e.g. `47fc9ee4`; `PVTSSF_…` node id from `gh project field-list` is not field id — `projects_write` rejects it). Requires `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `BKIT_GH_TOKEN` org Projects R/W. Org-owned boards only — fine-grained PATs cannot reach user-owned projects, nor span orgs; use a classic PAT with `project` when the token must cover more than one owner. `value` = single-select **option id**, not option name. Failure → retry once after 5s, then continue. `doneOptionId` is **reserved and never written** — ship terminal sets `reviewOptionId`, and a human moves the item to Done on acceptance (§ `issue-update-merged` in `.bkit/workflows.md`).
 
 ## linear — notes
 

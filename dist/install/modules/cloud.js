@@ -89,8 +89,8 @@ export function runCloudModule(ctx) {
                 "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
                 "  - Name: the repo name (e.g. `acme-web`) — one environment per repo, since secrets are per-repo.\n" +
                 "  - Setup script: paste from bkit's `cloud.md` § Setup script (installs vale + gh + corepack-pinned pnpm — exact versions live in cloud.md, not duplicated here).\n" +
-                "  - Environment variables: `BKIT_GH_TOKEN` (fine-grained PAT for GitHub MCP), `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
-                "  - Tracker env vars (GitHub): No tracker PAT needed. Run `gh auth login` once for CLI surface. MCP auth is browser OAuth (automatic on first tool call). Set `BKIT_GH_TOKEN` (fine-grained PAT for GitHub MCP server).\n" +
+                "  - Environment variables: `BKIT_GH_TOKEN` (fine-grained for one owner, classic across owners — GitHub MCP), `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
+                "  - Tracker env vars (GitHub): No tracker PAT needed. Run `gh auth login` once for CLI surface. MCP auth is browser OAuth (automatic on first tool call). Set `BKIT_GH_TOKEN` (fine-grained for one owner, classic across owners — GitHub MCP server).\n" +
                 "  - Network access: `Trusted` (default). One environment per repo (secrets differ per repo); the setup script + variable *names* are identical across repos, only the values change. See cloud.md § Sharing across repos → Claude.",
         });
     }

@@ -1,6 +1,6 @@
 # Cloud agent environments — Claude Code on the web + Cursor Cloud Agents + opencode
 
-<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.2 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Canonical reference for Claude Code on the web (mobile / web), Cursor Cloud Agents, and opencode cloud runners. Claude + opencode → **GitHub** tracker (unified `bkit-cloud.yml`); Cursor → **Linear**. Not interchangeable per repo — pick agent matching your tracker (see § Cloud-agent support matrix).
@@ -119,7 +119,7 @@ No `allowed-domains` block still needs `Custom`: `Trusted` does not reach bkit's
 Minimum:
 
 ```
-BKIT_GH_TOKEN=<fine-grained PAT — see permissions below>
+BKIT_GH_TOKEN=<PAT — fine-grained for one owner, classic across owners; see permissions below>
 CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70
 ```
 
@@ -132,9 +132,9 @@ VERCEL_TOKEN=<Vercel access token — https://vercel.com/account/settings/tokens
 SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/dashboard/account/tokens>
 ```
 
-#### `BKIT_GH_TOKEN` — fine-grained PAT permissions
+#### `BKIT_GH_TOKEN` — token permissions
 
-Use **fine-grained** PAT scoped to target repo (or each consumer repo, comma-separated). Mandatory expiry, repo-scoped blast radius — wins given env vars are plaintext.
+**Choose the token type by how many owners it covers:** a **fine-grained** PAT reaches only resources under **one** resource owner (a user or an org) — use it when every target repo is under that owner; use a **classic** PAT when one token must span **more than one owner** (two or more orgs, or a user + an org), since fine-grained PATs cannot access multiple organizations. Fine-grained: mandatory expiry, repo-scoped blast radius — preferred when it fits (env vars are plaintext). Classic: scopes `repo`, `workflow`, `read:org`, `project`, `security_events` (+ `user:email` for Renovate authorship); keep the expiry short; an org may block classic (403) and SAML SSO orgs need the token authorized per org.
 
 <!-- prettier-ignore -->
 | Permission | Level | What it unlocks |
@@ -153,6 +153,7 @@ Use **fine-grained** PAT scoped to target repo (or each consumer repo, comma-sep
 
 #### When classic is still required
 
+- **More than one repo across owners.** A fine-grained PAT is limited to a single resource owner (one user or one org), so it cannot cover two or more orgs, or a user plus an org. Classic reaches every repo your user can.
 - **Cross-repo work in single cloud session.** Fine-grained PATs only see allowlist; classic sees everything your user can.
 - **User-owned (personal-account) Projects v2 boards.** Fine-grained PATs expose Projects only as _organization_ permission — personal boards unreachable. Classic PAT with `project` scope, or move board under org.
 
@@ -309,7 +310,7 @@ GitHub dispatch uses Cursor Automations "Pull request label changed" trigger —
 **Required env vars (GitHub tracker):**
 
 ```
-BKIT_GH_TOKEN=<fine-grained PAT — same permissions as the Claude side>
+BKIT_GH_TOKEN=<PAT — fine-grained for one owner, classic across owners; same permissions as the Claude side>
 ```
 
 `GITHUB_ISSUE_ID` injected per-session — do not hardcode. No `BKIT_LINEAR_API_KEY` or `LINEAR_ISSUE_ID` for tracker calls (MCP auth = browser OAuth; `gh` uses `gh auth login` locally or `--with-token` in cloud bootstrap).
@@ -329,7 +330,7 @@ Set in the Cloud Agents dashboard (`cursor.com/dashboard/cloud-agents` → your 
 
 ```
 BKIT_LINEAR_API_KEY=<Linear personal API key — bkit-preflight.sh calls the GraphQL API>
-BKIT_GH_TOKEN=<fine-grained PAT — same permissions as the Claude side>
+BKIT_GH_TOKEN=<PAT — fine-grained for one owner, classic across owners; same permissions as the Claude side>
 ```
 
 `LINEAR_ISSUE_ID` injected per-session by Cursor / Linear integration — do not hardcode.
@@ -358,7 +359,7 @@ Cloud Agents get network access by default; egress is configurable in the dashbo
 
 Each repo gets **own** Claude environment, named after repo. Reason: **secrets, not mechanics**.
 
-**Secrets are per-repo.** App tokens (Supabase, Stripe, Vercel, …) differ per repo; even bkit tokens differ in _scope_ (`BKIT_GH_TOKEN` = fine-grained PAT scoped to that repo). One Claude environment = one value per name — shared env forces mega-scoped PAT across repos (wide blast radius) or one repo's secrets leaking into rest. Per-repo envs isolate secrets.
+**Secrets are per-repo.** App tokens (Supabase, Stripe, Vercel, …) differ per repo; even bkit tokens differ in _scope_ (a fine-grained `BKIT_GH_TOKEN` is scoped to one resource owner / repo; covering different owners needs one classic PAT, which cannot be per-repo). One Claude environment = one value per name — shared env forces mega-scoped PAT across repos (wide blast radius) or one repo's secrets leaking into rest. Per-repo envs isolate secrets.
 
 Shared across repos (copy, don't re-derive) — non-secret only:
 

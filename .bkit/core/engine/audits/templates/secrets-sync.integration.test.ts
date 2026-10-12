@@ -58,6 +58,53 @@ const CONFIG = `export default {
 };
 `;
 
+const CURSOR_CONFIG = `export default {
+  sources: { overlays: [".bkit/.env"], preview: "app/.env.preview" },
+  stores: { cursor: { environment: "acme-web" } },
+  secrets: { DATABASE_URL: "cursor", APP_URL: "cursor" },
+};
+`;
+
+const CUSTOM_CONFIG = `export default {
+  sources: { overlays: [".bkit/.env"], preview: "app/.env.preview" },
+  stores: { files: { type: "custom", module: "./stores/file-store.mjs", dir: ".files" } },
+  secrets: { DATABASE_URL: "files" },
+};
+`;
+
+const FILE_STORE = `import fs from "node:fs";
+import path from "node:path";
+import { createHash } from "node:crypto";
+const sha = (v) => createHash("sha256").update(v, "utf8").digest("hex");
+export default {
+  label: "File store",
+  async open({ root, store }) {
+    const dir = path.resolve(root, store.dir);
+    const file = (n) => path.join(dir, n);
+    return {
+      target: store.dir,
+      async list() {
+        const live = new Map();
+        if (fs.existsSync(dir))
+          for (const n of fs.readdirSync(dir))
+            live.set(n, { readable: true, fp: sha(fs.readFileSync(file(n), "utf8")) });
+        return live;
+      },
+      async write(list, onWritten) {
+        fs.mkdirSync(dir, { recursive: true });
+        for (const e of list) {
+          fs.writeFileSync(file(e.name), e.value);
+          onWritten(e.name);
+        }
+      },
+      async remove(names) {
+        for (const n of names) fs.rmSync(file(n), { force: true });
+      },
+    };
+  },
+};
+`;
+
 interface VercelEnv {
   id: string;
   key: string;
@@ -74,6 +121,14 @@ let lines: string[];
 let vercel: VercelEnv[];
 let supabase: Map<string, { value: string; updated_at: string }>;
 let supabaseOther: Map<string, Map<string, { value: string; updated_at: string }>>;
+let cursorSecrets: {
+  id: string;
+  name: string;
+  type: string;
+  repos: string[];
+  createdAt: string;
+  value: string;
+}[];
 const savedEnv = { ...process.env };
 
 function write(rel: string, content: string, mode = 0o644): void {
@@ -126,6 +181,55 @@ function fakeFetch(url: string, init: { method: string; body?: string }): Respon
     if (init.method === "DELETE") for (const n of body) secrets.delete(n);
     return ok(undefined);
   }
+  if (u.host === "api.cursor.com") {
+    if (u.pathname === "/v1/environments")
+      return ok({ items: [{ id: "env-1", name: "acme-web", owner: "personal", repos: [] }] });
+    const m = /^\/v1\/environments\/([^/]+)\/secrets(?:\/(.+))?$/.exec(u.pathname);
+    if (m) {
+      const name = m[2] ? decodeURIComponent(m[2]) : undefined;
+      const versions = cursorSecrets.filter((s) => s.name === name);
+      if (init.method === "GET")
+        return ok({
+          items: cursorSecrets.map(({ id, name, type, repos, createdAt }) => ({
+            id,
+            name,
+            type,
+            repos,
+            createdAt,
+          })),
+          nextCursor: null,
+        });
+      if ((init.method === "PUT" || init.method === "DELETE") && versions.length > 1)
+        return new Response(
+          JSON.stringify({
+            error: { code: "secret_name_ambiguous", message: `${name} has several versions` },
+          }),
+          { status: 409 },
+        );
+      if (init.method === "PUT") {
+        const existing = versions[0];
+        if (existing) {
+          existing.value = body.value;
+          existing.type = body.type ?? existing.type;
+          existing.createdAt = new Date().toISOString();
+        } else
+          cursorSecrets.push({
+            id: `secv_${cursorSecrets.length}`,
+            name: name!,
+            type: body.type ?? "runtime_secret",
+            repos: [],
+            createdAt: new Date().toISOString(),
+            value: body.value,
+          });
+        return ok({});
+      }
+      if (init.method === "DELETE") {
+        cursorSecrets = cursorSecrets.filter((s) => s.name !== name);
+        return ok({});
+      }
+    }
+    return new Response("bad cursor route", { status: 404 });
+  }
   return new Response("not found", { status: 404 });
 }
 
@@ -168,6 +272,7 @@ beforeEach(() => {
     ["SUPABASE_URL", { value: "x", updated_at: "2026-01-01T00:00:00Z" }],
     ["HAND_SET_FN", { value: "x", updated_at: "2026-01-01T00:00:00Z" }],
   ]);
+  cursorSecrets = [];
   process.env.PATH = `${path.join(root, "bin")}:/usr/bin:/bin`;
   process.env.HOME = root;
   process.env.STUB_STORE = store;
@@ -177,6 +282,7 @@ beforeEach(() => {
     "SUPABASE_ACCESS_TOKEN",
     "EXPO_TOKEN",
     "XDG_CONFIG_HOME",
+    "CURSOR_API_KEY",
   ])
     delete process.env[k];
   vi.stubGlobal(
@@ -329,5 +435,81 @@ describe("bkit-secrets.mjs", () => {
       CONFIG.replace('DEPLOY_ID: ["github", "eas"]', 'DEPLOY_ID: "githbu"'),
     );
     await expect(cli("drift")).rejects.toThrow(/unknown store "githbu"/);
+  });
+
+  it("custom store adapter: a repo-local module syncs with no engine change", async () => {
+    write("scripts/secrets/bkit-secrets.config.mjs", CUSTOM_CONFIG);
+    write("scripts/secrets/stores/file-store.mjs", FILE_STORE);
+    const r = await cli("sync", "--store", "files");
+    expect(r.status).toBe(0);
+    expect(fs.readFileSync(path.join(root, ".files/DATABASE_URL"), "utf-8")).toBe("postgres://dev");
+    const d = await cli("drift", "--store", "files");
+    expect(d.status).toBe(0);
+    expect(d.out).toMatch(/✅ DATABASE_URL/);
+  });
+
+  it("custom store adapter: a module missing the contract fails at load, naming the member", async () => {
+    write("scripts/secrets/bkit-secrets.config.mjs", CUSTOM_CONFIG);
+    write("scripts/secrets/stores/file-store.mjs", "export default { label: 'x' };\n");
+    await expect(cli("drift", "--store", "files")).rejects.toThrow(/needs an "open" function/);
+  });
+
+  it("custom store adapter: a handle missing the contract fails at run", async () => {
+    write("scripts/secrets/bkit-secrets.config.mjs", CUSTOM_CONFIG);
+    write(
+      "scripts/secrets/stores/file-store.mjs",
+      "export default { label: 'Broken', async open() { return { target: 'x', list: async () => new Map(), write: async () => {} }; } };\n",
+    );
+    const r = await cli("sync", "--store", "files");
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/Broken: open\(\) must return a "remove" function/);
+  });
+
+  it("cursor: syncs into a Cloud Agents environment and proves write-only parity from state", async () => {
+    write("scripts/secrets/bkit-secrets.config.mjs", CURSOR_CONFIG);
+    process.env.CURSOR_API_KEY = "cur";
+    const r = await cli("sync", "--store", "cursor");
+    expect(r.status).toBe(0);
+    expect(cursorSecrets.map((s) => `${s.name}:${s.type}:${s.value}`).sort()).toEqual([
+      "APP_URL:runtime_secret:https://dev.example",
+      "DATABASE_URL:runtime_secret:postgres://dev",
+    ]);
+    expect(r.out).not.toContain("postgres://");
+    const d = await cli("drift", "--store", "cursor");
+    expect(d.status).toBe(0);
+    expect(d.out).toMatch(/✅ DATABASE_URL/);
+  });
+
+  it("cursor: a build_secret name is never written and is surfaced, not silently skipped", async () => {
+    write("scripts/secrets/bkit-secrets.config.mjs", CURSOR_CONFIG);
+    process.env.CURSOR_API_KEY = "cur";
+    cursorSecrets.push({
+      id: "secv_b",
+      name: "DATABASE_URL",
+      type: "build_secret",
+      repos: [],
+      createdAt: "2026-01-01T00:00:00Z",
+      value: "old",
+    });
+    const r = await cli("sync", "--store", "cursor");
+    expect(r.out).toMatch(/DATABASE_URL — listed but protected here; never written/);
+    expect(cursorSecrets.find((s) => s.name === "DATABASE_URL")?.type).toBe("build_secret");
+  });
+
+  it("cursor: a name with several versions fails with a clear error, not a raw 409", async () => {
+    write("scripts/secrets/bkit-secrets.config.mjs", CURSOR_CONFIG);
+    process.env.CURSOR_API_KEY = "cur";
+    for (const [i, repo] of ["a", "b"].entries())
+      cursorSecrets.push({
+        id: `secv_${i}`,
+        name: "DATABASE_URL",
+        type: "runtime_secret",
+        repos: [repo],
+        createdAt: "2026-01-01T00:00:00Z",
+        value: "x",
+      });
+    const r = await cli("sync", "--store", "cursor");
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/several Cursor versions share this name/);
   });
 });

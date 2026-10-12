@@ -43,8 +43,8 @@ Add **each** line below as a secret (Name = the key, Value = the value). Set the
 
 - `LINEAR_ISSUE_ID` (Linear tracker) / `GITHUB_ISSUE_ID` (GitHub tracker) are injected
   **per session** by the Cursor integration — do **not** add them here.
-- `BKIT_GH_TOKEN` fine-grained PAT permissions are documented in `.bkit/cloud.md`
-  § BKIT_GH_TOKEN permissions (identical scope to the Claude side).
+- `BKIT_GH_TOKEN` PAT permissions (fine-grained for one owner, classic across owners) are documented in `.bkit/cloud.md`
+  § `BKIT_GH_TOKEN` — token permissions (identical scope to the Claude side).
 - Secrets are encrypted at rest and in transit and scoped to the environment.
 
 ## 3 · Toolchain (in-repo — nothing to paste)

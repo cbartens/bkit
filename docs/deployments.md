@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.0.1 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.0.2 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 # Deployments
 
@@ -212,11 +212,13 @@ Ships in the `bkit-ci.yml` template as the `Check Default Branch Lags Dev` step;
 
 ### One CI run per dev commit (release PR mirrors the `dev` push run)
 
-Optional. A same-repo `dev` → `main` PR's head is the `dev` tip the `dev` push run already tests, because a full PR run repeats the slowest run in the repo. Mirror mode runs it once.
+Optional. A same-repo promotion PR into the default branch — head `dev`, or a `release/*` branch cut at the `dev` tip — has the same head the `dev` push run already tests, so a full PR run repeats the slowest run in the repo. Mirror mode runs it once.
 
-- **Planner** (`Decide Release Mirror`, `bkit-tests-scope`): `pull_request` + head repo == this repo + `head_ref == dev` + base == default branch → `mirror_push_run=true`, `run_level=none`, `run_e2e` / `run_live` / `run_migration` / `web_affected=false`. Every lane skips. Field is required in the plan (`false` otherwise). Fork PRs and every other head / base pair keep the normal plan.
+- **Planner** (`Decide Release Mirror`, `bkit-tests-scope`): `pull_request` + head repo == this repo + base == default branch + `head_ref` is a promotion branch (`dev`, or `release/*`) → `mirror_push_run=true`, `run_level=none`, `run_e2e` / `run_live` / `run_migration` / `web_affected=false`. Every lane skips. Field is required in the plan (`false` otherwise). Fork PRs and every other head / base pair keep the normal plan.
 - **Capstone** (`Mirror Push Run`, `bkit-tests-check`, before `Assert Test Plan Followed`): `bkit runs mirror --head <PR head sha> --branch dev --max-minutes 170`. Waits for the `dev` push run at that SHA (each poll is `bkit runs gate --event push`) and passes only when its capstone passed. The step runs bkit, so the job needs a checkout and installed dependencies, both ungated. Neither step `continue-on-error`.
 - **Never skip the PR's required check instead.** A skipped required check can read as passed on the PR while the push run is red.
+- **`release/*` resolves the push run by SHA.** A `release/*` head with no green `dev` push run (extra commits past the `dev` tip) fails the mirror red (exit `3`) — safe, not silent.
+- **bkit's own CI adopts this.** `Decide Release Mirror` accepts `dev` and `release/*`; `Decide Run Level` has no merged-PR → `light` arm, so every `dev` push resolves `full` (precondition 1); the capstone's `Mirror Push Run` runs `bkit runs mirror --head="$PR_HEAD_SHA" --branch=dev --max-minutes=170`.
 
 <!-- prettier-ignore -->
 | Push run at PR head | PR `bkit-tests-check` | `bkit runs mirror` exit |
@@ -387,7 +389,7 @@ Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips th
 
 **Renovate, self-hosted.** Copy the workflow example. Suspend the Mend App for this repo (Settings → Applications → Renovate → Configure → remove this repo) or both open `renovate/*` PRs. The cron wakes the bot daily; `renovate.json5` `schedule` still gates normal PRs. Do not narrow the cron to weekly, because `osvVulnerabilityAlerts` PRs need the daily wake.
 
-Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs do not trigger CI, so required checks and automerge never fire). Fine-grained PAT, this repo:
+Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs do not trigger CI, so required checks and automerge never fire). Use a **fine-grained** PAT when this repo is the only owner-scope bkit touches; use a **classic** PAT when the same token must cover more than one owner — fine-grained PATs cannot span organizations. Fine-grained permissions for this repo:
 
 <!-- prettier-ignore -->
 | Repository permission | Access |
@@ -400,7 +402,7 @@ Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs 
 | Dependabot alerts | Read |
 | Metadata | Read-only |
 
-`Commit statuses: Read and write` is what opens the PR. Without it Renovate creates the branch and 403s on commit status. There is no separate Checks permission on a fine-grained PAT. Org-owned tokens cannot read the owner email; set the Actions variable `RENOVATE_GIT_AUTHOR` (for example `Renovate Bot <renovate@your-domain>`).
+`Commit statuses: Read and write` is what opens the PR. Without it Renovate creates the branch and 403s on commit status. There is no separate Checks permission on a fine-grained PAT. Classic equivalent: scopes `repo`, `workflow`, `security_events` (plus `user:email` for commit authorship). Org-owned tokens cannot read the owner email; set the Actions variable `RENOVATE_GIT_AUTHOR` (for example `Renovate Bot <renovate@your-domain>`).
 
 **pnpm 11 on Mend's runner.** A large graph can OOM during `pnpm update --lockfile-only`. The example sets `minimumReleaseAge: "1 day"` and caps `PNPM_WORKERS`. To clear the per-install gate, set `minimumReleaseAge: 0` in `pnpm-workspace.yaml`. Deleting the key does not: pnpm 11 defaults it to 1440. Self-hosted on `ubuntu-latest` has the memory; the freshness setting is still yours to keep or drop.
 
