@@ -31,7 +31,12 @@ import {
   type ModuleName,
   type IssueTracker,
 } from "../../install/manifest.js";
-import { isConsumerModified, readBkitVersion } from "../../install/version-file.js";
+import {
+  isConsumerModified,
+  mergeCanonicalHashes,
+  readBkitVersion,
+  writeBkitVersion,
+} from "../../install/version-file.js";
 import {
   getPkgRoot,
   getSharedRoot,
@@ -841,6 +846,33 @@ export async function runUninstall(
       if (fs.existsSync(absDir) && fs.readdirSync(absDir).length === 0) {
         fs.rmdirSync(absDir);
         console.log(`${ctx.logPrefix} prune empty dir: ${rel}`);
+      }
+    }
+  }
+
+  // Targeted (non-core) uninstall: `.bkit/version` stays (the modules that remain read it),
+  // but its canonicalHashes still list every path this run deleted — absent entries that
+  // `mergeCanonicalHashes` prunes. Left in place, the very next `bkit check` (a dry-run
+  // install whose core postDispatch prunes the same absent paths) reports write-drift on
+  // `.bkit/version` and fails the CI gate. Recompute and rewrite here so the on-disk manifest
+  // already matches what the next check would produce. A full/core uninstall deletes the file
+  // earlier instead (zero footprint) and never reaches this branch.
+  if (!moduleList.includes("core")) {
+    const versionFile = path.join(ctx.cwd, ".bkit", "version");
+    const existing = readBkitVersion(versionFile);
+    if (existing) {
+      const { canonicalHashes, pruned } = mergeCanonicalHashes(
+        ctx.cwd,
+        existing.canonicalHashes,
+        {},
+      );
+      if (pruned > 0) {
+        console.log(
+          `${ctx.logPrefix}${ctx.dryRun ? " [dry-run]" : ""} update version pin: .bkit/version (pruned ${pruned})`,
+        );
+        if (!ctx.dryRun) {
+          writeBkitVersion(versionFile, { ...existing, canonicalHashes });
+        }
       }
     }
   }

@@ -10,7 +10,12 @@ import {
   type UninstallContext,
   type FileSummary,
 } from "./uninstall";
-import { serializeBkitVersion, sha256, type BkitVersion } from "../../install/version-file";
+import {
+  readBkitVersion,
+  serializeBkitVersion,
+  sha256,
+  type BkitVersion,
+} from "../../install/version-file";
 import { findTemplateSource, getSharedRoot } from "../../shared/package-roots";
 
 let tmpDir: string;
@@ -602,6 +607,62 @@ describe("runUninstall — .bkit/version install-state (4.6.3)", () => {
     return runUninstall(["claude"], makeCtx()).then(() => {
       expect(fileExists(".bkit/version")).toBe(true);
     });
+  });
+
+  it("prunes deleted paths from .bkit/version on a targeted (non-core) uninstall", async () => {
+    // A targeted uninstall deletes the module's files but leaves .bkit/version in place. Its
+    // canonicalHashes must not keep listing the now-absent paths, or the next `bkit check`
+    // (whose dry-run install prunes them) reports write-drift and fails the CI gate.
+    const owned = ".claude/agents/bkit-foo.md";
+    const kept = ".claude/keep.md";
+    writeFile(owned, "bkit agent\n");
+    writeFile(kept, "consumer file\n");
+    writeBkitVersionFile({
+      pinnedVersion: "5.0.1",
+      canonicalHashes: { [owned]: sha256("bkit agent\n"), [kept]: sha256("consumer file\n") },
+      claudeAllowDerived: [],
+    });
+
+    const result = await runUninstall(["claude"], makeCtx());
+
+    expect(result.deleted).toContain(owned);
+    expect(fileExists(owned)).toBe(false);
+    const recorded = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
+    expect(recorded).not.toBeNull();
+    expect(recorded!.pinnedVersion).toBe("5.0.1");
+    expect(recorded!.canonicalHashes[owned]).toBeUndefined();
+    // A path still on disk (consumer content) keeps its recorded hash.
+    expect(recorded!.canonicalHashes[kept]).toBe(sha256("consumer file\n"));
+  });
+
+  it("leaves .bkit/version byte-identical on a targeted uninstall that prunes nothing", async () => {
+    writeFile(".claude/keep.md", "consumer file\n");
+    writeBkitVersionFile({
+      pinnedVersion: "5.0.1",
+      canonicalHashes: { ".claude/keep.md": sha256("consumer file\n") },
+      claudeAllowDerived: [],
+    });
+    const before = readFile(".bkit/version");
+
+    await runUninstall(["claude"], makeCtx());
+
+    expect(readFile(".bkit/version")).toBe(before);
+  });
+
+  it("does not rewrite .bkit/version on a targeted dry-run (no writes)", async () => {
+    const owned = ".claude/agents/bkit-foo.md";
+    writeFile(owned, "bkit agent\n");
+    writeBkitVersionFile({
+      pinnedVersion: "5.0.1",
+      canonicalHashes: { [owned]: sha256("bkit agent\n") },
+      claudeAllowDerived: [],
+    });
+    const before = readFile(".bkit/version");
+
+    await runUninstall(["claude"], makeCtx({ dryRun: true }));
+
+    expect(readFile(".bkit/version")).toBe(before);
+    expect(fileExists(owned)).toBe(true);
   });
 
   it("strips package.json bkit install-state block on full/core uninstall", async () => {
