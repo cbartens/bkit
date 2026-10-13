@@ -14,7 +14,7 @@
 //
 // bkit's gateguard parity test runs the shared behaviour table against this host.
 //
-// REGISTRATION: `.agents/hooks.json`, matchers `write_to_file` / `replace_file_content`.
+// REGISTRATION: `.agents/plugins/bkit/hooks.json`, matchers `write_to_file` / `replace_file_content`.
 // See .bkit/providers.md § GateGuard.
 //
 // CONTRACT — do not regress:

@@ -127,60 +127,9 @@ export function renderAntigravityAgentsSkills(ctx) {
     }
     return written;
 }
-/**
- * Remove the pre-plugin Antigravity layout: the old module wrote `.agents/prompts/bkit-*.md`,
- * `.agents/hooks.json` and `.agents/hooks/bkit-*.cjs` directly under `.agents/`. The plugin
- * at `.agents/plugins/bkit/` is now the only Antigravity home. Only `bkit-`-prefixed legacy
- * files (and the bkit-owned `hooks.json`) are removed; consumer content under `.agents/hooks/`
- * is left alone.
- */
-function sweepLegacyAntigravityLayout(ctx) {
-    const { dryRun, logPrefix } = ctx;
-    const tag = dryRun ? "[dry-run] " : "";
-    const scratch = [];
-    const rm = (rel) => {
-        const abs = path.join(process.cwd(), rel);
-        if (!fs.existsSync(abs))
-            return;
-        if (!dryRun)
-            fs.rmSync(abs, { force: true });
-        console.log(`${logPrefix} ${tag}delete (pre-plugin layout): ${rel}`);
-        trackMirrorWrite(ctx, rel, scratch);
-    };
-    const promptsDir = path.join(process.cwd(), ".agents", "prompts");
-    if (fs.existsSync(promptsDir)) {
-        for (const f of fs.readdirSync(promptsDir)) {
-            if (f.startsWith(BKIT_PREFIX) && f.endsWith(".md"))
-                rm(path.join(".agents", "prompts", f));
-        }
-    }
-    rm(path.join(".agents", "hooks.json"));
-    const hooksDir = path.join(process.cwd(), ".agents", "hooks");
-    if (fs.existsSync(hooksDir)) {
-        for (const f of fs.readdirSync(hooksDir)) {
-            if (f.startsWith(BKIT_PREFIX))
-                rm(path.join(".agents", "hooks", f));
-        }
-    }
-    // Drop the now-empty legacy dirs (only when empty — a consumer's own files stay).
-    for (const rel of [path.join(".agents", "prompts"), path.join(".agents", "hooks")]) {
-        const abs = path.join(process.cwd(), rel);
-        try {
-            if (fs.existsSync(abs) && fs.readdirSync(abs).length === 0) {
-                if (!dryRun)
-                    fs.rmdirSync(abs);
-                console.log(`${logPrefix} ${tag}delete (pre-plugin layout): ${rel}/`);
-            }
-        }
-        catch {
-            // non-fatal — leave a non-empty dir
-        }
-    }
-}
 export function runAntigravityModule(ctx) {
     const { dryRun, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
-    sweepLegacyAntigravityLayout(ctx);
     renderAntigravityAgentsSkills(ctx);
     const pluginShared = path.join(getSharedRoot(), ".agents", "plugins", "bkit");
     const pluginHooksSrc = path.join(getCoreRoot(), ".agents", "plugins", "bkit", "hooks");

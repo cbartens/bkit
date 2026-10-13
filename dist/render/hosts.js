@@ -416,10 +416,10 @@ export function applyAntigravityToolRewrites(content, agentsDir = ANTIGRAVITY_AG
 }
 /**
  * Convert a Claude-format subagent prompt (`.bkit/core/prompts/*.md`) into an Antigravity
- * prompt (`.agents/prompts/<name>.md`).
+ * prompt (`.agents/plugins/bkit/agents/<name>.md`).
  *
- * Antigravity reads subagent prompts from `.agents/prompts/` and executes them in-session
- * (the orchestrator loads the file with `view_file`). The frontmatter is rewritten to
+ * Antigravity loads subagent prompts from `.agents/plugins/bkit/agents/` and executes them
+ * in-session (the orchestrator loads the file with `view_file`). The frontmatter is rewritten to
  * Antigravity's vocabulary: `name`/`description` preserved, the model pin from the
  * `.bkit/prompts.md` § Models `Google` column (bare `gemini-3.8-*` id), the thinking
  * `effort` remapped through the `Antigravity` column, and the `tools:` block respelled to

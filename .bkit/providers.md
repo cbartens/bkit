@@ -275,10 +275,10 @@ Both hosts: `/<filename-without-ext>` (`/bkit-build`, `/bkit-plan`, etc.). Ident
 <!-- prettier-ignore -->
 | Part | Shared by | Holds |
 | --- | --- | --- |
-| `gateguard-engine.js` | Claude, Cursor, Codex, opencode `gateguard` | gate-config table, checklists, docs advisory, dedup state, `firstTouchAdvice` |
+| `gateguard-engine.js` | Claude, Cursor, Codex, Google Antigravity, opencode `gateguard` | gate-config table, checklists, docs advisory, dedup state, `firstTouchAdvice` |
 | `gateguard-edit-payload.js` | Claude, Cursor `gateguard` | `Edit` / `Write` / `MultiEdit` payload adapter `bkitGateguard(payload)` |
-| `guardrails-shell.js` | Claude, Cursor, Codex `guardrails` | segment parsing, curl / wget host allowlist, shell-as-edit-channel detection |
-| `guardrails-tiers.js` | Cursor, Codex `guardrails` | deny rules, ask patterns, `classifyShell` precedence |
+| `guardrails-shell.js` | Claude, Cursor, Codex, Google Antigravity `guardrails` | segment parsing, curl / wget host allowlist, shell-as-edit-channel detection |
+| `guardrails-tiers.js` | Cursor, Codex, Google Antigravity `guardrails` | deny rules, ask patterns, `classifyShell` precedence |
 | `preflight-linear.sh` | Claude, Cursor `preflight` | Linear key / issue checks, GraphQL query, `bkit:auto` + terminal-state guards |
 
 Per host, outside the parts: Claude `gateguard` / `guardrails` — `require` + `hookSpecificOutput` driver, guardrails advisory-only; Cursor — `{ permission }` output, guardrails read gate (`.pem` / `.env`), gateguard workspace-relative path resolve; Codex — `apply_patch` envelope parser, ask tier emitted as advisory; Google Antigravity — Claude's `hookSpecificOutput` contract, `write_to_file` / `replace_file_content` edit tools and `run_command` shell tool, path read from `tool_input.file_path`; opencode — ES module, `write` / `edit` / `patch` vocabulary, checklist appended to the tool result in `execute.after` + throw from `execute.before` to block (2.0 exposes no pre-edit context hook, and stderr does not reach the model); `preflight` — trigger (Claude `LINEAR_ISSUE_ID`, Cursor `is_background_agent` + `.bkit/.runtime-cursor` marker), Claude-only Darwin brew check, `emit_context` shape.

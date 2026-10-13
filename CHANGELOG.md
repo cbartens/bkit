@@ -11,11 +11,18 @@ Format: `## [version] — YYYY-MM-DD`
 ### Added
 
 - **Google Antigravity host support** (#534). bkit installs into Antigravity as a workspace plugin under `.agents/plugins/bkit/` — `plugin.json`, one workflow skill per command (`skills/bkit-*/SKILL.md`), the subagent prompts (`agents/`), and `hooks.json` with the GateGuard / guardrails hooks — plus the root `GEMINI.md` workspace-rule redirect. Antigravity has no native subagent tool, so renders rewrite the in-session invocation to `view_file .agents/plugins/bkit/agents/<name>.md` and map the tool vocabulary to Antigravity's names (`view_file`, `write_to_file`, `replace_file_content`, `run_command`, `grep_search`, `list_dir`, …). `--antigravity` composes with every other host flag. Codex renders into `.agents/skills/`, so the Antigravity host owns `.agents/plugins/bkit/` exclusively (one writer per directory); a new `antigravity-codex-skill-overlap` advisory fires when both hosts are installed and names the plugin skills as the ones to invoke in Antigravity. `AGENTS.md`, `.bkit/providers.md`, `.bkit/install.md`, `README.md`, `.bkit/comparison.md` and the capability register document the host, and `prompts.md` gains the `Google` model column and `Antigravity` effort column.
+- **`.agents/shortcuts.md` — opt-in lite prompts** (#541). Five copy-paste prompts run a phase's steps and subagents without the full workflow's ceremony, each pointing at the phase workflow as inspiration (never a command file) with an `[INSERT]` slot. They skip the gates, worktree isolation, PR, CI and audit trail — full workflow when in doubt, lite only when clearly enough. Wired into the core agent files, the uninstall list, `.agents/docs.md` and the roadmap utility.
 
 ### Changed
 
+- **Every phase summary offers a plain-English explanation.** The build, debug, design, plan and ship summaries close by asking whether you want the summary restated in plain English, and restate it on request; the wording policy lands in `.bkit/wording.md`.
 - **Installed skills are treated as untrusted, and skill sources are gated** (#342). `.agents/rules.md` extends the external-input rule to skill content; `.agents/skills.md` and the `bkit-build-install-skills` prompt accept only an official publisher, or a skill with >= 1000 installs and >= 100 repo stars, install one named `<owner/repo>@<skill>` (a bare repo would pull the whole catalog), and never execute bundled scripts. `docs/security.md` records the threat model.
+- **The CI template gates the capability register** (#444). The shipped `bkit-ci.yml` and bkit's own workflow gain a Check Capability Register step (`graphifyy[sql]==0.9.50`, pinned via `uv`, push events only, self-skipping without the wrapper), and the pre-push guard notice names it. `.bkit/templates.md` corrects the graphify doctrine: graphify ships an MCP server (`graphify-mcp`) but stays unwired — snapshot-dated answers lose to Serena, which cannot go stale.
 - **Install snippets name the four opencode providers.** README, `.bkit/install.md` and the install paste block list `openrouter`, `ollama`, `opencode-zen`, `opencode-go` wherever they show `--opencode=<provider>`; README drops the stale "free local models" claims — no local provider exists since the allowlist cut to four hosted / gateway providers.
+
+### Fixed
+
+- **`bkit runs gate|revalidate --repo` resolves the PR from the named repo** (#533). The command resolved the PR from the checkout's git remote and ignored `--repo`, so a cross-repo caller could get a verdict for a same-numbered PR in the wrong repository — including a false exit 0. `--repo` now threads into the `gh pr view` probe at both call sites, and each resolved repo is logged so a disagreement with the checkout is visible.
 
 ---
 

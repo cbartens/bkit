@@ -3,7 +3,7 @@
 //
 // Twin of `.cursor/hooks/bkit-guardrails.cjs` and `.codex/hooks/bkit-guardrails.cjs`:
 // bkit generates the same shell detection and deny / ask tiers into all three at install
-// (bkit's `core/hooks/`). Wired from `.agents/hooks.json`, matcher `run_command` —
+// (bkit's `core/hooks/`). Wired from `.agents/plugins/bkit/hooks.json`, matcher `run_command` —
 // Antigravity's canonical tool name for shell execution.
 //
 // ONE THING DIFFERS FROM THE CODEX TWIN:
@@ -12,7 +12,7 @@
 //      passes the command as `tool_input.command` (some builds use `CommandLine`). Both
 //      are accepted. The stdout envelope is the Claude-family `hookSpecificOutput` shape.
 //
-// REGISTRATION: `.agents/hooks.json`, matcher `run_command`. See .bkit/providers.md § GateGuard.
+// REGISTRATION: `.agents/plugins/bkit/hooks.json`, matcher `run_command`. See .bkit/providers.md § GateGuard.
 //
 // CONTRACT — do not regress:
 //   - FAIL OPEN: one top-level catch swallows every error and exits 0.

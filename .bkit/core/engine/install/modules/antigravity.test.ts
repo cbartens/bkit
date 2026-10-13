@@ -129,19 +129,4 @@ describe("runAntigravityModule", () => {
     runAntigravityModule(ctx);
     expect(ctx.advisories.some((a) => a.id === "antigravity-codex-skill-overlap")).toBe(false);
   });
-
-  it("migrates the pre-plugin layout (`.agents/prompts`, `.agents/hooks*`)", () => {
-    // Seed the old layout.
-    fs.mkdirSync(path.join(tmpDir, ".agents", "prompts"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", "prompts", "bkit-build.md"), "legacy\n");
-    fs.writeFileSync(path.join(tmpDir, ".agents", "hooks.json"), "{}\n");
-    fs.mkdirSync(path.join(tmpDir, ".agents", "hooks"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", "hooks", "bkit-gateguard.cjs"), "legacy\n");
-
-    runAntigravityModule(makeCtx());
-
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "prompts", "bkit-build.md"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "hooks.json"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "hooks", "bkit-gateguard.cjs"))).toBe(false);
-  });
 });
