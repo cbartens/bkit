@@ -101,6 +101,7 @@
         "**/.claude/hooks/bkit-gateguard.cjs",
         "**/.cursor/hooks/bkit-gateguard.cjs",
         "**/.codex/hooks/bkit-gateguard.cjs",
+        "**/.agents/plugins/bkit/hooks/bkit-gateguard.cjs",
         "**/.opencode/plugin/bkit-gateguard.js"
       ],
       "rules": {
@@ -118,7 +119,8 @@
         ".bkit/core/hooks/guardrails-tiers.js",
         "**/.claude/hooks/bkit-guardrails.cjs",
         "**/.cursor/hooks/bkit-guardrails.cjs",
-        "**/.codex/hooks/bkit-guardrails.cjs"
+        "**/.codex/hooks/bkit-guardrails.cjs",
+        "**/.agents/plugins/bkit/hooks/bkit-guardrails.cjs"
       ],
       "rules": {
         "defensive.empty-catch": {
