@@ -5,6 +5,7 @@
 // (context 2).
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getPkgRoot, ENGINE_SUBPATH, getTemplatesRoot, isDogfood } from "./package-roots";
@@ -150,10 +151,9 @@ describe("dogfood-noop", () => {
     });
 
     it("returns false when CWD is a different directory", () => {
-      // Change CWD to a parent of pkgRoot — guaranteed to be different.
-      const pkgRoot = getPkgRoot();
-      const parent = path.dirname(pkgRoot);
-      process.chdir(parent);
+      // Change CWD to a temp dir — guaranteed to be different from pkgRoot and accessible.
+      const tmp = os.tmpdir();
+      process.chdir(tmp);
       expect(isDogfood()).toBe(false);
     });
   });
