@@ -1,5 +1,5 @@
 // render/hosts.ts — workflow and prompt sources → host agent, command and skill copies
-// (claude T1/T2, cursor T3, opencode, codex) and the frontmatter parser they share.
+// (claude T1/T2, cursor T3, opencode, codex, antigravity) and the frontmatter parser they share.
 import { formatModelPin, lookupEffort } from "./models.js";
 import { LOG_PREFIX } from "../shared/log-prefix.js";
 /**
@@ -34,6 +34,58 @@ export function opencodeToolsBlock(toolsBlock) {
     for (const n of names) {
         const mcp = /^mcp__(.+?)__(.+)$/.exec(n);
         out += `  ${mcp ? `${mcp[1]}_${mcp[2]}` : n.toLowerCase()}: true\n`;
+    }
+    return out;
+}
+/**
+ * Antigravity built-in tool names. Antigravity (`.agents/`) uses lower_snake_case tool
+ * names that differ from Claude's capitalized set, so the declared `tools:` block must be
+ * respelled — an unknown tool name is not guaranteed to resolve on that host. Unknown
+ * Claude names are passed through unchanged (best effort); MCP tools keep their
+ * `mcp__<server>__<tool>` spelling.
+ */
+const ANTIGRAVITY_TOOL_MAP = {
+    read: "view_file",
+    glob: "list_dir",
+    grep: "grep_search",
+    write: "write_to_file",
+    edit: "replace_file_content",
+    bash: "run_command",
+    websearch: "search_web",
+    webfetch: "read_url",
+};
+/**
+ * Convert a Claude `tools:` frontmatter block into Antigravity's tool vocabulary
+ * (`view_file`, `write_to_file`, `replace_file_content`, `run_command`, `grep_search`,
+ * `list_dir`, …). Emits the same YAML list shape as the source so a consumer can read the
+ * file. Returns "" when there are no tools (field omitted — also valid).
+ */
+export function antigravityToolsBlock(toolsBlock) {
+    if (!toolsBlock)
+        return "";
+    const names = [];
+    for (const m of toolsBlock.matchAll(/^[ \t]*-[ \t]*([A-Za-z][\w*-]*)/gm))
+        names.push(m[1]);
+    if (names.length === 0) {
+        // Fallback: inline array form `tools: [Read, Write]`.
+        const inline = toolsBlock.match(/\[([^\]]*)\]/);
+        if (inline) {
+            for (const t of inline[1].split(",")) {
+                const n = t.trim().replace(/['"]/g, "");
+                if (n)
+                    names.push(n);
+            }
+        }
+    }
+    if (names.length === 0)
+        return "";
+    let out = "tools:\n";
+    for (const n of names) {
+        if (n.startsWith("mcp__")) {
+            out += `  - ${n}\n`;
+            continue;
+        }
+        out += `  - ${ANTIGRAVITY_TOOL_MAP[n.toLowerCase()] ?? n}\n`;
     }
     return out;
 }
@@ -336,4 +388,100 @@ export function applyT3(content, modelLookup, effortMap) {
         newFm += `${toolsBlock}\n`;
     newFm += "---\n";
     return newFm + afterFm;
+}
+/**
+ * Antigravity subagent-definition directory — the `agents/` folder of the bkit workspace
+ * plugin (`.agents/plugins/bkit/`). The host install lives entirely inside the plugin so
+ * `.agents/` root stays Codex's.
+ */
+export const ANTIGRAVITY_AGENTS_DIR = ".agents/plugins/bkit/agents";
+/**
+ * Antigravity command/skill invocation rewrite. Antigravity has no native subagent tool:
+ * the orchestrator loads a subagent prompt in-session with `view_file` and executes its
+ * step contract, so both Claude tools (`Agent` / `Skill`) respell to `view_file`. A
+ * `**Subagent:** @name` reference resolves to the rendered prompt file it must load
+ * (`<agentsDir>/<name>.md`). Does NOT rewrite body prose or gate-checklist `@agent` refs.
+ */
+export function applyAntigravityToolRewrites(content, agentsDir = ANTIGRAVITY_AGENTS_DIR) {
+    let result = content.replace(/`Agent` tool/g, "`view_file` tool");
+    result = result.replace(/using `Agent` tool/g, "using `view_file` tool");
+    result = result.replace(/`Skill` tool/g, "`view_file` tool");
+    result = result.replace(/using `Skill` tool/g, "using `view_file` tool");
+    // Backticked `@agent` on any **Subagent:** line (numbered, list-indented, or bare).
+    result = result.replace(/^([^\n]*?\*\*Subagent:\*\*[^\n]*?)`@([a-z][a-z0-9-]*)`/gm, `$1\`view_file\` \`${agentsDir}/$2.md\``);
+    // Bare `@agent` immediately after **Subagent:** (exact-line form).
+    result = result.replace(/^([^\n]*?\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)\b/gm, `$1\`view_file\` \`${agentsDir}/$2.md\``);
+    result = result.replace(/Invoke using `@name`/g, `Invoke using \`view_file\` \`${agentsDir}/name.md\``);
+    return result;
+}
+/**
+ * Convert a Claude-format subagent prompt (`.bkit/core/prompts/*.md`) into an Antigravity
+ * prompt (`.agents/plugins/bkit/agents/<name>.md`).
+ *
+ * Antigravity loads subagent prompts from `.agents/plugins/bkit/agents/` and executes them
+ * in-session (the orchestrator loads the file with `view_file`). The frontmatter is rewritten to
+ * Antigravity's vocabulary: `name`/`description` preserved, the model pin from the
+ * `.bkit/prompts.md` § Models `Google` column (bare `gemini-3.8-*` id), the thinking
+ * `effort` remapped through the `Antigravity` column, and the `tools:` block respelled to
+ * Antigravity tool names. Claude-only fields (permissionMode, maxTurns, is_background,
+ * readonly) are dropped. Hard-fails with non-zero exit if the model lookup is missing.
+ */
+export function applyAntigravityPrompt(content, modelLookup, effortMap) {
+    const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
+    if (!fmMatch)
+        return content;
+    const fmBlock = fmMatch[2];
+    const afterFm = content.slice(fmMatch[0].length);
+    const parsed = parseFrontmatter(fmBlock);
+    const name = parsed.get("name") ?? "";
+    if (!name) {
+        console.error(`${LOG_PREFIX} Subagent frontmatter missing 'name' field`);
+        process.exit(1);
+    }
+    const model = modelLookup.get(name);
+    if (!model) {
+        console.error(`${LOG_PREFIX} Missing antigravity model lookup for ${name}`);
+        process.exit(1);
+    }
+    const description = parsed.get("description") ?? "";
+    const effort = parsed.get("effort");
+    const toolsBlock = extractFrontmatterField(fmBlock, "tools");
+    let newFm = "---\n";
+    newFm += `name: ${name}\n`;
+    if (description.includes("\n")) {
+        const indented = description.split("\n").join("\n  ");
+        newFm += `description: |\n  ${indented}\n`;
+    }
+    else {
+        newFm += `description: ${description}\n`;
+    }
+    newFm += `model: ${formatModelPin("antigravity", "google", model)}\n`;
+    if (effort && effortMap) {
+        newFm += `effort: ${lookupEffort(effortMap, "antigravity", effort)}\n`;
+    }
+    newFm += antigravityToolsBlock(toolsBlock);
+    newFm += "---\n";
+    return newFm + afterFm;
+}
+/**
+ * Convert a workflow orchestrator (`.bkit/core/workflows/*.md`) into an Antigravity
+ * SKILL.md (`.agents/plugins/bkit/skills/<name>/SKILL.md`). Antigravity auto-discovers
+ * skills under a workspace plugin's `skills/`; `name` and `description` are frontmatter
+ * keys, and the body is the workflow steps verbatim with invocations respelled to
+ * Antigravity's in-session prompt loading (see applyAntigravityToolRewrites).
+ */
+export function applyAntigravitySkill(content, skillName, agentsDir = ANTIGRAVITY_AGENTS_DIR) {
+    const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
+    let body;
+    let description = `bkit ${skillName} workflow`;
+    if (fmMatch) {
+        const parsed = parseFrontmatter(fmMatch[2]);
+        description = (parsed.get("description") ?? description).replace(/^"|"$/g, "");
+        body = content.slice(fmMatch[0].length);
+    }
+    else {
+        body = content;
+    }
+    const rewritten = applyAntigravityToolRewrites(body, agentsDir);
+    return `---\nname: ${skillName}\ndescription: "${description.replace(/"/g, '\\"')}"\n---\n${rewritten}`;
 }

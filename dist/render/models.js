@@ -92,6 +92,7 @@ const GATEWAY_COLUMN = {
     "opencode-zen": "OpenCode Zen",
     "opencode-go": "OpenCode Go",
     openai: "OpenAI",
+    google: "Google",
 };
 /**
  * Spell a model pin the way a program's config file expects it.
@@ -120,6 +121,13 @@ export function buildOpencodeModelLookup(subagentsMdPath, provider) {
         throw new Error(`buildOpencodeModelLookup: no prompts.md § Models column for provider ${JSON.stringify(provider)}`);
     }
     return parseModelLookupForColumn(subagentsMdPath, header);
+}
+/**
+ * Build the per-agent Antigravity model lookup for Google models.
+ * Source of truth = prompts.md § Models, "Google" column.
+ */
+export function buildAntigravityModelLookup(subagentsMdPath) {
+    return parseModelLookupForColumn(subagentsMdPath, GATEWAY_COLUMN.google);
 }
 /**
  * Parse the consumer-owned `## Model Overrides` table (below the `bkit:end` marker)
@@ -191,6 +199,7 @@ const EFFORT_COLUMN_FOR_PROGRAM = {
     cursor: "Cursor",
     opencode: "OpenCode",
     codex: "Codex",
+    antigravity: "Antigravity",
 };
 /**
  * Parse prompts.md effort→provider table (header starts with Default | Claude | …).

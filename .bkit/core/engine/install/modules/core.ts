@@ -113,7 +113,13 @@ interface CoreTemplateFile {
 }
 
 /** The markered-text `.agents/*.md` blocks core owns. */
-const CORE_AGENT_FILES = ["context.md", "docs.md", "rules.md", "skills.md"] as const;
+const CORE_AGENT_FILES = [
+  "context.md",
+  "docs.md",
+  "rules.md",
+  "shortcuts.md",
+  "skills.md",
+] as const;
 
 // The two shared-root files core writes: stored in `shared/`, owned by the core
 // manifest, written as html-comment managed blocks.

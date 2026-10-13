@@ -38,7 +38,7 @@ import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payloa
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
 import { renderManagedOutputs } from "../../install/modules/index.js";
 import { reconcileMcpJson, enrichClaudeSettingsAllows } from "../../install/modules/claude.js";
-import { parseModelLookup, applyModelOverrides, buildOpencodeModelLookup, parseEffortMap, } from "../../render/models.js";
+import { parseModelLookup, applyModelOverrides, buildOpencodeModelLookup, buildAntigravityModelLookup, parseEffortMap, } from "../../render/models.js";
 /** Zero-value token map — markered-text templates managed on upgrade are token-free. */
 const EMPTY_TOKENS = {
     DEFAULT_BRANCH: "",
@@ -293,8 +293,8 @@ export function updateCanonicalHashesAfterUpgrade(result, options) {
     const seedablePaths = new Set([...result.updated, ...result.skippedSeedable]);
     const fresh = {};
     for (const relPath of seedablePaths) {
-        // Exclude .agents/ internal files (docs.md, friction.md, rules.md, skills.md,
-        // .env.example etc.) from canonicalHashes — they are not consumer-facing files
+        // Exclude .agents/ internal files (docs.md, friction.md, rules.md, shortcuts.md,
+        // skills.md, .env.example etc.) from canonicalHashes — they are not consumer-facing files
         // whose hashes bkit uses for drift detection. Mirrors the same filter applied
         // in the install path (install/modules/index.ts postDispatch). Template copies carry no
         // hash there either.
@@ -347,6 +347,8 @@ export function detectInstalledHostModules(cwd) {
         mods.add("opencode");
     if (fs.existsSync(path.join(cwd, ".codex", "agents")))
         mods.add("codex");
+    if (fs.existsSync(path.join(cwd, ".agents", "plugins", "bkit", "plugin.json")))
+        mods.add("antigravity");
     return mods;
 }
 /**
@@ -633,6 +635,7 @@ export async function runUpgradeCommand(upgradeFlags) {
     let renderModelLookup = new Map();
     let renderOpencodeModelLookup = new Map();
     let renderCodexModelLookup = new Map();
+    let renderAntigravityModelLookup = new Map();
     let renderEffortMap = new Map();
     const pkgPromptsMd = path.join(getBkitDocsRoot(), "prompts.md");
     const consumerPromptsMd = path.join(process.cwd(), ".bkit", "prompts.md");
@@ -663,6 +666,15 @@ export async function runUpgradeCommand(upgradeFlags) {
             }
             applyModelOverrides(renderCodexModelLookup, "openai", consumerPromptsMd);
         }
+        if (renderModules.has("antigravity")) {
+            try {
+                renderAntigravityModelLookup = buildAntigravityModelLookup(pkgPromptsMd);
+            }
+            catch {
+                // Not fatal — the antigravity module fails per-file if a model is missing
+            }
+            applyModelOverrides(renderAntigravityModelLookup, "google", consumerPromptsMd);
+        }
         renderEffortMap = parseEffortMap(pkgPromptsMd);
     }
     const renderWs = { writes: [] };
@@ -672,6 +684,7 @@ export async function runUpgradeCommand(upgradeFlags) {
         modelLookup: renderModelLookup,
         opencodeModelLookup: renderOpencodeModelLookup,
         codexModelLookup: renderCodexModelLookup,
+        antigravityModelLookup: renderAntigravityModelLookup,
         effortMap: renderEffortMap,
         opencodeProvider: renderProvider,
         advisories: [],
@@ -683,6 +696,8 @@ export async function runUpgradeCommand(upgradeFlags) {
         // Re-stamp every rendered agent + command at the version we are upgrading TO,
         // so a clean upgrade refreshes the managed-version marker and `bkit check` stays green.
         version: getInstallingVersion(),
+        // The detected host set — read by the Antigravity module for the Codex-overlap advisory.
+        installedModules: renderModules,
     };
     const rendered = renderManagedOutputs(renderModules, renderCtx);
     // MCP config: bkit's tracker entry only (reconcileMcpJson), for the hosts the consumer

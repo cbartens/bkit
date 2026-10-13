@@ -146,6 +146,15 @@ describe("fixture gh stub", () => {
     expect(r.output).toContain("unsanitized SHA");
     expect(r.output).toContain("rejected");
   });
+
+  it("pr view is keyed by --repo; without it the checkout fixture is read", () => {
+    const scoped = stub(["pr", "view", "2", "--json", "x", "--repo", "other/repo"]);
+    expect(scoped.status).toBe(0);
+    expect(JSON.parse(scoped.stdout).headRefOid).toBe("repo-scoped-head");
+    const checkout = stub(["pr", "view", "2", "--json", "x"]);
+    expect(checkout.status).toBe(0);
+    expect(JSON.parse(checkout.stdout).headRefOid).toBe("checkout-head");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -226,6 +235,30 @@ describe("bkit runs gate", () => {
     const r = await gate(tmp(), "--head=cancelled");
     expect(r.code).toBe(15);
     expect(r.err).toContain("selected run was CANCELLED at head cancelled");
+  });
+
+  // #533: `--repo` must resolve the PR, not the checkout's remote.
+  describe("--repo scopes --pr resolution", () => {
+    it("reads the head from the named repo, not the checkout's own PR", async () => {
+      fixtureGh();
+      // The stub keys `pr view` by --repo; without it the checkout fixture
+      // (head `checkout-head`) is read, which has no run and fails the gate.
+      const r = await cli(tmp(), ["gate", "--repo=other/repo", "--pr=2"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({
+        passed: true,
+        code: 0,
+        head: "repo-scoped-head",
+        repo: "other/repo",
+      });
+      expect(r.err).toContain("PR 2 resolved in other/repo");
+    });
+
+    it("logs the disagreement when the resolved repo differs from --repo", async () => {
+      fixtureGh();
+      const r = await cli(tmp(), ["gate", "--repo=other/repo", "--pr=3"]);
+      expect(r.err).toContain("PR 3 resolved in example/example — --repo names other/repo");
+    });
   });
 
   describe("skipped lanes (16 is opt-in)", () => {

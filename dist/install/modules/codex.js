@@ -98,6 +98,9 @@ export function renderCodexAgentsSkills(ctx) {
         }
     }
     // --- Workflow skills: one directory per workflow, each holding SKILL.md ---
+    // `.agents/skills/` is Codex's. The Antigravity host installs its own workflow skills
+    // into a workspace plugin (`.agents/plugins/bkit/skills/`) instead, so this directory
+    // has a single writer and the two hosts never fight over one file.
     {
         const src = getWorkflowsRoot();
         const files = listMdFiles(src, BKIT_PREFIX);

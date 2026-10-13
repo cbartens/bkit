@@ -31,6 +31,7 @@ import {
   parseModelLookup,
   applyModelOverrides,
   buildOpencodeModelLookup,
+  buildAntigravityModelLookup,
   parseEffortMap,
 } from "../../render/models.js";
 import { getBkitDocsRoot } from "../../shared/package-roots.js";
@@ -116,6 +117,7 @@ export function modulesToCliFlags(
   if (mods.has("cursor")) out.push("--cursor");
   if (mods.has("opencode")) out.push(`--opencode=${opencodeProvider ?? "<provider>"}`);
   if (mods.has("codex")) out.push("--codex");
+  if (mods.has("antigravity")) out.push("--antigravity");
   if (mods.has("cloud")) out.push(`--auto=${cloudVariant ?? "<variant>"}`);
   return out.join(" ");
 }
@@ -300,6 +302,7 @@ export async function runInstall(
   let modelLookup: Map<string, string> = new Map();
   let opencodeModelLookup: Map<string, string> = new Map();
   let codexModelLookup: Map<string, string> = new Map();
+  let antigravityModelLookup: Map<string, string> = new Map();
   let effortMap: EffortMap = new Map();
   const promptsMdPath = path.join(getBkitDocsRoot(), "prompts.md");
   const consumerPromptsMdPath = path.join(process.cwd(), ".bkit", "prompts.md");
@@ -332,6 +335,15 @@ export async function runInstall(
         // Not fatal — codex module will fail per-file if a model is missing
       }
       applyModelOverrides(codexModelLookup, "openai", consumerPromptsMdPath);
+    }
+    if (effectiveModules.has("antigravity")) {
+      // Antigravity is nullary — one gateway (`google`), so there is nothing to detect.
+      try {
+        antigravityModelLookup = buildAntigravityModelLookup(promptsMdPath);
+      } catch {
+        // Not fatal — antigravity module will fail per-file if a model is missing
+      }
+      applyModelOverrides(antigravityModelLookup, "google", consumerPromptsMdPath);
     }
     effortMap = parseEffortMap(promptsMdPath);
   }
@@ -426,6 +438,7 @@ export async function runInstall(
     modelLookup,
     opencodeModelLookup,
     codexModelLookup,
+    antigravityModelLookup,
     effortMap,
     opencodeProvider: renderOpencodeProvider,
     advisories,
@@ -436,6 +449,13 @@ export async function runInstall(
     cloudVariant,
     // Stamped into every rendered agent + command as the managed-version marker.
     version: getInstallingVersion(),
+    // Full host set for this run: dispatched ∪ already-on-disk. Read by the Antigravity
+    // module to warn when Codex is also installed (both hosts' `bkit-*` workflow skills
+    // then surface in Antigravity's skill selector).
+    installedModules: new Set<ModuleFlag>([
+      ...effectiveModules,
+      ...detectInstalledModules(process.cwd()),
+    ]),
   };
 
   // --- Phase 2: Install (current behaviour — dispatch modules) ---

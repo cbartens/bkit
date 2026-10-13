@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.0.3 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 - **Rules:** Read `.agents/rules.md` → follow all rules.
 
@@ -73,5 +73,16 @@ Read and execute the matched command file for the current IDE.
 | `Build` | `.claude/commands/bkit-build.md` |
 | `Plan` | `.claude/commands/bkit-plan.md` |
 | `Design` | `.claude/commands/bkit-design.md` |
+
+**Antigravity** (`.agents/plugins/bkit/skills/`):
+
+<!-- prettier-ignore -->
+| Label | Command |
+| --- | --- |
+| `Ship` | `.agents/plugins/bkit/skills/bkit-ship/SKILL.md` |
+| `Debug` | `.agents/plugins/bkit/skills/bkit-debug/SKILL.md` |
+| `Build` | `.agents/plugins/bkit/skills/bkit-build/SKILL.md` |
+| `Plan` | `.agents/plugins/bkit/skills/bkit-plan/SKILL.md` |
+| `Design` | `.agents/plugins/bkit/skills/bkit-design/SKILL.md` |
 
 <!-- bkit:end -->

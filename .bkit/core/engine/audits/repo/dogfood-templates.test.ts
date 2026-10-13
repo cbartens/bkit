@@ -152,8 +152,14 @@ const ADOPTED: Record<string, Entry> = {
         kind: "bkit-only",
         what: "dist freshness and status-hole steps",
         region: {
-          template: ["  # ── bkit-tests-unit", "  # ── bkit-tests-unit"],
-          copy: ["      # bkit repo only: dist/ is committed", "  # ── bkit-tests-unit"],
+          template: [
+            "      # Capability-register freshness gate:",
+            "      # Capability-register freshness gate:",
+          ],
+          copy: [
+            "      # bkit repo only: dist/ is committed",
+            "      # Capability-register freshness gate:",
+          ],
         },
       },
       {

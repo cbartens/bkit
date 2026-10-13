@@ -1,0 +1,70 @@
+name: bkit-ci
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  bkit-tests-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: tests
+        run: |
+          set -uo pipefail
+          out=$(node --test --test-reporter=tap "example/**/*.test.js" 2>&1); rc=$?
+          printf '%s\n' "$out"
+          [ "$rc" -eq 0 ] || { echo "::error::node --test failed (rc=$rc)"; exit 1; }
+          pass=$(printf '%s\n' "$out" | sed -n 's/^# pass \([0-9][0-9]*\)$/\1/p' | tail -1)
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${pass:-0}" -lt 1 ]; then
+            echo "::error::no tests executed"; exit 1
+          fi
+      - name: sentinel gone (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          if grep -q "BKIT-EXAMPLE-SENTINEL" example/index.html; then
+            echo "::error::sentinel still present in built page"; exit 1
+          fi
+      - name: classic-script assertion (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          if ! grep -qE '<script[^>]*src=' example/index.html; then
+            echo "::error::no classic <script src> in built page"; exit 1
+          fi
+          if grep -qE 'type[[:space:]]*=[[:space:]]*["'"'"']module["'"'"']' example/index.html; then
+            echo "::error::type=module found in built page"; exit 1
+          fi
+      - name: privacy scan (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          git fetch --no-tags --quiet origin "$base" 2>/dev/null || true
+          if git diff "$base"...HEAD | grep -nE '/(Users|home)/[A-Za-z0-9._-]+|ghp_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}'; then
+            echo "::error::secret or home-path shape in run diff"; exit 1
+          fi
+          echo "privacy scan clean"
+      - name: screenshot (PR only, non-gating)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          google-chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars --window-size=1280,800 --screenshot=shot.png "file://$PWD/example/index.html"
+          ls -l shot.png
+      - name: upload screenshot (PR only, non-gating)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-screenshot
+          path: shot.png
+          if-no-files-found: warn
+          retention-days: 7

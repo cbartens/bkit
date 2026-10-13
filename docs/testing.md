@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.0.3 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 # Testing
 
@@ -547,7 +547,7 @@ The status-hole detector (`.bkit/core/engine/checks/status-holes.ts`) is **advis
 | `.bkit/core/engine/audits/hooks/gateguard-claude.integration.test.ts` | Integration | Claude GateGuard hook (`.claude/hooks/bkit-gateguard.cjs`, spawned as a real process): advisory / deny modes, dedup, docs/\*.md density advisory (path-scoped, segment match). |
 | `.bkit/core/engine/audits/hooks/gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagents included, advisory / deny modes, dedup, docs/\*.md density advisory, managed-block boundary (no `export` inside the marker region), twin parity vs the Claude hook. |
 | `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` | Integration | Cursor GateGuard hook (`.cursor/hooks/bkit-gateguard.cjs`, spawned): advisory via `additional_context` on an allow, deny via `agent_message`, workspace-relative path resolution, managed-block parity with the Claude twin. |
-| `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` | Integration | One GateGuard behaviour table asserted on all four hosts' generated hooks (template + `hooks/`, as install writes them) through per-host adapters — advisory content, docs density, dedup, modes, fail-open, subagents included — plus the documented deviations; every host's block carries `gateguard-engine.js` verbatim. |
+| `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` | Integration | One GateGuard behaviour table asserted on all five hosts' generated hooks (template + `hooks/`, as install writes them) through per-host adapters — advisory content, docs density, dedup, modes, fail-open, subagents included — plus the documented deviations; every host's block carries `gateguard-engine.js` verbatim. |
 | `.bkit/core/engine/audits/hooks/gateguard-dogfood.integration.test.ts` | Integration | bkit-repo-only authoring advisories (`.bkit/core/workflows/`, `.bkit/core/prompts/`, bkit's own `.md` docs, `.agents/rules.md` § Repo Authoring prose scope) in all four installed hooks: routing per host, placement after `bkit:end`, never present in a template, rule-coverage vs the source sections, shared rules read from the source at hook time, every path the Repo Authoring rules name exists. |
 | `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` | Unit | Every template has an entry; each repo-root copy equals the template after its listed edits (placeholder / adapt / bkit-only), else the test fails. Change a copy → list the edit there. |
 | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | Integration | Cursor destructive-op / secret-exposure hook (`.cursor/hooks/bkit-guardrails.cjs`, spawned): shell deny / ask patterns, curl-wget host allowlist, private-key and `.env` reads, managed-block boundary. |

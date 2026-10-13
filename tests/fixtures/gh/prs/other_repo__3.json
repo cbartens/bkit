@@ -1,0 +1,11 @@
+{
+  "number": 3,
+  "url": "https://github.com/example/example/pull/3",
+  "state": "OPEN",
+  "baseRefName": "dev",
+  "headRefName": "feat/mismatch",
+  "headRefOid": "mismatch-head",
+  "title": "feat: mismatch",
+  "mergeCommit": null,
+  "mergeable": "MERGEABLE"
+}

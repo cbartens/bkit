@@ -30,6 +30,8 @@ export function detectInstalledModules(cwd) {
         mods.add("opencode");
     if (fs.existsSync(path.join(cwd, ".codex", "agents")))
         mods.add("codex");
+    if (fs.existsSync(path.join(cwd, ".agents", "plugins", "bkit", "plugin.json")))
+        mods.add("antigravity");
     return mods;
 }
 // Check mode: exit-1 on drift (totalWrites > 0). runInstall emits the banner first.

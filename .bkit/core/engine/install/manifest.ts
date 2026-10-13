@@ -12,7 +12,7 @@ import type { ModuleFlag } from "../cli.js";
  * (`--auto=`, `--opencode=`). A bare/full `uninstall` DOES remove them (zero footprint).
  * Dependency-updater files are not modules — bkit never writes or removes them.
  */
-export const OPTIN_MODULES = new Set<ModuleFlag>(["cloud", "opencode", "codex"]);
+export const OPTIN_MODULES = new Set<ModuleFlag>(["cloud", "opencode", "codex", "antigravity"]);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,7 +44,8 @@ export interface ManifestEntry {
   generated?: boolean;
 }
 
-export type ModuleName = "core" | "claude" | "cursor" | "opencode" | "codex" | "cloud";
+export type ModuleName =
+  "core" | "claude" | "cursor" | "opencode" | "codex" | "antigravity" | "cloud";
 
 // ---------------------------------------------------------------------------
 // Issue tracker
@@ -387,6 +388,40 @@ export const CODEX_MANIFEST: ManifestEntry[] = [
   // managed dynamically — the set follows the bkit-prefix prompt/workflow files at install.
 ];
 
+// --antigravity: Google Antigravity IDE host. Installs as a workspace PLUGIN at
+// `.agents/plugins/bkit/` (Antigravity's own packaging surface), so `.agents/` root stays
+// the dedicated Codex install. Root `GEMINI.md` is the redirect mirror of `CLAUDE.md`
+// (Antigravity loads `GEMINI.md` as a workspace rule file).
+export const ANTIGRAVITY_MANIFEST: ManifestEntry[] = [
+  // plugin.json — the required plugin manifest. Tier-2 json (deep-contained): bkit owns
+  // the schema/name/description keys (the schema is `additionalProperties: false`).
+  { path: ".agents/plugins/bkit/plugin.json", format: "json", module: "antigravity" },
+  // hooks.json — Tier-2 json (deep-contained): bkit owns the PreToolUse GateGuard and
+  // guardrails entries, consumers may add their own event groups alongside them.
+  { path: ".agents/plugins/bkit/hooks.json", format: "json", module: "antigravity" },
+  // bkit-gateguard.cjs — Tier-2 markered-text, twin of the Claude/Codex hook (same
+  // stdin/stdout contract); differs in the tool names (`write_to_file` /
+  // `replace_file_content`) and the payload path field.
+  {
+    path: ".agents/plugins/bkit/hooks/bkit-gateguard.cjs",
+    format: "markered-text",
+    module: "antigravity",
+  },
+  // bkit-guardrails.cjs — Tier-2 markered-text, twin of the Cursor/Codex hook. Registered
+  // on matcher `run_command`, Antigravity's shell tool name.
+  {
+    path: ".agents/plugins/bkit/hooks/bkit-guardrails.cjs",
+    format: "markered-text",
+    module: "antigravity",
+  },
+  // Root GEMINI.md — Antigravity workspace-rule redirect to .agents/rules.md, owned by the
+  // antigravity module: `uninstall --antigravity` removes it; other installs leave it.
+  { path: "GEMINI.md", format: "markered-text", module: "antigravity" },
+  // Subagent prompts (.agents/plugins/bkit/agents/bkit-*.md) and workflow skills
+  // (.agents/plugins/bkit/skills/bkit-*/) are managed dynamically — the set follows the
+  // bkit-prefix prompt/workflow files at install.
+];
+
 // Cloud agent integration is opt-in — NOT in a default install, so a default install
 // ships ZERO cloud footprint. Every variant writes no files: the cloud workflow
 // (bkit-cloud.yml), bkit-cloud-bootstrap.sh and the Cursor Background Agent files
@@ -418,6 +453,7 @@ const MODULE_MANIFESTS: Record<ModuleName, ManifestEntry[]> = {
   cursor: CURSOR_MANIFEST,
   opencode: OPENCODE_MANIFEST,
   codex: CODEX_MANIFEST,
+  antigravity: ANTIGRAVITY_MANIFEST,
   cloud: CLOUD_MANIFEST,
 };
 

@@ -17,6 +17,13 @@ import { EXIT_NO_STATUS, FILE_FLAG, readStatusRows, statusFile, str } from "./st
 // gh
 // ---------------------------------------------------------------------------
 const PR_FIELDS = "number,url,state,baseRefName,headRefName,headRefOid,title,mergeCommit";
+/**
+ * The `owner/repo` a PR URL points at, or undefined when it is not a recognizable
+ * GitHub PR URL. Lets a caller compare the repo a PR resolved in against `--repo`.
+ */
+export function prRepoSlug(url) {
+    return /^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/pull\//.exec(url ?? "")?.[1];
+}
 function ghFailure(res, what) {
     const detail = res.stderr.split("\n").at(-1) || `exit ${String(res.status)}`;
     return ghUnavailable(res)
@@ -30,7 +37,10 @@ function ghFailure(res, what) {
  */
 export function probePr(cwd, opts) {
     if (opts.number !== undefined) {
-        const res = runGh(cwd, ["pr", "view", opts.number, "--json", `${PR_FIELDS},mergeable`]);
+        const args = ["pr", "view", opts.number, "--json", `${PR_FIELDS},mergeable`];
+        if (opts.repo !== undefined)
+            args.push("--repo", opts.repo);
+        const res = runGh(cwd, args);
         if (!res.ok)
             return ghFailure(res, `gh pr view ${opts.number}`);
         const parsed = parseJson(res.stdout);
@@ -41,6 +51,8 @@ export function probePr(cwd, opts) {
     const args = ["pr", "list", "--head", opts.head, "--state", opts.state, "--json", PR_FIELDS];
     if (opts.base !== undefined)
         args.push("--base", opts.base);
+    if (opts.repo !== undefined)
+        args.push("--repo", opts.repo);
     const res = runGh(cwd, args);
     if (!res.ok)
         return ghFailure(res, `gh pr list --head ${opts.head}`);

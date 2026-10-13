@@ -1,0 +1,14 @@
+{
+  "name": "bkit-example",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.34.4",
+  "scripts": {
+    "test": "node --test \"example/**/*.test.js\""
+  },
+  "bkit": {
+    "issueTracker": "github",
+    "capstoneJob": "bkit-tests-check",
+    "ciWorkflow": "bkit-ci.yml"
+  }
+}

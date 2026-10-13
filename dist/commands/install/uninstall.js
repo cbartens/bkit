@@ -166,6 +166,7 @@ const CORE_TEMPLATE_DOCTRINE = [
     { path: ".agents/context.md", format: "markered-text", module: "core" },
     { path: ".agents/docs.md", format: "markered-text", module: "core" },
     { path: ".agents/rules.md", format: "markered-text", module: "core" },
+    { path: ".agents/shortcuts.md", format: "markered-text", module: "core" },
     { path: ".agents/skills.md", format: "markered-text", module: "core" },
 ];
 /**
@@ -195,7 +196,7 @@ export function buildDecisionTable(modules, ctx) {
     const moduleList = modules instanceof Set
         ? [...modules].filter((m) => 
         // Includes the opt-in add-ons (cloud) a Set caller passes.
-        ["core", "claude", "cursor", "opencode", "codex", "cloud"].includes(m))
+        ["core", "claude", "cursor", "opencode", "codex", "antigravity", "cloud"].includes(m))
         : modules;
     const entries = [
         ...getInstallManifest(moduleList),
@@ -389,7 +390,7 @@ export async function runUninstall(modules, ctx) {
     const moduleList = modules instanceof Set
         ? [...modules].filter((m) => 
         // Includes the opt-in add-ons (cloud) a Set caller passes.
-        ["core", "claude", "cursor", "opencode", "codex", "cloud"].includes(m))
+        ["core", "claude", "cursor", "opencode", "codex", "antigravity", "cloud"].includes(m))
         : modules;
     // Nuke confirmation
     if (ctx.nuke && !ctx.yes && !ctx.dryRun) {
@@ -583,6 +584,9 @@ export async function runUninstall(modules, ctx) {
             // separately below: `.agents/skills/` is SHARED with third-party skills installed via
             // skills.sh, so the directory itself must never be removed wholesale.
             ...(moduleList.includes("codex") ? [".codex/agents"] : []),
+            // antigravity plugin subagent mirrors (`.agents/plugins/bkit/agents/bkit-*.md`). The
+            // plugin's workflow skills (`.agents/plugins/bkit/skills/bkit-*`) are swept below.
+            ...(moduleList.includes("antigravity") ? [".agents/plugins/bkit/agents"] : []),
         ];
         for (const dir of mirrorDirs) {
             const absDir = path.join(ctx.cwd, dir);
@@ -603,27 +607,35 @@ export async function runUninstall(modules, ctx) {
                 console.error(`${ctx.logPrefix} error cleaning up ${dir}: ${err.message}`);
             }
         }
-        // Workflow skills: `.agents/skills/` is SHARED with third-party skills installed via
-        // skills.sh, so only the bkit-prefixed DIRECTORIES are removed — never the parent.
-        if (moduleList.includes("codex")) {
-            const skillsDir = path.join(ctx.cwd, ".agents", "skills");
-            if (fs.existsSync(skillsDir)) {
-                try {
-                    for (const d of fs.readdirSync(skillsDir)) {
-                        if (!d.startsWith("bkit-"))
-                            continue;
-                        const abs = path.join(skillsDir, d);
-                        if (!fs.statSync(abs).isDirectory())
-                            continue;
-                        fs.rmSync(abs, { recursive: true, force: true });
-                        result.deleted.push(path.join(".agents/skills", d));
-                        console.log(`${ctx.logPrefix} delete mirror: ${path.join(".agents/skills", d)}`);
-                    }
+        // Workflow skills. Codex's live at `.agents/skills/` (SHARED with third-party skills
+        // installed via skills.sh, so only the bkit-prefixed DIRECTORIES are removed — never the
+        // parent); Antigravity's live in its plugin at `.agents/plugins/bkit/skills/`. Sweep each
+        // host's set independently.
+        const skillDirs = [
+            ...(moduleList.includes("codex") ? [path.join(".agents", "skills")] : []),
+            ...(moduleList.includes("antigravity")
+                ? [path.join(".agents", "plugins", "bkit", "skills")]
+                : []),
+        ];
+        for (const skillsDir of skillDirs) {
+            const absDir = path.join(ctx.cwd, skillsDir);
+            if (!fs.existsSync(absDir))
+                continue;
+            try {
+                for (const d of fs.readdirSync(absDir)) {
+                    if (!d.startsWith("bkit-"))
+                        continue;
+                    const abs = path.join(absDir, d);
+                    if (!fs.statSync(abs).isDirectory())
+                        continue;
+                    fs.rmSync(abs, { recursive: true, force: true });
+                    result.deleted.push(path.join(skillsDir, d));
+                    console.log(`${ctx.logPrefix} delete mirror: ${path.join(skillsDir, d)}`);
                 }
-                catch (err) {
-                    const msg = err.message;
-                    console.error(`${ctx.logPrefix} error cleaning up .agents/skills: ${msg}`);
-                }
+            }
+            catch (err) {
+                const msg = err.message;
+                console.error(`${ctx.logPrefix} error cleaning up ${skillsDir}: ${msg}`);
             }
         }
     }

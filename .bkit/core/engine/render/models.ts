@@ -106,6 +106,7 @@ const GATEWAY_COLUMN: Record<string, string> = {
   "opencode-zen": "OpenCode Zen",
   "opencode-go": "OpenCode Go",
   openai: "OpenAI",
+  google: "Google",
 };
 
 /**
@@ -140,6 +141,14 @@ export function buildOpencodeModelLookup(
     );
   }
   return parseModelLookupForColumn(subagentsMdPath, header);
+}
+
+/**
+ * Build the per-agent Antigravity model lookup for Google models.
+ * Source of truth = prompts.md § Models, "Google" column.
+ */
+export function buildAntigravityModelLookup(subagentsMdPath: string): Map<string, string> {
+  return parseModelLookupForColumn(subagentsMdPath, GATEWAY_COLUMN.google);
 }
 
 /**
@@ -221,6 +230,7 @@ const EFFORT_COLUMN_FOR_PROGRAM: Record<string, string> = {
   cursor: "Cursor",
   opencode: "OpenCode",
   codex: "Codex",
+  antigravity: "Antigravity",
 };
 
 /**

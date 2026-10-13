@@ -2,7 +2,7 @@
 // Each module function receives { dryRun, tokens, modelLookup, advisories, ws, … } (ModuleContext)
 // and emits writes into the shared WriteSet.
 //
-// Dispatch order: core → claude → cursor → opencode → codex → cloud
+// Dispatch order: core → claude → cursor → opencode → codex → antigravity → cloud
 // .bkit/version is written LAST — in postDispatch after ALL modules complete (MED-4).
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -13,6 +13,7 @@ import { renderClaudeAgentsCommands, runClaudeModule } from "./claude.js";
 import { renderCursorAgentsCommands, runCursorModule } from "./cursor.js";
 import { renderOpencodeAgentsCommands, runOpencodeModule } from "./opencode.js";
 import { CODEX_SKILLS_DIR, renderCodexAgentsSkills, runCodexModule } from "./codex.js";
+import { ANTIGRAVITY_SKILLS_DIR, renderAntigravityAgentsSkills, runAntigravityModule, } from "./antigravity.js";
 import { runCloudModule } from "./cloud.js";
 // ---------------------------------------------------------------------------
 // renderManagedOutputs — re-render the bkit-managed OUTPUT files that the
@@ -52,6 +53,8 @@ export function renderManagedOutputs(modules, ctx) {
         written.push(...renderOpencodeAgentsCommands(ctx));
     if (modules.has("codex"))
         written.push(...renderCodexAgentsSkills(ctx));
+    if (modules.has("antigravity"))
+        written.push(...renderAntigravityAgentsSkills(ctx));
     return written;
 }
 /** Rendered mirror dirs: every `bkit-*` file of the given extension in each is bkit's. */
@@ -63,6 +66,7 @@ const RENDERED_MIRRORS = [
     [".opencode/agents", ".md"],
     [".opencode/commands", ".md"],
     [".codex/agents", ".toml"],
+    [".agents/plugins/bkit/agents", ".md"],
 ];
 /**
  * Every file bkit writes into `cwd` that carries the managed-version marker: the core
@@ -98,13 +102,18 @@ export function listStampedFiles(cwd) {
                 add(path.join(dir, f), "whole");
         }
     }
-    const skills = path.join(cwd, CODEX_SKILLS_DIR);
-    if (fs.existsSync(skills)) {
-        for (const d of fs.readdirSync(skills)) {
+    // Codex renders workflow skills into `.agents/skills/bkit-*/SKILL.md`; Antigravity renders
+    // its own into the plugin `.agents/plugins/bkit/skills/bkit-*/SKILL.md`. Both stamp a
+    // managed-version marker; collect each for the stale detector.
+    for (const dir of [CODEX_SKILLS_DIR, ANTIGRAVITY_SKILLS_DIR]) {
+        const abs = path.join(cwd, dir);
+        if (!fs.existsSync(abs))
+            continue;
+        for (const d of fs.readdirSync(abs)) {
             if (!d.startsWith(BKIT_PREFIX))
                 continue;
-            if (fs.existsSync(path.join(skills, d, "SKILL.md"))) {
-                add(path.join(CODEX_SKILLS_DIR, d, "SKILL.md"), "whole");
+            if (fs.existsSync(path.join(abs, d, "SKILL.md"))) {
+                add(path.join(dir, d, "SKILL.md"), "whole");
             }
         }
     }
@@ -119,6 +128,7 @@ export const MODULE_REGISTRY = {
     cursor: runCursorModule,
     opencode: runOpencodeModule,
     codex: runCodexModule,
+    antigravity: runAntigravityModule,
     cloud: runCloudModule,
     // "full" is never directly in the registry — resolveModules expands it to all modules
 };
@@ -129,6 +139,7 @@ export const MODULE_DISPATCH_ORDER = [
     "cursor",
     "opencode",
     "codex",
+    "antigravity",
     "cloud",
 ];
 /**

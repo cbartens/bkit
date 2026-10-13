@@ -2,7 +2,7 @@
 // Each module function receives { dryRun, tokens, modelLookup, advisories, ws, … } (ModuleContext)
 // and emits writes into the shared WriteSet.
 //
-// Dispatch order: core → claude → cursor → opencode → codex → cloud
+// Dispatch order: core → claude → cursor → opencode → codex → antigravity → cloud
 // .bkit/version is written LAST — in postDispatch after ALL modules complete (MED-4).
 
 import * as fs from "node:fs";
@@ -26,6 +26,11 @@ import { renderClaudeAgentsCommands, runClaudeModule } from "./claude.js";
 import { renderCursorAgentsCommands, runCursorModule } from "./cursor.js";
 import { renderOpencodeAgentsCommands, runOpencodeModule } from "./opencode.js";
 import { CODEX_SKILLS_DIR, renderCodexAgentsSkills, runCodexModule } from "./codex.js";
+import {
+  ANTIGRAVITY_SKILLS_DIR,
+  renderAntigravityAgentsSkills,
+  runAntigravityModule,
+} from "./antigravity.js";
 import { runCloudModule } from "./cloud.js";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +59,11 @@ export interface ModuleContext {
    * opencodeModelLookup because they read different gateway columns.
    */
   codexModelLookup?: Map<string, string>;
+  /**
+   * name -> BARE § Models `Google` cell, for `.agents/plugins/bkit/agents/*.md`. Separate
+   * from the other lookups because it reads the Google gateway column.
+   */
+  antigravityModelLookup?: Map<string, string>;
   /**
    * Effort → provider thinking map from prompts.md (Default | Claude | Cursor | …).
    * Shared by Claude / Cursor / opencode transforms. Empty map when prompts.md absent.
@@ -88,6 +98,15 @@ export interface ModuleContext {
    * install/upgrade set it explicitly.
    */
   version?: string;
+  /**
+   * The full set of host modules present for this run — the dispatched set UNION the hosts
+   * already on disk. Read by the Antigravity module to warn when Codex is also installed
+   * (both hosts' `bkit-*` workflow skills then surface in Antigravity's skill selector).
+   *
+   * Optional: absent in isolated unit tests. Production install
+   * (commands/install/install.ts) and upgrade (commands/install/upgrade.ts) set it.
+   */
+  installedModules?: ReadonlySet<ModuleFlag>;
 }
 
 export type ModuleFn = (ctx: ModuleContext) => void;
@@ -130,6 +149,7 @@ export function renderManagedOutputs(modules: Set<ModuleFlag>, ctx: ModuleContex
   if (modules.has("cursor")) written.push(...renderCursorAgentsCommands(ctx));
   if (modules.has("opencode")) written.push(...renderOpencodeAgentsCommands(ctx));
   if (modules.has("codex")) written.push(...renderCodexAgentsSkills(ctx));
+  if (modules.has("antigravity")) written.push(...renderAntigravityAgentsSkills(ctx));
 
   return written;
 }
@@ -155,6 +175,7 @@ const RENDERED_MIRRORS: ReadonlyArray<[dir: string, ext: string]> = [
   [".opencode/agents", ".md"],
   [".opencode/commands", ".md"],
   [".codex/agents", ".toml"],
+  [".agents/plugins/bkit/agents", ".md"],
 ];
 
 /**
@@ -187,12 +208,16 @@ export function listStampedFiles(cwd: string): StampedFile[] {
       if (f.startsWith(BKIT_PREFIX) && f.endsWith(ext)) add(path.join(dir, f), "whole");
     }
   }
-  const skills = path.join(cwd, CODEX_SKILLS_DIR);
-  if (fs.existsSync(skills)) {
-    for (const d of fs.readdirSync(skills)) {
+  // Codex renders workflow skills into `.agents/skills/bkit-*/SKILL.md`; Antigravity renders
+  // its own into the plugin `.agents/plugins/bkit/skills/bkit-*/SKILL.md`. Both stamp a
+  // managed-version marker; collect each for the stale detector.
+  for (const dir of [CODEX_SKILLS_DIR, ANTIGRAVITY_SKILLS_DIR]) {
+    const abs = path.join(cwd, dir);
+    if (!fs.existsSync(abs)) continue;
+    for (const d of fs.readdirSync(abs)) {
       if (!d.startsWith(BKIT_PREFIX)) continue;
-      if (fs.existsSync(path.join(skills, d, "SKILL.md"))) {
-        add(path.join(CODEX_SKILLS_DIR, d, "SKILL.md"), "whole");
+      if (fs.existsSync(path.join(abs, d, "SKILL.md"))) {
+        add(path.join(dir, d, "SKILL.md"), "whole");
       }
     }
   }
@@ -209,6 +234,7 @@ export const MODULE_REGISTRY: Partial<Record<ModuleFlag, ModuleFn>> = {
   cursor: runCursorModule,
   opencode: runOpencodeModule,
   codex: runCodexModule,
+  antigravity: runAntigravityModule,
   cloud: runCloudModule,
   // "full" is never directly in the registry — resolveModules expands it to all modules
 };
@@ -220,6 +246,7 @@ export const MODULE_DISPATCH_ORDER: ModuleFlag[] = [
   "cursor",
   "opencode",
   "codex",
+  "antigravity",
   "cloud",
 ];
 

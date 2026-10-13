@@ -56,6 +56,14 @@ export type Probe =
   | { kind: "unavailable"; message: string }
   | { kind: "failed"; message: string };
 
+/**
+ * The `owner/repo` a PR URL points at, or undefined when it is not a recognizable
+ * GitHub PR URL. Lets a caller compare the repo a PR resolved in against `--repo`.
+ */
+export function prRepoSlug(url: string | null | undefined): string | undefined {
+  return /^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/pull\//.exec(url ?? "")?.[1];
+}
+
 function ghFailure(res: GhResult, what: string): Probe {
   const detail = res.stderr.split("\n").at(-1) || `exit ${String(res.status)}`;
   return ghUnavailable(res)
@@ -70,10 +78,19 @@ function ghFailure(res: GhResult, what: string): Probe {
  */
 export function probePr(
   cwd: string,
-  opts: { head?: string; base?: string; state: "open" | "all"; number?: string },
+  opts: {
+    head?: string;
+    base?: string;
+    state: "open" | "all";
+    number?: string;
+    /** Honour `--repo`: resolve the PR in this owner/repo, not the checkout's remote. */
+    repo?: string;
+  },
 ): Probe {
   if (opts.number !== undefined) {
-    const res = runGh(cwd, ["pr", "view", opts.number, "--json", `${PR_FIELDS},mergeable`]);
+    const args = ["pr", "view", opts.number, "--json", `${PR_FIELDS},mergeable`];
+    if (opts.repo !== undefined) args.push("--repo", opts.repo);
+    const res = runGh(cwd, args);
     if (!res.ok) return ghFailure(res, `gh pr view ${opts.number}`);
     const parsed = parseJson(res.stdout);
     if (!parsed.ok) return { kind: "failed", message: "gh pr view printed no JSON" };
@@ -81,6 +98,7 @@ export function probePr(
   }
   const args = ["pr", "list", "--head", opts.head!, "--state", opts.state, "--json", PR_FIELDS];
   if (opts.base !== undefined) args.push("--base", opts.base);
+  if (opts.repo !== undefined) args.push("--repo", opts.repo);
   const res = runGh(cwd, args);
   if (!res.ok) return ghFailure(res, `gh pr list --head ${opts.head!}`);
   const parsed = parseJson(res.stdout);

@@ -11,19 +11,21 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-12T04:51:49Z)_
+_(refreshed 2026-10-13T05:50:40Z)_
 
 ### Design
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
-| 504-example-project | 504-example-project | 1791780709003 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 
 ### Plan
 
-_(none)_
+<!-- prettier-ignore -->
+| FID | Title | Last-transition (ts) |
+| --- | --- | --- |
+| 504-example-project | 504-example-project | 1791870640742 |
 
 ### Build
 

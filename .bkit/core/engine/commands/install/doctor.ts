@@ -97,12 +97,20 @@ export function runStatus(cwd: string, logPrefix: string): void {
   const codexDir = path.join(cwd, ".codex");
   const codexPresent = fs.existsSync(codexDir);
 
+  // --- antigravity host ---
+  const antigravityPresent = fs.existsSync(
+    path.join(cwd, ".agents", "plugins", "bkit", "plugin.json"),
+  );
+
   const opencodeStatus = opencodePresent
     ? `INSTALLED  (${providerLabel}: ${opencodeProviderDisplay} / model: ${opencodeModel})`
     : "absent (run: bkit install --opencode=<provider>)";
   console.log(`${logPrefix} opencode: ${opencodeStatus}`);
   console.log(
     `${logPrefix} codex:   ${codexPresent ? "INSTALLED  (provider: openai)" : "absent (run: bkit install --codex)"}`,
+  );
+  console.log(
+    `${logPrefix} antigravity: ${antigravityPresent ? "INSTALLED  (provider: google)" : "absent (run: bkit install --antigravity)"}`,
   );
 
   // --- summary ---
@@ -111,6 +119,7 @@ export function runStatus(cwd: string, logPrefix: string): void {
     cursorPresent ? "cursor" : null,
     opencodePresent ? "opencode" : null,
     codexPresent ? "codex" : null,
+    antigravityPresent ? "antigravity" : null,
   ].filter(Boolean);
   console.log(
     `${logPrefix} Installed hosts: ${installedHosts.length > 0 ? installedHosts.join(", ") : "none"}`,

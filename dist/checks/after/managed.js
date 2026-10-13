@@ -150,6 +150,7 @@ const HOOK_HOST_FLAGS = [
     ["cursor", "--cursor"],
     ["codex", "--codex"],
     ["opencode", "--opencode=<provider>"],
+    ["antigravity", "--antigravity"],
 ];
 /** Manifest paths a host runs as a hook: `.<host>/hooks/<file>` and `.opencode/plugin/<file>`. */
 const HOOK_FILE_RE = /\/(hooks|plugin)\/[^/]+$/;

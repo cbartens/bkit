@@ -1,0 +1,11 @@
+{
+  "number": 2,
+  "url": "https://github.com/example/example/pull/2",
+  "state": "OPEN",
+  "baseRefName": "dev",
+  "headRefName": "feat/checkout",
+  "headRefOid": "checkout-head",
+  "title": "feat: checkout's own #2",
+  "mergeCommit": null,
+  "mergeable": "MERGEABLE"
+}

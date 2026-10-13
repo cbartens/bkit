@@ -108,8 +108,8 @@ if [ -f "$CAP_DOC" ]; then
     CAP_CHANGED=$(git diff --name-only "$CAP_SHA..HEAD" -- '*.ts' '*.tsx' 2>/dev/null | wc -l | tr -d ' ')
     if [ "${CAP_CHANGED:-0}" -gt 0 ]; then
       echo "[pre-push] NOTE: $CAP_DOC diagrams were built at $CAP_SHA; $CAP_CHANGED source files changed since." >&2
-      echo "[pre-push]       Refresh when convenient:  pnpm graph:update && pnpm graph:rollup" >&2
-      echo "[pre-push]       Not a gate. The release gate is 'pnpm graph:check' before the dev -> main PR." >&2
+      echo "[pre-push]       Refresh + commit docs-only:  pnpm graph:update && pnpm graph:rollup" >&2
+      echo "[pre-push]       Land it with 'bkit [skip ci]'. CI enforces 'pnpm graph:check' on dev pushes." >&2
     fi
   fi
 fi
