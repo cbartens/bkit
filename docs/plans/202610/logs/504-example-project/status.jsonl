@@ -35,3 +35,4 @@
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","at":"2026-10-13T05:31:39Z","parentSha":"c67c4ba2795ad240faf343ee5ab223cbf0b31a3f","artifacts":["docs/plans/202610/logs/504-example-project/plan-summary.md"],"verdict":"PASS","attempt":1,"failures":0}
 {"type":"step-done","workflow":"plan","step":"plan-close-workflow","status":"DONE","at":"2026-10-13T05:35:45Z","parentSha":"1e673d9517032fb2990bac80ac17683617d956d8","artifacts":[]}
 {"type":"workflow-done","workflow":"plan","at":"2026-10-13T05:35:45Z"}
+{"type":"close-transport","shape":"local","sha":"baa4fb1c1d71de02451385d5079ccbfe39382918","scanResult":"clean","at":"2026-10-13T05:52:36Z"}
