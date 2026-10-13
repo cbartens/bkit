@@ -2,27 +2,89 @@
 
 Lens: Optimal-tradeoff — best long-term shape ignoring legacy constraints.
 
-Scope read: a single example project that (a) demos the whole bkit pipeline once and (b) doubles as a repeatable benchmark. The load-bearing constraint in the issue is _what fails a run vs what is only recorded must stay apart_. Every approach below is judged on how cleanly it encodes that separation and how it absorbs the changes the issue itself schedules (more examples were considered, per-host comparison is #45, cost has no source yet).
+Scope: scoped revision of the closed v3 design to the new repo model (one persistent PUBLIC
+`cbartens/bkit-example`, per-run folder reset, git history = experiment history). The binding
+decisions in the design input are treated as givens (persistent public repo; near-empty `index.html`
+placeholder; deterministic pass/fail kept but no bkit-CI smoke job; always-latest bkit with the
+version recorded; results reuse `.bkit/stats.jsonl`; screenshot as recorded artefact; GitHub
+tracker). Only the load-bearing, still-open shape — **where evidence lives and what "the folder"
+is** — varies between approaches.
 
-## Approach A — Layered example kit (fixture / runner / gate) ⭐ Recommended
+Grounded facts used below: `.bkit/stats.jsonl` is written at repo root
+(`.bkit/core/engine/ledgers/telemetry.ts`) and is **not** gitignored by bkit's managed block, so it
+can be tracked and accumulate. Its rows already carry `bkitVersion`. bkit warns at
+`MAX_ROWS_BEFORE_ROLLUP = 5000` rows and has no automatic rollup.
 
-The example ships as three separable layers: an immutable **fixture** (feature request + content data + `index.html` + one plain-JS logic file + its `node --test` tests) that knows nothing about bkit; a single bkit-side **runner** that owns throwaway-repo creation (`gh repo create --private`), `bkit install`, pipeline invocation and measurement emission; and an independent **gate** = the fixture's own `node --test` plus the merged PR. `Complexity` MEDIUM (three layers, each tiny — the layering is the cheap part). Extensibility HIGH: a second or third example app is a new fixture folder; a new host (#45) or a new metric is a runner/report change only; the app never learns the harness exists and the harness never learns the app. Risk: the main failure mode is YAGNI drift — the runner accretes flags and reports no run needs, and the "one simple feature" quietly becomes its own project (the very cost the issue warns about). Maintenance LOW-MEDIUM — two seams to keep honest (gate stays `node --test`-only; runner stays measurement-only, never a pass/fail decider), which is exactly the discipline the issue asks for. Friction vs ideal: moderate — the issue prescribes "copy fixture into a throwaway repo, install, print the command"; this wraps that in one thin runner and adds a measurement side-channel. Surfaces touched: `examples/**` (new), one `scripts/**` entry (new); CI in the generated repo is unchanged (`node --test`); no existing code breaks — greenfield.
+## Approach A — "Fixture on `main`, evidence in `dev` history" (the candidate, tightened) ⭐ Recommended
 
-## Approach B — Self-contained portable example
+One persistent public repo. `main` holds the canonical fixture (the reproducible start) and never
+runs. `dev` is integration. Each run is a `feat/*` branch that starts from `dev`, resets the app
+tree from `main`'s fixture as its own commit (history shows the reset), builds the app, and PRs back
+to `dev`. The accumulated results ledger is the repo's **own tracked `.bkit/stats.jsonl`**, which the
+reset never deletes and every run appends to; the benchmark reads `dev` directly and groups rows by
+`bkitVersion`. Bootstrap once. Demo = 1 run, benchmark = N runs, same repo and same folder.
 
-The example folder is a complete standalone project that carries its own seed script, its own install/run steps and its own benchmark note; nothing outside `examples/<name>/` has to know the pipeline exists. `Complexity` LOW. Extensibility LOW-MEDIUM: a second example duplicates the whole harness; the cross-run and cross-host comparison the issue schedules (#45) needs bkit-side code anyway, so the harness ends up half-inside the fixture and half-outside it — the worst of both. Risk: harness drift — each fixture's seed script can fall behind bkit's real `bkit install` flags or pipeline shape, so the "benchmark" silently measures a stale copy of bkit and nobody notices until a run diverges. Maintenance LOW today, rising to MEDIUM as examples multiply (N near-identical seed scripts). Friction vs ideal: lowest — this is the closest reading of the issue's text, and migration is trivial because nothing exists yet. It under-separates: the gate and the runner end up entangled in the same folder, so "recorded, never fails the run" is a convention rather than a boundary.
+- **Complexity:** `LOW-MEDIUM`
+- **Extensibility:** a second example is a new fixture folder on `main` plus a folder-scoped reset; a
+  per-host comparison is more runs grouped by host once it is recorded; the read path is already
+  version-agnostic.
+- **Risk:** main failure mode = the ledger and the reset share one commit line, so a reset scoped too
+  wide (or any hard reset / `git clean`) can delete the only evidence; overlapping runs would
+  conflict on `.bkit/stats.jsonl` appends; the file grows unbounded (bkit only warns at 5000 rows).
+- **Maintenance:** lowest — no new store, no new branch, no new format; one bootstrap path plus a
+  prose read procedure.
+- **Friction vs ideal:** near-zero from the candidate. The only wrinkle: the run workspace is repo
+  root, so "the dedicated folder" is really "root content minus `.bkit/`" — the reset set and the
+  fixture set must be described as the same thing carefully.
 
-## Approach C — Run-record-first harness
+## Approach B — "Evidence on its own append-only line"
 
-The primary artifact is a machine-readable **run record** (wall time, agent count, retries/loops, cost); the pipeline is invoked through a thin wrapper that emits it, and demo, benchmark and the replay idea all become projections of the same record. The app fixture is almost incidental — one input among several. `Complexity` HIGH. Extensibility HIGHEST: per-host comparison (#45), replay, and cost tracking all collapse to "read a different field". Risk: building a general harness for a single example directly fights the issue's "one simple feature / every addition makes a run longer and more expensive"; and cost has **no source today** (open question in the issue), so the record's headline field ships empty and the substrate is built against a spec that does not yet exist. Maintenance MEDIUM-HIGH — the record format becomes a contract every run must satisfy, and every pipeline change must keep satisfying. Friction vs ideal: largest — a new wrapper, a record schema and a reader, touching more surfaces than the issue authorises; honest YAGNI violation for the present scope, even though it is the best long-term destination _if_ the benchmark becomes a first-class product.
+Same repo, fixture and branch model as A, but the accumulated ledger is decoupled from the app's
+history: each run's harvested rows are appended by the runner to a dedicated append-only `results`
+branch (the same `.bkit/stats.jsonl` row format, committed only there, never carried by the app PR).
+The benchmark reads the `results` branch and groups by `bkitVersion`. App history stays exactly one
+reset commit plus one build PR per run, so `dev` is byte-comparable run over run.
+
+- **Complexity:** `MEDIUM`
+- **Extensibility:** evidence survives any app-tree experiment; a folded summary or a per-version
+  view can be added later without touching app code; "runs are data" is structurally clean.
+- **Risk:** two write paths to keep honest and a second ref to bootstrap and protect; a force-push or
+  stray reset on `results` destroys everything at once; reviewers may read it as the "separate
+  aggregate store" the candidate rejects (same rows, different ref).
+- **Maintenance:** `MEDIUM` — the runner owns the append, the branch must be protected, and the docs
+  table must explain two homes.
+- **Friction vs ideal:** adds a branch plus a runner step; friction with the settled "reuse the repo's
+  `.bkit/stats.jsonl`" home unless explicitly framed as one file on a dedicated ref.
+
+## Approach C — "App in a dedicated folder, root as durable substrate"
+
+Durable root holds `.bkit/`, the results ledger, docs and CI; the example app lives in one folder
+(e.g. `example/`) that the run deletes and re-creates from the fixture on its `feat/*` branch. The
+reset is literal and scoped by construction — "the dedicated folder" is a real directory, not a
+description of root content. `main` still carries the canonical app folder. Closest to how bkit
+extends an existing repo (later-idea 8).
+
+- **Complexity:** `MEDIUM-HIGH`
+- **Extensibility:** strongest for "extend existing code" and for multi-example; the folder boundary
+  is the reset boundary, so adding examples does not touch the durable root.
+- **Risk:** the fixture set and the reset set stop being the same set — root contract files
+  (`package.json`, `.github/workflows/`, the `bkit` block, `.bkit/`) must be durable yet are also
+  fixture content, so the split is subtle and easy to get wrong; bkit gates and CI run over root while
+  the app sits in a subfolder.
+- **Maintenance:** `HIGH` — CI path filters, scripts that `cd` into the folder, and a documented
+  root-vs-folder contract to keep from drifting.
+- **Friction vs ideal:** largest migration from the candidate (fixture, runner and CI all change), and
+  it re-introduces scaffold-ish complexity the issue's "one feature, kept simple" rule resists.
 
 ## Decisions
 
-| Decided                                                                                                                                                                         | Alternatives                                           | Why                                                                                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Adopt Approach A's **structure** (fixture knows nothing of the harness; gate independent of runner)                                                                             | B (self-contained), C (run-record-first)               | A turns the issue's core constraint — pass/fail kept apart from measurement — into a boundary instead of a convention. B under-separates and duplicates per example; C builds a substrate for a cost source that does not exist yet. |
-| Gate = the fixture's own `node --test` (trap cases included) **plus** the merged PR; the runner never gates                                                                     | AI grader; browser/DOM test; coverage floor            | Deterministic, no browser, no flaky grader in the path — matches the issue and the #232 rule that flaky graders must never fail CI. A browser test can be added later only if the benchmark needs it.                                |
-| One pure function answers "which boxes are lit, which arrows are active, what each counter reads"; the drawing layer paints its return only; content lives in a fixed data file | logic inside the render code; DOM-snapshot tests       | Keeps all four traps (rewind-past-a-loop counter, parallel steps, reduced motion, keyboard-only) checkable in Node with no browser, and keeps the drawing layer thin by construction.                                                |
-| The plain JS file carries a one-line environment guard (export when `module` exists, attach a global for the browser) so the same bytes run off-disk and under `node --test`    | `type="module"`; a build/copy step that strips exports | `type="module"` is forbidden for a file opened off disk, and a build step introduces tooling into a project the issue deliberately keeps tooling-free.                                                                               |
-| Run mechanics (seed, install, invocation, any measurement) live in **one** bkit-side runner; the fixture stays immutable                                                        | all-inside-fixture scripts                             | One place to fix when `bkit install` or the pipeline changes; keeps every fixture byte-identical across runs, which the benchmark depends on.                                                                                        |
-| Ship now: fixture + seed script + gate. Defer the runner's metrics/report layer and any record schema                                                                           | ship the full layered kit, or C, immediately           | The benchmark's recorded numbers already exist (`status.jsonl`, `.bkit/stats.jsonl`); the only missing field (cost) has no source, so it cannot be built honestly yet. Matches "one simple feature".                                 |
+| Decided                                                                                                                                                                                   | Alternatives                                                 | Why                                                                                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A** — fixture on `main`, runs reset from it on `feat/*`, PR to `dev`, ledger in `dev` history                                                                                           | B (evidence branch); C (app-in-subfolder)                    | Lowest complexity and near-zero migration from the candidate; the read path and format already exist. B/C buy evidence durability and folder isolation the issue does not yet need (YAGNI), at a second ref or a split fixture. |
+| Results ledger = the repo's own tracked `.bkit/stats.jsonl`, accumulating on `dev`; reset never touches it; read directly and grouped by `bkitVersion` (no aggregate)                     | A `results` branch (B); an external/aggregate store          | Reuses the existing file and row shape (`.bkit/stats.jsonl` is not gitignored; rows already carry `bkitVersion`). No new format, matching the settled decision.                                                                 |
+| Number the runs in history — reset commit is distinguishable (commit-trailer / run id) and rows are grouped by `bkitVersion` at read time                                                 | Rely on raw git log                                          | Keeps history legible as experiment history, which is the whole reason the folder reset is a commit; version-grouping is what keeps a sweep straddling a release honest.                                                        |
+| Placeholder pass/fail lives in the run repo's own deterministic `node --test` (fixture ships the sentinel `index.html` and one sentinel test); no AI, no browser                          | Capstone-CI `grep` on `index.html`; runner-side check        | Pass/fail must be code-checked and closed to AI. A fixture-shipped test keeps it inside `node --test`, which CI already runs; the near-empty placeholder is deliberately not a scaffold that hints a trap.                      |
+| Public-privacy check runs **pre-push in the runner** (diff scan for secret/PII shapes) plus a one-time documented manual review at bootstrap, before the repo is public                   | CI scan after push; rely on the manual review alone          | A public repo is public the moment it is pushed, so a post-push CI scan is too late by construction; the runner is the only place that sees the diff before it leaves the machine.                                              |
+| Bootstrap once (documented one-liner and/or a `--bootstrap` mode) that creates the public repo with the fixture on `main` and a pushed `dev`; normal runs never create or delete the repo | Create/delete per run (superseded); a heavier bootstrap tool | Normal runs must operate on the existing repo and never tear it down; one documented path keeps the destructive step out of the routine run.                                                                                    |
+| Demo = 1 run, benchmark = N runs, same repo and same folder                                                                                                                               | Separate demo and benchmark repos                            | The folder reset makes N runs start from the same state anyway; a second repo would duplicate the seed path and drift.                                                                                                          |
+| Accept the two long-term ledger frictions as recorded risks: unbounded `.bkit/stats.jsonl` growth (bkit warns at 5000 rows, no rollup) and single-writer appends                          | Automate rollup / per-run files                              | No rollup exists in bkit today; building one is substrate for a problem not yet hit, and runs are human-in-loop so concurrent appends are unlikely. State it; do not over-build it.                                             |
