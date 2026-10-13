@@ -414,6 +414,8 @@ description: "Plan Feature — Autonomous plan generation"
    ```
 5. Final return: Display `plan-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-build`.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
+   Append as last line `Would you like me to explain this in plain English?`
+6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 
 ### 🔒 Gate 12 — Close Workflow
 

@@ -1187,6 +1187,22 @@ Final return: Display `{{summary}}` content verbatim as final message to user; d
 Final return: Display `{{summary}}` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
 ```
 
+### workflow-plain-english-append
+
+- workflow: where-used
+
+```text
+Append as last line `Would you like me to explain this in plain English?`
+```
+
+### workflow-plain-english-offer
+
+- workflow: where-used
+
+```text
+**If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
+```
+
 ### workflow-issue-link
 
 - workflow: where-used

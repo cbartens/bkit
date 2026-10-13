@@ -531,6 +531,8 @@ $ARGUMENTS
     ```
 11. Final return: Display `debug-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke.
     Append issue link [{ISSUE_ID} {TITLE}]({URL})
+    Append as last line `Would you like me to explain this in plain English?`
+12. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 
 ### 🔒 Gate 10 — Close Workflow
 
