@@ -350,8 +350,8 @@ Orchestrator reads `.cursor/commands/` workflow. Subagents via `Task`, `model:` 
 Skills = third-party instruction sets loaded at invocation.
 
 ```bash
-npx skills find [query]           # search the registry
-npx skills add <owner/repo> -y    # install project-locally into .agents/skills/
+npx skills find [query]                  # search the registry (check publisher / installs / stars)
+npx skills add <owner/repo>@<skill> -y   # install one named skill, project-locally into .agents/skills/
 npx skills update                 # update all installed
 ```
 
