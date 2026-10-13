@@ -14,7 +14,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 150
 ---
-<!-- bkit:managed v5.0.3 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer implementing plan tasks step-by-step against checklists and gates.
 **Scope:** As specified by input and Read / Update / Create section.

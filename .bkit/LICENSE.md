@@ -1,6 +1,6 @@
 # Licence for bkit-written files in this repo
 
-<!-- bkit:managed v5.0.3 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 Every file bkit wrote into this repository, and keeps current on `bkit upgrade`, is licensed under your choice of the PolyForm Noncommercial License 1.0.0 or the PolyForm Small Business License 1.0.0, both below. Files under `.bkit/shared/` and `.bkit/templates/` are MIT-0 instead, each folder covered by the `LICENSE.md` inside it. bkit's own summary licence, with the commercial-licence contact, is at <https://github.com/cbartens/bkit/blob/main/LICENSE.md>.
 

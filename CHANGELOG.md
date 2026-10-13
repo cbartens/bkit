@@ -6,6 +6,19 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [5.1.0] — 2026-10-13
+
+### Added
+
+- **Google Antigravity host support** (#534). bkit installs into Antigravity as a workspace plugin under `.agents/plugins/bkit/` — `plugin.json`, one workflow skill per command (`skills/bkit-*/SKILL.md`), the subagent prompts (`agents/`), and `hooks.json` with the GateGuard / guardrails hooks — plus the root `GEMINI.md` workspace-rule redirect. Antigravity has no native subagent tool, so renders rewrite the in-session invocation to `view_file .agents/plugins/bkit/agents/<name>.md` and map the tool vocabulary to Antigravity's names (`view_file`, `write_to_file`, `replace_file_content`, `run_command`, `grep_search`, `list_dir`, …). `--antigravity` composes with every other host flag. Codex renders into `.agents/skills/`, so the Antigravity host owns `.agents/plugins/bkit/` exclusively (one writer per directory); a new `antigravity-codex-skill-overlap` advisory fires when both hosts are installed and names the plugin skills as the ones to invoke in Antigravity. `AGENTS.md`, `.bkit/providers.md`, `.bkit/install.md`, `README.md`, `.bkit/comparison.md` and the capability register document the host, and `prompts.md` gains the `Google` model column and `Antigravity` effort column.
+
+### Changed
+
+- **Installed skills are treated as untrusted, and skill sources are gated** (#342). `.agents/rules.md` extends the external-input rule to skill content; `.agents/skills.md` and the `bkit-build-install-skills` prompt accept only an official publisher, or a skill with >= 1000 installs and >= 100 repo stars, install one named `<owner/repo>@<skill>` (a bare repo would pull the whole catalog), and never execute bundled scripts. `docs/security.md` records the threat model.
+- **Install snippets name the four opencode providers.** README, `.bkit/install.md` and the install paste block list `openrouter`, `ollama`, `opencode-zen`, `opencode-go` wherever they show `--opencode=<provider>`; README drops the stale "free local models" claims — no local provider exists since the allowlist cut to four hosted / gateway providers.
+
+---
+
 ## [5.0.3] — 2026-10-12
 
 ### Fixed
