@@ -166,6 +166,7 @@ const CORE_TEMPLATE_DOCTRINE = [
     { path: ".agents/context.md", format: "markered-text", module: "core" },
     { path: ".agents/docs.md", format: "markered-text", module: "core" },
     { path: ".agents/rules.md", format: "markered-text", module: "core" },
+    { path: ".agents/shortcuts.md", format: "markered-text", module: "core" },
     { path: ".agents/skills.md", format: "markered-text", module: "core" },
 ];
 /**
