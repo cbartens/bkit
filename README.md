@@ -134,7 +134,7 @@ Most AI tools forget everything when the chat ends. bkit keeps what it knows in 
 
 ### It fits how you work
 
-- **Never blocked by usage limits.** Out of Claude for the week? Carry on in Cursor, Codex, Antigravity or opencode, or on free models on your own machine through Ollama. Same feature, same checks, nothing to set up again.
+- **Never blocked by usage limits.** Out of Claude for the week? Carry on in Cursor, Codex or Antigravity, or point opencode at your own key — OpenRouter, Ollama or the opencode gateways. Same feature, same checks, nothing to set up again.
 - **Start on your laptop, check in from your phone.** A feature started at your desk can continue in a cloud session (Claude Code on the web or the Claude app, Cursor cloud agents, or opencode on GitHub Actions), or start by itself when CI finishes: ship on green, debug on red. The cloud setup ships ready to adopt.
 - **Run several features at once.** Each one works in its own copy of the repo (a git worktree), so they never trip over each other.
 - **Your issue tracker is the control panel.** bkit reads the GitHub or Linear issue, posts progress as it goes, moves the issue along and links the pull request.
@@ -173,6 +173,7 @@ You need a GitHub repo, Node 20+, pnpm, and at least one of Claude Code, Cursor,
 ```bash
 pnpm add -D @cbartens/bkit
 pnpm bkit install --claude    # pick your tools: --claude --cursor --codex --antigravity --opencode=<provider>
+# opencode provider: openrouter | ollama | opencode-zen | opencode-go
 ```
 
 Adopt the templates you want from `.bkit/templates/`, then open an issue and run the first step from your AI tool:
@@ -192,7 +193,7 @@ No, but you do need to read a design and a plan and decide whether they're right
 bkit is heavier than a single prompt. For a one-off script or a quick experiment, just ask your AI. bkit pays off on a project you'll keep changing and want to trust.
 
 **What does it cost?**
-bkit is free for personal use, non-profits and small businesses (fewer than 100 people and under US$1M revenue); larger companies need a commercial licence ([License](#license)). It runs on AI subscriptions you already have (Claude, Cursor, ChatGPT for Codex, Google Antigravity), on pay-as-you-go providers through opencode, or on free local models. Several agents reviewing in parallel uses more of your quota than a single chat; that's the price of the second opinions.
+bkit is free for personal use, non-profits and small businesses (fewer than 100 people and under US$1M revenue); larger companies need a commercial licence ([License](#license)). It runs on AI subscriptions you already have (Claude, Cursor, ChatGPT for Codex, Google Antigravity), on Antigravity's free tier, or with your own key on pay-as-you-go providers through opencode (OpenRouter, Ollama or the opencode gateways). Several agents reviewing in parallel uses more of your quota than a single chat; that's the price of the second opinions.
 
 **Can it break my live site?**
 Not without your sign-off. Work happens in a separate copy of the repo, goes through a pull request, must pass every test, and merges into `dev`, never `main`.

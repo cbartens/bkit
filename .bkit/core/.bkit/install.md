@@ -18,7 +18,7 @@ No token or registry setup is needed — `@cbartens/bkit` is public on npmjs. Co
 ````text
 Install the latest `@cbartens/bkit` in this repo and finish setup.
 1. `@cbartens/bkit` is public on npmjs — no registry mapping, no PAT, no env. Confirmed.
-2. Install and seed hosts in one Bash call (`bkit install` requires named modules — core implicit; pick the hosts this repo uses from `--claude --cursor --codex --antigravity --opencode=<provider>`; if `bkit` not on PATH use `pnpm bkit`):
+2. Install and seed hosts in one Bash call (`bkit install` requires named modules — core implicit; pick the hosts this repo uses from `--claude --cursor --codex --antigravity --opencode=<provider>`, provider = `openrouter` | `ollama` | `opencode-zen` | `opencode-go`; if `bkit` not on PATH use `pnpm bkit`):
    ```bash
    pnpm add -D @cbartens/bkit@latest && \
      bkit install --claude --cursor
@@ -86,6 +86,7 @@ bkit install --cursor                    # .cursor/** + core
 bkit install --codex                     # Codex CLI host + core
 bkit install --antigravity               # Google Antigravity host + core
 bkit install --opencode=opencode-go      # additive opencode host (opencode-native gateway) + core
+# opencode provider: openrouter | ollama | opencode-zen | opencode-go
 
 # A bare install errors — name at least one module:
 bkit install                             # ✗ error: requires ≥1 module flag
