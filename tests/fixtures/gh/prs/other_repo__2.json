@@ -1,0 +1,11 @@
+{
+  "number": 2,
+  "url": "https://github.com/other/repo/pull/2",
+  "state": "OPEN",
+  "baseRefName": "dev",
+  "headRefName": "feat/other",
+  "headRefOid": "repo-scoped-head",
+  "title": "feat: cross-repo gate target",
+  "mergeCommit": null,
+  "mergeable": "MERGEABLE"
+}

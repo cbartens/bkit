@@ -28,7 +28,7 @@ import { TIMEOUTS } from "../../shared/timeouts.js";
 import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } from "./fids.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { checkOnlyBookkeeping } from "./ledgers.js";
-import { closeTransportRow, crossCheckFile, probePr } from "./prs.js";
+import { closeTransportRow, crossCheckFile, prRepoSlug, probePr } from "./prs.js";
 import { resolveOwnerRepo, splitSlug } from "./repo.js";
 import { extraField, str } from "./status.js";
 import { writeStepRow } from "./steps.js";
@@ -977,6 +977,24 @@ function auditRow(file, type, fields) {
         throw new CommandError(EXIT.USAGE, `${file} does not exist`);
     fs.appendFileSync(file, `${JSON.stringify({ type, workflow: "ship", at: statusTimestamp(), ...fields })}\n`);
 }
+/**
+ * Log where a `--pr` resolved so a `--repo` naming a repo other than the checkout
+ * is visible; the PR URL names the repo `gh` actually read from.
+ */
+function logResolvedPrRepo(repoFlag, prNumber, pr, log) {
+    if (repoFlag === undefined)
+        return;
+    const resolved = prRepoSlug(pr?.url);
+    if (resolved === undefined) {
+        log(`PR ${prNumber}: could not read the resolved repo from its URL (--repo ${repoFlag})`);
+    }
+    else if (resolved !== repoFlag) {
+        log(`PR ${prNumber} resolved in ${resolved} — --repo names ${repoFlag}`);
+    }
+    else {
+        log(`PR ${prNumber} resolved in ${repoFlag}`);
+    }
+}
 function runGate(ctx) {
     const f = ctx.flags;
     const given = [f.head, f.pr, f.squashOf].filter((v) => v !== undefined).length;
@@ -993,12 +1011,13 @@ function runGate(ctx) {
     if (prNumber !== undefined) {
         if (!/^[1-9][0-9]*$/.test(prNumber))
             throw new CommandError(EXIT.USAGE, "--pr / --squash-of take a PR number");
-        pr = probePr(ctx.cwd, { number: prNumber, state: "open" });
+        pr = probePr(ctx.cwd, { number: prNumber, state: "open", repo: str(f.repo) });
         if (pr.kind === "unavailable") {
             ctx.log(pr.message);
             return EXIT.USE_MCP;
         }
         const info = pr.kind === "ok" ? pr.pr : undefined;
+        logResolvedPrRepo(str(f.repo), prNumber, info, ctx.log);
         head = (f.squashOf !== undefined ? info?.mergeCommit?.oid : info?.headRefOid) ?? "";
         if (head === "") {
             ctx.log(`cannot read the ${f.squashOf !== undefined ? "squash commit" : "head"} of PR ${prNumber}`);
@@ -1122,11 +1141,12 @@ async function runRevalidate(ctx) {
         throw new CommandError(EXIT.USAGE, "--reason must be head-move or gate-refusal");
     const status = path.resolve(ctx.cwd, String(f.file));
     runGit(ctx.cwd, ["fetch", "origin", branch]);
-    const pr = probePr(ctx.cwd, { number: String(f.pr), state: "open" });
+    const pr = probePr(ctx.cwd, { number: String(f.pr), state: "open", repo: str(f.repo) });
     if (pr.kind === "unavailable") {
         ctx.log(pr.message);
         return EXIT.USE_MCP;
     }
+    logResolvedPrRepo(str(f.repo), String(f.pr), pr.kind === "ok" ? pr.pr : undefined, ctx.log);
     const current = pr.kind === "ok" ? (pr.pr?.headRefOid ?? "") : "";
     if (current === "") {
         ctx.log("cannot read the PR head — query failed (403 = PAT scope)");

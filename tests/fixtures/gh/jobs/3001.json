@@ -1,0 +1,35 @@
+{
+  "total_count": 3,
+  "jobs": [
+    {
+      "id": 30011,
+      "name": "lint",
+      "head_sha": "repo-scoped-head",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-07-28T10:00:30Z",
+      "completed_at": "2026-07-28T10:01:30Z",
+      "html_url": "https://github.com/other/repo/actions/runs/3001/job/30011"
+    },
+    {
+      "id": 30012,
+      "name": "test",
+      "head_sha": "repo-scoped-head",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-07-28T10:00:30Z",
+      "completed_at": "2026-07-28T10:04:00Z",
+      "html_url": "https://github.com/other/repo/actions/runs/3001/job/30012"
+    },
+    {
+      "id": 30013,
+      "name": "bkit-tests-check",
+      "head_sha": "repo-scoped-head",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-07-28T10:00:30Z",
+      "completed_at": "2026-07-28T10:04:30Z",
+      "html_url": "https://github.com/other/repo/actions/runs/3001/job/30013"
+    }
+  ]
+}
