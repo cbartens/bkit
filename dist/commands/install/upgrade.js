@@ -347,7 +347,7 @@ export function detectInstalledHostModules(cwd) {
         mods.add("opencode");
     if (fs.existsSync(path.join(cwd, ".codex", "agents")))
         mods.add("codex");
-    if (fs.existsSync(path.join(cwd, ".agents", "prompts")))
+    if (fs.existsSync(path.join(cwd, ".agents", "plugins", "bkit", "plugin.json")))
         mods.add("antigravity");
     return mods;
 }
@@ -696,6 +696,8 @@ export async function runUpgradeCommand(upgradeFlags) {
         // Re-stamp every rendered agent + command at the version we are upgrading TO,
         // so a clean upgrade refreshes the managed-version marker and `bkit check` stays green.
         version: getInstallingVersion(),
+        // The detected host set — read by the Antigravity module for the Codex-overlap advisory.
+        installedModules: renderModules,
     };
     const rendered = renderManagedOutputs(renderModules, renderCtx);
     // MCP config: bkit's tracker entry only (reconcileMcpJson), for the hosts the consumer

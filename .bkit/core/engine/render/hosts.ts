@@ -422,14 +422,23 @@ export function applyT3(
 }
 
 /**
+ * Antigravity subagent-definition directory — the `agents/` folder of the bkit workspace
+ * plugin (`.agents/plugins/bkit/`). The host install lives entirely inside the plugin so
+ * `.agents/` root stays Codex's.
+ */
+export const ANTIGRAVITY_AGENTS_DIR = ".agents/plugins/bkit/agents";
+
+/**
  * Antigravity command/skill invocation rewrite. Antigravity has no native subagent tool:
  * the orchestrator loads a subagent prompt in-session with `view_file` and executes its
  * step contract, so both Claude tools (`Agent` / `Skill`) respell to `view_file`. A
  * `**Subagent:** @name` reference resolves to the rendered prompt file it must load
- * (`.agents/prompts/<name>.md`). Does NOT rewrite body prose or gate-checklist `@agent`
- * refs.
+ * (`<agentsDir>/<name>.md`). Does NOT rewrite body prose or gate-checklist `@agent` refs.
  */
-export function applyAntigravityToolRewrites(content: string): string {
+export function applyAntigravityToolRewrites(
+  content: string,
+  agentsDir: string = ANTIGRAVITY_AGENTS_DIR,
+): string {
   let result = content.replace(/`Agent` tool/g, "`view_file` tool");
   result = result.replace(/using `Agent` tool/g, "using `view_file` tool");
   result = result.replace(/`Skill` tool/g, "`view_file` tool");
@@ -437,16 +446,16 @@ export function applyAntigravityToolRewrites(content: string): string {
   // Backticked `@agent` on any **Subagent:** line (numbered, list-indented, or bare).
   result = result.replace(
     /^([^\n]*?\*\*Subagent:\*\*[^\n]*?)`@([a-z][a-z0-9-]*)`/gm,
-    "$1`view_file` `.agents/prompts/$2.md`",
+    `$1\`view_file\` \`${agentsDir}/$2.md\``,
   );
   // Bare `@agent` immediately after **Subagent:** (exact-line form).
   result = result.replace(
     /^([^\n]*?\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)\b/gm,
-    "$1`view_file` `.agents/prompts/$2.md`",
+    `$1\`view_file\` \`${agentsDir}/$2.md\``,
   );
   result = result.replace(
     /Invoke using `@name`/g,
-    "Invoke using `view_file` `.agents/prompts/name.md`",
+    `Invoke using \`view_file\` \`${agentsDir}/name.md\``,
   );
   return result;
 }
@@ -511,12 +520,16 @@ export function applyAntigravityPrompt(
 
 /**
  * Convert a workflow orchestrator (`.bkit/core/workflows/*.md`) into an Antigravity
- * SKILL.md (`.agents/skills/<name>/SKILL.md`). Antigravity auto-discovers skills under
- * `.agents/skills/`; `name` and `description` are frontmatter keys, and the body is the
- * workflow steps verbatim with invocations respelled to Antigravity's in-session prompt
- * loading (see applyAntigravityToolRewrites).
+ * SKILL.md (`.agents/plugins/bkit/skills/<name>/SKILL.md`). Antigravity auto-discovers
+ * skills under a workspace plugin's `skills/`; `name` and `description` are frontmatter
+ * keys, and the body is the workflow steps verbatim with invocations respelled to
+ * Antigravity's in-session prompt loading (see applyAntigravityToolRewrites).
  */
-export function applyAntigravitySkill(content: string, skillName: string): string {
+export function applyAntigravitySkill(
+  content: string,
+  skillName: string,
+  agentsDir: string = ANTIGRAVITY_AGENTS_DIR,
+): string {
   const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
   let body: string;
   let description = `bkit ${skillName} workflow`;
@@ -527,6 +540,6 @@ export function applyAntigravitySkill(content: string, skillName: string): strin
   } else {
     body = content;
   }
-  const rewritten = applyAntigravityToolRewrites(body);
+  const rewritten = applyAntigravityToolRewrites(body, agentsDir);
   return `---\nname: ${skillName}\ndescription: "${description.replace(/"/g, '\\"')}"\n---\n${rewritten}`;
 }

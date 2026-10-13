@@ -789,7 +789,7 @@ describe("applyAntigravityToolRewrites", () => {
       "1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n",
     );
     expect(out).toContain(
-      "**Subagent:** Invoke `view_file` `.agents/prompts/bkit-build-plan-execute.md` using `view_file` tool:",
+      "**Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-build-plan-execute.md` using `view_file` tool:",
     );
     expect(out).not.toContain("`@bkit-build-plan-execute`");
   });
@@ -808,7 +808,9 @@ describe("applyAntigravitySkill", () => {
     const out = applyAntigravitySkill(wf, "bkit-build");
     expect(out).toMatch(/^---\nname: bkit-build\n/);
     expect(out).toContain('description: "Build Feature — Autonomous implementation"');
-    expect(out).toContain("**Subagent:** `view_file` `.agents/prompts/bkit-build-challenge-1.md`");
+    expect(out).toContain(
+      "**Subagent:** `view_file` `.agents/plugins/bkit/agents/bkit-build-challenge-1.md`",
+    );
   });
 
   it("supplies frontmatter when the workflow has none", () => {

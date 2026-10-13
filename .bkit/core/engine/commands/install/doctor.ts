@@ -98,7 +98,9 @@ export function runStatus(cwd: string, logPrefix: string): void {
   const codexPresent = fs.existsSync(codexDir);
 
   // --- antigravity host ---
-  const antigravityPresent = fs.existsSync(path.join(cwd, ".agents", "prompts"));
+  const antigravityPresent = fs.existsSync(
+    path.join(cwd, ".agents", "plugins", "bkit", "plugin.json"),
+  );
 
   const opencodeStatus = opencodePresent
     ? `INSTALLED  (${providerLabel}: ${opencodeProviderDisplay} / model: ${opencodeModel})`

@@ -26,7 +26,11 @@ import { renderClaudeAgentsCommands, runClaudeModule } from "./claude.js";
 import { renderCursorAgentsCommands, runCursorModule } from "./cursor.js";
 import { renderOpencodeAgentsCommands, runOpencodeModule } from "./opencode.js";
 import { CODEX_SKILLS_DIR, renderCodexAgentsSkills, runCodexModule } from "./codex.js";
-import { renderAntigravityAgentsSkills, runAntigravityModule } from "./antigravity.js";
+import {
+  ANTIGRAVITY_SKILLS_DIR,
+  renderAntigravityAgentsSkills,
+  runAntigravityModule,
+} from "./antigravity.js";
 import { runCloudModule } from "./cloud.js";
 
 // ---------------------------------------------------------------------------
@@ -56,8 +60,8 @@ export interface ModuleContext {
    */
   codexModelLookup?: Map<string, string>;
   /**
-   * name -> BARE § Models `Google` cell, for `.agents/prompts/*.md`. Separate from the
-   * other lookups because it reads the Google gateway column.
+   * name -> BARE § Models `Google` cell, for `.agents/plugins/bkit/agents/*.md`. Separate
+   * from the other lookups because it reads the Google gateway column.
    */
   antigravityModelLookup?: Map<string, string>;
   /**
@@ -94,6 +98,15 @@ export interface ModuleContext {
    * install/upgrade set it explicitly.
    */
   version?: string;
+  /**
+   * The full set of host modules present for this run — the dispatched set UNION the hosts
+   * already on disk. Read by the Antigravity module to warn when Codex is also installed
+   * (both hosts' `bkit-*` workflow skills then surface in Antigravity's skill selector).
+   *
+   * Optional: absent in isolated unit tests. Production install
+   * (commands/install/install.ts) and upgrade (commands/install/upgrade.ts) set it.
+   */
+  installedModules?: ReadonlySet<ModuleFlag>;
 }
 
 export type ModuleFn = (ctx: ModuleContext) => void;
@@ -162,7 +175,7 @@ const RENDERED_MIRRORS: ReadonlyArray<[dir: string, ext: string]> = [
   [".opencode/agents", ".md"],
   [".opencode/commands", ".md"],
   [".codex/agents", ".toml"],
-  [".agents/prompts", ".md"],
+  [".agents/plugins/bkit/agents", ".md"],
 ];
 
 /**
@@ -195,12 +208,16 @@ export function listStampedFiles(cwd: string): StampedFile[] {
       if (f.startsWith(BKIT_PREFIX) && f.endsWith(ext)) add(path.join(dir, f), "whole");
     }
   }
-  const skills = path.join(cwd, CODEX_SKILLS_DIR);
-  if (fs.existsSync(skills)) {
-    for (const d of fs.readdirSync(skills)) {
+  // Codex renders workflow skills into `.agents/skills/bkit-*/SKILL.md`; Antigravity renders
+  // its own into the plugin `.agents/plugins/bkit/skills/bkit-*/SKILL.md`. Both stamp a
+  // managed-version marker; collect each for the stale detector.
+  for (const dir of [CODEX_SKILLS_DIR, ANTIGRAVITY_SKILLS_DIR]) {
+    const abs = path.join(cwd, dir);
+    if (!fs.existsSync(abs)) continue;
+    for (const d of fs.readdirSync(abs)) {
       if (!d.startsWith(BKIT_PREFIX)) continue;
-      if (fs.existsSync(path.join(skills, d, "SKILL.md"))) {
-        add(path.join(CODEX_SKILLS_DIR, d, "SKILL.md"), "whole");
+      if (fs.existsSync(path.join(abs, d, "SKILL.md"))) {
+        add(path.join(dir, d, "SKILL.md"), "whole");
       }
     }
   }

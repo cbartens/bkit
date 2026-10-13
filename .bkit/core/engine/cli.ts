@@ -647,10 +647,12 @@ Module flags (composable; symmetric install ↔ uninstall):
                   (.agents/skills/bkit-*/). Codex loads project-local hooks ONLY once the
                   .codex/ layer is trusted — until then GateGuard is installed and never fires.
   --antigravity   Google Antigravity IDE host. BARE flag — takes no value: Antigravity runs
-                  on one gateway (google). Ships .agents/prompts/bkit-*.md (subagent prompts)
-                  + .agents/skills/bkit-*/SKILL.md (workflow skills) + .agents/hooks.json
-                  + .agents/hooks/*.cjs + GEMINI.md. There is no native subagent tool: the
-                  orchestrator loads each prompt with view_file and runs it in-session.
+                  on one gateway (google). Installs as a workspace PLUGIN at
+                  .agents/plugins/bkit/ — plugin.json + skills/bkit-*/SKILL.md (workflow
+                  skills) + agents/bkit-*.md (subagent prompts) + hooks.json + hooks/*.cjs,
+                  keeping .agents/ root Codex's. Plus root GEMINI.md. There is no native
+                  subagent tool: the orchestrator loads each prompt with view_file and runs
+                  it in-session.
 
 Dependency updaters (copy an example and own it):
   .bkit/templates/.github/renovate.json5
@@ -695,7 +697,7 @@ Examples:
   bkit install --claude                       .claude/** + CLAUDE.md + core.
   bkit install --claude --cursor              Both hosts + core.
   bkit install --codex                        Codex CLI host (agents + workflow skills + hooks).
-  bkit install --antigravity                  Google Antigravity host (prompts + skills + hooks + GEMINI.md).
+  bkit install --antigravity                  Google Antigravity host (workspace plugin under .agents/plugins/bkit/ + GEMINI.md).
   bkit install --opencode=opencode-zen          opencode host (Zen built-in gateway, additive).
   bkit install --opencode=opencode-go           opencode host (Go built-in gateway, additive).
   bkit install --opencode=openrouter            add openrouter alongside an opencode gateway.

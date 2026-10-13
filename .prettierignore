@@ -4,6 +4,9 @@
 node_modules/
 dist/
 .agents/skills/
+# Antigravity host installs as a workspace plugin; its skills/agents/hooks are
+# force-overwritten renders like the other host mirrors below.
+.agents/plugins/bkit/
 # Canonical-overwrite content (CANONICAL_OVERWRITE_RELPATHS in bkit's install engine):
 # bkit force-overwrites these on every install, so consumer prettier must not
 # lint them. Width-sensitive rewrites would be reverted next install. The

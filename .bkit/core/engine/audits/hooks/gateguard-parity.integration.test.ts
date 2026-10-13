@@ -27,7 +27,7 @@ const [CLAUDE_HOOK, CURSOR_HOOK, OPENCODE_PLUGIN, CODEX_HOOK, ANTIGRAVITY_HOOK] 
   // `.mjs`: the plugin is an ES module, and the temp dir has no package.json saying so.
   [".opencode/plugin/bkit-gateguard.js", "opencode.mjs"],
   [".codex/hooks/bkit-gateguard.cjs", "codex.cjs"],
-  [".agents/hooks/bkit-gateguard.cjs", "antigravity.cjs"],
+  [".agents/plugins/bkit/hooks/bkit-gateguard.cjs", "antigravity.cjs"],
 ].map(([rel, name]) => {
   const out = path.join(GENERATED, name);
   fs.writeFileSync(out, readTemplate(path.resolve(".bkit/core", rel)));

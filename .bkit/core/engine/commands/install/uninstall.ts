@@ -716,9 +716,9 @@ export async function runUninstall(
       // separately below: `.agents/skills/` is SHARED with third-party skills installed via
       // skills.sh, so the directory itself must never be removed wholesale.
       ...(moduleList.includes("codex") ? [".codex/agents"] : []),
-      // antigravity prompt mirrors (`.agents/prompts/bkit-*.md`). The workflow skills under
-      // `.agents/skills/bkit-*` are swept below, shared with codex and third-party skills.
-      ...(moduleList.includes("antigravity") ? [".agents/prompts"] : []),
+      // antigravity plugin subagent mirrors (`.agents/plugins/bkit/agents/bkit-*.md`). The
+      // plugin's workflow skills (`.agents/plugins/bkit/skills/bkit-*`) are swept below.
+      ...(moduleList.includes("antigravity") ? [".agents/plugins/bkit/agents"] : []),
     ];
     for (const dir of mirrorDirs) {
       const absDir = path.join(ctx.cwd, dir);
@@ -737,25 +737,31 @@ export async function runUninstall(
       }
     }
 
-    // Workflow skills: `.agents/skills/` is SHARED with third-party skills installed via
-    // skills.sh, so only the bkit-prefixed DIRECTORIES are removed — never the parent.
-    // Both codex and antigravity render their workflow entry points here.
-    if (moduleList.includes("codex") || moduleList.includes("antigravity")) {
-      const skillsDir = path.join(ctx.cwd, ".agents", "skills");
-      if (fs.existsSync(skillsDir)) {
-        try {
-          for (const d of fs.readdirSync(skillsDir)) {
-            if (!d.startsWith("bkit-")) continue;
-            const abs = path.join(skillsDir, d);
-            if (!fs.statSync(abs).isDirectory()) continue;
-            fs.rmSync(abs, { recursive: true, force: true });
-            result.deleted.push(path.join(".agents/skills", d));
-            console.log(`${ctx.logPrefix} delete mirror: ${path.join(".agents/skills", d)}`);
-          }
-        } catch (err) {
-          const msg = (err as Error).message;
-          console.error(`${ctx.logPrefix} error cleaning up .agents/skills: ${msg}`);
+    // Workflow skills. Codex's live at `.agents/skills/` (SHARED with third-party skills
+    // installed via skills.sh, so only the bkit-prefixed DIRECTORIES are removed — never the
+    // parent); Antigravity's live in its plugin at `.agents/plugins/bkit/skills/`. Sweep each
+    // host's set independently.
+    const skillDirs = [
+      ...(moduleList.includes("codex") ? [path.join(".agents", "skills")] : []),
+      ...(moduleList.includes("antigravity")
+        ? [path.join(".agents", "plugins", "bkit", "skills")]
+        : []),
+    ];
+    for (const skillsDir of skillDirs) {
+      const absDir = path.join(ctx.cwd, skillsDir);
+      if (!fs.existsSync(absDir)) continue;
+      try {
+        for (const d of fs.readdirSync(absDir)) {
+          if (!d.startsWith("bkit-")) continue;
+          const abs = path.join(absDir, d);
+          if (!fs.statSync(abs).isDirectory()) continue;
+          fs.rmSync(abs, { recursive: true, force: true });
+          result.deleted.push(path.join(skillsDir, d));
+          console.log(`${ctx.logPrefix} delete mirror: ${path.join(skillsDir, d)}`);
         }
+      } catch (err) {
+        const msg = (err as Error).message;
+        console.error(`${ctx.logPrefix} error cleaning up ${skillsDir}: ${msg}`);
       }
     }
   }

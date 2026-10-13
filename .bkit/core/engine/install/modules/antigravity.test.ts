@@ -1,12 +1,14 @@
-// install/modules/antigravity.test.ts — the Antigravity host module: prompt, skill and
-// hook rendering into `.agents/`.
+// install/modules/antigravity.test.ts — the Antigravity host module: the workspace plugin
+// (`.agents/plugins/bkit/`) — plugin.json, prompts, skills and hooks.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  ANTIGRAVITY_PROMPTS_DIR,
+  ANTIGRAVITY_AGENTS_DIR,
+  ANTIGRAVITY_HOOKS_DIR,
+  ANTIGRAVITY_PLUGIN_DIR,
   ANTIGRAVITY_SKILLS_DIR,
   applyAntigravityWorkflowSkill,
   renderAntigravityAgentsSkills,
@@ -62,12 +64,12 @@ describe("applyAntigravityWorkflowSkill", () => {
 });
 
 describe("renderAntigravityAgentsSkills", () => {
-  it("writes prompt mirrors, workflow skills, and stamps the managed version", () => {
+  it("writes plugin prompts + workflow skills, and stamps the managed version", () => {
     const ctx = makeCtx();
     renderAntigravityAgentsSkills(ctx);
 
-    // Prompt mirror for a known agent.
-    const prompt = path.join(tmpDir, ANTIGRAVITY_PROMPTS_DIR, "bkit-build-plan-execute.md");
+    // Subagent prompt mirror inside the plugin.
+    const prompt = path.join(tmpDir, ANTIGRAVITY_AGENTS_DIR, "bkit-build-plan-execute.md");
     expect(fs.existsSync(prompt)).toBe(true);
     const promptBody = fs.readFileSync(prompt, "utf-8");
     expect(promptBody).toContain("name: bkit-build-plan-execute");
@@ -75,15 +77,21 @@ describe("renderAntigravityAgentsSkills", () => {
     expect(promptBody).toContain("- view_file");
     expect(promptBody).toContain("bkit:managed v9.9.9");
 
-    // Workflow skill.
+    // Workflow skill inside the plugin.
     const skill = path.join(tmpDir, ANTIGRAVITY_SKILLS_DIR, "bkit-build", "SKILL.md");
     expect(fs.existsSync(skill)).toBe(true);
     const skillBody = fs.readFileSync(skill, "utf-8");
     expect(skillBody).toMatch(/^---\nname: bkit-build\n/);
-    expect(skillBody).toContain(".agents/prompts/");
+    // Subagent references resolve to the PLUGIN's agents/ dir, never `.agents/prompts/`.
+    expect(skillBody).toContain(".agents/plugins/bkit/agents/");
+    expect(skillBody).not.toContain(".agents/prompts/");
 
-    // Every write is tracked for check drift.
     expect(ctx.ws.writes.length).toBeGreaterThan(0);
+  });
+
+  it("never writes Codex's `.agents/skills/`", () => {
+    renderAntigravityAgentsSkills(makeCtx());
+    expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(false);
   });
 
   it("is idempotent — a second render writes nothing", () => {
@@ -95,13 +103,45 @@ describe("renderAntigravityAgentsSkills", () => {
 });
 
 describe("runAntigravityModule", () => {
-  it("writes hooks.json, both hook scripts, and emits the setup advisory", () => {
+  it("writes plugin.json, hooks.json, both hook scripts, and emits the setup advisory", () => {
     const ctx = makeCtx();
     runAntigravityModule(ctx);
 
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "hooks.json"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "hooks", "bkit-gateguard.cjs"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "hooks", "bkit-guardrails.cjs"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ANTIGRAVITY_PLUGIN_DIR, "plugin.json"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ANTIGRAVITY_PLUGIN_DIR, "hooks.json"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ANTIGRAVITY_HOOKS_DIR, "bkit-gateguard.cjs"))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.join(tmpDir, ANTIGRAVITY_HOOKS_DIR, "bkit-guardrails.cjs"))).toBe(
+      true,
+    );
     expect(ctx.advisories.some((a) => a.id === "antigravity-setup")).toBe(true);
+  });
+
+  it("warns when Codex is also installed (skill-overlap advisory)", () => {
+    const ctx = makeCtx({ installedModules: new Set(["core", "codex", "antigravity"]) });
+    runAntigravityModule(ctx);
+    expect(ctx.advisories.some((a) => a.id === "antigravity-codex-skill-overlap")).toBe(true);
+  });
+
+  it("stays silent about the overlap when Codex is absent", () => {
+    const ctx = makeCtx({ installedModules: new Set(["core", "antigravity"]) });
+    runAntigravityModule(ctx);
+    expect(ctx.advisories.some((a) => a.id === "antigravity-codex-skill-overlap")).toBe(false);
+  });
+
+  it("migrates the pre-plugin layout (`.agents/prompts`, `.agents/hooks*`)", () => {
+    // Seed the old layout.
+    fs.mkdirSync(path.join(tmpDir, ".agents", "prompts"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", "prompts", "bkit-build.md"), "legacy\n");
+    fs.writeFileSync(path.join(tmpDir, ".agents", "hooks.json"), "{}\n");
+    fs.mkdirSync(path.join(tmpDir, ".agents", "hooks"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", "hooks", "bkit-gateguard.cjs"), "legacy\n");
+
+    runAntigravityModule(makeCtx());
+
+    expect(fs.existsSync(path.join(tmpDir, ".agents", "prompts", "bkit-build.md"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".agents", "hooks.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".agents", "hooks", "bkit-gateguard.cjs"))).toBe(false);
   });
 });

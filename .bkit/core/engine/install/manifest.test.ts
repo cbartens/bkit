@@ -437,14 +437,21 @@ describe("install/manifest: single dispatch on entry.format", () => {
     }
   });
 
-  it("ANTIGRAVITY_MANIFEST: hooks.json is json, hooks + GEMINI.md are markered-text", () => {
+  it("ANTIGRAVITY_MANIFEST: plugin.json + hooks.json are json, hooks + GEMINI.md markered-text", () => {
     const entries = getModuleManifest("antigravity");
     const byPath = new Map(entries.map((e) => [e.path, e]));
-    expect(byPath.get(".agents/hooks.json")?.format).toBe("json");
-    expect(byPath.get(".agents/hooks/bkit-gateguard.cjs")?.format).toBe("markered-text");
-    expect(byPath.get(".agents/hooks/bkit-guardrails.cjs")?.format).toBe("markered-text");
+    expect(byPath.get(".agents/plugins/bkit/plugin.json")?.format).toBe("json");
+    expect(byPath.get(".agents/plugins/bkit/hooks.json")?.format).toBe("json");
+    expect(byPath.get(".agents/plugins/bkit/hooks/bkit-gateguard.cjs")?.format).toBe(
+      "markered-text",
+    );
+    expect(byPath.get(".agents/plugins/bkit/hooks/bkit-guardrails.cjs")?.format).toBe(
+      "markered-text",
+    );
     expect(byPath.get("GEMINI.md")?.format).toBe("markered-text");
     // Opt-in: never present in another host's manifest.
-    expect(getInstallManifest(["claude"]).some((e) => e.path === ".agents/hooks.json")).toBe(false);
+    expect(
+      getInstallManifest(["claude"]).some((e) => e.path === ".agents/plugins/bkit/hooks.json"),
+    ).toBe(false);
   });
 });

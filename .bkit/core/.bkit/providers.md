@@ -24,7 +24,7 @@
 | Cursor | derived | `.cursor/agents/` | `.cursor/commands/` | `.cursor/settings.json` + `.cursor/environment.json` + `.cursor/Dockerfile` (templates, `.bkit/templates.md`) | `.cursor/hooks/` (registered in `.cursor/hooks.json`) | `bkit install --cursor` |
 | opencode | additive (opt-in) | `.opencode/agents/` | `.opencode/commands/` | `.opencode/opencode.json` | `.opencode/plugin/bkit-gateguard.js` (PreToolUse) | `bkit install --opencode=<provider>` |
 | Codex CLI | additive (opt-in) | `.codex/agents/` (TOML) | none — skills (below) | none (`openai` = reserved built-in id) | `.codex/hooks/bkit-gateguard.cjs` + `.codex/hooks/bkit-guardrails.cjs` (PreToolUse `apply_patch` / `Bash`, via `.codex/hooks.json`) | `bkit install --codex` |
-| Google Antigravity | additive (opt-in) | `.agents/prompts/` | none — skills (below) | `GEMINI.md` (workspace rule) | `.agents/hooks/bkit-gateguard.cjs` + `.agents/hooks/bkit-guardrails.cjs` (PreToolUse `write_to_file` / `replace_file_content` / `run_command`, via `.agents/hooks.json`) | `bkit install --antigravity` |
+| Google Antigravity | additive (opt-in) | `.agents/plugins/bkit/agents/` | none — skills (plugin, below) | `GEMINI.md` (workspace rule) | `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` + `.agents/plugins/bkit/hooks/bkit-guardrails.cjs` (PreToolUse `write_to_file` / `replace_file_content` / `run_command`, via `.agents/plugins/bkit/hooks.json`) | `bkit install --antigravity` |
 
 **Two axes — host != provider.** **Host** = program reading what bkit writes, identified by its dir (`.claude/`, `.cursor/`, `.opencode/`, `.codex/`). **Provider** = gateway tokens are bought through. Model IDs are per-provider → `prompts.md` § Models = one column per PROVIDER (shared provider = one column, never two). Thinking depth is per-host (field name + ladder set by host config format: `effort:` claude/cursor, a `variant:` field opencode, `model_reasoning_effort` codex) → § Effort = one column per HOST. Neither table grows as hosts x providers.
 
@@ -47,25 +47,25 @@ Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-
 | Concern | On Codex |
 | --- | --- |
 | Agent files | `.codex/agents/*.toml` (TOML, not markdown). Required: `name`, `description`, `developer_instructions`. Pin + rung: `model`, `model_reasoning_effort`. |
-| Workflows = SKILLS, invoked `$bkit-design` | no project-scoped command surface — custom prompts are `~/.codex/prompts` only, not repo-shared, deprecated for skills (upstream declined repo-scoped prompts). bkit renders `.agents/skills/bkit-<workflow>/SKILL.md`, on Codex's skill path (`$REPO_ROOT/.agents/skills`). `.agents/` is shared → visible to every host. |
+| Workflows = SKILLS, invoked `$bkit-design` | no project-scoped command surface — custom prompts are `~/.codex/prompts` only, not repo-shared, deprecated for skills (upstream declined repo-scoped prompts). bkit renders `.agents/skills/bkit-<workflow>/SKILL.md`, on Codex's skill path (`$REPO_ROOT/.agents/skills`). This path is Codex's; Antigravity ships its own skills in a plugin (`.agents/plugins/bkit/skills/`). |
 | `tools:` not enforced | No per-agent tool allowlist upstream; `sandbox_mode` cannot substitute — every bkit agent is write-capable, so all would be `workspace-write`. Each agent gets the full built-in tool set regardless of declared `tools:`. GateGuard still gates, as everywhere. |
 
 > **GateGuard needs the `.codex/` layer TRUSTED.** Codex loads project-local hooks only once trusted. Until then the hook is installed and never fires — present, proving nothing. Same for `bkit-guardrails.cjs`.
 >
 > **Codex cannot prompt.** It parses `permissionDecision: "ask"` but does not implement it — an ask is recorded as an error and the call proceeds. `bkit-guardrails.cjs` therefore blocks the `deny` tier for real and emits the `ask` tier as advisory `additionalContext`: the gate fires and informs, it cannot stop the command. Every ask-tier command is already PROHIBITED in all five workflow headers, so no bkit workflow reaches one. Asserted in `.bkit/core/engine/install/modules/index.integration.test.ts`.
 
-### Google Antigravity — three deviations
+### Google Antigravity — installs as a workspace plugin
 
 <!-- prettier-ignore -->
 | Concern | On Antigravity |
 | --- | --- |
-| Prompt files | `.agents/prompts/*.md` — frontmatter `name`/`description`, model pin from § Models `Google` column, `effort` from § Effort `Antigravity` column, `tools:` respelled to Antigravity tool names. |
-| Workflows = SKILLS at `.agents/skills/bkit-<workflow>/SKILL.md` | no project-scoped command surface; Antigravity auto-discovers `.agents/skills/`. Shared with Codex and third-party skills → every sweep is `bkit-` prefix scoped. |
-| No native subagent tool | the orchestrator loads each prompt in-session with `view_file` and executes its step contract; isolated runs use `run_command` (`agy`). `**Subagent:** @name` respells to `` `view_file` `.agents/prompts/name.md` `` rather than a `/name` slash command. |
+| Install layout | the whole host is a workspace **plugin** at `.agents/plugins/bkit/` (`plugin.json` + `skills/` + `agents/` + `hooks.json` + `hooks/`) — Antigravity's own packaging surface, activated per project. `.agents/` root stays the dedicated Codex install. |
+| Workflows = SKILLS at `.agents/plugins/bkit/skills/bkit-<workflow>/SKILL.md` | Antigravity auto-discovers a workspace plugin's `skills/`. Codex's workflow skills stay at `.agents/skills/bkit-*/`; with both hosts installed Antigravity's selector lists both sets (accepted; `antigravity-codex-skill-overlap` advisory names which to pick). |
+| Prompt files + no native subagent tool | prompts at `.agents/plugins/bkit/agents/*.md` — frontmatter `name`/`description`, model pin from § Models `Google` column, `effort` from § Effort `Antigravity` column, `tools:` respelled to Antigravity tool names. The orchestrator loads each with `view_file` and runs it in-session; isolated runs use `run_command` (`agy`). `**Subagent:** @name` respells to `` `view_file` `.agents/plugins/bkit/agents/name.md` `` rather than a `/name` slash command. |
 
 > **Antigravity tool names differ from Claude's.** `Read`→`view_file`, `Write`→`write_to_file`, `Edit`→`replace_file_content`, `Bash`→`run_command`, `Grep`→`grep_search`, `Glob`→`list_dir`, `WebSearch`→`search_web`, `WebFetch`→`read_url`. `mcp__<server>__<tool>` keeps its spelling. `applyAntigravityPrompt` / `antigravityToolsBlock` (`.bkit/core/engine/render/hosts.ts`) apply the map at render.
 >
-> **GateGuard + guardrails wired from `.agents/hooks.json`** (PreToolUse on `write_to_file` / `replace_file_content` / `run_command`). Same fail-open advisory engine as the other hosts; the deny tier blocks for real.
+> **GateGuard + guardrails wired from `.agents/plugins/bkit/hooks.json`** (PreToolUse on `write_to_file` / `replace_file_content` / `run_command`). Same fail-open advisory engine as the other hosts; the deny tier blocks for real.
 
 **Explicit host axis (no implicit full):** `bkit install` requires ≥1 module flag — bare `bkit install` errors. Every host explicit; hosts compose: `bkit install --claude --cursor --opencode=opencode-zen` installs all three (+ implicit core). `--opencode` cannot render without `=<provider>` (strict allowlist). Switch providers: re-run install. All hosts render from `.bkit/`; run state in `status.jsonl` + plan docs + tracker (never host session) — phase/resumed run moves across hosts/providers mid-feature with identical gates + per-agent pins: hit limit on one, continue on another. `bkit status` → installed hosts + active providers; `bkit doctor` → credentials + tool reachability.
 
@@ -119,7 +119,7 @@ Persistent variant: `RunAtLoad` LaunchAgent plist (`~/Library/LaunchAgents/`) wi
 | Claude | `Agent` | `@` | `@bkit-build-plan-execute` invoked via `Agent` tool |
 | Cursor | `Task` | `/` | `/bkit-build-plan-execute` invoked via `Task` tool |
 | opencode | `/` (slash command) | `/` | `/bkit-build-plan-execute` invoked via opencode slash command |
-| Antigravity | `view_file` (in-session prompt load) | `.agents/prompts/` | `view_file` `.agents/prompts/bkit-build-plan-execute.md` |
+| Antigravity | `view_file` (in-session prompt load) | `.agents/plugins/bkit/agents/` | `view_file` `.agents/plugins/bkit/agents/bkit-build-plan-execute.md` |
 
 **Transform (Claude → Cursor, command bodies):**
 
@@ -294,7 +294,7 @@ Advisory hook, on all five hosts (Claude Code, Cursor, Codex, Google Antigravity
 | opencode | `bkit-gateguard.js` (ESM) | `.opencode/plugin/bkit-gateguard.js` | `.opencode/opencode.json` → `plugin` array, spec `./plugin/bkit-gateguard.js` (config-file-relative; opencode 2.0 reads a bare `.opencode/…` spec as an npm package and fails to load — the plugin also auto-loads from `.opencode/plugin/`) |
 | Cursor | `bkit-gateguard.cjs` (CJS) — managed block generated from the same parts as the Claude twin, so byte-identical | `.cursor/hooks/bkit-gateguard.cjs` | `.cursor/hooks.json` → `preToolUse` (matcher `Write`), no `failClosed` — an advisory hook that fails closed would block the edit it only meant to comment on |
 | Codex | `bkit-gateguard.cjs` (CJS) — Claude's stdin/stdout contract; parses the `apply_patch` envelope for target paths | `.codex/hooks/bkit-gateguard.cjs` | `.codex/hooks.json` → `hooks.PreToolUse` on `apply_patch` |
-| Antigravity | `bkit-gateguard.cjs` (CJS) — Claude's stdin/stdout contract; `write_to_file` / `replace_file_content` edit tools, path from `tool_input.file_path` | `.agents/hooks/bkit-gateguard.cjs` | `.agents/hooks.json` → `hooks.PreToolUse` on `write_to_file\|replace_file_content` |
+| Antigravity | `bkit-gateguard.cjs` (CJS) — Claude's stdin/stdout contract; `write_to_file` / `replace_file_content` edit tools, path from `tool_input.file_path` | `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` | `.agents/plugins/bkit/hooks.json` → `hooks.PreToolUse` on `write_to_file\|replace_file_content` |
 | Cursor | `bkit-guardrails.cjs` (CJS) — destructive-op / secret-exposure gates, the Cursor equivalent of Claude's `permissions` and opencode's `permission` map | `.cursor/hooks/bkit-guardrails.cjs` | `.cursor/hooks.json` → `beforeShellExecution` + `preToolUse` (`Read\|TabRead`), both `failClosed` |
 
 **Ownership:** both GateGuard files — and Cursor's `bkit-guardrails.cjs` — are **markered-text** (slash-comment: `// bkit:start` / `// bkit:end`). bkit owns only the advisory engine between the markers and reconverges it on every install / upgrade; the driver around it — Claude's stdin read + single `emit()`, opencode's exported `plugin` — is consumer-owned from first install onward, so consumer advisories survive upgrades. bkit's block is pure (no stdin, no stdout / stderr, no top-level call): Claude Code parses hook stdout as one JSON document, so two emitters would produce `{...}{...}` and the whole hook's output — bkit's included — is discarded. Marker-less file on upgrade → hash matches a bkit release: replaced wholesale; hash unknown: block appended plus printed wiring instructions. Uninstall strips the block, leaving the consumer's driver working. `bkit-guardrails.cjs` follows the identical split: bkit owns `bkitGuardrails(payload)`, which returns a decision object or `null` for no-opinion, and the consumer owns the stdin read and the single `emit()`.
@@ -338,7 +338,7 @@ Advisory hook, on all five hosts (Claude Code, Cursor, Codex, Google Antigravity
 | **OpenCode** | Baked into `.opencode/opencode.json`: `permission.webfetch` URL map (`"*": "ask"` then `*{domain}*: allow`) for the fetch tool, and `permission.bash` `curl *`/`wget *` **ask** then `curl *{domain}*`/`wget *{domain}*` **allow** for shell fetch (last-match-wins on both) | Both fetch surfaces are domain-gated, so an allowlisted host does not prompt whichever path the agent takes. `webfetch` matches the resource against the requested URL, `bash` against the command string. No separate allowlist file. |
 | **Cursor** | Generated `.cursor/allowlist.json` read at **runtime** by `.cursor/hooks/bkit-guardrails.cjs` | Cursor has no project settings equivalent to Claude `permissions` / OpenCode `permission` for curl host globs. Parity is a **hook** (`beforeShellExecution`): ask on `curl`/`wget` unless the command contains a host from the allowlist. The JSON is Cursor-only by design (IDE-scoped artifact under `.cursor/`, not `.bkit/`). |
 | **Codex** | Reads the same `.cursor/allowlist.json` at runtime via `.codex/hooks/bkit-guardrails.cjs` | Codex has no project-level permission file. The hook host-parses `curl`/`wget` and emits an advisory `ask` — Codex cannot prompt, so the allowlist informs rather than enforces. |
-| **Antigravity** | Reads the same `.cursor/allowlist.json` at runtime via `.agents/hooks/bkit-guardrails.cjs` | Antigravity has no project-level permission file. The hook host-parses `curl`/`wget` on the `run_command` matcher and emits an advisory `ask`. |
+| **Antigravity** | Reads the same `.cursor/allowlist.json` at runtime via `.agents/plugins/bkit/hooks/bkit-guardrails.cjs` | Antigravity has no project-level permission file. The hook host-parses `curl`/`wget` on the `run_command` matcher and emits an advisory `ask`. |
 
 **Do not hand-edit** `.cursor/allowlist.json` — regenerate via install/upgrade after changing `allowed-domains`. Missing file ⇒ the hook resolves no hosts and every host reads as unknown; there is deliberately no list embedded in the hook, because a second copy drifts from the registry silently.
 

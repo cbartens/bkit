@@ -74,15 +74,15 @@ Read and execute the matched command file for the current IDE.
 | `Plan` | `.claude/commands/bkit-plan.md` |
 | `Design` | `.claude/commands/bkit-design.md` |
 
-**Antigravity** (`.agents/skills/`):
+**Antigravity** (`.agents/plugins/bkit/skills/`):
 
 <!-- prettier-ignore -->
 | Label | Command |
 | --- | --- |
-| `Ship` | `.agents/skills/bkit-ship/SKILL.md` |
-| `Debug` | `.agents/skills/bkit-debug/SKILL.md` |
-| `Build` | `.agents/skills/bkit-build/SKILL.md` |
-| `Plan` | `.agents/skills/bkit-plan/SKILL.md` |
-| `Design` | `.agents/skills/bkit-design/SKILL.md` |
+| `Ship` | `.agents/plugins/bkit/skills/bkit-ship/SKILL.md` |
+| `Debug` | `.agents/plugins/bkit/skills/bkit-debug/SKILL.md` |
+| `Build` | `.agents/plugins/bkit/skills/bkit-build/SKILL.md` |
+| `Plan` | `.agents/plugins/bkit/skills/bkit-plan/SKILL.md` |
+| `Design` | `.agents/plugins/bkit/skills/bkit-design/SKILL.md` |
 
 <!-- bkit:end -->

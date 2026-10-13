@@ -449,6 +449,13 @@ export async function runInstall(
     cloudVariant,
     // Stamped into every rendered agent + command as the managed-version marker.
     version: getInstallingVersion(),
+    // Full host set for this run: dispatched ∪ already-on-disk. Read by the Antigravity
+    // module to warn when Codex is also installed (both hosts' `bkit-*` workflow skills
+    // then surface in Antigravity's skill selector).
+    installedModules: new Set<ModuleFlag>([
+      ...effectiveModules,
+      ...detectInstalledModules(process.cwd()),
+    ]),
   };
 
   // --- Phase 2: Install (current behaviour — dispatch modules) ---

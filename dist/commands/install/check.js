@@ -30,7 +30,7 @@ export function detectInstalledModules(cwd) {
         mods.add("opencode");
     if (fs.existsSync(path.join(cwd, ".codex", "agents")))
         mods.add("codex");
-    if (fs.existsSync(path.join(cwd, ".agents", "prompts")))
+    if (fs.existsSync(path.join(cwd, ".agents", "plugins", "bkit", "plugin.json")))
         mods.add("antigravity");
     return mods;
 }

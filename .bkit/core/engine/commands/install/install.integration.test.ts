@@ -1260,3 +1260,106 @@ describe("T10 — claudeAllowDerived survives a real install", () => {
     expect(allow).not.toContain("WebFetch(domain:shrink-probe.example)");
   }, 180_000);
 });
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Scenario — Codex + Antigravity both installed: no shared-skill conflict (#534)
+//
+// Decision (2026-10-13): `.agents/` ROOT stays the dedicated Codex install; the whole
+// Antigravity host installs into a workspace plugin at `.agents/plugins/bkit/`. Codex's
+// workflow skills (`.agents/skills/bkit-*`) and Antigravity's (plugin `skills/bkit-*`)
+// therefore live at DIFFERENT paths, and `bkit check` is green whichever order the hosts
+// are installed in. With both installed, Antigravity's selector lists both sets — accepted,
+// and surfaced by the `antigravity-codex-skill-overlap` advisory. Real-CLI tests pin it.
+// ---------------------------------------------------------------------------
+
+describe("Scenario — Codex + Antigravity install side by side without conflict (#534)", () => {
+  const paths = () => ({
+    bkitInstallPath: path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts"),
+    tsxBin: path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../../../../node_modules/.bin/tsx",
+    ),
+  });
+
+  const run = (args: string[]) => {
+    const { tsxBin, bkitInstallPath } = paths();
+    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 120_000,
+    });
+  };
+
+  const seedConsumer = (): void => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "scratch-consumer",
+        version: "0.0.0",
+        packageManager: "pnpm@10.4.1",
+      }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+  };
+
+  const read = (rel: string): string => fs.readFileSync(path.join(tmpDir, rel), "utf-8");
+  const exists = (rel: string): boolean => fs.existsSync(path.join(tmpDir, rel));
+
+  const CODEX_SKILL = ".agents/skills/bkit-auto/SKILL.md";
+  const PLUGIN_SKILL = ".agents/plugins/bkit/skills/bkit-auto/SKILL.md";
+
+  const assertCleanCheck = (label: string): void => {
+    const check = run(["check"]);
+    expect(check.status, `${label}: check drifted:\n${check.stdout}\n${check.stderr}`).toBe(0);
+  };
+
+  it("combined `--codex --antigravity`: skills at separate paths, check green, advisory fires", () => {
+    seedConsumer();
+    const install = run(["install", "--codex", "--antigravity", "--tracker=github"]);
+    expect(install.status, `install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+
+    // Codex keeps `.agents/skills/` with its own (Claude-spelled) vocabulary.
+    expect(exists(CODEX_SKILL)).toBe(true);
+    expect(read(CODEX_SKILL)).toContain("`Skill` tool");
+    expect(read(CODEX_SKILL)).not.toContain("`view_file`");
+
+    // Antigravity lives entirely in the plugin, with its own (view_file) vocabulary.
+    expect(exists(".agents/plugins/bkit/plugin.json")).toBe(true);
+    expect(exists(".agents/plugins/bkit/hooks.json")).toBe(true);
+    expect(exists(".agents/plugins/bkit/hooks/bkit-gateguard.cjs")).toBe(true);
+    expect(read(PLUGIN_SKILL)).toContain("`view_file`");
+    // Workflow skills that delegate to subagents point at the plugin's agents/ dir.
+    expect(read(".agents/plugins/bkit/skills/bkit-build/SKILL.md")).toContain(
+      ".agents/plugins/bkit/agents/",
+    );
+
+    // Both installed → the overlap advisory is emitted.
+    expect(`${install.stdout}\n${install.stderr}`).toContain("antigravity-codex-skill-overlap");
+
+    assertCleanCheck("combined");
+  }, 180_000);
+
+  it("separate `--antigravity` then `--codex`: both land at their own paths, check green", () => {
+    seedConsumer();
+    expect(run(["install", "--antigravity", "--tracker=github"]).status).toBe(0);
+    expect(exists(PLUGIN_SKILL)).toBe(true);
+    // Codex not installed yet → no `.agents/skills/`.
+    expect(exists(".agents/skills")).toBe(false);
+
+    expect(run(["install", "--codex", "--tracker=github"]).status).toBe(0);
+    expect(read(CODEX_SKILL)).toContain("`Skill` tool");
+    expect(read(PLUGIN_SKILL)).toContain("`view_file`");
+    assertCleanCheck("antigravity→codex");
+  }, 180_000);
+
+  it("separate `--codex` then `--antigravity`: both land at their own paths, check green", () => {
+    seedConsumer();
+    expect(run(["install", "--codex", "--tracker=github"]).status).toBe(0);
+    expect(run(["install", "--antigravity", "--tracker=github"]).status).toBe(0);
+    expect(read(CODEX_SKILL)).toContain("`Skill` tool");
+    expect(read(PLUGIN_SKILL)).toContain("`view_file`");
+    assertCleanCheck("codex→antigravity");
+  }, 180_000);
+});

@@ -1,11 +1,16 @@
-// install/modules/antigravity.ts — the Google Antigravity host module: `.agents/`
-// prompts, skills and hooks.
+// install/modules/antigravity.ts — the Google Antigravity host module. The whole host
+// installs into a workspace PLUGIN at `.agents/plugins/bkit/`, so `.agents/` root stays
+// the dedicated Codex install.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeTier2, writeTier2JsonContained, ensureDir } from "../write.js";
 import { stampManagedVersion } from "../version-file.js";
-import { applyAntigravityPrompt, applyAntigravitySkill } from "../../render/hosts.js";
+import {
+  ANTIGRAVITY_AGENTS_DIR,
+  applyAntigravityPrompt,
+  applyAntigravitySkill,
+} from "../../render/hosts.js";
 import {
   getCoreRoot,
   getSharedRoot,
@@ -28,24 +33,35 @@ import {
 //
 // Nullary flag, like --codex: Antigravity runs on one pinned gateway (`google`).
 //
-// Renders THREE things, all under the `.agents/` root Antigravity standardises on:
-//   .agents/prompts/<name>.md           — subagent prompt definitions (executed in-session)
-//   .agents/skills/bkit-<wf>/SKILL.md   — workflow entry points, as SKILLS not commands
-//   .agents/hooks.json + hooks/         — GateGuard registration (PreToolUse)
+// The host installs as a workspace PLUGIN (`.agents/plugins/bkit/`) — Antigravity's own
+// packaging surface (antigravity.google/docs/plugins). The plugin activates per project:
+//   .agents/plugins/bkit/plugin.json              — plugin manifest (required)
+//   .agents/plugins/bkit/skills/bkit-<wf>/SKILL.md — workflow entry points (skills)
+//   .agents/plugins/bkit/agents/<name>.md         — subagent prompt definitions
+//   .agents/plugins/bkit/hooks.json + hooks/      — GateGuard registration (PreToolUse)
+//
+// `.agents/` ROOT stays the dedicated Codex install: Codex workflow skills live at
+// `.agents/skills/bkit-<wf>/SKILL.md` and this module never writes there.
 //
 // There is no native subagent tool on Antigravity: the orchestrator loads a prompt with
 // `view_file` and executes its step contract in-session, which is why the workflow skills
-// respell `**Subagent:** @name` to the prompt file path (applyAntigravityToolRewrites).
+// respell `**Subagent:** @name` to the plugin's `agents/<name>.md` path.
 //
-// `.agents/skills/` is SHARED with Codex and with third-party skills, so every sweep
-// here is `bkit-` prefix scoped.
+// `.agents/plugins/` may hold consumer plugins, so every sweep here is scoped to the
+// `bkit` plugin directory (and, within it, to `bkit-` prefixed entries).
 // ---------------------------------------------------------------------------
 
-/** Directory holding bkit-generated workflow skills, shared across hosts. */
-export const ANTIGRAVITY_SKILLS_DIR = ".agents/skills";
+/** The bkit Antigravity workspace plugin root. */
+export const ANTIGRAVITY_PLUGIN_DIR = ".agents/plugins/bkit";
 
-/** Directory holding bkit-generated subagent prompts. */
-export const ANTIGRAVITY_PROMPTS_DIR = ".agents/prompts";
+/** Workflow skills, one directory per workflow, each holding SKILL.md. */
+export const ANTIGRAVITY_SKILLS_DIR = ".agents/plugins/bkit/skills";
+
+/** Subagent prompt definitions. Sourced from the renderer's shared constant. */
+export { ANTIGRAVITY_AGENTS_DIR };
+
+/** Hook scripts referenced by the plugin's hooks.json. */
+export const ANTIGRAVITY_HOOKS_DIR = ".agents/plugins/bkit/hooks";
 
 /**
  * Convert a workflow orchestrator into an Antigravity SKILL.md. Tracker-conditional
@@ -60,7 +76,7 @@ export function applyAntigravityWorkflowSkill(
 }
 
 /**
- * Render `.agents/prompts/*.md` and the workflow skills. Extracted so `bkit upgrade`
+ * Render the plugin's subagent prompts and workflow skills. Extracted so `bkit upgrade`
  * re-renders them identically — bkit-owned output, force-overwritten.
  */
 export function renderAntigravityAgentsSkills(ctx: ModuleContext): string[] {
@@ -74,10 +90,10 @@ export function renderAntigravityAgentsSkills(ctx: ModuleContext): string[] {
     throw new Error("renderAntigravityAgentsSkills: ctx.antigravityModelLookup is required");
   }
 
-  // --- Prompts: markdown+frontmatter -> .agents/prompts/<name>.md ---
+  // --- Prompts: markdown+frontmatter -> .agents/plugins/bkit/agents/<name>.md ---
   {
     const src = getPromptsRoot();
-    const dest = ANTIGRAVITY_PROMPTS_DIR;
+    const dest = ANTIGRAVITY_AGENTS_DIR;
     if (!dryRun) ensureDir(dest);
     const files = listMdFiles(src, BKIT_PREFIX);
     const sourceSet = new Set(files);
@@ -99,7 +115,7 @@ export function renderAntigravityAgentsSkills(ctx: ModuleContext): string[] {
       }
     }
 
-    // Orphan sweep is bkit-prefix scoped — `.agents/prompts/` may carry consumer prompts.
+    // Orphan sweep is bkit-prefix scoped — the plugin's agents/ is bkit-owned.
     if (fs.existsSync(dest)) {
       for (const f of fs.readdirSync(dest)) {
         if (!f.startsWith(BKIT_PREFIX)) continue;
@@ -131,7 +147,7 @@ export function renderAntigravityAgentsSkills(ctx: ModuleContext): string[] {
       }
     }
 
-    // Prefix-scoped sweep: `.agents/skills/` is shared with third-party skills.
+    // Prefix-scoped sweep inside the bkit plugin's skills/.
     if (fs.existsSync(ANTIGRAVITY_SKILLS_DIR)) {
       for (const d of fs.readdirSync(ANTIGRAVITY_SKILLS_DIR)) {
         if (!d.startsWith(BKIT_PREFIX)) continue;
@@ -147,17 +163,76 @@ export function renderAntigravityAgentsSkills(ctx: ModuleContext): string[] {
   return written;
 }
 
+/**
+ * Remove the pre-plugin Antigravity layout: the old module wrote `.agents/prompts/bkit-*.md`,
+ * `.agents/hooks.json` and `.agents/hooks/bkit-*.cjs` directly under `.agents/`. The plugin
+ * at `.agents/plugins/bkit/` is now the only Antigravity home. Only `bkit-`-prefixed legacy
+ * files (and the bkit-owned `hooks.json`) are removed; consumer content under `.agents/hooks/`
+ * is left alone.
+ */
+function sweepLegacyAntigravityLayout(ctx: ModuleContext): void {
+  const { dryRun, logPrefix } = ctx;
+  const tag = dryRun ? "[dry-run] " : "";
+  const scratch: string[] = [];
+  const rm = (rel: string): void => {
+    const abs = path.join(process.cwd(), rel);
+    if (!fs.existsSync(abs)) return;
+    if (!dryRun) fs.rmSync(abs, { force: true });
+    console.log(`${logPrefix} ${tag}delete (pre-plugin layout): ${rel}`);
+    trackMirrorWrite(ctx, rel, scratch);
+  };
+
+  const promptsDir = path.join(process.cwd(), ".agents", "prompts");
+  if (fs.existsSync(promptsDir)) {
+    for (const f of fs.readdirSync(promptsDir)) {
+      if (f.startsWith(BKIT_PREFIX) && f.endsWith(".md")) rm(path.join(".agents", "prompts", f));
+    }
+  }
+  rm(path.join(".agents", "hooks.json"));
+  const hooksDir = path.join(process.cwd(), ".agents", "hooks");
+  if (fs.existsSync(hooksDir)) {
+    for (const f of fs.readdirSync(hooksDir)) {
+      if (f.startsWith(BKIT_PREFIX)) rm(path.join(".agents", "hooks", f));
+    }
+  }
+  // Drop the now-empty legacy dirs (only when empty — a consumer's own files stay).
+  for (const rel of [path.join(".agents", "prompts"), path.join(".agents", "hooks")]) {
+    const abs = path.join(process.cwd(), rel);
+    try {
+      if (fs.existsSync(abs) && fs.readdirSync(abs).length === 0) {
+        if (!dryRun) fs.rmdirSync(abs);
+        console.log(`${logPrefix} ${tag}delete (pre-plugin layout): ${rel}/`);
+      }
+    } catch {
+      // non-fatal — leave a non-empty dir
+    }
+  }
+}
+
 export function runAntigravityModule(ctx: ModuleContext): void {
   const { dryRun, advisories, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
 
+  sweepLegacyAntigravityLayout(ctx);
   renderAntigravityAgentsSkills(ctx);
 
-  const agyShared = path.join(getSharedRoot(), ".agents");
-  const agyHooks = path.join(getCoreRoot(), ".agents", "hooks");
+  const pluginShared = path.join(getSharedRoot(), ".agents", "plugins", "bkit");
+  const pluginHooksSrc = path.join(getCoreRoot(), ".agents", "plugins", "bkit", "hooks");
+
+  // --- plugin.json — Tier-2 json (deep-contained), the required plugin manifest ---
+  {
+    const jsonSrc = path.join(pluginShared, "plugin.json");
+    const jsonDst = path.join(ANTIGRAVITY_PLUGIN_DIR, "plugin.json");
+    if (fs.existsSync(jsonSrc)) {
+      if (!dryRun) ensureDir(path.dirname(jsonDst));
+      const prevLen = ws.writes.length;
+      writeTier2JsonContained(jsonSrc, jsonDst, dryRun, ws);
+      if (ws.writes.length > prevLen) console.log(`${logPrefix} ${tag}antigravity: ${jsonDst}`);
+    }
+  }
 
   // Root GEMINI.md — Antigravity workspace-rule redirect to .agents/rules.md. A ROOT file
-  // (not under .agents/), so the .agents/ walk does not cover it. Tier-2 markered-text
+  // (not under .agents/), so the plugin walk does not cover it. Tier-2 markered-text
   // (writeTier2 html-comment), exact twin of the claude module's CLAUDE.md.
   {
     const src = path.join(getSharedRoot(), "GEMINI.md");
@@ -169,10 +244,10 @@ export function runAntigravityModule(ctx: ModuleContext): void {
     }
   }
 
-  // --- hooks.json — Tier-2 deep-contained (consumers may add their own event groups) ---
+  // --- plugin hooks.json — Tier-2 deep-contained (consumers may add their own groups) ---
   {
-    const jsonSrc = path.join(agyShared, "hooks.json");
-    const jsonDst = ".agents/hooks.json";
+    const jsonSrc = path.join(pluginShared, "hooks.json");
+    const jsonDst = path.join(ANTIGRAVITY_PLUGIN_DIR, "hooks.json");
     if (fs.existsSync(jsonSrc)) {
       if (!dryRun) ensureDir(path.dirname(jsonDst));
       const prevLen = ws.writes.length;
@@ -183,8 +258,8 @@ export function runAntigravityModule(ctx: ModuleContext): void {
 
   // --- bkit-gateguard.cjs — Tier-2 markered-text, twin of the Claude/Codex hook ---
   {
-    const hookSrc = path.join(agyHooks, "bkit-gateguard.cjs");
-    const hookDst = ".agents/hooks/bkit-gateguard.cjs";
+    const hookSrc = path.join(pluginHooksSrc, "bkit-gateguard.cjs");
+    const hookDst = path.join(ANTIGRAVITY_HOOKS_DIR, "bkit-gateguard.cjs");
     if (fs.existsSync(hookSrc)) {
       if (!dryRun) ensureDir(path.dirname(hookDst));
       const prevLen = ws.writes.length;
@@ -197,8 +272,8 @@ export function runAntigravityModule(ctx: ModuleContext): void {
   // Registered on matcher `run_command` in hooks.json above. Same decision engine as the
   // other hosts; the deny tier blocks for real.
   {
-    const railSrc = path.join(agyHooks, "bkit-guardrails.cjs");
-    const railDst = ".agents/hooks/bkit-guardrails.cjs";
+    const railSrc = path.join(pluginHooksSrc, "bkit-guardrails.cjs");
+    const railDst = path.join(ANTIGRAVITY_HOOKS_DIR, "bkit-guardrails.cjs");
     if (fs.existsSync(railSrc)) {
       if (!dryRun) ensureDir(path.dirname(railDst));
       const prevLen = ws.writes.length;
@@ -211,11 +286,27 @@ export function runAntigravityModule(ctx: ModuleContext): void {
     id: "antigravity-setup",
     severity: "advisory",
     detect:
-      "antigravity host installed (.agents/prompts + .agents/skills/bkit-* + .agents/hooks.json).",
+      "antigravity host installed as a workspace plugin (.agents/plugins/bkit/: plugin.json + skills/bkit-* + agents/ + hooks.json).",
     action:
       "Three things that differ from the other hosts:\n" +
-      "1. Workflows are SKILLS here, not slash commands: Antigravity discovers them under `.agents/skills/bkit-*/SKILL.md`.\n" +
-      "2. There is no native subagent tool. The orchestrator loads each subagent prompt from `.agents/prompts/` with `view_file` and executes it in-session; isolated runs use `run_command` (`agy`).\n" +
-      "3. GateGuard and guardrails are wired from `.agents/hooks.json` (PreToolUse on `write_to_file` / `replace_file_content` / `run_command`). See .bkit/providers.md.",
+      "1. Workflows are SKILLS here, not slash commands: Antigravity discovers them under `.agents/plugins/bkit/skills/bkit-<wf>/SKILL.md` (the plugin activates per project — no toggle).\n" +
+      "2. There is no native subagent tool. The orchestrator loads each subagent prompt from `.agents/plugins/bkit/agents/` with `view_file` and executes it in-session; isolated runs use `run_command` (`agy`).\n" +
+      "3. GateGuard and guardrails are wired from `.agents/plugins/bkit/hooks.json` (PreToolUse on `write_to_file` / `replace_file_content` / `run_command`). See .bkit/providers.md.",
   });
+
+  // Both hosts installed: Antigravity's skill selector lists TWO sets of bkit-* skills.
+  // Codex does not merge same-named skills; Antigravity lists both. Warn which to pick.
+  const codexPresent =
+    ctx.installedModules?.has("codex") ??
+    fs.existsSync(path.join(process.cwd(), ".codex", "agents"));
+  if (codexPresent) {
+    advisories.push({
+      id: "antigravity-codex-skill-overlap",
+      severity: "advisory",
+      detect:
+        "Codex and Antigravity are both installed — Antigravity's skill selector now lists BOTH the Codex workflow skills (`.agents/skills/bkit-<wf>/SKILL.md`) and the Antigravity plugin skills (`.agents/plugins/bkit/skills/bkit-<wf>/SKILL.md`).",
+      action:
+        "In Antigravity, invoke the WORKFLOW skills from the plugin under `.agents/plugins/bkit/skills/bkit-<wf>/SKILL.md` — they carry Antigravity's tool vocabulary (`view_file`, plugin subagent paths). The `.agents/skills/bkit-*` copies are Codex's install and name Claude/Codex tools Antigravity does not have. If you only use one host, the other's skills are harmless but may appear in the picker.",
+    });
+  }
 }

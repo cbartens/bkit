@@ -1,0 +1,5 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "bkit",
+  "description": "bkit — five-phase, tracker-integrated engineering workflows for Google Antigravity: workflow skills, subagent definitions, and GateGuard/guardrails hooks."
+}
