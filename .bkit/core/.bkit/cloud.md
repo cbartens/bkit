@@ -217,7 +217,7 @@ Token management by session type:
 
 ## MCP issue-tracker integration
 
-bkit wires two MCP servers into `.mcp.json` at repo root (project-shared, read by Claude Code `/mcp` UI). Cursor reads same shape from `.cursor/mcp.json`. Both **remote HTTP MCPs with OAuth-on-first-use** — no PATs, no env vars, no docker. Claude Code launches browser auth on first server touch; stores token in own secret store.
+bkit wires two MCP servers into `.mcp.json` at repo root (project-shared, read by Claude Code `/mcp` UI). Cursor reads same shape from `.cursor/mcp.json`. Both **remote HTTP MCPs** — no docker. Linear: OAuth on first use — Claude Code launches browser auth on first server touch, stores token in own secret store. GitHub: `BKIT_GH_TOKEN` PAT in the `Authorization` header — no OAuth.
 
 > Note: `mcpServers` in `.claude/settings.json` silently ignored by Claude Code — definitions only from `.mcp.json` (project) or `claude mcp add` (user scope). `mcp__<name>__*` in `.claude/settings.json` `permissions.allow` are tool-permission allowlists — different concern, remain there.
 
@@ -311,7 +311,7 @@ GitHub dispatch uses Cursor Automations "Pull request label changed" trigger —
 BKIT_GH_TOKEN=<PAT — fine-grained for one owner, classic across owners; same permissions as the Claude side>
 ```
 
-`GITHUB_ISSUE_ID` injected per-session — do not hardcode. No `BKIT_LINEAR_API_KEY` or `LINEAR_ISSUE_ID` for tracker calls (MCP auth = browser OAuth; `gh` uses `gh auth login` locally or `--with-token` in cloud bootstrap).
+`GITHUB_ISSUE_ID` injected per-session — do not hardcode. No `BKIT_LINEAR_API_KEY` or `LINEAR_ISSUE_ID` for tracker calls (GitHub MCP auth = `BKIT_GH_TOKEN` above; `gh` uses `gh auth login` locally or `--with-token` in cloud bootstrap).
 
 ## How Linear dispatch works
 
@@ -482,7 +482,6 @@ Skip conditions emit single GitHub-comment no-op line and exit 0 — only real f
 - **Cursor image cache layer-based.** Reorder `RUN` lines carefully — frequently-changing line above slow one invalidates cache below.
 - **GitHub App vs `/web-setup` (Claude).** Auto-fix PRs require GitHub App. `/web-setup` (sync `gh` token to Claude account) enough for clone + push, not auto-fix.
 - **IP allowlists** on org GitHub / Anthropic accounts block cloud sessions — contact support to exempt managed infra.
-- **pnpm `.npmrc` substitution.** Use `${VAR}` only, never `${VAR:-default}` — pnpm does not parse POSIX fallback and sends no auth → 401 on `@cbartens/bkit`. Both clouds equally.
 
 # Sources
 

@@ -222,7 +222,7 @@ description: "Design Feature — Autonomous design phase"
    - **If** frontier empty **and** the human confirms shared understanding → step 4.
    - **If** the human says stop **or** 10 rounds asked → step 4.
    - **Else** → step 2, next round.
-4. Create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions` heading; the line `Settled = binding. Assumed = unconfirmed default; override only with a stated reason. Open = unknown; the design states how it resolves each.`; then `### Settled`, `### Assumed, not confirmed`, `### Open` headings, one `- Q{n} {title}: {answer}` line per question. Unanswered at stop → `Assumed, not confirmed` with the recommended answer; "don't know" → `Open`; empty section → `None.`
+4. Create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions` heading; the line `Settled = the human's answer; the design follows it and flags any departure for the human to confirm. Assumed = unconfirmed default; override only with a stated reason. Open = unknown; the design states how it resolves each.`; then `### Settled`, `### Assumed, not confirmed`, `### Open` headings, one `- Q{n} {title}: {answer}` line per question. Unanswered at stop → `Assumed, not confirmed` with the recommended answer; "don't know" → `Open`; empty section → `None.`
 5. Append `design-grill-{RUN}.md` verbatim to `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** `design-input-{RUN}.md` already holds a `Grill decisions` section → replace it.
 6. Finish:
    ```bash

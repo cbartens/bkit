@@ -1,18 +1,14 @@
 #!/usr/bin/env node
 // bkit-readguard.cjs — bkit ReadGuard advisory hook (Google Antigravity).
 //
-// Twin of `.claude/hooks/bkit-readguard.cjs`: same engine and payload adapter (bkit's
-// `core/hooks/readguard-engine.js` / `readguard-payload.js`). Reads arrive as `view_file`
-// (`AbsolutePath`, optional `StartLine` / `EndLine`) and shell as `run_command`
-// (`CommandLine`, `Cwd`). When an agent re-reads a line range of a file it already read in
-// this conversation, and the file has not changed since, it delivers a note so the agent
-// uses the earlier output. Plain shell forms only: `cat FILE`, `sed -n 'A,Bp' FILE`,
-// `head` / `tail` with a line count.
-//
-// Antigravity's hook contract, live-verified on the agy CLI (bkit's
-// `core/hooks/antigravity-hook.js`): stdin `{ conversationId, toolCall: { name, args } }`,
-// stdout `{ decision, reason }`, and only a `deny`'s reason reaches the model. So the note
-// is delivered by denying the repeat read once; the agent's retry goes through.
+// Twin of `.claude/hooks/bkit-readguard.cjs`, same stdout shape as bkit's other
+// Antigravity hooks. Reads arrive as `view_file` (`AbsolutePath`, optional `StartLine` /
+// `EndLine`) and shell as `run_command` (`CommandLine`); the adapter accepts both the
+// `tool_name` / `tool_input` envelope and the documented `toolCall: { name, args }` one.
+// When an agent re-reads a line range of a file it already read in this conversation,
+// and the file has not changed since, it injects a note so the agent uses the earlier
+// output. Plain shell forms only: `cat FILE`, `sed -n 'A,Bp' FILE`, `head` / `tail`
+// with a line count.
 //
 // REGISTRATION: `.agents/plugins/bkit/hooks.json`, PreToolUse matcher
 // `view_file|run_command`. Antigravity has no compaction hook, so the log is never
@@ -20,10 +16,9 @@
 // no longer in its context. See .bkit/providers.md § ReadGuard.
 //
 // CONTRACT — do not regress:
-//   - ADVISORY, DELIVERED BY ONE BLOCK: a repeat read is denied once with the note; the
-//     identical retry is allowed.
-//   - FAIL OPEN: one top-level catch emits a bare allow on any error.
-//   - PER CONVERSATION: Antigravity has no native subagents.
+//   - ADVISORY ONLY: emits `additionalContext`, never blocks.
+//   - FAIL OPEN: one top-level catch swallows every error and exits 0.
+//   - PER SESSION: Antigravity's payload carries no agent id.
 //   - STATE: OS temp dir, GC'd after 24h. Never writes into the consumer repo.
 //
 // MODES (BKIT_READGUARD): unset → advisory [DEFAULT] | "off" → no-op.
@@ -449,14 +444,16 @@ function bkitAntigravityReadguard(payload) {
 
 // bkit:end
 
-function emit(decision) {
-  process.stdout.write(JSON.stringify(decision));
+function emit(payload) {
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: payload }));
 }
 
 try {
   const raw = fs.readFileSync(0, "utf-8");
-  const result = raw.trim() ? bkitAntigravityReadguard(JSON.parse(raw)) : null;
-  emit(result ?? { decision: "allow" });
+  if (raw.trim()) {
+    const context = bkitReadguard(JSON.parse(raw));
+    if (context) emit({ hookEventName: "PreToolUse", additionalContext: context });
+  }
 } catch {
-  emit({ decision: "allow" }); // fail open — never block, never error out
+  process.exitCode = 0; // fail open — never block, never error out
 }

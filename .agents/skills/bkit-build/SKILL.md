@@ -684,10 +684,16 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`.
    After reading issue (`issue-read`): **If** `bkit:auto` not in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation).
 10. Post `{CLOSE_COMMENT}` as the close comment.
-11. Final return: Display `build-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. Append `CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug.`
+11. Collect setup tips:
+    ```bash
+    "{BKIT}" tips --workflow=build
+    ```
+    Plain text, not JSON. Hold stdout as `{SETUP_TIPS}`; prints nothing or exits non-zero → `{SETUP_TIPS}` empty.
+12. Final return: Display `build-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. Append `CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug.`
     Append issue link [{ISSUE_ID} {TITLE}]({URL})
+    Append `{SETUP_TIPS}` under a `## Setup Tips` heading, unless empty.
     Append as last line `Would you like me to explain this in plain English?`
-12. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
+13. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 
 ### 🔒 Gate 18 — Close Workflow & Create PR
 

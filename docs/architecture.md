@@ -132,7 +132,7 @@ CLI verbs:
 
 ```
 Consumer repo
-├── package.json            # devDependencies: { "@cbartens/bkit": "^4.0.0" }
+├── package.json            # devDependencies: { "@cbartens/bkit": "^5.1.0" }
 ├── .claude/settings.json   # json format — deep-containment (template scope ⊆ consumer)
 ├── .cursor/hooks.json      # json format — Cursor v1 keyed-object; deep-containment
 ├── .agents/                # Cross-IDE agent runtime, populated by `pnpm bkit install`

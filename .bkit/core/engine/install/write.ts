@@ -204,7 +204,7 @@ export function deepMergeJson(base: JsonValue, override: JsonValue): JsonValue {
 //   - dest present, valid JSON, template contained → no-op (idempotent)
 //   - dest present, valid JSON, containment fails → deepMergeJson(existing, template)
 //     (template wins on key collisions; consumer-only keys outside template tree preserved)
-//   - dest present, malformed JSON → overwrite with template
+//   - dest present, malformed JSON → throw; the consumer fixes it by hand
 //   - schemaFlipped: true when a path value changed type during deep-merge
 // ---------------------------------------------------------------------------
 

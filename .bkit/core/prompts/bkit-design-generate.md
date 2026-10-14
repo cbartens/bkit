@@ -32,7 +32,6 @@ maxTurns: 100
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Generate design; do not just analyse; do not build, install, or write code.
 - **Multi-lens inputs:** Inputs carry distinct lenses; merge as raw material — do not collapse to consensus. Consolidate strongest 2-3 approaches, not a watered-down union; single-input approaches are normal, not outvoted.
-- **Human decisions:** A `Grill decisions` input section holds the human's answers. `Settled` entries override any brainstorm approach that contradicts them; `Assumed, not confirmed` entries are defaults, overridden only with a stated reason; each `Open` entry gets a `Risks & Open Questions` item.
 - **No anchor authoring:** Do not author `<!-- bkit:anchor` block.
 
 **Process:**
@@ -42,10 +41,14 @@ maxTurns: 100
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Identify themes, complementary ideas, conflicts, related issues. Risk-premortem mitigations are additive — layer onto selected approach, not as separate approach.
-6. Each conflict → pick stronger, justify.
-7. Preserve strongest approaches. Consolidate Decisions.
-8. Prior-art sweep per capability — repo, dependency built-ins, ecosystem practice. Default `EXTEND` + named artifact; `NEW` only when nothing covers capability or extending breaks named contract / callers. Every net-new `Architecture` component traces to a `NEW` verdict.
-9. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. **If** `reason` scope-declared → `references` must contain design item declaring it out of scope (row is not that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
+6. Weigh input's `Grill decisions` section with human answers against brainstorms — strong pointers, not hard constraints:
+   - `Settled` → follow. **If** brainstorm shows answer fails (breaks named contract, rests on disproven assumption, carries cost question did not surface) → depart; add `Decisions` row naming departed `Q{n}` and why, and `Risks & Open Questions` item asking human to confirm departure.
+   - `Assumed, not confirmed` → default; override only with reason stated in `Decisions`.
+   - `Open` → one `Risks & Open Questions` item each.
+7. Each conflict → pick stronger, justify.
+8. Preserve strongest approaches. Consolidate Decisions.
+9. Prior-art sweep per capability — repo, dependency built-ins, ecosystem practice. Default `EXTEND` + named artifact; `NEW` only when nothing covers capability or extending breaks named contract / callers. Every net-new `Architecture` component traces to a `NEW` verdict.
+10. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. **If** `reason` scope-declared → `references` must contain design item declaring it out of scope (row is not that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
 
 **Output format:**
 

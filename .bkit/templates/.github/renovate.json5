@@ -58,7 +58,7 @@
   // PRs. Security / osvVulnerabilityAlerts PRs are exempt. With this set, set
   // `minimumReleaseAge: 0` in pnpm-workspace.yaml: pnpm 11 defaults the
   // per-install gate to 1440 when the key is absent, and only 0 turns it off.
-  // See docs/deployments.md § Renovate pnpm-11 freshness gate & microvm memory.
+  // See docs/deployments.md § Dependency updaters.
   // ─────────────────────────────────────────────────────────────────────
   env: {
     PNPM_WORKERS: "1",
