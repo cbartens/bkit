@@ -13,7 +13,7 @@ tools:
   edit: true
   bash: true
 ---
-<!-- bkit:managed v5.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer gating ships on intended-vs-actual completeness and resurfacing declared deferred work.
 **Scope:** As specified by input and Read / Update / Create section.

@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.1.0 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-build-challenge-reconcile"
 description = "Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact."
 model = "gpt-6-astra"

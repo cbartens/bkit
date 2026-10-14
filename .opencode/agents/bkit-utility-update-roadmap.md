@@ -15,7 +15,7 @@ tools:
   github_list_issues: true
   github_issue_read: true
 ---
-<!-- bkit:managed v5.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior PM ranking next best items to work on from board and ledgers.
 **Scope:** As specified by input or session prompt.

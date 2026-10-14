@@ -31,7 +31,7 @@
 
 // bkit:start
 
-// bkit:managed v5.1.0 — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh
 
 import * as fs from "node:fs";
 import * as os from "node:os";

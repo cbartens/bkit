@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.1.0 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-build-challenge-1"
 description = "Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths."
 model = "gpt-6-astra"

@@ -1225,6 +1225,30 @@ Append as last line `Would you like me to explain this in plain English?`
 **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 ```
 
+### workflow-setup-tips-collect
+
+- workflow: where-used
+
+```text
+Collect setup tips:
+```
+
+### workflow-setup-tips-hold
+
+- workflow: where-used
+
+```text
+Plain text, not JSON. Hold stdout as `{SETUP_TIPS}`; prints nothing or exits non-zero → `{SETUP_TIPS}` empty.
+```
+
+### workflow-setup-tips-append
+
+- workflow: where-used
+
+```text
+Append `{SETUP_TIPS}` under a `## Setup Tips` heading, unless empty.
+```
+
 ### workflow-issue-link
 
 - workflow: where-used

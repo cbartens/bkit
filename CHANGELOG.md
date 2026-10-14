@@ -8,13 +8,39 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+## [5.2.0] — 2026-10-15
+
 ### Added
 
+- **Test-first build** (#554). Every plan task carries a `**Test first:**` line naming its tests (file + test name, `;`-separated) or `n/a` with a reason; plan scope-check flags a missing, malformed or unjustified line. `bkit tests red` runs one test file through the consumer's `bkit:test:file` script and records a red only when the named test ran and failed (refusals: `no-report`, `not-run`, `passed`, `skipped`, `exit-mismatch`). `bkit tests green` runs before plan-verify: each planned test has a red, is unchanged since, and passes now. `bkit:test:file` is consumer-declared (one test file, JUnit to `$BKIT_TEST_REPORT`); until it exists the `test-file-script-missing` advisory fires and `/bkit-build` reports test-first as not enforced.
+- **`/bkit-design` grills the human first** (#548). New Step 3 (Grill) asks decision questions in numbered rounds, each with a recommended answer, until nothing is left, the human says stop, or 10 rounds; unanswered questions are recorded as "assumed, not confirmed". Answers go to `design-grill-{RUN}.md` and `design-input-{RUN}.md`; design-generate follows settled answers and records any departure as a Decisions row plus an open question. `grill=false` skips it; waiting on the human does not count toward the one-hour limit; `design` is removed from the manual `bkit-cloud.yml` choices. Steps 3-11 are renumbered 4-12.
+- **`bkit tips`** (#543). Lists what the repo has not set up yet (tracker, tokens, templates, cost settings), most useful first, each with an instruction to paste to the agent. Every workflow appends its most relevant tip under `## Setup Tips`; `bkit install` / `check` / `doctor` list all firing tips in `.bkit/advisories.md`. Tips reuse advisory checks, so one `bkit.ignoreAdvisories` entry silences both. Local only; always exits 0.
+- **ReadGuard hook** (#550), advisory, all five hosts: re-reading lines already read in the same conversation from an unchanged file → told to use the earlier output. Covers read-tool calls and plain `cat` / `sed -n` / `head` / `tail`; resets after a conversation summary on Claude Code, Cursor, Codex and opencode 1.x.
+- **Reading rules** (#550). `.agents/rules.md` gains Language server first, Narrow text search first, Code reads and Command output; every prompt header carries a one-line Code reads reminder.
+- **`bkit-managed-duplicate` advisory** (#553). `bkit check` names any managed file holding a copy of its block outside `bkit:start` / `bkit:end`.
+- **GitHub Release per tag.** The release workflow creates one with the version's `CHANGELOG.md` block as notes plus an npmjs version link. A tag with no `CHANGELOG.md` block fails before `npm publish`.
 - **GitHub Release per tag.** The release workflow creates one with the version's `CHANGELOG.md` block as notes plus an npmjs version link. A tag with no `CHANGELOG.md` block fails before `npm publish`.
 
 ### Changed
 
 - **Licence: MIT, for everything.** bkit is free for any use, commercial included, under the MIT licence; it replaces the PolyForm Noncommercial / Small Business pair and the MIT-0 shared and template folders. The per-folder `LICENSE.md` files in `.bkit/core/`, `.bkit/shared/` and `.bkit/templates/` are gone; the root `LICENSE.md` covers the package, and install writes the same MIT text to `.bkit/LICENSE.md`. The managed marker no longer names a licence (``bkit:managed vX.Y.Z — do not edit; run `bkit upgrade` to refresh``), and `bkit upgrade` restamps every one and removes the stale `.bkit/templates/LICENSE.md` copy. Contributions no longer need a CLA: a pull request is licensed under MIT.
+- **Cloud setup sets no compaction threshold** (#549). `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70` is no longer added; `.bkit/cloud.md` points to `autoCompactWindow` in `.claude/settings.json`, and `.bkit/providers.md` § Context compaction lists the setting per host and the floor below which a subagent gets killed. New rule: logs, errors and database reads prefer an enabled context-fetch block or the provider's CLI over MCP.
+- **Dependency updater templates wait 7 days.** Renovate `minimumReleaseAge` is `7 days` (was `1 day`); Dependabot gets a 7-day `cooldown`.
+- **Context-fetch templates bound their output** (#550): log tails, caps, time windows and type filters at the source.
+- **Templates and scripts** (#551). `resolve-push-base.mjs` falls back to `event.before` on any `gh` / `git` failure and reports its source; `check-accepted-divergences` scans the workflow-level `concurrency` block and names steps starting with `id:` or `run:`; the launchd loader unsets removed keys, treats an empty value as unset, and keeps loading after one failure.
+
+### Fixed
+
+- **Antigravity hooks never ran** (#550). Hook commands now resolve the script from the plugin folder too, a shared `antigravity-hook.js` converts Antigravity's hook format, and advisories are delivered by blocking the call once and allowing the retry. Upgrade migration: unedited 5.1.0 Antigravity hook drivers are replaced (`docs/migrations.md`).
+- **`bkit upgrade` creates files a newer release adds** to an installed Codex, opencode or Antigravity host (#550).
+- **Install no longer appends a second bkit copy** below an older unmarked one (#553); it warns and skips. Remove the old copy above `bkit:start` by hand.
+- **GateGuard** remembers warnings per session and agent, so a Claude Code subagent gets its own checklist (#550); OpenCode `patch` / `apply_patch` edits are checked per named file, and deny mode blocks (#551); gate-config detection drops `pyproject.toml`, `setup.cfg` and `tox.ini` and adds mypy, pylint, pytest, rustfmt, clippy and jest JSON variants (#551).
+- **`bkit check`** no longer counts missing `.bkit/core` / `.bkit/shared` view links as drift, so a fresh clone or worktree can push (#551).
+- **Install / uninstall** (#551): the second preflight run after install writes fails on its blockers; a targeted uninstall dry run lists the mirror files and the `.bkit/version` update.
+- **`bkit-debug`** re-checks for an open PR (any base) right before close (#551).
+- **`bkit runs revalidate --repo` / `runs gate --snapshot`** run every `gh` call and the dev ancestry check against the named repo (#551).
+- **`bkit opencode`** warns when OpenCode 2.0's shared background server is already running (#551).
+- **GitHub tracker token wording** (#543): advisory and cloud setup text no longer say the GitHub tracker needs no token; the shipped GitHub MCP server sends `BKIT_GH_TOKEN`.
 
 ## [5.1.0] — 2026-10-13
 
