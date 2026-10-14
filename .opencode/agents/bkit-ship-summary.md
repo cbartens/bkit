@@ -9,7 +9,7 @@ tools:
   write: true
   edit: true
 ---
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating ship cycles for completion and follow-up needs.
 **Scope:** As specified by input and Read / Update / Create section.

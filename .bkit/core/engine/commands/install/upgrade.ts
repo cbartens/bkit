@@ -388,7 +388,7 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
     // Token-substitute FIRST (matching install's writeTier1 tokens) so
     // drift-detect compares like-for-like and a freshly-seeded file gets real values,
     // not a literal `{{DEFAULT_BRANCH}}`. Token-free templates are unchanged.
-    const effectiveTemplate = applyTokens(templateContent, tokens, templatePath);
+    const effectiveTemplate = applyTokens(templateContent, tokens);
     const diffAction = diffFile(relPath, absolutePath, effectiveTemplate, canonicalHashes);
 
     switch (diffAction.action) {
@@ -721,8 +721,6 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
       if (ent.isDirectory()) {
         collectPayload(entAbs, entRel, skipTopDirs);
       } else if (ent.isFile()) {
-        // Each payload root's LICENSE.md is package metadata, never an install source.
-        if (ent.name === "LICENSE.md") continue;
         // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
         const relPath = remapTemplateDest(entRel);
         // `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` are GENERATED output files

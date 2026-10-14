@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/cbartens/bkit/actions/workflows/bkit-ci.yml"><img alt="CI" src="https://github.com/cbartens/bkit/actions/workflows/bkit-ci.yml/badge.svg?branch=main"></a>
   <a href="https://www.npmjs.com/package/@cbartens/bkit"><img alt="npm version" src="https://img.shields.io/npm/v/@cbartens/bkit"></a>
-  <a href="#license"><img alt="License: PolyForm Noncommercial or PolyForm Small Business" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%20%2F%20Small%20Business-blue"></a>
+  <a href="#license"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Node 20+" src="https://img.shields.io/badge/node-%E2%89%A520-339933">
   <img alt="Works with Claude Code, Cursor, Codex, Antigravity and opencode" src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Codex%20%C2%B7%20Antigravity%20%C2%B7%20opencode-8250df">
 </p>
@@ -210,7 +210,7 @@ No, but you do need to read a design and a plan and decide whether they're right
 bkit is heavier than a single prompt. For a one-off script or a quick experiment, just ask your AI. bkit pays off on a project you'll keep changing and want to trust.
 
 **What does it cost?**
-bkit is free for personal use, non-profits and small businesses (fewer than 100 people and under US$1M revenue); larger companies need a commercial licence ([License](#license)). It runs on AI subscriptions you already have (Claude, Cursor, ChatGPT for Codex, Google Antigravity), on Antigravity's free tier, or with your own key on pay-as-you-go providers through opencode (OpenRouter, Ollama or the opencode gateways). Several agents reviewing in parallel uses more of your quota than a single chat; that's the price of the second opinions.
+bkit is free and open source under the MIT licence, for anyone, commercial use included ([License](#license)). It runs on AI subscriptions you already have (Claude, Cursor, ChatGPT for Codex, Google Antigravity), on Antigravity's free tier, or with your own key on pay-as-you-go providers through opencode (OpenRouter, Ollama or the opencode gateways). Several agents reviewing in parallel uses more of your quota than a single chat; that's the price of the second opinions.
 
 **Can it break my live site?**
 Not without your sign-off. Work happens in a separate copy of the repo, goes through a pull request, must pass every test, and merges into `dev`, never `main`.
@@ -268,15 +268,8 @@ bkit's process was worked out over months of building real products with it. The
 
 ## License
 
-bkit is source-available, not open source: anyone can read all of it, and it's free under either of two licences, whichever fits you.
+bkit is [MIT](LICENSE.md): use it, change it and share it for any purpose, commercial included, as long as the copyright and licence notice stay with it.
 
-- **[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0):** personal and hobby use, and charities, schools, research bodies and government, whatever their size.
-- **[PolyForm Small Business 1.0.0](https://polyformproject.org/licenses/small-business/1.0.0):** any use, commercial included, by a person or company with fewer than 100 people and under US$1M revenue.
+**The code bkit's agents write for you is yours.** The licence covers bkit itself, not what its agents produce in your repo.
 
-If neither fits, email bkit@bartens.biz for a commercial licence.
-
-**The code bkit's agents write for you is yours.** The licences cover bkit itself, not what its agents produce in your repo.
-
-**Small pieces are MIT-0.** Everything in [`.bkit/shared/`](.bkit/shared/) and [`.bkit/templates/`](.bkit/templates/) is [MIT-0](https://opensource.org/license/mit-0): use it however you like, and a template you copy into your repo is yours. Every file bkit writes carries the licence and its URL in its marker, and the full PolyForm texts travel in the repo at [`.bkit/LICENSE.md`](.bkit/LICENSE.md) after install.
-
-Full terms: [`LICENSE.md`](LICENSE.md).
+The full text travels in your repo at [`.bkit/LICENSE.md`](.bkit/LICENSE.md) after install.

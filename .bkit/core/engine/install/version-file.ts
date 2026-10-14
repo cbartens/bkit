@@ -229,17 +229,10 @@ export function hashFile(filePath: string): string | null {
 //   hash   `# <!-- bkit:managed vX.Y.Z — … -->`  shell, `.gitignore`, `.env.example`, TOML
 //   slash  `// bkit:managed vX.Y.Z — …`          JS (`.cjs` / `.js` / `.mjs`)
 //
-// The marker names the licence of the file's payload and its terms URL, so a copy passed
-// on in a public repo carries the terms with it. Core-sourced files are PolyForm
-// Noncommercial or Small Business, the pair `.bkit/LICENSE.md` carries in full (PolyForm's
-// Notices section); shared- and template-sourced files are MIT-0. `.bkit/LICENSE.md` is
-// written by runBkitDocs (install/modules/core.ts).
-//
 // Rendered agents / commands / skills are stamped at render (stampManagedVersion);
 // every other file carries the `{{BKIT_MANAGED_MARKER}}` token in its source, which
-// applyTokens (install/placeholders.ts) resolves to the form its comment prefix selects,
-// naming the licence of the source file's payload folder (payloadLicence). The
-// `bkit check` gate (detectManagedStale, checks/after/index.ts) reads the stamp back
+// applyTokens (install/placeholders.ts) resolves to the form its comment prefix selects.
+// The `bkit check` gate (detectManagedStale, checks/after/index.ts) reads the stamp back
 // with readManagedVersion.
 // ---------------------------------------------------------------------------
 
@@ -253,22 +246,9 @@ export const MANAGED_MARKER_LINE_RE = /^(?:<!-- |# <!-- |\/\/ )bkit:managed v[^\
 // Extracts the stamped version. `\S+` stops at the space before the em-dash.
 export const MANAGED_MARKER_VERSION_RE = /bkit:managed v(\S+)/;
 
-/** Licence a managed marker names: the core payload's PolyForm pair, or the shared payload's MIT-0. */
-export type ManagedMarkerLicence = "polyform" | "mit0";
-
-const MARKER_LICENCE_TEXT: Record<ManagedMarkerLicence, string> = {
-  polyform:
-    "PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/)",
-  mit0: "MIT-0 (https://opensource.org/license/mit-0)",
-};
-
 /** Build the managed-version marker for a given version, in the given comment syntax. */
-export function managedVersionMarker(
-  version: string,
-  form: ManagedMarkerForm = "html",
-  licence: ManagedMarkerLicence = "polyform",
-): string {
-  const text = `bkit:managed v${version} — ${MARKER_LICENCE_TEXT[licence]} — do not edit; run \`bkit upgrade\` to refresh`;
+export function managedVersionMarker(version: string, form: ManagedMarkerForm = "html"): string {
+  const text = `bkit:managed v${version} — do not edit; run \`bkit upgrade\` to refresh`;
   if (form === "slash") return `// ${text}`;
   return form === "hash" ? `# <!-- ${text} -->` : `<!-- ${text} -->`;
 }

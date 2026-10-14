@@ -2,8 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { applyTokens, payloadLicence, resolveTokens } from "./placeholders";
-import { getCoreRoot, getSharedRoot, getTemplatesRoot } from "../shared/package-roots";
+import { applyTokens, resolveTokens } from "./placeholders";
 import { managedVersionMarker, readManagedVersion } from "./version-file";
 
 // ---------------------------------------------------------------------------
@@ -135,36 +134,12 @@ describe("applyTokens", () => {
     }
   });
 
-  it("names MIT-0 for a shared or template source and PolyForm for a core source", () => {
-    const src = "{{BKIT_MANAGED_MARKER}}\n# {{BKIT_MANAGED_MARKER}}\n// {{BKIT_MANAGED_MARKER}}\n";
-    const t = { ...tokens, BKIT_VERSION: "9.9.9" };
-    const mit0 = [
-      managedVersionMarker("9.9.9", "html", "mit0"),
-      managedVersionMarker("9.9.9", "hash", "mit0"),
-      managedVersionMarker("9.9.9", "slash", "mit0"),
-    ];
-    const lines = (srcPath?: string) => applyTokens(src, t, srcPath).split("\n").slice(0, 3);
-    expect(lines(path.join(getSharedRoot(), "CLAUDE.md"))).toEqual(mit0);
-    expect(lines(path.join(getTemplatesRoot(), "scripts", "x.sh"))).toEqual(mit0);
-    const core = lines(path.join(getCoreRoot(), ".bkit", "providers.md"));
-    expect(core[0]).toBe(managedVersionMarker("9.9.9"));
-    expect(core[0]).toContain("PolyForm");
-    expect(core[0]).not.toContain("MIT-0");
-    expect(lines()[0]).toBe(managedVersionMarker("9.9.9"));
-    expect(readManagedVersion(mit0[0]!)).toBe("9.9.9");
-  });
-
-  it("payloadLicence does not treat a sibling folder sharing the shared root's prefix as shared", () => {
-    expect(payloadLicence(`${getSharedRoot()}-other/CLAUDE.md`)).toBe("polyform");
-    expect(payloadLicence(getSharedRoot())).toBe("polyform");
-  });
-
   it("falls back to a computed marker when the token value is omitted (bare literal TokenMap)", () => {
     // tokens here has no BKIT_VERSION — applyTokens computes the marker from the
     // installing bkit version rather than leaving a dangling placeholder.
     const result = applyTokens("{{BKIT_MANAGED_MARKER}}", tokens);
     expect(result).toMatch(
-      /^<!-- bkit:managed v\S+ — PolyForm Noncommercial 1\.0\.0 \/ Small Business 1\.0\.0 \(https:\/\/polyformproject\.org\/licenses\/\) — do not edit; run `bkit upgrade` to refresh -->$/,
+      /^<!-- bkit:managed v\S+ — do not edit; run `bkit upgrade` to refresh -->$/,
     );
     expect(result).not.toContain("{{BKIT_MANAGED_MARKER}}");
   });

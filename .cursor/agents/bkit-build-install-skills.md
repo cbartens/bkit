@@ -9,7 +9,7 @@ tools:
   - Glob
   - Bash
 ---
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical lead matching feature requirements to relevant installable skills.
 **Scope:** As specified by input and Read / Update / Create section.

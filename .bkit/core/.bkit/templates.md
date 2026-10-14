@@ -61,7 +61,6 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 | Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
 | Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file |
-| Licence | `.bkit/templates/LICENSE.md` | — | read it; the copies in `.bkit/templates/` are MIT-0 |
 
 Placeholders. Copies keep them raw; replace each in your copy:
 

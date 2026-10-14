@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.1.0 — MIT-0 (https://opensource.org/license/mit-0) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Security
 

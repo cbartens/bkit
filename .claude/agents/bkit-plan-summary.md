@@ -10,7 +10,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating completed plans for build-readiness.
 **Scope:** As specified by input and Read / Update / Create section.

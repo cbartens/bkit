@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.1.0 — MIT-0 (https://opensource.org/license/mit-0) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Architecture
 
@@ -72,13 +72,13 @@ cbartens/bkit (this repo)
 │   ├── tools/wording.ts         # repo-only `pnpm wording:sync`, not a bkit command
 │   └── audits/                  # tests only: read shipped text (workflows/ templates/ hooks/ repo/)
 ├── dist/                   # Compiled output (committed; published in tarball)
-├── .bkit/core/             # PolyForm payload bkit writes and keeps current: engine/, workflows/,
+├── .bkit/core/             # Payload bkit writes and keeps current: engine/, workflows/,
 │                           #   prompts/, docs/templates/, the hooks, AGENTS.md and .agents/*.md,
 │                           #   the .bkit/ reference docs, hooks/ (install skips the package-only
-│                           #   subtrees and every LICENSE.md)
-├── .bkit/shared/           # MIT-0 payload bkit writes and keeps current: CLAUDE.md, .mcp.json,
+│                           #   subtrees)
+├── .bkit/shared/           # Payload bkit writes and keeps current: CLAUDE.md, .mcp.json,
 │                           #   .env.example, settings/hooks/mcp JSON, bkit-cloud.md, docs/*.md blocks
-└── .bkit/templates/        # MIT-0 copy-and-own templates: copied raw to the consumer's
+└── .bkit/templates/        # Copy-and-own templates: copied raw to the consumer's
                             #   .bkit/templates/, never applied
 ├── harvest/                # Central store for `bkit harvest` — consumer stats/friction rows (#343).
 │                           # bkit-repo only; deliberately OUTSIDE .bkit/ (that is bkit's managed
@@ -162,7 +162,7 @@ Workflow / prompt SOURCES not shipped into consumer `.agents/`; live in installe
 
 `.claude/hooks/bkit-gateguard.cjs`, `.cursor/hooks/bkit-gateguard.cjs`, `.codex/hooks/bkit-gateguard.cjs`, `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` and `.opencode/plugin/bkit-gateguard.js` (the GateGuard advisory hooks — pre-edit on Claude / Cursor / Codex / Antigravity, appended to the tool result on opencode), the same five paths with `bkit-readguard` (the ReadGuard repeat-read advisory hooks, `.bkit/providers.md` § ReadGuard) plus `.claude/hooks/bkit-guardrails.cjs`, `.cursor/hooks/bkit-guardrails.cjs`, `.codex/hooks/bkit-guardrails.cjs` and `.agents/plugins/bkit/hooks/bkit-guardrails.cjs` (shell gates: destructive ops, secret exposure, URL-host checks and shell-as-edit-channel) — like the two `bkit-preflight.sh` hooks, generated at install from a per-host template plus the shared `.bkit/core/hooks/` (`render/parts.ts`) — are markered-text (slash-comment: `// bkit:start` / `// bkit:end`) — bkit owns only the pure advisory engine between the markers; the stdin / stdout driver (Claude) or exported plugin (opencode) around it is consumer-owned from first install onward, so a consumer can add their own advisories without losing them on upgrade. A pre-markers install (no markers, hash matches a prior canonical hash) is replaced wholesale on the next install / upgrade; a genuinely consumer-authored file (no markers, unknown hash) gets the block appended plus printed wiring instructions.
 
-Every non-JSON file bkit writes or refreshes carries the managed-version marker, one text in the file's comment syntax: `<!-- bkit:managed vX.Y.Z … -->` (markdown), `# <!-- bkit:managed vX.Y.Z … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, codex TOML), `// bkit:managed vX.Y.Z …` (JS hooks, `.mjs`). The marker names the licence of the file's payload and its terms URL: PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (PolyForm's Notices section) for core-sourced files, MIT-0 for shared- and template-sourced files; the PolyForm texts plus Required Notice travel at `.bkit/LICENSE.md` (`runBkitDocs`). Rendered agents / commands / skills are stamped by `stampManagedVersion`; every other file carries `{{BKIT_MANAGED_MARKER}}` in its source, resolved by `applyTokens`, which picks the licence from the source file's payload folder (`payloadLicence`: `.bkit/shared/` or `.bkit/templates/` → MIT-0, else PolyForm). The marker sits on the first line inside the `bkit:start` block, or below the first heading of a whole file. `listStampedFiles` (`.bkit/core/engine/install/modules/index.ts`) derives the set from the core templates, the manifest and the rendered mirrors; marker drift on any of them → `bkit check` emits `bkit-managed-stale` (never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main` / `dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
+Every non-JSON file bkit writes or refreshes carries the managed-version marker, one text in the file's comment syntax: `<!-- bkit:managed vX.Y.Z … -->` (markdown), `# <!-- bkit:managed vX.Y.Z … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, codex TOML), `// bkit:managed vX.Y.Z …` (JS hooks, `.mjs`). The full MIT text and copyright notice travel at `.bkit/LICENSE.md` (`runBkitDocs`). Rendered agents / commands / skills are stamped by `stampManagedVersion`; every other file carries `{{BKIT_MANAGED_MARKER}}` in its source, resolved by `applyTokens`. The marker sits on the first line inside the `bkit:start` block, or below the first heading of a whole file. `listStampedFiles` (`.bkit/core/engine/install/modules/index.ts`) derives the set from the core templates, the manifest and the rendered mirrors; marker drift on any of them → `bkit check` emits `bkit-managed-stale` (never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main` / `dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
 
 ## Compliance Grader Subsystem (#234 WS-2)
 

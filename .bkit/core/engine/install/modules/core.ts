@@ -99,10 +99,9 @@ export function removeOrphans(
 // ---------------------------------------------------------------------------
 // Core payload — the files install writes from `core/`, at their
 // folder-relative dest paths. The package-only subtrees (engine/, workflows/,
-// prompts/, .bkit/, hooks/), the root LICENSE.md and the shared/ and
-// templates/ payloads are NOT part of this walk: the host modules write their
-// own hook files (sourced from `core/`), and `runBkitDocs` mirrors the
-// reference docs.
+// prompts/, .bkit/, hooks/) and the shared/ and templates/ payloads are NOT
+// part of this walk: the host modules write their own hook files (sourced from
+// `core/`), and `runBkitDocs` mirrors the reference docs.
 // ---------------------------------------------------------------------------
 
 /** A core-owned payload file and how install writes it. */
@@ -231,9 +230,8 @@ function runCoreTemplates(
 // them, so a consumer edit is replaced. Source of truth is the package's own
 // `.bkit/core/.bkit/<name>`. (`advisories.md` is a regenerated runtime artifact,
 // `wording.md` is repo-only tooling and `friction.md` is a consumer-owned seed —
-// none belongs here. `LICENSE.md` is the PolyForm notice that travels with the
-// core files bkit writes: PolyForm's Notices section requires a passed-on copy to carry
-// the terms or their URL and the Required Notice line.)
+// none belongs here. `LICENSE.md` is the MIT notice that travels with the files bkit
+// writes: MIT requires the copyright and permission notice in every copy.)
 export const BKIT_CANONICAL_DOCS = [
   "cloud.md",
   "comparison.md",

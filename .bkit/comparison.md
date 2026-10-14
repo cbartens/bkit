@@ -1,6 +1,6 @@
 # bkit — Comparison, Pipeline Reference & Agentic Design Patterns
 
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Human-facing reference. bkit vs other AI development frameworks, five-phase pipeline + every subagent (execution order), bkit vs Antonio Gulli's _Agentic Design Patterns_. Evaluation, onboarding, outreach — not agent workflow doc-matrix.
@@ -348,7 +348,7 @@ As of October 2026. A cross-section of 10: the closest process frameworks, the t
 <!-- prettier-ignore -->
 | Project | Kind | Licence | Phases | Reviewers | Sign-offs | Checked | CI | Tracker | Memory | Docs | Parallel | Cloud | Guards | Audits | AI tools | Ahead of bkit on |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **bkit** | Framework | PolyForm NC / SB (source-available) | all six | ✅ bug + security reviewers, blind to each other | ✅ design, plan, merge | ✅ + each task's tests seen failing before its code | ✅ capstone fails on skipped lane / zero tests | GitHub, Linear | ✅ | ✅ | ✅ | ✅ ship on green, debug on red | ✅ all hosts | ✅ 35 | 5 | — |
+| **bkit** | Framework | MIT | all six | ✅ bug + security reviewers, blind to each other | ✅ design, plan, merge | ✅ + each task's tests seen failing before its code | ✅ capstone fails on skipped lane / zero tests | GitHub, Linear | ✅ | ✅ | ✅ | ✅ ship on green, debug on red | ✅ all hosts | ✅ 35 | 5 | — |
 | [Superpowers](https://github.com/obra/superpowers) | Framework | MIT | all six; fix local only; merge or PR, no CI wait | ◐ fresh reviewer per task + whole branch | ✅ design, plan, merge | ✅ task done only if its test passes | — | — | — | — | ◐ | ? | ◐ prompt rules | — | 16 | skills trigger automatically; skill eval harness; official marketplaces |
 | [gstack](https://github.com/garrytan/gstack) | Skills pack (sprint) | MIT | all six; host writes code; deploys after merge | ✅ up to 8 specialists + second model | ✅ design, plan, merge | ✅ test evidence tied to file fingerprint; zero tests fails | ◐ basic `test.yml` | ◐ GitHub | ✅ outside repo | ✅ | ◐ via Conductor | ◐ stops at gates | ◐ opt-in, Claude Code only | ✅ ~10 + 8 checklists | 1 certified, 7 experimental | Real-browser and iOS device QA; design mockups; deploy + canary monitoring; prompt-injection defences |
 | [Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin) | Framework | MIT | all six; merge only if granted | ✅ blind personas + second model | ◐ interactive only; `lfg` never pauses | ◐ | — | GitHub, Linear, Jira | ✅ `docs/solutions/` | ◐ | ◐ | ◐ scheduler | ◐ prompt rules | ◐ reviewer personas | ~14 | Learnings shared across repos; Jira; stacked-PR babysitting; Slack / GitHub feedback → plan |
@@ -367,7 +367,7 @@ Where bkit stands apart, per the table:
 - **Merge discipline:** merges into `dev` only after the capstone check, never `main`. OpenHands merges with no human; most stop at a PR.
 - **Debug with outside evidence:** connectors pull CI logs, runtime errors and web results into diagnosis; soak mode for runtime-only bugs; handover when unfixable.
 - **Test first, checked by code:** each plan task's tests are run by bkit and must fail before the task's code exists, then pass; the agent's report of a failure never counts. Superpowers enforces TDD by instruction; Task Master's TDD mode takes pass / fail counts from the agent.
-- **Gaps vs the field:** no IDE or hosted service; no Jira; no formal requirements notation (EARS); no embedding memory; far smaller community; source-available licence where most rivals are MIT.
+- **Gaps vs the field:** no IDE or hosted service; no Jira; no formal requirements notation (EARS); no embedding memory; far smaller community.
 
 Also reviewed, left out of the table: Claude Task Master, ccpm, wshobson/agents, mattpocock/skills, SuperClaude, Ruflo, oh-my-openagent, Cline, Aider.
 

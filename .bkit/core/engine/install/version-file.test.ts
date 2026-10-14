@@ -252,24 +252,9 @@ describe("mergeCanonicalHashes — fresh overwrites, absent paths are pruned", (
 describe("managedVersionMarker", () => {
   it("builds an inert HTML comment carrying the version, the licence notice and the do-not-edit warning", () => {
     const m = managedVersionMarker("4.0.0");
-    expect(m).toBe(
-      "<!-- bkit:managed v4.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->",
-    );
+    expect(m).toBe("<!-- bkit:managed v4.0.0 — do not edit; run `bkit upgrade` to refresh -->");
     expect(m.startsWith("<!--")).toBe(true);
     expect(m.endsWith("-->")).toBe(true);
-  });
-
-  it("names the licence and its URL so a passed-on copy carries the terms URL (PolyForm Notices)", () => {
-    const m = managedVersionMarker("4.0.0");
-    expect(m).toContain("PolyForm Noncommercial 1.0.0 / Small Business 1.0.0");
-    expect(m).toContain("https://polyformproject.org/licenses/");
-  });
-
-  it("names MIT-0 and no PolyForm text for a shared-payload marker", () => {
-    const m = managedVersionMarker("4.0.0", "html", "mit0");
-    expect(m).toContain("MIT-0 (https://opensource.org/license/mit-0)");
-    expect(m).not.toContain("PolyForm");
-    expect(m.match(MANAGED_MARKER_VERSION_RE)?.[1]).toBe("4.0.0");
   });
 
   it("round-trips through the extraction regex", () => {

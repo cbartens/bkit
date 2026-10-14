@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # bkit Adoption Audit
 
@@ -33,7 +33,7 @@ bkit ships three folders. Path inside a folder = path it lands at in the repo.
 <!-- prettier-ignore -->
 | Package folder | Install does | Repo gets |
 | --- | --- | --- |
-| `.bkit/core/` | Writes, keeps current; `engine/`, `workflows/`, `prompts/`, `LICENSE.md` never written as-is (workflows + prompts render to host agent and command copies) | Whole files, managed blocks, hooks, reference docs in `.bkit/`, audit and plan templates |
+| `.bkit/core/` | Writes, keeps current; `engine/`, `workflows/`, `prompts/` never written as-is (workflows + prompts render to host agent and command copies) | Whole files, managed blocks, hooks, reference docs in `.bkit/`, audit and plan templates |
 | `.bkit/shared/` | Writes, keeps current | bkit blocks and keys inside files you also edit (`docs/*.md`, `.gitignore`, settings, tool-server config) |
 | `.bkit/templates/` | Never writes into the repo; raw copy at `.bkit/templates/`, `bkit upgrade` lists changed paths | Nothing until you copy one and own it |
 
@@ -103,7 +103,7 @@ Verify only when applicable.
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. Carry each `Adoption` verdict forward with its age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Inventory:** List every file in the package's `core/`, `shared/`, `templates/`. Landing path = path inside the folder; `core/engine/`, `core/workflows/`, `core/prompts/`, each `LICENSE.md` → no landing (workflows + prompts → Step 5 host copies). Join: package file · landing path present · in `canonicalHashes` · repo `.bkit/templates/` copy matches package `templates/`. Kind per file: whole file / managed block / owned keys / template. Findings: `core/` or `shared/` file with landing path absent; `canonicalHashes` entry the package no longer ships; repo `.bkit/templates/` differing from package. Group a folder into one row only when every file shares one verdict. **Done when:** `Inventory` row per shipped file or uniform folder: folder · landing path · kind · present · recorded.
+- [ ] **Step 2 — Inventory:** List every file in the package's `core/`, `shared/`, `templates/`. Landing path = path inside the folder; `core/engine/`, `core/workflows/`, `core/prompts/` → no landing (workflows + prompts → Step 5 host copies). Join: package file · landing path present · in `canonicalHashes` · repo `.bkit/templates/` copy matches package `templates/`. Kind per file: whole file / managed block / owned keys / template. Findings: `core/` or `shared/` file with landing path absent; `canonicalHashes` entry the package no longer ships; repo `.bkit/templates/` differing from package. Group a folder into one row only when every file shares one verdict. **Done when:** `Inventory` row per shipped file or uniform folder: folder · landing path · kind · present · recorded.
 - [ ] **Step 3 — Version:** `pinnedVersion` vs installed package vs registry latest; pinned ≠ installed = package bumped without `bkit upgrade`. Behind → release count; release-note changes touching this repo; template paths changed since pinned version. **Done when:** `Version` names all three versions and every relevant release-note change.
 - [ ] **Step 4 — Check and Doctor:** `bkit check`: exit code, each drift line → cause. `bkit doctor`: each advisory → adopt / reject (why) / not applicable; previous report's reject carried forward, re-raised only when the advisory text changed. **Done when:** `Check and Doctor` row per drift line and advisory.
 - [ ] **Step 5 — Hosts:** Agent hosts in use (repo config dirs, team use; newest `bkit-audit-agents` `Hosts` as cross-check, not source) vs bkit hosts installed. Per installed host: one agent copy per `core/prompts/` source, one command copy per `core/workflows/` source, every `core/` hook file present, executable, and wired in that host's settings. Findings: host in use with no bkit install (agents there run without bkit gates); missing or extra copy; hook file present but unwired, or wired but absent. Whether hooks fire and agree across hosts → `bkit-audit-agents`. **Done when:** `Hosts` row per host: in use · installed · agent copies · command copies · hooks wired.

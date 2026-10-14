@@ -94,9 +94,7 @@ describe("install never writes or flags an adopted template copy", () => {
     });
   const templatePaths = (): string[] => {
     const root = getTemplatesRoot();
-    return listFilesRecursive(root)
-      .map((abs) => remapTemplateDest(path.relative(root, abs)))
-      .filter((rel) => path.basename(rel) !== "LICENSE.md");
+    return listFilesRecursive(root).map((abs) => remapTemplateDest(path.relative(root, abs)));
   };
 
   it("an adopted copy of every template stays byte-identical, with no write and no advisory for it", () => {

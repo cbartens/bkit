@@ -168,13 +168,9 @@ export function hashFile(filePath) {
 export const MANAGED_MARKER_LINE_RE = /^(?:<!-- |# <!-- |\/\/ )bkit:managed v[^\n]*\n?/m;
 // Extracts the stamped version. `\S+` stops at the space before the em-dash.
 export const MANAGED_MARKER_VERSION_RE = /bkit:managed v(\S+)/;
-const MARKER_LICENCE_TEXT = {
-    polyform: "PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/)",
-    mit0: "MIT-0 (https://opensource.org/license/mit-0)",
-};
 /** Build the managed-version marker for a given version, in the given comment syntax. */
-export function managedVersionMarker(version, form = "html", licence = "polyform") {
-    const text = `bkit:managed v${version} — ${MARKER_LICENCE_TEXT[licence]} — do not edit; run \`bkit upgrade\` to refresh`;
+export function managedVersionMarker(version, form = "html") {
+    const text = `bkit:managed v${version} — do not edit; run \`bkit upgrade\` to refresh`;
     if (form === "slash")
         return `// ${text}`;
     return form === "hash" ? `# <!-- ${text} -->` : `<!-- ${text} -->`;

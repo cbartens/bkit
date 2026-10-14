@@ -701,7 +701,7 @@ export function writeClaudeCloudDoc(cwd, tokens) {
     const today = new Date().toISOString().slice(0, 10);
     // Function-form replacers: resolved secret values may contain `$`, which a string
     // replacement would interpret ($&, $1, …).
-    const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens, src)
+    const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
         .replace(/@@CLOUD_CACHE_BUST@@/g, () => renderCloudCacheBust(cwd, today))
         .replace(/@@CLOUD_NETWORK_ALLOWLIST@@/g, () => renderCloudNetworkAllowlist(cwd))
         .replace(/@@CLOUD_WORKSPACE_TRUST@@/g, () => renderCloudWorkspaceTrust(cwd))
@@ -797,7 +797,7 @@ export function writeCursorCloudDoc(cwd, tokens, tracker) {
     const res = resolveCloudEnvVars(cwd, policy);
     // Function-form replacers: resolved secret values may contain `$`, which a string
     // replacement would interpret ($&, $1, …).
-    const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens, src)
+    const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
         .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res, policy))
         .replace(/@@CLOUD_ENV_NOTES@@/g, () => renderCloudEnvNotes(res))
         .replace(/@@CURSOR_NETWORK@@/g, () => renderCursorNetworkAllowlist(cwd))

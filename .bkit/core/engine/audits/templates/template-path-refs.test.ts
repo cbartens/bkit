@@ -44,7 +44,6 @@ function payloadPaths(): string[] {
       const rel = path.relative(root, abs);
       const top = rel.split(path.sep)[0]!;
       if (rel.split(path.sep).length > 1 && skipTop.has(top)) continue;
-      if (path.basename(rel) === "LICENSE.md") continue;
       out.push(remapTemplateDest(rel).split(path.sep).join("/"));
     }
   }

@@ -1,16 +1,6 @@
 # Contributing to bkit
 
-bkit is a one-maintainer project, and outside contributions are welcome: bug reports, fixes, docs and ideas. Two things differ from a typical open-source project, and both are explained below — every outside contribution needs a signed CLA first, and the licence is source-available, not open source.
-
-## Sign the CLA before your first pull request
-
-bkit is free under the PolyForm Noncommercial and Small Business licences, and larger companies can buy a commercial licence. That only works if we hold the rights needed to license every part of the code, so an outside pull request needs a signed Contributor Licence Agreement (CLA) before it can be merged.
-
-The agreement, in full:
-
-> You keep the copyright to your contribution. You grant Christian Bartens a perpetual, worldwide, non-exclusive, royalty-free and irrevocable licence to use, reproduce, modify, distribute and sublicense your contribution, including the right to offer it under any licence, commercial licences included. You also grant a patent licence for anything your contribution necessarily uses. You confirm the work is yours and that you have the right to grant this licence; if your employer owns it, you have their permission. You provide the work as is, with no support obligation.
-
-**How to sign:** email [bkit@bartens.biz](mailto:bkit@bartens.biz) with your GitHub username and a line saying you agree to these terms. That email is the signature; we record the date and the username. One email covers all your future contributions.
+bkit is a one-maintainer project, and outside contributions are welcome: bug reports, fixes, docs and ideas.
 
 ## Start with an issue
 
@@ -53,7 +43,7 @@ CI runs the same checks.
 
 ## Licence of your contribution
 
-Once signed, the CLA covers your contribution. Files live under the licence of the folder they land in: `.bkit/shared/` and `.bkit/templates/` are MIT-0; everything else is the PolyForm pair. Full terms: [LICENSE.md](LICENSE.md).
+By opening a pull request, you agree your contribution is licensed under the same MIT licence as the rest of bkit, and confirm the work is yours to license. Full terms: [LICENSE.md](LICENSE.md).
 
 ## Questions
 

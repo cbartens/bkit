@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
-import { getPkgRoot, getSharedRoot, getTemplatesRoot } from "../shared/package-roots.js";
-import { type ManagedMarkerLicence, managedVersionMarker } from "./version-file.js";
+import { getPkgRoot } from "../shared/package-roots.js";
+import { managedVersionMarker } from "./version-file.js";
 import { gitEnv, resolveRepoSlug } from "../ledgers/telemetry.js";
 
 export interface TokenMap {
@@ -82,25 +82,11 @@ export async function resolveTokens(cwd: string): Promise<TokenMap> {
   };
 }
 
-/**
- * Licence of the payload file at `srcPath`: MIT-0 under the shared payload or the template
- * set, PolyForm (the core payload's pair) everywhere else, and when no source path is given.
- */
-export function payloadLicence(srcPath: string | undefined): ManagedMarkerLicence {
-  if (srcPath === undefined) return "polyform";
-  const abs = path.resolve(srcPath);
-  for (const root of [getSharedRoot(), getTemplatesRoot()]) {
-    const rel = path.relative(root, abs);
-    if (rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel)) return "mit0";
-  }
-  return "polyform";
-}
-
 // Substitute {{TOKEN}} placeholders in content string.
 // Substitution happens at write-time (caller's responsibility), not at template-read time.
 // Uses function-form replacers to prevent $& / $1 / $$ substitution patterns from leaking
 // through when token values contain dollar signs.
-export function applyTokens(content: string, tokens: TokenMap, srcPath?: string): string {
+export function applyTokens(content: string, tokens: TokenMap): string {
   const defaultBranch = tokens.DEFAULT_BRANCH;
   const projectName = tokens.PROJECT_NAME;
   const repoSlug = tokens.REPO_SLUG;
@@ -110,19 +96,13 @@ export function applyTokens(content: string, tokens: TokenMap, srcPath?: string)
     .replace(/\{\{REPO_SLUG\}\}/g, () => repoSlug);
   // {{BKIT_MANAGED_MARKER}} → the managed-version marker. A token after `// ` at a line
   // start resolves to the slash form (JS); every other occurrence to the HTML comment,
-  // so `# {{BKIT_MANAGED_MARKER}}` yields the hash form. The licence it names follows the
-  // source file's payload folder (payloadLicence). The version is read from the package
-  // only when the token is present and the TokenMap omits BKIT_VERSION.
+  // so `# {{BKIT_MANAGED_MARKER}}` yields the hash form. The version is read from the
+  // package only when the token is present and the TokenMap omits BKIT_VERSION.
   if (out.includes("{{BKIT_MANAGED_MARKER}}")) {
     const version = tokens.BKIT_VERSION ?? readInstallingBkitVersion();
-    const licence = payloadLicence(srcPath);
     out = out
-      .replace(/^\/\/ \{\{BKIT_MANAGED_MARKER\}\}/gm, () =>
-        managedVersionMarker(version, "slash", licence),
-      )
-      .replace(/\{\{BKIT_MANAGED_MARKER\}\}/g, () =>
-        managedVersionMarker(version, "html", licence),
-      );
+      .replace(/^\/\/ \{\{BKIT_MANAGED_MARKER\}\}/gm, () => managedVersionMarker(version, "slash"))
+      .replace(/\{\{BKIT_MANAGED_MARKER\}\}/g, () => managedVersionMarker(version, "html"));
   }
   return out;
 }

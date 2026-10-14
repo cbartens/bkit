@@ -73,10 +73,6 @@ const CHECKOUT =
 
 const ADOPTED: Record<string, Entry> = {
   ".claude/hooks/bkit-cloud-bootstrap.sh": identical,
-  "LICENSE.md": {
-    status: "distinct",
-    what: "the repo root LICENSE.md is bkit's own PolyForm licence, not the MIT-0 template copy",
-  },
   ".github/workflows/bkit-ci.yml": {
     status: "adopted",
     edits: [

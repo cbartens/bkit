@@ -66,15 +66,9 @@ describe("published tarball excludes test sources (BAR-138, real `npm pack` insp
     expect(manifestFiles.some((p) => p === ".bkit/templates/.github/renovate.json5")).toBe(true);
   });
 
-  it("tarball ships exactly the five licence files (#507)", () => {
+  it("tarball ships exactly the two licence files: the package's and the consumer notice", () => {
     const licences = manifestFiles.filter((p) => p.endsWith("LICENSE.md")).sort();
-    expect(licences).toEqual([
-      ".bkit/core/.bkit/LICENSE.md",
-      ".bkit/core/LICENSE.md",
-      ".bkit/shared/LICENSE.md",
-      ".bkit/templates/LICENSE.md",
-      "LICENSE.md",
-    ]);
+    expect(licences).toEqual([".bkit/core/.bkit/LICENSE.md", "LICENSE.md"]);
   });
 
   it("tarball does not ship the repo-only .bkit working files", () => {

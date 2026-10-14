@@ -204,7 +204,7 @@ export function ensureDir(dir) {
 // ---------------------------------------------------------------------------
 export function writeTier1(srcPath, dstPath, tokens, dryRun, ws) {
     const srcRaw = readTemplate(srcPath);
-    const srcContent = applyTokens(srcRaw, tokens, srcPath);
+    const srcContent = applyTokens(srcRaw, tokens);
     if (fs.existsSync(dstPath)) {
         const existing = fs.readFileSync(dstPath, "utf-8");
         if (existing === srcContent)
@@ -281,13 +281,13 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws) {
     if (fs.existsSync(dstPath) &&
         hasRetiredDriver(dstPath, fs.readFileSync(dstPath, "utf-8"), markerStyle)) {
         if (!dryRun)
-            fs.writeFileSync(dstPath, applyTokens(srcRaw, tokens, srcPath), "utf-8");
+            fs.writeFileSync(dstPath, applyTokens(srcRaw, tokens), "utf-8");
         ws.writes.push({ path: dstPath, action: "write" });
         return;
     }
     if (!fs.existsSync(dstPath)) {
         // dest missing → write whole template (with tokens applied)
-        const content = applyTokens(srcRaw, tokens, srcPath);
+        const content = applyTokens(srcRaw, tokens);
         ensureDir(path.dirname(dstPath));
         if (!dryRun) {
             fs.writeFileSync(dstPath, content, "utf-8");
@@ -317,7 +317,7 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws) {
             return;
         }
         // dest has no markers → append full block at EOF (with tokens applied)
-        const appliedBlock = applyTokens(fullBlock, tokens, srcPath);
+        const appliedBlock = applyTokens(fullBlock, tokens);
         const copyTitle = dstPath.endsWith(".md") ? findUnmarkedCopy(destContent, appliedBlock) : null;
         if (copyTitle !== null) {
             console.warn(`[bkit] ${dstPath} has no managed-block markers but already holds an older bkit copy (\`${copyTitle}\`) — skipping, so it is not duplicated. Delete the file and re-run install; then re-add any lines you wrote yourself below \`<!-- bkit:end -->\`.`);
@@ -341,7 +341,7 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws) {
     const newBlockContent = extractManagedBlock(srcRaw, markerStyle);
     if (newBlockContent === null)
         return;
-    const appliedNewContent = applyTokens(newBlockContent, tokens, srcPath);
+    const appliedNewContent = applyTokens(newBlockContent, tokens);
     if (updateManagedBlock(dstPath, appliedNewContent, dryRun, markerStyle)) {
         ws.writes.push({ path: dstPath, action: "update" });
     }

@@ -450,11 +450,9 @@ describe("templates", () => {
 
   // JSON has no comment syntax; `.bkit/templates.md` covers those.
   it("every template that can carry a comment says it is an example bkit install does not write", () => {
-    // LICENSE.md is a licence text: the user's once copied, but it carries no example banner.
     const templates = listFilesRecursive(root)
       .map((abs) => path.relative(root, abs))
-      .filter((rel) => !rel.endsWith(".json"))
-      .filter((rel) => rel !== "LICENSE.md");
+      .filter((rel) => !rel.endsWith(".json"));
     expect(templates).toContain(path.join(".github", "workflows", "bkit-ci.yml"));
     for (const rel of templates) {
       const text = fs.readFileSync(path.join(root, rel), "utf-8");
