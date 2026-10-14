@@ -702,7 +702,8 @@ export async function runUninstall(
 
   // Clean up .agents/ bkit-prefix mirror files
   // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, .opencode/agents/bkit-*.md, etc.)
-  if (!ctx.dryRun) {
+  // A dry run lists the same paths in result.deleted and removes nothing.
+  {
     const mirrorDirs = [
       // Each host's mirror dirs are gated on its own module so a targeted
       // uninstall (e.g. --claude / --auto) leaves other hosts
@@ -728,9 +729,9 @@ export async function runUninstall(
           // .toml as well as .md: codex agent mirrors are TOML.
           if (!f.startsWith("bkit-") || !(f.endsWith(".md") || f.endsWith(".toml"))) continue;
           const absFile = path.join(absDir, f);
-          fs.rmSync(absFile, { force: true });
+          if (!ctx.dryRun) fs.rmSync(absFile, { force: true });
           result.deleted.push(path.join(dir, f));
-          console.log(`${ctx.logPrefix} delete mirror: ${path.join(dir, f)}`);
+          if (!ctx.dryRun) console.log(`${ctx.logPrefix} delete mirror: ${path.join(dir, f)}`);
         }
       } catch (err) {
         console.error(`${ctx.logPrefix} error cleaning up ${dir}: ${(err as Error).message}`);
@@ -755,9 +756,11 @@ export async function runUninstall(
           if (!d.startsWith("bkit-")) continue;
           const abs = path.join(absDir, d);
           if (!fs.statSync(abs).isDirectory()) continue;
-          fs.rmSync(abs, { recursive: true, force: true });
+          if (!ctx.dryRun) fs.rmSync(abs, { recursive: true, force: true });
           result.deleted.push(path.join(skillsDir, d));
-          console.log(`${ctx.logPrefix} delete mirror: ${path.join(skillsDir, d)}`);
+          if (!ctx.dryRun) {
+            console.log(`${ctx.logPrefix} delete mirror: ${path.join(skillsDir, d)}`);
+          }
         }
       } catch (err) {
         const msg = (err as Error).message;
@@ -876,6 +879,7 @@ export async function runUninstall(
         ctx.cwd,
         existing.canonicalHashes,
         {},
+        result.deleted,
       );
       if (pruned > 0) {
         console.log(

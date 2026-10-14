@@ -201,12 +201,16 @@ describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () 
 // close so a missing run trips the Failure Path instead of passing silently.
 // ---------------------------------------------------------------------------
 describe("bkit-debug.md — close decides from live PR state", () => {
-  it("probes the live PR for the close branch (head + base=dev)", () => {
-    const probe = fences(debugMd).find(
+  it("probes the live PR for the close branch on any base, before the close commit", () => {
+    const blocks = fences(debugMd);
+    const probeAt = blocks.findIndex(
       (f) => /"\{BKIT\}" prs probe\b/.test(f) && /--head="?\{BRANCH\}"?/.test(f),
     );
-    expect(probe, "close `bkit prs probe` block not found").toBeDefined();
-    expect(probe!).toContain("--base=dev");
+    expect(probeAt, "close `bkit prs probe` block not found").toBeGreaterThan(-1);
+    // A PR into another base must read as open, or `prs open --existing=reuse` opens a second.
+    expect(blocks[probeAt]!).not.toContain("--base");
+    const closeAt = blocks.findIndex((f) => /"\{BKIT\}" workflows close\b/.test(f));
+    expect(closeAt).toBeGreaterThan(probeAt);
   });
 
   it("adopts a PR opened mid-run instead of blind-creating", () => {

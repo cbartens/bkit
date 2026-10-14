@@ -49,13 +49,14 @@ const EDIT_TOOLS = new Set(["apply_patch", "Edit", "Write"]);
 // Codex does NOT send a file path: `apply_patch` puts a V4A patch envelope in
 // `tool_input.command`. Pull the touched paths out of it. Grammar (codex-rs/apply-patch):
 //   *** Add File: <path>  |  *** Update File: <path>  |  *** Delete File: <path>
+//   (an Update may be followed by *** Move to: <path>, a target too)
 // Paths are always repo-relative, so they are resolved against the payload cwd.
 // Returns [{ file, isNew }] in patch order; [] when nothing parses.
 function parseApplyPatchTargets(command, cwd) {
   if (typeof command !== "string") return [];
   const out = [];
   for (const line of command.split("\n")) {
-    const m = /^\*\*\* (Add|Update|Delete) File: (.+?)\s*$/.exec(line);
+    const m = /^\*\*\* (?:(Add|Update|Delete) File|Move to): (.+?)\s*$/.exec(line);
     if (!m) continue;
     const rel = m[2];
     out.push({ file: cwd ? path.resolve(cwd, rel) : rel, isNew: m[1] === "Add" });
@@ -68,12 +69,14 @@ function parseApplyPatchTargets(command, cwd) {
 
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
 // A matching path gets the gate-config advisory instead of the first-touch checklist.
-// JS / TS first, then the other ecosystems' gate configs (Python, Go, Rust).
+// JS / TS first, then the other ecosystems' gate configs (Python, Go, Rust). Mixed-purpose
+// manifests that also hold dependencies and metadata (package.json, pyproject.toml,
+// setup.cfg, tox.ini) are not matched: routine edits to them are not gate edits.
 const GATE_CONFIG_PATTERNS = [
   /^tsconfig(\..+)?\.json$/,
   /^vitest\.config\.[mc]?[jt]s$/,
   /^vite\.config\.[mc]?[jt]s$/,
-  /^jest\.config\.[mc]?[jt]s$/,
+  /^jest\.config\.([mc]?[jt]s|json)$/,
   /^eslint\.config\.[mc]?[jt]s$/,
   /^\.eslintrc(\.(json|js|cjs|ya?ml))?$/,
   /^\.prettierrc(\.(json|js|cjs|mjs|ya?ml|toml))?$/,
@@ -84,14 +87,15 @@ const GATE_CONFIG_PATTERNS = [
   /^slop-scan\.config\.json$/,
   /^\.lintstagedrc(\.(json|js|cjs|mjs|ya?ml))?$/,
   /^lint-staged\.config\.[mc]?js$/,
-  /^pyproject\.toml$/,
   /^ruff\.toml$/,
   /^\.ruff\.toml$/,
   /^\.flake8$/,
-  /^mypy\.ini$/,
+  /^\.?mypy\.ini$/,
+  /^\.?pylintrc$/,
+  /^pytest\.ini$/,
   /^\.golangci\.(ya?ml|toml|json)$/,
-  /^clippy\.toml$/,
-  /^rustfmt\.toml$/,
+  /^\.?clippy\.toml$/,
+  /^\.?rustfmt\.toml$/,
 ];
 
 // A path under `.bkit/templates/` (bkit's reference copies, refreshed on every upgrade)

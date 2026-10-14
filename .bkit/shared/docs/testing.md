@@ -89,7 +89,7 @@ Scripts these files do not ship, so the plan names them and you write them: mark
 
 CI branches on the event in a few places. Each is a deliberate, recorded divergence from "one script runs everywhere" — not an accident. Every such site is registered so a new one is caught.
 
-**The guard.** A step that reads an event field (`github.event_name`, `github.ref`, `github.ref_name`, `github.base_ref`, `github.head_ref`, `github.event.head_commit.message`, `github.event.pull_request.title`) — and, by extension, a script / hook / test that reads `CI` or `GITHUB_*` or takes the pre-push revert path — must be listed in the registry (`scripts/ci/accepted-divergences.json`) with its decision and reason. The guard (`scripts/ci/check-accepted-divergences.mjs`) reds on an unregistered site, on a registered site that no longer exists, and on a decision missing from the table below. A new comparison inside an already-registered step is a new site.
+**The guard.** A workflow step, or the workflow-level `concurrency:` block (keyed `file#(workflow)#concurrency#field`), that reads an event field (`github.event_name`, `github.ref`, `github.ref_name`, `github.base_ref`, `github.head_ref`, `github.event.head_commit.message`, `github.event.pull_request.title`) must be listed in the registry (`scripts/ci/accepted-divergences.json`) with its decision and reason. The guard (`scripts/ci/check-accepted-divergences.mjs`) reds on an unregistered site, on a registered site that no longer exists, and on a decision missing from the table below. A new comparison inside an already-registered step is a new site. The guard scans `.github/workflows/*.yml` only; scripts, hooks and tests that read `CI` / `GITHUB_*` are outside it.
 
 <!-- prettier-ignore -->
 | Decision | Rule |

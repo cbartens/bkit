@@ -11,16 +11,11 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getCoreRoot, getPkgRoot, getSharedRoot } from "../shared/package-roots";
 import { createPayloadLink, formatPayloadLinkChanges, syncPayloadLinks } from "./payload-links";
-import type { WriteSet } from "./write";
 
 let tmpDir: string;
 
 const CORE_LINK = path.join(".bkit", "core");
 const SHARED_LINK = path.join(".bkit", "shared");
-
-function freshWs(): WriteSet {
-  return { writes: [] };
-}
 
 beforeEach(() => {
   // realpath: process.cwd() reports /private/var on macOS, and link resolution compares against it.
@@ -66,8 +61,7 @@ describe("createPayloadLink", () => {
 
 describe("syncPayloadLinks", () => {
   it("creates both view links, relative, resolving to the package payload", () => {
-    const ws = freshWs();
-    const changes = syncPayloadLinks(tmpDir, { dryRun: false, ws });
+    const changes = syncPayloadLinks(tmpDir, { dryRun: false });
     expect(changes.created.sort()).toEqual([CORE_LINK, SHARED_LINK].sort());
     for (const [rel, root] of [
       [CORE_LINK, getCoreRoot()],
@@ -78,27 +72,21 @@ describe("syncPayloadLinks", () => {
       expect(path.isAbsolute(fs.readlinkSync(linkAbs))).toBe(false);
       expect(fs.realpathSync(linkAbs)).toBe(fs.realpathSync(root));
     }
-    expect(ws.writes.sort((a, b) => String(a.path).localeCompare(String(b.path)))).toEqual([
-      { path: CORE_LINK, action: "write" },
-      { path: SHARED_LINK, action: "write" },
-    ]);
   });
 
-  it("is idempotent: a second run keeps correct links and pushes no writes", () => {
-    syncPayloadLinks(tmpDir, { dryRun: false, ws: freshWs() });
-    const ws = freshWs();
-    const again = syncPayloadLinks(tmpDir, { dryRun: false, ws });
+  it("is idempotent: a second run keeps correct links", () => {
+    syncPayloadLinks(tmpDir, { dryRun: false });
+    const again = syncPayloadLinks(tmpDir, { dryRun: false });
     expect(again.kept.sort()).toEqual([CORE_LINK, SHARED_LINK].sort());
     expect(again.created).toEqual([]);
     expect(again.repaired).toEqual([]);
-    expect(ws.writes).toEqual([]);
   });
 
   it("re-points a symlink that resolves somewhere else", () => {
     const linkAbs = path.join(tmpDir, CORE_LINK);
     fs.mkdirSync(path.dirname(linkAbs), { recursive: true });
     fs.symlinkSync(tmpDir, linkAbs, "dir");
-    const changes = syncPayloadLinks(tmpDir, { dryRun: false, ws: freshWs() });
+    const changes = syncPayloadLinks(tmpDir, { dryRun: false });
     expect(changes.repaired).toEqual([CORE_LINK]);
     expect(fs.realpathSync(linkAbs)).toBe(fs.realpathSync(getCoreRoot()));
   });
@@ -107,7 +95,7 @@ describe("syncPayloadLinks", () => {
     const linkAbs = path.join(tmpDir, SHARED_LINK);
     fs.mkdirSync(path.dirname(linkAbs), { recursive: true });
     fs.symlinkSync(path.join(tmpDir, "gone"), linkAbs, "dir");
-    const changes = syncPayloadLinks(tmpDir, { dryRun: false, ws: freshWs() });
+    const changes = syncPayloadLinks(tmpDir, { dryRun: false });
     expect(changes.repaired).toEqual([SHARED_LINK]);
     expect(fs.realpathSync(linkAbs)).toBe(fs.realpathSync(getSharedRoot()));
   });
@@ -116,50 +104,45 @@ describe("syncPayloadLinks", () => {
     const dirAbs = path.join(tmpDir, CORE_LINK);
     fs.mkdirSync(dirAbs, { recursive: true });
     fs.writeFileSync(path.join(dirAbs, "mine.txt"), "consumer content\n", "utf-8");
-    const ws = freshWs();
-    const changes = syncPayloadLinks(tmpDir, { dryRun: false, ws });
+    const changes = syncPayloadLinks(tmpDir, { dryRun: false });
     expect(changes.skippedRealDir).toEqual([CORE_LINK]);
     expect(fs.lstatSync(dirAbs).isSymbolicLink()).toBe(false);
     expect(fs.readFileSync(path.join(dirAbs, "mine.txt"), "utf-8")).toBe("consumer content\n");
-    expect(ws.writes.map((w) => w.path)).toEqual([SHARED_LINK]);
+    expect(changes.created).toEqual([SHARED_LINK]);
   });
 
   it("never clobbers a real file either", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     const fileAbs = path.join(tmpDir, SHARED_LINK);
     fs.writeFileSync(fileAbs, "consumer file\n", "utf-8");
-    const changes = syncPayloadLinks(tmpDir, { dryRun: false, ws: freshWs() });
+    const changes = syncPayloadLinks(tmpDir, { dryRun: false });
     expect(changes.skippedRealDir).toEqual([SHARED_LINK]);
     expect(fs.readFileSync(fileAbs, "utf-8")).toBe("consumer file\n");
   });
 
-  it("dry-run reports the creates and pushes writes but touches nothing", () => {
-    const ws = freshWs();
-    const changes = syncPayloadLinks(tmpDir, { dryRun: true, ws });
+  it("dry-run reports the creates but touches nothing", () => {
+    const changes = syncPayloadLinks(tmpDir, { dryRun: true });
     expect(changes.created.sort()).toEqual([CORE_LINK, SHARED_LINK].sort());
     expect(fs.existsSync(path.join(tmpDir, CORE_LINK))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, SHARED_LINK))).toBe(false);
-    expect(ws.writes).toHaveLength(2);
   });
 
   it("dry-run reports a repair without re-pointing the link", () => {
     const linkAbs = path.join(tmpDir, CORE_LINK);
     fs.mkdirSync(path.dirname(linkAbs), { recursive: true });
     fs.symlinkSync(tmpDir, linkAbs, "dir");
-    syncPayloadLinks(tmpDir, { dryRun: true, ws: freshWs() });
+    syncPayloadLinks(tmpDir, { dryRun: true });
     expect(fs.realpathSync(linkAbs)).toBe(fs.realpathSync(tmpDir));
   });
 
   it("does nothing in dogfood, where .bkit/core is the package source", () => {
-    const ws = freshWs();
-    expect(syncPayloadLinks(getPkgRoot(), { dryRun: false, ws })).toEqual({
+    expect(syncPayloadLinks(getPkgRoot(), { dryRun: false })).toEqual({
       created: [],
       repaired: [],
       kept: [],
       skippedRealDir: [],
       failed: [],
     });
-    expect(ws.writes).toEqual([]);
   });
 });
 

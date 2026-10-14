@@ -2,7 +2,7 @@
 
 {{BKIT_MANAGED_MARKER}}
 
-Every file bkit wrote into this repository, and keeps current on `bkit upgrade`, is licensed under your choice of the PolyForm Noncommercial License 1.0.0 or the PolyForm Small Business License 1.0.0, both below. Files under `.bkit/shared/` and `.bkit/templates/` are MIT-0 instead, each folder covered by the `LICENSE.md` inside it. bkit's own summary licence, with the commercial-licence contact, is at <https://github.com/cbartens/bkit/blob/main/LICENSE.md>.
+Every core file bkit wrote into this repository, and keeps current on `bkit upgrade`, is licensed under your choice of the PolyForm Noncommercial License 1.0.0 or the PolyForm Small Business License 1.0.0, both below. Files bkit writes from its shared set (`CLAUDE.md`, `GEMINI.md`, `docs/*.md`, the Cursor rules file, `.gitignore` and `.gitattributes` entries, `.bkit/.env.example`) and the templates it copies into your repo are MIT-0 instead (<https://opensource.org/license/mit-0>); the `bkit:managed` marker in a file names which licence applies. bkit's own summary licence, with the commercial-licence contact, is at <https://github.com/cbartens/bkit/blob/main/LICENSE.md>.
 
 Required Notice: Copyright 2026 Christian Bartens (https://github.com/cbartens/bkit)
 

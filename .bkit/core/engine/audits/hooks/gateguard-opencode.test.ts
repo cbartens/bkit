@@ -632,6 +632,114 @@ describe("gateguard opencode plugin — fail-open cases", () => {
   });
 });
 
+describe("gateguard opencode plugin — multi-file patch tool", () => {
+  const PATCH = [
+    "*** Begin Patch",
+    "*** Add File: src/patch-added.ts",
+    "+export const a = 1;",
+    "*** Update File: src/patch-updated.ts",
+    "*** Move to: src/patch-moved.ts",
+    "@@",
+    "-old",
+    "+new",
+    "*** Delete File: src/patch-deleted.ts",
+    "*** End Patch",
+  ].join("\n");
+
+  function patchInput(tool: string, session: string, patchText: unknown) {
+    return {
+      hookInput: { tool, sessionID: session, callID: "toolu_test_patch" },
+      output: { args: { patchText } },
+    };
+  }
+
+  it.each(["patch", "apply_patch"])(
+    "%s: checks every Add / Update / Move-to / Delete target (2.0 and 1.x drivers)",
+    async (tool) => {
+      for (const drive of ["v2", "v1"] as const) {
+        const session = newSession();
+        const { hookInput, output } = patchInput(tool, session, PATCH);
+        const result =
+          drive === "v2"
+            ? await invokeHook(plugin, orchestratorClient(), hookInput, output)
+            : await invokeHookV1(plugin, orchestratorClient(), hookInput, output);
+        expect(result.threw).toBe(false);
+        for (const file of [
+          "src/patch-added.ts",
+          "src/patch-updated.ts",
+          "src/patch-moved.ts",
+          "src/patch-deleted.ts",
+        ]) {
+          expect(isWarned(session, file)).toBe(true);
+          expect(result.advice).toContain(path.basename(file));
+        }
+      }
+    },
+  );
+
+  it("deny mode blocks when any patch target is a first touch, and records all of them", async () => {
+    const session = newSession();
+    const { hookInput, output } = patchInput("patch", session, PATCH);
+    const env = { BKIT_GATEGUARD: "deny" };
+    const first = await invokeHook(plugin, orchestratorClient(), hookInput, output, env);
+    expect(first.threw).toBe(true);
+    expect(first.error?.message).toContain("[bkit GateGuard]");
+    expect(isWarned(session, "src/patch-added.ts")).toBe(true);
+    expect(isWarned(session, "src/patch-deleted.ts")).toBe(true);
+    const retry = await invokeHook(plugin, orchestratorClient(), hookInput, output, env);
+    expect(retry.threw).toBe(false);
+  });
+
+  it("deny mode still blocks when only one of several patch targets is new to the session", async () => {
+    const session = newSession();
+    const env = { BKIT_GATEGUARD: "deny" };
+    const warmed = patchInput(
+      "patch",
+      session,
+      "*** Begin Patch\n*** Update File: src/p-warm.ts\n*** End Patch",
+    );
+    await invokeHook(plugin, orchestratorClient(), warmed.hookInput, warmed.output, env);
+    const mixed = patchInput(
+      "patch",
+      session,
+      "*** Begin Patch\n*** Update File: src/p-warm.ts\n*** Update File: src/p-cold.ts\n*** End Patch",
+    );
+    const result = await invokeHook(
+      plugin,
+      orchestratorClient(),
+      mixed.hookInput,
+      mixed.output,
+      env,
+    );
+    expect(result.threw).toBe(true);
+    expect(result.error?.message).toContain("p-cold.ts");
+  });
+
+  it.each([undefined, null, "", "not a patch", 42, { nested: true }])(
+    "malformed patchText %j does not throw and yields no advice",
+    async (patchText) => {
+      const session = newSession();
+      const { hookInput, output } = patchInput("patch", session, patchText);
+      for (const env of [{}, { BKIT_GATEGUARD: "deny" }]) {
+        const v2 = await invokeHook(plugin, orchestratorClient(), hookInput, output, env);
+        const v1 = await invokeHookV1(plugin, orchestratorClient(), hookInput, output, env);
+        expect(v2).toMatchObject({ threw: false, advice: "" });
+        expect(v1).toMatchObject({ threw: false, advice: "" });
+      }
+    },
+  );
+
+  it("missing args entirely does not throw", async () => {
+    const result = await invokeHook(
+      plugin,
+      orchestratorClient(),
+      { tool: "patch", sessionID: newSession(), callID: "x" },
+      {},
+    );
+    expect(result).toMatchObject({ threw: false, advice: "" });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Managed-block boundary — consumers own the driver (tool.execute.before /
 // export default function plugin), bkit owns only the pure advisory engine.

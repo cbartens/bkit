@@ -225,8 +225,7 @@ describe("detectPlaywrightReporterHostile", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectShellToken: unset vs empty-string
-// .npmrc inline action text + fallback
+// process.env snapshot and restore around each test
 // ---------------------------------------------------------------------------
 
 let originalEnv: NodeJS.ProcessEnv;

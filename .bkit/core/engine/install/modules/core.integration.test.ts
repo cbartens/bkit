@@ -119,7 +119,7 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     }
   });
 
-  it("writes .bkit/LICENSE.md with both PolyForm texts, the Required Notice and the MIT-0 pointer", () => {
+  it("writes .bkit/LICENSE.md with both PolyForm texts, the Required Notice and the MIT-0 scope", () => {
     const ctx = makeCtx();
     runCoreModule(ctx);
     flushPostDispatch(ctx);
@@ -130,7 +130,8 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     expect(licence).toContain(
       "Required Notice: Copyright 2026 Christian Bartens (https://github.com/cbartens/bkit)",
     );
-    expect(licence).toContain("`.bkit/shared/` and `.bkit/templates/` are MIT-0");
+    expect(licence).toContain("are MIT-0 instead");
+    expect(licence).not.toContain("the `LICENSE.md` inside it");
   });
 
   it("mirrors the docs into the repo's own .bkit/ in dogfood too", () => {

@@ -243,15 +243,21 @@ describe("gateguard behaviour parity — advisory content", () => {
       // Non-JS ecosystems: their linters / formatters gate the same way, so an
       // edit to their config gets the same advisory.
       it.each([
-        "pyproject.toml",
         "ruff.toml",
         ".ruff.toml",
         ".flake8",
         "mypy.ini",
+        ".mypy.ini",
+        "pylintrc",
+        ".pylintrc",
+        "pytest.ini",
+        "jest.config.json",
         ".golangci.yml",
         ".golangci.toml",
         "clippy.toml",
         "rustfmt.toml",
+        ".clippy.toml",
+        ".rustfmt.toml",
       ])("a %s gate config gets the weaken-the-gate advisory", async (file) => {
         const r = await run(host, { file, session: newSession() });
         expect(r.advisory).toContain("quality-gate config");
@@ -267,10 +273,13 @@ describe("gateguard behaviour parity — advisory content", () => {
         expect(r.advisory).toContain("[bkit GateGuard]");
       });
 
-      it("an ordinary source file is not treated as a gate config", async () => {
-        const r = await run(host, { file: "package.json", session: newSession() });
-        expect(r.advisory).not.toContain("quality-gate config");
-      });
+      it.each(["package.json", "pyproject.toml", "setup.cfg", "tox.ini"])(
+        "mixed-purpose %s is not treated as a gate config",
+        async (file) => {
+          const r = await run(host, { file, session: newSession() });
+          expect(r.advisory).not.toContain("quality-gate config");
+        },
+      );
     });
   }
 });
@@ -460,6 +469,41 @@ describe("gateguard structural parity", () => {
     expect(b).toContain('"apply_patch"');
     expect(b).toContain("parseApplyPatchTargets");
     expect(b).toMatch(/Add\|Update\|Delete/);
+  });
+
+  it("codex advises on the *** Move to: target of a renaming patch", () => {
+    const res = spawnSync("node", [CODEX_HOOK], {
+      input: JSON.stringify({
+        tool_name: "apply_patch",
+        tool_input: {
+          command:
+            "*** Begin Patch\n*** Update File: src/old-name.ts\n*** Move to: src/new-name.ts\n@@\n-a\n+b\n*** End Patch",
+        },
+        session_id: `gg-codex-move-${process.pid}`,
+        cwd: process.cwd(),
+      }),
+      encoding: "utf-8",
+      env: { ...process.env, BKIT_GATEGUARD: "deny" },
+    });
+    const reason = String(JSON.parse(res.stdout).hookSpecificOutput?.permissionDecisionReason);
+    expect(reason).toContain("old-name.ts");
+    // Old name is warned; the retry must still catch the move target.
+    const retry = spawnSync("node", [CODEX_HOOK], {
+      input: JSON.stringify({
+        tool_name: "apply_patch",
+        tool_input: {
+          command:
+            "*** Begin Patch\n*** Update File: src/old-name.ts\n*** Move to: src/new-name.ts\n@@\n-a\n+b\n*** End Patch",
+        },
+        session_id: `gg-codex-move-${process.pid}`,
+        cwd: process.cwd(),
+      }),
+      encoding: "utf-8",
+      env: { ...process.env, BKIT_GATEGUARD: "deny" },
+    });
+    expect(String(JSON.parse(retry.stdout).hookSpecificOutput?.permissionDecisionReason)).toContain(
+      "new-name.ts",
+    );
   });
 
   it("the opencode block carries the same advisory texts as the CJS twins", () => {

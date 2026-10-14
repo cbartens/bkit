@@ -570,7 +570,8 @@ export async function runUninstall(modules, ctx) {
     }
     // Clean up .agents/ bkit-prefix mirror files
     // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, .opencode/agents/bkit-*.md, etc.)
-    if (!ctx.dryRun) {
+    // A dry run lists the same paths in result.deleted and removes nothing.
+    {
         const mirrorDirs = [
             // Each host's mirror dirs are gated on its own module so a targeted
             // uninstall (e.g. --claude / --auto) leaves other hosts
@@ -598,9 +599,11 @@ export async function runUninstall(modules, ctx) {
                     if (!f.startsWith("bkit-") || !(f.endsWith(".md") || f.endsWith(".toml")))
                         continue;
                     const absFile = path.join(absDir, f);
-                    fs.rmSync(absFile, { force: true });
+                    if (!ctx.dryRun)
+                        fs.rmSync(absFile, { force: true });
                     result.deleted.push(path.join(dir, f));
-                    console.log(`${ctx.logPrefix} delete mirror: ${path.join(dir, f)}`);
+                    if (!ctx.dryRun)
+                        console.log(`${ctx.logPrefix} delete mirror: ${path.join(dir, f)}`);
                 }
             }
             catch (err) {
@@ -628,9 +631,12 @@ export async function runUninstall(modules, ctx) {
                     const abs = path.join(absDir, d);
                     if (!fs.statSync(abs).isDirectory())
                         continue;
-                    fs.rmSync(abs, { recursive: true, force: true });
+                    if (!ctx.dryRun)
+                        fs.rmSync(abs, { recursive: true, force: true });
                     result.deleted.push(path.join(skillsDir, d));
-                    console.log(`${ctx.logPrefix} delete mirror: ${path.join(skillsDir, d)}`);
+                    if (!ctx.dryRun) {
+                        console.log(`${ctx.logPrefix} delete mirror: ${path.join(skillsDir, d)}`);
+                    }
                 }
             }
             catch (err) {
@@ -740,7 +746,7 @@ export async function runUninstall(modules, ctx) {
         const versionFile = path.join(ctx.cwd, ".bkit", "version");
         const existing = readBkitVersion(versionFile);
         if (existing) {
-            const { canonicalHashes, pruned } = mergeCanonicalHashes(ctx.cwd, existing.canonicalHashes, {});
+            const { canonicalHashes, pruned } = mergeCanonicalHashes(ctx.cwd, existing.canonicalHashes, {}, result.deleted);
             if (pruned > 0) {
                 console.log(`${ctx.logPrefix}${ctx.dryRun ? " [dry-run]" : ""} update version pin: .bkit/version (pruned ${pruned})`);
                 if (!ctx.dryRun) {

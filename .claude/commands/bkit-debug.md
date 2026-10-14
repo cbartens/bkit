@@ -103,14 +103,14 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    "{BKIT}" locks acquire --kind=workflow --workflow=debug --fid={FID}
    ```
    → hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
-6. Find the open PR from `{BRANCH}` into `dev`:
+6. Find the open PR from `{BRANCH}` into any base:
    ```bash
-   "{BKIT}" prs probe --base=dev
+   "{BKIT}" prs probe
    ```
    Decide `PUSH_MODE`:
    - **If** exit 0 → hold `number` as `{PR_NUMBER}` → `PUSH_MODE` = PR.
    - **If** exit 1 → `PUSH_MODE` = LOCAL.
-   - **If** exit 80 → `list_pull_requests` (head `{BRANCH}`, base `dev`, state open) → PR found → its number as `{PR_NUMBER}`, `PUSH_MODE` = PR; none → `PUSH_MODE` = LOCAL.
+   - **If** exit 80 → `list_pull_requests` (head `{BRANCH}`, state open) → PR found → its number as `{PR_NUMBER}`, `PUSH_MODE` = PR; none → `PUSH_MODE` = LOCAL.
    - **Else** → **Failure Path**.
 7. Derive `{DEBUG_ATTEMPT}` (cross-run invocation index; a resume keeps its number) and `{SOAK_ROWS}` (active-run `debug-failure-soak` rows, 0 legal), and route the attempt against `MAX_DEBUG_ATTEMPT`:
    ```bash
@@ -459,13 +459,21 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 **Run only if** `TEST_VERDICT` = PASS.
 
-1. **Run only if** `PUSH_MODE` = PR — strip `[verbose ci]` (with an optional `bkit ` prefix) from the PR title:
+1. Probe live PR state from `{BRANCH}` into any base (`{PR_OPEN}` = 0, `PUSH_MODE` = LOCAL with no probe when `BRANCH` = `dev` **or** `main`):
    ```bash
-   "{BKIT}" prs verbose-ci --number={PR_NUMBER} --state=off
+   "{BKIT}" prs probe --head="{BRANCH}"
    ```
-2. Re-read labels, then run the No-leak Assertion, mirror the roadmap row to `dev`, close the run (telemetry, report, artifact links) and commit it, release the lock, and push with the HEAD-Subject Assertion; `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry when `PUSH_MODE` = PR (the subject carries ` bkit [auto route]` on `bkit:auto`), else empty; `PUSH_MODE` = LOCAL adds ` bkit [verbose ci]`:
+   Decide `PR_OPEN`:
+   - **If** exit 0 → `{PR_OPEN}` = 1, `PUSH_MODE` = PR; hold `number` as `{PR_NUMBER}`, `url` as `{PR_URL}`.
+   - **If** exit 1 → `{PR_OPEN}` = 0, `PUSH_MODE` = LOCAL.
+   - **If** exit 80 → `list_pull_requests` (head `{BRANCH}`, state open) → found → `{PR_OPEN}` = 1, `PUSH_MODE` = PR with its `number` / `url`; none → `{PR_OPEN}` = 0, `PUSH_MODE` = LOCAL; record via `"{BKIT}" prs transport-row --file="{STATUS}" --kind=fallback --asserted-by=<re-read>`.
+   - **Else** → **Failure Path**.
+2. Re-read labels, then record `PUSH_MODE`, strip `[verbose ci]` (with an optional `bkit ` prefix) from the PR title when `{PR_OPEN}` = 1, run the No-leak Assertion, mirror the roadmap row to `dev`, close the run (telemetry, report, artifact links) and commit it, release the lock, and push with the HEAD-Subject Assertion; `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry when `{PR_OPEN}` = 1 (the subject carries ` bkit [auto route]` on `bkit:auto`), else empty; `{PR_OPEN}` = 0 adds ` bkit [verbose ci]`:
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`.
    ```bash
+   PR_OPEN="{PR_OPEN}"
+   "{BKIT}" status meta --file="{STATUS}" --workflow=debug --push-mode={PUSH_MODE} >/dev/null || exit 1
+   if [ "$PR_OPEN" = 1 ]; then "{BKIT}" prs verbose-ci --number={PR_NUMBER} --state=off; fi
    if git diff origin/dev..HEAD -- . ':(exclude)docs/plans' | grep -qE '^\+.*\[DEBUG-OBSERVE\]'; then
      echo "No-leak Assertion FAILED: [DEBUG-OBSERVE] instrumentation survived into the debug diff — soak did not strip it." >&2; exit 1
    fi
@@ -475,24 +483,16 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    "{BKIT}" branches push --mode=feature --require-ci >/dev/null
    ```
    Hold the close's `parentSha` as `{CLOSE_PARENT}`.
-3. Probe live PR state (`{PR_OPEN}` = 0 with no probe when `BRANCH` = `dev` **or** `main`):
+3. **If** `{PR_OPEN}` = 0 → record the close row and audit the landed commit; `{LIVE_SKIPPED}` = `--field="testsLiveSkipped=No live tests ran, runtime-only defects not gated (not declared or opted out)."` when `TEST_SCOPE` lacks `live`, else empty:
    ```bash
-   "{BKIT}" prs probe --head="{BRANCH}" --base=dev
+   "{BKIT}" steps done --file="{STATUS}" --workflow=debug --step=debug-close-workflow --parent-sha={CLOSE_PARENT} {LIVE_SKIPPED} --commit=none >/dev/null || exit 1
+   "{BKIT}" prs transport-row --file="{STATUS}" --kind=close --shape=push --sha={CLOSE_PARENT} --scan --cross-check=gh
    ```
-   - **If** exit 0 → `{PR_OPEN}` = 1; hold `number` as `{PR_NUMBER}`, `url` as `{PR_URL}`.
-   - **If** exit 1 → `{PR_OPEN}` = 0.
-   - **If** exit 80 → `list_pull_requests` (head `{BRANCH}`, base `dev`, state open) → found → `{PR_OPEN}` = 1 with its `number` / `url`; none → `{PR_OPEN}` = 0; record via `"{BKIT}" prs transport-row --file="{STATUS}" --kind=fallback --asserted-by=<re-read>`.
-   - **Else** → **Failure Path**.
-   - **If** `{PR_OPEN}` = 0 → record the close row and audit the landed commit; `{LIVE_SKIPPED}` = `--field="testsLiveSkipped=No live tests ran, runtime-only defects not gated (not declared or opted out)."` when `TEST_SCOPE` lacks `live`, else empty:
-     ```bash
-     "{BKIT}" steps done --file="{STATUS}" --workflow=debug --step=debug-close-workflow --parent-sha={CLOSE_PARENT} {LIVE_SKIPPED} --commit=none >/dev/null || exit 1
-     "{BKIT}" prs transport-row --file="{STATUS}" --kind=close --shape=push --sha={CLOSE_PARENT} --scan --cross-check=gh
-     ```
 4. Set `TRIGGER_PR`:
    - **If** `BRANCH` = `dev` **or** `main` → push to trigger branch (CI fires) → `TRIGGER_PR` = 0.
    - **If** `{PR_OPEN}` = 1 → the close push fires `pull_request` → `TRIGGER_PR` = 0.
    - **Else** → `TRIGGER_PR` = 1.
-5. **If** `TRIGGER_PR` = 1 → create or adopt the PR (body names `docs/plans/{YYYYMM}/{FID}-plan.md` if present); `--existing=reuse` adopts a PR that appeared since sub-step 3:
+5. **If** `TRIGGER_PR` = 1 → create or adopt the PR (body names `docs/plans/{YYYYMM}/{FID}-plan.md` if present); `--existing=reuse` adopts a PR that appeared since sub-step 1:
    ```bash
    "{BKIT}" prs open --fid={FID} --title="feat({FID}): debug-remediated" --issue="{ISSUE_ID}" --existing=reuse --plan=docs/plans/{YYYYMM}/{FID}-plan.md
    ```
@@ -538,7 +538,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: `debug-close-workflow` row, with `testsLiveSkipped` if no live test, `ciDispatch` on every feature-branch close)
-- [ ] PR title `[verbose ci]` stripped (if `PUSH_MODE` = PR)
+- [ ] PR title `[verbose ci]` stripped (if `{PR_OPEN}` = 1)
 
 
 - [ ] Auto-label presence re-read before close-workflow commit (`bkit:auto` pre-commit label read for marker sourcing)
@@ -546,7 +546,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] No-leak Assertion passed (no `[DEBUG-OBSERVE]` lines survive)
 - [ ] Close committed and pushed (`workflows close` committed telemetry on `feat/{FID}`; `branches push --require-ci` exit 0)
-- [ ] `TRIGGER_PR` set from the live `prs probe` (`{PR_OPEN}`), not Step-1 `PUSH_MODE`; if a PR was created or adopted: `PR_URL`, `PR_NUMBER` held, step `debug-create-pr` recorded with the PR URL and `ciDispatch`, changes pushed
+- [ ] Live PR probe ran before the close, any base; labels, subject suffix and PR trigger follow it (`PR_OPEN`, recorded `PUSH_MODE`, `TRIGGER_PR`)
+- [ ] PR created or adopted, step `debug-create-pr` recorded with the PR URL and `ciDispatch`, changes pushed (if `TRIGGER_PR` = 1; `PR_URL`, `PR_NUMBER` held)
 - [ ] CI-Dispatch gate ran (`runs dispatch` exit 0, close transport recorded)
 - [ ] Final return displayed (`debug-summary.md` content verbatim)
 

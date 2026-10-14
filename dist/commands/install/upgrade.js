@@ -221,7 +221,7 @@ export function runUpgrade(candidates, options) {
         // Token-substitute FIRST (matching install's writeTier1 tokens) so
         // drift-detect compares like-for-like and a freshly-seeded file gets real values,
         // not a literal `{{DEFAULT_BRANCH}}`. Token-free templates are unchanged.
-        const effectiveTemplate = applyTokens(templateContent, tokens);
+        const effectiveTemplate = applyTokens(templateContent, tokens, templatePath);
         const diffAction = diffFile(relPath, absolutePath, effectiveTemplate, canonicalHashes);
         switch (diffAction.action) {
             case "skip":
@@ -585,11 +585,8 @@ export async function runUpgradeCommand(upgradeFlags) {
         console.log(`${LOG_PREFIX} ${templateReport}`);
     // Payload view links — the same sync install runs (`.bkit/core` + `.bkit/shared`
     // point into the installed package). Never clobbers a real directory; a platform
-    // refusal is reported, never fatal. Throwaway WriteSet: links carry no hash.
-    const linkChanges = syncPayloadLinks(process.cwd(), {
-        dryRun: upgradeFlags.dryRun,
-        ws: { writes: [] },
-    });
+    // refusal is reported, never fatal. Links carry no hash.
+    const linkChanges = syncPayloadLinks(process.cwd(), { dryRun: upgradeFlags.dryRun });
     const linkReport = formatPayloadLinkChanges(linkChanges);
     if (linkReport)
         console.log(`${LOG_PREFIX} ${linkReport}`);

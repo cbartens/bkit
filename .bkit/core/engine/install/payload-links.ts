@@ -6,7 +6,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getCoreRoot, getPkgRoot, getSharedRoot } from "../shared/package-roots.js";
-import type { WriteSet } from "./write.js";
 
 // The two view links: a symlink at the consumer-relative `relPath` pointing at the
 // package payload dir `target()` resolves to. Relative targets, so the link keeps
@@ -58,14 +57,12 @@ export function createPayloadLink(
 // Create or refresh the consumer's `.bkit/core` + `.bkit/shared` view links into
 // the package payload. Idempotent: a correct link is kept, a dangling or
 // mis-pointed symlink is re-pointed, a real directory or file is NEVER clobbered
-// (skippedRealDir) and a platform refusal is only recorded (failed). Every create
-// or repair pushes a ws write in dry-run and live alike, so `bkit check` flags a
-// missing or broken link as drift. No-op in dogfood: there `.bkit/core` IS the
-// package source, never a view onto it.
-export function syncPayloadLinks(
-  cwd: string,
-  opts: { dryRun: boolean; ws: WriteSet },
-): PayloadLinkChanges {
+// (skippedRealDir) and a platform refusal is only recorded (failed). Links are
+// convenience views, not managed content: they never join the install WriteSet, so
+// a missing or broken link is never `bkit check` drift (a fresh clone or worktree
+// has none). Dry-run reports what a live run would do and touches nothing. No-op
+// in dogfood: there `.bkit/core` IS the package source, never a view onto it.
+export function syncPayloadLinks(cwd: string, opts: { dryRun: boolean }): PayloadLinkChanges {
   const changes: PayloadLinkChanges = {
     created: [],
     repaired: [],
@@ -122,7 +119,6 @@ export function syncPayloadLinks(
       }
     }
     (st !== null ? changes.repaired : changes.created).push(relPath);
-    opts.ws.writes.push({ path: relPath, action: "write" });
   }
   return changes;
 }

@@ -7,7 +7,7 @@ dist/
 # Antigravity host installs as a workspace plugin; its skills/agents/hooks are
 # force-overwritten renders like the other host mirrors below.
 .agents/plugins/bkit/
-# Canonical-overwrite content (CANONICAL_OVERWRITE_RELPATHS in bkit's install engine):
+# Canonical-overwrite content (byte-equal-text and markered-text entries of `getInstallManifest` in .bkit/core/engine/install/manifest.ts):
 # bkit force-overwrites these on every install, so consumer prettier must not
 # lint them. Width-sensitive rewrites would be reverted next install. The
 # .opencode agent + command mirrors are force-overwritten just like .claude /

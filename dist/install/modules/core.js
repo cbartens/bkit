@@ -173,8 +173,8 @@ function runCoreTemplates(dryRun, tokens, ws, logPrefix) {
 // them, so a consumer edit is replaced. Source of truth is the package's own
 // `.bkit/core/.bkit/<name>`. (`advisories.md` is a regenerated runtime artifact,
 // `wording.md` is repo-only tooling and `friction.md` is a consumer-owned seed —
-// none belongs here. `LICENSE.md` is the PolyForm notice that travels with every
-// file bkit writes: PolyForm's Notices section requires a passed-on copy to carry
+// none belongs here. `LICENSE.md` is the PolyForm notice that travels with the
+// core files bkit writes: PolyForm's Notices section requires a passed-on copy to carry
 // the terms or their URL and the Required Notice line.)
 export const BKIT_CANONICAL_DOCS = [
     "cloud.md",
@@ -430,7 +430,7 @@ export function runCoreModule(ctx) {
     // installed package (browse-only, gitignored; no-op in dogfood). A real
     // directory or file at either path is never clobbered (advisory); a platform
     // refusal is an advisory, never a failure.
-    const linkChanges = syncPayloadLinks(cwd, { dryRun, ws });
+    const linkChanges = syncPayloadLinks(cwd, { dryRun });
     for (const rel of linkChanges.created) {
         console.log(`${logPrefix} ${tag}payload link: ${rel}`);
     }

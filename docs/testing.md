@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.1.0 — MIT-0 (https://opensource.org/license/mit-0) — do not edit; run `bkit upgrade` to refresh -->
 
 # Testing
 
@@ -89,7 +89,7 @@ Scripts these files do not ship, so the plan names them and you write them: mark
 
 CI branches on the event in a few places. Each is a deliberate, recorded divergence from "one script runs everywhere" — not an accident. Every such site is registered so a new one is caught.
 
-**The guard.** A step that reads an event field (`github.event_name`, `github.ref`, `github.ref_name`, `github.base_ref`, `github.head_ref`, `github.event.head_commit.message`, `github.event.pull_request.title`) — and, by extension, a script / hook / test that reads `CI` or `GITHUB_*` or takes the pre-push revert path — must be listed in the registry (`scripts/ci/accepted-divergences.json`) with its decision and reason. The guard (`scripts/ci/check-accepted-divergences.mjs`) reds on an unregistered site, on a registered site that no longer exists, and on a decision missing from the table below. A new comparison inside an already-registered step is a new site.
+**The guard.** A workflow step, or the workflow-level `concurrency:` block (keyed `file#(workflow)#concurrency#field`), that reads an event field (`github.event_name`, `github.ref`, `github.ref_name`, `github.base_ref`, `github.head_ref`, `github.event.head_commit.message`, `github.event.pull_request.title`) must be listed in the registry (`scripts/ci/accepted-divergences.json`) with its decision and reason. The guard (`scripts/ci/check-accepted-divergences.mjs`) reds on an unregistered site, on a registered site that no longer exists, and on a decision missing from the table below. A new comparison inside an already-registered step is a new site. The guard scans `.github/workflows/*.yml` only; scripts, hooks and tests that read `CI` / `GITHUB_*` are outside it.
 
 <!-- prettier-ignore -->
 | Decision | Rule |
@@ -445,7 +445,7 @@ CI must catch every consumer `pnpm bkit install` hard-fail. Same `.bkit/core/eng
 **Required coverage per consumer-runtime hard-fail** (`process.exit(1)` from `bkit install` / `bkit check`):
 
 1. **Unit test** — failure branch (bad input → exit).
-2. **Smoke spawn** — `bkit install --claude --cursor --typescript` on scratch consumer (`os.tmpdir()`, exit 0). `.bkit/core/engine/commands/install/install.integration.test.ts` § Scenario 5.
+2. **Smoke spawn** — `bkit install --claude --cursor` on scratch consumer (`os.tmpdir()`, exit 0). `.bkit/core/engine/commands/install/install.integration.test.ts` § Scenario 5.
 3. **Stale-state spawn** — pre-seeded upgrade-skew consumer. Same file § Scenario 5.
 4. **Phase 3 blocker** — Scenario 6 (exit 1 + recovery) + 7 (`--auto-revert` → `runUninstall`).
 5. **Mid-failure rollback** — Scenario 9: post-first-module failure → `discardAllStaging`, byte-identical consumer.
@@ -657,15 +657,11 @@ Use project-local `tsx` binary. Do NOT `node --import tsx/register`, because `ER
 ```ts
 const tsxBin = path.resolve(__dirname, "../../node_modules/.bin/tsx");
 if (!fs.existsSync(tsxBin)) return; // CI without devDeps — skip rather than fail
-const result = spawnSync(
-  tsxBin,
-  [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
-  {
-    cwd: tmpDir,
-    encoding: "utf-8",
-    timeout: 60_000,
-  },
-);
+const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--cursor"], {
+  cwd: tmpDir,
+  encoding: "utf-8",
+  timeout: 60_000,
+});
 expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
 ```
 

@@ -132,11 +132,13 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
 
     const gateguard = path.join(tmpDir, ".opencode", "plugin", "bkit-gateguard.js");
     const original = fs.readFileSync(gateguard, "utf-8");
-    expect(original).toContain('const EDIT_TOOLS = new Set(["write", "edit", "patch"]);');
+    expect(original).toContain(
+      'const EDIT_TOOLS = new Set(["write", "edit", "patch", "apply_patch"]);',
+    );
     fs.writeFileSync(
       gateguard,
       original.replace(
-        'const EDIT_TOOLS = new Set(["write", "edit", "patch"]);',
+        'const EDIT_TOOLS = new Set(["write", "edit", "patch", "apply_patch"]);',
         'const EDIT_TOOLS = new Set(["write"]);', // consumer weakened the managed block
       ),
       "utf-8",

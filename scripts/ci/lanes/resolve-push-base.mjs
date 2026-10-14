@@ -12,11 +12,15 @@
  * is not an ancestor of HEAD (a force-push rewrote the branch), the base falls back to
  * `event.before`.
  *
- * Usage:  node scripts/ci/lanes/resolve-push-base.mjs   (env: GH_TOKEN, REPO, BRANCH, BEFORE_SHA, WORKFLOW_FILE)
- * Output: the base SHA on stdout. Exit 0 always — the fallback is itself a valid base.
+ * Usage:  node scripts/ci/lanes/resolve-push-base.mjs
+ *         (env: GH_TOKEN, REPO, BRANCH, BEFORE_SHA, WORKFLOW_FILE; optional SOURCE_FILE)
+ * Output: the base SHA on stdout; the chosen source (`last-green-run`, `event-before`, ...) on
+ *         stderr, and in SOURCE_FILE when that env var names a file. Exit 0 always — every
+ *         failure (gh, git, unparseable output) falls back to `event.before`, itself a valid base.
  */
 
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 
 /** The workflow whose runs establish the base. Set WORKFLOW_FILE if your CI file has another name. */
@@ -69,30 +73,47 @@ function lastGreenPushSha(repo, branch, now = new Date()) {
     );
     return "";
   }
+  // Unparseable output throws; main() catches it and falls back to event.before.
   return newestRunSha(JSON.parse(stdout || "[]"));
 }
 
+/** True only when `sha` is an ancestor of HEAD; any git failure is "not an ancestor" (logged). */
 function isAncestorOfHead(sha) {
   const { status, error } = spawnSync("git", ["merge-base", "--is-ancestor", sha, "HEAD"], {
     stdio: "ignore",
   });
-  if (error) throw error;
   // 0 = ancestor. 1 = not an ancestor. 128 = the SHA is not in this clone (a force-push dropped
   // it from the branch), which is also "not an ancestor". Anything else is a real git failure.
-  if (status === 0) return true;
-  if (status === 1 || status === 128) return false;
-  throw new Error(`git merge-base --is-ancestor ${sha} HEAD exited ${status}`);
+  if (!error && status === 0) return true;
+  if (!error && (status === 1 || status === 128)) return false;
+  const reason = error ? error.message : `git exited ${status}`;
+  console.error(
+    `[resolve-push-base] cannot test ancestry of ${sha} (${reason}) — using event.before`,
+  );
+  return false;
 }
 
 export function main(env) {
-  const lastGreenSha = lastGreenPushSha(env.REPO, env.BRANCH);
-  const { base, source } = choosePushBase({
-    lastGreenSha,
-    beforeSha: env.BEFORE_SHA,
-    isAncestor: isAncestorOfHead,
-  });
+  let result;
+  try {
+    result = choosePushBase({
+      lastGreenSha: lastGreenPushSha(env.REPO, env.BRANCH),
+      beforeSha: env.BEFORE_SHA,
+      isAncestor: isAncestorOfHead,
+    });
+  } catch (err) {
+    console.error(`[resolve-push-base] unexpected failure (${err.message}) — using event.before`);
+    result = { base: env.BEFORE_SHA ?? "", source: "event-before (resolver failed)" };
+  }
+  const { base, source } = result;
   console.error(`[resolve-push-base] base=${base || "(none)"} source=${source}`);
   process.stdout.write(`${base}\n`);
+  if (env.SOURCE_FILE) {
+    // Callback form: a failed write is logged and never changes the exit code.
+    fs.writeFile(env.SOURCE_FILE, `${source}\n`, (err) => {
+      if (err) console.error(`[resolve-push-base] could not write SOURCE_FILE (${err.message})`);
+    });
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main(process.env);

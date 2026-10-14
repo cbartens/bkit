@@ -57,12 +57,14 @@ const path = require("node:path");
 
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
 // A matching path gets the gate-config advisory instead of the first-touch checklist.
-// JS / TS first, then the other ecosystems' gate configs (Python, Go, Rust).
+// JS / TS first, then the other ecosystems' gate configs (Python, Go, Rust). Mixed-purpose
+// manifests that also hold dependencies and metadata (package.json, pyproject.toml,
+// setup.cfg, tox.ini) are not matched: routine edits to them are not gate edits.
 const GATE_CONFIG_PATTERNS = [
   /^tsconfig(\..+)?\.json$/,
   /^vitest\.config\.[mc]?[jt]s$/,
   /^vite\.config\.[mc]?[jt]s$/,
-  /^jest\.config\.[mc]?[jt]s$/,
+  /^jest\.config\.([mc]?[jt]s|json)$/,
   /^eslint\.config\.[mc]?[jt]s$/,
   /^\.eslintrc(\.(json|js|cjs|ya?ml))?$/,
   /^\.prettierrc(\.(json|js|cjs|mjs|ya?ml|toml))?$/,
@@ -73,14 +75,15 @@ const GATE_CONFIG_PATTERNS = [
   /^slop-scan\.config\.json$/,
   /^\.lintstagedrc(\.(json|js|cjs|mjs|ya?ml))?$/,
   /^lint-staged\.config\.[mc]?js$/,
-  /^pyproject\.toml$/,
   /^ruff\.toml$/,
   /^\.ruff\.toml$/,
   /^\.flake8$/,
-  /^mypy\.ini$/,
+  /^\.?mypy\.ini$/,
+  /^\.?pylintrc$/,
+  /^pytest\.ini$/,
   /^\.golangci\.(ya?ml|toml|json)$/,
-  /^clippy\.toml$/,
-  /^rustfmt\.toml$/,
+  /^\.?clippy\.toml$/,
+  /^\.?rustfmt\.toml$/,
 ];
 
 // A path under `.bkit/templates/` (bkit's reference copies, refreshed on every upgrade)

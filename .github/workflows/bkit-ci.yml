@@ -98,7 +98,9 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ]; then
             BASE="$PR_BASE_SHA"; SOURCE="pr-base"
           elif [ "$EVENT_NAME" = "push" ]; then
-            BASE=$(node scripts/ci/lanes/resolve-push-base.mjs); SOURCE="last-green-run"
+            SOURCE_FILE="$RUNNER_TEMP/push-base-source"
+            BASE=$(SOURCE_FILE="$SOURCE_FILE" node scripts/ci/lanes/resolve-push-base.mjs)
+            SOURCE=$(cat "$SOURCE_FILE" 2>/dev/null || echo "unknown")
           else
             BASE=$(git rev-parse HEAD~1 2>/dev/null || echo ""); SOURCE="dispatch-head~1"
           fi
@@ -528,19 +530,6 @@ jobs:
             echo "::warning::actionlint download attempt $i failed — retrying in 5s"; sleep 5
           done
           "$RUNNER_TEMP/actionlint" -color
-
-      # bkit >= 5.0.1 gitignores `.bkit/core` + `.bkit/shared` (browse-only symlinks into
-      # node_modules/@cbartens/bkit) yet `bkit check` counts a missing link as drift, so a
-      # fresh checkout that never runs `bkit install` can never pass the gate below.
-      # Recreate them exactly as install/upgrade does: relative targets, never clobber.
-      - name: Materialize bkit Payload View Links
-        if: steps.cache.outputs.skip != 'true'
-        run: |
-          for rel in core shared; do
-            if [ ! -L ".bkit/$rel" ] && [ ! -e ".bkit/$rel" ]; then
-              ln -s "../node_modules/@cbartens/bkit/.bkit/$rel" ".bkit/$rel"
-            fi
-          done
 
       - name: Run bkit Check
         if: steps.cache.outputs.skip != 'true'

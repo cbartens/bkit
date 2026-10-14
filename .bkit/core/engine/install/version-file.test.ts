@@ -265,6 +265,13 @@ describe("managedVersionMarker", () => {
     expect(m).toContain("https://polyformproject.org/licenses/");
   });
 
+  it("names MIT-0 and no PolyForm text for a shared-payload marker", () => {
+    const m = managedVersionMarker("4.0.0", "html", "mit0");
+    expect(m).toContain("MIT-0 (https://opensource.org/license/mit-0)");
+    expect(m).not.toContain("PolyForm");
+    expect(m.match(MANAGED_MARKER_VERSION_RE)?.[1]).toBe("4.0.0");
+  });
+
   it("round-trips through the extraction regex", () => {
     expect(managedVersionMarker("4.0.0").match(MANAGED_MARKER_VERSION_RE)?.[1]).toBe("4.0.0");
     expect(managedVersionMarker("12.34.56").match(MANAGED_MARKER_VERSION_RE)?.[1]).toBe("12.34.56");

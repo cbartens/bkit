@@ -56,7 +56,5 @@ export default {
     ANTHROPIC_API_KEY: { to: "github", from: "BKIT_ANTHROPIC_API_KEY" },
     // Write token (fine-grained one owner / classic across owners): self-hosted Renovate's platform auth (opens PRs, pushes renovate/* branches).
     BKIT_GH_TOKEN: "github",
-    // npm automation token (read + write on the @cbartens scope): release.yml publishes @cbartens/bkit to npmjs.
-    BKIT_NPM_TOKEN: "github",
   },
 };

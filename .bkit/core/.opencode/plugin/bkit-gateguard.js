@@ -30,8 +30,10 @@
 //
 //   BKIT_ALLOW_CONFIG_EDIT=1 → suppress the gate-config advisory (sanctioned edit).
 //
-// opencode tool names: the edit surface is `write`, `edit` and `patch`. The terminal
-// tool (`shell` in v2, `bash` before v2) is NOT guarded.
+// opencode tool names: the edit surface is `write`, `edit` and `patch` (`apply_patch`
+// on 1.x model-specific tool sets). `patch` carries a multi-file patch in `patchText`,
+// so one call can touch several files. The terminal tool (`shell` in v2, `bash` before
+// v2) is NOT guarded.
 //
 // The engine inside the managed block is generated at install from bkit's
 // `core/hooks/gateguard-engine.js`, the same source as the Claude, Cursor and Codex hooks.
@@ -52,19 +54,21 @@ import * as path from "node:path";
 
 // opencode edit-like tool names, lowercase in opencode's plugin API.
 // The terminal tool (`shell` in v2, `bash` before v2) is NOT in this list.
-const EDIT_TOOLS = new Set(["write", "edit", "patch"]);
+const EDIT_TOOLS = new Set(["write", "edit", "patch", "apply_patch"]);
 
 // {{BKIT_PART gateguard-engine.js}}
 
-// Pure: takes the tool name, the already-extracted file path, and the session id;
+// Pure: takes the tool name, the already-extracted file path, and the session id
+// (plus an optional new-file override for patch `*** Add File:` targets);
 // returns the advisory to emit or null. Never touches opencode's client, stderr,
 // or the throw path — the driver below owns all three, so it can fold in its own
 // checks without bkit's block needing to change.
-function bkitGateguard(toolName, filePath, sessionId) {
+function bkitGateguard(toolName, filePath, sessionId, isNewOverride) {
   if (!EDIT_TOOLS.has(toolName)) return null;
   // A write to a not-yet-existing path is a NEW file and gets the reuse checklist.
   const isNewFile =
-    toolName === "write" && typeof filePath === "string" && !fs.existsSync(filePath);
+    isNewOverride ??
+    (toolName === "write" && typeof filePath === "string" && !fs.existsSync(filePath));
   return firstTouchAdvice(filePath, sessionId, isNewFile);
 }
 
@@ -92,11 +96,37 @@ function bkitGateguard(toolName, filePath, sessionId) {
 // plugin, or hand-port this driver to the function shape.
 // ---------------------------------------------------------------------------
 
+const PATCH_TOOLS = new Set(["patch", "apply_patch"]);
+
 /** Edit-tool args → the target file path, across 1.x and 2.0 argument keys. */
 function gateGuardFilePath(input) {
   return input && typeof input === "object"
     ? (input.path ?? input.filePath ?? input.file_path)
     : undefined;
+}
+
+// `patch` takes one `patchText` argument: a multi-file envelope of
+//   *** Add File: <path> | *** Update File: <path> (optional *** Move to: <path>) | *** Delete File: <path>
+// Returns [{ file, isNew }] in patch order; [] for a missing, non-string or unparseable patch.
+function parsePatchTargets(patchText) {
+  if (typeof patchText !== "string") return [];
+  const out = [];
+  for (const line of patchText.split("\n")) {
+    const m = /^\*\*\* (Add File|Update File|Delete File|Move to):\s*(.+?)\s*$/.exec(line);
+    if (m) out.push({ file: m[2], isNew: m[1] === "Add File" });
+  }
+  return out;
+}
+
+/** Every file one edit-tool call touches: all patch targets, or the single path. */
+function gateGuardTargets(tool, input) {
+  if (PATCH_TOOLS.has(tool)) {
+    const patchText =
+      input && typeof input === "object" ? (input.patchText ?? input.patch_text) : undefined;
+    return parsePatchTargets(patchText);
+  }
+  const file = gateGuardFilePath(input);
+  return typeof file === "string" ? [{ file, isNew: undefined }] : [];
 }
 
 /** True only for this plugin's deny-mode throw, so fail-open swallows nothing else. */
@@ -130,24 +160,35 @@ function takeNewFile(callID) {
  * DENY MODE (execute.before — the only hook that can block). First touch of a file
  * per session throws the checklist as the reason; the dedup lets the retry through.
  * The before hook sees the file before a write creates it, so existence is accurate.
+ * A multi-file patch checks every target (each is marked warned) and throws once with
+ * all their checklists, so the retry is not blocked again file by file.
  */
-function denyFirstTouch(tool, filePath, sessionID) {
+function denyFirstTouch(tool, targets, sessionID) {
   if (process.env.BKIT_GATEGUARD !== "deny") return;
-  const result = bkitGateguard(tool, filePath, sessionID);
-  if (result && result.mode === "deny") throw new Error(result.context);
+  const contexts = [];
+  for (const { file, isNew } of targets) {
+    const result = bkitGateguard(tool, file, sessionID, isNew);
+    if (result && result.mode === "deny") contexts.push(result.context);
+  }
+  if (contexts.length > 0) throw new Error(contexts.join("\n\n"));
 }
 
 /**
  * ADVISORY MODE (execute.after). Returns the checklist to append to the tool result,
- * or null when off / deny / already warned / no advice for this path. `isNewFile` is
- * the pre-write snapshot (see NEW_FILE_BY_CALL), not the post-write filesystem.
+ * or null when off / deny / already warned / no advice for any target. `isNewFile` is
+ * the pre-write snapshot (see NEW_FILE_BY_CALL), not the post-write filesystem; a patch
+ * target carries its own new-file flag from its `*** Add File:` header.
  */
-function advisoryFor(tool, filePath, sessionID, isNewFile) {
+function advisoryFor(tool, targets, sessionID, isNewFile) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off" || mode === "deny") return null;
   if (!EDIT_TOOLS.has(tool)) return null;
-  const result = firstTouchAdvice(filePath, sessionID, isNewFile);
-  return result ? result.context : null;
+  const contexts = [];
+  for (const target of targets) {
+    const result = firstTouchAdvice(target.file, sessionID, target.isNew ?? isNewFile);
+    if (result) contexts.push(result.context);
+  }
+  return contexts.length > 0 ? contexts.join("\n\n") : null;
 }
 
 /** OpenCode 1.x before hook: `(input, output)`, tool args on `output.args`. */
@@ -155,9 +196,9 @@ async function bkitGateGuardBeforeV1(hookInput, output) {
   try {
     const { tool, sessionID, callID } = hookInput ?? {};
     if (!EDIT_TOOLS.has(tool)) return;
-    const filePath = gateGuardFilePath(output?.args);
-    snapshotNewFile(callID, tool, filePath);
-    denyFirstTouch(tool, filePath, sessionID);
+    const targets = gateGuardTargets(tool, output?.args);
+    snapshotNewFile(callID, tool, targets[0]?.file);
+    denyFirstTouch(tool, targets, sessionID);
   } catch (err) {
     if (isDenyThrow(err)) throw err;
   }
@@ -170,7 +211,12 @@ async function bkitGateGuardAfterV1(hookInput, output) {
     const isNewFile = takeNewFile(callID);
     if (!EDIT_TOOLS.has(tool)) return;
     if (!output || typeof output !== "object") return;
-    const context = advisoryFor(tool, gateGuardFilePath(args ?? output.args), sessionID, isNewFile);
+    const context = advisoryFor(
+      tool,
+      gateGuardTargets(tool, args ?? output.args),
+      sessionID,
+      isNewFile,
+    );
     if (!context) return;
     const existing = typeof output.output === "string" ? output.output : "";
     output.output = existing.length > 0 ? `${existing}\n\n${context}` : context;
@@ -184,9 +230,9 @@ async function bkitGateGuardBeforeV2(event) {
   try {
     const tool = event?.tool;
     if (!EDIT_TOOLS.has(tool)) return;
-    const filePath = gateGuardFilePath(event?.input);
-    snapshotNewFile(event?.id, tool, filePath);
-    denyFirstTouch(tool, filePath, event?.sessionID);
+    const targets = gateGuardTargets(tool, event?.input);
+    snapshotNewFile(event?.id, tool, targets[0]?.file);
+    denyFirstTouch(tool, targets, event?.sessionID);
   } catch (err) {
     if (isDenyThrow(err)) throw err;
   }
@@ -199,7 +245,12 @@ async function bkitGateGuardAfterV2(event) {
     const isNewFile = takeNewFile(event?.id);
     if (!EDIT_TOOLS.has(tool)) return;
     if (event?.status !== "completed" || !event.result) return;
-    const context = advisoryFor(tool, gateGuardFilePath(event?.input), event?.sessionID, isNewFile);
+    const context = advisoryFor(
+      tool,
+      gateGuardTargets(tool, event?.input),
+      event?.sessionID,
+      isNewFile,
+    );
     if (!context) return;
     const content = Array.isArray(event.result.content) ? event.result.content : [];
     event.result.content = [...content, { type: "text", text: context }];

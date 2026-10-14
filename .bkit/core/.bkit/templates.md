@@ -47,7 +47,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 | `{{DEFAULT_BRANCH}}` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments) | your default branch | `origin/HEAD`, else `main` |
 | `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
-| `{{SCRIPT_PATH}}` | `ai.bkit.launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/path/to/repo/scripts/launchd/bkit-launchd-env.sh` |
+| `{{SCRIPT_PATH}}` | `ai.bkit.launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/Users/<you>/.config/bkit/bkit-launchd-env.sh` |
 | `{{ENV_FILE}}` | `ai.bkit.launchd.plist` (`ProgramArguments`, `WatchPaths`) | absolute path to your env file | `/Users/<you>/.config/bkit/launchd.env` |
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
@@ -260,12 +260,15 @@ launchctl bootstrap gui/$UID ~/Library/LaunchAgents/ai.bkit.launchd.plist
 launchctl getenv BKIT_OPENROUTER_API_KEY    # bootstrap proof
 ```
 
-- `WatchPaths` re-runs the loader on every env-file write → rotate a token by editing the file, no re-bootstrap.
+- `WatchPaths` re-runs the loader on every env-file write → rotate a token by editing the value, revoke it by deleting the line or emptying the value (`KEY=""`); no re-bootstrap.
+- Loader loads `BKIT_*` keys only (others logged as skipped). An empty value runs `launchctl unsetenv`. Loaded key names are recorded in `.launchd-loaded-keys` next to the env file (mode 600; `BKIT_LAUNCHD_STATE` overrides the path); a recorded key missing from the env file is unset on the next run.
+- One failing key is logged and skipped; the rest still load and the loader exits 1. A failed unset stays recorded and retries on the next run.
 - Log `~/Library/Logs/bkit-launchd.log` records key names only, never values. `BKIT_LAUNCHD_LOG` and `BKIT_LAUNCHD_ENV` override the log and env-file defaults.
 - Loader self-skips (log line + `exit 0`) when the env file is absent or `launchctl` is off `PATH` (Linux CI).
 - launchd cannot exec a loader under `~/Documents`, `~/Desktop` or `~/Downloads`: macOS TCC denies it and `/tmp/bkit-launchd.log` reads `Operation not permitted`. Repo under one of those → keep the adopted copy in git but place the loader launchd runs at `~/.config/bkit/bkit-launchd-env.sh` (or another unprotected path) and point `{{SCRIPT_PATH}}` there.
 - Env-file rules: blank lines and `#` comments ignored; optional `export ` prefix; key must match `[A-Za-z0-9_]`; matching surrounding quotes stripped from the value.
-- `launchctl setenv` reaches apps launched after the load; a running app keeps its environment until relaunch.
+- `launchctl setenv` reaches apps launched after the load; a running app keeps its environment until relaunch (set and unset alike).
+- **Exposure:** `launchctl setenv` makes every loaded token visible to every app started in the login session, not only the app that needs it. Load only tokens you accept that for; prefer `bkit cursor` / `bkit opencode` (per-process env) where possible.
 - Remove: `launchctl bootout gui/$UID ~/Library/LaunchAgents/ai.bkit.launchd.plist`.
 
 ## Cursor — `settings.json`, `environment.json`, `Dockerfile`

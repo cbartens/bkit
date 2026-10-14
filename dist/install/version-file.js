@@ -115,14 +115,23 @@ export function isConsumerModified(relPath, absolutePath, canonicalHashes) {
  * cases; the latter survive the absent-path prune because the adopted copy stays on
  * disk).
  *
+ * `removing` lists paths (or directories) a dry run would delete: they count as absent, so a
+ * dry run prunes the same entries the real run does.
+ *
  * `pruned` counts the dropped entries so callers can treat a prune-only merge as a
  * change that is still worth writing.
  */
-export function mergeCanonicalHashes(cwd, existing, fresh) {
+export function mergeCanonicalHashes(cwd, existing, fresh, removing = []) {
     const canonicalHashes = {};
+    const isRemoving = (relPath) => removing.some((r) => {
+        const dir = r.replace(/[\\/]+$/, "");
+        return relPath === dir || relPath.startsWith(`${dir}/`);
+    });
     let pruned = 0;
     for (const [relPath, hash] of Object.entries(existing)) {
-        if (!fs.existsSync(path.join(cwd, relPath)) || isTemplateSetPath(relPath)) {
+        if (!fs.existsSync(path.join(cwd, relPath)) ||
+            isRemoving(relPath) ||
+            isTemplateSetPath(relPath)) {
             pruned++;
             continue;
         }
@@ -159,9 +168,13 @@ export function hashFile(filePath) {
 export const MANAGED_MARKER_LINE_RE = /^(?:<!-- |# <!-- |\/\/ )bkit:managed v[^\n]*\n?/m;
 // Extracts the stamped version. `\S+` stops at the space before the em-dash.
 export const MANAGED_MARKER_VERSION_RE = /bkit:managed v(\S+)/;
+const MARKER_LICENCE_TEXT = {
+    polyform: "PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/)",
+    mit0: "MIT-0 (https://opensource.org/license/mit-0)",
+};
 /** Build the managed-version marker for a given version, in the given comment syntax. */
-export function managedVersionMarker(version, form = "html") {
-    const text = `bkit:managed v${version} — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run \`bkit upgrade\` to refresh`;
+export function managedVersionMarker(version, form = "html", licence = "polyform") {
+    const text = `bkit:managed v${version} — ${MARKER_LICENCE_TEXT[licence]} — do not edit; run \`bkit upgrade\` to refresh`;
     if (form === "slash")
         return `// ${text}`;
     return form === "hash" ? `# <!-- ${text} -->` : `<!-- ${text} -->`;

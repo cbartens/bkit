@@ -182,6 +182,19 @@ export function detectOpencodeProviders(cwd) {
     }
     return [];
 }
+/**
+ * Re-run Phase 1 detection after the writes. The Phase 1 advisory seeds (the first
+ * `seedCount` entries of `current`) are replaced by the fresh ones; advisories pushed by
+ * modules during dispatch are kept. Fresh blockers are returned so the caller fails on them.
+ */
+export function refreshPreflightAfterWrites(modules, cwd, issueTracker, seedCount, current) {
+    const moduleAdvisories = current.slice(seedCount);
+    const fresh = runPreflight(modules, cwd, undefined, issueTracker);
+    return {
+        advisories: [...fresh.advisories, ...moduleAdvisories],
+        blockers: fresh.blockers,
+    };
+}
 /** `bkit install`, and `bkit check` (the same pipeline, dry-run). */
 export async function runInstall(args) {
     const { verb, modules, tracker, cloudVariant, opencodeProvider, uninstallFlags } = args;
@@ -297,9 +310,7 @@ export async function runInstall(args) {
         effortMap = parseEffortMap(promptsMdPath);
     }
     // Seed preflight advisories into ctx so modules can accumulate into the same list.
-    const advisories = [
-        ...preflightAdvisories,
-    ];
+    const advisories = [...preflightAdvisories];
     const ws = { writes: [] };
     const postDispatch = [];
     // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4) — see
@@ -422,10 +433,11 @@ export async function runInstall(args) {
     // banner above. `check` (dryRun) wrote nothing, so its Phase 1 findings already describe
     // the current state and are kept as-is. Module-accumulated advisories (pushed during
     // dispatch) are preserved; only the Phase 1 seeds are replaced, in their original order.
+    let postWriteBlockers = [];
     if (!dryRun) {
-        const moduleAdvisories = advisories.slice(preflightAdvisories.length);
-        const { advisories: freshPreflightAdvisories } = runPreflight(effectiveModules, process.cwd(), undefined, issueTracker);
-        ctx.advisories = [...freshPreflightAdvisories, ...moduleAdvisories];
+        const refreshed = refreshPreflightAfterWrites(effectiveModules, process.cwd(), issueTracker, preflightAdvisories.length, advisories);
+        ctx.advisories = refreshed.advisories;
+        postWriteBlockers = refreshed.blockers;
     }
     // --- Phase 3: Post-install checks (re-detect + unified output) ---
     // Runs for both install AND check — detectors are read-only, so check produces
@@ -445,6 +457,10 @@ export async function runInstall(args) {
     }
     const suppressed = [];
     const postFindings = runPostInstallCheck(ctx.advisories, process.cwd(), suppressed);
+    if (postWriteBlockers.length > 0) {
+        console.log(`${LOG_PREFIX} Preflight blockers appeared after the writes — files are already written; fix the blocker and re-run.`);
+        postFindings.unshift(...postWriteBlockers);
+    }
     // check only: install has just written every hook file of the modules it dispatched, and a
     // missing bkit-cloud-bootstrap.sh after `install --claude` is not that run's fault.
     const missingHooks = dryRun ? findMissingOwnedHooks(process.cwd(), effectiveModules) : [];

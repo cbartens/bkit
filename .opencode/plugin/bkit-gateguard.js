@@ -52,19 +52,21 @@ import * as path from "node:path";
 
 // opencode edit-like tool names, lowercase in opencode's plugin API.
 // The terminal tool (`shell` in v2, `bash` before v2) is NOT in this list.
-const EDIT_TOOLS = new Set(["write", "edit", "patch"]);
+const EDIT_TOOLS = new Set(["write", "edit", "patch", "apply_patch"]);
 
 // --- GateGuard engine: identical in every host's hook (bkit renders it from one source).
 // Needs `fs`, `os` and `path` in scope; the host's own code above declares them.
 
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
 // A matching path gets the gate-config advisory instead of the first-touch checklist.
-// JS / TS first, then the other ecosystems' gate configs (Python, Go, Rust).
+// JS / TS first, then the other ecosystems' gate configs (Python, Go, Rust). Mixed-purpose
+// manifests that also hold dependencies and metadata (package.json, pyproject.toml,
+// setup.cfg, tox.ini) are not matched: routine edits to them are not gate edits.
 const GATE_CONFIG_PATTERNS = [
   /^tsconfig(\..+)?\.json$/,
   /^vitest\.config\.[mc]?[jt]s$/,
   /^vite\.config\.[mc]?[jt]s$/,
-  /^jest\.config\.[mc]?[jt]s$/,
+  /^jest\.config\.([mc]?[jt]s|json)$/,
   /^eslint\.config\.[mc]?[jt]s$/,
   /^\.eslintrc(\.(json|js|cjs|ya?ml))?$/,
   /^\.prettierrc(\.(json|js|cjs|mjs|ya?ml|toml))?$/,
@@ -75,14 +77,15 @@ const GATE_CONFIG_PATTERNS = [
   /^slop-scan\.config\.json$/,
   /^\.lintstagedrc(\.(json|js|cjs|mjs|ya?ml))?$/,
   /^lint-staged\.config\.[mc]?js$/,
-  /^pyproject\.toml$/,
   /^ruff\.toml$/,
   /^\.ruff\.toml$/,
   /^\.flake8$/,
-  /^mypy\.ini$/,
+  /^\.?mypy\.ini$/,
+  /^\.?pylintrc$/,
+  /^pytest\.ini$/,
   /^\.golangci\.(ya?ml|toml|json)$/,
-  /^clippy\.toml$/,
-  /^rustfmt\.toml$/,
+  /^\.?clippy\.toml$/,
+  /^\.?rustfmt\.toml$/,
 ];
 
 // A path under `.bkit/templates/` (bkit's reference copies, refreshed on every upgrade)
@@ -248,15 +251,17 @@ function firstTouchAdvice(filePath, sessionId, isNewFile) {
   return { mode: mode === "deny" ? "deny" : "advisory", context };
 }
 
-// Pure: takes the tool name, the already-extracted file path, and the session id;
+// Pure: takes the tool name, the already-extracted file path, and the session id
+// (plus an optional new-file override for patch `*** Add File:` targets);
 // returns the advisory to emit or null. Never touches opencode's client, stderr,
 // or the throw path — the driver below owns all three, so it can fold in its own
 // checks without bkit's block needing to change.
-function bkitGateguard(toolName, filePath, sessionId) {
+function bkitGateguard(toolName, filePath, sessionId, isNewOverride) {
   if (!EDIT_TOOLS.has(toolName)) return null;
   // A write to a not-yet-existing path is a NEW file and gets the reuse checklist.
   const isNewFile =
-    toolName === "write" && typeof filePath === "string" && !fs.existsSync(filePath);
+    isNewOverride ??
+    (toolName === "write" && typeof filePath === "string" && !fs.existsSync(filePath));
   return firstTouchAdvice(filePath, sessionId, isNewFile);
 }
 

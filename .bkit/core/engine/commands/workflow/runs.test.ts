@@ -11,6 +11,7 @@ import {
   ciDispatchGate,
   mirrorPushRun,
   pollOnce,
+  repoScopedGh,
   runsCommand,
   scanBody,
   waitLoop,
@@ -1511,6 +1512,36 @@ describe("bkit runs gate — PR heads, snapshot and audit rows", () => {
     ]);
   });
 
+  it("--snapshot scopes its run list and dev lookups to --repo", async () => {
+    const fake = fakeGhBin({
+      "pr-view": JSON.stringify(openPr()),
+      "run-list": "[]",
+      "repo-view": "example/example",
+    });
+    const snap = path.join(tmp(), "snapshot.jsonl");
+    await cli(tmp(), ["gate", "--repo=other/repo", "--pr=7", `--snapshot=${snap}`]);
+    const calls = fake.calls().split("\n");
+    const runList = calls.find((c) => c.startsWith("run list"));
+    expect(runList).toMatch(/--repo other\/repo$/);
+    expect(calls).toContain("api repos/other/repo/commits/dev --jq .sha");
+    expect(calls.some((c) => c.startsWith("api repos/other/repo/compare/dev..."))).toBe(true);
+  });
+
+  it("--snapshot without --repo leaves its run list unscoped", async () => {
+    const fake = fakeGhBin({
+      "pr-view": JSON.stringify(openPr()),
+      "run-list": "[]",
+    });
+    const snap = path.join(tmp(), "snapshot.jsonl");
+    await cli(tmp(), ["gate", "--pr=7", `--snapshot=${snap}`]);
+    const runList = fake
+      .calls()
+      .split("\n")
+      .find((c) => c.startsWith("run list"));
+    expect(runList).toBeDefined();
+    expect(runList).not.toContain("--repo");
+  });
+
   it("--squash-of gates the PR's squash commit; --capstone-only --record writes ship-merge-ci", async () => {
     prThenFixtureGh(openPr({ state: "MERGED", mergeCommit: { oid: "green-capstone" } }));
     const file = statusFile();
@@ -1576,6 +1607,83 @@ describe("bkit runs revalidate", () => {
       "--repo=example/example",
       ...extra,
     ]);
+
+  describe("--repo scopes every gh call", () => {
+    const headReply = JSON.stringify([
+      { status: "completed", conclusion: "success", headSha: "moved-head" },
+    ]);
+
+    it("pr view, run list and the dev-protection lookups name the foreign repo", async () => {
+      const { cwd, code, file } = shipRepo();
+      const fake = fakeGhBin({
+        "pr-view": JSON.stringify(openPr({ headRefOid: "moved-head" })),
+        "run-list": headReply,
+        "repo-view": "example/example",
+      });
+      const r = await cli(cwd, [
+        "revalidate",
+        "--pr=7",
+        "--branch=feat/7-x",
+        "--month=202610",
+        "--fid=7-x",
+        "--repo=other/repo",
+        `--entry-head=${code}`,
+        `--code-head=${code}`,
+        `--file=${file}`,
+      ]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ validatedHead: "moved-head", revalidated: true });
+      const calls = fake.calls().split("\n").filter(Boolean);
+      for (const sub of ["pr view", "run list"]) {
+        const call = calls.find((c) => c.startsWith(sub));
+        expect(call, sub).toMatch(/--repo other\/repo$/);
+      }
+      expect(calls).toContain("api repos/other/repo/rules/branches/dev");
+      expect(r.err).toContain("bookkeeping diff skipped");
+    });
+
+    it("without --repo no call gains a --repo flag", async () => {
+      const { cwd, code, file } = shipRepo();
+      const fake = fakeGhBin({
+        "pr-view": JSON.stringify(openPr({ headRefOid: "moved-head" })),
+        "run-list": headReply,
+        "repo-view": "example/example",
+      });
+      await cli(cwd, [
+        "revalidate",
+        "--pr=7",
+        "--branch=feat/7-x",
+        "--month=202610",
+        "--fid=7-x",
+        `--entry-head=${code}`,
+        `--code-head=${code}`,
+        `--file=${file}`,
+      ]);
+      const calls = fake
+        .calls()
+        .split("\n")
+        .filter((c) => /^(pr view|run list)/.test(c));
+      expect(calls.length).toBeGreaterThan(0);
+      for (const c of calls) expect(c).not.toContain("--repo");
+    });
+
+    it("repoScopedGh appends --repo to workflow run, leaves gh api alone, and is a no-op without a repo", () => {
+      const seen: string[][] = [];
+      const gh: Gh = (args) => {
+        seen.push(args);
+        return { ok: true, stdout: "", stderr: "", status: 0, missing: false } as GhResult;
+      };
+      const scoped = repoScopedGh(gh, "other/repo");
+      scoped(["workflow", "run", "ci.yml", "--ref", "feat/7-x"]);
+      scoped(["api", "repos/other/repo/rules/branches/dev"]);
+      repoScopedGh(gh, undefined)(["workflow", "run", "ci.yml"]);
+      expect(seen).toEqual([
+        ["workflow", "run", "ci.yml", "--ref", "feat/7-x", "--repo", "other/repo"],
+        ["api", "repos/other/repo/rules/branches/dev"],
+        ["workflow", "run", "ci.yml"],
+      ]);
+    });
+  });
 
   it("an unmoved head needs no CI wait: validated at the code head, nothing dispatched", async () => {
     const { cwd, code, file } = shipRepo();

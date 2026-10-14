@@ -1,0 +1,25 @@
+# Migrations
+
+> [!CAUTION]
+> **Purpose:** Register of every upgrade migration in the engine — code that rewrites a consumer file left by an older bkit release so `bkit upgrade` alone brings it current.
+>
+> **Rules:**
+>
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - One row per migration. Add the row in the same change that adds the code; delete the row in the same change that deletes the code.
+> - A migration is idempotent, runs inside the normal install / upgrade write path (dry-run computes the same writeset), and has a test seeding the old shape.
+> - Name the release range it covers, so a later sweep can retire it once no supported install predates it.
+> - Detect-only checks that tell the human to fix something by hand are not migrations — they live under § Detect-only guards.
+> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
+
+## Migrations
+
+None.
+
+## Detect-only guards
+
+<!-- prettier-ignore -->
+| Guard | Where | What it detects | Human fix |
+| --- | --- | --- | --- |
+| Unmarked older copy (install) | `.bkit/core/engine/install/write.ts` (`findUnmarkedCopy`) | A managed `.md` with no `bkit:start` / `bkit:end` markers that already holds an older bkit copy — install skips it instead of appending a duplicate. | Delete the file, re-run install, re-add own lines below `<!-- bkit:end -->`. |
+| `bkit-managed-duplicate` advisory | `.bkit/core/engine/checks/after/managed.ts` | An older bkit copy outside a managed file's `bkit:start` / `bkit:end` block. | Delete the stale copy; move own lines below `<!-- bkit:end -->`. |

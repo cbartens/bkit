@@ -49,13 +49,14 @@ const EDIT_TOOLS = new Set(["apply_patch", "Edit", "Write"]);
 // Codex does NOT send a file path: `apply_patch` puts a V4A patch envelope in
 // `tool_input.command`. Pull the touched paths out of it. Grammar (codex-rs/apply-patch):
 //   *** Add File: <path>  |  *** Update File: <path>  |  *** Delete File: <path>
+//   (an Update may be followed by *** Move to: <path>, a target too)
 // Paths are always repo-relative, so they are resolved against the payload cwd.
 // Returns [{ file, isNew }] in patch order; [] when nothing parses.
 function parseApplyPatchTargets(command, cwd) {
   if (typeof command !== "string") return [];
   const out = [];
   for (const line of command.split("\n")) {
-    const m = /^\*\*\* (Add|Update|Delete) File: (.+?)\s*$/.exec(line);
+    const m = /^\*\*\* (?:(Add|Update|Delete) File|Move to): (.+?)\s*$/.exec(line);
     if (!m) continue;
     const rel = m[2];
     out.push({ file: cwd ? path.resolve(cwd, rel) : rel, isNew: m[1] === "Add" });

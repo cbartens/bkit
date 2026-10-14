@@ -61,6 +61,36 @@ describe("check-accepted-divergences", () => {
     expect(collectSites(dir)).toHaveLength(2);
   });
 
+  it("collects the workflow-level concurrency block and steps whose first key is not name/uses", () => {
+    const dir = workflowDir(
+      [
+        "name: CI",
+        "concurrency:",
+        "  group: ci-${{ github.event_name }}",
+        "  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}",
+        "jobs:",
+        "  j:",
+        "    steps:",
+        "      - id: first",
+        "        name: Named After Id",
+        "        if: github.ref_name == 'dev'",
+        "      - run: echo ${{ github.base_ref }}",
+        "      - if: github.head_ref",
+        "        uses: actions/checkout@v4",
+        "        with:",
+        "          name: not-a-step-name",
+        "",
+      ].join("\n"),
+    );
+    const keys = collectSites(dir).map((s) => `${s.job}#${s.step}#${s.field}`);
+    expect(keys).toContain("(workflow)#concurrency#github.event_name");
+    expect(keys).toContain("(workflow)#concurrency#github.ref");
+    expect(keys).toContain("j#Named After Id#github.ref_name");
+    expect(keys).toContain("j#step-2#github.base_ref");
+    expect(keys).toContain("j#actions/checkout@v4#github.head_ref");
+    expect(keys).toHaveLength(5);
+  });
+
   it("reports an unregistered site as missing", () => {
     const sites = [{ file: "f", job: "j", step: "s", field: "github.ref", line: 1 }];
     const r = checkRegistry(sites, { decisions: ["one-run-per-branch"], sites: [] });

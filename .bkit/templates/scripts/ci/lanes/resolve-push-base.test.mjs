@@ -8,7 +8,39 @@
  * Exit: 0 = all tests passed, 1 = at least one test failed.
  */
 
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { choosePushBase, newestRunSha } from "./resolve-push-base.mjs";
+
+const SCRIPT = fileURLToPath(new URL("./resolve-push-base.mjs", import.meta.url));
+
+/** Run the script with fake `gh` / `git` binaries first on PATH. */
+function runWithFakes({ gh, git }) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "push-base-"));
+  try {
+    fs.writeFileSync(path.join(dir, "gh"), `#!/bin/sh\n${gh}\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(dir, "git"), `#!/bin/sh\n${git}\n`, { mode: 0o755 });
+    const sourceFile = path.join(dir, "source");
+    const r = spawnSync(process.execPath, [SCRIPT], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${dir}${path.delimiter}${process.env.PATH}`,
+        REPO: "o/r",
+        BRANCH: "dev",
+        BEFORE_SHA: "b".repeat(40),
+        SOURCE_FILE: sourceFile,
+      },
+    });
+    const source = fs.existsSync(sourceFile) ? fs.readFileSync(sourceFile, "utf8").trim() : "";
+    return { status: r.status, stdout: r.stdout.trim(), source };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 let passed = 0;
 let failed = 0;
@@ -80,6 +112,28 @@ test("no usable run → empty sha (the caller falls back to event.before)", () =
   assert(newestRunSha([]) === "", "empty list");
   assert(newestRunSha(undefined) === "", "no list");
   assert(newestRunSha([{ run_number: "x", head_sha: "a" }, { head_sha: 3 }]) === "", "malformed");
+});
+
+const RUNS = `echo '[{"run_number":1,"head_sha":"${"a".repeat(40)}"}]'`;
+
+test("a git failure while testing ancestry exits 0 with event.before", () => {
+  const r = runWithFakes({ gh: RUNS, git: "exit 3" });
+  assert(r.status === 0, `exit ${r.status}`);
+  assert(r.stdout === "b".repeat(40), r.stdout);
+  assert(r.source.startsWith("event-before"), r.source);
+});
+
+test("unparseable gh output exits 0 with event.before", () => {
+  const r = runWithFakes({ gh: "echo 'not json'", git: "exit 0" });
+  assert(r.status === 0, `exit ${r.status}`);
+  assert(r.stdout === "b".repeat(40), r.stdout);
+  assert(r.source.startsWith("event-before"), r.source);
+});
+
+test("a green ancestor run reports last-green-run as the source", () => {
+  const r = runWithFakes({ gh: RUNS, git: "exit 0" });
+  assert(r.status === 0 && r.stdout === "a".repeat(40), JSON.stringify(r));
+  assert(r.source === "last-green-run", r.source);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -506,9 +506,10 @@ describe("launchd GUI-env templates (.bkit/templates/scripts/launchd/)", () => {
   describe("bkit-launchd-env.sh", () => {
     const content = fs.readFileSync(SCRIPT, "utf-8");
 
-    it("is POSIX shell with strict error checking", () => {
+    it("is POSIX shell that fails on unset variables but not on one failing key", () => {
       expect(content.startsWith("#!/usr/bin/env sh\n")).toBe(true);
-      expect(content).toContain("set -eu");
+      expect(content).toMatch(/^set -u$/m);
+      expect(content).not.toMatch(/^set -e/m);
     });
 
     it("reads the env file from the positional arg or BKIT_LAUNCHD_ENV", () => {
@@ -526,9 +527,9 @@ describe("launchd GUI-env templates (.bkit/templates/scripts/launchd/)", () => {
 
     it("hands the value to launchctl, but logs key names only", () => {
       expect(content).toContain('launchctl setenv "$key" "$val"');
-      const logLine = content.split("\n").find((l) => l.includes("[bkit-launchd] setenv"));
-      expect(logLine).toBeDefined();
-      expect(logLine).not.toContain("$val");
+      const logLines = content.split("\n").filter((l) => /^\s*log "/.test(l));
+      expect(logLines.some((l) => l.includes("setenv $key"))).toBe(true);
+      for (const l of logLines) expect(l).not.toContain("$val");
     });
   });
 

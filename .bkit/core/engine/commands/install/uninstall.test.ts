@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildDecisionTable,
   formatDecisionTable,
@@ -647,6 +647,39 @@ describe("runUninstall — .bkit/version install-state (4.6.3)", () => {
     await runUninstall(["claude"], makeCtx());
 
     expect(readFile(".bkit/version")).toBe(before);
+  });
+
+  it("a targeted dry-run prints the same version-pin update line as the real run", async () => {
+    const owned = ".claude/agents/bkit-foo.md";
+    const seed = (): void => {
+      writeFile(owned, "bkit agent\n");
+      writeBkitVersionFile({
+        pinnedVersion: "5.0.1",
+        canonicalHashes: { [owned]: sha256("bkit agent\n") },
+        claudeAllowDerived: [],
+      });
+    };
+    const pinLine = async (dryRun: boolean): Promise<string | undefined> => {
+      const logs: string[] = [];
+      const spy = vi.spyOn(console, "log").mockImplementation((m: unknown) => {
+        logs.push(String(m));
+      });
+      try {
+        await runUninstall(["claude"], makeCtx({ dryRun }));
+      } finally {
+        spy.mockRestore();
+      }
+      return logs.find((l) => l.includes("update version pin"));
+    };
+
+    seed();
+    const dry = await pinLine(true);
+    const real = await pinLine(false);
+
+    expect(dry).toContain("[dry-run]");
+    expect(dry).toContain("(pruned 1)");
+    expect(real).toContain("(pruned 1)");
+    expect(dry?.replace(" [dry-run]", "")).toBe(real);
   });
 
   it("does not rewrite .bkit/version on a targeted dry-run (no writes)", async () => {

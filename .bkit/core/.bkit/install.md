@@ -109,7 +109,7 @@ bkit check
 
 Install and upgrade create two **relative symlinks** into the installed package, so the payload sources (workflows, prompts, hooks) are browsable in-repo: `.bkit/core` → `../node_modules/@cbartens/bkit/.bkit/core`, same shape for `shared`. Views, not copies — always the installed version, zero drift. Rules:
 
-- Both paths sit in the `.gitignore` managed block — they dangle on a fresh clone or in CI (no `node_modules`); `bkit install` / `upgrade` recreates them.
+- Both paths sit in the `.gitignore` managed block — they dangle on a fresh clone or in CI (no `node_modules`); `bkit install` / `upgrade` recreates them. A missing or mis-pointed link is never `bkit check` drift (links join no WriteSet).
 - The `bkit` binary reads its payload from the package regardless; the links are browse-only. Editors resolve them to the `node_modules/…` paths.
 - A real directory at either path is never clobbered (advisory `payload-link-real-dir`) — remove it yourself and re-run install to get the link. A platform that refuses symlinks (Windows without Developer Mode) falls back to a junction, then to advisory `payload-link-failed` — never a failure.
 - `bkit uninstall` removes the links (symlinks only — consumer content stays).

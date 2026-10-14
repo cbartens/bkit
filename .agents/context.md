@@ -88,10 +88,9 @@ MCP servers whose **every tool** (reads and writes) agents run without a prompt,
 
 <!-- bkit dogfood: GitHub Actions, no deploy, no e2e lane. `runtime` and
      `e2e` absent => `NOT CONFIGURED`. `web` enabled (tavily). Domains =
-     the platforms bkit integrates with (agent hosts, model gateways,
-     trackers, MCP, skills) — listed for inventory even where the egress
-     registry already derives them — plus docs / tooling hosts bkit
-     authoring reaches beyond the shipped registry. -->
+     only hosts bkit authoring reaches beyond the shipped egress registry
+     (docs, tooling, model-pick sources); registry-derived hosts are not
+     re-declared. -->
 
 <!-- context-fetch:none e2e -->
 
@@ -208,26 +207,12 @@ lmarena.ai
 designarena.ai
 datacurve.ai
 
-<!-- Agent hosts (bkit install targets) -->
+<!-- Agent hosts -->
 
-claude.com
-anthropic.com
-openai.com
 chatgpt.com
-cursor.com
-opencode.ai
-
-<!-- Model gateways + catalogs -->
-
-models.dev
-openrouter.ai
-ollama.com
 
 <!-- Trackers, their MCP + skills -->
 
-githubcopilot.com
-linear.app
-skills.sh
 agents.md
 agentskills.io
 

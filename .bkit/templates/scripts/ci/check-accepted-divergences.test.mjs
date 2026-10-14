@@ -75,6 +75,40 @@ test("collects every event-keyed site with its job and step", () => {
   });
 });
 
+test("collects the workflow-level concurrency block and steps whose first key is not name/uses", () => {
+  const yml = [
+    "name: CI",
+    "concurrency:",
+    "  group: ci-${{ github.event_name }}",
+    "  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}",
+    "jobs:",
+    "  j:",
+    "    steps:",
+    "      - id: first",
+    "        name: Named After Id",
+    "        if: github.ref_name == 'dev'",
+    "      - run: echo ${{ github.base_ref }}",
+    "      - if: github.head_ref",
+    "        uses: actions/checkout@v4",
+    "        with:",
+    "          name: not-a-step-name",
+    "",
+  ].join("\n");
+  withWorkflows(yml, (dir) => {
+    const keys = collectSites(dir).map((s) => `${s.job}#${s.step}#${s.field}`);
+    for (const want of [
+      "(workflow)#concurrency#github.event_name",
+      "(workflow)#concurrency#github.ref",
+      "j#Named After Id#github.ref_name",
+      "j#step-2#github.base_ref",
+      "j#actions/checkout@v4#github.head_ref",
+    ]) {
+      assert(keys.includes(want), `missing ${want} in ${keys.join(", ")}`);
+    }
+    assert(keys.length === 5, `expected 5 sites, got ${keys.length}`);
+  });
+});
+
 test("an unregistered site is reported missing", () => {
   const sites = [
     { file: ".github/workflows/bkit-ci.yml", job: "j", step: "s", field: "github.event_name" },
