@@ -800,6 +800,54 @@ describe("parseArgs — analysis verb (WS4-T5)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseArgs — tips verb
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — tips verb", () => {
+  it("parses bare tips as the top-three view", () => {
+    const result = parseArgs(["tips"]);
+    expect(result.verb).toBe("tips");
+    expect(result.tipsAll).toBe(false);
+    expect(result.moduleFlags.size).toBe(0);
+  });
+
+  it("--all lifts the cap", () => {
+    expect(parseArgs(["tips", "--all"]).tipsAll).toBe(true);
+  });
+
+  it("--workflow names the workflow; bare tips names none", () => {
+    expect(parseArgs(["tips"]).tipsWorkflow).toBeNull();
+    expect(parseArgs(["tips", "--workflow=debug"]).tipsWorkflow).toBe("debug");
+  });
+
+  it("--workflow refuses an unknown workflow", () => {
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("exit");
+    }) as never);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["tips", "--workflow=auto"])).toThrow("exit");
+    } finally {
+      exit.mockRestore();
+      err.mockRestore();
+    }
+  });
+
+  it("--all is refused on other verbs", () => {
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("exit");
+    }) as never);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["doctor", "--all"])).toThrow("exit");
+    } finally {
+      exit.mockRestore();
+      err.mockRestore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // printUsage — harvest + analysis verbs in help text (WS4-T5)
 // ---------------------------------------------------------------------------
 

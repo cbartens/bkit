@@ -10,6 +10,7 @@ import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
 import { detectInstalledModules, reportCheckDrift } from "./check.js";
 import { runPreflight } from "../../checks/before/index.js";
 import { formatChecklist, readChangelogVersionDelta, runPostInstallCheck, writeAdvisoriesArtifact, } from "../../checks/after/index.js";
+import { collectTips } from "../../checks/tips/index.js";
 import { findMissingOwnedHooks, detectOwnedHookMissing } from "../../checks/after/managed.js";
 import { resolveTokens } from "../../install/placeholders.js";
 import { parseModelLookup, applyModelOverrides, buildOpencodeModelLookup, buildAntigravityModelLookup, parseEffortMap, } from "../../render/models.js";
@@ -467,7 +468,9 @@ export async function runInstall(args) {
     const missingHooksFinding = detectOwnedHookMissing(missingHooks);
     if (missingHooksFinding)
         postFindings.push(missingHooksFinding);
-    const banner = formatChecklist(postFindings, suppressed);
+    const { tips, suppressed: suppressedTips } = collectTips(process.cwd());
+    suppressed.push(...suppressedTips);
+    const banner = formatChecklist(postFindings, suppressed, tips);
     if (banner)
         console.log(banner);
     writeAdvisoriesArtifact(postFindings, {
@@ -476,6 +479,7 @@ export async function runInstall(args) {
         version: getInstallingVersion(),
         logPrefix: LOG_PREFIX,
         suppressed,
+        tips,
     });
     // Check mode: exit 1 on drift (see reportCheckDrift).
     if (dryRun) {

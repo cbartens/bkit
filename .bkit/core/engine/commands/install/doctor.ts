@@ -19,6 +19,7 @@ import {
   writeAdvisoriesArtifact,
 } from "../../checks/after/index.js";
 import type { SuppressionNote } from "../../checks/after/suppression.js";
+import { collectTips } from "../../checks/tips/index.js";
 import { parseDotenv } from "../../install/cloud-env.js";
 
 /**
@@ -157,7 +158,9 @@ export async function runDoctor(
     }
   }
 
-  const banner = formatChecklist(allFindings, suppressed);
+  const { tips, suppressed: suppressedTips } = collectTips(process.cwd());
+  suppressed.push(...suppressedTips);
+  const banner = formatChecklist(allFindings, suppressed, tips);
   if (banner) {
     console.log(banner);
   } else {
@@ -169,6 +172,7 @@ export async function runDoctor(
     version: getInstallingVersion(),
     logPrefix: LOG_PREFIX,
     suppressed,
+    tips,
   });
 
   // opencode host diagnostics: report required tools and cred presence per provider.

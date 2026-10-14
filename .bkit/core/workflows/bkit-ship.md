@@ -625,12 +625,18 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker linear start -->
    `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`. Do not set Done.
    <!-- bkit:tracker linear end -->
-4. Final return: Display `ship-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **If** `ship-summary.md` absent → display `PR was already merged — no ship summary this run.` **HARD STOP**.
+4. Collect setup tips:
+   ```bash
+   "{BKIT}" tips --workflow=ship
+   ```
+   Plain text, not JSON. Hold stdout as `{SETUP_TIPS}`; prints nothing or exits non-zero → `{SETUP_TIPS}` empty.
+5. Final return: Display `ship-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **If** `ship-summary.md` absent → display `PR was already merged — no ship summary this run.` **HARD STOP**.
    <!-- bkit:tracker true start -->
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
    <!-- bkit:tracker true end -->
+   Append `{SETUP_TIPS}` under a `## Setup Tips` heading, unless empty.
    Append as last line `Would you like me to explain this in plain English?`
-5. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
+6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 
 ### 🔒 Gate 15 — Close Workflow
 

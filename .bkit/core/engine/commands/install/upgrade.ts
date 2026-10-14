@@ -57,6 +57,7 @@ import {
   parseIssueTracker,
 } from "../../install/manifest.js";
 import { OPTIN_MODULES } from "../../install/manifest.js";
+import { detectInstalledHostModules } from "../../install/hosts.js";
 import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
 import {
@@ -526,22 +527,6 @@ export function updateCanonicalHashesAfterUpgrade(
       : { claudeAllowDerived: [...options.claudeAllowDerived] }),
   };
   writeBkitVersion(versionFile, updated);
-}
-
-/**
- * Detect which host modules a consumer has installed, by the presence of each host's
- * source-rendered agents directory. Used by `bkit upgrade` to re-render only the hosts
- * the consumer installed — never force-creating an opencode/cursor tree.
- */
-export function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
-  const mods = new Set<ModuleFlag>();
-  if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
-  if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
-  if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
-  if (fs.existsSync(path.join(cwd, ".codex", "agents"))) mods.add("codex");
-  if (fs.existsSync(path.join(cwd, ".agents", "plugins", "bkit", "plugin.json")))
-    mods.add("antigravity");
-  return mods;
 }
 
 /**

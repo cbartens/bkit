@@ -14,7 +14,6 @@ import {
   updateCanonicalHashesAfterUpgrade,
   planSelfBump,
   type UpgradeConflict,
-  detectInstalledHostModules,
 } from "./upgrade";
 import {
   sha256,
@@ -732,25 +731,5 @@ describe("planSelfBump", () => {
     const p = planSelfBump("4.1.4", { toVersion: null, latest: true }, () => "not-a-version");
     expect(p.kind).toBe("invalid");
     if (p.kind === "invalid") expect(p.message).toContain("--to=<version>");
-  });
-});
-
-describe("detectInstalledHostModules — host detection for upgrade re-render", () => {
-  let cwd: string;
-  beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-detect-hosts-"));
-  });
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true });
-  });
-
-  it("returns an empty set when no host agents dir exists (never seeds core)", () => {
-    expect(detectInstalledHostModules(cwd).size).toBe(0);
-  });
-
-  it("detects only the hosts whose agents dir is present", () => {
-    fs.mkdirSync(path.join(cwd, ".claude", "agents"), { recursive: true });
-    fs.mkdirSync(path.join(cwd, ".opencode", "agents"), { recursive: true });
-    expect([...detectInstalledHostModules(cwd)].sort()).toEqual(["claude", "opencode"]);
   });
 });

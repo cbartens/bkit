@@ -13,6 +13,7 @@ import { runComplyCommand } from "./commands/comply.js";
 import { runHarvestCommand } from "./commands/harvest.js";
 import { runAnalysisCommand } from "./commands/analysis.js";
 import { runTelemetryCommand } from "./commands/telemetry.js";
+import { runTipsCommand } from "./commands/tips.js";
 import { runUpgradeCommand } from "./commands/install/upgrade.js";
 import { runUninstallCommand } from "./commands/install/uninstall.js";
 import { runInstall } from "./commands/install/install.js";
@@ -41,6 +42,7 @@ export const CLASSIC_VERBS = new Set([
     "harvest",
     "analysis",
     "telemetry",
+    "tips",
     "cursor",
     "opencode",
     "help",
@@ -158,6 +160,10 @@ export function parseArgs(argv) {
         verb = "telemetry";
         args.shift();
     }
+    else if (firstArg === "tips") {
+        verb = "tips";
+        args.shift();
+    }
     else if (firstArg === "cursor" || firstArg === "opencode") {
         verb = firstArg;
         args.shift();
@@ -186,6 +192,8 @@ export function parseArgs(argv) {
     let opencodeProvider = null;
     let complyPhase = null;
     let telemetrySubverb = null;
+    let tipsAll = false;
+    let tipsWorkflow = null;
     // For `telemetry` verb: extract the sub-verb from the first remaining positional arg
     if (verb === "telemetry") {
         const subVerbArg = args[0];
@@ -302,6 +310,21 @@ export function parseArgs(argv) {
                 moduleFlags.add("opencode");
                 continue;
             }
+            // Tips-only flags: --all prints every firing tip; --workflow=<name> puts the tips that
+            // matter in that workflow first and prints one.
+            if (flag === "all" && verb === "tips") {
+                tipsAll = true;
+                continue;
+            }
+            if (flag.startsWith("workflow=") && verb === "tips") {
+                const value = flag.slice("workflow=".length);
+                tipsWorkflow = parseComplyPhase(value);
+                if (tipsWorkflow === null) {
+                    console.error(`[bkit] Unknown workflow: "${value}". Valid values: ${COMPLY_PHASES.join(", ")}`);
+                    process.exit(1);
+                }
+                continue;
+            }
             // Uninstall-specific flags (accepted for all verbs that use them)
             if (flag === "dry-run") {
                 uninstallFlags.dryRun = true;
@@ -386,6 +409,8 @@ export function parseArgs(argv) {
         opencodeProvider,
         complyPhase,
         telemetrySubverb,
+        tipsAll,
+        tipsWorkflow,
     };
 }
 export function printUsage() {
@@ -422,6 +447,13 @@ Usage:
                                  targeted uninstall leaves core untouched.
   bkit doctor                   Read-only preflight + post-install advisory replay.
                                  Diagnose token surfaces and config drift. Exits 0.
+  bkit tips [--workflow=<name>] [--all]
+                                 Setup tips: what this repo has not set up yet, most useful
+                                 first, each with a sentence to ask your agent. Top three
+                                 by default; --workflow=design|plan|build|debug|ship puts
+                                 the tips that matter there first and prints one (each
+                                 workflow runs this at its close); --all lists every one.
+                                 Local checks only. Exits 0.
   bkit status                   Read-only host/provider status. Reports current host+provider
                                  (sampled from .opencode/opencode.json, .claude/, .cursor/).
                                  Writes nothing. Exits 0.
@@ -622,7 +654,7 @@ export async function main() {
         process.exitCode = commandExit;
         return;
     }
-    const { verb, modules, moduleFlags, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, complyPhase, telemetrySubverb, } = parseArgs(process.argv.slice(2));
+    const { verb, modules, moduleFlags, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, complyPhase, telemetrySubverb, tipsAll, tipsWorkflow, } = parseArgs(process.argv.slice(2));
     // A bare `bkit` (no arguments) means no command was given: print usage and exit non-zero
     // (2 = usage error), distinct from an explicit `bkit help` / `--help` (verb "help"), which
     // prints the same usage and exits 0. parseArgs still defaults no-args to the "help" verb.
@@ -648,6 +680,10 @@ export async function main() {
     }
     if (verb === "telemetry") {
         runTelemetryCommand(telemetrySubverb, complyPhase);
+        return;
+    }
+    if (verb === "tips") {
+        runTipsCommand(tipsAll, tipsWorkflow);
         return;
     }
     // Launcher verbs — exec the GUI app binary with .bkit/.env merged into the env

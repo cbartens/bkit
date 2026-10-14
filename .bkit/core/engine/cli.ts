@@ -14,6 +14,7 @@ import { runComplyCommand } from "./commands/comply.js";
 import { runHarvestCommand } from "./commands/harvest.js";
 import { runAnalysisCommand } from "./commands/analysis.js";
 import { runTelemetryCommand } from "./commands/telemetry.js";
+import { runTipsCommand } from "./commands/tips.js";
 import { runUpgradeCommand } from "./commands/install/upgrade.js";
 import { runUninstallCommand } from "./commands/install/uninstall.js";
 import { runInstall } from "./commands/install/install.js";
@@ -49,6 +50,7 @@ export const CLASSIC_VERBS: ReadonlySet<string> = new Set([
   "harvest",
   "analysis",
   "telemetry",
+  "tips",
   "cursor",
   "opencode",
   "help",
@@ -67,6 +69,7 @@ export type Verb =
   | "harvest"
   | "analysis"
   | "telemetry"
+  | "tips"
   | "help";
 
 // ---------------------------------------------------------------------------
@@ -139,6 +142,10 @@ export interface ParsedArgs {
    * Only populated when verb === "telemetry". null = not specified / not applicable.
    */
   telemetrySubverb: TelemetrySubverb | null;
+  /** `bkit tips --all`: print every firing tip, not just the top three. */
+  tipsAll: boolean;
+  /** `bkit tips --workflow=<name>`: the workflow whose tips go first; it prints one. */
+  tipsWorkflow: ComplyPhase | null;
 }
 
 export interface UninstallFlags {
@@ -262,6 +269,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
   } else if (firstArg === "telemetry") {
     verb = "telemetry";
     args.shift();
+  } else if (firstArg === "tips") {
+    verb = "tips";
+    args.shift();
   } else if (firstArg === "cursor" || firstArg === "opencode") {
     verb = firstArg as Verb;
     args.shift();
@@ -289,6 +299,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let opencodeProvider: string | null = null;
   let complyPhase: ComplyPhase | null = null;
   let telemetrySubverb: TelemetrySubverb | null = null;
+  let tipsAll = false;
+  let tipsWorkflow: ComplyPhase | null = null;
 
   // For `telemetry` verb: extract the sub-verb from the first remaining positional arg
   if (verb === "telemetry") {
@@ -437,6 +449,24 @@ export function parseArgs(argv: string[]): ParsedArgs {
         continue;
       }
 
+      // Tips-only flags: --all prints every firing tip; --workflow=<name> puts the tips that
+      // matter in that workflow first and prints one.
+      if (flag === "all" && verb === "tips") {
+        tipsAll = true;
+        continue;
+      }
+      if (flag.startsWith("workflow=") && verb === "tips") {
+        const value = flag.slice("workflow=".length);
+        tipsWorkflow = parseComplyPhase(value);
+        if (tipsWorkflow === null) {
+          console.error(
+            `[bkit] Unknown workflow: "${value}". Valid values: ${COMPLY_PHASES.join(", ")}`,
+          );
+          process.exit(1);
+        }
+        continue;
+      }
+
       // Uninstall-specific flags (accepted for all verbs that use them)
       if (flag === "dry-run") {
         uninstallFlags.dryRun = true;
@@ -531,6 +561,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     opencodeProvider,
     complyPhase,
     telemetrySubverb,
+    tipsAll,
+    tipsWorkflow,
   };
 }
 
@@ -569,6 +601,13 @@ Usage:
                                  targeted uninstall leaves core untouched.
   bkit doctor                   Read-only preflight + post-install advisory replay.
                                  Diagnose token surfaces and config drift. Exits 0.
+  bkit tips [--workflow=<name>] [--all]
+                                 Setup tips: what this repo has not set up yet, most useful
+                                 first, each with a sentence to ask your agent. Top three
+                                 by default; --workflow=design|plan|build|debug|ship puts
+                                 the tips that matter there first and prints one (each
+                                 workflow runs this at its close); --all lists every one.
+                                 Local checks only. Exits 0.
   bkit status                   Read-only host/provider status. Reports current host+provider
                                  (sampled from .opencode/opencode.json, .claude/, .cursor/).
                                  Writes nothing. Exits 0.
@@ -791,6 +830,8 @@ export async function main() {
     opencodeProvider,
     complyPhase,
     telemetrySubverb,
+    tipsAll,
+    tipsWorkflow,
   } = parseArgs(process.argv.slice(2));
 
   // A bare `bkit` (no arguments) means no command was given: print usage and exit non-zero
@@ -823,6 +864,11 @@ export async function main() {
 
   if (verb === "telemetry") {
     runTelemetryCommand(telemetrySubverb, complyPhase);
+    return;
+  }
+
+  if (verb === "tips") {
+    runTipsCommand(tipsAll, tipsWorkflow);
     return;
   }
 

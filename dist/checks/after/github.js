@@ -75,7 +75,7 @@ export function readConsumerIssueTracker(cwd) {
 /**
  * Emit a tracker-specific setup advisory.
  *
- * - `github`  → GitHub tracker: MCP auth is browser OAuth — no PAT needed for tracker calls.
+ * - `github`  → GitHub tracker: the GitHub MCP server authenticates with `BKIT_GH_TOKEN`; `gh` uses `gh auth login`.
  * - `linear`  → existing Linear setup message (BKIT_LINEAR_API_KEY + LINEAR_ISSUE_ID).
  * - `none`    → prompt to run `bkit install --tracker=github` or `--tracker=linear`.
  *
@@ -92,7 +92,7 @@ export function buildTrackerSetupAdvisory(cwd) {
             id: "tracker-setup-github",
             severity: "advisory",
             detect: "bkit tracker is configured as `github`. GitHub Issues + Projects v2 is the active tracker.",
-            action: "GitHub tracker: MCP auth is browser OAuth — run `gh auth login` once for CLI surface. No PAT needed for tracker calls. The GitHub MCP server uses OAuth automatically on first tool call. Ensure the `github` MCP server is configured in `.mcp.json` and `.cursor/mcp.json`.",
+            action: "GitHub tracker: the GitHub MCP server authenticates with `BKIT_GH_TOKEN` (fine-grained PAT for one owner, classic PAT across owners) — set it in `.bkit/.env`, then `direnv allow`. Unset → every tracker and PR MCP call fails. The `gh` CLI signs in separately: run `gh auth login` once. Ensure the `github` MCP server is configured in `.mcp.json` and `.cursor/mcp.json`.",
         };
     }
     if (tracker === "linear") {
@@ -112,7 +112,7 @@ export function buildTrackerSetupAdvisory(cwd) {
         id: "tracker-setup-none",
         severity: "advisory",
         detect: "bkit tracker is not configured (`bkit.issueTracker` absent). Workflows run but every tracker call is a no-op.",
-        action: 'Optional post-install decision. Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker uses browser OAuth — no PAT required. Linear tracker requires `BKIT_LINEAR_API_KEY` in `.bkit/.env`. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
+        action: 'Optional post-install decision. Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker requires `BKIT_GH_TOKEN` in `.bkit/.env` (fine-grained PAT for one owner, classic PAT across owners). Linear tracker requires `BKIT_LINEAR_API_KEY` in `.bkit/.env`. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
     };
 }
 /** True when package.json has an explicit `bkit.issueTracker` field (any value). */
@@ -379,7 +379,7 @@ export function buildCloudSetupAdvisory(cwd) {
             id: "cloud-router",
             severity: "advisory",
             detect: "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present). The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done.",
-            action: `The workflow requires: the \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.`,
+            action: `The workflow requires: the \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.\n\nbkit's agents comment as you, so every workflow those comments trigger notifies you, even ones that skip. To see only failures: GitHub → Settings → Notifications → System → Actions → "Only notify for failed workflows".`,
         };
     }
     // No router present — distinguish opt-out from undecided.

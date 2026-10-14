@@ -24,6 +24,7 @@ import {
   writeAdvisoriesArtifact,
 } from "../../checks/after/index.js";
 import type { SuppressionNote } from "../../checks/after/suppression.js";
+import { collectTips } from "../../checks/tips/index.js";
 import { findMissingOwnedHooks, detectOwnedHookMissing } from "../../checks/after/managed.js";
 import { resolveTokens } from "../../install/placeholders.js";
 import {
@@ -548,7 +549,9 @@ export async function runInstall(
   const missingHooks = dryRun ? findMissingOwnedHooks(process.cwd(), effectiveModules) : [];
   const missingHooksFinding = detectOwnedHookMissing(missingHooks);
   if (missingHooksFinding) postFindings.push(missingHooksFinding);
-  const banner = formatChecklist(postFindings, suppressed);
+  const { tips, suppressed: suppressedTips } = collectTips(process.cwd());
+  suppressed.push(...suppressedTips);
+  const banner = formatChecklist(postFindings, suppressed, tips);
   if (banner) console.log(banner);
   writeAdvisoriesArtifact(postFindings, {
     cwd: process.cwd(),
@@ -556,6 +559,7 @@ export async function runInstall(
     version: getInstallingVersion(),
     logPrefix: LOG_PREFIX,
     suppressed,
+    tips,
   });
 
   // Check mode: exit 1 on drift (see reportCheckDrift).

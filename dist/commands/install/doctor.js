@@ -8,6 +8,7 @@ import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
 import { getCoreRoot, getSharedRoot, getTemplatesRoot } from "../../shared/package-roots.js";
 import { runPreflight } from "../../checks/before/index.js";
 import { runPostInstallCheck, formatChecklist, writeAdvisoriesArtifact, } from "../../checks/after/index.js";
+import { collectTips } from "../../checks/tips/index.js";
 import { parseDotenv } from "../../install/cloud-env.js";
 /**
  * `bkit status` — read-only host/provider status.
@@ -118,7 +119,9 @@ export async function runDoctor(modules, opencodeProvider) {
             });
         }
     }
-    const banner = formatChecklist(allFindings, suppressed);
+    const { tips, suppressed: suppressedTips } = collectTips(process.cwd());
+    suppressed.push(...suppressedTips);
+    const banner = formatChecklist(allFindings, suppressed, tips);
     if (banner) {
         console.log(banner);
     }
@@ -131,6 +134,7 @@ export async function runDoctor(modules, opencodeProvider) {
         version: getInstallingVersion(),
         logPrefix: LOG_PREFIX,
         suppressed,
+        tips,
     });
     // opencode host diagnostics: report required tools and cred presence per provider.
     // Never echoes key values — only reports present/absent.

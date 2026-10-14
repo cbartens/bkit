@@ -408,6 +408,34 @@ bkit ships no compaction setting; each host auto-summarises near the model's ful
 
 **Floor:** keep the window well above the largest single tool result plus the recent turns kept after a summary. Claude Code ends an agent whose context refills to the limit within 3 turns of a summary, 3 times in a row (`Autocompact is thrashing`).
 
+## MCP project scope
+
+A remote MCP server that can see a whole account makes agents look up account and project IDs before every task. Lock its URL to one project and those lookup tools disappear; calls default to that project. Lock it in every host file that declares the server (`.mcp.json`, `.cursor/mcp.json`, `.opencode/opencode.json`, `.codex/config.toml`).
+
+<!-- prettier-ignore -->
+| Service | Locked URL | Effect |
+| --- | --- | --- |
+| Sentry | `https://mcp.sentry.dev/mcp/<org>/<project>` | `find_organizations` / `find_projects` hidden |
+| Supabase | `https://mcp.supabase.com/mcp?project_ref=<ref>&read_only=true` | `list_projects` hidden; `read_only` runs SQL as a read-only database user |
+| Vercel | `https://mcp.vercel.com/<team>/<project>` | calls default to that team and project |
+
+Only servers in the repo's own files lock this way; claude.ai connectors cannot be locked per repo (§ claude.ai connectors). The `mcp-scope` setup tip fires on an unlocked URL for a service in this table.
+
+## claude.ai connectors
+
+Claude Code loads every connector on the person's claude.ai account in every repo, and re-sends their tool names on every request whether used or not. `"disableClaudeAiConnectors": true` in `.claude/settings.json` stops that for the repo.
+
+<!-- prettier-ignore -->
+| Aspect | Detail |
+| --- | --- |
+| Stops | claude.ai connectors in Claude Code sessions for this repo — terminal and desktop app |
+| Keeps | the repo's `.mcp.json` servers (bkit's tracker server included), `claude mcp add` servers, and the connectors themselves in claude.ai / desktop-app chats and cloud routines |
+| Before | move anything agents reach through a connector onto `.mcp.json` (§ MCP project scope), a context-fetch block or the provider CLI |
+| Per person | `false` in `.claude/settings.local.json` turns connectors back on |
+| Verify | `/context` before and after |
+
+bkit ships no default: the setting also hides each person's own connectors (mail, drive, …), and install / upgrade keep keys bkit does not own, so a shipped `true` could not be turned off in `.claude/settings.json`. The `claude-connectors` setup tip fires on a Claude Code repo that sets neither value.
+
 ---
 
 ## Runtime environment (cloud agents)

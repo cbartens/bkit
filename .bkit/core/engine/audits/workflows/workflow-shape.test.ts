@@ -318,3 +318,20 @@ describe("locks", () => {
     expect(locks).not.toMatch(/30 minutes old|>=30min old|lock file is at least/);
   });
 });
+
+describe("setup tips at the close", () => {
+  it.each(PHASES)("%s runs bkit tips in the step before Final return, which appends it", (name) => {
+    const lines = workflow(name).split("\n");
+    const finalIdx = lines.findIndex((l) => /^\d+\. Final return:/.test(l));
+    const collectIdx = lines.findIndex((l) => /^\d+\. Collect setup tips:/.test(l));
+    expect(collectIdx, name).toBeGreaterThanOrEqual(0);
+    expect(collectIdx, name).toBeLessThan(finalIdx);
+    const collect = lines.slice(collectIdx, finalIdx).join("\n");
+    expect(commandLines(collect, "tips"), name).toEqual([
+      expect.stringContaining(`"{BKIT}" tips --workflow=${name}`),
+    ]);
+    expect(collect).toContain("`{SETUP_TIPS}`");
+    const final = lines.slice(finalIdx, finalIdx + 8).join("\n");
+    expect(final).toContain("Append `{SETUP_TIPS}`");
+  });
+});

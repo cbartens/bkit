@@ -30,6 +30,7 @@ import { getInstallingVersion, requireOpencodeProvider, detectOpencodeProviders,
 import { setLogPrefix } from "../../shared/log-prefix.js";
 import { getInstallManifest, getModuleManifest, DEFAULT_ISSUE_TRACKER, parseIssueTracker, } from "../../install/manifest.js";
 import { OPTIN_MODULES } from "../../install/manifest.js";
+import { detectInstalledHostModules } from "../../install/hosts.js";
 import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, } from "../../install/cloud-env.js";
@@ -331,25 +332,6 @@ export function updateCanonicalHashesAfterUpgrade(result, options) {
             : { claudeAllowDerived: [...options.claudeAllowDerived] }),
     };
     writeBkitVersion(versionFile, updated);
-}
-/**
- * Detect which host modules a consumer has installed, by the presence of each host's
- * source-rendered agents directory. Used by `bkit upgrade` to re-render only the hosts
- * the consumer installed — never force-creating an opencode/cursor tree.
- */
-export function detectInstalledHostModules(cwd) {
-    const mods = new Set();
-    if (fs.existsSync(path.join(cwd, ".claude", "agents")))
-        mods.add("claude");
-    if (fs.existsSync(path.join(cwd, ".cursor", "agents")))
-        mods.add("cursor");
-    if (fs.existsSync(path.join(cwd, ".opencode", "agents")))
-        mods.add("opencode");
-    if (fs.existsSync(path.join(cwd, ".codex", "agents")))
-        mods.add("codex");
-    if (fs.existsSync(path.join(cwd, ".agents", "plugins", "bkit", "plugin.json")))
-        mods.add("antigravity");
-    return mods;
 }
 /**
  * Resolve the newest published @cbartens/bkit version from the registry for
