@@ -247,7 +247,7 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     );
     // (B) Enforce release-age freshness in Renovate (no per-install verification).
     // Security / osvVulnerabilityAlerts PRs bypass this by design → no CVE delay.
-    expect(content).toMatch(/minimumReleaseAge:\s*"1 day"/);
+    expect(content).toMatch(/minimumReleaseAge:\s*"7 days"/);
   });
 
   it("does not fence bkit-renovate.yml (the consumer owns that runner)", () => {
@@ -391,6 +391,10 @@ describe("example dependabot template (.bkit/templates/.github/dependabot.yml)",
 
   it("does not exclude bkit-cloud.yml (a template the consumer owns, so its pins refresh)", () => {
     expect(content).not.toMatch(/exclude-paths:[\s\S]*bkit-cloud\.yml/);
+  });
+
+  it("holds new releases behind a 7-day cooldown", () => {
+    expect(content).toMatch(/cooldown:\s*\n\s+default-days:\s*7/);
   });
 });
 
