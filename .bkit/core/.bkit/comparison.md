@@ -31,7 +31,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 ```
 ┌────────────────────── bkit-auto (opt-in cloud router) ─────────────────┐
 │ workflow_run on feat/**  → ship (CI green) / debug (CI red)            │
-│ workflow_dispatch        → any phase (ship|debug|design|plan|build)    │
+│ workflow_dispatch        → ship|debug|plan|build (design: local only)  │
 │ Dispatches the matching /bkit-* skill — runs unattended in cloud       │
 │ (Claude Code on the web / Cursor cloud agents / opencode).               │
 │ Opt-in: `bkit install --auto=claude|cursor|opencode`. See `.bkit/cloud.md`. │

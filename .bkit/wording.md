@@ -1179,6 +1179,15 @@ Hold `verdict` as `SUMMARY_VERDICT`.
 **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step {{n}}.
 ```
 
+### workflow-close-links-gate
+
+- workflow: where-used
+- anchored: yes
+
+```text
+Artifact link list and telemetry report embedded in `Step {{n}}` comment
+```
+
 ### workflow-summary-only
 
 - workflow: repeatable

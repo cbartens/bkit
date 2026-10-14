@@ -268,6 +268,7 @@ type RowField = "attempt" | "strategy" | "scope";
  * calls (a finish call's `--agent` writes `strategy` when its prompt declares one).
  */
 export const ROW_FIELDS: Record<string, readonly RowField[]> = {
+  "design/design-grill": ["attempt"],
   "design/design-brainstorm-ideate": ["attempt"],
   "design/design-generate": ["attempt"],
   "design/design-review": ["attempt"],

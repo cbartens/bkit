@@ -32,6 +32,7 @@ maxTurns: 100
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Generate design; do not just analyse; do not build, install, or write code.
 - **Multi-lens inputs:** Inputs carry distinct lenses; merge as raw material — do not collapse to consensus. Consolidate strongest 2-3 approaches, not a watered-down union; single-input approaches are normal, not outvoted.
+- **Human decisions:** A `Grill decisions` input section holds the human's answers. `Settled` entries override any brainstorm approach that contradicts them; `Assumed, not confirmed` entries are defaults, overridden only with a stated reason; each `Open` entry gets a `Risks & Open Questions` item.
 - **No anchor authoring:** Do not author `<!-- bkit:anchor` block.
 
 **Process:**
