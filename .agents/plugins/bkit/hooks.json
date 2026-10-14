@@ -12,7 +12,7 @@
         ]
       },
       {
-        "matcher": "run_command",
+        "matcher": "view_file|run_command",
         "hooks": [
           {
             "type": "command",

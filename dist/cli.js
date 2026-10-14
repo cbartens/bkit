@@ -72,7 +72,7 @@ export function parseComplyPhase(value) {
 // Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing) is
 // intercepted by a dedicated branch in parseArgs before this set is consulted; the
 // generic check only ever validates claude/cursor/codex. `full`, `core` and `cloud`
-// are NOT accepted as bare flags: use `--auto=<claude|cursor>`; core is implicit.
+// are NOT accepted as bare flags: use `--auto=<variant>`; core is implicit.
 // There is no dependency-updater flag. Copy an example; CI warns when none is present.
 const MODULE_FLAGS = new Set(["claude", "cursor", "opencode", "codex", "antigravity"]);
 // ALL_MODULES — every non-opt-in module, core first. Used to expand a bare/full
@@ -252,7 +252,7 @@ export function parseArgs(argv) {
                 console.error(`[bkit] --phase requires a value: --phase=<${COMPLY_PHASES.join("|")}>. Run \`bkit help\` for usage.`);
                 process.exit(1);
             }
-            // Value-bearing flag: --auto=<claude|cursor> — cloud-agent (auto-dispatch) lane;
+            // Value-bearing flag: --auto=<variant> (CLOUD_VARIANTS) — cloud-agent (auto-dispatch) lane;
             // sets the internal `cloud` module. Bare `--auto` (no variant) is accepted only on
             // uninstall (variant read from package.json).
             if (flag === "auto") {
@@ -420,7 +420,8 @@ Usage:
   bkit install <module-flags>   Install (or re-sync) the named modules + the implicit
                                  core foundation. At least one module flag is REQUIRED —
                                  a bare \`bkit install\` errors (name the modules below).
-                                 Hosts compose: --claude --cursor --codex --opencode=<provider>.
+                                 Hosts compose: --claude --cursor --codex --antigravity
+                                 --opencode=<provider>.
   bkit check                     Dry-run — drift-check everything already installed (no
                                  module flags). Exits 1 when a managed file needs
                                  re-rendering. Copies under .bkit/templates/ are refreshed by
@@ -633,7 +634,7 @@ export function validateModuleFlagsForVerb(verb, moduleFlags) {
     if (verb === "install" && moduleFlags.size === 0) {
         return ("[bkit] `bkit install` requires at least one module flag. Name what to install: " +
             "--claude, --cursor, --codex, --antigravity, --opencode=<provider> (plus opt-in " +
-            "--auto=<claude|cursor>). Run `bkit help` for usage.");
+            `--auto=<${CLOUD_VARIANTS.join("|")}>). Run \`bkit help\` for usage.`);
     }
     if ((verb === "check" || verb === "upgrade") && moduleFlags.size > 0) {
         return (`[bkit] \`bkit ${verb}\` takes no module flags — it operates on everything already ` +

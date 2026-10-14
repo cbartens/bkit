@@ -19,7 +19,8 @@ Format: `## [version] — YYYY-MM-DD`
 - **Reading rules** (#550). `.agents/rules.md` gains Language server first, Narrow text search first, Code reads and Command output; every prompt header carries a one-line Code reads reminder.
 - **`bkit-managed-duplicate` advisory** (#553). `bkit check` names any managed file holding a copy of its block outside `bkit:start` / `bkit:end`.
 - **GitHub Release per tag.** The release workflow creates one with the version's `CHANGELOG.md` block as notes plus an npmjs version link. A tag with no `CHANGELOG.md` block fails before `npm publish`.
-- **GitHub Release per tag.** The release workflow creates one with the version's `CHANGELOG.md` block as notes plus an npmjs version link. A tag with no `CHANGELOG.md` block fails before `npm publish`.
+- **Antigravity gates secret reads.** `bkit-guardrails.cjs` also runs on `view_file` (`hooks.json` matcher `view_file|run_command`): `*.pem` / `*.p12` / `id_rsa` → deny, `.env` / `.env.*` → ask (`.env.example` allowed) — same rules as Cursor via shared hook part `guardrails-read.js`. 5.1.0 installs get the matcher on `bkit upgrade`.
+- **`/bkit-design` Grill runs headless.** `bkit runtime detect` / `assert` report `runtimeHeadless` (true for `GITHUB_ACTION`, `CLOUD_CURSOR`, `UNKNOWN`; `BKIT_RUNTIME` overrides). Headless → Grill asks nothing and records each recommended answer as `Assumed, not confirmed`, so a design dispatch from an older copied `bkit-cloud.yml` no longer stalls.
 
 ### Changed
 
@@ -41,6 +42,11 @@ Format: `## [version] — YYYY-MM-DD`
 - **`bkit runs revalidate --repo` / `runs gate --snapshot`** run every `gh` call and the dev ancestry check against the named repo (#551).
 - **`bkit opencode`** warns when OpenCode 2.0's shared background server is already running (#551).
 - **GitHub tracker token wording** (#543): advisory and cloud setup text no longer say the GitHub tracker needs no token; the shipped GitHub MCP server sends `BKIT_GH_TOKEN`.
+- **MCP advisories match what install writes.** `mcp-missing-server-*` requires only the tracker's own server (`none` → none), so a fresh `--tracker=linear` / `--tracker=none` install no longer advises adding `github`. `mcp-extra-server-linear` also checks `.opencode/opencode.json` `mcp`; `github` is never flagged as extra (the phase workflows' `gh` fallback uses it).
+- **CLI help and the bare `bkit install` error** name every host and `--auto` variant (`--antigravity`, `--auto=opencode`).
+- **`bkit uninstall`** reports already-missing files as `absent:` and counts them as `already absent: N`, separate from `preserved`.
+- **Docs:** design step numbers in `.bkit/prompts.md` / `.bkit/workflows.md` follow the Grill renumbering; `.bkit/cloud.md` drops `design` from manual dispatch; `.bkit/comparison.md` lists Grill; `.bkit/install.md` lists antigravity among drift-gated hosts; `.bkit/jsonl.md` drops the never-written `sweepVerdict` field.
+- **Packaging:** `npm pack` and `pnpm pack` ship the same test-free tarball (exclusions in `.bkit/core/engine/.npmignore`).
 
 ## [5.1.0] — 2026-10-13
 

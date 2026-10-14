@@ -1,0 +1,4 @@
+# Test sources excluded from the packed tarball by both `npm pack` and `pnpm pack`.
+# package.json `files` carries no `!` negations: pnpm ignores them.
+*.test.ts
+__snapshots__

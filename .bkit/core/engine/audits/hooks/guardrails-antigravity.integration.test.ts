@@ -1,7 +1,7 @@
-// audits/hooks/guardrails-antigravity.integration.test.ts — Antigravity shell gates on the
-// host's live-verified contract: stdin `{ conversationId, toolCall: { name: "run_command",
-// args: { CommandLine, Cwd } } }`, stdout `{ decision, reason }`. Runs the hook as install
-// generates it (shared parts spliced in).
+// audits/hooks/guardrails-antigravity.integration.test.ts — Antigravity shell and secret-read
+// gates on the host's live-verified contract: stdin `{ conversationId, toolCall: { name:
+// "run_command" | "view_file", args: { CommandLine, Cwd } | { AbsolutePath } } }`, stdout
+// `{ decision, reason }`. Runs the hook as install generates it (shared parts spliced in).
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -39,6 +39,59 @@ function run(
   expect(res.status).toBe(0);
   return JSON.parse(res.stdout.trim()) as { decision?: string; reason?: string };
 }
+
+function view(
+  file: string,
+  conversationId = newConversation(),
+): { decision?: string; reason?: string } {
+  const res = spawnSync("node", [HOOK], {
+    input: JSON.stringify({
+      conversationId,
+      toolCall: { name: "view_file", args: { AbsolutePath: file, toolAction: "Viewing" } },
+      workspacePaths: [GENERATED],
+    }),
+    encoding: "utf-8",
+  });
+  expect(res.status).toBe(0);
+  return JSON.parse(res.stdout.trim()) as { decision?: string; reason?: string };
+}
+
+describe("antigravity hooks.json — guardrails registration", () => {
+  it("registers bkit-guardrails.cjs on view_file as well as run_command", () => {
+    const hooks = JSON.parse(
+      fs.readFileSync(path.resolve(".bkit/shared/.agents/plugins/bkit/hooks.json"), "utf-8"),
+    ) as { hooks: { PreToolUse: { matcher: string; hooks: { command: string }[] }[] } };
+    const groups = hooks.hooks.PreToolUse.filter((g) =>
+      g.hooks.some((h) => h.command.includes("bkit-guardrails.cjs")),
+    );
+    expect(groups.map((g) => g.matcher)).toEqual(["view_file|run_command"]);
+  });
+});
+
+describe("antigravity guardrails.cjs — secret-file reads (view_file)", () => {
+  it("denies private-key material every time", () => {
+    const conversation = newConversation();
+    const pem = path.join(GENERATED, "certs", "server.pem");
+    expect(view(pem, conversation).decision).toBe("deny");
+    expect(view(pem, conversation).decision).toBe("deny");
+    expect(view(pem).reason).toContain("private-key material");
+    expect(view(path.join(GENERATED, "certs", "client.p12")).decision).toBe("deny");
+    expect(view(path.join(os.homedir(), ".ssh", "id_rsa")).decision).toBe("deny");
+  });
+
+  it("hands env / secrets files to Antigravity's own approval prompt", () => {
+    for (const file of [".env", ".bkit/.env", ".env.local"]) {
+      const r = view(path.join(GENERATED, file));
+      expect({ file, decision: r.decision }).toEqual({ file, decision: "ask" });
+      expect(r.reason).toContain("secrets");
+    }
+  });
+
+  it("allows ordinary files and the documented .env.example", () => {
+    expect(view(path.join(GENERATED, "src", "index.ts"))).toEqual({ decision: "allow" });
+    expect(view(path.join(GENERATED, ".env.example"))).toEqual({ decision: "allow" });
+  });
+});
 
 describe("antigravity guardrails.cjs — Antigravity contract", () => {
   it("denies the deny tier every time", () => {

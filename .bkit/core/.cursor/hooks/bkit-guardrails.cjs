@@ -11,8 +11,8 @@
 // Fail-open: a single top-level catch allows on unexpected errors (same shape as gateguard).
 //
 // bkit generates the managed block at install: the shell detection and the deny / ask
-// tiers are shared with the Claude and Codex hooks (bkit's `core/hooks/`); the output
-// shape and the read gate below are Cursor's own.
+// tiers are shared with the Claude and Codex hooks, the read tiers with the Antigravity
+// hook (bkit's `core/hooks/`); the output shape is Cursor's own.
 //
 // OWNERSHIP: everything between the markers below is bkit-managed and is
 // overwritten on every `bkit install` / `bkit upgrade`. It is a pure decision
@@ -32,6 +32,8 @@ const path = require("node:path");
 // {{BKIT_PART guardrails-shell.js}}
 
 // {{BKIT_PART guardrails-tiers.js}}
+
+// {{BKIT_PART guardrails-read.js}}
 
 function allow() {
   return { permission: "allow" };
@@ -80,27 +82,18 @@ function decideShell(cmd) {
 
 /** @param {string} filePath */
 function decideRead(filePath) {
-  const p = filePath.replace(/\\/g, "/");
-  if (!p) return allow();
-
-  // Deny private-key material
-  if (/\.pem$/i.test(p) || /\.p12$/i.test(p) || /(^|\/)id_rsa$/i.test(p)) {
+  const v = classifyRead(filePath);
+  if (!v) return allow();
+  if (v.tier === "deny") {
     return deny(
       "Blocked: reading private-key material is denied by bkit Cursor guardrails.",
-      `Do not read ${p}. Ask the user to supply needed material out-of-band.`,
+      `Do not read ${v.path}. Ask the user to supply needed material out-of-band.`,
     );
   }
-
-  // Ask on .env (allow .env.example)
-  const base = p.split("/").pop() || p;
-  if (base === ".env" || (/^\.env\./.test(base) && base !== ".env.example")) {
-    return ask(
-      "bkit Cursor guardrails: confirm reading an env/secrets file.",
-      `Reading ${p} may expose secrets. Prefer direnv / documented non-secret examples.`,
-    );
-  }
-
-  return allow();
+  return ask(
+    "bkit Cursor guardrails: confirm reading an env/secrets file.",
+    `Reading ${v.path} may expose secrets. Prefer direnv / documented non-secret examples.`,
+  );
 }
 
 /**

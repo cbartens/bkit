@@ -38,27 +38,10 @@ describe("package.json manifest invariants (BAR-138)", () => {
     expect(pkg.description).not.toContain("git dependency from a private GitHub repo");
   });
 
-  // Tarball exclusions — `files` is the only mechanism that actually filters
-  // test sources out of the published tarball when an allowlist is set
-  // (npm ignores .npmignore for paths included by `files`). Each negation
-  // pattern below is the load-bearing exclusion rule.
-  it("files array contains a NEGATION (!) for *.test.ts (not a re-inclusion)", () => {
+  // Tarball exclusions live in `.bkit/core/engine/.npmignore`; the real-packer
+  // check is release-workflow.integration.test.ts.
+  it("files array carries no `!` negations (pnpm pack ignores them)", () => {
     const filesArray: string[] = pkg.files ?? [];
-    const positivePatterns = filesArray.filter(
-      (f: string) => f.includes(".test.ts") && !f.startsWith("!"),
-    );
-    expect(positivePatterns).toHaveLength(0);
-    expect(filesArray.some((f: string) => f.startsWith("!") && f.includes(".test.ts"))).toBe(true);
-  });
-
-  it("files array contains a NEGATION (!) for __snapshots__ (not a re-inclusion)", () => {
-    const filesArray: string[] = pkg.files ?? [];
-    const positivePatterns = filesArray.filter(
-      (f: string) => f.includes("__snapshots__") && !f.startsWith("!"),
-    );
-    expect(positivePatterns).toHaveLength(0);
-    expect(filesArray.some((f: string) => f.startsWith("!") && f.includes("__snapshots__"))).toBe(
-      true,
-    );
+    expect(filesArray.filter((f: string) => f.startsWith("!"))).toEqual([]);
   });
 });

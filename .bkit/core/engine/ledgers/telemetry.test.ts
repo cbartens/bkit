@@ -595,6 +595,31 @@ describe("jsonl.md examples — validated against the codec", () => {
     }
   });
 
+  it("every example field is a Generic Field or listed in its kind's Per-Kind Fields row", () => {
+    const src = fs.readFileSync(SPEC, "utf-8");
+    const section = (heading: string) => src.split(`## ${heading}\n`)[1]?.split(/\n## /)[0] ?? "";
+    const generic = new Set(
+      [...section("Generic Fields (all kinds)").matchAll(/^\| `(\w+)` \|/gm)].map((m) => m[1]),
+    );
+    const perKind = new Map<string, Set<string>>();
+    for (const m of section("Per-Kind Fields").matchAll(/^\| `(\w+)` \| (.*) \|$/gm)) {
+      perKind.set(m[1] ?? "", new Set([...(m[2] ?? "").matchAll(/`(\w+)[?:`]/g)].map((f) => f[1])));
+    }
+    expect(generic.size).toBeGreaterThan(5);
+    for (const ex of specExamples()) {
+      if (!ex["repo"]) continue;
+      const kind = String(ex["kind"]);
+      const listed = perKind.get(kind);
+      expect(listed, `no Per-Kind Fields row for ${kind}`).toBeDefined();
+      for (const field of Object.keys(ex)) {
+        expect(
+          generic.has(field) || listed?.has(field),
+          `${kind} example field "${field}" is in neither Generic Fields nor its Per-Kind Fields row`,
+        ).toBe(true);
+      }
+    }
+  });
+
   it("every kind has a worked example", () => {
     const kinds = new Set(specExamples().map((e) => e["kind"]));
     for (const kind of VALID_KINDS) expect(kinds, `no example for kind: ${kind}`).toContain(kind);

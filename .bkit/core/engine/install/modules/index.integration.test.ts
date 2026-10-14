@@ -427,6 +427,7 @@ describe(".husky/pre-push is the consumer's file", () => {
 //   opencode .opencode/opencode.json        permission.bash / .read  — globs, last-match-wins
 //   Cursor   .cursor/hooks/bkit-guardrails.cjs                            — regexes in a script
 //   Codex    .codex/hooks/bkit-guardrails.cjs                             — same engine, Claude-family envelope
+//   Antigravity .agents/plugins/bkit/hooks/bkit-guardrails.cjs            — same engine; file reads asserted here
 //
 // This file is the single table they all satisfy: a gate added here fails every host
 // that lacks it.
@@ -450,6 +451,11 @@ describe("permissions-parity", () => {
       );
       return out;
     },
+  );
+  const ANTIGRAVITY_GUARDRAILS = path.join(GENERATED, "antigravity.cjs");
+  fs.writeFileSync(
+    ANTIGRAVITY_GUARDRAILS,
+    readTemplate(path.resolve(".bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs")),
   );
 
   type Verdict = "deny" | "ask" | "allow";
@@ -571,6 +577,20 @@ describe("permissions-parity", () => {
     return hso.additionalContext ? "ask" : "allow";
   }
 
+  /** Antigravity reads arrive as `view_file` with an `AbsolutePath`; stdout `{ decision }`. */
+  function antigravityReadVerdict(file: string): Verdict {
+    const res = spawnSync("node", [ANTIGRAVITY_GUARDRAILS], {
+      cwd: getPkgRoot(),
+      input: JSON.stringify({
+        conversationId: `perm-parity-${process.pid}`,
+        toolCall: { name: "view_file", args: { AbsolutePath: file } },
+        workspacePaths: [getPkgRoot()],
+      }),
+      encoding: "utf-8",
+    });
+    return (JSON.parse(res.stdout.trim()) as { decision: Verdict }).decision;
+  }
+
   // ---------------------------------------------------------------------------
   // The assertions
   // ---------------------------------------------------------------------------
@@ -598,13 +618,12 @@ describe("permissions-parity", () => {
     }
   });
 
-  // Three hosts, not four: the Codex guardrail is registered on the shell tool only.
-  // Tracked in docs/deferrals.jsonl →
-  // `codex-read-tier-gates-not-wired-file-read-tool-name-unverified`.
+  // Codex is absent: its guardrail is registered on the shell tool only. Tracked in
+  // docs/deferrals.jsonl → `codex-read-tier-gates-not-wired-file-read-tool-name-unverified`.
   // Shell-level reads (`cat .env`) are covered by no host's read tier.
   describe("cross-host gate parity — file reads", () => {
     for (const g of READ_GATES) {
-      it(`${g.expect.toUpperCase()} on reading \`${g.file}\` (${g.why}) — claude/opencode/cursor`, () => {
+      it(`${g.expect.toUpperCase()} on reading \`${g.file}\` (${g.why}) — opencode/cursor/antigravity`, () => {
         expect({ host: "opencode", v: opencodeVerdict("read", g.file) }).toEqual({
           host: "opencode",
           v: g.expect,
@@ -613,6 +632,10 @@ describe("permissions-parity", () => {
           host: "cursor",
           v: cursorVerdict({ tool_name: "Read", tool_input: { path: g.file } }),
         }).toEqual({ host: "cursor", v: g.expect });
+        expect({ host: "antigravity", v: antigravityReadVerdict(g.file) }).toEqual({
+          host: "antigravity",
+          v: g.expect,
+        });
       });
     }
   });

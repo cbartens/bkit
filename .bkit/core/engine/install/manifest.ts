@@ -450,7 +450,7 @@ export const ANTIGRAVITY_MANIFEST: ManifestEntry[] = [
     module: "antigravity",
   },
   // bkit-guardrails.cjs — Tier-2 markered-text, twin of the Cursor/Codex hook. Registered
-  // on matcher `run_command`, Antigravity's shell tool name.
+  // on matcher `view_file|run_command`, Antigravity's file-read and shell tool names.
   {
     path: ".agents/plugins/bkit/hooks/bkit-guardrails.cjs",
     format: "markered-text",

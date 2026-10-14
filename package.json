@@ -37,10 +37,7 @@
     ".bkit/templates",
     "dist",
     "README.md",
-    "CHANGELOG.md",
-    "!.bkit/core/engine/**/*.test.ts",
-    "!.bkit/core/engine/**/*.integration.test.ts",
-    "!.bkit/core/engine/**/__snapshots__"
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=20"

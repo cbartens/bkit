@@ -16,6 +16,7 @@ import {
   TELEMETRY_SUBVERBS,
   type ModuleFlag,
   validateModuleFlagsForVerb,
+  CLOUD_VARIANTS,
 } from "./cli";
 import type { Verb } from "./cli";
 
@@ -275,6 +276,19 @@ describe("printUsage — help output", () => {
     const output = usage();
     expect(output).toContain("--claude --cursor");
     expect(output).toMatch(/[Cc]ore \(implicit/);
+  });
+
+  it("names every host flag in the install 'Hosts compose' line", () => {
+    const composeLine = usage().match(/Hosts compose:[^.]*\./s)?.[0] ?? "";
+    for (const host of [
+      "--claude",
+      "--cursor",
+      "--codex",
+      "--antigravity",
+      "--opencode=<provider>",
+    ]) {
+      expect(composeLine).toContain(host);
+    }
   });
 
   it("lists opencode-zen and opencode-go (not bare opencode) as supported providers", () => {
@@ -931,6 +945,20 @@ describe("validateModuleFlagsForVerb — #252 Step 2/3 verb/module-flag validati
     const err = validateModuleFlagsForVerb("install", flags());
     expect(err).not.toBeNull();
     expect(err).toContain("`bkit install` requires at least one module flag");
+  });
+
+  it("names every host flag and every --auto variant in the bare-install error", () => {
+    const err = validateModuleFlagsForVerb("install", flags()) ?? "";
+    for (const host of [
+      "--claude",
+      "--cursor",
+      "--codex",
+      "--antigravity",
+      "--opencode=<provider>",
+    ]) {
+      expect(err).toContain(host);
+    }
+    expect(err).toContain(`--auto=<${CLOUD_VARIANTS.join("|")}>`);
   });
 
   it("passes when install is given at least one module flag", () => {

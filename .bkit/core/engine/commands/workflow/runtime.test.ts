@@ -164,6 +164,17 @@ describe("bkit runtime detect — the table", () => {
     expect(r.err).toContain("is not a valid runtime");
   });
 
+  it.each([
+    ["LOCAL", false],
+    ["CLOUD_CLAUDE", false],
+    ["GITHUB_ACTION", true],
+    ["CLOUD_CURSOR", true],
+    ["UNKNOWN", true],
+  ])("%s -> runtimeHeadless=%s", async (runtime, headless) => {
+    vi.stubEnv("BKIT_RUNTIME", runtime);
+    expect((await detect()).json).toMatchObject({ runtime, runtimeHeadless: headless });
+  });
+
   it("the marker outranks CLAUDE_CODE_REMOTE; BKIT_RUNTIME outranks the marker", async () => {
     fs.mkdirSync(path.join(cwd, ".bkit"));
     fs.writeFileSync(path.join(cwd, ".bkit", ".runtime-cursor"), "");
@@ -334,6 +345,13 @@ describe("bkit runtime assert", () => {
       runtimeGithubCli: false,
       baseSha: "abc",
     });
+  });
+
+  it("derives runtimeHeadless from the row's runtime; the row never stores it", async () => {
+    write(resolved({ runtime: "GITHUB_ACTION" }));
+    expect((await run(["assert", "--file=status.jsonl"])).json.runtimeHeadless).toBe(true);
+    write(resolved());
+    expect((await run(["assert", "--file=status.jsonl"])).json.runtimeHeadless).toBe(false);
   });
 
   it("reads the LATEST row, optionally for one workflow", async () => {

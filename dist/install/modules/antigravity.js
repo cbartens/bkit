@@ -186,8 +186,9 @@ export function runAntigravityModule(ctx) {
         }
     }
     // --- bkit-guardrails.cjs — Tier-2 markered-text, twin of the Cursor/Codex hook ---
-    // Registered on matcher `run_command` in hooks.json above. Same decision engine as the
-    // other hosts; the deny tier blocks for real.
+    // Registered on matcher `view_file|run_command` in hooks.json above. Same decision engine
+    // as the other hosts (shell tiers; read tiers shared with Cursor); the deny tier blocks
+    // for real.
     {
         const railSrc = path.join(pluginHooksSrc, "bkit-guardrails.cjs");
         const railDst = path.join(ANTIGRAVITY_HOOKS_DIR, "bkit-guardrails.cjs");

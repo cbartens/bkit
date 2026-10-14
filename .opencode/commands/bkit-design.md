@@ -163,7 +163,15 @@ $ARGUMENTS
 
 ## 🤖 Step 3 — Grill
 
-1. **If** session prompt contains `grill=false` → create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions` heading plus `Skipped (grill=false).` → step 5.
+1. Read the runtime:
+   ```bash
+   "{BKIT}" runtime assert --file="{STATUS}" --workflow=design
+   ```
+   Hold `runtimeHeadless` as `{RUNTIME_HEADLESS}`, `runtime` as `{RUNTIME}`.
+   Route:
+   - **If** session prompt contains `grill=false` → create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions` heading plus `Skipped (grill=false).` → step 5.
+   - **If** `RUNTIME_HEADLESS` = true → no human to ask: map the tree and frontier per step 2 without asking or ending the turn, taking each recommended answer as given to open the next frontier, until it is empty or 10 rounds → step 4; every question counts as unanswered at stop.
+   - **Else** → step 2.
 2. Interview the human in this session; NEVER hand the interview to a subagent because subagents cannot reach the human:
    - Read `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** an earlier run left a `docs/plans/{YYYYMM}/logs/{FID}/design-grill-*.md` → the newest one's `Settled` entries stay settled; ask only what they leave open or what `ISSUE_TEXT` changed since.
    - Map open decisions as a tree: each decision branches into the decisions that depend on it. Frontier = every unsettled decision whose prerequisites are settled.
@@ -175,7 +183,7 @@ $ARGUMENTS
    - **If** frontier empty **and** the human confirms shared understanding → step 4.
    - **If** the human says stop **or** 10 rounds asked → step 4.
    - **Else** → step 2, next round.
-4. Create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions` heading; the line `Settled = the human's answer; the design follows it and flags any departure for the human to confirm. Assumed = unconfirmed default; override only with a stated reason. Open = unknown; the design states how it resolves each.`; then `### Settled`, `### Assumed, not confirmed`, `### Open` headings, one `- Q{n} {title}: {answer}` line per question. Unanswered at stop → `Assumed, not confirmed` with the recommended answer; "don't know" → `Open`; empty section → `None.`
+4. Create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions` heading; the line `Settled = the human's answer; the design follows it and flags any departure for the human to confirm. Assumed = unconfirmed default; override only with a stated reason. Open = unknown; the design states how it resolves each.`; then `### Settled`, `### Assumed, not confirmed`, `### Open` headings, one `- Q{n} {title}: {answer}` line per question. Unanswered at stop → `Assumed, not confirmed` with the recommended answer; "don't know" → `Open`; empty section → `None.` **If** `RUNTIME_HEADLESS` = true → add the line `Headless run ({RUNTIME}): no human interviewed this run.` under the heading.
 5. Append `design-grill-{RUN}.md` verbatim to `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** `design-input-{RUN}.md` already holds a `Grill decisions` section → replace it.
 6. Finish:
    ```bash
@@ -184,7 +192,7 @@ $ARGUMENTS
 
 ### 🔒 Gate 3 — Grill
 
-- [ ] Interview held in this session or skipped (no subagent put a question to the human; rounds <= 10; skip only on `grill=false`)
+- [ ] Interview held in this session, assumed headless, or skipped (no subagent put a question to the human; rounds <= 10; no question asked and no turn ended when `RUNTIME_HEADLESS` = true; skip only on `grill=false`)
 - [ ] Grill decisions appended to input (one `Grill decisions` section in `design-input-{RUN}.md`)
 - [ ] Mechanical checks passed (`steps finish` exit 0: `design-grill-{RUN}.md`, `design-input-{RUN}.md`, step `design-grill` recorded)
 

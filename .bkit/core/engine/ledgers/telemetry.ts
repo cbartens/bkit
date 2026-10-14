@@ -391,8 +391,6 @@ export interface OutcomePayload {
   frictionAdded?: number;
   deferralsAdded?: number;
   failuresAdded?: number;
-  /** Sweep verdict from ship deferred-sweep step. */
-  sweepVerdict?: string;
   /**
    * `"brief"` = the run had no `{FID}-plan*.md` and worked from its input file
    * (build / ship `workflow-meta` row). Absent = the run had a plan. Brief runs

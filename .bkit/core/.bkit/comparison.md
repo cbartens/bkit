@@ -43,17 +43,19 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
                                   ▼
 
 /bkit-design ───── output: detailed design ───────────────────────────────────
-  1. fetch related       (semantic tracker search, rank order → related-issues.md)
-  2. brainstorm × 3 (parallel, distinct lenses, no sibling reads)
+  1. grill              (human interview, one decision frontier per round;
+                         skipped headless: recommended answers recorded as assumed)
+  2. fetch related       (semantic tracker search, rank order → related-issues.md)
+  3. brainstorm × 3 (parallel, distinct lenses, no sibling reads)
      • pragmatic  • optimal-tradeoff  • risk / pre-mortem
-  3. generate design     (synthesise across lenses + related issues)
-  4. review × 2 (parallel, cross-tier models)
+  4. generate design     (synthesise across lenses + related issues)
+  5. review × 2 (parallel, cross-tier models)
      • feasibility (web)  • operability (failure modes, observability, on-call)
-  5. spike               (only if review flags load-bearing unknowns:
+  6. spike               (only if review flags load-bearing unknowns:
                          throwaway probe code, confined to the run's log folder)
-  6. update design       (fold reviews + spike back in)
-  7. organise            (decompose into workstreams + DAG)
-  8. summary             (tracker-facing)
+  7. update design       (fold reviews + spike back in)
+  8. organise            (decompose into workstreams + DAG)
+  9. summary             (tracker-facing)
 
 /bkit-plan ───── output: detailed plan ───────────────────────────────────────
   1. generate plan

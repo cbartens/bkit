@@ -1,22 +1,26 @@
 #!/usr/bin/env node
-// bkit-guardrails.cjs — bkit destructive-op shell gates (Google Antigravity).
+// bkit-guardrails.cjs — bkit destructive-op shell gates + secret-file read gates (Google
+// Antigravity).
 //
 // Twin of `.cursor/hooks/bkit-guardrails.cjs` and `.codex/hooks/bkit-guardrails.cjs`:
-// bkit generates the same shell detection and deny / ask tiers into all three at install
-// (bkit's `core/hooks/`). Wired from `.agents/plugins/bkit/hooks.json`, matcher `run_command` —
-// Antigravity's canonical tool name for shell execution.
+// bkit generates the same shell detection and deny / ask tiers into all three, and the same
+// read tiers into this hook and Cursor's, at install (bkit's `core/hooks/`). Wired from
+// `.agents/plugins/bkit/hooks.json`, matcher `view_file|run_command` — Antigravity's
+// canonical tool names for file reads and shell execution.
 //
 // WHAT DIFFERS FROM THE CODEX TWIN — Antigravity's hook contract, live-verified on the agy
 // CLI (bkit's `core/hooks/antigravity-hook.js`):
 //
 //   1. ENVELOPE. stdin is `{ conversationId, toolCall: { name, args }, workspacePaths }`;
 //      the command is `args.CommandLine`.
-//   2. OUTPUT. stdout is `{ decision, reason }`. deny → `deny`; ask → Antigravity's own
-//      `ask` (it prompts the human); the advisory tiers (fetch host, shell-as-edit) deny the
-//      call once with the advisory as the reason, because only a deny's reason reaches the
-//      model — the agent's retry goes through.
+//   2. OUTPUT. stdout is `{ decision, reason }`. deny → `deny` (private-key reads too);
+//      ask → Antigravity's own `ask` (it prompts the human; `.env` reads too); the advisory
+//      tiers (fetch host, shell-as-edit) deny the call once with the advisory as the
+//      reason, because only a deny's reason reaches the model — the agent's retry goes
+//      through.
 //
-// REGISTRATION: `.agents/plugins/bkit/hooks.json`, matcher `run_command`. See .bkit/providers.md § GateGuard.
+// REGISTRATION: `.agents/plugins/bkit/hooks.json`, matcher `view_file|run_command`. See
+// .bkit/providers.md § Permissions / auto-approve.
 //
 // CONTRACT — do not regress:
 //   - FAIL OPEN: one top-level catch emits a bare allow on any error.
@@ -41,6 +45,8 @@ const path = require("node:path");
 
 // {{BKIT_PART guardrails-tiers.js}}
 
+// {{BKIT_PART guardrails-read.js}}
+
 // {{BKIT_PART antigravity-hook.js}}
 
 /**
@@ -48,6 +54,28 @@ const path = require("node:path");
  * consumer-registered matcher or an isolated `run_command` session.
  */
 const SHELL_TOOL_NAMES = new Set(["run_command", "RunCommand", "Bash", "bash", "shell"]);
+
+/**
+ * Antigravity reads a file with `view_file` (path `AbsolutePath`); `Read` matches a
+ * consumer-registered matcher.
+ */
+const READ_TOOL_NAMES = new Set(["view_file", "Read"]);
+
+/** A read's decision: deny private-key material, ask on an env / secrets file, else null. */
+function decideRead(filePath) {
+  const v = classifyRead(filePath);
+  if (!v) return null;
+  if (v.tier === "deny") {
+    return {
+      decision: "deny",
+      reason: `Blocked by bkit Antigravity guardrails: reading private-key material is denied. Do not read ${v.path}. Ask the user to supply needed material out-of-band.`,
+    };
+  }
+  return {
+    decision: "ask",
+    reason: `bkit Antigravity guardrails: reading ${v.path} may expose secrets. Prefer direnv / documented non-secret examples.`,
+  };
+}
 
 /**
  * Entry point — pure. Takes the parsed hook payload, returns Antigravity's
@@ -58,8 +86,9 @@ function bkitGuardrails(payload) {
   const p = fromAntigravityPayload(payload);
   if (!p || typeof p !== "object") return null;
   const tool = p.tool_name;
-  if (!SHELL_TOOL_NAMES.has(tool)) return null;
   const input = p.tool_input || {};
+  if (READ_TOOL_NAMES.has(tool)) return decideRead(input.AbsolutePath ?? input.file_path);
+  if (!SHELL_TOOL_NAMES.has(tool)) return null;
   const raw = Array.isArray(input.command)
     ? input.command.join(" ")
     : (input.CommandLine ?? input.command);

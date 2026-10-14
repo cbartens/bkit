@@ -37,11 +37,17 @@ function readAllWorkflows(): string {
   return WORKFLOW_FILES.map(readWorkflow).join("\n");
 }
 
-// (i) every runtime capability key of the `runtime-resolved` row must have >=1
-// reader across the workflow corpus, spelled as the row spells it. Whether the
-// runtime can sleep is measured inside `bkit runs wait|dispatch`, not predicted
-// by a capability row.
-const RUNTIME_FLAGS = ["runtimeWorktrees", "runtimeDevPushes", "runtimeGithubCli"] as const;
+// (i) every runtime capability key `bkit runtime assert` emits — the
+// `runtime-resolved` row's three plus the derived `runtimeHeadless` — must have
+// >=1 reader across the workflow corpus, spelled as the command spells it.
+// Whether the runtime can sleep is measured inside `bkit runs wait|dispatch`, not
+// predicted by a capability row.
+const RUNTIME_FLAGS = [
+  "runtimeWorktrees",
+  "runtimeDevPushes",
+  "runtimeGithubCli",
+  "runtimeHeadless",
+] as const;
 
 describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
   describe("(i) every runtime capability key has >=1 reader in .bkit/workflows/", () => {

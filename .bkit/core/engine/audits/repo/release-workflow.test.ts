@@ -4,8 +4,8 @@
 // String-based structural assertions on the raw YAML file content (no YAML parser in
 // devDependencies).
 //
-// Real `npm pack` tarball-manifest inspection is covered in
-// audits/repo/release-workflow.integration.test.ts (real npm subprocess).
+// Real `npm pack` / `pnpm pack` tarball-manifest inspection is covered in
+// audits/repo/release-workflow.integration.test.ts (real packer subprocesses).
 
 import * as fs from "node:fs";
 import * as path from "node:path";

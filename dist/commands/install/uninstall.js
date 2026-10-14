@@ -384,6 +384,7 @@ export async function runUninstall(modules, ctx) {
         deleted: [],
         stripped: [],
         preserved: [],
+        absent: [],
         decisions: [],
         dryRun: ctx.dryRun,
     };
@@ -413,7 +414,13 @@ export async function runUninstall(modules, ctx) {
         seen.add(summary.file);
         const absPath = path.join(ctx.cwd, summary.file);
         switch (summary.decision) {
-            case "skip-absent":
+            case "skip-absent": {
+                result.absent.push(summary.file);
+                if (!ctx.dryRun) {
+                    console.log(`${ctx.logPrefix} absent: ${summary.file} (${summary.reason})`);
+                }
+                break;
+            }
             case "skip-modified":
             case "skip-unknown":
             case "preserve": {
@@ -865,13 +872,15 @@ export async function runUninstallCommand(modules, opencodeProvider, uninstallFl
     const moduleList = [...modules];
     console.log(`${LOG_PREFIX} Running uninstall${uninstallCtx.dryRun ? " (dry-run)" : ""}...`);
     const result = await runUninstall(moduleList, uninstallCtx);
-    const totalDeleted = result.deleted.length;
-    const totalStripped = result.stripped.length;
-    const totalPreserved = result.preserved.length;
-    if (uninstallCtx.dryRun) {
-        console.log(`${LOG_PREFIX} [dry-run] Would delete: ${totalDeleted}, strip: ${totalStripped}, preserve: ${totalPreserved}`);
-    }
-    else {
-        console.log(`${LOG_PREFIX} Done. Deleted: ${totalDeleted}, stripped: ${totalStripped}, preserved: ${totalPreserved}`);
-    }
+    console.log(uninstallSummaryLine(result, LOG_PREFIX));
+}
+/** The closing totals line of an uninstall run (dry-run wording when `result.dryRun`). */
+export function uninstallSummaryLine(result, logPrefix) {
+    const deleted = result.deleted.length;
+    const stripped = result.stripped.length;
+    const preserved = result.preserved.length;
+    const absent = result.absent.length;
+    return result.dryRun
+        ? `${logPrefix} [dry-run] Would delete: ${deleted}, strip: ${stripped}, preserve: ${preserved}, already absent: ${absent}`
+        : `${logPrefix} Done. Deleted: ${deleted}, stripped: ${stripped}, preserved: ${preserved}, already absent: ${absent}`;
 }

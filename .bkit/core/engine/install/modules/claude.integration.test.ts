@@ -12,6 +12,7 @@ import type { ModuleContext } from "./index";
 import { writeBkitVersion } from "../version-file";
 import { getPkgRoot } from "../../shared/package-roots";
 import type { PreflightFinding } from "../../checks/before/index";
+import { detectExtraMcpServers, detectMissingMcpServers } from "../../checks/before/mcp";
 import { getBkitDocsRoot } from "../../shared/package-roots";
 
 // ---------------------------------------------------------------------------
@@ -223,6 +224,15 @@ describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
     expect(ws.writes).toEqual([]);
     expect(read()).toEqual({ mcpServers: { linear: { url: "https://mine" } } });
   });
+
+  it.each(["github", "linear", "none"] as const)(
+    "%s: the render satisfies the preflight MCP detectors (no missing / extra advisory)",
+    (tracker) => {
+      reconcileMcpJson(template, ".mcp.json", tracker, false, makeWriteSet());
+      expect(detectMissingMcpServers(tmpDir, ".mcp.json", tracker)).toEqual([]);
+      expect(detectExtraMcpServers(tmpDir, ".mcp.json", tracker)).toEqual([]);
+    },
+  );
 
   it("malformed JSON throws and leaves the file as it was", () => {
     fs.writeFileSync(path.join(tmpDir, ".mcp.json"), "{ nope", "utf-8");

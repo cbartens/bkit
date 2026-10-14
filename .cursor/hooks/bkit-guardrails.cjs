@@ -11,8 +11,8 @@
 // Fail-open: a single top-level catch allows on unexpected errors (same shape as gateguard).
 //
 // bkit generates the managed block at install: the shell detection and the deny / ask
-// tiers are shared with the Claude and Codex hooks (bkit's `core/hooks/`); the output
-// shape and the read gate below are Cursor's own.
+// tiers are shared with the Claude and Codex hooks, the read tiers with the Antigravity
+// hook (bkit's `core/hooks/`); the output shape is Cursor's own.
 //
 // OWNERSHIP: everything between the markers below is bkit-managed and is
 // overwritten on every `bkit install` / `bkit upgrade`. It is a pure decision
@@ -253,6 +253,30 @@ function classifyShell(c) {
   return edits.length > 0 ? { tier: "edit", edits } : null;
 }
 
+// --- Secret-file read tier: identical in the Cursor and Google Antigravity guardrails hooks
+// (bkit renders it from one source). Same policy as Claude's settings.json `Read(...)` deny /
+// ask rows and opencode's `permission.read` map; each host maps a tier to its own output
+// shape and wording.
+
+/**
+ * The read tier for a file path (`/` or `\` separated), first match wins:
+ *   `{ tier: "deny", path }` — private-key material: `*.pem`, `*.p12`, `id_rsa`;
+ *   `{ tier: "ask", path }`  — an env / secrets file: `.env`, `.env.*` except `.env.example`;
+ *   null                     — nothing to say.
+ */
+function classifyRead(filePath) {
+  const p = String(filePath || "").replace(/\\/g, "/");
+  if (!p) return null;
+  if (/\.pem$/i.test(p) || /\.p12$/i.test(p) || /(^|\/)id_rsa$/i.test(p)) {
+    return { tier: "deny", path: p };
+  }
+  const base = p.split("/").pop() || p;
+  if (base === ".env" || (/^\.env\./.test(base) && base !== ".env.example")) {
+    return { tier: "ask", path: p };
+  }
+  return null;
+}
+
 function allow() {
   return { permission: "allow" };
 }
@@ -300,27 +324,18 @@ function decideShell(cmd) {
 
 /** @param {string} filePath */
 function decideRead(filePath) {
-  const p = filePath.replace(/\\/g, "/");
-  if (!p) return allow();
-
-  // Deny private-key material
-  if (/\.pem$/i.test(p) || /\.p12$/i.test(p) || /(^|\/)id_rsa$/i.test(p)) {
+  const v = classifyRead(filePath);
+  if (!v) return allow();
+  if (v.tier === "deny") {
     return deny(
       "Blocked: reading private-key material is denied by bkit Cursor guardrails.",
-      `Do not read ${p}. Ask the user to supply needed material out-of-band.`,
+      `Do not read ${v.path}. Ask the user to supply needed material out-of-band.`,
     );
   }
-
-  // Ask on .env (allow .env.example)
-  const base = p.split("/").pop() || p;
-  if (base === ".env" || (/^\.env\./.test(base) && base !== ".env.example")) {
-    return ask(
-      "bkit Cursor guardrails: confirm reading an env/secrets file.",
-      `Reading ${p} may expose secrets. Prefer direnv / documented non-secret examples.`,
-    );
-  }
-
-  return allow();
+  return ask(
+    "bkit Cursor guardrails: confirm reading an env/secrets file.",
+    `Reading ${v.path} may expose secrets. Prefer direnv / documented non-secret examples.`,
+  );
 }
 
 /**

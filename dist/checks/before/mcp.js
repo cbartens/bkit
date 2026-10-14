@@ -2,24 +2,38 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseJson } from "../../shared/json.js";
-// ---------------------------------------------------------------------------
-// Advisory: missing MCP server entries in .mcp.json / .cursor/mcp.json
-// ---------------------------------------------------------------------------
-/** Every MCP server key bkit manages; `requiredMcpServersForTracker` picks the required subset. */
-const REQUIRED_MCP_SERVERS = ["linear", "github"];
+/** Every MCP server key bkit writes; `requiredMcpServersForTracker` picks the required subset. */
+const BKIT_MCP_SERVERS = ["linear", "github"];
 /**
- * Return the MCP server keys required for a given issue tracker.
- *
- * - `github`  → only `github` MCP server required (Linear gate is a no-op on GitHub tracker).
- * - `linear`  → both `linear` and `github` required (Linear tracker still dispatches via GitHub PR).
- * - `none`    → `github` only (tracker calls are no-ops; GitHub surface still needed for PR ops).
+ * bkit-written servers a workflow step calls under every tracker, so never flagged as extra:
+ * the workflows' gh MCP fallback (PR / CI / merge when `gh` is unavailable) calls `github`.
+ */
+const TRACKER_INDEPENDENT_MCP_SERVERS = ["github"];
+/**
+ * Return the MCP server keys required for a given issue tracker — exactly the entry the
+ * install renderers write: the tracker's own server (`none` → none).
  */
 export function requiredMcpServersForTracker(tracker) {
-    if (tracker === "github")
-        return ["github"];
-    if (tracker === "linear")
-        return ["linear", "github"];
-    return ["github"]; // none — only GitHub for PR surface
+    return tracker === "none" ? [] : [tracker];
+}
+/**
+ * Read the server map under `mapKey` of the JSON file at `relPath`.
+ * `undefined` → file absent or malformed (callers skip); `null` → file present, no map.
+ */
+function readMcpServerMap(cwd, relPath, mapKey) {
+    const absPath = path.join(cwd, relPath);
+    if (!fs.existsSync(absPath))
+        return undefined;
+    const parsed = parseJson(fs.readFileSync(absPath, "utf-8"));
+    if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null)
+        return undefined;
+    const map = parsed.value[mapKey];
+    return map !== null && typeof map === "object" && !Array.isArray(map)
+        ? map
+        : null;
+}
+function advisoryPathSlug(relPath) {
+    return relPath.replace(/[^a-z0-9]/gi, "-");
 }
 /**
  * Advisory: one finding per missing required MCP server key in a given mcp.json file.
@@ -35,19 +49,11 @@ export function requiredMcpServersForTracker(tracker) {
  * Follows `[context] Message` advisory format.
  */
 export function detectMissingMcpServers(cwd, relPath, issueTracker) {
-    const absPath = path.join(cwd, relPath);
-    if (!fs.existsSync(absPath))
+    const mcpServers = readMcpServerMap(cwd, relPath, "mcpServers");
+    if (mcpServers === undefined)
         return [];
-    const parsed = parseJson(fs.readFileSync(absPath, "utf-8"));
-    if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null)
-        return []; // malformed JSON — skip silently
-    const doc = parsed.value;
-    const mcpServers = doc.mcpServers !== null && typeof doc.mcpServers === "object" && !Array.isArray(doc.mcpServers)
-        ? doc.mcpServers
-        : null;
-    const requiredServers = requiredMcpServersForTracker(issueTracker);
     const findings = [];
-    for (const key of requiredServers) {
+    for (const key of requiredMcpServersForTracker(issueTracker)) {
         if (mcpServers && Object.prototype.hasOwnProperty.call(mcpServers, key))
             continue;
         const urlHint = key === "linear"
@@ -56,7 +62,7 @@ export function detectMissingMcpServers(cwd, relPath, issueTracker) {
                 ? `"url": "https://api.githubcopilot.com/mcp/"`
                 : `"url": "<server-url>"`;
         findings.push({
-            id: `mcp-missing-server-${key}-${relPath.replace(/[^a-z0-9]/gi, "-")}`,
+            id: `mcp-missing-server-${key}-${advisoryPathSlug(relPath)}`,
             severity: "advisory",
             detect: `${relPath} is missing the ${key} MCP server in mcpServers.`,
             action: `[mcp] ${relPath} is missing the ${key} MCP server. Add it to mcpServers: {"${key}": {${urlHint}}}`,
@@ -65,46 +71,40 @@ export function detectMissingMcpServers(cwd, relPath, issueTracker) {
     return findings;
 }
 /**
- * Advisory: one finding per bkit-managed MCP server that is present in the file
- * but NOT required by the resolved tracker (the symmetric counterpart to
- * `detectMissingMcpServers`). Catches the stale-leftover case — e.g. a repo
- * switched to `--tracker=github` but still carries the `linear` entry.
+ * Advisory: one finding per bkit-written MCP server that is present in the file but NOT
+ * required by the resolved tracker (the symmetric counterpart to `detectMissingMcpServers`).
+ * Catches the stale-leftover case — e.g. a repo switched to `--tracker=github` but still
+ * carrying the `linear` entry.
  *
- * Only flags servers bkit itself manages (`REQUIRED_MCP_SERVERS`). Consumer-added
- * MCP servers (custom tooling, other providers) are never flagged for removal.
+ * Only flags tracker-only servers bkit itself writes (`BKIT_MCP_SERVERS` minus
+ * `TRACKER_INDEPENDENT_MCP_SERVERS`). Consumer-added MCP servers (custom tooling, other
+ * providers) are never flagged for removal.
+ *
+ * `mapKey` names the server map: `mcpServers` (`.mcp.json`, `.cursor/mcp.json`) or `mcp`
+ * (`.opencode/opencode.json`).
  *
  * Semantics:
- *   - File absent / malformed / no mcpServers → return []
- *   - bkit-managed server present but not in `requiredMcpServersForTracker(tracker)` → one advisory
+ *   - File absent / malformed / no server map → return []
+ *   - tracker-only server present but not in `requiredMcpServersForTracker(tracker)` → one advisory
  *
  * Follows `[context] Message` advisory format.
  */
-export function detectExtraMcpServers(cwd, relPath, issueTracker) {
-    const absPath = path.join(cwd, relPath);
-    if (!fs.existsSync(absPath))
-        return [];
-    const parsed = parseJson(fs.readFileSync(absPath, "utf-8"));
-    if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null)
-        return []; // malformed JSON — skip silently
-    const doc = parsed.value;
-    const mcpServers = doc.mcpServers !== null && typeof doc.mcpServers === "object" && !Array.isArray(doc.mcpServers)
-        ? doc.mcpServers
-        : null;
-    if (!mcpServers)
+export function detectExtraMcpServers(cwd, relPath, issueTracker, mapKey = "mcpServers") {
+    const servers = readMcpServerMap(cwd, relPath, mapKey);
+    if (!servers)
         return [];
     const allowed = requiredMcpServersForTracker(issueTracker);
     const findings = [];
-    // Only consider servers bkit manages — never flag consumer-added MCP servers.
-    for (const key of REQUIRED_MCP_SERVERS) {
-        if (allowed.includes(key))
+    for (const key of BKIT_MCP_SERVERS) {
+        if (allowed.includes(key) || TRACKER_INDEPENDENT_MCP_SERVERS.includes(key))
             continue;
-        if (!Object.prototype.hasOwnProperty.call(mcpServers, key))
+        if (!Object.prototype.hasOwnProperty.call(servers, key))
             continue;
         findings.push({
-            id: `mcp-extra-server-${key}-${relPath.replace(/[^a-z0-9]/gi, "-")}`,
+            id: `mcp-extra-server-${key}-${advisoryPathSlug(relPath)}`,
             severity: "advisory",
             detect: `${relPath} has the ${key} MCP server but the ${issueTracker} tracker does not use it.`,
-            action: `[mcp] ${relPath} carries the ${key} MCP server, which is not used by the ${issueTracker} tracker. Remove the "${key}" entry from mcpServers.`,
+            action: `[mcp] ${relPath} carries the ${key} MCP server, which is not used by the ${issueTracker} tracker. Remove the "${key}" entry from ${mapKey}.`,
         });
     }
     return findings;

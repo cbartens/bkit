@@ -334,7 +334,6 @@ Indented for readability — **on disk each row = single physical line** (§ Wri
   "frictionAdded": 1,
   "deferralsAdded": 1,
   "failuresAdded": 0,
-  "sweepVerdict": "clean",
   "coverage": { "unit": { "lines": 87.4, "branches": 79.1, "functions": 90.2, "statements": 87.0 }, "integration": { "lines": 68.3 }, "e2e": { "lines": 41.5 } }
 }
 {
