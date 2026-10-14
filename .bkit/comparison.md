@@ -1,15 +1,16 @@
-# bkit — Pipeline Reference & Comparison to Agentic Design Patterns
+# bkit — Comparison, Pipeline Reference & Agentic Design Patterns
 
 <!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
-> **Purpose:** Human-facing reference. Five-phase pipeline + every subagent (execution order), bkit vs Antonio Gulli's _Agentic Design Patterns_. Evaluation, onboarding, outreach — not agent workflow doc-matrix.
+> **Purpose:** Human-facing reference. bkit vs other AI development frameworks, five-phase pipeline + every subagent (execution order), bkit vs Antonio Gulli's _Agentic Design Patterns_. Evaluation, onboarding, outreach — not agent workflow doc-matrix.
 >
 > **Rules:**
 >
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Keep prose factual; house / write-good linters apply to `*.md`; no hype adjectives.
+> - Part 3 cells: each project's own repo / docs only, never roundups or AI summaries; no star counts; refresh the as-of month with the table.
 > - Pipeline or subagents change → update Part 1 to match `.bkit/core/workflows/*` and `.bkit/core/.bkit/prompts.md`.
 
 ## What this is
@@ -18,7 +19,9 @@ bkit turns a single coding-agent request into gated, peer-reviewed engineering. 
 
 Beside those commands, 35 read-only audit templates live at `docs/templates/bkit-audit-*.md`. `@bkit-audit-generate` runs one and writes `docs/audits/{YYYYMM}/{slug}.md`. `/bkit-plan` takes a design, one or more of those reports, or both.
 
-Part 1: every phase subagent in execution order, then the main audit templates. Part 2: bkit vs Gulli agentic patterns. Full audit catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
+Part 1: every phase subagent in execution order, then the main audit templates. Part 2: bkit vs Gulli agentic patterns. Part 3: bkit vs 18 other AI development frameworks, one table. Full audit catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
+
+Not related to [bkit Vibecoding Kit](https://github.com/popup-studio-ai/bkit-claude-code), a separate project with the same name. This bkit = `@cbartens/bkit`, [github.com/cbartens/bkit](https://github.com/cbartens/bkit).
 
 ---
 
@@ -31,7 +34,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 ```
 ┌────────────────────── bkit-auto (opt-in cloud router) ─────────────────┐
 │ workflow_run on feat/**  → ship (CI green) / debug (CI red)            │
-│ workflow_dispatch        → any phase (ship|debug|design|plan|build)    │
+│ workflow_dispatch        → ship|debug|plan|build (design: local only)  │
 │ Dispatches the matching /bkit-* skill — runs unattended in cloud       │
 │ (Claude Code on the web / Cursor cloud agents / opencode).               │
 │ Opt-in: `bkit install --auto=claude|cursor|opencode`. See `.bkit/cloud.md`. │
@@ -323,4 +326,57 @@ Most partials = deliberate scope. Two remain: automated eval harness with regres
 
 ---
 
-Source: bkit workflow and prompt definitions (`.bkit/core/workflows/*`, `.bkit/core/.bkit/prompts.md`) and the Gulli differential review of _Agentic Design Patterns_.
+## Part 3 — Compared with other AI development frameworks
+
+As of October 2026. Each row read from the project's own repo and docs. ✅ yes · ◐ partly · — no · ? not documented.
+
+<!-- prettier-ignore -->
+| Column | Means |
+| --- | --- |
+| Kind | **Framework** runs a fixed multi-phase process · **Spec toolkit** writes specs / plans, agent does the rest · **Skills pack** library of skills / agents / commands, no fixed process · **Agent** product that writes code itself · **Editor** IDE or single-agent pair programmer |
+| Phases | Own commands / agents for: design, plan, build, review, fix (debug failures), merge |
+| Reviewers | Work reviewed by agents that did not write it |
+| Sign-offs | Process stops for human approval at fixed points |
+| Checked | "Done" verified by code / tests, not the agent's word |
+| CI | Ships a CI pipeline for your project |
+| Memory | File-based lessons / decisions later runs read |
+| Parallel | Several features at once, isolated (e.g. worktrees) |
+| Cloud | Runs unattended, triggered or hosted |
+| Guards | Hooks that block dangerous actions |
+| Audits | Audit / checklist templates |
+
+<!-- prettier-ignore -->
+| Project | Kind | Licence | Phases | Reviewers | Sign-offs | Checked | CI | Tracker | Memory | Docs | Parallel | Cloud | Guards | Audits | AI tools | Ahead of bkit on |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **bkit** | Framework | PolyForm NC / SB (source-available) | all six | ✅ bug + security reviewers, blind to each other | ✅ design, plan, merge | ✅ | ✅ capstone fails on skipped lane / zero tests | GitHub, Linear | ✅ | ✅ | ✅ | ✅ ship on green, debug on red | ✅ all hosts | ✅ 35 | 5 | — |
+| [Superpowers](https://github.com/obra/superpowers) | Framework | MIT | all six; fix local only; merge or PR, no CI wait | ◐ fresh reviewer per task + whole branch | ✅ design, plan, merge | ✅ task done only if its test passes | — | — | — | — | ◐ | ? | ◐ prompt rules | — | 16 | TDD enforced; skills trigger automatically; skill eval harness; official marketplaces |
+| [gstack](https://github.com/garrytan/gstack) | Skills pack (sprint) | MIT | all six; host writes code; deploys after merge | ✅ up to 8 specialists + second model | ✅ design, plan, merge | ✅ test evidence tied to file fingerprint; zero tests fails | ◐ basic `test.yml` | ◐ GitHub | ✅ outside repo | ✅ | ◐ via Conductor | ◐ stops at gates | ◐ opt-in, Claude Code only | ✅ ~10 + 8 checklists | 1 certified, 7 experimental | Real-browser and iOS device QA; design mockups; deploy + canary monitoring; prompt-injection defences |
+| [Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin) | Framework | MIT | all six; merge only if granted | ✅ blind personas + second model | ◐ interactive only; `lfg` never pauses | ◐ | — | GitHub, Linear, Jira | ✅ `docs/solutions/` | ◐ | ◐ | ◐ scheduler | ◐ prompt rules | ◐ reviewer personas | ~14 | Learnings shared across repos; Jira; stacked-PR babysitting; Slack / GitHub feedback → plan |
+| [GSD Core](https://github.com/open-gsd/gsd-core) | Framework | MIT | all six; PR, never merges | ✅ checkers + outside AI tools review plan | ✅ roadmap, acceptance, ship | ✅ verification goes stale on file change | — | — by design | ✅ | ◐ | ✅ | ◐ local | ◐ blocks `.env` reads | ◐ ~8 | 15 | Cross-tool plan review; ship blocked by open security threats; cross-project learnings |
+| [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) + bmad-loop | Framework | MIT + trademark | all six; fix partial; local merge, no PR | ✅ 4 blind reviewers | ◐ risk-flagged plans, done, epic boundary | ◐ (✅ with loop) | — | GitHub, Jira, Linear, Notion, Trello | ◐ | ◐ | ◐ | ◐ local | — | ◐ 5 lenses | 10+ | Agile roles and artifacts (PRD, UX spec, epics, stories); most trackers |
+| [Spec Kit](https://github.com/github/spec-kit) | Spec toolkit | MIT | design, plan, build; review, fix partial; no merge | ◐ via extensions | ✅ spec, plan | ◐ | — | ◐ tasks → GitHub issues | ◐ constitution | ◐ | ◐ via extensions | ◐ | — | ◐ checklists | 40+ | Most AI tools; 181 community extensions; workflow engine for custom processes |
+| [OpenSpec](https://github.com/Fission-AI/OpenSpec) | Spec toolkit | MIT | design, plan, build; review partial; merges specs, not code | — | ◐ by convention | ◐ spec structure only | — | ? | ◐ living specs | ◐ specs | ◐ | ◐ via Copilot agent | ? | ? | 30+ | Light to adopt; made for existing code (spec deltas → living specs); multi-repo planning (beta) |
+| [Kiro](https://kiro.dev) (AWS) | Editor + cloud agent | Closed source, paid tiers | all six; PR, never merges | ✅ opt-in; reviewers on different model vendors | ✅ requirements, design, PR | ✅ property-based tests from requirements | ◐ example | ◐ GitHub, GitLab | ◐ | ◐ | ✅ 10 cloud sandboxes | ✅ | ✅ | ? | own IDE, CLI, web, mobile | Full product; EARS requirements; workflow rules enforced by runtime; enterprise SSO |
+| [Claude Task Master](https://github.com/eyaltoledano/claude-task-master) | Spec toolkit | MIT + Commons Clause | plan; build, review partial | ◐ one checker | ? | ◐ test counts self-reported | — | — own hosted sync | ◐ | — | ◐ | ◐ local loop | — | — | 13 | PRD → dependency-ordered tasks; any MCP client |
+| [ccpm](https://github.com/automazeio/ccpm) | Framework (light) | MIT | plan, build, merge (to `main`); design partial | — | ◐ user starts each phase | ◐ | — | GitHub | ◐ | — | ✅ | — | ◐ prompt rules | — | 6 | Status reports cost no model tokens; several agents split one issue; GitHub sub-issues |
+| [everything-claude-code](https://github.com/affaan-m/ECC) | Skills pack + pipeline | MIT | all six; PR, no merge | ✅ + agent that tries to refute each finding | ✅ plan, commit | ◐ | — | GitHub, Jira | ✅ | ◐ | ◐ | ◐ | ✅ GateGuard | ✅ ~25 | 1 stable, ~15 beta / experimental | Largest library (70+ agents, 300+ skills); finding refutation; hosted skill generator |
+| [wshobson/agents](https://github.com/wshobson/agents) | Skills pack | MIT | all six; PR only | ✅ 8 reviewers, not blind | ✅ checkpoints | ◐ | ◐ generated on request | ◐ GitHub | ◐ | ◐ | ◐ | ? | ◐ opt-in | ✅ ~10 | 7 | 200 specialist agents across ML, infra, security; plugin marketplace + eval |
+| [mattpocock/skills](https://github.com/mattpocock/skills) | Skills pack | MIT | all six; merge partial | ✅ standards + spec, kept apart | ◐ | ◐ | — | GitHub, GitLab | ◐ glossary, ADRs | ◐ | ◐ | — | ◐ | — | 10+ | Small pick-what-you-need skills; no process to adopt |
+| [SuperClaude](https://github.com/SuperClaude-Org/SuperClaude_Framework) | Skills pack | MIT | all six; merge = git helper | ◐ | ◐ | ◐ confidence gate | — | — | ✅ incl. past mistakes | ◐ | — | — | — | ◐ | 1 | Personas and modes switched per task |
+| [Ruflo](https://github.com/ruvnet/ruflo) (was claude-flow) | Skills pack + MCP platform | MIT | all six; plan, fix, merge partial | ◐ | ◐ | ◐ LLM judges gates | — | ◐ GitHub via prompts | ✅ vector, learns | ◐ | ◐ | ◐ | ✅ default hook | ◐ | any MCP client | Agent swarms; learning memory; cost-budgeted model routing; 46-plugin marketplace |
+| [oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) | Agent | Sustainable Use (source-available) | all six; design, fix partial; babysits PR to merge | ✅ code, QA, gate | ◐ plan path only | ✅ evidence tied to git tree | — | — | ✅ | ◐ | ✅ | ◐ local | ◐ | — | own CLI / app, OpenCode, Codex | Per-task model routing with fallbacks; LSP / AST tools |
+| [OpenHands](https://github.com/OpenHands/OpenHands) | Agent | MIT (paid cloud) | build, review, fix, merge; plan partial | ◐ one reviewer agent | ◐ per action; factory has none | ✅ merge watchdog waits for CI | ◐ AI PR review only | GitHub, GitLab, Jira, Linear | ◐ opt-in | ◐ AGENTS.md | ✅ containers | ✅ | ✅ sandbox + hooks | ◐ | own UI / CLI / cloud, ACP editors | Sandboxed and hosted execution; issue-to-merge with no human; Jira, GitLab |
+| [Cline](https://github.com/cline/cline) | Editor | Apache-2.0 | plan, build; review, fix, merge partial | ◐ PR-review sample | ◐ per action | ◐ | ◐ samples | ◐ | ◐ memory bank | ◐ | ✅ Kanban worktrees (preview) | ◐ | ◐ hook errors ignored by default | — | VS Code, JetBrains, CLI, app | Editor experience; checkpoint rollback; Kanban board |
+| [Aider](https://github.com/Aider-AI/aider) | Editor | Apache-2.0 | build + fixes own lint / test failures | — | ◐ per action | ◐ | — | — | ◐ | — | ? | ◐ scriptable | ◐ skips pre-commit hooks by default | — | CLI, any editor | Almost any model; repo map |
+
+Where bkit stands apart, per the table:
+
+- **Only one with all of:** blind bug + security reviewers, sign-off after design / plan / before merge, mechanical "done" checks, a CI pipeline for your project, GitHub / Linear tracker, and file-based memory.
+- **CI pipeline for your project:** none of the 18 ships a multi-lane test pipeline with a final gate. Closest: gstack's basic `test.yml`, OpenHands' AI PR-review workflow, Kiro's example.
+- **Merge discipline:** merges into `dev` only after the capstone check, never `main`. OpenHands merges with no human; ccpm merges straight to `main`; most stop at a PR.
+- **Debug with outside evidence:** connectors pull CI logs, runtime errors and web results into diagnosis; soak mode for runtime-only bugs; handover when unfixable.
+- **Gaps vs the field:** no IDE or hosted service; no TDD-first enforcement; no Jira; no formal requirements notation (EARS); no embedding memory; far smaller community; source-available licence where most rivals are MIT.
+
+---
+
+Sources: bkit workflow and prompt definitions (`.bkit/core/workflows/*`, `.bkit/core/.bkit/prompts.md`); the Gulli differential review of _Agentic Design Patterns_ (Part 2); each compared project's own repo and docs (Part 3).

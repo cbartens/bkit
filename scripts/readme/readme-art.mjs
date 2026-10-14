@@ -1,4 +1,4 @@
-// Renders the root README images (hero, features grid, pipeline, fences, context map), light + dark,
+// Renders the root README images (hero, features grid, pipeline, fences, context map, CI), light + dark,
 // plus the repo's social preview card, into .github/assets/ as both .svg and .png. Edit the copy
 // below, then: node scripts/readme/readme-art.mjs
 // Text is not auto-wrapped: keep tile lines short and eyeball the output at ~880px.
@@ -654,6 +654,128 @@ function pipeline(t) {
   );
 }
 
+// ---------- CI pipeline (bkit-ci.yml with every building block switched on, and where workflows use it) ----------
+// Lane ids are the bkit-tests-* jobs in .bkit/templates/.github/workflows/bkit-ci.yml.
+function ci(t) {
+  const W = 1200,
+    H = 720;
+  let b = `<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${t.muted}"/></marker></defs>`;
+  b += `<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
+  b += text(48, 60, "bkit-ci.yml", { size: 24, weight: 700, fill: t.text, font: MONO });
+  b += text(48, 92, "From quick checks to live-site tests, ending in one green tick", {
+    size: 18,
+    fill: t.muted,
+  });
+  const tick = (cx, cy, r = 9) =>
+    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${t.ok}"/>` +
+    `<path d="M${cx - r * 0.45} ${cy} l${r * 0.3} ${r * 0.32} l${r * 0.6} -${r * 0.62}" fill="none" stroke="${t.bg}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const cols = [
+    { head: "Plan the run", lanes: [["What to test", "scope"]] },
+    {
+      head: "Check and build",
+      lanes: [
+        ["Quick checks", "static"],
+        ["Unit tests", "unit"],
+        ["Integration", "integration"],
+        ["Web app", "build-web"],
+        ["iOS app", "build-ios"],
+        ["Android app", "build-android"],
+        ["Database", "migration"],
+      ],
+    },
+    {
+      head: "Set the stage",
+      lanes: [
+        ["Preview deploy", "deploy"],
+        ["Reset test data", "reset"],
+      ],
+    },
+    {
+      head: "Test like a user",
+      lanes: [
+        ["Web", "e2e-web"],
+        ["iOS", "e2e-ios"],
+        ["Android", "e2e-android"],
+        ["Live site", "live-web"],
+      ],
+    },
+    { head: "Tidy up", lanes: [["Clean up", "cleanup"]] },
+  ];
+  const X0 = 48,
+    CW = 160,
+    GAP = 28,
+    Y0 = 150,
+    PH = 44,
+    STEP = 52;
+  cols.forEach((c, i) => {
+    const x = X0 + i * (CW + GAP);
+    b += text(x, 132, c.head, { size: 16, weight: 700, fill: t.text });
+    c.lanes.forEach(([label, id], k) => {
+      const y = Y0 + k * STEP;
+      b += `<rect x="${x}" y="${y}" width="${CW}" height="${PH}" rx="9" fill="${t.surface}" stroke="${t.border}"/>`;
+      b += tick(x + 20, y + PH / 2);
+      b += text(x + 38, y + 19, label, { size: 14, weight: 600, fill: t.text });
+      b += text(x + 38, y + 36, id, { size: 12, fill: t.muted, font: MONO });
+    });
+    const ax = x + CW + 3,
+      ay = Y0 + PH / 2;
+    b += `<line x1="${ax}" y1="${ay}" x2="${ax + GAP - 8}" y2="${ay}" stroke="${t.muted}" stroke-width="2" marker-end="url(#ah)"/>`;
+  });
+
+  // Capstone: the single required check, needs every lane
+  const fx = X0 + cols.length * (CW + GAP),
+    fw = W - 48 - fx;
+  b += text(fx, 132, "One green tick", { size: 16, weight: 700, fill: t.text });
+  b += `<rect x="${fx}" y="${Y0}" width="${fw}" height="${PH}" rx="9" fill="${t.surface}" stroke="${t.ok}" stroke-width="2"/>`;
+  b += tick(fx + 20, Y0 + PH / 2);
+  b += text(fx + 38, Y0 + 19, "All lanes passed", { size: 14, weight: 600, fill: t.text });
+  b += text(fx + 38, Y0 + 36, "check", { size: 12, fill: t.muted, font: MONO });
+  [
+    "Fails if a lane",
+    "failed, was skipped",
+    "or ran zero tests.",
+    "",
+    "The only check",
+    "merging needs.",
+  ].forEach((s, k) => {
+    b += text(fx + 4, Y0 + PH + 28 + k * 20, s, { size: 14, fill: t.muted });
+  });
+
+  // Where each bkit workflow uses CI, in its phase colour
+  const BY = 540;
+  const bracket = (x1, x2, phase, cmd, lines) => {
+    const col = t[phase];
+    b += `<path d="M${x1} ${BY - 10} V${BY} H${x2} V${BY - 10}" fill="none" stroke="${col}" stroke-width="3" stroke-linejoin="round"/>`;
+    b += text(x1, BY + 30, cmd, { size: 15, weight: 600, fill: col, font: MONO });
+    lines.forEach((s, k) => {
+      b += text(x1, BY + 52 + k * 20, s, { size: 14, fill: t.text });
+    });
+  };
+  const colX = (i) => X0 + i * (CW + GAP);
+  bracket(colX(0), colX(0) + CW, "build", "/bkit-build", [
+    "starts it by opening",
+    "the pull request",
+  ]);
+  bracket(colX(1), colX(4) + CW, "debug", "/bkit-debug", [
+    "reads the logs of any lane that fails, finds the cause, fixes it and runs CI again",
+  ]);
+  bracket(fx, fx + fw, "ship", "/bkit-ship", ["merges only when", "this is green"]);
+
+  b += `<line x1="40" y1="${H - 74}" x2="${W - 40}" y2="${H - 74}" stroke="${t.border}"/>`;
+  b += text(
+    W / 2,
+    H - 34,
+    "Runs only what a change affects  ·  Every action pinned to an exact commit  ·  In cloud mode, the result starts ship or debug by itself",
+    { size: 16, fill: t.muted, anchor: "middle" },
+  );
+  return svg(
+    W,
+    H,
+    b,
+    "bkit's CI pipeline, flowing left to right: plan the run (work out what to test); check and build (quick checks, unit tests, integration tests, web, iOS and Android builds, database migrations); set the stage (preview deploy, reset test data); test like a user (web, iOS and Android end-to-end tests, and a live-site check); tidy up. Every lane feeds one final check, the only one merging needs, which fails if any lane failed, was skipped or ran zero tests. /bkit-build starts CI by opening the pull request, /bkit-debug reads the logs of any lane that fails and fixes it, and /bkit-ship merges only when the final check is green. In cloud mode, the result starts ship or debug by itself.",
+  );
+}
+
 // ---------- Context map (what each phase reads and writes) ----------
 // r = reads, w = writes, rw = both; one entry per phase: design, plan, build, debug, ship.
 // Sources: .bkit/core/.agents/docs.md phase matrix, Read / Create lines in .bkit/core/workflows/.
@@ -940,6 +1062,7 @@ for (const [name, t] of Object.entries(THEMES)) {
   images.push([`bkit-features-${name}`, features(t)]);
   images.push([`bkit-fences-${name}`, fences(t)]);
   images.push([`bkit-context-${name}`, context(t)]);
+  images.push([`bkit-ci-${name}`, ci(t)]);
 }
 // One social image: link previews have no light/dark switch, and dark reads on both.
 images.push(["bkit-social", social(THEMES.dark)]);

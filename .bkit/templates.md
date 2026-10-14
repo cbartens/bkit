@@ -12,6 +12,30 @@
 > - `bkit install` and `bkit upgrade` never write these files and never overwrite a copy.
 > - Adapt app roots, workspace package scope, rules JSON. Examples use `apps/web`, `apps/mobile`, `packages/api`, `@scope`.
 
+## What each template is for
+
+Adoption order = `bkit tips` order. Sections below: install steps and traps.
+
+<!-- prettier-ignore -->
+| Template | What it's for | Skip it and |
+| --- | --- | --- |
+| direnv | Loads `.bkit/.env` tokens whenever the project opens. | Saved tokens never load; every sign-in fails while the file looks right. |
+| Serena | Agents look code up like an editor ("where is this defined, what uses it?"). Read-only. | Agents grep and read whole files: more accidental changes, more correction rounds, higher token cost. |
+| CI workflow + CI scripts | Runs every check on GitHub on every change; one capstone check gates merge; `/bkit-ship` waits for it. | "Shipped" means merged, not checked. |
+| Git hooks (Husky) | Same checks locally on commit and push, in seconds. | Failures surface minutes later in CI, after the agent moved on. |
+| Prettier ignore list | One formatting baseline; stops Prettier reformatting bkit's managed files. | Reviews fill with spacing noise; every bkit upgrade shows false changes. |
+| slop-scan | Flags net-new junk code AI tends to write (filler, dead code, type escapes). | Junk passes skim review and piles up. |
+| Vale | Prose lint for docs and agent instructions. | Padded, vague docs every agent re-reads on every run. |
+| lint-staged | Formats only the staged files inside the commit hook. | Commit hook does nothing, or is slow enough to get skipped. |
+| Cloud-agent workflow + SessionStart hook | CI result starts a cloud agent: ship on green, debug on red; hook installs the cloud toolchain. | Every next step needs a local session. |
+| Context-fetch blocks | `/bkit-debug` reads real CI logs, runtime errors and web results. | Debug guesses from code; real errors stay hidden. |
+| Secrets sync | One local file → every secret store; proves copies match without printing values. | Hand-copied secrets drift: "works for me, broken in production". |
+| graphify | Code map (`docs/capabilities.md`) agents check before building something again. | Agents rediscover structure each run; ripple effects missed. |
+| Dependabot / Renovate | Small grouped update PRs; pinned Actions; security fixes skip the queue. | Updates pile into one large risky upgrade. |
+| Prettier tables | One edited cell = one changed row in the diff. | A one-word table edit diffs as the whole table. |
+| Cursor editor + cloud agent | Format-on-save, recommended extensions, Cursor cloud-agent image. | Cursor edits miss project formatting; no Cursor cloud agent. |
+| Launchd GUI env | macOS apps opened from the Dock get the same tokens as the terminal. | Dock-launched editors start signed out. |
+
 ## Contract
 
 <!-- prettier-ignore -->
