@@ -42,7 +42,7 @@ describe("release.yml structural assertions (BAR-138)", () => {
     expect(content).not.toContain("packages: write");
   });
 
-  it("permissions.contents is write (sliding v{N} tag step pushes back to origin)", () => {
+  it("permissions.contents is write (GitHub Release + sliding v{N} tag push)", () => {
     // contents: write — the "Update sliding major-version tag" step runs
     // `git push origin v{N} --force` with the default GITHUB_TOKEN. See
     // docs/deployments.md § "Sliding major-version tag".
@@ -83,6 +83,32 @@ describe("release.yml structural assertions (BAR-138)", () => {
     expect(publishIdx).toBeGreaterThan(-1);
     expect(slidingIdx).toBeGreaterThan(-1);
     expect(slidingIdx).toBeGreaterThan(publishIdx);
+  });
+
+  // ---------------------------------------------------------------------------
+  // GitHub Release
+  // ---------------------------------------------------------------------------
+
+  it("release notes are extracted from the CHANGELOG.md version block before npm publish", () => {
+    // A missing block must stop the release before anything reaches npm.
+    const notesIdx = lineIndex("- name: Extract release notes");
+    const publishIdx = lineIndex("- name: Publish to npmjs");
+    expect(notesIdx).toBeGreaterThan(-1);
+    expect(notesIdx).toBeLessThan(publishIdx);
+    expect(content).toContain("CHANGELOG.md");
+    expect(content).toContain("exit 1");
+  });
+
+  it("GitHub Release step runs after npm publish (a release page never names an unpublished version)", () => {
+    const publishIdx = lineIndex("- name: Publish to npmjs");
+    const releaseIdx = lineIndex("- name: Create GitHub Release");
+    expect(releaseIdx).toBeGreaterThan(publishIdx);
+    expect(content).toContain('gh release create "$GITHUB_REF_NAME" --verify-tag');
+    expect(content).toContain("GH_TOKEN: ${{ github.token }}");
+  });
+
+  it("GitHub Release step marks prerelease tags (containing '-') as prerelease", () => {
+    expect(content).toContain('*-*) PRERELEASE="--prerelease"');
   });
 
   // ---------------------------------------------------------------------------

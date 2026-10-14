@@ -202,4 +202,4 @@ Sensing is on-disk-first: every phase close full-regenerates the board from the 
 
 ## Distribution
 
-`@cbartens/bkit` published publicly to npmjs (`https://registry.npmjs.org`) on every git tag via `.github/workflows/release.yml` (npm OIDC trusted publishing — no long-lived token). Consumers install with no registry mapping or PAT. See `docs/deployments.md` § Dependency updaters.
+`@cbartens/bkit` published publicly to npmjs (`https://registry.npmjs.org`) on every git tag via `.github/workflows/release.yml` (npm OIDC trusted publishing — no long-lived token); same run creates the tag's GitHub Release from its `CHANGELOG.md` block. Consumers install with no registry mapping or PAT. See `docs/deployments.md` § Dependency updaters.

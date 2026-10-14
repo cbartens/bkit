@@ -50,7 +50,7 @@ tools:
 9. Squash-merge, SCRUBBED body — `gh pr merge {pr} --squash --subject "chore(release): {VERSION} (#{pr})" --body "Release {VERSION}. See CHANGELOG.md."`. NEVER default body.
 10. Sync + tag — `git checkout main` → `git pull --ff-only origin main` → `git tag -a v{VERSION} -m "Release v{VERSION}"` (append `{FID}` if provided) → `git push origin v{VERSION}`.
 11. Verify Release run fired within ~30s (`gh run list --workflow Release --limit 1` lists `v{VERSION}`). **If** absent → STOP, surface; NEVER `git tag -d` + re-push at same SHA.
-12. Wait for publish — resolve run id (`gh run list --workflow Release --branch v{VERSION} --limit 1 --json databaseId --jq '.[0].databaseId'`), poll `gh run view {id} --json status` until `completed`, confirm `conclusion` == `success`. **If** E409 → already published; bump to next patch, restart.
+12. Wait for publish — resolve run id (`gh run list --workflow Release --branch v{VERSION} --limit 1 --json databaseId --jq '.[0].databaseId'`), poll `gh run view {id} --json status` until `completed`, confirm `conclusion` == `success`. **If** E409 → already published; bump to next patch, restart. **If** only `Create GitHub Release` step failed → NEVER re-run workflow; `gh release create v{VERSION} --verify-tag --title v{VERSION} --notes-file {notes}` (`{notes}` = CHANGELOG.md `{VERSION}` block).
 13. `git checkout dev`.
 14. Set `Verdict` — `PASS` = Release run `conclusion` == `success`; any STOP or failure = `FAIL`.
 15. Final return: Display output format verbatim as final message to user; do NOT summarise or trim.
@@ -60,7 +60,7 @@ tools:
 ```markdown
 # Release {VERSION}
 
-[Verdict (PASS|FAIL), PR (number, URL), Tag (pushed: yes / no), Release run (id, conclusion)]
+[Verdict (PASS|FAIL), PR (number, URL), Tag (pushed: yes / no), Release run (id, conclusion), GitHub Release (URL from `gh release view v{VERSION} --json url`)]
 
 ## Halt
 

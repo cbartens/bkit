@@ -559,6 +559,15 @@ The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it t
 - **Single fanned-out `OPENCODE_PROVIDER_KEY`** under committed `opencode.json` `envVar`; no `BKIT_ANTHROPIC_API_KEY` in opencode job. GHA-injection hardened, with `PHASE` / `ARG` via `env:`; `ARG` validated `^[0-9A-Za-z.*/-]+$`.
 - **SHA pins** follow § GitHub Actions pinning; your updater refreshes them in your copy. **`bkit [auto route]` gate** — commit-tag taxonomy.
 
+### GitHub Release
+
+`.github/workflows/release.yml` creates one per tag: notes = tag's `## [X.Y.Z]` block in `CHANGELOG.md` + npmjs version link.
+
+- Step "Extract release notes" runs before `npm publish`; missing / empty block → run fails.
+- Step "Create GitHub Release" runs after `npm publish`. Prerelease tags (containing `-`) → marked prerelease, never "Latest".
+- Only "Create GitHub Release" failed → never re-run the workflow; run `gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file <notes>`.
+- Default `GITHUB_TOKEN` (`permissions: contents: write`); no PAT.
+
 ### Sliding major-version tag
 
 `.github/workflows/release.yml` re-points the `v{N}` tag (e.g. `v1`) at the freshly-published `v{N}.x.y` immutable tag on every successful release. Matches the GitHub Actions community convention used by `actions/checkout@v4`, `actions/setup-node@v4`, etc. Reference: [actions/toolkit § action-versioning](https://github.com/actions/toolkit/blob/main/docs/action-versioning.md).

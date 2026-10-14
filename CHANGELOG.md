@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub Release per tag.** The release workflow creates one with the version's `CHANGELOG.md` block as notes plus an npmjs version link. A tag with no `CHANGELOG.md` block fails before `npm publish`.
+
 ### Changed
 
 - **Licence: MIT, for everything.** bkit is free for any use, commercial included, under the MIT licence; it replaces the PolyForm Noncommercial / Small Business pair and the MIT-0 shared and template folders. The per-folder `LICENSE.md` files in `.bkit/core/`, `.bkit/shared/` and `.bkit/templates/` are gone; the root `LICENSE.md` covers the package, and install writes the same MIT text to `.bkit/LICENSE.md`. The managed marker no longer names a licence (``bkit:managed vX.Y.Z — do not edit; run `bkit upgrade` to refresh``), and `bkit upgrade` restamps every one and removes the stale `.bkit/templates/LICENSE.md` copy. Contributions no longer need a CLA: a pull request is licensed under MIT.
