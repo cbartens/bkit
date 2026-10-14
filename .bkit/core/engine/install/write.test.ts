@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   writeTier1,
   writeTier2,
@@ -790,5 +790,52 @@ describe("cursor-v1-schema", () => {
     expect(Array.isArray(doc.hooks.sessionStart)).toBe(true);
     expect(Array.isArray(doc.hooks.sessionStop)).toBe(true);
     expect(doc["__bkit__"]).toBeUndefined();
+  });
+});
+
+describe("writeTier2 — markdown dest holding an older unmarked copy", () => {
+  const rows = Array.from(
+    { length: 12 },
+    (_, i) => `| \`bkit-agent-${i}\` | Reads the plan and writes report number ${i}. |`,
+  ).join("\n");
+
+  it("skips instead of appending a second copy below the old one", () => {
+    const src = path.join(tmpDir, "tpl.md");
+    const dst = path.join(tmpDir, "prompts.md");
+    fs.writeFileSync(
+      src,
+      `<!-- bkit:start -->\n\n# Agent Prompts Index\n\n${rows}\n\n<!-- bkit:end -->\n`,
+      "utf-8",
+    );
+    const old = `# Agent Prompts Index\n\n${rows}\n`;
+    fs.writeFileSync(dst, old, "utf-8");
+    const ws = makeWriteSet();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    writeTier2(src, dst, TOKENS, "html-comment", false, ws);
+
+    expect(fs.readFileSync(dst, "utf-8")).toBe(old);
+    expect(ws.writes).toHaveLength(0);
+    expect(warn.mock.calls[0]?.[0]).toContain("already holds an older bkit copy");
+    warn.mockRestore();
+  });
+
+  it("still appends to the consumer's own doc that only shares the title", () => {
+    const src = path.join(tmpDir, "tpl.md");
+    const dst = path.join(tmpDir, "architecture.md");
+    fs.writeFileSync(
+      src,
+      `<!-- bkit:start -->\n\n# Architecture\n\n${rows}\n\n<!-- bkit:end -->\n`,
+      "utf-8",
+    );
+    fs.writeFileSync(dst, "# Architecture\n\nOur service map.\n", "utf-8");
+    const ws = makeWriteSet();
+
+    writeTier2(src, dst, TOKENS, "html-comment", false, ws);
+
+    const result = fs.readFileSync(dst, "utf-8");
+    expect(result).toContain("Our service map.");
+    expect(result).toContain("<!-- bkit:start -->");
+    expect(ws.writes).toEqual([{ path: dst, action: "append" }]);
   });
 });

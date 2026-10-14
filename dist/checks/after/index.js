@@ -8,7 +8,7 @@ import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detect
 import { getPkgRoot } from "../../shared/package-roots.js";
 import { detectOpencodeYmlProviderDrift } from "../../install/modules/opencode.js";
 import { TEMPLATES_POINTER } from "../../install/template-copies.js";
-import { detectManagedStale } from "./managed.js";
+import { detectManagedDuplicate, detectManagedStale } from "./managed.js";
 import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectShellGhMcpToken, hasGithubMcpServer, } from "./auth.js";
 import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildTrackerSetupAdvisory, detectActionsWritePermissions, detectGithubProjectFieldIdFormat, detectMainBranchProtection, readConsumerIssueTracker, } from "./github.js";
 import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
@@ -258,6 +258,10 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     const managedStale = detectManagedStale(cwd);
     if (managedStale)
         phase3.push(managedStale);
+    // Older unmarked copy of a managed markdown block left outside its markers.
+    const managedDuplicate = detectManagedDuplicate(cwd);
+    if (managedDuplicate)
+        phase3.push(managedDuplicate);
     // BKIT_GH_TOKEN shell env — authenticates the GitHub MCP server
     // (`Authorization: Bearer ${BKIT_GH_TOKEN}` in .mcp.json), which powers the entire
     // tracker + PR + Projects MCP surface. Only flags when a github MCP server is

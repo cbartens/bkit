@@ -139,6 +139,42 @@ export function detectMarkerStyle(content: string): MarkerStyle | null {
   return null;
 }
 
+// Verbatim long lines a text must share with a block, beside its title, to count as a copy.
+const COPY_MIN_SHARED_LINES = 10;
+// Shortest trimmed line counted as shared; shorter lines (rules, `>`, table dividers) recur by chance.
+const COPY_MIN_LINE_LENGTH = 40;
+
+// Lines outside fenced code blocks; a shell comment in a fence (`# Vercel errors`) is no heading.
+function proseLines(text: string): string[] {
+  const out: string[] = [];
+  let inFence = false;
+  for (const line of text.split("\n")) {
+    if (line.trimStart().startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence) out.push(line);
+  }
+  return out;
+}
+
+// The block's `# ` title when `text` holds an older unmarked copy of the same markdown block:
+// the title line plus COPY_MIN_SHARED_LINES long lines verbatim, all outside fenced code.
+// Null otherwise, including for a block with no title.
+export function findUnmarkedCopy(text: string, block: string): string | null {
+  const blockLines = proseLines(block);
+  const title = blockLines.find((l) => /^# \S/.test(l));
+  if (title === undefined) return null;
+  const textLines = proseLines(text);
+  if (!textLines.includes(title)) return null;
+  const long = new Set(
+    blockLines.map((l) => l.trim()).filter((l) => l.length >= COPY_MIN_LINE_LENGTH),
+  );
+  let shared = 0;
+  for (const l of new Set(textLines.map((t) => t.trim()))) if (long.has(l)) shared++;
+  return shared >= COPY_MIN_SHARED_LINES ? title : null;
+}
+
 // Remove the bkit-managed block (including marker lines) from a string,
 // preserving all consumer-owned content outside the block.
 //

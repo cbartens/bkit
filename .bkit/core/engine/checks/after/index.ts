@@ -14,7 +14,7 @@ import {
 import { getPkgRoot } from "../../shared/package-roots.js";
 import { detectOpencodeYmlProviderDrift } from "../../install/modules/opencode.js";
 import { TEMPLATES_POINTER } from "../../install/template-copies.js";
-import { detectManagedStale } from "./managed.js";
+import { detectManagedDuplicate, detectManagedStale } from "./managed.js";
 import {
   buildCloudDashboardsAdvisory,
   detectCiRouterSecrets,
@@ -349,6 +349,10 @@ export function runPostInstallCheck(
   // drifts from the installed version. No-op in real install/upgrade (re-stamped Phase 2).
   const managedStale = detectManagedStale(cwd);
   if (managedStale) phase3.push(managedStale);
+
+  // Older unmarked copy of a managed markdown block left outside its markers.
+  const managedDuplicate = detectManagedDuplicate(cwd);
+  if (managedDuplicate) phase3.push(managedDuplicate);
 
   // BKIT_GH_TOKEN shell env — authenticates the GitHub MCP server
   // (`Authorization: Bearer ${BKIT_GH_TOKEN}` in .mcp.json), which powers the entire

@@ -222,6 +222,7 @@ After writes, bkit re-runs credential and environment checks — some only accur
 <!-- prettier-ignore -->
 | `id` | When |
 | --- | --- |
+| `bkit-managed-duplicate` | A managed markdown file holds an older unmarked copy of its block outside `bkit:start`/`bkit:end`: the block's `# ` title plus 10+ of its long lines verbatim, fenced code ignored. Install never updates that copy. Names each file and title line; delete the copy. |
 | `gh-mcp-token-unset-shell` / `gh-mcp-token-empty-shell` | `BKIT_GH_TOKEN` (GitHub MCP auth) unset/empty in shell while a `github` MCP server is configured — the whole tracker/PR/board MCP surface fails to connect. Suppressed in CI. |
 | `tracker-setup-none` / `-github` / `-linear` | Optional post-install decision — which issue tracker is wired (`bkit.issueTracker`). `none` nudges `bkit install --tracker=…`. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `github-project-board-sync-unconfigured` | GitHub tracker active but Projects v2 board sync is half-configured (`bkit.githubProject` absent and/or `.mcp.json` lacks the `projects` toolset) — sync silently no-ops. Silence with `bkit.githubProject: false`. |

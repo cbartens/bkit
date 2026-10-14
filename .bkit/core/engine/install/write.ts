@@ -5,6 +5,7 @@ import {
   extractFullManagedBlock,
   extractManagedBlock,
   findLineAnchoredMarkers,
+  findUnmarkedCopy,
   selectMarkers,
   type MarkerStyle,
 } from "./managed-block.js";
@@ -309,6 +310,8 @@ export function writeTier1(
 //   - dest absent            → write whole file (with token substitution)
 //   - dest has markers       → update only the bkit block (tokens applied to new block content)
 //   - dest present, no marks → append full block at EOF; preserve consumer content above
+//   - no marks, markdown dest already holds an unmarked copy of the block (findUnmarkedCopy)
+//                            → warn + skip; appending would leave a frozen duplicate above it
 //
 // markerStyle: "html-comment" for markdown, shell and `.gitignore` (`# ` prefix allowed);
 // "slash-comment" for JS.
@@ -364,6 +367,13 @@ export function writeTier2(
 
     // dest has no markers → append full block at EOF (with tokens applied)
     const appliedBlock = applyTokens(fullBlock, tokens);
+    const copyTitle = dstPath.endsWith(".md") ? findUnmarkedCopy(destContent, appliedBlock) : null;
+    if (copyTitle !== null) {
+      console.warn(
+        `[bkit] ${dstPath} has no managed-block markers but already holds an older bkit copy (\`${copyTitle}\`) — skipping, so it is not duplicated. Delete the file and re-run install; then re-add any lines you wrote yourself below \`<!-- bkit:end -->\`.`,
+      );
+      return;
+    }
     const sep =
       destContent.length === 0
         ? ""
