@@ -99,7 +99,7 @@
 
 > Tier rules / framework boundaries / file inventory: `docs/testing.md`. Logs / tracing: `docs/observability.md`. Debugging gotchas: `docs/knowledge.jsonl`.
 
-- **Reproduce first:** NEVER fix reported failures you cannot reproduce; ALWAYS add failing tests before touching code. Scope = failure remediation.
+- **Reproduce first:** NEVER fix reported failures you cannot reproduce; ALWAYS add failing tests and see them fail (red) before touching code. Scope = failure remediation; build tasks follow the plan's `Test first` (red → green).
 - **No downgrades:** NEVER fix by downgrade; STOP if stuck.
 - **Fix code not gates:** NEVER make gates (anything a `bkit:gate:*` script runs) pass by weakening them; do not use type-system escapes (e.g. TS `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`; Python `# type: ignore`), linter disables (e.g. `eslint-disable`, `//nolint`), test skips (e.g. `.skip`, `xfail`), deleted assertions, error-swallowing, empty catches, or mocking-away units under test. ALWAYS fix root causes; if config changes genuinely warranted ONLY use targeted per-file / per-rule opt-outs after explicit human confirmation. Confirmation unavailable inside `/bkit-*` workflows: Record the block per your own blocker contract, and continue; NEVER self-authorize the opt-out.
 - **Check gotchas first:** Search before touching code → fold `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only winning rows where `status` is `ACTIVE` or absent; never read any other rows.

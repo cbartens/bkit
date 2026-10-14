@@ -44,7 +44,7 @@ tools:
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — apply findings via `Edit` as content becomes available.
-5. Every `Agent Execution Runbook` task's `Done when` MUST survive merge intact. Critique may edit surrounding task text; `Done when` may ONLY tighten testability / codebase-verifiability — NEVER remove or weaken.
+5. Every `Agent Execution Runbook` task's `Done when` and `Test first` MUST survive merge intact. Critique may edit surrounding task text; `Done when` and `Test first` may ONLY tighten testability / codebase-verifiability (`n/a` → named tests included) — NEVER remove or weaken.
 6. Human-confirmation checkboxes MUST survive merge as found — NEVER tick, NEVER clear.
 7. `CRITICAL` items must be applied; no consensus required. **If** conflict across findings → prefer stricter wording.
 8. OPTIONAL items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.

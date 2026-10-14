@@ -50,7 +50,10 @@ tools:
    - `Broken` already landed → log `DONE — already landed`.
    - `Broken` not landed → implement against current code or `BLOCKED`.
 7. Update **Create** after each task — append `DONE|BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
-8. Implement sequentially — edit / create source per task → at every gate confirm conditions met → append log → proceed. Honour plan `Reuse Inventory` when present: `EXTEND` row → modify named artifact, never parallel file. Reusable artifact found mid-build → fold in and log, never fork.
+8. Implement sequentially, per task:
+   - **If** task `Test first` names tests **and** task not logged `DONE — already landed` → write those tests plus stubs of the code they call; run the supplied red command once per test with the task number, the test position in `Test first`, its file and its name; every red MUST be recorded before the task code is written. **If** refused as `passed` → `BLOCKED`; never undo code to force a red. **If** refused otherwise → fix tests / stubs per the printed reason; re-run. **If** `bkit:test:file` not declared → log `red not enforced` once; continue. **If** could not run → `BLOCKED`. **If** no plan file exists **or** no red command supplied → write the tests first; record nothing.
+   - Edit / create source → task tests pass → refactor with tests green → at every gate confirm conditions met → append log → proceed.
+   - Honour plan `Reuse Inventory` when present: `EXTEND` row → modify named artifact, never parallel file. Reusable artifact found mid-build → fold in and log, never fork.
 9. Run `pnpm bkit:gate:static` — all local lint / typecheck MUST pass.
 10. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = every pending task has `DONE` log entry and local lint / typecheck pass.

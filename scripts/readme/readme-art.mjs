@@ -972,7 +972,7 @@ function features(t) {
       key: "build",
       cmd: "/bkit-build",
       tiles: [
-        ["Writes + verifies", "A task is ticked only", "when it really exists"],
+        ["Test first, verified", "Each test fails before", "its code, then passes"],
         ["Hunts bugs + holes", "Edge cases, auth holes,", "broken error paths"],
         ["Plan still current?", "Re-checked against", "today's code first"],
         ["Skills on demand", "Installed for the feature,", "removed when it ships"],
@@ -1043,7 +1043,7 @@ function features(t) {
     W,
     H,
     b,
-    "What ships with bkit, one coloured row per phase. Design: three rival designs, probe code for the risky unknowns, reads your history, reviewed for failure modes. Plan: five reviewers, big work split up, learns from past bugs and postponed work, more than 30 audits. Build: writes and verifies, hunts bugs and security holes, checks the plan is still current, skills on demand. Debug: outside evidence from CI and your platforms, root cause first, hard-bug mode, knows when to stop. Ship: honest CI, nothing quietly dropped, docs and memory, never touches main. Every phase: any AI tool, best model per job, independent review, laptop to cloud.",
+    "What ships with bkit, one coloured row per phase. Design: three rival designs, probe code for the risky unknowns, reads your history, reviewed for failure modes. Plan: five reviewers, big work split up, learns from past bugs and postponed work, more than 30 audits. Build: test first and verified, hunts bugs and security holes, checks the plan is still current, skills on demand. Debug: outside evidence from CI and your platforms, root cause first, hard-bug mode, knows when to stop. Ship: honest CI, nothing quietly dropped, docs and memory, never touches main. Every phase: any AI tool, best model per job, independent review, laptop to cloud.",
   );
 }
 

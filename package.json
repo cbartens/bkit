@@ -62,6 +62,7 @@
     "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build",
     "bkit:deps:outdated": "pnpm outdated",
     "bkit:deps:audit": "pnpm audit",
+    "bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\"",
     "bkit": "node dist/cli.js",
     "typecheck": "tsc --noEmit && pnpm bkit:typecheck:tests",
     "bkit:typecheck:tests": "tsc -p tsconfig.test.json",

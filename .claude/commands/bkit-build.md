@@ -266,7 +266,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🧠 Step 6 — Plan Execute
 
 3. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:
-   Context: You are a subagent in the Build phase. Execute sub-plan `{SUB_PLAN}` / `{SUB_COUNT}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Build phase. Execute sub-plan `{SUB_PLAN}` / `{SUB_COUNT}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Red command: `"{BKIT}" tests red --file="{STATUS}" --workflow=build --sub-plan={SUB_PLAN} --task={task} --test={test file} --name="{test name}" --log=docs/plans/{YYYYMM}/logs/{FID}/build-task-red-{SUB_PLAN}-{task}-{test position}.md`.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/build-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present, consider findings when executing plan; do not revise plan).
    Update: Source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`.
@@ -290,46 +290,52 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-plan-verify --sub-plan={SUB_PLAN} --position=next
    ```
    Hold `value` as `{VERIFY_ATTEMPT}`.
-6. **Subagent:** Invoke `@bkit-build-plan-verify` using `Agent` tool:
+6. Audit the sub-plan's test-first reds:
+   ```bash
+   "{BKIT}" tests green --file="{STATUS}" --workflow=build --sub-plan={SUB_PLAN} --plan=docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md --plan=docs/plans/{YYYYMM}/{FID}-plan.md --log="docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{SUB_PLAN}-{VERIFY_ATTEMPT}.md"
+   ```
+   **If** exit >= 2 → **Failure Path**.
+7. **Subagent:** Invoke `@bkit-build-plan-verify` using `Agent` tool:
    Context: You are a subagent in the Build phase. Single plan verification. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/build-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope).
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/build-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope).
    Update: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`.
-7. Finish:
+8. Finish:
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-plan-verify --file="{STATUS}" --attempt-of=build-plan-verify:next --sub-plan={SUB_PLAN} --agent=bkit-build-plan-verify --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-<attempt>.md" --message="chore({FID}): plan-verify sub-plan {SUB_PLAN} attempt <attempt>" --number=7 --title="Plan Verify" --sub-plan-count={SUB_COUNT}
    ```
    Hold `verdict` as `VERIFY_VERDICT`.
-8. Route:
-   - **If** `VERIFY_VERDICT` = PASS **and** more sub-plans remain (`SUB_PLAN` < `SUB_COUNT`) → sub-step 9.
-   - **Else** → `BOUNDARY_VERDICT` = SKIPPED → sub-step 11.
-9. Run the boundary gate:
-   ```bash
-   "{BKIT}" tests run --gate=bkit:gate:static-unit-integration --gate=bkit:gate:static-unit --log="docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md"
-   ```
-   Route:
-   - **If** exit 0 **or** 1 → hold `verdict` as `{BOUNDARY_VERDICT}`, `scope` as `{TEST_SCOPE}` → sub-step 10.
-   - **Else** → **Failure Path**.
-10. Clamp the gate log, then finish:
+9. Route:
+   - **If** `VERIFY_VERDICT` = PASS **and** more sub-plans remain (`SUB_PLAN` < `SUB_COUNT`) → sub-step 10.
+   - **Else** → `BOUNDARY_VERDICT` = SKIPPED → sub-step 12.
+10. Run the boundary gate:
+    ```bash
+    "{BKIT}" tests run --gate=bkit:gate:static-unit-integration --gate=bkit:gate:static-unit --log="docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md"
+    ```
+    Route:
+    - **If** exit 0 **or** 1 → hold `verdict` as `{BOUNDARY_VERDICT}`, `scope` as `{TEST_SCOPE}` → sub-step 11.
+    - **Else** → **Failure Path**.
+11. Clamp the gate log, then finish:
     ```bash
     "{BKIT}" context clamp-log --reset --fid={FID} --step=build-subplan-gate-{SUB_PLAN} --attempt={VERIFY_ATTEMPT} >/dev/null || exit 2
     "{BKIT}" context clamp --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md" --profile=debug-evidence --fid={FID} --step=build-subplan-gate-{SUB_PLAN} --attempt={VERIFY_ATTEMPT} >/dev/null || exit 2
     "{BKIT}" steps finish --workflow=build --step=build-subplan-gate --file="{STATUS}" --verdict={BOUNDARY_VERDICT} --scope="{TEST_SCOPE}" --attempt-of=build-plan-verify:current --sub-plan={SUB_PLAN} --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-<attempt>.md" --clamp-log="build-subplan-gate-{SUB_PLAN}:<attempt>" --message="chore({FID}): subplan-gate sub-plan {SUB_PLAN} attempt <attempt>" --number=7 --title="Boundary Gate" --sub-plan-count={SUB_COUNT}
     ```
-11. **If** `VERIFY_VERDICT` = PASS **and** `BOUNDARY_VERDICT` != FAIL:
+12. **If** `VERIFY_VERDICT` = PASS **and** `BOUNDARY_VERDICT` != FAIL:
     - **If** more sub-plans remain (`SUB_PLAN` < `SUB_COUNT`) → next `SUB_PLAN` → Step 6.
     - **Else** → Step 9.
-12. **If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `BOUNDARY_VERDICT` = FAIL → run counter-bus routing:
+13. **If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `BOUNDARY_VERDICT` = FAIL → run counter-bus routing:
     ```bash
     "{BKIT}" counters route --name=VERIFY_ATTEMPT --of=build-plan-verify:current --file="{STATUS}" --workflow=build --sub-plan={SUB_PLAN} --limit=MAX_VERIFY_ATTEMPT --continue=step-8 --exceeded=failure-path
     ```
     Route:
     - **If** exit 0 (printed `step-8`) → Step 8.
     - **Else** → **Failure Path**.
-13. **Else** → **Failure Path**.
+14. **Else** → **Failure Path**.
 
 ### 🔒 Gate 7 — Plan Verify
 
+- [ ] Test-first reds audited (`tests green` exit 0 or 1)
 - [ ] Subagent invoked (`@bkit-build-plan-verify`, no inline work)
 - [ ] Mechanical checks passed (`steps finish` exit 0: verify verdict and failures valid, attempt derived for this sub-plan; boundary `build-subplan-gate` row with `scope`, `attempt`, `subPlan`, `clamped` when it ran)
 - [ ] Boundary verdict decided (`BOUNDARY_VERDICT` in `PASS|FAIL|SKIPPED`)
@@ -347,7 +353,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     Hold `nextStrategy` as `{STRATEGY}`.
 15. **Subagent:** Invoke `@bkit-build-plan-gaps-remediate` using `Agent` tool:
     Context: You are a subagent in the Build phase. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. `Strategy`: `{STRATEGY}`. **If** `BOUNDARY_VERDICT` = FAIL → add `Boundary gate`: `{TEST_SCOPE}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-    Read: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`.
+    Read: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`.
     Update: Source files.
     Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md`.
 16. Finish — the header's `Strategy` is recorded:

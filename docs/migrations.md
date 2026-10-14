@@ -25,4 +25,5 @@
 | Guard | Where | What it detects | Human fix |
 | --- | --- | --- | --- |
 | Unmarked older copy (install) | `.bkit/core/engine/install/write.ts` (`findUnmarkedCopy`) | A managed `.md` with no `bkit:start` / `bkit:end` markers that already holds an older bkit copy — install skips it instead of appending a duplicate. | Delete the file, re-run install, re-add own lines below `<!-- bkit:end -->`. |
+| `test-file-script-missing` advisory | `.bkit/core/engine/install/modules/core.ts` (`detectGateAdvisories`) | `package.json` without `bkit:test:file`: `/bkit-build` reports test-first as not enforced. Plans predating `**Test first:**` lines get the same report from `bkit tests green`. | Declare `bkit:test:file` (runs one test file, writes JUnit to `$BKIT_TEST_REPORT`); new plans carry `Test first` lines. |
 | `bkit-managed-duplicate` advisory | `.bkit/core/engine/checks/after/managed.ts` | An older bkit copy outside a managed file's `bkit:start` / `bkit:end` block. | Delete the stale copy; move own lines below `<!-- bkit:end -->`. |

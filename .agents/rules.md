@@ -99,7 +99,7 @@
 
 > Tier rules / framework boundaries / file inventory: `docs/testing.md`. Logs / tracing: `docs/observability.md`. Debugging gotchas: `docs/knowledge.jsonl`.
 
-- **Reproduce first:** NEVER fix reported failures you cannot reproduce; ALWAYS add failing tests before touching code. Scope = failure remediation.
+- **Reproduce first:** NEVER fix reported failures you cannot reproduce; ALWAYS add failing tests and see them fail (red) before touching code. Scope = failure remediation; build tasks follow the plan's `Test first` (red → green).
 - **No downgrades:** NEVER fix by downgrade; STOP if stuck.
 - **Fix code not gates:** NEVER make gates (anything a `bkit:gate:*` script runs) pass by weakening them; do not use type-system escapes (e.g. TS `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`; Python `# type: ignore`), linter disables (e.g. `eslint-disable`, `//nolint`), test skips (e.g. `.skip`, `xfail`), deleted assertions, error-swallowing, empty catches, or mocking-away units under test. ALWAYS fix root causes; if config changes genuinely warranted ONLY use targeted per-file / per-rule opt-outs after explicit human confirmation. Confirmation unavailable inside `/bkit-*` workflows: Record the block per your own blocker contract, and continue; NEVER self-authorize the opt-out.
 - **Check gotchas first:** Search before touching code → fold `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only winning rows where `status` is `ACTIVE` or absent; never read any other rows.
@@ -167,6 +167,7 @@
 - **Install to mirror:** After editing `.bkit/core/workflows/*` or `.bkit/core/prompts/*` run `bkit install` to regenerate `.claude/`, `.cursor/`, and `.opencode/` mirrors. Batch once at session end; NEVER per edit.
 - **Workflow edits:** Editing `.bkit/core/workflows/*.md` → ALWAYS read `.bkit/workflows.md` § Workflow Authoring Rules first and follow; update `.bkit/workflows.md` in the same change; index drift = regression.
 - **Prompt edits:** Editing `.bkit/core/prompts/*.md` → ALWAYS read `.bkit/prompts.md` § Prompt Authoring Rules first and follow; update `.bkit/prompts.md` in the same change; index drift = regression.
+- **Contract changes:** Changing fields / artifacts / verdicts that workflows or prompts pass between steps → `grep -l` across `.bkit/core/workflows/`, `.bkit/core/prompts/`, `.bkit/core/docs/templates/` → read every hit IN FULL (overrides `Code reads` ranges); trace it through resume, no-plan, sub-plan split and remediation paths before editing.
 - **Prose edits:** Writing / editing prose in any agent-read file (`.agents/**`, `.bkit/**`, `docs/**`, `AGENTS.md`, `CLAUDE.md`) → ALWAYS apply `.bkit/core/prompts/bkit-utility-compress-markdown.md` Process rules; excludes text humans read: chat replies, tracker comments, commit messages.
 - **Provider parity:** All agent-facing changes (workflows, prompts, permissions, hooks, shell) MUST work across ALL providers; verify each, keep shell POSIX-portable.
 - **Workflow bash blocks:** Host shell is NOT guaranteed bash. NEVER rely on unquoted shell word-splitting or an `ls`/glob that aborts when unmatched inside `.bkit/core/workflows/*.md` fenced bash. Anything needing bash-ONLY features (arrays, `--pathspec-from-file`, process substitution) or argument parsing goes in a `bkit <noun> <verb>` command (`.bkit/core/engine/commands/`).

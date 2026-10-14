@@ -273,6 +273,15 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
     );
   });
 
+  it("advises declaring bkit:test:file until package.json has it, with the contract inline", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS });
+    const finding = detectGateAdvisories(tmpDir).find((f) => f.id === "test-file-script-missing");
+    expect(finding?.action).toContain("$BKIT_TEST_REPORT");
+    expect(finding?.action).toContain('"bkit:test:file": "vitest run');
+    writeScripts({ ...BKIT_GATE_SCRIPTS, "bkit:test:file": "pytest --junitxml=$BKIT_TEST_REPORT" });
+    expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain("test-file-script-missing");
+  });
+
   it("returns nothing for an absent or malformed package.json", () => {
     fs.rmSync(path.join(tmpDir, "package.json"));
     expect(detectGateAdvisories(tmpDir)).toEqual([]);

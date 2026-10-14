@@ -44,9 +44,16 @@ maxTurns: 100
 5. Determine `Mode` from input Context (`Single` or `Holistic`).
 6. **If** `Single` → every checklist item and gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases. Cross-reference plan tasks vs all `DONE` log entries.
 7. **If** `Holistic` → same checklist / gate / `DONE` log cross-reference across all sub-plans, plus integration: sub-plan components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? Run `pnpm bkit:gate:static-unit`.
-8. Per task → assert codebase satisfies `Done when` (file exists, signature matches, test passes, observable behaviour); `BLOCKED` log lines, `docs/deferrals.jsonl` rows, and out-of-scope notes never satisfy it. **If** satisfied → tick `[x]`. **If** not satisfied or missing → leave `[ ]`, append log; **If** the gap is not fixable by gap-remediate → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass. **If** no plan file exists → `build-input-*.md` is the plan; tasks = its requested outcomes; outcome as worded is the bar; missing `Done when` alone is not a `FAIL`; never create or tick plan file.
-9. Update **Create** — set `Failures` via `Edit` = count of unresolved gaps.
-10. Update **Create** — set `Verdict` via `Edit`; mapping:
+8. **If** test-first audit report supplied (`Enforced` / `Gaps` header) → map its gaps per task:
+   - `not-green` → fixable by gap-remediate.
+   - `test-changed` → read its diff; only added tests / formatting → no gap; weakened, removed or rewritten assertions → not fixable.
+   - `red-mismatch` → recorded test is the planned one renamed or moved **and** passes now → no gap, nor for that test's `not-green`; else not fixable.
+   - `no-red` on a task the plan-currency report classifies `Broken` with work already landed **and** the execute log records `DONE — already landed` → no gap.
+   - `no-red`, `no-test-first`, `test-first-malformed`, `red-evidence-missing` → not fixable.
+   - `Enforced: false` → reason in `Notes`; no gap.
+9. Per task → assert codebase satisfies `Done when` (file exists, signature matches, test passes, observable behaviour) and has no test-first audit gap; `BLOCKED` log lines, `docs/deferrals.jsonl` rows, and out-of-scope notes never satisfy it. **If** satisfied → tick `[x]`. **If** not satisfied or missing → leave `[ ]`, append log; **If** the gap is not fixable by gap-remediate → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass. **If** no plan file exists → `build-input-*.md` is the plan; tasks = its requested outcomes; outcome as worded is the bar; missing `Done when` alone is not a `FAIL`; never create or tick plan file.
+10. Update **Create** — set `Failures` via `Edit` = count of unresolved gaps.
+11. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no gaps.
     - `FAIL` = gaps not fixable by gap-remediate.
     - `CONCERNS` = gaps addressable by gap-remediate.

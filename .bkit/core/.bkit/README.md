@@ -20,7 +20,7 @@ Typical cycle for `ISSUE-123` "Add feature X":
 6. **Phase summary** — verdict (`PASS` / `CONCERNS` / `FAIL`); commit `chore(issue-123-…): summary bkit [skip ci]` (design/plan) or `chore(issue-123-…): summary` (build/debug/ship) → push.
 7. **Close Workflow** — tracker `In Review`; phase label persists. `/bkit-design` / `/bkit-plan`: prune worktree, delete `feat/issue-123-…` (merged into `dev`). `/bkit-build` / `/bkit-debug`: worktree persists.
 8. **Human review** — design/plan at `docs/plans/{YYYYMM}/{FID}-{design,plan}.md` (canonical). Reviewer re-triggers or progresses to `/bkit-build`.
-9. **`/bkit-build`** — re-creates worktree, executes plan, lint/typecheck/unit tests, opens PR to `dev`.
+9. **`/bkit-build`** — re-creates worktree, executes plan test-first (each task's tests fail before its code, then pass), lint/typecheck/unit tests, opens PR to `dev`.
 10. **CI** on PR. Red → `/bkit-debug` (PR mode: `gh run view --log-failed`). Green → `/bkit-ship`.
 11. **`/bkit-ship`** — squash-merge PR, `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) on `dev`, prune worktree, issue `In Review` (`bkit:merged`; bkit never auto-closes). Plans stay at `docs/plans/{YYYYMM}/` — no archive move.
 

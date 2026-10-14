@@ -219,6 +219,13 @@ export const BKIT_BUILD_GATES = [
     "bkit:gate:static-unit",
 ];
 /**
+ * Runs ONE test file — `pnpm bkit:test:file <repo-relative path>` — and writes a JUnit
+ * report to `$BKIT_TEST_REPORT`. `/bkit-build` records each task's red and audits its
+ * green through it. Never seeded: no default works on every stack; install advises
+ * when it is missing (detectGateAdvisories).
+ */
+export const BKIT_TEST_FILE_SCRIPT = "bkit:test:file";
+/**
  * The deeper gates, shallowest first, with what declaring each one costs.
  *
  * Never seeded. The probe's rule is "declared = run it". `declaredBy` is how install
