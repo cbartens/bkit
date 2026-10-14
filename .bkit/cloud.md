@@ -49,7 +49,7 @@ Three cloud stacks — each agent pairs with one tracker. Pick row for agent you
 <!-- prettier-ignore -->
 | Configuration | Lives in the repo (bkit-managed) | Lives in the online dashboard (manual, one-time) |
 | --- | --- | --- |
-| **Claude Code on the web** | `.claude/hooks/bkit-preflight.sh` (tracker opt-in guard) + `.claude/hooks/bkit-cloud-bootstrap.sh` (per-session install — copy-and-own template, adopt it from `.bkit/templates/`) | `claude.ai/code` → environment selector → **+ Add environment**: name, **setup script** (paste from § Setup script), **environment variables** (`BKIT_GH_TOKEN`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70` — Claude pairs with the **GitHub** tracker, so no `BKIT_LINEAR_API_KEY`), **network access** (`Trusted`) |
+| **Claude Code on the web** | `.claude/hooks/bkit-preflight.sh` (tracker opt-in guard) + `.claude/hooks/bkit-cloud-bootstrap.sh` (per-session install — copy-and-own template, adopt it from `.bkit/templates/`) | `claude.ai/code` → environment selector → **+ Add environment**: name, **setup script** (paste from § Setup script), **environment variables** (`BKIT_GH_TOKEN` — Claude pairs with the **GitHub** tracker, so no `BKIT_LINEAR_API_KEY`), **network access** (`Trusted`) |
 | **Cursor Cloud Agents** | `.cursor/Dockerfile` + `.cursor/environment.json` (`install` / `start` / `terminals[]` / `env`), both copied from bkit's templates and owned by the repo, + `.cursor/hooks.json` (wires preflight `failClosed: true`) + `.cursor/hooks/bkit-preflight.sh` (Linear guard) | Cloud Agents dashboard (`cursor.com/dashboard/cloud-agents`) → your environment → **Secrets** tab, as **Runtime Secret**s: `BKIT_LINEAR_API_KEY`, `BKIT_GH_TOKEN`. (`LINEAR_ISSUE_ID` injected per-session by the integration — don't hardcode.) |
 
 **Rule of thumb:** env vars / auth tokens → online dashboard (out of git). Scripts / Dockerfile / install hooks → repo.
@@ -106,7 +106,7 @@ Ships with repo — don't paste into app.
 
 Name environment **after the repo** — one env per repo, secrets isolated (§ Sharing across repos). Setup script identical across repos.
 
-Identical across repos: **setup-script body**, **network policy**, bkit **baseline token names** (`BKIT_GH_TOKEN`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`) — only values change. Rest of env-vars box is **this repo's own**, copied from env-var files per `.envrc` (§ Environment variables).
+Identical across repos: **setup-script body**, **network policy**, bkit **baseline token name** (`BKIT_GH_TOKEN`) — only values change. Rest of env-vars box is **this repo's own**, copied from env-var files per `.envrc` (§ Environment variables).
 
 ### Network access
 
@@ -120,7 +120,6 @@ Minimum:
 
 ```
 BKIT_GH_TOKEN=<PAT — fine-grained for one owner, classic across owners; see permissions below>
-CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70
 ```
 
 Claude pairs with **GitHub** tracker (see § Cloud-agent support matrix) — no `BKIT_LINEAR_API_KEY` / `LINEAR_ISSUE_ID`. Set `BKIT_GH_TOKEN` for GitHub MCP; authenticate `gh` via `gh auth login --with-token` in bootstrap hook (env vars not visible during setup script — see § Notes).
@@ -160,7 +159,7 @@ SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/da
 #### Notes
 
 - Claude app warns "don't add secrets" — env vars visible to anyone with edit rights. Personal account = just you; team account = treat as low-trust.
-- `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70` triggers auto-compaction earlier than ~95% default — helpful on long cloud sessions.
+- Earlier auto-compaction: set `autoCompactWindow` in committed `.claude/settings.json` (`.bkit/providers.md` § Context compaction) — applies to cloud sessions as-is; no env var.
 - **Env vars set in Claude app are not visible inside setup script.** Injected only after Claude Code starts → `SessionStart` hooks + interactive shell, not snapshot build. Tool needing token to bootstrap must inline it — leak you want to avoid. Avoided today: vale / gh / corepack don't need auth.
 
 ### Setup script
@@ -271,10 +270,9 @@ bkit wires two MCP servers into `.mcp.json` at repo root (project-shared, read b
 > [!TIP]
 > **No manual copy needed for the dashboard secrets.** `bkit install --cursor` writes
 > `.cursor/bkit-cloud.md` — the twin of `.claude/bkit-cloud.md`, with the Cursor secrets block
-> **resolved from `.envrc`** (Linear tracker adds `BKIT_LINEAR_API_KEY`; no
-> `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`). Open it, then in the Cloud Agents dashboard
-> (`cursor.com/dashboard/cloud-agents`) → your environment → **Secrets** tab, add each
-> as a **Runtime Secret** (loaded as an env var, redacted from the agent's transcript).
+> **resolved from `.envrc`** (Linear tracker adds `BKIT_LINEAR_API_KEY`). Open it, then in the
+> Cloud Agents dashboard (`cursor.com/dashboard/cloud-agents`) → your environment → **Secrets**
+> tab, add each as a **Runtime Secret** (loaded as an env var, redacted from the agent's transcript).
 > Gitignored (holds real secrets); regenerates on every install/upgrade. The toolchain
 > half is the committed `.cursor/Dockerfile` + `.cursor/environment.json` (nothing to
 > paste) — same tools, same versions as the Claude setup script.
@@ -364,7 +362,7 @@ Each repo gets **own** Claude environment, named after repo. Reason: **secrets, 
 Shared across repos (copy, don't re-derive) — non-secret only:
 
 - **Setup script** — generic binaries only (vale, gh, pnpm via corepack); repo-specific install deferred to committed `bkit-cloud-bootstrap.sh` (lockfile → `pnpm install`, `.vale.ini` → `vale sync`). One body fits every repo.
-- **bkit baseline token _names_** (`BKIT_GH_TOKEN`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`) + **network policy** (`Trusted`) — same everywhere, values differ. Repo _other_ env vars **not** shared: copy from own env files per `.envrc` — drop `unset`s, skip `BKIT_ANTHROPIC_API_KEY` (§ Environment variables).
+- **bkit baseline token _name_** (`BKIT_GH_TOKEN`) + **network policy** (`Trusted`) — same everywhere, values differ. Repo _other_ env vars **not** shared: copy from own env files per `.envrc` — drop `unset`s, skip `BKIT_ANTHROPIC_API_KEY` (§ Environment variables).
 - **Non-secret selectors** (`VERCEL_SCOPE`, `SUPABASE_PROJECT_ID`) stay committed in-repo (§ Environment variables), never in dashboard.
 
 ## Cursor — byte-identical Dockerfile

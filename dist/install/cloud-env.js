@@ -39,19 +39,13 @@ const BASELINE_TOKEN_PLACEHOLDERS = [
         "<PAT — fine-grained one owner / classic across owners; see .bkit/cloud.md § BKIT_GH_TOKEN token permissions>",
     ],
 ];
-// Earlier-compaction override — a bkit constant, not a secret. Appended to the
-// block when not already resolved from a source file. Claude-harness-only knob —
-// Cursor has no equivalent, so it is NOT in the Cursor policy's constants.
-const AUTOCOMPACT_KEY = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE";
-const AUTOCOMPACT_VALUE = "70";
-// Claude Code on the web: GitHub tracker, autocompact override.
+// Claude Code on the web: GitHub tracker.
 export const CLAUDE_CLOUD_POLICY = {
     baseline: BASELINE_TOKEN_PLACEHOLDERS,
-    constants: [[AUTOCOMPACT_KEY, AUTOCOMPACT_VALUE]],
 };
 // Cursor Background Agents: `BKIT_LINEAR_API_KEY` prepended for the Linear tracker
 // (bkit-preflight.sh calls the Linear GraphQL API and hard-fails without it); GitHub
-// tracker uses the same GH baseline as Claude, minus the autocompact knob.
+// tracker uses the same GH baseline as Claude.
 const CURSOR_LINEAR_PLACEHOLDER = [
     "BKIT_LINEAR_API_KEY",
     "<Linear personal API key — https://linear.app/settings/api>",
@@ -61,7 +55,6 @@ export function cursorCloudPolicy(tracker) {
         baseline: tracker === "linear"
             ? [CURSOR_LINEAR_PLACEHOLDER, ...BASELINE_TOKEN_PLACEHOLDERS]
             : BASELINE_TOKEN_PLACEHOLDERS,
-        constants: [],
     };
 }
 /** Strip one layer of matching surrounding single/double quotes. */
@@ -185,7 +178,7 @@ export function resolveCloudEnvVars(cwd, policy = CLAUDE_CLOUD_POLICY) {
 }
 /**
  * Render the `.env`-format paste block: resolved KEY=value lines, then placeholder
- * lines for any absent baseline token, then the autocompact override if unset.
+ * lines for any absent baseline token.
  */
 export function renderCloudEnvBlock(res, policy = CLAUDE_CLOUD_POLICY) {
     const lines = [];
@@ -194,10 +187,6 @@ export function renderCloudEnvBlock(res, policy = CLAUDE_CLOUD_POLICY) {
     for (const [name, placeholder] of policy.baseline) {
         if (res.placeholders.includes(name))
             lines.push(`${name}=${placeholder}`);
-    }
-    for (const [key, value] of policy.constants) {
-        if (!res.included.some(([k]) => k === key))
-            lines.push(`${key}=${value}`);
     }
     return lines.join("\n");
 }

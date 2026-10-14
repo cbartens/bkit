@@ -170,21 +170,20 @@ describe("resolveCloudEnvVars", () => {
 });
 
 describe("renderCloudEnvBlock", () => {
-  it("emits resolved lines, placeholder lines for absent baseline, and appends autocompact", () => {
+  it("emits only the resolved lines when every baseline token resolved", () => {
     write(".envrc", "dotenv_if_exists .bkit/.env");
-    write(".bkit/.env", "BKIT_GH_TOKEN=real");
+    write(".bkit/.env", ["BKIT_GH_TOKEN=real", "APP_URL=https://x"].join("\n"));
     const block = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir));
-    const lines = block.split("\n");
-    expect(lines).toContain("BKIT_GH_TOKEN=real");
-    expect(lines).toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70");
+    expect(block.split("\n")).toEqual(["BKIT_GH_TOKEN=real", "APP_URL=https://x"]);
   });
 
-  it("does not append autocompact when it was resolved from a source", () => {
+  it("emits a placeholder line for an absent baseline token", () => {
     write(".envrc", "dotenv_if_exists .bkit/.env");
-    write(".bkit/.env", "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=50");
-    const block = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir));
-    expect(block.match(/CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=/g)).toHaveLength(1);
-    expect(block).toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=50");
+    write(".bkit/.env", "APP_URL=https://x");
+    const lines = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir)).split("\n");
+    expect(lines[0]).toBe("APP_URL=https://x");
+    expect(lines[1]).toMatch(/^BKIT_GH_TOKEN=<PAT/);
+    expect(lines).toHaveLength(2);
   });
 });
 
@@ -529,19 +528,17 @@ describe("cloudAutoModeEnvironment / renderCloudUserSettings", () => {
 });
 
 describe("cursorCloudPolicy", () => {
-  it("linear tracker: prepends BKIT_LINEAR_API_KEY, keeps GH baseline, no autocompact constant", () => {
+  it("linear tracker: prepends BKIT_LINEAR_API_KEY, keeps GH baseline", () => {
     const p = cursorCloudPolicy("linear");
     expect(p.baseline.map(([n]) => n)).toEqual(["BKIT_LINEAR_API_KEY", "BKIT_GH_TOKEN"]);
-    expect(p.constants).toEqual([]);
   });
 
-  it("github tracker: GH baseline only (no BKIT_LINEAR_API_KEY), no autocompact constant", () => {
+  it("github tracker: GH baseline only (no BKIT_LINEAR_API_KEY)", () => {
     const p = cursorCloudPolicy("github");
     expect(p.baseline.map(([n]) => n)).toEqual(["BKIT_GH_TOKEN"]);
-    expect(p.constants).toEqual([]);
   });
 
-  it("renders a BKIT_LINEAR_API_KEY placeholder for linear but not for github, and never autocompact", () => {
+  it("renders a BKIT_LINEAR_API_KEY placeholder for linear but not for github", () => {
     write(".envrc", "dotenv_if_exists .bkit/.env");
     write(".bkit/.env", "BKIT_GH_TOKEN=real");
 
@@ -549,12 +546,10 @@ describe("cursorCloudPolicy", () => {
     const linearBlock = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir, linear), linear);
     expect(linearBlock).toContain("BKIT_GH_TOKEN=real");
     expect(linearBlock).toMatch(/^BKIT_LINEAR_API_KEY=/m);
-    expect(linearBlock).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
 
     const github = cursorCloudPolicy("github");
     const githubBlock = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir, github), github);
     expect(githubBlock).not.toContain("BKIT_LINEAR_API_KEY");
-    expect(githubBlock).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
   });
 });
 
@@ -656,21 +651,19 @@ describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
     expect(fs.statSync(dst).mode & 0o777).toBe(0o600);
   });
 
-  it("linear tracker emits BKIT_LINEAR_API_KEY; github tracker does not; neither emits autocompact", () => {
+  it("linear tracker emits BKIT_LINEAR_API_KEY; github tracker does not", () => {
     write(".envrc", "dotenv_if_exists .bkit/.env");
     write(".bkit/.env", "BKIT_GH_TOKEN=real");
 
     writeCursorCloudDoc(tmpDir, TOKENS, "linear");
     const linearOut = fs.readFileSync(path.join(tmpDir, ".cursor", "bkit-cloud.md"), "utf-8");
     expect(linearOut).toContain("BKIT_LINEAR_API_KEY=");
-    expect(linearOut).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
 
     writeCursorCloudDoc(tmpDir, TOKENS, "github");
     const githubOut = fs.readFileSync(path.join(tmpDir, ".cursor", "bkit-cloud.md"), "utf-8");
     // The env-var paste block must not carry BKIT_LINEAR_API_KEY on the GitHub tracker. (The
     // prose still mentions LINEAR_ISSUE_ID as an injected var — assert on the block line.)
     expect(githubOut).not.toMatch(/^BKIT_LINEAR_API_KEY=/m);
-    expect(githubOut).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
   });
 
   it("returns false when the template is absent (no getTemplatesRoot match)", () => {

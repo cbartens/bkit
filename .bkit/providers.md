@@ -375,6 +375,23 @@ Both: `"type": "http"`, `"url": "https://api.githubcopilot.com/mcp/"`, `"headers
 
 ---
 
+## Context compaction
+
+bkit ships no compaction setting; each host auto-summarises near the model's full window by default. To summarise earlier (e.g. 300,000 tokens), set it per host below. Effective threshold = min(setting, model window).
+
+<!-- prettier-ignore -->
+| Host | Setting | Subagents | Notes |
+| --- | --- | --- | --- |
+| Claude Code | `.claude/settings.json` → `"autoCompactWindow": 300000` (range 100,000–1,000,000 or `"auto"`) — install / upgrade keep keys bkit does not own | inherit it; agent files also accept `autoCompactWindow` frontmatter | per person: `.claude/settings.local.json`; env `CLAUDE_CODE_AUTO_COMPACT_WINDOW` beats every settings file |
+| Codex CLI | `.codex/config.toml` → `model_auto_compact_token_limit = 300000`, above the first `[table]` header (below one, the key belongs to that table and does nothing) | inherit it (agent role files drop the key) | read only once the project is trusted; one run: `codex -c model_auto_compact_token_limit=N`; above 90% of the model window, Codex uses 90% |
+| opencode | none — no absolute-count trigger. Auto-compaction fires at the model's input (else context) limit minus `compaction.buffer` (default 10%, min 16,000) | same settings | per model: `providers.<id>.models.<model>.limit.input` (or `limit.context` when the catalog gives no input limit) ≈ target + buffer. Not `compaction.buffer`: one global buffer large enough for a 1M model goes negative on 128k–200k models and compacts before nearly every call |
+| Cursor | none — trigger fixed server-side | — | manual `/summarize` |
+| Google Antigravity | none — threshold internal, no setting / env reaches it | — | manual `/compact` |
+
+**Floor:** keep the window well above the largest single tool result plus the recent turns kept after a summary. Claude Code ends an agent whose context refills to the limit within 3 turns of a summary, 3 times in a row (`Autocompact is thrashing`).
+
+---
+
 ## Runtime environment (cloud agents)
 
 > Setup recipe + alignment: `.bkit/cloud.md`. This section = host-diff matrix only.
