@@ -748,15 +748,22 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
         // (host-gated, non-dry-run).
         if (relPath === CLAUDE_CLOUD_RELPATH || relPath === CURSOR_CLOUD_RELPATH) continue;
         if (relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH) continue;
-        // Skip opt-in-module files the consumer hasn't opted into (dest absent).
-        if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
-          continue;
-        }
         const entry = entryByPath.get(relPath);
+        const ownerModule = entry?.module;
+        // Skip opt-in-module files the consumer hasn't opted into: dest absent and the owning
+        // module not detected as installed. A detected opt-in host (opencode / codex /
+        // antigravity) gets the files a newer release adds; `cloud` has no install sentinel,
+        // so its files upgrade only when present. opencode.json is created only when its
+        // provider resolves — never written with raw `@@OPENCODE_*@@` sentinels.
+        if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
+          const hostInstalled = ownerModule !== undefined && installedModules.has(ownerModule);
+          if (!hostInstalled || (relPath === OPENCODE_JSON_RELPATH && !upgradeOpencodeProvider)) {
+            continue;
+          }
+        }
         // Skip host-module files when that module is not installed — upgrade updates
         // only what the consumer opted into, never force-creating a new module. opt-ins are
-        // handled by the dest-presence check above; core + entry-less files always pass.
-        const ownerModule = entry?.module;
+        // handled by the check above; core + entry-less files always pass.
         if (
           ownerModule &&
           ownerModule !== "core" &&

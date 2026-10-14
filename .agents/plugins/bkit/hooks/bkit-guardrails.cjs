@@ -6,17 +6,21 @@
 // (bkit's `core/hooks/`). Wired from `.agents/plugins/bkit/hooks.json`, matcher `run_command` —
 // Antigravity's canonical tool name for shell execution.
 //
-// ONE THING DIFFERS FROM THE CODEX TWIN:
+// WHAT DIFFERS FROM THE CODEX TWIN — Antigravity's hook contract, live-verified on the agy
+// CLI (bkit's `core/hooks/antigravity-hook.js`):
 //
-//   1. ENVELOPE / TOOL NAME. Antigravity reports shell execution as `run_command`, and
-//      passes the command as `tool_input.command` (some builds use `CommandLine`). Both
-//      are accepted. The stdout envelope is the Claude-family `hookSpecificOutput` shape.
+//   1. ENVELOPE. stdin is `{ conversationId, toolCall: { name, args }, workspacePaths }`;
+//      the command is `args.CommandLine`.
+//   2. OUTPUT. stdout is `{ decision, reason }`. deny → `deny`; ask → Antigravity's own
+//      `ask` (it prompts the human); the advisory tiers (fetch host, shell-as-edit) deny the
+//      call once with the advisory as the reason, because only a deny's reason reaches the
+//      model — the agent's retry goes through.
 //
 // REGISTRATION: `.agents/plugins/bkit/hooks.json`, matcher `run_command`. See .bkit/providers.md § GateGuard.
 //
 // CONTRACT — do not regress:
-//   - FAIL OPEN: one top-level catch swallows every error and exits 0.
-//   - DENY IS REAL: the deny tier returns permissionDecision "deny" and blocks.
+//   - FAIL OPEN: one top-level catch emits a bare allow on any error.
+//   - DENY IS REAL: the deny tier returns decision "deny" and blocks every time.
 //   - PURE ENGINE: everything between the markers is a decision engine only — no stdin
 //     read, no stdout write. Add your own gates in the driver below the block.
 //
@@ -30,6 +34,7 @@
 // bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 // --- Shell detection: identical in every host's guardrails hook (bkit renders it from
@@ -256,54 +261,116 @@ function classifyShell(c) {
   return edits.length > 0 ? { tier: "edit", edits } : null;
 }
 
-/** Verdicts mirror the Cursor hook's tiers so the shared gate table reads identically. */
-function ask(reason) {
-  return { verdict: "ask", reason };
+// --- Antigravity hook contract: identical in bkit's three Antigravity hooks (bkit renders
+// it from one source). Needs `fs`, `os` and `path` in scope; the host's own code above
+// declares them.
+//
+// Live-verified on the agy CLI: PreToolUse stdin is `{ conversationId, toolCall: { name,
+// args }, workspacePaths, stepIdx, ... }` — no tool_name / tool_input / session_id / cwd.
+// Args: `view_file` AbsolutePath / StartLine / EndLine; `run_command` CommandLine / Cwd;
+// `write_to_file` / `replace_file_content` TargetFile. Stdout is `{ decision, reason }`,
+// and only a `deny`'s reason reaches the model.
+
+/**
+ * Antigravity's envelope in the Claude-family shape bkit's shared engines read. A payload
+ * already in that shape (a consumer's own matcher, a test) passes through unchanged.
+ */
+function fromAntigravityPayload(payload) {
+  if (!payload || typeof payload !== "object" || !payload.toolCall) return payload;
+  const args =
+    payload.toolCall.args && typeof payload.toolCall.args === "object" ? payload.toolCall.args : {};
+  const roots = payload.workspacePaths;
+  const root = Array.isArray(roots) && typeof roots[0] === "string" ? roots[0] : undefined;
+  return {
+    tool_name: payload.toolCall.name,
+    tool_input: args,
+    session_id: payload.conversationId,
+    cwd: typeof args.Cwd === "string" ? args.Cwd : root,
+  };
 }
 
-function deny(reason) {
-  return { verdict: "deny", reason };
+// Model-written labels that differ between two otherwise identical calls.
+const AG_LABEL_ARGS = new Set(["toolAction", "toolSummary", "Description", "Instruction"]);
+
+/** The call's identity: tool name plus its arguments, labels dropped, keys sorted. */
+function agCallSignature(toolName, input) {
+  const args = input && typeof input === "object" ? input : {};
+  const kept = Object.keys(args)
+    .filter((k) => !AG_LABEL_ARGS.has(k))
+    .sort()
+    .map((k) => [k, args[k]]);
+  return JSON.stringify([toolName, kept]);
+}
+
+// One record per (hook, conversation): two hooks on the same call each let its retry through.
+function agRetryFile(hook, sessionId) {
+  const safe =
+    typeof sessionId === "string" ? sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) : "";
+  return path.join(os.tmpdir(), "bkit-antigravity-retry", `${hook}.${safe || "no-session"}.json`);
 }
 
 /**
- * Entry point — pure. Takes the parsed hook payload, returns
- * `{ verdict: "allow"|"ask"|"deny", reason? }`, or `null` when bkit has no opinion
- * (the caller decides what a no-opinion result means).
- *
+ * Delivers an advisory the only way Antigravity shows one to the model: deny the call
+ * with the advisory as the reason, once. The identical call right after is the agent's
+ * retry and is allowed.
+ */
+function adviseOnce(hook, sessionId, signature, advisory) {
+  const file = agRetryFile(hook, sessionId);
+  const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+  if (last === signature) {
+    fs.rmSync(file, { force: true });
+    return { decision: "allow" };
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, signature, "utf-8");
+  return {
+    decision: "deny",
+    reason: `${advisory}\nBlocked once so you see this; repeat the same call to proceed.`,
+  };
+}
+
+/**
  * Antigravity reports shell execution as `run_command`; the aliases match a
  * consumer-registered matcher or an isolated `run_command` session.
  */
 const SHELL_TOOL_NAMES = new Set(["run_command", "RunCommand", "Bash", "bash", "shell"]);
 
+/**
+ * Entry point — pure. Takes the parsed hook payload, returns Antigravity's
+ * `{ decision: "allow"|"ask"|"deny", reason? }`, or `null` when bkit has no opinion
+ * (the caller decides what a no-opinion result means).
+ */
 function bkitGuardrails(payload) {
-  if (!payload || typeof payload !== "object") return null;
-  const tool = payload.tool_name;
+  const p = fromAntigravityPayload(payload);
+  if (!p || typeof p !== "object") return null;
+  const tool = p.tool_name;
   if (!SHELL_TOOL_NAMES.has(tool)) return null;
-  const input = payload.tool_input || {};
-  // Antigravity passes the command as a string (`command`), or `CommandLine` in some builds.
+  const input = p.tool_input || {};
   const raw = Array.isArray(input.command)
     ? input.command.join(" ")
-    : (input.command ?? input.CommandLine);
+    : (input.CommandLine ?? input.command);
   if (typeof raw !== "string") return null;
 
   const cmd = raw.trim();
   const tier = classifyShell(cmd);
   if (!tier) return null;
   if (tier.tier === "deny") {
-    return deny(`Blocked by bkit Antigravity guardrails: ${tier.what}. ${tier.fix}`);
+    return {
+      decision: "deny",
+      reason: `Blocked by bkit Antigravity guardrails: ${tier.what}. ${tier.fix}`,
+    };
   }
   if (tier.tier === "ask") {
-    return ask(
-      `bkit Antigravity guardrails: this is a destructive or privileged command. It is on the PROHIBITED list in every bkit workflow. Do not run it unless the user asked for this exact command. Note that git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${cmd}`,
-    );
+    return {
+      decision: "ask",
+      reason: `bkit Antigravity guardrails: this is a destructive or privileged command. It is on the PROHIBITED list in every bkit workflow. Do not run it unless the user asked for this exact command. Note that git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${cmd}`,
+    };
   }
-  if (tier.tier === "fetch") {
-    return ask(
-      `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist. Confirm the destination is intended before relying on the result. Command: ${cmd}`,
-    );
-  }
-  // Shell-as-edit-channel: advisory on every host, never a block.
-  return ask(shellEditAdvisory(tier.edits));
+  const advisory =
+    tier.tier === "fetch"
+      ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist. Confirm the destination is intended before relying on the result. Command: ${cmd}`
+      : shellEditAdvisory(tier.edits);
+  return adviseOnce("guardrails", p.session_id, agCallSignature(tool, input), advisory);
 }
 
 // bkit:end
@@ -311,29 +378,17 @@ function bkitGuardrails(payload) {
 // --- Driver (yours to extend) ----------------------------------------------
 //
 // Fold in your own checks here: call bkitGuardrails(payload), combine with your own
-// verdict, and call emit() exactly once. Keep the single-emit rule — two writers on
+// decision, and call emit() exactly once. Keep the single-emit rule — two writers on
 // one stdout produce an unparseable blob and Antigravity ignores the whole thing.
 
-function emit(payload) {
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: payload }));
+function emit(decision) {
+  process.stdout.write(JSON.stringify(decision));
 }
 
 try {
   const raw = fs.readFileSync(0, "utf-8");
-  if (raw.trim()) {
-    const result = bkitGuardrails(JSON.parse(raw));
-    if (result) {
-      emit(
-        result.verdict === "deny"
-          ? {
-              hookEventName: "PreToolUse",
-              permissionDecision: "deny",
-              permissionDecisionReason: result.reason,
-            }
-          : { hookEventName: "PreToolUse", additionalContext: result.reason },
-      );
-    }
-  }
+  const result = raw.trim() ? bkitGuardrails(JSON.parse(raw)) : null;
+  emit(result ?? { decision: "allow" });
 } catch {
-  process.exitCode = 0; // fail open — never block, never error out
+  emit({ decision: "allow" }); // fail open — never block, never error out
 }

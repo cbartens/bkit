@@ -311,7 +311,8 @@
     }
   },
   "plugin": [
-    "./plugin/bkit-gateguard.js"
+    "./plugin/bkit-gateguard.js",
+    "./plugin/bkit-readguard.js"
   ],
   "provider": {
     "openrouter": {

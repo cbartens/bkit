@@ -82,6 +82,15 @@ One `### {name}` section per clause:
 **Rules:** Read `.agents/rules.md` → FOLLOW ALL rules.
 ```
 
+### code-reads
+
+- prompt: required
+- position: header
+
+```text
+**Code reads:** Locate first (symbol lookup or `grep -n`), then read only needed line ranges; never re-read unchanged files.
+```
+
 ### order
 
 - prompt: required

@@ -20,7 +20,12 @@
       {
         "command": "node .cursor/hooks/bkit-gateguard.cjs",
         "matcher": "Write"
+      },
+      {
+        "command": "node .cursor/hooks/bkit-readguard.cjs",
+        "matcher": "Read|Shell"
       }
-    ]
+    ],
+    "preCompact": [{ "command": "node .cursor/hooks/bkit-readguard.cjs" }]
   }
 }

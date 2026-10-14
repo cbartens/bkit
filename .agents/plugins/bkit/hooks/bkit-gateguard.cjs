@@ -1,32 +1,31 @@
 #!/usr/bin/env node
 // bkit-gateguard.cjs — bkit GateGuard advisory PreToolUse hook (Google Antigravity).
 //
-// Twin of `.claude/hooks/bkit-gateguard.cjs`. Antigravity's hook contract is the same
-// family as Claude Code's — same stdin envelope (`tool_name`, `tool_input`, `session_id`,
-// `cwd`), same stdout shape (`hookSpecificOutput` with `permissionDecision` /
-// `additionalContext`) — so bkit generates the same advisory engine into it at install
-// (bkit's `core/hooks/gateguard-engine.js`). Two things differ and are handled below:
+// Twin of `.claude/hooks/bkit-gateguard.cjs`: bkit generates the same advisory engine into
+// it at install (bkit's `core/hooks/gateguard-engine.js`). Antigravity's hook contract
+// differs from Claude Code's, live-verified on the agy CLI (bkit's
+// `core/hooks/antigravity-hook.js`):
 //
-//   1. TOOL NAME. Antigravity reports file edits as `write_to_file` (whole-file) or
-//      `replace_file_content` (in-place edit), never Edit/Write/MultiEdit.
-//   2. FILE PATH. Antigravity passes the target path in `tool_input.file_path` (some
-//      builds use `path` / `target_file`); all three are accepted.
+//   1. ENVELOPE. stdin is `{ conversationId, toolCall: { name, args }, workspacePaths }`.
+//      File edits are `write_to_file` / `replace_file_content`, target in `args.TargetFile`.
+//   2. OUTPUT. stdout is `{ decision, reason }`, and only a `deny`'s reason reaches the
+//      model. So the checklist is delivered by denying the first edit of a file once,
+//      with the checklist as the reason; the agent's retry goes through.
 //
 // bkit's gateguard parity test runs the shared behaviour table against this host.
 //
-// REGISTRATION: `.agents/plugins/bkit/hooks.json`, matchers `write_to_file` / `replace_file_content`.
+// REGISTRATION: `.agents/plugins/bkit/hooks.json`, matcher `write_to_file|replace_file_content`.
 // See .bkit/providers.md § GateGuard.
 //
 // CONTRACT — do not regress:
-//   - ADVISORY BY DEFAULT: emits `additionalContext` only, never blocks. BKIT_GATEGUARD=deny
-//     flips it to a deny ramp; that is a config change, NOT a code change.
-//   - FAIL OPEN: one top-level catch swallows every error and exits 0.
-//   - SUBAGENTS INCLUDED: a subagent edit is an edit; each carries its own session id.
-//   - DEDUP: warns once per (session, file), state in the OS temp dir, GC'd after 24h.
+//   - ADVISORY, DELIVERED BY ONE BLOCK: the first edit of a file per conversation is denied
+//     with the checklist; the retry is allowed. BKIT_GATEGUARD=deny behaves the same here.
+//   - FAIL OPEN: one top-level catch emits a bare allow on any error.
+//   - SUBAGENTS: Antigravity has no native subagents; an `agy` run is its own conversation.
+//   - DEDUP: warns once per (conversation, file), state in the OS temp dir, GC'd after 24h.
 //
-// MODES (BKIT_GATEGUARD): unset → advisory [DEFAULT] | "off" → no-op | "deny" → block first
-// touch per file, then allow the retry.  BKIT_ALLOW_CONFIG_EDIT=1 suppresses the gate-config
-// advisory.
+// MODES (BKIT_GATEGUARD): unset / "deny" → block the first touch per file once | "off" →
+// no-op.  BKIT_ALLOW_CONFIG_EDIT=1 suppresses the gate-config advisory.
 //
 // OWNERSHIP: everything between the markers is bkit-managed and overwritten on every
 // `bkit install` / `bkit upgrade`. Add your own logic in the driver below the block.
@@ -45,11 +44,11 @@ const path = require("node:path");
 // `replace_file_content` edits in place. `Edit` / `Write` are accepted as matchers too.
 const EDIT_TOOLS = new Set(["write_to_file", "replace_file_content", "Edit", "Write"]);
 
-// Antigravity puts the touched path in the tool input. Different builds name the field
-// differently (`file_path` / `path` / `target_file`); accept any, resolved against cwd.
+// Antigravity names the touched path `TargetFile`; `file_path` / `path` / `target_file`
+// cover a consumer's own matcher. Resolved against cwd.
 function parseEditTargets(input, cwd) {
   if (!input || typeof input !== "object") return [];
-  const rel = input.file_path ?? input.path ?? input.target_file;
+  const rel = input.TargetFile ?? input.file_path ?? input.path ?? input.target_file;
   if (typeof rel !== "string" || rel.length === 0) return [];
   return [{ file: cwd ? path.resolve(cwd, rel) : rel }];
 }
@@ -178,6 +177,13 @@ function stateDir() {
   return path.join(os.tmpdir(), "bkit-gateguard");
 }
 
+// Dedup scope: the session, narrowed to one agent when the host names it. A Claude Code
+// subagent shares its parent's session_id and carries its own agent_id.
+function dedupKey(sessionId, agentId) {
+  const sid = typeof sessionId === "string" ? sessionId : "no-session";
+  return typeof agentId === "string" && agentId ? `${sid}.${agentId}` : sid;
+}
+
 function stateFile(sessionId) {
   const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) || "no-session";
   return path.join(stateDir(), safe + ".json");
@@ -251,49 +257,105 @@ function firstTouchAdvice(filePath, sessionId, isNewFile) {
   return { mode: mode === "deny" ? "deny" : "advisory", context };
 }
 
-// Pure: takes the already-parsed hook payload, returns the advisory to emit or
-// null. Never touches process.stdin / process.stdout — the driver below owns both.
-// Subagents are NOT exempt: dedup is per (session, file) and a subagent carries its
-// own session id, so it gets the checklist once for a file the orchestrator already
-// touched.
+// --- Antigravity hook contract: identical in bkit's three Antigravity hooks (bkit renders
+// it from one source). Needs `fs`, `os` and `path` in scope; the host's own code above
+// declares them.
+//
+// Live-verified on the agy CLI: PreToolUse stdin is `{ conversationId, toolCall: { name,
+// args }, workspacePaths, stepIdx, ... }` — no tool_name / tool_input / session_id / cwd.
+// Args: `view_file` AbsolutePath / StartLine / EndLine; `run_command` CommandLine / Cwd;
+// `write_to_file` / `replace_file_content` TargetFile. Stdout is `{ decision, reason }`,
+// and only a `deny`'s reason reaches the model.
+
+/**
+ * Antigravity's envelope in the Claude-family shape bkit's shared engines read. A payload
+ * already in that shape (a consumer's own matcher, a test) passes through unchanged.
+ */
+function fromAntigravityPayload(payload) {
+  if (!payload || typeof payload !== "object" || !payload.toolCall) return payload;
+  const args =
+    payload.toolCall.args && typeof payload.toolCall.args === "object" ? payload.toolCall.args : {};
+  const roots = payload.workspacePaths;
+  const root = Array.isArray(roots) && typeof roots[0] === "string" ? roots[0] : undefined;
+  return {
+    tool_name: payload.toolCall.name,
+    tool_input: args,
+    session_id: payload.conversationId,
+    cwd: typeof args.Cwd === "string" ? args.Cwd : root,
+  };
+}
+
+// Model-written labels that differ between two otherwise identical calls.
+const AG_LABEL_ARGS = new Set(["toolAction", "toolSummary", "Description", "Instruction"]);
+
+/** The call's identity: tool name plus its arguments, labels dropped, keys sorted. */
+function agCallSignature(toolName, input) {
+  const args = input && typeof input === "object" ? input : {};
+  const kept = Object.keys(args)
+    .filter((k) => !AG_LABEL_ARGS.has(k))
+    .sort()
+    .map((k) => [k, args[k]]);
+  return JSON.stringify([toolName, kept]);
+}
+
+// One record per (hook, conversation): two hooks on the same call each let its retry through.
+function agRetryFile(hook, sessionId) {
+  const safe =
+    typeof sessionId === "string" ? sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) : "";
+  return path.join(os.tmpdir(), "bkit-antigravity-retry", `${hook}.${safe || "no-session"}.json`);
+}
+
+/**
+ * Delivers an advisory the only way Antigravity shows one to the model: deny the call
+ * with the advisory as the reason, once. The identical call right after is the agent's
+ * retry and is allowed.
+ */
+function adviseOnce(hook, sessionId, signature, advisory) {
+  const file = agRetryFile(hook, sessionId);
+  const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+  if (last === signature) {
+    fs.rmSync(file, { force: true });
+    return { decision: "allow" };
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, signature, "utf-8");
+  return {
+    decision: "deny",
+    reason: `${advisory}\nBlocked once so you see this; repeat the same call to proceed.`,
+  };
+}
+
+// Pure: takes the already-parsed hook payload, returns Antigravity's `{ decision, reason }`
+// or null for no opinion. Never touches process.stdin / process.stdout — the driver below
+// owns both.
 function bkitGateguard(payload) {
   if (process.env.BKIT_GATEGUARD === "off") return null;
-  if (!EDIT_TOOLS.has(payload.tool_name)) return null;
+  const p = fromAntigravityPayload(payload);
+  if (!p || !EDIT_TOOLS.has(p.tool_name)) return null;
 
-  const input = payload.tool_input || {};
-  const cwd = typeof payload.cwd === "string" ? payload.cwd : "";
-  const sessionId = typeof payload.session_id === "string" ? payload.session_id : "no-session";
+  const input = p.tool_input || {};
+  const cwd = typeof p.cwd === "string" ? p.cwd : "";
+  const sessionId = dedupKey(p.session_id, p.agent_id);
   const target = parseEditTargets(input, cwd).find((t) => !alreadyWarned(sessionId, t.file));
   if (!target) return null;
   // A write_to_file to a not-yet-existing path is a NEW file and gets the reuse checklist;
   // replace_file_content is always an in-place edit of an existing file.
-  const isNew = payload.tool_name === "write_to_file" && !fs.existsSync(target.file);
-  return firstTouchAdvice(target.file, sessionId, isNew);
+  const isNew = p.tool_name === "write_to_file" && !fs.existsSync(target.file);
+  const result = firstTouchAdvice(target.file, sessionId, isNew);
+  if (!result) return null;
+  return adviseOnce("gateguard", sessionId, agCallSignature(p.tool_name, input), result.context);
 }
 
 // bkit:end
 
-function emit(payload) {
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: payload }));
+function emit(decision) {
+  process.stdout.write(JSON.stringify(decision));
 }
 
 try {
   const raw = fs.readFileSync(0, "utf-8");
-  if (raw.trim()) {
-    const payload = JSON.parse(raw);
-    const result = bkitGateguard(payload);
-    if (result) {
-      emit(
-        result.mode === "deny"
-          ? {
-              hookEventName: "PreToolUse",
-              permissionDecision: "deny",
-              permissionDecisionReason: result.context,
-            }
-          : { hookEventName: "PreToolUse", additionalContext: result.context },
-      );
-    }
-  }
+  const result = raw.trim() ? bkitGateguard(JSON.parse(raw)) : null;
+  emit(result ?? { decision: "allow" });
 } catch {
-  process.exitCode = 0; // fail open — never block, never error out
+  emit({ decision: "allow" }); // fail open — never block, never error out
 }

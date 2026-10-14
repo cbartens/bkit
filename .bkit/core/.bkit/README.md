@@ -226,7 +226,7 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 
 **Managed-version marker.** Every non-JSON file bkit writes carries `bkit:managed vX.Y.Z` — first line inside the `bkit:start` block, or near the top of a whole file — in its comment syntax: `<!-- … -->` (markdown), `# <!-- … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, TOML), `// …` (JS). The marker names the licence of the file's payload and its terms URL: PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 for core files, MIT-0 for files written from the shared set (`CLAUDE.md`, `GEMINI.md`, `docs/*.md`, Cursor rules, `.gitignore`, `.gitattributes`, `.env.example`). A copy passed on in a public repo carries the terms URL with it; the PolyForm texts and the Required Notice travel at `.bkit/LICENSE.md`. Install and upgrade restamp it; `bkit check` reports `bkit-managed-stale` for a marker that differs from the installed version (blocker on `main` / `dev`, advisory on feature branches). Templates carry no marker and no block.
 
-**Hook scripts.** Install generates each host's `bkit-preflight.sh`, `gateguard` and `guardrails` hook from its template plus the code the hosts share (`.bkit/core/hooks/`, `.bkit/providers.md` § Hooks). bkit's block in `.claude/hooks/bkit-gateguard.cjs`, `.cursor/hooks/bkit-gateguard.cjs`, `.opencode/plugin/bkit-gateguard.js` and the `bkit-guardrails.cjs` hooks is a pure advisory engine — no stdin read, no stdout write, no top-level call — so it cannot collide with a consumer's own emitter. Delivery is per host: Claude / Cursor / Codex inject the checklist before the edit, opencode appends it to the tool result in `execute.after` (`BKIT_GATEGUARD=deny` is the only pre-edit block) — see `.bkit/providers.md` § Hooks. A consumer file with no markers gets the block appended; wire its exported function into your driver.
+**Hook scripts.** Install generates each host's `bkit-preflight.sh`, `gateguard`, `readguard` and `guardrails` hook from its template plus the code the hosts share (`.bkit/core/hooks/`, `.bkit/providers.md` § Hooks). bkit's block in the `bkit-gateguard` / `bkit-readguard` hooks and plugins and the `bkit-guardrails.cjs` hooks is a pure advisory engine — no stdin read, no stdout write, no top-level call — so it cannot collide with a consumer's own emitter. Delivery is per host: Claude / Cursor / Codex inject the checklist before the edit, opencode appends it to the tool result in `execute.after` (`BKIT_GATEGUARD=deny` is the only pre-edit block) — see `.bkit/providers.md` § Hooks. A consumer file with no markers gets the block appended; wire its exported function into your driver.
 
 ### What install writes
 
@@ -250,6 +250,7 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `.claude/hooks/bkit-preflight.sh` | claude | `.bkit/core/.claude/hooks/` | Tier 2 html-comment (`# ` prefix) |
 | `.claude/hooks/bkit-gateguard.cjs` | claude | `.bkit/core/.claude/hooks/` | Tier 2 slash-comment |
 | `.mcp.json` | claude | `.bkit/shared/.mcp.json` | Shared JSON: bkit owns `mcpServers.<tracker>` only; absent file → the tracker-filtered render |
+| `.claude/hooks/bkit-readguard.cjs` | claude | `.bkit/core/.claude/hooks/` | Tier 2 slash-comment. Repeat-read advisory. |
 | `.bkit/.env.example` | claude | `.bkit/shared/.bkit/.env.example` | Tier 1 (fully managed). Real values go in `.bkit/.env`. |
 | `.cursor/commands/bkit-*.md` | cursor | `.bkit/core/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
 | `.cursor/agents/bkit-*.md` | cursor | `.bkit/core/prompts/` (T3 transforms) | Host pass — always overwrite |
@@ -262,12 +263,14 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `.cursor/hooks/bkit-guardrails.cjs` | cursor | `.bkit/core/.cursor/hooks/` | Tier 2 slash-comment. Destructive-op + curl/wget host gates. |
 | `.cursor/hooks/bkit-gateguard.cjs` | cursor | `.bkit/core/.cursor/hooks/` | Tier 2 slash-comment |
 | `.cursor/allowlist.json` | cursor | derived from bkit's shipped egress registry, union `.agents/context.md` allowed-domains | Tier 1 (canonical-overwrite). Curl/wget host allowlist `bkit-guardrails.cjs` reads at runtime. |
+| `.cursor/hooks/bkit-readguard.cjs` | cursor | `.bkit/core/.cursor/hooks/` | Tier 2 slash-comment. Repeat-read advisory. |
 | `.cursor/cli.json` | cursor | derived from `.agents/context.md` mcp-servers | Tier 1 (canonical-overwrite). Cursor CLI / cloud-agent `Mcp(<server>:*)` allows. |
 | `.opencode/opencode.json` | opencode | `.bkit/shared/.opencode/opencode.json` | Tier 2 JSON deep-containment; `@@OPENCODE_*@@` sentinels rendered to the chosen tracker + provider. **Opt-in via `bkit install --opencode=<provider>`**. |
 | `.opencode/commands/bkit-*.md` | opencode | `.bkit/core/workflows/` | Host pass — always overwrite |
 | `.opencode/agents/bkit-*.md` | opencode | `.bkit/core/prompts/` | Host pass — always overwrite |
 | `.opencode/plugin/bkit-gateguard.js` | opencode | `.bkit/core/.opencode/plugin/` | Tier 2 slash-comment |
 | `.claude/hooks/bkit-cloud-bootstrap.sh` | — | `.bkit/templates/.claude/hooks/` | Copy-and-own template: no module writes it; adopt it from `.bkit/templates/` (the SessionStart entry runs it only when present). |
+| `.opencode/plugin/bkit-readguard.js` | opencode | `.bkit/core/.opencode/plugin/` | Tier 2 slash-comment. Repeat-read advisory. |
 
 The cloud workflow and the Cursor Background Agent files are templates the `--auto` setup advisory points at.
 

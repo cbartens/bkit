@@ -14,7 +14,10 @@
 
 ## Migrations
 
-None.
+<!-- prettier-ignore -->
+| Migration | Where | What it rewrites | Releases | Test |
+| --- | --- | --- | --- | --- |
+| Retired Antigravity hook drivers | `.bkit/core/engine/install/write.ts` (`RETIRED_DRIVER_HASHES`, `writeTier2`) | `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` / `bkit-guardrails.cjs` whose driver (text outside `// bkit:start` / `// bkit:end`) is byte-identical to 5.1.0's Claude-shaped `hookSpecificOutput` driver → whole file replaced with the current template (`{ decision, reason }` driver). An edited driver is kept; install / upgrade prints the fix. | 5.1.0 | `.bkit/core/engine/install/write.test.ts` (fixtures `tests/fixtures/antigravity-5.1.0/`) |
 
 ## Detect-only guards
 

@@ -21,7 +21,8 @@
 //   - ADVISORY BY DEFAULT: emits `additionalContext` only, never blocks. BKIT_GATEGUARD=deny
 //     flips it to a deny ramp; that is a config change, NOT a code change.
 //   - FAIL OPEN: one top-level catch swallows every error and exits 0.
-//   - SUBAGENTS INCLUDED: a subagent edit is an edit; each carries its own session id.
+//   - SUBAGENTS INCLUDED: a subagent edit is an edit. Codex reports the parent's
+//     session_id inside a subagent and no agent id, so dedup cannot separate them.
 //   - DEDUP: warns once per (session, file), state in the OS temp dir, GC'd after 24h.
 //
 // MODES (BKIT_GATEGUARD): unset → advisory [DEFAULT] | "off" → no-op | "deny" → block first
@@ -68,16 +69,16 @@ function parseApplyPatchTargets(command, cwd) {
 
 // Pure: takes the already-parsed hook payload, returns the advisory to emit or
 // null. Never touches process.stdin / process.stdout — the driver below owns both.
-// Subagents are NOT exempt: dedup is per (session, file) and a subagent carries its
-// own session id, so it gets the checklist once for a file the orchestrator already
-// touched.
+// Subagents are NOT exempt: dedup is per (session, agent, file). Codex tool payloads
+// carry the parent's session_id inside a subagent and no agent id, so a Codex subagent
+// is not told apart from its parent.
 function bkitGateguard(payload) {
   if (process.env.BKIT_GATEGUARD === "off") return null;
   if (!EDIT_TOOLS.has(payload.tool_name)) return null;
 
   const input = payload.tool_input || {};
   const cwd = typeof payload.cwd === "string" ? payload.cwd : "";
-  const sessionId = typeof payload.session_id === "string" ? payload.session_id : "no-session";
+  const sessionId = dedupKey(payload.session_id, payload.agent_id);
   // One patch can touch several files. Advises on the first not-yet-warned target, so a
   // new file after an already-warned one still gets its advisory.
   const target = parseApplyPatchTargets(input.command, cwd).find(

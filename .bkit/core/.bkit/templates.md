@@ -64,18 +64,18 @@ Placeholders. Copies keep them raw; replace each in your copy:
 <!-- prettier-ignore -->
 | File | Fits | `context=` | Fetches | Secret / non-secret env | Domains | CLI (provision) |
 | --- | --- | --- | --- | --- | --- | --- |
-| `github.md` | GitHub Actions | `ci`, `diff` | `ci`: failing run: failed jobs / steps, `::error` annotations, failed-step logs; `diff`: `git diff --stat` since the last green CI run on trunk | `GH_TOKEN` / `BASELINE_BRANCH`, `BASELINE_WORKFLOW` (`diff`) | — | `gh` (base tool) |
-| `playwright.md` | Playwright on GitHub Actions | `e2e` | failing run's report artifact, failing specs first | `GH_TOKEN` / `E2E_ARTIFACT`, `E2E_JOB_RE` | — | `gh` (base tool) |
-| `maestro.md` | Maestro iOS and Android lanes on GitHub Actions | `e2e` | every failed Maestro job's full log, sliced to the result steps | `GH_TOKEN` / `MAESTRO_JOB_RE`, `MAESTRO_STEPS` | — | `gh` (base tool) |
+| `github.md` | GitHub Actions | `ci`, `diff` | `ci`: failing run: failed jobs / steps, `::error` annotations, failed-step logs tail-bounded per failed job; `diff`: `git diff --stat` (capped) since the last green CI run on trunk | `GH_TOKEN` / `CI_LOG_TAIL`; `BASELINE_BRANCH`, `BASELINE_WORKFLOW`, `DIFF_STAT_N` (`diff`) | — | `gh` (base tool) |
+| `playwright.md` | Playwright on GitHub Actions | `e2e` | failing run's report artifact, failing specs first; inlined files, lines and binary paths capped | `GH_TOKEN` / `E2E_ARTIFACT`, `E2E_JOB_RE`, `E2E_MAX_FILES`, `E2E_MAX_LINES`, `E2E_MAX_BIN` | — | `gh` (base tool) |
+| `maestro.md` | Maestro iOS and Android lanes on GitHub Actions | `e2e` | every failed Maestro job's log, sliced to the result steps, each slice tail-bounded | `GH_TOKEN` / `MAESTRO_JOB_RE`, `MAESTRO_STEPS`, `MAESTRO_LOG_TAIL` | — | `gh` (base tool) |
 | `tavily.md` | any | `web` | web search for upstream causes (untrusted output) | `BKIT_TAVILY_API_KEY` / `QUERY` | — | — |
-| `sentry.md` | Sentry | `runtime` | unresolved issues, last 24 h; trace / window recipes | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_HOST` | `sentry.io` | — |
+| `sentry.md` | Sentry | `runtime` | unresolved issues seen in a window (organization issues endpoint), optional environment; trace / window recipes | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_HOST`, `SENTRY_SINCE`, `SENTRY_ENV`, `SENTRY_N` | `sentry.io` | — |
 | `vercel.md` | Vercel | `runtime` | serverless + edge error / fatal logs in a window | `VERCEL_TOKEN` / `VERCEL_SCOPE`, `VERCEL_ENV` | `vercel.com` | `vercel` (yes) |
 | `supabase.md` | hosted Supabase | `runtime` | Postgres `ERROR` / `FATAL` / `PANIC` lines | `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID` | `supabase.com` | — |
-| `stripe.md` | Stripe | `runtime` | failure / dispute / refund events | `STRIPE_SECRET_KEY` / — | `stripe.com` | — |
+| `stripe.md` | Stripe | `runtime` | failure / dispute / refund events, filtered by type and window at the source | `STRIPE_SECRET_KEY` / `STRIPE_N`, `STRIPE_SINCE_S` | `stripe.com` | — |
 | `resend.md` | Resend | `runtime` | bounced / complained / failed / delayed sends | `RESEND_API_KEY` / — | `resend.com` | — |
-| `inngest.md` | Inngest Cloud | `runtime` | `inngest/function.failed` events | `INNGEST_SIGNING_KEY` / — | `inngest.com` | — |
+| `inngest.md` | Inngest Cloud | `runtime` | `inngest/function.failed` events in a window | `INNGEST_SIGNING_KEY` / `INNGEST_N`, `SINCE_ISO`, `INNGEST_ENV` | `inngest.com` | — |
 | `cloudrun.md` | Google Cloud Run | `runtime` | container errors + memory-limit kills | `GCP_CLIENT_EMAIL`, `GCP_PRIVATE_KEY` (headless) / `GCP_PROJECT_ID`, `GCP_SERVICE` | `googleapis.com`, `google.com` | `gcloud` (yes) |
-| `expo.md` | Expo EAS Build + EAS Workflows (Maestro) | `runtime`, `e2e` | `runtime`: build status + errored-build log lines; `e2e`: per-flow exceptions, JUnit, screenshots, Maestro commands, hierarchy dumps, XCUITest + JS console | `EXPO_TOKEN` / `EXPO_APP_DIR` | `expo.dev`, `googleapis.com` (`runtime`), `eascdn.net` (`e2e`) | `eas` (yes) |
+| `expo.md` | Expo EAS Build + EAS Workflows (Maestro) | `runtime`, `e2e` | `runtime`: build status + errored-build log lines (capped per build); `e2e`: failed jobs' per-flow exceptions, JUnit (capped), screenshots, Maestro commands, hierarchy dumps, XCUITest + JS console | `EXPO_TOKEN` / `EXPO_APP_DIR`, `EAS_PLATFORM`, `EAS_PROFILE`, `EAS_LOG_N` (`runtime`); `EAS_WF_FILE`, `EAS_JUNIT_N` (`e2e`) | `expo.dev`, `googleapis.com` (`runtime`), `eascdn.net` (`e2e`) | `eas` (yes) |
 | `serena.md` | Serena MCP server | — | nothing: provision only, installs `serena` in cloud | — | — | `uv` (yes) |
 
 MCP names listed: `sentry` / `Sentry`, `vercel` / `Vercel`, `supabase` / `Supabase`, `inngest`, `serena`. Every tool on a listed server runs without a prompt, writes included — list only servers you trust with that.

@@ -154,12 +154,12 @@ export function runCursorModule(ctx: ModuleContext): void {
     }
   }
 
-  // markered-text (slash-comment) — GateGuard advisory PreToolUse hook for Cursor.
-  // Same managed block as the Claude twin; the driver outside it adapts Cursor's
-  // payload (relative file_path, no subagent marker) and emits Cursor's shape.
-  {
-    const src = path.join(cursorHooks, "bkit-gateguard.cjs");
-    const dst = ".cursor/hooks/bkit-gateguard.cjs";
+  // markered-text (slash-comment) — GateGuard and ReadGuard advisory hooks for Cursor.
+  // Same managed blocks as the Claude twins; the drivers outside them adapt Cursor's
+  // payload (relative file_path, no subagent marker) and emit Cursor's shape.
+  for (const hook of ["bkit-gateguard.cjs", "bkit-readguard.cjs"]) {
+    const src = path.join(cursorHooks, hook);
+    const dst = `.cursor/hooks/${hook}`;
     if (fs.existsSync(src)) {
       const prevLen = ws.writes.length;
       writeTier2(src, dst, tokens, "slash-comment", dryRun, ws);

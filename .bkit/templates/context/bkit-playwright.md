@@ -23,7 +23,7 @@ Copy the block below into `.agents/context.md`, below `<!-- bkit:end -->`.
 # downloads THIS lane's artifact and files it as that lane's evidence; wrong evidence sends
 # diagnosis after the wrong failure, which is worse than the `NOT CONFIGURED` you get from
 # leaving the placeholder in. Until it is edited every run self-skips, naming the placeholder.
-# Customise: E2E_ARTIFACT; E2E_JOB_RE (anchored, this lane only); run selection; which report files to inline vs list as binary.
+# Customise: E2E_ARTIFACT; E2E_JOB_RE (anchored, this lane only); run selection; which report files to inline vs list as binary; E2E_MAX_FILES / E2E_MAX_LINES / E2E_MAX_BIN (files inlined, lines per file, binary paths listed).
 E2E_ARTIFACT="${E2E_ARTIFACT:-playwright-report}"
 E2E_JOB_RE="${E2E_JOB_RE:-^your-e2e-job-name$}"
 command -v gh >/dev/null 2>&1 \
@@ -44,7 +44,7 @@ trap 'rm -rf "$DEST"' EXIT
 gh run download "$RUN_ID" -n "$E2E_ARTIFACT" -D "$DEST" 2>/dev/null \
   || { echo "[context-fetch:playwright] skipped — run $RUN_ID published no '$E2E_ARTIFACT' artifact; its e2e evidence is NOT in GitHub" >&2; exit 0; }
 # Failing specs first (`test-results/` holds only failures), then the rest. Bound both counts.
-E2E_MAX_FILES=20; E2E_MAX_LINES=300
+E2E_MAX_FILES=20; E2E_MAX_LINES=300; E2E_MAX_BIN=50
 e2e_list() { find "$1" -type f \( -name '*.md' -o -name '*.json' -o -name '*.txt' -o -name '*.log' -o -name '*.xml' \) 2>/dev/null | sort; }
 E2E_FILES=$({ e2e_list "$DEST/test-results"; e2e_list "$DEST"; } | awk '!seen[$0]++')
 E2E_TOTAL=$(printf '%s' "$E2E_FILES" | grep -c . || true)
@@ -56,7 +56,7 @@ printf '%s\n' "$E2E_FILES" | head -n "$E2E_MAX_FILES" | while read -r f; do
 done
 [ "$E2E_TOTAL" -gt "$E2E_MAX_FILES" ] && printf '\n===== inlined %s of %s files; the rest were NOT read =====\n' "$E2E_MAX_FILES" "$E2E_TOTAL"
 printf '\n===== binary artifacts (not inlined) =====\n'
-find "$DEST" -type f \( -name '*.html' -o -name '*.png' -o -name '*.webm' -o -name '*.zip' \) | sed "s|^$DEST/||" | sort
+find "$DEST" -type f \( -name '*.html' -o -name '*.png' -o -name '*.webm' -o -name '*.zip' \) | sed "s|^$DEST/||" | sort | head -n "$E2E_MAX_BIN"
 ```
 
 <!-- context-fetch:end -->

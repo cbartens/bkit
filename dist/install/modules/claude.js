@@ -98,13 +98,13 @@ export function runClaudeModule(ctx) {
             }
         }
     }
-    // markered-text (slash-comment) — GateGuard advisory PreToolUse hook. bkit owns
+    // markered-text (slash-comment) — GateGuard and ReadGuard advisory hooks. bkit owns
     // only the advisory engine between the markers; consumers own the stdin/stdout
-    // driver from first install onward (env vars BKIT_GATEGUARD / BKIT_ALLOW_CONFIG_EDIT
-    // still tune behaviour, same as before).
-    {
-        const src = path.join(claudeHooks, "bkit-gateguard.cjs");
-        const dst = ".claude/hooks/bkit-gateguard.cjs";
+    // driver from first install onward (env vars BKIT_GATEGUARD / BKIT_ALLOW_CONFIG_EDIT /
+    // BKIT_READGUARD still tune behaviour).
+    for (const hook of ["bkit-gateguard.cjs", "bkit-readguard.cjs"]) {
+        const src = path.join(claudeHooks, hook);
+        const dst = `.claude/hooks/${hook}`;
         if (fs.existsSync(src)) {
             const prevLen = ws.writes.length;
             writeTier2(src, dst, tokens, "slash-comment", dryRun, ws);

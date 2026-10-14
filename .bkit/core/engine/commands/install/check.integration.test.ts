@@ -294,17 +294,23 @@ describe("check-owned-hooks", () => {
         ".claude/hooks/bkit-gateguard.cjs",
         ".claude/hooks/bkit-guardrails.cjs",
         ".claude/hooks/bkit-preflight.sh",
+        ".claude/hooks/bkit-readguard.cjs",
       ]);
       expect(paths(["cursor"]).sort()).toEqual([
         ".cursor/hooks/bkit-gateguard.cjs",
         ".cursor/hooks/bkit-guardrails.cjs",
         ".cursor/hooks/bkit-preflight.sh",
+        ".cursor/hooks/bkit-readguard.cjs",
       ]);
       expect(paths(["codex"]).sort()).toEqual([
         ".codex/hooks/bkit-gateguard.cjs",
         ".codex/hooks/bkit-guardrails.cjs",
+        ".codex/hooks/bkit-readguard.cjs",
       ]);
-      expect(paths(["opencode"])).toEqual([".opencode/plugin/bkit-gateguard.js"]);
+      expect(paths(["opencode"]).sort()).toEqual([
+        ".opencode/plugin/bkit-gateguard.js",
+        ".opencode/plugin/bkit-readguard.js",
+      ]);
     });
 
     it("a host that is not installed is not required", () => {
@@ -315,6 +321,7 @@ describe("check-owned-hooks", () => {
     it("present files are not reported", () => {
       touch(dir, ".codex/hooks/bkit-gateguard.cjs");
       touch(dir, ".codex/hooks/bkit-guardrails.cjs");
+      touch(dir, ".codex/hooks/bkit-readguard.cjs");
       expect(paths(["codex"])).toEqual([]);
     });
 

@@ -20,6 +20,27 @@
             "statusMessage": "bkit guardrails"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .codex/hooks/bkit-readguard.cjs && node .codex/hooks/bkit-readguard.cjs || true",
+            "statusMessage": "bkit ReadGuard"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .codex/hooks/bkit-readguard.cjs && node .codex/hooks/bkit-readguard.cjs || true",
+            "statusMessage": "bkit ReadGuard"
+          }
+        ]
       }
     ]
   }

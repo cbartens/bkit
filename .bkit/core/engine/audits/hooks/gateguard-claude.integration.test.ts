@@ -220,6 +220,17 @@ describe("gateguard hook — no-op / fail-open cases", () => {
     expect(hookOutput(r)["additionalContext"]).toContain("[bkit GateGuard]");
   });
 
+  it("a subagent sharing its parent's session_id gets its own checklist, once", () => {
+    const session = newSession();
+    expect(hookOutput(run(editPayload("src/shared.ts", session)))["additionalContext"]).toContain(
+      "[bkit GateGuard]",
+    );
+    const sub = editPayload("src/shared.ts", session, { agent_id: "subagent-456" });
+    expect(hookOutput(run(sub))["additionalContext"]).toContain("[bkit GateGuard]");
+    expect(run(sub).raw.trim()).toBe("");
+    expect(run(editPayload("src/shared.ts", session)).raw.trim()).toBe("");
+  });
+
   it("ignores non-edit tools", () => {
     const r = run({
       session_id: newSession(),

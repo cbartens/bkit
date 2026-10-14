@@ -14,9 +14,10 @@
 //   - FAIL OPEN: a single top-level catch swallows every error (the process exits
 //     0 with whatever was already emitted). Normal control paths use existence
 //     guards, never try/catch; that catch is the only error sink.
-//   - SUBAGENTS INCLUDED: a subagent edit is an edit. Dedup is per (session, file)
-//     and a subagent carries its own session id, so it gets its own checklist.
-//   - DEDUP: warns once per (session, file); state lives in the OS temp dir keyed
+//   - SUBAGENTS INCLUDED: a subagent edit is an edit. Dedup is per (session, agent,
+//     file): a subagent shares its parent's session_id and carries its own agent_id,
+//     so it gets its own checklist.
+//   - DEDUP: warns once per (session, agent, file); state lives in the OS temp dir keyed
 //     by session_id and is GC'd after 24h. Never writes into the consumer repo.
 //
 // MODES (BKIT_GATEGUARD env var):

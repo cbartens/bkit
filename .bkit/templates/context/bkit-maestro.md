@@ -3,7 +3,7 @@
 
 # Maestro e2e lanes on GitHub Actions — job logs
 
-Fits: native e2e lanes (iOS, Android, or both) whose GitHub Actions jobs run Maestro, on the runner or by handing the run to Expo EAS, and upload no GitHub artifact. `context=e2e`: the full log of every failed Maestro job in the run, sliced to the steps that carry the per-flow result, else each log's tail.
+Fits: native e2e lanes (iOS, Android, or both) whose GitHub Actions jobs run Maestro, on the runner or by handing the run to Expo EAS, and upload no GitHub artifact. `context=e2e`: the tail-bounded log of every failed Maestro job in the run, sliced to the steps that carry the per-flow result, else each log's tail.
 
 - Reads the per-flow result from steps that succeed inside the failed job, which `gh run view --log-failed` (the `context=ci` block) skips; the Playwright block's artifact download finds nothing on these lanes.
 - Secret: `GH_TOKEN` in cloud (local `gh auth login` works too).
@@ -23,7 +23,7 @@ Copy the block below into `.agents/context.md`, below `<!-- bkit:end -->`.
 # iOS: Maestro's driver is an XCUITest case hosting the HTTP server Maestro talks to, so one
 # failure inside it ends the suite and turns every later flow into DeviceUnreachableException;
 # read the per-flow table before the traces.
-# Customise: MAESTRO_JOB_RE; MAESTRO_STEPS (the steps that print per-flow results); MAESTRO_LOG_TAIL.
+# Customise: MAESTRO_JOB_RE; MAESTRO_STEPS (the steps that print per-flow results); MAESTRO_LOG_TAIL (lines kept per step slice, and of the fallback tail).
 MAESTRO_JOB_RE="${MAESTRO_JOB_RE:-^your-maestro-e2e-job-name$}"
 MAESTRO_STEPS="${MAESTRO_STEPS:-Your per-flow results step|Your failure classification step}"
 MAESTRO_LOG_TAIL="${MAESTRO_LOG_TAIL:-800}"
@@ -50,12 +50,12 @@ while IFS="$TAB" read -r JOB_ID JOB_NAME; do
   fi
   PRINTED=1
   printf '===== Maestro job %s (run %s, job %s) =====\n' "$JOB_NAME" "$RUN_ID" "$JOB_ID"
-  # Step names match as fixed strings against the step-name column gh prints; no match falls
-  # through to the whole-log tail.
+  # Step names match as fixed strings against the step-name column gh prints; each slice keeps its
+  # last MAESTRO_LOG_TAIL lines. No match falls through to the whole-log tail.
   FOUND=0
   OLD_IFS=$IFS; IFS='|'
   for STEP in $MAESTRO_STEPS; do
-    SLICE=$(grep -F "$STEP" "$JOB_LOG" 2>/dev/null)
+    SLICE=$(grep -F "$STEP" "$JOB_LOG" 2>/dev/null | tail -n "$MAESTRO_LOG_TAIL")
     [ -n "$SLICE" ] || continue
     FOUND=1
     printf '\n===== step: %s =====\n%s\n' "$STEP" "$SLICE"

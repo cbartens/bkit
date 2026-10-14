@@ -155,10 +155,10 @@ export function runCodexModule(ctx) {
                 console.log(`${logPrefix} ${tag}codex: ${jsonDst}`);
         }
     }
-    // --- bkit-gateguard.cjs — Tier-2 markered-text, twin of the Claude hook ---
-    {
-        const hookSrc = path.join(codexHooks, "bkit-gateguard.cjs");
-        const hookDst = ".codex/hooks/bkit-gateguard.cjs";
+    // --- bkit-gateguard.cjs / bkit-readguard.cjs — Tier-2 markered-text, twins of the Claude hooks ---
+    for (const hook of ["bkit-gateguard.cjs", "bkit-readguard.cjs"]) {
+        const hookSrc = path.join(codexHooks, hook);
+        const hookDst = `.codex/hooks/${hook}`;
         if (fs.existsSync(hookSrc)) {
             if (!dryRun)
                 ensureDir(path.dirname(hookDst));
@@ -189,7 +189,7 @@ export function runCodexModule(ctx) {
         severity: "advisory",
         detect: "codex host installed (.codex/agents + .agents/skills/bkit-*).",
         action: "Three things that differ from the other hosts:\n" +
-            "1. TRUST THE LAYER. Codex loads project-local hooks only once the `.codex/` layer is trusted. Until then GateGuard is installed and never fires.\n" +
+            "1. TRUST THE LAYER. Codex loads project-local hooks only once the `.codex/` layer is trusted. Until then GateGuard and ReadGuard are installed and never fire.\n" +
             "2. Workflows are SKILLS here, not slash commands: invoke `$bkit-design`, not `/bkit-design`.\n" +
             "3. Per-agent `tools:` is NOT enforced. Codex has no tool allowlist, so every agent gets the full built-in tool set. See .bkit/providers.md.",
     });

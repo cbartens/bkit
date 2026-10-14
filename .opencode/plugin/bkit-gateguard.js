@@ -178,6 +178,13 @@ function stateDir() {
   return path.join(os.tmpdir(), "bkit-gateguard");
 }
 
+// Dedup scope: the session, narrowed to one agent when the host names it. A Claude Code
+// subagent shares its parent's session_id and carries its own agent_id.
+function dedupKey(sessionId, agentId) {
+  const sid = typeof sessionId === "string" ? sessionId : "no-session";
+  return typeof agentId === "string" && agentId ? `${sid}.${agentId}` : sid;
+}
+
 function stateFile(sessionId) {
   const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) || "no-session";
   return path.join(stateDir(), safe + ".json");

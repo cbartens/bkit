@@ -201,6 +201,57 @@ describe("writeTier2 — html-comment markers", () => {
   });
 });
 
+describe("writeTier2 — retired Antigravity drivers (docs/migrations.md)", () => {
+  const FIXTURES = path.resolve(__dirname, "../../../../tests/fixtures/antigravity-5.1.0");
+  const HOOKS_SRC = path.resolve(__dirname, "../../.agents/plugins/bkit/hooks");
+
+  function seed(hook: string, edit?: (old: string) => string): string {
+    const dst = path.join(tmpDir, ".agents", "plugins", "bkit", "hooks", hook);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    const old = fs.readFileSync(path.join(FIXTURES, `${hook}.txt`), "utf-8");
+    fs.writeFileSync(dst, edit ? edit(old) : old, "utf-8");
+    return dst;
+  }
+
+  for (const hook of ["bkit-gateguard.cjs", "bkit-guardrails.cjs"]) {
+    it(`${hook}: an unedited 5.1.0 driver is replaced by the whole new file`, () => {
+      const dst = seed(hook);
+      const ws = makeWriteSet();
+      writeTier2(path.join(HOOKS_SRC, hook), dst, TOKENS, "slash-comment", false, ws);
+      const result = fs.readFileSync(dst, "utf-8");
+      expect(result).not.toContain("hookSpecificOutput");
+      expect(result).toContain('emit({ decision: "allow" })');
+      expect(ws.writes).toEqual([{ path: dst, action: "write" }]);
+
+      // Idempotent: the new driver is not retired, so a second pass only block-merges.
+      const again = makeWriteSet();
+      writeTier2(path.join(HOOKS_SRC, hook), dst, TOKENS, "slash-comment", false, again);
+      expect(again.writes).toEqual([]);
+    });
+
+    it(`${hook}: dry-run reports the replacement without writing`, () => {
+      const dst = seed(hook);
+      const before = fs.readFileSync(dst, "utf-8");
+      const ws = makeWriteSet();
+      writeTier2(path.join(HOOKS_SRC, hook), dst, TOKENS, "slash-comment", true, ws);
+      expect(fs.readFileSync(dst, "utf-8")).toBe(before);
+      expect(ws.writes).toEqual([{ path: dst, action: "write" }]);
+    });
+
+    it(`${hook}: an edited 5.1.0 driver is kept and gets a printed fix`, () => {
+      const dst = seed(hook, (old) => `${old}// consumer's own line\n`);
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const ws = makeWriteSet();
+      writeTier2(path.join(HOOKS_SRC, hook), dst, TOKENS, "slash-comment", false, ws);
+      const result = fs.readFileSync(dst, "utf-8");
+      expect(result).toContain("// consumer's own line");
+      expect(result).toContain("hookSpecificOutput");
+      expect(warn.mock.calls.flat().join("\n")).toContain("Antigravity ignores");
+      warn.mockRestore();
+    });
+  }
+});
+
 describe("ensurePackageJsonScripts", () => {
   function writePkg(content: object | string): void {
     const body = typeof content === "string" ? content : JSON.stringify(content, null, 2) + "\n";

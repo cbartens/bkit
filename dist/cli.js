@@ -491,14 +491,15 @@ Module flags (composable; symmetric install ↔ uninstall):
                   Provider value is REQUIRED. Supported: openrouter, ollama,
                   opencode-zen, opencode-go (opencode-native gateways;
                   auth via BKIT_OPENCODE_API_KEY).
-                  Ships .opencode/** (agents, commands, opencode.json, bkit-gateguard.js).
+                  Ships .opencode/** (agents, commands, opencode.json, bkit-gateguard.js,
+                  bkit-readguard.js).
                   Configure your provider key; verify with \`bkit doctor\`. All installed
                   providers tracked in bkit.opencodeProviders.
   --codex         Codex CLI host. BARE flag — takes no value: Codex runs on one gateway
                   (openai), so only --opencode is provider-pluggable. Ships .codex/agents/*.toml
-                  + .codex/hooks.json + .codex/hooks/bkit-gateguard.cjs, plus the workflow skills
-                  (.agents/skills/bkit-*/). Codex loads project-local hooks ONLY once the
-                  .codex/ layer is trusted — until then GateGuard is installed and never fires.
+                  + .codex/hooks.json + .codex/hooks/bkit-{gateguard,guardrails,readguard}.cjs,
+                  plus the workflow skills (.agents/skills/bkit-*/). Codex loads project-local
+                  hooks ONLY once the .codex/ layer is trusted — until then they never fire.
   --antigravity   Google Antigravity IDE host. BARE flag — takes no value: Antigravity runs
                   on one gateway (google). Installs as a workspace PLUGIN at
                   .agents/plugins/bkit/ — plugin.json + skills/bkit-*/SKILL.md (workflow

@@ -300,7 +300,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | Goal Setting & Monitoring | Already does | Issue = goal, phase labels = state, verdicts = criteria. Per-task `Done when:` in the plan template; verifier ticks only on confirmed artifacts; deferred-sweep FAILs merge on any unplanned gap; `stats.jsonl` tracks every run. |
 | Knowledge Retrieval (RAG) | Partial | Deterministic doc-matrix retrieval plus web search in design review. No embedding RAG (Grep wins at repo scale). |
 | Reasoning Techniques | Partial | Extended thinking (CoT) plus parallel-pair-reconcile (a form of self-consistency). No formal ToT or ReAct trace. |
-| Guardrails / Safety | Partial | Tool sandbox, destructive-git bans, locks, verdict checks, and an advisory edit-investigation plus gate-config hook (GateGuard). `bkit steps finish` validates each step's verdict and artifacts structurally. No content-level output validators (e.g. safety classifiers). |
+| Guardrails / Safety | Partial | Tool sandbox, destructive-git bans, locks, verdict checks, and an advisory edit-investigation plus gate-config hook (GateGuard), and an advisory repeat-read hook (ReadGuard). `bkit steps finish` validates each step's verdict and artifacts structurally. No content-level output validators (e.g. safety classifiers). |
 | Evaluation & Monitoring | Partial | `friction` / `knowledge` logs, CI gates, and a catalog-parity drift check. No automated regression-fixture eval harness yet. |
 | Exploration & Discovery | Partial | Divergent brainstorm triplet plus feasibility search. No temperature-spread or vote-of-K. |
 | Inter-Agent Communication (A2A) | N/A by design | Agents communicate only via filesystem artifacts — deliberate, to preserve leaf-only and resume guarantees. |

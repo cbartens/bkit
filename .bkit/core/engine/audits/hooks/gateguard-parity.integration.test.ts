@@ -181,26 +181,28 @@ function runCodex(c: Call): Outcome {
 }
 
 /**
- * Antigravity reports edits as `write_to_file` (create/overwrite) or
- * `replace_file_content` (in-place edit), and passes the target in `tool_input.file_path`,
- * resolved against the payload `cwd`.
+ * Antigravity's live-verified envelope: `write_to_file` (create/overwrite) or
+ * `replace_file_content` (in-place edit) with the target in `toolCall.args.TargetFile`,
+ * resolved against `workspacePaths[0]`. Its reply is `{ decision, reason }`; only a deny's
+ * reason reaches the model, so an advisory arrives as a one-time deny.
  */
 function runAntigravity(c: Call): Outcome {
   const res = spawnSync("node", [ANTIGRAVITY_HOOK], {
     input: JSON.stringify({
-      tool_name: c.kind === "create" ? "write_to_file" : "replace_file_content",
-      tool_input: { file_path: c.file },
-      session_id: c.session,
-      cwd: process.cwd(),
+      conversationId: c.session,
+      toolCall: {
+        name: c.kind === "create" ? "write_to_file" : "replace_file_content",
+        args: { TargetFile: c.file, toolAction: "Editing file", toolSummary: "Edit" },
+      },
+      workspacePaths: [process.cwd()],
     }),
     encoding: "utf-8",
     env: { ...process.env, BKIT_GATEGUARD: undefined, ...c.env },
   });
   const out = res.stdout.trim() ? JSON.parse(res.stdout.trim()) : {};
-  const hso = out.hookSpecificOutput ?? {};
   return {
-    advisory: String(hso.additionalContext ?? hso.permissionDecisionReason ?? ""),
-    blocked: hso.permissionDecision === "deny",
+    advisory: out.decision === "deny" ? String(out.reason ?? "") : "",
+    blocked: out.decision === "deny",
   };
 }
 
@@ -223,7 +225,8 @@ describe("gateguard behaviour parity — advisory content", () => {
         const r = await run(host, { file: "package.json", session: newSession() });
         expect(r.advisory).toContain("[bkit GateGuard]");
         expect(r.advisory).toContain("First edit to");
-        expect(r.blocked).toBe(false);
+        // Antigravity delivers every advisory as a one-time deny (documented deviation below).
+        expect(r.blocked).toBe(host === "antigravity");
       });
 
       it("a create of a nonexistent path gets the reuse checklist instead", async () => {
@@ -558,6 +561,15 @@ describe("gateguard parity — documented deviations", () => {
     });
     expect(claude.blocked).toBe(true);
     expect(cursor.blocked).toBe(true);
+  });
+
+  it("Antigravity delivers the checklist by denying the first edit once; the retry passes", () => {
+    const session = newSession();
+    const first = runAntigravity({ file: "package.json", session });
+    expect(first.blocked).toBe(true);
+    expect(first.advisory).toContain("[bkit GateGuard]");
+    expect(first.advisory).toContain("repeat the same call to proceed");
+    expect(runAntigravity({ file: "package.json", session }).blocked).toBe(false);
   });
 
   it("malformed stdin is a CJS-hook concern only", () => {

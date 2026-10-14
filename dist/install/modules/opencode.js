@@ -470,11 +470,11 @@ export function runOpencodeModule(ctx) {
             }
         }
     }
-    // --- bkit-gateguard.js — Tier-2 markered-text (slash-comment); see install/manifest.ts ---
-    {
+    // --- bkit-gateguard.js / bkit-readguard.js — Tier-2 markered-text (slash-comment); see install/manifest.ts ---
+    for (const plugin of ["bkit-gateguard.js", "bkit-readguard.js"]) {
         const opencodeCore = path.join(getCoreRoot(), ".opencode", "plugin");
-        const pluginSrc = path.join(opencodeCore, "bkit-gateguard.js");
-        const pluginDst = ".opencode/plugin/bkit-gateguard.js";
+        const pluginSrc = path.join(opencodeCore, plugin);
+        const pluginDst = `.opencode/plugin/${plugin}`;
         if (fs.existsSync(pluginSrc)) {
             // dryRun-gated — writeTier2 honours dryRun, so the dir is only needed for a real
             // write; `bkit check` stays read-only when gateguard's parent dir is absent.
