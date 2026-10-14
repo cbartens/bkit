@@ -27,6 +27,8 @@ bkit = **CLI tool + agent-stack payload** as npm package (`@cbartens/bkit` on np
 
 No server, database, or network service. Build-time / DX tool only.
 
+**Stack-agnostic:** engine, workflows and prompts assume no app stack; stack-specific behaviour enters only through consumer-declared `package.json` scripts bkit calls by name (`.bkit/workflows.md` § Local gate scripts).
+
 ## Package Boundaries
 
 ```
@@ -51,7 +53,7 @@ cbartens/bkit (this repo)
 │   │   ├── placeholders.ts      # Token resolver (default branch, project name, managed-version marker)
 │   │   ├── version-file.ts      # .bkit/version JSON schema (pinnedVersion, canonicalHashes, claudeAllowDerived)
 │   │   ├── manifest.ts          # Per-module install-write manifest (drives uninstall + the upgrade walk)
-│   │   └── cloud-env.ts         # Resolves the `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds BKIT_LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-independent
+│   │   └── cloud-env.ts         # Resolves the `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds BKIT_LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-agnostic
 │   ├── render/                  # workflow and prompt sources → host agent and command copies
 │   │   ├── hosts.ts             # Host transforms (T1/T2/T3, frontmatter, agent/command/skill renders)
 │   │   ├── models.ts            # Model lookup, overrides, effort map and the gateway columns
