@@ -1,4 +1,4 @@
-// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, the wall), light + dark,
+// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details), light + dark,
 // plus the repo's social preview card, into .github/assets/ as both .svg and .png. Edit the copy
 // below, then: node scripts/readme/readme-art.mjs
 // Text is not auto-wrapped: keep tile lines short and eyeball the output at ~880px.
@@ -776,10 +776,10 @@ function ci(t) {
   );
 }
 
-// ---------- The wall (how each workflow plays against the checks) ----------
-// Layers, nearest first: agent hooks (.claude/hooks/bkit-gateguard.cjs, advisory), .husky/pre-commit,
+// ---------- Fence details (how each workflow meets the checks; follows on from fences) ----------
+// Fences, nearest first: agent hooks (.claude/hooks/bkit-gateguard.cjs, advisory), .husky/pre-commit,
 // .husky/pre-push, then the bkit-tests-* lanes in .bkit/templates/.github/workflows/bkit-ci.yml.
-function wall(t) {
+function fenceDetails(t) {
   const W = 1200,
     H = 1100;
   const arrow = (id, col) =>
@@ -788,13 +788,13 @@ function wall(t) {
   b += `<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
 
   b += text(60, 64, "AGENTS AND CI", { size: 14, weight: 700, fill: t.plan, ls: 2.4 });
-  b += text(58, 124, "Agents play against a wall.", {
+  b += text(58, 124, "Every change hits the same fences.", {
     size: 50,
     weight: 800,
     fill: t.text,
     ls: -1.4,
   });
-  b += text(58, 180, "It never argues, and it grows.", {
+  b += text(58, 180, "They never argue, and they grow.", {
     size: 50,
     weight: 800,
     fill: t.muted,
@@ -803,17 +803,17 @@ function wall(t) {
   b += text(
     60,
     226,
-    "Every workflow hits the same checks, reads what bounces back, and adds to them as features land.",
+    "Every workflow hits the same checks, reads what is sent back, and adds to them as features land.",
     { size: 18, fill: t.muted },
   );
 
-  // Court
+  // Lanes
   const CT = 260,
     CB = 820,
     PX = 340;
   b += `<rect x="40" y="${CT}" width="${W - 80}" height="${CB - CT}" rx="14" fill="${t.surface}" stroke="${t.border}"/>`;
 
-  // Paddles: every agent, then the workflows
+  // Markers: every agent, then the workflows
   const rows = [
     [
       "muted",
@@ -831,13 +831,13 @@ function wall(t) {
       "build",
       "/bkit-build",
       560,
-      ["Writes each test first, sees it fail,", "then hits every layer of the wall"],
+      ["Writes each test first, sees it fail,", "then hits every fence"],
     ],
     [
       "debug",
       "/bkit-debug",
       650,
-      ["Reads the bounce: logs of the failed", "lanes, diff since the last green run"],
+      ["Reads what came back: failed lane", "logs, diff since the last green run"],
     ],
     [
       "ship",
@@ -858,7 +858,7 @@ function wall(t) {
     b += `<rect x="${PX}" y="${y - 30}" width="10" height="60" rx="5" fill="${t[p]}"/>`;
   });
 
-  // Wall layers, nearest (cheapest) first; CI is the thickest. No tool names: the tools behind
+  // Fences, nearest (cheapest) first; CI is the thickest. No tool names: the tools behind
   // code search and the hooks are swappable templates.
   const LT = 345,
     LB = 800;
@@ -877,7 +877,7 @@ function wall(t) {
     face[name] = x - w / 2 - 9;
   });
 
-  // One rally per workflow: out to the layer that answers, back to the paddle
+  // One line per workflow: out to the fence that answers, back to the agent
   const label = (y, s, col) =>
     `<text x="${PX + 32}" y="${y}" font-family="${SANS}" font-size="13" font-weight="600" fill="${col}" text-anchor="start" stroke="${t.surface}" stroke-width="5" stroke-linejoin="round" paint-order="stroke">${esc(s)}</text>`;
   const rally = (y, to, col, mk, s) => {
@@ -890,15 +890,17 @@ function wall(t) {
   rally(362, "Code search", t.muted, "wm", "callers found, edits nudged, code formatted");
   rally(380, "Agent hooks", t.muted, "wm", "");
   rally(398, "pre-commit", t.muted, "wm", "");
-  // Plan only sends: it decides the tests this feature adds to the wall
+  // Plan only sends: it decides the tests this feature adds to the fences
   b += `<line x1="${PX + 20}" y1="470" x2="${face.CI - 6}" y2="470" stroke="${t.plan}" stroke-width="2.5" stroke-dasharray="8 6" marker-end="url(#wp)"/>`;
   b += label(458, "decides the tests this feature adds", t.plan);
   rally(560, "pre-push", t.debug, "wr", "red: sent back before it leaves your laptop");
   rally(650, "CI", t.debug, "wr", "red: logs provide context to help debug");
-  rally(740, "CI", t.ok, "wg", "green: ship merges");
+  // Ship: a green change passes through CI rather than coming back
+  b += `<line x1="${PX + 20}" y1="740" x2="${W - 63}" y2="740" stroke="${t.ok}" stroke-width="2.5" marker-end="url(#wg)"/>`;
+  b += label(728, "green: passes CI, ship merges", t.ok);
 
-  // The wall, nearest layer first
-  b += text(60, 872, "THE WALL, NEAREST LAYER FIRST", {
+  // The fences, nearest first
+  b += text(60, 872, "THE FENCES, NEAREST FIRST", {
     size: 14,
     weight: 700,
     fill: t.plan,
@@ -959,7 +961,7 @@ function wall(t) {
     W,
     H,
     b,
-    "Agents play against a wall. It never argues, and it grows. On the left, the agents. Every agent in every workflow looks up every definition and caller with code search before a change, is nudged by the agent hooks on every edit, and has its code formatted by the pre-commit hook on every commit. /bkit-plan decides the tests each feature adds to the wall (unit, integration or end-to-end). /bkit-build writes each test first, sees it fail, then hits every layer of the wall; the pre-push hook sends problems back before they leave your laptop. When a CI lane goes red, its logs give /bkit-debug the context to fix it. When CI is green, /bkit-ship merges, re-checked on the merge commit. On the right, the wall, nearest and thinnest layer first: code search on every lookup, agent hooks on every edit, the pre-commit hook on every commit, the pre-push hook on every push, and CI, the thickest, on every push and pull request. CI runs integration, end-to-end and live-site tests, and one check fails if any lane failed, was skipped or ran no tests. Hooks, agents and CI run the same commands, and in cloud mode CI's answer starts debug or ship by itself.",
+    "Every change hits the same fences. They never argue, and they grow. On the left, the agents. Every agent in every workflow looks up every definition and caller with code search before a change, is nudged by the agent hooks on every edit, and has its code formatted by the pre-commit hook on every commit. /bkit-plan decides the tests each feature adds to the fences (unit, integration or end-to-end). /bkit-build writes each test first, sees it fail, then hits every fence; the pre-push hook sends problems back before they leave your laptop. When a CI lane goes red, its logs give /bkit-debug the context to fix it. When CI is green, the change passes through and /bkit-ship merges it, re-checked on the merge commit. On the right, the fences, nearest and lightest first: code search on every lookup, agent hooks on every edit, the pre-commit hook on every commit, the pre-push hook on every push, and CI, the strongest, on every push and pull request. CI runs integration, end-to-end and live-site tests, and one check fails if any lane failed, was skipped or ran no tests. Hooks, agents and CI run the same commands, and in cloud mode CI's answer starts debug or ship by itself.",
   );
 }
 
@@ -1250,7 +1252,7 @@ for (const [name, t] of Object.entries(THEMES)) {
   images.push([`bkit-fences-${name}`, fences(t)]);
   images.push([`bkit-context-${name}`, context(t)]);
   images.push([`bkit-ci-${name}`, ci(t)]);
-  images.push([`bkit-wall-${name}`, wall(t)]);
+  images.push([`bkit-fences-details-${name}`, fenceDetails(t)]);
 }
 // One social image: link previews have no light/dark switch, and dark reads on both.
 images.push(["bkit-social", social(THEMES.dark)]);
