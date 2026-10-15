@@ -30,7 +30,7 @@
 
 // bkit:start
 
-// bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh
 
 const fs = require("node:fs");
 const os = require("node:os");

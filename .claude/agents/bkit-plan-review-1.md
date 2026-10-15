@@ -13,7 +13,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 100
 ---
-<!-- bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer prioritising plan tightness, scope discipline, and design-coverage.
 **Scope:** As specified by input and Read / Update / Create section.
