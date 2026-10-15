@@ -409,7 +409,7 @@ bkit ships no compaction setting; each host auto-summarises near the model's ful
 
 **Floor:** keep the window well above the largest single tool result plus the recent turns kept after a summary. Claude Code ends an agent whose context refills to the limit within 3 turns of a summary, 3 times in a row (`Autocompact is thrashing`).
 
-**Compression proxies:** bkit ships none (caveman, Headroom). On 456 real Claude Code transcripts, cache-safe settings (caveman; Headroom `--mode cache --disable-kompress`) saved ~1–2% of token cost: a proxy that keeps the prompt cache intact rewrites only new tool results (27% of cost). Headroom's Kompress text model rewrote code (`=> void` → `void`). Headroom's default `--mode token` also rewrites earlier turns, giving up prompt-cache stability; not measured. Method, results, scripts to measure own sessions: [comparison](https://github.com/cbartens/bkit/blob/main/tests/compression/bkit-caveman-headroom-compression-proxy-comparison.md). bkit cuts reading instead, losslessly: § ReadGuard + `Code reads` / `Narrow text search first` in `.agents/rules.md`.
+**Compression proxies:** bkit ships none (caveman, Headroom). On 456 real Claude Code transcripts they saved ~1–3% of token cost: both keep the prompt cache intact, so each tool result is compressed once on arrival and reused, and tool results ≥ 2 KB are 27% of cost. Headroom's Kompress text model rewrote code (`=> void` → `void`). Method, results, scripts to measure own sessions: [comparison](https://github.com/cbartens/bkit/blob/main/tests/compression/bkit-caveman-headroom-compression-proxy-comparison.md). bkit cuts reading instead, losslessly: § ReadGuard + `Code reads` / `Narrow text search first` in `.agents/rules.md`.
 
 ## MCP project scope
 

@@ -5,13 +5,17 @@
 
 <headroom-python>   the interpreter Headroom is installed in, e.g.
                     ~/.local/share/uv/tools/headroom-ai/bin/python
-<dump-dir>          from bkit-compression-usage.py --dump: <tool>/<n>.txt, first line "#later=<n>"
+<dump-dir>          from bkit-compression-usage.py --dump: <tool>/<n>.txt, first line "#" + JSON
+                    (later requests, real tool name and input, latest user message)
 --no-kompress       measure only Headroom with its ML text compressor (Kompress) off, writing hr_*
                     fields; run it on the same dump and sample size, then pass the output to
                     bkit-compression-summary.py --no-kompress.
 
 Each sample is compressed the way a proxy sees it: as the latest tool result of the turn
-(Headroom protect_recent=0). caveman runs as `caveman tools compress` (must be on PATH).
+(Headroom protect_recent=0), after the real user message and the real tool call, so Headroom's
+per-tool rules (e.g. Claude Code's Read kept verbatim, grep output folded losslessly) and its
+relevance scoring apply. caveman runs as `caveman tools compress` (must be on PATH); it takes
+the text only.
 Sampling is seeded, so two runs over the same dump pick the same files.
 """
 import json
@@ -36,10 +40,10 @@ def caveman(text):
     return before, after, meta.get("content_type"), meta.get("method")
 
 
-def headroom(text, **opts):
+def headroom(text, call, **opts):
     messages = [
-        {"role": "user", "content": "Continue."},
-        {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "x"}}]},
+        {"role": "user", "content": call.get("query") or "Continue."},
+        {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": call["tool"], "input": call["input"]}]},
         {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": text}]},
     ]
     res = compress(messages, model="claude-opus-4-20250514", protect_recent=0, **opts)
@@ -60,7 +64,8 @@ def main():
             files = sorted(os.listdir(os.path.join(dump, tool)))
             for name in random.sample(files, min(per_tool, len(files))):
                 head, _, text = open(os.path.join(dump, tool, name), errors="replace").read().partition("\n")
-                later = int(head.split("=")[1])
+                call = json.loads(head[1:])
+                later = call["later"]
                 row = {"tool": tool, "file": name, "later": later, "weight": WRITE + READ * later}
                 if not no_kompress:
                     try:
@@ -68,7 +73,7 @@ def main():
                     except Exception as e:  # record and continue: one bad sample must not end a long run
                         row["cv_error"] = str(e)[:200]
                 try:
-                    row["hr_before"], row["hr_after"] = headroom(text, **({"kompress_model": "disabled"} if no_kompress else {}))
+                    row["hr_before"], row["hr_after"] = headroom(text, call, **({"kompress_model": "disabled"} if no_kompress else {}))
                 except Exception as e:  # record and continue: one bad sample must not end a long run
                     row["hr_error"] = str(e)[:200]
                 fh.write(json.dumps(row) + "\n")

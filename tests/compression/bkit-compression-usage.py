@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Attribute Claude Code token cost to tool results, from real session transcripts.
 
-    bkit-compression-usage.py <projects-glob> [--by-command] [--context] [--dump <dir>]
+    bkit-compression-usage.py <projects-glob> [--by-command] [--context] [--dump <dir>] [--before YYYY-MM-DD]
 
 <projects-glob>  Claude Code project folders, e.g.
                  "$HOME/.claude/projects/-Users-me-src-my-app*" (quote it; the glob is expanded here).
@@ -9,13 +9,19 @@
 --context        context size per request, orchestrator vs subagent cost, repeat file reads.
 --dump <dir>     write every tool result >= 2 KB to <dir>/<tool>/<n>.txt for
                  bkit-compression-replay.py. The files hold raw tool output: keep <dir> under
-                 the repo's gitignored tmp/ and delete it afterwards.
+                 the repo's gitignored tmp/ and delete it afterwards. Each file's first line is
+                 "#" + JSON: later requests, the real tool name and input, and the latest user
+                 message, so the replay can give each compressor what a proxy would see.
+--before         skip transcript rows dated on or after this day (UTC), to re-run on the same
+                 period as an earlier measurement.
 
 Cost model, in input-price units (Anthropic list ratios): uncached input 1, 1h cache write 2,
 5m cache write 1.25, cache read 0.1, output 5. A tool result enters a transcript once (a cache
 write) and is re-read from cache by every later request in that transcript, so its weighted cost
 is tokens * (2 + 0.1 * later_requests). A proxy that shrinks it by r saves r of that amount.
 Tool-result tokens are estimated as characters / 4; request totals are the provider's own usage.
+"Verbatim repeats" are results >= 2 KB identical to an earlier result in the same transcript:
+the most a lossless cross-turn de-duplication could remove from whole results.
 """
 import glob
 import json
@@ -76,14 +82,16 @@ def request_cost(u):
     }
 
 
-def walk(path):
-    """Ordered events for one transcript: ("req", cost) and ("tool", tool, command_key, text)."""
-    uses, events, seen, reads = {}, [], set(), Counter()
+def walk(path, before=None):
+    """Ordered events for one transcript: ("req", cost) and ("tool", tool, command_key, text, call)."""
+    uses, events, seen, reads, query = {}, [], set(), Counter(), ""
     with open(path, errors="replace") as fh:
         for line in fh:
             try:
                 row = json.loads(line)
             except json.JSONDecodeError:
+                continue
+            if before and row.get("timestamp", "") >= before:
                 continue
             msg = row.get("message") or {}
             if row.get("type") == "assistant":
@@ -91,7 +99,8 @@ def walk(path):
                     if not (isinstance(b, dict) and b.get("type") == "tool_use"):
                         continue
                     inp = b.get("input") or {}
-                    uses[b["id"]] = (tool_key(b.get("name", "?")), command_key(inp.get("command", "")) if b.get("name") == "Bash" else "")
+                    cmd = command_key(inp.get("command", "")) if b.get("name") == "Bash" else ""
+                    uses[b["id"]] = (tool_key(b.get("name", "?")), cmd, {"tool": b.get("name", "?"), "input": inp})
                     if b.get("name") == "Read":
                         reads[inp.get("file_path")] += 1
                     elif b.get("name") == "Bash":
@@ -101,11 +110,15 @@ def walk(path):
                 if usage and msg.get("id") not in seen:
                     seen.add(msg.get("id"))
                     events.append(("req", request_cost(usage)))
+            elif row.get("type") == "user" and isinstance(msg.get("content"), str):
+                query = msg["content"]
             elif row.get("type") == "user" and isinstance(msg.get("content"), list):
+                if any(isinstance(b, dict) and b.get("type") == "text" for b in msg["content"]):
+                    query = text_of(msg["content"])
                 for b in msg["content"]:
                     if isinstance(b, dict) and b.get("type") == "tool_result":
-                        tool, cmd = uses.get(b.get("tool_use_id"), ("?", ""))
-                        events.append(("tool", tool, cmd, text_of(b.get("content"))))
+                        tool, cmd, call = uses.get(b.get("tool_use_id"), ("?", "", {"tool": "?", "input": {}}))
+                        events.append(("tool", tool, cmd, text_of(b.get("content")), {**call, "query": query[-2000:]}))
     return events, reads
 
 
@@ -114,6 +127,7 @@ def main():
     if not args or args[0].startswith("-"):
         sys.exit(__doc__)
     dump = args[args.index("--dump") + 1] if "--dump" in args else None
+    before = args[args.index("--before") + 1] if "--before" in args else None
     files = transcripts(args[0])
     if not files:
         sys.exit(f"no transcripts match {args[0]}")
@@ -121,7 +135,10 @@ def main():
     by_tool, by_cmd = defaultdict(lambda: defaultdict(float)), defaultdict(lambda: defaultdict(float))
     contexts, dumped, repeat, all_reads, reqs_per = [], Counter(), Counter(), 0, defaultdict(list)
     for path, kind in files:
-        events, reads = walk(path)
+        events, reads = walk(path, before)
+        if not any(e[0] == "req" for e in events):
+            continue
+        texts = set()
         all_reads += sum(reads.values())
         repeat[kind] += sum(c - 1 for c in reads.values() if c > 1)
         later = sum(1 for e in events if e[0] == "req")
@@ -135,7 +152,7 @@ def main():
                 totals["requests"] += 1
                 contexts.append(e[1]["context"])
                 continue
-            _, tool, cmd, text = e
+            _, tool, cmd, text, call = e
             tok = len(text) / 4
             cost = tok * (WRITE_1H + READ * later)
             for bucket in (by_tool[tool], by_cmd[cmd] if tool == "Bash" else None):
@@ -145,20 +162,25 @@ def main():
                     bucket["weighted"] += cost
             if len(text) >= 2048:
                 by_tool[tool]["weighted_2k"] += cost
+                if text in texts:
+                    by_tool[tool]["weighted_dup"] += cost
+                texts.add(text)
                 if dump:
                     d = os.path.join(dump, tool.replace(":", "_"))
                     os.makedirs(d, exist_ok=True)
                     dumped[tool] += 1
                     with open(os.path.join(d, f"{dumped[tool]:05d}.txt"), "w") as out:
-                        out.write(f"#later={later}\n{text}")
+                        out.write("#" + json.dumps({"later": later, **call}) + "\n" + text)
     W = totals["weighted"]
-    print(f"transcripts {len(files)}  requests {int(totals['requests']):,}")
+    print(f"transcripts {sum(len(n) for n in reqs_per.values())}  requests {int(totals['requests']):,}")
     for k in ("input", "write", "read", "output"):
         print(f"  {k:<7}{totals[k]:>18,.0f}")
     print(f"  weighted cost (input-price units) {W:,.0f}; output is {OUT * totals['output'] / W:.1%} of it")
     tool_w = sum(t["weighted"] for t in by_tool.values())
     big_w = sum(t["weighted_2k"] for t in by_tool.values())
-    print(f"  tool results: {tool_w / W:.1%} of cost; results >= 2 KB (the compressible pool): {big_w / W:.1%}\n")
+    dup_w = sum(t["weighted_dup"] for t in by_tool.values())
+    print(f"  tool results: {tool_w / W:.1%} of cost; results >= 2 KB (the compressible pool): {big_w / W:.1%}")
+    print(f"  of which verbatim repeats of an earlier result in the same transcript: {dup_w / W:.1%}\n")
     print(f"{'tool':<26}{'results':>9}{'tokens':>14}{'share of cost':>15}{'>=2KB share':>13}")
     for tool, t in sorted(by_tool.items(), key=lambda kv: -kv[1]["weighted"])[:20]:
         print(f"{tool:<26}{int(t['n']):>9}{t['tokens']:>14,.0f}{t['weighted'] / W:>15.1%}{t['weighted_2k'] / W:>13.1%}")
