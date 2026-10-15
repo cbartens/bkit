@@ -1,6 +1,6 @@
 # Context-compression proxies for bkit: caveman vs Headroom
 
-Investigation for #545 (caveman) and #538 (Headroom), run 2026-10-14. It answers one question: **would putting a context-compression proxy between bkit's agents and the model save meaningful tokens, and which one?**
+Investigation for #545 (caveman) and #538 (Headroom), run 2026-10-14. It answers one question: **would putting a context-compression proxy between bkit's agents and the model save meaningful tokens, and which one?** Numbers have changed since the first version; see [Corrections](#corrections).
 
 ## Answer
 
@@ -21,6 +21,26 @@ Investigation for #545 (caveman) and #538 (Headroom), run 2026-10-14. It answers
 - **The larger, lossless savings are in bkit itself:**
   - #549: re-reading long contexts. The median request carries 228k tokens; subagents are 62.8% of cost.
   - #550: reading code. `sed`/`grep`/`cat` reads are about 60% of Bash cost, and 41% of file reads are repeats.
+
+## Corrections
+
+The numbers above differ from the first version of this report, which a LinkedIn post of 2026-10-15 quotes. Every version stays readable at its commit.
+
+<!-- prettier-ignore -->
+| Figure | [First version](https://github.com/cbartens/bkit/blob/07db7d6b/tests/compression/bkit-caveman-headroom-compression-proxy-comparison.md) (14 Oct) | LinkedIn post (15 Oct) | [Ranges added](https://github.com/cbartens/bkit/blob/7349ecd1/tests/compression/bkit-caveman-headroom-compression-proxy-comparison.md) (15 Oct) | Now (15 Oct) |
+| --- | --- | --- | --- | --- |
+| Headline | 1.4–1.6% | 1–2% | 1–2% | **1–3%** |
+| caveman | ≈1.6% | 1.6% (1.1–2.3%) | 1.6% (1.1–2.2%) | **1.8% (1.0–2.6%)** |
+| Headroom, Kompress off | ≈1.4% | 1.4% (0.8–2.1%) | 1.4% (0.8–2.1%) | **0.8% (0.4–1.4%)** |
+| Headroom, Kompress on | ≈3.8% | 3.8% (3.4–4.3%) | 3.8% (3.4–4.3%) | **2.7% (2.2–3.2%)** |
+| Bash: caveman / Headroom / Kompress off | 4.9% / 14.1% / 5.2% | same | same | 5.7% / 11.4% / 3.4% |
+| Read: caveman / Headroom / Kompress off | 15.4% / 17.0% / 4.9% | same | same | 14.6% / 0% / 0% |
+| Samples replayed | 250 Bash, 218 Read | same | same | 250 Bash, 250 Read |
+| Headroom's default `--mode token` | not mentioned | "gives up the prompt cache" (wrong; first wording of the post) | "gives up prompt-cache stability" (wrong) | protects the cache too; not tested |
+
+1. **Ranges added.** The first version gave single numbers. The 95% ranges come from resampling the replayed samples 2,000 times (`bkit-compression-summary.py --project`). The post's caveman range (1.1–2.3%) came from a one-off run with a different random seed; the script gives 1.1–2.2%.
+2. **Token mode corrected.** Headroom's source shows both of its modes leave the cached part of the conversation alone and resend each compressed result unchanged on later requests (T6). The "gives up the prompt cache" claim was wrong.
+3. **Replay re-run with the real tool calls.** The first replay sent every sample to Headroom as a `Bash` call with a dummy command and "Continue." as the user message, so Headroom's per-tool rules never applied: it compressed Claude Code `Read` output that it keeps verbatim in real use. The re-run passes each result's real tool call and latest user message, on the same 456 transcripts. Headroom's numbers fell; caveman's rose slightly because the new sample differs (its compressor takes text only). The conclusion is unchanged: low single-digit savings.
 
 ## Setup
 
