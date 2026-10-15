@@ -320,7 +320,7 @@ const ADOPTED: Record<string, Entry> = {
         kind: "bkit-only",
         what: "the core hook sources share their mirrors' opt-outs",
         fill: '      "files": [\n        "**/.claude/hooks/bkit-guardrails.cjs",\n',
-        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.cursor/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.codex/hooks/bkit-guardrails.cjs",\n        ".bkit/core/hooks/guardrails-shell.js",\n        ".bkit/core/hooks/guardrails-tiers.js",\n        "**/.claude/hooks/bkit-guardrails.cjs",\n',
+        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.cursor/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.codex/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs",\n        ".bkit/core/hooks/guardrails-read.js",\n        ".bkit/core/hooks/guardrails-shell.js",\n        ".bkit/core/hooks/guardrails-tiers.js",\n        "**/.claude/hooks/bkit-guardrails.cjs",\n',
       },
       {
         kind: "bkit-only",

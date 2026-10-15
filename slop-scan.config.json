@@ -130,6 +130,8 @@
         ".bkit/core/.claude/hooks/bkit-guardrails.cjs",
         ".bkit/core/.cursor/hooks/bkit-guardrails.cjs",
         ".bkit/core/.codex/hooks/bkit-guardrails.cjs",
+        ".bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs",
+        ".bkit/core/hooks/guardrails-read.js",
         ".bkit/core/hooks/guardrails-shell.js",
         ".bkit/core/hooks/guardrails-tiers.js",
         "**/.claude/hooks/bkit-guardrails.cjs",
