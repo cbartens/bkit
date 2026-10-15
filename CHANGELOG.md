@@ -8,6 +8,11 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Changed
+
+- **`/bkit-design` Grill interviews in every runtime except a GitHub Actions run.** `runtimeHeadless` is true only for `GITHUB_ACTION`; `CLOUD_CURSOR` and `UNKNOWN` now count as attended, so Grill asks and waits. `grill=false` still skips; `BKIT_RUNTIME` still overrides.
+- **`bkit-cloud.yml` offers `design` again** in `workflow_dispatch`. A dispatched design runs headless: Grill records its recommended answers as `Assumed, not confirmed` instead of waiting.
+
 ## [5.2.0] — 2026-10-15
 
 ### Added
