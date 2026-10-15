@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-build-plan-gaps-remediate"
 description = "Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes."
 model = "gpt-5.6-terra"

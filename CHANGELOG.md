@@ -8,10 +8,13 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+## [5.2.1] — 2026-10-15
+
 ### Changed
 
 - **`/bkit-design` Grill interviews in every runtime except a GitHub Actions run.** `runtimeHeadless` is true only for `GITHUB_ACTION`; `CLOUD_CURSOR` and `UNKNOWN` now count as attended, so Grill asks and waits. `grill=false` still skips; `BKIT_RUNTIME` still overrides.
 - **`bkit-cloud.yml` offers `design` again** in `workflow_dispatch`. A dispatched design runs headless: Grill records its recommended answers as `Assumed, not confirmed` instead of waiting.
+- **Docs: why bkit ships no compression proxy** (#545). `.bkit/providers.md` and the README FAQ: caveman and Headroom saved ~1–3% of token cost on 456 real Claude Code transcripts, and Headroom's text model rewrote code; bkit narrows reads instead.
 
 ## [5.2.0] — 2026-10-15
 
