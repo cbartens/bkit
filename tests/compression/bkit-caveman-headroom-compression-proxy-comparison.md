@@ -4,8 +4,12 @@ Investigation for #545 (caveman) and #538 (Headroom), run 2026-10-14. It answers
 
 ## Answer
 
-- **Neither proxy saves much on real bkit work.** On 456 real Claude Code transcripts from a bkit user repo, the best safe setting saves about **1.4–1.6%** of total token cost. Headroom's full setting saves about 3.8%, and it gets there by corrupting source code.
-- **The ceiling is low.** A proxy only rewrites tool results. Tool results big enough to compress are **26.9%** of cost; the other 73% (re-read history, system prompt, rules, tool definitions, the agent's own messages) is out of reach.
+- **Neither proxy saves much on real bkit work.** On 456 real Claude Code transcripts from a bkit user repo, the safe settings save about **1–2%** of total token cost:
+  - caveman 1.6% (95% range 1.1–2.2%);
+  - Headroom with Kompress off 1.4% (0.8–2.1%);
+  - Headroom with Kompress on 3.8% (3.4–4.3%), and it gets there by corrupting source code.
+- **The ceiling is low.** Both proxies were run so that Claude's prompt cache keeps working, and set up that way a proxy only rewrites new tool results. Tool results big enough to compress are **26.9%** of cost; the other 73% (re-read history, system prompt, rules, tool definitions, the agent's own messages) is out of reach.
+- **Headroom's default mode was not tested.** Headroom ships with `--mode token`, which also rewrites earlier turns and so can reach part of that 73%. It gives up prompt-cache stability to do so, and Headroom's own code names the cache mode used here `cost_savings`. Whether token mode saves or costs more on Claude is unmeasured. See [Limits](#limits).
 - **Output compression is irrelevant.** Agent output is **3.8%** of cost, so caveman's terse voice can't move the total.
 - **Both compressors are lossy in ways that hurt bkit.**
   - caveman's log compressor made an agent answer a factual question wrongly.
@@ -89,7 +93,7 @@ Prompt: have the agent `cat` the 150 KB log, then answer "how many distinct log 
 | Headroom | about 6% saved (3,592 tokens) | 3 (correct) |
 | caveman | tool result 18,415 → 5,737; request 26.8k → **13.4k** | **"1 — only INFO" (wrong)** |
 
-The agent answered from the compressed log and never fetched the original. This is the "lossy exact content" risk from #538 and #545, showing up on the first real try.
+The agent answered from the compressed log and never fetched the original. This is the "lossy exact content" risk from #538 and #545, showing up on the first real try. It is one run, with a small model (`deepseek-v4.1-flash`) on opencode, not Claude: it shows the risk exists, not how often it happens.
 
 ### T4: where Claude Code cost goes (bkit user repo)
 
@@ -148,6 +152,9 @@ Random, seeded sample of real tool results ≥ 2 KB: 250 Bash, 218 Read. Each wa
 |  | caveman | Headroom (full) | Headroom, Kompress off |
 | --- | --- | --- | --- |
 | Total cost saved | **≈1.6%** | **≈3.8%** | **≈1.4%** |
+| 95% range | 1.1–2.2% | 3.4–4.3% | 0.8–2.1% |
+
+The range comes from resampling each tool's samples 2,000 times (`bkit-compression-summary.py --project`). No handful of samples drives the result: the five heaviest samples hold 13% of each tool's weight.
 
 **What the rewrites do to code:**
 
@@ -156,7 +163,7 @@ Random, seeded sample of real tool results ≥ 2 KB: 250 Bash, 218 Read. Each wa
   - deleted words inside comments;
   - **changed syntax**: `setFilterPreset: (preset: CalendarFilterPreset) => void;` became `setFilterPreset: (preset: CalendarFilterPreset) void;`.
 
-  The only signal is a footer: `[819 words compressed to 575 ... Retrieve more: hash=…]`.
+  The only signal is a footer: `[819 words compressed to 575 ... Retrieve more: hash=…]`. This is one example found while reading samples; how often Kompress changes syntax was not counted.
 
 - **caveman** on a real test file (−91%): every `describe(...)` body became `{ /* caveman: body elided */ }`. Lossy, but visible to the agent.
 
@@ -168,7 +175,7 @@ Random, seeded sample of real tool results ≥ 2 KB: 250 Bash, 218 Read. Each wa
 | Getting the original back | The agent must call the MCP tool `mcp__caveman__caveman_retrieve`. On Pro/Max (subscription) traffic it compresses only if that tool is installed for the agent (`liveZoneCompressionAllowed`), and then compresses every request in the session, including subagents. bkit agents have explicit `tools:` lists, so all of them would need the tool added. | The proxy adds `headroom_retrieve` to each request and **answers the call itself**, streaming included (`ccr/response_handler.py`). Works for every subagent with no `tools:` changes. |
 | Claude Code tool deferral behind `ANTHROPIC_BASE_URL` | Sets `ENABLE_TOOL_SEARCH` | Sets `ENABLE_TOOL_SEARCH` (`--tool-search`, on by default) |
 | 1M context behind a proxy | No general handling found (only for its own Auto model) | `--1m` adds the `[1m]` model suffix so Claude Code keeps sending the 1M beta header |
-| Which part of the request is rewritten | Anthropic: Claude Code's own `cache_control` breakpoints; nothing already cached is rewritten | Live zone only; prefix forwarded byte for byte (`--mode cache`) |
+| Which part of the request is rewritten | Anthropic: Claude Code's own `cache_control` breakpoints; nothing already cached is rewritten | `--mode cache` (used here): live zone only, prefix forwarded byte for byte. Default `--mode token`: also rewrites earlier turns, giving up prompt-cache stability; not tested |
 | Defaults to switch off | voice (`output`), `scripts`, `waste-fixes` (sends extra cache-warming requests), `browse`, telemetry | Kompress (`--disable-kompress`), beacon |
 
 ## What went wrong, and how it was handled
@@ -190,7 +197,7 @@ Random, seeded sample of real tool results ≥ 2 KB: 250 Bash, 218 Read. Each wa
 
 ## Recommendation
 
-1. **Don't make a compression proxy a priority.** About 1.5% safe saving doesn't justify the extra moving part in every Claude Code session.
+1. **Don't make a compression proxy a priority.** About 1–2% safe saving doesn't justify the extra moving part in every Claude Code session.
 2. **Do #549 and #550 first.** They act on the 73% no proxy can reach, and they lose nothing.
 3. **If a proxy is still wanted, use Headroom with `--disable-kompress`, not caveman.**
    - Same savings as caveman.
@@ -226,9 +233,10 @@ $HR tests/compression/bkit-compression-replay.py tmp/compression/dump 250 tmp/co
 python3 tests/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --no-kompress tmp/compression/replay-no-kompress.jsonl
 python3 tests/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --no-kompress tmp/compression/replay-no-kompress.jsonl --by-type
 python3 tests/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --rows   # one line per sample
+python3 tests/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --no-kompress tmp/compression/replay-no-kompress.jsonl --project Bash=0.235,Read=0.030
 ```
 
-Projected saving = each tool's "≥2KB share" (step 1) × its saving rate (this step), summed.
+Projected saving = each tool's "≥2KB share" (step 1) × its saving rate (this step), summed. `--project` does the sum and prints a 95% range; replace `0.235` and `0.030` with your own Bash and Read "≥2KB share" from step 1.
 
 - **The dump holds raw tool output.** Keep it under the gitignored `tmp/` and delete it when done; it can contain secrets that agents read.
 - **Allow time.** The Kompress pass takes a few seconds per sample (about an hour for 500 samples on CPU). Use a smaller sample size to get a first number.
@@ -268,7 +276,7 @@ python3 ../bkit/tests/compression/bkit-compression-opencode-tokens.py --latest .
 | `bkit-caveman-headroom-compression-proxy-comparison.md` | This report |
 | `bkit-compression-usage.py` | T4: cost attribution from Claude Code transcripts; `--dump` feeds T5 |
 | `bkit-compression-replay.py` | T5: offline replay through caveman and Headroom (run with Headroom's Python) |
-| `bkit-compression-summary.py` | T5: per-tool and per-content-type savings |
+| `bkit-compression-summary.py` | T5: per-tool and per-content-type savings; `--project` for the projected total with a 95% range |
 | `bkit-compression-probe.py` | T1/T2: live direct vs caveman vs Headroom through OpenRouter |
 | `bkit-compression-caveman.yaml` | caveman proxy config: compress mode plus an `openrouter` compat mount |
 | `bkit-compression-opencode-arm.sh` | T3: switch a checkout between baseline / caveman / Headroom for opencode |
@@ -276,7 +284,12 @@ python3 ../bkit/tests/compression/bkit-compression-opencode-tokens.py --latest .
 
 ## Limits
 
-- **One project.** The data comes from a single bkit user repo (an app monorepo), on the Claude subscription. Savings show up as quota and context headroom, not money.
+- **Headroom's default mode not tested.** Both proxies ran in cache-safe settings (Headroom `--mode cache`). Headroom's default `--mode token` also rewrites earlier turns, so the 73% "out of reach" share does not apply to it. It trades prompt-cache hits (0.1× input price) for cache writes (1.25–2×) on the rewritten part; whether that nets out as a saving on Claude is unmeasured.
+- **One project.** The data comes from a single bkit user repo (an app monorepo), on the Claude subscription. Savings show up as quota and context headroom, not money. Most sessions were driven by hand, not by bkit workflows (#549). A workload heavy in logs, where caveman does well, would save more.
+- **API price ratios.** Cost uses API list-price ratios (cache read 0.1, writes 1.25 / 2, output 5). How Anthropic counts cache reads against subscription quota isn't published, so the 27% / 73% split is in API-price terms.
+- **Sampling error.** T5 uses 468 of 890 samples; the 95% ranges in T5 show the effect. Headroom's offline replay understated the live proxy on one payload (`git log -n 40`: 0% vs −13%), so its numbers may be a little low.
+- **Single examples of harm.** The wrong answer (T3) is one run with a small model; the Kompress syntax change (T5) is one example. Neither has a measured rate.
 - **Estimated tool-result tokens.** These are characters / 4 in T4. Request totals and the T1–T3 numbers are provider-reported.
 - **Approximate re-read weighting.** The model assumes a tool result stays in context until its transcript ends; compaction can drop it earlier.
+- **Costs not counted.** Fetching originals back, caveman's retrieve-tool definition and any cache disruption are left out. Each would lower the proxies' savings.
 - **Projected savings, not live ones.** T5 projects savings from replay. The only full agent sessions run through a proxy were the T3 smoke tests, not a full bkit workflow.

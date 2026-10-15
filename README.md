@@ -224,6 +224,9 @@ No. [bkit Vibecoding Kit](https://github.com/popup-studio-ai/bkit-claude-code) i
 **How does it compare with other tools?**
 Feature by feature against the main AI development frameworks, from spec toolkits to autonomous agents: [`.bkit/comparison.md`](.bkit/comparison.md#part-3--compared-with-other-ai-development-frameworks).
 
+**Why doesn't bkit ship a compression proxy like caveman or Headroom?**
+We measured both on 456 real Claude Code transcripts. Set up so Claude's prompt cache keeps working, they saved about 1–2% of token cost: such a proxy can only shrink new tool output, which was 27% of the cost, and Headroom's text model rewrote code along the way. bkit cuts reading instead, which loses nothing: agents find the definition first and read only those lines, and a hook flags re-reads of files that haven't changed. Method, results and scripts to measure your own sessions: [the comparison](tests/compression/bkit-caveman-headroom-compression-proxy-comparison.md).
+
 <details>
 <summary><strong>For engineers: what's under the hood</strong></summary>
 

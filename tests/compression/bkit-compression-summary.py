@@ -2,19 +2,40 @@
 """Summarise bkit-compression-replay.py output.
 
     bkit-compression-summary.py <replay.jsonl> [--no-kompress <replay-no-kompress.jsonl>] [--by-type] [--rows]
+                                [--project Bash=0.235,Read=0.030]
 
 Per tool: share of cache-weighted tokens each compressor removes, and how many samples it touched.
 --no-kompress  add a column for Headroom with Kompress off (same files, joined by tool + file).
 --by-type      Bash samples by content type (caveman's classifier label) instead of by tool.
 --rows         one line per sample.
+--project      projected share of total cost saved: each tool's share of cost in tool results
+               >= 2 KB (from bkit-compression-usage.py) x its saving rate, summed. Prints a 95%
+               bootstrap range (2,000 seeded resamples of each tool's samples).
 """
 import json
+import random
 import sys
 from collections import defaultdict
 
 
 def pct(before, after):
     return 1 - after / before if before else 0.0
+
+
+def saved(samples, k):
+    before = sum(r[k + "_before"] * r["weight"] for r in samples)
+    return pct(before, sum(r[k + "_after"] * r["weight"] for r in samples))
+
+
+def project(rows, arms, spec):
+    pools = {tool: float(share) for tool, share in (p.split("=") for p in spec.split(","))}
+    by_tool = {t: [r for r in rows.values() if r["tool"] == t and all(k + "_before" in r for k, _ in arms)] for t in pools}
+    random.seed(545)
+    print(f"{'arm':<18}{'saves':>8}{'95% range':>18}")
+    for k, name in arms:
+        point = sum(pools[t] * saved(s, k) for t, s in by_tool.items())
+        boot = sorted(sum(pools[t] * saved(random.choices(s, k=len(s)), k) for t, s in by_tool.items()) for _ in range(2000))
+        print(f"{name:<18}{point:>8.2%}{boot[50]:>9.2%} – {boot[1949]:.2%}")
 
 
 def load(path):
@@ -36,6 +57,9 @@ def main():
         for r in rows.values():
             cells = "   ".join(f"{name} {pct(r.get(k + '_before', 0), r.get(k + '_after', 0)):>5.0%}" for k, name in arms)
             print(f"{r['tool']:<22}{r['file']:<12}{r.get('cv_type') or '-':<15}{cells}")
+        return
+    if "--project" in args:
+        project(rows, arms, args[args.index("--project") + 1])
         return
     by_type = "--by-type" in args
     agg = defaultdict(lambda: defaultdict(float))
