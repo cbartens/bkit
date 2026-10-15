@@ -1,7 +1,11 @@
 # .codex/config.toml — project-scoped Codex configuration. bkit writes no config.toml:
 # `openai` is a reserved built-in provider id, so re-stating a provider block is rejected.
 # This file is user-owned; Codex loads it only when the project is trusted.
-#
+
+# Summarise sessions at 300k tokens. Must stay above the first [table] header.
+# See .bkit/providers.md § Context compaction.
+model_auto_compact_token_limit = 300000
+
 # MCP servers, matching .mcp.json / .cursor/mcp.json / .opencode/opencode.json.
 
 # Serena — local symbol lookup (read-only; `.serena/project.yml` keeps it lookup-only).
