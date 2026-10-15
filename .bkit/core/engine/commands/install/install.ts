@@ -243,18 +243,40 @@ export function refreshPreflightAfterWrites(
   };
 }
 
-/** `bkit install`, and `bkit check` (the same pipeline, dry-run). */
+/**
+ * The advisory pass that closes a real `bkit upgrade`: `bkit check`'s read-only pipeline
+ * under upgrade's log prefix, printing the checklist and rewriting `.bkit/advisories.md`
+ * (mode `upgrade`). Never exits — blockers and drift are reported, upgrade keeps its own
+ * exit code.
+ */
+export function runUpgradeAdvisories(): Promise<void> {
+  return runInstall(
+    {
+      verb: "check",
+      modules: new Set(),
+      tracker: null,
+      cloudVariant: null,
+      opencodeProvider: null,
+    },
+    true,
+  );
+}
+
+/**
+ * `bkit install`, and `bkit check` (the same pipeline, dry-run). `upgradeReport` runs the
+ * check pipeline for runUpgradeAdvisories.
+ */
 export async function runInstall(
-  args: Pick<
-    ParsedArgs,
-    "verb" | "modules" | "tracker" | "cloudVariant" | "opencodeProvider" | "uninstallFlags"
-  >,
+  args: Pick<ParsedArgs, "verb" | "modules" | "tracker" | "cloudVariant" | "opencodeProvider"> &
+    Partial<Pick<ParsedArgs, "uninstallFlags">>,
+  upgradeReport = false,
 ): Promise<void> {
   const { verb, modules, tracker, cloudVariant, opencodeProvider, uninstallFlags } = args;
   const dryRun = verb === "check";
-  if (dryRun) setLogPrefix("[bkit-check]");
+  if (dryRun && !upgradeReport) setLogPrefix("[bkit-check]");
 
-  if (dryRun) console.log(`${LOG_PREFIX} Running in check (dry-run) mode`);
+  if (upgradeReport) console.log(`${LOG_PREFIX} Checking advisories (read-only)`);
+  else if (dryRun) console.log(`${LOG_PREFIX} Running in check (dry-run) mode`);
 
   // `bkit check` scopes drift detection to what is INSTALLED (detected by sentinel files),
   // not to a fixed full set. `install` keeps its explicit resolved set.
@@ -306,14 +328,25 @@ export async function runInstall(
     console.log(`${LOG_PREFIX} Preflight blockers detected — aborting.`);
     const blockerBanner = formatChecklist(blockers);
     if (blockerBanner) console.log(blockerBanner);
+    if (upgradeReport) {
+      writeAdvisoriesArtifact(blockers, {
+        cwd: process.cwd(),
+        mode: "upgrade",
+        version: getInstallingVersion(),
+        logPrefix: LOG_PREFIX,
+      });
+      return;
+    }
     process.exit(1);
   }
 
   // Resolve tokens once for the whole install
   const tokens = await resolveTokens(process.cwd()).catch((err: unknown) => {
     console.error(`${LOG_PREFIX} Token resolution failed: ${(err as Error).message}`);
-    process.exit(1);
+    if (!upgradeReport) process.exit(1);
+    return undefined;
   });
+  if (tokens === undefined) return;
 
   // Parse model lookup (needed for cursor transforms).
   // DEFAULTS come from the PACKAGE's .bkit/prompts.md § Models (authoritative, matches the
@@ -555,7 +588,7 @@ export async function runInstall(
   if (banner) console.log(banner);
   writeAdvisoriesArtifact(postFindings, {
     cwd: process.cwd(),
-    mode: dryRun ? "check" : "install",
+    mode: upgradeReport ? "upgrade" : dryRun ? "check" : "install",
     version: getInstallingVersion(),
     logPrefix: LOG_PREFIX,
     suppressed,
@@ -564,7 +597,7 @@ export async function runInstall(
 
   // Check mode: exit 1 on drift (see reportCheckDrift).
   if (dryRun) {
-    reportCheckDrift(postFindings, totalWrites, missingHooks);
+    if (!upgradeReport) reportCheckDrift(postFindings, totalWrites, missingHooks);
     return;
   }
 
@@ -579,7 +612,7 @@ export async function runInstall(
       `${LOG_PREFIX} ${phase3Blockers.length} Phase 3 blocker(s) detected. Recovery:\n  ${recoveryLine}`,
     );
     // P2.T10: --auto-revert: run uninstall in-process before exit-1
-    if (uninstallFlags.autoRevert) {
+    if (uninstallFlags?.autoRevert) {
       console.log(`${LOG_PREFIX} --auto-revert: reverting install...`);
       const uninstallCtx: UninstallContext = {
         cwd: process.cwd(),

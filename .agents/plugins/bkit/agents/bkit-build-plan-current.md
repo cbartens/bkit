@@ -12,7 +12,7 @@ tools:
   - replace_file_content
   - run_command
 ---
-<!-- bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer judging whether changes landed since the plan was written leave it executable.
 **Scope:** As specified by input and Read / Update / Create section.

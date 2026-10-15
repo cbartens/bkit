@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-utility-update-failures"
 description = "Senior editor closing failures the codebase has already resolved."
 model = "gpt-6-astra"

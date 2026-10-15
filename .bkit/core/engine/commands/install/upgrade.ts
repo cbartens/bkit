@@ -46,6 +46,7 @@ import {
   getInstallingVersion,
   requireOpencodeProvider,
   detectOpencodeProviders,
+  runUpgradeAdvisories,
 } from "./install.js";
 import { setLogPrefix } from "../../shared/log-prefix.js";
 import {
@@ -1031,6 +1032,9 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
   console.log(
     `${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}, re-rendered: ${rendered.length}`,
   );
+
+  // `.bkit/advisories.md` describes the upgraded repo, not the last install or check.
+  if (!upgradeFlags.dryRun) await runUpgradeAdvisories();
 
   // Non-interactive mode: exit non-zero on conflicts
   if (upgradeFlags.nonInteractive && result.conflicts.length > 0) {

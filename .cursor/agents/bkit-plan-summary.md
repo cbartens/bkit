@@ -8,7 +8,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating completed plans for build-readiness.
 **Scope:** As specified by input and Read / Update / Create section.

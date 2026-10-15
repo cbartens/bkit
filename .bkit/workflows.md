@@ -1,6 +1,6 @@
 # Workflows
 
-<!-- bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Agent-pipeline reference — workflow conventions, execution patterns, IDE integration, subagent catalog.
@@ -1400,7 +1400,7 @@ Each gate is the previous gate plus its own tier, so the name and the value desc
 
 Dependency inspection is read-only, not a gate: `bkit:deps:outdated` and `bkit:deps:audit` exist so prompts stop hardcoding `pnpm outdated` / `pnpm audit`.
 
-`bkit:test:file` is not a gate either: it runs ONE test file — bkit appends the repo-relative path as its argument — and writes a JUnit report to the path in `$BKIT_TEST_REPORT`. `/bkit-build` reads that report for test-first (§ Test-first). Not seeded (no default runs one file on every stack); install's `test-file-script-missing` advisory hands over the line until it is declared. Call the runner directly: a task runner that caches results or runs dependent packages first breaks the one-file contract.
+`bkit:test:file` is not a gate either: it runs ONE test file — bkit appends the repo-relative path as its argument — and writes a JUnit report to the path in `$BKIT_TEST_REPORT`. `/bkit-build` reads that report for test-first (§ Test-first). Not seeded (no default runs one file on every stack); the `test-file-script-missing` advisory (install, `bkit check`, `bkit upgrade`) hands over the line until it is declared. Call the runner directly: a task runner that caches results or runs dependent packages first breaks the one-file contract.
 
 Agents and humans run the same scripts, so a green agent gate and a green `git push` mean the same thing. `bkit-ci.yml` deliberately stays off them: it needs per-step reporting, affected-package conditionals, and the heavier tiers the local gate excludes, so it calls `pnpm typecheck` / `pnpm test` / … directly.
 

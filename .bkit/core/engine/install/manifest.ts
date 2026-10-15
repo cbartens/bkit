@@ -275,8 +275,8 @@ export const BKIT_BUILD_GATES: readonly string[] = [
 /**
  * Runs ONE test file — `pnpm bkit:test:file <repo-relative path>` — and writes a JUnit
  * report to `$BKIT_TEST_REPORT`. `/bkit-build` records each task's red and audits its
- * green through it. Never seeded: no default works on every stack; install advises
- * when it is missing (detectGateAdvisories).
+ * green through it. Never seeded: no default works on every stack; install, check and
+ * upgrade advise when it is missing (detectGateAdvisories).
  */
 export const BKIT_TEST_FILE_SCRIPT = "bkit:test:file";
 

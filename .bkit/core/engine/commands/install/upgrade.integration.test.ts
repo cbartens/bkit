@@ -1748,6 +1748,41 @@ describe("upgrade-render", () => {
       expect(recordedHash(), "upgrade must not re-record the consumer's content").toBe(before);
     }, 180_000);
   });
+
+  describe("advisories — check and upgrade report what install reports", () => {
+    it("surfaces test-file-script-missing on check, and upgrade rewrites .bkit/advisories.md", () => {
+      const tsxBin = getTsxBin();
+      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
+      const advisoriesPath = path.join(tmpDir, ".bkit", "advisories.md");
+
+      const install = runBkit(["install", "--claude"]);
+      expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+      expect(fs.readFileSync(advisoriesPath, "utf-8")).toContain("test-file-script-missing");
+
+      const check = runBkit(["check"]);
+      expect(`${check.stdout}\n${check.stderr}`).toContain("test-file-script-missing");
+      expect(fs.readFileSync(advisoriesPath, "utf-8")).toContain("test-file-script-missing");
+
+      fs.writeFileSync(advisoriesPath, "STALE-ADVISORIES\n", "utf-8");
+      const upgrade = runBkit(["upgrade"]);
+      const upgradeCombined = `${upgrade.stdout}\n${upgrade.stderr}`;
+      expect(upgrade.status, upgradeCombined).toBe(0);
+      expect(upgradeCombined).toContain("test-file-script-missing");
+      const after = fs.readFileSync(advisoriesPath, "utf-8");
+      expect(after).not.toContain("STALE-ADVISORIES");
+      expect(after).toContain("_Mode: upgrade_");
+      expect(after).toContain("test-file-script-missing");
+    }, 180_000);
+
+    it("a dry-run upgrade leaves .bkit/advisories.md alone", () => {
+      const advisoriesPath = path.join(tmpDir, ".bkit", "advisories.md");
+      runBkit(["install", "--claude"]);
+      fs.writeFileSync(advisoriesPath, "STALE-ADVISORIES\n", "utf-8");
+      const upgrade = runBkit(["upgrade", "--dry-run"]);
+      expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
+      expect(fs.readFileSync(advisoriesPath, "utf-8")).toBe("STALE-ADVISORIES\n");
+    }, 180_000);
+  });
 });
 
 // ---------------------------------------------------------------------------

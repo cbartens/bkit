@@ -8,7 +8,7 @@ tools:
   - write_to_file
   - replace_file_content
 ---
-<!-- bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior incident commander writing clear, calm handovers when automation cannot proceed.
 **Scope:** As specified by input and Read / Update / Create section.
