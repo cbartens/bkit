@@ -38,7 +38,7 @@ teardown() {
   grep -qx 'setenv BKIT_A one' "$CALLS"
   grep -qx 'setenv BKIT_B two' "$CALLS"
   [ "$(sort "$STATE_FILE")" = "$(printf 'BKIT_A\nBKIT_B')" ]
-  [ "$(stat -f %Lp "$STATE_FILE" 2>/dev/null || stat -c %a "$STATE_FILE")" = "600" ]
+  [ "$(stat -c %a "$STATE_FILE" 2>/dev/null || stat -f %Lp "$STATE_FILE")" = "600" ]
 }
 
 @test "a key removed from the env file is unset on the next run" {
