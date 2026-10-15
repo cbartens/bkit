@@ -330,37 +330,41 @@ Most partials = deliberate scope. Two remain: automated eval harness with regres
 
 ## Part 3 — Compared with other AI development frameworks
 
-As of October 2026. A cross-section of 10: the closest process frameworks, the two main spec toolkits, the largest skills pack, an autonomous agent platform and an agentic IDE. Each row read from the project's own repo and docs. ✅ yes · ◐ partly · — no · ? not documented.
+As of October 2026. A cross-section of 10: the closest process frameworks, the two main spec toolkits, the largest skills pack, an autonomous agent platform and an agentic IDE. Each column read from the project's own repo and docs. ✅ yes · ◐ partly · — no · ? not documented.
+
+Kind: **Framework** runs a fixed multi-phase process · **Spec toolkit** writes specs / plans, agent does the rest · **Skills pack** library of skills / agents / commands, no fixed process · **Agent** product that writes code itself · **Editor** IDE or single-agent pair programmer. ECC is everything-claude-code.
 
 <!-- prettier-ignore -->
-| Column | Means |
-| --- | --- |
-| Kind | **Framework** runs a fixed multi-phase process · **Spec toolkit** writes specs / plans, agent does the rest · **Skills pack** library of skills / agents / commands, no fixed process · **Agent** product that writes code itself · **Editor** IDE or single-agent pair programmer |
-| Phases | Own commands / agents for: design, plan, build, review, fix (debug failures), merge |
-| Reviewers | Work reviewed by agents that did not write it |
-| Sign-offs | Process stops for human approval at fixed points |
-| Checked | "Done" verified by code / tests, not the agent's word |
-| CI | Ships a CI pipeline for your project |
-| Memory | File-based lessons / decisions later runs read |
-| Parallel | Several features at once, isolated (e.g. worktrees) |
-| Cloud | Runs unattended, triggered or hosted |
-| Guards | Hooks that block dangerous actions |
-| Audits | Audit / checklist templates |
+| | **bkit** | [Superpowers](https://github.com/obra/superpowers) | [gstack](https://github.com/garrytan/gstack) | [Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin) | [GSD Core](https://github.com/open-gsd/gsd-core) | [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) + bmad-loop | [Spec Kit](https://github.com/github/spec-kit) | [OpenSpec](https://github.com/Fission-AI/OpenSpec) | [Kiro](https://kiro.dev) (AWS) | [ECC](https://github.com/affaan-m/ECC) | [OpenHands](https://github.com/OpenHands/OpenHands) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **Kind** | Framework | Framework | Skills pack (sprint) | Framework | Framework | Framework | Spec toolkit | Spec toolkit | Editor + cloud agent | Skills pack + pipeline | Agent |
+| **Licence** | MIT | MIT | MIT | MIT | MIT | MIT + trademark | MIT | MIT | Closed source, paid tiers | MIT | MIT (paid cloud) |
+| **Phases**<br>design, plan, build, review, fix, merge | all six | all six; no CI wait | all six; host writes code | all six; merge only if granted | all six; never merges | all six; local merge, no PR | design, plan, build | design, plan, build; merges specs | all six; never merges | all six; no merge | no design; plan partial |
+| **Reviewers**<br>agents that didn't write the work | ✅ bug + security, blind to each other | ◐ per task + whole branch | ✅ up to 8 + second model | ✅ blind personas + second model | ✅ checkers + outside AI tools | ✅ 4 blind reviewers | ◐ via extensions | — | ✅ opt-in, mixed model vendors | ✅ + refuter agent | ◐ one reviewer |
+| **Sign-offs**<br>stops for human approval | ✅ design, plan, merge | ✅ design, plan, merge | ✅ design, plan, merge | ◐ interactive only | ✅ roadmap, acceptance, ship | ◐ risky plans, done, epic | ✅ spec, plan | ◐ by convention | ✅ requirements, design, PR | ✅ plan, commit | ◐ per action |
+| **Checked**<br>"done" proved by code, not the agent's word | ✅ tests seen failing before code | ✅ task's test must pass | ✅ test evidence tied to files | ◐ | ✅ goes stale on file change | ◐ (✅ with loop) | ◐ | ◐ spec structure only | ✅ property-based tests | ◐ | ✅ merge waits for CI |
+| **CI**<br>a test pipeline for your project | ✅ fails on skipped lane / zero tests | — | ◐ basic `test.yml` | — | — | — | — | — | ◐ example | — | ◐ AI PR review only |
+| **Tracker** | GitHub, Linear | — | ◐ GitHub | GitHub, Linear, Jira | — by design | GitHub, Jira, Linear, Notion, Trello | ◐ tasks → GitHub issues | ? | ◐ GitHub, GitLab | GitHub, Jira | GitHub, GitLab, Jira, Linear |
+| **Memory**<br>lessons and decisions later runs read | ✅ | — | ✅ outside repo | ✅ `docs/solutions/` | ✅ | ◐ | ◐ constitution | ◐ living specs | ◐ | ✅ | ◐ opt-in |
+| **Docs**<br>project docs kept current | ✅ | — | ✅ | ◐ | ◐ | ◐ | ◐ | ◐ specs | ◐ | ◐ | ◐ AGENTS.md |
+| **Parallel**<br>several features at once, isolated | ✅ | ◐ | ◐ via Conductor | ◐ | ✅ | ◐ | ◐ via extensions | ◐ | ✅ 10 cloud sandboxes | ◐ | ✅ containers |
+| **Cloud**<br>runs unattended, triggered or hosted | ✅ ship on green, debug on red | ? | ◐ stops at gates | ◐ scheduler | ◐ local | ◐ local | ◐ | ◐ via Copilot agent | ✅ | ◐ | ✅ |
+| **Guards**<br>hooks that block dangerous actions | ✅ all hosts | ◐ prompt rules | ◐ opt-in, Claude Code only | ◐ prompt rules | ◐ blocks `.env` reads | — | — | ? | ✅ | ✅ GateGuard | ✅ sandbox + hooks |
+| **Audits**<br>audit / checklist templates | ✅ 35 | — | ✅ ~10 + 8 checklists | ◐ reviewer personas | ◐ ~8 | ◐ 5 lenses | ◐ checklists | ? | ? | ✅ ~25 | ◐ |
+| **AI tools** | 5 | 16 | 1 certified, 7 experimental | ~14 | 15 | 10+ | 40+ | 30+ | own IDE, CLI, web, mobile | 1 stable, ~15 beta / experimental | own UI / CLI / cloud, ACP editors |
 
-<!-- prettier-ignore -->
-| Project | Kind | Licence | Phases | Reviewers | Sign-offs | Checked | CI | Tracker | Memory | Docs | Parallel | Cloud | Guards | Audits | AI tools | Ahead of bkit on |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **bkit** | Framework | MIT | all six | ✅ bug + security reviewers, blind to each other | ✅ design, plan, merge | ✅ + each task's tests seen failing before its code | ✅ capstone fails on skipped lane / zero tests | GitHub, Linear | ✅ | ✅ | ✅ | ✅ ship on green, debug on red | ✅ all hosts | ✅ 35 | 5 | — |
-| [Superpowers](https://github.com/obra/superpowers) | Framework | MIT | all six; fix local only; merge or PR, no CI wait | ◐ fresh reviewer per task + whole branch | ✅ design, plan, merge | ✅ task done only if its test passes | — | — | — | — | ◐ | ? | ◐ prompt rules | — | 16 | skills trigger automatically; skill eval harness; official marketplaces |
-| [gstack](https://github.com/garrytan/gstack) | Skills pack (sprint) | MIT | all six; host writes code; deploys after merge | ✅ up to 8 specialists + second model | ✅ design, plan, merge | ✅ test evidence tied to file fingerprint; zero tests fails | ◐ basic `test.yml` | ◐ GitHub | ✅ outside repo | ✅ | ◐ via Conductor | ◐ stops at gates | ◐ opt-in, Claude Code only | ✅ ~10 + 8 checklists | 1 certified, 7 experimental | Real-browser and iOS device QA; design mockups; deploy + canary monitoring; prompt-injection defences |
-| [Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin) | Framework | MIT | all six; merge only if granted | ✅ blind personas + second model | ◐ interactive only; `lfg` never pauses | ◐ | — | GitHub, Linear, Jira | ✅ `docs/solutions/` | ◐ | ◐ | ◐ scheduler | ◐ prompt rules | ◐ reviewer personas | ~14 | Learnings shared across repos; Jira; stacked-PR babysitting; Slack / GitHub feedback → plan |
-| [GSD Core](https://github.com/open-gsd/gsd-core) | Framework | MIT | all six; PR, never merges | ✅ checkers + outside AI tools review plan | ✅ roadmap, acceptance, ship | ✅ verification goes stale on file change | — | — by design | ✅ | ◐ | ✅ | ◐ local | ◐ blocks `.env` reads | ◐ ~8 | 15 | Cross-tool plan review; ship blocked by open security threats; cross-project learnings |
-| [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) + bmad-loop | Framework | MIT + trademark | all six; fix partial; local merge, no PR | ✅ 4 blind reviewers | ◐ risk-flagged plans, done, epic boundary | ◐ (✅ with loop) | — | GitHub, Jira, Linear, Notion, Trello | ◐ | ◐ | ◐ | ◐ local | — | ◐ 5 lenses | 10+ | Agile roles and artifacts (PRD, UX spec, epics, stories); most trackers |
-| [Spec Kit](https://github.com/github/spec-kit) | Spec toolkit | MIT | design, plan, build; review, fix partial; no merge | ◐ via extensions | ✅ spec, plan | ◐ | — | ◐ tasks → GitHub issues | ◐ constitution | ◐ | ◐ via extensions | ◐ | — | ◐ checklists | 40+ | Most AI tools; 181 community extensions; workflow engine for custom processes |
-| [OpenSpec](https://github.com/Fission-AI/OpenSpec) | Spec toolkit | MIT | design, plan, build; review partial; merges specs, not code | — | ◐ by convention | ◐ spec structure only | — | ? | ◐ living specs | ◐ specs | ◐ | ◐ via Copilot agent | ? | ? | 30+ | Light to adopt; made for existing code (spec deltas → living specs); multi-repo planning (beta) |
-| [Kiro](https://kiro.dev) (AWS) | Editor + cloud agent | Closed source, paid tiers | all six; PR, never merges | ✅ opt-in; reviewers on different model vendors | ✅ requirements, design, PR | ✅ property-based tests from requirements | ◐ example | ◐ GitHub, GitLab | ◐ | ◐ | ✅ 10 cloud sandboxes | ✅ | ✅ | ? | own IDE, CLI, web, mobile | Full product; EARS requirements; workflow rules enforced by runtime; enterprise SSO |
-| [everything-claude-code](https://github.com/affaan-m/ECC) | Skills pack + pipeline | MIT | all six; PR, no merge | ✅ + agent that tries to refute each finding | ✅ plan, commit | ◐ | — | GitHub, Jira | ✅ | ◐ | ◐ | ◐ | ✅ GateGuard | ✅ ~25 | 1 stable, ~15 beta / experimental | Largest library (70+ agents, 300+ skills); finding refutation; hosted skill generator |
-| [OpenHands](https://github.com/OpenHands/OpenHands) | Agent | MIT (paid cloud) | build, review, fix, merge; plan partial | ◐ one reviewer agent | ◐ per action; factory has none | ✅ merge watchdog waits for CI | ◐ AI PR review only | GitHub, GitLab, Jira, Linear | ◐ opt-in | ◐ AGENTS.md | ✅ containers | ✅ | ✅ sandbox + hooks | ◐ | own UI / CLI / cloud, ACP editors | Sandboxed and hosted execution; issue-to-merge with no human; Jira, GitLab |
+Where others are ahead of bkit:
+
+- **Superpowers:** skills trigger automatically; skill eval harness; official marketplaces.
+- **gstack:** real-browser and iOS device QA; design mockups; deploy + canary monitoring; prompt-injection defences.
+- **Compound Engineering:** learnings shared across repos; Jira; stacked-PR babysitting; Slack / GitHub feedback → plan.
+- **GSD Core:** cross-tool plan review; ship blocked by open security threats; cross-project learnings.
+- **BMAD:** Agile roles and artifacts (PRD, UX spec, epics, stories); most trackers.
+- **Spec Kit:** most AI tools; 181 community extensions; workflow engine for custom processes.
+- **OpenSpec:** light to adopt; made for existing code (spec deltas → living specs); multi-repo planning (beta).
+- **Kiro:** full product; EARS requirements; workflow rules enforced by runtime; enterprise SSO.
+- **ECC:** largest library (70+ agents, 300+ skills); finding refutation; hosted skill generator.
+- **OpenHands:** sandboxed and hosted execution; issue-to-merge with no human; Jira, GitLab.
 
 Where bkit stands apart, per the table:
 
@@ -375,36 +379,30 @@ Also reviewed, left out of the table: Claude Task Master, ccpm, wshobson/agents,
 
 ### Agents and CI
 
-bkit's biggest difference from the field is how tightly its agents and CI work together. Each row below asks one question: does the framework itself do this, or is it left to you? Optional add-ons don't count. ✅ yes · ◐ partly · — no · ? not documented.
+bkit's biggest difference from the field is how tightly its agents and its checks work together. Each row asks one question: does the framework itself do this, or is it left to you? Optional add-ons don't count. Rows run in the order of the wall in the README picture, nearest layer first. ✅ yes · ◐ partly · — no · ? not documented.
 
 <!-- prettier-ignore -->
-| Column | Means |
-| --- | --- |
-| Ships CI | A test pipeline for your project, ending in one "every lane passed" check |
-| Waits for CI | Its agents read CI's result before merging or calling the work done |
-| Reads CI logs | On red, its agents fetch the failed jobs' logs and diagnose from them |
-| CI starts next step | A CI result starts the next agent step (fix on red, merge on green) with no human present |
-| Tests mapped to lanes | Planning decides each feature's tests and which tier or lane runs them |
-| Same checks at every layer | Git hooks or agent hooks run the same checks CI runs |
+| | **bkit** | Superpowers | gstack | Compound Engineering | GSD Core | BMAD | Spec Kit | OpenSpec | Kiro | ECC | OpenHands |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **Code search**<br>definitions and callers, not text matches | ✅ Serena template | — | ✅ opt-in; definitions, callers | — | ◐ opt-in graph, planners only | — | — | — | ✅ built in, 18 languages | — | — |
+| **Agent hooks**<br>steer the agent around each edit | ✅ read before editing, don't loosen checks; 4 hosts | — | ✅ opt-in verify gate, Claude Code only | — | ✅ read before editing | ◐ add-on test-quality hook | — | — | ◐ engine; you write the hooks | ✅ GateGuard, config lock, post-edit type check | — engine only |
+| **Git hooks**<br>for your project, same checks as CI | ✅ pre-commit formats; pre-push runs the agents' gate scripts | — | ◐ opt-in pre-push, credentials only | — | ◐ opt-in pre-commit, planning files | — | — | — | — | ◐ Codex only; checks opt-in | ◐ pre-commit on request |
+| **Ships CI**<br>ending in one "every lane passed" check | ✅ fails on a failed or skipped lane, or zero tests | — | ◐ one `test.yml`, no final check | — | — | ◐ optional TEA module | — | — | ◐ AI-review example | — | ◐ AI review and QA bots |
+| **Waits for CI**<br>before merging or calling it done | ✅ green on the exact merge commit | — local suite only | ✅ exact head | ✅ `lfg` and PR babysitter | — left to you | — | — | — | ✅ opt-in workflows | ◐ | ✅ |
+| **Reads CI logs**<br>on red, diagnoses from them | ✅ failed lanes, diff since last green | — | ◐ deploy failure or `/investigate` | ✅ failing jobs and log tails | — | — | — | — | ◐ failed check names, no logs | ◐ by instruction | ✅ failed-job logs |
+| **CI starts next step**<br>fix on red, merge on green, no human | ✅ `bkit:auto`: ship on green, debug on red | — | — stops on red | ✅ watcher fixes and pushes | — | — | — | — | ✅ wakes the agent; never merges | — | ✅ automations; merger with no AI |
+| **Tests mapped to lanes**<br>planning picks each test's tier | ✅ unit, integration or end-to-end | — | ◐ `/ship` fails a file with no lane | ◐ scenarios, no lane | ◐ unit / end-to-end split, no lane | ◐ TEA module only | ◐ optional contract tests | — | ◐ | ◐ tiers, no lane | ? |
 
-<!-- prettier-ignore -->
-| Project | Ships CI | Waits for CI | Reads CI logs | CI starts next step | Tests mapped to lanes | Same checks at every layer |
-| --- | --- | --- | --- | --- | --- | --- |
-| **bkit** | ✅ multi-lane; final check fails on a failed or skipped lane, or zero tests | ✅ green on the exact merge commit | ✅ failed-lane logs, diff since last green, end-to-end reports | ✅ `bkit:auto`: ship on green, debug on red | ✅ each test assigned unit, integration or end-to-end | ✅ hooks and agents call `bkit:gate:*`; CI's quick-checks lane runs the same commands |
-| gstack | ◐ one `test.yml`, no final check | ✅ `gstack-ci-gate` on the exact head | ◐ only on deploy failure or in `/investigate` | — stops on red | ◐ `/ship` fails a changed file with no test lane | ◐ `/ship` pre-gate reads the CI workflow files; no hook |
-| Superpowers | — | — local suite only | — | — | — | — |
-| Compound Engineering | — | ✅ `lfg` and PR babysitter | ✅ failing jobs and log tails go to `ce-debug` | ✅ watcher fixes and pushes | ◐ test scenarios, no lane | — |
-| GSD Core | — | — "merge when CI passes" left to you | — | — | ◐ unit / end-to-end split, no lane | — |
-| BMAD-METHOD | ◐ optional TEA module | — | — | — | ◐ TEA module only | — |
-| Spec Kit | — | — | — | — | ◐ optional contract / integration tests | — |
-| OpenSpec | — | — | — | — | — | — |
-| Kiro | ◐ AI-review example | ✅ opt-in workflows | ◐ failed check names, no logs | ✅ a failed check wakes the agent; never merges | ◐ | — |
-| everything-claude-code | — | ◐ | ◐ by instruction | — | ◐ tiers, no lane | — |
-| OpenHands | ◐ AI review and QA bots | ✅ | ✅ failed-job logs | ✅ scheduled automations; merger with no AI in it | ? | — |
-
-- **Only one with all six.** Compound Engineering and OpenHands also close the loop, fixing on red with no human, but neither ships a test pipeline for your project, so their agents wait on whatever CI you built yourself. gstack waits for CI but hands a red result back to you.
-- **Only one whose hooks and CI run the same checks.** Everywhere else, local checks and CI are separate lists, or there are no local checks.
-- **Ahead of bkit here:** gstack maps every changed file to a lane read from your CI workflow files, and blocks publishing until a lane your laptop can't run has passed in CI. Compound Engineering re-runs flaky failures instead of debugging them, and notices when its fixes go in circles. Compound Engineering and Kiro wait for CI with a plain script that wakes the agent only on change, and Kiro batches all of one run's failures into one wake. OpenHands merges through a step with no AI in it, and closes pull requests that stay red for 14 days. BMAD's TEA module generates CI for five platforms, splits tests across parallel runners and re-runs tests to catch flaky ones.
+- **Only one with all eight.** Compound Engineering and OpenHands also close the CI loop, fixing on red with no human, but neither ships a test pipeline or edit hooks for your project. gstack and ECC have strong edit hooks, but gstack hands a red CI result back to you and ECC doesn't watch CI.
+- **Only one whose git hooks run the same checks as its CI.** None of the 10 does; most ship no git hooks for your project at all.
+- **Ahead of bkit here:**
+  - ECC's hooks block where bkit's advise. It refuses edits to an existing lint or format config, refuses the first edit of each file until the agent answers its questions, and runs type checks and formatting after each edit.
+  - gstack's opt-in gate won't let a turn end until a declared test command passes. `/freeze` keeps the agent inside one folder and switches on by itself when debugging.
+  - Kiro's symbol search needs no install and covers 18 languages; Serena needs a language server per language.
+  - gstack maps every changed file to a lane read from your CI workflow files, and blocks publishing until a lane your laptop can't run has passed in CI.
+  - Compound Engineering re-runs flaky failures instead of debugging them, and notices when its fixes go in circles. It and Kiro wait for CI with a plain script that wakes the agent only on change.
+  - OpenHands merges through a step with no AI in it, and closes pull requests that stay red for 14 days.
+  - BMAD's TEA module generates CI for five platforms, splits tests across parallel runners, re-runs tests to catch flaky ones, and blocks bad tests as they're written.
 
 ---
 
