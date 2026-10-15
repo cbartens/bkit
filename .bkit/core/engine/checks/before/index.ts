@@ -185,15 +185,16 @@ export function runPreflight(
   const bkitNotOnPath = detectBkitNotOnPath();
   if (bkitNotOnPath) advisories.push(bkitNotOnPath);
 
-  // Missing MCP server advisory — one finding per missing required key, per file.
-  // Tracker-aware: when issueTracker === "github", only github MCP server is required
-  // (the Linear gate is a no-op on the GitHub tracker; the gate runs in workflow Step 1 via MCP).
-  // Extra MCP server advisory — one finding per bkit-managed server that the
+  // Missing MCP server advisory — one finding per missing required key, per file: the
+  // resolved tracker's own server (none → nothing required), matching what install writes.
+  // Extra MCP server advisory — one finding per bkit-written tracker-only server that the
   // resolved tracker does not use (e.g. a stale `linear` entry under `github`).
+  // opencode.json is drift-gated, so only the extra check runs there (map key `mcp`).
   for (const relPath of [".mcp.json", ".cursor/mcp.json"]) {
     advisories.push(...detectMissingMcpServers(cwd, relPath, resolvedTracker));
     advisories.push(...detectExtraMcpServers(cwd, relPath, resolvedTracker));
   }
+  advisories.push(...detectExtraMcpServers(cwd, ".opencode/opencode.json", resolvedTracker, "mcp"));
 
   // [mcp-env] detectors run in Phase 3 (runPostInstallCheck in checks/after/index.ts),
   // not here: the .bkit/.env.example scaffold exists only after writes. Detectors are

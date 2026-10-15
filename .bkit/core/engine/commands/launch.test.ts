@@ -14,7 +14,13 @@ vi.mock("node:child_process", () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
 
-import { loadBkitEnv, resolveBinaryPath, isAlreadyRunning, launchApp } from "./launch.js";
+import {
+  loadBkitEnv,
+  resolveBinaryPath,
+  isAlreadyRunning,
+  isOpencodeServerRunning,
+  launchApp,
+} from "./launch.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -221,6 +227,25 @@ describe("isAlreadyRunning — process detection", () => {
   });
 });
 
+describe("isOpencodeServerRunning — 2.0 shared server detection", () => {
+  it("probes `opencode serve` by command line, not any process mentioning opencode", () => {
+    mockSpawnSync.mockReturnValue({ status: 0, stdout: "21883\n", stderr: "" });
+    expect(isOpencodeServerRunning()).toBe(true);
+    const [cmd, args] = mockSpawnSync.mock.calls[0]!;
+    expect(cmd).toBe("pgrep");
+    const pattern = new RegExp((args as string[])[1]!);
+    expect(pattern.test("/Users/me/.opencode/bin/opencode serve --service")).toBe(true);
+    expect(pattern.test("opencode serve")).toBe(true);
+    expect(pattern.test("/Applications/opencode.app/Contents/MacOS/opencode")).toBe(false);
+    expect(pattern.test("code /Users/me/projects/opencode serve-docs/readme.md")).toBe(false);
+  });
+
+  it("returns false when nothing matches", () => {
+    mockSpawnSync.mockReturnValue({ status: 1, stdout: "", stderr: "" });
+    expect(isOpencodeServerRunning()).toBe(false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // launchApp — exit paths
 // ---------------------------------------------------------------------------
@@ -297,6 +322,44 @@ describe("launchApp — warns but still launches when app already running", () =
     } finally {
       delete process.env["BKIT_OPENCODE_BIN"];
       warnSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
+
+  it("opencode: warns when only the 2.0 background server runs (desktop app closed)", async () => {
+    const fakeBin = makeFakeBin("fake-opencode-server");
+    process.env["BKIT_OPENCODE_BIN"] = fakeBin;
+    // First probe (app binary) finds nothing; second probe (`opencode serve`) finds the server.
+    mockSpawnSync
+      .mockReturnValueOnce({ status: 1, stdout: "", stderr: "" })
+      .mockReturnValueOnce({ status: 0, stdout: "21883\n", stderr: "" });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await launchApp("opencode", tmpDir);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const msg = String(warnSpy.mock.calls[0]![0]);
+      expect(msg).toMatch(/background server \(opencode serve\) is already running/);
+      expect(msg).toMatch(/opencode service stop/);
+      expect(msg).not.toMatch(/quit opencode fully/);
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
+    } finally {
+      delete process.env["BKIT_OPENCODE_BIN"];
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
+
+  it("cursor: never probes for the opencode server", async () => {
+    const fakeBin = makeFakeBin("fake-cursor-3");
+    process.env["BKIT_CURSOR_BIN"] = fakeBin;
+    mockSpawnSync.mockReturnValue({ status: 1, stdout: "", stderr: "" });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await launchApp("cursor", tmpDir);
+      expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+    } finally {
+      delete process.env["BKIT_CURSOR_BIN"];
       logSpy.mockRestore();
     }
   });

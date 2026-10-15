@@ -9,6 +9,7 @@ import {
   extractFullManagedBlock,
   extractManagedBlock,
   findLineAnchoredMarkers,
+  findUnmarkedCopy,
 } from "./managed-block";
 
 // ---------------------------------------------------------------------------
@@ -283,5 +284,45 @@ describe("html-comment marker round-trip + default-arg backward compat", () => {
     const yaml = `# bkit:start\nstep: true\n# bkit:end\n`;
     // Default arg = html-comment → should NOT find the hash markers
     expect(extractManagedBlock(yaml)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findUnmarkedCopy — older unmarked copy of a markdown block
+// ---------------------------------------------------------------------------
+
+describe("findUnmarkedCopy", () => {
+  const rows = (n: number): string =>
+    Array.from(
+      { length: n },
+      (_, i) => `| \`bkit-agent-${i}\` | Reads the plan and writes report number ${i}. |`,
+    ).join("\n");
+  const block = `# Agent Prompts Index\n\n${rows(12)}\n`;
+
+  it("returns the title when the text holds the title and enough of the block verbatim", () => {
+    expect(findUnmarkedCopy(`# Agent Prompts Index\n\n${rows(10)}\n`, block)).toBe(
+      "# Agent Prompts Index",
+    );
+  });
+
+  it("returns null for the consumer's own doc that only shares the title", () => {
+    expect(
+      findUnmarkedCopy(`# Agent Prompts Index\n\nOur own notes.\n${rows(9)}\n`, block),
+    ).toBeNull();
+  });
+
+  it("returns null when the shared lines come without the title", () => {
+    expect(findUnmarkedCopy(`## Copied examples\n\n${rows(12)}\n`, block)).toBeNull();
+  });
+
+  it("ignores title-shaped lines inside fenced code", () => {
+    const fenced = "# Config\n\n```bash\n# Vercel errors (read-only)\n```\n" + rows(12);
+    const text = "```bash\n# Vercel errors (read-only)\n```\n" + rows(12);
+    expect(findUnmarkedCopy(text, fenced)).toBeNull();
+    expect(findUnmarkedCopy("```md\n# Agent Prompts Index\n```\n" + rows(12), block)).toBeNull();
+  });
+
+  it("returns null when the block has no title", () => {
+    expect(findUnmarkedCopy(rows(12), rows(12))).toBeNull();
   });
 });

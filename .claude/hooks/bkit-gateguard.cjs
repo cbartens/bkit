@@ -44,7 +44,7 @@
 
 // bkit:start
 
-// bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh
 
 const fs = require("node:fs");
 const os = require("node:os");
@@ -55,12 +55,14 @@ const path = require("node:path");
 
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
 // A matching path gets the gate-config advisory instead of the first-touch checklist.
-// JS / TS first, then the other ecosystems' gate configs (Python, Go, Rust).
+// JS / TS first, then the other ecosystems' gate configs (Python, Go, Rust). Mixed-purpose
+// manifests that also hold dependencies and metadata (package.json, pyproject.toml,
+// setup.cfg, tox.ini) are not matched: routine edits to them are not gate edits.
 const GATE_CONFIG_PATTERNS = [
   /^tsconfig(\..+)?\.json$/,
   /^vitest\.config\.[mc]?[jt]s$/,
   /^vite\.config\.[mc]?[jt]s$/,
-  /^jest\.config\.[mc]?[jt]s$/,
+  /^jest\.config\.([mc]?[jt]s|json)$/,
   /^eslint\.config\.[mc]?[jt]s$/,
   /^\.eslintrc(\.(json|js|cjs|ya?ml))?$/,
   /^\.prettierrc(\.(json|js|cjs|mjs|ya?ml|toml))?$/,
@@ -71,14 +73,15 @@ const GATE_CONFIG_PATTERNS = [
   /^slop-scan\.config\.json$/,
   /^\.lintstagedrc(\.(json|js|cjs|mjs|ya?ml))?$/,
   /^lint-staged\.config\.[mc]?js$/,
-  /^pyproject\.toml$/,
   /^ruff\.toml$/,
   /^\.ruff\.toml$/,
   /^\.flake8$/,
-  /^mypy\.ini$/,
+  /^\.?mypy\.ini$/,
+  /^\.?pylintrc$/,
+  /^pytest\.ini$/,
   /^\.golangci\.(ya?ml|toml|json)$/,
-  /^clippy\.toml$/,
-  /^rustfmt\.toml$/,
+  /^\.?clippy\.toml$/,
+  /^\.?rustfmt\.toml$/,
 ];
 
 // A path under `.bkit/templates/` (bkit's reference copies, refreshed on every upgrade)
@@ -171,6 +174,13 @@ function stateDir() {
   return path.join(os.tmpdir(), "bkit-gateguard");
 }
 
+// Dedup scope: the session, narrowed to one agent when the host names it. A Claude Code
+// subagent shares its parent's session_id and carries its own agent_id.
+function dedupKey(sessionId, agentId) {
+  const sid = typeof sessionId === "string" ? sessionId : "no-session";
+  return typeof agentId === "string" && agentId ? `${sid}.${agentId}` : sid;
+}
+
 function stateFile(sessionId) {
   const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) || "no-session";
   return path.join(stateDir(), safe + ".json");
@@ -250,9 +260,9 @@ const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit"]);
 
 // Pure: takes the already-parsed hook payload, returns the advisory to emit or
 // null. Never touches process.stdin / process.stdout — the driver below owns both.
-// Subagents are NOT exempt: dedup is per (session, file) and a subagent carries its
-// own session id, so it gets the checklist once for a file the orchestrator already
-// touched.
+// Subagents are NOT exempt: dedup is per (session, agent, file). A Claude Code subagent
+// shares its parent's session_id and carries its own agent_id, so it gets the checklist
+// once for a file the orchestrator already touched.
 function bkitGateguard(payload) {
   if (!EDIT_TOOLS.has(payload.tool_name)) return null;
   const input = payload.tool_input || {};
@@ -260,7 +270,7 @@ function bkitGateguard(payload) {
   // A Write to a not-yet-existing path is a NEW file and gets the reuse checklist.
   const isNewFile =
     payload.tool_name === "Write" && typeof filePath === "string" && !fs.existsSync(filePath);
-  return firstTouchAdvice(filePath, payload.session_id, isNewFile);
+  return firstTouchAdvice(filePath, dedupKey(payload.session_id, payload.agent_id), isNewFile);
 }
 
 // bkit:end
@@ -328,7 +338,7 @@ function promptAuthoringAdvisory() {
     sectionRule(".bkit/core/.bkit/prompts.md", "Prompt Authoring Rules", lead, ".bkit/prompts.md");
   return [
     "[bkit GateGuard] .bkit/core/prompts/*.md authoring:",
-    "- These files ARE their own template: ALWAYS `grep .bkit/core/prompts/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, variables, operators, conditionals, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (contract clauses, process steps, output format blocks, verdict mappings). `→` is intentional process glyph, adopt do NOT convert.",
+    "- These files ARE their own template: ALWAYS `grep .bkit/core/prompts/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, plurals, variables, operators, conditionals, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (contract clauses, process steps, output format blocks, verdict mappings). `→` is intentional process glyph, adopt do NOT convert.",
     rule("Dense instructions only"),
     rule("Cross-prompt alignment"),
     rule("Self-contained"),

@@ -67,7 +67,8 @@ afterEach(() => {
 
 describe("install creates the payload view links", () => {
   it("links .bkit/core + .bkit/shared, relative, into the package payload", () => {
-    runCore();
+    const { ws } = runCore();
+    expect(linkWrites(ws)).toEqual([]);
     for (const [rel, root] of [
       [CORE_LINK, getCoreRoot()],
       [SHARED_LINK, getSharedRoot()],
@@ -92,15 +93,9 @@ describe("install creates the payload view links", () => {
     expect(keys.filter((k) => LINK_PATHS.includes(k))).toEqual([]);
   });
 
-  it("is idempotent — a second run pushes no link writes", () => {
-    runCore();
-    const { ws } = runCore();
-    expect(linkWrites(ws)).toEqual([]);
-  });
-
-  it("dry-run flags missing links as drift writes but creates nothing", () => {
+  it("dry-run (bkit check) with missing links reports zero link drift and creates nothing", () => {
     const { ws } = runCore(true);
-    expect(linkWrites(ws).sort()).toEqual([...LINK_PATHS].sort());
+    expect(linkWrites(ws)).toEqual([]);
     for (const rel of LINK_PATHS) expect(fs.existsSync(path.join(tmpDir, rel))).toBe(false);
   });
 
@@ -126,7 +121,7 @@ describe("install creates the payload view links", () => {
     fs.symlinkSync(tmpDir, linkAbs, "dir");
     const { ws } = runCore();
     expect(fs.realpathSync(linkAbs)).toBe(fs.realpathSync(getCoreRoot()));
-    expect(linkWrites(ws)).toEqual([CORE_LINK]);
+    expect(linkWrites(ws)).toEqual([]);
   });
 });
 

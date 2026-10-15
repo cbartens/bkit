@@ -342,8 +342,8 @@ describe("Scenario 5 — full install smoke against scratch consumer", () => {
 // #507 — the payload folders: a full install (every host + tracker) writes every
 // file in `.bkit/core/` and `.bkit/shared/` at its path-rule destination, except
 // the package-only parts; no template lands outside the consumer's
-// `.bkit/templates/`; and the only LICENSE.md files are `.bkit/LICENSE.md` (the
-// PolyForm notice) and the MIT-0 one inside `.bkit/templates/`.
+// `.bkit/templates/`; and the only LICENSE.md file is `.bkit/LICENSE.md` (the MIT
+// notice).
 // ---------------------------------------------------------------------------
 
 describe("#507 — full install writes core/ and shared/, never a template or a stray LICENSE.md", () => {
@@ -359,7 +359,7 @@ describe("#507 — full install writes core/ and shared/, never a template or a 
       .map((abs) => path.relative(dir, abs).split(path.sep).join("/"))
       .filter((rel) => !rel.startsWith(".git/") && !rel.startsWith("node_modules/"));
 
-  it("every payload file lands, no template does, and only the two expected LICENSE.md files exist", () => {
+  it("every payload file lands, no template does, and .bkit/LICENSE.md is the only LICENSE.md", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "scratch-consumer", version: "0.0.0", packageManager: "pnpm@10.4.1" }),
@@ -397,8 +397,6 @@ describe("#507 — full install writes core/ and shared/, never a template or a 
     ] as const) {
       for (const rel of relFiles(root)) {
         if (skipTop.has(rel.split(path.sep)[0]!)) continue;
-        // A folder's own licence stays in the package; `.bkit/LICENSE.md` is the notice.
-        if (rel === "LICENSE.md") continue;
         const dest = remapTemplateDest(rel);
         if (!fs.existsSync(path.join(tmpDir, dest))) missing.push(`${rel} -> ${dest}`);
       }
@@ -406,9 +404,9 @@ describe("#507 — full install writes core/ and shared/, never a template or a 
     expect(missing, "payload files the install did not write").toEqual([]);
 
     const templates = relFiles(getTemplatesRoot()).filter((rel) => !rel.startsWith("context"));
-    const writtenTemplates = templates
-      .filter((rel) => rel !== "LICENSE.md")
-      .filter((rel) => fs.existsSync(path.join(tmpDir, remapTemplateDest(rel))));
+    const writtenTemplates = templates.filter((rel) =>
+      fs.existsSync(path.join(tmpDir, remapTemplateDest(rel))),
+    );
     expect(writtenTemplates, "templates written into the repo").toEqual([]);
     for (const rel of templates) {
       expect(fs.existsSync(path.join(tmpDir, ".bkit", "templates", rel)), rel).toBe(true);
@@ -421,7 +419,7 @@ describe("#507 — full install writes core/ and shared/, never a template or a 
     const licences = consumerFiles(tmpDir)
       .filter((rel) => path.posix.basename(rel) === "LICENSE.md")
       .sort();
-    expect(licences).toEqual([".bkit/LICENSE.md", ".bkit/templates/LICENSE.md"]);
+    expect(licences).toEqual([".bkit/LICENSE.md"]);
   });
 });
 

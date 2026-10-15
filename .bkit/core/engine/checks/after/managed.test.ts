@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { detectManagedStale, isOnProtectedBranch } from "./managed";
+import { detectManagedDuplicate, detectManagedStale, isOnProtectedBranch } from "./managed";
 import { stampManagedVersion, managedVersionMarker } from "../../install/version-file";
 
 // ---------------------------------------------------------------------------
@@ -227,5 +227,43 @@ describe("isOnProtectedBranch", () => {
     // tmpDir is a fresh mkdtemp dir, not a git work tree → git HEAD resolution
     // fails → null → treated as protected so an unknown env never downgrades.
     expect(isOnProtectedBranch(tmpDir)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectManagedDuplicate — older unmarked copy outside a managed markdown block
+// ---------------------------------------------------------------------------
+
+describe("detectManagedDuplicate", () => {
+  const rows = Array.from(
+    { length: 12 },
+    (_, i) => `- **Rule ${i}:** ALWAYS follow the numbered rule ${i} in every agent run.`,
+  ).join("\n");
+  const block = `<!-- bkit:start -->\n\n# Agent Rules\n\n${rows}\n\n<!-- bkit:end -->\n`;
+  function write(rel: string, content: string): void {
+    const p = path.join(tmpDir, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, content, "utf-8");
+  }
+
+  it("flags an old copy above the block, naming the file and the title line", () => {
+    write(".agents/rules.md", `# Agent Rules\n\n${rows}\n\n${block}`);
+    const f = detectManagedDuplicate(tmpDir);
+    expect(f?.id).toBe("bkit-managed-duplicate");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain(
+      `${path.join(".agents", "rules.md")} (\`# Agent Rules\` at line 1)`,
+    );
+  });
+
+  it("flags an old copy below the block at its own line", () => {
+    write(".agents/rules.md", `${block}\n# Agent Rules\n\n${rows}\n`);
+    expect(detectManagedDuplicate(tmpDir)?.detect).toContain("at line 20");
+  });
+
+  it("returns null for consumer content outside the block that only echoes it", () => {
+    write(".agents/rules.md", `# consumer intro\n\n${block}\n## Project Rules\n\n${rows}\n`);
+    write("docs/testing.md", "# our testing doc\n");
+    expect(detectManagedDuplicate(tmpDir)).toBeNull();
   });
 });

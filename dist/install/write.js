@@ -1,8 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { updateManagedBlock, extractFullManagedBlock, extractManagedBlock, findLineAnchoredMarkers, selectMarkers, } from "./managed-block.js";
+import { updateManagedBlock, extractFullManagedBlock, extractManagedBlock, findLineAnchoredMarkers, findUnmarkedCopy, selectMarkers, } from "./managed-block.js";
 import { readTemplate } from "../render/parts.js";
 import { applyTokens } from "./placeholders.js";
+import { sha256 } from "./version-file.js";
 export function deepContains(template, consumer, pathPrefix = "") {
     const missing = [];
     const mismatched = [];
@@ -141,7 +142,7 @@ export function deepMergeJson(base, override) {
 //   - dest present, valid JSON, template contained → no-op (idempotent)
 //   - dest present, valid JSON, containment fails → deepMergeJson(existing, template)
 //     (template wins on key collisions; consumer-only keys outside template tree preserved)
-//   - dest present, malformed JSON → overwrite with template
+//   - dest present, malformed JSON → throw; the consumer fixes it by hand
 //   - schemaFlipped: true when a path value changed type during deep-merge
 // ---------------------------------------------------------------------------
 export function writeTier2JsonContained(srcPath, dstPath, dryRun, ws) {
@@ -225,12 +226,65 @@ export function writeTier1(srcPath, dstPath, tokens, dryRun, ws) {
 //   - dest absent            → write whole file (with token substitution)
 //   - dest has markers       → update only the bkit block (tokens applied to new block content)
 //   - dest present, no marks → append full block at EOF; preserve consumer content above
+//   - no marks, markdown dest already holds an unmarked copy of the block (findUnmarkedCopy)
+//                            → warn + skip; appending would leave a frozen duplicate above it
 //
 // markerStyle: "html-comment" for markdown, shell and `.gitignore` (`# ` prefix allowed);
 // "slash-comment" for JS.
 // ---------------------------------------------------------------------------
+/**
+ * sha256 of the driver (everything outside the managed block) of hook files a bkit
+ * release shipped with a host contract the host does not accept, keyed by consumer path.
+ * Register: docs/migrations.md.
+ */
+export const RETIRED_DRIVER_HASHES = {
+    // 5.1.0: Claude-shaped `hookSpecificOutput`; Antigravity reads `{ decision, reason }`.
+    ".agents/plugins/bkit/hooks/bkit-gateguard.cjs": [
+        "544dbcc2bab81875789563a2925bb5dc7b5dbbcf185f216fb3281cfa01ec030d",
+    ],
+    ".agents/plugins/bkit/hooks/bkit-guardrails.cjs": [
+        "8e5d75f7e1a4527889dafa6a250ae370e2acf1b5fc7d58929dfc759489746e14",
+    ],
+};
+/** The text outside a file's single managed block, or null without exactly one block. */
+export function driverText(content, markerStyle) {
+    const [startMarker, endMarker] = selectMarkers(markerStyle);
+    const starts = findLineAnchoredMarkers(content, startMarker);
+    const ends = findLineAnchoredMarkers(content, endMarker);
+    if (starts.length !== 1 || ends.length !== 1 || ends[0] < starts[0])
+        return null;
+    return content.slice(0, starts[0]) + content.slice(ends[0]);
+}
+/**
+ * True when `dstPath` still carries a retired bkit driver the consumer never edited. An
+ * edited driver still on the retired output shape is kept and gets a printed fix.
+ */
+function hasRetiredDriver(dstPath, content, markerStyle) {
+    const posix = dstPath.replace(/\\/g, "/");
+    const key = Object.keys(RETIRED_DRIVER_HASHES).find((rel) => posix === rel || posix.endsWith(`/${rel}`));
+    if (key === undefined)
+        return false;
+    const driver = driverText(content, markerStyle);
+    if (driver === null)
+        return false;
+    if (RETIRED_DRIVER_HASHES[key].includes(sha256(driver)))
+        return true;
+    if (driver.includes("hookSpecificOutput")) {
+        console.warn(`[bkit] ${dstPath}: your driver below \`// bkit:end\` writes Claude-shaped \`hookSpecificOutput\`, which Antigravity ignores — the hook never takes effect. Emit the managed block's result as Antigravity's \`{ "decision": "allow" | "deny" | "ask", "reason": "…" }\` (only a deny's reason reaches the model), or delete the file and re-run \`bkit install --antigravity\` to get bkit's driver.`);
+    }
+    return false;
+}
 export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws) {
     const srcRaw = readTemplate(srcPath);
+    // A retired, unedited bkit driver is bkit's code, not the consumer's: replace the
+    // whole file so the new driver ships with the new block.
+    if (fs.existsSync(dstPath) &&
+        hasRetiredDriver(dstPath, fs.readFileSync(dstPath, "utf-8"), markerStyle)) {
+        if (!dryRun)
+            fs.writeFileSync(dstPath, applyTokens(srcRaw, tokens), "utf-8");
+        ws.writes.push({ path: dstPath, action: "write" });
+        return;
+    }
     if (!fs.existsSync(dstPath)) {
         // dest missing → write whole template (with tokens applied)
         const content = applyTokens(srcRaw, tokens);
@@ -264,6 +318,11 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws) {
         }
         // dest has no markers → append full block at EOF (with tokens applied)
         const appliedBlock = applyTokens(fullBlock, tokens);
+        const copyTitle = dstPath.endsWith(".md") ? findUnmarkedCopy(destContent, appliedBlock) : null;
+        if (copyTitle !== null) {
+            console.warn(`[bkit] ${dstPath} has no managed-block markers but already holds an older bkit copy (\`${copyTitle}\`) — skipping, so it is not duplicated. Delete the file and re-run install; then re-add any lines you wrote yourself below \`<!-- bkit:end -->\`.`);
+            return;
+        }
         const sep = destContent.length === 0
             ? ""
             : destContent.endsWith("\n\n")

@@ -89,7 +89,6 @@ describe("the templates root is the copy-and-own set", () => {
       "scripts/graphify/bkit-graphify.sh",
       "scripts/slop/bkit-slop-type-suppression.mjs",
       "context/bkit-github.md",
-      "LICENSE.md",
     ]) {
       expect(fs.existsSync(path.join(getTemplatesRoot(), p)), p).toBe(true);
     }

@@ -6,7 +6,7 @@
 Fits: React Native / Expo apps on EAS. `context=runtime` (`expo` block): recent EAS Build status (id, platform, status, profile, commit, error), then the error-level lines of the latest errored builds' logs. `context=e2e` (`expo-workflows` block): for the latest failed EAS Workflow runs (`eas workflow:run`, Maestro) — job status and errors, step-log tails, the per-flow exception for every flow and retry (EAS GraphQL), JUnit, failure screenshot URLs, and from `artifacts.tar.gz` the failing Maestro commands, the view-hierarchy dump list, per-attempt JUnit, the XCUITest runner's own errors and the app's JS console. EAS drains build failures and Workflow runs nowhere else — no host log, no error tracker — so this is the only place they surface.
 
 - Secret: `EXPO_TOKEN` (an EAS access token), in the app's env (e.g. `apps/mobile/.env.local`), not `.bkit/.env`.
-- Non-secret: `EXPO_APP_DIR` (the EAS-linked app folder, default `apps/mobile`), both blocks; `expo`: `EAS_PLATFORM`, `EAS_N`, `EAS_ERR_N`; `expo-workflows`: `EAS_WF_N`, `EAS_WF_ERR_N`.
+- Non-secret: `EXPO_APP_DIR` (the EAS-linked app folder, default `apps/mobile`), both blocks; `expo`: `EAS_PLATFORM`, `EAS_PROFILE`, `EAS_N`, `EAS_ERR_N`, `EAS_LOG_N`; `expo-workflows`: `EAS_WF_FILE`, `EAS_WF_N`, `EAS_WF_ERR_N`, `EAS_JUNIT_N`.
 - CLI: `eas` (`eas-cli`); each block's same-named provision block installs it in cloud, self-guarded, so copying both installs once. `expo` also uses `node` to decompress logs.
 - Domains: `expo.dev` (both), `googleapis.com` (`expo`), `eascdn.net` (`expo-workflows`); each section carries its own `allowed-domains` block.
 - `expo`: build logs are pre-signed, brotli-encoded storage URLs valid ~15 min; macOS curl has no brotli, so the block decompresses with Node zlib and filters the JSON lines with `jq`.
@@ -24,7 +24,7 @@ Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`. The 
 # Expo EAS native build status + errored-build logs (read-only).
 # EXPO_TOKEN is an app/stack cred (it builds and ships the native apps) — app env, not .bkit/.env.
 # Run `eas` from the EAS-linked app folder: from anywhere else it writes a stub app.json there.
-# Customise: EXPO_APP_DIR; EAS_PLATFORM (android|ios|all); EAS_N (<= 50); EAS_ERR_N; the log-line filter.
+# Customise: EXPO_APP_DIR; EAS_PLATFORM (android|ios|all); EAS_PROFILE (build profile, e.g. preview / production); EAS_N (<= 50); EAS_ERR_N; EAS_LOG_N (log lines per build); the log-line filter.
 EXPO_APP_DIR="${EXPO_APP_DIR:-apps/mobile}"
 command -v eas >/dev/null && [ -n "${EXPO_TOKEN:-}" ] \
   || { echo "[context-fetch:expo] skipped — eas CLI / EXPO_TOKEN missing" >&2; exit 0; }
@@ -34,18 +34,21 @@ cd "$EXPO_APP_DIR" || exit 0
 # 1) Recent build status. --status new|in-queue|in-progress|pending-cancel|errored|finished|canceled.
 eas build:list \
   --platform "${EAS_PLATFORM:-all}" \
+  ${EAS_PROFILE:+--build-profile "$EAS_PROFILE"} \
   --limit "${EAS_N:-10}" \
   --json --non-interactive \
   | jq -c '.[] | {id, platform, status, createdAt, buildProfile, gitCommitHash, error}'  # gitCommitHash stitches to the CI run
 # 2) LOGS for recent failures. No `eas build:logs`; build:view exposes `logFiles`: pre-signed
 #    URLs (signature in the query string, no auth header), valid ~900s, BROTLI-encoded JSON lines.
 #    An install-dependencies failure (e.g. a private-registry 401) shows here.
-for id in $(eas build:list --status errored --limit "${EAS_ERR_N:-2}" --json --non-interactive | jq -r '.[].id'); do
+for id in $(eas build:list --status errored --platform "${EAS_PLATFORM:-all}" ${EAS_PROFILE:+--build-profile "$EAS_PROFILE"} \
+    --limit "${EAS_ERR_N:-2}" --json --non-interactive | jq -r '.[].id'); do
   echo "===== errored build $id ====="
   eas build:view "$id" --json | jq -r '.logFiles[]?' | while read -r u; do
     curl -sS "$u" \
       | node -e "const z=require('zlib'),c=[];process.stdin.on('data',d=>c.push(d)).on('end',()=>{try{process.stdout.write(z.brotliDecompressSync(Buffer.concat(c)))}catch(e){process.stderr.write('[context-fetch:expo] log not brotli — encoding may have changed\n')}})" \
-      | jq -rc 'select(.level>=40 or ((.msg//"") | test("ERR_|✗|error"))) | {phase, msg: (.msg // .err.message)}'
+      | jq -rc 'select(.level>=40 or ((.msg//"") | test("ERR_|✗|error"))) | {phase, msg: (.msg // .err.message)}' \
+      | tail -n "${EAS_LOG_N:-80}"
   done
 done
 ```
@@ -75,7 +78,7 @@ googleapis.com
 ```bash
 # EAS WORKFLOW runs — the native e2e (Maestro) lane (read-only). SEPARATE from the expo block:
 # that one covers `eas build`, this one covers `eas workflow:run`.
-# Customise: EXPO_APP_DIR; EAS_WF_N; EAS_WF_ERR_N; which artifacts to inline; the log greps.
+# Customise: EXPO_APP_DIR; EAS_WF_FILE (e2e workflow file; unset = all); EAS_WF_N; EAS_WF_ERR_N; EAS_JUNIT_N (lines per JUnit file); which artifacts to inline; the log greps.
 EXPO_APP_DIR="${EXPO_APP_DIR:-apps/mobile}"
 command -v eas >/dev/null && [ -n "${EXPO_TOKEN:-}" ] \
   || { echo "[context-fetch:expo-workflows] skipped — eas CLI / EXPO_TOKEN missing" >&2; exit 0; }
@@ -87,18 +90,21 @@ trap 'rm -rf "$WORK"' EXIT
 # 1) Recent workflow runs, newest first. `workflow:runs` does NOT accept --non-interactive
 #    (unlike its sibling commands): passing it errors out with no output, which reads exactly
 #    like "no runs found". Its flags are only --json --limit --status --workflow.
-eas workflow:runs --json --limit "${EAS_WF_N:-10}" 2>/dev/null \
+eas workflow:runs --json ${EAS_WF_FILE:+--workflow "$EAS_WF_FILE"} --limit "${EAS_WF_N:-10}" 2>/dev/null \
   | jq -c '.[]? | {id, status, gitCommitHash, createdAt}'
 # 2) Per-run detail. `workflow:status` is the only command that yields BOTH job ids and artifact URLs.
-for run in $(eas workflow:runs --json --status FAILURE --limit "${EAS_WF_ERR_N:-2}" 2>/dev/null \
-    | jq -r '.[]?.id'); do
+for run in $(eas workflow:runs --json ${EAS_WF_FILE:+--workflow "$EAS_WF_FILE"} --status FAILURE \
+    --limit "${EAS_WF_ERR_N:-2}" 2>/dev/null | jq -r '.[]?.id'); do
   echo "===== failed workflow run $run ====="
   STATUS="$WORK/status-$run.json"
-  eas workflow:status "$run" --json --non-interactive > "$STATUS" 2>/dev/null || continue
+  # `workflow:status` exits 11 on a FAILED run after printing its JSON: test the output, not the exit code.
+  eas workflow:status "$run" --json --non-interactive > "$STATUS" 2>/dev/null
+  [ -s "$STATUS" ] || { echo "[context-fetch:expo-workflows] run $run: workflow:status returned no JSON" >&2; continue; }
   jq -r '.jobs[]? | "job \(.id) key=\(.key // "?") \(.status)", (.turtleJobRun.errors[]?  | "  \(.errorCode): \(.message)")' "$STATUS"
   # 2a) Step logs. `workflow:logs` takes the JOB id, not the run id (the run id returns "No
   #     workflow job found"). --all-steps is required or it prompts for a step and hangs headless.
-  for job in $(jq -r '.jobs[]?.id' "$STATUS"); do
+  #     Failed jobs only: a passing job's log tail is noise.
+  for job in $(jq -r '.jobs[]? | select(.status=="FAILURE") | .id' "$STATUS"); do
     eas workflow:logs "$job" --all-steps --non-interactive 2>/dev/null | tail -60
   done
   # 2b) THE PER-FLOW EXCEPTION. Neither the GitHub job log nor the EAS job log carries it — both
@@ -114,7 +120,7 @@ for run in $(eas workflow:runs --json --status FAILURE --limit "${EAS_WF_ERR_N:-
   grep -oE 'https://wf-artifacts[^"]*(junit\.xml|failure-attempt[^"]*\.png)[^"]*' "$STATUS" \
     | while read -r u; do
         case "$u" in
-          *junit.xml*) echo "===== JUnit ====="; curl -sS "$u" | tr -d '\r' ;;
+          *junit.xml*) echo "===== JUnit (first ${EAS_JUNIT_N:-300} lines) ====="; curl -sS "$u" | tr -d '\r' | head -n "${EAS_JUNIT_N:-300}" ;;
           *) echo "===== failure screenshot: $u" ;;
         esac
       done
@@ -140,8 +146,11 @@ for run in $(eas workflow:runs --json --status FAILURE --limit "${EAS_WF_ERR_N:-
   find "$DEST" -path '*screen-hierarchy*' -name '*.json' -exec ls -lh {} \; 2>/dev/null \
     | awk '{print "  " $5 "  " $NF}'
   # Per-ATTEMPT JUnit: the merged JUnit above hides a flow that failed and then passed on retry.
-  find "$DEST" -path '*junit-reports*' -name '*.xml' 2>/dev/null \
-    | while read -r j; do echo "===== $(basename "$j") ====="; tr -d '\r' < "$j"; done
+  find "$DEST" -path '*junit-reports*' -name '*.xml' 2>/dev/null | sort | head -n 20 \
+    | while read -r j; do
+        echo "===== $(basename "$j") (first ${EAS_JUNIT_N:-300} lines) ====="
+        tr -d '\r' < "$j" | head -n "${EAS_JUNIT_N:-300}"
+      done
   # 2e) WHY THE DRIVER DIED — read first for any DeviceUnreachableException. An `error:` line in
   #     xctest_runner_*.log names the cause; neither job log does. A device-unreachable sweep is a
   #     symptom shared by several faults, not a diagnosis.

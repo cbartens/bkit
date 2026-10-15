@@ -1,0 +1,29 @@
+# Migrations
+
+> [!CAUTION]
+> **Purpose:** Register of every upgrade migration in the engine — code that rewrites a consumer file left by an older bkit release so `bkit upgrade` alone brings it current.
+>
+> **Rules:**
+>
+> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - One row per migration. Add the row in the same change that adds the code; delete the row in the same change that deletes the code.
+> - A migration is idempotent, runs inside the normal install / upgrade write path (dry-run computes the same writeset), and has a test seeding the old shape.
+> - Name the release range it covers, so a later sweep can retire it once no supported install predates it.
+> - Detect-only checks that tell the human to fix something by hand are not migrations — they live under § Detect-only guards.
+> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
+
+## Migrations
+
+<!-- prettier-ignore -->
+| Migration | Where | What it rewrites | Releases | Test |
+| --- | --- | --- | --- | --- |
+| Retired Antigravity hook drivers | `.bkit/core/engine/install/write.ts` (`RETIRED_DRIVER_HASHES`, `writeTier2`) | `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` / `bkit-guardrails.cjs` whose driver (text outside `// bkit:start` / `// bkit:end`) is byte-identical to 5.1.0's Claude-shaped `hookSpecificOutput` driver → whole file replaced with the current template (`{ decision, reason }` driver). An edited driver is kept; install / upgrade prints the fix. | 5.1.0 | `.bkit/core/engine/install/write.test.ts` (fixtures `tests/fixtures/antigravity-5.1.0/`) |
+
+## Detect-only guards
+
+<!-- prettier-ignore -->
+| Guard | Where | What it detects | Human fix |
+| --- | --- | --- | --- |
+| Unmarked older copy (install) | `.bkit/core/engine/install/write.ts` (`findUnmarkedCopy`) | A managed `.md` with no `bkit:start` / `bkit:end` markers that already holds an older bkit copy — install skips it instead of appending a duplicate. | Delete the file, re-run install, re-add own lines below `<!-- bkit:end -->`. |
+| `test-file-script-missing` advisory | `.bkit/core/engine/install/modules/core.ts` (`detectGateAdvisories`) | `package.json` without `bkit:test:file`: `/bkit-build` reports test-first as not enforced. Plans predating `**Test first:**` lines get the same report from `bkit tests green`. | Declare `bkit:test:file` (runs one test file, writes JUnit to `$BKIT_TEST_REPORT`); new plans carry `Test first` lines. |
+| `bkit-managed-duplicate` advisory | `.bkit/core/engine/checks/after/managed.ts` | An older bkit copy outside a managed file's `bkit:start` / `bkit:end` block. | Delete the stale copy; move own lines below `<!-- bkit:end -->`. |

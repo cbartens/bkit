@@ -24,6 +24,7 @@ maxTurns: 100
 > **EXECUTION PROTOCOL:** Strict procedure, do not deviate.
 >
 > - **Rules:** Read `.agents/rules.md` → follow all `Universal Rules`; skip `Orchestrator Rules`.
+> - **Code reads:** Locate first (symbol lookup or `grep -n`), then read only needed line ranges; never re-read unchanged files.
 > - **Order:** Execute Process steps sequentially unless stated otherwise.
 > - **No improv:** No ad-hoc steps, no skipping, no scope beyond this file.
 > - **Tools:** Verify every return; do not assume success.

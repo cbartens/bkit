@@ -81,7 +81,7 @@
       }
     },
     {
-      "files": [".opencode/plugin/bkit-gateguard.js"],
+      "files": [".opencode/plugin/bkit-gateguard.js", ".opencode/plugin/bkit-readguard.js"],
       "rules": {
         "defensive.empty-catch": {
           "enabled": false
@@ -94,7 +94,12 @@
         "**/.cursor/hooks/bkit-gateguard.cjs",
         "**/.codex/hooks/bkit-gateguard.cjs",
         "**/.agents/plugins/bkit/hooks/bkit-gateguard.cjs",
-        "**/.opencode/plugin/bkit-gateguard.js"
+        "**/.opencode/plugin/bkit-gateguard.js",
+        "**/.claude/hooks/bkit-readguard.cjs",
+        "**/.cursor/hooks/bkit-readguard.cjs",
+        "**/.codex/hooks/bkit-readguard.cjs",
+        "**/.agents/plugins/bkit/hooks/bkit-readguard.cjs",
+        "**/.opencode/plugin/bkit-readguard.js"
       ],
       "rules": {
         "structure.duplicate-function-signatures": {

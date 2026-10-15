@@ -39,16 +39,15 @@ export function getPkgRoot() {
         : path.resolve(engineDir, "..");
 }
 // ---------------------------------------------------------------------------
-// The three payload roots. Each folder carries one licence and one install
-// behaviour; a file's path inside its folder is where it lands in the consumer
-// repo.
+// The three payload roots. Each folder carries one install behaviour; a file's
+// path inside its folder is where it lands in the consumer repo.
 //
-//   core/       PolyForm. Written and kept current. engine/, workflows/,
-//               prompts/, .bkit/, hooks/ and every LICENSE.md are skipped
-//               by install; the rest is copied at its folder-relative path.
-//   shared/     MIT-0. Written and kept current: bkit's blocks and keys inside
+//   core/       Written and kept current. engine/, workflows/, prompts/,
+//               .bkit/ and hooks/ are skipped by install; the rest is copied
+//               at its folder-relative path.
+//   shared/     Written and kept current: bkit's blocks and keys inside
 //               files the consumer also edits, plus small whole files.
-//   templates/  MIT-0. Copy-and-own only: never applied to the repo, copied raw
+//   templates/  Copy-and-own only: never applied to the repo, copied raw
 //               into the consumer's `.bkit/templates/` by syncTemplateCopies.
 // ---------------------------------------------------------------------------
 export function getCoreRoot() {
@@ -96,11 +95,9 @@ export function templateRelPath(dest) {
 /**
  * The absolute source path backing a consumer-relative dest, or `null` when no
  * payload root carries it. Checks `shared/` then `core/`, applying the dotfile
- * remap. Root-level `LICENSE.md` files are never install sources.
+ * remap.
  */
 export function findTemplateSource(relPath) {
-    if (path.basename(relPath) === "LICENSE.md")
-        return null;
     const rel = templateRelPath(relPath);
     for (const root of [getSharedRoot(), getCoreRoot()]) {
         const p = path.join(root, rel);

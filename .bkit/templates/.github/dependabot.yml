@@ -23,6 +23,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    # Hold a release this many days before opening its PR, so a bad publish is
+    # pulled before it reaches the queue. Security updates skip the cooldown.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(deps)"
       include: scope
@@ -40,6 +44,8 @@ updates:
   #   schedule:
   #     interval: weekly
   #   open-pull-requests-limit: 10
+  #   cooldown:
+  #     default-days: 7
   #   commit-message:
   #     prefix: "chore(deps)"
   #     prefix-development: "chore(deps-dev)"

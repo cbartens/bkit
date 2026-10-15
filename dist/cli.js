@@ -13,6 +13,7 @@ import { runComplyCommand } from "./commands/comply.js";
 import { runHarvestCommand } from "./commands/harvest.js";
 import { runAnalysisCommand } from "./commands/analysis.js";
 import { runTelemetryCommand } from "./commands/telemetry.js";
+import { runTipsCommand } from "./commands/tips.js";
 import { runUpgradeCommand } from "./commands/install/upgrade.js";
 import { runUninstallCommand } from "./commands/install/uninstall.js";
 import { runInstall } from "./commands/install/install.js";
@@ -41,6 +42,7 @@ export const CLASSIC_VERBS = new Set([
     "harvest",
     "analysis",
     "telemetry",
+    "tips",
     "cursor",
     "opencode",
     "help",
@@ -70,7 +72,7 @@ export function parseComplyPhase(value) {
 // Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing) is
 // intercepted by a dedicated branch in parseArgs before this set is consulted; the
 // generic check only ever validates claude/cursor/codex. `full`, `core` and `cloud`
-// are NOT accepted as bare flags: use `--auto=<claude|cursor>`; core is implicit.
+// are NOT accepted as bare flags: use `--auto=<variant>`; core is implicit.
 // There is no dependency-updater flag. Copy an example; CI warns when none is present.
 const MODULE_FLAGS = new Set(["claude", "cursor", "opencode", "codex", "antigravity"]);
 // ALL_MODULES — every non-opt-in module, core first. Used to expand a bare/full
@@ -158,6 +160,10 @@ export function parseArgs(argv) {
         verb = "telemetry";
         args.shift();
     }
+    else if (firstArg === "tips") {
+        verb = "tips";
+        args.shift();
+    }
     else if (firstArg === "cursor" || firstArg === "opencode") {
         verb = firstArg;
         args.shift();
@@ -186,6 +192,8 @@ export function parseArgs(argv) {
     let opencodeProvider = null;
     let complyPhase = null;
     let telemetrySubverb = null;
+    let tipsAll = false;
+    let tipsWorkflow = null;
     // For `telemetry` verb: extract the sub-verb from the first remaining positional arg
     if (verb === "telemetry") {
         const subVerbArg = args[0];
@@ -244,7 +252,7 @@ export function parseArgs(argv) {
                 console.error(`[bkit] --phase requires a value: --phase=<${COMPLY_PHASES.join("|")}>. Run \`bkit help\` for usage.`);
                 process.exit(1);
             }
-            // Value-bearing flag: --auto=<claude|cursor> — cloud-agent (auto-dispatch) lane;
+            // Value-bearing flag: --auto=<variant> (CLOUD_VARIANTS) — cloud-agent (auto-dispatch) lane;
             // sets the internal `cloud` module. Bare `--auto` (no variant) is accepted only on
             // uninstall (variant read from package.json).
             if (flag === "auto") {
@@ -300,6 +308,21 @@ export function parseArgs(argv) {
                 }
                 opencodeProvider = rawValue;
                 moduleFlags.add("opencode");
+                continue;
+            }
+            // Tips-only flags: --all prints every firing tip; --workflow=<name> puts the tips that
+            // matter in that workflow first and prints one.
+            if (flag === "all" && verb === "tips") {
+                tipsAll = true;
+                continue;
+            }
+            if (flag.startsWith("workflow=") && verb === "tips") {
+                const value = flag.slice("workflow=".length);
+                tipsWorkflow = parseComplyPhase(value);
+                if (tipsWorkflow === null) {
+                    console.error(`[bkit] Unknown workflow: "${value}". Valid values: ${COMPLY_PHASES.join(", ")}`);
+                    process.exit(1);
+                }
                 continue;
             }
             // Uninstall-specific flags (accepted for all verbs that use them)
@@ -386,6 +409,8 @@ export function parseArgs(argv) {
         opencodeProvider,
         complyPhase,
         telemetrySubverb,
+        tipsAll,
+        tipsWorkflow,
     };
 }
 export function printUsage() {
@@ -395,7 +420,8 @@ Usage:
   bkit install <module-flags>   Install (or re-sync) the named modules + the implicit
                                  core foundation. At least one module flag is REQUIRED —
                                  a bare \`bkit install\` errors (name the modules below).
-                                 Hosts compose: --claude --cursor --codex --opencode=<provider>.
+                                 Hosts compose: --claude --cursor --codex --antigravity
+                                 --opencode=<provider>.
   bkit check                     Dry-run — drift-check everything already installed (no
                                  module flags). Exits 1 when a managed file needs
                                  re-rendering. Copies under .bkit/templates/ are refreshed by
@@ -422,6 +448,13 @@ Usage:
                                  targeted uninstall leaves core untouched.
   bkit doctor                   Read-only preflight + post-install advisory replay.
                                  Diagnose token surfaces and config drift. Exits 0.
+  bkit tips [--workflow=<name>] [--all]
+                                 Setup tips: what this repo has not set up yet, most useful
+                                 first, each with a sentence to ask your agent. Top three
+                                 by default; --workflow=design|plan|build|debug|ship puts
+                                 the tips that matter there first and prints one (each
+                                 workflow runs this at its close); --all lists every one.
+                                 Local checks only. Exits 0.
   bkit status                   Read-only host/provider status. Reports current host+provider
                                  (sampled from .opencode/opencode.json, .claude/, .cursor/).
                                  Writes nothing. Exits 0.
@@ -491,14 +524,15 @@ Module flags (composable; symmetric install ↔ uninstall):
                   Provider value is REQUIRED. Supported: openrouter, ollama,
                   opencode-zen, opencode-go (opencode-native gateways;
                   auth via BKIT_OPENCODE_API_KEY).
-                  Ships .opencode/** (agents, commands, opencode.json, bkit-gateguard.js).
+                  Ships .opencode/** (agents, commands, opencode.json, bkit-gateguard.js,
+                  bkit-readguard.js).
                   Configure your provider key; verify with \`bkit doctor\`. All installed
                   providers tracked in bkit.opencodeProviders.
   --codex         Codex CLI host. BARE flag — takes no value: Codex runs on one gateway
                   (openai), so only --opencode is provider-pluggable. Ships .codex/agents/*.toml
-                  + .codex/hooks.json + .codex/hooks/bkit-gateguard.cjs, plus the workflow skills
-                  (.agents/skills/bkit-*/). Codex loads project-local hooks ONLY once the
-                  .codex/ layer is trusted — until then GateGuard is installed and never fires.
+                  + .codex/hooks.json + .codex/hooks/bkit-{gateguard,guardrails,readguard}.cjs,
+                  plus the workflow skills (.agents/skills/bkit-*/). Codex loads project-local
+                  hooks ONLY once the .codex/ layer is trusted — until then they never fire.
   --antigravity   Google Antigravity IDE host. BARE flag — takes no value: Antigravity runs
                   on one gateway (google). Installs as a workspace PLUGIN at
                   .agents/plugins/bkit/ — plugin.json + skills/bkit-*/SKILL.md (workflow
@@ -600,7 +634,7 @@ export function validateModuleFlagsForVerb(verb, moduleFlags) {
     if (verb === "install" && moduleFlags.size === 0) {
         return ("[bkit] `bkit install` requires at least one module flag. Name what to install: " +
             "--claude, --cursor, --codex, --antigravity, --opencode=<provider> (plus opt-in " +
-            "--auto=<claude|cursor>). Run `bkit help` for usage.");
+            `--auto=<${CLOUD_VARIANTS.join("|")}>). Run \`bkit help\` for usage.`);
     }
     if ((verb === "check" || verb === "upgrade") && moduleFlags.size > 0) {
         return (`[bkit] \`bkit ${verb}\` takes no module flags — it operates on everything already ` +
@@ -621,7 +655,7 @@ export async function main() {
         process.exitCode = commandExit;
         return;
     }
-    const { verb, modules, moduleFlags, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, complyPhase, telemetrySubverb, } = parseArgs(process.argv.slice(2));
+    const { verb, modules, moduleFlags, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, complyPhase, telemetrySubverb, tipsAll, tipsWorkflow, } = parseArgs(process.argv.slice(2));
     // A bare `bkit` (no arguments) means no command was given: print usage and exit non-zero
     // (2 = usage error), distinct from an explicit `bkit help` / `--help` (verb "help"), which
     // prints the same usage and exits 0. parseArgs still defaults no-args to the "help" verb.
@@ -647,6 +681,10 @@ export async function main() {
     }
     if (verb === "telemetry") {
         runTelemetryCommand(telemetrySubverb, complyPhase);
+        return;
+    }
+    if (verb === "tips") {
+        runTipsCommand(tipsAll, tipsWorkflow);
         return;
     }
     // Launcher verbs — exec the GUI app binary with .bkit/.env merged into the env

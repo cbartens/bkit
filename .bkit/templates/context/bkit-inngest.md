@@ -3,10 +3,10 @@
 
 # Inngest — failed function runs
 
-Fits: apps running durable functions on Inngest Cloud. `context=runtime`: recent `inngest/function.failed` system events — function id, run id, error message, and the opaque `*Id` keys of the triggering event.
+Fits: apps running durable functions on Inngest Cloud. `context=runtime`: `inngest/function.failed` system events in a time window (default last 4 h) — function id, run id, error message, and the opaque `*Id` keys of the triggering event.
 
 - Secret: `INNGEST_SIGNING_KEY` — reuse the app's existing key. It is environment-scoped (branch environments and production have separate keys): use the key whose runs you want.
-- Non-secret: `INNGEST_N` (events, default 25).
+- Non-secret: `INNGEST_N` (events, default 25, max 100), `SINCE_ISO` (window start, default 4 h ago; the API alone looks back only 1 h), `INNGEST_ENV` (branch environment name when the key is a branch key).
 - CLI: none (`curl` + `jq`), no provision block.
 - PII: the projection keeps only keys ending in `Id` from the triggering event's data. Keep free text and personal data out of `*Id` keys in your event payloads, or narrow the projection.
 
@@ -19,10 +19,16 @@ Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`.
 # INNGEST_SIGNING_KEY is ENV-SCOPED (branch env vs production) — use the key for the env whose
 # runs you want. Lists recent `inngest/function.failed` system events → function_id + run_id + error.
 # PII-safe: surfaces ONLY /Id$/ keys from the triggering event; every other key is dropped.
-# Customise: INNGEST_N; the ids projection (narrow it if any *Id key in your events carries PII).
+# The API's own default window is the last 1 h; the block sets an explicit one.
+# Customise: INNGEST_N (<= 100); SINCE_ISO window start (default 4 h ago); INNGEST_ENV (branch environment name, with a branch signing key); the ids projection (narrow it if any *Id key in your events carries PII).
 [ -n "${INNGEST_SIGNING_KEY:-}" ] \
   || { echo "[context-fetch:inngest] skipped — INNGEST_SIGNING_KEY unset" >&2; exit 0; }
-curl -s "https://api.inngest.com/v1/events?name=inngest/function.failed&limit=${INNGEST_N:-25}" \
+START="${SINCE_ISO:-$(date -u -v-4H +%FT%TZ 2>/dev/null || date -u -d '4 hours ago' +%FT%TZ)}"
+curl -sG "https://api.inngest.com/v1/events" \
+  --data-urlencode "name=inngest/function.failed" \
+  --data-urlencode "limit=${INNGEST_N:-25}" \
+  --data-urlencode "received_after=${START}" \
+  ${INNGEST_ENV:+-H "x-inngest-env: ${INNGEST_ENV}"} \
   -H "Authorization: Bearer ${INNGEST_SIGNING_KEY}" \
   | jq '[.data[]
         | {id, ts, function_id: .data.function_id, run_id: .data.run_id,

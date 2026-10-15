@@ -11,7 +11,7 @@ tools:
   - write_to_file
   - replace_file_content
 ---
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior auditor verifying every plan task has scope, criteria, and verification.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -20,6 +20,7 @@ tools:
 > **EXECUTION PROTOCOL:** Strict procedure, do not deviate.
 >
 > - **Rules:** Read `.agents/rules.md` → follow all `Universal Rules`; skip `Orchestrator Rules`.
+> - **Code reads:** Locate first (symbol lookup or `grep -n`), then read only needed line ranges; never re-read unchanged files.
 > - **Order:** Execute Process steps sequentially unless stated otherwise.
 > - **No improv:** No ad-hoc steps, no skipping, no scope beyond this file.
 > - **Tools:** Verify every return; do not assume success.
@@ -40,7 +41,7 @@ tools:
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Verify `docs/templates/bkit-plan.md` — all mandated sections present and populated. Missing / broken → `CRITICAL`.
-6. Verify every `Agent Execution Runbook` task has scope, `Done when`, and verification step.
+6. Verify every `Agent Execution Runbook` task has scope, `Done when`, `Test first`, and verification step. `Test first` breaking template rule including unjustified `n/a` → `CRITICAL`.
 7. Verify every scope item has both build task and verification task.
 8. Verify `Derived Test Matrix` ↔ `Agent Execution Runbook`: rows map 1:1 (bidirectional) to verification tasks. Gaps → `CRITICAL` finding naming the task or row to add.
 9. Identify gaps, edge cases, untested assumptions, missing error handling.

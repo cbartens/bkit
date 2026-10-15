@@ -82,7 +82,9 @@
     {
       "files": [
         ".bkit/core/.opencode/plugin/bkit-gateguard.js",
-        ".opencode/plugin/bkit-gateguard.js"
+        ".opencode/plugin/bkit-gateguard.js",
+        ".bkit/core/.opencode/plugin/bkit-readguard.js",
+        ".opencode/plugin/bkit-readguard.js"
       ],
       "rules": {
         "defensive.empty-catch": {
@@ -98,11 +100,24 @@
         ".bkit/core/.opencode/plugin/bkit-gateguard.js",
         ".bkit/core/hooks/gateguard-engine.js",
         ".bkit/core/hooks/gateguard-edit-payload.js",
+        ".bkit/core/.claude/hooks/bkit-readguard.cjs",
+        ".bkit/core/.cursor/hooks/bkit-readguard.cjs",
+        ".bkit/core/.codex/hooks/bkit-readguard.cjs",
+        ".bkit/core/.agents/plugins/bkit/hooks/bkit-readguard.cjs",
+        ".bkit/core/.opencode/plugin/bkit-readguard.js",
+        ".bkit/core/hooks/readguard-engine.js",
+        ".bkit/core/hooks/readguard-payload.js",
+        ".bkit/core/hooks/antigravity-hook.js",
         "**/.claude/hooks/bkit-gateguard.cjs",
         "**/.cursor/hooks/bkit-gateguard.cjs",
         "**/.codex/hooks/bkit-gateguard.cjs",
         "**/.agents/plugins/bkit/hooks/bkit-gateguard.cjs",
-        "**/.opencode/plugin/bkit-gateguard.js"
+        "**/.opencode/plugin/bkit-gateguard.js",
+        "**/.claude/hooks/bkit-readguard.cjs",
+        "**/.cursor/hooks/bkit-readguard.cjs",
+        "**/.codex/hooks/bkit-readguard.cjs",
+        "**/.agents/plugins/bkit/hooks/bkit-readguard.cjs",
+        "**/.opencode/plugin/bkit-readguard.js"
       ],
       "rules": {
         "structure.duplicate-function-signatures": {
@@ -115,6 +130,8 @@
         ".bkit/core/.claude/hooks/bkit-guardrails.cjs",
         ".bkit/core/.cursor/hooks/bkit-guardrails.cjs",
         ".bkit/core/.codex/hooks/bkit-guardrails.cjs",
+        ".bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs",
+        ".bkit/core/hooks/guardrails-read.js",
         ".bkit/core/hooks/guardrails-shell.js",
         ".bkit/core/hooks/guardrails-tiers.js",
         "**/.claude/hooks/bkit-guardrails.cjs",

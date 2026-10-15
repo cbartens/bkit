@@ -1077,8 +1077,24 @@ const INTERVAL_FLAG: FlagSpec = {
   help: "seconds between polls (>= 1)",
 };
 
-const deps = (ctx: RunContext) => ({
-  gh: (args: string[]) => runGh(ctx.cwd, args),
+/**
+ * `gh` pinned to `repo`: `--repo` is appended to every subcommand that takes it.
+ * `gh api` is left alone because its path already names the repo. No `repo` = `gh` unchanged.
+ */
+export function repoScopedGh(gh: Gh, repo: string | undefined): Gh {
+  if (repo === undefined) return gh;
+  return (args) => (args[0] === "api" ? gh(args) : gh([...args, "--repo", repo]));
+}
+
+/** Whether `--repo` names a repo other than the checkout's own (local git then describes the wrong repo). */
+function isForeignRepo(cwd: string, repo: string | undefined): boolean {
+  return (
+    repo !== undefined && resolveOwnerRepo(cwd)?.ownerRepo.toLowerCase() !== repo.toLowerCase()
+  );
+}
+
+const deps = (ctx: RunContext, repo?: string) => ({
+  gh: repoScopedGh((args: string[]) => runGh(ctx.cwd, args), repo),
   sleep: realSleep,
   log: ctx.log,
 });
@@ -1423,10 +1439,25 @@ function runGate(ctx: RunContext): number {
   const snapshot = str(f.snapshot);
   if (snapshot !== undefined) {
     const info = pr?.kind === "ok" ? pr.pr : undefined;
-    const dev = git(ctx.cwd, ["rev-parse", "origin/dev"]) ?? "";
-    const ancestor = runGit(ctx.cwd, ["merge-base", "--is-ancestor", "origin/dev", head]).ok;
+    const repoFlag = str(f.repo);
+    const foreign = isForeignRepo(ctx.cwd, repoFlag);
+    // A foreign repo's dev and ancestry come from the API: the checkout's origin/dev is another repo's.
+    let dev: string;
+    let ancestor: boolean;
+    if (foreign && repoFlag !== undefined) {
+      const devRes = gh(["api", `repos/${repoFlag}/commits/dev`, "--jq", ".sha"]);
+      dev = devRes.ok ? devRes.stdout.trim() : "";
+      const cmp = gh(["api", `repos/${repoFlag}/compare/dev...${head}`, "--jq", ".status"]);
+      ancestor = cmp.ok && ["ahead", "identical"].includes(cmp.stdout.trim());
+    } else {
+      dev = git(ctx.cwd, ["rev-parse", "origin/dev"]) ?? "";
+      ancestor = runGit(ctx.cwd, ["merge-base", "--is-ancestor", "origin/dev", head]).ok;
+    }
     const ciWorkflow = readBkitConfig(root).ciWorkflow;
-    const runs = gh([
+    const runs = repoScopedGh(
+      gh,
+      repoFlag,
+    )([
       "run",
       "list",
       "--branch",
@@ -1528,7 +1559,9 @@ function devRequiresChecks(gh: Gh, repo: string): boolean {
 
 async function runRevalidate(ctx: RunContext): Promise<number> {
   const f = ctx.flags;
-  const d = deps(ctx);
+  const repoFlag = str(f.repo);
+  const d = deps(ctx, repoFlag);
+  const foreign = isForeignRepo(ctx.cwd, repoFlag);
   const branch = String(f.branch);
   const entry = String(f.entryHead);
   const codeHead = String(f.codeHead);
@@ -1536,8 +1569,8 @@ async function runRevalidate(ctx: RunContext): Promise<number> {
   if (!["head-move", "gate-refusal"].includes(reason))
     throw new CommandError(EXIT.USAGE, "--reason must be head-move or gate-refusal");
   const status = path.resolve(ctx.cwd, String(f.file));
-  runGit(ctx.cwd, ["fetch", "origin", branch]);
-  const pr = probePr(ctx.cwd, { number: String(f.pr), state: "open", repo: str(f.repo) });
+  if (!foreign) runGit(ctx.cwd, ["fetch", "origin", branch]);
+  const pr = probePr(ctx.cwd, { number: String(f.pr), state: "open", repo: repoFlag });
   if (pr.kind === "unavailable") {
     ctx.log(pr.message);
     return EXIT.USE_MCP;
@@ -1552,14 +1585,22 @@ async function runRevalidate(ctx: RunContext): Promise<number> {
   // CI must pass at the code head while the PR head adds bookkeeping only and dev
   // demands no status checks; otherwise at the PR head.
   let validated = codeHead;
-  const book = onlyBookkeeping(checkoutRoot(ctx.cwd), {
-    month: String(f.month),
-    fid: String(f.fid),
-    from: codeHead,
-    to: current,
-  });
-  if (!book.ok) validated = current;
-  const repo = str(f.repo) ?? resolveOwnerRepo(ctx.cwd)?.ownerRepo;
+  if (foreign) {
+    // The bookkeeping diff reads the checkout's git, which is not the named repo's history.
+    ctx.log(
+      `--repo ${repoFlag} is not this checkout's repo — bookkeeping diff skipped, validating at the PR head ${current}`,
+    );
+    validated = current;
+  } else {
+    const book = onlyBookkeeping(checkoutRoot(ctx.cwd), {
+      month: String(f.month),
+      fid: String(f.fid),
+      from: codeHead,
+      to: current,
+    });
+    if (!book.ok) validated = current;
+  }
+  const repo = repoFlag ?? resolveOwnerRepo(ctx.cwd)?.ownerRepo;
   if (repo !== undefined && devRequiresChecks(d.gh, repo)) {
     ctx.log(`dev requires status checks — validating at the PR head ${current}`);
     validated = current;

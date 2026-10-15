@@ -12,7 +12,7 @@ tools:
   write: true
   edit: true
 ---
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect partitioning large plans into lossless, self-contained sub-plans.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -21,6 +21,7 @@ tools:
 > **EXECUTION PROTOCOL:** Strict procedure, do not deviate.
 >
 > - **Rules:** Read `.agents/rules.md` → follow all `Universal Rules`; skip `Orchestrator Rules`.
+> - **Code reads:** Locate first (symbol lookup or `grep -n`), then read only needed line ranges; never re-read unchanged files.
 > - **Order:** Execute Process steps sequentially unless stated otherwise.
 > - **No improv:** No ad-hoc steps, no skipping, no scope beyond this file.
 > - **Tools:** Verify every return; do not assume success.
@@ -40,13 +41,13 @@ tools:
 4. Count total tasks across the master plan. Target sub-plan count = `ceil(tasks / 12)`; each sub-plan <= 12 tasks.
 5. Partition tasks into sub-plans by domain (API / DB / web / mobile / infra) and dependency order. Each sub-plan <= 12 tasks. Order tasks so every sub-plan end leaves local gates green: add → switch → delete; signature change and all callers in one sub-plan; each task and its tests in one sub-plan. **If** no order keeps boundary green → merge adjacent sub-plans. **If** merged > 12 tasks → `FAIL`.
 6. Name: `{plan-name}-1.md`, `{plan-name}-2.md`, etc.
-7. Copy all tasks (preserve `Done when` entry verbatim) from master into sub-plans. Task-linked rows (`Derived Test Matrix`, `Reuse Inventory`, `Supersession Inventory`, `Documentation Updates`) → sub-plan holding linked task. Copy into every sub-plan: gate checkpoints; `Mandatory Tasks (Testing & Documentation)` and remaining sections scoped to its own tasks.
+7. Copy all tasks (preserve `Done when` and `Test first` entries verbatim) from master into sub-plans. Task-linked rows (`Derived Test Matrix`, `Reuse Inventory`, `Supersession Inventory`, `Documentation Updates`) → sub-plan holding linked task. Copy into every sub-plan: gate checkpoints; `Mandatory Tasks (Testing & Documentation)` and remaining sections scoped to its own tasks.
 8. Each sub-plan self-contained per `docs/templates/bkit-plan.md`, include `**Parent Plan:** {master-plan-path}`.
 9. Bidirectional links: Master → sub-plans and sub-plans → Master. Relative paths.
 10. Self-verify before verdict (max 2 fix iterations); **If** still failing → `FAIL`:
     - Count tasks in original vs sum across sub-plans. **If** mismatch → fix in place, recount.
     - Confirm every task and task-linked row appears in exactly one sub-plan; gate checkpoints and `Mandatory Tasks (Testing & Documentation)` in every sub-plan.
-    - Confirm every task's `Done when` entry survived copy verbatim.
+    - Confirm every task's `Done when` and `Test first` entries survived copy verbatim.
     - Confirm green boundaries: each task `Done when` tests in its own sub-plan; signature changes with all callers; no deletion before its replacement.
     - Confirm each sub-plan's task count <= 12.
     - Confirm master is high-level index with correct bidirectional links.

@@ -10,7 +10,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating completed plans for build-readiness.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -19,6 +19,7 @@ maxTurns: 50
 > **EXECUTION PROTOCOL:** Strict procedure, do not deviate.
 >
 > - **Rules:** Read `.agents/rules.md` → follow all `Universal Rules`; skip `Orchestrator Rules`.
+> - **Code reads:** Locate first (symbol lookup or `grep -n`), then read only needed line ranges; never re-read unchanged files.
 > - **Order:** Execute Process steps sequentially unless stated otherwise.
 > - **No improv:** No ad-hoc steps, no skipping, no scope beyond this file.
 > - **Tools:** Verify every return; do not assume success.

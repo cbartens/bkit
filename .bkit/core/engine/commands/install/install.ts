@@ -16,7 +16,7 @@ import {
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
 import type { ParsedArgs } from "../../cli.js";
 import { detectInstalledModules, reportCheckDrift } from "./check.js";
-import { runPreflight } from "../../checks/before/index.js";
+import { runPreflight, type PreflightFinding } from "../../checks/before/index.js";
 import {
   formatChecklist,
   readChangelogVersionDelta,
@@ -24,6 +24,7 @@ import {
   writeAdvisoriesArtifact,
 } from "../../checks/after/index.js";
 import type { SuppressionNote } from "../../checks/after/suppression.js";
+import { collectTips } from "../../checks/tips/index.js";
 import { findMissingOwnedHooks, detectOwnedHookMissing } from "../../checks/after/managed.js";
 import { resolveTokens } from "../../install/placeholders.js";
 import {
@@ -222,6 +223,26 @@ export function detectOpencodeProviders(cwd: string): string[] {
   return [];
 }
 
+/**
+ * Re-run Phase 1 detection after the writes. The Phase 1 advisory seeds (the first
+ * `seedCount` entries of `current`) are replaced by the fresh ones; advisories pushed by
+ * modules during dispatch are kept. Fresh blockers are returned so the caller fails on them.
+ */
+export function refreshPreflightAfterWrites(
+  modules: Set<ModuleFlag>,
+  cwd: string,
+  issueTracker: IssueTracker | undefined,
+  seedCount: number,
+  current: PreflightFinding[],
+): { advisories: PreflightFinding[]; blockers: PreflightFinding[] } {
+  const moduleAdvisories = current.slice(seedCount);
+  const fresh = runPreflight(modules, cwd, undefined, issueTracker);
+  return {
+    advisories: [...fresh.advisories, ...moduleAdvisories],
+    blockers: fresh.blockers,
+  };
+}
+
 /** `bkit install`, and `bkit check` (the same pipeline, dry-run). */
 export async function runInstall(
   args: Pick<
@@ -349,9 +370,7 @@ export async function runInstall(
   }
 
   // Seed preflight advisories into ctx so modules can accumulate into the same list.
-  const advisories: import("../../checks/before/index.js").PreflightFinding[] = [
-    ...preflightAdvisories,
-  ];
+  const advisories: PreflightFinding[] = [...preflightAdvisories];
 
   const ws: WriteSet = { writes: [] };
   const postDispatch: Array<() => void> = [];
@@ -490,15 +509,17 @@ export async function runInstall(
   // banner above. `check` (dryRun) wrote nothing, so its Phase 1 findings already describe
   // the current state and are kept as-is. Module-accumulated advisories (pushed during
   // dispatch) are preserved; only the Phase 1 seeds are replaced, in their original order.
+  let postWriteBlockers: PreflightFinding[] = [];
   if (!dryRun) {
-    const moduleAdvisories = advisories.slice(preflightAdvisories.length);
-    const { advisories: freshPreflightAdvisories } = runPreflight(
+    const refreshed = refreshPreflightAfterWrites(
       effectiveModules,
       process.cwd(),
-      undefined,
       issueTracker,
+      preflightAdvisories.length,
+      advisories,
     );
-    ctx.advisories = [...freshPreflightAdvisories, ...moduleAdvisories];
+    ctx.advisories = refreshed.advisories;
+    postWriteBlockers = refreshed.blockers;
   }
 
   // --- Phase 3: Post-install checks (re-detect + unified output) ---
@@ -517,12 +538,20 @@ export async function runInstall(
   }
   const suppressed: SuppressionNote[] = [];
   const postFindings = runPostInstallCheck(ctx.advisories, process.cwd(), suppressed);
+  if (postWriteBlockers.length > 0) {
+    console.log(
+      `${LOG_PREFIX} Preflight blockers appeared after the writes — files are already written; fix the blocker and re-run.`,
+    );
+    postFindings.unshift(...postWriteBlockers);
+  }
   // check only: install has just written every hook file of the modules it dispatched, and a
   // missing bkit-cloud-bootstrap.sh after `install --claude` is not that run's fault.
   const missingHooks = dryRun ? findMissingOwnedHooks(process.cwd(), effectiveModules) : [];
   const missingHooksFinding = detectOwnedHookMissing(missingHooks);
   if (missingHooksFinding) postFindings.push(missingHooksFinding);
-  const banner = formatChecklist(postFindings, suppressed);
+  const { tips, suppressed: suppressedTips } = collectTips(process.cwd());
+  suppressed.push(...suppressedTips);
+  const banner = formatChecklist(postFindings, suppressed, tips);
   if (banner) console.log(banner);
   writeAdvisoriesArtifact(postFindings, {
     cwd: process.cwd(),
@@ -530,6 +559,7 @@ export async function runInstall(
     version: getInstallingVersion(),
     logPrefix: LOG_PREFIX,
     suppressed,
+    tips,
   });
 
   // Check mode: exit 1 on drift (see reportCheckDrift).

@@ -57,6 +57,7 @@ import {
   parseIssueTracker,
 } from "../../install/manifest.js";
 import { OPTIN_MODULES } from "../../install/manifest.js";
+import { detectInstalledHostModules } from "../../install/hosts.js";
 import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
 import {
@@ -529,22 +530,6 @@ export function updateCanonicalHashesAfterUpgrade(
 }
 
 /**
- * Detect which host modules a consumer has installed, by the presence of each host's
- * source-rendered agents directory. Used by `bkit upgrade` to re-render only the hosts
- * the consumer installed — never force-creating an opencode/cursor tree.
- */
-export function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
-  const mods = new Set<ModuleFlag>();
-  if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
-  if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
-  if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
-  if (fs.existsSync(path.join(cwd, ".codex", "agents"))) mods.add("codex");
-  if (fs.existsSync(path.join(cwd, ".agents", "plugins", "bkit", "plugin.json")))
-    mods.add("antigravity");
-  return mods;
-}
-
-/**
  * Resolve the newest published @cbartens/bkit version from the registry for
  * `bkit upgrade --latest`. Shells out to `pnpm view` (honours the consumer's
  * registry auth). Hard-exits with guidance on failure — the caller has nothing
@@ -736,8 +721,6 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
       if (ent.isDirectory()) {
         collectPayload(entAbs, entRel, skipTopDirs);
       } else if (ent.isFile()) {
-        // Each payload root's LICENSE.md is package metadata, never an install source.
-        if (ent.name === "LICENSE.md") continue;
         // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
         const relPath = remapTemplateDest(entRel);
         // `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` are GENERATED output files
@@ -748,15 +731,22 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
         // (host-gated, non-dry-run).
         if (relPath === CLAUDE_CLOUD_RELPATH || relPath === CURSOR_CLOUD_RELPATH) continue;
         if (relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH) continue;
-        // Skip opt-in-module files the consumer hasn't opted into (dest absent).
-        if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
-          continue;
-        }
         const entry = entryByPath.get(relPath);
+        const ownerModule = entry?.module;
+        // Skip opt-in-module files the consumer hasn't opted into: dest absent and the owning
+        // module not detected as installed. A detected opt-in host (opencode / codex /
+        // antigravity) gets the files a newer release adds; `cloud` has no install sentinel,
+        // so its files upgrade only when present. opencode.json is created only when its
+        // provider resolves — never written with raw `@@OPENCODE_*@@` sentinels.
+        if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
+          const hostInstalled = ownerModule !== undefined && installedModules.has(ownerModule);
+          if (!hostInstalled || (relPath === OPENCODE_JSON_RELPATH && !upgradeOpencodeProvider)) {
+            continue;
+          }
+        }
         // Skip host-module files when that module is not installed — upgrade updates
         // only what the consumer opted into, never force-creating a new module. opt-ins are
-        // handled by the dest-presence check above; core + entry-less files always pass.
-        const ownerModule = entry?.module;
+        // handled by the check above; core + entry-less files always pass.
         if (
           ownerModule &&
           ownerModule !== "core" &&
@@ -805,11 +795,8 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
 
   // Payload view links — the same sync install runs (`.bkit/core` + `.bkit/shared`
   // point into the installed package). Never clobbers a real directory; a platform
-  // refusal is reported, never fatal. Throwaway WriteSet: links carry no hash.
-  const linkChanges = syncPayloadLinks(process.cwd(), {
-    dryRun: upgradeFlags.dryRun,
-    ws: { writes: [] },
-  });
+  // refusal is reported, never fatal. Links carry no hash.
+  const linkChanges = syncPayloadLinks(process.cwd(), { dryRun: upgradeFlags.dryRun });
   const linkReport = formatPayloadLinkChanges(linkChanges);
   if (linkReport) console.log(`${LOG_PREFIX} ${linkReport}`);
 

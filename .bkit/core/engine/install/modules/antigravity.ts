@@ -209,10 +209,10 @@ export function runAntigravityModule(ctx: ModuleContext): void {
     }
   }
 
-  // --- bkit-gateguard.cjs — Tier-2 markered-text, twin of the Claude/Codex hook ---
-  {
-    const hookSrc = path.join(pluginHooksSrc, "bkit-gateguard.cjs");
-    const hookDst = path.join(ANTIGRAVITY_HOOKS_DIR, "bkit-gateguard.cjs");
+  // --- bkit-gateguard.cjs / bkit-readguard.cjs — Tier-2 markered-text, twins of the Claude/Codex hooks ---
+  for (const hook of ["bkit-gateguard.cjs", "bkit-readguard.cjs"]) {
+    const hookSrc = path.join(pluginHooksSrc, hook);
+    const hookDst = path.join(ANTIGRAVITY_HOOKS_DIR, hook);
     if (fs.existsSync(hookSrc)) {
       if (!dryRun) ensureDir(path.dirname(hookDst));
       const prevLen = ws.writes.length;
@@ -222,8 +222,9 @@ export function runAntigravityModule(ctx: ModuleContext): void {
   }
 
   // --- bkit-guardrails.cjs — Tier-2 markered-text, twin of the Cursor/Codex hook ---
-  // Registered on matcher `run_command` in hooks.json above. Same decision engine as the
-  // other hosts; the deny tier blocks for real.
+  // Registered on matcher `view_file|run_command` in hooks.json above. Same decision engine
+  // as the other hosts (shell tiers; read tiers shared with Cursor); the deny tier blocks
+  // for real.
   {
     const railSrc = path.join(pluginHooksSrc, "bkit-guardrails.cjs");
     const railDst = path.join(ANTIGRAVITY_HOOKS_DIR, "bkit-guardrails.cjs");
@@ -244,7 +245,7 @@ export function runAntigravityModule(ctx: ModuleContext): void {
       "Three things that differ from the other hosts:\n" +
       "1. Workflows are SKILLS here, not slash commands: Antigravity discovers them under `.agents/plugins/bkit/skills/bkit-<wf>/SKILL.md` (the plugin activates per project — no toggle).\n" +
       "2. There is no native subagent tool. The orchestrator loads each subagent prompt from `.agents/plugins/bkit/agents/` with `view_file` and executes it in-session; isolated runs use `run_command` (`agy`).\n" +
-      "3. GateGuard and guardrails are wired from `.agents/plugins/bkit/hooks.json` (PreToolUse on `write_to_file` / `replace_file_content` / `run_command`). See .bkit/providers.md.",
+      "3. GateGuard, ReadGuard and guardrails are wired from `.agents/plugins/bkit/hooks.json` (PreToolUse on `write_to_file` / `replace_file_content` / `view_file` / `run_command`). See .bkit/providers.md.",
   });
 
   // Both hosts installed: Antigravity's skill selector lists TWO sets of bkit-* skills.

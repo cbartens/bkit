@@ -152,8 +152,7 @@ describe("P3.T7 — detectHooksConfigOverwriteRisk absent", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectShellToken: unset vs empty-string
-// .npmrc inline action text + fallback
+// process.env snapshot and restore around each test
 // ---------------------------------------------------------------------------
 
 let originalEnv: NodeJS.ProcessEnv;

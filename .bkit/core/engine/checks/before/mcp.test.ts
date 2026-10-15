@@ -31,8 +31,7 @@ function makeModules(...flags: string[]): Set<import("../../cli").ModuleFlag> {
 }
 
 // ---------------------------------------------------------------------------
-// detectShellToken: unset vs empty-string
-// .npmrc inline action text + fallback
+// process.env snapshot and restore around each test
 // ---------------------------------------------------------------------------
 
 let originalEnv: NodeJS.ProcessEnv;
@@ -60,13 +59,13 @@ describe("detectMissingMcpServers", () => {
     expect(detectMissingMcpServers(tmpDir, ".mcp.json", "linear")).toEqual([]);
   });
 
-  it("returns advisory when .mcp.json exists but is missing the github server", () => {
+  it("returns advisory when .mcp.json exists but is missing the github server (github tracker)", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".mcp.json"),
       JSON.stringify({ mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } } }),
       "utf-8",
     );
-    const findings = detectMissingMcpServers(tmpDir, ".mcp.json", "linear");
+    const findings = detectMissingMcpServers(tmpDir, ".mcp.json", "github");
     expect(findings).toHaveLength(1);
     expect(findings[0]!.severity).toBe("advisory");
     expect(findings[0]!.id).toContain("github");
@@ -89,39 +88,38 @@ describe("detectMissingMcpServers", () => {
     expect(findings[0]!.action).toContain("linear");
   });
 
-  it("returns two advisories when .mcp.json exists but mcpServers is empty", () => {
+  it("linear tracker: requires only the linear server — empty mcpServers → one advisory", () => {
     fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify({ mcpServers: {} }), "utf-8");
     const findings = detectMissingMcpServers(tmpDir, ".mcp.json", "linear");
-    expect(findings).toHaveLength(2);
+    expect(findings.map((f) => f.id)).toEqual(["mcp-missing-server-linear--mcp-json"]);
   });
 
-  it("returns two advisories when .mcp.json exists but mcpServers key is absent", () => {
+  it("linear tracker: mcpServers key absent → one advisory", () => {
     fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify({ otherKey: {} }), "utf-8");
     const findings = detectMissingMcpServers(tmpDir, ".mcp.json", "linear");
-    expect(findings).toHaveLength(2);
+    expect(findings.map((f) => f.id)).toEqual(["mcp-missing-server-linear--mcp-json"]);
   });
 
-  it("returns empty array when both required servers are present", () => {
+  it("linear tracker: a linear-only file (what install writes) → no advisory", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".mcp.json"),
-      JSON.stringify({
-        mcpServers: {
-          linear: { url: "https://mcp.linear.app/mcp" },
-          github: { url: "https://api.githubcopilot.com/mcp/" },
-        },
-      }),
+      JSON.stringify({ mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } } }),
       "utf-8",
     );
     expect(detectMissingMcpServers(tmpDir, ".mcp.json", "linear")).toEqual([]);
   });
 
-  it("returns empty array when both required servers are present plus extra consumer servers", () => {
+  it("none tracker: requires no server — an empty mcpServers (what install writes) → no advisory", () => {
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify({ mcpServers: {} }), "utf-8");
+    expect(detectMissingMcpServers(tmpDir, ".mcp.json", "none")).toEqual([]);
+  });
+
+  it("returns empty array when the required server is present plus extra consumer servers", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".mcp.json"),
       JSON.stringify({
         mcpServers: {
           linear: { url: "https://mcp.linear.app/mcp" },
-          github: { url: "https://api.githubcopilot.com/mcp/" },
           "my-custom-server": { url: "https://example.com/mcp" },
         },
       }),
@@ -137,7 +135,7 @@ describe("detectMissingMcpServers", () => {
       JSON.stringify({ mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } } }),
       "utf-8",
     );
-    const findings = detectMissingMcpServers(tmpDir, ".cursor/mcp.json", "linear");
+    const findings = detectMissingMcpServers(tmpDir, ".cursor/mcp.json", "github");
     expect(findings).toHaveLength(1);
     expect(findings[0]!.action).toContain(".cursor/mcp.json");
   });
@@ -152,7 +150,11 @@ describe("detectMissingMcpServers", () => {
   });
 
   it("runPreflight includes mcp-missing-server advisories when .mcp.json is missing github", () => {
-    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "test" }), "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "test", bkit: { issueTracker: "github" } }),
+      "utf-8",
+    );
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".mcp.json"),
@@ -162,6 +164,27 @@ describe("detectMissingMcpServers", () => {
     const { advisories } = runPreflight(makeModules("core"), tmpDir);
     expect(advisories.some((f) => f.id.includes("mcp-missing-server-github"))).toBe(true);
   });
+
+  it.each([
+    ["linear", { linear: { type: "http", url: "https://mcp.linear.app/mcp" } }],
+    ["none", {}],
+  ] as const)(
+    "runPreflight: a fresh %s install's MCP files raise no mcp advisory",
+    (tracker, servers) => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "test", bkit: { issueTracker: tracker } }),
+        "utf-8",
+      );
+      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+      fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+      const doc = JSON.stringify({ mcpServers: servers });
+      fs.writeFileSync(path.join(tmpDir, ".mcp.json"), doc, "utf-8");
+      fs.writeFileSync(path.join(tmpDir, ".cursor", "mcp.json"), doc, "utf-8");
+      const { advisories } = runPreflight(makeModules("core"), tmpDir);
+      expect(advisories.filter((f) => f.id.startsWith("mcp-"))).toEqual([]);
+    },
+  );
 
   it("runPreflight does NOT emit mcp advisory when .mcp.json is absent", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "test" }), "utf-8");
@@ -206,7 +229,7 @@ describe("detectExtraMcpServers", () => {
     expect(findings[0]!.action).not.toMatch(/BAR-\d+/);
   });
 
-  it("none tracker: flags a stale linear server (only github is needed for PR ops)", () => {
+  it("none tracker: flags a stale linear server", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".mcp.json"),
       JSON.stringify({
@@ -222,18 +245,48 @@ describe("detectExtraMcpServers", () => {
     expect(findings[0]!.id).toContain("mcp-extra-server-linear");
   });
 
-  it("linear tracker: github + linear are both allowed → no advisory", () => {
+  it.each(["linear", "none"] as const)(
+    "%s tracker: never flags github — the gh MCP fallback calls it under every tracker",
+    (tracker) => {
+      fs.writeFileSync(
+        path.join(tmpDir, ".mcp.json"),
+        JSON.stringify({
+          mcpServers: {
+            ...(tracker === "linear" ? { linear: { url: "https://mcp.linear.app/mcp" } } : {}),
+            github: { url: "https://api.githubcopilot.com/mcp/" },
+          },
+        }),
+        "utf-8",
+      );
+      expect(detectExtraMcpServers(tmpDir, ".mcp.json", tracker)).toEqual([]);
+    },
+  );
+
+  it(".opencode/opencode.json: flags a stale linear entry under its mcp key", () => {
+    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".mcp.json"),
+      path.join(tmpDir, ".opencode", "opencode.json"),
       JSON.stringify({
-        mcpServers: {
-          linear: { url: "https://mcp.linear.app/mcp" },
-          github: { url: "https://api.githubcopilot.com/mcp/" },
+        mcp: {
+          linear: { type: "remote", url: "https://mcp.linear.app/mcp" },
+          github: { type: "remote", url: "https://api.githubcopilot.com/mcp/" },
         },
       }),
       "utf-8",
     );
-    expect(detectExtraMcpServers(tmpDir, ".mcp.json", "linear")).toEqual([]);
+    const findings = detectExtraMcpServers(tmpDir, ".opencode/opencode.json", "github", "mcp");
+    expect(findings.map((f) => f.id)).toEqual(["mcp-extra-server-linear--opencode-opencode-json"]);
+    expect(findings[0]!.action).toContain('Remove the "linear" entry from mcp.');
+  });
+
+  it(".opencode/opencode.json: reads only the mcp key, not mcpServers", () => {
+    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".opencode", "opencode.json"),
+      JSON.stringify({ mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } } }),
+      "utf-8",
+    );
+    expect(detectExtraMcpServers(tmpDir, ".opencode/opencode.json", "github", "mcp")).toEqual([]);
   });
 
   it("never flags consumer-added (non-bkit-managed) MCP servers for removal", () => {
@@ -286,5 +339,24 @@ describe("detectExtraMcpServers", () => {
     );
     const { advisories } = runPreflight(makeModules("core"), tmpDir);
     expect(advisories.some((f) => f.id.includes("mcp-extra-server-linear"))).toBe(true);
+  });
+
+  it("runPreflight emits mcp-extra-server advisory for a stale linear entry in .opencode/opencode.json", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "test", bkit: { issueTracker: "github" } }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".opencode", "opencode.json"),
+      JSON.stringify({ mcp: { linear: { type: "remote", url: "https://mcp.linear.app/mcp" } } }),
+      "utf-8",
+    );
+    const { advisories } = runPreflight(makeModules("core"), tmpDir);
+    expect(advisories.map((f) => f.id)).toContain(
+      "mcp-extra-server-linear--opencode-opencode-json",
+    );
   });
 });

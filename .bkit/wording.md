@@ -82,6 +82,15 @@ One `### {name}` section per clause:
 **Rules:** Read `.agents/rules.md` → FOLLOW ALL rules.
 ```
 
+### code-reads
+
+- prompt: required
+- position: header
+
+```text
+**Code reads:** Locate first (symbol lookup or `grep -n`), then read only needed line ranges; never re-read unchanged files.
+```
+
 ### order
 
 - prompt: required
@@ -1170,6 +1179,15 @@ Hold `verdict` as `SUMMARY_VERDICT`.
 **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step {{n}}.
 ```
 
+### workflow-close-links-gate
+
+- workflow: where-used
+- anchored: yes
+
+```text
+Artifact link list and telemetry report embedded in `Step {{n}}` comment
+```
+
 ### workflow-summary-only
 
 - workflow: repeatable
@@ -1205,6 +1223,30 @@ Append as last line `Would you like me to explain this in plain English?`
 
 ```text
 **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
+```
+
+### workflow-setup-tips-collect
+
+- workflow: where-used
+
+```text
+Collect setup tips:
+```
+
+### workflow-setup-tips-hold
+
+- workflow: where-used
+
+```text
+Plain text, not JSON. Hold stdout as `{SETUP_TIPS}`; prints nothing or exits non-zero → `{SETUP_TIPS}` empty.
+```
+
+### workflow-setup-tips-append
+
+- workflow: where-used
+
+```text
+Append `{SETUP_TIPS}` under a `## Setup Tips` heading, unless empty.
 ```
 
 ### workflow-issue-link

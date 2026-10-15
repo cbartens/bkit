@@ -125,7 +125,7 @@ describe("bkit workstreams parse", () => {
 });
 
 describe("bkit workstreams comment", () => {
-  it("builds the Step 10 comment body", async () => {
+  it("builds the Step 11 comment body", async () => {
     const r = await run(
       ["comment", "--fid=12-csv", "--month=202610", "--owner-repo=acme/app"],
       ORGANISED,
@@ -134,7 +134,7 @@ describe("bkit workstreams comment", () => {
     expect(r.json.comment).toBe(
       [
         "###### bkit:generated",
-        "### Step 10 — Suggested Workstreams",
+        "### Step 11 — Suggested Workstreams",
         "Advisory only. NEVER auto-trigger.",
         "- WS-1: Data model. Requires: []",
         "- WS-2: API. Requires: [WS-1]",

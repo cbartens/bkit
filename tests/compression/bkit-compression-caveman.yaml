@@ -1,0 +1,17 @@
+# caveman proxy config for the compression tests. Copy to ~/.caveman/caveman.yaml
+# (or point CAVEMAN_CONFIG at this file). Compress mode, plus a compat mount so
+# OpenRouter traffic can be routed through the proxy at /compat/openrouter/v1.
+label: bkit-compression-test
+mode: compress
+listen: 127.0.0.1:8787
+optimizers: {}
+subscription_compress: false
+toolschema_strip: false
+breakpoint_plan: frontier
+providers: {}
+compat:
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: BKIT_OPENROUTER_API_KEY
+upstream_proxy: env
+ca_bundle: ""

@@ -54,17 +54,17 @@
   // and local installs are untouched. PNPM_WORKERS / PNPM_MAX_WORKERS are on
   // Mend's `global:safeEnv` allow-list, so no admin `allowedEnv` change is needed.
   //
-  // `minimumReleaseAge: "1 day"` holds any dependency younger than 24h out of
+  // `minimumReleaseAge: "7 days"` holds any dependency younger than 7 days out of
   // PRs. Security / osvVulnerabilityAlerts PRs are exempt. With this set, set
   // `minimumReleaseAge: 0` in pnpm-workspace.yaml: pnpm 11 defaults the
   // per-install gate to 1440 when the key is absent, and only 0 turns it off.
-  // See docs/deployments.md § Renovate pnpm-11 freshness gate & microvm memory.
+  // See docs/deployments.md § Dependency updaters.
   // ─────────────────────────────────────────────────────────────────────
   env: {
     PNPM_WORKERS: "1",
     PNPM_MAX_WORKERS: "1",
   },
-  minimumReleaseAge: "1 day",
+  minimumReleaseAge: "7 days",
 
   // Lockfile maintenance — picks up indirect-dependency updates that a
   // direct-dependency bump alone wouldn't catch. Same weekly slot.

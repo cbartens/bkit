@@ -247,7 +247,7 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     );
     // (B) Enforce release-age freshness in Renovate (no per-install verification).
     // Security / osvVulnerabilityAlerts PRs bypass this by design → no CVE delay.
-    expect(content).toMatch(/minimumReleaseAge:\s*"1 day"/);
+    expect(content).toMatch(/minimumReleaseAge:\s*"7 days"/);
   });
 
   it("does not fence bkit-renovate.yml (the consumer owns that runner)", () => {
@@ -392,6 +392,10 @@ describe("example dependabot template (.bkit/templates/.github/dependabot.yml)",
   it("does not exclude bkit-cloud.yml (a template the consumer owns, so its pins refresh)", () => {
     expect(content).not.toMatch(/exclude-paths:[\s\S]*bkit-cloud\.yml/);
   });
+
+  it("holds new releases behind a 7-day cooldown", () => {
+    expect(content).toMatch(/cooldown:\s*\n\s+default-days:\s*7/);
+  });
 });
 
 describe(".bkit/.env.example keys are BKIT_-prefixed (direnv isolation)", () => {
@@ -446,11 +450,9 @@ describe("templates", () => {
 
   // JSON has no comment syntax; `.bkit/templates.md` covers those.
   it("every template that can carry a comment says it is an example bkit install does not write", () => {
-    // LICENSE.md is a licence text: the user's once copied, but it carries no example banner.
     const templates = listFilesRecursive(root)
       .map((abs) => path.relative(root, abs))
-      .filter((rel) => !rel.endsWith(".json"))
-      .filter((rel) => rel !== "LICENSE.md");
+      .filter((rel) => !rel.endsWith(".json"));
     expect(templates).toContain(path.join(".github", "workflows", "bkit-ci.yml"));
     for (const rel of templates) {
       const text = fs.readFileSync(path.join(root, rel), "utf-8");
@@ -502,9 +504,10 @@ describe("launchd GUI-env templates (.bkit/templates/scripts/launchd/)", () => {
   describe("bkit-launchd-env.sh", () => {
     const content = fs.readFileSync(SCRIPT, "utf-8");
 
-    it("is POSIX shell with strict error checking", () => {
+    it("is POSIX shell that fails on unset variables but not on one failing key", () => {
       expect(content.startsWith("#!/usr/bin/env sh\n")).toBe(true);
-      expect(content).toContain("set -eu");
+      expect(content).toMatch(/^set -u$/m);
+      expect(content).not.toMatch(/^set -e/m);
     });
 
     it("reads the env file from the positional arg or BKIT_LAUNCHD_ENV", () => {
@@ -522,9 +525,9 @@ describe("launchd GUI-env templates (.bkit/templates/scripts/launchd/)", () => {
 
     it("hands the value to launchctl, but logs key names only", () => {
       expect(content).toContain('launchctl setenv "$key" "$val"');
-      const logLine = content.split("\n").find((l) => l.includes("[bkit-launchd] setenv"));
-      expect(logLine).toBeDefined();
-      expect(logLine).not.toContain("$val");
+      const logLines = content.split("\n").filter((l) => /^\s*log "/.test(l));
+      expect(logLines.some((l) => l.includes("setenv $key"))).toBe(true);
+      for (const l of logLines) expect(l).not.toContain("$val");
     });
   });
 

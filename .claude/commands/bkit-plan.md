@@ -1,7 +1,7 @@
 ---
 description: "Plan Feature — Autonomous plan generation"
 ---
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Plan Feature (Workflow 2/5)
 
@@ -411,10 +411,16 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "{BKIT}" workflows links --workflow=plan --fid={FID} --month={YYYYMM} --ref={CANONICAL_REF} --outbox="{OUTBOX}" --number=12 --title="Close Workflow"
    ```
-5. Final return: Display `plan-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-build`.
+5. Collect setup tips:
+   ```bash
+   "{BKIT}" tips --workflow=plan
+   ```
+   Plain text, not JSON. Hold stdout as `{SETUP_TIPS}`; prints nothing or exits non-zero → `{SETUP_TIPS}` empty.
+6. Final return: Display `plan-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-build`.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
+   Append `{SETUP_TIPS}` under a `## Setup Tips` heading, unless empty.
    Append as last line `Would you like me to explain this in plain English?`
-6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
+7. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 
 ### 🔒 Gate 12 — Close Workflow
 

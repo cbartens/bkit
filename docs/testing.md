@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Testing
 
@@ -89,7 +89,7 @@ Scripts these files do not ship, so the plan names them and you write them: mark
 
 CI branches on the event in a few places. Each is a deliberate, recorded divergence from "one script runs everywhere" — not an accident. Every such site is registered so a new one is caught.
 
-**The guard.** A step that reads an event field (`github.event_name`, `github.ref`, `github.ref_name`, `github.base_ref`, `github.head_ref`, `github.event.head_commit.message`, `github.event.pull_request.title`) — and, by extension, a script / hook / test that reads `CI` or `GITHUB_*` or takes the pre-push revert path — must be listed in the registry (`scripts/ci/accepted-divergences.json`) with its decision and reason. The guard (`scripts/ci/check-accepted-divergences.mjs`) reds on an unregistered site, on a registered site that no longer exists, and on a decision missing from the table below. A new comparison inside an already-registered step is a new site.
+**The guard.** A workflow step, or the workflow-level `concurrency:` block (keyed `file#(workflow)#concurrency#field`), that reads an event field (`github.event_name`, `github.ref`, `github.ref_name`, `github.base_ref`, `github.head_ref`, `github.event.head_commit.message`, `github.event.pull_request.title`) must be listed in the registry (`scripts/ci/accepted-divergences.json`) with its decision and reason. The guard (`scripts/ci/check-accepted-divergences.mjs`) reds on an unregistered site, on a registered site that no longer exists, and on a decision missing from the table below. A new comparison inside an already-registered step is a new site. The guard scans `.github/workflows/*.yml` only; scripts, hooks and tests that read `CI` / `GITHUB_*` are outside it.
 
 <!-- prettier-ignore -->
 | Decision | Rule |
@@ -246,6 +246,17 @@ Assign every behaviour its **lowest sufficient tier(s)** — the lowest tier tha
 | Post-deploy health of a deployed surface | **Smoke** (post-CI or post-deploy — see `deployments.md`) |
 
 A plan's `Derived Test Matrix` (`docs/templates/bkit-plan.md`) is the per-feature application of this rubric: one row per behaviour, each mapped to a build + verify task. Boundary rows carry the rigor above — reach the boundary; assert a signal only it can produce; no `as unknown as` at the call-site.
+
+## Test first
+
+`/bkit-build` writes each task's tests before its code and proves them: each test fails against stubs (red), then passes once the code exists (green). Unit and integration tiers only; E2E and `@live` rows run in CI and stay planned in the `Derived Test Matrix`. Each plan task names its tests on a `**Test first:**` line (`;`-separated), or `n/a — {reason}`.
+
+- **Declare `bkit:test:file`:** runs the ONE test file bkit appends as its argument (repo-relative path) and writes a JUnit XML report to the path in `$BKIT_TEST_REPORT`. Vitest: `vitest run --reporter=default --reporter=junit --outputFile.junit="$BKIT_TEST_REPORT"`; pytest: `pytest --junitxml="$BKIT_TEST_REPORT"`; jest needs the `jest-junit` reporter. Undeclared → build reports test-first as not enforced.
+- **Call the runner directly:** a task runner that caches results or runs dependent packages' suites first breaks the one-file contract. A monorepo routes the path to the package and config owning it; an integration file gets the same environment setup the integration suite gets.
+- **Judged by the report, never the exit code:** a misspelled path, a syntax error and an import of unwritten code all exit non-zero like a real failure. A red counts only when the named test ran and failed; green only when it ran and passed.
+- **Stub first:** tests failing because the code they import does not exist never show their assertions failing. Write stubs, then see the assertions fail.
+- **Test name:** as the runner reports it, or its last segment (`clamp > keeps a value inside the range` → `keeps a value inside the range`).
+- **The red test stays:** after the red, the test may gain tests or formatting; a weakened, removed or rewritten assertion fails the build's verify.
 
 ## What each tier must do
 
@@ -445,7 +456,7 @@ CI must catch every consumer `pnpm bkit install` hard-fail. Same `.bkit/core/eng
 **Required coverage per consumer-runtime hard-fail** (`process.exit(1)` from `bkit install` / `bkit check`):
 
 1. **Unit test** — failure branch (bad input → exit).
-2. **Smoke spawn** — `bkit install --claude --cursor --typescript` on scratch consumer (`os.tmpdir()`, exit 0). `.bkit/core/engine/commands/install/install.integration.test.ts` § Scenario 5.
+2. **Smoke spawn** — `bkit install --claude --cursor` on scratch consumer (`os.tmpdir()`, exit 0). `.bkit/core/engine/commands/install/install.integration.test.ts` § Scenario 5.
 3. **Stale-state spawn** — pre-seeded upgrade-skew consumer. Same file § Scenario 5.
 4. **Phase 3 blocker** — Scenario 6 (exit 1 + recovery) + 7 (`--auto-revert` → `runUninstall`).
 5. **Mid-failure rollback** — Scenario 9: post-first-module failure → `discardAllStaging`, byte-identical consumer.
@@ -483,7 +494,7 @@ When adding bkit-managed file types or scope keys, extend fixture — single sou
 
 ## Runtime detection + gh-preflight test coverage
 
-`bkit runtime detect` maps detection primitives (`BKIT_RUNTIME` override, `.bkit/.runtime-cursor` marker, `CLAUDE_CODE_REMOTE`, `GITHUB_ACTIONS`/`CI`) to `runtime` ∈ {`LOCAL`,`GITHUB_ACTION`,`CLOUD_CLAUDE`,`CLOUD_CURSOR`,`UNKNOWN`} and a capability table (`runtimeWorktrees` / `runtimeDevPushes` / `runtimeGithubCli`), so workflow headers branch on the `RUNTIME_*` values instead of re-deriving runtime logic per call site. `runtimeGithubCli` is the ONE live probe (`gh auth status`, once, loud); `runtimeDevPushes` is deliberately never probed, because a `--dry-run` push probe fails dangerously. No `CAN_SLEEP` / `RUNTIME_SLEEPS` row exists, because sleeping is measured inside `bkit runs wait` / `bkit runs dispatch` (`blocked`, exit 81 → the agent turn loop). `commands/workflow/runtime.test.ts` runs each scenario against a fake `gh` on `PATH` — covers the table mapping (incl. `UNKNOWN` → least-capable, never LOCAL), explicit-falsy vs unset primitives, `worktreePath` mint-vs-adopt, re-derivation per call (no state leaks between calls), `runtimeGithubCli` round-tripping through the `runtime-resolved` row, and `runtime assert` on a missing / malformed row.
+`bkit runtime detect` maps detection primitives (`BKIT_RUNTIME` override, `.bkit/.runtime-cursor` marker, `CLAUDE_CODE_REMOTE`, `GITHUB_ACTIONS`/`CI`) to `runtime` ∈ {`LOCAL`,`GITHUB_ACTION`,`CLOUD_CLAUDE`,`CLOUD_CURSOR`,`UNKNOWN`} and a capability table (`runtimeWorktrees` / `runtimeDevPushes` / `runtimeGithubCli`, plus `runtimeHeadless` derived from `runtime` and never stored on the row), so workflow headers branch on the `RUNTIME_*` values instead of re-deriving runtime logic per call site. `runtimeGithubCli` is the ONE live probe (`gh auth status`, once, loud); `runtimeDevPushes` is deliberately never probed, because a `--dry-run` push probe fails dangerously. No `CAN_SLEEP` / `RUNTIME_SLEEPS` row exists, because sleeping is measured inside `bkit runs wait` / `bkit runs dispatch` (`blocked`, exit 81 → the agent turn loop). `commands/workflow/runtime.test.ts` runs each scenario against a fake `gh` on `PATH` — covers the table mapping (incl. `UNKNOWN` → least-capable, never LOCAL; `runtimeHeadless` per runtime), explicit-falsy vs unset primitives, `worktreePath` mint-vs-adopt, re-derivation per call (no state leaks between calls), `runtimeGithubCli` round-tripping through the `runtime-resolved` row, `runtime assert` re-deriving `runtimeHeadless` from the row's `runtime`, and `runtime assert` on a missing / malformed row.
 
 Each of the five phase workflows' Step 2 (Worktree Setup) emits the durable `runtime-resolved` row via `bkit runtime row --file=` and reads it back with `bkit runtime assert` in the same block. Without the row, `bkit prs cross-check` could never see a real `runtimeGithubCli` value and its `false` branch would be vacuous in every live run. `.bkit/core/engine/audits/workflows/runtime-prose-audit.test.ts` asserts the reader / writer chain is present in the workflows — presence, not behaviour; the behaviour guarantee rests on a live run.
 
@@ -501,11 +512,11 @@ Validated-head carry-forward = Tier 1: `commands/workflow/runs.test.ts` (`--vali
 <!-- prettier-ignore -->
 | File | Tier | Scope |
 | --- | --- | --- |
-| `commands/workflow/runtime.test.ts` | Unit (fake `gh` on `PATH`) | `runtime`/capability table mapping incl. `UNKNOWN` + `CLOUD_CURSOR` (marker read from the main checkout inside a worktree); explicit-falsy vs unset; `gh` probe and exit 127; `worktreePath` mint-vs-adopt; `runtime row` round-trip and NDJSON append; `runtime assert` exits |
+| `commands/workflow/runtime.test.ts` | Unit (fake `gh` on `PATH`) | `runtime`/capability table mapping incl. `UNKNOWN` + `CLOUD_CURSOR` (marker read from the main checkout inside a worktree), `runtimeHeadless` per runtime and re-derived by `assert`; explicit-falsy vs unset; `gh` probe and exit 127; `worktreePath` mint-vs-adopt; `runtime row` round-trip and NDJSON append; `runtime assert` exits |
 | `tests/bkit-cloud-bootstrap-preflight.bats` | Shell (cross-process, fake `gh`, built `bkit`) | `GH_TOKEN`/`GITHUB_TOKEN` precedence over `--with-token`; loud `RUNTIME_GITHUBCLI` record; non-blocking dual-lane WARNING gating; loud skip without bkit; provision recipes via `bkit context list-blocks` |
 | `.bkit/core/engine/audits/templates/mcp-toolsets.test.ts` | Unit | `.mcp.json`/template `X-MCP-Toolsets` include `actions`; live == real `buildMcpJson("github")` render of the template |
 | `.bkit/core/engine/audits/templates/template-no-userpath.test.ts` | Unit | No leaked `/Users/<name>`\|`/home/<name>` absolute path in the shipped plan template or its repo copy |
-| `.bkit/core/engine/audits/workflows/runtime-prose-audit.test.ts` | Unit | Every runtime capability key (`runtimeWorktrees` / `runtimeDevPushes` / `runtimeGithubCli`) has >=1 reader in `.bkit/core/workflows/`; `CAN_SLEEP` absent; one identical `gh MCP fallback` header line whose `transport-row` passes `--file`; no raw call-site CI-wait `sleep` — presence, not behaviour |
+| `.bkit/core/engine/audits/workflows/runtime-prose-audit.test.ts` | Unit | Every runtime capability key (`runtimeWorktrees` / `runtimeDevPushes` / `runtimeGithubCli` / `runtimeHeadless`) has >=1 reader in `.bkit/core/workflows/`; `CAN_SLEEP` absent; one identical `gh MCP fallback` header line whose `transport-row` passes `--file`; no raw call-site CI-wait `sleep` — presence, not behaviour |
 
 ## Ship merge-gate + bookkeeping test coverage
 
@@ -542,18 +553,20 @@ The status-hole detector (`.bkit/core/engine/checks/status-holes.ts`) is **advis
 | `.bkit/core/engine/commands/install/uninstall.integration.test.ts` | Integration | Round-trip byte-identity vs `tests/fixtures/heavy-customised-consumer/`; opencode uninstall zero-footprint (P4.T7). |
 | `.bkit/core/engine/install/manifest.test.ts` | Unit | Per-module install-write manifest assertions. |
 | `.bkit/core/engine/install/write.integration.test.ts` | Integration | Consumer key survival through `writeTier2JsonContained` (heavy-customised fixture, cursor v1 schema); opencode reconverge. |
-| `.bkit/core/engine/commands/install/upgrade.test.ts` and `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | Unit and Integration | Diff engine, drift detection, `--non-interactive` semantics. Managed-version marker guard: every non-JSON, non-template file a real full install writes carries the marker and equals `listStampedFiles`; a version bump restamps every marker with no conflict and `bkit check` is then clean. |
+| `.bkit/core/engine/commands/install/upgrade.test.ts` and `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | Unit and Integration | Diff engine, drift detection, `--non-interactive` semantics. Managed-version marker guard: every non-JSON, non-template file a real full install writes carries the marker and equals `listStampedFiles`; a version bump restamps every marker with no conflict and `bkit check` is then clean. A 5.1.0 Antigravity `hooks.json` (fixture `tests/fixtures/antigravity-5.1.0/hooks.json`) upgrades onto the shipped matchers (guardrails on `view_file\|run_command`). |
 | `.bkit/core/engine/install/version-file.test.ts` (extended) | Unit | `.bkit/version` JSON parse (non-JSON reads as absent), `canonicalHashes` / `claudeAllowDerived` defaults, serialize round-trip, `mergeCanonicalHashes` (fresh entries overwrite; entries for paths no longer on disk are pruned and counted). The install and upgrade writers of the same merge are pinned in `install/modules/core.integration.test.ts` (a seeded stale entry is dropped by a core run) and `install/version-file.integration.test.ts` (a prune-only upgrade run is persisted; nothing is written when nothing changed). |
 | `.bkit/core/engine/audits/hooks/gateguard-claude.integration.test.ts` | Integration | Claude GateGuard hook (`.claude/hooks/bkit-gateguard.cjs`, spawned as a real process): advisory / deny modes, dedup, docs/\*.md density advisory (path-scoped, segment match). |
 | `.bkit/core/engine/audits/hooks/gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagents included, advisory / deny modes, dedup, docs/\*.md density advisory, managed-block boundary (no `export` inside the marker region), twin parity vs the Claude hook. |
 | `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` | Integration | Cursor GateGuard hook (`.cursor/hooks/bkit-gateguard.cjs`, spawned): advisory via `additional_context` on an allow, deny via `agent_message`, workspace-relative path resolution, managed-block parity with the Claude twin. |
 | `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` | Integration | One GateGuard behaviour table asserted on all five hosts' generated hooks (template + `hooks/`, as install writes them) through per-host adapters — advisory content, docs density, dedup, modes, fail-open, subagents included — plus the documented deviations; every host's block carries `gateguard-engine.js` verbatim. |
+| `.bkit/core/engine/audits/hooks/guardrails-antigravity.integration.test.ts` | Integration | Antigravity guardrails hook on the host's live-verified `{ toolCall, conversationId }` / `{ decision, reason }` contract: deny tier every time, ask tier → Antigravity `ask`, advisory tiers deny once then allow the identical retry, other tools allowed, fail-open. `view_file` secret reads: `*.pem` / `*.p12` / `id_rsa` deny every time, `.env` / `.bkit/.env` / `.env.*` ask, ordinary files and `.env.example` allow; shipped `hooks.json` registers guardrails on `view_file\|run_command`. |
+| `.bkit/core/engine/audits/hooks/readguard-parity.integration.test.ts` | Integration | One ReadGuard behaviour table asserted on all five hosts' generated hooks through per-host adapters — repeat / sub-range / wider / changed-file reads, shell-read forms and untracked shapes, sessions, `BKIT_READGUARD=off`, compaction reset — plus host registrations, documented deviations (subagent key, Antigravity envelope, opencode whole-file read, fail-open) and managed-block structure. |
 | `.bkit/core/engine/audits/hooks/gateguard-dogfood.integration.test.ts` | Integration | bkit-repo-only authoring advisories (`.bkit/core/workflows/`, `.bkit/core/prompts/`, bkit's own `.md` docs, `.agents/rules.md` § Repo Authoring prose scope) in all four installed hooks: routing per host, placement after `bkit:end`, never present in a template, rule-coverage vs the source sections, shared rules read from the source at hook time, every path the Repo Authoring rules name exists. |
 | `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` | Unit | Every template has an entry; each repo-root copy equals the template after its listed edits (placeholder / adapt / bkit-only), else the test fails. Change a copy → list the edit there. |
 | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | Integration | Cursor destructive-op / secret-exposure hook (`.cursor/hooks/bkit-guardrails.cjs`, spawned): shell deny / ask patterns, curl-wget host allowlist, private-key and `.env` reads, managed-block boundary. |
 | `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` | Integration | Claude and Cursor `bkit-preflight.sh` as generated (spawned under bash): IDE-skip paths, missing key / issue hard-stops in each host's output shape, the shared Linear guard carried verbatim, no call into bkit. |
 | `.bkit/core/engine/render/parts.test.ts` | Unit | `renderParts` part-line splicing (JS and shell markers, no nesting, missing part throws); the nine host hook templates splice parts only inside the managed block, every part is used by two or more hosts, and every generated hook passes `node --check` / `bash -n`. |
-| `.bkit/core/engine/install/modules/index.integration.test.ts` | Integration | One canonical permission-gate table asserted across Claude `settings.json`, opencode `opencode.json`, Cursor `bkit-guardrails.cjs` and Codex `bkit-guardrails.cjs` — same verdict for every destructive command on all four hosts (reads: three, see deferrals). Plus shell-as-edit-channel advisories, curl / wget host matching, and the documented per-host divergences. |
+| `.bkit/core/engine/install/modules/index.integration.test.ts` | Integration | One canonical permission-gate table asserted across Claude `settings.json`, opencode `opencode.json`, Cursor `bkit-guardrails.cjs` and Codex `bkit-guardrails.cjs` — same verdict for every destructive command on all four hosts; secret reads asserted on opencode, Cursor and Antigravity `bkit-guardrails.cjs` (Codex has no read gate, see deferrals). Plus shell-as-edit-channel advisories, curl / wget host matching, and the documented per-host divergences. |
 | `.bkit/core/engine/commands/workflow/context.test.ts` | Unit | Untrusted-content fence: identical at every workflow write site, no second fence from shipped fetch blocks, `Context:` names untrusted `Read:` paths. |
 | `.bkit/core/engine/commands/conventions.test.ts` | Unit | `bkit <noun> <verb>` conventions over `commands/registry.ts`: kebab nouns / verbs / flags, camelCase output keys, own exit codes in 3-79, every exit code a source can return (its `EXIT_*` constants and exit-code maps) listed in some verb's `--help` table, every exported command present in `COMMANDS`, every source in `commands/{workflow,ci,setup}/` tested and writing only via `ctx.log` / `ctx.emit`, every `shared/*.ts` tested; checker negative controls (including a help check that fails). |
 | `commands/lib.test.ts` | Unit (boundary: real temp git repo + linked worktree) | Flag parsing and usage errors (a literal `{UPPER}` placeholder in any flag or positional value refused, exit 2), dispatch and classic-verb collision (`bkit status`), help rendering, exit-code mapping, UTC month, skip-CI tokens, repo root from a worktree, `status.jsonl` location per workflow kind. |
@@ -657,15 +670,11 @@ Use project-local `tsx` binary. Do NOT `node --import tsx/register`, because `ER
 ```ts
 const tsxBin = path.resolve(__dirname, "../../node_modules/.bin/tsx");
 if (!fs.existsSync(tsxBin)) return; // CI without devDeps — skip rather than fail
-const result = spawnSync(
-  tsxBin,
-  [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
-  {
-    cwd: tmpDir,
-    encoding: "utf-8",
-    timeout: 60_000,
-  },
-);
+const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--cursor"], {
+  cwd: tmpDir,
+  encoding: "utf-8",
+  timeout: 60_000,
+});
 expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
 ```
 
@@ -707,4 +716,4 @@ Any read-only filesystem invariant: step 6 = `fileUnchanged` (not mtime). `after
 4. **`bkit-tests-integration`** (`if: run_level != 'none'`) — integration-test lane (parallel sibling): `vitest run --coverage` over `*.integration.test.ts`, scoped via `--coverage.include` to the engine surface (`modules` / `install` / `upgrade` / `uninstall`), emitting its own `tests_ran`. **Report-only** (no threshold, because a whole-repo integration % is denominator-noise and punishes the pyramid shape); posts a `name: integration` coverage comment. A separate lane per tier — mirrors how consumer repos run it and dogfoods the shipped scaffold. Own job-level `permissions:` and SHA-cache.
 5. **`bkit-tests-check`** (capstone, `if: !cancelled()`) — asserts `bkit-tests-scope` succeeded and, when `run_level != none`, `bkit-tests-static` and `bkit-tests-unit` and `bkit-tests-integration` all succeeded **and unit and integration each executed > 0 tests** (per-lane `assert_ran` over each lane's `tests_ran`; a SHA-cache short-circuit (`cache_skip`) or `run_level=none` asserts nothing). This is the SOLE branch-protection required check (`bkit setup protect-main`, which requires `bkit.capstoneJob` = `bkit-tests-check`) — green here means the planned suite actually ran, not merely "nothing failed".
 
-Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs the static and test steps (typecheck → test → format:check → prose → slop → bkit:check:dist) before `npm publish`; the `pnpm bkit check` drift gate is intentionally omitted, because the tagged tree should already match dev's clean state.
+Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs the static and test steps (typecheck → test → format:check → prose → slop → bkit:check:dist → `CHANGELOG.md` tag block) before `npm publish`; the `pnpm bkit check` drift gate is intentionally omitted, because the tagged tree should already match dev's clean state.

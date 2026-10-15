@@ -12,6 +12,30 @@
 > - `bkit install` and `bkit upgrade` never write these files and never overwrite a copy.
 > - Adapt app roots, workspace package scope, rules JSON. Examples use `apps/web`, `apps/mobile`, `packages/api`, `@scope`.
 
+## What each template is for
+
+Adoption order = `bkit tips` order. Sections below: install steps and traps.
+
+<!-- prettier-ignore -->
+| Template | What it's for | Skip it and |
+| --- | --- | --- |
+| direnv | Loads `.bkit/.env` tokens whenever the project opens. | Saved tokens never load; every sign-in fails while the file looks right. |
+| Serena | Agents look code up like an editor ("where is this defined, what uses it?"). Read-only. | Agents grep and read whole files: more accidental changes, more correction rounds, higher token cost. |
+| CI workflow + CI scripts | Runs every check on GitHub on every change; one capstone check gates merge; `/bkit-ship` waits for it. | "Shipped" means merged, not checked. |
+| Git hooks (Husky) | Same checks locally on commit and push, in seconds. | Failures surface minutes later in CI, after the agent moved on. |
+| Prettier ignore list | One formatting baseline; stops Prettier reformatting bkit's managed files. | Reviews fill with spacing noise; every bkit upgrade shows false changes. |
+| slop-scan | Flags net-new junk code AI tends to write (filler, dead code, type escapes). | Junk passes skim review and piles up. |
+| Vale | Prose lint for docs and agent instructions. | Padded, vague docs every agent re-reads on every run. |
+| lint-staged | Formats only the staged files inside the commit hook. | Commit hook does nothing, or is slow enough to get skipped. |
+| Cloud-agent workflow + SessionStart hook | CI result starts a cloud agent: ship on green, debug on red; hook installs the cloud toolchain. | Every next step needs a local session. |
+| Context-fetch blocks | `/bkit-debug` reads real CI logs, runtime errors and web results. | Debug guesses from code; real errors stay hidden. |
+| Secrets sync | One local file → every secret store; proves copies match without printing values. | Hand-copied secrets drift: "works for me, broken in production". |
+| graphify | Code map (`docs/capabilities.md`) agents check before building something again. | Agents rediscover structure each run; ripple effects missed. |
+| Dependabot / Renovate | Small grouped update PRs; pinned Actions; security fixes skip the queue. | Updates pile into one large risky upgrade. |
+| Prettier tables | One edited cell = one changed row in the diff. | A one-word table edit diffs as the whole table. |
+| Cursor editor + cloud agent | Format-on-save, recommended extensions, Cursor cloud-agent image. | Cursor edits miss project formatting; no Cursor cloud agent. |
+| Launchd GUI env | macOS apps opened from the Dock get the same tokens as the terminal. | Dock-launched editors start signed out. |
+
 ## Contract
 
 <!-- prettier-ignore -->
@@ -37,7 +61,6 @@
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 | Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
 | Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file |
-| Licence | `.bkit/templates/LICENSE.md` | — | read it; the copies in `.bkit/templates/` are MIT-0 |
 
 Placeholders. Copies keep them raw; replace each in your copy:
 
@@ -47,7 +70,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 | `{{DEFAULT_BRANCH}}` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments) | your default branch | `origin/HEAD`, else `main` |
 | `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
-| `{{SCRIPT_PATH}}` | `ai.bkit.launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/path/to/repo/scripts/launchd/bkit-launchd-env.sh` |
+| `{{SCRIPT_PATH}}` | `ai.bkit.launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/Users/<you>/.config/bkit/bkit-launchd-env.sh` |
 | `{{ENV_FILE}}` | `ai.bkit.launchd.plist` (`ProgramArguments`, `WatchPaths`) | absolute path to your env file | `/Users/<you>/.config/bkit/launchd.env` |
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
@@ -64,18 +87,18 @@ Placeholders. Copies keep them raw; replace each in your copy:
 <!-- prettier-ignore -->
 | File | Fits | `context=` | Fetches | Secret / non-secret env | Domains | CLI (provision) |
 | --- | --- | --- | --- | --- | --- | --- |
-| `github.md` | GitHub Actions | `ci`, `diff` | `ci`: failing run: failed jobs / steps, `::error` annotations, failed-step logs; `diff`: `git diff --stat` since the last green CI run on trunk | `GH_TOKEN` / `BASELINE_BRANCH`, `BASELINE_WORKFLOW` (`diff`) | — | `gh` (base tool) |
-| `playwright.md` | Playwright on GitHub Actions | `e2e` | failing run's report artifact, failing specs first | `GH_TOKEN` / `E2E_ARTIFACT`, `E2E_JOB_RE` | — | `gh` (base tool) |
-| `maestro.md` | Maestro iOS and Android lanes on GitHub Actions | `e2e` | every failed Maestro job's full log, sliced to the result steps | `GH_TOKEN` / `MAESTRO_JOB_RE`, `MAESTRO_STEPS` | — | `gh` (base tool) |
+| `github.md` | GitHub Actions | `ci`, `diff` | `ci`: failing run: failed jobs / steps, `::error` annotations, failed-step logs tail-bounded per failed job; `diff`: `git diff --stat` (capped) since the last green CI run on trunk | `GH_TOKEN` / `CI_LOG_TAIL`; `BASELINE_BRANCH`, `BASELINE_WORKFLOW`, `DIFF_STAT_N` (`diff`) | — | `gh` (base tool) |
+| `playwright.md` | Playwright on GitHub Actions | `e2e` | failing run's report artifact, failing specs first; inlined files, lines and binary paths capped | `GH_TOKEN` / `E2E_ARTIFACT`, `E2E_JOB_RE`, `E2E_MAX_FILES`, `E2E_MAX_LINES`, `E2E_MAX_BIN` | — | `gh` (base tool) |
+| `maestro.md` | Maestro iOS and Android lanes on GitHub Actions | `e2e` | every failed Maestro job's log, sliced to the result steps, each slice tail-bounded | `GH_TOKEN` / `MAESTRO_JOB_RE`, `MAESTRO_STEPS`, `MAESTRO_LOG_TAIL` | — | `gh` (base tool) |
 | `tavily.md` | any | `web` | web search for upstream causes (untrusted output) | `BKIT_TAVILY_API_KEY` / `QUERY` | — | — |
-| `sentry.md` | Sentry | `runtime` | unresolved issues, last 24 h; trace / window recipes | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_HOST` | `sentry.io` | — |
+| `sentry.md` | Sentry | `runtime` | unresolved issues seen in a window (organization issues endpoint), optional environment; trace / window recipes | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_HOST`, `SENTRY_SINCE`, `SENTRY_ENV`, `SENTRY_N` | `sentry.io` | — |
 | `vercel.md` | Vercel | `runtime` | serverless + edge error / fatal logs in a window | `VERCEL_TOKEN` / `VERCEL_SCOPE`, `VERCEL_ENV` | `vercel.com` | `vercel` (yes) |
 | `supabase.md` | hosted Supabase | `runtime` | Postgres `ERROR` / `FATAL` / `PANIC` lines | `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID` | `supabase.com` | — |
-| `stripe.md` | Stripe | `runtime` | failure / dispute / refund events | `STRIPE_SECRET_KEY` / — | `stripe.com` | — |
+| `stripe.md` | Stripe | `runtime` | failure / dispute / refund events, filtered by type and window at the source | `STRIPE_SECRET_KEY` / `STRIPE_N`, `STRIPE_SINCE_S` | `stripe.com` | — |
 | `resend.md` | Resend | `runtime` | bounced / complained / failed / delayed sends | `RESEND_API_KEY` / — | `resend.com` | — |
-| `inngest.md` | Inngest Cloud | `runtime` | `inngest/function.failed` events | `INNGEST_SIGNING_KEY` / — | `inngest.com` | — |
+| `inngest.md` | Inngest Cloud | `runtime` | `inngest/function.failed` events in a window | `INNGEST_SIGNING_KEY` / `INNGEST_N`, `SINCE_ISO`, `INNGEST_ENV` | `inngest.com` | — |
 | `cloudrun.md` | Google Cloud Run | `runtime` | container errors + memory-limit kills | `GCP_CLIENT_EMAIL`, `GCP_PRIVATE_KEY` (headless) / `GCP_PROJECT_ID`, `GCP_SERVICE` | `googleapis.com`, `google.com` | `gcloud` (yes) |
-| `expo.md` | Expo EAS Build + EAS Workflows (Maestro) | `runtime`, `e2e` | `runtime`: build status + errored-build log lines; `e2e`: per-flow exceptions, JUnit, screenshots, Maestro commands, hierarchy dumps, XCUITest + JS console | `EXPO_TOKEN` / `EXPO_APP_DIR` | `expo.dev`, `googleapis.com` (`runtime`), `eascdn.net` (`e2e`) | `eas` (yes) |
+| `expo.md` | Expo EAS Build + EAS Workflows (Maestro) | `runtime`, `e2e` | `runtime`: build status + errored-build log lines (capped per build); `e2e`: failed jobs' per-flow exceptions, JUnit (capped), screenshots, Maestro commands, hierarchy dumps, XCUITest + JS console | `EXPO_TOKEN` / `EXPO_APP_DIR`, `EAS_PLATFORM`, `EAS_PROFILE`, `EAS_LOG_N` (`runtime`); `EAS_WF_FILE`, `EAS_JUNIT_N` (`e2e`) | `expo.dev`, `googleapis.com` (`runtime`), `eascdn.net` (`e2e`) | `eas` (yes) |
 | `serena.md` | Serena MCP server | — | nothing: provision only, installs `serena` in cloud | — | — | `uv` (yes) |
 
 MCP names listed: `sentry` / `Sentry`, `vercel` / `Vercel`, `supabase` / `Supabase`, `inngest`, `serena`. Every tool on a listed server runs without a prompt, writes included — list only servers you trust with that.
@@ -140,6 +163,7 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 - `slop:delta` runs `bkit ci slop` (bkit devDep on `PATH` through the package script). CI passes the base sha as its one bare argument.
 - `lint:prose` runs `bkit ci prose`: Vale over every `*.md` outside `node_modules/`. Narrow it with repeatable `--glob=<pattern>` (`*`, `**`, `?`, relative to the repo root), e.g. `bkit ci prose --glob='docs/*.md' --glob='.agents/*.md'`.
 - Non-Node stack → point each gate at your own commands; keep the gate names.
+- `bkit:test:file` (not seeded; `test-file-script-missing` until declared) runs ONE test file — bkit appends its repo-relative path — and writes a JUnit report to `$BKIT_TEST_REPORT`; `/bkit-build` reads it for test-first. Vitest: `"bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\""`. Call the runner directly, not through a caching task runner.
 
 ## CI workflow — `bkit-ci.yml`
 
@@ -260,12 +284,15 @@ launchctl bootstrap gui/$UID ~/Library/LaunchAgents/ai.bkit.launchd.plist
 launchctl getenv BKIT_OPENROUTER_API_KEY    # bootstrap proof
 ```
 
-- `WatchPaths` re-runs the loader on every env-file write → rotate a token by editing the file, no re-bootstrap.
+- `WatchPaths` re-runs the loader on every env-file write → rotate a token by editing the value, revoke it by deleting the line or emptying the value (`KEY=""`); no re-bootstrap.
+- Loader loads `BKIT_*` keys only (others logged as skipped). An empty value runs `launchctl unsetenv`. Loaded key names are recorded in `.launchd-loaded-keys` next to the env file (mode 600; `BKIT_LAUNCHD_STATE` overrides the path); a recorded key missing from the env file is unset on the next run.
+- One failing key is logged and skipped; the rest still load and the loader exits 1. A failed unset stays recorded and retries on the next run.
 - Log `~/Library/Logs/bkit-launchd.log` records key names only, never values. `BKIT_LAUNCHD_LOG` and `BKIT_LAUNCHD_ENV` override the log and env-file defaults.
 - Loader self-skips (log line + `exit 0`) when the env file is absent or `launchctl` is off `PATH` (Linux CI).
 - launchd cannot exec a loader under `~/Documents`, `~/Desktop` or `~/Downloads`: macOS TCC denies it and `/tmp/bkit-launchd.log` reads `Operation not permitted`. Repo under one of those → keep the adopted copy in git but place the loader launchd runs at `~/.config/bkit/bkit-launchd-env.sh` (or another unprotected path) and point `{{SCRIPT_PATH}}` there.
 - Env-file rules: blank lines and `#` comments ignored; optional `export ` prefix; key must match `[A-Za-z0-9_]`; matching surrounding quotes stripped from the value.
-- `launchctl setenv` reaches apps launched after the load; a running app keeps its environment until relaunch.
+- `launchctl setenv` reaches apps launched after the load; a running app keeps its environment until relaunch (set and unset alike).
+- **Exposure:** `launchctl setenv` makes every loaded token visible to every app started in the login session, not only the app that needs it. Load only tokens you accept that for; prefer `bkit cursor` / `bkit opencode` (per-process env) where possible.
 - Remove: `launchctl bootout gui/$UID ~/Library/LaunchAgents/ai.bkit.launchd.plist`.
 
 ## Cursor — `settings.json`, `environment.json`, `Dockerfile`

@@ -11,8 +11,11 @@ import { readManagedVersion } from "../../install/version-file.js";
 import { getPkgRoot } from "../../shared/package-roots.js";
 import {
   detectMarkerStyle,
+  extractManagedBlock,
   findLineAnchoredMarkers,
+  findUnmarkedCopy,
   selectMarkers,
+  stripManagedBlock,
 } from "../../install/managed-block.js";
 import { listStampedFiles } from "../../install/modules/index.js";
 
@@ -159,6 +162,43 @@ export function detectManagedStale(
     detect: `${stale.length} of ${scanned} bkit-managed file(s) carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.${branchNote}`,
     action:
       "Re-render every bkit-managed file at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs every host, doc and hook) or re-run `pnpm bkit install` with your host flags. To MOVE to a newer bkit, use `pnpm bkit upgrade --latest` (or `--to=<version>`) — it bumps @cbartens/bkit AND re-renders in one step; `pnpm add @cbartens/bkit` alone does NOT re-render. Never hand-edit a rendered agent/command or the content between `bkit:start` and `bkit:end`: put your own content outside the block, where install and upgrade never write.",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// detectManagedDuplicate — an older unmarked copy kept beside a managed markdown block
+// ---------------------------------------------------------------------------
+
+/**
+ * Managed markdown blocks whose file also holds an older, unmarked copy of the block outside
+ * the markers (findUnmarkedCopy). Install never touches content outside the markers, so that
+ * copy stays at the version it was left at while agents read it beside the live block.
+ * Advisory: the match is a heuristic. Null when no stamped file has one.
+ */
+export function detectManagedDuplicate(cwd: string): PreflightFinding | null {
+  const copies: string[] = [];
+  for (const { path: rel, scope } of listStampedFiles(cwd)) {
+    if (scope !== "block" || !rel.endsWith(".md")) continue;
+    const abs = path.join(cwd, rel);
+    if (!fs.existsSync(abs)) continue;
+    const content = fs.readFileSync(abs, "utf-8");
+    const block = extractManagedBlock(content);
+    if (block === null) continue;
+    const title = findUnmarkedCopy(stripManagedBlock(content), block);
+    if (title === null) continue;
+    const lines = content.split("\n");
+    const start = lines.indexOf(selectMarkers("html-comment")[0]);
+    const end = lines.indexOf(selectMarkers("html-comment")[1]);
+    const line = lines.findIndex((l, i) => l === title && (i < start || i > end)) + 1;
+    copies.push(`${rel} (\`${title}\` at line ${line})`);
+  }
+  if (copies.length === 0) return null;
+  return {
+    id: "bkit-managed-duplicate",
+    severity: "advisory",
+    detect: `${copies.length} bkit-managed file(s) hold an older bkit copy outside their \`bkit:start\`/\`bkit:end\` block: ${copies.join(", ")}. Install never updates text outside the markers, so agents read that stale copy beside the live block.`,
+    action:
+      "In each file, delete the old copy: the run of lines starting at the named title line, up to `<!-- bkit:start -->` (or from just after `<!-- bkit:end -->` when the copy sits below). Keep any lines you wrote yourself by moving them below `<!-- bkit:end -->`. Then run `pnpm bkit check` again.",
   };
 }
 

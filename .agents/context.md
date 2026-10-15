@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Context
 
@@ -88,10 +88,9 @@ MCP servers whose **every tool** (reads and writes) agents run without a prompt,
 
 <!-- bkit dogfood: GitHub Actions, no deploy, no e2e lane. `runtime` and
      `e2e` absent => `NOT CONFIGURED`. `web` enabled (tavily). Domains =
-     the platforms bkit integrates with (agent hosts, model gateways,
-     trackers, MCP, skills) — listed for inventory even where the egress
-     registry already derives them — plus docs / tooling hosts bkit
-     authoring reaches beyond the shipped registry. -->
+     only hosts bkit authoring reaches beyond the shipped egress registry
+     (docs, tooling, model-pick sources); registry-derived hosts are not
+     re-declared. -->
 
 <!-- context-fetch:none e2e -->
 
@@ -99,7 +98,8 @@ MCP servers whose **every tool** (reads and writes) agents run without a prompt,
 
 ```bash
 # GitHub Actions: failing-run job/step failures + error annotations + failed-step logs.
-# Customise: run (`--branch`, `--limit`, pin RUN_ID); log slice (`--log-failed` vs `--log`); job/step name filter; annotation grep.
+# Discovers its own run. `gh` is base tooling — no context-fetch:provision sibling.
+# Customise: run (`--branch`, `--limit`, pin RUN_ID); log slice (`--log-failed` vs `--log`); CI_LOG_TAIL (lines kept per failed job, and of the whole-run fallback); job/step name filter; annotation grep.
 command -v gh >/dev/null 2>&1 \
   || { echo "[context-fetch:github] skipped — gh CLI not installed" >&2; exit 0; }
 gh auth status >/dev/null 2>&1 \
@@ -115,9 +115,23 @@ RUN_CONCLUSION=$(printf '%s' "$RUN_JSON" | jq -r '.[0].conclusion // ""')
   || { echo "[context-fetch:github] skipped — run $RUN_ID concluded success (nothing failing to fetch)" >&2; exit 0; }
 FAILED_STEPS=$(gh run view "$RUN_ID" --json conclusion,jobs \
   --jq '[.jobs[] | select(.conclusion=="failure") | {job: .name, steps: [.steps[] | select(.conclusion=="failure") | .name]}]' 2>/dev/null)
-CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
-# Whole-run fallback is tens of MB — bound it. Raise CI_LOG_TAIL if the cause sits higher.
+# Failed-step logs, one tail-bounded section per failed job, so a second failing job keeps its
+# lines. Raise CI_LOG_TAIL if the cause sits higher in a job's log.
 CI_LOG_TAIL=2000
+FAILED_JOBS=$(gh run view "$RUN_ID" --json jobs \
+  --jq '.jobs[] | select(.conclusion=="failure") | "\(.databaseId)\t\(.name)"' 2>/dev/null)
+CI_LOGS=""
+TAB=$(printf '\t')
+while IFS="$TAB" read -r JOB JOB_NAME; do
+  [ -n "$JOB" ] || continue
+  JOB_LOG=$(gh run view "$RUN_ID" --job "$JOB" --log-failed 2>/dev/null | tail -n "$CI_LOG_TAIL")
+  [ -n "$JOB_LOG" ] && CI_LOGS="${CI_LOGS}===== job ${JOB_NAME} =====
+${JOB_LOG}
+"
+done <<EOF_JOBS
+$FAILED_JOBS
+EOF_JOBS
+# Whole-run fallback is tens of MB — bound it the same way.
 [ -z "$CI_LOGS" ] && CI_LOGS=$(gh run view "$RUN_ID" --log 2>/dev/null | tail -n "$CI_LOG_TAIL")
 [ -n "$CI_LOGS" ] \
   || { echo "[context-fetch:github] skipped — no logs returned for run $RUN_ID" >&2; exit 0; }
@@ -134,9 +148,10 @@ printf '===== failed-step logs =====\n%s\n' "$CI_LOGS"
 
 ```bash
 # GitHub Actions: diff HEAD vs last-passing CI on trunk.
-# Customise: BASELINE_BRANCH / BASELINE_WORKFLOW; last-passing `--limit`; `git diff` pathspec / `--stat` vs full patch.
+# Set BASELINE_BRANCH / BASELINE_WORKFLOW to YOUR trunk and workflow file; commit them here.
+# Customise: BASELINE_BRANCH / BASELINE_WORKFLOW; last-passing `--limit`; `git diff` pathspec / `--stat` vs full patch; DIFF_STAT_N (files listed).
 BASELINE_BRANCH="${BASELINE_BRANCH:-dev}"
-BASELINE_WORKFLOW="${BASELINE_WORKFLOW:-ci.yml}"
+BASELINE_WORKFLOW="${BASELINE_WORKFLOW:-bkit-ci.yml}"
 command -v gh >/dev/null 2>&1 \
   || { echo "[context-fetch:github] skipped — gh CLI not installed" >&2; exit 0; }
 LAST_PASS_SHA=$(gh run list --branch "$BASELINE_BRANCH" --workflow "$BASELINE_WORKFLOW" \
@@ -145,7 +160,7 @@ LAST_PASS_SHA=$(gh run list --branch "$BASELINE_BRANCH" --workflow "$BASELINE_WO
   || { echo "[context-fetch:github] skipped — no successful $BASELINE_WORKFLOW run on $BASELINE_BRANCH (check both names)" >&2; exit 0; }
 git cat-file -e "${LAST_PASS_SHA}^{commit}" 2>/dev/null \
   || { echo "[context-fetch:github] skipped — last-passing SHA $LAST_PASS_SHA not present locally (shallow clone?)" >&2; exit 0; }
-DIFF_STAT=$(git diff "$LAST_PASS_SHA..HEAD" --stat 2>/dev/null)
+DIFF_STAT=$(git diff "$LAST_PASS_SHA..HEAD" --stat --stat-count="${DIFF_STAT_N:-200}" 2>/dev/null)
 [ -n "$DIFF_STAT" ] \
   || { echo "[context-fetch:github] skipped — no diff between HEAD and last-passing $LAST_PASS_SHA" >&2; exit 0; }
 printf '===== diff vs last-passing CI on %s (last-passing-sha: %s) =====\n\n%s\n' \
@@ -159,6 +174,8 @@ printf '===== diff vs last-passing CI on %s (last-passing-sha: %s) =====\n\n%s\n
 ```bash
 # External signal (read-only): known upstream causes for third-party library error
 # strings, dependency-version regressions, vendor API changes, toolchain quirks.
+# Operator cred, same place as other context-fetch tokens (direnv / app env locally;
+# cloud dashboard for headless).
 # Customise: QUERY= 3-6 external terms from the error signature (class, exception, third-party symbol, dependency + version) — never own module/function names, never raw logs; search_depth; max_results; include_raw_content if snippets are too short.
 QUERY="${QUERY:-}"
 [ -n "$QUERY" ] \
@@ -166,11 +183,14 @@ QUERY="${QUERY:-}"
 [ -n "${BKIT_TAVILY_API_KEY:-}" ] \
   || { echo "[context-fetch:tavily] skipped — BKIT_TAVILY_API_KEY unset. FALLBACK: run this same query with your host's own web tools (Claude WebSearch + WebFetch; Cursor / OpenCode equivalent) and record url + verbatim quote per claim. No such tool available => external signal is UNCHECKED this attempt, NEVER 'no known upstream issue'." >&2; exit 0; }
 RESP=$(mktemp)
+# include_answer stays false: a generated summary has no quotable source and cannot
+# satisfy the url + verbatim-quote rule. include_raw_content:true adds full page text
+# (~15k chars/result) when the extracted snippet is not enough.
 CODE=$(curl -s -o "$RESP" -w '%{http_code}' --max-time 40 https://api.tavily.com/search \
   -H "Authorization: Bearer ${BKIT_TAVILY_API_KEY}" -H "Content-Type: application/json" \
   -d "$(jq -nc --arg q "$QUERY" '{query:$q, search_depth:"advanced", max_results:5, include_raw_content:false, include_answer:false}')")
 if [ "$CODE" != "200" ]; then
-  echo "[context-fetch:tavily] skipped — api.tavily.com HTTP ${CODE:-000}: $(jq -r '.detail.error // .detail // "no body"' "$RESP" 2>/dev/null | head -c 140). 000 = host unreachable (add tavily.com to the cloud Trusted-egress allowlist), 401 = bad key, 429/432 = credits exhausted. FALLBACK: re-run this query with your host's own web tools and record url + verbatim quote per claim. Unavailable => external signal is UNCHECKED this attempt, NEVER 'no known upstream issue'." >&2
+  echo "[context-fetch:tavily] skipped — api.tavily.com HTTP ${CODE:-000}: $(jq -r '.detail.error // .detail // "no body"' "$RESP" 2>/dev/null | head -c 140). 000 = host unreachable (check the cloud network allowlist), 401 = bad key, 429/432 = credits exhausted. FALLBACK: re-run this query with your host's own web tools and record url + verbatim quote per claim. Unavailable => external signal is UNCHECKED this attempt, NEVER 'no known upstream issue'." >&2
   rm -f "$RESP"; exit 0
 fi
 jq -r '
@@ -208,26 +228,12 @@ lmarena.ai
 designarena.ai
 datacurve.ai
 
-<!-- Agent hosts (bkit install targets) -->
+<!-- Agent hosts -->
 
-claude.com
-anthropic.com
-openai.com
 chatgpt.com
-cursor.com
-opencode.ai
-
-<!-- Model gateways + catalogs -->
-
-models.dev
-openrouter.ai
-ollama.com
 
 <!-- Trackers, their MCP + skills -->
 
-githubcopilot.com
-linear.app
-skills.sh
 agents.md
 agentskills.io
 

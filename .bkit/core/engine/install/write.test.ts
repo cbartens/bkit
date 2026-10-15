@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   writeTier1,
   writeTier2,
@@ -199,6 +199,57 @@ describe("writeTier2 — html-comment markers", () => {
     expect(result.match(/<!-- bkit:start -->/g)?.length).toBe(2); // did not grow
     expect(ws.writes).toHaveLength(0);
   });
+});
+
+describe("writeTier2 — retired Antigravity drivers (docs/migrations.md)", () => {
+  const FIXTURES = path.resolve(__dirname, "../../../../tests/fixtures/antigravity-5.1.0");
+  const HOOKS_SRC = path.resolve(__dirname, "../../.agents/plugins/bkit/hooks");
+
+  function seed(hook: string, edit?: (old: string) => string): string {
+    const dst = path.join(tmpDir, ".agents", "plugins", "bkit", "hooks", hook);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    const old = fs.readFileSync(path.join(FIXTURES, `${hook}.txt`), "utf-8");
+    fs.writeFileSync(dst, edit ? edit(old) : old, "utf-8");
+    return dst;
+  }
+
+  for (const hook of ["bkit-gateguard.cjs", "bkit-guardrails.cjs"]) {
+    it(`${hook}: an unedited 5.1.0 driver is replaced by the whole new file`, () => {
+      const dst = seed(hook);
+      const ws = makeWriteSet();
+      writeTier2(path.join(HOOKS_SRC, hook), dst, TOKENS, "slash-comment", false, ws);
+      const result = fs.readFileSync(dst, "utf-8");
+      expect(result).not.toContain("hookSpecificOutput");
+      expect(result).toContain('emit({ decision: "allow" })');
+      expect(ws.writes).toEqual([{ path: dst, action: "write" }]);
+
+      // Idempotent: the new driver is not retired, so a second pass only block-merges.
+      const again = makeWriteSet();
+      writeTier2(path.join(HOOKS_SRC, hook), dst, TOKENS, "slash-comment", false, again);
+      expect(again.writes).toEqual([]);
+    });
+
+    it(`${hook}: dry-run reports the replacement without writing`, () => {
+      const dst = seed(hook);
+      const before = fs.readFileSync(dst, "utf-8");
+      const ws = makeWriteSet();
+      writeTier2(path.join(HOOKS_SRC, hook), dst, TOKENS, "slash-comment", true, ws);
+      expect(fs.readFileSync(dst, "utf-8")).toBe(before);
+      expect(ws.writes).toEqual([{ path: dst, action: "write" }]);
+    });
+
+    it(`${hook}: an edited 5.1.0 driver is kept and gets a printed fix`, () => {
+      const dst = seed(hook, (old) => `${old}// consumer's own line\n`);
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const ws = makeWriteSet();
+      writeTier2(path.join(HOOKS_SRC, hook), dst, TOKENS, "slash-comment", false, ws);
+      const result = fs.readFileSync(dst, "utf-8");
+      expect(result).toContain("// consumer's own line");
+      expect(result).toContain("hookSpecificOutput");
+      expect(warn.mock.calls.flat().join("\n")).toContain("Antigravity ignores");
+      warn.mockRestore();
+    });
+  }
 });
 
 describe("ensurePackageJsonScripts", () => {
@@ -790,5 +841,52 @@ describe("cursor-v1-schema", () => {
     expect(Array.isArray(doc.hooks.sessionStart)).toBe(true);
     expect(Array.isArray(doc.hooks.sessionStop)).toBe(true);
     expect(doc["__bkit__"]).toBeUndefined();
+  });
+});
+
+describe("writeTier2 — markdown dest holding an older unmarked copy", () => {
+  const rows = Array.from(
+    { length: 12 },
+    (_, i) => `| \`bkit-agent-${i}\` | Reads the plan and writes report number ${i}. |`,
+  ).join("\n");
+
+  it("skips instead of appending a second copy below the old one", () => {
+    const src = path.join(tmpDir, "tpl.md");
+    const dst = path.join(tmpDir, "prompts.md");
+    fs.writeFileSync(
+      src,
+      `<!-- bkit:start -->\n\n# Agent Prompts Index\n\n${rows}\n\n<!-- bkit:end -->\n`,
+      "utf-8",
+    );
+    const old = `# Agent Prompts Index\n\n${rows}\n`;
+    fs.writeFileSync(dst, old, "utf-8");
+    const ws = makeWriteSet();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    writeTier2(src, dst, TOKENS, "html-comment", false, ws);
+
+    expect(fs.readFileSync(dst, "utf-8")).toBe(old);
+    expect(ws.writes).toHaveLength(0);
+    expect(warn.mock.calls[0]?.[0]).toContain("already holds an older bkit copy");
+    warn.mockRestore();
+  });
+
+  it("still appends to the consumer's own doc that only shares the title", () => {
+    const src = path.join(tmpDir, "tpl.md");
+    const dst = path.join(tmpDir, "architecture.md");
+    fs.writeFileSync(
+      src,
+      `<!-- bkit:start -->\n\n# Architecture\n\n${rows}\n\n<!-- bkit:end -->\n`,
+      "utf-8",
+    );
+    fs.writeFileSync(dst, "# Architecture\n\nOur service map.\n", "utf-8");
+    const ws = makeWriteSet();
+
+    writeTier2(src, dst, TOKENS, "html-comment", false, ws);
+
+    const result = fs.readFileSync(dst, "utf-8");
+    expect(result).toContain("Our service map.");
+    expect(result).toContain("<!-- bkit:start -->");
+    expect(ws.writes).toEqual([{ path: dst, action: "append" }]);
   });
 });

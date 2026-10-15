@@ -139,7 +139,7 @@ describe("applyTokens", () => {
     // installing bkit version rather than leaving a dangling placeholder.
     const result = applyTokens("{{BKIT_MANAGED_MARKER}}", tokens);
     expect(result).toMatch(
-      /^<!-- bkit:managed v\S+ — PolyForm Noncommercial 1\.0\.0 \/ Small Business 1\.0\.0 \(https:\/\/polyformproject\.org\/licenses\/\) — do not edit; run `bkit upgrade` to refresh -->$/,
+      /^<!-- bkit:managed v\S+ — do not edit; run `bkit upgrade` to refresh -->$/,
     );
     expect(result).not.toContain("{{BKIT_MANAGED_MARKER}}");
   });

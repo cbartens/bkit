@@ -17,6 +17,9 @@
 //   CLAUDE_CODE_REMOTE truthy              CLOUD_CLAUDE
 //   GITHUB_ACTIONS or CI truthy            GITHUB_ACTION
 //   otherwise                              LOCAL
+//
+// `runtimeHeadless` (no human attends the session) is derived from `runtime`, never
+// stored on the row.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { statusTimestamp } from "../../ledgers/status.js";
@@ -82,6 +85,8 @@ export function classify(env, root, log) {
  * session's proxy only lets it push the current branch, so it gets neither.
  */
 const capable = (runtime) => runtime === "LOCAL" || runtime === "GITHUB_ACTION" || runtime === "CLOUD_CURSOR";
+/** No human attends the session: a runner, a triggered Cursor agent, or a runtime bkit cannot place. */
+const headless = (runtime) => runtime === "GITHUB_ACTION" || runtime === "CLOUD_CURSOR" || runtime === "UNKNOWN";
 /** The full table: classification, default capabilities, and the one live gh probe. */
 export function detect(cwd, root, log) {
     const runtime = classify(process.env, root, log);
@@ -95,6 +100,7 @@ export function detect(cwd, root, log) {
         runtime,
         runtimeWorktrees: capable(runtime),
         runtimeDevPushes: capable(runtime),
+        runtimeHeadless: headless(runtime),
         runtimeGithubCli: ok,
         runtimeGithubCliExit: gh.status,
         runtimeGithubCliErr: err,
@@ -135,6 +141,7 @@ const TABLE_OUTPUT = {
     runtime: RUNTIMES.join(" | "),
     runtimeWorktrees: "may mint git worktrees (default per runtime)",
     runtimeDevPushes: "may push dev (a default, never probed)",
+    runtimeHeadless: "no human attends the session (GITHUB_ACTION | CLOUD_CURSOR | UNKNOWN); derived from runtime",
     runtimeGithubCli: "gh auth status succeeded",
     runtimeGithubCliExit: "gh auth status exit code (127 when gh is not on PATH)",
     runtimeGithubCliErr: "last non-empty line of gh auth status stderr",
@@ -243,6 +250,7 @@ export const runtimeCommand = {
                     runtime: row.runtime,
                     runtimeWorktrees: row.runtimeWorktrees,
                     runtimeDevPushes: row.runtimeDevPushes,
+                    runtimeHeadless: headless(row.runtime),
                     runtimeGithubCli: row.runtimeGithubCli,
                     runtimeGithubCliExit: typeof row.runtimeGithubCliExit === "number" ? row.runtimeGithubCliExit : null,
                     runtimeGithubCliErr: typeof row.runtimeGithubCliErr === "string" ? row.runtimeGithubCliErr : "",

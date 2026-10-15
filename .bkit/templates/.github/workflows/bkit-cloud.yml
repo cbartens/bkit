@@ -18,8 +18,9 @@ name: bkit-cloud
 #   - workflow_run (CI completion on dev): success -> no-op (regression check passed),
 #     failure -> /bkit-debug {FID} (FID recovered from squash-merge commit scope;
 #     loop-bounded by MAX_DEV_DISPATCH_ATTEMPTS). [skip ci] close commits never trigger CI.
-#   - workflow_dispatch: pick ANY phase (ship|debug|design|plan|build) for an issue.
-#     design/plan/build have no tracker-event trigger; they run only via dispatch.
+#   - workflow_dispatch: pick ANY phase (ship|debug|plan|build) for an issue.
+#     plan/build have no tracker-event trigger; they run only via dispatch.
+#     design is not offered: its Grill step interviews a human, so it runs locally only.
 #
 # Required secrets (claude job):  ANTHROPIC_API_KEY + Claude GitHub App (one-time
 #   `/install-github-app` — grants `id-token: write` OIDC for claude-code-action@v1).
@@ -42,7 +43,6 @@ on:
         options:
           - ship
           - debug
-          - design
           - plan
           - build
       issue:
@@ -465,7 +465,7 @@ jobs:
           # `cloud` run to dev's `status.jsonl`, and the dispatched phase skill creates its
           # own `feat/{FID}` worktree under `.worktrees/`. ship/debug then read+write
           # their branch-local `status.jsonl` on `feat/{FID}` (worktree-prefer at Step 1);
-          # design/plan/build start from dev. NDJSON + `*.jsonl merge=union` keeps it merge-safe.
+          # plan/build start from dev. NDJSON + `*.jsonl merge=union` keeps it merge-safe.
           ref: dev
           fetch-depth: 0
           # The auto-provided GITHUB_TOKEN inherits the `permissions:` block above.
@@ -493,7 +493,7 @@ jobs:
         uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1.0.244
         with:
           # Orchestrator contract: `/bkit-auto <phase> <arg>` where <arg> is the open
-          # PR number (ship/debug) or the tracker issue number/id (design/plan/build).
+          # PR number (ship/debug) or the tracker issue number/id (plan/build).
           # The context job validated arg against its allowlist.
           prompt: "/bkit-auto ${{ needs.context.outputs.phase }} ${{ needs.context.outputs.arg }}"
           # Lock the runner-side session to the same tool surface bkit grants the local

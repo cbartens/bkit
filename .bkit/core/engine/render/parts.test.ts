@@ -50,7 +50,13 @@ describe("shipped hook templates", () => {
   const partsDir = getHooksRoot();
   // The per-host hook sources; the part lines in prose (e.g. `.bkit/providers.md`)
   // are examples, not templates.
-  const HOOK_DIRS = [".claude/hooks", ".cursor/hooks", ".codex/hooks", ".opencode/plugin"];
+  const HOOK_DIRS = [
+    ".claude/hooks",
+    ".cursor/hooks",
+    ".codex/hooks",
+    ".opencode/plugin",
+    ".agents/plugins/bkit/hooks",
+  ];
   const templates = listFilesRecursive(root)
     .map((abs) => path.relative(root, abs))
     .filter((rel) => HOOK_DIRS.some((d) => rel.startsWith(d + path.sep)))
@@ -66,17 +72,24 @@ describe("shipped hook templates", () => {
     expect(fs.existsSync(partsDir)).toBe(true);
   });
 
-  it("the hook templates that splice parts are the nine host hooks", () => {
+  it("the hook templates that splice parts are the sixteen host hooks", () => {
     expect(templates.map((t) => t.split(path.sep).join("/")).sort()).toEqual([
+      ".agents/plugins/bkit/hooks/bkit-gateguard.cjs",
+      ".agents/plugins/bkit/hooks/bkit-guardrails.cjs",
+      ".agents/plugins/bkit/hooks/bkit-readguard.cjs",
       ".claude/hooks/bkit-gateguard.cjs",
       ".claude/hooks/bkit-guardrails.cjs",
       ".claude/hooks/bkit-preflight.sh",
+      ".claude/hooks/bkit-readguard.cjs",
       ".codex/hooks/bkit-gateguard.cjs",
       ".codex/hooks/bkit-guardrails.cjs",
+      ".codex/hooks/bkit-readguard.cjs",
       ".cursor/hooks/bkit-gateguard.cjs",
       ".cursor/hooks/bkit-guardrails.cjs",
       ".cursor/hooks/bkit-preflight.sh",
+      ".cursor/hooks/bkit-readguard.cjs",
       ".opencode/plugin/bkit-gateguard.js",
+      ".opencode/plugin/bkit-readguard.js",
     ]);
   });
 

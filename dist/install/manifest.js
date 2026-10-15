@@ -85,9 +85,8 @@ const CORE_MANIFEST = [
     { path: ".bkit/comparison.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/install.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/jsonl.md", format: "byte-equal-text", module: "core" },
-    // The PolyForm notice that travels with every file bkit writes (the managed-version
-    // marker names the licence and its URL; this file carries both full texts and the
-    // Required Notice). Sourced from `.bkit/core/.bkit/LICENSE.md`.
+    // The MIT notice that travels with the files bkit writes: the full text and copyright
+    // notice. Sourced from `.bkit/core/.bkit/LICENSE.md`.
     { path: ".bkit/LICENSE.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/prompts.md", format: "markered-text", module: "core" },
@@ -110,6 +109,13 @@ const CLAUDE_MANIFEST = [
     // in .claude/settings.json.
     {
         path: ".claude/hooks/bkit-gateguard.cjs",
+        format: "markered-text",
+        module: "claude",
+    },
+    // ReadGuard advisory repeat-read hook — same ownership split as GateGuard. Wired in
+    // .claude/settings.json → PreToolUse (matcher `Read|Bash`) and PreCompact.
+    {
+        path: ".claude/hooks/bkit-readguard.cjs",
         format: "markered-text",
         module: "claude",
     },
@@ -212,6 +218,13 @@ export const BKIT_BUILD_GATES = [
     "bkit:gate:static-unit",
 ];
 /**
+ * Runs ONE test file — `pnpm bkit:test:file <repo-relative path>` — and writes a JUnit
+ * report to `$BKIT_TEST_REPORT`. `/bkit-build` records each task's red and audits its
+ * green through it. Never seeded: no default works on every stack; install advises
+ * when it is missing (detectGateAdvisories).
+ */
+export const BKIT_TEST_FILE_SCRIPT = "bkit:test:file";
+/**
  * The deeper gates, shallowest first, with what declaring each one costs.
  *
  * Never seeded. The probe's rule is "declared = run it". `declaredBy` is how install
@@ -257,6 +270,14 @@ const CURSOR_MANIFEST = [
         format: "markered-text",
         module: "cursor",
     },
+    // ReadGuard for Cursor — same managed block as the Claude twin. Wired in
+    // .cursor/hooks.json → preToolUse (matcher "Read|Shell") and preCompact, without
+    // failClosed.
+    {
+        path: ".cursor/hooks/bkit-readguard.cjs",
+        format: "markered-text",
+        module: "cursor",
+    },
     // Curl/wget host allowlist read at runtime by bkit-guardrails.cjs. No template backs it —
     // `writeNetworkAllowlistArtifact` (install/cloud-env.ts) computes the domain set from the
     // consumer's own config, so it is `generated` and its hash is in `canonicalHashes`.
@@ -293,6 +314,12 @@ export const OPENCODE_MANIFEST = [
         format: "markered-text",
         module: "opencode",
     },
+    // bkit-readguard.js — same split as bkit-gateguard.js.
+    {
+        path: ".opencode/plugin/bkit-readguard.js",
+        format: "markered-text",
+        module: "opencode",
+    },
     // Agent and command mirrors are managed dynamically (not listed individually here —
     // the exact set depends on the bkit-prefix prompt/workflow files at install time).
     // Uninstall uses the BKIT_PREFIX filter for .opencode/agents/ and .opencode/commands/.
@@ -309,6 +336,13 @@ export const CODEX_MANIFEST = [
     // contract); differs only in tool name (apply_patch) and V4A patch-envelope parsing.
     {
         path: ".codex/hooks/bkit-gateguard.cjs",
+        format: "markered-text",
+        module: "codex",
+    },
+    // bkit-readguard.cjs — Tier-2 markered-text, twin of the Claude hook. Registered on
+    // PreToolUse matcher `Bash` (Codex has no read tool) and PreCompact.
+    {
+        path: ".codex/hooks/bkit-readguard.cjs",
         format: "markered-text",
         module: "codex",
     },
@@ -344,8 +378,15 @@ export const ANTIGRAVITY_MANIFEST = [
         format: "markered-text",
         module: "antigravity",
     },
+    // bkit-readguard.cjs — Tier-2 markered-text, twin of the Claude hook. Registered on
+    // matcher `view_file|run_command`.
+    {
+        path: ".agents/plugins/bkit/hooks/bkit-readguard.cjs",
+        format: "markered-text",
+        module: "antigravity",
+    },
     // bkit-guardrails.cjs — Tier-2 markered-text, twin of the Cursor/Codex hook. Registered
-    // on matcher `run_command`, Antigravity's shell tool name.
+    // on matcher `view_file|run_command`, Antigravity's file-read and shell tool names.
     {
         path: ".agents/plugins/bkit/hooks/bkit-guardrails.cjs",
         format: "markered-text",

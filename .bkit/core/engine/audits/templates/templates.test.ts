@@ -88,7 +88,7 @@ describe("audit templates — managed block plus consumer stub", () => {
       const template = fs.readFileSync(path.join(CORE_ROOT, relPath), "utf-8");
       const dogfood = fs.readFileSync(path.resolve(relPath), "utf-8");
       const stamp = dogfood.match(
-        /^<!-- bkit:managed v\S+ — PolyForm Noncommercial 1\.0\.0 \/ Small Business 1\.0\.0 \(https:\/\/polyformproject\.org\/licenses\/\) — do not edit; run `bkit upgrade` to refresh -->$/m,
+        /^<!-- bkit:managed v\S+ — do not edit; run `bkit upgrade` to refresh -->$/m,
       )?.[0];
       expect(stamp, relPath).toBeTruthy();
       const upToEnd = (s: string) => s.slice(0, s.indexOf("<!-- bkit:end -->"));

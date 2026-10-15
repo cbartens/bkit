@@ -12,7 +12,7 @@ tools:
   edit: true
   bash: true
 ---
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior editor merging review and scope critiques into the plan, no scope expansion.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -21,6 +21,7 @@ tools:
 > **EXECUTION PROTOCOL:** Strict procedure, do not deviate.
 >
 > - **Rules:** Read `.agents/rules.md` → follow all `Universal Rules`; skip `Orchestrator Rules`.
+> - **Code reads:** Locate first (symbol lookup or `grep -n`), then read only needed line ranges; never re-read unchanged files.
 > - **Order:** Execute Process steps sequentially unless stated otherwise.
 > - **No improv:** No ad-hoc steps, no skipping, no scope beyond this file.
 > - **Tools:** Verify every return; do not assume success.
@@ -43,7 +44,7 @@ tools:
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — apply findings via `Edit` as content becomes available.
-5. Every `Agent Execution Runbook` task's `Done when` MUST survive merge intact. Critique may edit surrounding task text; `Done when` may ONLY tighten testability / codebase-verifiability — NEVER remove or weaken.
+5. Every `Agent Execution Runbook` task's `Done when` and `Test first` MUST survive merge intact. Critique may edit surrounding task text; `Done when` and `Test first` may ONLY tighten testability / codebase-verifiability (`n/a` → named tests included) — NEVER remove or weaken.
 6. Human-confirmation checkboxes MUST survive merge as found — NEVER tick, NEVER clear.
 7. `CRITICAL` items must be applied; no consensus required. **If** conflict across findings → prefer stricter wording.
 8. OPTIONAL items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.

@@ -45,36 +45,26 @@ const BASELINE_TOKEN_PLACEHOLDERS: ReadonlyArray<readonly [string, string]> = [
   ],
 ];
 
-// Earlier-compaction override — a bkit constant, not a secret. Appended to the
-// block when not already resolved from a source file. Claude-harness-only knob —
-// Cursor has no equivalent, so it is NOT in the Cursor policy's constants.
-const AUTOCOMPACT_KEY = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE";
-const AUTOCOMPACT_VALUE = "70";
-
 // Per-cloud env-var policy. The `.envrc`-following resolver core is identical for
 // both clouds (same dotenv sources, same unset/hijack/empty drops) — only the
-// baseline placeholder set and the appended constants differ. Claude pairs with the
-// GitHub tracker and wants the autocompact override; Cursor pairs with Linear (and
-// so also needs `BKIT_LINEAR_API_KEY`) and has no autocompact knob. Keeping one resolver
-// with a small policy object is what guarantees the two generated docs describe the
-// SAME cloud environment — just different mechanics (pasted setup vs. Dockerfile).
+// baseline placeholder set differs. Claude pairs with the GitHub tracker; Cursor pairs
+// with Linear (and so also needs `BKIT_LINEAR_API_KEY`). Keeping one resolver with a
+// small policy object is what guarantees the two generated docs describe the SAME
+// cloud environment — just different mechanics (pasted setup vs. Dockerfile).
 export interface CloudEnvPolicy {
   /** Baseline env-var NAMES this cloud always needs; emitted as `NAME=<placeholder>`
    *  when absent from the resolved `.envrc` set. */
   baseline: ReadonlyArray<readonly [string, string]>;
-  /** Constant KEY/value pairs appended when not already resolved from a source. */
-  constants: ReadonlyArray<readonly [string, string]>;
 }
 
-// Claude Code on the web: GitHub tracker, autocompact override.
+// Claude Code on the web: GitHub tracker.
 export const CLAUDE_CLOUD_POLICY: CloudEnvPolicy = {
   baseline: BASELINE_TOKEN_PLACEHOLDERS,
-  constants: [[AUTOCOMPACT_KEY, AUTOCOMPACT_VALUE]],
 };
 
 // Cursor Background Agents: `BKIT_LINEAR_API_KEY` prepended for the Linear tracker
 // (bkit-preflight.sh calls the Linear GraphQL API and hard-fails without it); GitHub
-// tracker uses the same GH baseline as Claude, minus the autocompact knob.
+// tracker uses the same GH baseline as Claude.
 const CURSOR_LINEAR_PLACEHOLDER: readonly [string, string] = [
   "BKIT_LINEAR_API_KEY",
   "<Linear personal API key — https://linear.app/settings/api>",
@@ -85,7 +75,6 @@ export function cursorCloudPolicy(tracker: IssueTracker): CloudEnvPolicy {
       tracker === "linear"
         ? [CURSOR_LINEAR_PLACEHOLDER, ...BASELINE_TOKEN_PLACEHOLDERS]
         : BASELINE_TOKEN_PLACEHOLDERS,
-    constants: [],
   };
 }
 
@@ -234,7 +223,7 @@ export function resolveCloudEnvVars(
 
 /**
  * Render the `.env`-format paste block: resolved KEY=value lines, then placeholder
- * lines for any absent baseline token, then the autocompact override if unset.
+ * lines for any absent baseline token.
  */
 export function renderCloudEnvBlock(
   res: CloudEnvResolution,
@@ -244,9 +233,6 @@ export function renderCloudEnvBlock(
   for (const [k, v] of res.included) lines.push(`${k}=${v}`);
   for (const [name, placeholder] of policy.baseline) {
     if (res.placeholders.includes(name)) lines.push(`${name}=${placeholder}`);
-  }
-  for (const [key, value] of policy.constants) {
-    if (!res.included.some(([k]) => k === key)) lines.push(`${key}=${value}`);
   }
   return lines.join("\n");
 }

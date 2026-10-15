@@ -836,6 +836,9 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
       ".github/workflows/bkit-ci.yml",
       ".vale.ini",
       ".husky/pre-commit",
+      ".codex/hooks/bkit-readguard.cjs",
+      ".opencode/plugin/bkit-readguard.js",
+      ".agents/plugins/bkit/hooks/bkit-readguard.cjs",
     ];
     for (const f of uninstalledModuleFiles) {
       expect(fs.existsSync(path.join(tmpDir, f))).toBe(false);
@@ -856,6 +859,67 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     const check = runCli(["check"]);
     expect(check.status).toBe(0);
     expect(check.stdout).toContain("0 write(s) would occur");
+  });
+
+  it("upgrade creates a file a newer release adds to an installed opt-in host (#550)", () => {
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(
+      runCli(["install", "--codex", "--antigravity", "--opencode=openrouter", "--tracker=github"])
+        .status,
+    ).toBe(0);
+    // An older release's install: the host is there, the newer hook file is not.
+    const added = [
+      ".codex/hooks/bkit-readguard.cjs",
+      ".opencode/plugin/bkit-readguard.js",
+      ".agents/plugins/bkit/hooks/bkit-readguard.cjs",
+    ];
+    for (const f of added) fs.rmSync(path.join(tmpDir, f));
+    expect(runCli(["check"]).status).toBe(1);
+
+    expect(runCli(["upgrade", "--auto-apply"]).status).toBe(0);
+
+    for (const f of added) {
+      expect(fs.readFileSync(path.join(tmpDir, f), "utf-8")).toContain("bkit ReadGuard");
+    }
+    const check = runCli(["check"]);
+    expect(check.status).toBe(0);
+    expect(check.stdout).toContain("0 write(s) would occur");
+  });
+
+  it("upgrade moves a 5.1.0 Antigravity hooks.json onto the current matchers (guardrails gates view_file)", () => {
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--antigravity", "--tracker=github"]).status).toBe(0);
+    const hooksJson = path.join(tmpDir, ".agents/plugins/bkit/hooks.json");
+    fs.copyFileSync(
+      path.resolve(
+        path.dirname(new URL(import.meta.url).pathname),
+        "../../../../../tests/fixtures/antigravity-5.1.0/hooks.json",
+      ),
+      hooksJson,
+    );
+
+    expect(runCli(["upgrade", "--auto-apply"]).status).toBe(0);
+
+    const groups = (
+      JSON.parse(fs.readFileSync(hooksJson, "utf-8")) as {
+        hooks: { PreToolUse: { matcher: string; hooks: { command: string }[] }[] };
+      }
+    ).hooks.PreToolUse;
+    const guardrails = groups.filter((g) => g.hooks.some((h) => h.command.includes("guardrails")));
+    expect(guardrails.map((g) => g.matcher)).toEqual(["view_file|run_command"]);
+    expect(runCli(["check"]).status).toBe(0);
   });
 
   it("upgrade seeds missing bkit:gate:* names, so check stays clean (#489)", () => {

@@ -7,12 +7,12 @@ import { dedupeById } from "../before/index.js";
 import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, } from "../before/env.js";
 import { getPkgRoot } from "../../shared/package-roots.js";
 import { detectOpencodeYmlProviderDrift } from "../../install/modules/opencode.js";
-import { TEMPLATES_POINTER } from "../../install/template-copies.js";
-import { detectManagedStale } from "./managed.js";
-import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectShellGhMcpToken, hasGithubMcpServer, } from "./auth.js";
+import { detectManagedDuplicate, detectManagedStale } from "./managed.js";
+import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectGhMcpToken } from "./auth.js";
 import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildTrackerSetupAdvisory, detectActionsWritePermissions, detectGithubProjectFieldIdFormat, detectMainBranchProtection, readConsumerIssueTracker, } from "./github.js";
 import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
 import { detectBkitCloudYmlAlwaysTrueGate, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
+import { dropTipSilencedAdvisories, setupTipsChecklistLines, setupTipsMarkdownLines, } from "../tips/index.js";
 // ---------------------------------------------------------------------------
 // formatChecklist — pure renderer
 // ---------------------------------------------------------------------------
@@ -48,23 +48,23 @@ export function suppressedNoteLines(suppressed) {
 }
 /**
  * Format a list of findings into the post-install console checklist.
- * Returns `""` when findings AND suppressed are both empty — callers can `if (banner)` to
- * stay silent. No console.log inside — caller logs.
+ * Returns `""` when findings, suppressed and tips are all empty — callers can `if (banner)`
+ * to stay silent. No console.log inside — caller logs.
  *
- * Same content as `renderAdvisoriesMarkdown`: title, summary, agent instructions
- * and template pointer are the shared strings; only the separators differ from
- * the markdown form.
+ * Same content as `renderAdvisoriesMarkdown`: title, summary, agent instructions and
+ * setup tips are the shared strings; only the separators differ from the markdown form.
  *
  * Format per finding:
  *   --- i/N [severity] id ---
  *   Detect: ...
  *   Action: ...
  *
- * `suppressed` is appended as its own block (see `suppressedNoteLines`) — a dismissed
- * advisory stays visible even when nothing else fired.
+ * `tips` follow the findings as the Setup tips block; `suppressed` is appended as its own
+ * block (see `suppressedNoteLines`) — a dismissed advisory or tip stays visible even when
+ * nothing else fired.
  */
-export function formatChecklist(findings, suppressed = []) {
-    if (findings.length === 0 && suppressed.length === 0)
+export function formatChecklist(findings, suppressed = [], tips = []) {
+    if (findings.length === 0 && suppressed.length === 0 && tips.length === 0)
         return "";
     const banner = "=".repeat(58);
     const total = findings.length;
@@ -79,8 +79,6 @@ export function formatChecklist(findings, suppressed = []) {
         lines.push("");
         lines.push(ADVISORIES_AGENT_INSTRUCTIONS);
         lines.push("");
-        lines.push(TEMPLATES_POINTER);
-        lines.push("");
     }
     for (let i = 0; i < findings.length; i++) {
         const f = findings[i];
@@ -89,6 +87,7 @@ export function formatChecklist(findings, suppressed = []) {
         lines.push(`Action: ${f.action}`);
         lines.push("");
     }
+    lines.push(...setupTipsChecklistLines(tips));
     const suppressedLines = suppressedNoteLines(suppressed);
     if (suppressedLines.length > 0) {
         lines.push(...suppressedLines);
@@ -101,10 +100,10 @@ export function formatChecklist(findings, suppressed = []) {
 /**
  * Render findings as a markdown artifact suitable for `.bkit/advisories.md`.
  * Renders the SAME content as `formatChecklist` (shared title, summary, agent
- * instructions, template pointer and suppressed block) in markdown form, so the file can
+ * instructions, setup tips and suppressed block) in markdown form, so the file can
  * be referenced and revisited between installs. Overwritten on every run.
  */
-export function renderAdvisoriesMarkdown(findings, opts, suppressed = []) {
+export function renderAdvisoriesMarkdown(findings, opts, suppressed = [], tips = []) {
     const lines = [];
     // This is a generated, gitignored artifact — not authored prose. Advisory
     // strings (and reproduced config snippets like `.vale.ini`'s `write-good.So =
@@ -120,7 +119,7 @@ export function renderAdvisoriesMarkdown(findings, opts, suppressed = []) {
     lines.push("");
     lines.push("> Auto-generated by `bkit install` / `bkit check` / `bkit doctor`. Overwritten on each run.");
     lines.push("");
-    if (findings.length === 0 && suppressed.length === 0) {
+    if (findings.length === 0 && suppressed.length === 0 && tips.length === 0) {
         lines.push("**No advisories.** Last run was clean.");
         lines.push("");
         return lines.join("\n");
@@ -129,8 +128,6 @@ export function renderAdvisoriesMarkdown(findings, opts, suppressed = []) {
         lines.push(advisoriesSummary(findings));
         lines.push("");
         lines.push(`> ${ADVISORIES_AGENT_INSTRUCTIONS}`);
-        lines.push("");
-        lines.push(`> ${TEMPLATES_POINTER}`);
         lines.push("");
     }
     const total = findings.length;
@@ -143,6 +140,7 @@ export function renderAdvisoriesMarkdown(findings, opts, suppressed = []) {
         lines.push(`**Action:** ${f.action}`);
         lines.push("");
     }
+    lines.push(...setupTipsMarkdownLines(tips));
     const suppressedLines = suppressedNoteLines(suppressed);
     if (suppressedLines.length > 0) {
         lines.push(...suppressedLines);
@@ -163,7 +161,7 @@ export function writeAdvisoriesArtifact(findings, opts) {
         const content = renderAdvisoriesMarkdown(findings, {
             mode: opts.mode,
             version: opts.version,
-        }, opts.suppressed ?? []);
+        }, opts.suppressed ?? [], opts.tips ?? []);
         fs.writeFileSync(filePath, content);
         const n = findings.length;
         console.log(`${opts.logPrefix} Wrote .bkit/advisories.md (${n} item${n === 1 ? "" : "s"}).`);
@@ -258,29 +256,14 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     const managedStale = detectManagedStale(cwd);
     if (managedStale)
         phase3.push(managedStale);
-    // BKIT_GH_TOKEN shell env — authenticates the GitHub MCP server
-    // (`Authorization: Bearer ${BKIT_GH_TOKEN}` in .mcp.json), which powers the entire
-    // tracker + PR + Projects MCP surface. Only flags when a github MCP server is
-    // configured, and never in CI.
-    if (hasGithubMcpServer(cwd) && !process.env.CI) {
-        const ghMcpTokenStatus = detectShellGhMcpToken();
-        if (ghMcpTokenStatus === "missing") {
-            phase3.push({
-                id: "gh-mcp-token-unset-shell",
-                severity: "advisory",
-                detect: "BKIT_GH_TOKEN is not set in the shell environment (undefined). The GitHub MCP server authenticates with `Authorization: Bearer ${BKIT_GH_TOKEN}` — without it, every tracker, PR, and board MCP call fails to connect.",
-                action: "Set BKIT_GH_TOKEN in .bkit/.env (canonical local-secrets file, gitignored), then `direnv allow` and restart your editor so MCP servers pick it up:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set BKIT_GH_TOKEN=<PAT>\n    direnv allow\n\nUse a fine-grained PAT when every target repo sits under one owner (Contents, Pull requests, Issues, and Actions read & write, plus organization-scoped Projects read & write if you use board sync); use a classic PAT when one token must span owners (scopes repo / workflow / read:org / project / security_events). Generate at: https://github.com/settings/personal-access-tokens (fine-grained) or https://github.com/settings/tokens (classic). In cloud sessions (Claude Code web / Cursor Background Agents) set BKIT_GH_TOKEN in the dashboard env vars instead — repo files are not read for secrets there.",
-            });
-        }
-        else if (ghMcpTokenStatus === "empty") {
-            phase3.push({
-                id: "gh-mcp-token-empty-shell",
-                severity: "advisory",
-                detect: 'BKIT_GH_TOKEN is set to an empty string (BKIT_GH_TOKEN=""). The GitHub MCP server sends an empty bearer token and fails to authenticate — distinct from unset, same effect.',
-                action: "Set a non-empty BKIT_GH_TOKEN in .bkit/.env (fine-grained PAT for one owner, or classic across owners; Contents / Pull requests / Issues / Actions read & write), then `direnv allow` and restart your editor so MCP servers reload.",
-            });
-        }
-    }
+    // Older unmarked copy of a managed markdown block left outside its markers.
+    const managedDuplicate = detectManagedDuplicate(cwd);
+    if (managedDuplicate)
+        phase3.push(managedDuplicate);
+    // BKIT_GH_TOKEN shell env — authenticates the GitHub MCP server.
+    const ghMcpToken = detectGhMcpToken(cwd);
+    if (ghMcpToken)
+        phase3.push(ghMcpToken);
     // Main branch protection — bkit's PR-base gates (build Step 17, ship Step 2)
     // assert feat/* PRs target dev. Enforcing it at the GitHub layer needs branch
     // protection on main restricting merges to PRs from dev.
@@ -426,6 +409,7 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     // appears in Phase 3, then merge Phase 3 at the front for the winning position).
     const phase3Ids = new Set(deduped.map((f) => f.id));
     const filteredPreflight = dedupedPreflight.filter((f) => !phase3Ids.has(f.id));
-    // Final order: preflight advisories (that weren't superseded) first, then Phase 3
-    return [...filteredPreflight, ...deduped];
+    // Final order: preflight advisories (that weren't superseded) first, then Phase 3.
+    // An advisory a setup tip reuses goes quiet with that tip (`bkit.ignoreAdvisories`).
+    return dropTipSilencedAdvisories([...filteredPreflight, ...deduped], cwd, onSuppressed);
 }

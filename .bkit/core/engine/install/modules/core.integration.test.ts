@@ -119,18 +119,15 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     }
   });
 
-  it("writes .bkit/LICENSE.md with both PolyForm texts, the Required Notice and the MIT-0 pointer", () => {
+  it("writes .bkit/LICENSE.md with the full MIT text and copyright notice", () => {
     const ctx = makeCtx();
     runCoreModule(ctx);
     flushPostDispatch(ctx);
 
     const licence = fs.readFileSync(path.join(tmpDir, ".bkit", "LICENSE.md"), "utf-8");
-    expect(licence).toContain("# PolyForm Noncommercial License 1.0.0");
-    expect(licence).toContain("# PolyForm Small Business License 1.0.0");
-    expect(licence).toContain(
-      "Required Notice: Copyright 2026 Christian Bartens (https://github.com/cbartens/bkit)",
-    );
-    expect(licence).toContain("`.bkit/shared/` and `.bkit/templates/` are MIT-0");
+    expect(licence).toContain("MIT License");
+    expect(licence).toContain("Copyright (c) 2026 Christian Bartens");
+    expect(licence).toContain("Permission is hereby granted, free of charge");
   });
 
   it("mirrors the docs into the repo's own .bkit/ in dogfood too", () => {
@@ -270,6 +267,15 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
     expect(finding?.action).toContain(
       '"bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration"',
     );
+  });
+
+  it("advises declaring bkit:test:file until package.json has it, with the contract inline", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS });
+    const finding = detectGateAdvisories(tmpDir).find((f) => f.id === "test-file-script-missing");
+    expect(finding?.action).toContain("$BKIT_TEST_REPORT");
+    expect(finding?.action).toContain('"bkit:test:file": "vitest run');
+    writeScripts({ ...BKIT_GATE_SCRIPTS, "bkit:test:file": "pytest --junitxml=$BKIT_TEST_REPORT" });
+    expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain("test-file-script-missing");
   });
 
   it("returns nothing for an absent or malformed package.json", () => {

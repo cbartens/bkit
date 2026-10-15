@@ -1,4 +1,4 @@
-// bkit workstreams parse|comment — design Step 10: read the organised design's
+// bkit workstreams parse|comment — design Step 11: read the organised design's
 // `## Suggested Workstreams` and build the advisory comment for the feature's
 // own issue.
 //
@@ -84,7 +84,7 @@ export function parseWorkstreams(md: string): Workstream[] {
 /** `[]` or `[WS-1, WS-2]`. */
 export const requiresList = (w: Workstream) => `[${w.requires.join(", ")}]`;
 
-/** The Step 10 comment: one line per workstream, then the design doc link. */
+/** The Step 11 comment: one line per workstream, then the design doc link. */
 export function commentBody(
   ws: Workstream[],
   opts: { ownerRepo: string; month: string; fid: string },
@@ -92,7 +92,7 @@ export function commentBody(
   const doc = `docs/plans/${opts.month}/${opts.fid}-design.md`;
   return [
     "###### bkit:generated",
-    "### Step 10 — Suggested Workstreams",
+    "### Step 11 — Suggested Workstreams",
     "Advisory only. NEVER auto-trigger.",
     ...ws.map((w) => `- ${w.id}: ${w.name}. Requires: ${requiresList(w)}`),
     `[${doc}](https://github.com/${opts.ownerRepo}/blob/dev/${doc})`,
@@ -135,7 +135,7 @@ export const workstreamsCommand: CommandSpec = {
     },
     comment: {
       summary:
-        "The Step 10 comment body for the feature's own issue (posted via MCP by the workflow).",
+        "The Step 11 comment body for the feature's own issue (posted via MCP by the workflow).",
       flags: [
         ARTIFACT_FLAG,
         { name: "fid", type: "string", required: true, help: "feature id" },

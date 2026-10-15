@@ -352,7 +352,7 @@ describe("bkit prs probe", () => {
 });
 
 // ---------------------------------------------------------------------------
-// guard-checkout
+// scan-body and cross-check
 // ---------------------------------------------------------------------------
 
 const resolved = (worktrees: boolean, devPushes: boolean, githubCli = true) => ({

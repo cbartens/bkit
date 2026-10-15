@@ -102,7 +102,7 @@ export function applyTokens(content: string, tokens: TokenMap): string {
     const version = tokens.BKIT_VERSION ?? readInstallingBkitVersion();
     out = out
       .replace(/^\/\/ \{\{BKIT_MANAGED_MARKER\}\}/gm, () => managedVersionMarker(version, "slash"))
-      .replace(/\{\{BKIT_MANAGED_MARKER\}\}/g, () => managedVersionMarker(version));
+      .replace(/\{\{BKIT_MANAGED_MARKER\}\}/g, () => managedVersionMarker(version, "html"));
   }
   return out;
 }

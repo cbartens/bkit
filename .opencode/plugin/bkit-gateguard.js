@@ -44,7 +44,7 @@
 
 // bkit:start
 
-// bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -52,19 +52,21 @@ import * as path from "node:path";
 
 // opencode edit-like tool names, lowercase in opencode's plugin API.
 // The terminal tool (`shell` in v2, `bash` before v2) is NOT in this list.
-const EDIT_TOOLS = new Set(["write", "edit", "patch"]);
+const EDIT_TOOLS = new Set(["write", "edit", "patch", "apply_patch"]);
 
 // --- GateGuard engine: identical in every host's hook (bkit renders it from one source).
 // Needs `fs`, `os` and `path` in scope; the host's own code above declares them.
 
 // Basename patterns for quality-gate configs (lint / format / types / test / slop).
 // A matching path gets the gate-config advisory instead of the first-touch checklist.
-// JS / TS first, then the other ecosystems' gate configs (Python, Go, Rust).
+// JS / TS first, then the other ecosystems' gate configs (Python, Go, Rust). Mixed-purpose
+// manifests that also hold dependencies and metadata (package.json, pyproject.toml,
+// setup.cfg, tox.ini) are not matched: routine edits to them are not gate edits.
 const GATE_CONFIG_PATTERNS = [
   /^tsconfig(\..+)?\.json$/,
   /^vitest\.config\.[mc]?[jt]s$/,
   /^vite\.config\.[mc]?[jt]s$/,
-  /^jest\.config\.[mc]?[jt]s$/,
+  /^jest\.config\.([mc]?[jt]s|json)$/,
   /^eslint\.config\.[mc]?[jt]s$/,
   /^\.eslintrc(\.(json|js|cjs|ya?ml))?$/,
   /^\.prettierrc(\.(json|js|cjs|mjs|ya?ml|toml))?$/,
@@ -75,14 +77,15 @@ const GATE_CONFIG_PATTERNS = [
   /^slop-scan\.config\.json$/,
   /^\.lintstagedrc(\.(json|js|cjs|mjs|ya?ml))?$/,
   /^lint-staged\.config\.[mc]?js$/,
-  /^pyproject\.toml$/,
   /^ruff\.toml$/,
   /^\.ruff\.toml$/,
   /^\.flake8$/,
-  /^mypy\.ini$/,
+  /^\.?mypy\.ini$/,
+  /^\.?pylintrc$/,
+  /^pytest\.ini$/,
   /^\.golangci\.(ya?ml|toml|json)$/,
-  /^clippy\.toml$/,
-  /^rustfmt\.toml$/,
+  /^\.?clippy\.toml$/,
+  /^\.?rustfmt\.toml$/,
 ];
 
 // A path under `.bkit/templates/` (bkit's reference copies, refreshed on every upgrade)
@@ -175,6 +178,13 @@ function stateDir() {
   return path.join(os.tmpdir(), "bkit-gateguard");
 }
 
+// Dedup scope: the session, narrowed to one agent when the host names it. A Claude Code
+// subagent shares its parent's session_id and carries its own agent_id.
+function dedupKey(sessionId, agentId) {
+  const sid = typeof sessionId === "string" ? sessionId : "no-session";
+  return typeof agentId === "string" && agentId ? `${sid}.${agentId}` : sid;
+}
+
 function stateFile(sessionId) {
   const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) || "no-session";
   return path.join(stateDir(), safe + ".json");
@@ -248,15 +258,17 @@ function firstTouchAdvice(filePath, sessionId, isNewFile) {
   return { mode: mode === "deny" ? "deny" : "advisory", context };
 }
 
-// Pure: takes the tool name, the already-extracted file path, and the session id;
+// Pure: takes the tool name, the already-extracted file path, and the session id
+// (plus an optional new-file override for patch `*** Add File:` targets);
 // returns the advisory to emit or null. Never touches opencode's client, stderr,
 // or the throw path — the driver below owns all three, so it can fold in its own
 // checks without bkit's block needing to change.
-function bkitGateguard(toolName, filePath, sessionId) {
+function bkitGateguard(toolName, filePath, sessionId, isNewOverride) {
   if (!EDIT_TOOLS.has(toolName)) return null;
   // A write to a not-yet-existing path is a NEW file and gets the reuse checklist.
   const isNewFile =
-    toolName === "write" && typeof filePath === "string" && !fs.existsSync(filePath);
+    isNewOverride ??
+    (toolName === "write" && typeof filePath === "string" && !fs.existsSync(filePath));
   return firstTouchAdvice(filePath, sessionId, isNewFile);
 }
 
@@ -327,7 +339,7 @@ function promptAuthoringAdvisory() {
     sectionRule(".bkit/core/.bkit/prompts.md", "Prompt Authoring Rules", lead, ".bkit/prompts.md");
   return [
     "[bkit GateGuard] .bkit/core/prompts/*.md authoring:",
-    "- These files ARE their own template: ALWAYS `grep .bkit/core/prompts/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, variables, operators, conditionals, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (contract clauses, process steps, output format blocks, verdict mappings). `→` is intentional process glyph, adopt do NOT convert.",
+    "- These files ARE their own template: ALWAYS `grep .bkit/core/prompts/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, plurals, variables, operators, conditionals, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (contract clauses, process steps, output format blocks, verdict mappings). `→` is intentional process glyph, adopt do NOT convert.",
     rule("Dense instructions only"),
     rule("Cross-prompt alignment"),
     rule("Self-contained"),

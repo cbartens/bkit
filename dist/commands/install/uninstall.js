@@ -384,6 +384,7 @@ export async function runUninstall(modules, ctx) {
         deleted: [],
         stripped: [],
         preserved: [],
+        absent: [],
         decisions: [],
         dryRun: ctx.dryRun,
     };
@@ -413,7 +414,13 @@ export async function runUninstall(modules, ctx) {
         seen.add(summary.file);
         const absPath = path.join(ctx.cwd, summary.file);
         switch (summary.decision) {
-            case "skip-absent":
+            case "skip-absent": {
+                result.absent.push(summary.file);
+                if (!ctx.dryRun) {
+                    console.log(`${ctx.logPrefix} absent: ${summary.file} (${summary.reason})`);
+                }
+                break;
+            }
             case "skip-modified":
             case "skip-unknown":
             case "preserve": {
@@ -570,7 +577,8 @@ export async function runUninstall(modules, ctx) {
     }
     // Clean up .agents/ bkit-prefix mirror files
     // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, .opencode/agents/bkit-*.md, etc.)
-    if (!ctx.dryRun) {
+    // A dry run lists the same paths in result.deleted and removes nothing.
+    {
         const mirrorDirs = [
             // Each host's mirror dirs are gated on its own module so a targeted
             // uninstall (e.g. --claude / --auto) leaves other hosts
@@ -598,9 +606,11 @@ export async function runUninstall(modules, ctx) {
                     if (!f.startsWith("bkit-") || !(f.endsWith(".md") || f.endsWith(".toml")))
                         continue;
                     const absFile = path.join(absDir, f);
-                    fs.rmSync(absFile, { force: true });
+                    if (!ctx.dryRun)
+                        fs.rmSync(absFile, { force: true });
                     result.deleted.push(path.join(dir, f));
-                    console.log(`${ctx.logPrefix} delete mirror: ${path.join(dir, f)}`);
+                    if (!ctx.dryRun)
+                        console.log(`${ctx.logPrefix} delete mirror: ${path.join(dir, f)}`);
                 }
             }
             catch (err) {
@@ -628,9 +638,12 @@ export async function runUninstall(modules, ctx) {
                     const abs = path.join(absDir, d);
                     if (!fs.statSync(abs).isDirectory())
                         continue;
-                    fs.rmSync(abs, { recursive: true, force: true });
+                    if (!ctx.dryRun)
+                        fs.rmSync(abs, { recursive: true, force: true });
                     result.deleted.push(path.join(skillsDir, d));
-                    console.log(`${ctx.logPrefix} delete mirror: ${path.join(skillsDir, d)}`);
+                    if (!ctx.dryRun) {
+                        console.log(`${ctx.logPrefix} delete mirror: ${path.join(skillsDir, d)}`);
+                    }
                 }
             }
             catch (err) {
@@ -740,7 +753,7 @@ export async function runUninstall(modules, ctx) {
         const versionFile = path.join(ctx.cwd, ".bkit", "version");
         const existing = readBkitVersion(versionFile);
         if (existing) {
-            const { canonicalHashes, pruned } = mergeCanonicalHashes(ctx.cwd, existing.canonicalHashes, {});
+            const { canonicalHashes, pruned } = mergeCanonicalHashes(ctx.cwd, existing.canonicalHashes, {}, result.deleted);
             if (pruned > 0) {
                 console.log(`${ctx.logPrefix}${ctx.dryRun ? " [dry-run]" : ""} update version pin: .bkit/version (pruned ${pruned})`);
                 if (!ctx.dryRun) {
@@ -859,13 +872,15 @@ export async function runUninstallCommand(modules, opencodeProvider, uninstallFl
     const moduleList = [...modules];
     console.log(`${LOG_PREFIX} Running uninstall${uninstallCtx.dryRun ? " (dry-run)" : ""}...`);
     const result = await runUninstall(moduleList, uninstallCtx);
-    const totalDeleted = result.deleted.length;
-    const totalStripped = result.stripped.length;
-    const totalPreserved = result.preserved.length;
-    if (uninstallCtx.dryRun) {
-        console.log(`${LOG_PREFIX} [dry-run] Would delete: ${totalDeleted}, strip: ${totalStripped}, preserve: ${totalPreserved}`);
-    }
-    else {
-        console.log(`${LOG_PREFIX} Done. Deleted: ${totalDeleted}, stripped: ${totalStripped}, preserved: ${totalPreserved}`);
-    }
+    console.log(uninstallSummaryLine(result, LOG_PREFIX));
+}
+/** The closing totals line of an uninstall run (dry-run wording when `result.dryRun`). */
+export function uninstallSummaryLine(result, logPrefix) {
+    const deleted = result.deleted.length;
+    const stripped = result.stripped.length;
+    const preserved = result.preserved.length;
+    const absent = result.absent.length;
+    return result.dryRun
+        ? `${logPrefix} [dry-run] Would delete: ${deleted}, strip: ${stripped}, preserve: ${preserved}, already absent: ${absent}`
+        : `${logPrefix} Done. Deleted: ${deleted}, stripped: ${stripped}, preserved: ${preserved}, already absent: ${absent}`;
 }

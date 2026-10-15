@@ -10,6 +10,7 @@ import {
   modulesToCliFlags,
   validateCloudTrackerMatch,
   getInstallingVersion,
+  refreshPreflightAfterWrites,
 } from "./install";
 import type { ModuleFlag } from "../../cli";
 import type { IssueTracker } from "../../install/manifest";
@@ -213,5 +214,42 @@ describe("detectOpencodeProviders — all installed providers", () => {
 describe("getInstallingVersion — bkit's own version, best-effort", () => {
   it("returns the semver from the installing package.json", () => {
     expect(getInstallingVersion()).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});
+
+describe("refreshPreflightAfterWrites — post-write preflight re-check", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-refresh-"));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("returns a blocker that only appears after the writes", () => {
+    fs.mkdirSync(path.join(dir, ".git"));
+    fs.writeFileSync(path.join(dir, "package.json"), '{"name":"x"}');
+    const modules = new Set<ModuleFlag>(["claude"]);
+    const before = refreshPreflightAfterWrites(modules, dir, undefined, 0, []);
+    expect(before.blockers).toEqual([]);
+
+    fs.writeFileSync(path.join(dir, "package.json"), "{ not json");
+    const after = refreshPreflightAfterWrites(modules, dir, undefined, 0, []);
+    expect(after.blockers.length).toBeGreaterThan(0);
+    expect(after.blockers.every((f) => f.severity === "blocker")).toBe(true);
+  });
+
+  it("keeps module advisories pushed during dispatch and replaces the Phase 1 seeds", () => {
+    fs.mkdirSync(path.join(dir, ".git"));
+    fs.writeFileSync(path.join(dir, "package.json"), '{"name":"x"}');
+    const seed = { id: "seed", severity: "advisory" } as never;
+    const moduleAdvisory = { id: "from-module", severity: "advisory" } as never;
+    const r = refreshPreflightAfterWrites(new Set<ModuleFlag>(["claude"]), dir, undefined, 1, [
+      seed,
+      moduleAdvisory,
+    ]);
+    const ids = r.advisories.map((f) => f.id);
+    expect(ids).toContain("from-module");
+    expect(ids).not.toContain("seed");
   });
 });

@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/cbartens/bkit/actions/workflows/bkit-ci.yml"><img alt="CI" src="https://github.com/cbartens/bkit/actions/workflows/bkit-ci.yml/badge.svg?branch=main"></a>
   <a href="https://www.npmjs.com/package/@cbartens/bkit"><img alt="npm version" src="https://img.shields.io/npm/v/@cbartens/bkit"></a>
-  <a href="#license"><img alt="License: PolyForm Noncommercial or PolyForm Small Business" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%20%2F%20Small%20Business-blue"></a>
+  <a href="#license"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Node 20+" src="https://img.shields.io/badge/node-%E2%89%A520-339933">
   <img alt="Works with Claude Code, Cursor, Codex, Antigravity and opencode" src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Codex%20%C2%B7%20Antigravity%20%C2%B7%20opencode-8250df">
 </p>
@@ -19,6 +19,7 @@
   <a href="#a-ci-pipeline-built-the-way-senior-teams-build-them">CI template</a> ·
   <a href="#right-context-at-the-right-step">Context</a> ·
   <a href="#faq">FAQ</a> ·
+  <a href=".bkit/comparison.md#part-3--compared-with-other-ai-development-frameworks">Comparison</a> ·
   <a href=".bkit/install.md">Install guide</a>
 </p>
 
@@ -29,12 +30,12 @@ AI coding agents are fast, but on their own they skip the parts that make softwa
 - **For solo founders and makers** who have outgrown vibe coding: you get the habits of a senior engineering team without hiring one. You need to be able to read a plan and make a call, not write the code.
 - **For engineers** who want a proven agentic process instead of building their own: rules, prompts, workflows, guardrails, audits and a CI pipeline that already work together.
 
-**Battle-tested, not a weekend prompt pack.** bkit is built with bkit. Its rules, prompts and workflows have been refined over >1,000 commits, >500 issues and >100 merged pull requests run through its own pipeline, and that history is recorded in >200 lessons and >300 decisions agents read before they start.
+**Researched and battle-tested, not a weekend prompt pack.** bkit is built with bkit. Its rules, prompts and workflows come from months of research into how agentic engineering works best, refined over >1,000 commits, >500 issues and >100 merged pull requests run through its own pipeline. That history is recorded in >200 lessons and >300 decisions agents read before they start. How it compares with other AI development frameworks, feature by feature: [`.bkit/comparison.md`](.bkit/comparison.md#part-3--compared-with-other-ai-development-frameworks).
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-features-dark.svg">
-    <img alt="What ships with bkit, one coloured row per phase. Design: three rival designs, probe code for the risky unknowns, reads your history, reviewed for failure modes. Plan: five reviewers, big work split up, learns from past bugs and postponed work, more than 30 audits. Build: writes and verifies, hunts bugs and security holes, checks the plan is still current, skills on demand. Debug: outside evidence from CI and your platforms, root cause first, hard-bug mode, knows when to stop. Ship: honest CI, nothing quietly dropped, docs and memory, never touches main. Every phase: any AI tool, best model per job, independent review, laptop to cloud." src=".github/assets/bkit-features-light.svg" width="100%">
+    <img alt="What ships with bkit, one coloured row per phase. Design: three rival designs, probe code for the risky unknowns, reads your history, reviewed for failure modes. Plan: five reviewers, big work split up, learns from past bugs and postponed work, more than 30 audits. Build: test first and verified, hunts bugs and security holes, checks the plan is still current, skills on demand. Debug: outside evidence from CI and your platforms, root cause first, hard-bug mode, knows when to stop. Ship: honest CI, nothing quietly dropped, docs and memory, never touches main. Every phase: any AI tool, best model per job, independent review, laptop to cloud." src=".github/assets/bkit-features-light.svg" width="100%">
   </picture>
 </p>
 
@@ -62,7 +63,7 @@ One command per job. Each one runs a team of specialised agents, so you don't ha
 | --- | --- | --- |
 | Work out how to build it | `/bkit-design` | Reads related issues and past decisions, has three agents propose different approaches and two critique them, and writes throwaway code to test any risky unknowns the reviewers flag. You get one design to approve. |
 | Plan the work | `/bkit-plan` | A step-by-step plan, stress-tested by five reviewers who also see past bugs and postponed work. Too big for one build? It's split into pieces. You approve it. |
-| Build it | `/bkit-build` | Checks the plan still matches the code, writes it, verifies every task, hunts for bugs and security holes, adds edge-case tests, and opens a pull request. |
+| Build it | `/bkit-build` | Checks the plan still matches the code, writes each task's tests before its code, verifies every task, hunts for bugs and security holes, adds edge-case tests, and opens a pull request. |
 | Fix what broke | `/bkit-debug` | Pulls evidence from CI and your platforms, finds the root cause, fixes it, re-tests and records the lesson. Hard runtime bugs get their own mode; if it can't fix something, it stops and writes you a clear handover. |
 | Ship it | `/bkit-ship` | Checks nothing planned was quietly dropped, waits for every test lane to pass, merges into `dev`, and updates the docs. |
 | Health check | >30 audits | One specialist checklist per area. Findings feed straight into `/bkit-plan`. |
@@ -86,18 +87,30 @@ One command per job. Each one runs a team of specialised agents, so you don't ha
   </picture>
 </p>
 
-Rules and prompts only go so far: an agent can be talked into calling something done. Reviewer agents fence in the design and the plan. From the first line of code, automated checks join them, and those can't be argued with.
+Most AI development frameworks are prompts: they describe good work and trust the agent to deliver it. But an agent can be talked into calling something done, and a prompt can't stop it. bkit builds fences instead. Reviewer agents that didn't write the work fence in the design and the plan. From the first line of code, automated checks join them, and those can't be argued with.
 
 ## A CI pipeline built the way senior teams build them
 
-CI (continuous integration) is the robot that runs every check on every change, on GitHub's servers, before anything merges. It's the strongest fence there is, and most people who start with vibe coding have never set one up. bkit ships one ready to adopt, and its workflows are built around it:
+The strongest fence is CI (continuous integration): the robot that runs every check on every change, on GitHub's servers, before anything merges. Most people who start with vibe coding have never set one up, and none of the AI development frameworks in our [comparison](.bkit/comparison.md#part-3--compared-with-other-ai-development-frameworks) ships a full test pipeline for your project. bkit ships one ready to adopt, and its workflows are built around it. Agents and CI hand the work back and forth until every test passes:
+
+1. **`/bkit-build`** runs the quick checks on your machine, then opens a pull request, which starts CI.
+2. **CI** runs every lane and reports one result: a final check that's green only if every lane ran and passed.
+3. **Red?** `/bkit-debug` reads the logs of the lanes that failed, finds the root cause, fixes it and pushes, and CI runs again.
+4. **Green?** `/bkit-ship` checks nothing planned was quietly dropped, then merges into `dev`. Nothing less than green gets merged.
+5. **On autopilot**, the loop runs by itself: for issues labelled `bkit:auto`, CI's result starts ship or debug in a cloud session, with no laptop open.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-ci-dark.svg">
+    <img alt="bkit's CI pipeline, flowing left to right: plan the run (work out what to test); check and build (quick checks, unit tests, integration tests, web, iOS and Android builds, database migrations); set the stage (preview deploy, reset test data); test like a user (web, iOS and Android end-to-end tests, and a live-site check); tidy up. Every lane feeds one final check, the only one merging needs, which fails if any lane failed, was skipped or ran zero tests. /bkit-build starts CI by opening the pull request, /bkit-debug reads the logs of any lane that fails and fixes it, and /bkit-ship merges only when the final check is green." src=".github/assets/bkit-ci-light.svg" width="100%">
+  </picture>
+</p>
 
 - **Ready on day one.** Two lanes run side by side: quick checks (type checking, formatting, a prose checker, a scanner for junk code AI tends to write, a workflow-file checker, and `bkit check`) and unit tests.
-- **A green tick means every test ran.** One final check joins all lanes and is the only one branch protection needs. It fails if any lane failed, was skipped or cancelled, or ran zero tests, so a half-finished run can't pass as tested.
+- **A green tick means every test ran.** One final check joins all lanes and is the only one branch protection needs. It fails if any lane failed, was skipped or cancelled, or ran zero tests, so a half-finished run can't pass as tested. The gates audit flags any check that can never fail.
 - **Grows with your project.** >20 ready-to-enable building blocks: integration tests, end-to-end tests for web, iOS and Android, database migrations (locked once merged, with security-policy checks), coverage reports, waiting for preview deploys, live checks against the deployed site, smoke and health checks, and a planner that runs only what a change affects. `bkit check` reminds you of each one until you enable or delete it.
 - **Safe by default.** Every third-party action is pinned to an exact commit, the downloaded prose checker is checksum-verified, and pull-request titles never reach a script unescaped.
 - **Doesn't waste minutes.** A commit that already passed isn't re-tested, and a newer push cancels the older run, except on your production branch, where a deploy must never be cut off halfway.
-- **Wired into the workflows.** `/bkit-ship` merges only when the final check is green, `/bkit-debug` reads its failed logs, the cloud router starts from its result, and the gates audit flags any check that can never fail.
 
 ## Right context at the right step
 
@@ -120,7 +133,7 @@ Most AI tools forget everything when the chat ends. bkit keeps what it knows in 
 ### The quality is real
 
 - **Everything is checked by an agent that didn't write it.** An AI checking its own work tends to approve it. bkit gives every design, plan and code change to separate reviewers, each with one job (one hunts bugs, another security holes). They never see each other's verdicts, and several review groups mix models on purpose, so one model's blind spot is less likely to get past all of them.
-- **"Done" is checked by code, not taken on trust.** Every step's output is verified before the next step starts, a task is ticked only when its result really exists, and a silent TODO or skipped test blocks the merge.
+- **"Done" is checked by code, not taken on trust.** Every step's output is verified before the next step starts, a task is ticked only when its result really exists, each task's tests must be seen failing before its code is written, and a silent TODO or skipped test blocks the merge.
 - **Broken builds fix themselves, and stay fixed.** `/bkit-debug` finds the root cause before it changes anything, fixes it, re-runs the tests and records the lesson. Bugs that only show up at runtime get a dedicated mode that adds logging, fixes on evidence and removes the logging again.
 - **It knows when to stop.** If a failure can't be fixed, bkit writes a clear handover and stops, instead of guessing over and over.
 
@@ -148,19 +161,23 @@ Most AI tools forget everything when the chat ends. bkit keeps what it knows in 
 
 ## Templates ready to adopt
 
-bkit installs only what its workflows run. Everything else, the things you or another tool run, ships as a template: install puts the latest set in your `.bkit/templates/`, and every upgrade lists which ones changed. Copy in what you want and own it; bkit never writes over your copy. The install prompt asks your AI to adopt what fits. Catalogue, install steps and known traps: [`.bkit/templates.md`](.bkit/templates.md).
+bkit installs only what its workflows run. Everything else, the things you or another tool run, ships as a template: install puts the latest set in your `.bkit/templates/`, and every upgrade lists which ones changed. Copy in what you want and own it; bkit never writes over your copy. The install prompt asks your AI to adopt what fits, and each workflow ends with a tip on the next one worth adding.
+
+The ones that matter most, in the order to adopt them:
 
 <!-- prettier-ignore -->
-| Template | What it gives you |
+| Template | What it's for |
 | --- | --- |
-| **CI pipeline** | Two lanes ready to go and >20 building blocks for the rest ([above](#a-ci-pipeline-built-the-way-senior-teams-build-them)). One final check is the only one branch protection needs. |
-| **Quality checks** | Type checking, formatting, a prose checker, a scanner for junk code AI tends to write, and a workflow-file checker, wired into git hooks and CI. Your `bkit:gate:*` scripts in `package.json` define what "the checks" are, and the gates audit flags any check that can never fail. |
-| **Context connectors** | >10 ready-made connectors that let `/bkit-debug` read CI, error trackers, hosting, databases, payments, email, queues and the web. |
+| **CI pipeline** | Runs every check on GitHub on every change, and `/bkit-ship` waits for it before merging. Without it, "shipped" only means merged, not checked. Two lanes ready to go and >20 building blocks for the rest ([above](#a-ci-pipeline-built-the-way-senior-teams-build-them)). |
+| **Quality checks** | Catches problems on your own machine in seconds, before they reach GitHub: type checking, formatting, a prose checker and a scanner for junk code AI tends to write, wired into git hooks and CI. Your `bkit:gate:*` scripts in `package.json` define what "the checks" are. |
+| **Serena** | Lets agents look up code the way your editor does ("where is this defined, and what uses it?") instead of searching for words and reading whole files. Fewer accidental changes, and lower running costs because agents read less. Read-only. |
+| **Context connectors** | Let `/bkit-debug` read the real errors instead of guessing from the code: >10 ready-made connectors for CI, error trackers, hosting, databases, payments, email, queues and the web. |
 | **Cloud agents** | When CI finishes, a cloud agent picks up: ship on green, debug on red. No laptop needed. |
-| **Dependency updates** | Ready-made Renovate or Dependabot setups: grouped minor updates, pinned GitHub Actions, and security fixes that skip the weekly queue. |
-| **Secrets sync** | One local file holds every key. One command pushes them to Vercel, GitHub Actions, Google Cloud, Supabase and Expo; another proves every copy matches without printing a value. |
-| **Serena** | Lets agents look up code the way your editor does ("where is this used?") instead of guessing from text search. Read-only. |
-| **graphify** | Draws a map of how your codebase fits together (`docs/capabilities.md`), so agents check what already exists before building it again. |
+| **Secrets sync** | Keeps every password and key the same everywhere: one local file, one command to push it to Vercel, GitHub Actions, Google Cloud, Supabase and Expo, another to prove every copy matches without printing a value. Prevents "works for me, broken in production". |
+| **graphify** | Keeps a map of how your code fits together (`docs/capabilities.md`), so agents check what already exists before building it again. |
+| **Dependency updates** | Small, grouped update pull requests from Renovate or Dependabot instead of one big risky upgrade later. GitHub Actions stay pinned, and security fixes skip the queue. |
+
+All templates, what each is for, and how to install them: [`.bkit/templates.md`](.bkit/templates.md).
 
 ## Quick start
 
@@ -193,13 +210,19 @@ No, but you do need to read a design and a plan and decide whether they're right
 bkit is heavier than a single prompt. For a one-off script or a quick experiment, just ask your AI. bkit pays off on a project you'll keep changing and want to trust.
 
 **What does it cost?**
-bkit is free for personal use, non-profits and small businesses (fewer than 100 people and under US$1M revenue); larger companies need a commercial licence ([License](#license)). It runs on AI subscriptions you already have (Claude, Cursor, ChatGPT for Codex, Google Antigravity), on Antigravity's free tier, or with your own key on pay-as-you-go providers through opencode (OpenRouter, Ollama or the opencode gateways). Several agents reviewing in parallel uses more of your quota than a single chat; that's the price of the second opinions.
+bkit is free and open source under the MIT licence, for anyone, commercial use included ([License](#license)). It runs on AI subscriptions you already have (Claude, Cursor, ChatGPT for Codex, Google Antigravity), on Antigravity's free tier, or with your own key on pay-as-you-go providers through opencode (OpenRouter, Ollama or the opencode gateways). Several agents reviewing in parallel uses more of your quota than a single chat; that's the price of the second opinions.
 
 **Can it break my live site?**
 Not without your sign-off. Work happens in a separate copy of the repo, goes through a pull request, must pass every test, and merges into `dev`, never `main`.
 
 **Which issue tracker?**
 GitHub Issues or Linear.
+
+**Is this the bkit Vibecoding Kit?**
+No. [bkit Vibecoding Kit](https://github.com/popup-studio-ai/bkit-claude-code) is a separate project that happens to share the name. This bkit is `@cbartens/bkit` on npm and lives at [github.com/cbartens/bkit](https://github.com/cbartens/bkit).
+
+**How does it compare with other tools?**
+Feature by feature against the main AI development frameworks, from spec toolkits to autonomous agents: [`.bkit/comparison.md`](.bkit/comparison.md#part-3--compared-with-other-ai-development-frameworks).
 
 <details>
 <summary><strong>For engineers: what's under the hood</strong></summary>
@@ -226,20 +249,27 @@ GitHub Issues or Linear.
 | [`.bkit/providers.md`](.bkit/providers.md) | Tool and provider differences, model pins |
 | [`.bkit/cloud.md`](.bkit/cloud.md) | Cloud agents: Claude Code on the web, Cursor, opencode |
 | [`.bkit/templates.md`](.bkit/templates.md) | Templates ready to adopt |
-| [`.bkit/comparison.md`](.bkit/comparison.md) | Full pipeline reference and agentic-patterns comparison |
+| [`.bkit/comparison.md`](.bkit/comparison.md) | Full pipeline reference, agentic-patterns mapping, comparison with other AI development frameworks |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each release |
+
+## Credits
+
+bkit's process was worked out over months of building real products with it. These projects sharpened specific ideas along the way:
+
+<!-- prettier-ignore -->
+| Project | Idea bkit took |
+| --- | --- |
+| [everything-claude-code](https://github.com/affaan-m/ECC) (affaan-m) | GateGuard, the hook that makes an agent investigate before it edits, name included; the warning when an agent edits lint or type-check settings; confidence and scope on recorded lessons; the untrusted-input notice on agents that read outside content. |
+| [gstack](https://github.com/garrytan/gstack) (Garry Tan) | Writing the setup once and generating every AI tool's copy from it, with a check that the copies match; the completeness and search-before-building principles in the shared rules; resuming a run from saved state. |
+| _Agentic Design Patterns_ (Antonio Gulli) | A "done when" line on every plan task, and testing hypotheses before fixing in debug. The book is also the yardstick in the [patterns comparison](.bkit/comparison.md#part-2--comparison-to-agentic-design-patterns). |
+| [skills](https://github.com/mattpocock/skills) (Matt Pocock) | The interview that opens `/bkit-design`, adapted from `grill-me`: open questions are settled with you before any design work starts. |
+
+**Built on.** The templates set up these tools; thanks to their maintainers: [Serena](https://github.com/oraios/serena), [graphify](https://github.com/Graphify-Labs/graphify), [slop-scan](https://github.com/modem-dev/slop-scan), [Vale](https://github.com/vale-cli/vale) with [write-good](https://github.com/vale-cli/write-good), [Renovate](https://github.com/renovatebot/renovate), [Dependabot](https://docs.github.com/en/code-security/dependabot), [Husky](https://github.com/typicode/husky), [lint-staged](https://github.com/lint-staged/lint-staged), [Prettier](https://github.com/prettier/prettier), [actionlint](https://github.com/rhysd/actionlint) and [direnv](https://github.com/direnv/direnv).
 
 ## License
 
-bkit is source-available, not open source: anyone can read all of it, and it's free under either of two licences, whichever fits you.
+bkit is [MIT](LICENSE.md): use it, change it and share it for any purpose, commercial included, as long as the copyright and licence notice stay with it.
 
-- **[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0):** personal and hobby use, and charities, schools, research bodies and government, whatever their size.
-- **[PolyForm Small Business 1.0.0](https://polyformproject.org/licenses/small-business/1.0.0):** any use, commercial included, by a person or company with fewer than 100 people and under US$1M revenue.
+**The code bkit's agents write for you is yours.** The licence covers bkit itself, not what its agents produce in your repo.
 
-If neither fits, email bkit@bartens.biz for a commercial licence.
-
-**The code bkit's agents write for you is yours.** The licences cover bkit itself, not what its agents produce in your repo.
-
-**Small pieces are MIT-0.** Everything in [`.bkit/shared/`](.bkit/shared/) and [`.bkit/templates/`](.bkit/templates/) is [MIT-0](https://opensource.org/license/mit-0): use it however you like, and a template you copy into your repo is yours. Every file bkit writes carries the licence and its URL in its marker, and the full PolyForm texts travel in the repo at [`.bkit/LICENSE.md`](.bkit/LICENSE.md) after install.
-
-Full terms: [`LICENSE.md`](LICENSE.md).
+The full text travels in your repo at [`.bkit/LICENSE.md`](.bkit/LICENSE.md) after install.

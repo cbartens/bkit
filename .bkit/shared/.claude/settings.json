@@ -82,6 +82,25 @@
             "command": "test -f .claude/hooks/bkit-guardrails.cjs && node .claude/hooks/bkit-guardrails.cjs || true"
           }
         ]
+      },
+      {
+        "matcher": "Read|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .claude/hooks/bkit-readguard.cjs && node .claude/hooks/bkit-readguard.cjs || true"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .claude/hooks/bkit-readguard.cjs && node .claude/hooks/bkit-readguard.cjs || true"
+          }
+        ]
       }
     ]
   }

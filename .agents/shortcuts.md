@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Shortcuts
 
@@ -22,7 +22,7 @@ NEVER shortcut: schema / migrations, public API, dependencies, secrets / config,
 
 ## Contract
 
-Read `.agents/rules.md`. Work on the current branch; commit as you go; do not push. Tracker-wired: issue → **In progress** at start, **In review** at end, one short comment per step. No tracker: skip the tracker lines.
+Read `.agents/rules.md`. Work on the current branch; commit as you go; push only when shipping or when asked. Tracker-wired: issue → **In progress** at start, **In review** at end, one short comment per step. No tracker: skip the tracker lines.
 
 ## Paste
 

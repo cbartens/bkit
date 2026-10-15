@@ -11,7 +11,7 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     // Unit-tier limits scaled to the machine's load when the config loads. This spread is
     // sampled ONCE; vitest.setup.ts re-reads the same budget as each test FILE starts, so a
-    // load ramp mid-run cannot starve late files past a stale limit (#1392).
+    // load ramp mid-run cannot starve late files past a stale limit.
     ...unitTimeouts(),
     // Report-only coverage — dogfoods the bkit-stub:coverage scaffold shipped to
     // consumers. json-summary + json are load-bearing: vitest-coverage-report-action

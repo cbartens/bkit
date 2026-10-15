@@ -16,6 +16,7 @@ import {
   TELEMETRY_SUBVERBS,
   type ModuleFlag,
   validateModuleFlagsForVerb,
+  CLOUD_VARIANTS,
 } from "./cli";
 import type { Verb } from "./cli";
 
@@ -275,6 +276,19 @@ describe("printUsage — help output", () => {
     const output = usage();
     expect(output).toContain("--claude --cursor");
     expect(output).toMatch(/[Cc]ore \(implicit/);
+  });
+
+  it("names every host flag in the install 'Hosts compose' line", () => {
+    const composeLine = usage().match(/Hosts compose:[^.]*\./s)?.[0] ?? "";
+    for (const host of [
+      "--claude",
+      "--cursor",
+      "--codex",
+      "--antigravity",
+      "--opencode=<provider>",
+    ]) {
+      expect(composeLine).toContain(host);
+    }
   });
 
   it("lists opencode-zen and opencode-go (not bare opencode) as supported providers", () => {
@@ -800,6 +814,54 @@ describe("parseArgs — analysis verb (WS4-T5)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseArgs — tips verb
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — tips verb", () => {
+  it("parses bare tips as the top-three view", () => {
+    const result = parseArgs(["tips"]);
+    expect(result.verb).toBe("tips");
+    expect(result.tipsAll).toBe(false);
+    expect(result.moduleFlags.size).toBe(0);
+  });
+
+  it("--all lifts the cap", () => {
+    expect(parseArgs(["tips", "--all"]).tipsAll).toBe(true);
+  });
+
+  it("--workflow names the workflow; bare tips names none", () => {
+    expect(parseArgs(["tips"]).tipsWorkflow).toBeNull();
+    expect(parseArgs(["tips", "--workflow=debug"]).tipsWorkflow).toBe("debug");
+  });
+
+  it("--workflow refuses an unknown workflow", () => {
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("exit");
+    }) as never);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["tips", "--workflow=auto"])).toThrow("exit");
+    } finally {
+      exit.mockRestore();
+      err.mockRestore();
+    }
+  });
+
+  it("--all is refused on other verbs", () => {
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("exit");
+    }) as never);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["doctor", "--all"])).toThrow("exit");
+    } finally {
+      exit.mockRestore();
+      err.mockRestore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // printUsage — harvest + analysis verbs in help text (WS4-T5)
 // ---------------------------------------------------------------------------
 
@@ -883,6 +945,20 @@ describe("validateModuleFlagsForVerb — #252 Step 2/3 verb/module-flag validati
     const err = validateModuleFlagsForVerb("install", flags());
     expect(err).not.toBeNull();
     expect(err).toContain("`bkit install` requires at least one module flag");
+  });
+
+  it("names every host flag and every --auto variant in the bare-install error", () => {
+    const err = validateModuleFlagsForVerb("install", flags()) ?? "";
+    for (const host of [
+      "--claude",
+      "--cursor",
+      "--codex",
+      "--antigravity",
+      "--opencode=<provider>",
+    ]) {
+      expect(err).toContain(host);
+    }
+    expect(err).toContain(`--auto=<${CLOUD_VARIANTS.join("|")}>`);
   });
 
   it("passes when install is given at least one module flag", () => {

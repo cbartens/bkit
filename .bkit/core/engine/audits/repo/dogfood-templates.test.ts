@@ -73,10 +73,6 @@ const CHECKOUT =
 
 const ADOPTED: Record<string, Entry> = {
   ".claude/hooks/bkit-cloud-bootstrap.sh": identical,
-  "LICENSE.md": {
-    status: "distinct",
-    what: "the repo root LICENSE.md is bkit's own PolyForm licence, not the MIT-0 template copy",
-  },
   ".github/workflows/bkit-ci.yml": {
     status: "adopted",
     edits: [
@@ -311,20 +307,20 @@ const ADOPTED: Record<string, Entry> = {
       {
         kind: "bkit-only",
         what: "the core hook sources share their mirrors' opt-outs",
-        fill: '"files": [".opencode/plugin/bkit-gateguard.js"]',
-        with: '"files": [\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-gateguard.js"\n      ]',
+        fill: '"files": [".opencode/plugin/bkit-gateguard.js", ".opencode/plugin/bkit-readguard.js"]',
+        with: '"files": [\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/.opencode/plugin/bkit-readguard.js",\n        ".opencode/plugin/bkit-readguard.js"\n      ]',
       },
       {
         kind: "bkit-only",
         what: "the core hook sources share their mirrors' opt-outs",
         fill: '      "files": [\n        "**/.claude/hooks/bkit-gateguard.cjs",\n',
-        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.cursor/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.codex/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/hooks/gateguard-engine.js",\n        ".bkit/core/hooks/gateguard-edit-payload.js",\n        "**/.claude/hooks/bkit-gateguard.cjs",\n',
+        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.cursor/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.codex/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/hooks/gateguard-engine.js",\n        ".bkit/core/hooks/gateguard-edit-payload.js",\n        ".bkit/core/.claude/hooks/bkit-readguard.cjs",\n        ".bkit/core/.cursor/hooks/bkit-readguard.cjs",\n        ".bkit/core/.codex/hooks/bkit-readguard.cjs",\n        ".bkit/core/.agents/plugins/bkit/hooks/bkit-readguard.cjs",\n        ".bkit/core/.opencode/plugin/bkit-readguard.js",\n        ".bkit/core/hooks/readguard-engine.js",\n        ".bkit/core/hooks/readguard-payload.js",\n        ".bkit/core/hooks/antigravity-hook.js",\n        "**/.claude/hooks/bkit-gateguard.cjs",\n',
       },
       {
         kind: "bkit-only",
         what: "the core hook sources share their mirrors' opt-outs",
         fill: '      "files": [\n        "**/.claude/hooks/bkit-guardrails.cjs",\n',
-        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.cursor/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.codex/hooks/bkit-guardrails.cjs",\n        ".bkit/core/hooks/guardrails-shell.js",\n        ".bkit/core/hooks/guardrails-tiers.js",\n        "**/.claude/hooks/bkit-guardrails.cjs",\n',
+        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.cursor/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.codex/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs",\n        ".bkit/core/hooks/guardrails-read.js",\n        ".bkit/core/hooks/guardrails-shell.js",\n        ".bkit/core/hooks/guardrails-tiers.js",\n        "**/.claude/hooks/bkit-guardrails.cjs",\n',
       },
       {
         kind: "bkit-only",

@@ -2,7 +2,7 @@ Ship Feature — Autonomous merge and archive
 
 # Ship Feature (Workflow 5/5)
 
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Merge feature PR to default integration branch.
@@ -567,10 +567,16 @@ Ship Feature — Autonomous merge and archive
    → hold `labels` as `{LABELS}`, `board` as `{BOARD}`, `boardSkipped`.
    `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do not close the issue.
    **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
-4. Final return: Display `ship-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **If** `ship-summary.md` absent → display `PR was already merged — no ship summary this run.` **HARD STOP**.
+4. Collect setup tips:
+   ```bash
+   "{BKIT}" tips --workflow=ship
+   ```
+   Plain text, not JSON. Hold stdout as `{SETUP_TIPS}`; prints nothing or exits non-zero → `{SETUP_TIPS}` empty.
+5. Final return: Display `ship-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **If** `ship-summary.md` absent → display `PR was already merged — no ship summary this run.` **HARD STOP**.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
+   Append `{SETUP_TIPS}` under a `## Setup Tips` heading, unless empty.
    Append as last line `Would you like me to explain this in plain English?`
-5. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
+6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 
 ### 🔒 Gate 15 — Close Workflow
 

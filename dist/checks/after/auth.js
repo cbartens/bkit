@@ -42,6 +42,34 @@ export function hasGithubMcpServer(cwd) {
     return false;
 }
 /**
+ * BKIT_GH_TOKEN unset or empty in the shell while a `github` MCP server is configured.
+ * Never in CI. The GitHub MCP server authenticates with `Authorization: Bearer
+ * ${BKIT_GH_TOKEN}` in .mcp.json, which powers the entire tracker + PR + Projects MCP
+ * surface.
+ */
+export function detectGhMcpToken(cwd) {
+    if (!hasGithubMcpServer(cwd) || process.env.CI)
+        return null;
+    const status = detectShellGhMcpToken();
+    if (status === "missing") {
+        return {
+            id: "gh-mcp-token-unset-shell",
+            severity: "advisory",
+            detect: "BKIT_GH_TOKEN is not set in the shell environment (undefined). The GitHub MCP server authenticates with `Authorization: Bearer ${BKIT_GH_TOKEN}` — without it, every tracker, PR, and board MCP call fails to connect.",
+            action: "Set BKIT_GH_TOKEN in .bkit/.env (canonical local-secrets file, gitignored), then `direnv allow` and restart your editor so MCP servers pick it up:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set BKIT_GH_TOKEN=<PAT>\n    direnv allow\n\nUse a fine-grained PAT when every target repo sits under one owner (Contents, Pull requests, Issues, and Actions read & write, plus organization-scoped Projects read & write if you use board sync); use a classic PAT when one token must span owners (scopes repo / workflow / read:org / project / security_events). Generate at: https://github.com/settings/personal-access-tokens (fine-grained) or https://github.com/settings/tokens (classic). In cloud sessions (Claude Code web / Cursor Background Agents) set BKIT_GH_TOKEN in the dashboard env vars instead — repo files are not read for secrets there.",
+        };
+    }
+    if (status === "empty") {
+        return {
+            id: "gh-mcp-token-empty-shell",
+            severity: "advisory",
+            detect: 'BKIT_GH_TOKEN is set to an empty string (BKIT_GH_TOKEN=""). The GitHub MCP server sends an empty bearer token and fails to authenticate — distinct from unset, same effect.',
+            action: "Set a non-empty BKIT_GH_TOKEN in .bkit/.env (fine-grained PAT for one owner, or classic across owners; Contents / Pull requests / Issues / Actions read & write), then `direnv allow` and restart your editor so MCP servers reload.",
+        };
+    }
+    return null;
+}
+/**
  * Detect whether a named secret is set on the consumer's GitHub repo.
  * Returns "present" | "missing" | "unknown".
  * "unknown" if gh CLI unavailable, unauthenticated, or not a GitHub repo.

@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "5.1.0",
+  "version": "5.2.0",
   "private": false,
   "description": "From vibe coding to production code. A senior engineering team's process, ready-made: AI agents design, plan, build, review, fix and ship your features on Claude Code, Cursor, Codex, Google Antigravity and opencode.",
   "keywords": [
@@ -37,10 +37,7 @@
     ".bkit/templates",
     "dist",
     "README.md",
-    "CHANGELOG.md",
-    "!.bkit/core/engine/**/*.test.ts",
-    "!.bkit/core/engine/**/*.integration.test.ts",
-    "!.bkit/core/engine/**/__snapshots__"
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=20"
@@ -54,7 +51,7 @@
     "registry": "https://registry.npmjs.org/",
     "access": "public"
   },
-  "license": "(PolyForm-Noncommercial-1.0.0 OR PolyForm-Small-Business-1.0.0)",
+  "license": "MIT",
   "scripts": {
     "bkit:gate:format": "pnpm lint-staged",
     "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm format:tables:check && pnpm lint:prose && pnpm slop:delta",
@@ -62,6 +59,7 @@
     "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build",
     "bkit:deps:outdated": "pnpm outdated",
     "bkit:deps:audit": "pnpm audit",
+    "bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\"",
     "bkit": "node dist/cli.js",
     "typecheck": "tsc --noEmit && pnpm bkit:typecheck:tests",
     "bkit:typecheck:tests": "tsc -p tsconfig.test.json",

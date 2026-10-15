@@ -2,7 +2,7 @@
 //
 // A fail-open advisory that compares the set of ship steps RECORDED in a
 // status.jsonl against the set of steps the workflow PROSE says should be
-// there. It derives its expected set from .bkit/workflows/bkit-ship.md at
+// there. It derives its expected set from .bkit/core/workflows/bkit-ship.md at
 // runtime (headings + step:"ship-*" literals) — NEVER a hand-maintained table
 // (decision 384-tier3-promotion).
 //

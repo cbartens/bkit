@@ -8,7 +8,7 @@ import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, } fr
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { getPkgRoot, getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
-import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES } from "../manifest.js";
+import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
 export function listMdFiles(dir, prefix) {
     if (!fs.existsSync(dir))
         return [];
@@ -173,9 +173,8 @@ function runCoreTemplates(dryRun, tokens, ws, logPrefix) {
 // them, so a consumer edit is replaced. Source of truth is the package's own
 // `.bkit/core/.bkit/<name>`. (`advisories.md` is a regenerated runtime artifact,
 // `wording.md` is repo-only tooling and `friction.md` is a consumer-owned seed —
-// none belongs here. `LICENSE.md` is the PolyForm notice that travels with every
-// file bkit writes: PolyForm's Notices section requires a passed-on copy to carry
-// the terms or their URL and the Required Notice line.)
+// none belongs here. `LICENSE.md` is the MIT notice that travels with the files bkit
+// writes: MIT requires the copyright and permission notice in every copy.)
 export const BKIT_CANONICAL_DOCS = [
     "cloud.md",
     "comparison.md",
@@ -350,6 +349,16 @@ export function detectGateAdvisories(cwd) {
                 "\n\nOrder matters — each chains the one above it. Omit a level deliberately to keep it CI-only (E2E in the build loop costs a production build on every remediation attempt). `.bkit/templates.md` lists the tool scripts the gates chain.",
         });
     }
+    // /bkit-build records each task's red through this script; without it test-first is
+    // reported as not enforced. bkit cannot seed it: what runs one file is the stack's.
+    if (!(BKIT_TEST_FILE_SCRIPT in declared)) {
+        findings.push({
+            id: "test-file-script-missing",
+            severity: "advisory",
+            detect: `package.json does not declare \`${BKIT_TEST_FILE_SCRIPT}\`, so \`/bkit-build\` cannot check that each task's tests fail before its code is written.`,
+            action: `Add \`${BKIT_TEST_FILE_SCRIPT}\` to package.json: it runs the ONE test file bkit appends as its argument (repo-relative path) and writes a JUnit report to the path in \`$BKIT_TEST_REPORT\`. Vitest example:\n\n    "${BKIT_TEST_FILE_SCRIPT}": "vitest run --reporter=default --reporter=junit --outputFile.junit=\\"$BKIT_TEST_REPORT\\""\n\nCall the runner directly, not through a task runner that caches results or runs dependent packages first. A monorepo routes the path to the package and config that own it.`,
+        });
+    }
     return findings;
 }
 /** One command that cannot fail: `true`, `:`, `exit 0`, or an `echo`. */
@@ -430,7 +439,7 @@ export function runCoreModule(ctx) {
     // installed package (browse-only, gitignored; no-op in dogfood). A real
     // directory or file at either path is never clobbered (advisory); a platform
     // refusal is an advisory, never a failure.
-    const linkChanges = syncPayloadLinks(cwd, { dryRun, ws });
+    const linkChanges = syncPayloadLinks(cwd, { dryRun });
     for (const rel of linkChanges.created) {
         console.log(`${logPrefix} ${tag}payload link: ${rel}`);
     }

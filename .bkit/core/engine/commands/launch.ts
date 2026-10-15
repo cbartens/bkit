@@ -86,11 +86,32 @@ export function isAlreadyRunning(binaryPath: string): boolean {
   return !result.error && result.status === 0 && result.stdout.trim().length > 0;
 }
 
+/** `pgrep -f` pattern for OpenCode 2.0's shared background server (`<dir>/opencode serve --service`). */
+const OPENCODE_SERVER_PATTERN = "(^|/)opencode serve( |$)";
+
+/**
+ * Return true if OpenCode 2.0's shared background server (`opencode serve`) is running.
+ * It outlives the desktop app and every client attaches to it, so it holds the stale env.
+ */
+export function isOpencodeServerRunning(): boolean {
+  return isAlreadyRunning(OPENCODE_SERVER_PATTERN);
+}
+
+const OPENCODE_SERVER_ADVICE =
+  `  OpenCode 2.0 runs one shared background server for every client (TUI, web,\n` +
+  `  desktop) and captures its environment once, at first start. A newly opened\n` +
+  `  window talks to that server and still sees the OLD env, so the per-repo tokens\n` +
+  `  in .bkit/.env are not picked up. Stop the shared server, then re-launch:\n` +
+  `      opencode service stop && pnpm bkit opencode\n` +
+  `  (that stops every opencode window, not just this one; quitting the app fully\n` +
+  `  and re-running works too)`;
+
 /**
  * Launch `app` with .bkit/.env merged into its environment.
  *
  * - Loads `.bkit/.env` from `cwd` and merges into process.env (process.env wins).
- * - Detects an already-running instance via pgrep; warns + exits non-zero if found
+ * - Detects an already-running instance via pgrep (for opencode also the 2.0 shared
+ *   background server `opencode serve`); warns if found
  *   (the running process will not inherit the new env even if the binary hands off).
  * - For Cursor: passes `cwd` as a positional arg so it opens the repo folder.
  * - Spawns detached so the terminal is not blocked by the GUI app.
@@ -105,21 +126,22 @@ export async function launchApp(app: LaunchApp, cwd: string): Promise<void> {
   }
   const { binPath } = resolved;
 
-  if (isAlreadyRunning(binPath)) {
+  const appRunning = isAlreadyRunning(binPath);
+  const serverRunning = app === "opencode" && isOpencodeServerRunning();
+
+  if (appRunning) {
     console.warn(
       `[bkit] ${app} is already running — opening folder in a new window, but the\n` +
         `environment from .bkit/.env will NOT take effect (the running process keeps\n` +
         `its original env). If you need per-repo tokens, quit ${app} fully (Cmd+Q)\n` +
         `and re-run: pnpm bkit ${app}` +
-        (app === "opencode"
-          ? `\n\n  OpenCode 2.0 runs one shared background server for every client (TUI, web,\n` +
-            `  desktop) and captures its environment once, at first start. A newly opened\n` +
-            `  window talks to that server and still sees the OLD env, so the per-repo tokens\n` +
-            `  in .bkit/.env are not picked up. Stop the shared server, then re-launch:\n` +
-            `      opencode service stop && pnpm bkit opencode\n` +
-            `  (that stops every opencode window, not just this one; quitting the app fully\n` +
-            `  and re-running works too)`
-          : ""),
+        (app === "opencode" ? `\n\n${OPENCODE_SERVER_ADVICE}` : ""),
+    );
+  } else if (serverRunning) {
+    console.warn(
+      `[bkit] the opencode background server (opencode serve) is already running — the\n` +
+        `environment from .bkit/.env will NOT take effect (the server keeps the env it\n` +
+        `started with, even though the desktop app itself is not open).\n\n${OPENCODE_SERVER_ADVICE}`,
     );
   }
 

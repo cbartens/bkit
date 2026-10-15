@@ -13,7 +13,9 @@
  *   - a row names a decision absent from the table, or carries no reason.
  *
  * A new comparison inside an already-registered step is a new site: the site key is
- * `file#job#step#field`.
+ * `file#job#step#field`. The workflow-level `concurrency:` block keys as
+ * `file#(workflow)#concurrency#field`. Only `.github/workflows/*.yml` is scanned; scripts,
+ * hooks and tests are not.
  *
  * Usage:  node scripts/ci/check-accepted-divergences.mjs [--workflows=<dir>] [--registry=<file>]
  * Exit:   0 = every site registered and every row live, 1 = drift.
@@ -32,9 +34,44 @@ function normalizedField(match) {
   return match.replace(/\s+/g, " ").trim();
 }
 
+/** The `job` of a site read outside `jobs:` (workflow-level keys such as `concurrency:`); its `step` is the top-level key. */
+export const WORKFLOW_LEVEL = "(workflow)";
+
+/** Leading-space count of a line. */
+function indentOf(line) {
+  return line.length - line.trimStart().length;
+}
+
+/**
+ * Name of the step whose `- key: value` item starts at `start`: its `name:`, else `uses:`,
+ * else `id:`, else `step-<n>` (n = 1-based position in the job). Only keys at the item's own
+ * key column count, so a `name:` nested in a `with:` or `run:` block is never mistaken for it.
+ */
+function stepName(lines, start, dashIndent, ordinal) {
+  const keyIndent = dashIndent + 2;
+  const found = {};
+  for (let j = start; j < lines.length; j++) {
+    const text = lines[j];
+    if (j > start && text.trim() !== "" && indentOf(text) <= dashIndent) break;
+    const m =
+      j === start
+        ? /^\s*- ([A-Za-z_-]+):\s*(.*?)\s*$/.exec(text)
+        : indentOf(text) === keyIndent
+          ? /^\s*([A-Za-z_-]+):\s*(.*?)\s*$/.exec(text)
+          : null;
+    if (m && ["name", "uses", "id"].includes(m[1]) && !(m[1] in found)) {
+      found[m[1]] = m[2].replace(/\s+#.*$/, "").replace(/^["']|["']$/g, "");
+    }
+  }
+  return found.name || found.uses || found.id || `step-${ordinal}`;
+}
+
 /**
  * Collect every event-keyed site in the workflow files under `workflowsDir`.
  * A line-based scan — deliberately no YAML dependency, so the guard is portable.
+ * Sites outside `jobs:` (the workflow-level `concurrency:` block) key as job `(workflow)`,
+ * step = the top-level key. A step is any `- key:` item under a job's `steps:`, whatever its
+ * first key (`name`, `uses`, `id`, `run`, `if`, ...).
  * @returns {Array<{file: string, job: string, step: string, field: string, line: number}>}
  */
 export function collectSites(workflowsDir, fileFilter = /\.(ya?ml)$/) {
@@ -44,30 +81,39 @@ export function collectSites(workflowsDir, fileFilter = /\.(ya?ml)$/) {
     if (!fileFilter.test(name)) continue;
     const file = path.join(".github", "workflows", name).split(path.sep).join("/");
     const lines = fs.readFileSync(path.join(workflowsDir, name), "utf-8").split("\n");
-    let job = "";
+    let job = WORKFLOW_LEVEL;
     let step = "";
     let inJobs = false;
+    let stepsIndent = -1;
+    let stepOrdinal = 0;
     const seen = new Set();
     lines.forEach((line, i) => {
       const code = line.replace(/\s+#.*$/, "");
-      if (/^jobs:\s*$/.test(code)) {
-        inJobs = true;
-        return;
+      const topKey = /^([A-Za-z_-]+):/.exec(code);
+      if (topKey) {
+        inJobs = topKey[1] === "jobs";
+        job = WORKFLOW_LEVEL;
+        step = inJobs ? "" : topKey[1];
+        stepsIndent = -1;
       }
-      if (inJobs && /^\S/.test(code)) {
-        // A new top-level key closes the `jobs:` block.
-        inJobs = false;
-      }
-      if (!inJobs) return;
-      const jobMatch = /^ {2}([A-Za-z0-9_.-]+):\s*$/.exec(code);
-      if (jobMatch) {
-        job = jobMatch[1];
-        step = "";
-        return;
-      }
-      const stepMatch = /^\s{4,}- (?:name|uses):\s*(.+?)\s*$/.exec(line);
-      if (stepMatch) {
-        step = stepMatch[1].replace(/^["']|["']$/g, "");
+      if (inJobs && !topKey) {
+        const jobMatch = /^ {2}([A-Za-z0-9_.-]+):\s*$/.exec(code);
+        if (jobMatch) {
+          job = jobMatch[1];
+          step = "";
+          stepsIndent = -1;
+          stepOrdinal = 0;
+          return;
+        }
+        const stepsMatch = /^(\s+)steps:\s*$/.exec(code);
+        if (stepsMatch) {
+          stepsIndent = stepsMatch[1].length + 2;
+          return;
+        }
+        if (stepsIndent >= 0 && indentOf(line) === stepsIndent && /^\s*- [A-Za-z_-]+:/.test(code)) {
+          stepOrdinal++;
+          step = stepName(lines, i, stepsIndent, stepOrdinal);
+        }
       }
       for (const m of code.matchAll(FIELD_RE)) {
         const field = normalizedField(m[0]);

@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: write # required to push the sliding v{N} major-version tag (see step "Update sliding major-version tag")
+  contents: write # required to create the GitHub Release and push the sliding v{N} major-version tag
   id-token: write # OIDC trusted publishing — the npmjs publish uses no long-lived token
 
 # Prevent two publish runs racing against the same tag. cancel-in-progress: false
@@ -59,12 +59,37 @@ jobs:
       - name: Verify dist/ is fresh
         run: pnpm bkit:check:dist
 
+      # Notes = this tag's CHANGELOG.md block minus `---` separators; empty → fail before publish.
+      - name: Extract release notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v head="## [$VERSION]" '
+            index($0, head) == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found && $0 != "---" { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "::error::CHANGELOG.md has no '## [$VERSION]' block with content"
+            exit 1
+          fi
+          printf '\n---\n\nnpm: [@cbartens/bkit@%s](https://www.npmjs.com/package/@cbartens/bkit/v/%s)\n' "$VERSION" "$VERSION" >> "$RUNNER_TEMP/notes.md"
+
       # OIDC trusted publishing: no token env — the npm CLI exchanges the id-token for a
       # short-lived publish token. npmjs.com → package → Settings → Trusted publishing
       # names this workflow file (release.yml). --provenance attaches the signed build
       # attestation linking the tarball to this repo + run (needs a public repo).
       - name: Publish to npmjs
         run: npm publish --provenance
+
+      # After publish. Prerelease tags (containing `-`) → marked prerelease, never "Latest".
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE=""
+          case "$GITHUB_REF_NAME" in *-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md" $PRERELEASE
 
       # Slides v{N} (e.g. `v1`) to point at the latest v{N}.x.y after a successful publish.
       # Matches the GitHub Actions community convention (actions/checkout@v4 etc.) so

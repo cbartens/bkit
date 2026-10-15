@@ -2,11 +2,12 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildDecisionTable,
   formatDecisionTable,
   runUninstall,
+  uninstallSummaryLine,
   type UninstallContext,
   type FileSummary,
 } from "./uninstall";
@@ -413,6 +414,54 @@ describe("formatDecisionTable — P2.T7", () => {
 });
 
 // ---------------------------------------------------------------------------
+// runUninstall — files already absent are counted apart from preserved ones
+// ---------------------------------------------------------------------------
+
+describe("runUninstall — already-absent files", () => {
+  it("reports skip-absent files as absent, never as preserved", async () => {
+    writeFile(".claude/settings.json", '{"hooks":{}}');
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((m: unknown) => {
+      logs.push(String(m));
+    });
+    try {
+      const r = await runUninstall(["claude"], makeCtx());
+      const absent = r.decisions.filter((d) => d.decision === "skip-absent").map((d) => d.file);
+      expect(absent.length).toBeGreaterThan(0);
+      expect(r.absent).toEqual(absent);
+      for (const file of absent) {
+        expect(r.preserved).not.toContain(file);
+        expect(logs).not.toContain(
+          `[bkit-uninstall-test] preserve: ${file} (file not found — nothing to do)`,
+        );
+      }
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("summary line counts already-absent files apart from preserved ones", () => {
+    const line = uninstallSummaryLine(
+      {
+        deleted: ["a"],
+        stripped: ["b"],
+        preserved: ["c"],
+        absent: ["d", "e"],
+        decisions: [],
+        dryRun: false,
+      },
+      "[bkit]",
+    );
+    expect(line).toBe("[bkit] Done. Deleted: 1, stripped: 1, preserved: 1, already absent: 2");
+    const dry = uninstallSummaryLine(
+      { deleted: [], stripped: [], preserved: ["c"], absent: ["d"], decisions: [], dryRun: true },
+      "[bkit]",
+    );
+    expect(dry).toBe("[bkit] [dry-run] Would delete: 0, strip: 0, preserve: 1, already absent: 1");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // runUninstall — round-trip (P2.T5)
 // ---------------------------------------------------------------------------
 
@@ -647,6 +696,39 @@ describe("runUninstall — .bkit/version install-state (4.6.3)", () => {
     await runUninstall(["claude"], makeCtx());
 
     expect(readFile(".bkit/version")).toBe(before);
+  });
+
+  it("a targeted dry-run prints the same version-pin update line as the real run", async () => {
+    const owned = ".claude/agents/bkit-foo.md";
+    const seed = (): void => {
+      writeFile(owned, "bkit agent\n");
+      writeBkitVersionFile({
+        pinnedVersion: "5.0.1",
+        canonicalHashes: { [owned]: sha256("bkit agent\n") },
+        claudeAllowDerived: [],
+      });
+    };
+    const pinLine = async (dryRun: boolean): Promise<string | undefined> => {
+      const logs: string[] = [];
+      const spy = vi.spyOn(console, "log").mockImplementation((m: unknown) => {
+        logs.push(String(m));
+      });
+      try {
+        await runUninstall(["claude"], makeCtx({ dryRun }));
+      } finally {
+        spy.mockRestore();
+      }
+      return logs.find((l) => l.includes("update version pin"));
+    };
+
+    seed();
+    const dry = await pinLine(true);
+    const real = await pinLine(false);
+
+    expect(dry).toContain("[dry-run]");
+    expect(dry).toContain("(pruned 1)");
+    expect(real).toContain("(pruned 1)");
+    expect(dry?.replace(" [dry-run]", "")).toBe(real);
   });
 
   it("does not rewrite .bkit/version on a targeted dry-run (no writes)", async () => {

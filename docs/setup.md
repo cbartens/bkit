@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
@@ -77,14 +77,14 @@ echo "len=${#BKIT_GH_TOKEN}"                 # non-zero → MCP token loaded; gh
 
 ```bash
 pnpm install --frozen-lockfile                                          # workspace deps + husky git hooks
-pnpm tsx .bkit/core/engine/cli.ts install --claude --cursor --typescript  # dogfood install (this repo only)
+pnpm tsx .bkit/core/engine/cli.ts install --claude --cursor  # dogfood install (this repo only)
 pnpm tsx .bkit/core/engine/cli.ts check                                # drift gate
 vale sync                                                               # one-off; pulls lint:prose styles
 ```
 
 `install` requires ≥1 module flag, because bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.
 
-Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude --cursor --typescript` (not the dogfood call).
+Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude --cursor` (not the dogfood call).
 
 ## Verify
 

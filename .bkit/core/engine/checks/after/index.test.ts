@@ -109,10 +109,27 @@ describe("formatChecklist", () => {
     expect(result).toContain("INSTRUCTIONS FOR AN AI AGENT");
   });
 
-  it("carries the template-adoption directive, not just a locator", () => {
-    const result = formatChecklist([{ id: "x", severity: "advisory", detect: "d", action: "a" }]);
-    expect(result).toContain("adopt each copy in .bkit/templates/");
-    expect(result).toContain("state which you did not adopt and why");
+  it("lists firing setup tips after the findings, and renders for tips alone", () => {
+    const tip = {
+      id: "t",
+      title: "Tip title",
+      line: "Tip line.",
+      why: "Tip why.",
+      ask: "Tip ask.",
+      steps: "Tip steps.",
+      fires: () => true,
+    };
+    const result = formatChecklist(
+      [{ id: "x", severity: "advisory", detect: "d", action: "a" }],
+      [],
+      [tip],
+    );
+    expect(result.indexOf("--- Setup tips ---")).toBeGreaterThan(result.indexOf("Action: a"));
+    expect(result).toContain("1. Tip title (t)");
+    expect(formatChecklist([], [], [tip])).toContain("Tip ask.");
+    expect(
+      formatChecklist([{ id: "x", severity: "advisory", detect: "d", action: "a" }]),
+    ).not.toContain("Setup tips");
   });
 
   it("appends one suppressed line per dismissal", () => {
@@ -194,8 +211,6 @@ describe("renderAdvisoriesMarkdown", () => {
     expect(md).toContain("_Mode: doctor_");
     expect(md).toContain("2 finding(s) — 1 blocker, 1 advisory.");
     expect(md).toContain("INSTRUCTIONS FOR AN AI AGENT");
-    expect(md).toContain("adopt each copy in .bkit/templates/");
-    expect(md).toContain("state which you did not adopt and why");
     expect(md).toContain("## 1/2 [blocker] a-blocker");
     expect(md).toContain("**Detect:** Detect A");
     expect(md).toContain("**Action:** Action A");
@@ -671,8 +686,6 @@ describe("challenge-tests", () => {
 
         INSTRUCTIONS FOR AN AI AGENT — copy this file (or specific items) into a coding assistant to apply each item. Each ACTION is self-contained.
 
-        Templates (adopt, do not skip): read .bkit/templates.md; bkit never applies templates, so adopt each copy in .bkit/templates/ unless adoption would break existing functionality — state which you did not adopt and why. (If your own gates scan the repo, ignore .bkit/templates/.)
-
         --- 1/2 [advisory] example-preflight-advisory ---
         Detect: .husky/pre-commit exists but has no bkit-managed block markers.
         Action: bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has \`# bkit:start\` / \`# bkit:end\` markers around the bkit section.
@@ -707,8 +720,6 @@ describe("challenge-tests", () => {
         1 finding(s) — 1 blocker, 0 advisory.
 
         INSTRUCTIONS FOR AN AI AGENT — copy this file (or specific items) into a coding assistant to apply each item. Each ACTION is self-contained.
-
-        Templates (adopt, do not skip): read .bkit/templates.md; bkit never applies templates, so adopt each copy in .bkit/templates/ unless adoption would break existing functionality — state which you did not adopt and why. (If your own gates scan the repo, ignore .bkit/templates/.)
 
         --- 1/1 [blocker] no-package-json ---
         Detect: package.json not found in the current directory.

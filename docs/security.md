@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Security
 
@@ -66,10 +66,10 @@ App / stack credentials do not belong here — runtime keys and `/bkit-debug` ob
 
 ### `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` — generated, hold live secrets
 
-`bkit install` / `upgrade` generate `.claude/bkit-cloud.md` (Claude Code on the web) and `.cursor/bkit-cloud.md` (Cursor Cloud Agents) with the dashboard env / secret block resolved to **REAL secret values**. Both share one resolver (`.bkit/core/engine/install/cloud-env.ts`); a per-cloud policy differs only in baseline tokens (Cursor+Linear adds `BKIT_LINEAR_API_KEY`) and constants (Claude adds `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`). Rules:
+`bkit install` / `upgrade` generate `.claude/bkit-cloud.md` (Claude Code on the web) and `.cursor/bkit-cloud.md` (Cursor Cloud Agents) with the dashboard env / secret block resolved to **REAL secret values**. Both share one resolver (`.bkit/core/engine/install/cloud-env.ts`); a per-cloud policy differs only in baseline tokens (Cursor+Linear adds `BKIT_LINEAR_API_KEY`). Rules:
 
 - **Gitignored + `chmod 600`. NEVER commit.** Deliberately UNTRACKED — absent from WriteSet / manifest / `canonicalHashes` — so no `bkit check` drift or upgrade template walk (machine-local values expected to differ). `bkit uninstall` deletes them when the respective host is removed.
-- **Resolution follows consumer `.envrc`** — bkit reads sourced dotenv files, honours `unset` lines. No hardcoded stack-specific key list; knowledge stays in consumer `.envrc` (stack-independent shipped surface).
+- **Resolution follows consumer `.envrc`** — bkit reads sourced dotenv files, honours `unset` lines. No hardcoded stack-specific key list; knowledge stays in consumer `.envrc` (stack-agnostic shipped surface).
 - **Session-hijack keys always dropped** from the block: `ANTHROPIC_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, because exporting them redirects the agent's own model calls to API-key billing vs subscription.
 - Empty-valued keys skipped; absent baseline tokens (`BKIT_GH_TOKEN`) → placeholder, never fabricated.
 - **Cursor secret type:** the `.cursor/bkit-cloud.md` doc directs you to add each as a **Runtime Secret** (loaded as an env var but redacted from the agent's transcript) in the Cloud Agents dashboard → Secrets tab, so tools read the value while the agent transcript never sees it.

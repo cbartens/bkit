@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.1.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Architecture
 
@@ -27,6 +27,8 @@ bkit = **CLI tool + agent-stack payload** as npm package (`@cbartens/bkit` on np
 
 No server, database, or network service. Build-time / DX tool only.
 
+**Stack-agnostic:** engine, workflows and prompts assume no app stack; stack-specific behaviour enters only through consumer-declared `package.json` scripts bkit calls by name (`.bkit/workflows.md` § Local gate scripts).
+
 ## Package Boundaries
 
 ```
@@ -51,7 +53,7 @@ cbartens/bkit (this repo)
 │   │   ├── placeholders.ts      # Token resolver (default branch, project name, managed-version marker)
 │   │   ├── version-file.ts      # .bkit/version JSON schema (pinnedVersion, canonicalHashes, claudeAllowDerived)
 │   │   ├── manifest.ts          # Per-module install-write manifest (drives uninstall + the upgrade walk)
-│   │   └── cloud-env.ts         # Resolves the `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds BKIT_LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-independent
+│   │   └── cloud-env.ts         # Resolves the `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds BKIT_LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-agnostic
 │   ├── render/                  # workflow and prompt sources → host agent and command copies
 │   │   ├── hosts.ts             # Host transforms (T1/T2/T3, frontmatter, agent/command/skill renders)
 │   │   ├── models.ts            # Model lookup, overrides, effort map and the gateway columns
@@ -70,13 +72,13 @@ cbartens/bkit (this repo)
 │   ├── tools/wording.ts         # repo-only `pnpm wording:sync`, not a bkit command
 │   └── audits/                  # tests only: read shipped text (workflows/ templates/ hooks/ repo/)
 ├── dist/                   # Compiled output (committed; published in tarball)
-├── .bkit/core/             # PolyForm payload bkit writes and keeps current: engine/, workflows/,
+├── .bkit/core/             # Payload bkit writes and keeps current: engine/, workflows/,
 │                           #   prompts/, docs/templates/, the hooks, AGENTS.md and .agents/*.md,
 │                           #   the .bkit/ reference docs, hooks/ (install skips the package-only
-│                           #   subtrees and every LICENSE.md)
-├── .bkit/shared/           # MIT-0 payload bkit writes and keeps current: CLAUDE.md, .mcp.json,
+│                           #   subtrees)
+├── .bkit/shared/           # Payload bkit writes and keeps current: CLAUDE.md, .mcp.json,
 │                           #   .env.example, settings/hooks/mcp JSON, bkit-cloud.md, docs/*.md blocks
-└── .bkit/templates/        # MIT-0 copy-and-own templates: copied raw to the consumer's
+└── .bkit/templates/        # Copy-and-own templates: copied raw to the consumer's
                             #   .bkit/templates/, never applied
 ├── harvest/                # Central store for `bkit harvest` — consumer stats/friction rows (#343).
 │                           # bkit-repo only; deliberately OUTSIDE .bkit/ (that is bkit's managed
@@ -132,7 +134,7 @@ CLI verbs:
 
 ```
 Consumer repo
-├── package.json            # devDependencies: { "@cbartens/bkit": "^4.0.0" }
+├── package.json            # devDependencies: { "@cbartens/bkit": "^5.1.0" }
 ├── .claude/settings.json   # json format — deep-containment (template scope ⊆ consumer)
 ├── .cursor/hooks.json      # json format — Cursor v1 keyed-object; deep-containment
 ├── .agents/                # Cross-IDE agent runtime, populated by `pnpm bkit install`
@@ -158,9 +160,9 @@ Workflow / prompt SOURCES not shipped into consumer `.agents/`; live in installe
 - `.codex/agents/` + `.codex/hooks.json` + `.codex/hooks/` — additive Codex CLI host; opt-in `bkit install --codex`. No `.codex/config.toml`: `openai` is a reserved built-in provider id, so bkit has nothing to declare. Project-local hooks load only once the `.codex/` layer is TRUSTED.
 - `.agents/plugins/bkit/` (`plugin.json` + `skills/bkit-*/SKILL.md` + `agents/bkit-*.md` + `hooks.json` + `hooks/`) + `GEMINI.md` — additive Google Antigravity host installed as a workspace **plugin**; opt-in `bkit install --antigravity`; `.agents/` root stays the dedicated Codex install; workflows ship as plugin skills, subagents as in-session prompts loaded with `view_file`. See `docs/technology.md` § Execution Hosts.
 
-`.claude/hooks/bkit-gateguard.cjs`, `.cursor/hooks/bkit-gateguard.cjs`, `.codex/hooks/bkit-gateguard.cjs`, `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` and `.opencode/plugin/bkit-gateguard.js` (the GateGuard advisory hooks — pre-edit on Claude / Cursor / Codex / Antigravity, appended to the tool result on opencode) plus `.claude/hooks/bkit-guardrails.cjs`, `.cursor/hooks/bkit-guardrails.cjs`, `.codex/hooks/bkit-guardrails.cjs` and `.agents/plugins/bkit/hooks/bkit-guardrails.cjs` (shell gates: destructive ops, secret exposure, URL-host checks and shell-as-edit-channel) — like the two `bkit-preflight.sh` hooks, generated at install from a per-host template plus the shared `.bkit/core/hooks/` (`render/parts.ts`) — are markered-text (slash-comment: `// bkit:start` / `// bkit:end`) — bkit owns only the pure advisory engine between the markers; the stdin / stdout driver (Claude) or exported plugin (opencode) around it is consumer-owned from first install onward, so a consumer can add their own advisories without losing them on upgrade. A pre-markers install (no markers, hash matches a prior canonical hash) is replaced wholesale on the next install / upgrade; a genuinely consumer-authored file (no markers, unknown hash) gets the block appended plus printed wiring instructions.
+`.claude/hooks/bkit-gateguard.cjs`, `.cursor/hooks/bkit-gateguard.cjs`, `.codex/hooks/bkit-gateguard.cjs`, `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` and `.opencode/plugin/bkit-gateguard.js` (the GateGuard advisory hooks — pre-edit on Claude / Cursor / Codex / Antigravity, appended to the tool result on opencode), the same five paths with `bkit-readguard` (the ReadGuard repeat-read advisory hooks, `.bkit/providers.md` § ReadGuard) plus `.claude/hooks/bkit-guardrails.cjs`, `.cursor/hooks/bkit-guardrails.cjs`, `.codex/hooks/bkit-guardrails.cjs` and `.agents/plugins/bkit/hooks/bkit-guardrails.cjs` (shell gates: destructive ops, secret exposure, URL-host checks and shell-as-edit-channel) — like the two `bkit-preflight.sh` hooks, generated at install from a per-host template plus the shared `.bkit/core/hooks/` (`render/parts.ts`) — are markered-text (slash-comment: `// bkit:start` / `// bkit:end`) — bkit owns only the pure advisory engine between the markers; the stdin / stdout driver (Claude) or exported plugin (opencode) around it is consumer-owned from first install onward, so a consumer can add their own advisories without losing them on upgrade. A pre-markers install (no markers, hash matches a prior canonical hash) is replaced wholesale on the next install / upgrade; a genuinely consumer-authored file (no markers, unknown hash) gets the block appended plus printed wiring instructions.
 
-Every non-JSON file bkit writes or refreshes carries the managed-version marker, one text in the file's comment syntax: `<!-- bkit:managed vX.Y.Z … -->` (markdown), `# <!-- bkit:managed vX.Y.Z … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, codex TOML), `// bkit:managed vX.Y.Z …` (JS hooks, `.mjs`). The marker names the licence (PolyForm Noncommercial 1.0.0 / Small Business 1.0.0) and the licences index URL — PolyForm's Notices section — and the full texts plus Required Notice travel at `.bkit/LICENSE.md` (`runBkitDocs`). Rendered agents / commands / skills are stamped by `stampManagedVersion`; every other file carries `{{BKIT_MANAGED_MARKER}}` in its source, resolved by `applyTokens`. The marker sits on the first line inside the `bkit:start` block, or below the first heading of a whole file. `listStampedFiles` (`.bkit/core/engine/install/modules/index.ts`) derives the set from the core templates, the manifest and the rendered mirrors; marker drift on any of them → `bkit check` emits `bkit-managed-stale` (never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main` / `dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
+Every non-JSON file bkit writes or refreshes carries the managed-version marker, one text in the file's comment syntax: `<!-- bkit:managed vX.Y.Z … -->` (markdown), `# <!-- bkit:managed vX.Y.Z … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, codex TOML), `// bkit:managed vX.Y.Z …` (JS hooks, `.mjs`). The full MIT text and copyright notice travel at `.bkit/LICENSE.md` (`runBkitDocs`). Rendered agents / commands / skills are stamped by `stampManagedVersion`; every other file carries `{{BKIT_MANAGED_MARKER}}` in its source, resolved by `applyTokens`. The marker sits on the first line inside the `bkit:start` block, or below the first heading of a whole file. `listStampedFiles` (`.bkit/core/engine/install/modules/index.ts`) derives the set from the core templates, the manifest and the rendered mirrors; marker drift on any of them → `bkit check` emits `bkit-managed-stale` (never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main` / `dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
 
 ## Compliance Grader Subsystem (#234 WS-2)
 
@@ -200,4 +202,4 @@ Sensing is on-disk-first: every phase close full-regenerates the board from the 
 
 ## Distribution
 
-`@cbartens/bkit` published publicly to npmjs (`https://registry.npmjs.org`) on every git tag via `.github/workflows/release.yml` (npm OIDC trusted publishing — no long-lived token). Consumers install with no registry mapping or PAT. See `docs/deployments.md` § Dependency updaters.
+`@cbartens/bkit` published publicly to npmjs (`https://registry.npmjs.org`) on every git tag via `.github/workflows/release.yml` (npm OIDC trusted publishing — no long-lived token); same run creates the tag's GitHub Release from its `CHANGELOG.md` block. Consumers install with no registry mapping or PAT. See `docs/deployments.md` § Dependency updaters.

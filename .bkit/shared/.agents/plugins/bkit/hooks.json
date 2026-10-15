@@ -6,18 +6,28 @@
         "hooks": [
           {
             "type": "command",
-            "command": "test -f .agents/plugins/bkit/hooks/bkit-gateguard.cjs && node .agents/plugins/bkit/hooks/bkit-gateguard.cjs || true",
+            "command": "f=hooks/bkit-gateguard.cjs; test -f \"$f\" || f=.agents/plugins/bkit/$f; test -f \"$f\" && node \"$f\" || true",
             "statusMessage": "bkit GateGuard"
           }
         ]
       },
       {
-        "matcher": "run_command",
+        "matcher": "view_file|run_command",
         "hooks": [
           {
             "type": "command",
-            "command": "test -f .agents/plugins/bkit/hooks/bkit-guardrails.cjs && node .agents/plugins/bkit/hooks/bkit-guardrails.cjs || true",
+            "command": "f=hooks/bkit-guardrails.cjs; test -f \"$f\" || f=.agents/plugins/bkit/$f; test -f \"$f\" && node \"$f\" || true",
             "statusMessage": "bkit guardrails"
+          }
+        ]
+      },
+      {
+        "matcher": "view_file|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=hooks/bkit-readguard.cjs; test -f \"$f\" || f=.agents/plugins/bkit/$f; test -f \"$f\" && node \"$f\" || true",
+            "statusMessage": "bkit ReadGuard"
           }
         ]
       }
