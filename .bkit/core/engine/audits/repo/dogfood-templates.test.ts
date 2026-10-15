@@ -468,7 +468,17 @@ const ADOPTED: Record<string, Entry> = {
   "scripts/graphify/bkit-graph-eager-rules.json": identical,
   "scripts/graphify/bkit-graph-pre-push.sh": identical,
   "scripts/graphify/bkit-graph-repair.py": identical,
-  "scripts/graphify/bkit-graph-surface.py": identical,
+  "scripts/graphify/bkit-graph-surface.py": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "workspace package scope",
+        fill: "            # Replace @scope with this repo's workspace services scope.\n            doms |= set(re.findall(r\"@scope/services/",
+        with: '            doms |= set(re.findall(r"@cbartens/services/',
+      },
+    ],
+  },
   "scripts/graphify/bkit-graphify-graphml.py": identical,
   "scripts/prettier/bkit-insert-ignore.mjs": identical,
   "scripts/secrets/bkit-secrets.mjs": identical,
