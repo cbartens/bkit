@@ -284,6 +284,35 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
     fs.writeFileSync(path.join(tmpDir, "package.json"), "{ nope", "utf-8");
     expect(detectGateAdvisories(tmpDir)).toEqual([]);
   });
+
+  it("judges a gate name install has yet to seed at its default value", () => {
+    writeScripts({ typecheck: "tsc --noEmit" });
+    const finding = detectGateAdvisories(tmpDir).find(
+      (f) => f.id === "gate-missing-called-scripts",
+    );
+    expect(finding?.detect).toContain("`lint`");
+    expect(finding?.detect).not.toContain("`typecheck`");
+  });
+
+  it("runs in check (dry run) as well as install, with the same findings", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS, "test:integration": "vitest run -c int" });
+    const idsFor = (dryRun: boolean): string[] => {
+      const ctx = makeCtx({ dryRun });
+      runCoreModule(ctx);
+      return ctx.advisories
+        .map((f) => f.id)
+        .filter((id) => id.startsWith("gate-") || id === "test-file-script-missing");
+    };
+    const check = idsFor(true);
+    expect(check).toEqual(
+      expect.arrayContaining([
+        "gate-missing-called-scripts",
+        "gate-tier-not-wired",
+        "test-file-script-missing",
+      ]),
+    );
+    expect(check).toEqual(idsFor(false));
+  });
 });
 
 describe("detectNoopGates — bkit check warns on a gate that checks nothing", () => {

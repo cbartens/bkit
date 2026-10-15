@@ -361,8 +361,11 @@ const PNPM_NOT_A_SCRIPT = new Set([
 
 /**
  * Advisories for the `bkit:gate:*` scripts: the scripts a still-default gate
- * chains that package.json does not declare, and the deeper test tiers the repo has
- * but no gate runs. Read-only; an absent or unparseable package.json yields none.
+ * chains that package.json does not declare, the deeper test tiers the repo has
+ * but no gate runs, and a missing `bkit:test:file`. Judges the scripts as install
+ * leaves them (missing gate names at their seeded defaults), so install, `bkit check`
+ * and `bkit upgrade` report the same set. Read-only; an absent or unparseable
+ * package.json yields none.
  */
 export function detectGateAdvisories(cwd: string): PreflightFinding[] {
   let declared: Record<string, string>;
@@ -370,7 +373,7 @@ export function detectGateAdvisories(cwd: string): PreflightFinding[] {
     const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8")) as {
       scripts?: Record<string, string>;
     };
-    declared = pkg.scripts ?? {};
+    declared = { ...BKIT_GATE_SCRIPTS, ...pkg.scripts };
   } catch {
     // Absent or malformed package.json — preflight's no-package-json /
     // malformed-package-json blockers already report it.
@@ -386,7 +389,7 @@ export function detectGateAdvisories(cwd: string): PreflightFinding[] {
     if (declared[name] !== seeded) continue;
     for (const [, called] of seeded.matchAll(/\bpnpm ([\w:-]+)/g)) {
       if (PNPM_NOT_A_SCRIPT.has(called)) continue;
-      if (!(called in declared) && !(called in BKIT_GATE_SCRIPTS)) missing.add(called);
+      if (!(called in declared)) missing.add(called);
     }
   }
   if (missing.size > 0) {
@@ -447,7 +450,7 @@ export function isNoopScript(value: string): boolean {
 
 /**
  * Advisory for every `bkit:gate:*` script that is empty or a no-op: it checks nothing,
- * so every agent run and push passes it. Warn-only, at install and `bkit check`, on
+ * so every agent run and push passes it. Warn-only, at install, `bkit check` and `bkit upgrade`, on
  * every branch. Read-only; an absent or unparseable package.json yields none.
  */
 export function detectNoopGates(cwd: string): PreflightFinding[] {
@@ -550,7 +553,7 @@ export function runCoreModule(ctx: ModuleContext): void {
   // 3c. The bkit:gate:* / bkit:deps:* package.json scripts (add-if-missing). The
   // advisories read the result.
   seedCorePackageJsonScripts(ctx);
-  if (!dryRun) advisories.push(...detectGateAdvisories(cwd));
+  advisories.push(...detectGateAdvisories(cwd));
   advisories.push(...detectNoopGates(cwd));
 
   // 4. .bkit/version write — deferred to postDispatch so it only persists when ALL modules succeed.

@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Fixed
+
+- **`bkit check` and `bkit upgrade` report the gate advisories install reports** (#524). `test-file-script-missing`, `gate-missing-called-scripts` and `gate-tier-not-wired` ran only on a real install, so an upgraded repo never saw them. They now judge `package.json` as install leaves it and run in every mode. A real `bkit upgrade` ends with `bkit check`'s read-only pass: prints the checklist and rewrites `.bkit/advisories.md` (`Mode: upgrade`), so the upgrade paste block's "read `.bkit/advisories.md`" step reads current findings. Upgrade's exit code is unchanged.
+
 ## [5.2.1] — 2026-10-15
 
 ### Changed

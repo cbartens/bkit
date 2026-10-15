@@ -26,7 +26,7 @@ import { detectMarkerStyle } from "../../install/managed-block.js";
 import { applyTokens, resolveTokens } from "../../install/placeholders.js";
 import { readTemplate } from "../../render/parts.js";
 import { TEMPLATE_COPIES_DIR, getCoreRoot, getSharedRoot, getBkitDocsRoot, getPkgRoot, } from "../../shared/package-roots.js";
-import { getInstallingVersion, requireOpencodeProvider, detectOpencodeProviders, } from "./install.js";
+import { getInstallingVersion, requireOpencodeProvider, detectOpencodeProviders, runUpgradeAdvisories, } from "./install.js";
 import { setLogPrefix } from "../../shared/log-prefix.js";
 import { getInstallManifest, getModuleManifest, DEFAULT_ISSUE_TRACKER, parseIssueTracker, } from "../../install/manifest.js";
 import { OPTIN_MODULES } from "../../install/manifest.js";
@@ -773,6 +773,9 @@ export async function runUpgradeCommand(upgradeFlags) {
         });
     }
     console.log(`${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}, re-rendered: ${rendered.length}`);
+    // `.bkit/advisories.md` describes the upgraded repo, not the last install or check.
+    if (!upgradeFlags.dryRun)
+        await runUpgradeAdvisories();
     // Non-interactive mode: exit non-zero on conflicts
     if (upgradeFlags.nonInteractive && result.conflicts.length > 0) {
         process.exit(1);
