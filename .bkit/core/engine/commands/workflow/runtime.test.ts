@@ -168,8 +168,8 @@ describe("bkit runtime detect — the table", () => {
     ["LOCAL", false],
     ["CLOUD_CLAUDE", false],
     ["GITHUB_ACTION", true],
-    ["CLOUD_CURSOR", true],
-    ["UNKNOWN", true],
+    ["CLOUD_CURSOR", false],
+    ["UNKNOWN", false],
   ])("%s -> runtimeHeadless=%s", async (runtime, headless) => {
     vi.stubEnv("BKIT_RUNTIME", runtime);
     expect((await detect()).json).toMatchObject({ runtime, runtimeHeadless: headless });

@@ -1,6 +1,6 @@
 # IDE / Host Differences
 
-<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Authoritative inventory of IDE host differences. Drives install script transform rules. Source-of-truth for "what changes between IDE versions of commands and subagents".
@@ -408,6 +408,8 @@ bkit ships no compaction setting; each host auto-summarises near the model's ful
 | Google Antigravity | none — threshold internal, no setting / env reaches it | — | manual `/compact` |
 
 **Floor:** keep the window well above the largest single tool result plus the recent turns kept after a summary. Claude Code ends an agent whose context refills to the limit within 3 turns of a summary, 3 times in a row (`Autocompact is thrashing`).
+
+**Compression proxies:** bkit ships none (caveman, Headroom). On 456 real Claude Code transcripts they saved ~1–3% of token cost: both keep the prompt cache intact, so each tool result is compressed once on arrival and reused, and tool results ≥ 2 KB are 27% of cost. Headroom's Kompress text model rewrote code (`=> void` → `void`). Method, results, scripts to measure own sessions: [comparison](https://github.com/cbartens/bkit/blob/main/tests/compression/bkit-caveman-headroom-compression-proxy-comparison.md). bkit cuts reading instead, losslessly: § ReadGuard + `Code reads` / `Narrow text search first` in `.agents/rules.md`.
 
 ## MCP project scope
 

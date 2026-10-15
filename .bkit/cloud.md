@@ -1,6 +1,6 @@
 # Cloud agent environments — Claude Code on the web + Cursor Cloud Agents + opencode
 
-<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Canonical reference for Claude Code on the web (mobile / web), Cursor Cloud Agents, and opencode cloud runners. Claude + opencode → **GitHub** tracker (unified `bkit-cloud.yml`); Cursor → **Linear**. Not interchangeable per repo — pick agent matching your tracker (see § Cloud-agent support matrix).
@@ -30,7 +30,7 @@ Three cloud stacks — each agent pairs with one tracker. Pick row for agent you
 
 **Unified file — additive coexistence:** Claude + opencode share one `bkit-cloud.yml`: a `context` job resolves the phase once, then two runner jobs, each runtime-gated on its secret (`ANTHROPIC_API_KEY` claude, `OPENCODE_PROVIDER_KEY` opencode). Both jobs can fire on same CI event — both secrets → both agents; one secret → one agent. Cursor separate (no GH Action; native triggers). **Cursor cloud ↔ Linear.**
 
-**Manual dispatch (Claude or opencode, path A):** GitHub → **Actions** → **bkit-cloud** → **Run workflow** → `phase` (`ship` / `debug` / `plan` / `build`) + `issue`. On-demand/smoke-test for `plan` / `build`; `ship` / `debug` normally CI-fired. `design` runs locally — its Grill step interviews the human; a headless run (`runtimeHeadless` = true: GitHub runner, Cursor cloud agent, unknown runtime) skips the interview and records each recommended answer as `Assumed, not confirmed`. Dispatched `/bkit-auto` orchestrator → matching phase skill → brief from GitHub issue (MCP).
+**Manual dispatch (Claude or opencode, path A):** GitHub → **Actions** → **bkit-cloud** → **Run workflow** → `phase` (`ship` / `debug` / `design` / `plan` / `build`) + `issue`. On-demand/smoke-test for `design` / `plan` / `build`; `ship` / `debug` normally CI-fired. Dispatched `design` runs headless (`runtimeHeadless` = true on a GitHub runner): Grill asks nothing and records each recommended answer as `Assumed, not confirmed`. Dispatched `/bkit-auto` orchestrator → matching phase skill → brief from GitHub issue (MCP).
 
 ### Reactive comment handlers (`claude.yml` + `opencode.yml`) — separately managed, not bkit
 

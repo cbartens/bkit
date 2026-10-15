@@ -8,7 +8,7 @@ tools:
   - write_to_file
   - replace_file_content
 ---
-<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating ship cycles for completion and follow-up needs.
 **Scope:** As specified by input and Read / Update / Create section.

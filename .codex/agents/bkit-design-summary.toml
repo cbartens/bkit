@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-design-summary"
 description = "Senior reviewer evaluating design docs for readiness to enter planning."
 model = "gpt-6-luna"

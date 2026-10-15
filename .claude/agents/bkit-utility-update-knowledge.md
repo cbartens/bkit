@@ -14,7 +14,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 100
 ---
-<!-- bkit:managed v5.2.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior editor correcting gotchas the docs or codebase have since contradicted.
 **Scope:** As specified by input or session prompt.
