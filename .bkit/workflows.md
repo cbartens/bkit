@@ -606,6 +606,8 @@ Plan docs add 2 fields, read from the design doc's own anchor: `designPath` (des
 
 **May be empty:** `baseSha` empty = `merge-base` unresolvable, not a failure. `designPath`/`designBaseSha` empty = no design, or design predates this mechanism. Pre-change docs carry no block — `bkit branches anchor-read` returns null fields, not an error.
 
+**Audit reports** (`docs/audits/{YYYYMM}/{slug}*.md`) carry the same block: `baseSha` = `git rev-parse HEAD` when the report stub is created, `baseRef` = the audited branch (`--base-ref=`), no design fields. Audits have no orchestrator, so `@bkit-audit-generate` runs `bkit branches anchor-stamp` itself right after creating the stub; the block is still tool-written, never hand-written. The next run of the same template reads it as the previous report's commit (each template's Step 1). Reports without a block fall back to the HEAD their `Previous Run` recorded.
+
 **Truth, not intent:** stale `origin/dev` at fetch → recorded `baseSha` is the stale base actually branched from; later diff surfaces that honestly rather than papering over it.
 
 **Read by build's Plan Current step** (`/bkit-build` Step 4) — the only consumer of `baseSha` on a plan doc. `designPath` / `designBaseSha` are provenance only and have no consumer: once a plan exists it is judged against the codebase, never against its design. Absent or unreachable `baseSha` skips the judgement, never fails it.

@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
@@ -92,7 +92,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Detect:** Find coverage floor gate (CI job, script, or threshold failing below committed number) and where number is stored. List hard-gated vs report-only surfaces. Metric = branch coverage unless recorded decision names another; line, statement, function percentages are not floors. None → `N/A` and STOP. **Done when:** gate path, metric, surface list in `Checked`, or `N/A` and STOP.
 - [ ] **Step 3 — History:** Since previous report's commit: no floor dropped (`git log -L` on each floor value and coverage include / exclude). Floor never moves down; drop is fixed, not accommodated. Diff exclusions. Count ignore hints under each gated glob, then and now (e.g. `v8 ignore`, `istanbul ignore`, `c8 ignore`, `# pragma: no cover`). Each new exclusion and ignore hint, with commit = finding. **Done when:** `History` lists every floor change, new exclusion, and new ignore hint, or `none`.
 - [ ] **Step 4 — Sample:** Per gated surface, ≥10 full runs: same commit, or most recent full CI runs on default branch. CI history first; local re-run only to fill gap; mark local observations. Record every run id. No partial lane. Never ratchet off single run. **Done when:** `Sample` holds ≥10 observations per gated surface, or named shortfall and that floor not tightened.

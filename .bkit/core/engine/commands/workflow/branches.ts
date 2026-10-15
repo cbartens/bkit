@@ -395,8 +395,9 @@ export function stampAnchor(
   text: string,
   baseSha: string,
   design?: { path: string; baseSha: string },
+  baseRef: string = UPSTREAM,
 ): string {
-  const header = [ANCHOR_OPEN, `baseSha: ${baseSha}`, `baseRef: ${UPSTREAM}`];
+  const header = [ANCHOR_OPEN, `baseSha: ${baseSha}`, `baseRef: ${baseRef}`];
   if (design) header.push(`designPath: ${design.path}`, `designBaseSha: ${design.baseSha}`);
   header.push(ANCHOR_CLOSE);
   const body = anchorLines(text)
@@ -1180,6 +1181,7 @@ function anchorStampVerb(ctx: RunContext): number {
     return EXIT_NO_FILE;
   }
   if (baseSha === "") throw new CommandError(EXIT.USAGE, "--base-sha must be non-empty");
+  const baseRef = str(ctx.flags.baseRef) ?? UPSTREAM;
   const designFlag = str(ctx.flags.design);
   const designFile = designFlag === undefined ? undefined : path.resolve(ctx.cwd, designFlag);
   const design =
@@ -1190,7 +1192,7 @@ function anchorStampVerb(ctx: RunContext): number {
         }
       : undefined;
   const before = fs.readFileSync(file, "utf-8");
-  const after = stampAnchor(before, baseSha, design);
+  const after = stampAnchor(before, baseSha, design, baseRef);
   // Temp file + rename: a crash mid-write never leaves a half-stamped doc.
   const tmp = `${file}.bkit-anchor.tmp`;
   fs.writeFileSync(tmp, after);
@@ -1198,6 +1200,7 @@ function anchorStampVerb(ctx: RunContext): number {
   ctx.emit({
     file: rel,
     baseSha,
+    baseRef,
     designPath: design?.path ?? null,
     designBaseSha: design?.baseSha ?? null,
     changed: before !== after,
@@ -1452,7 +1455,7 @@ export const branchesCommand: CommandSpec = {
     },
     "anchor-stamp": {
       summary:
-        "Put a <!-- bkit:anchor --> block recording the base commit on top of a design/plan doc (idempotent).",
+        "Put a <!-- bkit:anchor --> block recording the base commit on top of a design/plan doc or audit report (idempotent).",
       flags: [
         { name: "file", type: "string", required: true, help: "doc to stamp (must exist)" },
         {
@@ -1460,6 +1463,11 @@ export const branchesCommand: CommandSpec = {
           type: "string",
           required: true,
           help: "base commit the doc was written against (non-empty)",
+        },
+        {
+          name: "base-ref",
+          type: "string",
+          help: `ref baseSha was taken from (default ${UPSTREAM}; audit reports pass the audited branch)`,
         },
         {
           name: "design",
@@ -1470,6 +1478,7 @@ export const branchesCommand: CommandSpec = {
       output: {
         file: "doc stamped",
         baseSha: "base commit stamped",
+        baseRef: "ref stamped",
         designPath: "design path stamped (null when none)",
         designBaseSha:
           "the design doc's baseSha stamped (null when none; empty when it had no anchor)",
@@ -1482,7 +1491,7 @@ export const branchesCommand: CommandSpec = {
       summary:
         "Read a doc's anchor fields; with --against, decide whether anything landed since its baseSha.",
       flags: [
-        { name: "file", type: "string", required: true, help: "design/plan doc" },
+        { name: "file", type: "string", required: true, help: "design/plan doc or audit report" },
         {
           name: "field",
           type: "string",

@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
@@ -93,7 +93,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Gate:** Open gate specs and helpers. Record in `Gate`: checker rule set; route list + ready/settle selectors per route; each allowlist; gate-pinned vs audit-run checker version; rules checker changelog adds since previous report version (pinned old version under-reports newer WCAG 2.2 rules). Scope everything below against snapshot. **Done when:** snapshot in `Gate`, or no gate recorded.
 - [ ] **Step 3 — Laws:** Which laws apply = owner decision; record or unmade (`Project Instructions` names questions). Law requiring public accessibility statement, service info, feedback channel → check they exist. Statement wording vs behaviour → `bkit-audit-privacy`. **Done when:** `Laws` row per regime: applies · why · statement.
 - [ ] **Step 4 — Allowlists:** Per-offender keys, never runtime hash, never rule downgrade or route exclusion. Honest only if each entry re-read. Per entry: offender still there, reason still true, fixable now? No expiry/owner = permanent exemption = finding. Policy "new entry = finding, not fix" (`Project Instructions`) → new entry = finding. Stale (offender gone, key remains) = finding. **Done when:** `Allowlists` row per entry: still present · reason true · expiry or owner · verdict. Empty → one row `none`, key shape noted.

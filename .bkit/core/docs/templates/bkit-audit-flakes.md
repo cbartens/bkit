@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
@@ -105,7 +105,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — List:** Before triage, list every test with runner status flaky (failed, passed on retry) and every pass-only-on-retry, across every workflow since previous report. Also list fail one run/surface, pass another: with retries off, `flaky` never appears; a noticed red run is input, not the list. Rank by flake rate (flaky or failed runs ÷ runs) and reruns caused. Per open flake: first-seen, last-seen, age. Report median age of open flakes. Red run absent from list → detection finding. Triage in rank order. **Done when:** ranked list, ages, median in `Flakes`.
 - [ ] **Step 3 — Pin:** Per triaged flake: run id, commit, job that failed vs downstream-only. Control run and valid scope. Prior red run = control only when failure mode differs — auth failure redirecting every lane to sign-in is control for tenant-minting lane only. **Done when:** run, job, control in `Pin`.
 - [ ] **Step 4 — Rate:** Spec with repeat-each, retries off, at CI worker count: k failures in N runs. Repeat with CPU throttled/loaded. Record N, k, workers, commit. Without measured rate, nothing to compare fix against (Step 11). **Done when:** N, k, workers, commit in `Rate`, or why not measured.

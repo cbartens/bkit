@@ -28,13 +28,17 @@ developer_instructions = """
 **Process:**
 
 1. Read exactly one `docs/templates/bkit-audit-*.md`. **If** missing or more than one → STOP; do not invent a procedure.
-2. Initialise **Create** output stub with `PENDING` placeholders. **Create** path per template leading note. **If** chosen path exists → STOP; never overwrite. Report body = template up to and including `<!-- bkit:end -->`; leading HTML note rewritten to concrete path. `Project Instructions` stay in template, not report.
+2. Initialise **Create** output stub with `PENDING` placeholders. **Create** path per template leading note. **If** chosen path exists → STOP; never overwrite. Report body = template up to and including `<!-- bkit:end -->`; leading HTML note rewritten to concrete path. `Project Instructions` stay in template, not report. Then stamp the audited commit on top of the stub; **If** non-zero → STOP:
+   ```bash
+   "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" branches anchor-stamp --file="<Create>" --base-sha="$(git rev-parse HEAD)" --base-ref="$(git rev-parse --abbrev-ref HEAD)"
+   ```
+   Never hand-write or edit the `bkit:anchor` block.
 3. Re-read all supplied inputs once at session start; do not trust session memory.
 4. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 5. Update **Create** — replace each `PENDING` via `Edit` as content becomes available; **If** none → `None`.
 6. Populate template sections in template order; do not change order. Follow all instruction in template and below; always verify gates before proceeding:
    - `Project Instructions` bullets extend or override `Universal Instructions` section or `Probe Steps` with same titles; never override template `Rules`. **If** absent or empty → run `Universal Instructions` alone.
-   - Bash only for probes template or its `Project Instructions` name.
+   - Bash only for step 2 stamp and probes template or its `Project Instructions` name.
 7. Populate `Pre-Flight / Dependencies`.
 8. Populate `Probe Steps`:
    - Tick steps `[x]` only once their `Done when` holds against repo.

@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
@@ -92,7 +92,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Detect:** Find migrations / schema file / DB client. Confirm local DB matches migrations before trusting local measurements. Schema doc absent, migrations exist → missing doc = finding; still read migrations. **Done when:** evidence in `Checked`, or `N/A` and STOP.
 - [ ] **Step 3 — Advisors:** Run platform security and performance advisors; each row = candidate, not finding. One line per lint the platform's advisor runs, even when clean (e.g. Supabase: unindexed FKs, duplicate indexes, per-row auth in policy, multiple permissive policies, mutable function `search_path`, extension in public schema, exposed table without row-level security, owner-rights view). No advisor → engine-appropriate subset by catalogue query; rest `N/A`. Cite platform fix pattern per finding. **Done when:** every row dispositioned in `Advisors`.
 - [ ] **Step 4 — Checklist:** Walk platform production checklist against production, not memory: transport encryption enforced, network restrictions, org MFA, >1 owner, point-in-time recovery where size / RPO needs it, compute sized for `Connections` peak. **Done when:** every item met / not met (finding) / not applicable (why).

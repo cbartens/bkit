@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
@@ -99,7 +99,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Signals:** Since previous report: funnel drop-off on core flows, support tickets, store-review themes, in-app feedback. Top 5 complaints → each a finding or explained by run end. No users yet → `no users yet`. Missing or untrustworthy funnel data stays listed; fix → `bkit-audit-analytics`. **Done when:** `Signals` holds the five, or `no users yet`.
 - [ ] **Step 3 — Capture:** Project has a screenshot-capture pipeline (`Project Instructions` names it, incl. how a run opts in, e.g. commit-message marker) → use finished run with artifact still inside retention window. No pipeline or no such run → hand walk; capture `Not Checked`. Record run id, event type, opt-in markers. Fetch and review before artifact expires. **Done when:** run id in `Capture`, or absence recorded.
 - [ ] **Step 4 — Manifest:** Download that run's report artifact. Read manifest and gap step in same job's log, where the pipeline emits them: every route and test id the run did not reach → this run's blind spot. **Done when:** manifest path in `Capture` and gap list in `Gaps`, or skip recorded.

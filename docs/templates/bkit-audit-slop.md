@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
@@ -102,7 +102,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Isolate:** Find scanner run (package scripts). Detached worktree off default branch (no new branch); clean `git status` before start; removed before report finishes. **Done when:** worktree path and clean status in `Checked`, or absent scanner recorded.
 - [ ] **Step 3 — Hidden Findings:** Pinned scanner, committed config → JSON baseline. Stripped config (build-artifact ignores only, no overrides, all rules on) under restore guard → scan → restore → `diff` byte-identical. Suppressed = in stripped, not baseline; stripped count not fix-list. Count override blocks. Restore fails → STOP; restore committed config; record finding. **Done when:** baseline / stripped / suppressed / override-block counts in `Counts`; config diff empty.
 - [ ] **Step 4 — Verdicts:** Read each suppressed site, not rule name → verdict. `DELETE` needs reference check: language-server references where available + text search basename (script / config refs language server lacks). Text search over-reports, language server under-reports → agreement = signal. Re-run every empty result once before `DELETE`. **Done when:** every suppressed finding has verdict and evidence.
