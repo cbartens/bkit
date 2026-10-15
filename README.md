@@ -16,7 +16,7 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#a-ready-made-workflow-for-every-job">Workflows</a> ·
-  <a href="#a-ci-pipeline-built-the-way-senior-teams-build-them">CI template</a> ·
+  <a href="#agents-and-ci-built-to-work-together">Agents and CI</a> ·
   <a href="#right-context-at-the-right-step">Context</a> ·
   <a href="#faq">FAQ</a> ·
   <a href=".bkit/comparison.md#part-3--compared-with-other-ai-development-frameworks">Comparison</a> ·
@@ -89,15 +89,36 @@ One command per job. Each one runs a team of specialised agents, so you don't ha
 
 Most AI development frameworks are prompts: they describe good work and trust the agent to deliver it. But an agent can be talked into calling something done, and a prompt can't stop it. bkit builds fences instead. Reviewer agents that didn't write the work fence in the design and the plan. From the first line of code, automated checks join them, and those can't be argued with.
 
-## A CI pipeline built the way senior teams build them
+## Agents and CI, built to work together
 
-The strongest fence is CI (continuous integration): the robot that runs every check on every change, on GitHub's servers, before anything merges. Most people who start with vibe coding have never set one up, and none of the AI development frameworks in our [comparison](.bkit/comparison.md#part-3--compared-with-other-ai-development-frameworks) ships a full test pipeline for your project. bkit ships one ready to adopt, and its workflows are built around it. Agents and CI hand the work back and forth until every test passes:
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-wall-dark.svg">
+    <img alt="Agents play against a wall. It never argues, and it grows. On the left, the agents. Every agent in every workflow looks up every definition and caller with code search before a change, is nudged by the agent hooks on every edit, and has its code formatted by the pre-commit hook on every commit. /bkit-plan decides the tests each feature adds to the wall (unit, integration or end-to-end). /bkit-build writes each test first, sees it fail, then hits every layer of the wall; the pre-push hook sends problems back before they leave your laptop. When a CI lane goes red, its logs give /bkit-debug the context to fix it. When CI is green, /bkit-ship merges, re-checked on the merge commit. On the right, the wall, nearest and thinnest layer first: code search on every lookup, agent hooks on every edit, the pre-commit hook on every commit, the pre-push hook on every push, and CI, the thickest, on every push and pull request. CI runs integration, end-to-end and live-site tests, and one check fails if any lane failed, was skipped or ran no tests. Hooks, agents and CI run the same commands, and in cloud mode CI's answer starts debug or ship by itself." src=".github/assets/bkit-wall-light.svg" width="100%">
+  </picture>
+</p>
 
-1. **`/bkit-build`** runs the quick checks on your machine, then opens a pull request, which starts CI.
-2. **CI** runs every lane and reports one result: a final check that's green only if every lane ran and passed.
-3. **Red?** `/bkit-debug` reads the logs of the lanes that failed, finds the root cause, fixes it and pushes, and CI runs again.
-4. **Green?** `/bkit-ship` checks nothing planned was quietly dropped, then merges into `dev`. Nothing less than green gets merged.
-5. **On autopilot**, the loop runs by itself: for issues labelled `bkit:auto`, CI's result starts ship or debug in a cloud session, with no laptop open.
+The strongest fence is CI (continuous integration): the robot that runs every check on every change, on GitHub's servers, before anything merges. Most AI development frameworks stop at a pull request and leave CI to you. bkit's workflows are built around it, and around the checks that run before it. Every agent plays against the same wall, from its nearest, thinnest layer to CI:
+
+- **Every agent**, in every workflow, looks code up before changing it, is nudged by the agent hooks on each edit, and has its code formatted on each commit.
+- **`/bkit-plan`** decides which tests each feature needs and where each one runs: unit, integration or end-to-end.
+- **`/bkit-build`** writes each test before its code and runs it to prove it fails, so a test that can't fail never joins the wall. It runs the quick checks on your machine, where the pre-push hook sends back anything that fails, then opens a pull request, which starts CI.
+- **`/bkit-debug`** uses what bounced back as context: the logs of the lanes that failed, the diff since the last green run, end-to-end reports. It fixes the root cause and pushes, and CI runs again.
+- **`/bkit-ship`** checks nothing planned was quietly dropped, then merges into `dev` only when CI's final check is green on the exact commit being merged.
+- **On autopilot**, the wall serves the next shot: for issues labelled `bkit:auto`, CI's result starts ship (green) or debug (red) in a cloud session, with no laptop open.
+
+What that gets you:
+
+- **The wall grows with every feature.** Each build adds tests that every later change has to pass. A prompt-only framework is as strict on your fiftieth feature as on your first; bkit gets stricter.
+- **What bounces back is evidence, not a verdict.** A red lane hands debug the failing logs and what changed since the last green run, so the fix starts from the actual error instead of a guess.
+- **Agents look before they change anything.** Code search ([Serena](https://github.com/oraios/serena)) shows an agent every definition and caller of the code it's about to change, not just lines with matching words, and [graphify](https://github.com/Graphify-Labs/graphify)'s code map shows what already exists before it writes more. Fewer bad shots reach the wall at all.
+- **Problems are caught at the nearest layer.** Agent hooks nudge on every edit: read a file before changing it, and fix the code rather than loosen a check. The pre-commit hook formats in seconds. The pre-push hook runs type checks, unit tests, the prose checker and the junk-code scanner before anything leaves your laptop. CI is left with what genuinely can't run there: integration, end-to-end and live-site tests. Your hooks and the agents call the same `bkit:gate:*` scripts, and CI's quick-checks lane runs the same commands, so most failures show up on your machine first.
+
+The agent hooks come with install. Serena, graphify and the git hooks are [templates](#templates-ready-to-adopt) you adopt. How this compares with other frameworks: [agents and CI](.bkit/comparison.md#agents-and-ci).
+
+### The CI pipeline
+
+None of the AI development frameworks in our [comparison](.bkit/comparison.md#part-3--compared-with-other-ai-development-frameworks) ships a full test pipeline for your project. bkit ships one ready to adopt:
 
 <p align="center">
   <picture>
@@ -168,7 +189,7 @@ The ones that matter most, in the order to adopt them:
 <!-- prettier-ignore -->
 | Template | What it's for |
 | --- | --- |
-| **CI pipeline** | Runs every check on GitHub on every change, and `/bkit-ship` waits for it before merging. Without it, "shipped" only means merged, not checked. Two lanes ready to go and >20 building blocks for the rest ([above](#a-ci-pipeline-built-the-way-senior-teams-build-them)). |
+| **CI pipeline** | Runs every check on GitHub on every change, and `/bkit-ship` waits for it before merging. Without it, "shipped" only means merged, not checked. Two lanes ready to go and >20 building blocks for the rest ([above](#the-ci-pipeline)). |
 | **Quality checks** | Catches problems on your own machine in seconds, before they reach GitHub: type checking, formatting, a prose checker and a scanner for junk code AI tends to write, wired into git hooks and CI. Your `bkit:gate:*` scripts in `package.json` define what "the checks" are. |
 | **Serena** | Lets agents look up code the way your editor does ("where is this defined, and what uses it?") instead of searching for words and reading whole files. Fewer accidental changes, and lower running costs because agents read less. Read-only. |
 | **Context connectors** | Let `/bkit-debug` read the real errors instead of guessing from the code: >10 ready-made connectors for CI, error trackers, hosting, databases, payments, email, queues and the web. |

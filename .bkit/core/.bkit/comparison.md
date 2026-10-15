@@ -19,7 +19,7 @@ bkit turns a single coding-agent request into gated, peer-reviewed engineering. 
 
 Beside those commands, 35 read-only audit templates live at `docs/templates/bkit-audit-*.md`. `@bkit-audit-generate` runs one and writes `docs/audits/{YYYYMM}/{slug}.md`. `/bkit-plan` takes a design, one or more of those reports, or both.
 
-Part 1: every phase subagent in execution order, then the main audit templates. Part 2: bkit vs Gulli agentic patterns. Part 3: bkit vs 10 other AI development frameworks, one table. Full audit catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
+Part 1: every phase subagent in execution order, then the main audit templates. Part 2: bkit vs Gulli agentic patterns. Part 3: bkit vs 10 other AI development frameworks, one table, then agents and CI in detail. Full audit catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
 
 Not related to [bkit Vibecoding Kit](https://github.com/popup-studio-ai/bkit-claude-code), a separate project with the same name. This bkit = `@cbartens/bkit`, [github.com/cbartens/bkit](https://github.com/cbartens/bkit).
 
@@ -365,13 +365,46 @@ As of October 2026. A cross-section of 10: the closest process frameworks, the t
 Where bkit stands apart, per the table:
 
 - **Only one with all of:** blind bug + security reviewers, sign-off after design / plan / before merge, mechanical "done" checks, a CI pipeline for your project, GitHub / Linear tracker, and file-based memory.
-- **CI pipeline for your project:** none of the 10 ships a multi-lane test pipeline with a final gate. Closest: gstack's basic `test.yml`, OpenHands' AI PR-review workflow, Kiro's example.
+- **CI pipeline for your project:** none of the 10 ships a multi-lane test pipeline with a final gate. Closest: gstack's basic `test.yml`, OpenHands' AI PR-review workflow, Kiro's example. How agents use CI: [Agents and CI](#agents-and-ci).
 - **Merge discipline:** merges into `dev` only after the capstone check, never `main`. OpenHands merges with no human; most stop at a PR.
 - **Debug with outside evidence:** connectors pull CI logs, runtime errors and web results into diagnosis; soak mode for runtime-only bugs; handover when unfixable.
 - **Test first, checked by code:** each plan task's tests are run by bkit and must fail before the task's code exists, then pass; the agent's report of a failure never counts. Superpowers enforces TDD by instruction; Task Master's TDD mode takes pass / fail counts from the agent.
 - **Gaps vs the field:** no IDE or hosted service; no Jira; no formal requirements notation (EARS); no embedding memory; far smaller community.
 
 Also reviewed, left out of the table: Claude Task Master, ccpm, wshobson/agents, mattpocock/skills, SuperClaude, Ruflo, oh-my-openagent, Cline, Aider.
+
+### Agents and CI
+
+bkit's biggest difference from the field is how tightly its agents and CI work together. Each row below asks one question: does the framework itself do this, or is it left to you? Optional add-ons don't count. ✅ yes · ◐ partly · — no · ? not documented.
+
+<!-- prettier-ignore -->
+| Column | Means |
+| --- | --- |
+| Ships CI | A test pipeline for your project, ending in one "every lane passed" check |
+| Waits for CI | Its agents read CI's result before merging or calling the work done |
+| Reads CI logs | On red, its agents fetch the failed jobs' logs and diagnose from them |
+| CI starts next step | A CI result starts the next agent step (fix on red, merge on green) with no human present |
+| Tests mapped to lanes | Planning decides each feature's tests and which tier or lane runs them |
+| Same checks at every layer | Git hooks or agent hooks run the same checks CI runs |
+
+<!-- prettier-ignore -->
+| Project | Ships CI | Waits for CI | Reads CI logs | CI starts next step | Tests mapped to lanes | Same checks at every layer |
+| --- | --- | --- | --- | --- | --- | --- |
+| **bkit** | ✅ multi-lane; final check fails on a failed or skipped lane, or zero tests | ✅ green on the exact merge commit | ✅ failed-lane logs, diff since last green, end-to-end reports | ✅ `bkit:auto`: ship on green, debug on red | ✅ each test assigned unit, integration or end-to-end | ✅ hooks and agents call `bkit:gate:*`; CI's quick-checks lane runs the same commands |
+| gstack | ◐ one `test.yml`, no final check | ✅ `gstack-ci-gate` on the exact head | ◐ only on deploy failure or in `/investigate` | — stops on red | ◐ `/ship` fails a changed file with no test lane | ◐ `/ship` pre-gate reads the CI workflow files; no hook |
+| Superpowers | — | — local suite only | — | — | — | — |
+| Compound Engineering | — | ✅ `lfg` and PR babysitter | ✅ failing jobs and log tails go to `ce-debug` | ✅ watcher fixes and pushes | ◐ test scenarios, no lane | — |
+| GSD Core | — | — "merge when CI passes" left to you | — | — | ◐ unit / end-to-end split, no lane | — |
+| BMAD-METHOD | ◐ optional TEA module | — | — | — | ◐ TEA module only | — |
+| Spec Kit | — | — | — | — | ◐ optional contract / integration tests | — |
+| OpenSpec | — | — | — | — | — | — |
+| Kiro | ◐ AI-review example | ✅ opt-in workflows | ◐ failed check names, no logs | ✅ a failed check wakes the agent; never merges | ◐ | — |
+| everything-claude-code | — | ◐ | ◐ by instruction | — | ◐ tiers, no lane | — |
+| OpenHands | ◐ AI review and QA bots | ✅ | ✅ failed-job logs | ✅ scheduled automations; merger with no AI in it | ? | — |
+
+- **Only one with all six.** Compound Engineering and OpenHands also close the loop, fixing on red with no human, but neither ships a test pipeline for your project, so their agents wait on whatever CI you built yourself. gstack waits for CI but hands a red result back to you.
+- **Only one whose hooks and CI run the same checks.** Everywhere else, local checks and CI are separate lists, or there are no local checks.
+- **Ahead of bkit here:** gstack maps every changed file to a lane read from your CI workflow files, and blocks publishing until a lane your laptop can't run has passed in CI. Compound Engineering re-runs flaky failures instead of debugging them, and notices when its fixes go in circles. Compound Engineering and Kiro wait for CI with a plain script that wakes the agent only on change, and Kiro batches all of one run's failures into one wake. OpenHands merges through a step with no AI in it, and closes pull requests that stay red for 14 days. BMAD's TEA module generates CI for five platforms, splits tests across parallel runners and re-runs tests to catch flaky ones.
 
 ---
 
