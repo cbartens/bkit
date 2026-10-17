@@ -137,6 +137,52 @@ None of the AI development frameworks in our [comparison](.bkit/comparison.md#pa
 
 How the lanes join into the one final check, and what happens on green or red: [CI test scaffold](.bkit/comparison.md#ci-test-scaffold-runs-on-every-pr--push).
 
+## Right context at the right step
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-context-dark.svg">
+    <img alt="What it knows: right context, right step, written back as it learns. In your repo, bkit reads project docs at every step and updates them at ship; reads and writes lessons, decisions, postponed work and known bugs; writes designs and plans that later steps read; reads audit reports at plan and a code map at every step; keeps run state and stats at every step; adds skills at build and removes them at ship. Outside your repo, it reads and updates the GitHub or Linear issue at every step, searches related issues at design, plan and debug, searches the web at design and debug, reads CI runs and test reports at debug and ship, reads runtime platforms such as Sentry, Vercel, Supabase and Stripe at debug, and opens, fixes and merges the pull request." src=".github/assets/bkit-context-light.svg" width="100%">
+  </picture>
+</p>
+
+Most AI tools forget everything when the chat ends. bkit keeps what it knows in plain files in your repo, and each step reads what it needs and writes back what it learned:
+
+- **Documentation that keeps itself current.** Install sets up the docs a professional project keeps: architecture, data schema, deployments, testing, security, monitoring, design system, tech stack and local setup. Agents fill them in as they work, `/bkit-ship` brings them up to date after every feature, and an index tells each agent which docs to read at each step. The docs stay current because the agents depend on them.
+- **Project memory agents actually read.** Four ledgers record lessons from every fix (`docs/knowledge.jsonl`), decisions and the reasons behind them (`docs/decisions.jsonl`), work consciously postponed (`docs/deferrals.jsonl`) and known bugs (`docs/failures.jsonl`). Planning reviewers see the past bugs and postponed work closest to the new feature, debug reads the lessons first, and `/bkit-ship` checks nothing postponed was quietly dropped.
+- **Evidence from outside, when it's needed.** Design searches your backlog for related issues and checks the web for feasibility. Debug pulls failed CI logs, the diff since the last green run, end-to-end reports and runtime errors. >10 ready-made connectors cover GitHub, Sentry, Vercel, Supabase, Stripe, Expo, Playwright, Maestro, Inngest, Resend, Cloud Run, Tavily web search and Serena, each easy to customise, extend or leave out. A connector that isn't set up is reported as such, never read as "all clear".
+- **Progress lives in your repo, not a chat window.** Run state is saved after every step, so a crashed run resumes where it stopped, on any tool.
+
+## What else you get
+
+### The quality is real
+
+- **Everything is checked by an agent that didn't write it.** An AI checking its own work tends to approve it. bkit gives every design, plan and code change to separate reviewers, each with one job (one hunts bugs, another security holes). They never see each other's verdicts, and several review groups mix models on purpose, so one model's blind spot is less likely to get past all of them.
+- **"Done" is checked by code, not taken on trust.** Every step's output is verified before the next step starts, a task is ticked only when its result really exists, each task's tests must be seen failing before its code is written, and a silent TODO or skipped test blocks the merge.
+- **Broken builds fix themselves, and stay fixed.** `/bkit-debug` finds the root cause before it changes anything, fixes it, re-runs the tests and records the lesson. Bugs that only show up at runtime get a dedicated mode that adds logging, fixes on evidence and removes the logging again.
+- **It knows when to stop.** If a failure can't be fixed, bkit writes a clear handover and stops, instead of guessing over and over.
+
+### Engineering know-how, built in
+
+- **Best model for each job, on every tool.** Each agent has its own model and thinking depth, chosen per tool and provider. Deep reasoning models do architecture and security review; quick ones write summaries. Starting a session on a cheaper model never quietly downgrades the reviewers.
+- **It tests ideas before you commit to them.** When reviewers flag an unknown a design depends on, design writes throwaway probe code to settle it before you approve, and a design reviewer checks failure modes and monitoring, not just whether it can be built.
+- **Big features are split up.** A plan too big for one build becomes a sequence of smaller plans, and each is re-checked against the current code right before it's built.
+- **Numbers on your own work.** Every run records its time, size of change and retries in `.bkit/stats.jsonl`, and posts them to the issue next to the median of your last five runs.
+
+### It fits how you work
+
+- **Never blocked by usage limits.** Out of Claude for the week? Carry on in Cursor, Codex or Antigravity, or point opencode at your own key — OpenRouter, Ollama or the opencode gateways. Same feature, same checks, nothing to set up again.
+- **Start on your laptop, check in from your phone.** A feature started at your desk can continue in a cloud session (Claude Code on the web or the Claude app, Cursor cloud agents, or opencode on GitHub Actions), or start by itself when CI finishes: ship on green, debug on red. The cloud setup ships ready to adopt.
+- **Run several features at once.** Each one works in its own copy of the repo (a git worktree), so they never trip over each other.
+- **Your issue tracker is the control panel.** bkit reads the GitHub or Linear issue, posts progress as it goes, moves the issue along and links the pull request.
+- **The right expertise for each feature.** When a plan needs, say, Stripe or Supabase, bkit installs a matching skill for the build and removes it when the feature ships.
+
+### You stay in control
+
+- **Decide in plain English, not code.** Before any code is written you approve two short documents: a design ("three ways to build this; we recommend this one, because…") and a plan ("these twelve steps, and how we'll know each is done").
+- **Three sign-offs, and production stays yours.** bkit stops after the design, after the plan and before merging. It merges into your `dev` branch and never touches `main`: promoting to production is always your call. Cloud mode can ship on green without you, but only for issues you've labelled `bkit:auto`, and removing the label stops it.
+- **Guardrails on the AI itself.** Dangerous commands like force-pushing or rewriting history are blocked. Each agent only gets the tools its job needs.
+
 ## Audits find what green tests miss
 
 <p align="center">
@@ -169,56 +215,9 @@ All 35, grouped by area, with what each one finds: [the full audit list](.bkit/c
 - **Run one whenever you want.** Name a template to `@bkit-audit-generate` and it writes a report to `docs/audits/{YYYYMM}/`. It reads your code and, where you've connected them, your live platforms, and lists anything it couldn't check rather than calling it clean.
 - **Findings turn into work.** Hand the report to `/bkit-plan` and the fixes are planned, built, tested and shipped like any other feature.
 
-## Right context at the right step
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-context-dark.svg">
-    <img alt="What it knows: right context, right step, written back as it learns. In your repo, bkit reads project docs at every step and updates them at ship; reads and writes lessons, decisions, postponed work and known bugs; writes designs and plans that later steps read; reads audit reports at plan and a code map at every step; keeps run state and stats at every step; adds skills at build and removes them at ship. Outside your repo, it reads and updates the GitHub or Linear issue at every step, searches related issues at design, plan and debug, searches the web at design and debug, reads CI runs and test reports at debug and ship, reads runtime platforms such as Sentry, Vercel, Supabase and Stripe at debug, and opens, fixes and merges the pull request." src=".github/assets/bkit-context-light.svg" width="100%">
-  </picture>
-</p>
-
-Most AI tools forget everything when the chat ends. bkit keeps what it knows in plain files in your repo, and each step reads what it needs and writes back what it learned:
-
-- **Documentation that keeps itself current.** Install sets up the docs a professional project keeps: architecture, data schema, deployments, testing, security, monitoring, design system, tech stack and local setup. Agents fill them in as they work, `/bkit-ship` brings them up to date after every feature, and an index tells each agent which docs to read at each step. The docs stay current because the agents depend on them.
-- **Project memory agents actually read.** Four ledgers record lessons from every fix (`docs/knowledge.jsonl`), decisions and the reasons behind them (`docs/decisions.jsonl`), work consciously postponed (`docs/deferrals.jsonl`) and known bugs (`docs/failures.jsonl`). Planning reviewers see the past bugs and postponed work closest to the new feature, debug reads the lessons first, and `/bkit-ship` checks nothing postponed was quietly dropped.
-- **Evidence from outside, when it's needed.** Design searches your backlog for related issues and checks the web for feasibility. Debug pulls failed CI logs, the diff since the last green run, end-to-end reports and runtime errors. >10 ready-made connectors cover GitHub, Sentry, Vercel, Supabase, Stripe, Expo, Playwright, Maestro, Inngest, Resend, Cloud Run, Tavily web search and Serena, each easy to customise, extend or leave out. A connector that isn't set up is reported as such, never read as "all clear".
-- **Progress lives in your repo, not a chat window.** Run state is saved after every step, so a crashed run resumes where it stopped, on any tool.
-
-## What else you get
-
-### The quality is real
-
-- **Everything is checked by an agent that didn't write it.** An AI checking its own work tends to approve it. bkit gives every design, plan and code change to separate reviewers, each with one job (one hunts bugs, another security holes). They never see each other's verdicts, and several review groups mix models on purpose, so one model's blind spot is less likely to get past all of them.
-- **"Done" is checked by code, not taken on trust.** Every step's output is verified before the next step starts, a task is ticked only when its result really exists, each task's tests must be seen failing before its code is written, and a silent TODO or skipped test blocks the merge.
-- **Broken builds fix themselves, and stay fixed.** `/bkit-debug` finds the root cause before it changes anything, fixes it, re-runs the tests and records the lesson. Bugs that only show up at runtime get a dedicated mode that adds logging, fixes on evidence and removes the logging again.
-- **It knows when to stop.** If a failure can't be fixed, bkit writes a clear handover and stops, instead of guessing over and over.
-
-### Engineering know-how, built in
-
-- **Best model for each job, on every tool.** Each agent has its own model and thinking depth, chosen per tool and provider. Deep reasoning models do architecture and security review; quick ones write summaries. Starting a session on a cheaper model never quietly downgrades the reviewers.
-- **It tests ideas before you commit to them.** When reviewers flag an unknown a design depends on, design writes throwaway probe code to settle it before you approve, and a design reviewer checks failure modes and monitoring, not just whether it can be built.
-- **Big features are split up.** A plan too big for one build becomes a sequence of smaller plans, and each is re-checked against the current code right before it's built.
-- **Numbers on your own work.** Every run records its time, size of change and retries in `.bkit/stats.jsonl`, and posts them to the issue next to the median of your last five runs.
-- **Health checks on demand.** >30 audit checklists act like hiring a specialist for a day.
-
-### It fits how you work
-
-- **Never blocked by usage limits.** Out of Claude for the week? Carry on in Cursor, Codex or Antigravity, or point opencode at your own key — OpenRouter, Ollama or the opencode gateways. Same feature, same checks, nothing to set up again.
-- **Start on your laptop, check in from your phone.** A feature started at your desk can continue in a cloud session (Claude Code on the web or the Claude app, Cursor cloud agents, or opencode on GitHub Actions), or start by itself when CI finishes: ship on green, debug on red. The cloud setup ships ready to adopt.
-- **Run several features at once.** Each one works in its own copy of the repo (a git worktree), so they never trip over each other.
-- **Your issue tracker is the control panel.** bkit reads the GitHub or Linear issue, posts progress as it goes, moves the issue along and links the pull request.
-- **The right expertise for each feature.** When a plan needs, say, Stripe or Supabase, bkit installs a matching skill for the build and removes it when the feature ships.
-
-### You stay in control
-
-- **Decide in plain English, not code.** Before any code is written you approve two short documents: a design ("three ways to build this; we recommend this one, because…") and a plan ("these twelve steps, and how we'll know each is done").
-- **Three sign-offs, and production stays yours.** bkit stops after the design, after the plan and before merging. It merges into your `dev` branch and never touches `main`: promoting to production is always your call. Cloud mode can ship on green without you, but only for issues you've labelled `bkit:auto`, and removing the label stops it.
-- **Guardrails on the AI itself.** Dangerous commands like force-pushing or rewriting history are blocked. Each agent only gets the tools its job needs.
-
 ## Templates ready to adopt
 
-bkit installs only what its workflows run. Everything else, the things you or another tool run, ships as a template: install puts the latest set in your `.bkit/templates/`, and every upgrade lists which ones changed. Copy in what you want and own it; bkit never writes over your copy. The install prompt asks your AI to adopt what fits, and each workflow ends with a tip on the next one worth adding.
+bkit installs only what its workflows run. Everything else, the things you or another tool run, ships as a template: install puts the latest set in your `.bkit/templates/`, and every upgrade lists which ones changed. Copy in what you want and own it; bkit never writes over your copy. The install prompt asks your AI to adopt what fits, and each workflow ends with a tip on the next one worth adding. Audits aren't among them: they come installed, so there's nothing to copy ([above](#audits-find-what-green-tests-miss)).
 
 The ones that matter most, in the order to adopt them:
 
