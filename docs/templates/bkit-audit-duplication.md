@@ -96,7 +96,7 @@ Carry `COINCIDENTAL` and `RULE-OF-THREE-PENDING` forward in `Carried Forward` �
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **Clean Tree:** Steps 2–13 — clean `git status` at recorded commit; findings only mean something against a known tree. Fallback: detached worktree off default branch.
 - [ ] **Text Search:** Steps 3, 5, 7–10 — inline expressions, literals, env names, non-code files, e.g. ripgrep, `git grep`. Fallback: `grep -rn`.
 - [ ] **Structural Search:** Steps 3, 12 — syntax patterns that skip comments / strings and catch reordered copies, e.g. ast-grep, Semgrep; ad hoc run, record resolved version. Fallback: text search; reformatted copies `Not Checked`.

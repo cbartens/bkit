@@ -8,6 +8,15 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Changed
+
+- **Audits never stop on a blocked call.** Pre-Flight `Permissions` still probes every tool first, but a blocked call (there or in any step) no longer pauses the run for a grant or `continue`. The agent records the call and its narrow allow rule, runs every step the remaining tools allow, and lists what it could not check under `Not Checked`. A call the owner deliberately keeps blocked no longer stalls every run.
+
+### Fixed
+
+- **Audits no longer duplicate failure rows other workflows wrote.** `@bkit-audit-generate` matches findings against every open `docs/failures.jsonl` row, not only `audit-{slug}-*` keys, and reuses the key of a row naming the same problem (same `file:line`, test title or error signature). Closing stays limited to the audit's own `audit-{slug}-*` rows. Most visible on the flakes audit, where debug runs had already recorded most flakes.
+- **Eight audit templates no longer say the run writes no ledger rows.** Red-team, security, repo, testing, logs, annotations, cost and flakes named failure rows as a later step, contradicting the audit agent writing them itself. They now say the audit agent writes `docs/failures.jsonl` rows; issues and doc edits stay a later step.
+
 ## [5.2.3] — 2026-10-17
 
 ### Added

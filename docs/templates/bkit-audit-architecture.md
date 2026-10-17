@@ -78,7 +78,7 @@ File reading cannot answer acyclic package graph, hub modules, or copied types. 
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **Code Graph:** Steps 2–4 — local code-only extractor, e.g. graphify via a wrapper that strips API keys. Fallback: dependency linter and text search; graph counts `Not Checked`.
 - [ ] **Dependency Linter:** Steps 5–6 — resolves through the compiler, e.g. dependency-cruiser, import-linter. Fallback: read import statements; say so per claim.
 - [ ] **Git History:** Steps 1, 9, 13 — change coupling and the diff since the previous report. Fallback: change coupling `Not Checked`.

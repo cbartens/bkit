@@ -77,7 +77,7 @@ Guides disagree. The guide for the model that runs the prompt wins. A prompt tha
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **Code Search:** Steps 2, 4–9 — text search and language server for call sites (e.g. ripgrep, Serena, `tsserver`). Prompts often markdown or string literals; tool descriptions often strings in schema files. Language-server hits under-report; empty inconclusive → corroborate with text search and name the tool. Fallback: text search only; name it per claim.
 - [ ] **Web:** Steps 3, 10 — each maker's prompting guide (e.g. WebFetch, WebSearch). Fallback: guide practice recorded as unread; Steps 4–7 cite the previous report's guide version and say so.
 
