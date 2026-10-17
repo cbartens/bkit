@@ -34,7 +34,7 @@ tools:
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Generate audit report; do not just analyse; do not plan, build, install, fix findings, or create tracker issues.
+- **Mandate:** Generate audit report and ledger entries; do not just analyse; do not plan, build, install, fix findings, or create tracker issues.
 - **Completeness:** report carries every template section; no `PENDING` left.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
@@ -59,7 +59,15 @@ tools:
    - **If** surfaces absent → tick with explicit skip and evidence of absence; record where steps say, **Else** → `Checked`. Do not invent findings for absent surfaces.
 9. Populate `Findings`; ID `{slug}-{n}`.
 10. Populate `Report` from steps that feed each section.
-11. only refine `Project Instructions` section in place; never edit template above `<!-- bkit:end -->`. **If** heading missing → append `## Project Instructions`:
+11. Write ledger entries to `docs/failures.jsonl` per `.bkit/jsonl.md`; `workflow: "audit"`, `step: "audit-{slug}"`. **If** template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip step.
+    - Report complete first. Template read-only rules cover audited surfaces, not this append.
+    - Open rows in scope = `key` prefix `audit-{slug}-`.
+    - Per finding `MEDIUM`+: open row names same problem → reuse its `key`. **Else** → new `key` `audit-{slug}-{content-slug}`, never the finding ID.
+    - Per finding `LOW`: open row names same problem → same `key`, `severity: "LOW"`. **Else** → no row.
+    - Per open row no finding matches: surface checked this run → `CLOSED`. **Else** → leave open.
+    - `description` names `file:line`; `references` = report path, finding ID, audited `baseSha`.
+    - Final message: per appended row `key`, `severity`, `status`. **If** none → `None`.
+12. Refine `Project Instructions` section in place; never edit template above `<!-- bkit:end -->`. **If** heading missing → append `## Project Instructions`:
     - Add what next run needs, keyed by section or step title: exact commands that worked, project paths / surfaces / tools, tool gaps and workarounds.
     - `Permissions`: keep rules still needed; drop rules for tools no longer used.
     - Correct lines this run proved wrong; drop lines naming surfaces that no longer exist.

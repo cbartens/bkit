@@ -118,7 +118,7 @@ export interface TelemetryEnvelope {
   repo: string;
   /** bkit version stamped on every row for regression attribution. */
   bkitVersion: string;
-  /** Emitting workflow: design | plan | build | debug | ship */
+  /** Emitting workflow: design | plan | build | debug | ship | audit */
   workflow: string;
   /**
    * The WORKFLOW STEP the row was emitted at, e.g. `build-close-workflow`,
@@ -218,9 +218,8 @@ export const SEVERITY_KINDS: Set<string> = new Set(["friction", "deferral", "fai
  * `OPEN` raised, cause unknown -> `TRIAGED` analysed, disposition known, not yet
  * fixed -> `CLOSED` dealt with (fixed, refuted, or established as not ours).
  *
- * `TRIAGED` IS STILL OPEN WORK. Readers counting open entries — a CI gate on open
- * CRITICAL failures, an audit debt lens, an age report — MUST count it. Only
- * `CLOSED` is done.
+ * `TRIAGED` IS STILL OPEN WORK. Readers counting open entries — an audit debt
+ * lens, an age report — MUST count it. Only `CLOSED` is done.
  *
  * NOT on knowledge or decision. Both use the `ACTIVE` / `SUPERSEDED`
  * lifecycle, a different axis entirely. Absent `status` = `ACTIVE`.

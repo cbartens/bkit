@@ -38,7 +38,7 @@ One file per `kind`; writers:
 | `counter` | `.bkit/stats.jsonl` | every workflow at its close step (attempt counters) |
 | `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design / plan / build / debug / ship) on observed friction |
 | `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-build-challenge-remediate` (blocked), `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only), `@bkit-utility-update-deferrals` (close / triage / locator) |
-| `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover`; `@bkit-utility-update-failures` (close / triage / locator) |
+| `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover`; `@bkit-audit-generate` (`MEDIUM`+ findings; rerun closes rows it no longer finds); `@bkit-utility-update-failures` (close / triage / locator) |
 | `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-challenge-remediate`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix), `@bkit-utility-update-knowledge` (supersede / correct) |
 | `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate`, `@bkit-utility-update-decisions` (supersede / correct) |
 | `feature` | `.bkit/issues.jsonl` | design / plan / build / debug orchestrators at their phase close; ship Step 6 into the worktree ledger (rides the PR); `ABANDONED` only by a human, or an agent on explicit human instruction |
@@ -54,7 +54,7 @@ One file per `kind`; writers:
 | `kind` | `string` | Closed enum: `compliance`, `outcome`, `counter`, `friction`, `deferral`, `failure`, `knowledge`, `decision`, `feature`. |
 | `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`. |
 | `bkitVersion` | `string` | bkit version that emitted the row — sole version stamp; readers tally rows per `bkitVersion` for triage. |
-| `workflow` | `string` | Emitting workflow: `design` / `plan` / `build` / `debug` / `ship` (part of the dedup tuple for `compliance` / `counter` / `outcome`). |
+| `workflow` | `string` | Emitting workflow: `design` / `plan` / `build` / `debug` / `ship` / `audit` (part of the dedup tuple for `compliance` / `counter` / `outcome`). |
 | `step` | `string` | The workflow step the row was emitted at, e.g. `build-close-workflow`, `ship-close-gate`. Never an agent name. See § Who Wrote It. |
 | `subagent` | `string?` | The subagent that wrote the row, e.g. `bkit-build-challenge-remediate`. Set on every subagent-written row; absent on orchestrator-written rows. See § Who Wrote It. |
 | `model` | `string?` | The model that wrote the row, from the writing subagent's own frontmatter `model:`. Set only where `subagent` is set. See § Who Wrote It. |
@@ -251,7 +251,7 @@ Copy prior row, change deltas, append. Carry `key` verbatim — reworded `key` f
 
 **`TRIAGED`** = middle state on triaged trio (`friction` / `deferral` / `failure` — kinds with `severity`). Ladder: `OPEN` (raised, cause unknown) -> `TRIAGED` (analysed, disposition known, not fixed) -> `CLOSED` (fixed, refuted, not ours). Append like close; disposition in `references`: issue, mapped `Fix N`, or why not ours.
 
-**`TRIAGED` is STILL open WORK.** Open-entry counts — CI gate on open `CRITICAL` failures, audit debt lens, age report — test `status != "CLOSED"`. Only `CLOSED` is done.
+**`TRIAGED` is STILL open WORK.** Open-entry counts — audit debt lens, age report — test `status != "CLOSED"`. Only `CLOSED` is done.
 
 Not on `knowledge` or `decision` — both use `ACTIVE` / `SUPERSEDED`. Absent `status` = `ACTIVE`.
 
