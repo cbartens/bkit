@@ -142,7 +142,7 @@ const gateIcon = (cx, cy, t, r = 19) =>
 const svg = (w, h, body, label) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">\n${body}\n</svg>\n`;
 // bkit signature, bottom right of every README image but the hero (the hero is the wordmark).
-// Images whose last row is full add SIG_H below it to hold the signature. Laid out left to right
+// Each image adds SIG_H below its last row, so the signature has a line of its own. Laid out left to right
 // from a fixed start, so a wider fallback font can't push the wordmark into the dots.
 const SIG_H = 44;
 const signature = (t, W, H, inset = 60) => {
@@ -152,6 +152,7 @@ const signature = (t, W, H, inset = 60) => {
     ["design", "plan", "build", "debug", "ship"]
       .map((p, i) => `<circle cx="${x + i * 14}" cy="${y - 7}" r="5" fill="${t[p]}"/>`)
       .join("") +
+    text(inset, y, "Free and open source  ·  MIT license", { size: 15, fill: t.muted }) +
     text(x + 72, y + 1, "bkit", { size: 24, weight: 800, fill: t.text, ls: -0.6 }) +
     text(W - inset, y, "github.com/cbartens/bkit", { size: 15, fill: t.muted, anchor: "end" })
   );
@@ -664,7 +665,7 @@ function pipeline(t) {
   return svg(
     W,
     H + SIG_H,
-    b + signature(t, W, H + SIG_H),
+    b + signature(t, W, H + SIG_H, 48),
     "The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 40 AI agents: 10 in design, 10 in plan, 11 in build, 5 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode.",
   );
 }
@@ -786,7 +787,7 @@ function ci(t) {
   return svg(
     W,
     H + SIG_H,
-    b + signature(t, W, H + SIG_H),
+    b + signature(t, W, H + SIG_H, 48),
     "bkit's CI pipeline, flowing left to right: plan the run (work out what to test); check and build (quick checks, unit tests, integration tests, web, iOS and Android builds, database migrations); set the stage (preview deploy, reset test data); test like a user (web, iOS and Android end-to-end tests, and a live-site check); tidy up. Every lane feeds one final check, the only one merging needs, which fails if any lane failed, was skipped or ran zero tests. /bkit-build starts CI by opening the pull request, /bkit-debug reads the logs of any lane that fails and fixes it, and /bkit-ship merges only when the final check is green. In cloud mode, the result starts ship or debug by itself.",
   );
 }
@@ -1262,10 +1263,10 @@ function audits(t) {
     cx += w + 10;
   }
 
-  // Key and signature
+  // Key, then the signature on its own line below
   const LY = cy + 30 + 32,
     FY = LY + 46;
-  const H = FY + 30;
+  const H = FY + 30 + SIG_H;
   b += `<line x1="40" y1="${LY}" x2="${W - 40}" y2="${LY}" stroke="${t.border}"/>`;
   b += `<circle cx="66" cy="${FY - 6}" r="5" fill="none" stroke="${t.debug}" stroke-width="2"/>`;
   b += `<circle cx="90" cy="${FY - 6}" r="10" fill="${t.debug}" fill-opacity="0.13" stroke="${t.debug}" stroke-width="2"/>`;
