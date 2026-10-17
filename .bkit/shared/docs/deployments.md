@@ -381,6 +381,20 @@ Elevated-permission workflows (`packages: write`, `id-token: write`, `contents: 
 
 Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips the install-time absence advisory.
 
+**Gate on known advisories.** An updater opens PRs on its schedule; nothing fails CI while a version with a known advisory sits in the lockfile. Copy `.bkit/templates/scripts/ci/check-dependency-audit.mjs`, its `.test.mjs` and `accepted-advisories.json` into `scripts/ci/`. The `Check Dependency Audit` step in `bkit-tests-static` runs it and self-skips until the copy exists. It runs `pnpm audit --json` and fails on a blocking advisory (default high or critical) that `accepted-advisories.json` does not accept:
+
+<!-- prettier-ignore -->
+| Fails on | Fix |
+| --- | --- |
+| Blocking advisory, no row | Upgrade; `pnpm update --depth Infinity <pkg>` moves a transitive inside its declared range. No patched release, or a parent pins it → add a row |
+| Row past its `expires` day | Upgrade, or re-review and renew |
+| `expires` further out than the severity's `blocking` days (default critical 7, high 30) | Shorten it |
+| Row whose advisory the audit no longer reports | Delete the row |
+| Row without `advisory`, `reason` or a `YYYY-MM-DD` `expires`, or listed twice | Fix the row |
+| Audit prints no report after 3 tries | Fails closed; rerun |
+
+`blocking` maps severity → the most days one acceptance may run: the repo's fix-time policy, held once in the registry. pnpm's `auditConfig.ignoreGhsas` ignores an advisory forever with no reason; use the registry. A newly published advisory reds a push that changed nothing: upgrade or accept in the next push. Non-pnpm repo → adapt `blockingFindings()` to your audit's JSON.
+
 **Hands off bkit-owned trees.** Renovate: ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them; scanning them is noise). A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file, so use `ignorePaths`. Workflows you copied from `.bkit/templates/` (`bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml`) are yours: leave them out of that list so their pins refresh.
 
 **Land config on the default branch before the bot runs.** GitHub Apps and Dependabot read config from the default branch. The example sets `baseBranchPatterns: ["dev"]` (PRs land on `dev`) and `useBaseBranchConfig: "merge"` (edits on `dev` apply to dev-targeted runs). `useBaseBranchConfig` itself is read from the default branch, so it needs one merge there before dev-side edits take effect.

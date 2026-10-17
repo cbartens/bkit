@@ -281,6 +281,18 @@ const ADOPTED: Record<string, Entry> = {
     status: "not-adopted",
     what: "ships with the opt-in guard",
   },
+  "scripts/ci/check-dependency-audit.mjs": identical,
+  "scripts/ci/check-dependency-audit.test.mjs": identical,
+  "scripts/ci/accepted-advisories.json": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "this repo's accepted advisories",
+        region: { template: ['  "accepted": [', null], copy: ['  "accepted": [', null] },
+      },
+    ],
+  },
   ".vale.ini": {
     status: "adopted",
     edits: [
