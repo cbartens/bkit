@@ -144,7 +144,24 @@ None of the AI development frameworks in our [comparison](.bkit/comparison.md#pa
 
 A green tick proves the tests passed, not that they test the right things. Every finding on this map sat in an app whose tests were passing, and only two of bkit's audit templates found them all.
 
-- **A specialist's checklist for each area.** >30 templates cover security, privacy, accessibility, testing, duplication, dead code, database, reliability, LLM usage, cost and more. Each one says what to check, how, and what counts as a problem.
+Each template is a specialist's checklist for one area: what to check, how, and what counts as a problem. Some of the >30:
+
+<!-- prettier-ignore -->
+| Audit | What it finds |
+| --- | --- |
+| Testing | Tests that can't fail, never run, or skip what the product must do and must never do. |
+| Duplication | The same rule written in several places, with copies that have drifted apart. |
+| Security | Holes in sign-in, permissions, secrets and input checks, and documented protections that never actually run. |
+| Red team | Attacks a test copy of your app, never production, one hostile request at a time, keeps the evidence, then cleans up. |
+| Reliability | What breaks when a service is slow, down or sends the same thing twice: missing timeouts, unsafe retries, failures no alert reports. |
+| Privacy | What personal data you hold, where it goes, whether deleting an account really removes the person, and whether your privacy policy matches the code. |
+| Dead code | Code, settings, routes and database tables that look live but never run. |
+| LLM | What each AI model call can make happen, and what stops it when the input is hostile. |
+| Accessibility | What your automated accessibility checks miss, judged against WCAG 2.2 AA. |
+| Cost | Vendor plans that don't fit your usage, what drives each bill, and whether a spike would be noticed before the invoice arrives. |
+
+All of them, with what each one checks: [`.bkit/prompts.md`](.bkit/prompts.md#audit-ad-hoc).
+
 - **Run one whenever you want.** Name a template to `@bkit-audit-generate` and it writes a report to `docs/audits/{YYYYMM}/`. It reads your code and, where you've connected them, your live platforms, and lists anything it couldn't check rather than calling it clean.
 - **Findings turn into work.** Hand the report to `/bkit-plan` and the fixes are planned, built, tested and shipped like any other feature.
 
