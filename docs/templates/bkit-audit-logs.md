@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 # Log Triage
 
@@ -85,7 +85,7 @@ A test-origin tag narrows the lane. It does not make something noise, and it doe
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **Error Tracker:** Steps 3–9 — read-only issue, event, and alert APIs, e.g. tracker MCP, REST. Fallback: skip tracker steps; runtime-log steps still run; tracker sections `Not Checked`. Never "clean".
 - [ ] **Web:** Step 13 — fetch anchor standards. Fallback: versions recorded as unread.
 
@@ -143,7 +143,7 @@ Verify only when applicable.
   - Client calls whose error is never read: result discarded, or success destructured without error.
   - Promises started without `await` or rejection handler on write path.
 
-  Text search finds candidates; read each. Deliberate best-effort (telemetry, fire-and-forget notification) OK when code says so. Real one → Expected names `docs/failures.jsonl` row to append; names `bkit-audit-database` when miss is grant, policy, or write role. Appending = next step. Users see same shape: tracker user feedback, support inbox, store reviews since previous report. User-reported failure with no matching event = this class. Next step = runtime half: swallowed DB error may appear in DB log. **Done when:** `Invisible` lists each candidate read, and its verdict.
+  Text search finds candidates; read each. Deliberate best-effort (telemetry, fire-and-forget notification) OK when code says so. Real one → `docs/failures.jsonl` row, which the audit agent writes; Expected names `bkit-audit-database` when miss is grant, policy, or write role. Users see same shape: tracker user feedback, support inbox, store reviews since previous report. User-reported failure with no matching event = this class. Next step = runtime half: swallowed DB error may appear in DB log. **Done when:** `Invisible` lists each candidate read, and its verdict.
 
 - [ ] **Step 11 — Runtime Logs:** Read each runtime-log source in `Project Instructions` and each `context=runtime` block in `.agents/context.md` for whole window since previous report, not tool default short window. Record retention from plan page and window part source could not cover. Retention < cadence = finding → drain or shorter cadence. Skipped reader (credential, tool, block) = not read, never clean. No reader → vendor console by hand, or not read and why. Note whether server logs share one structured shape (request id, trace id, hashed tenant id, error code) so queries are filters not text search; tracker log product or OTel log exporter in use. Per log error:
   - Match tracker first (timestamps; trace id joins). Covered → note platform evidence on issue. Same incident, not second finding.
@@ -248,6 +248,13 @@ PENDING
 
 PENDING
 
+### Suggested Issues
+
+<!-- prettier-ignore -->
+| # | Title | Findings | Severity | Next Step | Reason |
+| --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+
 ### Process Improvements
 
 PENDING
@@ -261,6 +268,7 @@ PENDING
 - [ ] **Series:** `Board` counts beside previous report's counts, or marked baseline.
 - [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
 - [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
 - [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 > `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.

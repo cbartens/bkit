@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 # App Performance Audit
 
@@ -77,7 +77,7 @@ Performance numbers only matter beside the prior number, same method; unfixed me
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **Monitoring:** Steps 2–4, 6, 9, 11–13, 15 — field traces, vitals, spans per environment, e.g. Sentry, Datadog RUM, New Relic. Fallback: lab and static only; field rows `Not Checked`.
 - [ ] **Build Output:** Steps 8, 10 — production build with per-route size and render mode, e.g. `next build`, `vite build` with bundle analyser. Fallback: source read only; sizes `Not Checked`.
 - [ ] **Web:** Steps 4, 17 — fetch anchor standards and published thresholds. Fallback: versions and thresholds recorded as unread.
@@ -251,6 +251,13 @@ PENDING
 
 PENDING
 
+### Suggested Issues
+
+<!-- prettier-ignore -->
+| # | Title | Findings | Severity | Next Step | Reason |
+| --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+
 ### Process Improvements
 
 PENDING
@@ -264,6 +271,7 @@ PENDING
 - [ ] **Series:** every series beside previous report's numbers, or marked baseline.
 - [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
 - [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
 - [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 > `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.

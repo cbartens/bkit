@@ -14,7 +14,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 100
 ---
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer judging whether changes landed since the plan was written leave it executable.
 **Scope:** As specified by input and Read / Update / Create section.

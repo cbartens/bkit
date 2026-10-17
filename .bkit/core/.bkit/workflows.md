@@ -602,6 +602,8 @@ baseRef: origin/dev
 
 Plan docs add 2 fields, read from the design doc's own anchor: `designPath` (design this plan targets), `designBaseSha` (that doc's own `baseSha`).
 
+Every stamp (design, plan, sub-plan, audit report) adds 2 more when `.bkit/version` exists: `bkitVersion` (its `pinnedVersion`) and `bkitLatest` (newest published release, empty when unknown; lookup per § Invocation). `bkitVersion` older → the stamp also writes one visible line under the block: `> **Outdated bkit:** generated with bkit X while Y was out … <!-- bkit:outdated -->`. Tool-owned like the block: every re-stamp drops it, rewrites it only while still outdated. Neither line is a capital-letter `Key:` line, so `readHeader` ignores both.
+
 **Orchestrator-owned:** generate subagents have no `Bash` → can't compute a SHA. Orchestrator records `baseSha` at Step 2 (`bkit worktrees setup` → `bkit runtime row --base-sha=` → `runtime-resolved.baseSha`), reads it back at Close Workflow (`bkit runtime assert`) and stamps the canonical with `bkit branches anchor-stamp` (idempotent; plan adds `--design=`); `bkit branches anchor-read` reads it. Hand-written block from either subagent → stripped, replaced, never trusted.
 
 **May be empty:** `baseSha` empty = `merge-base` unresolvable, not a failure. `designPath`/`designBaseSha` empty = no design, or design predates this mechanism. Pre-change docs carry no block — `bkit branches anchor-read` returns null fields, not an error.
@@ -699,6 +701,7 @@ Then assert each Update/Create artifact exists, non-empty. Empty → **Failure P
 | Dev lock wait budget | 600s | How long a dev critical section waits for the lock before Failure Path with the holder line (`SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S`). Ship's Failure Path and the build / debug dev-side roadmap mirror pass `--deadline=60` and skip their dev ops rather than hard-failing |
 | Ship CI wait | 1800s / 30s | Step 9 completion poll budget / interval (`SHIP_CI_WAIT_TIMEOUT_S` / `SHIP_POLL_INTERVAL_S`) |
 | Ship presence probe | 6 x 10s | Step 9 run-at-head probe before any dispatch (`SHIP_PROBE_ATTEMPTS` x `SHIP_PROBE_INTERVAL_S`) |
+| Newest-bkit lookup | 5s / 86400s / 3600s | Registry query limit / answer reuse / failure reuse for the outdated-bkit check (`BKIT_LATEST_LOOKUP_TIMEOUT_S` / `BKIT_LATEST_CACHE_S` / `BKIT_LATEST_RETRY_S`) |
 
 `MAX_*` live in `THRESHOLDS` (`commands/workflow/counters.ts`; `bkit counters max`) and are referenced by name in retry checks (`bkit counters route --limit=`) — never a literal `3`. Waits live in `TIMEOUTS` (`.bkit/core/engine/shared/timeouts.ts`).
 
@@ -1296,7 +1299,9 @@ Mechanical step work runs as `bkit <noun> <verb> --flag=value` (also `--flag val
 "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --fetch
 ```
 
-and holds its `bkit` key as `{BKIT}` (plus `repoRoot` as `{REPO_ROOT}`, `outboxRoot` as `{OUTBOX_ROOT}`); every later block runs `"{BKIT}" <noun> <verb> …`, the orchestrator substituting the path. It is the main checkout's binary, so it works before and without a worktree `node_modules` (adopt mode never installs). The bkit repo links itself as a dev dependency so the same path exists there. A value a later step needs is held from the command's JSON by key (`hold worktreePath as {WORKTREE_PATH}`) — never re-derived by hand; model-held values reach a command as flag values (`--fid={FID}`), never through shell variables. Every command refuses (exit 2) a flag value still carrying a literal `{UPPER}` placeholder — the orchestrator passed it through unsubstituted.
+and holds its `bkit` key as `{BKIT}` (plus `repoRoot` as `{REPO_ROOT}`, `outboxRoot` as `{OUTBOX_ROOT}`, `bkitAdvisory` as `{BKIT_ADVISORY}`); every later block runs `"{BKIT}" <noun> <verb> …`, the orchestrator substituting the path. It is the main checkout's binary, so it works before and without a worktree `node_modules` (adopt mode never installs). The bkit repo links itself as a dev dependency so the same path exists there. A value a later step needs is held from the command's JSON by key (`hold worktreePath as {WORKTREE_PATH}`) — never re-derived by hand; model-held values reach a command as flag values (`--fid={FID}`), never through shell variables. Every command refuses (exit 2) a flag value still carrying a literal `{UPPER}` placeholder — the orchestrator passed it through unsubstituted.
+
+**Outdated bkit:** `repo info` also reports `bkitVersion` (`.bkit/version` `pinnedVersion`), `bkitLatest` (newest published `@cbartens/bkit`), `bkitOutdated` (numeric compare; a prerelease is older than its release) and `bkitAdvisory` (one line naming the upgrade command; null unless outdated). Step 1 of every phase workflow emits a non-null `{BKIT_ADVISORY}` as `[bkit-{workflow}] …` and continues — never a stop, never a gate item. Lookup: `pnpm view`, at most once a day; answer cached in `<git common dir>/bkit-latest-version.json` (shared by worktrees, never committed); a failed lookup cached 1 hour. No answer, no pin, or `BKIT_NO_UPDATE_CHECK` set (not `0`) → `bkitLatest` / `bkitOutdated` / `bkitAdvisory` null. Same check stamps every anchored doc (§ Anchor Block).
 
 **Step endings:** a step that writes a `step-done` row ends in one `bkit steps finish` call: it reads each `--agent`'s verdict header from the `--artifact` in the same position (worst verdict wins, `Failures` summed, the prompt's declared header fields required, `Strategy` recorded on the row), derives the attempt (`--attempt=next`, `--attempt-of=<step>:<next|current|count>`; `<attempt>` in a path or message becomes it), runs the gate's mechanical checks before writing, writes the row, commits (`--message`, `<done>` = the log's first `DONE` line), and prints the step's tracker `comment` (`--number` / `--title`). Exit 5 / 6 print `reask` = `{agent, artifact}` for the header-only re-ask. A gate whose step ends in `steps finish` relies on that call's checks; a gate with no finish (Step 1, closes, Step 3 / 9 of ship) runs `bkit steps gate`.
 
@@ -1305,7 +1310,7 @@ and holds its `bkit` key as `{BKIT}` (plus `repoRoot` as `{REPO_ROOT}`, `outboxR
 <!-- prettier-ignore -->
 | Noun | Verbs | Covers |
 | --- | --- | --- |
-| `repo` | `info`, `preflight` | Step 1 owner/repo, branch, behind-`dev` notice, `{BKIT}` / `{REPO_ROOT}` / `{OUTBOX_ROOT}`; advisory dispatch-permission preflight |
+| `repo` | `info`, `preflight` | Step 1 owner/repo, branch, behind-`dev` notice, outdated-bkit advisory, `{BKIT}` / `{REPO_ROOT}` / `{OUTBOX_ROOT}`; advisory dispatch-permission preflight |
 | `fids` | `check`, `parse`, `find` | FID format asserts; marker / branch FID recovery; the feature already logged for an issue (`find --issue`: exit 0 one, 1 none, 4 several) |
 | `runtime` | `detect`, `row`, `assert` | runtime capability table + `runtime-resolved` row |
 | `locks` | `acquire`, `release` | per-feature `.lock` and `.bkit/.dev.lock` |

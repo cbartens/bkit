@@ -8,6 +8,23 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+## [5.2.4] — 2026-10-17
+
+### Added
+
+- **`tmp/` prune on push.** New copy-and-own `scripts/cleanup/bkit-tmp-prune.mjs` deletes files under the checkout's `tmp/` untouched for 7+ days (`--days=<n>`), then the folders that leaves empty. It never follows symlinks and never removes `tmp/` itself. The `.husky/pre-push` template runs it before the gates and skips it until the script is copied; a failed prune warns and the push goes on. New `tmp-prune` setup tip. `.bkit/templates.md` § tmp/ prune.
+- **Audit reports suggest the issues to create.** Every audit template's `Report` gains a `Suggested Issues` table, filled by `@bkit-audit-generate`. The table groups findings into issues, one row per change landed in one go (by root cause, then module, then fix), and every `MEDIUM`+ finding lands in exactly one row. Each row names its next step: `/bkit-design`, `/bkit-plan`, `/bkit-build` or `/bkit-debug`; the `.agents/shortcuts.md` lite path (`shortcut:build`, `shortcut:debug`) when its § When to use allows; or `manual` for a change outside the repo. The agent still never files issues. Gate 3 gains a `Suggested Issues` check, shared as `.bkit/wording.md` clause `audit-suggested-issues`, so the wording test fails any template missing it.
+- **Warning when a workflow, plan, design or audit runs on an outdated bkit.** `bkit repo info` (Step 1 of every phase workflow) compares `.bkit/version` `pinnedVersion` with the newest published `@cbartens/bkit` and returns `bkitVersion` / `bkitLatest` / `bkitOutdated` / `bkitAdvisory`; Step 1 shows the advisory with the upgrade command and carries on. Every anchored doc (design, plan, sub-plan, audit report) records `bkitVersion` and `bkitLatest` in its `bkit:anchor` block, and an outdated one gets a visible `Outdated bkit` line under the block that the next stamp drops once current. Warning only, never a stop: the registry is asked at most once a day (cache in the git common dir), offline or no pin means no warning, and `BKIT_NO_UPDATE_CHECK=1` skips the lookup. `.bkit/workflows.md` § Invocation, § Anchor Block.
+
+### Changed
+
+- **Audits never stop on a blocked call.** Pre-Flight `Permissions` still probes every tool first, but a blocked call (there or in any step) no longer pauses the run for a grant or `continue`. The agent records the call and its narrow allow rule, runs every step the remaining tools allow, and lists what it could not check under `Not Checked`. A call the owner deliberately keeps blocked no longer stalls every run.
+
+### Fixed
+
+- **Audits no longer duplicate failure rows other workflows wrote.** `@bkit-audit-generate` matches findings against every open `docs/failures.jsonl` row, not only `audit-{slug}-*` keys, and reuses the key of a row naming the same problem (same `file:line`, test title or error signature). Closing stays limited to the audit's own `audit-{slug}-*` rows. Most visible on the flakes audit, where debug runs had already recorded most flakes.
+- **Eight audit templates no longer say the run writes no ledger rows.** Red-team, security, repo, testing, logs, annotations, cost and flakes named failure rows as a later step, contradicting the audit agent writing them itself. They now say the audit agent writes `docs/failures.jsonl` rows; issues and doc edits stay a later step.
+
 ## [5.2.3] — 2026-10-17
 
 ### Added

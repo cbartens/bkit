@@ -866,6 +866,32 @@ describe("bkit workflows promote", () => {
     );
   });
 
+  it("stamps the bkit release, and the outdated warning when a newer one is out", async () => {
+    const cwd = repo();
+    const base = git(cwd, "rev-parse", "HEAD");
+    write(cwd, `${REL}/status.jsonl`, runtimeRow(base));
+    write(cwd, `${REL}/design-v1-draft.md`, "# Design\n");
+    const doc = path.join(cwd, `docs/plans/${M}/${FID}-design.md`);
+
+    await run(cwd, wf("promote", "design", `--month=${M}`));
+    expect(fs.readFileSync(doc, "utf-8")).toContain(
+      "bkitVersion: 4.6.3\nbkitLatest: \n-->\n# Design",
+    );
+
+    vi.stubEnv("BKIT_NO_UPDATE_CHECK", "");
+    try {
+      const cache = path.join(cwd, ".git", "bkit-latest-version.json");
+      fs.writeFileSync(cache, JSON.stringify({ latest: "4.7.0", checkedAt: Date.now() }));
+      write(cwd, `${REL}/design-v1-draft.md`, "# Design\n");
+      await run(cwd, wf("promote", "design", `--month=${M}`));
+      expect(fs.readFileSync(doc, "utf-8")).toMatch(
+        /bkitLatest: 4\.7\.0\n-->\n\n> \*\*Outdated bkit:\*\* generated with bkit 4\.6\.3 while 4\.7\.0 was out.*<!-- bkit:outdated -->\n\n# Design\n$/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("plan: copies the split's children as canonical sub-plans and renames working names", async () => {
     const cwd = repo();
     write(cwd, `${REL}/plan-v4-split.md`, "see plan-v4-1.md and plan-v4-2.md\n");

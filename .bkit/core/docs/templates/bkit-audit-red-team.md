@@ -85,7 +85,7 @@ One per probe, on the `Probes` row.
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **Target:** Steps 2–12 — non-production deployment of this commit, resolved by commit SHA, confirmed serving. Fallback: none. Probes stay `INCONCLUSIVE`. NEVER point them at production.
 - [ ] **Identities:** Steps 2, 5–12, 14 — create and delete synthetic users and tenants, guarded so a non-synthetic identity cannot be deleted. Fallback: none. Do not probe with real accounts.
 - [ ] **Web:** Steps 2, 13 — each platform's penetration-testing page, and anchor standards. Fallback: policy unread → do not send probes; record why.
@@ -122,7 +122,7 @@ Verify only when applicable.
 - [ ] **Step 11 — Tools:** With attacker's token, as client that ignores rules: set fields allow-list excludes; pass victim's ids; change recurring record without required scope; send oversized arguments; repeat create to test idempotency key. **Done when:** `Probes` row per case, or skip with evidence no machine-client tools.
 - [ ] **Step 12 — Boundaries:** Script and markup in text fields; check render on web, native client, reply. Injection through search query and filters reaching search routine. Webhook endpoints: no signature = denial; wrong signature = same denial plus error log. Rate limits: documented thresholds fire, then stop. **Done when:** `Probes` row per boundary.
 - [ ] **Step 13 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per WSTG category (INFO, CONF, IDNT, ATHN, ATHZ, SESS, INPV, ERRH, CRYP, BUSL, CLNT, APIT), and per ATLAS tactic a model probe touched → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
-- [ ] **Step 14 — Anything Else:** (a) Everything changed since previous report's commit touching attack surface (routes, server actions, machine-client tools, webhooks, response headers, inbound handling, what client public key can reach; Step 3 diff = starting list) → one-line verdict each. (b) Bounded ~30 min pass: what senior penetration tester flags that no step asks; read since previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows, vendor status incidents) — what would no step catch? Probes these passes send follow rules, use identities made for it, go in `Probes`. Then delete every identity this run created with guarded delete (reaps tenant it would strand); confirm orphan sweep finds nothing left. Record where full request/response evidence is kept, for how long, redaction applied. **Done when:** `Beyond the Steps` holds both passes, or `none`; `Cleanup` confirms every identity this run created is gone. Class seen on 2 runs → propose step in `Process Improvements`. `Expected` names where finding goes, recommends safer fix. This run does not file or append ledger: `BROKE` → plan from this report, `docs/failures.jsonl` row to append later, regression test (ideally deployed boundary) so `bkit-audit-testing` keeps it fixed; `HELD` with no test → `bkit-audit-testing`; model result → `bkit-audit-llm`, against finding it tested; `STILL BROKE` → original finding, with retest and fix commit; `INCONCLUSIVE` → next run's Step 2 suspicion list, with what blocked; `OTHER` → report, second run proposes verdict; vulnerability in database product itself, not project's use → vendor per that vendor's testing page, plus this report; stop condition → remaining probes stopped, stop recorded in `Scope`.
+- [ ] **Step 14 — Anything Else:** (a) Everything changed since previous report's commit touching attack surface (routes, server actions, machine-client tools, webhooks, response headers, inbound handling, what client public key can reach; Step 3 diff = starting list) → one-line verdict each. (b) Bounded ~30 min pass: what senior penetration tester flags that no step asks; read since previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows, vendor status incidents) — what would no step catch? Probes these passes send follow rules, use identities made for it, go in `Probes`. Then delete every identity this run created with guarded delete (reaps tenant it would strand); confirm orphan sweep finds nothing left. Record where full request/response evidence is kept, for how long, redaction applied. **Done when:** `Beyond the Steps` holds both passes, or `none`; `Cleanup` confirms every identity this run created is gone. Class seen on 2 runs → propose step in `Process Improvements`. `Expected` names where finding goes, recommends safer fix. This run does not file; the audit agent writes `docs/failures.jsonl` rows: `BROKE` → plan from this report, `docs/failures.jsonl` row, regression test (ideally deployed boundary) so `bkit-audit-testing` keeps it fixed; `HELD` with no test → `bkit-audit-testing`; model result → `bkit-audit-llm`, against finding it tested; `STILL BROKE` → original finding, with retest and fix commit; `INCONCLUSIVE` → next run's Step 2 suspicion list, with what blocked; `OTHER` → report, second run proposes verdict; vulnerability in database product itself, not project's use → vendor per that vendor's testing page, plus this report; stop condition → remaining probes stopped, stop recorded in `Scope`.
 
 ### 🔒 Gate 2: Probes Check
 
@@ -201,6 +201,13 @@ PENDING
 
 PENDING
 
+### Suggested Issues
+
+<!-- prettier-ignore -->
+| # | Title | Findings | Severity | Next Step | Reason |
+| --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+
 ### Process Improvements
 
 PENDING
@@ -214,6 +221,7 @@ PENDING
 - [ ] **Cleanup:** states that every identity this run created is deleted, and where redacted evidence is kept.
 - [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
 - [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
 - [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 > `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.

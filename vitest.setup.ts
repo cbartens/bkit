@@ -34,6 +34,11 @@ for (const key of Object.keys(process.env)) {
   }
 }
 
+// No test asks the npm registry for the newest bkit (`shared/bkit-latest.ts`): a temp
+// repo pinned to an old release would otherwise hit the network on every stamp.
+// Tests of that lookup clear it with `vi.stubEnv("BKIT_NO_UPDATE_CHECK", "")`.
+process.env.BKIT_NO_UPDATE_CHECK = "1";
+
 // Budget: re-read once per test file from `vitest.timeout-budget.ts`, scaled by how
 // contended the machine is RIGHT NOW.
 //

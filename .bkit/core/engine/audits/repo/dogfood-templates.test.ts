@@ -492,6 +492,7 @@ const ADOPTED: Record<string, Entry> = {
     ],
   },
   "scripts/graphify/bkit-graphify-graphml.py": identical,
+  "scripts/cleanup/bkit-tmp-prune.mjs": identical,
   "scripts/prettier/bkit-insert-ignore.mjs": identical,
   "scripts/secrets/bkit-secrets.mjs": identical,
   "scripts/secrets/bkit-secrets.config.mjs": {

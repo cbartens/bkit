@@ -1,6 +1,6 @@
 # Templates — copy and own
 
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Every template bkit ships and never installs — what each does, where to copy it, how to install the tool behind it.
@@ -33,6 +33,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | graphify | Code map (`docs/capabilities.md`) agents check before building something again. | Agents rediscover structure each run; ripple effects missed. |
 | Dependabot / Renovate | Small grouped update PRs; pinned Actions; security fixes skip the queue. | Updates pile into one large risky upgrade. |
 | Prettier tables | One edited cell = one changed row in the diff. | A one-word table edit diffs as the whole table. |
+| tmp/ prune | Each push deletes scratch files agents left in `tmp/` untouched for a week. | `tmp/` keeps growing; old logs and scratch files are never cleared. |
 | Cursor editor + cloud agent | Format-on-save, recommended extensions, Cursor cloud-agent image. | Cursor edits miss project formatting; no Cursor cloud agent. |
 | Launchd GUI env | macOS apps opened from the Dock get the same tokens as the terminal. | Dock-launched editors start signed out. |
 
@@ -59,6 +60,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | graphify | `.bkit/templates/scripts/graphify/`, `.bkit/templates/.graphifyignore`, `.bkit/templates/docs/capabilities.md` | same paths at the repo root | `docs/capabilities.md` |
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
+| tmp/ prune | `.bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs` | `scripts/cleanup/` | that file |
 | Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
 | Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file |
 
@@ -188,7 +190,7 @@ Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; f
 
 ## Git hooks — Husky
 
-`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits), then `bkit check`, plus a CI-suppressing-token guard. Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. Reference: https://typicode.github.io/husky/.
+`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits), then `bkit check`, plus a CI-suppressing-token guard and the `tmp/` prune (§ tmp/ prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. Reference: https://typicode.github.io/husky/.
 
 ```bash
 pnpm add -D husky@^9.1.7   # plus "prepare": "husky" (§ Gate tool scripts)
@@ -501,3 +503,19 @@ Prettier aligns markdown tables with no config toggle; one edited cell re-pads e
 - Skips tables inside ``` / ~~~ fences and tables already wrapped.
 - A pipe inside an inline-code span is escaped to `\|` only when that restores the separator's column count; an existing `\|` stays literal.
 - Exit 1 on damage it cannot repair, with or without `--check`: `truncated-row` (more cells than the separator; GFM drops the overflow) and `unrendered-table` (header ≠ separator count; GFM renders raw text). A bare pipe in cell prose is indistinguishable from a delimiter → escape it as `\|` by hand.
+
+## tmp/ prune — old scratch files
+
+Each push deletes scratch files agents left in `tmp/` untouched for a week, then the folders that leaves empty. Node >= 20, no dependencies.
+
+```bash
+mkdir -p scripts/cleanup
+cp .bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs scripts/cleanup/
+```
+
+- Wiring: the `tmp/ prune` block in the `.husky/pre-push` template runs it with `--days=7`, ahead of the gates; skipped while `scripts/cleanup/bkit-tmp-prune.mjs` is absent. Your `.husky/pre-push` lacks the block → paste it above the gates.
+- Not a gate: a failed prune prints a warning; the push goes on.
+- `--days=<n>` (n >= 1, default 7). Exit 0 = swept or no `tmp/`; 1 = an entry could not be removed (each named on stderr); 2 = bad arguments.
+- Scope: `tmp/` at the top of the checkout the cwd sits in; each worktree prunes its own. `tmp/` itself stays.
+- Age = file mtime. Symlinks never followed: a symlinked `tmp/` is skipped; a symlink inside is removed by its own age, target untouched. A folder goes only when empty and either the sweep emptied it or its own mtime is past the cutoff → a folder another process just made stays.
+- Hand run: `node scripts/cleanup/bkit-tmp-prune.mjs`. Files to keep belong outside `tmp/`.

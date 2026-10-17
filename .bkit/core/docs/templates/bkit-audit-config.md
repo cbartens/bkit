@@ -79,7 +79,7 @@ Code is reviewed; dashboards are not. Dashboard changes (hosting, database, paym
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **Variable Listing:** Steps 2, 3 — names per environment from every host, CI, and secret store (e.g. `vercel env ls`, `gh secret list` / `gh variable list`, `gcloud secrets list`, `eas env:list`). Fallback: repo-declared names only; environments `Not Checked`.
 - [ ] **Platform Read:** Steps 4–6 — read-only dashboard / CLI / management API per platform (e.g. Vercel API, Supabase Management API, Stripe CLI, Sentry API). Fallback: repo and docs only; platform side `Not Checked`.
 - [ ] **Audit Logs:** Step 6 — per-platform settings-change history (e.g. Vercel team activity, Supabase org audit log, GitHub org / repo audit log). Fallback: snapshot diff only; set-and-reverted changes `Not Checked`.
@@ -211,6 +211,13 @@ PENDING
 
 PENDING
 
+### Suggested Issues
+
+<!-- prettier-ignore -->
+| # | Title | Findings | Severity | Next Step | Reason |
+| --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+
 ### Process Improvements
 
 PENDING
@@ -224,6 +231,7 @@ PENDING
 - [ ] **Series:** `Snapshot` diffed against previous report's, or marked baseline.
 - [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
 - [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
 - [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 > `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.

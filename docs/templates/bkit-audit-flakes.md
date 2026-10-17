@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 # Flake Triage
 
@@ -85,7 +85,7 @@ One per flake. Root-cause class (`Mechanism`) = evidence; these = outcomes. Quar
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **CI History:** Steps 2, 3 — workflow runs since previous report, e.g. `gh run list`, Actions API, GitLab pipelines. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window; run it via `direnv exec . bash`. Fallback: local repeats only; ranked CI list `Not Checked`.
 - [ ] **Repeat Runner:** Steps 4, 7, 8 — repeat with retries off, e.g. Playwright `--repeat-each`, pytest-repeat. Fallback: rate `Not Checked`; do not mark `FIX NAMED` on unmeasured flake unless mechanism deterministic and report says rate unknown.
 - [ ] **Web:** Steps 6, 13 — vendor status pages and anchor standards. Fallback: incidents and versions recorded as unread.
@@ -119,7 +119,7 @@ Verify only when applicable.
 - [ ] **Step 9 — Native:** Device-runner flake (e.g. Maestro, EAS) → Steps 5–6 target browser; also boot finished before flow, device-cloud retries, animation/keyboard timing. Record artifact locations (screenshots, recordings, logs). **Done when:** answers in `Native`, or skip with evidence.
 - [ ] **Step 10 — Mechanism:** Teardown deletes rows event points at → most diagnoses corroborated by mechanism, not row. Distinguish "fits" vs "proven". One root-cause class: async wait, concurrency, order dependency, shared fixture state, resource leak, network, external service, time and date, randomness, unordered collection, infrastructure, or other (describe). Luo et al.: async wait, concurrency, order dependency ≈ 78% classified. Per-class counts across open flakes = series. Before timing mechanism → floating-promise/missing-await rules on spec/helpers (e.g. `@typescript-eslint/no-floating-promises`, `playwright/missing-playwright-await`); record hits so missing `await` is not hidden behind timing. Real defect behind flake → verdict `BUG`. **Done when:** class, what is not established, await hits in `Mechanism`.
 - [ ] **Step 11 — Fix:** Name cause and change that removes it; making change = next step. Never `.skip`, quarantine, delete assertion, widen timeout. Before trusting the repaired test, the next step puts the bug back, watches the test go red, restores, and confirms `git diff` on the source file is empty. That is not optional on anything touching row-level access control or a cross-tenant boundary. Shared helper/fixture change = signature change: references first. One-spec fix via shared fixture → next unattributable failure. Put bug back proves deterministic fix. Flaky fix also repeats Step 4: at rate p, ~3/p runs with no failure → 95% confidence rate below p (rule of three); report states count. One verdict from `Verdicts`. **Done when:** verdict, change, or why none, run count in `Fix`.
-- [ ] **Step 12 — Route:** No finding without re-checkable evidence: `file:line`, or query/run id/measurement + tool. Language-server empty inconclusive → text search corroboration. Report names destinations (sending = next step). Every flake → `docs/failures.jsonl` row (class, rate, age). Named mechanism → recommended fix + proof runs (Step 11). Real defect → own issue + ledger row. Fix waits on decision → named decision. Mechanism error tracker also saw → `bkit-audit-logs`. Retry-pass/warning CI annotated → `bkit-audit-annotations`. Missing trace/capture, third-party stub, missing `await` → recommended change (Steps 5, 10). **Done when:** every finding's Expected names destination, including ledger row.
+- [ ] **Step 12 — Route:** No finding without re-checkable evidence: `file:line`, or query/run id/measurement + tool. Language-server empty inconclusive → text search corroboration. Report names destinations (sending = next step); the audit agent writes `docs/failures.jsonl` rows. Every flake → `docs/failures.jsonl` row (class, rate, age). Named mechanism → recommended fix + proof runs (Step 11). Real defect → own issue + ledger row. Fix waits on decision → named decision. Mechanism error tracker also saw → `bkit-audit-logs`. Retry-pass/warning CI annotated → `bkit-audit-annotations`. Missing trace/capture, third-party stub, missing `await` → recommended change (Steps 5, 10). **Done when:** every finding's Expected names destination, including ledger row.
 - [ ] **Step 13 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: row per Luo et al. class + per flake feature the runner offers (e.g. retries, flaky status, repeat-each, fail-on-flaky, sequence shuffle) → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. Do not change steps during run. **Done when:** no empty row.
 - [ ] **Step 14 — Anything Else:** (a) Since previous report's commit, everything touching test stability (browser/unit config: retries, workers, timeouts, trace; shared fixtures/helpers; CI workflows/runners; preview/DB for E2E; device flows) → one-line verdict each. (b) Bounded ~30 min: senior test-infra flags no step asks; read since previous run (incidents, `bkit-audit-logs`, new `docs/failures.jsonl`, vendor status) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
@@ -218,6 +218,13 @@ PENDING
 
 PENDING
 
+### Suggested Issues
+
+<!-- prettier-ignore -->
+| # | Title | Findings | Severity | Next Step | Reason |
+| --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+
 ### Process Improvements
 
 PENDING
@@ -231,6 +238,7 @@ PENDING
 - [ ] **Series:** each open flake's rate and the median age beside previous report's numbers, or marked baseline.
 - [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
 - [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
 - [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 > `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.

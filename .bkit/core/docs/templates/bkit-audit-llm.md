@@ -83,7 +83,7 @@ Taxonomy names match `bkit-audit-red-team`, so a finding here and its live proof
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **Code Search:** Steps 2–12, 14 — text search and language server for callers (e.g. ripgrep, Serena, `tsserver`). Prompts often markdown; tool names often strings. Language-server hits under-report; empty inconclusive → corroborate with text search and name the tool. Fallback: text search only; name it per claim.
 - [ ] **Taxonomy Skill:** Steps 2–9, 13 — skill covering LLM and agentic top 10 editions in Anchor Standards (e.g. `owasp-security`). Categories it lacks → `Checked`. Fallback: read anchor standards directly.
 - [ ] **Web:** Steps 4, 9, 13 — tool-server spec, provider terms, anchor standards. Fallback: regime and version changes recorded as unread.
@@ -218,6 +218,13 @@ PENDING
 
 PENDING
 
+### Suggested Issues
+
+<!-- prettier-ignore -->
+| # | Title | Findings | Severity | Next Step | Reason |
+| --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+
 ### Process Improvements
 
 PENDING
@@ -233,6 +240,7 @@ PENDING
 - [ ] **Registry:** model choice, deprecation, and catalogue checks point at `bkit-audit-models` and are not scored here.
 - [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
 - [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
 - [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 > `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.

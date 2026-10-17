@@ -77,7 +77,7 @@ One per candidate.
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **Sibling Reports:** Steps 2, 3 — newest report per other `bkit-audit-*` slug under `docs/audits/`, else that template's `Process Improvements`. Fallback: templates only; a missing report = that audit `Not Checked`.
 - [ ] **Ledgers:** Steps 3, 10, 11 — `docs/failures.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`. Fallback: incident evidence and prior rejections `Not Checked`.
 - [ ] **Repo Gates:** Steps 7, 9, 12, 13, 15 — workflows, hook directory, gate scripts, allowlist files, e.g. `.github/workflows`, `.husky`, `.gitlab-ci.yml`, every `bkit:gate:*` script in `package.json`. Fallback: none; those items `Not Checked`.
@@ -231,6 +231,13 @@ PENDING
 
 PENDING
 
+### Suggested Issues
+
+<!-- prettier-ignore -->
+| # | Title | Findings | Severity | Next Step | Reason |
+| --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+
 ### Process Improvements
 
 PENDING
@@ -244,6 +251,7 @@ PENDING
 - [ ] **Series:** verdict counts, `Health`, and allowlist sizes beside previous report's numbers, or marked baseline.
 - [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
 - [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
 - [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 > `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.

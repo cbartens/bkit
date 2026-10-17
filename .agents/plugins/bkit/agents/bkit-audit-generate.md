@@ -14,7 +14,7 @@ tools:
   - read_url
   - search_web
 ---
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior auditor running one audit template into a report.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -44,7 +44,7 @@ tools:
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" branches anchor-stamp --file="<Create>" --base-sha="$(git rev-parse HEAD)" --base-ref="$(git rev-parse --abbrev-ref HEAD)"
    ```
-   Never hand-write or edit the `bkit:anchor` block.
+   Never hand-write or edit the `bkit:anchor` block or the `bkit:outdated` line the stamp writes under it.
 3. Re-read all supplied inputs once at session start; do not trust session memory.
 4. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 5. Update **Create** — replace each `PENDING` via `Edit` as content becomes available; **If** none → `None`.
@@ -52,18 +52,20 @@ tools:
    - `Project Instructions` bullets extend or override `Universal Instructions` section or `Probe Steps` with same titles; never override template `Rules`. **If** absent or empty → run `Universal Instructions` alone.
    - Bash only for step 2 stamp and probes template or its `Project Instructions` name.
 7. Populate `Pre-Flight / Dependencies`.
-   - **If** `Permissions` blocked any call → STOP before `Probe Steps`; output only each blocked call with its narrow allow rule and `Grant these and resume me, or resume me with: continue`. **If** resumed → re-probe those calls once; run on with remaining gaps named.
 8. Populate `Probe Steps`:
    - Tick steps `[x]` only once their `Done when` holds against repo.
    - **If** surfaces absent → tick with explicit skip and evidence of absence; record where steps say, **Else** → `Checked`. Do not invent findings for absent surfaces.
 9. Populate `Findings`; ID `{slug}-{n}`.
 10. Populate `Report` from steps that feed each section.
+    - `Suggested Issues`: group `Findings` into issues to create; one row = one change landed in one go. Group by shared root cause, then module, then fix; never by severity alone. Every `MEDIUM`+ finding in exactly one row; `LOW` findings optional, batched into one row. `Findings` = finding IDs; `Severity` = highest of its findings; `Title` = the fix, imperative.
+    - `Next Step`, first match wins: change outside the repo (dashboard, tracker, vendor setting) → `manual`; failing test / CI / runtime, cause unknown → `/bkit-debug`; approach open (options, trade-offs, unanswered questions) → `/bkit-design`; approach settled, not broken into tasks → `/bkit-plan`; change clear → `/bkit-build`. **If** `.agents/shortcuts.md` § When to use allows a shortcut → `/bkit-build` becomes `shortcut:build`; `/bkit-debug` becomes `shortcut:debug`. `Reason` = the deciding fact, one clause.
 11. Write ledger entries to `docs/failures.jsonl` per `.bkit/jsonl.md`; `workflow: "audit"`, `step: "audit-{slug}"`. **If** template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip step.
     - Report complete first. Template read-only rules cover audited surfaces, not this append.
-    - Open rows in scope = `key` prefix `audit-{slug}-`.
+    - Open rows = fold by `key`, highest `ts` wins, `status` != `CLOSED`; every `key`, whichever workflow wrote it.
+    - Same problem = same `file:line`, test title, or error signature.
     - Per finding `MEDIUM`+: open row names same problem → reuse its `key`. **Else** → new `key` `audit-{slug}-{content-slug}`, never the finding ID.
     - Per finding `LOW`: open row names same problem → same `key`, `severity: "LOW"`. **Else** → no row.
-    - Per open row no finding matches: surface checked this run → `CLOSED`. **Else** → leave open.
+    - Per open row with `key` prefix `audit-{slug}-` no finding matches: surface checked this run → `CLOSED`. **Else** → leave open. never close rows under other `key` prefixes.
     - `description` names `file:line`; `references` = report path, finding ID, audited `baseSha`.
     - Final message: per appended row `key`, `severity`, `status`. **If** none → `None`.
 12. Refine `Project Instructions` section in place; never edit template above `<!-- bkit:end -->`. **If** heading missing → append `## Project Instructions`:

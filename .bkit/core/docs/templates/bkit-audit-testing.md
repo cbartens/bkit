@@ -78,7 +78,7 @@ Green suite = tests passed — not that they could fail, that every promise has 
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **Git:** Steps 1, 14 — `git rev-parse`, diff since previous report. Fallback: run marked baseline; ages and the what-changed pass `Not Checked`.
 - [ ] **Test Runner:** Steps 3, 6, 9, 10 — execute or read reports, e.g. Vitest, Jest, pytest. Fallback: static read only; counts, mutation, clock runs `Not Checked`.
 - [ ] **Web:** Step 13 — fetch anchor standards. Fallback: versions recorded as unread.
@@ -152,7 +152,7 @@ Verify only when applicable.
 - [ ] **Step 9 — Runs:** Every test file has a lane. Names putting file outside every run (see Step 6). Suites skipping when setup fails instead of failing. Skips (e.g. `test.skip`, `fixme`, `describe.skip`, `pytest.mark.skip`), env-dependent skips. Stale build output runner now collects (e.g. Vitest 4 and later does not ignore `dist/` by default). The 20 slowest tests per tier from runner reports. Slow test = next one someone skips. **Done when:** rows in `Runs`.
 - [ ] **Step 10 — Time:** Date/calendar/timezone logic → unit tests with `TZ` non-UTC zone observing DST (e.g. `Pacific/Auckland`, `America/St_Johns`) on process before workers spawn. Then date-touching suites with clock pinned near month end and DST change (e.g. `vi.setSystemTime`, Playwright `page.clock`), throwaway setup removed after. Record tests whose result changes. List suites never pinning clock. **Done when:** results in `Time`, or skip with evidence.
 - [ ] **Step 11 — Copies:** Same test procedure in several places (open dialog, create user, read credentials). Disagreeing copies first. Agreeing copies need single owner only if likely to drift. One owner created → next step adds guard failing on new copy. Code graph finds copied functions; copied statement sequences need syntax-tree scan. Product-code duplication → `bkit-audit-duplication`. **Done when:** groups in `Copies`, or `none`.
-- [ ] **Step 12 — Route:** No finding without re-checkable evidence: `file:line`, or query, run id, measurement, plus tool. Language-server empty inconclusive → corroborate text search. Report names where each finding goes; sending is next step. App bug → `docs/failures.jsonl` row and issue; security bugs flagged for project security milestone. Missing test small → test to write. Missing test large → follow-up issue. Cannot-fail test → fix, positive control (break code, watch red, restore), `docs/failures.jsonl` row. Behaviour no recorded intent → question for maintainer; do not guess from code. Tier too high → lower-tier test to write; higher-tier stays until new one seen red. Equivalent mutant → disable comment to add. Timezone/date result → app bug if app wrong; else test fix and `docs/failures.jsonl` row. Flaky → `bkit-audit-flakes`. Coverage floor move → `bkit-audit-coverage`. Check as CI gate → `bkit-audit-gates`. Dead code → `bkit-audit-dead-code`. **Done when:** every finding's Expected names destination.
+- [ ] **Step 12 — Route:** No finding without re-checkable evidence: `file:line`, or query, run id, measurement, plus tool. Language-server empty inconclusive → corroborate text search. Report names where each finding goes; sending is next step; the audit agent writes `docs/failures.jsonl` rows. App bug → `docs/failures.jsonl` row and issue; security bugs flagged for project security milestone. Missing test small → test to write. Missing test large → follow-up issue. Cannot-fail test → fix, positive control (break code, watch red, restore), `docs/failures.jsonl` row. Behaviour no recorded intent → question for maintainer; do not guess from code. Tier too high → lower-tier test to write; higher-tier stays until new one seen red. Equivalent mutant → disable comment to add. Timezone/date result → app bug if app wrong; else test fix and `docs/failures.jsonl` row. Flaky → `bkit-audit-flakes`. Coverage floor move → `bkit-audit-coverage`. Check as CI gate → `bkit-audit-gates`. Dead code → `bkit-audit-dead-code`. **Done when:** every finding's Expected names destination.
 - [ ] **Step 13 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per OWASP API Security Top 10 item and ASVS chapter (attack rows Step 3), per test-smell in catalogue (shapes Step 7) → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. Do not change steps during run. **Done when:** no empty row.
 - [ ] **Step 14 — Anything Else:** (a) Everything since previous report commit touching suite (test files/helpers, fixtures/factories, unit/browser/device runner config, CI test lanes, routes/workers/migrations/external services tests cover) → one-line verdict each. (b) Bounded ~30 min pass: senior test engineer flags outside steps; read since previous run (incidents, `bkit-audit-logs`, new `docs/failures.jsonl`, vendor status) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
@@ -251,6 +251,13 @@ PENDING
 
 PENDING
 
+### Suggested Issues
+
+<!-- prettier-ignore -->
+| # | Title | Findings | Severity | Next Step | Reason |
+| --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+
 ### Process Improvements
 
 PENDING
@@ -264,6 +271,7 @@ PENDING
 - [ ] **Series:** test count and runtime per tier, and both scores, beside previous report's numbers, or marked baseline.
 - [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
 - [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
 - [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 > `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.

@@ -4,12 +4,13 @@
 // `owner/repo` comes from `gh repo view`; when gh is missing, unauthed, or
 // answers nothing, from the `origin` remote URL instead (the MCP fallback the
 // workflows already describe: "parse git remote"). The current branch, how far it
-// trails `origin/dev`, the main checkout, and the bkit binary every later block
-// calls ride along so Step 1 is one call.
+// trails `origin/dev`, the main checkout, the bkit binary every later block calls,
+// and whether that bkit is behind the newest release ride along so Step 1 is one call.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseRemoteUrlToSlug } from "../../ledgers/telemetry.js";
 import { EXIT, git, repoRoot, runGit, runTool } from "../lib.js";
+import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 /** Exit code: neither gh nor the origin remote named an owner/repo. */
 export const EXIT_NO_REPO = 3;
 /** Exit code: HEAD is detached, so there is no current branch (and --allow-detached was not given). */
@@ -107,6 +108,10 @@ export const repoCommand = {
                 repoRoot: "the main checkout (the same from any worktree)",
                 bkit: "the bkit binary the workflow blocks call: <repoRoot>/node_modules/.bin/bkit, else `bkit` on PATH",
                 outboxRoot: "<git common dir>/bkit-outbox: per-run scratch files, never committed",
+                bkitVersion: ".bkit/version pinnedVersion: the release this repo's bkit files came from (null when unpinned)",
+                bkitLatest: "newest published @cbartens/bkit, asked at most once a day (null when offline, opted out via BKIT_NO_UPDATE_CHECK, or unpinned)",
+                bkitOutdated: "true when bkitVersion is older than bkitLatest (null when either is unknown)",
+                bkitAdvisory: "one line to show the user when bkitOutdated, else null",
             },
             exitCodes: {
                 [EXIT_NO_REPO]: "neither gh nor the origin remote named an owner/repo",
@@ -136,6 +141,9 @@ export const repoCommand = {
                 }
                 const root = repoRoot(ctx.cwd);
                 const common = git(ctx.cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+                const latest = bkitVersionStatus(root, common);
+                if (latest.advisory !== null)
+                    ctx.log(latest.advisory);
                 ctx.emit({
                     ...resolved,
                     owner,
@@ -145,6 +153,10 @@ export const repoCommand = {
                     repoRoot: root,
                     bkit: resolveBkitBinary(root),
                     outboxRoot: path.join(common ?? path.join(root, ".git"), "bkit-outbox"),
+                    bkitVersion: latest.version,
+                    bkitLatest: latest.latest,
+                    bkitOutdated: latest.outdated,
+                    bkitAdvisory: latest.advisory,
                 });
                 if (branch === null && ctx.flags.allowDetached !== true) {
                     ctx.log("HEAD is detached — no current branch");

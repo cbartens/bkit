@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 # bkit Adoption Audit
 
@@ -82,7 +82,7 @@ bkit ships three folders. Path inside a folder = path it lands at in the repo.
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **Checkout:** Steps 2–11 — repo with `.bkit/version`. Fallback: none; absent → `N/A` and STOP.
 - [ ] **Package:** Step 2 — installed package root (e.g. `node_modules/@cbartens/bkit/.bkit/`, resolved via the package manager). Fallback: unpack the pinned version (e.g. `npm pack @cbartens/bkit@<pinnedVersion>` into a throwaway dir); else inventory from `.bkit/templates/` + `canonicalHashes` only, `core/` + `shared/` unwritten files `Not Checked`.
 - [ ] **bkit CLI:** Steps 4, 5 — `bkit check`, `bkit doctor` (or `pnpm bkit …`). Fallback: hash written files against `canonicalHashes` by hand; advisories `Not Checked`.
@@ -204,6 +204,13 @@ PENDING
 
 PENDING
 
+### Suggested Issues
+
+<!-- prettier-ignore -->
+| # | Title | Findings | Severity | Next Step | Reason |
+| --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+
 ### Process Improvements
 
 PENDING
@@ -217,6 +224,7 @@ PENDING
 - [ ] **Series:** `Adoption` diffed against previous report's, or marked baseline.
 - [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway package unpack removed.
 - [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
 - [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 > `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.

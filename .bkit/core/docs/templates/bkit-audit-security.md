@@ -87,7 +87,7 @@ Fixes land on call sites a sweep already knew; the doc records the rule. A later
 
 Always verify.
 
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
 - [ ] **Text Search:** Steps 2, 5–14, 17, 19 — literals, env names, routes, workflows, e.g. `git grep`, ripgrep. Fallback: none; name gap. Literal searched as regex matching nothing reads as clean — name tool and whether pattern was literal.
 - [ ] **Call Graph:** Steps 5, 9 — who calls a guard, e.g. language server `find_referencing_symbols`, `tsserver`. Fallback: text search only; empty = inconclusive, not absence.
 - [ ] **Live Read:** Steps 7, 11, 22 — one read-only GET per web origin; DNS for mail auth; `security.txt` fetch. Fallback: committed config only; served headers, DNS, `security.txt` → `Not Checked`.
@@ -138,7 +138,7 @@ Verify only when applicable.
 - [ ] **Step 21 — Native:** Native app: session tokens in secure store (Keychain, Keystore), not prefs. No tokens/PII in device logs, backups, sensitive-screen screenshots. Auth callbacks/deep links: verified universal/app links, not claimable custom scheme; deep-link params = untrusted input. Association files served/valid → `bkit-audit-config`. No cleartext exception. OTA code signing on, or record plan lacks it. **Done when:** `Native` row per control group, or skip with evidence no native app.
 - [ ] **Step 22 — Disclosure:** Published vuln disclosure policy; `/.well-known/security.txt` with monitored `Contact`, unexpired `Expires` (RFC 9116). Current security incident runbook: paging, Step 15 key revocation, session revoke, breach-notification duties per jurisdiction. General incident → `bkit-audit-reliability`; notification timelines → `bkit-audit-privacy`. Last tested restore date from newest `bkit-audit-database` report. **Done when:** each requirement met or finding, in `Checked`.
 - [ ] **Step 23 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: row per ASVS chapter, Top 10 category, API Security Top 10 risk, (native app) MASVS group → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. Project security checklist/skill covers current releases; lag → name which. **Done when:** no empty row.
-- [ ] **Step 24 — Anything Else:** (a) Security-touching changes since previous commit (routes, server actions, machine-client tools, webhooks, processors, workflows, env vars, platforms, outbound hosts, native features) → one-line verdict each vs Step 23 chapter list. (b) ~30 min bounded pass: senior appsec flags no step asks; since previous run read incidents, `bkit-audit-logs`, new `docs/failures.jsonl`, vendor status — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`; literal signature class → Step 2 row instead. `Expected` on each finding: destination + safer fix. This run does not file, append ledger, or edit doc: security hole → plan from report; discovered bug → `docs/failures.jsonl` row to append later; storage-policy gap (Step 9) → also `bkit-audit-database`; deletion gap (Step 19) → also `bkit-audit-privacy`; prompt-injection model half (Step 10) → `bkit-audit-llm`, not re-derived; live hostile check → `bkit-audit-red-team`; uncovered trust boundary (Step 3) → proposed doc update, not applied; workflow change (Step 17) → human confirmation, never edit workflow; new literal class → proposed Step 2 row under `Process Improvements`.
+- [ ] **Step 24 — Anything Else:** (a) Security-touching changes since previous commit (routes, server actions, machine-client tools, webhooks, processors, workflows, env vars, platforms, outbound hosts, native features) → one-line verdict each vs Step 23 chapter list. (b) ~30 min bounded pass: senior appsec flags no step asks; since previous run read incidents, `bkit-audit-logs`, new `docs/failures.jsonl`, vendor status — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`; literal signature class → Step 2 row instead. `Expected` on each finding: destination + safer fix. This run does not file or edit doc; the audit agent writes `docs/failures.jsonl` rows: security hole → plan from report; discovered bug → `docs/failures.jsonl` row; storage-policy gap (Step 9) → also `bkit-audit-database`; deletion gap (Step 19) → also `bkit-audit-privacy`; prompt-injection model half (Step 10) → `bkit-audit-llm`, not re-derived; live hostile check → `bkit-audit-red-team`; uncovered trust boundary (Step 3) → proposed doc update, not applied; workflow change (Step 17) → human confirmation, never edit workflow; new literal class → proposed Step 2 row under `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
@@ -255,6 +255,13 @@ PENDING
 
 PENDING
 
+### Suggested Issues
+
+<!-- prettier-ignore -->
+| # | Title | Findings | Severity | Next Step | Reason |
+| --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+
 ### Process Improvements
 
 PENDING
@@ -268,6 +275,7 @@ PENDING
 - [ ] **Classes:** every standing class has a row, including the clean ones.
 - [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
 - [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
 - [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 > `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.
