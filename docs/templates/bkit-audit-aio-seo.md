@@ -77,6 +77,7 @@
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Live Fetch:** Steps 2–9 — request public URLs, headers, and HTML, e.g. `curl`, a browser. Fallback: source read; live claims = hypotheses.
 - [ ] **Web:** Step 10 — fetch anchor standards. Fallback: versions recorded as unread.
 

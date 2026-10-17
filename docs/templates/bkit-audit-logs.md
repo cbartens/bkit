@@ -85,6 +85,7 @@ A test-origin tag narrows the lane. It does not make something noise, and it doe
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Error Tracker:** Steps 3–9 — read-only issue, event, and alert APIs, e.g. tracker MCP, REST. Fallback: skip tracker steps; runtime-log steps still run; tracker sections `Not Checked`. Never "clean".
 - [ ] **Web:** Step 13 — fetch anchor standards. Fallback: versions recorded as unread.
 
@@ -92,7 +93,7 @@ Always verify.
 
 Verify only when applicable.
 
-- [ ] **Runtime Logs:** Hosted platforms → Step 11 — read-only log APIs, e.g. vendor CLIs, MCPs. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window, run it via `direnv exec . bash`. Skipped credential = not read, never clean. Fallback: each skipped source named in `Not Checked`.
+- [ ] **Runtime Logs:** Hosted platforms → Step 11 — read-only log APIs, e.g. vendor CLIs, MCPs. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window; run it via `direnv exec . bash`. Skipped credential = not read, never clean. Fallback: each skipped source named in `Not Checked`.
 - [ ] **Language Server:** Typed language → Step 7 — references, e.g. Serena, `tsserver`. Fallback: text search only; name it on every blast-radius row.
 - [ ] **Symbol Maps:** Release builds → Step 4 — source maps and native symbols. Fallback: unsymbolicated = finding; call-site table marked unbuildable.
 - [ ] **User Reports:** Feedback channel exists → Step 10 — tracker user feedback, support inbox, store reviews. Fallback: `Not Checked`.

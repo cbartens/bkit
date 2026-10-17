@@ -72,6 +72,7 @@ Target failure: **a gate that stays green while the unchecked surface is where t
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Gate Source:** Steps 2, 4, 13 — automated-gate files readable. Fallback: no gate while UI exists = finding; later steps run without snapshot.
 - [ ] **Checker:** Steps 5, 6 — full rule set, e.g. axe-core, pa11y, Accessibility Insights. Fallback: manual steps only; automated rows `Not Checked`.
 - [ ] **Web:** Step 15 — fetch anchor standards. Fallback: versions recorded as unread.

@@ -81,6 +81,7 @@ Dead code = control that looks live, is not: limiter on unset env var; E2E asser
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Clean Tree:** Steps 2–17 — clean `git status` at recorded commit; one checkout all steps. Fallback: detached worktree off integration branch; dirty-path candidates = hypotheses.
 - [ ] **Text Search:** Steps 5–14 — repo search (`git grep`, ripgrep). Fallback: none → those steps `Not Checked`.
 - [ ] **Reachability Scanner:** Steps 3–4 — ad hoc, not committed dependency (e.g. `pnpm dlx knip`, vulture). Fallback: language-server refs + text search; scanner categories `Not Checked`.

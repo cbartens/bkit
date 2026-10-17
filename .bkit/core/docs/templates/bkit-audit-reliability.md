@@ -77,6 +77,7 @@ Failure paths are least-tested: happy path is tested; vendor outage stays unwalk
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Code Search:** Steps 2–12, 14, 16 — text search and language server for callers, e.g. ripgrep, Serena, `tsserver`. Language-server hits under-report; empty is inconclusive → corroborate with text search and name the tool. Fallback: text search only; name it per claim.
 - [ ] **Web:** Step 15 — fetch anchor standards. Fallback: versions recorded as unread.
 
@@ -85,7 +86,7 @@ Always verify.
 Verify only when applicable.
 
 - [ ] **Metrics:** Hosted traces, errors, or health endpoint → Steps 3, 13 — SLO queries and alert config, e.g. Sentry, Datadog, Better Stack. Fallback: repo config only; live measurements `Not Checked`.
-- [ ] **Job Platform:** Background jobs → Steps 6, 7 — flow control and replay docs, read-only, e.g. Inngest, Temporal. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window, run it via `direnv exec . bash`. Fallback: code only; live run history `Not Checked`.
+- [ ] **Job Platform:** Background jobs → Steps 6, 7 — flow control and replay docs, read-only, e.g. Inngest, Temporal. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window; run it via `direnv exec . bash`. Fallback: code only; live run history `Not Checked`.
 - [ ] **Deploy Platform:** Hosted deploys → Step 12 — skew protection, rollout, rollback history, e.g. Vercel API, Cloud Run. Fallback: repo config only; dashboard settings `Not Checked`.
 - [ ] **Vendor Status:** External dependencies → Step 13 — status feeds. Fallback: none; feeds `Not Checked`.
 

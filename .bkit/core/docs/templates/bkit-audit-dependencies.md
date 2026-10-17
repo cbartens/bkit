@@ -92,6 +92,7 @@ Batch verdict, in `Summary`, not per PR. The landing push's CI is the next step'
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Git Host:** Steps 2, 3, 11, 12 — open PRs by head-ref prefix, CI runs, behind-count, e.g. `gh`, GitLab API. Fallback: none; PR steps `Not Checked`, batch verdict `FAIL`.
 - [ ] **Package Manager:** Steps 5, 8–10 — install, lockfile, registry metadata, e.g. pnpm, npm. Fallback: none; `Batch` and `Verification` `Not Checked`, batch verdict `FAIL`.
 - [ ] **Clean Worktree:** Steps 8–10 — detached worktree off the integration branch, removed before the report finishes. Fallback: none; do not build the batch in the main checkout.

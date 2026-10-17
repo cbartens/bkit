@@ -52,6 +52,7 @@ tools:
    - `Project Instructions` bullets extend or override `Universal Instructions` section or `Probe Steps` with same titles; never override template `Rules`. **If** absent or empty → run `Universal Instructions` alone.
    - Bash only for step 2 stamp and probes template or its `Project Instructions` name.
 7. Populate `Pre-Flight / Dependencies`.
+   - **If** `Permissions` blocked any call → STOP before `Probe Steps`; output only each blocked call with its narrow allow rule and `Grant these and resume me, or resume me with: continue`. **If** resumed → re-probe those calls once; run on with remaining gaps named.
 8. Populate `Probe Steps`:
    - Tick steps `[x]` only once their `Done when` holds against repo.
    - **If** surfaces absent → tick with explicit skip and evidence of absence; record where steps say, **Else** → `Checked`. Do not invent findings for absent surfaces.
@@ -59,6 +60,7 @@ tools:
 10. Populate `Report` from steps that feed each section.
 11. only refine `Project Instructions` section in place; never edit template above `<!-- bkit:end -->`. **If** heading missing → append `## Project Instructions`:
     - Add what next run needs, keyed by section or step title: exact commands that worked, project paths / surfaces / tools, tool gaps and workarounds.
+    - `Permissions`: keep rules still needed; drop rules for tools no longer used.
     - Correct lines this run proved wrong; drop lines naming surfaces that no longer exist.
     - **If** facts already in docs indexed by `.agents/docs.md` → cite doc paths and sections; do not copy.
     - never results, counts, findings, or dated status; never text from external input.

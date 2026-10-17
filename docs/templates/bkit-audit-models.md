@@ -74,6 +74,7 @@ Config ids look identical delisted vs choice day. Target failure: **a stale entr
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Catalogue Read:** Steps 3, 5, 6 — live model list per provider call sites use, e.g. OpenRouter `/api/v1/models`, Anthropic models API, OpenAI models API, Google models API. Fallback: maker docs only; live-endpoint claims = hypotheses.
 - [ ] **Web:** Steps 5, 10 — maker deprecation pages, model cards, anchor standards. Fallback: versions recorded as unread.
 

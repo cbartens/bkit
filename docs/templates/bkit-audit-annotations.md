@@ -83,7 +83,8 @@ One per annotation. **SILENT FAILURE** outranks every other verdict.
 
 Always verify.
 
-- [ ] **CI Read:** Steps 2, 5, 11 — annotations and step logs for recent runs of every workflow, e.g. `gh api` check-run annotations, `gh run view --log`, GitLab job-trace API. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window, run it via `direnv exec . bash`. Fallback: saved logs; runs not fetched `Not Checked`.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **CI Read:** Steps 2, 5, 11 — annotations and step logs for recent runs of every workflow, e.g. `gh api` check-run annotations, `gh run view --log`, GitLab job-trace API. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window; run it via `direnv exec . bash`. Fallback: saved logs; runs not fetched `Not Checked`.
 - [ ] **Workflow Files:** Steps 4, 6, 8 — workflows, composite actions, reusable workflows on disk. Fallback: none.
 - [ ] **Web:** Steps 3, 12 — vendor changelog, runner-image announcements, anchor standards. Fallback: versions recorded as unread.
 

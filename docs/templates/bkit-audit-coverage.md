@@ -72,6 +72,7 @@ Static floor: coverage climbs, gate far below, large drop passes green. One-run 
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **CI History:** Steps 4, 5, 7, 10 — branch coverage from full CI runs, e.g. `gh run list` / `gh run download`, GitLab pipelines, Codecov. Fallback: local re-runs fill gap; mark every local observation.
 - [ ] **Coverage Artifacts:** Steps 6, 7, 11, 12 — summary and per-file coverage, e.g. `coverage-summary.json`, `coverage-final.json`, lcov. Fallback: percentages only; file-level claims `Not Checked`.
 - [ ] **Git History:** Steps 3, 9, 15 — `git log -L` / `git log -p` on floor values and coverage config. Fallback: current tree only; history `Not Checked`.

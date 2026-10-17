@@ -85,7 +85,8 @@ One per flake. Root-cause class (`Mechanism`) = evidence; these = outcomes. Quar
 
 Always verify.
 
-- [ ] **CI History:** Steps 2, 3 — workflow runs since previous report, e.g. `gh run list`, Actions API, GitLab pipelines. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window, run it via `direnv exec . bash`. Fallback: local repeats only; ranked CI list `Not Checked`.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **CI History:** Steps 2, 3 — workflow runs since previous report, e.g. `gh run list`, Actions API, GitLab pipelines. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window; run it via `direnv exec . bash`. Fallback: local repeats only; ranked CI list `Not Checked`.
 - [ ] **Repeat Runner:** Steps 4, 7, 8 — repeat with retries off, e.g. Playwright `--repeat-each`, pytest-repeat. Fallback: rate `Not Checked`; do not mark `FIX NAMED` on unmeasured flake unless mechanism deterministic and report says rate unknown.
 - [ ] **Web:** Steps 6, 13 — vendor status pages and anchor standards. Fallback: incidents and versions recorded as unread.
 

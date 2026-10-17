@@ -78,6 +78,7 @@ Automated checks never look at a screen. They pass when a title is centred on on
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Screens:** Steps 2, 7–14 — open product (local or existing preview). Fallback: drawings and source only; live claims = hypotheses.
 - [ ] **Drawings:** Steps 5, 7, 9 — reference drawings readable. Fallback: live vs live only; drawing comparison `Not Checked`.
 - [ ] **Web:** Step 15 — fetch anchor standards. Fallback: versions recorded as unread.

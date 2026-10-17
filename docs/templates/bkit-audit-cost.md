@@ -81,6 +81,7 @@ One per vendor, and one per paid resource inside a vendor that has several.
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Bills:** Steps 3–5, 8 — invoices or billing export (e.g. FOCUS), read-only plan/usage/cap pages (e.g. host dashboard, cloud billing console, vendor API). Fallback: unread vendor = `ASK`; tax, foreign exchange, and card fees `Not Checked`.
 - [ ] **Code Search:** Steps 3, 6, 7 — SDKs, outbound hosts, reference checks (e.g. ripgrep, language-server references). Fallback: docs and invoices only; `REMOVE` proof marked incomplete.
 - [ ] **Web:** Step 9 — fetch anchor standards. Fallback: versions recorded as unread.

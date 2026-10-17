@@ -94,6 +94,7 @@ Row text awaiting confirmation = UNCONFIRMED until reproduced or read end to end
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Ledger:** Steps 3–7 — `docs/failures.jsonl` and `.bkit/jsonl.md`. Fallback: file absent → one `N/A` row after Step 3 and STOP.
 - [ ] **Git History:** Steps 2, 5 — commits since the previous report, fix commits. Fallback: closures and regression-by-commit `Not Checked`.
 - [ ] **Web:** Step 8 — fetch anchor standards. Fallback: versions recorded as unread.
@@ -103,7 +104,7 @@ Always verify.
 Verify only when applicable.
 
 - [ ] **Language Server:** Typed language → Step 4 — symbol at current path, caller chain, diagnostics for one file without full typecheck, e.g. Serena, `tsserver`. Fallback: text search. Reach and close needing callers stay hypotheses until corroborated.
-- [ ] **Error Tracker:** Production or preview events exist → Steps 4, 5 — event counts and flows after fix commit, e.g. Sentry, platform logs. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window, run it via `direnv exec . bash`. Fallback: code only. Event counts `Not Checked`.
+- [ ] **Error Tracker:** Production or preview events exist → Steps 4, 5 — event counts and flows after fix commit, e.g. Sentry, platform logs. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window; run it via `direnv exec . bash`. Fallback: code only. Event counts `Not Checked`.
 - [ ] **Tracker:** Issues wired → Steps 4, 7 — issue carrying bug, postmortem tracking issue. Fallback: issue pointers `Not Checked`.
 - [ ] **CI Config:** Workflow can fail build → Step 3 — gate on open `CRITICAL` failures. Fallback: gate check `Not Checked`.
 

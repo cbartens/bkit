@@ -79,6 +79,7 @@ CI time gets re-argued from impressions. Two mistakes recur:
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **CI API:** Steps 2–6, 10–11 — read-only run and job metadata, e.g. `gh run view`, `gh api`. Fallback: workflow files only; timings `Not Checked`.
 - [ ] **Workflow Files:** Steps 3, 7–10 — workflows, task graph, cache config readable. Fallback: none; those steps `Not Checked`.
 - [ ] **Web:** Step 12 — fetch anchor standards and current runner prices. Fallback: versions and prices unread. never reuse a previous report's prices.

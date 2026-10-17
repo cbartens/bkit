@@ -85,6 +85,7 @@ One per probe, on the `Probes` row.
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Target:** Steps 2–12 — non-production deployment of this commit, resolved by commit SHA, confirmed serving. Fallback: none. Probes stay `INCONCLUSIVE`. NEVER point them at production.
 - [ ] **Identities:** Steps 2, 5–12, 14 — create and delete synthetic users and tenants, guarded so a non-synthetic identity cannot be deleted. Fallback: none. Do not probe with real accounts.
 - [ ] **Web:** Steps 2, 13 — each platform's penetration-testing page, and anchor standards. Fallback: policy unread → do not send probes; record why.

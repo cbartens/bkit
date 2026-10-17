@@ -78,6 +78,7 @@ Green suite = tests passed — not that they could fail, that every promise has 
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Git:** Steps 1, 14 — `git rev-parse`, diff since previous report. Fallback: run marked baseline; ages and the what-changed pass `Not Checked`.
 - [ ] **Test Runner:** Steps 3, 6, 9, 10 — execute or read reports, e.g. Vitest, Jest, pytest. Fallback: static read only; counts, mutation, clock runs `Not Checked`.
 - [ ] **Web:** Step 13 — fetch anchor standards. Fallback: versions recorded as unread.

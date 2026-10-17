@@ -87,6 +87,7 @@ Fixes land on call sites a sweep already knew; the doc records the rule. A later
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Text Search:** Steps 2, 5–14, 17, 19 — literals, env names, routes, workflows, e.g. `git grep`, ripgrep. Fallback: none; name gap. Literal searched as regex matching nothing reads as clean — name tool and whether pattern was literal.
 - [ ] **Call Graph:** Steps 5, 9 — who calls a guard, e.g. language server `find_referencing_symbols`, `tsserver`. Fallback: text search only; empty = inconclusive, not absence.
 - [ ] **Live Read:** Steps 7, 11, 22 — one read-only GET per web origin; DNS for mail auth; `security.txt` fetch. Fallback: committed config only; served headers, DNS, `security.txt` → `Not Checked`.

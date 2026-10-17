@@ -87,6 +87,7 @@ Every task leaves a worktree, branch, stash, or scratch directory; nothing's job
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Git:** Steps 2–7, 9 — local checkout, worktrees, branches, stashes. Fallback: none; no checkout → `N/A` and STOP.
 - [ ] **Host API:** Steps 4, 8 — read-only, e.g. `gh api`. Fallback: local git only; remote branches, pull requests, and settings `Not Checked`.
 - [ ] **Web:** Step 10 — fetch anchor standards. Fallback: versions recorded as unread.
