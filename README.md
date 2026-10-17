@@ -46,11 +46,11 @@ Everything a senior team would otherwise write down over years, in files you can
 <!-- prettier-ignore -->
 | What | How many | What it does for you |
 | --- | --- | --- |
-| Agents | >40 | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
+| [Agents](.bkit/comparison.md#part-1--the-five-phase-pipeline-in-order) | >40 | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
 | Workflows | 6 | The five phases plus a cloud router. Every step ends in a checklist and a mechanical check before the next one starts. |
 | Agent rules | >70 | One shared rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
 | Guardrails | >10 hook files | Block dangerous commands and make agents investigate before they edit, on all five AI tools. |
-| Audits | >30 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
+| [Audits](.bkit/comparison.md#audits) | >30 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
 | Project docs | 10 + index | Architecture, data schema, deployments, testing, security, monitoring, design system, tech stack, setup, and an index telling each agent what to read at each step. |
 | Templates | >60 | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, and >10 ready-made connectors for your platforms. |
 
@@ -61,12 +61,12 @@ One command per job. Each one runs a team of specialised agents, so you don't ha
 <!-- prettier-ignore -->
 | Job | Command | What happens |
 | --- | --- | --- |
-| Work out how to build it | `/bkit-design` | Reads related issues and past decisions, has three agents propose different approaches and two critique them, and writes throwaway code to test any risky unknowns the reviewers flag. You get one design to approve. |
-| Plan the work | `/bkit-plan` | A step-by-step plan, stress-tested by five reviewers who also see past bugs and postponed work. Too big for one build? It's split into pieces. You approve it. |
-| Build it | `/bkit-build` | Checks the plan still matches the code, writes each task's tests before its code, verifies every task, hunts for bugs and security holes, adds edge-case tests, and opens a pull request. |
-| Fix what broke | `/bkit-debug` | Pulls evidence from CI and your platforms, finds the root cause, fixes it, re-tests and records the lesson. Hard runtime bugs get their own mode; if it can't fix something, it stops and writes you a clear handover. |
-| Ship it | `/bkit-ship` | Checks nothing planned was quietly dropped, waits for every test lane to pass, merges into `dev`, and updates the docs. |
-| Health check | >30 audits | One specialist checklist per area. Findings feed straight into `/bkit-plan`. |
+| Work out how to build it | [`/bkit-design`](.bkit/comparison.md#phase-1--bkit-design) | Reads related issues and past decisions, has three agents propose different approaches and two critique them, and writes throwaway code to test any risky unknowns the reviewers flag. You get one design to approve. |
+| Plan the work | [`/bkit-plan`](.bkit/comparison.md#phase-2--bkit-plan) | A step-by-step plan, stress-tested by five reviewers who also see past bugs and postponed work. Too big for one build? It's split into pieces. You approve it. |
+| Build it | [`/bkit-build`](.bkit/comparison.md#phase-3--bkit-build) | Checks the plan still matches the code, writes each task's tests before its code, verifies every task, hunts for bugs and security holes, adds edge-case tests, and opens a pull request. |
+| Fix what broke | [`/bkit-debug`](.bkit/comparison.md#phase-4--bkit-debug) | Pulls evidence from CI and your platforms, finds the root cause, fixes it, re-tests and records the lesson. Hard runtime bugs get their own mode; if it can't fix something, it stops and writes you a clear handover. |
+| Ship it | [`/bkit-ship`](.bkit/comparison.md#phase-5--bkit-ship) | Checks nothing planned was quietly dropped, waits for every test lane to pass, merges into `dev`, and updates the docs. |
+| Health check | [>30 audits](.bkit/comparison.md#audits) | One specialist checklist per area. Findings feed straight into `/bkit-plan`. |
 | Housekeeping | 7 utility agents | Keep docs, decisions, lessons and known bugs current, and rank what to work on next. |
 
 ## How it works
@@ -77,6 +77,8 @@ One command per job. Each one runs a team of specialised agents, so you don't ha
     <img alt="The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 40 AI agents: 10 in design, 10 in plan, 11 in build, 5 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode." src=".github/assets/bkit-pipeline-light.svg" width="100%">
   </picture>
 </p>
+
+Every agent in each phase, in the order it runs and what it checks: [pipeline reference](.bkit/comparison.md#pipeline-map-key-steps-only).
 
 ## Why it's different
 
@@ -133,6 +135,8 @@ None of the AI development frameworks in our [comparison](.bkit/comparison.md#pa
 - **Safe by default.** Every third-party action is pinned to an exact commit, the downloaded prose checker is checksum-verified, and pull-request titles never reach a script unescaped.
 - **Doesn't waste minutes.** A commit that already passed isn't re-tested, and a newer push cancels the older run, except on your production branch, where a deploy must never be cut off halfway.
 
+How the lanes join into the one final check, and what happens on green or red: [CI test scaffold](.bkit/comparison.md#ci-test-scaffold-runs-on-every-pr--push).
+
 ## Audits find what green tests miss
 
 <p align="center">
@@ -144,23 +148,23 @@ None of the AI development frameworks in our [comparison](.bkit/comparison.md#pa
 
 A green tick proves the tests passed, not that they test the right things. Every finding on this map sat in an app whose tests were passing, and only two of bkit's audit templates found them all.
 
-Each template is a specialist's checklist for one area: what to check, how, and what counts as a problem. Some of the >30:
+Each template is a specialist's checklist for one area: what to check, how, and what counts as a problem. Ten to start with:
 
 <!-- prettier-ignore -->
-| Audit | What it finds |
-| --- | --- |
-| Testing | Tests that can't fail, never run, or skip what the product must do and must never do. |
-| Duplication | The same rule written in several places, with copies that have drifted apart. |
-| Security | Holes in sign-in, permissions, secrets and input checks, and documented protections that never actually run. |
-| Red team | Attacks a test copy of your app, never production, one hostile request at a time, keeps the evidence, then cleans up. |
-| Reliability | What breaks when a service is slow, down or sends the same thing twice: missing timeouts, unsafe retries, failures no alert reports. |
-| Privacy | What personal data you hold, where it goes, whether deleting an account really removes the person, and whether your privacy policy matches the code. |
-| Dead code | Code, settings, routes and database tables that look live but never run. |
-| LLM | What each AI model call can make happen, and what stops it when the input is hostile. |
-| Accessibility | What your automated accessibility checks miss, judged against WCAG 2.2 AA. |
-| Cost | Vendor plans that don't fit your usage, what drives each bill, and whether a spike would be noticed before the invoice arrives. |
+| Audit | What it checks | For example |
+| --- | --- | --- |
+| **Testing** | Whether tests can fail, actually run, and cover what the product must and must never do | Tests that read the code as text instead of running it |
+| **Duplication** | Rules and logic built more than once | A billing rule in eight copies that have drifted apart |
+| **Security** | Sign-in, permissions, secrets, input checks, and protections the docs promise | A sign-in link that can send people to another website |
+| **Red team** | Real attacks on a test copy of your app, never production, one request at a time | One signed-in user reading another user's data |
+| **Reliability** | What happens when a service is slow, down or answers twice | A payment retried with no guard against charging twice |
+| **Privacy** | Where personal data goes, how long it stays, and whether deletion works | A deleted account still sitting in the logs |
+| **Dead code** | Code, settings and routes that look live but never run | A fix made in a file nothing calls |
+| **LLM** | Every AI model call, and what stops it when the input is hostile | A pasted document that talks the model into calling a tool |
+| **Accessibility** | What automated accessibility checks miss, against WCAG 2.2 AA | A form a screen reader can't get through |
+| **Cost** | Vendor plans against what you actually use | A plan two tiers above your usage |
 
-All of them, with what each one checks: [`.bkit/prompts.md`](.bkit/prompts.md#audit-ad-hoc).
+All 35, grouped by area, with what each one finds: [the full audit list](.bkit/comparison.md#audits).
 
 - **Run one whenever you want.** Name a template to `@bkit-audit-generate` and it writes a report to `docs/audits/{YYYYMM}/`. It reads your code and, where you've connected them, your live platforms, and lists anything it couldn't check rather than calling it clean.
 - **Findings turn into work.** Hand the report to `/bkit-plan` and the fixes are planned, built, tested and shipped like any other feature.
@@ -290,7 +294,7 @@ We measured both on 456 real Claude Code transcripts. They saved about 1–3% of
 - **One source, every host.** `.bkit/` renders `.claude/`, `.cursor/`, `.codex/`, `.agents/` (Antigravity) and `.opencode/`. `bkit check` is the CI drift gate.
 - **Reviewer independence.** Parallel reviewers can't read sibling output. Design brainstorm, design review and plan scope-check groups also cross models (Opus + Sonnet on Claude; Grok + Composer on Cursor); depth-sensitive lenses (plan review, build challenge) stay on the top tier.
 - **Per-agent pins.** Model and effort per agent, per provider ([`.bkit/prompts.md`](.bkit/prompts.md) § Models), immune to the session default.
-- **Against the literature.** bkit fully implements 13 of the 22 patterns in Antonio Gulli's _Agentic Design Patterns_, partly implements 7 (scoped to shipping code), leaves 2 out by design, and goes beyond the book in 8 places. Full mapping and every agent in execution order: [`.bkit/comparison.md`](.bkit/comparison.md).
+- **Against the literature.** bkit fully implements 13 of the 22 patterns in Antonio Gulli's _Agentic Design Patterns_, partly implements 7 (scoped to shipping code), leaves 2 out by design, and goes beyond the book in 8 places. Full mapping: [patterns comparison](.bkit/comparison.md#part-2--comparison-to-agentic-design-patterns), with [where bkit goes beyond the book](.bkit/comparison.md#where-bkit-goes-beyond-the-catalogue) and its [known gaps](.bkit/comparison.md#known-gaps-scoped-as-opportunities). Every agent in execution order: [pipeline reference](.bkit/comparison.md#part-1--the-five-phase-pipeline-in-order).
 
 </details>
 
