@@ -141,14 +141,20 @@ const gateIcon = (cx, cy, t, r = 19) =>
   `<path d="M${cx - r * 0.42} ${cy + r * 0.5} a${r * 0.42} ${r * 0.38} 0 0 1 ${r * 0.84} 0 z" fill="${t.gateInk}"/>`;
 const svg = (w, h, body, label) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">\n${body}\n</svg>\n`;
-// bkit signature, bottom right of every README image but the hero (the hero is the wordmark).
-// Each image adds SIG_H below its last row, so the signature has a line of its own. Laid out left to right
-// from a fixed start, so a wider fallback font can't push the wordmark into the dots.
-const SIG_H = 44;
-const signature = (t, W, H, inset = 60) => {
-  const x = W - inset - 304,
-    y = H - 30;
+// bkit footer under every README image but the hero (the hero is the wordmark): a divider, then
+// the licence on the left and the bkit signature on the right. `top` is the bottom edge of the
+// image's last content; the same FOOT gap sits above the divider, between the divider and the
+// footer, and below the footer, so every image ends alike. The footer row is 20 tall: the
+// wordmark's top is 16 above the baseline, the URL's descenders 4 below. The signature is laid out
+// left to right from a fixed start, so a wider fallback font can't push the wordmark into the dots.
+const FOOT = 28;
+const footH = (top) => top + 3 * FOOT + 20;
+const footer = (t, W, top, inset = 60, rule = inset) => {
+  const ry = top + FOOT,
+    y = ry + FOOT + 16,
+    x = W - inset - 304;
   return (
+    `<line x1="${rule}" y1="${ry}" x2="${W - rule}" y2="${ry}" stroke="${t.border}"/>` +
     ["design", "plan", "build", "debug", "ship"]
       .map((p, i) => `<circle cx="${x + i * 14}" cy="${y - 7}" r="5" fill="${t[p]}"/>`)
       .join("") +
@@ -329,7 +335,7 @@ function fences(t) {
 
   let b = `<defs><linearGradient id="fz" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${t.gate}" stop-opacity="0.1"/><stop offset="1" stop-color="${t.ok}" stop-opacity="0.14"/></linearGradient>`;
   b += `<marker id="fa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${t.debug}"/></marker></defs>`;
-  b += `<rect x="0.5" y="0.5" width="${W - 1}" height="${H + SIG_H - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
+  b += `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(1031) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
 
   b += text(X0, 64, "WHY IT WORKS", { size: 14, weight: 700, fill: t.plan, ls: 2.4 });
   b += text(X0 - 2, 128, "You don't steer AI.", { size: 56, weight: 800, fill: t.text, ls: -1.5 });
@@ -518,8 +524,8 @@ function fences(t) {
 
   return svg(
     W,
-    H + SIG_H,
-    b + signature(t, W, H + SIG_H),
+    footH(1031),
+    b + footer(t, W, 1031),
     "You don't steer AI, you build fences. AI agents start out scattered at design and are funnelled through plan, build, debug and ship into production-grade code. At design and plan, reviewer agents fence the work in; from build onwards, automated checks from the CI template (typecheck, lint, formatting, prose, tests) join them. Work that goes off target is sent back and retried, a failed test goes to debug, which finds the root cause, fixes it and re-runs the tests until they pass, and bkit waits for your sign-off after design, after plan and before merge.",
   );
 }
@@ -529,7 +535,7 @@ function pipeline(t) {
   const W = 1200,
     H = 690;
   let b = `<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${t.muted}"/></marker></defs>`;
-  b += `<rect x="0.5" y="0.5" width="${W - 1}" height="${H + SIG_H - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
+  b += `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(672) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
   const line = (x1, y1, x2, y2) =>
     `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${t.muted}" stroke-width="2" marker-end="url(#ah)"/>`;
   // One dot per agent: groups add up to each phase's agent count in .bkit/core/workflows/.
@@ -664,8 +670,8 @@ function pipeline(t) {
   });
   return svg(
     W,
-    H + SIG_H,
-    b + signature(t, W, H + SIG_H, 48),
+    footH(672),
+    b + footer(t, W, 672, 48, 40),
     "The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 40 AI agents: 10 in design, 10 in plan, 11 in build, 5 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode.",
   );
 }
@@ -676,7 +682,7 @@ function ci(t) {
   const W = 1200,
     H = 720;
   let b = `<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${t.muted}"/></marker></defs>`;
-  b += `<rect x="0.5" y="0.5" width="${W - 1}" height="${H + SIG_H - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
+  b += `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(H - 30) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
   b += text(48, 60, "bkit-ci.yml", { size: 24, weight: 700, fill: t.text, font: MONO });
   b += text(48, 92, "From quick checks to live-site tests, ending in one green tick", {
     size: 18,
@@ -786,8 +792,8 @@ function ci(t) {
   );
   return svg(
     W,
-    H + SIG_H,
-    b + signature(t, W, H + SIG_H, 48),
+    footH(H - 30),
+    b + footer(t, W, H - 30, 48, 40),
     "bkit's CI pipeline, flowing left to right: plan the run (work out what to test); check and build (quick checks, unit tests, integration tests, web, iOS and Android builds, database migrations); set the stage (preview deploy, reset test data); test like a user (web, iOS and Android end-to-end tests, and a live-site check); tidy up. Every lane feeds one final check, the only one merging needs, which fails if any lane failed, was skipped or ran zero tests. /bkit-build starts CI by opening the pull request, /bkit-debug reads the logs of any lane that fails and fixes it, and /bkit-ship merges only when the final check is green. In cloud mode, the result starts ship or debug by itself.",
   );
 }
@@ -801,7 +807,7 @@ function fenceDetails(t) {
   const arrow = (id, col) =>
     `<marker id="${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${col}"/></marker>`;
   let b = `<defs>${arrow("wr", t.debug)}${arrow("wg", t.ok)}${arrow("wp", t.plan)}${arrow("wm", t.muted)}<filter id="lbg" x="-0.03" y="-0.12" width="1.06" height="1.24"><feFlood flood-color="${t.surface}"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
-  b += `<rect x="0.5" y="0.5" width="${W - 1}" height="${H + SIG_H - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
+  b += `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(H - 30) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
 
   b += text(60, 64, "AGENTS AND CI", { size: 14, weight: 700, fill: t.plan, ls: 2.4 });
   b += text(58, 124, "Every change hits the same fences.", {
@@ -1003,8 +1009,8 @@ function fenceDetails(t) {
   );
   return svg(
     W,
-    H + SIG_H,
-    b + signature(t, W, H + SIG_H),
+    footH(H - 30),
+    b + footer(t, W, H - 30, 60, 40),
     "Every change hits the same fences. They never argue, and they grow. On the left, the agents. Every agent in every workflow looks up every definition and caller with code search before a change, is nudged by the agent hooks on every edit, has every workflow step checked by the step gates, and has its code formatted by the pre-commit hook on every commit. /bkit-plan decides the tests each feature adds to the fences (unit, integration or end-to-end). /bkit-build writes each test first, sees it fail, then hits every fence; the pre-push hook sends problems back before they leave your laptop. When a CI lane goes red, its logs give /bkit-debug the context to fix it. When CI is green, the change passes through and /bkit-ship merges it, re-checked on the merge commit. On the right, the fences, nearest and lightest first: code search on every lookup, agent hooks on every edit, step gates on every step, the pre-commit hook on every commit, the pre-push hook on every push, and CI, the strongest, on every push and pull request. The step gates are scripts, not prompts: a step missing its verdict or files can't finish, whatever the agent says. The pre-commit hook formats only the files being committed, so it takes seconds, and your own quick checks can go there too. CI runs integration, end-to-end and live-site tests, and one check fails if any lane failed, was skipped or ran no tests. Hooks, agents and CI run the same commands, and in cloud mode CI's answer starts debug or ship by itself.",
   );
 }
@@ -1098,8 +1104,16 @@ function audits(t) {
   );
   b += text(60, 252, "Bigger circle, bigger problem.", { size: 18, fill: t.muted });
 
+  // Key, top right beside the heading
+  const PH = 13,
+    KX = 850;
+  b += `<circle cx="${KX + 6}" cy="112" r="5" fill="none" stroke="${t.debug}" stroke-width="2"/>`;
+  b += `<circle cx="${KX + 30}" cy="112" r="10" fill="${t.debug}" fill-opacity="0.13" stroke="${t.debug}" stroke-width="2"/>`;
+  b += text(KX + 50, 118, "Problem found, sized by how big", { size: 16, fill: t.text });
+  b += `<rect x="${KX}" y="${152 - PH / 2}" width="40" height="${PH}" rx="${PH / 2}" fill="${t.bg}" stroke="${t.border}"/>`;
+  b += text(KX + 50, 158, "The app's code, simplified", { size: 16, fill: t.text });
+
   // The app's code: one column per layer, one pill per module
-  const PH = 13;
   const column = (x, w, top, n, step, first) => {
     const pills = [];
     for (let i = 0; i < n; i++) {
@@ -1263,17 +1277,9 @@ function audits(t) {
     cx += w + 10;
   }
 
-  // Key, then the signature on its own line below
-  const LY = cy + 30 + 32,
-    FY = LY + 46;
-  const H = FY + 30 + SIG_H;
-  b += `<line x1="40" y1="${LY}" x2="${W - 40}" y2="${LY}" stroke="${t.border}"/>`;
-  b += `<circle cx="66" cy="${FY - 6}" r="5" fill="none" stroke="${t.debug}" stroke-width="2"/>`;
-  b += `<circle cx="90" cy="${FY - 6}" r="10" fill="${t.debug}" fill-opacity="0.13" stroke="${t.debug}" stroke-width="2"/>`;
-  b += text(110, FY, "Problem found, sized by how big", { size: 16, fill: t.text });
-  b += `<rect x="400" y="${FY - 12}" width="34" height="${PH}" rx="${PH / 2}" fill="${t.bg}" stroke="${t.border}"/>`;
-  b += text(446, FY, "The app's code, simplified", { size: 16, fill: t.text });
-  b += signature(t, W, H);
+  const top = cy + 30,
+    H = footH(top);
+  b += footer(t, W, top, 60, 40);
 
   return svg(
     W,
@@ -1367,7 +1373,7 @@ function context(t) {
   const nRows = groups.reduce((n, g) => n + g.rows.length, 0);
   const top = 300;
   const H = top + groups.length * 56 + nRows * RH + 120;
-  let b = `<rect x="0.5" y="0.5" width="${W - 1}" height="${H + SIG_H - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
+  let b = `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(H - 49) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
   b += text(X0, 64, "WHAT IT KNOWS", { size: 14, weight: 700, fill: t.plan, ls: 2.4 });
   b += text(X0 - 2, 128, "Right context, right step.", {
     size: 56,
@@ -1443,8 +1449,8 @@ function context(t) {
   });
   return svg(
     W,
-    H + SIG_H,
-    b + signature(t, W, H + SIG_H),
+    footH(H - 49),
+    b + footer(t, W, H - 49),
     "What it knows: right context, right step, written back as it learns. In your repo, bkit reads project docs at every step and updates them at ship; reads and writes lessons, decisions, postponed work and known bugs; writes designs and plans that later steps read; reads audit reports at plan and a code map at every step; keeps run state and stats at every step; adds skills at build and removes them at ship. Outside your repo, it reads and updates the GitHub or Linear issue at every step, searches related issues at design, plan and debug, searches the web at design and debug, reads CI runs and test reports at debug and ship, reads runtime platforms such as Sentry, Vercel, Supabase and Stripe at debug, and opens, fixes and merges the pull request.",
   );
 }
@@ -1525,8 +1531,8 @@ function features(t) {
     TW = (W - 2 * M - 3 * G) / 4,
     TH = 112,
     RH = 150;
-  const H = M + rows.length * RH - 12 + M - 14;
-  let b = `<rect x="0.5" y="0.5" width="${W - 1}" height="${H + SIG_H - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
+  const H = M + (rows.length - 1) * RH + 26 + TH; // bottom of the last row of cards
+  let b = `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(H) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
   rows.forEach(({ name, key, cmd, tiles }, r) => {
     const ry = M + r * RH;
     const col = t[key];
@@ -1549,8 +1555,8 @@ function features(t) {
   });
   return svg(
     W,
-    H + SIG_H,
-    b + signature(t, W, H + SIG_H, M),
+    footH(H),
+    b + footer(t, W, H, M),
     "What ships with bkit, one coloured row per phase. Design: three rival designs, probe code for the risky unknowns, reads your history, reviewed for failure modes. Plan: five reviewers, big work split up, learns from past bugs and postponed work, more than 30 audits. Build: test first and verified, hunts bugs and security holes, checks the plan is still current, skills on demand. Debug: outside evidence from CI and your platforms, root cause first, hard-bug mode, knows when to stop. Ship: honest CI, nothing quietly dropped, docs and memory, never touches main. Every phase: any AI tool, best model per job, independent review, laptop to cloud.",
   );
 }
