@@ -1,8 +1,8 @@
-// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details), light + dark,
+// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details, audit map), light + dark,
 // plus the repo's social preview card, into .github/assets/ as both .svg and .png. Edit the copy
 // below, then: node scripts/readme/readme-art.mjs
 // Text is not auto-wrapped: keep tile lines short and eyeball the output at ~880px.
-import { writeFileSync, mkdirSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, mkdtempSync, rmSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -993,6 +993,288 @@ function fenceDetails(t) {
   );
 }
 
+// ---------- Audit map (what two audit templates found in one adopting app) ----------
+// One chip per .bkit/core/docs/templates/bkit-audit-*.md; a template with no label here fails the render.
+const AUDIT_LABELS = {
+  accessibility: "Accessibility",
+  adoption: "Adoption",
+  agents: "Agents",
+  "aio-seo": "AI search & SEO",
+  analytics: "Analytics",
+  annotations: "Annotations",
+  "app-performance": "App performance",
+  "app-store": "App Store",
+  architecture: "Architecture",
+  "ci-performance": "CI performance",
+  config: "Config",
+  cost: "Cost",
+  coverage: "Coverage",
+  database: "Database",
+  "dead-code": "Dead code",
+  deferrals: "Deferrals",
+  dependencies: "Dependencies",
+  documentation: "Documentation",
+  duplication: "Duplication",
+  failures: "Failures",
+  flakes: "Flaky tests",
+  gates: "Gates",
+  issues: "Issues",
+  llm: "LLM",
+  logs: "Logs",
+  models: "Models",
+  privacy: "Privacy",
+  prompts: "Prompts",
+  "red-team": "Red team",
+  reliability: "Reliability",
+  repo: "Repo",
+  security: "Security",
+  slop: "Slop",
+  testing: "Testing",
+  usability: "Usability",
+};
+function auditSlugs() {
+  const dir = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    ".bkit",
+    "core",
+    "docs",
+    "templates",
+  );
+  const slugs = readdirSync(dir)
+    .filter((f) => /^bkit-audit-.+\.md$/.test(f))
+    .map((f) => f.slice("bkit-audit-".length, -".md".length))
+    .sort();
+  const missing = slugs.filter((s) => !AUDIT_LABELS[s]);
+  if (missing.length) throw new Error(`no chip label for audit template(s): ${missing.join(", ")}`);
+  return slugs;
+}
+
+function audits(t) {
+  const W = 1200;
+  // Rough text widths for sizing cards and chips (no font metrics in an SVG string).
+  const tw = (s, size, bold) => s.length * size * (bold ? 0.55 : 0.5);
+  // Seeded, so re-running the script redraws the same wiring.
+  let seed = 7;
+  const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+  const pick = (a) => a[Math.floor(rand() * a.length)];
+
+  let b = "";
+  b += text(60, 64, "WHAT BKIT'S AUDIT TEMPLATES FOUND", {
+    size: 14,
+    weight: 700,
+    fill: t.plan,
+    ls: 2.4,
+  });
+  b += text(58, 124, "The tests were green.", { size: 50, weight: 800, fill: t.text, ls: -1.4 });
+  b += text(58, 180, "The bugs were still there.", {
+    size: 50,
+    weight: 800,
+    fill: t.muted,
+    ls: -1.4,
+  });
+  b += text(
+    60,
+    226,
+    "An app that adopted bkit, mapped. Every red circle was found by one of bkit's audit templates.",
+    { size: 18, fill: t.muted },
+  );
+  b += text(60, 252, "Bigger circle, bigger problem.", { size: 18, fill: t.muted });
+
+  // The app's code: one column per layer, one pill per module
+  const PH = 13;
+  const column = (x, w, top, n, step, first) => {
+    const pills = [];
+    for (let i = 0; i < n; i++) {
+      const pw = w - 22 - Math.round(rand() * 34);
+      pills.push({ x: x + (w - pw) / 2, y: first + i * step, w: pw });
+    }
+    return pills;
+  };
+  const box = (x, y, w, h) =>
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12" fill="${t.surface}" stroke="${t.border}"/>`;
+  const heading = (x, y, s, size = 13) =>
+    text(x, y, s, {
+      size,
+      weight: 700,
+      fill: size < 13 ? t.muted : t.text,
+      anchor: "middle",
+      ls: size < 13 ? 1.8 : 2.4,
+    });
+
+  b += heading(151, 344, "SCREENS");
+  b += box(90, 360, 122, 432) + heading(151, 380, "WEB", 11);
+  b += box(90, 862, 122, 150) + heading(151, 882, "PHONE", 11);
+  b += heading(451, 336, "API") + box(390, 352, 122, 645);
+  b += heading(758, 300, "SERVICES") + box(689, 316, 139, 716);
+  b += heading(1058, 420, "OUTSIDE SERVICES") + box(997, 436, 123, 480);
+
+  const web = column(90, 122, 360, 13, 30, 398);
+  const phone = column(90, 122, 862, 4, 28, 898);
+  const api = column(390, 122, 352, 20, 30, 372);
+  const services = column(689, 139, 316, 23, 30, 336);
+  const outside = column(997, 123, 436, 11, 42, 460);
+
+  // Calls between modules, left to right
+  const wire = (from, to, n) => {
+    for (let i = 0; i < n; i++) {
+      const a = pick(from),
+        z = pick(to);
+      const x1 = a.x + a.w,
+        y1 = a.y + PH / 2,
+        x2 = z.x,
+        y2 = z.y + PH / 2,
+        dx = (x2 - x1) / 2;
+      b += `<path d="M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}" fill="none" stroke="${t.muted}" stroke-opacity="0.3" stroke-width="0.9"/>`;
+    }
+  };
+  wire(web, api, 26);
+  wire(phone, api, 8);
+  wire(web, services, 8);
+  wire(api, services, 50);
+  wire(api, outside, 6);
+  wire(services, outside, 28);
+  for (const p of [...web, ...phone, ...api, ...services, ...outside])
+    b += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${PH}" rx="${PH / 2}" fill="${t.bg}" stroke="${t.border}"/>`;
+
+  // Findings: circle on the code it was found in, card to its right
+  const findings = [
+    [
+      151,
+      576,
+      80,
+      "TESTING AUDIT",
+      "Tests that could never fail",
+      ["About 100 read the code as text", "instead of running it"],
+    ],
+    [
+      451,
+      462,
+      37,
+      "TESTING AUDIT",
+      "A security hole",
+      ["A sign-in link could send", "people to another website"],
+    ],
+    [
+      758,
+      576,
+      72,
+      "DUPLICATION AUDIT",
+      "One rule, written 8 times",
+      ["The copies drifted: some billed", "accounts users had left"],
+    ],
+    [
+      604,
+      716,
+      54,
+      "TESTING AUDIT",
+      "No test made a request fail",
+      ["A failed save could still", "show “Saved”"],
+    ],
+    [
+      151,
+      756,
+      23,
+      "TESTING AUDIT",
+      "A fix in dead code",
+      ["The live screen next to it", "stayed broken"],
+    ],
+    [
+      451,
+      852,
+      44,
+      "DUPLICATION AUDIT",
+      "One database read, 4 copies",
+      ["Word for word, and one", "inside the API itself"],
+    ],
+    [
+      151,
+      948,
+      44,
+      "TESTING AUDIT",
+      "Phone tests that weren’t",
+      ["23 of 33 actually ran as web pages"],
+    ],
+  ];
+  for (const [cx, cy, r] of findings)
+    b +=
+      `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${t.debug}" fill-opacity="0.13" stroke="${t.debug}" stroke-width="2"/>` +
+      `<circle cx="${cx}" cy="${cy}" r="5" fill="${t.debug}"/>`;
+  for (const [cx, cy, r, audit, title, lines] of findings) {
+    const w =
+      Math.max(
+        tw(audit, 11, true) + audit.length * 1.6,
+        tw(title, 16, true),
+        ...lines.map((s) => tw(s, 13, false)),
+      ) + 28;
+    const h = 60 + lines.length * 18;
+    const x = cx + r + 10,
+      y = Math.round(cy - h / 2);
+    b += `<rect x="${x}" y="${y}" width="${Math.round(w)}" height="${h}" rx="8" fill="${t.bg}" stroke="${t.border}"/>`;
+    b += text(x + 14, y + 22, audit, { size: 11, weight: 700, fill: t.design, ls: 1.6 });
+    b += text(x + 14, y + 44, title, { size: 16, weight: 700, fill: t.debug });
+    lines.forEach((s, k) => (b += text(x + 14, y + 64 + k * 18, s, { size: 13, fill: t.text })));
+  }
+
+  // Every audit template bkit ships; the two behind this map filled in
+  const used = new Set(["testing", "duplication"]);
+  const slugs = auditSlugs();
+  b += `<line x1="40" y1="1060" x2="${W - 40}" y2="1060" stroke="${t.border}"/>`;
+  b += text(60, 1100, `THIS MAP: ${used.size} OF THE ${slugs.length} AUDIT TEMPLATES BKIT SHIPS`, {
+    size: 14,
+    weight: 700,
+    fill: t.design,
+    ls: 2.4,
+  });
+  let cx = 60,
+    cy = 1118;
+  for (const slug of slugs) {
+    const label = AUDIT_LABELS[slug],
+      on = used.has(slug);
+    const w = Math.round(tw(label, 14, on) + 28);
+    if (cx + w > W - 40) {
+      cx = 60;
+      cy += 40;
+    }
+    b += `<rect x="${cx}" y="${cy}" width="${w}" height="30" rx="15" fill="${on ? t.design : t.bg}" stroke="${on ? t.design : t.border}"/>`;
+    b += text(cx + w / 2, cy + 20, label, {
+      size: 14,
+      weight: on ? 700 : 400,
+      fill: on ? t.gateInk : t.muted,
+      anchor: "middle",
+    });
+    cx += w + 10;
+  }
+
+  // Key and signature
+  const LY = cy + 30 + 32,
+    FY = LY + 46;
+  const H = FY + 32;
+  b += `<line x1="40" y1="${LY}" x2="${W - 40}" y2="${LY}" stroke="${t.border}"/>`;
+  b += `<circle cx="66" cy="${FY - 6}" r="5" fill="none" stroke="${t.debug}" stroke-width="2"/>`;
+  b += `<circle cx="90" cy="${FY - 6}" r="10" fill="${t.debug}" fill-opacity="0.13" stroke="${t.debug}" stroke-width="2"/>`;
+  b += text(110, FY, "Problem found, sized by how big", { size: 16, fill: t.text });
+  b += `<rect x="400" y="${FY - 12}" width="34" height="${PH}" rx="${PH / 2}" fill="${t.bg}" stroke="${t.border}"/>`;
+  b += text(446, FY, "The app's code, simplified", { size: 16, fill: t.text });
+  // Signature laid out left to right from a fixed start, so a wider fallback font can't push the
+  // wordmark into the dots.
+  const SX = 836;
+  ["design", "plan", "build", "debug", "ship"].forEach(
+    (p, i) => (b += `<circle cx="${SX + i * 14}" cy="${FY - 7}" r="5" fill="${t[p]}"/>`),
+  );
+  b += text(SX + 72, FY + 1, "bkit", { size: 24, weight: 800, fill: t.text, ls: -0.6 });
+  b += text(W - 60, FY, "github.com/cbartens/bkit", { size: 15, fill: t.muted, anchor: "end" });
+
+  return svg(
+    W,
+    H,
+    `<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>` +
+      b,
+    `The tests were green. The bugs were still there. A map of an app that adopted bkit, in four columns: screens (web and phone), API, services and outside services, with thin lines for the calls between them. Red circles mark what bkit's audit templates found, bigger for bigger problems. Testing audit: tests that could never fail, about 100 of which read the code as text instead of running it; a security hole, where a sign-in link could send people to another website; no test made a request fail, so a failed save could still show “Saved”; a fix in dead code, while the live screen next to it stayed broken; phone tests that weren't, with 23 of 33 actually running as web pages. Duplication audit: one rule written 8 times, whose copies drifted so some billed accounts users had left; one database read in 4 copies, word for word, one inside the API itself. This map used 2 of the ${slugs.length} audit templates bkit ships: ${slugs.map((s) => AUDIT_LABELS[s]).join(", ")}.`,
+  );
+}
+
 // ---------- Context map (what each phase reads and writes) ----------
 // r = reads, w = writes, rw = both; one entry per phase: design, plan, build, debug, ship.
 // Sources: .bkit/core/.agents/docs.md phase matrix, Read / Create lines in .bkit/core/workflows/.
@@ -1281,6 +1563,7 @@ for (const [name, t] of Object.entries(THEMES)) {
   images.push([`bkit-context-${name}`, context(t)]);
   images.push([`bkit-ci-${name}`, ci(t)]);
   images.push([`bkit-fences-details-${name}`, fenceDetails(t)]);
+  images.push([`bkit-audits-${name}`, audits(t)]);
 }
 // One social image: link previews have no light/dark switch, and dark reads on both.
 images.push(["bkit-social", social(THEMES.dark)]);
