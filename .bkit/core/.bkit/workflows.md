@@ -701,6 +701,7 @@ Then assert each Update/Create artifact exists, non-empty. Empty → **Failure P
 | Dev lock wait budget | 600s | How long a dev critical section waits for the lock before Failure Path with the holder line (`SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S`). Ship's Failure Path and the build / debug dev-side roadmap mirror pass `--deadline=60` and skip their dev ops rather than hard-failing |
 | Ship CI wait | 1800s / 30s | Step 9 completion poll budget / interval (`SHIP_CI_WAIT_TIMEOUT_S` / `SHIP_POLL_INTERVAL_S`) |
 | Ship presence probe | 6 x 10s | Step 9 run-at-head probe before any dispatch (`SHIP_PROBE_ATTEMPTS` x `SHIP_PROBE_INTERVAL_S`) |
+| Newest-bkit lookup | 5s / 86400s / 3600s | Registry query limit / answer reuse / failure reuse for the outdated-bkit check (`BKIT_LATEST_LOOKUP_TIMEOUT_S` / `BKIT_LATEST_CACHE_S` / `BKIT_LATEST_RETRY_S`) |
 
 `MAX_*` live in `THRESHOLDS` (`commands/workflow/counters.ts`; `bkit counters max`) and are referenced by name in retry checks (`bkit counters route --limit=`) — never a literal `3`. Waits live in `TIMEOUTS` (`.bkit/core/engine/shared/timeouts.ts`).
 

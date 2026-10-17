@@ -28,6 +28,7 @@ import { readTemplate } from "../../render/parts.js";
 import { TEMPLATE_COPIES_DIR, getCoreRoot, getSharedRoot, getBkitDocsRoot, getPkgRoot, } from "../../shared/package-roots.js";
 import { getInstallingVersion, requireOpencodeProvider, detectOpencodeProviders, runUpgradeAdvisories, } from "./install.js";
 import { setLogPrefix } from "../../shared/log-prefix.js";
+import { BKIT_PACKAGE, lookupLatestPublished } from "../../shared/bkit-latest.js";
 import { getInstallManifest, getModuleManifest, DEFAULT_ISSUE_TRACKER, parseIssueTracker, } from "../../install/manifest.js";
 import { OPTIN_MODULES } from "../../install/manifest.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
@@ -339,16 +340,15 @@ export function updateCanonicalHashesAfterUpgrade(result, options) {
  * registry auth). Hard-exits with guidance on failure — the caller has nothing
  * to fall back to.
  */
-async function resolveLatestPublishedVersion(cwd) {
-    const { spawnSync } = await import("node:child_process");
-    const r = spawnSync("pnpm", ["view", "@cbartens/bkit", "version"], { cwd, encoding: "utf-8" });
-    if (r.status !== 0 || !r.stdout || !r.stdout.trim()) {
-        console.error(`${LOG_PREFIX} could not resolve the latest @cbartens/bkit version from the registry ` +
-            `(pnpm view exit ${r.status ?? "null"}). Check your network / registry access, ` +
+function resolveLatestPublishedVersion(cwd) {
+    const latest = lookupLatestPublished(cwd, null);
+    if (latest === null) {
+        console.error(`${LOG_PREFIX} could not resolve the latest ${BKIT_PACKAGE} version from the registry ` +
+            `(pnpm view failed). Check your network / registry access, ` +
             `or pin a version with --to=<version>.`);
         process.exit(1);
     }
-    return r.stdout.trim();
+    return latest;
 }
 /**
  * Atomic self-bump for `bkit upgrade --to=<v>` / `--latest`: install the target
@@ -362,9 +362,8 @@ async function resolveLatestPublishedVersion(cwd) {
  */
 export async function runSelfBump(flags, cwd) {
     const installed = getInstallingVersion();
-    // --latest needs async registry resolution, but planSelfBump's injected resolver
-    // is sync; resolve the latest first (only when asked), then feed it a constant.
-    const latestVersion = flags.latest ? await resolveLatestPublishedVersion(cwd) : "";
+    // Resolve the latest first (only when asked), then feed planSelfBump a constant.
+    const latestVersion = flags.latest ? resolveLatestPublishedVersion(cwd) : "";
     const resolvedPlan = planSelfBump(installed, { toVersion: flags.toVersion, latest: flags.latest }, () => latestVersion);
     if (resolvedPlan.kind === "invalid") {
         console.error(`${LOG_PREFIX} ${resolvedPlan.message}`);

@@ -221,6 +221,7 @@ describe("bkit repo info — where bkit, the repo root and the outbox live", () 
 });
 
 describe("bkit repo info — whether this repo's bkit is behind the newest release", () => {
+  beforeEach(() => vi.stubEnv("BKIT_NO_UPDATE_CHECK", ""));
   const pin = (version: string) => {
     fs.mkdirSync(path.join(cwd, ".bkit"), { recursive: true });
     fs.writeFileSync(

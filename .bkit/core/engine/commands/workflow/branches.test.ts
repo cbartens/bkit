@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import * as prettier from "prettier";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
@@ -575,34 +576,51 @@ describe("branches anchor-stamp", () => {
     const cache = path.join(dir, ".git", "bkit-latest-version.json");
     fs.writeFileSync(cache, JSON.stringify({ latest: "5.1.0", checkedAt: Date.now() }));
     write(dir, "report.md", "<!-- Note: report -->\n# Audit\n");
-    const r = await run(dir, [
-      "anchor-stamp",
-      "--file=report.md",
-      "--base-sha=abc",
-      "--base-ref=dev",
-    ]);
+    const r = await run(
+      dir,
+      ["anchor-stamp", "--file=report.md", "--base-sha=abc", "--base-ref=dev"],
+      { BKIT_NO_UPDATE_CHECK: "" },
+    );
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ bkitVersion: "5.0.0", bkitLatest: "5.1.0", bkitOutdated: true });
     expect(r.err).toContain("running bkit 5.0.0; 5.1.0 is out");
     const stamped = read(dir, "report.md");
     expect(stamped).toMatch(
-      /^<!-- bkit:anchor\nbaseSha: abc\nbaseRef: dev\nbkitVersion: 5\.0\.0\nbkitLatest: 5\.1\.0\n-->\n> \*\*Outdated bkit:\*\* generated with bkit 5\.0\.0 while 5\.1\.0 was out.*<!-- bkit:outdated -->\n\n<!-- Note: report -->\n# Audit\n$/,
+      /^<!-- bkit:anchor\nbaseSha: abc\nbaseRef: dev\nbkitVersion: 5\.0\.0\nbkitLatest: 5\.1\.0\n-->\n\n> \*\*Outdated bkit:\*\* generated with bkit 5\.0\.0 while 5\.1\.0 was out.*<!-- bkit:outdated -->\n\n<!-- Note: report -->\n# Audit\n$/,
     );
-    const back = await run(dir, ["anchor-read", "--file=report.md", "--field=bkitVersion"]);
+    const back = await run(dir, ["anchor-read", "--file=report.md", "--field=bkitVersion"], {
+      BKIT_NO_UPDATE_CHECK: "",
+    });
     expect(back.json).toMatchObject({ value: "5.0.0", bkitLatest: "5.1.0" });
 
     // After an upgrade the next stamp drops the warning instead of stacking a second.
     write(dir, ".bkit/version", JSON.stringify({ pinnedVersion: "5.1.0", canonicalHashes: {} }));
-    const again = await run(dir, [
-      "anchor-stamp",
-      "--file=report.md",
-      "--base-sha=abc",
-      "--base-ref=dev",
-    ]);
+    const again = await run(
+      dir,
+      ["anchor-stamp", "--file=report.md", "--base-sha=abc", "--base-ref=dev"],
+      { BKIT_NO_UPDATE_CHECK: "" },
+    );
     expect(again.json).toMatchObject({ bkitOutdated: false, bkitAdvisory: null });
     expect(read(dir, "report.md")).toBe(
-      "<!-- bkit:anchor\nbaseSha: abc\nbaseRef: dev\nbkitVersion: 5.1.0\nbkitLatest: 5.1.0\n-->\n<!-- Note: report -->\n# Audit\n",
+      "<!-- bkit:anchor\nbaseSha: abc\nbaseRef: dev\nbkitVersion: 5.1.0\nbkitLatest: 5.1.0\n-->\n\n<!-- Note: report -->\n# Audit\n",
     );
+  });
+
+  it("writes the outdated warning the way prettier formats it, and re-stamps it stably", async () => {
+    const outdated = { version: "5.0.0", latest: "5.1.0", outdated: true, advisory: "x" };
+    const current = { version: "5.1.0", latest: "5.1.0", outdated: false, advisory: null };
+    const options = {
+      ...(await prettier.resolveConfig(path.join(REPO_ROOT, "README.md"))),
+      parser: "markdown",
+    };
+    for (const body of ["# Title\n\nBody.\n", "\n# Title\n\nBody.\n"]) {
+      const once = stampAnchor(body, "abc", undefined, "dev", outdated);
+      expect(await prettier.check(once, options)).toBe(true);
+      expect(stampAnchor(once, "abc", undefined, "dev", outdated)).toBe(once);
+      expect(
+        await prettier.check(stampAnchor(once, "abc", undefined, "dev", current), options),
+      ).toBe(true);
+    }
   });
 
   it("stamps an empty bkitLatest and no warning when the newest release is unknown", async () => {

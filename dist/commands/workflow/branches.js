@@ -352,14 +352,16 @@ export function stampAnchor(text, baseSha, design, baseRef = UPSTREAM, bkit) {
     if (bkit)
         header.push(`bkitVersion: ${bkit.version ?? ""}`, `bkitLatest: ${bkit.latest ?? ""}`);
     header.push(ANCHOR_CLOSE);
-    if (bkit?.outdated === true) {
-        header.push(`> **Outdated bkit:** generated with bkit ${bkit.version} while ${bkit.latest} was out, so its workflow and template text may be stale. Upgrade with \`pnpm bkit upgrade --latest\` and regenerate if that matters. ${OUTDATED_MARK}`, "");
-    }
-    const body = anchorLines(text)
+    let body = anchorLines(text)
         .filter((l) => !l.inBlock)
         .map((l) => (l.last ? l.line : `${l.line}\n`))
         .join("")
         .replace(OUTDATED_LINE, "");
+    if (bkit?.outdated === true) {
+        // Blank lines on both sides of the warning, as prettier writes them.
+        header.push("", `> **Outdated bkit:** generated with bkit ${bkit.version} while ${bkit.latest} was out, so its workflow and template text may be stale. Upgrade with \`pnpm bkit upgrade --latest\` and regenerate if that matters. ${OUTDATED_MARK}`);
+        body = `\n${body.replace(/^\n+/, "")}`;
+    }
     return `${header.join("\n")}\n${body}`;
 }
 // ---------------------------------------------------------------------------

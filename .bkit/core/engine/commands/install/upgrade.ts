@@ -49,6 +49,7 @@ import {
   runUpgradeAdvisories,
 } from "./install.js";
 import { setLogPrefix } from "../../shared/log-prefix.js";
+import { BKIT_PACKAGE, lookupLatestPublished } from "../../shared/bkit-latest.js";
 import {
   getInstallManifest,
   getModuleManifest,
@@ -536,18 +537,17 @@ export function updateCanonicalHashesAfterUpgrade(
  * registry auth). Hard-exits with guidance on failure — the caller has nothing
  * to fall back to.
  */
-async function resolveLatestPublishedVersion(cwd: string): Promise<string> {
-  const { spawnSync } = await import("node:child_process");
-  const r = spawnSync("pnpm", ["view", "@cbartens/bkit", "version"], { cwd, encoding: "utf-8" });
-  if (r.status !== 0 || !r.stdout || !r.stdout.trim()) {
+function resolveLatestPublishedVersion(cwd: string): string {
+  const latest = lookupLatestPublished(cwd, null);
+  if (latest === null) {
     console.error(
-      `${LOG_PREFIX} could not resolve the latest @cbartens/bkit version from the registry ` +
-        `(pnpm view exit ${r.status ?? "null"}). Check your network / registry access, ` +
+      `${LOG_PREFIX} could not resolve the latest ${BKIT_PACKAGE} version from the registry ` +
+        `(pnpm view failed). Check your network / registry access, ` +
         `or pin a version with --to=<version>.`,
     );
     process.exit(1);
   }
-  return r.stdout.trim();
+  return latest;
 }
 
 /**
@@ -562,9 +562,8 @@ async function resolveLatestPublishedVersion(cwd: string): Promise<string> {
  */
 export async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boolean> {
   const installed = getInstallingVersion();
-  // --latest needs async registry resolution, but planSelfBump's injected resolver
-  // is sync; resolve the latest first (only when asked), then feed it a constant.
-  const latestVersion = flags.latest ? await resolveLatestPublishedVersion(cwd) : "";
+  // Resolve the latest first (only when asked), then feed planSelfBump a constant.
+  const latestVersion = flags.latest ? resolveLatestPublishedVersion(cwd) : "";
   const resolvedPlan = planSelfBump(
     installed,
     { toVersion: flags.toVersion, latest: flags.latest },

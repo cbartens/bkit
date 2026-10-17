@@ -1,9 +1,9 @@
 // bkit-latest — is the bkit this repo rendered its workflows and audit templates
 // from behind the newest published release?
 //
-// `bkit repo info` (every phase workflow's Step 1) and `bkit branches anchor-stamp
-// --bkit-version` (every audit's report stub) report it, so a run on outdated
-// workflow / audit text says so. Advisory only: no registry answer means `latest`
+// `bkit repo info` (every phase workflow's Step 1) and the anchor stamp on every
+// audit report, design and plan report it, so a run on outdated workflow /
+// template text says so. Advisory only: no registry answer means `latest`
 // is null and nothing is printed, never an error. The registry answer is kept in
 // the git common dir (shared by every worktree, never committed) so parallel runs
 // ask npm at most once a day.
@@ -69,11 +69,14 @@ export function compareSemver(a: string, b: string): -1 | 0 | 1 | null {
 }
 
 /** The newest published bkit per the registry, or null on any failure (offline, timeout, no pnpm). */
-export function lookupLatestPublished(cwd: string): string | null {
+export function lookupLatestPublished(
+  cwd: string,
+  timeoutS: number | null = TIMEOUTS.BKIT_LATEST_LOOKUP_TIMEOUT_S,
+): string | null {
   const res = spawnSync(PACKAGE_RUNNER, ["view", BKIT_PACKAGE, "version"], {
     cwd,
     encoding: "utf-8",
-    timeout: TIMEOUTS.BKIT_LATEST_LOOKUP_TIMEOUT_S * 1000,
+    ...(timeoutS === null ? {} : { timeout: timeoutS * 1000 }),
   });
   if (res.error || res.status !== 0) return null;
   const version = (res.stdout ?? "").trim().replace(/^v/, "");
