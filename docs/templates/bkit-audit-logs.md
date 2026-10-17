@@ -79,6 +79,8 @@ A test-origin tag narrows the lane. It does not make something noise, and it doe
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
@@ -90,7 +92,7 @@ Always verify.
 
 Verify only when applicable.
 
-- [ ] **Runtime Logs:** Hosted platforms → Step 11 — read-only log APIs, e.g. log-fetch blocks, vendor CLIs, MCPs. Skipped credential = not read, never clean. Fallback: each skipped source named in `Not Checked`.
+- [ ] **Runtime Logs:** Hosted platforms → Step 11 — read-only log APIs, e.g. vendor CLIs, MCPs. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window, run it via `direnv exec . bash`. Skipped credential = not read, never clean. Fallback: each skipped source named in `Not Checked`.
 - [ ] **Language Server:** Typed language → Step 7 — references, e.g. Serena, `tsserver`. Fallback: text search only; name it on every blast-radius row.
 - [ ] **Symbol Maps:** Release builds → Step 4 — source maps and native symbols. Fallback: unsymbolicated = finding; call-site table marked unbuildable.
 - [ ] **User Reports:** Feedback channel exists → Step 10 — tracker user feedback, support inbox, store reviews. Fallback: `Not Checked`.
@@ -141,7 +143,7 @@ Verify only when applicable.
 
   Text search finds candidates; read each. Deliberate best-effort (telemetry, fire-and-forget notification) OK when code says so. Real one → Expected names `docs/failures.jsonl` row to append; names `bkit-audit-database` when miss is grant, policy, or write role. Appending = next step. Users see same shape: tracker user feedback, support inbox, store reviews since previous report. User-reported failure with no matching event = this class. Next step = runtime half: swallowed DB error may appear in DB log. **Done when:** `Invisible` lists each candidate read, and its verdict.
 
-- [ ] **Step 11 — Runtime Logs:** Read each runtime-log source in `Project Instructions` for whole window since previous report, not tool default short window. Record retention from plan page and window part source could not cover. Retention < cadence = finding → drain or shorter cadence. Skipped reader (credential, tool, block) = not read, never clean. No reader → vendor console by hand, or not read and why. Note whether server logs share one structured shape (request id, trace id, hashed tenant id, error code) so queries are filters not text search; tracker log product or OTel log exporter in use. Per log error:
+- [ ] **Step 11 — Runtime Logs:** Read each runtime-log source in `Project Instructions` and each `context=runtime` block in `.agents/context.md` for whole window since previous report, not tool default short window. Record retention from plan page and window part source could not cover. Retention < cadence = finding → drain or shorter cadence. Skipped reader (credential, tool, block) = not read, never clean. No reader → vendor console by hand, or not read and why. Note whether server logs share one structured shape (request id, trace id, hashed tenant id, error code) so queries are filters not text search; tracker log product or OTel log exporter in use. Per log error:
   - Match tracker first (timestamps; trace id joins). Covered → note platform evidence on issue. Same incident, not second finding.
   - Group by time across sources. Cluster within few minutes = one outage; write once.
   - Tracker empty → gap = finding. Noise (why), or failure that should have been reported. Second → Expected names signal: log at call site, upstream-outage classifier pattern, or health-endpoint check. Monitor/capacity alert = next step, not this run.

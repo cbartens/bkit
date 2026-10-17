@@ -1477,6 +1477,22 @@ one `N/A` row with evidence, never "clean".
 **CRITICAL:** Check off ALL core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. NEVER abort for a missing capability.
 ```
 
+### audit-direnv
+
+- audit: required
+
+```text
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+```
+
+### audit-context-fetch
+
+- audit: where-used
+
+```text
+Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window, run it via `direnv exec . bash`.
+```
+
 ### audit-conditional
 
 - audit: required
@@ -1644,6 +1660,10 @@ Scale per `.bkit/jsonl.md` § Severity.
 - audit: required
 
 ```text
+**Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age.
+```
+
+```retired
 **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age.
 ```
 

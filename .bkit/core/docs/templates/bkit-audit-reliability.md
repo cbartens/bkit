@@ -71,6 +71,8 @@ Failure paths are least-tested: happy path is tested; vendor outage stays unwalk
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
@@ -83,7 +85,7 @@ Always verify.
 Verify only when applicable.
 
 - [ ] **Metrics:** Hosted traces, errors, or health endpoint → Steps 3, 13 — SLO queries and alert config, e.g. Sentry, Datadog, Better Stack. Fallback: repo config only; live measurements `Not Checked`.
-- [ ] **Job Platform:** Background jobs → Steps 6, 7 — flow control and replay docs, read-only, e.g. Inngest, Temporal. Fallback: code only; live run history `Not Checked`.
+- [ ] **Job Platform:** Background jobs → Steps 6, 7 — flow control and replay docs, read-only, e.g. Inngest, Temporal. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window, run it via `direnv exec . bash`. Fallback: code only; live run history `Not Checked`.
 - [ ] **Deploy Platform:** Hosted deploys → Step 12 — skew protection, rollout, rollback history, e.g. Vercel API, Cloud Run. Fallback: repo config only; dashboard settings `Not Checked`.
 - [ ] **Vendor Status:** External dependencies → Step 13 — status feeds. Fallback: none; feeds `Not Checked`.
 

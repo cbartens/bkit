@@ -77,11 +77,13 @@ One per annotation. **SILENT FAILURE** outranks every other verdict.
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
-- [ ] **CI Read:** Steps 2, 5, 11 — annotations and step logs for recent runs of every workflow, e.g. `gh api` check-run annotations, `gh run view --log`, GitLab job-trace API. Fallback: saved logs; runs not fetched `Not Checked`.
+- [ ] **CI Read:** Steps 2, 5, 11 — annotations and step logs for recent runs of every workflow, e.g. `gh api` check-run annotations, `gh run view --log`, GitLab job-trace API. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window, run it via `direnv exec . bash`. Fallback: saved logs; runs not fetched `Not Checked`.
 - [ ] **Workflow Files:** Steps 4, 6, 8 — workflows, composite actions, reusable workflows on disk. Fallback: none.
 - [ ] **Web:** Steps 3, 12 — vendor changelog, runner-image announcements, anchor standards. Fallback: versions recorded as unread.
 

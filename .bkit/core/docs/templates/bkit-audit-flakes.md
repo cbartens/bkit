@@ -79,11 +79,13 @@ One per flake. Root-cause class (`Mechanism`) = evidence; these = outcomes. Quar
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
-- [ ] **CI History:** Steps 2, 3 — workflow runs since previous report, e.g. `gh run list`, Actions API, GitLab pipelines. Fallback: local repeats only; ranked CI list `Not Checked`.
+- [ ] **CI History:** Steps 2, 3 — workflow runs since previous report, e.g. `gh run list`, Actions API, GitLab pipelines. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window, run it via `direnv exec . bash`. Fallback: local repeats only; ranked CI list `Not Checked`.
 - [ ] **Repeat Runner:** Steps 4, 7, 8 — repeat with retries off, e.g. Playwright `--repeat-each`, pytest-repeat. Fallback: rate `Not Checked`; do not mark `FIX NAMED` on unmeasured flake unless mechanism deterministic and report says rate unknown.
 - [ ] **Web:** Steps 6, 13 — vendor status pages and anchor standards. Fallback: incidents and versions recorded as unread.
 

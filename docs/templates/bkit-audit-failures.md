@@ -88,6 +88,8 @@ Row text awaiting confirmation = UNCONFIRMED until reproduced or read end to end
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
@@ -101,7 +103,7 @@ Always verify.
 Verify only when applicable.
 
 - [ ] **Language Server:** Typed language → Step 4 — symbol at current path, caller chain, diagnostics for one file without full typecheck, e.g. Serena, `tsserver`. Fallback: text search. Reach and close needing callers stay hypotheses until corroborated.
-- [ ] **Error Tracker:** Production or preview events exist → Steps 4, 5 — event counts and flows after fix commit, e.g. Sentry, platform logs. Fallback: code only. Event counts `Not Checked`.
+- [ ] **Error Tracker:** Production or preview events exist → Steps 4, 5 — event counts and flows after fix commit, e.g. Sentry, platform logs. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window, run it via `direnv exec . bash`. Fallback: code only. Event counts `Not Checked`.
 - [ ] **Tracker:** Issues wired → Steps 4, 7 — issue carrying bug, postmortem tracking issue. Fallback: issue pointers `Not Checked`.
 - [ ] **CI Config:** Workflow can fail build → Step 3 — gate on open `CRITICAL` failures. Fallback: gate check `Not Checked`.
 
