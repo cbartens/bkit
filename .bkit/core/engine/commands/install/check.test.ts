@@ -40,6 +40,11 @@ describe("detectInstalledModules — sentinel-file module detection", () => {
     expect(detectInstalledModules(cwd).has("codex")).toBe(true);
   });
 
+  it("detects antigravity from its hook files when plugin.json is deleted", () => {
+    touch(".agents/plugins/bkit/hooks/bkit-gateguard.cjs");
+    expect([...detectInstalledModules(cwd)].sort()).toEqual(["antigravity", "core"]);
+  });
+
   it("detects no module from adopted templates (bkit-ci.yml, .vale.ini, husky, lint configs)", () => {
     for (const rel of [
       ".github/workflows/bkit-ci.yml",

@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-build-install-skills"
 description = "Senior technical lead matching feature requirements to relevant installable skills."
 model = "gpt-5.6-terra"

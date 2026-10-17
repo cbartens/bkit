@@ -21,6 +21,7 @@ import {
 import type { SuppressionNote } from "../../checks/after/suppression.js";
 import { collectTips } from "../../checks/tips/index.js";
 import { parseDotenv } from "../../install/cloud-env.js";
+import { detectInstalledHostModules } from "../../install/hosts.js";
 
 /**
  * `bkit status` — read-only host/provider status.
@@ -99,9 +100,7 @@ export function runStatus(cwd: string, logPrefix: string): void {
   const codexPresent = fs.existsSync(codexDir);
 
   // --- antigravity host ---
-  const antigravityPresent = fs.existsSync(
-    path.join(cwd, ".agents", "plugins", "bkit", "plugin.json"),
-  );
+  const antigravityPresent = detectInstalledHostModules(cwd).has("antigravity");
 
   const opencodeStatus = opencodePresent
     ? `INSTALLED  (${providerLabel}: ${opencodeProviderDisplay} / model: ${opencodeModel})`

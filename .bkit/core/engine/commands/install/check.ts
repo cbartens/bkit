@@ -2,16 +2,15 @@
 // dry-run mode (commands/install/install.ts runInstall); this file holds the installed-module
 // detection that scopes its drift gate and the drift verdict.
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type { ModuleFlag } from "../../cli.js";
+import { detectInstalledHostModules } from "../../install/hosts.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
 import { type MissingOwnedHook, describeMissingOwnedHook } from "../../checks/after/managed.js";
 import { LOG_PREFIX } from "../../shared/log-prefix.js";
 
 /**
  * Installed-module set, detected by sentinel-file presence. Always core, plus the installed
- * subset of {claude, cursor, opencode, codex}. Two callers:
+ * hosts (detectInstalledHostModules). Two callers:
  *   - `bkit check` — scopes the drift gate, so a `--cursor`-only repo does not
  *     report `.claude/**` as drift.
  *   - `bkit upgrade` — scopes the template walk, so upgrade does NOT force-create files for a
@@ -25,14 +24,7 @@ import { LOG_PREFIX } from "../../shared/log-prefix.js";
  * Dependency-updater files are not modules: bkit never drift-checks them.
  */
 export function detectInstalledModules(cwd: string): Set<ModuleFlag> {
-  const mods = new Set<ModuleFlag>(["core"]);
-  if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
-  if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
-  if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
-  if (fs.existsSync(path.join(cwd, ".codex", "agents"))) mods.add("codex");
-  if (fs.existsSync(path.join(cwd, ".agents", "plugins", "bkit", "plugin.json")))
-    mods.add("antigravity");
-  return mods;
+  return new Set<ModuleFlag>(["core", ...detectInstalledHostModules(cwd)]);
 }
 
 // Check mode: exit-1 on drift (totalWrites > 0). runInstall emits the banner first.

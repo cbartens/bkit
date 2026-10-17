@@ -3,7 +3,8 @@
 // Claude `.claude/settings.json` permissions deny/ask and OpenCode permission map).
 //
 // Wired from `.cursor/hooks.json`:
-//   - beforeShellExecution → force-push / recursive-rm / dangerous git+gh
+//   - beforeShellExecution → force-push / recursive-rm / dangerous git+gh; shell reads of
+//     .env / private-key files ask
 //   - preToolUse (Read|TabRead) → .env ask; private-key deny
 //
 // Output: JSON `{ permission: "allow"|"ask"|"deny", user_message?, agent_message? }`
@@ -65,8 +66,13 @@ function decideShell(cmd) {
       return deny(`Blocked: ${v.what} is denied by bkit Cursor guardrails.`, v.fix);
     case "ask":
       return ask(
-        "bkit Cursor guardrails: confirm this destructive / privileged shell command.",
+        `bkit Cursor guardrails: confirm this destructive / privileged shell command (${v.what}).`,
         `Command requires confirmation: ${c}`,
+      );
+    case "secret":
+      return ask(
+        "bkit Cursor guardrails: confirm a shell read of an env/secrets or private-key file.",
+        `Reading ${v.path} through the shell may expose secrets. Prefer direnv / documented non-secret examples. Command: ${c}`,
       );
     case "fetch":
       return ask(

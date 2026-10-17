@@ -105,6 +105,13 @@ describe("antigravity guardrails.cjs — Antigravity contract", () => {
     const r = run("git reset --hard HEAD~1");
     expect(r.decision).toBe("ask");
     expect(r.reason).toContain("PROHIBITED list");
+    expect(r.reason).toContain("(git reset --hard)");
+  });
+
+  it("hands a shell read of a secret file to Antigravity's own approval prompt", () => {
+    const r = run("cat .bkit/.env");
+    expect(r.decision).toBe("ask");
+    expect(r.reason).toContain("reads .bkit/.env");
   });
 
   it("delivers an advisory tier by denying once; the identical retry passes", () => {

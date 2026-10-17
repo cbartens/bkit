@@ -1747,6 +1747,34 @@ describe("upgrade-render", () => {
       expect(fs.readFileSync(abs, "utf-8")).toContain("// consumer edit");
       expect(recordedHash(), "upgrade must not re-record the consumer's content").toBe(before);
     }, 180_000);
+
+    it("re-records the hash of .cursor/allowlist.json when upgrade regenerates it, so uninstall still deletes it", () => {
+      const tsxBin = getTsxBin();
+      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
+      expect(runBkit(["install", "--cursor"]).status).toBe(0);
+
+      const rel = path.join(".cursor", "allowlist.json");
+      const abs = path.join(tmpDir, rel);
+      const versionPath = path.join(tmpDir, ".bkit", "version");
+      const recordedHash = (): string | undefined =>
+        (
+          JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+            canonicalHashes: Record<string, string>;
+          }
+        ).canonicalHashes[rel];
+      expect(recordedHash()).toBe(sha256(fs.readFileSync(abs, "utf-8")));
+
+      fs.appendFileSync(
+        path.join(tmpDir, ".agents", "context.md"),
+        "\n<!-- allowed-domains:start -->\nexample.com\n<!-- allowed-domains:end -->\n",
+      );
+      expect(runBkit(["upgrade"]).status).toBe(0);
+      expect(fs.readFileSync(abs, "utf-8")).toContain("example.com");
+      expect(recordedHash()).toBe(sha256(fs.readFileSync(abs, "utf-8")));
+
+      expect(runBkit(["uninstall"]).status).toBe(0);
+      expect(fs.existsSync(abs)).toBe(false);
+    }, 180_000);
   });
 
   describe("advisories — check and upgrade report what install reports", () => {

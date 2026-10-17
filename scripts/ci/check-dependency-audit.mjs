@@ -28,6 +28,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 /** Severity → the most days an acceptance may run. Severities not listed never block. */
 export const DEFAULT_BLOCKING = { critical: 7, high: 30 };
@@ -120,25 +121,28 @@ function runAudit() {
       encoding: "utf-8",
       maxBuffer: 64 * 1024 * 1024,
     });
+    let parseError = "";
     try {
       const report = JSON.parse(res.stdout);
       if (report && typeof report.advisories === "object") return report;
-    } catch {
-      // not JSON — fall through to the retry
+    } catch (err) {
+      parseError = `not JSON (${err.message}): `;
     }
-    const detail = (res.stderr || res.stdout || "").trim().split("\n").slice(-3).join(" | ");
+    const tail = (res.stderr || res.stdout || "").trim().split("\n").slice(-3).join(" | ");
+    const detail = parseError + tail;
     console.error(`::warning::dependency-audit: attempt ${attempt} printed no report — ${detail}`);
   }
   return null;
 }
 
 function main(argv) {
-  const arg = (name, fallback) => {
-    const hit = argv.find((a) => a.startsWith(`--${name}=`));
-    return hit ? hit.slice(name.length + 3) : fallback;
-  };
-  const registryPath = arg("registry", path.join("scripts", "ci", "accepted-advisories.json"));
-  const reportPath = arg("report", null);
+  const { values } = parseArgs({
+    args: argv,
+    options: { registry: { type: "string" }, report: { type: "string" } },
+    strict: false,
+  });
+  const registryPath = values.registry ?? path.join("scripts", "ci", "accepted-advisories.json");
+  const reportPath = values.report ?? null;
 
   const registry = fs.existsSync(registryPath)
     ? JSON.parse(fs.readFileSync(registryPath, "utf-8"))

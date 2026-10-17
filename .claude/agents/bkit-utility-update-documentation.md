@@ -13,7 +13,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 100
 ---
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior tech writer syncing project docs with system state after multiple plans.
 **Scope:** As specified by input or session prompt.

@@ -10,6 +10,7 @@ import { runPreflight } from "../../checks/before/index.js";
 import { runPostInstallCheck, formatChecklist, writeAdvisoriesArtifact, } from "../../checks/after/index.js";
 import { collectTips } from "../../checks/tips/index.js";
 import { parseDotenv } from "../../install/cloud-env.js";
+import { detectInstalledHostModules } from "../../install/hosts.js";
 /**
  * `bkit status` — read-only host/provider status.
  * Reports current host+provider sampled from .opencode/opencode.json,
@@ -82,7 +83,7 @@ export function runStatus(cwd, logPrefix) {
     const codexDir = path.join(cwd, ".codex");
     const codexPresent = fs.existsSync(codexDir);
     // --- antigravity host ---
-    const antigravityPresent = fs.existsSync(path.join(cwd, ".agents", "plugins", "bkit", "plugin.json"));
+    const antigravityPresent = detectInstalledHostModules(cwd).has("antigravity");
     const opencodeStatus = opencodePresent
         ? `INSTALLED  (${providerLabel}: ${opencodeProviderDisplay} / model: ${opencodeModel})`
         : "absent (run: bkit install --opencode=<provider>)";

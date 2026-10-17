@@ -66,7 +66,11 @@ function decideShell(cmd) {
     case "ask":
       // Advisory on this host (Codex cannot prompt).
       return ask(
-        `bkit Codex guardrails: this is a destructive or privileged command and Codex cannot prompt for confirmation. It is on the PROHIBITED list in every bkit workflow. Do not run it unless the user asked for this exact command. Note that git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${c}`,
+        `bkit Codex guardrails: this is a destructive or privileged command (${v.what}) and Codex cannot prompt for confirmation. It is on the PROHIBITED list in every bkit workflow. Do not run it unless the user asked for this exact command. Note that git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${c}`,
+      );
+    case "secret":
+      return ask(
+        `bkit Codex guardrails: this command reads ${v.path}, an env/secrets or private-key file, and Codex cannot prompt for confirmation. Do not print secret values; prefer direnv / documented non-secret examples. Command: ${c}`,
       );
     case "fetch":
       return ask(

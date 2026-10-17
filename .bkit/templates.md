@@ -1,6 +1,6 @@
 # Templates — copy and own
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Every template bkit ships and never installs — what each does, where to copy it, how to install the tool behind it.
