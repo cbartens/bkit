@@ -240,6 +240,14 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("cursor-files").fires(cwd)).toBe(true);
   });
 
+  it("tmp-prune fires only once a pre-push hook exists without the prune script", () => {
+    expect(tip("tmp-prune").fires(cwd)).toBe(false);
+    write(".husky/pre-push");
+    expect(tip("tmp-prune").fires(cwd)).toBe(true);
+    write("scripts/cleanup/bkit-tmp-prune.mjs");
+    expect(tip("tmp-prune").fires(cwd)).toBe(false);
+  });
+
   it("mcp-scope fires on an unlocked URL", () => {
     write(
       ".mcp.json",

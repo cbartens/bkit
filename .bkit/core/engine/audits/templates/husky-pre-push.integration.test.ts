@@ -132,3 +132,88 @@ describe(".husky/pre-push CI-suppressor guard", () => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// .husky/pre-push tmp/ prune — the hook runs scripts/cleanup/bkit-tmp-prune.mjs when the
+// copy exists, before any gate, and a failing prune never blocks the push.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push tmp/ prune", () => {
+  const REPO = process.cwd();
+  const SHA = "a".repeat(40);
+  const UPDATE = `refs/heads/dev ${SHA} refs/heads/dev ${"0".repeat(40)}\n`;
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-prune-")));
+    fs.mkdirSync(path.join(tmp, "bin"));
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/pnpm.log"\nexit 0\n`,
+      { mode: 0o755 },
+    );
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  const oldFile = (rel: string) => {
+    const abs = path.join(tmp, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, "x");
+    const t = Date.now() / 1000 - 30 * 24 * 60 * 60;
+    fs.utimesSync(abs, t, t);
+    return abs;
+  };
+
+  const adopt = (script: string) => {
+    fs.mkdirSync(path.join(tmp, "scripts", "cleanup"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "scripts", "cleanup", "bkit-tmp-prune.mjs"), script);
+  };
+
+  const runHook = (hook: string) => {
+    const result = spawnSync("sh", [path.join(REPO, hook)], {
+      cwd: tmp,
+      input: UPDATE,
+      encoding: "utf-8",
+      timeout: 20_000,
+      env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
+    });
+    const log = path.join(tmp, "pnpm.log");
+    return {
+      status: result.status,
+      stderr: result.stderr,
+      gates: fs.existsSync(log) ? fs.readFileSync(log, "utf-8") : "",
+    };
+  };
+
+  for (const hook of [".bkit/templates/.husky/pre-push", ".husky/pre-push"]) {
+    it(`${hook}: adopted script → old tmp/ files go, then the gates run`, () => {
+      adopt(
+        fs.readFileSync(
+          path.join(REPO, ".bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs"),
+          "utf-8",
+        ),
+      );
+      const old = oldFile("tmp/old.log");
+      const r = runHook(hook);
+      expect(r.status).toBe(0);
+      expect(fs.existsSync(old)).toBe(false);
+      expect(r.gates).toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: no adopted script → tmp/ untouched, gates still run`, () => {
+      const old = oldFile("tmp/old.log");
+      const r = runHook(hook);
+      expect(r.status).toBe(0);
+      expect(fs.existsSync(old)).toBe(true);
+      expect(r.gates).toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: failing prune → warns, push not blocked`, () => {
+      adopt("process.exit(1);\n");
+      const r = runHook(hook);
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain("tmp/ prune failed; push continues");
+      expect(r.gates).toContain("bkit:gate:static-unit");
+    });
+  }
+});

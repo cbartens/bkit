@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Added
+
+- **`tmp/` prune on push.** New copy-and-own `scripts/cleanup/bkit-tmp-prune.mjs` deletes files under the checkout's `tmp/` untouched for 7+ days (`--days=<n>`), then the folders that leaves empty. It never follows symlinks and never removes `tmp/` itself. The `.husky/pre-push` template runs it before the gates and skips it until the script is copied; a failed prune warns and the push goes on. New `tmp-prune` setup tip. `.bkit/templates.md` § tmp/ prune.
+
 ## [5.2.4] — 2026-10-17
 
 ### Changed

@@ -73,6 +73,13 @@ case "$BRANCH" in
     ;;
 esac
 
+# tmp/ prune — deletes files under tmp/ untouched for 7+ days. Not a gate: a failed
+# prune warns and the push goes on. Skipped until scripts/cleanup/ holds the script.
+if [ -f scripts/cleanup/bkit-tmp-prune.mjs ]; then
+  node scripts/cleanup/bkit-tmp-prune.mjs --days=7 < /dev/null ||
+    echo "[pre-push] WARN: tmp/ prune failed; push continues" >&2
+fi
+
 # WHAT each gate runs lives in package.json, not here — the same `bkit:gate*` scripts
 # the bkit agent workflows and prompts dispatch through. Edit the scripts, not this
 # hook. Repo-specific extras go BELOW this block.

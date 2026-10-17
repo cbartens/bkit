@@ -270,6 +270,15 @@ export const SETUP_TIPS = [
         steps: "`.bkit/templates.md` § Prettier tables.",
         fires: (cwd) => !exists(cwd, "scripts/prettier/bkit-insert-ignore.mjs"),
     },
+    {
+        id: "tmp-prune",
+        title: "Clear out old scratch files",
+        line: "Scratch files agents leave in tmp/ are never cleared, so the folder keeps growing. Add the clean-up that runs when you push.",
+        why: "Agents leave logs and scratch files in tmp/ on every run. Each push deletes the ones untouched for a week, so the folder stays small without anyone thinking about it.",
+        ask: "Copy .bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs to scripts/cleanup/, then copy the `tmp/ prune` block from .bkit/templates/.husky/pre-push into .husky/pre-push above the gates.",
+        steps: "`.bkit/templates.md` § tmp/ prune.",
+        fires: (cwd) => exists(cwd, ".husky/pre-push") && !exists(cwd, "scripts/cleanup/bkit-tmp-prune.mjs"),
+    },
     // --- setup: only some setups -----------------------------------------------------------
     {
         id: "cursor-files",
