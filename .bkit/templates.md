@@ -126,8 +126,8 @@ Adopt:
 3. Set the secret env vars locally (app env via `.envrc`, not `.bkit/.env`) and in each cloud dashboard (`.bkit/cloud.md`).
 4. `bkit install` → the provision recipes reach `.claude/bkit-cloud.md`'s setup script, the domains reach the cloud allowlist and local fetch permissions, the MCP names reach every host's allow rules.
 
-- Without credentials, or on any API or auth error, each block self-skips: `exit 0` plus `[context-fetch:<name>] skipped — …` on stderr. `/bkit-debug` narrates that as not checked, never as clean. A `TRUNCATED` line on stdout = the page cap or a later page stopped the read; raise the block's `*_MAX_PAGES` knob.
-- Each runtime and EAS block's `# Customise:` comment suggests a positive control: run once over a window holding an event you know exists. Nothing back = the reader is broken, not clean. Vendor APIs change shape without notice; this is the cheap check.
+- No credentials, or an API / auth error → block self-skips: `exit 0` plus `[context-fetch:<name>] skipped — …` on stderr. `/bkit-debug` narrates that as not checked, never as clean. `TRUNCATED` on stdout = page cap or a failed later page stopped the read; raise the block's `*_MAX_PAGES` knob.
+- Runtime and EAS blocks' `# Customise:` suggests a positive control: run once over a window holding a known event; nothing back = reader broken, not clean.
 - `bkit check` advisories point at these files: `context-fetch-missing`, `context-fetch-context-missing`, `context-fetch-source-not-enabled`, `context-fetch-provision-missing`.
 - Another backend → author a block in the same shape (rules in the managed block of `.agents/context.md`).
 

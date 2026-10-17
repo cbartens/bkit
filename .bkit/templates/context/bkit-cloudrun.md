@@ -21,19 +21,18 @@ Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`.
 # Optional GCP_SERVICE narrows to one service; unset = every cloud_run_revision in the project:
 # GCP_PROJECT_ID="your-gcp-project-id"
 # GCP_SERVICE="your-service-name"
-# Headless auth: the active gcloud login is used only when it can mint a token — a stale user
-# login still lists as ACTIVE but fails every read with a reauthentication error. No working login
-# → activates a service account from GCP_CLIENT_EMAIL + GCP_PRIVATE_KEY (a `\n`-escaped PEM is
-# un-escaped) in a throwaway CLOUDSDK_CONFIG, so the operator's own gcloud config is never
-# switched. Locally, `gcloud auth login` once and skip both. A failed `gcloud logging read` prints
-# `skipped`, never empty output. PII-safe: projects scalar / id fields only, never the raw payload.
-# Customise: GCP_SERVICE; SINCE freshness; GCP_N; GCP_FILTER (add textPayload:"<prefix>" for app stdout). Positive control (suggested): before reading empty output as no errors, run once with GCP_FILTER widened to a log line you know the service writes; nothing back = reader broken, not clean.
+# Headless auth: active gcloud login used ONLY when `print-access-token` works; a stale user
+# login lists ACTIVE yet fails every read with reauth. No working login → service account from
+# GCP_CLIENT_EMAIL + GCP_PRIVATE_KEY (`\n`-escaped PEM un-escaped) in a throwaway CLOUDSDK_CONFIG;
+# operator's gcloud config untouched. Locally: `gcloud auth login` once, skip both. Failed
+# `gcloud logging read` → `skipped`. PII-safe: scalar / id fields only, never the raw payload.
+# Customise: GCP_SERVICE; SINCE freshness; GCP_N; GCP_FILTER (add textPayload:"<prefix>" for app stdout). Positive control (suggested): run once with GCP_FILTER widened to a known log line; nothing back = reader broken, not clean.
 command -v gcloud >/dev/null 2>&1 \
   || { echo "[context-fetch:cloudrun] skipped — gcloud CLI missing" >&2; exit 0; }
 [ -n "${GCP_PROJECT_ID:-}" ] \
   || { echo "[context-fetch:cloudrun] skipped — GCP_PROJECT_ID unset" >&2; exit 0; }
 GCLOUD_TMP="$(mktemp -d)"; chmod 700 "$GCLOUD_TMP"
-trap 'rm -rf "$GCLOUD_TMP"' EXIT   # holds a live credential when the SA path runs — never print it
+trap 'rm -rf "$GCLOUD_TMP"' EXIT   # live credential on the SA path; NEVER print it
 if ! gcloud auth print-access-token >/dev/null 2>&1; then
   [ -n "${GCP_CLIENT_EMAIL:-}" ] && [ -n "${GCP_PRIVATE_KEY:-}" ] \
     || { echo "[context-fetch:cloudrun] skipped — no gcloud login that can mint a token (run \`gcloud auth login\`) and GCP_CLIENT_EMAIL/GCP_PRIVATE_KEY unset" >&2; exit 0; }

@@ -24,8 +24,8 @@ Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`. The 
 # Expo EAS native build status + errored-build logs (read-only).
 # EXPO_TOKEN is an app/stack cred (it builds and ships the native apps) — app env, not .bkit/.env.
 # Run `eas` from the EAS-linked app folder: from anywhere else it writes a stub app.json there.
-# A failed `eas build:list` (bad token, EAS_N above 50, network) prints `skipped`, never empty output.
-# Customise: EXPO_APP_DIR; EAS_PLATFORM (android|ios|all); EAS_PROFILE (build profile, e.g. preview / production); EAS_N (builds listed, default and max 50); EAS_ERR_N; EAS_LOG_N (log lines per build); the log-line filter. Positive control (suggested): before reading empty output as no errors, check the newest build on the expo.dev builds page is the first line; missing = reader broken, not clean.
+# Failed `eas build:list` (bad token, EAS_N > 50, network) → `skipped`.
+# Customise: EXPO_APP_DIR; EAS_PLATFORM (android|ios|all); EAS_PROFILE (build profile, e.g. preview / production); EAS_N (builds listed, default and max 50); EAS_ERR_N; EAS_LOG_N (log lines per build); the log-line filter. Positive control (suggested): newest build on expo.dev must be the first line; missing = reader broken, not clean.
 EXPO_APP_DIR="${EXPO_APP_DIR:-apps/mobile}"
 command -v eas >/dev/null && [ -n "${EXPO_TOKEN:-}" ] \
   || { echo "[context-fetch:expo] skipped — eas CLI / EXPO_TOKEN missing" >&2; exit 0; }
@@ -82,8 +82,8 @@ googleapis.com
 ```bash
 # EAS WORKFLOW runs — the native e2e (Maestro) lane (read-only). SEPARATE from the expo block:
 # that one covers `eas build`, this one covers `eas workflow:run`.
-# A failed `eas workflow:runs` (bad token, network) prints `skipped`, never empty output.
-# Customise: EXPO_APP_DIR; EAS_WF_FILE (e2e workflow file; unset = all); EAS_WF_N (all-status runs listed, max 100); EAS_WF_FAIL_N (FAILURE runs listed, max 100 — reaches much further back than the all-status list); EAS_WF_ERR_N (failed runs read in detail); EAS_JUNIT_N (lines per JUnit file); which artifacts to inline; the log greps. Positive control (suggested): before reading empty output as no errors, check a failed run you know of appears in the FAILURE list; missing = reader broken, not clean.
+# Failed `eas workflow:runs` (bad token, network) → `skipped`.
+# Customise: EXPO_APP_DIR; EAS_WF_FILE (e2e workflow file; unset = all); EAS_WF_N (all-status runs listed, max 100); EAS_WF_FAIL_N (FAILURE runs listed, max 100; reaches further back than the all-status list); EAS_WF_ERR_N (failed runs read in detail); EAS_JUNIT_N (lines per JUnit file); which artifacts to inline; the log greps. Positive control (suggested): a known failed run must appear in the FAILURE list; missing = reader broken, not clean.
 EXPO_APP_DIR="${EXPO_APP_DIR:-apps/mobile}"
 command -v eas >/dev/null && [ -n "${EXPO_TOKEN:-}" ] \
   || { echo "[context-fetch:expo-workflows] skipped — eas CLI / EXPO_TOKEN missing" >&2; exit 0; }
@@ -112,8 +112,8 @@ jq -c '.[] | {id, workflowName, gitCommitHash, startedAt}' "$WORK/failures.json"
 for run in $(jq -r --argjson n "${EAS_WF_ERR_N:-2}" '.[:$n][].id' "$WORK/failures.json"); do
   echo "===== failed workflow run $run ====="
   STATUS="$WORK/status-$run.json"
-  # `workflow:status` exits 11 for a FAILED run and 12 for a canceled one after printing its JSON:
-  # test the JSON, never the exit code (an exit-code guard skips every failed run's detail).
+  # `workflow:status` prints its JSON, then exits 11 FAILED / 12 canceled: test the JSON, NEVER
+  # the exit code; an exit-code guard skips every failed run's detail.
   eas workflow:status "$run" --json --non-interactive > "$STATUS" 2>/dev/null
   jq -e '.id' "$STATUS" >/dev/null 2>&1 \
     || { echo "===== run $run: workflow:status returned no JSON — detail NOT read ====="; continue; }

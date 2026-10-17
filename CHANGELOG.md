@@ -10,23 +10,23 @@ Format: `## [version] — YYYY-MM-DD`
 
 ### Fixed
 
-- **Context-fetch templates print `skipped` instead of empty output on an API error** (#575). An error body piped into jq read as "no errors"; a consumer's log audit found seven of nine readers returning nothing while real failures existed. Every runtime block checks the HTTP status or CLI exit code and the body shape, pages across the whole window, prints a `TRUNCATED` line when its page cap stops it, and its `# Customise:` comment suggests a positive control (a known event the reader must return). Vendor fixes:
-  - `supabase.md`: the removed `logs.all` endpoint → `analytics/endpoints/logs`, one call per day of window, counts per SQLSTATE (no message text).
-  - `vercel.md`: `--no-branch` (CLI 50.x reads only the checked-out branch without it), pages past the 50-line cap, filters `.level` (`--level error` returns `info` lines). `VERCEL_N` → `VERCEL_MAX_PAGES`.
-  - `inngest.md`: cursor paging (pages stop at 51), refuses a branch key with `INNGEST_ENV` unset, prints the error class only (error text can carry secrets). Adds `UNTIL_ISO`, `INNGEST_MAX_PAGES`.
-  - `cloudrun.md`: uses the gcloud login only when `gcloud auth print-access-token` works, else the service account in a throwaway `CLOUDSDK_CONFIG`; a failed `logging read` prints `skipped`. `GCP_FILTER` knob.
-  - `stripe.md`: pages with `starting_after`, adds a `delivery_success=false` pass. `STRIPE_N` → `STRIPE_MAX_PAGES`.
-  - `resend.md`: pages with `after` back to `SINCE_ISO`. `RESEND_N` → `SINCE_ISO`, `RESEND_MAX_PAGES`.
-  - `expo.md`: `EAS_N` default 10 → 50. `expo-workflows` selects `startedAt` (it printed `null` for `createdAt`), clamps `--limit` to 100, adds a FAILURE list (`EAS_WF_FAIL_N`), tests `workflow:status` by its JSON.
-  - `sentry.md`: checks status and array shape; notes detector configs carry uptime-check headers.
+- **Context-fetch templates print `skipped` instead of empty output on an API error** (#575). A consumer's log audit found seven of nine readers returning nothing while real failures existed. Every runtime block now checks HTTP status / CLI exit and body shape, pages the whole window, prints `TRUNCATED` when its page cap stops it, and suggests a positive control in `# Customise:`. Per vendor:
+  - `supabase.md`: removed `logs.all` → `analytics/endpoints/logs`, one call per day, counts per SQLSTATE.
+  - `vercel.md`: `--no-branch`; pages past the 50-line cap; filters `.level`. `VERCEL_N` → `VERCEL_MAX_PAGES`.
+  - `inngest.md`: cursor paging; refuses a branch key with `INNGEST_ENV` unset; error class only, never error text. Adds `UNTIL_ISO`, `INNGEST_MAX_PAGES`.
+  - `cloudrun.md`: gcloud login only when `gcloud auth print-access-token` works, else service account in a throwaway `CLOUDSDK_CONFIG`; failed `logging read` → `skipped`. Adds `GCP_FILTER`.
+  - `stripe.md`: `starting_after` paging; `delivery_success=false` pass. `STRIPE_N` → `STRIPE_MAX_PAGES`.
+  - `resend.md`: `after` paging back to `SINCE_ISO`. `RESEND_N` → `SINCE_ISO`, `RESEND_MAX_PAGES`.
+  - `expo.md`: `EAS_N` default 10 → 50. `expo-workflows`: `startedAt` (was `null` via `createdAt`), `--limit` ≤ 100, FAILURE list (`EAS_WF_FAIL_N`), `workflow:status` judged by its JSON.
+  - `sentry.md`: status and array-shape checks; detector configs carry uptime-check headers.
 
-  Templates are copy-and-own: an existing copy below `bkit:end` changes only when you re-copy it.
+  Templates are copy-and-own: a copy below `bkit:end` changes only when re-copied.
 
-- **`.agents/context.md` authoring rules** (#575): an API or auth error is a self-skip; never pipe a raw response into jq; page the window or print `TRUNCATED`; suggest a positive control.
+- **`.agents/context.md` authoring rules** (#575): API / auth error = self-skip; check status before jq; page the window or print `TRUNCATED`; suggest a positive control.
 
 ### Changed
 
-- **Logs audit template checks three things it skipped** (#575). Step 3 adds a fixed `Board` figure per platform that re-reports to the tracker: platform failure count beside tracker event count (ratio below 1 = lost reports). Step 9 checks every archive and mute row in `docs/noise.md` against the trigger it records. Step 12 looks for scheduled-job runs started and never finished. "warnings-doc" → `docs/noise.md`.
+- **Logs audit template checks three things it skipped** (#575). Step 3: fixed `Board` figure per platform re-reporting to the tracker, platform failures beside tracker events (ratio < 1 = lost reports). Step 9: every `docs/noise.md` archive / mute row against its recorded trigger. Step 12: scheduled-job runs started and never finished. "warnings-doc" → `docs/noise.md`.
 
 ## [5.2.2] — 2026-10-15
 

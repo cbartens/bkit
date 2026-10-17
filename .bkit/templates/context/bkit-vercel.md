@@ -21,13 +21,12 @@ Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`.
 # VERCEL_SCOPE is non-secret — uncomment + set the line below so local AND cloud
 # agents inherit it (headless cloud agents never read .bkit/.env):
 # VERCEL_SCOPE="your-team-slug"
-# --no-branch: CLI 50.x otherwise filters to the checked-out git branch, so a read from any other
-# branch returns no lines. Each call returns at most 50 lines, the NEWEST inside the window,
-# whatever --limit says: the loop pages backwards with --until until a page comes back short.
-# --level error also lets `info` lines through, so jq keeps error / fatal only. SINCE / UNTIL
-# take ISO-8601 (2026-01-31T22:50:00Z) or relative (4h). A failed first call prints `skipped`;
-# a failed later page or the page cap prints a TRUNCATED line naming the part not read.
-# Customise: VERCEL_ENV; SINCE / UNTIL; VERCEL_MAX_PAGES (x 50 lines); --source; path or status filter; jq keys to the log shape. Positive control (suggested): before reading empty output as no errors, run once over a window holding an error you know happened (e.g. a 5xx you saw in the dashboard); nothing back = reader broken, not clean.
+# --no-branch: CLI 50.x otherwise filters to the checked-out git branch; any other branch reads 0
+# lines. Each call returns at most 50 lines, the NEWEST in the window, whatever --limit says → loop
+# pages backwards with --until until a page comes back short. --level error lets `info` through →
+# jq keeps error / fatal only. SINCE / UNTIL: ISO-8601 (2026-01-31T22:50:00Z) or relative (4h).
+# Failed first call → `skipped`; failed later page or page cap → TRUNCATED line naming the unread part.
+# Customise: VERCEL_ENV; SINCE / UNTIL; VERCEL_MAX_PAGES (x 50 lines); --source; path or status filter; jq keys to the log shape. Positive control (suggested): run once over a window holding a known error (e.g. a 5xx seen in the dashboard); nothing back = reader broken, not clean.
 command -v vercel >/dev/null && [ -n "${VERCEL_TOKEN:-}" ] && [ -n "${VERCEL_SCOPE:-}" ] \
   || { echo "[context-fetch:vercel] skipped — vercel CLI / VERCEL_TOKEN / VERCEL_SCOPE missing" >&2; exit 0; }
 VERCEL_PAGE=50

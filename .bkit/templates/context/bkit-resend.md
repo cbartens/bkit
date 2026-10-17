@@ -15,11 +15,11 @@ Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`.
 
 ```bash
 # Resend email delivery log — bounces / complaints / delays / failures (read-only GET).
-# GET /emails lists sends newest first; each item's `last_event` is its delivery status. One page
-# of 100 can cover under a day, so the block pages with after=<last id> until a send is older than
-# the window. A non-200 page prints `skipped`; the page cap prints a TRUNCATED line.
+# GET /emails lists sends newest first; `last_event` = delivery status. One page of 100 can cover
+# under a day → pages with after=<last id> until a send predates the window. Non-200 page →
+# `skipped`; page cap → TRUNCATED line.
 # PII-safe: to / from / subject are never surfaced — only id / last_event / created_at.
-# Customise: SINCE_ISO (window start, default 24 h ago; retention is 30 days); RESEND_MAX_PAGES (x 100 sends); the last_event filter. Positive control (suggested): before reading empty output as no errors, run once over a window holding a send you know bounced (e.g. one to Resend's bounce test address); nothing back = reader broken, not clean.
+# Customise: SINCE_ISO (window start, default 24 h ago; retention is 30 days); RESEND_MAX_PAGES (x 100 sends); the last_event filter. Positive control (suggested): run once over a window holding a known bounce (e.g. to Resend's bounce test address); nothing back = reader broken, not clean.
 [ -n "${RESEND_API_KEY:-}" ] \
   || { echo "[context-fetch:resend] skipped — RESEND_API_KEY unset" >&2; exit 0; }
 RESEND_FROM=$(jq -rn --arg t "${SINCE_ISO:-}" --argjson d "$(( $(date -u +%s) - 86400 ))" 'if $t == "" then $d else ($t | sub("\\.[0-9]+"; "") | fromdateiso8601) end' 2>/dev/null)
@@ -35,7 +35,7 @@ while :; do
     -H "Authorization: Bearer ${RESEND_API_KEY}")
   [ "$RESEND_CODE" = "200" ] \
     || { echo "[context-fetch:resend] skipped — api.resend.com HTTP ${RESEND_CODE:-000} on page $RESEND_PAGES (400/401 = bad key, 429 = rate limit, 000 = unreachable)" >&2; exit 0; }
-  # created_at looks like "2026-01-31 02:50:14.901000+00" — epoch it for the window test.
+  # created_at looks like "2026-01-31 02:50:14.901000+00"; epoch it for the window test.
   jq -c --argjson from "$RESEND_FROM" '.data[]
     | . + {epoch: (.created_at[0:19] | sub(" "; "T") + "Z" | fromdateiso8601)}
     | select(.epoch >= $from)' "$RESEND_RESP" >> "$RESEND_ALL"

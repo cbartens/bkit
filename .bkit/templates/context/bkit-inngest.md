@@ -17,16 +17,15 @@ Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`.
 ```bash
 # Inngest Cloud — failed durable-function runs, exhausted retries (read-only).
 # INNGEST_SIGNING_KEY is ENV-SCOPED (branch env vs production) — use the key for the env whose
-# runs you want. A branch key (`signkey-branch-…`) reads the environment named in header
-# `x-inngest-env`; without it the API reads env `branch` and returns nothing, so the block refuses
-# a branch key with INNGEST_ENV unset. Lists `inngest/function.failed` system events from
-# received_after, paged with cursor=<last internal_id> (pages stop at 51 events whatever `limit`
-# says; the API's own default window is 1 h). Any non-200 first page prints `skipped`; a failed
-# later page or the page cap prints a TRUNCATED line.
+# runs you want. Branch key (`signkey-branch-…`) reads the env in header `x-inngest-env`; without
+# it the API reads env `branch` and returns nothing → block refuses a branch key with INNGEST_ENV
+# unset. Lists `inngest/function.failed` events from received_after, paged by
+# cursor=<last internal_id>; pages stop at 51 events whatever `limit` says; API default window 1 h.
+# Non-200 first page → `skipped`; failed later page or page cap → TRUNCATED line.
 # NEVER prints `.data.error.message` / `.stack`: error strings can carry secrets from request
-# headers or URLs. Prints function id, run id, time, the error class (`.data.error.name`, only
-# when it looks like a class name), and ONLY /Id$/ keys from the triggering event.
-# Customise: INNGEST_ENV (branch environment name, with a branch key); SINCE_ISO / UNTIL_ISO (window, default last 4 h); INNGEST_N (newest events listed); INNGEST_MAX_PAGES (x 51 events); the ids projection (narrow it if any *Id key in your events carries PII). Positive control (suggested): before reading empty output as no errors, run once over a window holding a run the Inngest dashboard shows Failed; nothing back = reader broken, not clean.
+# headers or URLs. Prints function id, run id, time, error class (`.data.error.name`, ONLY when
+# class-shaped), ONLY /Id$/ keys from the triggering event.
+# Customise: INNGEST_ENV (branch environment name, with a branch key); SINCE_ISO / UNTIL_ISO (window, default last 4 h); INNGEST_N (newest events listed); INNGEST_MAX_PAGES (x 51 events); the ids projection (narrow it if any *Id key in your events carries PII). Positive control (suggested): run once over a window holding a run the dashboard shows Failed; nothing back = reader broken, not clean.
 [ -n "${INNGEST_SIGNING_KEY:-}" ] \
   || { echo "[context-fetch:inngest] skipped — INNGEST_SIGNING_KEY unset" >&2; exit 0; }
 case "$INNGEST_SIGNING_KEY" in

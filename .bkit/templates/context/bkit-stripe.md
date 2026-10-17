@@ -17,18 +17,17 @@ Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`.
 # Stripe event stream — payment / subscription / dispute / refund failures (read-only GET).
 # Headless: STRIPE_SECRET_KEY (secret, from env); the key prefix (sk_live_ / sk_test_) selects
 # live vs test mode. PII-safe: only id / type / created / livemode surfaced.
-# Filters at the source: every event type naming a failure, dispute or refund, in two type lists
-# (the API takes at most 20 `types[]` per call). Each list pages with starting_after while
-# has_more, so a busy account still covers the whole window. A second pass reads events whose
-# webhook delivery failed (delivery_success=false), any type. A non-200 page prints `skipped`;
-# the page cap prints a TRUNCATED line.
-# Customise: STRIPE_SINCE_S window in seconds (default 1 day; the API keeps ~30 days); STRIPE_MAX_PAGES (x 100 events per list); the two type lists. Positive control (suggested): before reading empty output as no errors, run once over a window holding an event you know exists (e.g. a test-mode `charge.failed` from a declined test card); nothing back = reader broken, not clean.
+# Filters at source: every failure / dispute / refund event type, in two lists; API takes at most
+# 20 `types[]` per call. Each list pages with starting_after while has_more. Second pass: events
+# with failed webhook delivery (delivery_success=false), any type. Non-200 page → `skipped`; page
+# cap → TRUNCATED line.
+# Customise: STRIPE_SINCE_S window in seconds (default 1 day; the API keeps ~30 days); STRIPE_MAX_PAGES (x 100 events per list); the two type lists. Positive control (suggested): run once over a window holding a known event (e.g. test-mode `charge.failed` from a declined test card); nothing back = reader broken, not clean.
 [ -n "${STRIPE_SECRET_KEY:-}" ] \
   || { echo "[context-fetch:stripe] skipped — STRIPE_SECRET_KEY unset" >&2; exit 0; }
 SINCE_TS=$(( $(date +%s) - ${STRIPE_SINCE_S:-86400} ))
 STRIPE_RESP=$(mktemp); STRIPE_FAILED=$(mktemp); STRIPE_UNDELIVERED=$(mktemp)
 trap 'rm -f "$STRIPE_RESP" "$STRIPE_FAILED" "$STRIPE_UNDELIVERED"' EXIT
-# stripe_pages <out-file> <extra curl args as one string> — pages the window into <out-file>.
+# stripe_pages <out-file> <extra curl args as one string>: pages the window into <out-file>.
 stripe_pages() {
   out="$1"; extra="$2"; after=""; pages=0
   while [ "$pages" -lt "${STRIPE_MAX_PAGES:-10}" ]; do

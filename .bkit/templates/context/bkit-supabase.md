@@ -15,17 +15,16 @@ Copy the block below into `.agents/context.md`, below `<!-- bkit:end -->`.
 
 ```bash
 # Supabase Postgres errors — Management API `GET /v1/projects/{ref}/analytics/endpoints/logs`
-# (the older `logs.all` endpoint is removed). ClickHouse SQL over one `logs` table; fields via
-# log_attributes['…'] (strings). One call covers at most 24 h and silently drops the rest, so the
-# loop walks the window one day at a time. Counts per hour + severity + SQLSTATE + role: no message
-# text is read, so no free text or PII prints. A rejected query answers HTTP 200 with `.error`, so
-# both are checked; either failure prints `skipped`.
+# (`logs.all` removed). ClickHouse SQL over one `logs` table; fields via log_attributes['…']
+# (strings). One call covers at most 24 h, silently drops the rest → loop walks the window a day at
+# a time. Counts per hour + severity + SQLSTATE + role; message text never read. Rejected query =
+# HTTP 200 with `.error`; both checked, either → `skipped`.
 # API 5xx instead: source = 'edge_logs' and toInt32OrZero(log_attributes['response.status_code']) >= 500.
 # SUPABASE_PROJECT_ID is non-secret — uncomment + set the line below so local AND
 # cloud agents inherit it (headless cloud agents never read .bkit/.env). Preview and
 # production are SEPARATE projects — use the ref for the env whose logs you want:
 # SUPABASE_PROJECT_ID="your-project-ref"
-# Customise: SUPABASE_PROJECT_ID (preview vs prod); SINCE_ISO / UNTIL_ISO (window, default last 4 h); the SQL (source, severities, grouping). Positive control (suggested): before reading empty output as no errors, run once over a window holding an error you know happened (e.g. a test that triggers a permission-denied 42501); nothing back = reader broken, not clean.
+# Customise: SUPABASE_PROJECT_ID (preview vs prod); SINCE_ISO / UNTIL_ISO (window, default last 4 h); the SQL (source, severities, grouping). Positive control (suggested): run once over a window holding a known error (e.g. a test triggering permission-denied 42501); nothing back = reader broken, not clean.
 [ -n "${SUPABASE_PROJECT_ID:-}" ] && [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] \
   || { echo "[context-fetch:supabase] skipped — SUPABASE_PROJECT_ID or SUPABASE_ACCESS_TOKEN unset" >&2; exit 0; }
 SUPA_NOW=$(date -u +%s)
