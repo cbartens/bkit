@@ -157,8 +157,7 @@ for seg, files in seg_router.items():
     for rf in files:
         p = f"packages/api/src/routes/{rf}.ts"
         if os.path.exists(p):
-            # Replace @scope with this repo's workspace services scope.
-            doms |= set(re.findall(r"@scope/services/([a-z-]+)", open(p, encoding="utf-8").read()))
+            doms |= set(re.findall(r"@cbartens/services/([a-z-]+)", open(p, encoding="utf-8").read()))
     seg_services[seg] = {"routers": sorted(files), "services": sorted(doms)}
 
 

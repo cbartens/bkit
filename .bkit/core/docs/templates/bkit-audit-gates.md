@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
@@ -71,10 +71,13 @@ One per candidate.
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Sibling Reports:** Steps 2, 3 — newest report per other `bkit-audit-*` slug under `docs/audits/`, else that template's `Process Improvements`. Fallback: templates only; a missing report = that audit `Not Checked`.
 - [ ] **Ledgers:** Steps 3, 10, 11 — `docs/failures.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`. Fallback: incident evidence and prior rejections `Not Checked`.
 - [ ] **Repo Gates:** Steps 7, 9, 12, 13, 15 — workflows, hook directory, gate scripts, allowlist files, e.g. `.github/workflows`, `.husky`, `.gitlab-ci.yml`, every `bkit:gate:*` script in `package.json`. Fallback: none; those items `Not Checked`.
@@ -97,7 +100,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Inventory:** Collect gate candidates from each other `bkit-audit-*` report's `Process Improvements` (else that template's), without re-deriving. Record source slug. Two audits proposing one guard = one candidate, both sources — not two work items. Re-grep of a swept class + owner-allowlist over same literals = one guard. **Done when:** `Inventory` row per candidate: source slug · one-line guard.
 - [ ] **Step 3 — Widen:** Sibling sections are one source. Also add, record source each: (a) every defect class in `docs/failures.jsonl` on ≥2 rows, whether or not a sibling proposed a gate; (b) standard gates nobody proposed, each vs tree — secret-scanning push protection, code scanning (e.g. CodeQL), dependency-review check, workflow linters (e.g. `actionlint`, `zizmor`), lockfile lint, test-runner forbid-only flag (e.g. Playwright `--forbid-only`), typechecking of test files, OpenSSF Scorecard checks; (c) policy-as-code for config with no type system (e.g. JSON Schema, Conftest) — bot config, job-runner triggers and concurrency, hosting config, mobile build config, workflow YAML. Class (c) is what `bkit-audit-testing` flags. Already enforced → `Health`, not a second candidate. **Done when:** every added row in `Inventory` with source.
 - [ ] **Step 4 — Score:** Per candidate, six axes. Fails if fail condition holds.

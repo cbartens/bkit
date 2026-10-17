@@ -1,8 +1,8 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 # Dead Code Audit
 
@@ -75,10 +75,13 @@ Dead code = control that looks live, is not: limiter on unset env var; E2E asser
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Clean Tree:** Steps 2–17 — clean `git status` at recorded commit; one checkout all steps. Fallback: detached worktree off integration branch; dirty-path candidates = hypotheses.
 - [ ] **Text Search:** Steps 5–14 — repo search (`git grep`, ripgrep). Fallback: none → those steps `Not Checked`.
 - [ ] **Reachability Scanner:** Steps 3–4 — ad hoc, not committed dependency (e.g. `pnpm dlx knip`, vulture). Fallback: language-server refs + text search; scanner categories `Not Checked`.
@@ -104,7 +107,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Detectors:** Compiled language → scanner sees module exports only; dead branch/parameter inside live function → compiler + linter. Read resolved config per workspace, not base: unused-local, unused-parameter, no-unreachable-code; linter unused-vars, unreachable, always-true/false (e.g. `@typescript-eslint/no-unnecessary-condition`). Workspace override or file disable switches one off silently. Detector off = finding → `bkit-audit-gates` (gate candidate). **Done when:** `Detectors` lists each config and resolved value.
 - [ ] **Step 3 — Reachability:** Ad hoc scanner, same resolved version both runs; record version. Do not add it as a dependency, and do not wire a CI gate this run. Report baseline-config readiness. Gate before `False Positives` exclusions encoded → structural noise → disabled. Do not encode test-only code as ignore entries or negated project patterns — plugins add test files as entries; production mode separates. Check scanner stderr before trusting: plugin load failure drops entry class → false unused files. Signal: files, exports, types, duplicates. Dependency categories → `Dependencies` pass, not mixed. Same version in production mode (or strict: implies production + each workspace uses only its own deps). Export used default run, unused production → test/config-only class. Report both runs side by side. **Done when:** version, both runs, plugin-load errors in `Reachability`.
 - [ ] **Step 4 — Dependencies:** Scanner dependency mode per workspace, categories the scanner offers (e.g. knip: unused, unlisted, unresolved, unlisted binaries, catalog entries unreferenced). Before unused verdict → search name across manifest scripts, config, CI. Config-only consumers (e.g. linter, formatter, CSS presets, bundler plugins, `@types/*`) = usual false hits. Unused = install/supply-chain surface; unlisted = hoisted from another workspace. Unlisted or advisory → `bkit-audit-dependencies`. **Done when:** `Dependencies` row per candidate: name · class · config-or-CI reader · verdict.

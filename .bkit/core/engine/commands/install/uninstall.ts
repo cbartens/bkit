@@ -30,7 +30,9 @@ import {
   type ManifestEntry,
   type ModuleName,
   type IssueTracker,
+  ISSUE_TRACKERS,
 } from "../../install/manifest.js";
+import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
 import {
   isConsumerModified,
   mergeCanonicalHashes,
@@ -120,33 +122,42 @@ export interface UninstallResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Detect the tracker bkit seeded into opencode.json from its mcp keys. The template ships an
- * `@@OPENCODE_TRACKER_MCP@@` sentinel KEY that renders to `github` / `linear` at install, so a
- * strip-scope keyed on the raw template never matches — these detectors let uninstall render the
- * template the same way the install did before stripping. Keyed on bkit's known tracker names so
- * a consumer-added mcp server is never mistaken for bkit's.
+ * Strip bkit's scope from `.opencode/opencode.json`. The template ships `@@OPENCODE_*@@`
+ * sentinel KEYS that render to the consumer's tracker and provider, and install keeps every
+ * earlier provider block and tracker entry (install is additive), so one file can hold several.
+ * Render the template once per known tracker and once per supported provider, then remove each
+ * `mcp` entry and `provider` block identical to a rendered one; an entry the consumer added or
+ * edited stays whole. The rest of the template (permission sandbox, plugin list) strips leaf by
+ * leaf like any Tier-2 JSON file. Reads only the template.
  */
-function detectOpencodeTracker(doc: Record<string, JsonValue>): IssueTracker {
-  const mcp = doc.mcp;
-  if (mcp !== null && typeof mcp === "object" && !Array.isArray(mcp)) {
-    if ("github" in mcp) return "github";
-    if ("linear" in mcp) return "linear";
+export function stripOpencodeJsonScope(
+  consumer: Record<string, JsonValue>,
+  templatePath: string,
+  cwd: string,
+): Record<string, JsonValue> {
+  const render = (tracker: IssueTracker, provider: string): Record<string, JsonValue> =>
+    JSON.parse(renderOpencodeJson(templatePath, tracker, provider, cwd)) as Record<
+      string,
+      JsonValue
+    >;
+  const ownedMcp: Record<string, JsonValue> = {};
+  for (const tracker of ISSUE_TRACKERS) {
+    const { mcp } = render(tracker, OPENCODE_PROVIDERS[0]);
+    if (isJsonObject(mcp)) Object.assign(ownedMcp, mcp);
   }
-  return "none";
-}
+  const ownedProviders: Record<string, JsonValue> = {};
+  for (const provider of OPENCODE_PROVIDERS) {
+    const rendered = render("none", provider).provider;
+    if (isJsonObject(rendered)) Object.assign(ownedProviders, rendered);
+  }
+  const rest = render("none", OPENCODE_PROVIDERS[0]);
+  delete rest.mcp;
+  delete rest.provider;
 
-/** Detect the opencode provider key bkit seeded (the first `provider` block key). */
-function detectOpencodeProvider(doc: Record<string, JsonValue>): string {
-  const provider = doc.provider;
-  if (provider !== null && typeof provider === "object" && !Array.isArray(provider)) {
-    const keys = Object.keys(provider);
-    if (keys.length > 0) {
-      const first = keys[0];
-      // Zen block is keyed `opencode` (built-in id); map back to the bkit CLI key.
-      return first === "opencode" ? "opencode-zen" : first;
-    }
-  }
-  return "opencode-zen";
+  const out = JSON.parse(JSON.stringify(consumer)) as Record<string, JsonValue>;
+  removeOwnedEntries(out, "mcp", ownedMcp);
+  removeOwnedEntries(out, "provider", ownedProviders);
+  return stripTier2JsonScope(out, rest);
 }
 
 export function stripTier2JsonScope(
@@ -219,14 +230,26 @@ export function stripMcpTrackerEntries(
   template: Record<string, JsonValue>,
 ): Record<string, JsonValue> {
   const out = JSON.parse(JSON.stringify(consumer)) as Record<string, JsonValue>;
-  const servers = out.mcpServers;
   const owned = template.mcpServers;
-  if (!isJsonObject(servers) || !isJsonObject(owned)) return out;
-  for (const [key, entry] of Object.entries(owned)) {
-    if (JSON.stringify(servers[key]) === JSON.stringify(entry)) delete servers[key];
-  }
-  if (Object.keys(servers).length === 0) delete out.mcpServers;
+  if (isJsonObject(owned)) removeOwnedEntries(out, "mcpServers", owned);
   return out;
+}
+
+/**
+ * Delete each entry of `doc[key]` identical to the same-named entry in `owned`, then drop
+ * `doc[key]` once empty. Entries that differ, and names `owned` lacks, stay. Mutates `doc`.
+ */
+function removeOwnedEntries(
+  doc: Record<string, JsonValue>,
+  key: string,
+  owned: Record<string, JsonValue>,
+): void {
+  const entries = doc[key];
+  if (!isJsonObject(entries)) return;
+  for (const [name, entry] of Object.entries(owned)) {
+    if (JSON.stringify(entries[name]) === JSON.stringify(entry)) delete entries[name];
+  }
+  if (Object.keys(entries).length === 0) delete doc[key];
 }
 
 function isJsonObject(v: JsonValue | undefined): v is Record<string, JsonValue> {
@@ -582,19 +605,10 @@ export async function runUninstall(
               }
               const raw = fs.readFileSync(absPath, "utf-8");
               const consumerDoc = JSON.parse(raw) as Record<string, JsonValue>;
-              let templateRaw = fs.readFileSync(templatePath, "utf-8");
-              // opencode.json ships `@@OPENCODE_*@@` sentinel KEYS that render to the consumer's
-              // tracker / provider at install; strip-scope keyed on the RAW template never matches
-              // the rendered keys, so bkit's mcp + provider blocks (a token-referencing config)
-              // survive a full uninstall. Render the template with the consumer's OWN tracker +
-              // provider first so the keys line up and the bkit-owned scope strips cleanly.
-              if (templateRaw.includes("@@OPENCODE_TRACKER_MCP@@")) {
-                templateRaw = renderOpencodeJson(
-                  templatePath,
-                  detectOpencodeTracker(consumerDoc),
-                  detectOpencodeProvider(consumerDoc),
-                );
-              }
+              const templateRaw = fs.readFileSync(templatePath, "utf-8");
+              // opencode.json ships `@@OPENCODE_*@@` sentinel KEYS; stripOpencodeJsonScope
+              // renders them for every tracker and provider bkit can have written.
+              const isOpencodeJson = templateRaw.includes("@@OPENCODE_TRACKER_MCP@@");
               const templateDoc = JSON.parse(templateRaw) as Record<string, JsonValue>;
               // `.claude/settings.json` is not written verbatim: after rendering the
               // template, install appends one `WebFetch(domain:<d>)` grant per entry in
@@ -620,7 +634,9 @@ export async function runUninstall(
               }
               const stripped = MCP_JSON_RELPATHS.has(summary.file)
                 ? stripMcpTrackerEntries(consumerDoc, templateDoc)
-                : stripTier2JsonScope(consumerDoc, templateDoc);
+                : isOpencodeJson
+                  ? stripOpencodeJsonScope(consumerDoc, templatePath, ctx.cwd)
+                  : stripTier2JsonScope(consumerDoc, templateDoc);
               const strippedJson = JSON.stringify(stripped, null, 2) + "\n";
               if (Object.keys(stripped).length === 0) {
                 // All keys were bkit-owned → delete file

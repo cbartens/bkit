@@ -1,6 +1,6 @@
 # Licence for bkit-written files in this repo
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 Every file bkit wrote into this repository, and keeps current on `bkit upgrade`, and every template it copied into `.bkit/templates/`, is licensed under the MIT License below. What bkit's agents write for you is yours, not covered by this licence.
 

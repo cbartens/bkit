@@ -28,4 +28,26 @@ describe("detectInstalledHostModules — installed host detection", () => {
     fs.writeFileSync(path.join(cwd, ".agents", "plugins", "bkit", "plugin.json"), "{}");
     expect([...detectInstalledHostModules(cwd)]).toEqual(["antigravity"]);
   });
+
+  it.each([
+    ["hooks.json", "file"],
+    ["agents", "dir"],
+    ["skills", "dir"],
+    ["hooks", "dir"],
+  ])("detects antigravity from %s when the plugin manifest is gone", (rel, kind) => {
+    const abs = path.join(cwd, ".agents", "plugins", "bkit", rel);
+    if (kind === "dir") {
+      fs.mkdirSync(abs, { recursive: true });
+    } else {
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, "{}");
+    }
+    expect([...detectInstalledHostModules(cwd)]).toEqual(["antigravity"]);
+  });
+
+  it("does not detect antigravity from a consumer plugin beside bkit's", () => {
+    fs.mkdirSync(path.join(cwd, ".agents", "plugins", "other", "agents"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, ".agents", "plugins", "other", "plugin.json"), "{}");
+    expect(detectInstalledHostModules(cwd).size).toBe(0);
+  });
 });

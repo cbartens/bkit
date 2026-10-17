@@ -535,6 +535,14 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
 
+      # Dependency-audit gate: fails on a high or critical advisory in the lockfile that
+      # scripts/ci/accepted-advisories.json does not accept with a reason and an in-date expiry.
+      # Self-skips when the guard is absent — a repo that did not adopt
+      # scripts/ci/check-dependency-audit.mjs is a no-op. deployments.md § Dependency updaters.
+      - name: Check Dependency Audit
+        if: steps.cache.outputs.skip != 'true' && hashFiles('scripts/ci/check-dependency-audit.mjs') != ''
+        run: node scripts/ci/check-dependency-audit.mjs
+
       # bkit repo only: dist/ is committed; rebuild it and fail when it differs.
       - name: Assert Dist Freshness
         if: steps.cache.outputs.skip != 'true'

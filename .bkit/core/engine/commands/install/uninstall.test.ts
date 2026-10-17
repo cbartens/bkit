@@ -18,6 +18,7 @@ import {
   type BkitVersion,
 } from "../../install/version-file";
 import { findTemplateSource, getSharedRoot } from "../../shared/package-roots";
+import { renderOpencodeJson } from "../../install/modules/opencode";
 
 let tmpDir: string;
 
@@ -622,6 +623,51 @@ describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
     return runUninstall(["opencode"], makeCtx()).then(() => {
       expect(fileExists(rel)).toBe(false);
     });
+  });
+
+  // What three installs (`--opencode=openrouter`, `ollama`, `opencode-zen`) across two trackers
+  // (`linear`, then `github`) leave: install keeps every earlier provider block and tracker entry.
+  function multiInstallOpencodeJson(): Record<string, Record<string, unknown>> {
+    const tpl = findTemplateSource(".opencode/opencode.json")!;
+    const render = (tracker: "github" | "linear" | "none", provider: string) =>
+      JSON.parse(renderOpencodeJson(tpl, tracker, provider, tmpDir)) as Record<
+        string,
+        Record<string, unknown>
+      >;
+    const doc = render("github", "openrouter");
+    doc.mcp = { ...doc.mcp, ...render("linear", "openrouter").mcp };
+    doc.provider = {
+      ...doc.provider,
+      ...render("none", "ollama").provider,
+      ...render("none", "opencode-zen").provider,
+    };
+    return doc;
+  }
+
+  it("deletes opencode.json holding every provider block and tracker entry earlier installs left", async () => {
+    const rel = ".opencode/opencode.json";
+    const doc = multiInstallOpencodeJson();
+    expect(Object.keys(doc.provider)).toEqual(["openrouter", "ollama", "opencode"]);
+    expect(Object.keys(doc.mcp)).toEqual(["github", "linear"]);
+    writeFile(rel, JSON.stringify(doc, null, 2) + "\n");
+    await runUninstall(["opencode"], makeCtx());
+    expect(fileExists(rel)).toBe(false);
+  });
+
+  it("keeps a provider block and tracker entry the consumer edited, whole, and their own entries", async () => {
+    const rel = ".opencode/opencode.json";
+    const doc = multiInstallOpencodeJson();
+    const ollama = doc.provider.ollama as { options: { baseURL: string } };
+    ollama.options.baseURL = "http://localhost:11434/v1";
+    (doc.mcp.linear as { url: string }).url = "https://mcp.example.com/linear";
+    doc.mcp.sentry = { type: "remote", url: "https://mcp.sentry.dev/mcp" };
+    doc.provider.mine = { options: { apiKey: "{env:MINE}" } };
+    writeFile(rel, JSON.stringify(doc, null, 2) + "\n");
+    await runUninstall(["opencode"], makeCtx());
+    const after = JSON.parse(readFile(rel)) as Record<string, Record<string, unknown>>;
+    expect(Object.keys(after).sort()).toEqual(["mcp", "provider"]);
+    expect(after.provider).toEqual({ ollama: doc.provider.ollama, mine: doc.provider.mine });
+    expect(after.mcp).toEqual({ linear: doc.mcp.linear, sentry: doc.mcp.sentry });
   });
 
   it("preserves opencode.json when the consumer added their own key", () => {

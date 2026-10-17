@@ -1,0 +1,7 @@
+{
+  "blocking": {
+    "critical": 7,
+    "high": 30
+  },
+  "accepted": []
+}

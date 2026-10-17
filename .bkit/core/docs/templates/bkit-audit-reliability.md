@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
@@ -71,10 +71,13 @@ Failure paths are least-tested: happy path is tested; vendor outage stays unwalk
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Code Search:** Steps 2–12, 14, 16 — text search and language server for callers, e.g. ripgrep, Serena, `tsserver`. Language-server hits under-report; empty is inconclusive → corroborate with text search and name the tool. Fallback: text search only; name it per claim.
 - [ ] **Web:** Step 15 — fetch anchor standards. Fallback: versions recorded as unread.
 
@@ -83,7 +86,7 @@ Always verify.
 Verify only when applicable.
 
 - [ ] **Metrics:** Hosted traces, errors, or health endpoint → Steps 3, 13 — SLO queries and alert config, e.g. Sentry, Datadog, Better Stack. Fallback: repo config only; live measurements `Not Checked`.
-- [ ] **Job Platform:** Background jobs → Steps 6, 7 — flow control and replay docs, read-only, e.g. Inngest, Temporal. Fallback: code only; live run history `Not Checked`.
+- [ ] **Job Platform:** Background jobs → Steps 6, 7 — flow control and replay docs, read-only, e.g. Inngest, Temporal. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window; run it via `direnv exec . bash`. Fallback: code only; live run history `Not Checked`.
 - [ ] **Deploy Platform:** Hosted deploys → Step 12 — skew protection, rollout, rollback history, e.g. Vercel API, Cloud Run. Fallback: repo config only; dashboard settings `Not Checked`.
 - [ ] **Vendor Status:** External dependencies → Step 13 — status feeds. Fallback: none; feeds `Not Checked`.
 
@@ -96,7 +99,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Surfaces:** One table, kept run to run for diffs. Outbound calls (every SDK client and every `fetch` host); webhook receivers; background work (job functions and scheduled database jobs); write paths (routes and server actions that change data). Per dependency: hard (journey fails without it) or soft (degrades), and what it depends on in turn. Transitive counts (e.g. auth mail via mail vendor → mail outage is sign-in outage). Surface in code, not docs = finding; doc rewrite → `bkit-audit-documentation`. **Done when:** `Surfaces` lists every surface with hard/soft and transitive deps, or `N/A` and STOP.
 - [ ] **Step 3 — Journeys:** Every user-reliant journey. Per journey: SLI as good/total ratio, SLO over rolling 28-day window, current measurement with query that produced it. Keep table run to run. No target, or target nobody measures = finding. Error-budget policy: what changes when budget spent (e.g. feature freeze, mandatory postmortem when one incident uses >20% of budget). Record whether policy triggered since previous run and whether obeyed. No policy = finding. **Done when:** `Journeys` row per journey: SLI · SLO · measurement and query · budget triggered · obeyed.
 - [ ] **Step 4 — Dropped Errors:** Codebase-wide, not only errors that reached a log (`bkit-audit-logs` owns those). `catch` that neither rethrows, returns error, nor logs at `warn` or above; client calls whose error never read (e.g. Supabase `{ error }`, AWS SDK, Prisma); promises without `await` or `.catch`; broad catches turning every failure into one generic message so caller cannot tell timeout from bug. Dropped, never logged = invisible to user and operators; those first. Deliberate best-effort (telemetry, fire-and-forget notification) OK when code says so. Linter-catchable class (e.g. `@typescript-eslint/no-floating-promises`, unread client `error`) → name rule under `Process Improvements`; do not add it. Adding gate → `bkit-audit-gates`. **Done when:** every hit = finding with `file:line`.

@@ -286,6 +286,14 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
 
+      # Dependency-audit gate: fails on a high or critical advisory in the lockfile that
+      # scripts/ci/accepted-advisories.json does not accept with a reason and an in-date expiry.
+      # Self-skips when the guard is absent — a repo that did not adopt
+      # scripts/ci/check-dependency-audit.mjs is a no-op. deployments.md § Dependency updaters.
+      - name: Check Dependency Audit
+        if: steps.cache.outputs.skip != 'true' && hashFiles('scripts/ci/check-dependency-audit.mjs') != ''
+        run: node scripts/ci/check-dependency-audit.mjs
+
       # Capability-register freshness gate: rebuild the graph with graphify and fail when
       # docs/capabilities.md is not what this tree produces, so the register cannot drift
       # silently. Self-skips when the graphify wrapper is absent — a repo that did not adopt
@@ -868,6 +876,7 @@ jobs:
 #       - name: Tear Down Base Worktree       # if: always()
 #       - name: Run bkit Check                # [U] drift gate (same as pre-push); catches --no-verify/web-edit/cloud drift
 #       - name: Check Accepted Divergences    # [U] node scripts/ci/check-accepted-divergences.mjs — every event-keyed step is registered; stale rows fail too. testing.md § Accepted divergences.
+#       - name: Check Dependency Audit        # [U] node scripts/ci/check-dependency-audit.mjs — high/critical advisories fail unless accepted with a reason + expiry. deployments.md § Dependency updaters.
 #       - name: Pull Vercel Env Vars          # [D] preview vs prod env by branch; set CI_ENV_FILE; FAIL-FAST if critical secrets empty
 #       - name: Assert Environment Shape          # [D] env-shape checker (e.g. env-check.sh)
 #       # Resolve URL and remote db push are NOT steps in this catalogue.

@@ -1,6 +1,6 @@
 # bkit — Comparison, Pipeline Reference & Agentic Design Patterns
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Human-facing reference. bkit vs other AI development frameworks, five-phase pipeline + every subagent (execution order), bkit vs Antonio Gulli's _Agentic Design Patterns_. Evaluation, onboarding, outreach — not agent workflow doc-matrix.
@@ -12,6 +12,19 @@
 > - Keep prose factual; house / write-good linters apply to `*.md`; no hype adjectives.
 > - Part 3 cells: each project's own repo / docs only, never roundups or AI summaries; no star counts; refresh the as-of month with the table.
 > - Pipeline or subagents change → update Part 1 to match `.bkit/core/workflows/*` and `.bkit/core/.bkit/prompts.md`.
+> - Audit templates added, removed or renamed → update the Part 1 § Audits table to match `.bkit/core/docs/templates/bkit-audit-*.md`.
+
+**Contents**
+
+- [What this is](#what-this-is)
+- [Part 1 — The five-phase pipeline, in order](#part-1--the-five-phase-pipeline-in-order)
+  - [Pipeline map](#pipeline-map-key-steps-only) · [CI test scaffold](#ci-test-scaffold-runs-on-every-pr--push)
+  - [Design](#phase-1--bkit-design) · [Plan](#phase-2--bkit-plan) · [Build](#phase-3--bkit-build) · [Debug](#phase-4--bkit-debug) · [Ship](#phase-5--bkit-ship)
+  - [Audits: every template](#audits)
+- [Part 2 — Comparison to agentic design patterns](#part-2--comparison-to-agentic-design-patterns)
+  - [Where bkit goes beyond the catalogue](#where-bkit-goes-beyond-the-catalogue) · [Known gaps](#known-gaps-scoped-as-opportunities)
+- [Part 3 — Compared with other AI development frameworks](#part-3--compared-with-other-ai-development-frameworks)
+  - [Agents and CI](#agents-and-ci)
 
 ## What this is
 
@@ -19,7 +32,7 @@ bkit turns a single coding-agent request into gated, peer-reviewed engineering. 
 
 Beside those commands, 35 read-only audit templates live at `docs/templates/bkit-audit-*.md`. `@bkit-audit-generate` runs one and writes `docs/audits/{YYYYMM}/{slug}.md`. `/bkit-plan` takes a design, one or more of those reports, or both.
 
-Part 1: every phase subagent in execution order, then the main audit templates. Part 2: bkit vs Gulli agentic patterns. Part 3: bkit vs 10 other AI development frameworks, one table, then agents and CI in detail. Full audit catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
+Part 1: every phase subagent in execution order, then the main audit templates. Part 2: bkit vs Gulli agentic patterns. Part 3: bkit vs 10 other AI development frameworks, one table, then agents and CI in detail.
 
 Not related to [bkit Vibecoding Kit](https://github.com/popup-studio-ai/bkit-claude-code), a separate project with the same name. This bkit = `@cbartens/bkit`, [github.com/cbartens/bkit](https://github.com/cbartens/bkit).
 
@@ -259,23 +272,48 @@ No command and no phase label. One subagent, one template per run.
 
 `/bkit-plan` reads a design doc, one or more reports, or both. The invocation names which findings are in scope. The rest of each report stays context.
 
-35 templates. Main ones:
+All 35 templates, by area. Template file = `docs/templates/bkit-audit-{template}.md`.
 
 <!-- prettier-ignore -->
-| Template | Title | What it does |
-| --- | --- | --- |
-| `bkit-audit-security` | Security Audit | Auth, authorisation, secrets, input validation, data exposure, dependency risk — documented control that does not run. |
-| `bkit-audit-privacy` | Privacy Audit | Personal data — held, where it goes, retention, deletion removes the person, disclosure matches code. |
-| `bkit-audit-accessibility` | Accessibility Audit | WCAG 2.2 AA — automated-gate coverage vs gaps; manual passes nothing automates. |
-| `bkit-audit-architecture` | Architecture Review | Package graph, intended layers, server / client boundary, coupling with no import edge. |
-| `bkit-audit-app-performance` | App Performance Audit | Field / lab / source baseline — web, native, server — vs published thresholds and budgets. |
-| `bkit-audit-reliability` | Reliability Audit | Dependency slow / down / delivered twice — dropped errors, missing timeouts, unsafe retries, races, unbounded work, unalerted failure modes. |
-| `bkit-audit-testing` | Testing Audit | Suite covers must-do and must-never-do, goes red when code breaks, and runs. |
-| `bkit-audit-database` | Database Audit | Privileges, access coverage, migrations, integrity, capacity, restore. |
-| `bkit-audit-llm` | LLM Audit | Per model call — effect, stop on hostile input: prompts, tool bounds, output checks, limits, evals. |
-| `bkit-audit-cost` | Cost Audit | Vendor plan vs use, bill drivers, spike noticed before the invoice. |
+| Area | Audit | Template | What it finds |
+| --- | --- | --- | --- |
+| **Security and privacy** | Security | `security` | Holes in sign-in, permissions, secrets and input checks, plus documented protections that never run. |
+| | Red team | `red-team` | Attacks a test copy of the app, never production, one hostile request at a time. Keeps each request and response, then cleans up. |
+| | Privacy | `privacy` | Where personal data goes and how long it stays, whether deleting an account removes the person, whether the privacy policy matches the code. |
+| **Code quality** | Architecture | `architecture` | Code that breaks the intended layers: server code reaching the client, modules tied together with no visible import. |
+| | Duplication | `duplication` | One behaviour built more than once: copied rules, competing mechanisms, restated types, merges that should not have happened. |
+| | Dead code | `dead-code` | Code, settings, routes, events, tables and assets that look live and never run. |
+| | Slop | `slop` | Every switched-off check: disabled lint rules, casts that hide type errors, skipped tests, config opt-outs. |
+| | Documentation | `documentation` | Docs that disagree with the code, links that land nowhere, facts agents rely on that nobody wrote down. |
+| | Dependencies | `dependencies` | Pending dependency updates merged as one verified batch; security advisories, licences, end-of-life packages, supply-chain settings. |
+| **Tests and CI** | Testing | `testing` | Tests that can't fail, don't run, or skip what the product must and must never do. |
+| | Coverage | `coverage` | How much code the tests reach, against the minimum CI enforces, and the next minimum to set. |
+| | Flaky tests | `flakes` | Tests that pass only on retry or fail on one platform, and the change that makes each one reliable. |
+| | Gates | `gates` | Problems audits keep finding by hand that an automatic check could block, and the order to add those checks. |
+| | Annotations | `annotations` | Warnings buried in green CI runs: silent failures, deprecations with a deadline, ignored lint warnings. |
+| | CI performance | `ci-performance` | The lane that makes CI slow or expensive, and what each change would save. |
+| **Running in production** | Reliability | `reliability` | What breaks when a service is slow, down or answers twice: missing timeouts, unsafe retries, races, failures no alert reports. |
+| | Database | `database` | Who can read and write what, migrations, data integrity, capacity, and whether a restore works. |
+| | Logs | `logs` | Error-tracker issues and logs sorted into real bugs, noise at the wrong level, and failures that never got reported. |
+| | App performance | `app-performance` | Web, phone and server speed, measured against published targets and your own budgets. |
+| | Config | `config` | Settings outside the code that disagree across environments, dashboards, repo and docs; anything with an expiry date. |
+| | Cost | `cost` | Vendor plans that don't fit your usage, what drives each bill, whether a spike shows up before the invoice. |
+| **Users and reach** | Accessibility | `accessibility` | What automated accessibility checks miss against WCAG 2.2 AA, plus the manual checks nothing automates. |
+| | Usability | `usability` | Screens that don't match their design or the other platforms, and main flows a person can't finish. |
+| | Analytics | `analytics` | Product events that don't fire, differ between web and phone, fire before consent, or carry personal data. |
+| | AI search & SEO | `aio-seo` | Whether search engines and AI answer engines can find, read and describe your public pages. |
+| | App Store | `app-store` | What keeps an iOS or Android app listed: deadlines, privacy declarations, permissions, signing, review readiness, crashes, ratings. |
+| **AI features** | LLM | `llm` | What each AI model call can make happen, and what stops it when the input is hostile: prompts, tool limits, output checks, evals. |
+| | Models | `models` | Whether each AI call uses the best current model for the job, whether models and fallbacks still exist, whether one list holds them all. |
+| | Prompts | `prompts` | Product prompts that are unclear, badly structured, or off the model maker's current guide. |
+| **Project upkeep** | Issues | `issues` | Size and priority for every open issue, by rules a later run applies the same way; board, parent, milestone and blocking links. |
+| | Deferrals | `deferrals` | Postponed work sorted into done, replaced, tracked, parked, or in scope and never finished. |
+| | Failures | `failures` | Known bugs sorted into still reachable, already fixed, misdescribed, unconfirmed, or a repeat of an earlier one. |
+| | Repo | `repo` | Leftovers and layout: stale worktrees, branches and stashes, ignored files, files in the wrong place. |
+| | Agents | `agents` | Each AI tool's setup: which instructions load, permissions, hooks, tool servers, model choices, untrusted input each agent reads. |
+| | Adoption | `adoption` | Whether every file bkit installed is used and used correctly: install current, docs filled in, audits run on schedule, each template adopted or declined with a reason. |
 
-Full catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
+Agent-facing scope per template: `.bkit/prompts.md` § Audit (Ad-hoc).
 
 ---
 

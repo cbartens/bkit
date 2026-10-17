@@ -1,8 +1,8 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 # Model Audit
 
@@ -68,10 +68,13 @@ Config ids look identical delisted vs choice day. Target failure: **a stale entr
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Catalogue Read:** Steps 3, 5, 6 — live model list per provider call sites use, e.g. OpenRouter `/api/v1/models`, Anthropic models API, OpenAI models API, Google models API. Fallback: maker docs only; live-endpoint claims = hypotheses.
 - [ ] **Web:** Steps 5, 10 — maker deprecation pages, model cards, anchor standards. Fallback: versions recorded as unread.
 
@@ -93,7 +96,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Detect:** Find every model call site (SDK calls, HTTP to a model API, config lists) and whether choice lives in one registry or literals at sites. Embeddings and other modalities count. Registry absent and ids inline = scatter is the finding; still audit ids. **Done when:** evidence in `Checked`, or `N/A` and STOP.
 - [ ] **Step 3 — Catalogue:** Pull live catalogue for each provider Step 2 found. Record date, URL, counts (full list, any constrained subset calls require, e.g. zero-retention). Every id proposed later must exist in this pull. **Done when:** date, source, and counts in `Catalogue`.
 - [ ] **Step 4 — Call Sites:** Derive each call site's requirements from code this run: modality, tools, and tool choice, structured output, reasoning, output cap, timeout. Do not copy a requirements table forward. Language-server references on each wrapper and each exported chain → every task routing through it; re-run empty results, corroborate with text search. Empty is inconclusive. Task added since previous report appears here only. **Done when:** `Call Sites` row per site: task · wrapper · requirements · chain · `file:line` · how derived.

@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
@@ -65,10 +65,13 @@ Privacy rules land with features; nothing re-reads them together. Drift: new tab
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Published Policy:** Step 10 — privacy policy and in-app privacy copy readable (repo file or live URL). Fallback: unreadable → `Not Checked`; no policy = finding.
 - [ ] **Web:** Steps 2, 6, 12 — regulator and law sources, vendor sub-processor pages, anchor standards. Fallback: regime changes and versions recorded as unread.
 
@@ -89,7 +92,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Regimes:** Per candidate regime: applies? why (user locations, turnover / volume thresholds, exemptions and their exceptions, child-directed or actual knowledge). Non-binding regime → mark which checks run as good practice. List law / regulator / code changes since previous report's date, with source links. **Done when:** `Regimes` row per regime: applies · why · changes.
 - [ ] **Step 3 — Inventory:** Schema and code. Per table / column / payload: what, whose (user / non-user member / third party named in content), why held, where documented; strictly necessary? default? Optional on by default or model-prompt data beyond task need = finding. Group by purpose → record-of-processing: lawful basis, subjects, recipients, transfer destination and mechanism, security measure. Consent purposes → consent record and withdrawal path. Third parties in content → legitimate-interests assessment and notify decision. Non-row stores: file storage, device caches, derived data (embeddings as personal as source text). Device storage (cookies, local storage, native caches, SDK identifiers) → strictly necessary vs needs consent. **Done when:** `Inventory` lists every store; store no doc mentions = finding.
 - [ ] **Step 4 — Children:** When product can hold children's data, state every run: how child is known (field / role / parent statement / not at all) and where; consent path per age band and rule setting it; child defaults (visibility, location, sharing, automated processing); age-threshold crossing (re-consent / role change / nothing); parent monitoring of a child (most children's rules require telling the child). **Done when:** answers in `Inventory`, or evidence product cannot hold children's data in `Checked`.

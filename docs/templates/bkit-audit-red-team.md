@@ -1,8 +1,8 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 # Red Team Audit
 
@@ -79,10 +79,13 @@ One per probe, on the `Probes` row.
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Target:** Steps 2–12 — non-production deployment of this commit, resolved by commit SHA, confirmed serving. Fallback: none. Probes stay `INCONCLUSIVE`. NEVER point them at production.
 - [ ] **Identities:** Steps 2, 5–12, 14 — create and delete synthetic users and tenants, guarded so a non-synthetic identity cannot be deleted. Fallback: none. Do not probe with real accounts.
 - [ ] **Web:** Steps 2, 13 — each platform's penetration-testing page, and anchor standards. Fallback: policy unread → do not send probes; record why.
@@ -106,7 +109,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Engage:** Record commit and non-production URL deployed for it (the deployment the live lane resolves for that SHA, not a branch alias that may be stale). Confirm serving. Write scope in `Scope`. **In:** non-production web URL (e.g. preview deploy, staging), API host, machine-client endpoint, inbound mail domain, data API via client public key, background-job serve endpoint, native build if tested. **Out:** production, release branch, persistent demo tenant, every third party's own platform, anything not on in-list. Read current penetration-testing page of each platform probes touch (app host, database, native vendor if in scope). Record what they allow and plan tier. Page forbids probe → do not send; `INCONCLUSIVE`. Create two synthetic tenants, attacker, and victim, each with roles the product distinguishes. Issue machine-client token for each owner where product has one, on plan the feature allows. Seed victim with few records, one recurring record, attachment. Do not touch persistent demo tenant. Read newest `bkit-audit-security` and `bkit-audit-llm` reports. Every finding they could not prove → probe; model audit's prompt-only rules → probe. Every trust boundary threat model names → ≥1 probe. No threat model → say so in `Scope`. Before destructive probe, confirm no other live test holds target database. Record window. Do not wait for named approver. Later probe degrades target, touches non-synthetic data, or reaches third party → stop remaining probes; record stop in `Scope`. **Done when:** `Scope` holds URL, commit, in-list, out-list, platform rules, plan tier, identities (no tokens), suspicion list. **Probe row** (every later probe): request with tokens redacted, response status, relevant body, verdict. `BROKE` adds blast radius by reasoning, not pivoting.
 - [ ] **Step 3 — Surface:** List attack surface at this commit: routes, server actions, machine-client tools, webhooks, response headers of each in-scope origin. Diff vs previous report's list. Everything new → ≥1 probe. **Done when:** `Surface` holds list and diff.
 - [ ] **Step 4 — Retest:** Re-run every earlier `BROKE` whose fix landed, from recorded reproduction. `FIXED` or `STILL BROKE`, with fix commit. Confirm regression test prior run named exists; if not → `bkit-audit-testing`. **Done when:** `Retests` row per prior break, or `none`.

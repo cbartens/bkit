@@ -24,14 +24,21 @@ Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`.
 # SENTRY_HOST="de.sentry.io"   # EU-region org; the global host 404s on its issue ids
 # An empty array is NOT "no errors": a spent quota drops events silently — check the org's
 # quota usage (or /api/0/organizations/{org}/stats_v2/) before concluding silence = clean.
-# Customise: SENTRY_SINCE window (1h / 24h / 7d); SENTRY_ENV (environment name, e.g. production; unset = all); SENTRY_N (<= 100); jq keys.
+# Non-200, or a non-array body → `skipped`, never `[]`.
+# Detector configs (`organizations/<org>/detectors/`) carry uptime-check request headers, secrets
+# included: strip with jq `del(.[].dataSources[]?.queryObj.headers)` before printing.
+# Customise: SENTRY_SINCE window (1h / 24h / 7d); SENTRY_ENV (environment name, e.g. production; unset = all); SENTRY_N (<= 100); jq keys. Positive control (suggested): run once over a window holding an issue the UI shows unresolved and seen in it; nothing back = reader broken, not clean.
 SENTRY_HOST="${SENTRY_HOST:-sentry.io}"
 [ -n "${SENTRY_AUTH_TOKEN:-}" ] && [ -n "${SENTRY_ORG:-}" ] && [ -n "${SENTRY_PROJECT:-}" ] \
   || { echo "[context-fetch:sentry] skipped — SENTRY_AUTH_TOKEN / SENTRY_ORG / SENTRY_PROJECT unset" >&2; exit 0; }
-curl -s \
+SENTRY_RESP=$(mktemp)
+trap 'rm -f "$SENTRY_RESP"' EXIT
+SENTRY_CODE=$(curl -s -o "$SENTRY_RESP" -w '%{http_code}' \
   -H "Authorization: Bearer ${SENTRY_AUTH_TOKEN}" \
-  "https://${SENTRY_HOST}/api/0/organizations/${SENTRY_ORG}/issues/?project=${SENTRY_PROJECT}&query=is%3Aunresolved&statsPeriod=${SENTRY_SINCE:-24h}&sort=date&limit=${SENTRY_N:-25}&collapse=stats${SENTRY_ENV:+&environment=${SENTRY_ENV}}" \
-  | jq '[.[] | {id, title, culprit, count: .count, firstSeen, lastSeen, permalink}]'
+  "https://${SENTRY_HOST}/api/0/organizations/${SENTRY_ORG}/issues/?project=${SENTRY_PROJECT}&query=is%3Aunresolved&statsPeriod=${SENTRY_SINCE:-24h}&sort=date&limit=${SENTRY_N:-25}&collapse=stats${SENTRY_ENV:+&environment=${SENTRY_ENV}}")
+[ "$SENTRY_CODE" = "200" ] && jq -e 'type == "array"' "$SENTRY_RESP" >/dev/null 2>&1 \
+  || { echo "[context-fetch:sentry] skipped — ${SENTRY_HOST} HTTP ${SENTRY_CODE:-000} (000 = unreachable, 401/403 = bad token or scope, 404 = wrong org / project / region host)" >&2; exit 0; }
+jq '[.[] | {id, title, culprit, count: .count, firstSeen, lastSeen, permalink}]' "$SENTRY_RESP"
 
 # Trace correlation — one issue's latest event → its trace_id. The same id appears in the
 # vercel block's `traceId` (the sentry-trace propagation header), linking the browser stack to

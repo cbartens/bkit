@@ -1,8 +1,8 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 # Prompt Audit
 
@@ -71,10 +71,13 @@ Guides disagree. The guide for the model that runs the prompt wins. A prompt tha
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Code Search:** Steps 2, 4–9 — text search and language server for call sites (e.g. ripgrep, Serena, `tsserver`). Prompts often markdown or string literals; tool descriptions often strings in schema files. Language-server hits under-report; empty inconclusive → corroborate with text search and name the tool. Fallback: text search only; name it per claim.
 - [ ] **Web:** Steps 3, 10 — each maker's prompting guide (e.g. WebFetch, WebSearch). Fallback: guide practice recorded as unread; Steps 4–7 cite the previous report's guide version and say so.
 
@@ -94,7 +97,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Inventory:** Start from code: every model call site outside tests (newest `bkit-audit-llm` `Inventory` as cross-check, not source). Per prompt: file, call sites, model(s) that run it — every model in the fallback chain, resolved at the call site (choice and lifecycle → `bkit-audit-models`, not scored here) · maker guide that applies · task (extract, classify, write, converse, tool-calling) · output consumer (parser, schema, human) · eval set covering it (`bkit-audit-llm` `Evals`) · last-changed commit · model or guide changed since. Exclude bkit-managed files and coding-agent instruction files. Diff vs previous run; new prompt or new model read first. **Done when:** `Inventory` row per prompt, or `N/A` and STOP.
 - [ ] **Step 3 — Guides:** Per maker in `Inventory`: read current prompting guide and model-specific page for each model generation in use. Record URL, last-updated date or date read, generation targeted. Build `Guidance`: practice · source · makers it applies to · which conflict. Conflict between makers → note which prompts run on both. Guide unread → `Not Checked`; Steps 4–7 for that maker = previous report's reading, labelled. **Done when:** `Guidance` row per practice used in Steps 4–7, every row sourced.
 - [ ] **Step 4 — Clarity:** Per prompt: task and what a good answer looks like stated up front; audience and context given; each constraint carries its reason where the guide asks for one; says what to do, not only what to avoid; terms the output depends on defined (e.g. date format, "recent", allowed labels); no contradiction within the prompt or between system prompt and template; no dead instruction naming a removed field, tool, or format. **Done when:** `Clarity` row per prompt: verdict per check, each failure cited.

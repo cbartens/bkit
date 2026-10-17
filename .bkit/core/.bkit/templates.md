@@ -42,7 +42,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Tool | Copy from | To | Output you commit |
 | --- | --- | --- | --- |
 | CI workflow | `.bkit/templates/.github/workflows/bkit-ci.yml` | `.github/workflows/bkit-ci.yml` | that file |
-| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/resolve-push-base.mjs`; `check-accepted-divergences.mjs` + `accepted-divergences.json`) |
+| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/resolve-push-base.mjs`; `check-accepted-divergences.mjs` + `accepted-divergences.json`; `check-dependency-audit.mjs` + `accepted-advisories.json`) |
 | Cloud-agent workflow | `.bkit/templates/.github/workflows/bkit-cloud.yml` | `.github/workflows/bkit-cloud.yml` | that file |
 | Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
 | Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |
@@ -91,14 +91,14 @@ Placeholders. Copies keep them raw; replace each in your copy:
 | `playwright.md` | Playwright on GitHub Actions | `e2e` | failing run's report artifact, failing specs first; inlined files, lines and binary paths capped | `GH_TOKEN` / `E2E_ARTIFACT`, `E2E_JOB_RE`, `E2E_MAX_FILES`, `E2E_MAX_LINES`, `E2E_MAX_BIN` | — | `gh` (base tool) |
 | `maestro.md` | Maestro iOS and Android lanes on GitHub Actions | `e2e` | every failed Maestro job's log, sliced to the result steps, each slice tail-bounded | `GH_TOKEN` / `MAESTRO_JOB_RE`, `MAESTRO_STEPS`, `MAESTRO_LOG_TAIL` | — | `gh` (base tool) |
 | `tavily.md` | any | `web` | web search for upstream causes (untrusted output) | `BKIT_TAVILY_API_KEY` / `QUERY` | — | — |
-| `sentry.md` | Sentry | `runtime` | unresolved issues seen in a window (organization issues endpoint), optional environment; trace / window recipes | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_HOST`, `SENTRY_SINCE`, `SENTRY_ENV`, `SENTRY_N` | `sentry.io` | — |
-| `vercel.md` | Vercel | `runtime` | serverless + edge error / fatal logs in a window | `VERCEL_TOKEN` / `VERCEL_SCOPE`, `VERCEL_ENV` | `vercel.com` | `vercel` (yes) |
-| `supabase.md` | hosted Supabase | `runtime` | Postgres `ERROR` / `FATAL` / `PANIC` lines | `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID` | `supabase.com` | — |
-| `stripe.md` | Stripe | `runtime` | failure / dispute / refund events, filtered by type and window at the source | `STRIPE_SECRET_KEY` / `STRIPE_N`, `STRIPE_SINCE_S` | `stripe.com` | — |
-| `resend.md` | Resend | `runtime` | bounced / complained / failed / delayed sends | `RESEND_API_KEY` / — | `resend.com` | — |
-| `inngest.md` | Inngest Cloud | `runtime` | `inngest/function.failed` events in a window | `INNGEST_SIGNING_KEY` / `INNGEST_N`, `SINCE_ISO`, `INNGEST_ENV` | `inngest.com` | — |
-| `cloudrun.md` | Google Cloud Run | `runtime` | container errors + memory-limit kills | `GCP_CLIENT_EMAIL`, `GCP_PRIVATE_KEY` (headless) / `GCP_PROJECT_ID`, `GCP_SERVICE` | `googleapis.com`, `google.com` | `gcloud` (yes) |
-| `expo.md` | Expo EAS Build + EAS Workflows (Maestro) | `runtime`, `e2e` | `runtime`: build status + errored-build log lines (capped per build); `e2e`: failed jobs' per-flow exceptions, JUnit (capped), screenshots, Maestro commands, hierarchy dumps, XCUITest + JS console | `EXPO_TOKEN` / `EXPO_APP_DIR`, `EAS_PLATFORM`, `EAS_PROFILE`, `EAS_LOG_N` (`runtime`); `EAS_WF_FILE`, `EAS_JUNIT_N` (`e2e`) | `expo.dev`, `googleapis.com` (`runtime`), `eascdn.net` (`e2e`) | `eas` (yes) |
+| `sentry.md` | Sentry | `runtime` | unresolved issues seen in a window (organization issues endpoint), optional environment; trace / window recipes; detector-header strip | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_HOST`, `SENTRY_SINCE`, `SENTRY_ENV`, `SENTRY_N` | `sentry.io` | — |
+| `vercel.md` | Vercel | `runtime` | serverless + edge error / fatal logs in a window, paged past the CLI's 50-line cap, all branches (`--no-branch`) | `VERCEL_TOKEN` / `VERCEL_SCOPE`, `VERCEL_ENV`, `SINCE`, `UNTIL`, `VERCEL_MAX_PAGES` | `vercel.com` | `vercel` (yes) |
+| `supabase.md` | hosted Supabase | `runtime` | Postgres `ERROR` / `FATAL` / `PANIC` counts per hour, severity, SQLSTATE and role; one call per day of window | `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID`, `SINCE_ISO`, `UNTIL_ISO` | `supabase.com` | — |
+| `stripe.md` | Stripe | `runtime` | failure / dispute / refund events, filtered by type and window at the source, paged; events whose webhook delivery failed | `STRIPE_SECRET_KEY` / `STRIPE_SINCE_S`, `STRIPE_MAX_PAGES` | `stripe.com` | — |
+| `resend.md` | Resend | `runtime` | bounced / complained / failed / delayed sends, paged back to the window start | `RESEND_API_KEY` / `SINCE_ISO`, `RESEND_MAX_PAGES` | `resend.com` | — |
+| `inngest.md` | Inngest Cloud | `runtime` | `inngest/function.failed` events in a window, paged; error class only, never error text | `INNGEST_SIGNING_KEY` / `INNGEST_ENV` (required with a branch key), `SINCE_ISO`, `UNTIL_ISO`, `INNGEST_N`, `INNGEST_MAX_PAGES` | `inngest.com` | — |
+| `cloudrun.md` | Google Cloud Run | `runtime` | container errors + memory-limit kills; service account only when the gcloud login cannot mint a token | `GCP_CLIENT_EMAIL`, `GCP_PRIVATE_KEY` (headless) / `GCP_PROJECT_ID`, `GCP_SERVICE`, `GCP_FILTER` | `googleapis.com`, `google.com` | `gcloud` (yes) |
+| `expo.md` | Expo EAS Build + EAS Workflows (Maestro) | `runtime`, `e2e` | `runtime`: newest 50 builds' status + errored-build log lines (capped per build); `e2e`: recent and FAILURE run lists, failed jobs' per-flow exceptions, JUnit (capped), screenshots, Maestro commands, hierarchy dumps, XCUITest + JS console | `EXPO_TOKEN` / `EXPO_APP_DIR`, `EAS_PLATFORM`, `EAS_PROFILE`, `EAS_N`, `EAS_LOG_N` (`runtime`); `EAS_WF_FILE`, `EAS_WF_N`, `EAS_WF_FAIL_N`, `EAS_JUNIT_N` (`e2e`) | `expo.dev`, `googleapis.com` (`runtime`), `eascdn.net` (`e2e`) | `eas` (yes) |
 | `serena.md` | Serena MCP server | — | nothing: provision only, installs `serena` in cloud | — | — | `uv` (yes) |
 
 MCP names listed: `sentry` / `Sentry`, `vercel` / `Vercel`, `supabase` / `Supabase`, `inngest`, `serena`. Every tool on a listed server runs without a prompt, writes included — list only servers you trust with that.
@@ -126,7 +126,8 @@ Adopt:
 3. Set the secret env vars locally (app env via `.envrc`, not `.bkit/.env`) and in each cloud dashboard (`.bkit/cloud.md`).
 4. `bkit install` → the provision recipes reach `.claude/bkit-cloud.md`'s setup script, the domains reach the cloud allowlist and local fetch permissions, the MCP names reach every host's allow rules.
 
-- Without credentials each block self-skips: `exit 0` plus `[context-fetch:<name>] skipped — …` on stderr. `/bkit-debug` narrates that as not checked, never as clean.
+- No credentials, or an API / auth error → block self-skips: `exit 0` plus `[context-fetch:<name>] skipped — …` on stderr. `/bkit-debug` narrates that as not checked, never as clean. `TRUNCATED` on stdout = page cap or a failed later page stopped the read; raise the block's `*_MAX_PAGES` knob.
+- Runtime and EAS blocks' `# Customise:` suggests a positive control: run once over a window holding a known event; nothing back = reader broken, not clean.
 - `bkit check` advisories point at these files: `context-fetch-missing`, `context-fetch-context-missing`, `context-fetch-source-not-enabled`, `context-fetch-provision-missing`.
 - Another backend → author a block in the same shape (rules in the managed block of `.agents/context.md`).
 

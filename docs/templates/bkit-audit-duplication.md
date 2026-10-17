@@ -1,8 +1,8 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 # Duplication Audit
 
@@ -90,10 +90,13 @@ Carry `COINCIDENTAL` and `RULE-OF-THREE-PENDING` forward in `Carried Forward` �
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Clean Tree:** Steps 2–13 — clean `git status` at recorded commit; findings only mean something against a known tree. Fallback: detached worktree off default branch.
 - [ ] **Text Search:** Steps 3, 5, 7–10 — inline expressions, literals, env names, non-code files, e.g. ripgrep, `git grep`. Fallback: `grep -rn`.
 - [ ] **Structural Search:** Steps 3, 12 — syntax patterns that skip comments / strings and catch reordered copies, e.g. ast-grep, Semgrep; ad hoc run, record resolved version. Fallback: text search; reformatted copies `Not Checked`.
@@ -120,7 +123,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Detect:** List apps, packages, platforms; shared homes (utility / owner modules); capability register; duplication gates enforced and what each catches (e.g. identical-signature gate → identical copies only). **Done when:** surface map and existing gates in `Checked`, or `N/A` and STOP.
 - [ ] **Step 3 — Rule Altitude:** Hunt one conceptual operation inlined at N sites instead of called from one function, copies differing on load-bearing details: fallback chains (e.g. JS `a ?? b ?? c`, divergent terminal fallback or order); null vs falsy (e.g. JS `??` vs `||`, with / without trim, optional-chain guards); formatting (date / time / timezone, currency, name / initials, address); predicates ("is active / deleted / owner?" filters); defaults (same enum / config default hardcoded in several readers). Structural rules where possible, text search where not; keep rules under `tmp/`, paste each into report for next run. Subtraction per shared helper: references on helper (routed set) minus sites matching inline pattern (inline set) → inline-not-routed = unmigrated site. Counts before reference-graph change (e.g. project references added) = stale → re-take, never carry forward. **Done when:** `Inline Rules` row per rule: helper · routed · inline · unmigrated · verdict, with its search rule.
 - [ ] **Step 4 — Clones:** Clone detector over source roots, machine-readable output, three passes: Type-1 exact; Type-2 renamed (ignore identifiers / literals); Type-3 near-miss (e.g. similarity 0.85, syntax-tree mode). Duplication % per package as series vs previous report. Every hit = candidate for `Verify`, not finding. Multiple platforms → counterpart listing (functions with / without counterpart per side). Growth: exact pass baselined at previous report's commit → clones new since vs consolidated since, blame naming introducer; arrival faster than consolidation = finding. **Done when:** per-package %, growth, counterpart list in `Clones`.

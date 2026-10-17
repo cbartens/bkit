@@ -10,7 +10,7 @@ tools:
   - mcp__serena__*
   - Write
 ---
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer estimating whether plans fit a single high-quality execution session.
 **Scope:** As specified by input and Read / Update / Create section.

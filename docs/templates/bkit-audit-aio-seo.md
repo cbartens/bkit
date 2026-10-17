@@ -1,8 +1,8 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 # AIO SEO Audit
 
@@ -71,10 +71,13 @@
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Live Fetch:** Steps 2–9 — request public URLs, headers, and HTML, e.g. `curl`, a browser. Fallback: source read; live claims = hypotheses.
 - [ ] **Web:** Step 10 — fetch anchor standards. Fallback: versions recorded as unread.
 
@@ -96,7 +99,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Public URLs:** List public URLs from sitemap if present, else crawl from home. Record production host and tools available in `Checked`. First: no preview deployment indexable (`X-Robots-Tag: noindex` or host deployment protection); crawled preview competes with production and can expose unreleased pages. Marketing site outside repo → name where; audit from live URL. **Done when:** host, URL list, preview verdict in `Public URLs`. No web origin → `N/A` and STOP. No indexable page → say so; `Indexing` still runs; steps needing indexable page skip with evidence in `Not Checked`.
 - [ ] **Step 3 — Indexing:** `robots.txt` + sitemap: present, valid, public URLs only. `lastmod` only when that page's content changes — trusted only when consistently accurate. Sitemap submitted in each webmaster console. Robots meta + `X-Robots-Tag` per page type: auth/previews `noindex`, public indexable. No `noindex` also `Disallow`ed: blocked crawler never sees `noindex` → URL can stay indexed from links. Canonicals: absolute, production host, one per page. Host canonicalisation: `http`→`https`, apex↔`www`, trailing-slash policy each one hop; HSTS set; sitemap uses canonical form only. Status codes: chain ≤1 hop, no loops, missing →404. Locales: `hreflang` per variant → existing pages; `hreflang="x-default"`; sets reciprocal and include self; canonical same-locale, never another locale; no forced `/` redirect by `Accept-Language` or IP — crawler without `Accept-Language` from one country (e.g. Googlebot) must see other locales. Content in HTML without JavaScript. Rendered HTML: one URL per page type — no-JS view vs engine render after JS (e.g. URL Inspection). Mobile/desktop same content when engine indexes mobile (e.g. Google). **Done when:** `Indexing` row per check: met / finding / not applicable (why).
 - [ ] **Step 4 — Metadata:** Indexable public page → title + description present, unique, right length. Open Graph + Twitter card tags; images exist, right size. `lang`, favicon, web manifest. Store listings → Smart App Banner (`apple-itunes-app`); `apple-app-site-association` + `assetlinks.json` reachable so search opens app. Link target screen → `bkit-audit-app-store`. **Done when:** `Metadata` row per page: tag · verdict, or skip in `Not Checked`.

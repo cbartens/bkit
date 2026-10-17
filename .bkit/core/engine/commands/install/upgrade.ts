@@ -962,7 +962,8 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
 
   // Network allowlist + MCP allows — OpenCode from renderOpencodeJson; Claude enrich
   // below; Cursor `.cursor/allowlist.json` + `.cursor/cli.json` only when cursor
-  // module installed.
+  // module installed. Written artifacts get their canonicalHashes refreshed below.
+  const artifactWrites: string[] = [];
   {
     const cwd = process.cwd();
     if (renderModules.has("cursor")) {
@@ -971,6 +972,7 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
         writeCursorCliPermissionsArtifact(cwd, upgradeFlags.dryRun),
       ]) {
         if (art.wrote) {
+          artifactWrites.push(art.path);
           console.log(
             `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${art.path}`,
           );
@@ -1015,6 +1017,7 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
           ...result.updated,
           ...renderedDocPaths,
           ...mcpWs.writes.map((w) => path.relative(process.cwd(), w.path)),
+          ...artifactWrites,
         ],
         skipped: result.skipped,
         skippedSeedable: result.skippedSeedable,

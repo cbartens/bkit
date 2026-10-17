@@ -1,8 +1,8 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 # Architecture Review
 
@@ -72,10 +72,13 @@ File reading cannot answer acyclic package graph, hub modules, or copied types. 
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Code Graph:** Steps 2–4 — local code-only extractor, e.g. graphify via a wrapper that strips API keys. Fallback: dependency linter and text search; graph counts `Not Checked`.
 - [ ] **Dependency Linter:** Steps 5–6 — resolves through the compiler, e.g. dependency-cruiser, import-linter. Fallback: read import statements; say so per claim.
 - [ ] **Git History:** Steps 1, 9, 13 — change coupling and the diff since the previous report. Fallback: change coupling `Not Checked`.
@@ -98,7 +101,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Graph:** Build locally, code-only, credentials stripped, via project wrapper (never bare extract). Record tool version, `built_at_commit`, node count, edge count, cross-package edge count. Graph commit ≠ reviewed `HEAD` → findings invalid; rebuild. Derived output untracked; clean rebuild deletes only that output. After path-alias change → clean rebuild — force flag that does not clear module-resolution cache keeps stale unresolved edges. Syntax-only graph (e.g. tree-sitter) does not consult language server: path aliases and manifest names are separate inputs; losing either drops edges with no error. Keep manifests in corpus so workspace imports resolve → drop manifest-to-manifest edges before matrix. Skip whole-repo render; use package and module rollups. Dated extractor backups (if the tool keeps them) accumulate; clean rebuild clears them. **Done when:** commit, counts, tool list in `Graph`, or absent tool in `Not Checked`.
 - [ ] **Step 3 — Report:** Read extractor report. Every finding-like section checked against source before it counts. Import cycles: type-only edges erased at compile time ≠ runtime cycle — check every edge. Cross-package edges: do not dismiss as impossible once aliases resolve; do dismiss manifest-to-manifest. God nodes: high degree = look, not defect. Community dump with numbered labels and near-zero cohesion → clustering found no structure — skip. **Done when:** each section dispositioned in `Graph`.
 - [ ] **Step 4 — Structure:** Query built graph, then graph file. Filters first: code only (source extensions; drop manifests and config); tests separated with repo's one test-path rule — do not type a shorter list. Test files cross boundaries; counting them as product hides shape. Views with/without test code can both be correct — record which. Dependency-shaped edges only (import, re-export, dynamic import). Nesting ≠ dependency. Name-matching edges (e.g. `indirect_call`) can invent links between unrelated files sharing a function name — exclude. Blast-radius under-reports: missed callers in anonymous callbacks, calls in module-level initialisers. Blast-radius set = starting set, never complete. Checks (each a series): (1) package dependency matrix, code-only, back-edges (library→app, leaf→consumer) — should be DAG; per workspace Ca, Ce, instability I = Ce/(Ca+Ce), abstractness (share of exported types and interfaces); flag package depending on less stable one. (2) File-level cycles (SCC over import edges); component >1 file = candidate → type-only check. (3) Fan-in: files everything imports. (4) Fan-out: most imports — barrels and god modules. (5) Duplicate symbol names: group callables by label across distinct non-test source files; ≥3 definitions = prompt. False positives: per-directory handlers, platform splits (e.g. `.native` / `.web`). Signal = type/component duplicated where canonical exists. Same grouping over test code alone. Copies without shared name → text search. Confirmed hits → `bkit-audit-duplication`. **Done when:** matrix, cycles, rankings, duplicates in `Structure`.

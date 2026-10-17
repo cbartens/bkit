@@ -557,10 +557,29 @@ describe("branches anchor-stamp", () => {
     expect(r.json).toEqual({
       file: "design.md",
       baseSha: "abc123def",
+      baseRef: "origin/dev",
       designPath: null,
       designBaseSha: null,
       changed: true,
     });
+  });
+
+  it("--base-ref stamps the given ref instead of origin/dev (audit reports)", async () => {
+    const dir = tmp("anchor");
+    write(dir, "report.md", "<!-- Note: report -->\n# Audit\n");
+    const r = await run(dir, [
+      "anchor-stamp",
+      "--file=report.md",
+      "--base-sha=abc123def",
+      "--base-ref=feat/x",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ baseSha: "abc123def", baseRef: "feat/x" });
+    expect(read(dir, "report.md")).toBe(
+      "<!-- bkit:anchor\nbaseSha: abc123def\nbaseRef: feat/x\n-->\n<!-- Note: report -->\n# Audit\n",
+    );
+    const back = await run(dir, ["anchor-read", "--file=report.md", "--field=baseRef"]);
+    expect(back.json).toMatchObject({ value: "feat/x" });
   });
 
   it("is idempotent: stamping twice with the same args is byte-identical", async () => {

@@ -1,8 +1,8 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 # Usability Review
 
@@ -72,10 +72,13 @@ Automated checks never look at a screen. They pass when a title is centred on on
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Screens:** Steps 2, 7–14 — open product (local or existing preview). Fallback: drawings and source only; live claims = hypotheses.
 - [ ] **Drawings:** Steps 5, 7, 9 — reference drawings readable. Fallback: live vs live only; drawing comparison `Not Checked`.
 - [ ] **Web:** Step 15 — fetch anchor standards. Fallback: versions recorded as unread.
@@ -99,7 +102,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Signals:** Since previous report: funnel drop-off on core flows, support tickets, store-review themes, in-app feedback. Top 5 complaints → each a finding or explained by run end. No users yet → `no users yet`. Missing or untrustworthy funnel data stays listed; fix → `bkit-audit-analytics`. **Done when:** `Signals` holds the five, or `no users yet`.
 - [ ] **Step 3 — Capture:** Project has a screenshot-capture pipeline (`Project Instructions` names it, incl. how a run opts in, e.g. commit-message marker) → use finished run with artifact still inside retention window. No pipeline or no such run → hand walk; capture `Not Checked`. Record run id, event type, opt-in markers. Fetch and review before artifact expires. **Done when:** run id in `Capture`, or absence recorded.
 - [ ] **Step 4 — Manifest:** Download that run's report artifact. Read manifest and gap step in same job's log, where the pipeline emits them: every route and test id the run did not reach → this run's blind spot. **Done when:** manifest path in `Capture` and gap list in `Gaps`, or skip recorded.

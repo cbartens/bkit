@@ -1,8 +1,8 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 # Database Audit
 
@@ -65,10 +65,13 @@ Migrations and integration tests exercise queries; neither verifies privileges, 
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Catalogue Read:** Steps 3–16 — read-only SQL (or store's read-only API) per environment, e.g. platform MCP `execute_sql`, `psql` as read-only role. Fallback: local DB from migrations; remote claims = hypotheses.
 - [ ] **Local DB:** Steps 2, 10, 14 — replayable from migrations. Fallback: rolled-back transactions and remote re-check.
 - [ ] **Web:** Step 18 — fetch anchor standards. Fallback: versions recorded as unread.
@@ -92,7 +95,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Detect:** Find migrations / schema file / DB client. Confirm local DB matches migrations before trusting local measurements. Schema doc absent, migrations exist → missing doc = finding; still read migrations. **Done when:** evidence in `Checked`, or `N/A` and STOP.
 - [ ] **Step 3 — Advisors:** Run platform security and performance advisors; each row = candidate, not finding. One line per lint the platform's advisor runs, even when clean (e.g. Supabase: unindexed FKs, duplicate indexes, per-row auth in policy, multiple permissive policies, mutable function `search_path`, extension in public schema, exposed table without row-level security, owner-rights view). No advisor → engine-appropriate subset by catalogue query; rest `N/A`. Cite platform fix pattern per finding. **Done when:** every row dispositioned in `Advisors`.
 - [ ] **Step 4 — Checklist:** Walk platform production checklist against production, not memory: transport encryption enforced, network restrictions, org MFA, >1 owner, point-in-time recovery where size / RPO needs it, compute sized for `Connections` peak. **Done when:** every item met / not met (finding) / not applicable (why).

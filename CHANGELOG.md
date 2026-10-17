@@ -8,6 +8,45 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+## [5.2.3] — 2026-10-17
+
+### Added
+
+- **Dependency-audit CI gate.** New copy-and-own `scripts/ci/check-dependency-audit.mjs` (+ `.test.mjs`, `accepted-advisories.json`) runs `pnpm audit --json` and fails on any high / critical advisory the registry does not accept. Each acceptance needs a reason and an expiry (at most 7 days for critical, 30 for high); expired, over-long and stale rows fail; no report = fail. The CI template gains a `Check Dependency Audit` step in `bkit-tests-static`, a no-op until the script is copied. `docs/deployments.md` § Dependency updaters. Upgrade hint is `pnpm update -r <pkg>` (works on pnpm 10 and 12).
+- **Audit findings reach `docs/failures.jsonl`.** `@bkit-audit-generate` writes one failure row per `MEDIUM`+ finding once the report is complete (`workflow: "audit"`, `step: "audit-{slug}"`). A rerun reuses an open row's `key` for the same problem, downgrades it to `LOW` when the finding drops, and closes rows it no longer finds in surfaces it checked. The failures and deferrals audits write no rows. Plan and design already read the ledger, so findings feed them without a hand link.
+- **Audit reports carry a `bkit:anchor` block.** The audit agent runs `bkit branches anchor-stamp` right after creating the report, so the audited commit sits at the top of the file like design and plan docs. Step 1 of every template reads this and the previous report's commit from it. `anchor-stamp` gains `--base-ref` (default `origin/dev`).
+- **Audit Pre-Flight checks permissions first.** Every template opens with one read-only call per tool; a blocked call stops the run before `Probe Steps` and hands back narrow allow rules to grant, or `continue`. Blocked calls persist in `Project Instructions` `Permissions`.
+
+### Changed
+
+- **Logs audit template checks three things it skipped** (#575). Step 3: fixed `Board` figure per platform re-reporting to the tracker, platform failures beside tracker events (ratio < 1 = lost reports). Step 9: every `docs/noise.md` archive / mute row against its recorded trigger. Step 12: scheduled-job runs started and never finished. "warnings-doc" → `docs/noise.md`.
+- **Audit agent turn cap 150 → 300** (new `XL` tier). One agent runs every template; the longest run ~20 probe steps.
+- **Audit templates probe direnv before calling a credential missing** and run credentialed CLIs through `direnv exec .`. The logs, failures, reliability, flakes and annotations audits point at the `.agents/context.md` readers for their time window.
+
+### Fixed
+
+- **Context-fetch templates print `skipped` instead of empty output on an API error** (#575). A consumer's log audit found seven of nine readers returning nothing while real failures existed. Every runtime block now checks HTTP status / CLI exit and body shape, pages the whole window, prints `TRUNCATED` when its page cap stops it, and suggests a positive control in `# Customise:`. Per vendor:
+  - `supabase.md`: removed `logs.all` → `analytics/endpoints/logs`, one call per day, counts per SQLSTATE.
+  - `vercel.md`: `--no-branch`; pages past the 50-line cap; filters `.level`. `VERCEL_N` → `VERCEL_MAX_PAGES`.
+  - `inngest.md`: cursor paging; refuses a branch key with `INNGEST_ENV` unset; error class only, never error text. Adds `UNTIL_ISO`, `INNGEST_MAX_PAGES`.
+  - `cloudrun.md`: gcloud login only when `gcloud auth print-access-token` works, else service account in a throwaway `CLOUDSDK_CONFIG`; failed `logging read` → `skipped`. Adds `GCP_FILTER`.
+  - `stripe.md`: `starting_after` paging; `delivery_success=false` pass. `STRIPE_N` → `STRIPE_MAX_PAGES`.
+  - `resend.md`: `after` paging back to `SINCE_ISO`. `RESEND_N` → `SINCE_ISO`, `RESEND_MAX_PAGES`.
+  - `expo.md`: `EAS_N` default 10 → 50. `expo-workflows`: `startedAt` (was `null` via `createdAt`), `--limit` ≤ 100, FAILURE list (`EAS_WF_FAIL_N`), `workflow:status` judged by its JSON.
+  - `sentry.md`: status and array-shape checks; detector configs carry uptime-check headers.
+
+  Templates are copy-and-own: a copy below `bkit:end` changes only when re-copied.
+
+- **`.agents/context.md` authoring rules** (#575): API / auth error = self-skip; check status before jq; page the window or print `TRUNCATED`; suggest a positive control.
+- **Destructive-git guardrails catch reordered flags.** The Cursor, Codex and Antigravity hooks parse each command (every `&&` / `;` / `|` part, `bash -c`, `$(...)`) into subcommand and flags in any order, with combined short flags (`-fdx`) and global options (`-C dir`, `-q`). `git reset -q --hard`, `git clean -df`, `git checkout -q -- .` and `git restore --worktree .` now ask. Claude and opencode gain glob rows for the common reordered forms in the same tiers.
+- **Force-push denied in any position on every host.** `git push origin dev --force`, `-f` after other args and `+refspec` are denied on Claude and opencode as on the hook hosts; `--force-with-lease` stays allowed.
+- **`--no-verify` asks on every host** (`git commit -n` too).
+- **Shell reads of secret files ask on Cursor and Antigravity** (advisory on Codex): `.env*` except `.env.example`, `*.pem`, `*.p12`, `id_rsa`. Copy destinations, renames and grep patterns don't count as reads. Claude and opencode don't gate shell reads, because their tables match command text and would stall unattended runs on mentions; `.bkit/providers.md` says so.
+- **`bkit check` and `bkit status` see an Antigravity install with `plugin.json` deleted.** Any of `.agents/plugins/bkit/{plugin.json,hooks.json,agents,skills,hooks}` marks the host installed, so a missing manifest or hook file is drift (exit 1), not `antigravity: absent`. `check`, `status` and install share one detector.
+- **Full `bkit uninstall` removes every bkit-written `.opencode/opencode.json` entry.** Every supported provider block and tracker `mcp` entry that still matches bkit's template is stripped, not just the first one found; an edited block is kept whole.
+- **`bkit upgrade` refreshes the recorded hashes of `.cursor/allowlist.json` and `.cursor/cli.json`** after regenerating them, so a later uninstall no longer keeps them as consumer-modified.
+- **`.bkit/install.md` states that `bkit check` does not verify `.bkit/version` `canonicalHashes`**; a bad entry makes uninstall keep that file (`--force` removes it).
+
 ## [5.2.2] — 2026-10-15
 
 ### Fixed

@@ -1,8 +1,8 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 # Agent Config Audit
 
@@ -75,10 +75,13 @@ Each agent host reads its own permissions, hooks, tool servers, model picks; nob
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Checkout:** Steps 2–10 — repo-level agent config. Fallback: none; no checkout → `N/A` and STOP.
 - [ ] **Effective Config:** Steps 2, 4, 6 — host's merged-config view where offered (e.g. `claude mcp list`, a host's permissions or MCP panel). Fallback: files + documented precedence by hand; effective state = hypothesis.
 - [ ] **Web:** Steps 7, 11 — anchor standards, host references, live model catalogues. Fallback: versions recorded as unread; model pins `Not Checked`.
@@ -100,7 +103,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Hosts and Layers:** Name machine and checkout. Hosts with repo config or in team use (e.g. Claude Code, Cursor, Codex, opencode). Per host: config file per layer (managed policy, user, repo shared, repo local override, flags / env); documented precedence. Findings: config for unused host; host in use with no repo config; local-override file tracked or not ignored. Fresh cloud checkout: no user / local layer → say so, not clean. **Done when:** `Hosts` row per host × layer: file, present, tracked / ignored, precedence.
 - [ ] **Step 3 — Instructions:** Per host: instruction files loaded at session start (e.g. `AGENTS.md`, `CLAUDE.md`, always-applied IDE rule files, per-directory files, imports). Findings: host reaching no shared rules; rule file / import → missing path. Contradictions, size → `bkit-audit-documentation`. **Done when:** `Instructions` row per host: files loaded, shared rules reached yes / no.
 - [ ] **Step 4 — Permissions:** Per host × layer: allow / ask / deny, default approval mode, sandbox mode, fetch / network allowlist. Findings: wildcard shell allow; arbitrary-text interpreter allow (e.g. `bash -c`, `node -e`, `python -c`); deny overridden by broader higher-precedence allow; approval-bypass mode in shared config outside a sandbox; fetch allowlist wider than needed per host matching rules (e.g. apex vs subdomain). `Parity` matrix: action × host → blocker: deny rule / hook / sandbox / prompt prose only / nothing. Minimum actions: force push, history rewrite, branch delete, hook skip (e.g. `--no-verify`), merge or push to protected branch, publish / release, delete outside the working tree, credential-file read (e.g. `.env*`), fetch to unlisted host, tool-server write to a shared or production system. Findings: blocked in one host, open in another; blocked by prompt prose only. **Done when:** `Permissions` row per host × layer; `Parity` matrix with no empty cell.

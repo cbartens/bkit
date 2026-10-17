@@ -1,7 +1,8 @@
 // audits/templates/ci-scripts.test.ts — coverage for the CI helper scripts bkit ships as
-// copy-and-own templates. Unit-tests the accepted-divergence guard so a consumer's copy is
-// exercised by bkit's own suite before it is adopted.
+// copy-and-own templates. Unit-tests the accepted-divergence guard and the dependency-audit
+// gate so a consumer's copy is exercised by bkit's own suite before it is adopted.
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -140,5 +141,104 @@ describe("check-accepted-divergences", () => {
       ],
     });
     expect(r).toEqual({ missing: [], stale: [], badDecision: [] });
+  });
+});
+
+const AUDIT = path.resolve(".bkit/templates/scripts/ci/check-dependency-audit.mjs");
+
+interface Finding {
+  advisory: string;
+  severity: string;
+}
+const { blockingFindings, checkAcceptances } = (await import(pathToFileURL(AUDIT).href)) as {
+  blockingFindings: (report: unknown, blocking?: Record<string, number>) => Finding[];
+  checkAcceptances: (
+    findings: Finding[],
+    registry: unknown,
+    today: string,
+  ) => Record<"missing" | "invalid" | "expired" | "tooLong" | "stale", unknown[]>;
+};
+
+const AUDIT_REPORT = {
+  advisories: {
+    1: {
+      id: 1,
+      github_advisory_id: "GHSA-crit",
+      severity: "critical",
+      module_name: "a",
+      findings: [{ version: "1.0.0" }],
+    },
+    2: {
+      id: 2,
+      github_advisory_id: "GHSA-mod",
+      severity: "moderate",
+      module_name: "b",
+      findings: [{ version: "1.0.0" }],
+    },
+  },
+};
+
+function runAuditGuard(report: unknown, registry: unknown): number | null {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "audit-guard-"));
+  tmpDirs.push(dir);
+  fs.writeFileSync(path.join(dir, "report.json"), JSON.stringify(report));
+  fs.writeFileSync(path.join(dir, "registry.json"), JSON.stringify(registry));
+  return spawnSync(
+    process.execPath,
+    [
+      AUDIT,
+      `--report=${path.join(dir, "report.json")}`,
+      `--registry=${path.join(dir, "registry.json")}`,
+    ],
+    { encoding: "utf-8" },
+  ).status;
+}
+
+describe("check-dependency-audit", () => {
+  it("blocks high and critical by default, not moderate", () => {
+    expect(blockingFindings(AUDIT_REPORT).map((f) => f.advisory)).toEqual(["GHSA-crit"]);
+  });
+
+  it("reports an unaccepted advisory as missing and an accepted one as clean", () => {
+    const findings = blockingFindings(AUDIT_REPORT);
+    expect(checkAcceptances(findings, { accepted: [] }, "2026-10-17").missing).toHaveLength(1);
+    const row = { advisory: "GHSA-crit", reason: "why", expires: "2026-10-24" };
+    const r = checkAcceptances(findings, { accepted: [row] }, "2026-10-17");
+    expect(Object.values(r).flat()).toHaveLength(0);
+  });
+
+  it("flags an expired, over-long or stale acceptance", () => {
+    const findings = blockingFindings(AUDIT_REPORT);
+    const row = (advisory: string, expires: string) => ({ advisory, reason: "why", expires });
+    expect(
+      checkAcceptances(findings, { accepted: [row("GHSA-crit", "2026-10-16")] }, "2026-10-17")
+        .expired,
+    ).toHaveLength(1);
+    expect(
+      checkAcceptances(findings, { accepted: [row("GHSA-crit", "2026-10-25")] }, "2026-10-17")
+        .tooLong,
+    ).toHaveLength(1);
+    expect(
+      checkAcceptances(
+        findings,
+        { accepted: [row("GHSA-crit", "2026-10-20"), row("GHSA-gone", "2026-10-20")] },
+        "2026-10-17",
+      ).stale,
+    ).toHaveLength(1);
+  });
+
+  it("exits 1 on a missing acceptance, 0 when clean, and 1 on a report with no advisories", () => {
+    expect(runAuditGuard(AUDIT_REPORT, { accepted: [] })).toBe(1);
+    expect(runAuditGuard({ advisories: {} }, { accepted: [] })).toBe(0);
+    expect(
+      runAuditGuard({ error: { code: "ERR_PNPM_AUDIT_BAD_RESPONSE" } }, { accepted: [] }),
+    ).toBe(1);
+  });
+
+  it("passes its own copy-and-own test file", () => {
+    const res = spawnSync(process.execPath, [AUDIT.replace(/\.mjs$/, ".test.mjs")], {
+      encoding: "utf-8",
+    });
+    expect(res.status, res.stdout).toBe(0);
   });
 });

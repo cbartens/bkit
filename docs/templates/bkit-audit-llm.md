@@ -1,8 +1,8 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.2 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
 
 # LLM Audit
 
@@ -77,10 +77,13 @@ Taxonomy names match `bkit-audit-red-team`, so a finding here and its live proof
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
 - [ ] **Code Search:** Steps 2–12, 14 — text search and language server for callers (e.g. ripgrep, Serena, `tsserver`). Prompts often markdown; tool names often strings. Language-server hits under-report; empty inconclusive → corroborate with text search and name the tool. Fallback: text search only; name it per claim.
 - [ ] **Taxonomy Skill:** Steps 2–9, 13 — skill covering LLM and agentic top 10 editions in Anchor Standards (e.g. `owasp-security`). Categories it lacks → `Checked`. Fallback: read anchor standards directly.
 - [ ] **Web:** Steps 4, 9, 13 — tool-server spec, provider terms, anchor standards. Fallback: regime and version changes recorded as unread.
@@ -101,7 +104,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Inventory:** Start from code, not remembered caller list. Find every model-package import outside that package and outside tests; list prompt-set directories. Load taxonomy skill; categories it lacks vs anchor editions → `Checked`. Per model call and tool, one `Inventory` row: input and who controls it · model-group name at call site (choice, deprecation, catalogue, zero-retention routing → `bkit-audit-models`; do not score here) · tools offered · what a tool call writes, and to which tenant · DB client the write runs as · tenant data in prompt · output reaching someone outside tenant. Diff table vs previous run. New call site, prompt set, or tool read first. Per surface, AI impact-assessment record with named owner (ISO/IEC 42001 6.1.4, ISO/IEC 42005, NIST AI RMF MAP). Update from this table; do not rebuild. No record = finding. Checked-in inventory failing when new call site has no row → propose under `Process Improvements`; do not add this run. **Done when:** `Inventory` lists every call and tool, or `N/A` and STOP.
 - [ ] **Step 3 — Capability:** Per tool: does caller need it, what bounds it? Model writes from untrusted inbound → which rows: only from same message/thread, or any tenant row? State outcome of instruction to delete everything matching a phrase. "Any row" = finding, ranked by one-message removal scope. Outside-tool credential tenant-wide → read-only limit possible? If not, design question in `Governance`, not defect, unless code contradicts `docs/decisions.jsonl`. Read-only tools write nothing; destructive tools marked destructive. Host skipping confirmation on read-only tools → wrong annotation removes human check. Allowlist subtracting fields still subtracts; contract test pins; new tools through same filter. Tenant id from credential row, never tool arguments. Check every tool since previous run. Similarity search scoped by tenant in query (LLM08). Every embedding query filters tenant in query itself (privileged role bypasses RLS). Embedding regenerated on source edit, deleted on row delete. **Done when:** `Capability` states inbound bound and verdict for annotations, allowlist, tenant id, embedding scope.
 - [ ] **Step 4 — Governance:** Outside model holds tool-server credential → check against protocol authorization and security best practices. Record auth model. Where spec says HTTP server with authorization should use OAuth with protected-resource metadata and audience-bound tokens, static bearer = design question in `Governance`, not defect, unless code contradicts `docs/decisions.jsonl`. Token lifecycle: default lifetime, scopes, rotation/revocation, per-tool-call logging per token. Server never passes received token downstream. Snapshot every tool name, description, annotations; diff previous run. Changed tool description = supply-chain risk (ASI04): outside model reads as instructions → needs reviewer. No tool server → skip with evidence. **Done when:** `Governance` holds auth, lifecycle, passthrough, description diff, or skip.

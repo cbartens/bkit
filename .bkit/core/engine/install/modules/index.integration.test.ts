@@ -420,14 +420,14 @@ describe(".husky/pre-push is the consumer's file", () => {
 // ---------------------------------------------------------------------------
 // permissions-parity — one canonical gate set, asserted against every host.
 //
-// An agent is held to the same rules whichever IDE runs it. The four hosts express
-// gates in four different languages:
+// An agent is held to the same rules whichever IDE runs it. The five hosts express
+// gates in three different languages:
 //
-//   Claude   .claude/settings.json          permissions.deny / .ask  — prefix patterns
+//   Claude   .claude/settings.json          permissions.deny / .ask  — globs, deny > ask > allow
 //   opencode .opencode/opencode.json        permission.bash / .read  — globs, last-match-wins
-//   Cursor   .cursor/hooks/bkit-guardrails.cjs                            — regexes in a script
+//   Cursor   .cursor/hooks/bkit-guardrails.cjs                            — parsed command in a script
 //   Codex    .codex/hooks/bkit-guardrails.cjs                             — same engine, Claude-family envelope
-//   Antigravity .agents/plugins/bkit/hooks/bkit-guardrails.cjs            — same engine; file reads asserted here
+//   Antigravity .agents/plugins/bkit/hooks/bkit-guardrails.cjs            — same engine, Antigravity envelope
 //
 // This file is the single table they all satisfy: a gate added here fails every host
 // that lacks it.
@@ -436,6 +436,9 @@ describe(".husky/pre-push is the consumer's file", () => {
 // `permissionDecision: "ask"` but does not implement it, so its ask tier is advisory
 // `additionalContext` — the gate fires and informs, it cannot stop the command. Deny
 // blocks for real on all four.
+//
+// Shell reads of secret files are the one gate the permission tables do not carry
+// (SHELL_SECRET_READS): a command-text glob cannot tell a read from a mention.
 describe("permissions-parity", () => {
   const CLAUDE_SETTINGS = path.resolve(".bkit/shared/.claude/settings.json");
   const OPENCODE_JSON = path.resolve(".bkit/shared/.opencode/opencode.json");
@@ -489,6 +492,73 @@ describe("permissions-parity", () => {
     { cmd: "gh repo delete o/r", expect: "ask", why: "destroys a repository" },
     { cmd: "gh pr close 1", expect: "ask", why: "closes someone's PR" },
     { cmd: "gh release delete v1", expect: "ask", why: "destroys a release" },
+    // Flag / word-order variants: same tier as the canonical spelling.
+    { cmd: "git push origin dev --force", expect: "deny", why: "force-push, flag after args" },
+    { cmd: "git push origin dev -f", expect: "deny", why: "force-push, short flag after args" },
+    { cmd: "git push -fu origin dev", expect: "deny", why: "force-push in a short-flag cluster" },
+    { cmd: "git push origin +dev", expect: "deny", why: "force-push via a +refspec" },
+    { cmd: "git push --force --no-verify", expect: "deny", why: "force-push wins over ask" },
+    { cmd: "git push origin dev", expect: "allow", why: "plain push" },
+    { cmd: "git push --force-with-lease", expect: "allow", why: "bare lease-guarded push" },
+    {
+      cmd: "git push origin feat --force-with-lease",
+      expect: "allow",
+      why: "lease-guarded push, flag after args",
+    },
+    { cmd: "git reset -q --hard HEAD", expect: "ask", why: "--hard after another flag" },
+    { cmd: "git reset HEAD --hard", expect: "ask", why: "--hard after the commit" },
+    { cmd: "git reset HEAD~1 --soft", expect: "allow", why: "soft reset keeps the work" },
+    { cmd: "git clean -df", expect: "ask", why: "reordered short-flag cluster" },
+    { cmd: "git clean -f -d", expect: "ask", why: "split short flags" },
+    { cmd: "git clean -xdf", expect: "ask", why: "force last in the cluster" },
+    { cmd: "git clean -n", expect: "allow", why: "dry run deletes nothing" },
+    { cmd: "git clean -nd", expect: "allow", why: "dry run deletes nothing" },
+    { cmd: "git checkout -q -- .", expect: "ask", why: "flag before the pathspec" },
+    { cmd: "git checkout .", expect: "ask", why: "whole-tree pathspec without --" },
+    { cmd: "git checkout feature-branch", expect: "allow", why: "branch switch" },
+    { cmd: "git restore --worktree .", expect: "ask", why: "explicit worktree restore" },
+    { cmd: "git restore -W .", expect: "ask", why: "short worktree flag" },
+    { cmd: "git restore src/app.ts", expect: "allow", why: "one named file" },
+    { cmd: "git rebase --interactive main", expect: "ask", why: "long interactive flag" },
+    { cmd: "git rebase main -i", expect: "ask", why: "-i after the upstream" },
+    { cmd: "git rebase main", expect: "allow", why: "non-interactive rebase" },
+    { cmd: "git stash list", expect: "allow", why: "read-only stash command" },
+    { cmd: "git push --no-verify", expect: "ask", why: "skips pre-push hooks" },
+    { cmd: "git push origin dev --no-verify", expect: "ask", why: "skips pre-push hooks" },
+    { cmd: "git commit --no-verify -m x", expect: "ask", why: "skips commit hooks" },
+    { cmd: "git commit -n -m x", expect: "ask", why: "-n is commit's --no-verify" },
+    {
+      cmd: "git push --force-with-lease --no-verify",
+      expect: "ask",
+      why: "the lease allow never lifts the --no-verify ask",
+    },
+    { cmd: "git commit -m x", expect: "allow", why: "ordinary commit" },
+  ];
+
+  /**
+   * Shell reads of secret files: gated on the script hosts only (Cursor and Antigravity
+   * ask, Codex advisory). Claude and opencode carry no `Bash(...)` rows for them — a
+   * command-text glob cannot tell `cat .env` from `cp .env.example .env` or a commit
+   * message naming `.env`, and an ask stalls autonomous and cloud runs. `expect` is the
+   * script hosts' verdict; Claude and opencode allow every row.
+   */
+  const SHELL_SECRET_READS: { cmd: string; expect: Verdict; why: string }[] = [
+    { cmd: "cat .bkit/.env", expect: "ask", why: "bkit tooling secrets" },
+    { cmd: "cat .env", expect: "ask", why: "secrets" },
+    { cmd: "grep KEY .env.local", expect: "ask", why: "secrets" },
+    { cmd: "source .env", expect: "ask", why: "secrets loaded into the shell" },
+    { cmd: "head -5 apps/web/.env.production", expect: "ask", why: "secrets" },
+    { cmd: "cp .env /tmp/x", expect: "ask", why: "copy source is read" },
+    { cmd: "cat certs/server.pem", expect: "ask", why: "private-key material" },
+    { cmd: "openssl x509 -in cert.p12 -noout", expect: "ask", why: "private-key material" },
+    { cmd: "cat ~/.ssh/id_rsa", expect: "ask", why: "private-key material" },
+    { cmd: "cat .env.example", expect: "allow", why: "documented non-secret template" },
+    { cmd: "cat .envrc", expect: "allow", why: "direnv loader, not a secrets file" },
+    { cmd: "cp .env.example .env", expect: "allow", why: "copy destination is a write" },
+    { cmd: "git add .env.example", expect: "allow", why: "names a non-secret file" },
+    { cmd: "mv .env .env.bak", expect: "allow", why: "rename reads no contents" },
+    { cmd: 'grep -rn ".env" docs', expect: "allow", why: "grep pattern, not a file" },
+    { cmd: 'git commit -m "ignore .env"', expect: "allow", why: "commit message text" },
   ];
 
   const READ_GATES: { file: string; expect: Verdict; why: string }[] = [
@@ -510,18 +580,27 @@ describe("permissions-parity", () => {
     return { deny: p.deny ?? [], ask: p.ask ?? [], allow: p.allow ?? [] };
   }
 
-  /** Claude patterns are `Bash(prefix)` / `Bash(prefix *)` / `Bash(prefix:*)`. */
+  /**
+   * Claude Code's Bash rule matching (code.claude.com/docs/en/permissions § Wildcard
+   * patterns): `*` matches any text including spaces, anywhere in the rule; a trailing
+   * ` *` (or `:*`) that is the rule's only wildcard also matches the bare command; a rule
+   * with no `*` is exact.
+   */
+  function claudeRuleMatches(pat: string, cmd: string): boolean {
+    const p = pat.endsWith(":*") ? `${pat.slice(0, -2)} *` : pat;
+    const stars = (p.match(/\*/g) ?? []).length;
+    if (stars === 1 && p.endsWith(" *") && cmd === p.slice(0, -2)) return true;
+    return globToRe(p).test(cmd);
+  }
+
+  /** A compound command is split; a deny / ask rule applies when any subcommand matches. */
   function claudeShellVerdict(cmd: string): Verdict {
     const p = claudePermissions();
+    const subcommands = cmd.split(/&&|\|\||[;|]/).map((s) => s.trim());
     const matches = (entries: string[]) =>
       entries.some((raw) => {
         const m = /^Bash\((.*)\)$/.exec(raw);
-        if (!m) return false;
-        const pat = m[1]!;
-        if (pat.endsWith(":*")) return cmd.startsWith(pat.slice(0, -2));
-        if (pat.endsWith(" *")) return cmd.startsWith(pat.slice(0, -1));
-        if (pat.endsWith("*")) return cmd.startsWith(pat.slice(0, -1));
-        return cmd === pat;
+        return m ? subcommands.some((s) => claudeRuleMatches(m[1]!, s)) : false;
       });
     // deny wins over ask, ask over allow — the strictest match decides.
     if (matches(p.deny)) return "deny";
@@ -591,13 +670,27 @@ describe("permissions-parity", () => {
     return (JSON.parse(res.stdout.trim()) as { decision: Verdict }).decision;
   }
 
+  /** Antigravity shell calls arrive as `run_command` with a `CommandLine`. */
+  function antigravityShellVerdict(cmd: string): Verdict {
+    const res = spawnSync("node", [ANTIGRAVITY_GUARDRAILS], {
+      cwd: getPkgRoot(),
+      input: JSON.stringify({
+        conversationId: `perm-parity-shell-${process.pid}`,
+        toolCall: { name: "run_command", args: { CommandLine: cmd } },
+        workspacePaths: [getPkgRoot()],
+      }),
+      encoding: "utf-8",
+    });
+    return (JSON.parse(res.stdout.trim()) as { decision: Verdict }).decision;
+  }
+
   // ---------------------------------------------------------------------------
   // The assertions
   // ---------------------------------------------------------------------------
 
   describe("cross-host gate parity — shell", () => {
     for (const g of SHELL_GATES) {
-      it(`${g.expect.toUpperCase()} on \`${g.cmd}\` (${g.why}) — all four hosts`, () => {
+      it(`${g.expect.toUpperCase()} on \`${g.cmd}\` (${g.why}) — all five hosts`, () => {
         expect({ host: "claude", v: claudeShellVerdict(g.cmd) }).toEqual({
           host: "claude",
           v: g.expect,
@@ -614,13 +707,46 @@ describe("permissions-parity", () => {
           host: "codex",
           v: g.expect,
         });
+        expect({ host: "antigravity", v: antigravityShellVerdict(g.cmd) }).toEqual({
+          host: "antigravity",
+          v: g.expect,
+        });
+      });
+    }
+  });
+
+  describe("shell reads of secret files — script hosts gate, permission tables do not", () => {
+    for (const g of SHELL_SECRET_READS) {
+      it(`${g.expect.toUpperCase()} on \`${g.cmd}\` (${g.why}) — cursor/codex/antigravity; claude/opencode Bash rows allow`, () => {
+        expect({ host: "cursor", v: cursorVerdict({ command: g.cmd }) }).toEqual({
+          host: "cursor",
+          v: g.expect,
+        });
+        expect({ host: "codex", v: codexVerdict(g.cmd) }).toEqual({
+          host: "codex",
+          v: g.expect,
+        });
+        expect({ host: "antigravity", v: antigravityShellVerdict(g.cmd) }).toEqual({
+          host: "antigravity",
+          v: g.expect,
+        });
+        // Bash rows only: Claude's `Read(...)` deny on key files also covers `cat` /
+        // `head` / `tail` / `sed` / `tee`, which this simulator does not model.
+        expect({ host: "claude", v: claudeShellVerdict(g.cmd) }).toEqual({
+          host: "claude",
+          v: "allow",
+        });
+        expect({ host: "opencode", v: opencodeVerdict("bash", g.cmd) }).toEqual({
+          host: "opencode",
+          v: "allow",
+        });
       });
     }
   });
 
   // Codex is absent: its guardrail is registered on the shell tool only. Tracked in
   // docs/deferrals.jsonl → `codex-read-tier-gates-not-wired-file-read-tool-name-unverified`.
-  // Shell-level reads (`cat .env`) are covered by no host's read tier.
+  // Shell-level reads (`cat .env`) are in SHELL_SECRET_READS above: script hosts only.
   describe("cross-host gate parity — file reads", () => {
     for (const g of READ_GATES) {
       it(`${g.expect.toUpperCase()} on reading \`${g.file}\` (${g.why}) — opencode/cursor/antigravity`, () => {

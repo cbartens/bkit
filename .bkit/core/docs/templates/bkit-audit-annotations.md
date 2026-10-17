@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. `@bkit-audit-generate` fills this template. -->
+<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
 
 <!-- bkit:start -->
 
@@ -77,11 +77,14 @@ One per annotation. **SILENT FAILURE** outranks every other verdict.
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
 
+**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
+
 #### Core
 
 Always verify.
 
-- [ ] **CI Read:** Steps 2, 5, 11 — annotations and step logs for recent runs of every workflow, e.g. `gh api` check-run annotations, `gh run view --log`, GitLab job-trace API. Fallback: saved logs; runs not fetched `Not Checked`.
+- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`. never retry or reword a blocked call to get past it.
+- [ ] **CI Read:** Steps 2, 5, 11 — annotations and step logs for recent runs of every workflow, e.g. `gh api` check-run annotations, `gh run view --log`, GitLab job-trace API. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window; run it via `direnv exec . bash`. Fallback: saved logs; runs not fetched `Not Checked`.
 - [ ] **Workflow Files:** Steps 4, 6, 8 — workflows, composite actions, reusable workflows on disk. Fallback: none.
 - [ ] **Web:** Steps 3, 12 — vendor changelog, runner-image announcements, anchor standards. Fallback: versions recorded as unread.
 
@@ -102,7 +105,7 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Collect:** No CI → one `N/A` row with evidence and STOP. Else read annotation lists for recent runs of every workflow, not last run of one pipeline. Deprecations surface on whichever workflow uses the old action. Include scheduled, manual, and bot-triggered runs. Collect mechanically, not by eye from the UI. Window = since previous report, and at least latest completed run of each workflow. Save list; diff vs previous report: new, resolved, persisting. Annotations capped (e.g. GitHub: 10 warnings, 10 errors, and 10 notices per step, and 50 per job). Step at cap → grep raw job log for warning and error markers; triage overflow. Record run ids and commit. Id, run, or path you cannot re-open → do not cite it. **Done when:** `Annotations` holds diff (new, resolved, persisting) and run ids.
 - [ ] **Step 3 — Deprecations:** Read vendor deprecation/retirement posts and runner-image announcements since previous report. List every dated change touching these workflows: runtimes, runner images, events, actions. Changelog notice precedes run notice. Each → DEPRECATION with date and bump. Dependency bot already tracks bump → say so; schedule rest next step. **Done when:** `Deprecations` row per dated change: what · date · bump · bot already tracking?
 - [ ] **Step 4 — Runtimes:** Every `uses:` (or the CI system's equivalent) in workflows, local composite actions, and reusable workflows — resolved version and declared runtime (e.g. `runs.using`). Action declaring removed runtime (e.g. `node20` after runners dropped it) runs on forced runtime with no opt-out → finding, unless seen working there. List leftover opt-out env keys that no longer change anything. **Done when:** `Runtimes` row per action: version · declared runtime · verdict, plus leftover keys.
