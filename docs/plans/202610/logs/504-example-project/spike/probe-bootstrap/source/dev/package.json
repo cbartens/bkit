@@ -2,7 +2,7 @@
   "name": "bkit-example",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "pnpm@10.34.4",
+  "packageManager": "pnpm@10.34.5",
   "scripts": {
     "test": "node --test \"example/**/*.test.js\""
   },
