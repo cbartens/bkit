@@ -1364,6 +1364,15 @@ Append `## {identifier} — {title} ({state.name})` heading plus {{text}} to `RE
 After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/{{file}}` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
 ```
 
+### workflow-bkit-advisory
+
+- workflow: where-used
+- anchored: yes
+
+```text
+**If** `BKIT_ADVISORY` != null → emit advisory `[bkit-{{workflow}}] {BKIT_ADVISORY}`.
+```
+
 ### audit-read-only
 
 - audit: required

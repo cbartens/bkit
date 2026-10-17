@@ -8,12 +8,13 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+## [5.2.4] — 2026-10-17
+
 ### Added
 
 - **`tmp/` prune on push.** New copy-and-own `scripts/cleanup/bkit-tmp-prune.mjs` deletes files under the checkout's `tmp/` untouched for 7+ days (`--days=<n>`), then the folders that leaves empty. It never follows symlinks and never removes `tmp/` itself. The `.husky/pre-push` template runs it before the gates and skips it until the script is copied; a failed prune warns and the push goes on. New `tmp-prune` setup tip. `.bkit/templates.md` § tmp/ prune.
 - **Audit reports suggest the issues to create.** Every audit template's `Report` gains a `Suggested Issues` table, filled by `@bkit-audit-generate`. The table groups findings into issues, one row per change landed in one go (by root cause, then module, then fix), and every `MEDIUM`+ finding lands in exactly one row. Each row names its next step: `/bkit-design`, `/bkit-plan`, `/bkit-build` or `/bkit-debug`; the `.agents/shortcuts.md` lite path (`shortcut:build`, `shortcut:debug`) when its § When to use allows; or `manual` for a change outside the repo. The agent still never files issues. Gate 3 gains a `Suggested Issues` check, shared as `.bkit/wording.md` clause `audit-suggested-issues`, so the wording test fails any template missing it.
-
-## [5.2.4] — 2026-10-17
+- **Warning when a workflow, plan, design or audit runs on an outdated bkit.** `bkit repo info` (Step 1 of every phase workflow) compares `.bkit/version` `pinnedVersion` with the newest published `@cbartens/bkit` and returns `bkitVersion` / `bkitLatest` / `bkitOutdated` / `bkitAdvisory`; Step 1 shows the advisory with the upgrade command and carries on. Every anchored doc (design, plan, sub-plan, audit report) records `bkitVersion` and `bkitLatest` in its `bkit:anchor` block, and an outdated one gets a visible `Outdated bkit` line under the block that the next stamp drops once current. Warning only, never a stop: the registry is asked at most once a day (cache in the git common dir), offline or no pin means no warning, and `BKIT_NO_UPDATE_CHECK=1` skips the lookup. `.bkit/workflows.md` § Invocation, § Anchor Block.
 
 ### Changed
 

@@ -46,7 +46,7 @@ maxTurns: 300
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" branches anchor-stamp --file="<Create>" --base-sha="$(git rev-parse HEAD)" --base-ref="$(git rev-parse --abbrev-ref HEAD)"
    ```
-   Never hand-write or edit the `bkit:anchor` block.
+   Never hand-write or edit the `bkit:anchor` block or the `bkit:outdated` line the stamp writes under it.
 3. Re-read all supplied inputs once at session start; do not trust session memory.
 4. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 5. Update **Create** — replace each `PENDING` via `Edit` as content becomes available; **If** none → `None`.

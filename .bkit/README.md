@@ -191,6 +191,8 @@ bkit tips [--all]         # what is not set up yet, most useful first; exits 0
 bkit install --claude --cursor               # (re)seed hosts; name ≥1 module
 ```
 
+**Outdated-version warning:** Step 1 of every phase workflow (`bkit repo info`) and every design / plan / audit doc stamp compare `.bkit/version` `pinnedVersion` with the newest published `@cbartens/bkit`; older → a warning naming the upgrade command, and stamped docs carry a visible `Outdated bkit` line under their `bkit:anchor` block. Never a stop. Registry asked at most once a day (cache: `<git common dir>/bkit-latest-version.json`); offline → no warning. `BKIT_NO_UPDATE_CHECK=1` skips the lookup (air-gapped machines, CI).
+
 > **⚠️ Version bumps:** use `bkit upgrade --latest` (or `--to=<version>`). Bare `pnpm add @cbartens/bkit` / Renovate bumps refresh lockfile only — run `bkit upgrade` after and commit resync with the bump, or `bkit check` reds CI.
 
 ### Dogfood path (this repo only)

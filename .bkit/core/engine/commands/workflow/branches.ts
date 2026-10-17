@@ -29,6 +29,7 @@ import {
   type FlagValue,
   type RunContext,
 } from "../lib.js";
+import { bkitVersionStatus, type BkitVersionStatus } from "../../shared/bkit-latest.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { commitBookkeeping } from "./ledgers.js";
 import { acquireDevLock, lockRoot, releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
@@ -354,7 +355,17 @@ export function resolveRebase(
 
 const ANCHOR_OPEN = "<!-- bkit:anchor";
 const ANCHOR_CLOSE = "-->";
-export const ANCHOR_FIELDS = ["baseSha", "baseRef", "designPath", "designBaseSha"] as const;
+/** Ends the visible line a stamp writes under the block when the doc came from an outdated bkit. */
+const OUTDATED_MARK = "<!-- bkit:outdated -->";
+const OUTDATED_LINE = new RegExp(`^.*${OUTDATED_MARK}\n(?:\n)?`, "gm");
+export const ANCHOR_FIELDS = [
+  "baseSha",
+  "baseRef",
+  "designPath",
+  "designBaseSha",
+  "bkitVersion",
+  "bkitLatest",
+] as const;
 export type AnchorField = (typeof ANCHOR_FIELDS)[number];
 
 /** Lines of `text` with whether each sits inside an anchor block (a `sed '/open/,/close/'` range). */
@@ -390,20 +401,47 @@ export function readAnchor(text: string): Partial<Record<AnchorField, string>> {
   return out;
 }
 
-/** `text` with a fresh anchor block on top and every prior one removed, so re-stamping is idempotent. */
+/**
+ * The bkit release a doc is being generated from, for its anchor: undefined when
+ * this repo has no `.bkit/version` pin (nothing to record). Asks the registry for
+ * the newest release at most once a day; offline leaves `latest` null.
+ */
+export function anchorBkitStatus(cwd: string): BkitVersionStatus | undefined {
+  const status = bkitVersionStatus(
+    git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd,
+    git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+  );
+  return status.version === null ? undefined : status;
+}
+
+/**
+ * `text` with a fresh anchor block on top and every prior one removed, so re-stamping
+ * is idempotent. With `bkit`, the block records the release the doc came from and the
+ * newest one (empty when unknown); an outdated release adds one visible warning line
+ * under the block, replaced or dropped by the next stamp like the block itself.
+ */
 export function stampAnchor(
   text: string,
   baseSha: string,
   design?: { path: string; baseSha: string },
   baseRef: string = UPSTREAM,
+  bkit?: BkitVersionStatus,
 ): string {
   const header = [ANCHOR_OPEN, `baseSha: ${baseSha}`, `baseRef: ${baseRef}`];
   if (design) header.push(`designPath: ${design.path}`, `designBaseSha: ${design.baseSha}`);
+  if (bkit) header.push(`bkitVersion: ${bkit.version ?? ""}`, `bkitLatest: ${bkit.latest ?? ""}`);
   header.push(ANCHOR_CLOSE);
+  if (bkit?.outdated === true) {
+    header.push(
+      `> **Outdated bkit:** generated with bkit ${bkit.version} while ${bkit.latest} was out, so its workflow and template text may be stale. Upgrade with \`pnpm bkit upgrade --latest\` and regenerate if that matters. ${OUTDATED_MARK}`,
+      "",
+    );
+  }
   const body = anchorLines(text)
     .filter((l) => !l.inBlock)
     .map((l) => (l.last ? l.line : `${l.line}\n`))
-    .join("");
+    .join("")
+    .replace(OUTDATED_LINE, "");
   return `${header.join("\n")}\n${body}`;
 }
 
@@ -1191,8 +1229,10 @@ function anchorStampVerb(ctx: RunContext): number {
           baseSha: readAnchor(fs.readFileSync(designFile, "utf-8")).baseSha ?? "",
         }
       : undefined;
+  const bkit = anchorBkitStatus(ctx.cwd);
+  if (bkit?.advisory) ctx.log(bkit.advisory);
   const before = fs.readFileSync(file, "utf-8");
-  const after = stampAnchor(before, baseSha, design, baseRef);
+  const after = stampAnchor(before, baseSha, design, baseRef, bkit);
   // Temp file + rename: a crash mid-write never leaves a half-stamped doc.
   const tmp = `${file}.bkit-anchor.tmp`;
   fs.writeFileSync(tmp, after);
@@ -1203,6 +1243,10 @@ function anchorStampVerb(ctx: RunContext): number {
     baseRef,
     designPath: design?.path ?? null,
     designBaseSha: design?.baseSha ?? null,
+    bkitVersion: bkit?.version ?? null,
+    bkitLatest: bkit?.latest ?? null,
+    bkitOutdated: bkit?.outdated ?? null,
+    bkitAdvisory: bkit?.advisory ?? null,
     changed: before !== after,
   });
   return EXIT.OK;
@@ -1221,7 +1265,7 @@ function anchorReadVerb(ctx: RunContext): number {
     ctx.emit({ ...fields, value: null, skip: reason, landed: null });
     return EXIT_ANCHOR_SKIP;
   };
-  const none = { baseSha: null, baseRef: null, designPath: null, designBaseSha: null };
+  const none = Object.fromEntries(ANCHOR_FIELDS.map((f) => [f, null]));
   if (!fs.statSync(file, { throwIfNoEntry: false })?.isFile()) {
     if (against !== undefined) return skip("no-file", `no ${rel} — nothing to check`, none);
     ctx.log(`${rel} not found`);
@@ -1455,7 +1499,7 @@ export const branchesCommand: CommandSpec = {
     },
     "anchor-stamp": {
       summary:
-        "Put a <!-- bkit:anchor --> block recording the base commit on top of a design/plan doc or audit report (idempotent).",
+        "Put a <!-- bkit:anchor --> block recording the base commit and bkit release on top of a design/plan doc or audit report (idempotent).",
       flags: [
         { name: "file", type: "string", required: true, help: "doc to stamp (must exist)" },
         {
@@ -1482,6 +1526,12 @@ export const branchesCommand: CommandSpec = {
         designPath: "design path stamped (null when none)",
         designBaseSha:
           "the design doc's baseSha stamped (null when none; empty when it had no anchor)",
+        bkitVersion:
+          "the .bkit/version pin stamped (null when unpinned: no bkit fields are stamped then)",
+        bkitLatest: "newest published bkit stamped (null when unknown: stamped empty)",
+        bkitOutdated:
+          "true when bkitVersion is older than bkitLatest: a visible warning line is stamped under the block (null when unknown)",
+        bkitAdvisory: "one warning line when bkitOutdated, else null",
         changed: "false when the doc already carried exactly this block",
       },
       exitCodes: { [EXIT_NO_FILE]: "--file is missing or not a file" },
@@ -1508,6 +1558,8 @@ export const branchesCommand: CommandSpec = {
         baseRef: "anchor baseRef (null when absent)",
         designPath: "anchor designPath (null when absent)",
         designBaseSha: "anchor designBaseSha (null when absent)",
+        bkitVersion: "anchor bkitVersion (null when absent)",
+        bkitLatest: "anchor bkitLatest (null when absent)",
         value: "the --field value (null when absent or no --field)",
         skip: "with --against: no-file | no-anchor | unreachable | nothing-landed (null = run the check)",
         landed: "with --against: paths changed between baseSha and the ref",

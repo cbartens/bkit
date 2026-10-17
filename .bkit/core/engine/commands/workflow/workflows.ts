@@ -55,7 +55,7 @@ import {
   type FlagValue,
   type RunContext,
 } from "../lib.js";
-import { pushBranch, readAnchor, stampAnchor } from "./branches.js";
+import { anchorBkitStatus, pushBranch, readAnchor, stampAnchor } from "./branches.js";
 import {
   AUTO_LABEL,
   AUTO_ROUTE_SUFFIX,
@@ -998,7 +998,7 @@ export function highestVersion(dir: string, workflow: string): { file: string; n
   return best;
 }
 
-/** Stamp `file`'s anchor when a base commit is known (plan: with its design's own anchor). */
+/** Stamp `file`'s anchor when a base commit is known (plan: with its design's own anchor; both: the bkit release). */
 function stamp(cwd: string, file: string, baseSha: string, design?: string): void {
   if (baseSha === "") return;
   const abs = path.resolve(cwd, file);
@@ -1008,7 +1008,8 @@ function stamp(cwd: string, file: string, baseSha: string, design?: string): voi
       ? { path: design, baseSha: readAnchor(fs.readFileSync(designAbs, "utf-8")).baseSha ?? "" }
       : undefined;
   const tmp = `${abs}.bkit-anchor.tmp`;
-  fs.writeFileSync(tmp, stampAnchor(fs.readFileSync(abs, "utf-8"), baseSha, d));
+  const text = fs.readFileSync(abs, "utf-8");
+  fs.writeFileSync(tmp, stampAnchor(text, baseSha, d, undefined, anchorBkitStatus(cwd)));
   fs.renameSync(tmp, abs);
 }
 

@@ -25,7 +25,7 @@ import { readBkitVersion } from "../../install/version-file.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { gradeCompliance } from "../comply.js";
 import { CommandError, EXIT, git, parseJson, repoRoot, runGh, runGit, statusLocation, statusRelPath, } from "../lib.js";
-import { pushBranch, readAnchor, stampAnchor } from "./branches.js";
+import { anchorBkitStatus, pushBranch, readAnchor, stampAnchor } from "./branches.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX, buildComment, linearState, transitionLabels, } from "./issues.js";
 import { EXIT_EMPTY, commitBookkeeping, unionLedgers } from "./ledgers.js";
 import { EXIT_REMOVE_FAILED, EXIT_SPLIT_BUCKET, acquireDevLock, acquireWorkflowLock, lockRoot, owns, readHolder, releaseLock, resolveMonth, workflowLockPath, } from "./locks.js";
@@ -807,7 +807,7 @@ export function highestVersion(dir, workflow) {
     }
     return best;
 }
-/** Stamp `file`'s anchor when a base commit is known (plan: with its design's own anchor). */
+/** Stamp `file`'s anchor when a base commit is known (plan: with its design's own anchor; both: the bkit release). */
 function stamp(cwd, file, baseSha, design) {
     if (baseSha === "")
         return;
@@ -817,7 +817,8 @@ function stamp(cwd, file, baseSha, design) {
         ? { path: design, baseSha: readAnchor(fs.readFileSync(designAbs, "utf-8")).baseSha ?? "" }
         : undefined;
     const tmp = `${abs}.bkit-anchor.tmp`;
-    fs.writeFileSync(tmp, stampAnchor(fs.readFileSync(abs, "utf-8"), baseSha, d));
+    const text = fs.readFileSync(abs, "utf-8");
+    fs.writeFileSync(tmp, stampAnchor(text, baseSha, d, undefined, anchorBkitStatus(cwd)));
     fs.renameSync(tmp, abs);
 }
 function promoteVerb(ctx) {

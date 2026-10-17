@@ -220,6 +220,66 @@ describe("bkit repo info — where bkit, the repo root and the outbox live", () 
   });
 });
 
+describe("bkit repo info — whether this repo's bkit is behind the newest release", () => {
+  const pin = (version: string) => {
+    fs.mkdirSync(path.join(cwd, ".bkit"), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, ".bkit", "version"),
+      JSON.stringify({ pinnedVersion: version, canonicalHashes: {} }),
+    );
+  };
+  const cacheLatest = (latest: string | null) =>
+    fs.writeFileSync(
+      path.join(cwd, ".git", "bkit-latest-version.json"),
+      JSON.stringify({ latest, checkedAt: Date.now() }),
+    );
+
+  it("prints the upgrade advisory when the pin is older than the newest release", async () => {
+    git(cwd, "remote", "add", "origin", "https://github.com/o/r.git");
+    pin("5.2.4");
+    cacheLatest("5.10.0");
+    const r = await run([]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      bkitVersion: "5.2.4",
+      bkitLatest: "5.10.0",
+      bkitOutdated: true,
+      bkitAdvisory: "running bkit 5.2.4; 5.10.0 is out. Upgrade: pnpm bkit upgrade --latest",
+    });
+    expect(r.err).toContain("running bkit 5.2.4; 5.10.0 is out");
+  });
+
+  it("stays quiet when the pin is current or ahead (the bkit repo's own dev)", async () => {
+    git(cwd, "remote", "add", "origin", "https://github.com/o/r.git");
+    pin("5.3.0");
+    cacheLatest("5.2.4");
+    const r = await run([]);
+    expect(r.json).toMatchObject({ bkitOutdated: false, bkitAdvisory: null });
+    expect(r.err).not.toContain("is out");
+  });
+
+  it("an unknown newest release (remembered registry failure) is null, never an error", async () => {
+    git(cwd, "remote", "add", "origin", "https://github.com/o/r.git");
+    pin("5.2.4");
+    cacheLatest(null);
+    const r = await run([]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ bkitVersion: "5.2.4", bkitLatest: null, bkitOutdated: null });
+  });
+
+  it("an unpinned repo reports nulls and asks no registry", async () => {
+    git(cwd, "remote", "add", "origin", "https://github.com/o/r.git");
+    const r = await run([]);
+    expect(r.json).toMatchObject({
+      bkitVersion: null,
+      bkitLatest: null,
+      bkitOutdated: null,
+      bkitAdvisory: null,
+    });
+    expect(fs.existsSync(path.join(cwd, ".git", "bkit-latest-version.json"))).toBe(false);
+  });
+});
+
 describe("bkit repo preflight", () => {
   async function preflight(...argv: string[]) {
     const out: string[] = [];

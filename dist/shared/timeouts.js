@@ -16,4 +16,10 @@ export const TIMEOUTS = {
     SHIP_DEV_LOCK_STALE_S: 900,
     /** Seconds to contend for `.dev.lock` before giving up. */
     SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S: 600,
+    /** Seconds a registry answer for the newest published bkit is reused before asking again. */
+    BKIT_LATEST_CACHE_S: 86400,
+    /** Seconds a failed registry lookup is remembered, so an offline run does not wait on every call. */
+    BKIT_LATEST_RETRY_S: 3600,
+    /** Seconds the registry lookup may take before it counts as failed. */
+    BKIT_LATEST_LOOKUP_TIMEOUT_S: 5,
 };
