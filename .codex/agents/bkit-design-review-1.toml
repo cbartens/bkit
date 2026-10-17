@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-design-review-1"
 description = "Senior engineer assessing whether designs are buildable with the approved stack."
 model = "gpt-6-astra"

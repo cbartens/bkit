@@ -8,7 +8,7 @@ tools:
   - write_to_file
   - replace_file_content
 ---
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating completed plans for build-readiness.
 **Scope:** As specified by input and Read / Update / Create section.

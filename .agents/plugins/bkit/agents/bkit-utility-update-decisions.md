@@ -12,7 +12,7 @@ tools:
   - replace_file_content
   - run_command
 ---
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior editor correcting decisions the docs or codebase have since contradicted.
 **Scope:** As specified by input or session prompt.

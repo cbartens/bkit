@@ -2,7 +2,7 @@ Build Feature — Autonomous implementation
 
 # Build Feature (Workflow 3/5)
 
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Build feature and raise PR for default integration branch.

@@ -1,6 +1,6 @@
 # Trackers
 
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Reference for inline tracker-block model in `.bkit/core/workflows/bkit-*.md` and `.bkit/core/prompts/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents marker contract + cross-cutting per-tracker conventions only.

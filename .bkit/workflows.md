@@ -1,6 +1,6 @@
 # Workflows
 
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Agent-pipeline reference — workflow conventions, execution patterns, IDE integration, subagent catalog.

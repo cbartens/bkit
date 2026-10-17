@@ -11,7 +11,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v5.2.3 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect generating unified design doc from parallel exploration brainstorms.
 **Scope:** As specified by input and Read / Update / Create section.

@@ -8,6 +8,8 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+## [5.2.4] — 2026-10-17
+
 ### Changed
 
 - **Audits never stop on a blocked call.** Pre-Flight `Permissions` still probes every tool first, but a blocked call (there or in any step) no longer pauses the run for a grant or `continue`. The agent records the call and its narrow allow rule, runs every step the remaining tools allow, and lists what it could not check under `Not Checked`. A call the owner deliberately keeps blocked no longer stalls every run.
