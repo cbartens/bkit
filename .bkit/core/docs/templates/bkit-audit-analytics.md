@@ -247,6 +247,13 @@ PENDING
 
 PENDING
 
+### Suggested Issues
+
+<!-- prettier-ignore -->
+| # | Title | Findings | Severity | Next Step | Reason |
+| --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+
 ### Process Improvements
 
 PENDING
@@ -260,6 +267,7 @@ PENDING
 - [ ] **Series:** `Dashboards` shares and the `Container` diff beside previous report's, or marked baseline.
 - [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
 - [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
 - [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 > `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.

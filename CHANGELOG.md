@@ -11,6 +11,7 @@ Format: `## [version] — YYYY-MM-DD`
 ### Added
 
 - **`tmp/` prune on push.** New copy-and-own `scripts/cleanup/bkit-tmp-prune.mjs` deletes files under the checkout's `tmp/` untouched for 7+ days (`--days=<n>`), then the folders that leaves empty. It never follows symlinks and never removes `tmp/` itself. The `.husky/pre-push` template runs it before the gates and skips it until the script is copied; a failed prune warns and the push goes on. New `tmp-prune` setup tip. `.bkit/templates.md` § tmp/ prune.
+- **Audit reports suggest the issues to create.** Every audit template's `Report` gains a `Suggested Issues` table, filled by `@bkit-audit-generate`. The table groups findings into issues, one row per change landed in one go (by root cause, then module, then fix), and every `MEDIUM`+ finding lands in exactly one row. Each row names its next step: `/bkit-design`, `/bkit-plan`, `/bkit-build` or `/bkit-debug`; the `.agents/shortcuts.md` lite path (`shortcut:build`, `shortcut:debug`) when its § When to use allows; or `manual` for a change outside the repo. The agent still never files issues. Gate 3 gains a `Suggested Issues` check, shared as `.bkit/wording.md` clause `audit-suggested-issues`, so the wording test fails any template missing it.
 
 ## [5.2.4] — 2026-10-17
 

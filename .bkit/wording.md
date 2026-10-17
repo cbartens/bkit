@@ -1639,6 +1639,14 @@ Verify only when applicable.
 **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
 ```
 
+### audit-suggested-issues
+
+- audit: required
+
+```text
+**Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
+```
+
 ### audit-series
 
 - audit: where-used
