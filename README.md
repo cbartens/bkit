@@ -50,7 +50,7 @@ Everything a senior team would otherwise write down over years, in files you can
 | [Agents](.bkit/prompts.md) | >40 | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
 | [Workflows](.bkit/core/workflows/) | 6 | The five phases plus a cloud router. Every step ends in a checklist and a mechanical check before the next one starts. |
 | [Agent rules](.agents/rules.md) | >70 | One rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
-| [Guardrails](.bkit/providers.md#guardrails) | >10 hook files | Block dangerous commands and secret reads, and make agents investigate before they edit, on all five AI tools. |
+| [Guardrails](.bkit/providers.md#guardrails) | >10 hook files | Block dangerous commands and secret reads, and make agents investigate before they edit, on all five AI tools. [What agents see](.bkit/prompts.md#hook-injected-text). |
 | [Audits](.bkit/core/docs/templates/) | >30 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
 | [Project docs](.bkit/shared/docs/) | 10 + [index](.agents/docs.md) | Architecture, data schema, deployments, testing, security, monitoring, design system, tech stack, setup, and an index telling each agent what to read at each step. |
 | [Templates](.bkit/templates.md) | >60 | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, and >10 ready-made connectors for your platforms. |
@@ -105,7 +105,7 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 
 **The strongest fence is CI** (continuous integration): the robot that runs every check on every change, on GitHub's servers, before anything merges. Most AI development frameworks stop at a pull request and leave CI to you. bkit's workflows are built around it and around the checks that run before it. Every change passes the same fences, nearest and lightest first:
 
-- **Every agent** looks code up before changing it, is nudged by the agent hooks on each edit, can't finish a step until the step gates (scripts, not prompts) find its verdict and files, and has its code formatted on each commit.
+- **Every agent** looks code up before changing it, is nudged by the [agent hooks](.bkit/prompts.md#hook-injected-text) on each edit, can't finish a step until the step gates (scripts, not prompts) find its verdict and files, and has its code formatted on each commit.
 - **`/bkit-plan`** decides which tests each feature needs and where each one runs: unit, integration or end-to-end.
 - **`/bkit-build`** writes each test before its code and runs it to prove it fails, so a test that can't fail is never added. The pre-push hook sends back anything that fails on your machine; then build opens a pull request, which starts CI.
 - **`/bkit-debug`** works from what came back: the logs of the failed lanes, the diff since the last green run, end-to-end reports. It fixes the root cause and pushes, and CI runs again.
@@ -119,7 +119,7 @@ What that gets you:
 - **Agents look before they change anything.** Code search ([Serena](https://github.com/oraios/serena)) shows every definition and caller of the code about to change, not just lines with matching words, and [graphify](https://github.com/Graphify-Labs/graphify)'s code map shows what already exists. Fewer bad changes reach the fences at all.
 - **Problems are caught at the nearest fence.** Agent hooks nudge on every edit: read a file before changing it, fix the code rather than loosen a check. The pre-commit hook formats in seconds. The pre-push hook runs type checks, unit tests, the prose checker and the junk-code scanner before anything leaves your laptop. CI keeps only what can't run there: integration, end-to-end and live-site tests. Hooks, agents and CI's quick-checks lane all run the same `bkit:gate:*` scripts, so most failures show up on your machine first.
 
-The agent hooks come with install ([what each guard does](.bkit/providers.md#guardrails)). Serena, graphify and the git hooks are [templates](#templates-ready-to-adopt) you adopt. Compared with other frameworks: [agents and CI](.bkit/comparison.md#agents-and-ci).
+The agent hooks come with install ([what each guard does](.bkit/providers.md#guardrails), [what the hooks tell agents](.bkit/prompts.md#hook-injected-text)). Serena, graphify and the git hooks are [templates](#templates-ready-to-adopt) you adopt. Compared with other frameworks: [agents and CI](.bkit/comparison.md#agents-and-ci).
 
 ### The CI pipeline
 
@@ -185,7 +185,7 @@ How the lanes join into the one final check, and what happens on green or red: [
 - **Find the definition first, then read only those lines.** Reading files through the shell (`sed`, `grep`, `cat`) was about 60% of what shell output cost in our transcripts. A whole file can be thousands of lines when the change needs ten.
 - **List matching files first, then search inside them.** A broad search can return hundreds of lines the agent never needed, and they stay in the conversation.
 - **Ask commands, APIs and databases for short, structured output.** An unfiltered log or API response can run to thousands of lines, re-read on every later request.
-- **Flag re-reads of a file that hasn't changed,** with a hook on all five supported tools. 41% of file reads in our transcripts were repeats, each adding a second copy to the conversation.
+- **Flag re-reads of a file that hasn't changed,** with a [hook](.bkit/prompts.md#hook-injected-text) on all five supported tools. 41% of file reads in our transcripts were repeats, each adding a second copy to the conversation.
 - **Prefer command-line tools to MCP servers** for logs, errors and database data. Every connected MCP server's tool list is re-sent with every request, used or not.
 - **Each step reads only the project docs it needs.** Whatever a step reads at the start is re-read on every request in that step.
 - **A utility agent shortens markdown files without changing what they say.** Rules and prompts go out with every request of every agent, so a line cut there is saved many thousands of times.
@@ -225,7 +225,7 @@ How the lanes join into the one final check, and what happens on green or red: [
 
 - **Decide in plain English, not code.** Before any code is written you approve two short documents: a design ("three ways to build this; we recommend this one, because…") and a plan ("these twelve steps, and how we'll know each is done").
 - **Three sign-offs, and production stays yours.** bkit stops after the design, after the plan and before merging. It merges into your `dev` branch and never touches `main`: promoting to production is always your call. Cloud mode ships on green without you only for issues you've labelled `bkit:auto`; removing the label stops it.
-- **Guardrails on the AI itself.** Dangerous commands like force-pushing or rewriting history are blocked, private keys can't be read, and each agent only gets the tools its job needs. [What each guard does](.bkit/providers.md#guardrails).
+- **Guardrails on the AI itself.** Dangerous commands like force-pushing or rewriting history are blocked, private keys can't be read, and each agent only gets the tools its job needs. [What each guard does](.bkit/providers.md#guardrails) and [what it tells agents](.bkit/prompts.md#hook-injected-text).
 
 ## Audits find what green tests miss
 
@@ -363,7 +363,7 @@ bkit's process was worked out over months of building real products with it. The
 <!-- prettier-ignore -->
 | Project | Idea bkit took |
 | --- | --- |
-| [everything-claude-code](https://github.com/affaan-m/ECC) (affaan-m) | GateGuard, the hook that makes an agent investigate before it edits, name included; the warning when an agent edits lint or type-check settings; confidence and scope on recorded lessons; the untrusted-input notice on agents that read outside content. |
+| [everything-claude-code](https://github.com/affaan-m/ECC) (affaan-m) | [GateGuard](.bkit/prompts.md#hook-injected-text), the hook that makes an agent investigate before it edits, name included; the warning when an agent edits lint or type-check settings; confidence and scope on recorded lessons; the untrusted-input notice on agents that read outside content. |
 | [gstack](https://github.com/garrytan/gstack) (Garry Tan) | Writing the setup once and generating every AI tool's copy from it, with a check that the copies match; the completeness and search-before-building principles in the shared rules; resuming a run from saved state. |
 | _Agentic Design Patterns_ (Antonio Gulli) | A "done when" line on every plan task, and testing hypotheses before fixing in debug. The book is also the yardstick in the [patterns comparison](.bkit/comparison.md#part-2--comparison-to-agentic-design-patterns). |
 | [skills](https://github.com/mattpocock/skills) (Matt Pocock) | The interview that opens `/bkit-design`, adapted from `grill-me`: open questions are settled with you before any design work starts. |
