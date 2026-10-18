@@ -195,6 +195,17 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("dependabot-renovate").fires(cwd)).toBe(false);
   });
 
+  it("trivy fires once workflows exist and none runs the scan", () => {
+    expect(tip("trivy").fires(cwd)).toBe(false);
+    write(".github/workflows/bkit-ci.yml", "name: CI\n");
+    expect(tip("trivy").fires(cwd)).toBe(true);
+    write(
+      ".github/workflows/scan.yaml",
+      "steps:\n  - uses: docker://ghcr.io/aquasecurity/trivy:0.75.0\n",
+    );
+    expect(tip("trivy").fires(cwd)).toBe(false);
+  });
+
   it("cloud fires only once cloud agents are chosen", () => {
     pkg({});
     expect(tip("cloud").fires(cwd)).toBe(false);

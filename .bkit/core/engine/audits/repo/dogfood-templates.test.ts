@@ -213,6 +213,18 @@ const ADOPTED: Record<string, Entry> = {
     ],
   },
   ".github/workflows/bkit-renovate.yml": identical,
+  ".github/workflows/bkit-trivy.yml": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "placeholder",
+        what: "default branch",
+        fill: "branches: [{{DEFAULT_BRANCH}}, dev]",
+        with: "branches: [main, dev]",
+        count: 2,
+      },
+    ],
+  },
   ".github/renovate.json5": {
     status: "adopted",
     edits: [

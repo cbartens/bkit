@@ -1,0 +1,11 @@
+# Trivy acceptances for this repo (.github/workflows/bkit-trivy.yml). Every entry names
+# the finding, why it stays, and the day it comes back for review.
+misconfigurations:
+  - id: DS-0002
+    paths:
+      - .cursor/Dockerfile
+    statement: >-
+      Cursor cloud-agent sandbox image: the agent installs packages at runtime, and Cursor
+      has not been verified to run it under a non-root USER. Re-check at expiry; the
+      shipped .bkit/templates/.cursor/Dockerfile carries the same root default.
+    expired_at: 2026-11-18

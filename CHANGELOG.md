@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Added
+
+- **Trivy scan template.** New copy-and-own `.github/workflows/bkit-trivy.yml` fails CI on a HIGH or CRITICAL finding in any lockfile (npm, pnpm, yarn, pip, poetry, uv, Go, Cargo, Maven, …), in Dockerfile / Terraform / Kubernetes / Helm settings, and in secrets committed to tracked files, on push, pull request and daily. It runs the official Trivy image pinned by tag and digest, never `trivy-action` / `setup-trivy` by tag. It scans dev dependencies (Trivy's default skips them, so a dev-tooling lockfile scanned zero packages), skips `.bkit/templates/`, and leaves `pnpm-lock.yaml` to `Check Dependency Audit` once that gate is adopted. Accept a finding in `.trivyignore.yaml` with a reason and an expiry. `bkit tips` suggests it (tip `trivy`) when a repo has GitHub workflows and none runs Trivy; `bkit check` does not warn. `bkit-audit-security`, `bkit-audit-dependencies` and `docs/security.md` name it as a scanner. `.bkit/templates.md` § Trivy. #547
+
 ### Changed
 
 - **Workflow tips heading is `## bkit Tips`** (was `## Setup Tips`). `bkit tips` output now ends with "Do you like bkit? Then give it a star at [https://github.com/cbartens/bkit](https://github.com/cbartens/bkit)!", after the tips and outside the cap, so every workflow close shows it last. Add `star` to `bkit.ignoreAdvisories` to switch it off. It never appears in `.bkit/advisories.md` or the install banner.

@@ -296,6 +296,8 @@ Two capabilities **opt-in** — never wired by plain host/tooling install. Defau
 
 Use one. `bkit.depUpdater: "none"` skips the install-time absence advisory. Setup: `docs/deployments.md` § Dependency updaters.
 
+**Security scan.** Updater only offers fixes once a fixed release exists. To fail CI on known-vulnerable packages, risky config or committed secrets, copy `.bkit/templates/.github/workflows/bkit-trivy.yml` and own it. No advisory; `bkit tips` suggests it. Setup: `.bkit/templates.md` § Trivy.
+
 **All templates.** Copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
 
 **Why opt-in, not part of a default install:**

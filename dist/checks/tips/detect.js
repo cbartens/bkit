@@ -121,6 +121,16 @@ const LINT_STAGED_CONFIGS = [
     "lint-staged.config.cjs",
     "lint-staged.config.js",
 ];
+/** True when any `.github/workflows/*.yml` / `*.yaml` contains `needle`. */
+export function anyWorkflowMentions(cwd, needle) {
+    const dir = path.join(cwd, ".github", "workflows");
+    if (!fs.existsSync(dir))
+        return false;
+    return fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+        .some((f) => readText(cwd, path.join(".github", "workflows", f)).includes(needle));
+}
 /** True when lint-staged is configured: any of its config files, or `package.json` `lint-staged`. */
 export function hasLintStagedConfig(cwd) {
     if (LINT_STAGED_CONFIGS.some((rel) => exists(cwd, rel)))

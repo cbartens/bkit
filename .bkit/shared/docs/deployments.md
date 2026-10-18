@@ -393,9 +393,11 @@ Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips th
 | Row without `advisory`, `reason` or a `YYYY-MM-DD` `expires`, or listed twice | Fix the row |
 | Audit prints no report after 3 tries | Fails closed; rerun |
 
-`blocking` = severity → max days per acceptance: the repo's fix-time policy, held only there. Not `auditConfig.ignoreGhsas`: it ignores forever and records no reason. New advisory reds an unrelated push → upgrade or accept in the next push. Non-pnpm repo → adapt `blockingFindings()`.
+`blocking` = severity → max days per acceptance: the repo's fix-time policy, held only there. Not `auditConfig.ignoreGhsas`: it ignores forever and records no reason. New advisory reds an unrelated push → upgrade or accept in the next push. Non-pnpm repo → adapt `blockingFindings()`, or let the Trivy scan own the lockfile.
 
-**Hands off bkit-owned trees.** Renovate: ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them; scanning them is noise). A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file, so use `ignorePaths`. Workflows you copied from `.bkit/templates/` (`bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml`) are yours: leave them out of that list so their pins refresh.
+**Scan beyond the pnpm lockfile.** `.bkit/templates/.github/workflows/bkit-trivy.yml` → `.github/workflows/bkit-trivy.yml` fails on HIGH / CRITICAL findings in any lockfile, Dockerfile / IaC settings and committed secrets, on push, pull request and daily. With `check-dependency-audit.mjs` adopted it skips `pnpm-lock.yaml`, so each pnpm advisory is accepted in one file. Acceptances, pinning, traps → `.bkit/templates.md` § Trivy.
+
+**Hands off bkit-owned trees.** Renovate: ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them; scanning them is noise). A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file, so use `ignorePaths`. Workflows you copied from `.bkit/templates/` (`bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml`, `bkit-trivy.yml`) are yours: leave them out of that list so their pins refresh.
 
 **Land config on the default branch before the bot runs.** GitHub Apps and Dependabot read config from the default branch. The example sets `baseBranchPatterns: ["dev"]` (PRs land on `dev`) and `useBaseBranchConfig: "merge"` (edits on `dev` apply to dev-targeted runs). `useBaseBranchConfig` itself is read from the default branch, so it needs one merge there before dev-side edits take effect.
 
@@ -434,7 +436,7 @@ Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs 
 
 When Renovate is the updater, leave alerts on and turn security updates and version updates off so Dependabot does not open competing PRs.
 
-**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml` and `bkit-renovate.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in both jobs: replace it with a label (e.g. `ubuntu-latest`).
+**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml` and `bkit-trivy.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in both jobs: replace it with a label (e.g. `ubuntu-latest`).
 
 ### Manual CVE handling (when an alert fires)
 

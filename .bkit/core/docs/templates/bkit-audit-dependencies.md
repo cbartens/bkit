@@ -40,7 +40,7 @@ Every dependency PR rewrites the lockfile. Unbatched → PRs stale against each 
 - Registry provenance and trusted publishing (e.g. npm provenance).
 - OpenSSF Scorecard; record version.
 - OpenSSF Concise Guide for Evaluating Open Source Software; record revision date.
-- Vulnerability scanner and advisory database (e.g. OSV-Scanner, GitHub Advisory Database).
+- Vulnerability scanner and advisory database (e.g. Trivy, OSV-Scanner, GitHub Advisory Database).
 - Lockfile-integrity linter (e.g. lockfile-lint). Unreadable format → apply checks by hand.
 - Runtime end-of-life catalogue (e.g. endoflife.date); record the date read.
 - SPDX License List; record version.
@@ -107,7 +107,7 @@ Verify only when applicable.
 
 - [ ] **Bot Dashboard:** Bot publishes a dashboard → Step 3 — blocked and will-not-rebase entries. Fallback: open PRs only; stopped-rebase set `Not Checked`.
 - [ ] **Config Validator:** Bot ships one → Step 3 — e.g. `renovate-config-validator`, on the config as the default branch has it. Fallback: read the files; validity `Not Checked`.
-- [ ] **Vulnerability Scanner:** Lockfile, image, or requirements file → Step 13 — e.g. OSV-Scanner, `npm audit`, host advisory API. Fallback: one source only; the missing source `Not Checked`.
+- [ ] **Vulnerability Scanner:** Lockfile, image, or requirements file → Step 13 — e.g. Trivy (`trivy fs --include-dev-deps`), OSV-Scanner, `npm audit`, host advisory API. Fallback: one source only; the missing source `Not Checked`.
 
 ### 🔒 Gate 1: Prerequisites Check
 

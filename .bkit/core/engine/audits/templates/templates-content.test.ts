@@ -386,6 +386,60 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
   });
 });
 
+describe("trivy scan workflow template (.bkit/templates/.github/workflows/bkit-trivy.yml) (#547)", () => {
+  const content = fs.readFileSync(
+    path.resolve(".bkit/templates/.github/workflows/bkit-trivy.yml"),
+    "utf-8",
+  );
+
+  it("runs the trivy image pinned by tag and digest, never the hijackable actions", () => {
+    expect(content).toMatch(
+      /uses:\s*docker:\/\/ghcr\.io\/aquasecurity\/trivy:\d+\.\d+\.\d+@sha256:[0-9a-f]{64}\n/,
+    );
+    expect(content).not.toMatch(/uses:\s*aquasecurity\/(trivy-action|setup-trivy)/);
+  });
+
+  it("never pins a release published by the March 2026 compromise (0.69.4 - 0.69.6)", () => {
+    expect(content).not.toMatch(/trivy:0\.69\.[4-6]@/);
+  });
+
+  it("scans dev dependencies, or a dev-tooling lockfile reads as zero packages", () => {
+    expect(content).toMatch(/--include-dev-deps/);
+  });
+
+  it("fails on HIGH and CRITICAL across lockfiles, config and secrets", () => {
+    expect(content).toMatch(/--scanners vuln,misconfig,secret/);
+    expect(content).toMatch(/--severity HIGH,CRITICAL/);
+    expect(content).toMatch(/--exit-code 1/);
+  });
+
+  it("skips the bkit-owned templates tree", () => {
+    expect(content).toMatch(/--skip-dirs \.bkit\/templates/);
+  });
+
+  it("leaves pnpm-lock.yaml to the dependency-audit gate once that gate is adopted", () => {
+    expect(content).toMatch(
+      /if \[ -f scripts\/ci\/check-dependency-audit\.mjs \]; then\n\s+args="\$args --skip-files pnpm-lock\.yaml"/,
+    );
+  });
+
+  it("reads .trivyignore.yaml only when the repo has one", () => {
+    expect(content).toMatch(
+      /if \[ -f \.trivyignore\.yaml \]; then\n\s+args="\$args --ignorefile \.trivyignore\.yaml"/,
+    );
+  });
+
+  it("runs daily as well as on change, since advisories land without a code change", () => {
+    expect(content).toMatch(/schedule:\s*\n(\s*#.*\n)*\s*- cron:/);
+  });
+
+  it("uses a read-only token and reads no secret", () => {
+    expect(content).toMatch(/permissions:\s+contents:\s*read/);
+    expect(content).toMatch(/persist-credentials:\s*false/);
+    expect(content).not.toMatch(/secrets\./);
+  });
+});
+
 describe("example dependabot template (.bkit/templates/.github/dependabot.yml)", () => {
   const content = fs.readFileSync(path.resolve(".bkit/templates/.github/dependabot.yml"), "utf-8");
 

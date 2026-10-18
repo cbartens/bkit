@@ -79,6 +79,7 @@ describe("the templates root is the copy-and-own set", () => {
       ".github/workflows/bkit-ci.yml",
       ".github/workflows/bkit-cloud.yml",
       ".github/workflows/bkit-renovate.yml",
+      ".github/workflows/bkit-trivy.yml",
       ".husky/pre-push",
       ".vale.ini",
       ".vale/styles/House/LLMSlop.yml",

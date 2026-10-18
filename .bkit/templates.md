@@ -32,6 +32,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Secrets sync | One local file → every secret store; proves copies match without printing values. | Hand-copied secrets drift: "works for me, broken in production". |
 | graphify | Code map (`docs/capabilities.md`) agents check before building something again. | Agents rediscover structure each run; ripple effects missed. |
 | Dependabot / Renovate | Small grouped update PRs; pinned Actions; security fixes skip the queue. | Updates pile into one large risky upgrade. |
+| Trivy | Fails CI on a known-vulnerable package in any language, a risky container or cluster setting, or a committed secret; a daily run catches advisories with no fix yet. | A vulnerable package or leaked key merges unnoticed; an advisory with no fixed release never shows up anywhere. |
 | Prettier tables | One edited cell = one changed row in the diff. | A one-word table edit diffs as the whole table. |
 | tmp/ prune | Each push deletes scratch files agents left in `tmp/` untouched for a week. | `tmp/` keeps growing; old logs and scratch files are never cleared. |
 | Cursor editor + cloud agent | Format-on-save, recommended extensions, Cursor cloud-agent image. | Cursor edits miss project formatting; no Cursor cloud agent. |
@@ -56,6 +57,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Renovate rules | `.bkit/templates/.github/renovate.json5` | `.github/renovate.json5` | that file |
 | Renovate self-hosted runner | `.bkit/templates/.github/workflows/bkit-renovate.yml` | `.github/workflows/bkit-renovate.yml` | that file |
 | Dependabot | `.bkit/templates/.github/dependabot.yml` | `.github/dependabot.yml` | that file |
+| Trivy | `.bkit/templates/.github/workflows/bkit-trivy.yml` | `.github/workflows/bkit-trivy.yml` | that file; `.trivyignore.yaml` once you accept a finding |
 | Serena | `.bkit/templates/scripts/serena/`, `.bkit/templates/.serena/project.yml` | `scripts/serena/`, `.serena/project.yml`, merge `bkit-serena.mcp.json` into `.mcp.json` | `project.yml` only |
 | graphify | `.bkit/templates/scripts/graphify/`, `.bkit/templates/.graphifyignore`, `.bkit/templates/docs/capabilities.md` | same paths at the repo root | `docs/capabilities.md` |
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
@@ -69,7 +71,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 <!-- prettier-ignore -->
 | Placeholder | In | Put | Typical value |
 | --- | --- | --- | --- |
-| `main` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments) | your default branch | `origin/HEAD`, else `main` |
+| `main` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments), `bkit-trivy.yml` (`on.push` / `on.pull_request` branches) | your default branch | `origin/HEAD`, else `main` |
 | `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
 | `{{SCRIPT_PATH}}` | `ai.bkit.launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/Users/<you>/.config/bkit/bkit-launchd-env.sh` |
@@ -328,6 +330,35 @@ gh secret set BKIT_GH_TOKEN
 - `enabled: false` on a Renovate package rule does not stop digest pinning; use `ignorePaths` to keep Renovate off a file.
 - Land config on default branch before bot runs. Examples set `baseBranchPatterns: ["dev"]`.
 - App install, self-hosted token, private-package host rule, CVE handling → `docs/deployments.md` § Dependency updaters.
+
+## Trivy — vulnerability, config and secret scan
+
+Fails CI on a HIGH or CRITICAL finding: a vulnerable package in any lockfile Trivy reads (npm, pnpm, yarn, pip, poetry, uv, Go, Cargo, Maven, …), a risky setting in a Dockerfile / Terraform / Kubernetes / Helm file, or a secret in a tracked file. Runs on push, pull request and daily. Reference: https://trivy.dev/docs/latest/.
+
+Copy `bkit-trivy.yml`, replace `main`, commit. No secret, token or App. Blocks merges only once the `trivy` check is required in branch protection.
+
+Accept a finding in `.trivyignore.yaml` at the repo root (read only when present):
+
+```yaml
+vulnerabilities:
+  - id: CVE-2026-12345
+    statement: Why it stays.
+    expired_at: 2026-11-18
+misconfigurations:
+  - id: DS-0002
+    paths:
+      - .cursor/Dockerfile
+    statement: Why it stays.
+    expired_at: 2026-11-18
+```
+
+- Past `expired_at` the finding fails again. Keep it within the fix-time policy (`docs/deployments.md` § Dependency updaters).
+- `scripts/ci/check-dependency-audit.mjs` adopted → the scan skips `pnpm-lock.yaml`; accept pnpm advisories in `accepted-advisories.json` only.
+- Keep `--include-dev-deps`: without it Trivy drops npm / yarn / pnpm dev dependencies, and a dev-tooling lockfile scans zero packages and passes.
+- Pin = image tag + `sha256:` digest; Renovate bumps both. Never `aquasecurity/trivy-action` or `setup-trivy` by tag (tags re-pointed at a credential stealer, March 2026); never releases 0.69.4 – 0.69.6.
+- The `.cursor/Dockerfile` template runs as root → `DS-0002`. Add a non-root `USER` or accept it.
+- Reads Dockerfiles, not built images. OS packages in an image you build → add a step after your build running the same pinned image with `image <your-image-ref>`.
+- Results print in the job log. Security-tab upload (SARIF) is free on public repos only.
 
 ## Serena — symbol lookup
 

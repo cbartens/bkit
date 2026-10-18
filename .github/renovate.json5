@@ -78,7 +78,8 @@
   // the scan. To keep Renovate off a file entirely, list it here:
   // a packageRule `enabled: false` suppresses version bumps, but the github-actions
   // manager still scans the file and applies tag->SHA pinDigests. Workflows you
-  // copied from `.bkit/templates/` (bkit-ci.yml, bkit-cloud.yml, bkit-renovate.yml) are yours —
+  // copied from `.bkit/templates/` (bkit-ci.yml, bkit-cloud.yml, bkit-renovate.yml,
+  // bkit-trivy.yml) are yours —
   // leave them out of ignorePaths so their action pins refresh.
   ignorePaths: [
     "**/node_modules/**",

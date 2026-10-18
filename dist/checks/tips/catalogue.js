@@ -26,7 +26,7 @@ import { buildTrackerSetupAdvisory, readConsumerCloudAgents, readConsumerIssueTr
 import { buildDepUpdaterSetupAdvisory } from "../after/tools.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { claudeSettingsHas, codexTopLevelHas, exists, hasLintStagedConfig, hasMcpServer, unlockedMcpServers, } from "./detect.js";
+import { anyWorkflowMentions, claudeSettingsHas, codexTopLevelHas, exists, hasLintStagedConfig, hasMcpServer, unlockedMcpServers, } from "./detect.js";
 const hosts = (cwd) => detectInstalledHostModules(cwd);
 /** Every phase workflow. A value import of `COMPLY_PHASES` would cycle through cli.ts. */
 export const ALL_WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
@@ -259,6 +259,16 @@ export const SETUP_TIPS = [
         steps: "`.bkit/templates.md` § Dependabot and Renovate.",
         advisories: ["dep-updater-absent"],
         fires: (cwd) => buildDepUpdaterSetupAdvisory(cwd)?.id === "dep-updater-absent",
+    },
+    {
+        id: "trivy",
+        workflows: ["ship"],
+        title: "Security scan",
+        line: "Nothing stops a change that adds a known-vulnerable library, a risky container setting or a leaked password from merging. Add the scan that fails the check when it finds one.",
+        why: "An updater only offers fixes, and only once a fixed version exists. The scan checks every change, plus once a day, so a known problem fails the check before it merges and one with no fix yet still shows up.",
+        ask: "Copy .bkit/templates/.github/workflows/bkit-trivy.yml to .github/workflows/bkit-trivy.yml, replace {{DEFAULT_BRANCH}} with my default branch, and commit it.",
+        steps: "`.bkit/templates.md` § Trivy. Accept a finding in `.trivyignore.yaml` with `statement` + `expired_at`; never drop `--include-dev-deps`.",
+        fires: (cwd) => exists(cwd, ".github/workflows") && !anyWorkflowMentions(cwd, "aquasecurity/trivy"),
     },
     {
         id: "prettier-tables",

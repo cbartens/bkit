@@ -10,6 +10,8 @@
  *   - Floating refs (`@v4`, `@main`) fail outright: every third-party `uses:` in
  *     a shipped template is SHA-pinned (`docs/deployments.md` § GitHub Actions
  *     pinning), so the template ships exactly what bkit runs.
+ *   - A `uses: docker://<image>:<tag>@sha256:<digest>` step is pinned by its digest and
+ *     tracked like an action, keyed `docker://<image>`.
  *   - Template-only actions (nothing in `.github/workflows/` uses them) have no
  *     reference pin to compare against and are skipped.
  */
@@ -29,6 +31,7 @@ const TEMPLATE_WORKFLOWS = path.join(REPO_ROOT, ".bkit/templates/.github/workflo
 const HELD_BACK: Record<string, string> = {};
 
 const PIN_RE = /uses:\s*([a-zA-Z0-9._/-]+)@([0-9a-f]{40})\s*#\s*(\S+)/g;
+const IMAGE_PIN_RE = /uses:\s*(docker:\/\/[^\s@]+):([^\s:@]+)@(sha256:[0-9a-f]{64})/g;
 
 interface Pin {
   sha: string;
@@ -53,6 +56,11 @@ function pins(dir: string): Map<string, Pin[]> {
       list.push({ sha: m[2]!, tag: m[3]!, file: entry });
       out.set(m[1]!, list);
     }
+    for (const m of body.matchAll(IMAGE_PIN_RE)) {
+      const list = out.get(m[1]!) ?? [];
+      list.push({ sha: m[3]!, tag: m[2]!, file: entry });
+      out.set(m[1]!, list);
+    }
   }
   return out;
 }
@@ -75,13 +83,20 @@ describe("shipped CI templates track the repo's own action pins", () => {
       lines.forEach((line, i) => {
         if (!/uses:\s*[^\s@]+@/.test(line)) return;
         if (/uses:\s*[a-zA-Z0-9._/-]+@[0-9a-f]{40}\s*#\s*\S+/.test(line)) return;
+        if (/uses:\s*docker:\/\/[^\s@]+:[^\s:@]+@sha256:[0-9a-f]{64}\s*$/.test(line)) return;
         unpinned.push(`${entry}:${i + 1}: ${line.trim()}`);
       });
     }
     expect(
       unpinned,
-      "pin each to `@<40-char-sha> # vX.Y.Z` (`git ls-remote https://github.com/<owner>/<repo>.git 'refs/tags/vX.Y.Z'`)",
+      "pin each to `@<40-char-sha> # vX.Y.Z` (`git ls-remote https://github.com/<owner>/<repo>.git 'refs/tags/vX.Y.Z'`), or an image to `docker://<image>:<tag>@sha256:<digest>`",
     ).toEqual([]);
+  });
+
+  it("tracks a docker image step by its digest", () => {
+    const tpl = pins(TEMPLATE_WORKFLOWS).get("docker://ghcr.io/aquasecurity/trivy");
+    expect(tpl?.[0]?.sha).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(tpl?.[0]?.tag).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
   it("every template pin is one the repo actually runs", () => {
