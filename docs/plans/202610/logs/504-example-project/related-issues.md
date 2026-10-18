@@ -756,7 +756,7 @@ The agent writes `docs/audits/{YYYYMM}/issues.md`. If that month already has thi
 
 14 issues. **None had a Size. Every Priority was set and none of them followed any stated rule** — #320 (a coverage gate that has never existed) sat at High next to #397 (concurrent ships with no global lock). All 28 fields rewritten.
 
-Both rules were applied in one pass. gether's Ready pass ran on Rule 1 alone because Rule 2 arrived afterwards; that does not apply here.
+Both rules were applied in one pass. consumer-a's Ready pass ran on Rule 1 alone because Rule 2 arrived afterwards; that does not apply here.
 
 ## Result
 
@@ -791,7 +791,7 @@ Each of these is the same class: a mechanism that exists and reports success whi
 | #80 Plan milestone: Recurring audits             | XL   | Low **+1**    | `bkit:design`, and the only FID in the Design section of `docs/roadmap.md`                                                                                                                          |
 | #408 Publish `@cbartens/bkit` publicly on npmjs  | M    | Low **+1**    | Live consumer friction, reported verbatim: remote builds on Vercel and EAS "always include bkit and hence need special auth etc but it's not needed there". Decided, not open                       |
 
-#408 is where the launch adjustment does visible work. Under gether's Rule 2 this would have been discounted as protecting nobody yet. bkit has consumers now, and they are paying this cost on every remote build.
+#408 is where the launch adjustment does visible work. Under consumer-a's Rule 2 this would have been discounted as protecting nobody yet. bkit has consumers now, and they are paying this cost on every remote build.
 
 ## Low — everything else
 
@@ -827,7 +827,7 @@ Nothing in Ready carries a downward signal. Every issue in this lane is either o
 
 ## Open — Priority versus sequence
 
-gether's Ready pass left this open: is entering Ready itself the "in flight" signal, in which case the lane should not be re-ranked at all?
+consumer-a's Ready pass left this open: is entering Ready itself the "in flight" signal, in which case the lane should not be re-ranked at all?
 
 bkit has a sharper answer available. `docs/roadmap.md` already generates Design / Plan / Build / Debug / Shipped sections from `docs/roadmap.jsonl`, so phase state is recorded — and `/bkit-roadmap` reads the `Priority` field back out of the same board (`.bkit/workflows/bkit-roadmap.md:52-62` → `docs/tracker.jsonl` → `.bkit/prompts/bkit-roadmap-refresh.md:45`). If Priority is also made to encode sequence, the analysis reads its own ordering back as if it were independent evidence.
 
@@ -892,7 +892,7 @@ So the band is empty because the work is done, not because nobody looked.
 | `#99` Friction triage                                          | M    | Low under Rule 1 (it is a triage pass, not a fix), raised because the rows come from real consumer repos via `pnpm bkit harvest` and describe cost being paid now                                                                      |
 | `#360` Post-install JSON-safe per-package advisory suppression | M    | Two live false-positive advisory reports against `dist/bkit-postinstall.js` in bkit 4.7.0, and `package.json` being comment-free JSON means the documented workaround is impossible to follow. A consumer cannot fix this from outside |
 
-This is the half of Rule 2 that gether's version cannot have. There, protective work protects nobody yet. Here, #99 and #360 are both somebody's Tuesday.
+This is the half of Rule 2 that consumer-a's version cannot have. There, protective work protects nobody yet. Here, #99 and #360 are both somebody's Tuesday.
 
 ## What Rule 2 moved down — nothing moved, but five are held down
 
@@ -927,7 +927,7 @@ Two more are partly stale and were sized for what actually remains:
 
 | Issue                                      | Label         | Ranked | Why                                                                                                                                      |
 | ------------------------------------------ | ------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| #328 Dependency Dashboard                  | `enhancement` | Low    | **Was Urgent.** It is Renovate's auto-generated checklist, not work. Same trap gether hit with its #584                                  |
+| #328 Dependency Dashboard                  | `enhancement` | Low    | **Was Urgent.** It is Renovate's auto-generated checklist, not work. Same trap consumer-a hit with its #584                              |
 | #214 bkit roadmap                          | `milestone`   | Medium | **Was Urgent.** A standing sequencing doc, and largely superseded by `docs/roadmap.md`                                                   |
 | #343 Consumer harvesting                   | none          | Low    | **Was High.** A standing tracker for `pnpm bkit harvest`, which already works. The harvest is not the work; the triage it feeds is (#99) |
 | #374 Test coverage                         | `enhancement` | Low    | **Was High.** 81.5% statement / 74.0% branch coverage is a gap, not a defect. Nothing is broken — some things are untested               |
@@ -944,14 +944,14 @@ Two more are partly stale and were sized for what actually remains:
 1. **`Urgent` is empty across both lanes.** #317 was the single candidate and it is done. If that reads as wrong, the next-nearest candidates are #249 (ships a permission-bypass switch) and #100 (verifies branch protection before ship merges autonomously) — both currently `Low`.
 2. **Seven of the ten Mediums are one signal.** Every Recurring Audits workstream moved on #80 being the live design. If #80 is not genuinely next, that whole block is one band too high — and if it is, #402 should arguably outrank its six dependants rather than sitting level with them.
 3. **#345 at High, #344 at Low.** Two umbrella triage issues with identical structure, split purely on what their ledger contains. Defensible, and a reasonable person would rank them together.
-4. **#374 Test coverage at Low.** Rule 1 has no band for "thin coverage on a tool whose whole job is gating other people's tests". If coverage should sit above features, Rule 1 needs a fifth category — the same gap gether found with performance.
+4. **#374 Test coverage at Low.** Rule 1 has no band for "thin coverage on a tool whose whole job is gating other people's tests". If coverage should sit above features, Rule 1 needs a fifth category — the same gap consumer-a found with performance.
 5. **Three already-fixed issues in 43.** Worth a closure sweep before the next pass, otherwise the next run re-derives the same three Step 4 finds.
 
 You have 14 items in Ready. Only three need doing before launch: #408 itself, the fixes from the #498 audit, and probably #508. #504 is optional. The bigger blockers aren't in Ready at all: they're in In review and In progress.
 Ready items to do before launch
 Issue Why it matters for the launch
 #408 Publish on npmjs This is the launch itself. Right now nobody can install bkit without a GitHub token. Two things moved onto it from #506 are still open. A contributor agreement (CONTRIBUTING.md) needs to exist before you merge the first outside pull request, and once the repo is public that could be day one. The lawyer review is only needed before you sell a commercial licence, so it can wait. Its three open questions also need answers: is the cbartens npm scope free, will the repo be public, and do you republish old versions?
-#498 Stack-agnostic audit The audit is finished, but I couldn't find any of its 11 proposed follow-up issues, and its three "bugs found along the way" aren't filed either. Two of them are launch problems, because anyone can read what's published on npm. Follow-up 5: shipped files name your consumer projects ("gether/fraser" in deployments.md:187 and the shipped ci.yml:502,808) and include a copy-paste DROP SCHEMA … stripe CASCADE. Follow-up 4: README.md:179 says --ci "runs green on any repo", but /bkit-build actually stops at Step 14 on a --ci-only install. The gate-runner part of that fix was sent to #467.
+#498 Stack-agnostic audit The audit is finished, but I couldn't find any of its 11 proposed follow-up issues, and its three "bugs found along the way" aren't filed either. Two of them are launch problems, because anyone can read what's published on npm. Follow-up 5: shipped files name your consumer projects ("consumer-a/consumer-b" in deployments.md:187 and the shipped ci.yml:502,808) and include a copy-paste DROP SCHEMA … stripe CASCADE. Follow-up 4: README.md:179 says --ci "runs green on any repo", but /bkit-build actually stops at Step 14 on a --ci-only install. The gate-runner part of that fix was sent to #467.
 #508 launchd template New macOS users who open opencode or Cursor from the Dock get Missing Authentication header, because those apps don't see the BKIT_* tokens. That's a bad first run. The design is agreed and the change is small. If you skip it, at least make "launch with bkit opencode" prominent in the quick start.
 #504 Example project Optional. #505's checklist wants a "See it in action" section linking a real issue → design → plan → pull request, plus a screen recording. Nothing under docs/plans/ is tracked yet, so there's nothing to link to. You could launch without that section, but this issue is what would fill it.
 Ready items that can wait until after launch
@@ -3274,7 +3274,7 @@ Empty and clean → one row `None`.
 
 ## Fix 4 (Group D) — recurrence + resolution applied (2026-06-10)
 
-**Fresh recurrence:** `cbartens/visitfrasercoast-com`, `bkit-debug` on `feat/105-chat-email-polish` (Attempt 2), 2026-06-10. Step 2 `git rebase origin/dev` rewrote local SHAs; the remote feat branch still held pre-rebase history; the Step 8 plain `git push` was rejected non-fast-forward. Operator recovered with `git push --force-with-lease` — the exact command the line-29 Git rule prohibits "(any flavour)". Confirms the contradiction is structurally always-on (any resume after `origin/dev` has advanced), not a one-off.
+**Fresh recurrence:** `example-org/consumer-b`, `bkit-debug` on `feat/105-chat-email-polish` (Attempt 2), 2026-06-10. Step 2 `git rebase origin/dev` rewrote local SHAs; the remote feat branch still held pre-rebase history; the Step 8 plain `git push` was rejected non-fast-forward. Operator recovered with `git push --force-with-lease` — the exact command the line-29 Git rule prohibits "(any flavour)". Confirms the contradiction is structurally always-on (any resume after `origin/dev` has advanced), not a one-off.
 
 **Resolution: option (b) — the `--force-with-lease` carve-out.** The issue's preferred (a) does not hold up: as written it either skips rebases the workflow actually wants (leaving a stale-base branch — which bkit squash-merges away anyway, so rebase buys little) **or** still rewrites already-pushed commits, so it does not remove the force-push need. (b) is what `rules.md:63` already promises and what the recovery actually did.
 
@@ -3292,7 +3292,7 @@ Empty and clean → one row `None`.
 
 ### Permission-layer check — no change required
 
-The seeded deny rule `Bash(git push --force:*)` (`.bkit/templates/.claude/settings.json`) is **token-aware** and does NOT match the distinct token `--force-with-lease`. Empirically confirmed: fraser carries the identical deny list yet the recovery pushed successfully (a `deny` is a hard block with no override prompt), and `Bash(*)` in `allow` covers force-with-lease silently. So the workflow change is executable as-is.
+The seeded deny rule `Bash(git push --force:*)` (`.bkit/templates/.claude/settings.json`) is **token-aware** and does NOT match the distinct token `--force-with-lease`. Empirically confirmed: consumer-b carries the identical deny list yet the recovery pushed successfully (a `deny` is a hard block with no override prompt), and `Bash(*)` in `allow` covers force-with-lease silently. So the workflow change is executable as-is.
 
 _Optional hardening (not applied):_ add explicit `Bash(git push --force-with-lease:*)` to the template `allow` to survive a future allow-list tightening; a branch-aware PreToolUse Bash hook could enforce "force-with-lease on personal branches only, never `dev`/`main`" at the harness layer (the static deny can't be branch-aware) — ref the standing note in `project_settings_deny_scope_vs_workflow_prohibitions`.
 
@@ -3313,7 +3313,7 @@ These workflows run under all three harnesses, so the line-29 carve-out must be 
 
 | Harness      | bkit-seeded git-push gate                                                                                                           | Blocks `--force-with-lease`?                                                                                                                                                                         | Action          |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| **Claude**   | `.claude/settings.json` deny `Bash(git push --force:*)` + `Bash(*)` allow                                                           | No — matcher is token-aware (`--force` != `--force-with-lease`); empirically confirmed by the fraser recovery pushing under the identical deny (a `deny` is a hard block, no override)               | none            |
+| **Claude**   | `.claude/settings.json` deny `Bash(git push --force:*)` + `Bash(*)` allow                                                           | No — matcher is token-aware (`--force` != `--force-with-lease`); empirically confirmed by the consumer-b recovery pushing under the identical deny (a `deny` is a hard block, no override)           | none            |
 | **Cursor**   | none — `.cursor/settings.json` is editor prefs, `hooks.json` is session-only, no command denylist seeded                            | No bkit gate (Cursor's own approval UI governs)                                                                                                                                                      | none            |
 | **OpenCode** | `.opencode/opencode.json` native deny `Bash(git push --force:*)`; bash is **not** covered by the gateguard plugin (edit-tools only) | **Possibly** — OpenCode docs define `*` as "zero or more of any character" (glob, not token-aware) + **last-matching-rule-wins**; a glob normalisation of `--force` could catch `--force-with-lease` | **fix applied** |
 
@@ -3323,7 +3323,7 @@ Net: the carve-out is executable under all three harnesses. Mirror regen (`bkit 
 
 ## New harvest (2026-07-12) — three build-workflow frictions (Fix 8–10)
 
-Surfaced from a remote-control observation of `app-gether-life` build run `683-dashboard-calendar-cache`, cross-checked against the shipped `.bkit/` sources.
+Surfaced from a remote-control observation of `consumer-a` build run `683-dashboard-calendar-cache`, cross-checked against the shipped `.bkit/` sources.
 
 > **Path note:** since #160 / DE-19 the canonical sources moved `.agents/*` → `.bkit/workflows/*` + `.bkit/prompts/*`. The Fix 1–7 body above still cites the old `.agents/` paths; the references below use current `.bkit/` paths.
 
@@ -3331,7 +3331,7 @@ Surfaced from a remote-control observation of `app-gether-life` build run `683-d
 
 ### Fix 8 — Build runs the `@live` tier locally, contradicting the push-only-canary doctrine
 
-**Severity:** Medium — recurring; forces agents to add `[live=off]`, which the Claude auto-mode **safety classifier blocks** as a "test-suite kill-switch" (683 remediate step, 2026-07-12; also gether friction ~line 616). bkit can't reconfigure that classifier — the lever is to stop needing the marker.
+**Severity:** Medium — recurring; forces agents to add `[live=off]`, which the Claude auto-mode **safety classifier blocks** as a "test-suite kill-switch" (683 remediate step, 2026-07-12; also consumer-a friction ~line 616). bkit can't reconfigure that classifier — the lever is to stop needing the marker.
 
 **Evidence:** `bkit-build.md:918-925` (Step 13) defaults `TESTS_LIVE=1` and _appends_ `test:live` to the **local** Run-Tests command whenever the consumer declares the script and `[live=off]` is absent. But at build time (local worktree, pre-PR, no preview deploy) there is no deployed URL — and the `@live` tier is defined as a **push-only canary against a DEPLOYED url** (`docs/testing.md:120-123`), excluded locally pre-push (`docs/testing.md:15`), re-run locally **only via Debug** (`.agents/rules.md:82`). So build either fails (no URL) or forces `[live=off]`. `docs/testing.md:233` currently says _both_ build+debug append the live tier — that line is the doctrine inconsistency.
 
@@ -3436,7 +3436,7 @@ All three implemented and validated (**full suite 1766 pass**). **Not on `dev` y
 
 ## Full triage — all 101 rows in `harvest/friction.jsonl` (2026-07-15)
 
-First complete sweep of the harvested consumer-friction corpus (101 rows: `app-gether-life` 62, `visitfrasercoast-com` 38, 1 mis-scoped). Every row was assigned to a root-cause cluster, and **every cluster was verified against the current `.bkit/` sources on `dev` @ `e93da128`** rather than taken at the row's word — necessary, because a large share of the corpus predates fixes that have since landed (Fix 8/9/10 are on `dev`; #234 deleted the ledger files five rows complain about; 4.3.1 fixed both reported CLI bugs).
+First complete sweep of the harvested consumer-friction corpus (101 rows: `consumer-a` 62, `consumer-b` 38, 1 mis-scoped). Every row was assigned to a root-cause cluster, and **every cluster was verified against the current `.bkit/` sources on `dev` @ `e93da128`** rather than taken at the row's word — necessary, because a large share of the corpus predates fixes that have since landed (Fix 8/9/10 are on `dev`; #234 deleted the ledger files five rows complain about; 4.3.1 fixed both reported CLI bugs).
 
 Numbering continues this issue's series: Fix 1–10 above, **Fix 11–24 new**.
 
@@ -3505,7 +3505,7 @@ _Incidental, found in the same pass:_ `bkit-plan.md:588` Gate 8 asserts `COMPLEX
 
 #### Fix 15 — `docs/plans/template.md` duplicates its own body; the stale half leaks a consumer stack
 
-764 lines: 1–382 an unmarkered copy, 383–764 the `bkit:start…bkit:end` managed mirror. The halves **diverge across 22 lines and the outer (default-read) copy is the stale one** — including `@app-gether-life/validators` at `:165` (**stack-independence violation**) and Unicode `≤` at `:40` (violates the ASCII-operators rule). Only `chore(release)` commits touch it: each `bkit upgrade` refreshes the inner mirror and leaves the outer to rot, so **divergence widens every release**, and it is structurally invisible to `bkit check`. `bkit-plan-generate.md:36,40,48` sends every plan-generate agent to read this self-contradicting file.
+764 lines: 1–382 an unmarkered copy, 383–764 the `bkit:start…bkit:end` managed mirror. The halves **diverge across 22 lines and the outer (default-read) copy is the stale one** — including `@consumer-a/validators` at `:165` (**stack-independence violation**) and Unicode `≤` at `:40` (violates the ASCII-operators rule). Only `chore(release)` commits touch it: each `bkit upgrade` refreshes the inner mirror and leaves the outer to rot, so **divergence widens every release**, and it is structurally invisible to `bkit check`. `bkit-plan-generate.md:36,40,48` sends every plan-generate agent to read this self-contradicting file.
 
 #### Fix 16 — the lock is a TOCTOU; two runs can both acquire (all 5 workflows)
 
@@ -3537,8 +3537,8 @@ Found while triaging; these are defects in the corpus itself, not in the workflo
 1. **93 of 101 rows carry `workflow:"migrate"`, `step:"bkit-telemetry-migrate"`** — the transport stamped as the origin. Fixed forward in `e93da128`, but **the existing rows were written by the pre-fix migrator and were never rebuilt**. Only 8 rows carry a true origin.
 2. **The same rows predate two further fixes** — they have no `summary`, `severity`, `references`, or `source` at all, and `description` holds the title.
 3. **Legacy `Step:` is a different vocabulary** — free-text numbered labels (`16 (summary push) — pre-push slop:delta`, `1-8`) vs the 64 canonical kebab ids live rows use. Recovering it verbatim keeps the step axis split; step numbers also shifted (Fix 9 merged Steps 17/18), so number-based mapping would fabricate precision.
-4. **`key = slugify(title[:60])` collides — and it already cost a row.** `.bkit/jsonl.md:102` predicted this _and names this exact pair_. The migrator wrote **58** rows to `app-gether-life`; harvest folded the colliding pair and stored **57**. Per #343's content-gated prune the fold-loser **stayed in the consumer** — nothing was destroyed, but the original STRAY-guard entry is **permanently stranded**: every future harvest folds it away and leaves it behind again. Recurrence entries are structurally the likeliest to collide, since a recurrence is titled like its original — i.e. the collision preferentially eats the highest-signal rows.
-5. **54 friction entries were pruned from the consumer logs before migration and never reached the store** (27 gether + 27 fraser), recoverable from git history with their own last status (7 `FIXED-IN:<ref>`, 22 `RECOVERED`, 21 none, 2 still `OPEN` at removal). Several are direct evidence for clusters above — "Ship Step 11 run-tests-skipped gate" (Group E.2), "Debug Step 6 rebase-on-dev requires force-push" (Fix 4), "Worktree gitignore" (Fix 6).
+4. **`key = slugify(title[:60])` collides — and it already cost a row.** `.bkit/jsonl.md:102` predicted this _and names this exact pair_. The migrator wrote **58** rows to `consumer-a`; harvest folded the colliding pair and stored **57**. Per #343's content-gated prune the fold-loser **stayed in the consumer** — nothing was destroyed, but the original STRAY-guard entry is **permanently stranded**: every future harvest folds it away and leaves it behind again. Recurrence entries are structurally the likeliest to collide, since a recurrence is titled like its original — i.e. the collision preferentially eats the highest-signal rows.
+5. **54 friction entries were pruned from the consumer logs before migration and never reached the store** (27 consumer-a + 27 consumer-b), recoverable from git history with their own last status (7 `FIXED-IN:<ref>`, 22 `RECOVERED`, 21 none, 2 still `OPEN` at removal). Several are direct evidence for clusters above — "Ship Step 11 run-tests-skipped gate" (Group E.2), "Debug Step 6 rebase-on-dev requires force-push" (Fix 4), "Worktree gitignore" (Fix 6).
 
 **Remediation in flight** (agreed this session): full re-migration of the 93 rows from the legacy corpus recovered at `b9bd7fcb~1` / `688d6dce~1` using the _fixed_ migrator contract (restores origin + summary/severity/references/source/description); `Workflow:` normalised to the 5-value enum (~17 values are dirty, e.g. `plan (523-shard-multiworker-e2e)`, `build → ship`); `Step:` mapped to canonical ids **only where unambiguous**, raw otherwise, with the mapped/unmapped split reported; the 54 pruned entries resurrected as `CLOSED`; the key made collision-resistant. The 8 live rows are preserved untouched.
 
@@ -3608,14 +3608,14 @@ Same class as the workflow/step bug, on a third axis — and worse, because `ide
 
 1. `detectRepo()` (`bkit-telemetry-migrate.ts`) returns `package.json` `name` — an npm name, not a slug. For bkit it yields `@cbartens/bkit`; **the doc's own example value `cbartens/bkit` is unreachable by the code that fills the field.**
 2. Orchestrator live writes — freehand, though `{OWNER_REPO}` (from `gh repo view --json nameWithOwner`, `bkit-build.md:172`) is in scope at Step 1 of every workflow.
-3. `stampRepo()` -> `consumerPathToSlug()` (`bkit-harvest.ts`) — last two **filesystem path segments**, so `/Users/.../GitHub/app-gether-life` becomes `GitHub/app-gether-life`. The "owner" is a folder name on the operator's laptop.
+3. `stampRepo()` -> `consumerPathToSlug()` (`bkit-harvest.ts`) — last two **filesystem path segments**, so `/Users/.../GitHub/consumer-a` becomes `GitHub/consumer-a`. The "owner" is a folder name on the operator's laptop.
 
-Observed: `@cbartens/bkit` and `cbartens/bkit` **split within single files** (`.bkit/friction.jsonl`, `.bkit/stats.jsonl`); `app-gether-life` vs `gether-life/app-gether-life` in `harvest/stats.jsonl`; and 3 rows in `app-gether-life/.bkit/friction.jsonl` carry **no `repo`**, so the next `bkit harvest` will stamp them `GitHub/app-gether-life` — a fourth spelling.
+Observed: `@cbartens/bkit` and `cbartens/bkit` **split within single files** (`.bkit/friction.jsonl`, `.bkit/stats.jsonl`); `consumer-a` vs `example-org/consumer-a` in `harvest/stats.jsonl`; and 3 rows in `consumer-a/.bkit/friction.jsonl` carry **no `repo`**, so the next `bkit harvest` will stamp them `GitHub/consumer-a` — a fourth spelling.
 
 **Two load-bearing constraints for the fix:**
 
 - **It cannot be repaired by appending.** `repo` is part of `identity()`, so an append with a corrected `repo` mints a NEW entity instead of updating the old one. This must be an in-place rewrite — a deliberate exception to § Updating a Row.
-- **`harvest/friction.jsonl` is committed on the WRONG spelling.** The rebuild normalised toward the majority (`app-gether-life`), which is the package name, not the slug. All 257 rows need re-canonicalising to `gether-life/app-gether-life` / `fcte-com-au/visitfrasercoast-com`. Verification: entity count must stay **156 / 257 rows** — any change means an identity forked or merged.
+- **`harvest/friction.jsonl` is committed on the WRONG spelling.** The rebuild normalised toward the majority (`consumer-a`), which is the package name, not the slug. All 257 rows need re-canonicalising to `example-org/consumer-a` / `example-org/consumer-b`. Verification: entity count must stay **156 / 257 rows** — any change means an identity forked or merged.
 
 ### Preconditions before executing any of the above
 
@@ -3738,7 +3738,7 @@ Also fixed en route: `Recovery`/`Status` in that step were **legacy `.bkit/frict
 | **11**           | STRAY guard allow-listed `.bkit/friction.md`, which #234 renamed away -> every plan/design close died. Reproduced the real close (worktree -> `merge --squash`) and corrected the handover's proposed regex in both directions: it **omitted `docs/failures.jsonl`** (mandated by the found-bug rule, line 21 of both workflows) and added `stats`/`knowledge`, which nothing writes or stages here. `.bkit/stats.jsonl` is written to `$REPO_ROOT`, never the worktree — it never reaches the index, so allow-listing it would have re-created the exact dead-entry rot that caused this bug. Final: `^docs/plans/\|^docs/(deferrals\|decisions\|failures)\.jsonl$\|^\.bkit/friction\.jsonl$`. Proven to pass a legitimate close **and** still catch a stray `src/` edit. |
 | **12**           | Added the missing `status == "completed"` assert. Did **not** hardcode `bkit-tests-check`: the template ships **no capstone** (fresh consumers get only `bkit-tests-static` + `bkit-tests-unit`), so that would break every new consumer. Gate now uses the capstone as sole authority where adopted (a deliberately self-skipped live tier must not false-fail) else every `bkit-tests*` lane, fail-safe on `!= "success"`. Substring bug was real — `latest-deploy` contains `test`. Run-level `conclusion` checks left alone (Fix 17 territory). Gate-13 item + prose updated.                                                                                                                                                                                          |
 | **14**           | Pathspec-less `git commit` swept the user's pre-staged work. **Proven**: old form swept a staged `src/ChatCTA.ts` deletion (the incident that needed `git revert`); new form leaves it staged and intact. Fixed 4 pre-worktree sites + ship Step 6, which was still a deny-list (= `git add -A` on the main `dev` checkout).                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| **15**           | `docs/plans/template.md` carried a 382-line unmarkered duplicate; the managed half was the fresher one. Now byte-identical to what `bkit upgrade` renders — which removed the `@app-gether-life` stack leak and the Unicode `<=`. Also matches a friction row's own suggested remedy ("the template should not duplicate the body").                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **15**           | `docs/plans/template.md` carried a 382-line unmarkered duplicate; the managed half was the fresher one. Now byte-identical to what `bkit upgrade` renders — which removed the `@consumer-a` stack leak and the Unicode `<=`. Also matches a friction row's own suggested remedy ("the template should not duplicate the body").                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | **18** (partial) | Message only. The handover reads the guard as over-strict, but the rows say the opposite: pushing non-`[skip ci]` drift to `dev` is what **cancelled an in-flight feature-merge CI run** (#785 killed #784) — the very run Fix 12 validates. Auto-pushing would reintroduce that. Now lists the offending commits + the reconcile recipe that sat two lines below.                                                                                                                                                                                                                                                                                                                                                                                                         |
 | **22**           | Confirmed live: 2 of 12 slop findings were in vendored third-party skills. Mirrored Vale's existing exemption set (`.agents/skills/**`, `.claude/skills/**`, `.cursor/skills/**`) in repo + template config, and updated `SLOP_SCAN_MERGE_INSTRUCTIONS` — the only path reaching **existing** consumers (`upgrade` reports `slop-scan.config.json — NOT overwriting`). 12 -> 10 findings, bkit's own 10 untouched.                                                                                                                                                                                                                                                                                                                                                         |
 | **Gate 8**       | `bkit-plan.md` asserted `COMPLEXITY_VERDICT in PASS\|FAIL` against a prompt emitting `SINGLE\|SPLIT` — could never pass.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -3780,7 +3780,7 @@ Relevant mechanic (proved this session): `STATS="$REPO_ROOT/.bkit/stats.jsonl"` 
 | **11** STRAY guard          | ✅ Allow-list corrected to the ledgers each phase actually mandates. **The previous handover's proposed regex was wrong in both directions** — it omitted `docs/failures.jsonl` (mandated by the found-bug rule, line 21 of every workflow) and added `stats`/`knowledge`, which nothing writes or stages here. `.bkit/stats.jsonl` never reaches the index (proved by repro), so allow-listing it would have re-created the exact dead-entry rot that caused this bug. |
 | **12** ship close gate      | ✅ `status == "completed"` assert added; job match is now capstone-or-lanes, fail-safe on `!= "success"`. **Did NOT hardcode `bkit-tests-check`** — the template ships no capstone, so that would break every fresh consumer. Substring bug was real (`latest-deploy` contains `test`).                                                                                                                                                                                 |
 | **14** pathspec-less commit | ✅ All 4 pre-worktree sites + ship Step 6 (which was still a deny-list = `git add -A` on the main checkout). Proved: old form swept a staged `src/ChatCTA.ts` deletion; new form leaves it intact.                                                                                                                                                                                                                                                                      |
-| **15** template duplication | ✅ `docs/plans/template.md` now byte-identical to what `bkit upgrade` renders (764 -> 384 lines). Removed the `@app-gether-life` stack leak + Unicode `<=`.                                                                                                                                                                                                                                                                                                             |
+| **15** template duplication | ✅ `docs/plans/template.md` now byte-identical to what `bkit upgrade` renders (764 -> 384 lines). Removed the `@consumer-a` stack leak + Unicode `<=`.                                                                                                                                                                                                                                                                                                                  |
 | **18** dev-drift            | 🟡 **Message only — behavioural half deliberately NOT done.** The handover reads the guard as over-strict; the rows say the opposite: pushing non-`[skip ci]` drift to dev is what **cancelled an in-flight feature-merge CI run** (#785 killed #784) — the run Fix 12 validates. Auto-pushing reintroduces that. Left as a real decision.                                                                                                                              |
 | **22** slop vendored skills | ✅ Confirmed live (2 of 12 findings). Mirrored Vale's exemption set; updated `SLOP_SCAN_MERGE_INSTRUCTIONS` — the only path reaching **existing** consumers (Tier-3, never overwritten).                                                                                                                                                                                                                                                                                |
 | **Gate 8**                  | ✅ Asserted `PASS\|FAIL` against a `SINGLE\|SPLIT` prompt — could never pass.                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -3936,8 +3936,8 @@ A fresh build off a stale local `dev` starts stale, and Step 3's sync is `docs/`
 | **7 push sites divergent**                    | **ALREADY FIXED** at `8113642f`. Was **8** sites / **2** variants (not 7 / 1); now 100% uniform, 0 residual drift.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | **24 — `ws.writes` outside `!dryRun`**        | **REFUTED — works as intended.** (Correction to the prior handover's _reasoning_: `totalWrites` is **not** just a report — it gates `bkit check` exit 1 at `bkit-install.ts:2725-2735`. But the conclusion holds.) The same line runs in install and check; moving it inside `!dryRun` would make `check` under-report by one relative to a real install — the opposite and worse bug for a drift detector. The contract is literally "would N writes occur?" and a real install _would_ write. Drift semantics are deliberately over-inclusive (`:2711-2718`, #256). No feedback loop: the hash loop at `:840-854` skips the version file at `:843`.                                                                                                                                                                                                                                                                    |
 | **24 — `canonicalHash` drift**                | **REFUTED.** `bkit check` -> `runInstall(dryRun:true)`. The only hash comparison is `diffFile` (`bkit-upgrade.ts:186`), whose sole caller is `runUpgrade` (`:364`) -> `bkit-install.ts:2225`, guarded by `upgradeFlags` — i.e. the **`bkit upgrade` command**, not `check`. `isCanonicalUnmodified` has 0 non-test callers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| **#234 — 54 entries pruned pre-migration**    | **REFUTED.** Reconstructed commit-by-commit entry counts of the legacy `.bkit/friction.md` in both consumers: **both grew strictly monotonically; there was never a truncation.** gether `9 -> 58` then `0` at `b9bd7fcb` (the migration itself); fraser `1 -> 36` then `0` at `688d6dce`. 54 appears only as an intermediate count — the likely conflation source. Nothing failed to reach the store on this path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| **#234 — key collision, fold-loser stranded** | **REFUTED x3.** The key is **not** `slugify(title[:60])` — `bkit-telemetry-migrate.ts:489-493` `stableKey()` appends `sha256[:7]` whenever truncation discards characters, and its doc comment names this exact pair as the motivating case. (1) The pair is stored under **separate** keys (`...-102b388`, `...-c710e94`); both survive. (2) The prune is content-gated on byte-equal `canonicalRow()` (`bkit-harvest.ts:287-327`) and reports losers via `collisionRetained` — a loser can never be destroyed. (3) The "stranded" row is on disk **right now** at `app-gether-life/.bkit/friction.jsonl:1`. "58 written / 57 stored" is a category error: 57 is an _entity_ count after `fold()`, not storage loss (`jsonl.md:183` — readers count entities, never lines). The destruction did happen **once, pre-fix**, recorded at `docs/knowledge.jsonl:54` — that is #343's historical bug, not current state.     |
+| **#234 — 54 entries pruned pre-migration**    | **REFUTED.** Reconstructed commit-by-commit entry counts of the legacy `.bkit/friction.md` in both consumers: **both grew strictly monotonically; there was never a truncation.** consumer-a `9 -> 58` then `0` at `b9bd7fcb` (the migration itself); consumer-b `1 -> 36` then `0` at `688d6dce`. 54 appears only as an intermediate count — the likely conflation source. Nothing failed to reach the store on this path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **#234 — key collision, fold-loser stranded** | **REFUTED x3.** The key is **not** `slugify(title[:60])` — `bkit-telemetry-migrate.ts:489-493` `stableKey()` appends `sha256[:7]` whenever truncation discards characters, and its doc comment names this exact pair as the motivating case. (1) The pair is stored under **separate** keys (`...-102b388`, `...-c710e94`); both survive. (2) The prune is content-gated on byte-equal `canonicalRow()` (`bkit-harvest.ts:287-327`) and reports losers via `collisionRetained` — a loser can never be destroyed. (3) The "stranded" row is on disk **right now** at `consumer-a/.bkit/friction.jsonl:1`. "58 written / 57 stored" is a category error: 57 is an _entity_ count after `fold()`, not storage loss (`jsonl.md:183` — readers count entities, never lines). The destruction did happen **once, pre-fix**, recorded at `docs/knowledge.jsonl:54` — that is #343's historical bug, not current state.          |
 | **#234 — `jsonl.md:179` phantom consumers**   | **REFUTED / self-retracted.** The only part that asserted an implementation — the trailing `(isOpenWork() in the codec)` pointer — was already deleted with the function in `b953237c`. What remains is prescriptive guidance _for readers_ ("if you build a CI gate / audit lens / age report, count `TRIAGED`"), not a claim bkit ships them. The author already retracted this in #234. **Nothing to do.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | **#234 — 3 legacy free-text `status` rows**   | **CONFIRMED harmless**, substantiated by code rather than assertion: `bkit-telemetry.ts:535-544` — _"Enforced on write only; `parse` stays tolerant so legacy free-text statuses still read."_ They fold and read fine; they merely cannot be re-written. Correct by design.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | **19 — non-docs dev commits never re-sync**   | **PARTLY REFUTED, LOW severity.** `-- docs/` at `:382` restricts the **trigger**; the action is a full `git merge origin/dev`. And Step 2's resume path (`:271-272`) does a full **unrestricted rebase** onto `origin/dev` — only a single-session, never-resumed build relies on Step 3 alone. Four mitigations: PR CI builds a head+base merge commit (drift _is_ exercised at PR time), ship Step 2 (`:249`) does a full rebase, turbo's `--filter='...[origin/dev]'` stays fresh, textual conflicts surface at the PR. Gate 3 states the scope honestly (`- [ ] docs/ not behind origin/dev`) — the step is docs-scoped **by design**. The genuine bug nearby is `:298` (item C above).                                                                                                                                                                                                                              |
@@ -4074,7 +4074,7 @@ The [previous comment](https://github.com/cbartens/bkit/issues/99#issuecomment-4
 
 **Wrong corpus.** `.bkit/friction.jsonl` is **bkit's own** friction (16 rows). The consumer corpus is **`harvest/friction.jsonl` (257 rows / 156 entities)**. Searching it:
 
-**6 distinct reports**, all `fcte-com-au/visitfrasercoast-com`, across **3 named subagents + the brainstorm pair**:
+**6 distinct reports**, all `example-org/consumer-b`, across **3 named subagents + the brainstorm pair**:
 
 | Report                                                           | Subagent               |
 | ---------------------------------------------------------------- | ---------------------- |
@@ -4293,7 +4293,7 @@ Continues the [evidence audit](https://github.com/cbartens/bkit/issues/99#issuec
 
 **Backfill: 183 of 257 rows.** Verified **only `ts` changed** — no other field on any row; 257 rows / 156 entities unchanged; zero missing `key`. Span went from the 3-day migration window to the real **2026-05-24 .. 2026-07-15** (May 12 / Jun 147 / Jul 98).
 
-A **full re-migration was rejected**: 118 entities carry a triage `status` the legacy `.md` never knew, so re-deriving from it would destroy the triage work. Surgical patch instead. Safe against #343's content gate — none of the rows still in app-gether-life share a key with the store.
+A **full re-migration was rejected**: 118 entities carry a triage `status` the legacy `.md` never knew, so re-deriving from it would destroy the triage work. Surgical patch instead. Safe against #343's content gate — none of the rows still in consumer-a share a key with the store.
 
 ### Corrections to this thread's record
 
@@ -4305,21 +4305,21 @@ A **full re-migration was rejected**: 118 entities carry a triage `status` the l
 
 ### ⚠️ Still live in consumers — the fixes are not released
 
-`app-gether-life` pins **4.5.0**; bkit's `package.json` is **4.5.0**. Everything above is on `dev`, **unreleased**. Its `bkit-ship` mirror still carries **10** `git add -A` sites.
+`consumer-a` pins **4.5.0**; bkit's `package.json` is **4.5.0**. Everything above is on `dev`, **unreleased**. Its `bkit-ship` mirror still carries **10** `git add -A` sites.
 
-That is not theoretical. **While closing this session, an uncommitted edit of mine in `app-gether-life/.bkit/friction.jsonl` was swept into `398b62a1 docs(#715/#721/#722): correct the @live prod-safety story` — a commit that says nothing about friction rows — and pushed.** The `-3` diff is against the 7-row HEAD, so that commit inherited the edit rather than authoring it. The exact Fix 14 bug fixed in `422f17e9`, reproducing itself live in a repo that does not have the fix yet.
+That is not theoretical. **While closing this session, an uncommitted edit of mine in `consumer-a/.bkit/friction.jsonl` was swept into `398b62a1 docs(#715/#721/#722): correct the @live prod-safety story` — a commit that says nothing about friction rows — and pushed.** The `-3` diff is against the 7-row HEAD, so that commit inherited the edit rather than authoring it. The exact Fix 14 bug fixed in `422f17e9`, reproducing itself live in a repo that does not have the fix yet.
 
 **A release is the remaining delivery step.**
 
 ### Open
 
-| Item                                        | Note                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Release 4.6.0**                           | The only way any of this reaches consumers.                                                                                                                                                                                                                                                                                                                                                                        |
-| **Branch protection on `dev`**              | Remediation (2) of the merged-PR-with-failing-CI row; repo config, not a workflow fix.                                                                                                                                                                                                                                                                                                                             |
-| **Write-time validation for friction rows** | Root cause of corpus decay: workflows say _"append in `.bkit/jsonl.md` format"_, agents hand-write raw `jq >> file`, nothing validates. The codec validates but a raw append never invokes it — same prose-with-no-gate shape as Fix 20. Live proof: 3 rows in app-gether-life carry a string `ts` + no `key`, written today. Needs a design call (e.g. a `bkit telemetry append` verb, or close-step validation). |
-| **Data-side `step` repair**                 | 76 rows still stamped `bkit-telemetry-migrate`; only ~25 have a recoverable hint. Low value.                                                                                                                                                                                                                                                                                                                       |
-| **Fix 13 / Fix 24**                         | Refuted / re-scope — do not build.                                                                                                                                                                                                                                                                                                                                                                                 |
+| Item                                        | Note                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Release 4.6.0**                           | The only way any of this reaches consumers.                                                                                                                                                                                                                                                                                                                                                                   |
+| **Branch protection on `dev`**              | Remediation (2) of the merged-PR-with-failing-CI row; repo config, not a workflow fix.                                                                                                                                                                                                                                                                                                                        |
+| **Write-time validation for friction rows** | Root cause of corpus decay: workflows say _"append in `.bkit/jsonl.md` format"_, agents hand-write raw `jq >> file`, nothing validates. The codec validates but a raw append never invokes it — same prose-with-no-gate shape as Fix 20. Live proof: 3 rows in consumer-a carry a string `ts` + no `key`, written today. Needs a design call (e.g. a `bkit telemetry append` verb, or close-step validation). |
+| **Data-side `step` repair**                 | 76 rows still stamped `bkit-telemetry-migrate`; only ~25 have a recoverable hint. Low value.                                                                                                                                                                                                                                                                                                                  |
+| **Fix 13 / Fix 24**                         | Refuted / re-scope — do not build.                                                                                                                                                                                                                                                                                                                                                                            |
 
 Archived description. This issue body is now the audit template. No `docs/templates` file exists for it.
 
@@ -4333,7 +4333,7 @@ Archived description. This issue body is now the audit template. No `docs/templa
 
 ## Goal
 
-Close the **still-open** friction items surfaced by the 2026-05-18 harvest of `.agents/friction.md` across `cbartens/bkit`, `cbartens/app-gether-life`, and `cbartens/visitfrasercoast-com` (date range 2026-05-09 → 2026-05-18, 14 net-new entries).
+Close the **still-open** friction items surfaced by the 2026-05-18 harvest of `.agents/friction.md` across `cbartens/bkit`, `example-org/consumer-a`, and `example-org/consumer-b` (date range 2026-05-09 → 2026-05-18, 14 net-new entries).
 
 This is a **follow-up to** [#61](https://linear.app/bartens/issue/BAR-155/bkit-workflow-friction-optimisation). The harvest was originally grouped into seven root-cause clusters (see [#61 comment](https://linear.app/bartens/issue/BAR-155#comment-85f44350), 2026-05-18). After cross-checking each cluster against shipped commits and closed Linear issues, **most** of what looked open in the comment turned out to already be addressed — but a small set of items remain genuinely open and have concrete code evidence.
 
@@ -4505,7 +4505,7 @@ This may already be implicitly handled (e.g. rebase only happens when worktree i
 
 ## Friction harvest + triage, 2026-10-08
 
-**Short version.** The harvest ran and the triage is done. But the harvest has a bug, and its second run lost 8 friction rows. They aren't gone for good: all 8 are still in app-gether-life's last commit (`HEAD:.bkit/friction.jsonl`). **Until they are put back, don't run `pnpm bkit harvest` again, and don't commit `harvest/` or app-gether-life's `.bkit/friction.jsonl` as they stand.**
+**Short version.** The harvest ran and the triage is done. But the harvest has a bug, and its second run lost 8 friction rows. They aren't gone for good: all 8 are still in consumer-a's last commit (`HEAD:.bkit/friction.jsonl`). **Until they are put back, don't run `pnpm bkit harvest` again, and don't commit `harvest/` or consumer-a's `.bkit/friction.jsonl` as they stand.**
 
 The triage found 1 CRITICAL workflow bug: plan close can delete a feature branch after a failed merge. It also found 5 HIGH ones. Of the 166 entries the ledger still lists as open, 73 are either no longer true or aren't bkit's to fix.
 
@@ -4518,23 +4518,23 @@ Both runs followed the issue templates. Full reports: `docs/audits/202610/harves
 Harvest copies each consumer's `.bkit/stats.jsonl` into `harvest/`. It moves `.bkit/friction.jsonl` rows into `harvest/` and deletes them from the consumer. For deferrals and failures it only counts rows. Step 4 of the template runs it a second time to prove re-running is harmless. It isn't harmless.
 
 <!-- prettier-ignore -->
-| app-gether-life | Run 1 | Run 2 |
+| consumer-a | Run 1 | Run 2 |
 | --- | --- | --- |
 | Friction rows moved out of the consumer | 54 | 8 |
 | Friction rows left in the consumer | 24 | 16 |
 | Distinct friction entries in the store | 156 → 210 | 210 (same keys, 8 different rows kept) |
 | Distinct stats entries in the store | 10 → 397 | 397 |
 
-visitfrasercoast-com has an empty friction queue, no `stats.jsonl` and no `failures.jsonl`. Harvest counted 102 deferrals there. app-gether-life counts: 377 deferral entries (663 rows) and 582 failure entries (991 rows).
+consumer-b has an empty friction queue, no `stats.jsonl` and no `failures.jsonl`. Harvest counted 102 deferrals there. consumer-a counts: 377 deferral entries (663 rows) and 582 failure entries (991 rows).
 
 **harvest-1, CRITICAL: the second run dropped 8 rows from everywhere.**
 
 - **How the store picks a row.** The store keeps one row per key. It picks the winner by sorting on `ts` (the timestamp) with `a.ts - b.ts` (`.bkit/src/bkit-telemetry.ts:899`).
-- **Why that broke.** 22 of app-gether-life's 78 rows have a `ts` that isn't a number. 14 are date strings like `"2026-07-15T10:29:57Z"`, and 8 are empty or missing. Subtracting with those gives a result that isn't a number, so the sort stops meaning anything. Which row wins then depends on file order.
+- **Why that broke.** 22 of consumer-a's 78 rows have a `ts` that isn't a number. 14 are date strings like `"2026-07-15T10:29:57Z"`, and 8 are empty or missing. Subtracting with those gives a result that isn't a number, so the sort stops meaning anything. Which row wins then depends on file order.
 - **What run 2 did.** The file order was different on run 2, so it picked different winners. It then rewrote the store to keep only those winners (`.bkit/src/bkit-harvest.ts:394-400`). The 8 rows that run 1 had already removed from the consumer fell out of the store too.
 - **The check that would have caught it.** Harvest never calls the existing `validate()` check, which already rejects a `ts` that isn't a number.
 
-I checked this myself. I compared app-gether-life's committed friction file with the current store and consumer files, ignoring the `repo` field that harvest adds when it copies. Exactly these 8 rows are missing:
+I checked this myself. I compared consumer-a's committed friction file with the current store and consumer files, ignoring the `repo` field that harvest adds when it copies. Exactly these 8 rows are missing:
 
 - `ship-regression-guard-runs-before-conflict-resolve`
 - `ship-step10-blanket-git-add-docs-sweeps-concurrent-sessions`
@@ -4551,7 +4551,7 @@ I checked this myself. I compared app-gether-life's committed friction file with
 - **harvest-3, HIGH.** `harvest/` is uncommitted (` M harvest/friction.jsonl`, ` M harvest/stats.jsonl`). It is now the only place 54 of the moved rows exist.
 - **harvest-4, MEDIUM.** 14 rows with an unknown or missing `kind` get no identity, because `identity()` has no default case (`bkit-telemetry.ts:624-647`). Still open from the October notes on #343.
 - **harvest-5, MEDIUM.** The deferral and failure counts are printed and then thrown away. Still open.
-- **harvest-6, MEDIUM.** Rows that carry a bare `repo: "app-gether-life"` sit in the store next to `gether-life/app-gether-life` rows for the same thing.
+- **harvest-6, MEDIUM.** Rows that carry a bare `repo: "consumer-a"` sit in the store next to `example-org/consumer-a` rows for the same thing.
 - **LOW:**
   - `.gitattributes` has no merge rule for `harvest/`.
   - `HARVEST_TIMEOUT_MS` is declared but nothing uses it, so the per-consumer timeout the header promises doesn't exist.
@@ -4562,7 +4562,7 @@ I checked this myself. I compared app-gether-life's committed friction file with
 Two items from the October list on #343 are now **closed**:
 
 - **Truncated-key collision.** The two `docs/pending.md` rows are now stored as two separate entries with hash suffixes.
-- **Wrong repo name from the local path.** Harvest now reads the repo name from `origin`, and no stored row carries `GitHub/app-gether-life`.
+- **Wrong repo name from the local path.** Harvest now reads the repo name from `origin`, and no stored row carries `GitHub/consumer-a`.
 
 ---
 
@@ -4571,7 +4571,7 @@ Two items from the October list on #343 are now **closed**:
 **Input.** 278 rows, which make 255 distinct entries:
 
 - 210 from `harvest/friction.jsonl`
-- 16 still in app-gether-life, not yet harvested
+- 16 still in consumer-a, not yet harvested
 - the 8 lost rows, recovered from the snapshot
 - 44 from bkit's own `.bkit/friction.jsonl`
 
@@ -4596,7 +4596,7 @@ Harvest only reads consumers, so bkit's own queue never drains.
 
 - **friction-2, 43 entries.** A subagent stops early and leaves its file missing or still all `PENDING`. The only retry (`.bkit/workflows.md:602`) asks for just the verdict line and says "the body is already in place". That's wrong when the body was never written. Fix: treat that as an incomplete return and resume the same agent once before the Failure Path.
 - **friction-3.** Build artifacts have fixed names. When an agent stops early, the previous run's `Verdict: PASS` file is still there and the gate accepts it (`bkit-build.md:1099-1100`). Fix: also require the file to have changed during this run.
-- **friction-4.** Debug Step 3 counts exit 0 as PASS (`bkit-debug.md:466`). app-gether-life's gate only tests changed packages. So debugging a failure that's already merged to `dev` runs zero tests and passes. Fix: zero tests, or no diff against `origin/dev`, should be INCONCLUSIVE.
+- **friction-4.** Debug Step 3 counts exit 0 as PASS (`bkit-debug.md:466`). consumer-a's gate only tests changed packages. So debugging a failure that's already merged to `dev` runs zero tests and passes. Fix: zero tests, or no diff against `origin/dev`, should be INCONCLUSIVE.
 - **friction-5.** In build and debug Step 2, any rebase conflict outside lockfiles and ledgers goes straight to the Failure Path. The conflict-resolve agent that could handle it is only used by ship.
 - **friction-6.** The harvest follow-up: restore the 8 rows, then harvest again once harvest-1 and harvest-4 are fixed. Also decide whether bkit's own queue gets harvested or triaged where it is.
 
@@ -4633,7 +4633,7 @@ All 5 workflows copy the same Step 2 worktree-setup block, and it carries 4 of t
 
 ### What I'd do next (my recommendation; nothing below has been done)
 
-1. Put the 8 rows back into app-gether-life's `.bkit/friction.jsonl` from its `HEAD` before anything is committed there. Keep `harvest/` uncommitted until step 3.
+1. Put the 8 rows back into consumer-a's `.bkit/friction.jsonl` from its `HEAD` before anything is committed there. Keep `harvest/` uncommitted until step 3.
 2. Fix harvest-1 and harvest-2 before the next harvest: validate rows before choosing winners, and keep every distinct row in the store, not only the winners. friction-20, a shape check at write time, stops new bad rows.
 3. Re-run the harvest, then commit `harvest/` in its own commit.
 4. Plan first for friction-1 (data loss) and friction-2 (43 entries, the biggest cluster).
@@ -4651,13 +4651,13 @@ Picks up from the [harvest + triage comment](https://github.com/cbartens/bkit/is
 
 **Lost rows recovered.** The store now holds:
 
-- every row from app-gether-life's last commit (78 rows)
+- every row from consumer-a's last commit (78 rows)
 - every row from the last committed store (257 rows), including the 101 older rows run 1 had dropped
 
 The fixed harvest then ran twice against both consumers:
 
-- **Run 1:** moved the last 16 app-gether-life rows into the store. app-gether-life's queue is now empty.
-- **Run 2:** changed nothing. The store came out byte-for-byte identical, and app-gether-life's `stats.jsonl` was untouched.
+- **Run 1:** moved the last 16 consumer-a rows into the store. consumer-a's queue is now empty.
+- **Run 2:** changed nothing. The store came out byte-for-byte identical, and consumer-a's `stats.jsonl` was untouched.
 
 **Plan and design close bug (friction-1): #493.**
 
@@ -4687,7 +4687,7 @@ The work in the [follow-up above](https://github.com/cbartens/bkit/issues/99#iss
   - the harvest fix and its tests
   - the recovered `harvest/` store
   - the closing rows for 116 friction entries, in `harvest/friction.jsonl` and `.bkit/friction.jsonl`
-- **`e7f2838c8`** in app-gether-life: its `.bkit/friction.jsonl`, now empty because all of its rows are in `harvest/`.
+- **`e7f2838c8`** in consumer-a: its `.bkit/friction.jsonl`, now empty because all of its rows are in `harvest/`.
 
 The harvest side, including how the October open list stands now, is written up on #343.
 

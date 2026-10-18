@@ -120,13 +120,14 @@ describe(".bkit/templates/context/", () => {
     expect(r.stdout).toBe("");
   });
 
-  it("names no consumer: no gether / bartens string in the context templates", () => {
+  // Consumer names are guarded repo-wide by audits/repo/no-consumer-names.test.ts.
+  it("names no maintainer: no bartens string in the context templates", () => {
     const sources = [
       ...files.map((f) => path.join(CONTEXT_DIR, f)),
       path.join(getCoreRoot(), ".agents", "context.md"),
     ];
     for (const abs of sources) {
-      expect(fs.readFileSync(abs, "utf-8"), abs).not.toMatch(/\b(?:gether|c?bartens)\b/i);
+      expect(fs.readFileSync(abs, "utf-8"), abs).not.toMatch(/\bc?bartens\b/i);
     }
   });
 

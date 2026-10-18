@@ -1,7 +1,7 @@
 // audits/repo/vitest-timeout-budget.test.ts — the repo's test budget is load-scaled, capped,
 // and re-read per test file, and every runner that carries it stays wired.
 //
-// Mirror of app-gether-life #1392 (tooling/eslint/tests/test-timeout-budget.test.ts):
+// Mirror of a consumer's test-timeout-budget wiring test:
 // fail-closed on the wiring, so a config or setup that silently drops the re-read is caught
 // here rather than as a flake on a loaded box.
 

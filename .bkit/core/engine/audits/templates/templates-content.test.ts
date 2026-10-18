@@ -165,7 +165,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     expect(content).not.toMatch(/^\s*- name: Report E2E Coverage on PR/m);
   });
 
-  it("ships the gether lane-name stubs (web, device, reset, deploy, health)", () => {
+  it("ships the reference lane-name stubs (web, device, reset, deploy, health)", () => {
     for (const sentinel of [
       "# bkit-stub:bkit-tests-integration —",
       "# bkit-stub:bkit-tests-e2e-web —",
@@ -532,7 +532,6 @@ describe("templates", () => {
     );
     expect(rules).toContain("new ExampleClient(");
     expect(rules).not.toContain("family_members");
-    expect(rules).not.toContain("app-gether-life");
   });
 
   it("generates capabilities.md and Mermaid from the wrapper", () => {
