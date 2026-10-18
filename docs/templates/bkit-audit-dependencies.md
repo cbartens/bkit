@@ -280,3 +280,57 @@ PENDING
 <!-- bkit:end -->
 
 ## Project Instructions
+
+Doctrine: `docs/deployments.md` § Dependency updaters, § Renovate — fencing bkit's own footprint, § GitHub Actions pinning. Runtime-dependency rule: `docs/technology.md` § Build & Output.
+
+### Pre-Flight / Dependencies
+
+- Git host: `gh` against `cbartens/bkit`. Package manager: pnpm through Corepack from `package.json` `packageManager`.
+- Vulnerability sources: `node scripts/ci/check-dependency-audit.mjs` (baseline `scripts/ci/accepted-advisories.json`); `pnpm audit --json`; `gh api repos/cbartens/bkit/dependabot/alerts --paginate`; Trivy `fs` via docker with dev deps included, image + digest from `.github/workflows/bkit-trivy.yml`, on a dir holding only a `pnpm-lock.yaml` copy. CI Trivy skips `pnpm-lock.yaml` while `scripts/ci/check-dependency-audit.mjs` exists, so the local Trivy run is the second lockfile source.
+- Not installed: OSV-Scanner, lockfile-lint → `Batch` greps stand in.
+
+### Permissions
+
+- `gh api user/installations` → 403 with a PAT (endpoint needs a GitHub App user token); no allow rule clears it. Mend App state → repo Settings → Integrations → GitHub Apps, by hand.
+
+### Bot Health
+
+- Renovate, self-hosted: `.github/workflows/bkit-renovate.yml`. Dependency Dashboard = issue #328 (`gh issue view 328`). Logs: `gh run list --workflow bkit-renovate.yml --limit 5`, then `gh run view <id> --log`.
+- Config read: `main` + `dev` layered (`useBaseBranchConfig: "merge"`); lag check `git diff origin/main <baseSha> -- .github/renovate.json5`.
+- Validator: `git show origin/main:.github/renovate.json5 > <scratch>/repo/.github/renovate.json5`, then from `<scratch>/repo`: `RENOVATE_ALLOWED_ENV='PNPM_*' npx --yes --package renovate@<runner version> -- renovate-config-validator --strict`. A bare file path validates as global config and reports false `allowedEnv` errors.
+- Bot PRs are authored by the PAT owner, not `app/renovate`; select by head-ref prefix only.
+
+### Inventory
+
+- `gh pr list --state open --limit 100 --json number,title,headRefName,headRefOid,mergeable,mergeStateStatus,labels,author,files`, filter `headRefName` on `renovate/`. Behind-count: `git rev-list --count <headSha>..<baseSha>`. CI: `gh pr checks <n>`.
+- CI volume on bot branches: `gh run list --workflow bkit-ci.yml --created '>=<date>' --limit 500 --json headBranch`, filter on `renovate/`.
+
+### Classify
+
+- Root copies of templates (`.github/workflows/bkit-*.yml`, `.cursor/Dockerfile`) must stay byte-identical to `.bkit/templates/` twins, which sit in `ignorePaths`. A bot PR changing only the root copy fails `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` and `.bkit/core/engine/audits/templates/template-action-pins.test.ts` → class C, fix = mirror into the template copy. Repro: `pnpm exec vitest run <both files>` in the worktree.
+
+### Batch
+
+- Worktrees under `tmp/` (gitignored): `git worktree add --detach tmp/<name> <baseSha>`; rebuild = `git worktree remove --force tmp/<name>` + re-add.
+- Lockfile checks: `grep -c "resolution: {"` must equal `grep -c "resolution: {integrity: sha512-"`; `grep -nE "tarball:|git\+|codeload\.github|github:|https?://" pnpm-lock.yaml | grep -v registry.npmjs.org` must be empty. No `.npmrc` → default npm registry.
+- Screen: package keys = entries under `packages:` up to `snapshots:` in `pnpm-lock.yaml`; `comm` base vs batch; publish times `npm view <name> time --json`.
+
+### Verification
+
+- `git status --porcelain` → `pnpm install --frozen-lockfile` → `pnpm bkit:gate:install-static-unit-build` → `git status --porcelain` → `pnpm bkit check`.
+- No framework doctor; no single-version runtime packages (no `dependencies`).
+
+### Unseen
+
+- Off-manifest CLI surfaces, root copy + `.bkit/templates/` twin each: `.github/workflows/bkit-ci.yml` (Vale `VALE_VERSION`, actionlint script, `setup-uv` `version:`, `GRAPHIFY_SPEC`, `npx --yes bats`), `bkit-cloud.yml` (Vale, `@opencode/cli`), `bkit-trivy.yml` (`docker://` Trivy), `bkit-renovate.yml` (Renovate image = action default unless `renovate-version`), `.cursor/Dockerfile` (base image, nodesource, gh apt, Vale, Corepack pnpm). Cloud setup source `.bkit/shared/.claude/bkit-cloud.md`, rendered to gitignored `.claude/bkit-cloud.md` (read the render for derived pins).
+- serena-agent in the cloud setup = tool server → `bkit-audit-agents`.
+- Deprecation: `npm view <name>@<version> deprecated` over every `packages:` key. Licences: `pnpm licenses list --json` and `--prod` inside an installed worktree.
+- No prior report → "since last pass" base = last `chore(deps)` batch commit (`git log --grep 'chore(deps)' -1`).
+
+### End of Life
+
+- Sources: endoflife.date `nodejs`, `pnpm`, `ubuntu`; Vite → vite.dev/releases. Pins: `.nvmrc`, `package.json` `engines` + `packageManager`, `.cursor/Dockerfile` `FROM` + nodesource line. vite and pnpm majors are held by the bkit-only rules at the end of `.github/renovate.json5`, so no bot PR signals their end of life.
+
+### Excluded
+
+- Comment marker: `<!-- bkit:dependency-triage -->`. Labels: `deferred`; majors also `dep-major`.

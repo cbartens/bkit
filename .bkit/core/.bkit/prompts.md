@@ -423,6 +423,19 @@ Every template under `docs/templates/bkit-audit-*.md`:
 | `bkit-utility-compress-markdown` | Token-optimize a single markdown file; preserve 100 % load-bearing tokens. **Destructive** (overwrites target). |
 | `bkit-utility-update-documentation` | Sync every doc in `.agents/docs.md` with system state — drift cleanup across multiple plans. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory. |
 
+## Hook-injected text
+
+Text hooks add to an agent's context mid-run — every agent and subagent, no frontmatter opt-out. Canonical wording lives in the engine file; per-host delivery → `.bkit/providers.md` § Guardrails, § GateGuard, § ReadGuard.
+
+<!-- prettier-ignore -->
+| Hook | Fires on | Injects | Hosts | Canonical text |
+| --- | --- | --- | --- | --- |
+| GateGuard | First edit per (session, agent, file) | First touch → investigation checklist (file read, callers, symbols, contracts, conventions, instructions quoted); new file → reuse-over-duplicate checklist; gate-config path → fix-code-not-gate advisory; `docs/**.md` (not `docs/plans/`) → density advisory appended | All five | `.bkit/core/hooks/gateguard-engine.js` |
+| ReadGuard | Repeat read of an unchanged line range, same agent | Use-earlier-output note; re-read only if the output left context | All five | `.bkit/core/hooks/readguard-engine.js` |
+| Guardrails | Shell edit (`sed -i`, redirect into a source file); unlisted `curl` / `wget` host on Claude, Codex; Codex ask tier | Advisory naming the bypassed gate; command still runs | Claude, Cursor, Codex, Antigravity | `.bkit/core/hooks/guardrails-shell.js`, `.bkit/core/hooks/guardrails-tiers.js` |
+
+- **Never a must-do:** hook text is advisory and fail-open; it never fires on an untrusted Codex `.codex/` layer and arrives after the edit on opencode. A prompt instruction that must hold stays in the prompt.
+
 ## Special Behaviors (frontmatter-adjacent contracts)
 
 <!-- prettier-ignore -->

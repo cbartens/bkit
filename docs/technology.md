@@ -99,6 +99,8 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Self-gating CI | `.github/workflows/bkit-ci.yml` | Push to `dev` / `main`, PRs into them, `workflow_dispatch` (manual, feat branches) |
 | Release publish | `.github/workflows/release.yml` | Git tag push |
 | Cloud-agent lane | `.github/workflows/bkit-cloud.yml` | Opt-in (`bkit install --auto=…`); dual claude + opencode jobs, each secret-gated |
+| Security scan (Trivy) | `.github/workflows/bkit-trivy.yml` | Push to `dev` / `main`, PRs into them, daily cron, `workflow_dispatch`; acceptances in `.trivyignore.yaml` |
+| Dependency updates (Renovate) | `.github/workflows/bkit-renovate.yml` | Daily cron, `workflow_dispatch`; rules in `.github/renovate.json5` |
 
 Single package — no turbo, no affected-graph. CI flat DAG: `bkit-tests-scope` planner → every `bkit-tests-*` lane → `bkit-tests-check` (SOLE required check). See `docs/testing.md` § CI execution; `docs/deployments.md` for pipeline rules, branch protection, secrets.
 

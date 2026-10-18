@@ -256,6 +256,25 @@ Both hosts: `/<filename-without-ext>` (`/bkit-build`, `/bkit-plan`, etc.). Ident
 
 ---
 
+## Guardrails
+
+Per-action gates, all five hosts, subagents included. Overview only; per-host encoding → § Hooks, § Permissions / auto-approve.
+
+<!-- prettier-ignore -->
+| Guard | Trigger | Effect | Enforcement |
+| --- | --- | --- | --- |
+| Destructive commands | Shell | deny: force-push (never `--force-with-lease`), `rm -rf /*`, `chmod -R 777 /`; ask: `git reset --hard`, forced `git clean`, whole-tree `git checkout` / `git restore`, `git rebase -i`, `git stash drop`, `git filter-branch`, `--no-verify`, publish, destructive `gh` | Claude / opencode permission rules; Cursor / Codex / Antigravity `bkit-guardrails` hook. Codex ask → advisory |
+| Secret files | Read tool; shell reads on Cursor, Codex, Antigravity | deny `*.pem` / `*.p12` / `id_rsa`; ask `.env` / `.env.*` | Codex shell → advisory |
+| Network | `curl` / `wget`, fetch tool | ask unless host ∈ allowlist (§ Network allowlist) | Advisory on Claude shell, Codex; Antigravity denies once, retry passes |
+| Shell-as-edit-channel | `sed -i`, redirect into a source file | Advisory: edit skips pre-edit gates | All hosts except opencode |
+| GateGuard | First edit per (session, agent, file) | Investigation checklist; gate-config path → fix-code advisory; new file → reuse nudge; `docs/**.md` → density advisory | Advisory; `BKIT_GATEGUARD=deny` denies first touch once |
+| ReadGuard | Repeat read of an unchanged range | Use-earlier-output note | Advisory, never blocks |
+
+- **Fail-open** everywhere except Cursor `bkit-guardrails.cjs` (`failClosed`).
+- **Tool allowlists:** per-agent `tools:` gives reviewers read tools only; Codex ignores `tools:` (§ Codex CLI).
+
+---
+
 ## Hooks
 
 <!-- prettier-ignore -->
