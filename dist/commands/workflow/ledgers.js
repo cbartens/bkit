@@ -68,7 +68,9 @@ function gitRaw(cwd, args) {
         env: gitEnv(),
         maxBuffer: 1 << 28,
     });
-    return { status: res.status, stdout: res.stdout ?? "", stderr: (res.stderr ?? "").trim() };
+    // A spawn error is never a success: the child can exit 0 before ENOBUFS kills it.
+    const status = res.error && res.status === 0 ? 1 : res.status;
+    return { status, stdout: res.stdout ?? "", stderr: (res.stderr ?? "").trim() };
 }
 const nulList = (out) => out.split("\0").filter((p) => p !== "");
 function requireRepo(root) {

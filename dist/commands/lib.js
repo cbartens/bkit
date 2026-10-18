@@ -302,9 +302,11 @@ export function runTool(cmd, args, cwd, opts = {}) {
     if (res.error && res.pid === 0) {
         return { found: false, status: 127, stdout: "", stderr: `${cmd} not found on PATH` };
     }
+    const status = res.status ?? 128 + signalNumber(res.signal);
     return {
         found: true,
-        status: res.status ?? 128 + signalNumber(res.signal),
+        // A spawn error is never a success: the child can exit 0 before ENOBUFS kills it.
+        status: res.error && status === 0 ? 1 : status,
         stdout: res.stdout ?? "",
         stderr: res.error
             ? [spawnErrorText(cmd, args, res.error), res.stderr ?? ""].filter(Boolean).join("\n")
