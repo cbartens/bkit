@@ -62,9 +62,22 @@ App / stack credentials do not belong here — runtime keys and `/bkit-debug` ob
 <!-- prettier-ignore -->
 | Credential | Scope | Notes |
 | --- | --- | --- |
-| `BKIT_GH_TOKEN` | GitHub MCP server; self-hosted Renovate platform auth | Write PAT. Fine-grained (one owner) when bkit touches a single repo/owner; classic when one token must span owners. Always set an expiry (max 30 days); re-mint before it lapses and update local `.bkit/.env` + the repo Actions secret together. Scopes: only the set in `docs/deployments.md` § Dependency updaters. |
+| `BKIT_GH_TOKEN` | GitHub MCP server; self-hosted Renovate platform auth | Write PAT. Fine-grained (one owner) when bkit touches a single repo/owner; classic when one token must span owners. Always set an expiry (max 30 days); re-mint before it lapses and update local `.bkit/.env` + the repo Actions secret together (only repo secret). Classic scopes: `repo`, `workflow`, `project`, `read:org`, `notifications`, `gist`, `write:discussion`, `write:packages`, `audit_log`; Renovate minimum → `docs/deployments.md` § Dependency updaters. |
+| npm publish | `.github/workflows/release.yml` | No npm token anywhere. OIDC trusted publishing only; package publishing access = "Require two-factor authentication and disallow tokens". |
 | opencode provider keys | opencode host model access | Referenced as `{env:KEY}` in `.opencode/opencode.json` — never inlined. In CI the single `OPENCODE_PROVIDER_KEY` secret fans out to the configured provider's env-var name. |
 | `BKIT_ANTHROPIC_API_KEY` / `BKIT_CURSOR_API_KEY` / `BKIT_LINEAR_API_KEY` | Cloud agents and tracker | Optional; opt-in surfaces only. |
+
+### Repository controls (`cbartens/bkit`)
+
+<!-- prettier-ignore -->
+| Control | State |
+| --- | --- |
+| Access | Owner is the sole collaborator (admin). New collaborator → re-check every row below. |
+| `main` | `bkit setup protect-main`: PR only, `bkit-tests-check` required + up to date, applies to admins, linear history, no force-push / deletion. |
+| `dev` | Unprotected; no ruleset. |
+| Publishing | Tag publishes ONLY when its commit is on `main` → `docs/deployments.md` § GitHub Release. |
+| Secret scanning | Push protection on: a push containing a recognised secret is rejected. |
+| Consumer data | `harvest/` (store + `consumers.md`) gitignored; never name consumers → `.agents/rules.md` § Repo Authoring. Pre-redaction copies remain in git history. |
 
 ### `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` — generated, hold live secrets
 
