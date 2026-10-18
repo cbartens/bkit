@@ -630,12 +630,13 @@ Usage:
   bkit harvest                  Cross-repo harvest — COPIES consumer .bkit/stats.jsonl
                                  and MOVES .bkit/friction.jsonl into harvest/ (COUNT-ONLY
                                  for docs/deferrals.jsonl and docs/failures.jsonl).
-                                 Reads consumer paths from docs/consumers.md.
+                                 Reads consumer paths from harvest/consumers.md.
                                  DESTRUCTIVE: harvested friction rows are REMOVED from
                                  the consumer, but only after they are fsync'd and read
                                  back from harvest/. stats.jsonl is never modified.
-                                 harvest/ accumulates and is never cleared — commit it,
-                                 as it is the only record of pruned rows. Never commits
+                                 harvest/ accumulates and is never cleared; it is
+                                 gitignored, so it is the only record of pruned rows —
+                                 back it up. Never commits
                                  in any repo. Deduplicates by per-kind composite
                                  identity. Advisory + fail-open: exits 0.
   bkit telemetry summary [--phase=<workflow>]

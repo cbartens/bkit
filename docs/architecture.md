@@ -80,12 +80,14 @@ cbartens/bkit (this repo)
 │                           #   .env.example, settings/hooks/mcp JSON, bkit-cloud.md, docs/*.md blocks
 └── .bkit/templates/        # Copy-and-own templates: copied raw to the consumer's
                             #   .bkit/templates/, never applied
-├── harvest/                # Central store for `bkit harvest` — consumer stats/friction rows (#343).
+├── harvest/                # Central store for `bkit harvest` — consumer stats/friction rows (#343)
+│                           # + consumers.md (maintainer-local consumer checkout paths, one per line).
 │                           # bkit-repo only; deliberately OUTSIDE .bkit/ (that is bkit's managed
 │                           # install surface; harvested consumer data is neither managed nor shipped).
-│                           # Holds every distinct row ever harvested; readers fold it by identity.
-│                           # Accumulates across runs and is never cleared — once harvest prunes a
-│                           # consumer's friction row, this is the only copy until it is committed.
+│                           # Gitignored: private consumer content + local paths never enter the
+│                           # public repo. Holds every distinct row ever harvested; readers fold it by
+│                           # identity. Accumulates across runs and is never cleared — once harvest
+│                           # prunes a consumer's friction row, this local store is the only copy.
 └── package.json            # bin: bkit → dist/cli.js
 ```
 

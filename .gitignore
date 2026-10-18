@@ -118,3 +118,7 @@ __pycache__/
 
 # Secrets sync: fingerprint + time of each push.
 scripts/secrets/bkit-secrets-state.json
+
+# `bkit harvest` store + consumer list: private consumer content and local paths.
+# Local only; the store is the sole copy of pruned consumer friction.
+harvest/

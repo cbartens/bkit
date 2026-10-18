@@ -59,7 +59,7 @@ Compliance grader stderr. Canonical grep patterns:
 
 `bkit harvest` stderr. Grep patterns:
 
-- `[bkit-harvest] Found N consumer(s) in docs/consumers.md` — harvest start; consumer list read.
+- `[bkit-harvest] Found N consumer(s) in harvest/consumers.md` — harvest start; consumer list read.
 - `[bkit-harvest] Harvesting: {path}` — per consumer start.
 - `[bkit-harvest] {path}/.bkit/{file} — copied N rows (malformed: M)` — COPY ledger per-file.
 - `[bkit-harvest] {path}/docs/{file} — count-only: N rows` — COUNT-ONLY ledger per-file.
@@ -67,7 +67,7 @@ Compliance grader stderr. Canonical grep patterns:
 - `[bkit-harvest] SKIP {path} — {reason}` — consumer skipped.
 - `[bkit-harvest] {path}/.bkit/{file} — kept N line(s) not in the store (malformed, or appended after the copy)` — consumer lines left in place by the prune.
 - `[bkit-harvest] Done — total rows collected: N, entities after fold: M, pruned from consumers: P, kept in consumers: K` — summary.
-- `[bkit-harvest] N row(s) now exist ONLY in harvest/ — commit it to make them durable.` — when P > 0; uncommitted store is sole copy.
+- `[bkit-harvest] N row(s) now exist ONLY in harvest/ (gitignored) — back it up to make them durable.` — when P > 0; the local store is the sole copy.
 - `[bkit-harvest] harvest error (fail-open): {message}` — unhandled harvest error (exit 0).
 
 `pruned` without preceding `copied` for same file → rows deleted without store — ordering enforced (copy → fsync → read back → prune); treat as bug, not noise.

@@ -56,9 +56,9 @@ describe.each(["npm", "pnpm"] as const)(
       expect(offenders).toEqual([]);
     });
 
-    it("tarball does not ship the maintainer consumer list", () => {
+    it("tarball does not ship the harvest store or the maintainer consumer list", () => {
       const offenders = manifestFiles.filter(
-        (p) => p === "docs/consumers.md" || p === ".bkit/consumers.md",
+        (p) => p.startsWith("harvest/") || p === "docs/consumers.md" || p === ".bkit/consumers.md",
       );
       expect(offenders).toEqual([]);
     });
