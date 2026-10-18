@@ -18,6 +18,7 @@
   <a href="#a-ready-made-workflow-for-every-job">Workflows</a> ·
   <a href="#agents-and-ci-built-to-work-together">Agents and CI</a> ·
   <a href="#right-context-at-the-right-step">Context</a> ·
+  <a href="#spending-fewer-tokens">Tokens</a> ·
   <a href="#faq">FAQ</a> ·
   <a href=".bkit/comparison.md#part-3--compared-with-other-ai-development-frameworks">Comparison</a> ·
   <a href=".bkit/install.md">Install guide</a>
@@ -153,6 +154,47 @@ Most AI tools forget everything when the chat ends. bkit keeps what it knows in 
 - **Evidence from outside, when it's needed.** Design searches your backlog for related issues and checks the web for feasibility. Debug pulls failed CI logs, the diff since the last green run, end-to-end reports and runtime errors. >10 ready-made connectors cover GitHub, Sentry, Vercel, Supabase, Stripe, Expo, Playwright, Maestro, Inngest, Resend, Cloud Run, Tavily web search and Serena, each easy to customise, extend or leave out. A connector that isn't set up is reported as such, never read as "all clear".
 - **Progress lives in your repo, not a chat window.** Run state is saved after every step, so a crashed run resumes where it stopped, on any tool.
 
+## Spending fewer tokens
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-tokens-dark.svg">
+    <img alt="Compression saves 1 to 3 percent; the risks cost more. Where Claude Code's cost goes across 456 real bkit transcripts: 69 percent is the model re-reading the system prompt, rules, tool list and conversation on every request; 4 percent is the model's own writing; 27 percent is big tool output, the only part a compressor can touch; the tools remove 1 to 3 percent of the bill. What you gain: 1 to 3 percent of the bill saved, big cuts on huge logs, prompt cache intact. What it costs you: wrong answers from compressed logs, broken code when lines are rewritten or cut, hidden content that costs tokens to fetch back, silent failures that turn compression off, a proxy that sees all your model traffic, and clashes with bkit's own setup." src=".github/assets/bkit-tokens-light.svg" width="100%">
+  </picture>
+</p>
+
+Most of what an AI coding session costs isn't the model writing code. It's the model re-reading. On every request, Claude Code sends the system prompt, rules, tool list and the whole conversation so far, and the model reads all of it again. Across 456 real bkit transcripts, that re-reading was 69% of the bill. The model's own writing was 4%.
+
+**Why bkit doesn't use compression tools.** Compression tools shorten the output of commands and file reads before the model sees it. That output was 27% of the bill, and most of it is code the agent needs word for word, so there is little a tool can safely cut. We measured three of them:
+
+<!-- prettier-ignore -->
+| Tool | How it works | Share of the bill saved | What went wrong |
+| --- | --- | --- | --- |
+| [caveman](https://www.npmjs.com/package/@caveman-ai/cli) | Sits between Claude Code and the model and shortens tool output | 1.3% | An agent answered a question wrongly from a compressed log |
+| [Headroom](https://pypi.org/project/headroom-ai/) | Same idea, plus an optional text model that rewrites output | 2.8% with the text model, 0.8% without | The text model rewrote code: `(preset) => void` came back as `(preset) void` |
+| [RTK](https://github.com/rtk-ai/rtk) | A hook that swaps shell commands for versions that print less | 0.7–2.1% | Its `grep` strips indentation and cuts lines at 80 characters |
+
+**How we measured.** We took the large tool results from 314 real Claude Code transcripts in a bkit user repo and ran each tool over the same results, with no model calls. Each result counts by how often the model re-read it later, because that is what it cost. RTK acts before a command runs, so we re-ran the read-only commands with and without it. The full method, every result with its 95% range, and the scripts are in [the comparison](tests/compression/bkit-caveman-headroom-compression-proxy-comparison.md). Your sessions may differ from ours: run the scripts on your own transcripts and check before you choose.
+
+**Why the risks outweigh the saving, for now.** The saving is real but small, and the tools that save the most get there by changing what the agent reads. An agent that reads a shortened log can answer wrongly. An agent that quotes a rewritten or cut-off line in an edit gets an edit that doesn't match the file. Either way it goes round again, and every extra round re-reads the whole conversation, so it doesn't take many to wipe out a 1–3% saving. On top of that, a proxy sees all your model traffic, and when one of these tools breaks, it tends to switch itself off without telling you. That balance could change if a tool learns to leave code alone and fail loudly.
+
+**What bkit does instead: read less.** Cutting what gets read loses nothing, and every line an agent doesn't read is a line it doesn't re-read on every later request either.
+
+- **Find the definition first, then read only those lines.** Reading files through the shell (`sed`, `grep`, `cat`) was about 60% of what shell output cost in our transcripts. A whole file can be thousands of lines when the change needs ten.
+- **List matching files first, then search inside them.** A broad search can return hundreds of matching lines the agent never needed, and they stay in the conversation.
+- **Ask commands, APIs and databases for short, structured output.** An unfiltered log or API response can run to thousands of lines, re-read on every later request.
+- **Flag re-reads of a file that hasn't changed,** with a hook on all five supported tools. 41% of file reads in our transcripts were repeats, and each one adds a second copy to the conversation.
+- **Prefer command-line tools to MCP servers** for logs, errors and database data. Every connected MCP server's tool list is re-sent with every request, used or not.
+- **Each step reads only the project docs it needs.** Whatever a step reads at the start is re-read on every request in that step.
+- **A utility agent shortens markdown files without changing what they say.** Rules and prompts go out with every request of every agent, so a line cut there is saved many thousands of times.
+
+**What `bkit tips` suggests for your repo:**
+
+- **Set up Serena,** so agents ask where code is defined and what uses it, like your editor does. That is cheaper than reading whole files to find out, and it doesn't miss callers that text search would.
+- **Switch off claude.ai connectors** (MCP servers from your claude.ai account) in Claude Code for this project: `"disableClaudeAiConnectors": true` in `.claude/settings.json`. Their tool lists are otherwise re-sent with every request, even when nothing uses them.
+- **Lock MCP servers to this project.** A server that can see your whole account makes agents look up account and project IDs before every task; locked, those extra calls disappear.
+- **Summarise long sessions earlier:** `"autoCompactWindow": 300000` in `.claude/settings.json`, or `model_auto_compact_token_limit` in `.codex/config.toml`. By default a session grows close to the model's full size before it summarises, and every request re-reads all of it. Summaries lose some detail, so bkit suggests this rather than setting it.
+
 ## What else you get
 
 ### The quality is real
@@ -280,8 +322,8 @@ No. [bkit Vibecoding Kit](https://github.com/popup-studio-ai/bkit-claude-code) i
 **How does it compare with other tools?**
 Feature by feature against the main AI development frameworks, from spec toolkits to autonomous agents: [`.bkit/comparison.md`](.bkit/comparison.md#part-3--compared-with-other-ai-development-frameworks).
 
-**Why doesn't bkit ship a compression proxy like caveman or Headroom?**
-We measured both on 456 real Claude Code transcripts. They saved about 1–3% of token cost. Both protect Claude's prompt cache, so they only shrink tool output as it arrives, and that output was 27% of the cost. Headroom's text model also rewrote code along the way. bkit cuts reading instead, which loses nothing: agents find the definition first and read only those lines, and a hook flags re-reads of files that haven't changed. Method, results and scripts to measure your own sessions: [the comparison](tests/compression/bkit-caveman-headroom-compression-proxy-comparison.md).
+**Why doesn't bkit use a compression tool like caveman, Headroom or RTK?**
+On real bkit sessions they saved 1–3% of the bill, and each one changes what the agent reads in ways that can lead to wrong answers or broken edits. bkit cuts reading instead, which loses nothing. Numbers, risks and what bkit does instead: [Spending fewer tokens](#spending-fewer-tokens).
 
 <details>
 <summary><strong>For engineers: what's under the hood</strong></summary>
