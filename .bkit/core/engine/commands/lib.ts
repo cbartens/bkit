@@ -331,16 +331,34 @@ export async function runCommand(
 // Repo facts
 // ---------------------------------------------------------------------------
 
+/** Captured stdout / stderr cap for `runGit` / `runTool`; hook output (pre-push) counts. */
+const OUTPUT_LIMIT = 1 << 26;
+
+/** Spawn error as a stderr lead line: ENOBUFS names the limit, anything else Node's message. */
+function spawnErrorText(cmd: string, args: string[], err: NodeJS.ErrnoException): string {
+  return err.code === "ENOBUFS"
+    ? `${cmd} ${args[0] ?? ""}: output passed the ${OUTPUT_LIMIT / (1 << 20)} MiB limit (ENOBUFS)`
+    : err.message;
+}
+
 /** `git <args>` in `cwd`, never throwing: exit status plus trimmed stdout / stderr. */
 export function runGit(
   cwd: string,
   args: string[],
 ): { ok: boolean; stdout: string; stderr: string } {
-  const res = spawnSync("git", args, { cwd, encoding: "utf-8", env: gitEnv() });
+  const res = spawnSync("git", args, {
+    cwd,
+    encoding: "utf-8",
+    env: gitEnv(),
+    maxBuffer: OUTPUT_LIMIT,
+  });
+  const stderr = (res.stderr ?? "").trim();
   return {
-    ok: res.status === 0,
+    ok: !res.error && res.status === 0,
     stdout: (res.stdout ?? "").trim(),
-    stderr: (res.stderr ?? "").trim(),
+    stderr: res.error
+      ? [spawnErrorText("git", args, res.error), stderr].filter(Boolean).join("\n")
+      : stderr,
   };
 }
 
@@ -379,16 +397,18 @@ export function runTool(
     encoding: "utf-8",
     env: gitEnv(),
     input: opts.input,
-    maxBuffer: 1 << 26,
+    maxBuffer: OUTPUT_LIMIT,
   });
-  if (res.error) {
+  if (res.error && res.pid === 0) {
     return { found: false, status: 127, stdout: "", stderr: `${cmd} not found on PATH` };
   }
   return {
     found: true,
     status: res.status ?? 128 + signalNumber(res.signal),
     stdout: res.stdout ?? "",
-    stderr: res.stderr ?? "",
+    stderr: res.error
+      ? [spawnErrorText(cmd, args, res.error), res.stderr ?? ""].filter(Boolean).join("\n")
+      : (res.stderr ?? ""),
   };
 }
 

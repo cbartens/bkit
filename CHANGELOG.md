@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pushes no longer fail when a pre-push hook prints more than 1MB.** `runGit` captured git's output under Node's 1MB default, so a chatty hook (e.g. a full unit run with coverage) got `git push` killed mid-hook and `bkit branches push` / `land` / ship's `dev` sync exited 8 with a cut-off log and no cause. `runGit` now shares `runTool`'s 64 MiB limit, and both put any spawn error at the top of `stderr`, naming `ENOBUFS` and the limit. `runTool` reports `found: false` ("not found on PATH") only when the binary could not be started, so an overflow no longer sends `gh` callers down the MCP fallback. #586
+
 ## [5.2.4] — 2026-10-17
 
 ### Added

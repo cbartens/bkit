@@ -952,6 +952,17 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
     expect(remoteSha(origin, "dev")).not.toBe(sha(clone));
   });
 
+  it("pushes when the pre-push hook prints more than Node's 1MB default", async () => {
+    const { origin, clone } = feature("push-chatty-hook");
+    const hook = path.join(clone, ".git", "hooks", "pre-push");
+    fs.writeFileSync(hook, "#!/bin/sh\nhead -c 2097152 /dev/zero | tr '\\0' x\necho\nexit 0\n");
+    fs.chmodSync(hook, 0o755);
+    const r = await run(clone, ["push", "--mode=feature"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ pushed: true, ref: "feat/1-x" });
+    expect(remoteSha(origin, "feat/1-x")).toBe(sha(clone));
+  });
+
   it("runs exactly one git push", async () => {
     const { clone } = feature("push-once");
     const log = path.join(tmp("log"), "calls");
