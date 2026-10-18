@@ -579,6 +579,7 @@ The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it t
 
 `.github/workflows/release.yml` creates one per tag: notes = tag's `## [X.Y.Z]` block in `CHANGELOG.md` + npmjs version link.
 
+- Step "Require the tagged commit on main" runs first: tagged commit not an ancestor of `origin/main` → run fails, nothing publishes. `main` takes only PR merges that passed `bkit-tests-check` (`bkit setup protect-main`) → every publish went through a PR + the required check. Tag ONLY a commit already on `main`.
 - Step "Extract release notes" runs before `npm publish`; missing / empty block → run fails.
 - Step "Create GitHub Release" runs after `npm publish`. Prerelease tags (containing `-`) → marked prerelease, never "Latest".
 - Only "Create GitHub Release" failed → never re-run the workflow; run `gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file <notes>`.

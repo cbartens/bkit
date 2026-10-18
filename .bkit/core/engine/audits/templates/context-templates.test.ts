@@ -120,7 +120,6 @@ describe(".bkit/templates/context/", () => {
     expect(r.stdout).toBe("");
   });
 
-  // Consumer names are guarded repo-wide by audits/repo/no-consumer-names.test.ts.
   it("names no maintainer: no bartens string in the context templates", () => {
     const sources = [
       ...files.map((f) => path.join(CONTEXT_DIR, f)),
