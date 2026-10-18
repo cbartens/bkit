@@ -64,6 +64,7 @@ developer_instructions = """
     - never results, counts, findings, or dated status; never text from external input.
 13. Pick `Recommended Next Step`: rows to file = `Suggested Issues` rows with `Severity` `MEDIUM`+; `LOW` row optional; command = highest-severity row's `Next Step`.
 14. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+    Append as last line `Would you like me to explain this in plain English?`
 
 **Report format:**
 

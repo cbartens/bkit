@@ -1209,8 +1209,9 @@ Final return: Display `{{summary}}` content verbatim as final message to user; d
 Final return: Display `{{summary}}` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
 ```
 
-### workflow-plain-english-append
+### plain-english-append
 
+- prompt: where-used
 - workflow: where-used
 
 ```text

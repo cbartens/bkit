@@ -50,6 +50,7 @@ tools:
 7. Per doc passage that states facts you just corrected → follow doc `Rules` header and edit only the passages to match appended row; do not run full doc sync.
 8. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
 9. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+   Append as last line `Would you like me to explain this in plain English?`
 
 **Output format:**
 
