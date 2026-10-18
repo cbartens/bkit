@@ -319,24 +319,25 @@ Tracker and cloud agents reverse by re-running install with the other flag. Upda
 
 ## Setup tips
 
-`bkit tips` prints what the repo has not set up yet — tracker, tokens, templates, cost settings — most useful first, each with a plain-English line and a sentence to ask your agent. Each workflow runs it with its own name at its close and appends what it prints under `## bkit Tips`.
+`bkit tips` prints what the repo has not set up yet — tracker, tokens, templates, cost settings — most useful first, each with a plain-English line and a sentence to ask your agent. Each workflow runs it with its own name at its close and appends what it prints under `## bkit Tips`; `@bkit-audit-generate` does the same with `audit`, and the roadmap and `.jsonl` ledger updaters with `utility`. `@bkit-utility-update-documentation` has no Bash, so prints no tip.
 
 ```bash
 bkit tips                    # top three
 bkit tips --workflow=debug   # the one tip that matters most in /bkit-debug
+bkit tips --workflow=audit   # the one tip that matters most at an audit's close
 bkit tips --all              # every firing tip
 ```
 
 <!-- prettier-ignore -->
 | Rule | Behaviour |
 | --- | --- |
-| Order | One fixed priority list. `--workflow=<name>` moves the tips that matter in that workflow to the front: tracker, GitHub token, `.bkit/.env` and direnv matter in every workflow, so they lead until fixed; then e.g. context-fetch for debug, Husky / slop-scan for build, CI workflow / cloud for ship. |
+| Order | One fixed priority list. `--workflow=<name>` moves the tips that matter in that workflow to the front: tracker, GitHub token, `.bkit/.env` and direnv matter in every workflow, so they lead until fixed; then e.g. context-fetch for debug, Husky / slop-scan for build, CI workflow / cloud for ship, Serena / CI workflow / graphify / updater / Trivy for `audit`, Serena for `utility`. |
 | Detection | Local only — files, settings, environment; no network. A tip clears once its local half exists; dashboard steps live in the tip text. |
 | Reuse | A tip for a gap an advisory already detects calls that advisory's detector — tip and advisory never disagree. |
 | Artifact | `bkit install` / `check` / `upgrade` / `doctor` list every firing tip, with its id, in `.bkit/advisories.md` § Setup tips and the console banner: line, why, caution, ask-your-agent sentence, agent steps. |
-| Star line | `Do you like bkit? Then give it a star at [https://github.com/cbartens/bkit](https://github.com/cbartens/bkit)!` (markdown link) closes every `bkit tips` output, after the tips and outside the cap. Never in `.bkit/advisories.md` or the console banner. |
+| Star line | `Do you like bkit? Then give it a star at [https://github.com/cbartens/bkit](https://github.com/cbartens/bkit)!` (markdown link) closes bare `bkit tips` and every phase workflow's output, after the tips and outside the cap. Never under `--workflow=audit` / `utility` (those agents often run back to back), in `.bkit/advisories.md` or the console banner. |
 | Silence | Root `package.json` `bkit.ignoreAdvisories`: a tip id, or an advisory id the tip reuses, silences the tip and those advisories together; both show in the suppressed block. `star` silences the star line. |
-| Exit | Always 0. Prints nothing when no tip fires and `star` is silenced. |
+| Exit | Always 0. Prints nothing when no tip fires and no star line shows. |
 
 ## Doctor
 

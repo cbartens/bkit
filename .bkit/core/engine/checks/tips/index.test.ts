@@ -178,6 +178,15 @@ describe("formatTips — star line", () => {
     expect(formatTips([], { star: false })).toBe("");
   });
 
+  it("is left out of audit and utility output, which often run back to back", () => {
+    for (const workflow of ["audit", "utility"] as const) {
+      const out = formatTips(tips, { workflow, star: true });
+      expect(out, workflow).not.toContain(STAR_TIP);
+      expect(out.endsWith(TIPS_DETAILS_POINTER), workflow).toBe(true);
+      expect(formatTips([], { workflow, star: true }), workflow).toBe("");
+    }
+  });
+
   it("never counts toward the cap or the 'more' line", () => {
     const out = formatTips(tips, { workflow: "build", star: true });
     expect(out).toContain("1 more: `bkit tips --all`.");

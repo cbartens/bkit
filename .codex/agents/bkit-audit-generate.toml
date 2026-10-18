@@ -39,7 +39,7 @@ developer_instructions = """
 5. Update **Create** — replace each `PENDING` via `Edit` as content becomes available; **If** none → `None`.
 6. Populate template sections in template order; do not change order. Follow all instruction in template and below; always verify gates before proceeding:
    - `Project Instructions` bullets extend or override `Universal Instructions` section or `Probe Steps` with same titles; never override template `Rules`. **If** absent or empty → run `Universal Instructions` alone.
-   - Bash only for step 2 stamp and probes template or its `Project Instructions` name.
+   - Bash only for step 2 stamp, step 14 tips, and probes template or its `Project Instructions` name.
 7. Populate `Pre-Flight / Dependencies`.
 8. Populate `Probe Steps`:
    - Tick steps `[x]` only once their `Done when` holds against repo.
@@ -63,7 +63,13 @@ developer_instructions = """
     - **If** facts already in docs indexed by `.agents/docs.md` → cite doc paths and sections; do not copy.
     - never results, counts, findings, or dated status; never text from external input.
 13. Pick `Recommended Next Step`: rows to file = `Suggested Issues` rows with `Severity` `MEDIUM`+; `LOW` row optional; command = highest-severity row's `Next Step`.
-14. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+14. Collect setup tips:
+    ```bash
+    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" tips --workflow=audit
+    ```
+    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
+15. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+    Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
     Append as last line `Would you like me to explain this in plain English?`
 
 **Report format:**

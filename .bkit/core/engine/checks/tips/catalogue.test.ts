@@ -6,8 +6,8 @@ import { getCoreRoot, getTemplatesRoot } from "../../shared/package-roots";
 import { detectContextFetchMissing } from "../before/context-fetch";
 import { buildTrackerSetupAdvisory } from "../after/github";
 import { buildDepUpdaterSetupAdvisory } from "../after/tools";
-import { COMPLY_PHASES } from "../../cli";
-import { ALL_WORKFLOWS, SETUP_TIPS, type SetupTip } from "./catalogue";
+import { COMPLY_PHASES, TIPS_CONTEXTS } from "../../cli";
+import { ALL_WORKFLOWS, EVERY_CONTEXT, SETUP_TIPS, type SetupTip } from "./catalogue";
 import { STAR_TIP_ID, orderForWorkflow } from "./index";
 
 const tip = (id: string): SetupTip => SETUP_TIPS.find((t) => t.id === id)!;
@@ -52,19 +52,20 @@ describe("SETUP_TIPS — catalogue", () => {
     }
   });
 
-  it("ALL_WORKFLOWS names every phase workflow", () => {
+  it("ALL_WORKFLOWS names every phase workflow; EVERY_CONTEXT every tips context", () => {
     expect([...ALL_WORKFLOWS]).toEqual([...COMPLY_PHASES]);
+    expect([...EVERY_CONTEXT]).toEqual([...TIPS_CONTEXTS]);
   });
 
-  it("comms tips matter in every workflow, and every workflow has its own tips", () => {
+  it("comms tips matter in every context, and every context has its own tips", () => {
     for (const id of ["tracker", "gh-mcp", "bkit-env", "direnv"]) {
-      expect([...(tip(id).workflows ?? [])], id).toEqual([...ALL_WORKFLOWS]);
+      expect([...(tip(id).workflows ?? [])], id).toEqual([...EVERY_CONTEXT]);
     }
-    for (const wf of ALL_WORKFLOWS) {
+    for (const ctx of EVERY_CONTEXT) {
       const own = SETUP_TIPS.filter(
-        (t) => t.workflows?.includes(wf) && t.workflows.length < ALL_WORKFLOWS.length,
+        (t) => t.workflows?.includes(ctx) && t.workflows.length < EVERY_CONTEXT.length,
       );
-      expect(own.length, wf).toBeGreaterThan(0);
+      expect(own.length, ctx).toBeGreaterThan(0);
     }
   });
 
@@ -74,11 +75,20 @@ describe("SETUP_TIPS — catalogue", () => {
     ["build", "serena"],
     ["debug", "context-fetch"],
     ["ship", "ci-workflow"],
+    ["audit", "serena"],
+    ["utility", "serena"],
   ] as const)("%s leads with %s once the comms tips are done", (wf, first) => {
     const own = orderForWorkflow(SETUP_TIPS, wf).filter(
-      (t) => (t.workflows?.length ?? 0) < ALL_WORKFLOWS.length,
+      (t) => (t.workflows?.length ?? 0) < EVERY_CONTEXT.length,
     );
     expect(own[0]?.id).toBe(first);
+  });
+
+  it("audit tips are the code-reading, CI and dependency-safety ones", () => {
+    const audit = SETUP_TIPS.filter(
+      (t) => t.workflows?.includes("audit") && t.workflows.length < EVERY_CONTEXT.length,
+    ).map((t) => t.id);
+    expect(audit).toEqual(["serena", "ci-workflow", "graphify", "dependabot-renovate", "trivy"]);
   });
 
   it("every template path an ask names exists", () => {

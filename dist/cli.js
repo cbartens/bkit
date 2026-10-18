@@ -69,6 +69,17 @@ export function parseComplyPhase(value) {
         ? value
         : null;
 }
+/**
+ * Where `bkit tips --workflow=<name>` runs: a phase workflow, `audit` (`@bkit-audit-generate`)
+ * or `utility` (the ledger and roadmap updaters).
+ */
+export const TIPS_CONTEXTS = [...COMPLY_PHASES, "audit", "utility"];
+/** Narrow an unknown string to `TipsContext` or return null if invalid. */
+export function parseTipsContext(value) {
+    return typeof value === "string" && TIPS_CONTEXTS.includes(value)
+        ? value
+        : null;
+}
 // Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing) is
 // intercepted by a dedicated branch in parseArgs before this set is consulted; the
 // generic check only ever validates claude/cursor/codex. `full`, `core` and `cloud`
@@ -318,9 +329,9 @@ export function parseArgs(argv) {
             }
             if (flag.startsWith("workflow=") && verb === "tips") {
                 const value = flag.slice("workflow=".length);
-                tipsWorkflow = parseComplyPhase(value);
+                tipsWorkflow = parseTipsContext(value);
                 if (tipsWorkflow === null) {
-                    console.error(`[bkit] Unknown workflow: "${value}". Valid values: ${COMPLY_PHASES.join(", ")}`);
+                    console.error(`[bkit] Unknown workflow: "${value}". Valid values: ${TIPS_CONTEXTS.join(", ")}`);
                     process.exit(1);
                 }
                 continue;
@@ -453,9 +464,11 @@ Usage:
                                  first, each with a sentence to ask your agent. Top three
                                  by default; --workflow=design|plan|build|debug|ship puts
                                  the tips that matter there first and prints one (each
-                                 workflow runs this at its close); --all lists every one.
-                                 Ends with a star line ("star" in bkit.ignoreAdvisories
-                                 silences it). Local checks only. Exits 0.
+                                 workflow runs this at its close; audit and utility do the
+                                 same for audits and the ledger / roadmap updaters);
+                                 --all lists every one. Ends with a star line ("star" in
+                                 bkit.ignoreAdvisories silences it), except under
+                                 --workflow=audit|utility. Local checks only. Exits 0.
   bkit status                   Read-only host/provider status. Reports current host+provider
                                  (sampled from .opencode/opencode.json, .claude/, .cursor/).
                                  Writes nothing. Exits 0.

@@ -832,6 +832,8 @@ describe("parseArgs — tips verb", () => {
   it("--workflow names the workflow; bare tips names none", () => {
     expect(parseArgs(["tips"]).tipsWorkflow).toBeNull();
     expect(parseArgs(["tips", "--workflow=debug"]).tipsWorkflow).toBe("debug");
+    expect(parseArgs(["tips", "--workflow=audit"]).tipsWorkflow).toBe("audit");
+    expect(parseArgs(["tips", "--workflow=utility"]).tipsWorkflow).toBe("utility");
   });
 
   it("--workflow refuses an unknown workflow", () => {

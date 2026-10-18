@@ -1,7 +1,7 @@
 // checks/tips/index.ts — collect the firing setup tips and render them for `bkit tips`, the
 // console checklist and `.bkit/advisories.md`. Catalogue + priority: ./catalogue.ts.
 import { ignoredAdvisoryIds, } from "../after/suppression.js";
-import { SETUP_TIPS } from "./catalogue.js";
+import { ALL_WORKFLOWS, SETUP_TIPS } from "./catalogue.js";
 /** Tips `bkit tips` prints without `--all` or `--workflow`. */
 export const TIPS_CAP = 3;
 /** Tips a workflow prints at its close (`bkit tips --workflow=<name>`). */
@@ -14,7 +14,11 @@ export const tipsIntro = (n) => n === 1 ? "Setup tip for a smoother next run:" :
 export const TIPS_DETAILS_POINTER = "Details for every tip: .bkit/advisories.md § Setup tips (refreshed by `bkit check`).";
 /** `bkit.ignoreAdvisories` key that silences `STAR_TIP`. */
 export const STAR_TIP_ID = "star";
-/** Last line of `bkit tips` output while not silenced. Not a gap, so never in the checklist. */
+/**
+ * Last line of `bkit tips` output while not silenced, in bare `bkit tips` and the phase
+ * workflows only — audits and the ledger / roadmap updaters often run back to back. Not a
+ * gap, so never in the checklist.
+ */
 export const STAR_TIP = "Do you like bkit? Then give it a star at [https://github.com/cbartens/bkit](https://github.com/cbartens/bkit)!";
 /** Intro of the Setup tips section: who reads which field, and how to silence a tip. */
 export const TIPS_SECTION_INTRO = "Things not set up yet, most useful first. For the person: each tip says what goes wrong today and a sentence to ask your agent. For an AI agent: follow each tip's Agent steps unless the person declines it. Silence a tip by adding its id to `bkit.ignoreAdvisories` in package.json. Full template catalogue: .bkit/templates.md.";
@@ -85,9 +89,13 @@ export function orderForWorkflow(tips, workflow) {
     const own = tips.filter((t) => t.workflows?.includes(workflow));
     return [...own, ...tips.filter((t) => !own.includes(t))];
 }
+/** True when `STAR_TIP` closes the output in `workflow`: bare `bkit tips` or a phase workflow. */
+export function starShownIn(workflow) {
+    return !workflow || ALL_WORKFLOWS.includes(workflow);
+}
 /**
- * `bkit tips` output, then where the rest live, then `STAR_TIP` when `star` is set.
- * `""` when no tip fires and `star` is unset.
+ * `bkit tips` output, then where the rest live, then `STAR_TIP` when `star` is set and
+ * `starShownIn(workflow)`. `""` when no tip fires and no star line shows.
  *   - `workflow`: the `WORKFLOW_TIPS_CAP` tips that matter most in that workflow, as
  *     markdown paragraphs with no intro or numbers — the workflow appends them under its
  *     own `## bkit Tips` heading.
@@ -96,7 +104,7 @@ export function orderForWorkflow(tips, workflow) {
  */
 export function formatTips(tips, opts = {}) {
     const body = formatSetupTips(tips, opts);
-    if (!opts.star)
+    if (!opts.star || !starShownIn(opts.workflow))
         return body;
     return body ? `${body}\n\n${STAR_TIP}` : STAR_TIP;
 }

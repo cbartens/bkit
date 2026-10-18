@@ -975,7 +975,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 
 ### Audits
 
-No command and no phase label. A template in `docs/templates/bkit-audit-*.md` is the procedure (sections, steps, gates). `@bkit-audit-generate` runs one template and writes `docs/audits/{YYYYMM}/{slug}.md`. **If** that month already has this slug → `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Writes only the report and the template's consumer-owned `Project Instructions` below `bkit:end`, refined each run. `/bkit-plan` reads a design doc, one or more of those reports, or both.
+No command and no phase label. A template in `docs/templates/bkit-audit-*.md` is the procedure (sections, steps, gates). `@bkit-audit-generate` runs one template and writes `docs/audits/{YYYYMM}/{slug}.md`. **If** that month already has this slug → `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Writes only the report and the template's consumer-owned `Project Instructions` below `bkit:end`, refined each run. Final return appends what `bkit tips --workflow=audit` prints (one tip, no star line) as `## bkit Tips`, then offers a plain-English explanation on request. `/bkit-plan` reads a design doc, one or more of those reports, or both.
 
 ### `/bkit-auto` — phase-routed dispatch
 

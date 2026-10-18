@@ -53,7 +53,13 @@ maxTurns: 400
 10. Group items sharing scope or blocking each other; group by domain boundaries, never token count; treat items done together as one list item.
 11. Per item → recommend the `/bkit-<phase>` command; name the `.agents/shortcuts.md` light path instead only where a lite flow is clearly enough; recommend model tier; recommend `@bkit-audit-generate` for audit reports.
 12. Update content in `docs/roadmap.md` between markers `<!-- bkit:roadmap-analysis start -->` and `<!-- bkit:roadmap-analysis end -->` only via `Edit`.
-13. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+13. Collect setup tips:
+    ```bash
+    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" tips --workflow=utility
+    ```
+    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
+14. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+    Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
     Append as last line `Would you like me to explain this in plain English?`
 
 **Output format:**

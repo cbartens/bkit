@@ -1,12 +1,13 @@
 // checks/tips/catalogue.ts — the setup-tip catalogue: one entry per template, tool or
-// setting a consumer has not set up yet. Each workflow prints one tip at its close
-// (`bkit tips --workflow=<name>`); `bkit tips` prints the top three; `.bkit/advisories.md`
-// lists every firing tip under `Setup tips`.
+// setting a consumer has not set up yet. Each workflow, `@bkit-audit-generate` and the
+// ledger / roadmap updaters print one tip at their close (`bkit tips --workflow=<name>`,
+// `audit` / `utility` for the agents); `bkit tips` prints the top three;
+// `.bkit/advisories.md` lists every firing tip under `Setup tips`.
 //
 // Array order is the priority: comms first (can workflows reach anything), then change
 // quality (design → build), delivery (debug → ship), running cost, nice-to-have, and
 // setup-specific plumbing last. `workflows` names where a tip matters: a workflow shows
-// its own tips first, in array order, then the rest. Comms tips name every workflow, so
+// its own tips first, in array order, then the rest. Comms tips name every context, so
 // they lead everywhere until fixed.
 //
 // Text rules: `line`, `why`, `caution` and `ask` are for the person, in plain English, and
@@ -37,7 +38,7 @@ import {
 import { buildDepUpdaterSetupAdvisory } from "../after/tools.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import type { ComplyPhase } from "../../cli.js";
+import type { ComplyPhase, TipsContext } from "../../cli.js";
 import {
   anyWorkflowMentions,
   claudeSettingsHas,
@@ -51,8 +52,8 @@ import {
 export interface SetupTip {
   /** `bkit.ignoreAdvisories` key; never an advisory id (those go in `advisories`). */
   id: string;
-  /** Workflows the tip matters in; absent = shown only after every workflow's own tips. */
-  workflows?: readonly ComplyPhase[];
+  /** Contexts the tip matters in; absent = shown only after every context's own tips. */
+  workflows?: readonly TipsContext[];
   /** Short label. */
   title: string;
   /** What `bkit tips` prints: what goes wrong today, then what to do. */
@@ -76,11 +77,14 @@ const hosts = (cwd: string) => detectInstalledHostModules(cwd);
 /** Every phase workflow. A value import of `COMPLY_PHASES` would cycle through cli.ts. */
 export const ALL_WORKFLOWS: readonly ComplyPhase[] = ["design", "plan", "build", "debug", "ship"];
 
+/** Every `bkit tips --workflow=` context: the phase workflows, then the two agent closes. */
+export const EVERY_CONTEXT: readonly TipsContext[] = [...ALL_WORKFLOWS, "audit", "utility"];
+
 export const SETUP_TIPS: readonly SetupTip[] = [
   // --- connect: can bkit talk to anything at all -------------------------------------
   {
     id: "tracker",
-    workflows: ALL_WORKFLOWS,
+    workflows: EVERY_CONTEXT,
     title: "Connect an issue tracker",
     line: "bkit isn't connected to an issue tracker, so it can't read the task it's working on or record what it did. Connect GitHub or Linear, or switch this tip off if you don't want one.",
     why: "Every workflow starts by reading the issue it's working on and reports progress back to it as it goes. Without a tracker, you have to paste in what the agent should look at each time, and nothing records what changed or why.",
@@ -92,7 +96,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
   },
   {
     id: "gh-mcp",
-    workflows: ALL_WORKFLOWS,
+    workflows: EVERY_CONTEXT,
     title: "Give bkit its GitHub token",
     line: "You chose GitHub as your tracker, but bkit has no GitHub token, so every attempt to read an issue or open a pull request will fail. Add the token.",
     why: "Choosing GitHub only tells bkit where your issues live. The token is what lets it actually sign in. Without it the setting looks right but nothing works, which is confusing to track down.",
@@ -106,7 +110,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
   },
   {
     id: "bkit-env",
-    workflows: ALL_WORKFLOWS,
+    workflows: EVERY_CONTEXT,
     title: "Create bkit's private settings file",
     line: "bkit's private settings file (.bkit/.env) is missing or has blank entries, so nothing that needs to sign in can. Create it and fill it in.",
     why: "This one file holds the sign-in tokens every bkit tool reads. It's never shared or committed. Most other tips depend on it, so do this one early.",
@@ -123,7 +127,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
   },
   {
     id: "direnv",
-    workflows: ALL_WORKFLOWS,
+    workflows: EVERY_CONTEXT,
     title: "Load your tokens automatically",
     line: "Your sign-in tokens are saved in .bkit/.env but not being loaded, so sign-ins will fail even though the file looks right. Set up direnv so they load whenever you open the project.",
     why: "A saved file does nothing until something reads it. This is the most frustrating kind of breakage: nothing looks wrong, but every sign-in fails. direnv (a small tool that loads settings when you open a folder) fixes it once.",
@@ -144,7 +148,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
   // --- quality: is the change good -----------------------------------------------------
   {
     id: "serena",
-    workflows: ["design", "plan", "build"],
+    workflows: ["design", "plan", "build", "audit", "utility"],
     title: "Let agents look code up directly",
     line: "Agents are finding code by searching for words, which is slower, costs more, and misses things. Set up Serena so they can look code up directly.",
     why: 'Serena lets agents look up code the way your editor does ("where is this defined, and what uses it?") instead of guessing from text search and reading whole files. That means fewer accidental changes, fewer rounds of you correcting them, and lower running costs because they read less. It can only look things up, never change your files.',
@@ -154,7 +158,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
   },
   {
     id: "ci-workflow",
-    workflows: ["build", "ship"],
+    workflows: ["build", "ship", "audit"],
     title: "Automatic checks on every change",
     line: "Nothing checks your changes automatically before they're merged, so broken code can land unnoticed. Add bkit's check workflow.",
     why: 'This runs your tests and checks on GitHub every time something changes, and bkit\'s ship step waits for it to pass before merging. Without it, "shipped" only means "merged", not "checked".',
@@ -301,7 +305,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
   // --- optional: nice to have ------------------------------------------------------------
   {
     id: "graphify",
-    workflows: ["design", "plan"],
+    workflows: ["design", "plan", "audit"],
     title: "A map of the code",
     line: "Optional: add graphify to keep an up-to-date map of how your code fits together.",
     why: "With a map, agents check what already exists before building it again. Without one, agents and reviews work out the structure from scratch each time. That's slower, and it's easy to miss how one change ripples into another part of the code.",
@@ -311,7 +315,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
   },
   {
     id: "dependabot-renovate",
-    workflows: ["ship"],
+    workflows: ["ship", "audit"],
     title: "Automatic updates",
     line: "Nothing keeps the project's libraries up to date. Add an updater so you get small, safe updates instead of one big risky one later.",
     why: "An updater opens a small pull request whenever a library you use has a new version. Skip it and updates pile up into one large upgrade that's far more likely to break something.",
@@ -322,7 +326,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
   },
   {
     id: "trivy",
-    workflows: ["ship"],
+    workflows: ["ship", "audit"],
     title: "Security scan",
     line: "Nothing stops a change that adds a known-vulnerable library, a risky container setting or a leaked password from merging. Add the scan that fails the check when it finds one.",
     why: "An updater only offers fixes, and only once a fixed version exists. The scan checks every change, plus once a day, so a known problem fails the check before it merges and one with no fix yet still shows up.",
