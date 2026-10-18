@@ -217,6 +217,45 @@ describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
     expect(live.writes).toEqual(dry.writes);
   });
 
+  it("consumer extras in bkit's entry (toolset, header, key) are in sync → no write (#613)", () => {
+    const entry = githubEntry as { headers: Record<string, string> };
+    const extended = {
+      ...entry,
+      timeout: 30,
+      headers: {
+        ...entry.headers,
+        "X-MCP-Toolsets": `${entry.headers["X-MCP-Toolsets"]},gists`,
+        "X-Mine": "1",
+      },
+    };
+    write({ mcpServers: { github: extended } });
+    const ws = makeWriteSet();
+    reconcileMcpJson(template, ".mcp.json", "github", false, ws);
+    expect(ws.writes).toEqual([]);
+    expect(read()).toEqual({ mcpServers: { github: extended } });
+  });
+
+  it("missing template toolset is appended after the consumer's; edited url is reset (#613)", () => {
+    const entry = githubEntry as { headers: Record<string, string> };
+    write({
+      mcpServers: {
+        github: {
+          ...entry,
+          url: "https://edited",
+          headers: { ...entry.headers, "X-MCP-Toolsets": "gists,issues", "X-Mine": "1" },
+        },
+      },
+    });
+    const ws = makeWriteSet();
+    reconcileMcpJson(template, ".mcp.json", "github", false, ws);
+    const gh = read().mcpServers.github;
+    const templateSets = entry.headers["X-MCP-Toolsets"]!.split(",").filter((t) => t !== "issues");
+    expect(gh.url).toBe((githubEntry as { url: string }).url);
+    expect(gh.headers["X-Mine"]).toBe("1");
+    expect(gh.headers["X-MCP-Toolsets"]).toBe(["gists", "issues", ...templateSets].join(","));
+    expect(ws.writes).toEqual([{ path: ".mcp.json", action: "update" }]);
+  });
+
   it("tracker none owns no entry → a present file is left alone", () => {
     write({ mcpServers: { linear: { url: "https://mine" } } });
     const ws = makeWriteSet();

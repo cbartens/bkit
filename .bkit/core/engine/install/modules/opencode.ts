@@ -3,7 +3,15 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { writeTier2, deepMergeJson, ensureDir, type WriteSet, type JsonValue } from "../write.js";
+import {
+  writeTier2,
+  deepMergeJson,
+  ensureDir,
+  isJsonObject,
+  mergeTrackerEntry,
+  type WriteSet,
+  type JsonValue,
+} from "../write.js";
 import { stampManagedVersion } from "../version-file.js";
 import { applyOpencodeAgent, applyOpencodeCommand } from "../../render/hosts.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
@@ -421,6 +429,15 @@ export function reconcileOpencodeJson(
     string,
     JsonValue
   >;
+  // The tracker `mcp` entry keeps the consumer's extra toolsets (`mergeTrackerEntry`), which
+  // the plain merge above would overwrite with the template's list.
+  const tmplMcp = template.mcp;
+  const existingMcp = existing.mcp;
+  if (isJsonObject(tmplMcp) && isJsonObject(existingMcp) && isJsonObject(merged.mcp)) {
+    for (const [k, v] of Object.entries(tmplMcp)) {
+      merged.mcp[k] = mergeTrackerEntry(existingMcp[k], v);
+    }
+  }
   // Replace (do not deep-merge) each provider key the template seeds — heals hijacked
   // npm/baseURL/name while keeping other provider keys additive.
   //

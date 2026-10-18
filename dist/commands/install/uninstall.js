@@ -21,6 +21,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
+import { isJsonObject } from "../../install/write.js";
 import { stripManagedBlock, detectMarkerStyle } from "../../install/managed-block.js";
 import { readTemplate } from "../../render/parts.js";
 import { getInstallManifest, ISSUE_TRACKERS, } from "../../install/manifest.js";
@@ -156,9 +157,6 @@ function removeOwnedEntries(doc, key, owned) {
     }
     if (Object.keys(entries).length === 0)
         delete doc[key];
-}
-function isJsonObject(v) {
-    return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 // ---------------------------------------------------------------------------
 // Decision table builder (for --dry-run output and UninstallResult)

@@ -608,3 +608,50 @@ describe("reconcileOpencodeJson — preserves existing provider order", () => {
     expect(providerOrder()).toEqual(["opencode-go", "openrouter"]);
   });
 });
+
+describe("reconcileOpencodeJson — tracker mcp entry keeps consumer extras (#613)", () => {
+  const DST = path.join(".opencode", "opencode.json");
+  const TEMPLATE = path.resolve(".bkit/shared/.opencode/opencode.json");
+  const rendered = (): string => renderOpencodeJson(TEMPLATE, "github", "opencode-go");
+  const templateGithub = (): { headers: Record<string, string> } & Record<string, unknown> =>
+    JSON.parse(rendered()).mcp.github;
+  const readGithub = (): { url: string; headers: Record<string, string> } =>
+    JSON.parse(fs.readFileSync(DST, "utf-8")).mcp.github;
+
+  it("an extra toolset is in sync → no write", () => {
+    reconcileOpencodeJson(rendered(), DST, false, makeWriteSet());
+    const doc = JSON.parse(fs.readFileSync(DST, "utf-8"));
+    const sets = doc.mcp.github.headers["X-MCP-Toolsets"];
+    doc.mcp.github.headers["X-MCP-Toolsets"] = `${sets},gists`;
+    fs.writeFileSync(DST, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+    const ws = makeWriteSet();
+    reconcileOpencodeJson(rendered(), DST, false, ws);
+    expect(ws.writes).toEqual([]);
+    expect(readGithub().headers["X-MCP-Toolsets"]).toBe(`${sets},gists`);
+  });
+
+  it("a missing template toolset is appended; an edited url is reset", () => {
+    const tmpl = templateGithub();
+    fs.mkdirSync(".opencode", { recursive: true });
+    fs.writeFileSync(
+      DST,
+      JSON.stringify({
+        mcp: {
+          github: {
+            ...tmpl,
+            url: "https://edited",
+            headers: { ...tmpl.headers, "X-MCP-Toolsets": "gists,issues" },
+          },
+        },
+      }),
+      "utf-8",
+    );
+    const ws = makeWriteSet();
+    reconcileOpencodeJson(rendered(), DST, false, ws);
+    const gh = readGithub();
+    const rest = tmpl.headers["X-MCP-Toolsets"]!.split(",").filter((t) => t !== "issues");
+    expect(gh.url).toBe(tmpl.url);
+    expect(gh.headers["X-MCP-Toolsets"]).toBe(["gists", "issues", ...rest].join(","));
+    expect(ws.writes).toEqual([{ path: DST, action: "update" }]);
+  });
+});

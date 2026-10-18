@@ -22,7 +22,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
-import type { JsonValue, WriteSet } from "../../install/write.js";
+import { isJsonObject, type JsonValue, type WriteSet } from "../../install/write.js";
 import { stripManagedBlock, detectMarkerStyle } from "../../install/managed-block.js";
 import { readTemplate } from "../../render/parts.js";
 import {
@@ -250,10 +250,6 @@ function removeOwnedEntries(
     if (JSON.stringify(entries[name]) === JSON.stringify(entry)) delete entries[name];
   }
   if (Object.keys(entries).length === 0) delete doc[key];
-}
-
-function isJsonObject(v: JsonValue | undefined): v is Record<string, JsonValue> {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 
 // ---------------------------------------------------------------------------

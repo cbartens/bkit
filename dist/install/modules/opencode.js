@@ -2,7 +2,7 @@
 // the provider-templated `opencode.json`.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { writeTier2, deepMergeJson, ensureDir } from "../write.js";
+import { writeTier2, deepMergeJson, ensureDir, isJsonObject, mergeTrackerEntry, } from "../write.js";
 import { stampManagedVersion } from "../version-file.js";
 import { applyOpencodeAgent, applyOpencodeCommand } from "../../render/hosts.js";
 import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from "../../shared/package-roots.js";
@@ -364,6 +364,15 @@ export function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
         throw new Error(`[bkit] ${relDst} is malformed JSON — fix manually before running bkit install`);
     }
     const merged = deepMergeJson(existing, template);
+    // The tracker `mcp` entry keeps the consumer's extra toolsets (`mergeTrackerEntry`), which
+    // the plain merge above would overwrite with the template's list.
+    const tmplMcp = template.mcp;
+    const existingMcp = existing.mcp;
+    if (isJsonObject(tmplMcp) && isJsonObject(existingMcp) && isJsonObject(merged.mcp)) {
+        for (const [k, v] of Object.entries(tmplMcp)) {
+            merged.mcp[k] = mergeTrackerEntry(existingMcp[k], v);
+        }
+    }
     // Replace (do not deep-merge) each provider key the template seeds — heals hijacked
     // npm/baseURL/name while keeping other provider keys additive.
     //

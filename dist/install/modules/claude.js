@@ -2,7 +2,7 @@
 // allows, and the tracker entry in the MCP config files (`.mcp.json`, `.cursor/mcp.json`).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { writeTier1, writeTier2, writeTier2JsonContained, ensureDir, } from "../write.js";
+import { writeTier1, writeTier2, writeTier2JsonContained, ensureDir, mergeTrackerEntry, trackerEntryInSync, } from "../write.js";
 import { readBkitVersion, stampManagedVersion } from "../version-file.js";
 import { applyEffortRemap } from "../../render/hosts.js";
 import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from "../../shared/package-roots.js";
@@ -247,7 +247,8 @@ export function buildMcpJson(templatePath, tracker) {
 }
 /**
  * Reconcile bkit's tracker entry into a consumer's `.mcp.json` / `.cursor/mcp.json`. bkit
- * owns exactly one key, `mcpServers[<tracker>]`, and sets it to the template's entry; every
+ * owns exactly one key, `mcpServers[<tracker>]`, and within it only what the template sets
+ * (`mergeTrackerEntry`: extra keys, headers and toolsets stay the consumer's); every
  * other key and the existing key order stay the consumer's. Absent file → write the
  * `buildMcpJson` render. Malformed JSON → throw (refuse to merge; the consumer fixes it).
  * Tracker `none` owns no entry, so a present file is left alone. Writes only on change, so
@@ -278,10 +279,11 @@ export function reconcileMcpJson(templatePath, relDst, tracker, dryRun, ws) {
     const owned = JSON.parse(rendered).mcpServers;
     const servers = existing.mcpServers;
     const serversObj = servers !== null && typeof servers === "object" && !Array.isArray(servers) ? servers : {};
-    const inSync = Object.entries(owned).every(([k, v]) => JSON.stringify(serversObj[k]) === JSON.stringify(v));
+    const inSync = Object.entries(owned).every(([k, v]) => trackerEntryInSync(serversObj[k], v));
     if (inSync)
         return;
-    const next = { ...existing, mcpServers: { ...serversObj, ...owned } };
+    const merged = Object.fromEntries(Object.entries(owned).map(([k, v]) => [k, mergeTrackerEntry(serversObj[k], v)]));
+    const next = { ...existing, mcpServers: { ...serversObj, ...merged } };
     if (!dryRun)
         fs.writeFileSync(relDst, JSON.stringify(next, null, 2) + "\n", "utf-8");
     ws.writes.push({ path: relDst, action: "update" });

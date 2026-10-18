@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseCloudAgents, DEFAULT_CLOUD_AGENTS, } from "../../install/manifest.js";
+import { MCP_TOOLSETS_HEADER, parseToolsets } from "../../install/write.js";
 /**
  * Detect whether branch protection is configured on `main`.
  * Returns "present" | "missing" | "unknown".
@@ -164,7 +165,7 @@ function readGithubProjectConfig(cwd) {
  *                 (installs predating the toolset addition)
  *   - "unknown" → no `.mcp.json`, no github server, or no header (can't judge)
  *
- * Scoped to root `.mcp.json` only — bkit omits the header from `.cursor/mcp.json`.
+ * Scoped to root `.mcp.json` only.
  */
 export function detectProjectsToolset(cwd) {
     const mcpPath = path.join(cwd, ".mcp.json");
@@ -175,15 +176,10 @@ export function detectProjectsToolset(cwd) {
         const servers = cfg.mcpServers;
         const gh = servers?.github;
         const headers = gh?.headers;
-        const toolsets = headers?.["X-MCP-Toolsets"];
+        const toolsets = headers?.[MCP_TOOLSETS_HEADER];
         if (typeof toolsets !== "string")
             return "unknown";
-        return toolsets
-            .split(",")
-            .map((s) => s.trim())
-            .includes("projects")
-            ? "present"
-            : "missing";
+        return parseToolsets(toolsets).includes("projects") ? "present" : "missing";
     }
     catch {
         return "unknown";

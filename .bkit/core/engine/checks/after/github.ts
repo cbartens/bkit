@@ -14,6 +14,7 @@ import {
   DEFAULT_CLOUD_AGENTS,
   type CloudAgents,
 } from "../../install/manifest.js";
+import { MCP_TOOLSETS_HEADER, parseToolsets } from "../../install/write.js";
 import type { TokenPresence } from "./auth.js";
 
 /**
@@ -182,7 +183,7 @@ function readGithubProjectConfig(cwd: string): "configured" | "opted-out" | "abs
  *                 (installs predating the toolset addition)
  *   - "unknown" → no `.mcp.json`, no github server, or no header (can't judge)
  *
- * Scoped to root `.mcp.json` only — bkit omits the header from `.cursor/mcp.json`.
+ * Scoped to root `.mcp.json` only.
  */
 export function detectProjectsToolset(cwd: string): TokenPresence {
   const mcpPath = path.join(cwd, ".mcp.json");
@@ -192,14 +193,9 @@ export function detectProjectsToolset(cwd: string): TokenPresence {
     const servers = cfg.mcpServers as Record<string, unknown> | undefined;
     const gh = servers?.github as Record<string, unknown> | undefined;
     const headers = gh?.headers as Record<string, unknown> | undefined;
-    const toolsets = headers?.["X-MCP-Toolsets"];
+    const toolsets = headers?.[MCP_TOOLSETS_HEADER];
     if (typeof toolsets !== "string") return "unknown";
-    return toolsets
-      .split(",")
-      .map((s) => s.trim())
-      .includes("projects")
-      ? "present"
-      : "missing";
+    return parseToolsets(toolsets).includes("projects") ? "present" : "missing";
   } catch {
     return "unknown";
   }

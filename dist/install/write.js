@@ -135,6 +135,51 @@ export function deepMergeJson(base, override) {
     return result;
 }
 // ---------------------------------------------------------------------------
+// MCP tracker entry — bkit owns the template's parts of the entry, not the whole entry (#613)
+//
+//   - every key the template sets is reset to the template's value
+//   - `headers["X-MCP-Toolsets"]` keeps the consumer's list and appends any template toolset
+//     it lacks, so a consumer can enable extra toolsets and a toolset bkit adds still lands
+//   - every other consumer key, header and toolset is kept
+// ---------------------------------------------------------------------------
+export const MCP_TOOLSETS_HEADER = "X-MCP-Toolsets";
+/** Split an `X-MCP-Toolsets` value into toolset names (trimmed, empties dropped). */
+export function parseToolsets(value) {
+    return value
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s !== "");
+}
+/** True for a JSON object (not null, not an array). */
+export function isJsonObject(v) {
+    return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+/** Merge bkit's tracker entry `owned` into the consumer's `existing` entry (rules above). */
+export function mergeTrackerEntry(existing, owned) {
+    if (!isJsonObject(existing) || !isJsonObject(owned))
+        return owned;
+    const merged = deepMergeJson(existing, owned);
+    const ownedHeaders = owned.headers;
+    const existingHeaders = existing.headers;
+    if (isJsonObject(ownedHeaders) && isJsonObject(existingHeaders)) {
+        const ownedSets = ownedHeaders[MCP_TOOLSETS_HEADER];
+        const existingSets = existingHeaders[MCP_TOOLSETS_HEADER];
+        if (typeof ownedSets === "string" && typeof existingSets === "string") {
+            const have = parseToolsets(existingSets);
+            const missing = parseToolsets(ownedSets).filter((t) => !have.includes(t));
+            merged.headers[MCP_TOOLSETS_HEADER] =
+                missing.length === 0 ? existingSets : [...have, ...missing].join(",");
+        }
+    }
+    return merged;
+}
+/** True when `existing` already holds everything `mergeTrackerEntry` would write. */
+export function trackerEntryInSync(existing, owned) {
+    if (existing === undefined)
+        return false;
+    return deepContains(mergeTrackerEntry(existing, owned), existing).ok;
+}
+// ---------------------------------------------------------------------------
 // writeTier2JsonContained — deep-containment JSON helper (BAR-167 Phase 1)
 //
 // Contract:
