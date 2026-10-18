@@ -582,7 +582,7 @@ describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
             oauth: false,
             headers: {
               Authorization: "Bearer {env:BKIT_GH_TOKEN}",
-              "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects",
+              "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects,actions",
             },
           },
         },

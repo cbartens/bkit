@@ -237,7 +237,7 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
     let mcpEntry;
     if (tracker === "github") {
         mcpEntry =
-            '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "oauth": false, "headers": { "Authorization": "Bearer {env:BKIT_GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
+            '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "oauth": false, "headers": { "Authorization": "Bearer {env:BKIT_GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects,actions" } }';
     }
     else if (tracker === "linear") {
         mcpEntry = '"linear": { "type": "remote", "url": "https://mcp.linear.app/mcp" }';

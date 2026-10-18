@@ -316,7 +316,7 @@
       "oauth": false,
       "headers": {
         "Authorization": "Bearer {env:BKIT_GH_TOKEN}",
-        "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects"
+        "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects,actions"
       }
     },
     "serena": {

@@ -242,7 +242,7 @@ export function buildGithubProjectAdvisory(cwd) {
             "and must NOT be used for `statusFieldId` — `projects_write` rejects it with " +
             "`updated_field.id: value must be a number`.\n\n" +
             "2. Ensure the root `.mcp.json` github server enables the `projects` toolset:\n\n" +
-            '       "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects"\n\n' +
+            '       "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects,actions"\n\n' +
             "3. The `BKIT_GH_TOKEN` PAT needs organization-scoped Projects read & write (repo scope is not enough).\n\n" +
             "To opt out and silence this advisory, set `bkit.githubProject` to `false` in package.json.",
     };

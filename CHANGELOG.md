@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Changed
+
+- **Cursor and OpenCode get the same GitHub MCP tools as Claude Code.** The `github` entry bkit writes into `.cursor/mcp.json` now sends `X-MCP-Toolsets` (it sent none, so Cursor got GitHub's default set), and the one in `.opencode/opencode.json` adds `actions`. Every host now enables `context,issues,pull_requests,repos,users,projects,actions`, so CI logs and artifacts (`actions_list`, `get_job_logs`, `download_workflow_run_artifact`) are reachable from Cursor and OpenCode too, not only from `.mcp.json`. Existing installs pick it up on the next `bkit install` / `bkit upgrade`.
+
 ### Fixed
 
 - **Pushes no longer fail when a pre-push hook prints more than 1MB.** `runGit` captured git's output under Node's 1MB default, so a chatty hook (e.g. a full unit run with coverage) got `git push` killed mid-hook and `bkit branches push` / `land` / ship's `dev` sync exited 8 with a cut-off log and no cause. `runGit` now shares `runTool`'s 64 MiB limit, and both put any spawn error at the top of `stderr`, naming `ENOBUFS` and the limit. `runTool` reports `found: false` ("not found on PATH") only when the binary could not be started, so an overflow no longer sends `gh` callers down the MCP fallback. #586
