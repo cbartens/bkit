@@ -8,7 +8,7 @@ import { buildTrackerSetupAdvisory } from "../after/github";
 import { buildDepUpdaterSetupAdvisory } from "../after/tools";
 import { COMPLY_PHASES } from "../../cli";
 import { ALL_WORKFLOWS, SETUP_TIPS, type SetupTip } from "./catalogue";
-import { orderForWorkflow } from "./index";
+import { STAR_TIP_ID, orderForWorkflow } from "./index";
 
 const tip = (id: string): SetupTip => SETUP_TIPS.find((t) => t.id === id)!;
 
@@ -91,7 +91,7 @@ describe("SETUP_TIPS — catalogue", () => {
   });
 
   it("ids are unique and never collide with an advisory id", () => {
-    const ids = SETUP_TIPS.map((t) => t.id);
+    const ids = [...SETUP_TIPS.map((t) => t.id), STAR_TIP_ID];
     expect(new Set(ids).size).toBe(ids.length);
     const advisoryIds = new Set(advisoryIdsInSource());
     for (const id of ids) expect(advisoryIds.has(id), id).toBe(false);

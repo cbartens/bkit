@@ -608,7 +608,8 @@ Usage:
                                  by default; --workflow=design|plan|build|debug|ship puts
                                  the tips that matter there first and prints one (each
                                  workflow runs this at its close); --all lists every one.
-                                 Local checks only. Exits 0.
+                                 Ends with a star line ("star" in bkit.ignoreAdvisories
+                                 silences it). Local checks only. Exits 0.
   bkit status                   Read-only host/provider status. Reports current host+provider
                                  (sampled from .opencode/opencode.json, .claude/, .cursor/).
                                  Writes nothing. Exits 0.

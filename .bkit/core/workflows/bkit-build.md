@@ -775,12 +775,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     ```bash
     "{BKIT}" tips --workflow=build
     ```
-    Plain text, not JSON. Hold stdout as `{SETUP_TIPS}`; prints nothing or exits non-zero → `{SETUP_TIPS}` empty.
+    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
 12. Final return: Display `build-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. Append `CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug.`
     <!-- bkit:tracker true start -->
     Append issue link [{ISSUE_ID} {TITLE}]({URL})
     <!-- bkit:tracker true end -->
-    Append `{SETUP_TIPS}` under a `## Setup Tips` heading, unless empty.
+    Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
     Append as last line `Would you like me to explain this in plain English?`
 13. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 

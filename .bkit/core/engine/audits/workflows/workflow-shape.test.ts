@@ -330,8 +330,8 @@ describe("setup tips at the close", () => {
     expect(commandLines(collect, "tips"), name).toEqual([
       expect.stringContaining(`"{BKIT}" tips --workflow=${name}`),
     ]);
-    expect(collect).toContain("`{SETUP_TIPS}`");
+    expect(collect).toContain("`{BKIT_TIPS}`");
     const final = lines.slice(finalIdx, finalIdx + 8).join("\n");
-    expect(final).toContain("Append `{SETUP_TIPS}`");
+    expect(final).toContain("Append `{BKIT_TIPS}`");
   });
 });
