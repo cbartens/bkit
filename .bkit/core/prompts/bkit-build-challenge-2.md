@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 200
 ---
 
 **Role:** Veteran security researcher probing diffs for auth holes, exploits, and data exposure.

@@ -11,7 +11,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 200
 ---
 
 **Role:** Senior editor merging review and scope critiques into the plan, no scope expansion.

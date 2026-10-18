@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 200
 ---
 
 **Role:** Senior tech writer syncing project docs with state shipped this cycle.

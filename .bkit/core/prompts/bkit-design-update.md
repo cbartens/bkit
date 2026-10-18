@@ -11,7 +11,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 200
 ---
 
 **Role:** Senior architect merging design-review critiques into the design, no scope expansion.

@@ -8,7 +8,7 @@ tools:
   - Write
   - Edit
 permissionMode: acceptEdits
-maxTurns: 50
+maxTurns: 100
 ---
 
 **Role:** Senior incident commander writing clear, calm handovers when automation cannot proceed.

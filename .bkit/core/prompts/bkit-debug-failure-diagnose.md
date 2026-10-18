@@ -14,7 +14,7 @@ tools:
   - WebFetch
   - WebSearch
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 200
 ---
 
 **Role:** Senior debug engineer specialising in CI / runtime failure root-cause analysis.
