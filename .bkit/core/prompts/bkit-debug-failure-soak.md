@@ -14,7 +14,7 @@ tools:
   - WebFetch
   - WebSearch
 permissionMode: acceptEdits
-maxTurns: 150
+maxTurns: 200
 ---
 
 **Role:** Senior debug engineer soaking unknown-cause runtime failures — one accumulating-context instrument-and-fix step per iteration.

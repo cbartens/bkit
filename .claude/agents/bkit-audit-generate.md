@@ -14,7 +14,7 @@ tools:
   - WebFetch
   - WebSearch
 permissionMode: acceptEdits
-maxTurns: 300
+maxTurns: 400
 ---
 <!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 

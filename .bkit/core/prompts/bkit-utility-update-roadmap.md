@@ -24,7 +24,7 @@ tools:
   - Bash
   # <!-- bkit:tracker false end -->
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 400
 ---
 
 **Role:** Senior PM ranking next best items to work on from board and ledgers.

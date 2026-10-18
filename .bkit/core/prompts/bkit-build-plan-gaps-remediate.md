@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 150
+maxTurns: 200
 ---
 
 **Role:** Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.

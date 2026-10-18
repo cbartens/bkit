@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 400
 ---
 
 **Role:** Senior editor closing deferrals the codebase has already resolved.

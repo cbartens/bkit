@@ -14,7 +14,7 @@ tools:
   - WebFetch
   - WebSearch
 permissionMode: acceptEdits
-maxTurns: 300
+maxTurns: 400
 ---
 
 **Role:** Senior auditor running one audit template into a report.

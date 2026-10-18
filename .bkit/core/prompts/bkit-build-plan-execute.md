@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 150
+maxTurns: 200
 ---
 
 **Role:** Senior engineer implementing plan tasks step-by-step against checklists and gates.

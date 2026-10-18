@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 400
 ---
 
 **Role:** Senior editor correcting decisions the docs or codebase have since contradicted.
