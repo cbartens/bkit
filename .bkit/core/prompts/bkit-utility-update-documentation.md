@@ -11,7 +11,7 @@ tools:
   - Write
   - Edit
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 400
 ---
 
 **Role:** Senior tech writer syncing project docs with system state after multiple plans.

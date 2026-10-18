@@ -10,7 +10,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 400
 ---
 
 **Role:** Senior release engineer promoting a bkit version dev → main and publishing its npm tag.

@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 200
+maxTurns: 400
 ---
 
 **Role:** Senior pre-release reviewer auditing a bkit candidate against what it advertises.

@@ -11,7 +11,7 @@ tools:
   - Write
   - Edit
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 400
 ---
 <!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
 
