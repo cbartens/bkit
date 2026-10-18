@@ -390,7 +390,7 @@ Every template under `docs/templates/bkit-audit-*.md`:
 | `bkit-audit-database` | Database Audit | Privileges, access coverage, migrations, integrity, capacity, restore. |
 | `bkit-audit-dead-code` | Dead Code Audit | Reachability — code, config, routes, events, schema, assets that look live and never run. |
 | `bkit-audit-deferrals` | Deferrals Triage | Open deferral → done / superseded / tracked / parked / in-scope unfinished. |
-| `bkit-audit-dependencies` | Dependency Triage | Dep-update PRs → one verified batch; supply-chain settings, advisories, licences, EOL. |
+| `bkit-audit-dependencies` | Dependency Triage | Dep-update PRs → one verified batch; supply-chain settings, advisories, licences, EOL, off-manifest CLIs. |
 | `bkit-audit-documentation` | Documentation Audit | Claim matches code, pointer lands, agent-relied fact is written down. |
 | `bkit-audit-duplication` | Duplication Audit | One behaviour, >1 implementation — inline rules, competing mechanisms, restated types, paired decisions, bad merges. |
 | `bkit-audit-failures` | Failures Triage | Open failure → reachable / already fixed / mis-framed / unconfirmed / repeat of a known defect. |
