@@ -363,23 +363,27 @@ describe("gateguard behaviour parity — template copies", () => {
 });
 
 describe("gateguard behaviour parity — docs density advisory", () => {
-  const cases: { file: string; expected: boolean; why: string }[] = [
-    { file: "docs/architecture.md", expected: true, why: "a docs markdown file" },
-    { file: ".bkit/shared/docs/architecture.md", expected: true, why: "nested docs tree" },
-    { file: "Documents/architecture.md", expected: false, why: "segment match, not substring" },
-    {
-      file: "docs/plans/202608/x/design.md",
-      expected: false,
-      why: "plans follow the plan template",
-    },
-    { file: "docs/knowledge.jsonl", expected: false, why: "gated on .md" },
+  type DocsCase = { file: string; why: string };
+  const firing: DocsCase[] = [
+    { file: "docs/architecture.md", why: "a docs markdown file" },
+    { file: ".bkit/shared/docs/architecture.md", why: "nested docs tree" },
+  ];
+  const silent: DocsCase[] = [
+    { file: "Documents/architecture.md", why: "segment match, not substring" },
+    { file: "docs/plans/202608/x/design.md", why: "plans follow the plan template" },
+    { file: "docs/knowledge.jsonl", why: "gated on .md" },
   ];
   for (const host of HOSTS) {
-    for (const c of cases) {
-      it(`${host}: ${c.expected ? "fires" : "does not fire"} on ${c.file} (${c.why})`, async () => {
+    for (const c of firing) {
+      it(`${host}: fires on ${c.file} (${c.why})`, async () => {
         const r = await run(host, { file: c.file, session: newSession() });
-        if (c.expected) expect(r.advisory).toContain("docs/*.md authoring");
-        else expect(r.advisory).not.toContain("docs/*.md authoring");
+        expect(r.advisory).toContain("docs/*.md authoring");
+      });
+    }
+    for (const c of silent) {
+      it(`${host}: does not fire on ${c.file} (${c.why})`, async () => {
+        const r = await run(host, { file: c.file, session: newSession() });
+        expect(r.advisory).not.toContain("docs/*.md authoring");
       });
     }
   }

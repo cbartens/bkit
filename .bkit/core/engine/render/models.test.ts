@@ -36,6 +36,18 @@ function makeSubagentsMd(
   return `# Subagents\n\n## Models\n\n| Prompt | Cursor | Ollama (Local) | Effort | Cursor RO | Role |\n| --- | --- | --- | --- | --- | --- |\n${tableRows}\n`;
 }
 
+/** The frontmatter `name` of every non-empty-named prompt file in .bkit/prompts/. */
+function promptAgentNames(): string[] {
+  return fs
+    .readdirSync(getPromptsRoot())
+    .filter((f) => f.endsWith(".md"))
+    .map((f) =>
+      fs.readFileSync(path.join(getPromptsRoot(), f), "utf-8").match(/^---\r?\n([\s\S]*?)\r?\n---/),
+    )
+    .flatMap((fmMatch) => (fmMatch ? [parseFrontmatter(fmMatch[1]).get("name") ?? ""] : []))
+    .filter((name) => name !== "");
+}
+
 // ---------------------------------------------------------------------------
 // parseModelLookup — 42 rows, no missing names
 // ---------------------------------------------------------------------------
@@ -53,17 +65,9 @@ describe("parseModelLookup", () => {
 
   it("all .bkit/prompts/ files have a lookup row", () => {
     const lookup = parseModelLookup(path.join(getBkitDocsRoot(), "prompts.md"));
-    const agentFiles = fs.readdirSync(getPromptsRoot()).filter((f) => f.endsWith(".md"));
-    const missingNames: string[] = [];
-    for (const f of agentFiles) {
-      const content = fs.readFileSync(path.join(getPromptsRoot(), f), "utf-8");
-      const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-      if (!fmMatch) continue;
-      const parsed = parseFrontmatter(fmMatch[1]);
-      const name = parsed.get("name") ?? "";
-      if (name && !lookup.has(name)) missingNames.push(name);
-    }
-    expect(missingNames).toEqual([]);
+    const names = promptAgentNames();
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.filter((name) => !lookup.has(name))).toEqual([]);
   });
 
   it("parses model lookup from inline table string", () => {
@@ -165,17 +169,9 @@ describe("buildOpencodeModelLookup — default column reader", () => {
       path.join(getBkitDocsRoot(), "prompts.md"),
       "opencode-zen",
     );
-    const agentFiles = fs.readdirSync(getPromptsRoot()).filter((f) => f.endsWith(".md"));
-    const missingNames: string[] = [];
-    for (const f of agentFiles) {
-      const content = fs.readFileSync(path.join(getPromptsRoot(), f), "utf-8");
-      const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-      if (!fmMatch) continue;
-      const parsed = parseFrontmatter(fmMatch[1]);
-      const name = parsed.get("name") ?? "";
-      if (name && !lookup.has(name)) missingNames.push(name);
-    }
-    expect(missingNames).toEqual([]);
+    const names = promptAgentNames();
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.filter((name) => !lookup.has(name))).toEqual([]);
   });
 
   it("count matches parseModelLookup count (same catalog)", () => {
@@ -429,11 +425,10 @@ describe("parseModelLookupForColumn regression — header-addressed", () => {
       "opencode-zen",
     );
     // At least some values must differ (opencode uses ollama/*, cursor uses various)
-    let diffCount = 0;
-    for (const [name] of cursorLookup) {
-      if (cursorLookup.get(name) !== opencodeLookup.get(name)) diffCount++;
-    }
-    expect(diffCount).toBeGreaterThan(0);
+    const differing = [...cursorLookup.keys()].filter(
+      (name) => cursorLookup.get(name) !== opencodeLookup.get(name),
+    );
+    expect(differing.length).toBeGreaterThan(0);
   });
 });
 

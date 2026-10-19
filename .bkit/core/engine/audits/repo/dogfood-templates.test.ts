@@ -585,21 +585,39 @@ function span(text: string, from: string, to: string | null, label: string): [nu
   return [start, end];
 }
 
-function apply(template: string, copy: string, edits: Edit[], rel: string): string {
+/** A failed precondition of an edit, recorded rather than thrown so the test asserts them all at once. */
+function mismatch(
+  problems: string[],
+  label: string,
+  what: string,
+  actual: number,
+  expected: number,
+): void {
+  if (actual !== expected) problems.push(`${label}: ${what} — expected ${expected}, got ${actual}`);
+}
+
+/** The template with every edit applied in order, plus each edit precondition that did not hold. */
+function apply(
+  template: string,
+  copy: string,
+  edits: Edit[],
+  rel: string,
+): { text: string; problems: string[] } {
   let text = template;
+  const problems: string[] = [];
   for (const edit of edits) {
     const label = `${rel} — ${edit.what}`;
     if ("fill" in edit) {
-      expect(countOf(text, edit.fill), `${label}: occurrences`).toBe(edit.count ?? 1);
+      mismatch(problems, label, "occurrences", countOf(text, edit.fill), edit.count ?? 1);
       text = text.split(edit.fill).join(edit.with);
     } else if ("dropStep" in edit) {
       const name = edit.dropStep.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const step = new RegExp(`^      - name: ${name}\\n(?:(?: {8,}.*|)\\n)*`, "gm");
-      expect(text.match(step)?.length ?? 0, `${label}: steps`).toBe(edit.count ?? 1);
+      mismatch(problems, label, "steps", text.match(step)?.length ?? 0, edit.count ?? 1);
       text = text.replace(step, "");
     } else if ("dropStub" in edit) {
       const stub = new RegExp(`^[ \\t]*# bkit-stub:${edit.dropStub} —.*\\n(?:.+\\n)*\\n`, "gm");
-      expect(text.match(stub)?.length ?? 0, `${label}: stub blocks`).toBe(1);
+      mismatch(problems, label, "stub blocks", text.match(stub)?.length ?? 0, 1);
       text = text.replace(stub, "");
     } else {
       const [ts, te] = span(text, edit.region.template[0], edit.region.template[1], label);
@@ -608,7 +626,7 @@ function apply(template: string, copy: string, edits: Edit[], rel: string): stri
       text = text.slice(0, ts) + copy.slice(cs, ce) + text.slice(te);
     }
   }
-  return text;
+  return { text, problems };
 }
 
 function templatePaths(): string[] {
@@ -619,6 +637,15 @@ function templatePaths(): string[] {
     .sort();
 }
 
+/** The `ADOPTED` entries with one status, narrowed to that status's shape. */
+function entriesWith<S extends Entry["status"]>(
+  status: S,
+): Array<[string, Extract<Entry, { status: S }>]> {
+  return Object.entries(ADOPTED).filter(([, e]) => e.status === status) as Array<
+    [string, Extract<Entry, { status: S }>]
+  >;
+}
+
 describe("this repo adopts its own templates", () => {
   const repo = getPkgRoot();
   const templatesRoot = getTemplatesRoot();
@@ -627,16 +654,27 @@ describe("this repo adopts its own templates", () => {
     expect(Object.keys(ADOPTED).sort()).toEqual(templatePaths());
   });
 
-  it.each(Object.entries(ADOPTED))("%s", (rel, entry) => {
-    const copyPath = path.join(repo, rel);
-    if (entry.status === "not-adopted") {
-      expect(fs.existsSync(copyPath), `${rel}: ${entry.what}`).toBe(false);
-      return;
-    }
+  const copyPathOf = (rel: string) => path.join(repo, rel);
+
+  it.each(entriesWith("not-adopted"))("%s", (rel, entry) => {
+    expect(fs.existsSync(copyPathOf(rel)), `${rel}: ${entry.what}`).toBe(false);
+  });
+
+  // Generated and distinct files only have to exist; their content is not a copy of the template.
+  const existenceOnly = [...entriesWith("generated"), ...entriesWith("distinct")].map(
+    ([rel]) => rel,
+  );
+  it.each(existenceOnly)("%s", (rel) => {
+    expect(fs.existsSync(copyPathOf(rel)), rel).toBe(true);
+  });
+
+  it.each(entriesWith("adopted"))("%s", (rel, entry) => {
+    const copyPath = copyPathOf(rel);
     expect(fs.existsSync(copyPath), rel).toBe(true);
-    if (entry.status === "generated" || entry.status === "distinct") return;
     const template = fs.readFileSync(path.join(templatesRoot, rel), "utf-8");
     const copy = fs.readFileSync(copyPath, "utf-8");
-    expect(copy).toBe(apply(template, copy, entry.edits, rel));
+    const applied = apply(template, copy, entry.edits, rel);
+    expect(applied.problems).toEqual([]);
+    expect(copy).toBe(applied.text);
   });
 });

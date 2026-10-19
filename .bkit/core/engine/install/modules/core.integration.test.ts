@@ -190,10 +190,14 @@ describe("core package.json scripts — bkit:gate:* names, add-if-missing", () =
     return JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
   }
 
+  function readScripts(): Record<string, string> {
+    return readPkg().scripts ?? {};
+  }
+
   it("an existing gate value is never touched; missing gate names are added", () => {
     writePkg({ scripts: { "bkit:gate:static": "ruff check .", "bkit:gate:format": "true" } });
     dispatchModules(new Set(["core"]), makeCtx({}));
-    const scripts = readPkg().scripts ?? {};
+    const scripts = readScripts();
     expect(scripts["bkit:gate:static"]).toBe("ruff check .");
     expect(scripts["bkit:gate:format"]).toBe("true");
     for (const name of Object.keys(BKIT_GATE_SCRIPTS)) {
@@ -223,7 +227,7 @@ describe("core package.json scripts — bkit:gate:* names, add-if-missing", () =
     // so a declared value — even a retired one — is the consumer's and is never rewritten.
     writePkg({ scripts: { "slop:delta": "bash scripts/slop/bkit-slop-delta.sh" } });
     dispatchModules(new Set(["core"]), makeCtx({}));
-    const scripts = readPkg().scripts ?? {};
+    const scripts = readScripts();
     expect(scripts["slop:delta"]).toBe("bash scripts/slop/bkit-slop-delta.sh");
     expect(scripts.typecheck).toBeUndefined();
     expect(scripts["lint:prose"]).toBeUndefined();
@@ -303,7 +307,7 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
       runCoreModule(ctx);
       return ctx.advisories
         .map((f) => f.id)
-        .filter((id) => id.startsWith("gate-") || id === "test-file-script-missing");
+        .filter((id) => /^(gate-|test-file-script-missing$)/.test(id));
     };
     const check = idsFor(true);
     expect(check).toEqual(
@@ -493,6 +497,11 @@ describe(".bkit/version canonicalHashes — install prunes entries for absent pa
 // out-of-block content.
 // ---------------------------------------------------------------------------
 
+/** The file's text, or "" when it does not exist. */
+function readIfPresent(file: string): string {
+  return fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+}
+
 describe("bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to consumers", () => {
   it("first install matches the template (no out-of-block content from bkit's source rules.md)", () => {
     const ctx = makeCtx();
@@ -503,8 +512,7 @@ describe("bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to
 
     // Template content (what consumers SHOULD get) lives in the package's
     // .bkit/core/.agents/rules.md — resolve from the running package root.
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
+    const pkgRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
     const templatePath = path.join(pkgRoot, ".bkit", "core", ".agents", "rules.md");
     const template = applyTokens(fs.readFileSync(templatePath, "utf-8"), ctx.tokens);
 
@@ -528,8 +536,8 @@ describe("bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to
     flushPostDispatch(ctx);
 
     const frictionPath = path.join(tmpDir, ".bkit", "friction.md");
-    if (!fs.existsSync(frictionPath)) return; // friction.md is optional in some module sets
-    const consumerFriction = fs.readFileSync(frictionPath, "utf-8");
+    // friction.md is optional in some module sets; an absent file carries no entries.
+    const consumerFriction = readIfPresent(frictionPath);
 
     // bkit-source friction.md has dated incident entries outside bkit:end.
     // Heading shape: `## <topic> (YYYY-MM-DD)`. None of those should land here.
@@ -645,7 +653,7 @@ describe("migrateShortcutsToLite (via runBkitDocs)", () => {
     const dry = run(true);
     expect(fs.readFileSync(OLD, "utf-8")).toContain(OWN);
     expect(fs.existsSync(LITE)).toBe(false);
-    expect(paths(dry).filter((p) => p === LITE || p === OLD)).toEqual([LITE, LITE, OLD]);
+    expect(paths(dry).filter((p) => [LITE, OLD].includes(p))).toEqual([LITE, LITE, OLD]);
     const real = run();
     expect(paths(dry)).toEqual(paths(real));
   });

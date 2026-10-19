@@ -29,21 +29,20 @@ describe("detectInstalledHostModules — installed host detection", () => {
     expect([...detectInstalledHostModules(cwd)]).toEqual(["antigravity"]);
   });
 
-  it.each([
-    ["hooks.json", "file"],
-    ["agents", "dir"],
-    ["skills", "dir"],
-    ["hooks", "dir"],
-  ])("detects antigravity from %s when the plugin manifest is gone", (rel, kind) => {
-    const abs = path.join(cwd, ".agents", "plugins", "bkit", rel);
-    if (kind === "dir") {
-      fs.mkdirSync(abs, { recursive: true });
-    } else {
-      fs.mkdirSync(path.dirname(abs), { recursive: true });
-      fs.writeFileSync(abs, "{}");
-    }
+  it("detects antigravity from hooks.json when the plugin manifest is gone", () => {
+    const abs = path.join(cwd, ".agents", "plugins", "bkit", "hooks.json");
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, "{}");
     expect([...detectInstalledHostModules(cwd)]).toEqual(["antigravity"]);
   });
+
+  it.each(["agents", "skills", "hooks"])(
+    "detects antigravity from the %s dir when the plugin manifest is gone",
+    (rel) => {
+      fs.mkdirSync(path.join(cwd, ".agents", "plugins", "bkit", rel), { recursive: true });
+      expect([...detectInstalledHostModules(cwd)]).toEqual(["antigravity"]);
+    },
+  );
 
   it("does not detect antigravity from a consumer plugin beside bkit's", () => {
     fs.mkdirSync(path.join(cwd, ".agents", "plugins", "other", "agents"), { recursive: true });

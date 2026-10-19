@@ -454,16 +454,14 @@ describe("Scenario: .bkit/.env.example (owned) and .envrc (template)", () => {
     const pkgRoot = getPkgRoot();
     const gitignoreTemplate = path.join(pkgRoot, ".bkit", "shared", "gitignore");
     const gitignoreDst = path.join(tmpDir, ".gitignore");
-    if (fs.existsSync(gitignoreTemplate)) {
-      fs.writeFileSync(gitignoreDst, fs.readFileSync(gitignoreTemplate, "utf-8"), "utf-8");
-      const content = fs.readFileSync(gitignoreDst, "utf-8");
-      // Should contain .bkit/.env inside the bkit marker block
-      expect(content).toContain(".bkit/.env");
-      // The entry must be inside the bkit block
-      const blockMatch = content.match(/# <!-- bkit:start -->([\s\S]*?)# <!-- bkit:end -->/);
-      expect(blockMatch).not.toBeNull();
-      expect(blockMatch![1]).toContain(".bkit/.env");
-    }
+    fs.writeFileSync(gitignoreDst, fs.readFileSync(gitignoreTemplate, "utf-8"), "utf-8");
+    const content = fs.readFileSync(gitignoreDst, "utf-8");
+    // Should contain .bkit/.env inside the bkit marker block
+    expect(content).toContain(".bkit/.env");
+    // The entry must be inside the bkit block
+    const blockMatch = content.match(/# <!-- bkit:start -->([\s\S]*?)# <!-- bkit:end -->/);
+    expect(blockMatch).not.toBeNull();
+    expect(blockMatch![1]).toContain(".bkit/.env");
   });
 
   it(".gitignore marker block .bkit/.env entry unchanged on second install", () => {
@@ -478,17 +476,15 @@ describe("Scenario: .bkit/.env.example (owned) and .envrc (template)", () => {
     const pkgRoot = getPkgRoot();
     const gitignoreTemplate = path.join(pkgRoot, ".bkit", "shared", "gitignore");
     const gitignoreDst = path.join(tmpDir, ".gitignore");
-    if (fs.existsSync(gitignoreTemplate)) {
-      // First install
-      fs.writeFileSync(gitignoreDst, fs.readFileSync(gitignoreTemplate, "utf-8"), "utf-8");
-      const after1 = fs.readFileSync(gitignoreDst, "utf-8");
+    // First install
+    fs.writeFileSync(gitignoreDst, fs.readFileSync(gitignoreTemplate, "utf-8"), "utf-8");
+    const after1 = fs.readFileSync(gitignoreDst, "utf-8");
 
-      // Second install (re-copy template = same result since content is identical)
-      fs.writeFileSync(gitignoreDst, fs.readFileSync(gitignoreTemplate, "utf-8"), "utf-8");
-      const after2 = fs.readFileSync(gitignoreDst, "utf-8");
+    // Second install (re-copy template = same result since content is identical)
+    fs.writeFileSync(gitignoreDst, fs.readFileSync(gitignoreTemplate, "utf-8"), "utf-8");
+    const after2 = fs.readFileSync(gitignoreDst, "utf-8");
 
-      expect(after2).toBe(after1); // idempotent
-      expect(after2).toContain(".bkit/.env");
-    }
+    expect(after2).toBe(after1); // idempotent
+    expect(after2).toContain(".bkit/.env");
   });
 });

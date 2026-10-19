@@ -180,6 +180,113 @@ export function gateDeclarations(): GateDecl[] {
   return out;
 }
 
+/** All matches of a global regex in `text`, or an empty list. */
+function matches(text: string, re: RegExp): string[] {
+  return text.match(re) ?? [];
+}
+
+/** Gate checklist lines whose union is written with spaced pipes or slashes. */
+function spacedUnionLines(): string[] {
+  const bad: string[] = [];
+  for (const rel of listMd(WORKFLOW_DIR)) {
+    read(rel)
+      .split("\n")
+      .forEach((line, i) => {
+        const isGate = /`[A-Z][A-Z0-9_]*(?:_VERDICT|_MODE)`\s+in\s+/.test(line);
+        const spaced = /`[A-Z][A-Z0-9_]*(?:\s+[|/]\s+[A-Z][A-Z0-9_]*)+`/.test(line);
+        if (isGate && spaced) bad.push(`${rel}:${i + 1}: ${line.trim()}`);
+      });
+  }
+  return bad;
+}
+
+/** Three-member PASS/CONCERNS/FAIL unions written in any order but the canonical one. */
+function nonCanonicalVerdictUnions(): string[] {
+  const bad: string[] = [];
+  for (const rel of [...listMd(WORKFLOW_DIR), ...listMd(PROMPT_DIR)]) {
+    read(rel)
+      .split("\n")
+      .forEach((line, i) => {
+        for (const m of line.matchAll(/`([A-Z][A-Z0-9_|]*)`/g)) {
+          const set = members(m[1]);
+          const isTriple = set.size === 3 && ["PASS", "CONCERNS", "FAIL"].every((v) => set.has(v));
+          if (isTriple && m[1] !== "PASS|CONCERNS|FAIL") bad.push(`${rel}:${i + 1}: \`${m[1]}\``);
+        }
+      });
+  }
+  return bad;
+}
+
+/** Verdict variables whose word order is inverted against their `*_ATTEMPT` counter. */
+function invertedVerdictNames(): string[] {
+  const text = listMd(WORKFLOW_DIR).map(read).join("\n");
+  const verdicts = new Set(matches(text, /\b[A-Z][A-Z0-9_]*_VERDICT\b/g));
+  const counters = new Set(
+    matches(text, /\b[A-Z][A-Z0-9_]*_ATTEMPT\b/g).map((c) => c.replace(/^MAX_/, "")),
+  );
+  const bad: string[] = [];
+  for (const v of verdicts) {
+    const stem = v.replace(/_VERDICT$/, "");
+    const reversed = stem.split("_").reverse().join("_");
+    const isMultiWord = stem.split("_").length >= 2;
+    const inverted = counters.has(`${reversed}_ATTEMPT`) && !counters.has(`${stem}_ATTEMPT`);
+    if (isMultiWord && inverted) {
+      bad.push(
+        `${v} is inverted against counter ${reversed}_ATTEMPT — rename to ${reversed}_VERDICT`,
+      );
+    }
+  }
+  return bad;
+}
+
+/** Pairs of verdict variables in one workflow that are a single edit apart. */
+function nearIdenticalVerdictNames(): string[] {
+  const bad: string[] = [];
+  for (const rel of listMd(WORKFLOW_DIR)) {
+    const list = [...new Set(matches(read(rel), /\b[A-Z][A-Z0-9_]*_VERDICT\b/g))].sort();
+    for (let i = 0; i < list.length; i += 1) {
+      for (let j = i + 1; j < list.length; j += 1) {
+        const close = editDistance(list[i], list[j]) <= 1;
+        if (close) bad.push(`${rel}: ${list[i]} and ${list[j]} differ by one edit`);
+      }
+    }
+  }
+  return bad;
+}
+
+/** Multi-word verdict names that have a conflict-free shorter spelling. */
+function shortenableVerdictNames(): string[] {
+  const all = new Set<string>();
+  const files = new Map<string, Set<string>>();
+  for (const rel of listMd(WORKFLOW_DIR)) {
+    const found = new Set(matches(read(rel), /\b[A-Z][A-Z0-9_]*_VERDICT\b/g));
+    files.set(rel, found);
+    found.forEach((v) => all.add(v));
+  }
+  const shortenable: string[] = [];
+  for (const v of all) {
+    const parts = v.replace(/_VERDICT$/, "").split("_");
+    if (parts.length < 2) continue;
+    for (let i = 0; i < parts.length; i += 1) {
+      const cand = `${parts.filter((_, k) => k !== i).join("_")}_VERDICT`;
+      if (all.has(cand)) continue;
+      // claimed by a sibling multi-word name that shares a file?
+      const siblings = [...all].filter((o) => {
+        const op = o.replace(/_VERDICT$/, "").split("_");
+        return o !== v && op.length >= 2
+          ? op.some((_, k) => `${op.filter((_, q) => q !== k).join("_")}_VERDICT` === cand)
+          : false;
+      });
+      const shares = siblings.some((s) =>
+        [...files.values()].some((set) => set.has(s) && set.has(v)),
+      );
+      const near = [...all].some((o) => o !== v && editDistance(o, cand) <= 1);
+      if (!shares && !near) shortenable.push(`${v} -> ${cand}`);
+    }
+  }
+  return shortenable;
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -225,9 +332,22 @@ describe("verdict vocabulary: held verdicts are compared only against emittable 
     });
   }
 
-  for (const gate of gateDeclarations()) {
+  const gates = gateDeclarations();
+  const isExempt = (g: GateDecl) => EXEMPT_COMPUTED.has(g.variable);
+
+  // A computed variable has no producing agent to compare against; its gate must
+  // still name a real choice between two or more values.
+  for (const gate of gates.filter(isExempt)) {
     it(`${gate.workflow} — gate \`${gate.variable}\` in \`${gate.union}\``, () => {
-      if (EXEMPT_COMPUTED.has(gate.variable)) return;
+      expect(
+        members(gate.union).size,
+        `${gate.variable} gate lists fewer than two values: ${gate.union}`,
+      ).toBeGreaterThan(1);
+    });
+  }
+
+  for (const gate of gates.filter((g) => !isExempt(g))) {
+    it(`${gate.workflow} — gate \`${gate.variable}\` in \`${gate.union}\``, () => {
       const source = held.get(gate.variable);
       expect(
         source?.agent,
@@ -246,35 +366,11 @@ describe("verdict vocabulary: held verdicts are compared only against emittable 
 
 describe("verdict vocabulary: enum unions are written one way", () => {
   it("gate unions use tight pipes, never spaced pipes or slashes", () => {
-    const bad: string[] = [];
-    for (const rel of listMd(WORKFLOW_DIR)) {
-      read(rel)
-        .split("\n")
-        .forEach((line, i) => {
-          if (!/`[A-Z][A-Z0-9_]*(?:_VERDICT|_MODE)`\s+in\s+/.test(line)) return;
-          if (/`[A-Z][A-Z0-9_]*(?:\s+[|/]\s+[A-Z][A-Z0-9_]*)+`/.test(line)) {
-            bad.push(`${rel}:${i + 1}: ${line.trim()}`);
-          }
-        });
-    }
-    expect(bad).toEqual([]);
+    expect(spacedUnionLines()).toEqual([]);
   });
 
   it("canonical verdict order is PASS|CONCERNS|FAIL wherever all three appear", () => {
-    const bad: string[] = [];
-    for (const rel of [...listMd(WORKFLOW_DIR), ...listMd(PROMPT_DIR)]) {
-      read(rel)
-        .split("\n")
-        .forEach((line, i) => {
-          for (const m of line.matchAll(/`([A-Z][A-Z0-9_|]*)`/g)) {
-            const set = members(m[1]);
-            if (set.size === 3 && set.has("PASS") && set.has("CONCERNS") && set.has("FAIL")) {
-              if (m[1] !== "PASS|CONCERNS|FAIL") bad.push(`${rel}:${i + 1}: \`${m[1]}\``);
-            }
-          }
-        });
-    }
-    expect(bad).toEqual([]);
+    expect(nonCanonicalVerdictUnions()).toEqual([]);
   });
 });
 
@@ -287,23 +383,7 @@ describe("verdict vocabulary: variable names match their step", () => {
    * inverted. Where a counter exists for the same step, the two must agree.
    */
   it("a *_VERDICT and its matching *_ATTEMPT counter use the same word order", () => {
-    const text = listMd(WORKFLOW_DIR).map(read).join("\n");
-    const verdicts = new Set(text.match(/\b[A-Z][A-Z0-9_]*_VERDICT\b/g) ?? []);
-    const counters = new Set(
-      (text.match(/\b[A-Z][A-Z0-9_]*_ATTEMPT\b/g) ?? []).map((c) => c.replace(/^MAX_/, "")),
-    );
-    const bad: string[] = [];
-    for (const v of verdicts) {
-      const stem = v.replace(/_VERDICT$/, "");
-      if (stem.split("_").length < 2) continue;
-      const reversed = stem.split("_").reverse().join("_");
-      if (counters.has(`${reversed}_ATTEMPT`) && !counters.has(`${stem}_ATTEMPT`)) {
-        bad.push(
-          `${v} is inverted against counter ${reversed}_ATTEMPT — rename to ${reversed}_VERDICT`,
-        );
-      }
-    }
-    expect(bad).toEqual([]);
+    expect(invertedVerdictNames()).toEqual([]);
   });
 
   /**
@@ -312,22 +392,7 @@ describe("verdict vocabulary: variable names match their step", () => {
    * `TEST_VERDICT` in `bkit-build.md`).
    */
   it("no two verdict variables are within one edit of each other", () => {
-    const perFile = new Map<string, Set<string>>();
-    for (const rel of listMd(WORKFLOW_DIR)) {
-      perFile.set(rel, new Set(read(rel).match(/\b[A-Z][A-Z0-9_]*_VERDICT\b/g) ?? []));
-    }
-    const bad: string[] = [];
-    for (const [rel, names] of perFile) {
-      const list = [...names].sort();
-      for (let i = 0; i < list.length; i += 1) {
-        for (let j = i + 1; j < list.length; j += 1) {
-          if (editDistance(list[i], list[j]) <= 1) {
-            bad.push(`${rel}: ${list[i]} and ${list[j]} differ by one edit`);
-          }
-        }
-      }
-    }
-    expect(bad).toEqual([]);
+    expect(nearIdenticalVerdictNames()).toEqual([]);
   });
 
   /**
@@ -336,33 +401,7 @@ describe("verdict vocabulary: variable names match their step", () => {
    * sibling, or lands within one edit of a live name.
    */
   it("every multi-word verdict name has no conflict-free shortening", () => {
-    const all = new Set<string>();
-    const files = new Map<string, Set<string>>();
-    for (const rel of listMd(WORKFLOW_DIR)) {
-      const found = new Set(read(rel).match(/\b[A-Z][A-Z0-9_]*_VERDICT\b/g) ?? []);
-      files.set(rel, found);
-      found.forEach((v) => all.add(v));
-    }
-    const shortenable: string[] = [];
-    for (const v of all) {
-      const parts = v.replace(/_VERDICT$/, "").split("_");
-      if (parts.length < 2) continue;
-      for (let i = 0; i < parts.length; i += 1) {
-        const cand = `${parts.filter((_, k) => k !== i).join("_")}_VERDICT`;
-        if (all.has(cand)) continue;
-        // claimed by a sibling multi-word name that shares a file?
-        const siblings = [...all].filter((o) => {
-          const op = o.replace(/_VERDICT$/, "").split("_");
-          if (o === v || op.length < 2) return false;
-          return op.some((_, k) => `${op.filter((_, q) => q !== k).join("_")}_VERDICT` === cand);
-        });
-        const shares = siblings.some((s) =>
-          [...files.values()].some((set) => set.has(s) && set.has(v)),
-        );
-        const near = [...all].some((o) => o !== v && editDistance(o, cand) <= 1);
-        if (!shares && !near) shortenable.push(`${v} -> ${cand}`);
-      }
-    }
+    const shortenable = shortenableVerdictNames();
     expect(shortenable, `these names can now be shortened: ${shortenable.join(", ")}`).toEqual([]);
   });
 

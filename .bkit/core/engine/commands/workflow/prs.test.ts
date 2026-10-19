@@ -94,6 +94,9 @@ const sh = (cwd: string, ...args: string[]) =>
   });
 const git = (cwd: string, ...args: string[]) => sh(cwd, ...args).stdout.trim();
 
+/** The `--issue=` flag for an issue number, or no flag when there is none. */
+const issueArgs = (issue: string | undefined) => (issue === undefined ? [] : [`--issue=${issue}`]);
+
 function repo(branch = "feat/12-x", bkit?: Record<string, unknown>) {
   const cwd = tmp("bkit-prs-");
   git(cwd, "init", "-q", "-b", branch);
@@ -183,13 +186,7 @@ describe("bkit prs open", () => {
     ["none", "-x", undefined],
   ])("refuses a %s marker with fid %j issue %j (exit 2)", async (tracker, fid, issue) => {
     const cwd = repo("feat/12-x", { issueTracker: tracker });
-    const r = await run(cwd, [
-      "prs",
-      "open",
-      `--fid=${fid}`,
-      "--title=t",
-      ...(issue === undefined ? [] : [`--issue=${issue}`]),
-    ]);
+    const r = await run(cwd, ["prs", "open", `--fid=${fid}`, "--title=t", ...issueArgs(issue)]);
     expect(r.code).toBe(2);
     expect(gh.calls()).toEqual([]);
   });

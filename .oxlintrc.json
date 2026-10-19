@@ -9,7 +9,7 @@
       "files": ["**/*.test.ts"],
       "plugins": ["vitest", "typescript"],
       "rules": {
-        "vitest/expect-expect": "error",
+        "vitest/expect-expect": ["error", { "assertFunctionNames": ["expect", "expectExit"] }],
         "vitest/no-conditional-in-test": "error",
         "vitest/no-conditional-expect": "error",
         "vitest/valid-expect": ["error", { "maxArgs": 2 }],

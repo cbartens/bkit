@@ -56,6 +56,11 @@ interface Job {
   needs?: string | string[];
 }
 
+/** The jobs a job `needs:`, as a list whether the YAML wrote a string, a list or nothing. */
+function needsOf(job: Job): string[] {
+  return ([] as string[]).concat(job.needs ?? []);
+}
+
 describe("template bkit-ci.yml, filled in", () => {
   it("parses as YAML, with the capstone needing every other job", () => {
     const doc = parseYaml(filledTemplate());
@@ -64,7 +69,7 @@ describe("template bkit-ci.yml, filled in", () => {
     const capstoneId = readBkitConfig(tmp()).capstoneJob;
     const capstone = jobs[capstoneId];
     expect(capstone, `no ${capstoneId} job`).toBeDefined();
-    const needs = ([] as string[]).concat(capstone!.needs ?? []);
+    const needs = needsOf(capstone!);
     expect(needs.sort()).toEqual(
       Object.keys(jobs)
         .filter((id) => id !== capstoneId)
@@ -104,15 +109,17 @@ describe("template bkit-tests-static job matches the bkit:gate:static local gate
       }),
     );
 
+  /** A gate part with neither a named exception nor a `run: pnpm <part>` step. */
+  const isUncovered = (part: string, runs: string[]): boolean =>
+    !(part in GATE_PARTS_ABSENT_FROM_CI) && !runsScript(runs, part);
+
   it("reads the gate as a chain of pnpm scripts", () => {
     expect(gateParts).toEqual(["typecheck", "lint", "format:check", "lint:prose", "slop:delta"]);
   });
 
   it("runs every part of the local static gate as a step, bar the named exceptions", () => {
     const runs = staticJobRuns();
-    const missing = gateParts.filter(
-      (part) => !(part in GATE_PARTS_ABSENT_FROM_CI) && !runsScript(runs, part),
-    );
+    const missing = gateParts.filter((part) => isUncovered(part, runs));
     expect(
       missing,
       `bkit-tests-static has no 'run: pnpm <script>' step for: ${missing.join(", ")}`,
@@ -186,6 +193,9 @@ describe("ship gate against the template's job names", () => {
     return { code, json: JSON.parse(out.join("")) as Record<string, unknown>, err: err.join("") };
   }
 
+  const capstoneFails = (name: string): string =>
+    name === "bkit-tests-check" ? "failure" : "success";
+
   it("finds the capstone among the template's jobs and passes when it is green", async () => {
     fixture("template-ci-green", () => "success");
     const r = await gate("template-ci-green");
@@ -194,7 +204,7 @@ describe("ship gate against the template's job names", () => {
   });
 
   it("refuses when the template's capstone job fails", async () => {
-    fixture("template-ci-red", (name) => (name === "bkit-tests-check" ? "failure" : "success"));
+    fixture("template-ci-red", capstoneFails);
     const r = await gate("template-ci-red");
     expect(r.code).toBe(12);
     expect(r.err).toContain("capstone 'bkit-tests-check' concluded 'failure'");

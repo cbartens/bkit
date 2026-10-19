@@ -15,6 +15,12 @@ const bkitInstallPath = path.resolve(__dirname, "../../cli.ts");
 let tmpDir: string;
 let originalCwd: string;
 
+/** Put an env var back to its saved value; undefined means it was unset. */
+function restoreEnv(key: string, saved: string | undefined): void {
+  if (saved === undefined) delete process.env[key];
+  else process.env[key] = saved;
+}
+
 beforeEach(() => {
   originalCwd = process.cwd();
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-doctor-integration-"));
@@ -255,8 +261,7 @@ describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
   });
 
   it("no drift advisory when consumer is fully contained", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
+    const pkgRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
     const templateSettings = path.join(pkgRoot, ".bkit", "shared", ".claude", "settings.json");
     const templateHooks = path.join(pkgRoot, ".bkit", "shared", ".cursor", "hooks.json");
 
@@ -352,8 +357,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
       const f = detectDirenvNotAllowed(tmpDir);
       expect(f).toBeNull();
     } finally {
-      if (originalCI === undefined) delete process.env.CI;
-      else process.env.CI = originalCI;
+      restoreEnv("CI", originalCI);
     }
   });
 
@@ -365,8 +369,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
       const f = detectDirenvMissing(tmpDir);
       expect(f).toBeNull();
     } finally {
-      if (originalCI === undefined) delete process.env.CI;
-      else process.env.CI = originalCI;
+      restoreEnv("CI", originalCI);
     }
   });
 
@@ -455,7 +458,7 @@ describe("bkit status — multi-provider (Task 5 / #281)", () => {
     // Second provider is listed without (active)
     expect(result.stdout).toContain("ollama");
     // (active) appears exactly once (only on the active provider)
-    const activeMatches = (result.stdout.match(/\(active\)/g) ?? []).length;
+    const activeMatches = [...result.stdout.matchAll(/\(active\)/g)].length;
     expect(activeMatches).toBe(1);
   });
 

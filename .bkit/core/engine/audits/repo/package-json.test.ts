@@ -16,6 +16,9 @@ describe("package.json manifest invariants (BAR-138)", () => {
 
   pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
 
+  /** The manifest's `files` array ([] when absent). */
+  const manifestFiles = (): string[] => pkg.files ?? [];
+
   it("private is false (package must be publishable)", () => {
     expect(pkg.private).toBe(false);
   });
@@ -41,7 +44,7 @@ describe("package.json manifest invariants (BAR-138)", () => {
   // Tarball exclusions live in `.bkit/core/engine/.npmignore`; the real-packer
   // check is release-workflow.integration.test.ts.
   it("files array carries no `!` negations (pnpm pack ignores them)", () => {
-    const filesArray: string[] = pkg.files ?? [];
+    const filesArray = manifestFiles();
     expect(filesArray.filter((f: string) => f.startsWith("!"))).toEqual([]);
   });
 });

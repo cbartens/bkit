@@ -60,6 +60,13 @@ function readFile(relPath: string): string {
   return fs.readFileSync(path.join(tmpDir, relPath), "utf-8");
 }
 
+/** The docs/*.md files the shared templates ship; capabilities.md is a template bkit does not install. */
+function shippedDocNames(): string[] {
+  return fs
+    .readdirSync(path.join(getSharedRoot(), "docs"))
+    .filter((f) => f.endsWith(".md") && f !== "capabilities.md");
+}
+
 function writeBkitVersionFile(v: BkitVersion): void {
   const versionFilePath = path.join(tmpDir, ".bkit", "version");
   fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
@@ -258,9 +265,7 @@ describe("buildDecisionTable — markered-text format", () => {
     });
 
     it("covers every docs/*.md the templates ship", () => {
-      const shipped = fs
-        .readdirSync(path.join(getSharedRoot(), "docs"))
-        .filter((f) => f.endsWith(".md") && f !== "capabilities.md");
+      const shipped = shippedDocNames();
       expect(shipped.length).toBeGreaterThan(0);
       for (const f of shipped) writeFile(path.join("docs", f), block);
       const table = buildDecisionTable(["core"], makeCtx());

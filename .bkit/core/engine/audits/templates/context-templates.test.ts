@@ -23,6 +23,8 @@ const files = fs
   .filter((f) => f.endsWith(".md"))
   .sort();
 
+const SAFE_PATH = process.env.PATH ?? "/usr/bin:/bin";
+
 type Block = { kind: "start" | "provision"; name: string; body: string };
 
 /** Fetch and provision blocks in file order, each with its fenced bash body. */
@@ -108,7 +110,7 @@ describe(".bkit/templates/context/", () => {
       encoding: "utf-8",
       timeout: 30_000,
       env: {
-        PATH: process.env.PATH ?? "/usr/bin:/bin",
+        PATH: SAFE_PATH,
         HOME: home,
         GH_CONFIG_DIR: path.join(home, "gh"),
         CLOUDSDK_CONFIG: path.join(home, "gcloud"),

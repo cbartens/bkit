@@ -137,7 +137,8 @@ describe("fixture gh stub", () => {
     const pages = stub(["api", url, "--paginate"]).stdout.trim().split("\n");
     expect(pages).toHaveLength(2);
     const slurped = JSON.parse(stub(["api", url, "--paginate", "--slurp"]).stdout);
-    expect(Array.isArray(slurped) && slurped.length).toBe(2);
+    expect(Array.isArray(slurped)).toBe(true);
+    expect(slurped).toHaveLength(2);
     expect(slurped.flatMap((p: { jobs: unknown[] }) => p.jobs)).toHaveLength(3);
   });
 
@@ -954,6 +955,12 @@ function fakeGhBin(replies: Record<string, string>) {
 const instant = async (ms: number) => ms;
 const noLog = () => undefined;
 
+/** A fake sleep: the first `onTime` calls return on time, every later one overshoots by 6 s. */
+function sleepBlockedAfter(onTime: number) {
+  let sleeps = 0;
+  return async (ms: number) => (++sleeps > onTime ? ms + 6000 : ms);
+}
+
 describe("bkit runs wait", () => {
   const prTarget = {
     kind: "pr-present" as const,
@@ -1293,11 +1300,10 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
 
   it("a hand-off in the re-poll resumes with --retriggered and no second re-trigger commit", async () => {
     const { cwd } = closeRepo();
-    let sleeps = 0;
     const r = await ciDispatchGate(base(cwd), {
       gh: sequenceGh([NONE]).gh,
       // The first poll's five sleeps return on time; the re-poll's first sleep is blocked.
-      sleep: async (ms) => (++sleeps > 5 ? ms + 6000 : ms),
+      sleep: sleepBlockedAfter(5),
       log: noLog,
     });
     expect(r).toMatchObject({ phase: "repoll", handoff: 81, retrigger: true, attempts: 7 });

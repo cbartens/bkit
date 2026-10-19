@@ -593,7 +593,7 @@ describe("detectCiYmlCapstoneContractDrift", () => {
         "cancel-in-progress: true",
       ),
     );
-    const action = detectCiYmlCapstoneContractDrift(tmpDir)?.action ?? "";
+    const action = detectCiYmlCapstoneContractDrift(tmpDir)?.action;
     expect(action).toContain("one run per branch");
     expect(action).toContain("QUEUING");
   });
@@ -612,7 +612,7 @@ describe("detectCiYmlCapstoneContractDrift", () => {
   });
   it("fires naming only the lane whose count the capstone never reads", () => {
     writeCi(GOOD.replace("  bkit-tests-check:\n", LIVE_LANE + "  bkit-tests-check:\n"));
-    const action = detectCiYmlCapstoneContractDrift(tmpDir)?.action ?? "";
+    const action = detectCiYmlCapstoneContractDrift(tmpDir)?.action;
     expect(action).toContain("`bkit-tests-live-web`");
     expect(action).not.toContain("`bkit-tests-unit`");
   });

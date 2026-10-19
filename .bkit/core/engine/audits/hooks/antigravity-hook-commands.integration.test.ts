@@ -144,9 +144,13 @@ describe("installed Antigravity hook commands", () => {
   }
 
   describe("control: hook scripts missing", () => {
+    const cwdFor = {
+      "plugin folder": () => path.join(control, PLUGIN_REL),
+      "workspace root": () => control,
+    };
     for (const where of ["plugin folder", "workspace root"] as const) {
       it(`prints nothing from the ${where}, though the exit code is still 0`, () => {
-        const cwd = where === "plugin folder" ? path.join(control, PLUGIN_REL) : control;
+        const cwd = cwdFor[where]();
         const calls: [HookName, object][] = [
           ["gateguard", newFileCall()],
           ["guardrails", deniedShellCall()],

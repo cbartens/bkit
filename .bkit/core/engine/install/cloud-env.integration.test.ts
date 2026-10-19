@@ -122,10 +122,10 @@ describe("T14 — the provenance field contributes no bkit check drift", () => {
 
     expect(run(["install", "--claude"]).status).toBe(0);
 
-    const writeCount = (out: string) => /(\d+) write\(s\) would occur/.exec(out)?.[1] ?? "unknown";
+    const writeCount = (out: string) => /(\d+) write\(s\) would occur/.exec(out)?.[1];
 
-    const withField = writeCount(run(["check"]).stdout ?? "");
-    expect(withField).not.toBe("unknown");
+    const withField = writeCount(run(["check"]).stdout);
+    expect(withField).toBeDefined();
 
     // strip the record and re-check: the count must not move
     const versionPath = path.join(tmpDir, ".bkit", "version");
@@ -135,6 +135,6 @@ describe("T14 — the provenance field contributes no bkit check drift", () => {
     delete v.claudeAllowDerived;
     fs.writeFileSync(versionPath, JSON.stringify(v, null, 2) + "\n");
 
-    expect(writeCount(run(["check"]).stdout ?? "")).toBe(withField);
+    expect(writeCount(run(["check"]).stdout)).toBe(withField);
   }, 180_000);
 });

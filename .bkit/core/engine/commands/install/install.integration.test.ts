@@ -28,6 +28,17 @@ let tmpDir: string;
 
 let originalCwd: string;
 
+/** A finished child's stdout then stderr; empty when the child never produced them. */
+function combinedOutput(r: { stdout?: string | null; stderr?: string | null }): string {
+  return `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
+}
+
+/** Put an env var back to its saved value; undefined means it was unset. */
+function restoreEnv(key: string, saved: string | undefined): void {
+  if (saved === undefined) delete process.env[key];
+  else process.env[key] = saved;
+}
+
 beforeEach(() => {
   originalCwd = process.cwd();
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-install-integ-"));
@@ -93,7 +104,7 @@ describe("Scenario 1 — blocker: no package.json → exit 1, zero writes", () =
 
     expect(result.status).toBe(1);
     // The blocker checklist must be the cause of exit-1 (not an unrelated crash).
-    expect(`${result.stdout ?? ""}\n${result.stderr ?? ""}`).toContain("no-package-json");
+    expect(combinedOutput(result)).toContain("no-package-json");
     // No files should have been written (tmpDir only contains what we put there — nothing)
     const written = fs.readdirSync(tmpDir);
     expect(written).toHaveLength(0);
@@ -166,8 +177,8 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
       const ids = postFindings.map((f) => f.id);
       expect(ids).toContain("gh-mcp-token-unset-shell");
     } finally {
-      if (savedToken !== undefined) process.env.BKIT_GH_TOKEN = savedToken;
-      if (savedCi !== undefined) process.env.CI = savedCi;
+      restoreEnv("BKIT_GH_TOKEN", savedToken);
+      restoreEnv("CI", savedCi);
     }
   });
 
@@ -188,8 +199,8 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     try {
       postFindings = runPostInstallCheck(preflightAdvisories, tmpDir);
     } finally {
-      if (savedToken !== undefined) process.env.BKIT_GH_TOKEN = savedToken;
-      if (savedCi !== undefined) process.env.CI = savedCi;
+      restoreEnv("BKIT_GH_TOKEN", savedToken);
+      restoreEnv("CI", savedCi);
     }
 
     // Phase 1 findings should be present in the combined output
@@ -250,8 +261,8 @@ describe("Scenario 3 — bkit check: Phase 3 detectors run for parity with insta
     try {
       findings = runPostInstallCheck(preflightAdvisories, tmpDir);
     } finally {
-      if (savedToken !== undefined) process.env.BKIT_GH_TOKEN = savedToken;
-      if (savedCi !== undefined) process.env.CI = savedCi;
+      restoreEnv("BKIT_GH_TOKEN", savedToken);
+      restoreEnv("CI", savedCi);
     }
 
     // Phase 3 ran: gh-mcp-token-unset-shell must appear when the token is missing.
@@ -317,7 +328,7 @@ describe("Scenario 5 — full install smoke against scratch consumer", () => {
       timeout: 60_000,
     });
 
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
     expect(result.status, `install crashed:\n${combined}`).toBe(0);
     expect(combined).not.toContain("Missing model lookup");
     expect(combined).not.toContain("frontmatter missing");
@@ -378,17 +389,19 @@ describe("#507 — full install writes core/ and shared/, never a template or a 
     );
     expect(result.status, `install failed:\n${result.stdout}\n${result.stderr}`).toBe(0);
 
-    const missing: string[] = [];
-    for (const [root, skipTop] of [
-      [getCoreRoot(), CORE_PACKAGE_ONLY],
-      [getSharedRoot(), new Set<string>()],
-    ] as const) {
-      for (const rel of relFiles(root)) {
-        if (skipTop.has(rel.split(path.sep)[0]!)) continue;
-        const dest = remapTemplateDest(rel);
-        if (!fs.existsSync(path.join(tmpDir, dest))) missing.push(`${rel} -> ${dest}`);
-      }
-    }
+    const payload = (
+      [
+        [getCoreRoot(), CORE_PACKAGE_ONLY],
+        [getSharedRoot(), new Set<string>()],
+      ] as const
+    ).flatMap(([root, skipTop]) =>
+      relFiles(root)
+        .filter((rel) => !skipTop.has(rel.split(path.sep)[0]!))
+        .map((rel) => ({ rel, dest: remapTemplateDest(rel) })),
+    );
+    const missing = payload
+      .filter(({ dest }) => !fs.existsSync(path.join(tmpDir, dest)))
+      .map(({ rel, dest }) => `${rel} -> ${dest}`);
     expect(missing, "payload files the install did not write").toEqual([]);
 
     const templates = relFiles(getTemplatesRoot()).filter((rel) => !rel.startsWith("context"));
@@ -440,7 +453,7 @@ describe("Scenario 5b — docs/roadmap.md is consumer-owned: bkit install never 
         timeout: 60_000,
       },
     );
-    const installCombined = `${installResult.stdout ?? ""}\n${installResult.stderr ?? ""}`;
+    const installCombined = combinedOutput(installResult);
     expect(installResult.status, `install crashed:\n${installCombined}`).toBe(0);
 
     // The load-bearing assertion: docs/roadmap.md is a generated projection
@@ -456,7 +469,7 @@ describe("Scenario 5b — docs/roadmap.md is consumer-owned: bkit install never 
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
       timeout: 60_000,
     });
-    const checkCombined = `${checkResult.stdout ?? ""}\n${checkResult.stderr ?? ""}`;
+    const checkCombined = combinedOutput(checkResult);
     expect(checkResult.status, `check crashed:\n${checkCombined}`).toBe(0);
     expect(checkCombined).not.toContain("roadmap.md");
     // docs/roadmap.md still must not have been created by the dry-run check.
@@ -494,8 +507,7 @@ describe("Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)", () => 
       expect(blocker).toBeDefined();
       expect(blocker!.id).toBe("bkit-managed-stale");
     } finally {
-      if (savedRef === undefined) delete process.env.GITHUB_REF_NAME;
-      else process.env.GITHUB_REF_NAME = savedRef;
+      restoreEnv("GITHUB_REF_NAME", savedRef);
     }
   });
 
@@ -516,8 +528,7 @@ describe("Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)", () => 
       expect(blockerFindings.length).toBeGreaterThan(0);
       expect(blockerFindings[0]!.id).toBe("bkit-managed-stale");
     } finally {
-      if (savedRef === undefined) delete process.env.GITHUB_REF_NAME;
-      else process.env.GITHUB_REF_NAME = savedRef;
+      restoreEnv("GITHUB_REF_NAME", savedRef);
     }
   });
 });
@@ -566,7 +577,7 @@ describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.
     // Exit 1 due to Phase 3 blocker
     expect(result.status).toBe(1);
 
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
     // Recovery line should be present
     expect(combined).toContain("pnpm bkit uninstall");
     expect(combined).toContain("pnpm bkit install");
@@ -625,7 +636,7 @@ describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (
     // Exit 1 due to Phase 3 blocker
     expect(result.status).toBe(1);
 
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
 
     // Auto-revert log messages must be present — confirms in-process revert ran
     expect(combined).toContain("--auto-revert");
@@ -663,7 +674,7 @@ describe("MCP config — fresh install and a consumer's own file", () => {
       timeout: 60_000,
     });
 
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
     expect(result.status, `install crashed:\n${combined}`).toBe(0);
 
     // Default tracker is "none" → .mcp.json seeded with empty mcpServers (no tracker wired)
@@ -689,7 +700,7 @@ describe("MCP config — fresh install and a consumer's own file", () => {
     const cursorMcp = JSON.parse(fs.readFileSync(cursorMcpPath, "utf-8")) as {
       mcpServers?: Record<string, unknown>;
     };
-    expect(Object.keys(cursorMcp.mcpServers ?? {})).toHaveLength(0);
+    expect(Object.keys({ ...cursorMcp.mcpServers })).toHaveLength(0);
   });
 
   it("bkit install --tracker=github seeds .mcp.json with only the github entry", () => {
@@ -715,7 +726,7 @@ describe("MCP config — fresh install and a consumer's own file", () => {
       },
     );
 
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
     expect(result.status, `install crashed:\n${combined}`).toBe(0);
 
     // --tracker=github → only the github entry present in .mcp.json
@@ -733,12 +744,10 @@ describe("MCP config — fresh install and a consumer's own file", () => {
 
     // workflow mirror must have no remaining bkit:tracker OR bkit:when-tracker markers
     const claudeCmd = path.join(tmpDir, ".claude", "commands", "bkit-build.md");
-    if (fs.existsSync(claudeCmd)) {
-      const content = fs.readFileSync(claudeCmd, "utf-8");
-      expect(content).not.toMatch(/<!--\s*bkit:tracker\s+\S+\s+(?:start|end)\s*-->/);
-      expect(content).not.toMatch(/<!--\s*bkit:when-tracker\s+(?:start|end)\b[^>]*-->/);
-      expect(content).toContain("mcp__github__");
-    }
+    const content = fs.readFileSync(claudeCmd, "utf-8");
+    expect(content).not.toMatch(/<!--\s*bkit:tracker\s+\S+\s+(?:start|end)\s*-->/);
+    expect(content).not.toMatch(/<!--\s*bkit:when-tracker\s+(?:start|end)\b[^>]*-->/);
+    expect(content).toContain("mcp__github__");
 
     // agent mirrors resolve tracker blocks too: github read tools only, no markers
     for (const host of [".claude", ".cursor"]) {
@@ -787,7 +796,7 @@ describe("MCP config — fresh install and a consumer's own file", () => {
       timeout: 60_000,
     });
 
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
     expect(result.status, `install crashed:\n${combined}`).toBe(0);
 
     // .mcp.json must be byte-for-byte identical to the consumer's original
@@ -838,7 +847,7 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
     ).not.toBe(0);
 
     // Error output must mention the mismatch.
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
     expect(combined).toMatch(/cloud=cursor.*tracker.*linear|cursor.*requires.*linear/i);
   });
 
@@ -888,7 +897,7 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
       },
     );
 
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
     expect(
       result.status,
       `Expected exit 0 for matching tracker/cloud pair.\n` + `stdout: ${combined}`,
@@ -921,14 +930,9 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
   let tmp: string;
   const installPath = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
-  const tsxPath = () =>
-    path.resolve(
-      path.dirname(new URL(import.meta.url).pathname),
-      "../../../../../node_modules/.bin/tsx",
-    );
 
   function run(args: string[]) {
-    return spawnSync(tsxPath(), [installPath(), ...args], {
+    return spawnSync(requireTsx(), [installPath(), ...args], {
       cwd: tmp,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -947,42 +951,36 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
   afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
   it("bare `bkit install` errors (≥1 module flag required)", () => {
-    if (!fs.existsSync(tsxPath())) return;
     const r = run(["install"]);
     expect(r.status).toBe(1);
     expect(`${r.stdout}\n${r.stderr}`).toMatch(/at least one module flag/i);
   });
 
   it("bare `bkit` (no command) prints usage and exits 2 (usage error)", () => {
-    if (!fs.existsSync(tsxPath())) return;
     const r = run([]);
     expect(r.status).toBe(2);
     expect(`${r.stdout}\n${r.stderr}`).toMatch(/bkit install/);
   });
 
   it("explicit `bkit help` prints the same usage and exits 0", () => {
-    if (!fs.existsSync(tsxPath())) return;
     const r = run(["help"]);
     expect(r.status).toBe(0);
     expect(`${r.stdout}\n${r.stderr}`).toMatch(/bkit install/);
   });
 
   it("`bkit check --claude` (stray module flag) errors", () => {
-    if (!fs.existsSync(tsxPath())) return;
     const r = run(["check", "--claude"]);
     expect(r.status).toBe(1);
     expect(`${r.stdout}\n${r.stderr}`).toMatch(/takes no module flags/i);
   });
 
   it("`bkit upgrade --claude` (stray module flag) errors", () => {
-    if (!fs.existsSync(tsxPath())) return;
     const r = run(["upgrade", "--claude"]);
     expect(r.status).toBe(1);
     expect(`${r.stdout}\n${r.stderr}`).toMatch(/takes no module flags/i);
   });
 
   it("`bkit install --claude` ships root CLAUDE.md (redirect)", () => {
-    if (!fs.existsSync(tsxPath())) return;
     const r = run(["install", "--claude"]);
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
     expect(fs.existsSync(path.join(tmp, "CLAUDE.md"))).toBe(true);
@@ -992,7 +990,6 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
   });
 
   it("`bkit install --cursor` (no claude) ships NO CLAUDE.md, but ships AGENTS.md (core)", () => {
-    if (!fs.existsSync(tsxPath())) return;
     const r = run(["install", "--cursor"]);
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
     expect(fs.existsSync(path.join(tmp, "CLAUDE.md"))).toBe(false);
@@ -1002,7 +999,6 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
   });
 
   it("`bkit install --ci` is an unknown flag and writes nothing (#489)", () => {
-    if (!fs.existsSync(tsxPath())) return;
     const r = run(["install", "--claude", "--ci"]);
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("Unknown flag: --ci");
@@ -1010,7 +1006,6 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
   });
 
   it("`bkit install --claude` writes no bkit-ci.yml, .vale.ini or hooks (templates); no .cursor", () => {
-    if (!fs.existsSync(tsxPath())) return;
     const r = run(["install", "--claude"]);
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
     expect(fs.existsSync(path.join(tmp, ".github", "workflows", "bkit-ci.yml"))).toBe(false);
@@ -1024,7 +1019,6 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
   });
 
   it("`bkit check` after a --cursor-only install reports no drift (no false .claude drift)", () => {
-    if (!fs.existsSync(tsxPath())) return;
     expect(run(["install", "--cursor"]).status).toBe(0);
     const r = run(["check"]);
     expect(r.status, `check should be clean:\n${r.stdout}\n${r.stderr}`).toBe(0);
@@ -1084,14 +1078,9 @@ describe("opencodeProviders persist block — sequential installs (issue #281 Ta
   let tmp: string;
   const installPath = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
-  const tsxPath = () =>
-    path.resolve(
-      path.dirname(new URL(import.meta.url).pathname),
-      "../../../../../node_modules/.bin/tsx",
-    );
 
   function run(args: string[]) {
-    return spawnSync(tsxPath(), [installPath(), ...args], {
+    return spawnSync(requireTsx(), [installPath(), ...args], {
       cwd: tmp,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -1110,7 +1099,6 @@ describe("opencodeProviders persist block — sequential installs (issue #281 Ta
   afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
   it("two sequential installs: opencodeProviders = both, opencodeProvider = second", () => {
-    if (!fs.existsSync(tsxPath())) return;
     // First install: openrouter
     const r1 = run(["install", "--opencode=openrouter"]);
     expect(r1.status, `first install failed:\n${r1.stdout}\n${r1.stderr}`).toBe(0);

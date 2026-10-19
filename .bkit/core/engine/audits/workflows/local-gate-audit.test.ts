@@ -63,6 +63,40 @@ function isExempt(rel: string, pattern: string): boolean {
   return EXEMPT.some((e) => e.rel === rel && e.pattern === pattern);
 }
 
+/** Canonical files that contain a banned pattern without an exemption for it. */
+function unexemptedHits(pattern: string): string[] {
+  return canonicalFiles()
+    .filter((f) => f.body.includes(pattern) && !isExempt(f.rel, pattern))
+    .map((f) => f.rel);
+}
+
+/** The repo's own `package.json` scripts. */
+function declaredScripts(): Record<string, string> {
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {
+    scripts?: Record<string, string>;
+  };
+  return pkg.scripts ?? {};
+}
+
+/**
+ * `pnpm <script>` calls inside a seeded default gate (where this repo still runs bkit's
+ * default) that name neither a pnpm subcommand, a script declared here, nor another gate.
+ */
+function unresolvedGateCalls(declared: Record<string, string>, subcommands: Set<string>): string[] {
+  const out: string[] = [];
+  for (const [name, value] of Object.entries(BKIT_GATE_SCRIPTS)) {
+    // Only meaningful where this repo still runs bkit's default.
+    const runsDefault = declared[name] === value;
+    const called = [...value.matchAll(/\bpnpm ([\w:-]+)/g)].map((m) => m[1]!);
+    for (const script of called.filter((c) => runsDefault && !subcommands.has(c))) {
+      const known = script in declared || script in BKIT_GATE_SCRIPTS;
+      if (!known)
+        out.push(`${name} chains \`pnpm ${script}\`, which is neither declared nor a gate`);
+    }
+  }
+  return out;
+}
+
 // Call sites that MUST dispatch through a named gate, and which one.
 const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
   // Hooks run the same scripts as the agents.
@@ -85,10 +119,7 @@ describe("bkit-local-gate-audit (#437)", () => {
   describe("no toolchain command is inlined at a call site", () => {
     for (const { pattern, why } of BANNED) {
       it(`\`${pattern}\` appears nowhere unexempted — ${why}`, () => {
-        const hits = canonicalFiles()
-          .filter((f) => f.body.includes(pattern) && !isExempt(f.rel, pattern))
-          .map((f) => f.rel);
-        expect(hits).toEqual([]);
+        expect(unexemptedHits(pattern)).toEqual([]);
       });
     }
   });
@@ -133,6 +164,18 @@ describe("bkit-local-gate-audit (#437)", () => {
       .map((m) => m[1]!)
       .filter((b) => /\btests run\b/.test(b));
 
+  /** The candidate gates a block passes: either inline on the `tests run` line or via `set -- --gate=...`. */
+  const gatesPassed = (block: string): string[] => {
+    const line = block.split("\n").find((l) => l.includes("--gate=bkit:gate"));
+    return [...(line ?? "").matchAll(/--gate=(\S+)/g)].map((m) => m[1]!);
+  };
+
+  /** A block's lines and the index of the `tests run` call within them. */
+  const callPosition = (block: string) => {
+    const lines = block.trimEnd().split("\n");
+    return { lines, at: lines.findIndex((l) => /\btests run\b/.test(l)) };
+  };
+
   for (const { workflow, gates, stopsAt, sites } of PROBES) {
     describe(`${workflow} runs the deepest declared gate (through ${stopsAt})`, () => {
       const body = fs.readFileSync(path.join(REPO_ROOT, ".bkit/core/workflows", workflow), "utf-8");
@@ -141,11 +184,7 @@ describe("bkit-local-gate-audit (#437)", () => {
       it(`passes every candidate, in descending depth, at each of its ${sites} call site(s)`, () => {
         expect(blocks).toHaveLength(sites);
         for (const block of blocks) {
-          // The candidate list is either inline on the `tests run` line or set
-          // as positional args (`set -- --gate=...`) for the call to expand.
-          const line = block.split("\n").find((l) => l.includes("--gate=bkit:gate"));
-          const passed = [...(line ?? "").matchAll(/--gate=(\S+)/g)].map((m) => m[1]);
-          expect(passed).toEqual([...gates]);
+          expect(gatesPassed(block)).toEqual([...gates]);
         }
       });
 
@@ -158,10 +197,14 @@ describe("bkit-local-gate-audit (#437)", () => {
         // could not run (commands/workflow/tests.test.ts). Only 0 (PASS) and
         // 1 (FAIL) are verdicts; every other code must leave the block.
         for (const block of blocks) {
-          const lines = block.trimEnd().split("\n");
-          const at = lines.findIndex((l) => /\btests run\b/.test(l));
+          const { lines, at } = callPosition(block);
           expect(lines[at]).not.toMatch(/\|\|\s*(true|:|echo)\b/);
-          if (at === lines.length - 1) continue; // the call's exit IS the block's exit
+        }
+        // A call that is the block's last line has its exit AS the block's exit.
+        const continuing = blocks
+          .map(callPosition)
+          .filter(({ lines, at }) => at !== lines.length - 1);
+        for (const { lines, at } of continuing) {
           const rest = lines.slice(at).join("\n");
           const captured = /\b(\w+)=\$\?/.exec(rest)?.[1];
           expect(captured, "the exit code is captured right after the call").toBeDefined();
@@ -185,10 +228,7 @@ describe("bkit-local-gate-audit (#437)", () => {
   it("the seeded gates chain only scripts that exist here or are themselves gates", () => {
     // This repo IS a consumer of these defaults: every script a default chains is
     // declared here.
-    const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {
-      scripts?: Record<string, string>;
-    };
-    const declared = pkg.scripts ?? {};
+    const declared = declaredScripts();
     // Mirrors PNPM_NOT_A_SCRIPT in install/modules/core.ts: pnpm's own subcommands and
     // node_modules binaries pnpm resolves directly are not package.json scripts.
     const subcommands = new Set([
@@ -200,13 +240,6 @@ describe("bkit-local-gate-audit (#437)", () => {
       "outdated",
       "lint-staged",
     ]);
-    for (const [name, value] of Object.entries(BKIT_GATE_SCRIPTS)) {
-      // Only meaningful where this repo still runs bkit's default.
-      if (declared[name] !== value) continue;
-      for (const [, called] of value.matchAll(/\bpnpm ([\w:-]+)/g)) {
-        if (subcommands.has(called)) continue;
-        expect(called in declared || called in BKIT_GATE_SCRIPTS).toBe(true);
-      }
-    }
+    expect(unresolvedGateCalls(declared, subcommands)).toEqual([]);
   });
 });

@@ -39,6 +39,11 @@ function workflowFiles(): string[] {
     .map((n) => `${WORKFLOW_DIR}/${n}`);
 }
 
+/** The rewrite hint for a single-digit positional placeholder; empty for other forms. */
+function fixHint(placeholder: string): string {
+  return /^\$[0-9]$/.test(placeholder) ? ` — write \`$(${placeholder.slice(1)})\`` : "";
+}
+
 describe("slash-command argument expansion cannot clobber workflow bash", () => {
   it("enumerates workflow files (not vacuous)", () => {
     expect(workflowFiles().length).toBeGreaterThan(5);
@@ -51,8 +56,9 @@ describe("slash-command argument expansion cannot clobber workflow bash", () => 
         .split("\n")
         .forEach((text, i) => {
           for (const m of text.matchAll(EXPANDED_PLACEHOLDER)) {
-            const fix = /^\$[0-9]$/.test(m[0]) ? ` — write \`$(${m[0].slice(1)})\`` : "";
-            bad.push(`${file}:${i + 1}: ${m[0]} is substituted before the model reads it${fix}`);
+            bad.push(
+              `${file}:${i + 1}: ${m[0]} is substituted before the model reads it${fixHint(m[0])}`,
+            );
           }
         });
     }

@@ -45,6 +45,16 @@ import { requireTsx } from "../../../../../vitest.tsx-bin";
 let tmpDir: string;
 let originalCwd: string;
 
+/** A finished child's stdout then stderr; empty when the child never produced them. */
+function combinedOutput(r: { stdout?: string | null; stderr?: string | null }): string {
+  return `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
+}
+
+/** The first `bkit-*.md` file directly inside `dir`, if any. */
+function firstBkitMarkdown(dir: string): string | undefined {
+  return fs.readdirSync(dir).find((f) => f.startsWith("bkit-") && f.endsWith(".md"));
+}
+
 const FIXTURES_DIR = path.resolve(
   path.dirname(new URL(import.meta.url).pathname),
   "../../../../../tests/fixtures/heavy-customised-consumer",
@@ -94,11 +104,6 @@ function writeVersionFile(canonicalHashes: Record<string, string> = {}): void {
 
 describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", () => {
   it("detects conflict on customised .cursor/hooks.json (failClosed, loop_limit preserved)", () => {
-    if (!fs.existsSync(FIXTURES_DIR)) {
-      console.warn(`Fixture missing at ${FIXTURES_DIR} — skipping`);
-      return;
-    }
-
     seedCursorHooksFromFixture();
 
     // Simulate what bkit@0.4.x would have written as the canonical content:
@@ -162,11 +167,6 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
   });
 
   it("does not silently overwrite consumer drift in --non-interactive mode", () => {
-    if (!fs.existsSync(FIXTURES_DIR)) {
-      console.warn(`Fixture missing at ${FIXTURES_DIR} — skipping`);
-      return;
-    }
-
     seedCursorHooksFromFixture();
 
     const bkit04CanonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
@@ -194,11 +194,6 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
   });
 
   it("conflict list has relPath and both content versions for AI-actionable diff", () => {
-    if (!fs.existsSync(FIXTURES_DIR)) {
-      console.warn(`Fixture missing at ${FIXTURES_DIR} — skipping`);
-      return;
-    }
-
     seedCursorHooksFromFixture();
 
     const bkit04CanonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
@@ -226,11 +221,6 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
   });
 
   it("upgrades non-conflicting file while preserving conflicting consumer file", () => {
-    if (!fs.existsSync(FIXTURES_DIR)) {
-      console.warn(`Fixture missing at ${FIXTURES_DIR} — skipping`);
-      return;
-    }
-
     seedCursorHooksFromFixture();
 
     const bkit04CanonicalHooksContent =
@@ -554,8 +544,11 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
     );
     const hosts = ["--claude", "--cursor", "--codex", "--opencode=openrouter"];
     // --auto=cursor needs the Linear tracker.
-    for (const lane of ["--auto=claude", "--auto=cursor", "--auto=opencode"]) {
-      const tracker = lane === "--auto=cursor" ? "--tracker=linear" : "--tracker=github";
+    for (const [lane, tracker] of [
+      ["--auto=claude", "--tracker=github"],
+      ["--auto=cursor", "--tracker=linear"],
+      ["--auto=opencode", "--tracker=github"],
+    ] as const) {
       const install = runCli(["install", ...hosts, lane, tracker]);
       expect(install.status, `${lane}\n${install.stdout}\n${install.stderr}`).toBe(0);
     }
@@ -656,7 +649,7 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
       timeout: 120_000,
     });
-    return { status: r.status, out: `${r.stdout ?? ""}\n${r.stderr ?? ""}` };
+    return { status: r.status, out: combinedOutput(r) };
   }
 
   function installEverything(): void {
@@ -689,15 +682,17 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
       .sort();
   }
 
-  // The first non-blank line inside the file's bkit block, or undefined without a block.
-  function firstBlockLine(content: string): string | undefined {
+  // The first non-blank line inside the file's bkit block, or "" without a block.
+  function firstBlockLine(content: string): string {
     const style = detectMarkerStyle(content);
-    if (style === null) return undefined;
+    if (style === null) return "";
     const start = findLineAnchoredMarkers(content, selectMarkers(style)[0])[0]!;
-    return content
-      .slice(content.indexOf("\n", start) + 1)
-      .split("\n")
-      .find((l) => l.trim() !== "");
+    return (
+      content
+        .slice(content.indexOf("\n", start) + 1)
+        .split("\n")
+        .find((l) => l.trim() !== "") ?? ""
+    );
   }
 
   it("every written file carries a marker at the installing version, and check derives the same set", () => {
@@ -707,14 +702,14 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
     expect(written.length).toBeGreaterThan(0);
 
     const stamped = new Map(listStampedFiles(tmpDir).map((f) => [f.path, f.scope]));
-    for (const rel of written) {
-      const content = fs.readFileSync(path.join(tmpDir, rel), "utf-8");
-      expect(readManagedVersion(content), rel).toBe(version);
-      if (stamped.get(rel) === "block") {
-        expect(readManagedVersion(firstBlockLine(content) ?? ""), `${rel} block line 1`).toBe(
-          version,
-        );
-      }
+    const contentOf = (rel: string) => fs.readFileSync(path.join(tmpDir, rel), "utf-8");
+    for (const rel of written) expect(readManagedVersion(contentOf(rel)), rel).toBe(version);
+    const blockScoped = written.filter((rel) => stamped.get(rel) === "block");
+    expect(blockScoped.length).toBeGreaterThan(0);
+    for (const rel of blockScoped) {
+      expect(readManagedVersion(firstBlockLine(contentOf(rel))), `${rel} block line 1`).toBe(
+        version,
+      );
     }
     expect(
       [...stamped.keys()].filter((rel) => fs.existsSync(path.join(tmpDir, rel))).sort(),
@@ -730,13 +725,17 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
     // recorded hashes and pin are what that older bkit wrote.
     const versionFile = path.join(tmpDir, ".bkit", "version");
     const recorded = readBkitVersion(versionFile)!;
-    for (const rel of written) {
-      const abs = path.join(tmpDir, rel);
-      const aged = fs
-        .readFileSync(abs, "utf-8")
-        .replaceAll(`bkit:managed v${version} `, "bkit:managed v4.0.0 ");
-      fs.writeFileSync(abs, aged, "utf-8");
-      if (rel in recorded.canonicalHashes) recorded.canonicalHashes[rel] = sha256(aged);
+    const aged = new Map(
+      written.map((rel) => [
+        rel,
+        fs
+          .readFileSync(path.join(tmpDir, rel), "utf-8")
+          .replaceAll(`bkit:managed v${version} `, "bkit:managed v4.0.0 "),
+      ]),
+    );
+    for (const [rel, content] of aged) fs.writeFileSync(path.join(tmpDir, rel), content, "utf-8");
+    for (const rel of written.filter((r) => r in recorded.canonicalHashes)) {
+      recorded.canonicalHashes[rel] = sha256(aged.get(rel)!);
     }
     writeBkitVersion(versionFile, { ...recorded, pinnedVersion: "4.0.0" });
 
@@ -1504,12 +1503,8 @@ describe("upgrade-render", () => {
       expect(fs.existsSync(opencodeAgentsDir)).toBe(true);
       expect(fs.existsSync(promptsPath)).toBe(true);
 
-      const claudeAgentFile = fs
-        .readdirSync(claudeAgentsDir)
-        .find((f) => f.startsWith("bkit-") && f.endsWith(".md"));
-      const opencodeAgentFile = fs
-        .readdirSync(opencodeAgentsDir)
-        .find((f) => f.startsWith("bkit-") && f.endsWith(".md"));
+      const claudeAgentFile = firstBkitMarkdown(claudeAgentsDir);
+      const opencodeAgentFile = firstBkitMarkdown(opencodeAgentsDir);
       expect(claudeAgentFile, "expected a bkit-* agent in .claude/agents").toBeTruthy();
       expect(opencodeAgentFile, "expected a bkit-* agent in .opencode/agents").toBeTruthy();
 
@@ -1761,7 +1756,7 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
         timeout: 60_000,
       },
     );
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
     expect(combined, combined).toContain("[dry-run] would bump @cbartens/bkit");
     expect(combined).toContain("99.0.0");
     expect(combined).toContain("pnpm add -D @cbartens/bkit@99.0.0");
@@ -1794,7 +1789,7 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
         timeout: 60_000,
       },
     );
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
     expect(combined, combined).toContain("pnpm add -D -w @cbartens/bkit@99.0.0");
     expect(result.status, `expected exit 0, got ${result.status}:\n${combined}`).toBe(0);
   });
@@ -1823,11 +1818,11 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
         env: {
           ...process.env,
           NODE_NO_WARNINGS: "1",
-          PATH: `${stubDir}${path.delimiter}${process.env.PATH ?? ""}`,
+          PATH: [stubDir, process.env.PATH].join(path.delimiter),
         },
         timeout: 60_000,
       });
-      const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+      const combined = combinedOutput(result);
       expect(result.status, `expected exit 0, got ${result.status}:\n${combined}`).toBe(0);
       expect(fs.readFileSync(stubLog, "utf-8").trim().split("\n")).toEqual([
         "add -D @cbartens/bkit@99.0.0",
@@ -1852,7 +1847,7 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
         timeout: 60_000,
       },
     );
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
     expect(combined, combined).toContain("mutually exclusive");
     expect(result.status).toBe(1);
   });

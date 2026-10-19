@@ -250,6 +250,9 @@ describe("dogfood region — placement guarantees", () => {
     }
   });
 
+  /** True for a source line that holds a quoted or backticked `- ` advisory bullet. */
+  const isBulletSourceLine = (l: string): boolean => l.includes('"- ') || l.includes("`- ");
+
   it("the copied doc-advisory text still agrees with the shipped one", () => {
     // bkitDocAuthoringAdvisory is a COPY of docAuthoringAdvisory; they differ only in the
     // header label.
@@ -260,7 +263,7 @@ describe("dogfood region — placement guarantees", () => {
       const body = src.slice(from, src.indexOf("\n}", from));
       return body
         .split("\n")
-        .filter((l) => l.includes('"- ') || l.includes("`- "))
+        .filter(isBulletSourceLine)
         .map((l) => l.trim().replace(/^[`"]|[`"] \+$/g, ""));
     };
     // One omission: the "check `.agents/docs.md` index first" line (bkit's own reference
@@ -386,6 +389,9 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
     "Template owns its rules": "carry their own rules",
   };
 
+  /** The phrase the advisory must carry for a doc rule lead: its alias, else the lead's first clause. */
+  const needleFor = (lead: string): string => ALIASES[lead] ?? lead.split(/[,(]/)[0]!.trim();
+
   // Navigational headings and illustrations the doc adds for readers. They carry no
   // rule of their own, so the advisory has nothing to carry across.
   const NOT_A_RULE = new Set(["Banned shapes", "External content handling", "Enforced elsewhere"]);
@@ -411,8 +417,7 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
         .filter((lead) => !(lead in ENFORCED_BY))
         .filter((lead) => !SUBSUMED_BY_MASTER.has(lead))
         .filter((lead) => {
-          const needle = ALIASES[lead] ?? lead.split(/[,(]/)[0]!.trim();
-          return !haystack.includes(words(needle));
+          return !haystack.includes(words(needleFor(lead)));
         });
       expect(missing).toEqual([]);
     });

@@ -35,6 +35,11 @@ function auditTemplatePaths(): string[] {
   ]);
 }
 
+/** Every leaked host-path match in `content`. */
+function leakedPaths(content: string): string[] {
+  return content.match(new RegExp(USER_PATH_RE, "g")) ?? [];
+}
+
 describe("bkit-template-no-userpath — shipped plan template has no leaked host path (D20)", () => {
   it.each(TARGET_FILES)("%s exists", (filePath) => {
     expect(fs.existsSync(filePath), `Missing: ${filePath}`).toBe(true);
@@ -42,7 +47,7 @@ describe("bkit-template-no-userpath — shipped plan template has no leaked host
 
   it.each(TARGET_FILES)("%s contains no leaked /Users|/home absolute path", (filePath) => {
     const content = fs.readFileSync(filePath, "utf-8");
-    const matches = content.match(new RegExp(USER_PATH_RE, "g")) ?? [];
+    const matches = leakedPaths(content);
     expect(matches, `Leaked host path(s) in ${filePath}: ${matches.join(", ")}`).toEqual([]);
   });
 });
@@ -58,7 +63,7 @@ describe("bkit-template-no-userpath — shipped audit templates have no leaked h
   it.each(files)("%s contains no leaked /Users|/home absolute path", (filePath) => {
     expect(fs.existsSync(filePath), `Missing: ${filePath}`).toBe(true);
     const content = fs.readFileSync(filePath, "utf-8");
-    const matches = content.match(new RegExp(USER_PATH_RE, "g")) ?? [];
+    const matches = leakedPaths(content);
     expect(matches, `Leaked host path(s) in ${filePath}: ${matches.join(", ")}`).toEqual([]);
   });
 });

@@ -48,6 +48,11 @@ const RUNTIME_FLAGS = [
   "runtimeHeadless",
 ] as const;
 
+/** Every match of a global regex in `text`, or an empty list. */
+function allMatches(text: string, re: RegExp): string[] {
+  return text.match(re) ?? [];
+}
+
 describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
   describe("(i) every runtime capability key has >=1 reader in .bkit/workflows/", () => {
     const corpus = readAllWorkflows();
@@ -59,7 +64,7 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
         // NOT under .bkit/workflows/ — so any occurrence here is necessarily a
         // consumer: a conditional, an interpolation, or explanatory prose
         // naming the flag a reader depends on).
-        const occurrences = (corpus.match(new RegExp(flag, "g")) ?? []).length;
+        const occurrences = allMatches(corpus, new RegExp(flag, "g")).length;
         expect(occurrences).toBeGreaterThanOrEqual(1);
       });
     }
@@ -110,7 +115,7 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
   describe("(ii) no workflow sleeps in the foreground — waits live in bkit commands", () => {
     for (const file of WORKFLOW_FILES) {
       it(`${file} carries no raw \`sleep N\``, () => {
-        const sleeps = readWorkflow(file).match(/\bsleep\s+\d+/g) ?? [];
+        const sleeps = allMatches(readWorkflow(file), /\bsleep\s+\d+/g);
         expect(
           sleeps,
           `raw sleep in ${file} — wait through bkit runs wait|dispatch or bkit locks acquire`,

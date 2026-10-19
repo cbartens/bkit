@@ -136,7 +136,9 @@ describe("detectTier2TextDrift — .gitignore", () => {
     );
     const { advisories } = runPreflight(makeModules("core"), tmpDir);
     expect(
-      advisories.some((f) => f.id === "tier2-text-drift" && f.detect.includes(".gitignore")),
+      advisories
+        .filter((f) => f.id === "tier2-text-drift")
+        .some((f) => f.detect.includes(".gitignore")),
     ).toBe(true);
   });
 });

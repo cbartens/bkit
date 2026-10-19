@@ -15,6 +15,41 @@ const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/bki
 const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/.prettierignore");
 const CONSUMER_RENOVATE_TEMPLATE = path.resolve(".bkit/templates/.github/renovate.json5");
 
+/** True for a line that writes NODE_OPTIONS into $GITHUB_ENV. */
+function writesNodeOptionsToGithubEnv(line: string): boolean {
+  return /NODE_OPTIONS\s*=/.test(line) && line.includes("GITHUB_ENV");
+}
+
+/** True for a job-level NODE_OPTIONS key gated on the [verbose ci] marker with trace flags. */
+function isVerboseNodeOptionsKey(line: string): boolean {
+  return (
+    /^\s+NODE_OPTIONS:\s*\$\{\{/.test(line) &&
+    line.includes("[verbose ci]") &&
+    line.includes("--trace-warnings")
+  );
+}
+
+/** The "Check Default Branch Lags Dev" step text, or "" when the step is missing. */
+function defaultBranchLagStep(ci: string): string {
+  const found = ci.match(
+    /- name: Check Default Branch Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/,
+  );
+  return found?.[0] ?? "";
+}
+
+/** Scripts the default gates chain (`pnpm <name>`) that the doc's script block does not list. */
+function chainedScriptsMissingFrom(scripts: Record<string, string>): string[] {
+  const chained = new Set<string>();
+  const gates = Object.entries(BKIT_GATE_SCRIPTS).filter(([gate]) => gate.startsWith("bkit:gate:"));
+  for (const [, value] of gates) {
+    for (const m of value.matchAll(/pnpm ([\w:-]+)/g)) chained.add(m[1]);
+  }
+  const external = new Set(["install", "test", "build", "lint-staged"]);
+  return [...chained].filter(
+    (name) => !name.startsWith("bkit:gate:") && !external.has(name) && !(name in scripts),
+  );
+}
+
 describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)", () => {
   let content: string;
   content = fs.readFileSync(CONSUMER_CI_TEMPLATE, "utf-8");
@@ -59,9 +94,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     // YAML works. The two assertions are a pair: no $GITHUB_ENV write, and the static key
     // present.
     it("never writes NODE_OPTIONS to $GITHUB_ENV", () => {
-      const offenders = content
-        .split("\n")
-        .filter((l) => /NODE_OPTIONS\s*=/.test(l) && l.includes("GITHUB_ENV"));
+      const offenders = content.split("\n").filter(writesNodeOptionsToGithubEnv);
       expect(offenders).toEqual([]);
     });
 
@@ -71,14 +104,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
       const verboseLanes = content
         .split("\n")
         .filter((l) => /^\s+VERBOSE_CI:\s*\$\{\{/.test(l)).length;
-      const nodeOptionKeys = content
-        .split("\n")
-        .filter(
-          (l) =>
-            /^\s+NODE_OPTIONS:\s*\$\{\{/.test(l) &&
-            l.includes("[verbose ci]") &&
-            l.includes("--trace-warnings"),
-        ).length;
+      const nodeOptionKeys = content.split("\n").filter(isVerboseNodeOptionsKey).length;
       expect(verboseLanes).toBeGreaterThan(0);
       expect(nodeOptionKeys).toBe(verboseLanes);
     });
@@ -112,10 +138,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     it("keys ONLY on consumed-from-default-branch surfaces (renovate config + workflows)", () => {
       // The trigger is the stale-consumed-surface set, not any dev-ahead-of-main —
       // so ordinary app-code dev pushes stay quiet.
-      const step =
-        content.match(
-          /- name: Check Default Branch Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/,
-        )?.[0] ?? "";
+      const step = defaultBranchLagStep(content);
       expect(step).toContain(".github/renovate.json5");
       expect(step).toContain(".github/workflows");
       expect(step).toMatch(/git diff --name-only "origin\/\$DEFAULT_BRANCH" HEAD/);
@@ -124,20 +147,14 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     it("is token-free (default branch read at runtime, so the step is identical per repo)", () => {
       // No bkit {{TOKEN}} inside the step; the default branch comes from the Actions
       // context at runtime.
-      const block =
-        content.match(
-          /- name: Check Default Branch Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/,
-        )?.[0] ?? "";
+      const block = defaultBranchLagStep(content);
       expect(block).toContain("- name: Check Default Branch Lags Dev");
       expect(block).toContain("DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}");
       expect(block).not.toMatch(/\{\{[A-Z_]+\}\}/);
     });
 
     it("is non-blocking — warns via ::warning:: and never exits non-zero", () => {
-      const step =
-        content.match(
-          /- name: Check Default Branch Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/,
-        )?.[0] ?? "";
+      const step = defaultBranchLagStep(content);
       expect(step).toContain("::warning::");
       // No `exit 1` (or any non-zero exit) — the step is a nudge, not a gate.
       expect(step).not.toMatch(/exit [1-9]/);
@@ -657,15 +674,6 @@ describe(".bkit/templates.md gate tool scripts (consumers copy and run them)", (
   });
 
   it("lists every script the default gates chain, except test and build", () => {
-    const chained = new Set<string>();
-    for (const [gate, value] of Object.entries(BKIT_GATE_SCRIPTS)) {
-      if (!gate.startsWith("bkit:gate:")) continue;
-      for (const m of value.matchAll(/pnpm ([\w:-]+)/g)) chained.add(m[1]);
-    }
-    const external = new Set(["install", "test", "build", "lint-staged"]);
-    const missing = [...chained].filter(
-      (name) => !name.startsWith("bkit:gate:") && !external.has(name) && !(name in scripts),
-    );
-    expect(missing).toEqual([]);
+    expect(chainedScriptsMissingFrom(scripts)).toEqual([]);
   });
 });

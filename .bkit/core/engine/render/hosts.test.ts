@@ -685,7 +685,7 @@ describe("#386: line 1 of a rendered command is a description, never the marker"
       expect(expected).toBeTruthy();
       expect(lines[0]).toBe(expected);
       expect(lines[0]).not.toContain("bkit:managed");
-      expect((out.match(/bkit:managed/g) ?? []).length).toBe(1);
+      expect([...out.matchAll(/bkit:managed/g)]).toHaveLength(1);
     });
 
     it(`opencode: ${f}`, () => {
@@ -694,7 +694,7 @@ describe("#386: line 1 of a rendered command is a description, never the marker"
         "9.9.9",
       );
       expect(out.split("\n")[0]).not.toContain("bkit:managed");
-      expect((out.match(/bkit:managed/g) ?? []).length).toBe(1);
+      expect([...out.matchAll(/bkit:managed/g)]).toHaveLength(1);
     });
   }
 });

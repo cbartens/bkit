@@ -17,6 +17,14 @@ const pkgRoot = getPkgRoot();
 const LIVE_MCP_JSON = path.join(pkgRoot, ".mcp.json");
 const TEMPLATE_MCP_JSON = path.join(pkgRoot, ".bkit", "shared", ".mcp.json");
 
+/** The comma-separated `X-MCP-Toolsets` entries of the github server in an .mcp.json file. */
+function githubToolsets(file: string): string[] {
+  const parsed = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+    mcpServers: { github?: { headers?: Record<string, string> } };
+  };
+  return (parsed.mcpServers.github?.headers?.["X-MCP-Toolsets"] ?? "").split(",");
+}
+
 describe("bkit-mcp-toolsets — actions toolset (#341 C1)", () => {
   it("both .mcp.json and the template exist", () => {
     expect(fs.existsSync(LIVE_MCP_JSON), `Missing: ${LIVE_MCP_JSON}`).toBe(true);
@@ -24,19 +32,11 @@ describe("bkit-mcp-toolsets — actions toolset (#341 C1)", () => {
   });
 
   it("template's github X-MCP-Toolsets includes actions", () => {
-    const template = JSON.parse(fs.readFileSync(TEMPLATE_MCP_JSON, "utf-8")) as {
-      mcpServers: { github?: { headers?: Record<string, string> } };
-    };
-    const toolsets = template.mcpServers.github?.headers?.["X-MCP-Toolsets"] ?? "";
-    expect(toolsets.split(",")).toContain("actions");
+    expect(githubToolsets(TEMPLATE_MCP_JSON)).toContain("actions");
   });
 
   it("live .mcp.json github X-MCP-Toolsets includes actions", () => {
-    const live = JSON.parse(fs.readFileSync(LIVE_MCP_JSON, "utf-8")) as {
-      mcpServers: { github?: { headers?: Record<string, string> } };
-    };
-    const toolsets = live.mcpServers.github?.headers?.["X-MCP-Toolsets"] ?? "";
-    expect(toolsets.split(",")).toContain("actions");
+    expect(githubToolsets(LIVE_MCP_JSON)).toContain("actions");
   });
 
   // Per server: the live file may also carry consumer-added servers (bkit wires

@@ -340,7 +340,7 @@ describe("stampManagedVersion", () => {
   it("replaces an existing marker on a version bump (never duplicates)", () => {
     const v1 = stampManagedVersion(FM, "4.0.0");
     const v2 = stampManagedVersion(v1, "4.1.0");
-    expect((v2.match(/bkit:managed/g) ?? []).length).toBe(1);
+    expect([...v2.matchAll(/bkit:managed/g)]).toHaveLength(1);
     expect(v2.match(MANAGED_MARKER_VERSION_RE)?.[1]).toBe("4.1.0");
   });
 

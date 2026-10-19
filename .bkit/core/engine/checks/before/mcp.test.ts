@@ -245,14 +245,17 @@ describe("detectExtraMcpServers", () => {
     expect(findings[0]!.id).toContain("mcp-extra-server-linear");
   });
 
-  it.each(["linear", "none"] as const)(
+  it.each([
+    ["linear", { linear: { url: "https://mcp.linear.app/mcp" } }],
+    ["none", {}],
+  ] as const)(
     "%s tracker: never flags github — the gh MCP fallback calls it under every tracker",
-    (tracker) => {
+    (tracker, trackerServer) => {
       fs.writeFileSync(
         path.join(tmpDir, ".mcp.json"),
         JSON.stringify({
           mcpServers: {
-            ...(tracker === "linear" ? { linear: { url: "https://mcp.linear.app/mcp" } } : {}),
+            ...trackerServer,
             github: { url: "https://api.githubcopilot.com/mcp/" },
           },
         }),

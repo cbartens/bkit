@@ -23,6 +23,11 @@ function makeWriteSet(): WriteSet {
   return { writes: [] };
 }
 
+/** The `.md` file names directly in `dir`; empty when `dir` does not exist. */
+function mdFilesIn(dir: string): string[] {
+  return fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith(".md")) : [];
+}
+
 beforeEach(() => {
   originalCwd = process.cwd();
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-modules-test-"));
@@ -203,7 +208,8 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(block?.name).toBeUndefined();
     expect((block?.options as Record<string, unknown>)?.baseURL).toBeUndefined();
     expect((block?.options as Record<string, unknown>)?.apiKey).toBe("{env:BKIT_OPENCODE_API_KEY}");
-    expect(Object.keys(block ?? {})).toEqual(["options"]);
+    expect(block).toBeDefined();
+    expect(Object.keys(block as object)).toEqual(["options"]);
   });
 
   it("provider switch openrouter → openrouter keeps both provider blocks (additive install)", () => {
@@ -298,14 +304,8 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     const agentDir = path.join(tmpDir, ".opencode", "agents");
     const commandDir = path.join(tmpDir, ".opencode", "commands");
     // Dirs may be created by ensureDir, but no .md files should be written
-    if (fs.existsSync(agentDir)) {
-      const agentFiles = fs.readdirSync(agentDir).filter((f) => f.endsWith(".md"));
-      expect(agentFiles).toHaveLength(0);
-    }
-    if (fs.existsSync(commandDir)) {
-      const commandFiles = fs.readdirSync(commandDir).filter((f) => f.endsWith(".md"));
-      expect(commandFiles).toHaveLength(0);
-    }
+    expect(mdFilesIn(agentDir)).toHaveLength(0);
+    expect(mdFilesIn(commandDir)).toHaveLength(0);
     // opencode.json and bkit-gateguard.js must not exist on disk
     expect(fs.existsSync(path.join(tmpDir, ".opencode", "opencode.json"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "bkit-gateguard.js"))).toBe(
@@ -358,11 +358,11 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
     const commandDir = path.join(tmpDir, ".opencode", "commands");
     const pluginDir = path.join(tmpDir, ".opencode", "plugin");
 
-    if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true });
-    if (fs.existsSync(commandDir)) fs.rmSync(commandDir, { recursive: true });
-    if (fs.existsSync(pluginDir)) fs.rmSync(pluginDir, { recursive: true });
+    fs.rmSync(agentDir, { recursive: true, force: true });
+    fs.rmSync(commandDir, { recursive: true, force: true });
+    fs.rmSync(pluginDir, { recursive: true, force: true });
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
-    if (fs.existsSync(jsonPath)) fs.rmSync(jsonPath);
+    fs.rmSync(jsonPath, { force: true });
 
     // After removal, agent/command/plugin dirs and json are gone
     expect(fs.existsSync(path.join(tmpDir, ".opencode", "opencode.json"))).toBe(false);

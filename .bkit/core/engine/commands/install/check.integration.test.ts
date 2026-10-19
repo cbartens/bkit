@@ -29,6 +29,11 @@ import { requireTsx } from "../../../../../vitest.tsx-bin";
 let tmpDir: string;
 let originalCwd: string;
 
+/** A finished child's stdout then stderr; empty when the child never produced them. */
+function combinedOutput(r: { stdout?: string | null; stderr?: string | null }): string {
+  return `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
+}
+
 const getInstallPath = () =>
   path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
 function runBkit(args: string[]): { stdout: string; stderr: string; status: number | null } {
@@ -687,7 +692,7 @@ describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => 
       timeout: 30_000,
     });
 
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
     expect(combined).not.toContain("Missing model lookup");
     // Positive signal that the binary reached dispatch (past parse).
     expect(combined).toMatch(/\[bkit-(check|install)\]/);

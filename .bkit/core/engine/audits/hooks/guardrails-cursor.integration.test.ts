@@ -228,8 +228,8 @@ describe("T6 — guardrails.cjs installed mirror is its rendered template", () =
 
   for (const [host, template, mirror] of PAIRS) {
     it(`${host}: mirror matches its template`, () => {
-      // Absent mirror = this host is not installed in the bkit repo; nothing to compare.
-      if (!fs.existsSync(mirror)) return;
+      // bkit's own repo installs every host in PAIRS and tracks the mirrors.
+      expect(fs.existsSync(mirror), `${mirror} is missing — run \`pnpm bkit install\``).toBe(true);
       expect(
         fs.readFileSync(mirror, "utf-8"),
         `${mirror} is stale — run \`pnpm bkit install\``,
@@ -247,9 +247,8 @@ describe("T6 — guardrails.cjs installed mirror is its rendered template", () =
     // The allowlist artifact is the only source; no hook carries a literal list.
     for (const [, template, mirror] of PAIRS) {
       expect(readTemplate(template)).not.toContain("SHIPPED_NETWORK_BASES");
-      if (fs.existsSync(mirror)) {
-        expect(fs.readFileSync(mirror, "utf-8")).not.toContain("SHIPPED_NETWORK_BASES");
-      }
+      expect(fs.existsSync(mirror), `${mirror} is missing — run \`pnpm bkit install\``).toBe(true);
+      expect(fs.readFileSync(mirror, "utf-8")).not.toContain("SHIPPED_NETWORK_BASES");
     }
   });
 });

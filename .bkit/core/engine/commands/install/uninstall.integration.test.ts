@@ -558,7 +558,7 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
     await runSurgicalOpencodeUninstall("openrouter", false, tmpDir);
 
     const oJson = readOpencodeJson();
-    const providers = (oJson.provider ?? {}) as Record<string, unknown>;
+    const providers = { ...(oJson.provider as Record<string, unknown> | undefined) };
 
     // openrouter block removed
     expect(providers.openrouter, "openrouter provider block should be removed").toBeUndefined();

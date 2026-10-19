@@ -154,6 +154,11 @@ function findProseCounterArithmetic(content: string): string[] {
     .map((l) => l.trim());
 }
 
+/** The first capture group of a regex match that is set. */
+function firstCapture(m: RegExpMatchArray): string | undefined {
+  return m[1] ?? m[2] ?? m[3];
+}
+
 describe("1. no bare *_ATTEMPT token and no counter arithmetic in workflow prose", () => {
   for (const wfFile of WORKFLOW_FILES) {
     it(`${wfFile}: no bare *_ATTEMPT token in non-fenced prose`, () => {
@@ -245,7 +250,7 @@ describe("2. MAX_* thresholds: none dead, none unknown", () => {
       ...executableCorpus().matchAll(
         /--limit=(MAX_\w+)|counters max --name=(MAX_\w+)|--name=(MAX_\w+)/g,
       ),
-    ].map((m) => m[1] ?? m[2] ?? m[3]);
+    ].map(firstCapture);
     expect(named.length).toBeGreaterThan(0);
     for (const n of named) expect(names, `unknown threshold ${n} exits 2`).toContain(n);
   });
@@ -759,12 +764,11 @@ describe.each([
         `\\b${name}=\\$\\((?:"\\{BKIT\\}" status route|printf '%s' "\\$ROUTE")`,
       );
       const required = new RegExp(`"\\{BKIT\\}" status route\\b[^\\n]*--require=${field}`);
-      for (const { block } of fencedBlocks(readRepo(file))) {
-        if (!uses.test(block)) continue;
+      for (const { block } of fencedBlocks(readRepo(file)).filter((b) => uses.test(b.block))) {
         expect(
-          assigned.test(block) && required.test(block),
+          [assigned.test(block), required.test(block)],
           `fence uses $${name} without reading it from status route:\n${block.slice(0, 200)}`,
-        ).toBe(true);
+        ).toEqual([true, true]);
       }
     });
   }

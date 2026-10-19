@@ -105,6 +105,11 @@ const COMMAND_SUBJECTS: Array<{ source: string; description: string; literal: st
 
 const SKIP_TOKEN_RE = /\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]/i;
 
+/** True when the workflow passes `literal` as a `-m` or `--message=` subject. */
+function carriesSubject(content: string, literal: string): boolean {
+  return content.includes(`-m "${literal}"`) || content.includes(`--message="${literal}"`);
+}
+
 describe("skip-ci subject convention", () => {
   describe("(i) docs-only and intermediate commit subjects keep the token", () => {
     for (const { file, description, literal } of SKIP_CI_SUBJECTS) {
@@ -114,9 +119,7 @@ describe("skip-ci subject convention", () => {
         // a literal `git commit -m "..."`; either carrier is a legitimate
         // match for the same invariant.
         const content = readWorkflow(file);
-        const carriesLiteral =
-          content.includes(`-m "${literal}"`) || content.includes(`--message="${literal}"`);
-        expect(carriesLiteral).toBe(true);
+        expect(carriesSubject(content, literal)).toBe(true);
       });
     }
   });

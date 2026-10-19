@@ -20,6 +20,14 @@ function templatePath(...parts: string[]): string {
   return path.join(TEMPLATES_ROOT, ...parts);
 }
 
+/** The `rules` table of the shipped slop-scan config ({} when the key is absent). */
+function slopTemplateRules(): Record<string, { enabled?: boolean }> {
+  const data = JSON.parse(readTemplate("slop-scan.config.json")) as {
+    rules?: Record<string, { enabled?: boolean }>;
+  };
+  return data.rules ?? {};
+}
+
 function readTemplate(...parts: string[]): string {
   return fs.readFileSync(templatePath(...parts), "utf-8");
 }
@@ -188,18 +196,14 @@ describe("slop-scan.config.json — required core rules (JSON deep-containment)"
   ];
 
   it("template contains all 12 required rule keys", () => {
-    const content = readTemplate("slop-scan.config.json");
-    const data = JSON.parse(content) as { rules?: Record<string, { enabled?: boolean }> };
-    const rules = data.rules ?? {};
+    const rules = slopTemplateRules();
     for (const key of REQUIRED_RULES) {
       expect(rules[key]).toBeDefined();
     }
   });
 
   it("all required rules have enabled: true", () => {
-    const content = readTemplate("slop-scan.config.json");
-    const data = JSON.parse(content) as { rules?: Record<string, { enabled?: boolean }> };
-    const rules = data.rules ?? {};
+    const rules = slopTemplateRules();
     for (const key of REQUIRED_RULES) {
       expect(rules[key]?.enabled).toBe(true);
     }
@@ -216,9 +220,7 @@ describe("slop-scan.config.json — required core rules (JSON deep-containment)"
   it("template has exactly 12 required rules (no extra bkit-mandated rules beyond the twelve)", () => {
     // This test documents the expected scope — if bkit adds a new required rule,
     // this test must be updated with the new rule's key.
-    const content = readTemplate("slop-scan.config.json");
-    const data = JSON.parse(content) as { rules?: Record<string, unknown> };
-    const templateRuleKeys = Object.keys(data.rules ?? {});
+    const templateRuleKeys = Object.keys(slopTemplateRules());
     expect(templateRuleKeys.length).toBe(REQUIRED_RULES.length);
   });
 

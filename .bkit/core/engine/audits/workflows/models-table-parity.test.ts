@@ -33,6 +33,25 @@ function frontmatterField(field: string): Map<string, string> {
   return out;
 }
 
+/** Prompts whose § Models cell is missing or restates a different value than their frontmatter. */
+function columnDrift(
+  fromFiles: Map<string, string>,
+  fromTable: Map<string, string>,
+  column: string,
+  field: string,
+): string[] {
+  const drift: string[] = [];
+  for (const [name, expected] of fromFiles) {
+    const actual = fromTable.get(name);
+    if (actual === undefined) {
+      drift.push(`${name}: missing from the ${column} column`);
+    } else if (actual !== expected) {
+      drift.push(`${name}: ${column}="${actual}" but ${field}: ${expected}`);
+    }
+  }
+  return drift;
+}
+
 describe("§ Models table parity with prompt frontmatter", () => {
   const cases: Array<[column: string, field: string]> = [
     ["Anthropic", "model"],
@@ -46,14 +65,7 @@ describe("§ Models table parity with prompt frontmatter", () => {
       const fromTable = parseModelLookupForColumn(PROMPTS_MD, column);
       expect(fromFiles.size).toBeGreaterThan(0);
 
-      const drift: string[] = [];
-      for (const [name, expected] of fromFiles) {
-        const actual = fromTable.get(name);
-        if (actual === undefined) drift.push(`${name}: missing from the ${column} column`);
-        else if (actual !== expected)
-          drift.push(`${name}: ${column}="${actual}" but ${field}: ${expected}`);
-      }
-      expect(drift).toEqual([]);
+      expect(columnDrift(fromFiles, fromTable, column, field)).toEqual([]);
     });
   }
 

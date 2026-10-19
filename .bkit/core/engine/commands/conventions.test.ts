@@ -135,16 +135,28 @@ async function exportedCommands(rel: string): Promise<CommandSpec[]> {
   );
 }
 
+/** The non-test `.ts` files directly inside `dir`. */
+function sourceFiles(dir: string): string[] {
+  return fs.readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+}
+
 /** Command sources: every non-test `.ts` in the group folders. */
 function commandSources(): string[] {
   return GROUPS.flatMap((g) => {
     const dir = path.join(SRC, "commands", g);
     if (!fs.existsSync(dir)) return [];
-    return fs
-      .readdirSync(dir)
-      .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
-      .map((f) => path.join("commands", g, f));
+    return sourceFiles(dir).map((f) => path.join("commands", g, f));
   });
+}
+
+/** Every way a command source breaks "exports a command, and each is in COMMANDS"; empty = conforms. */
+async function exportProblems(rel: string): Promise<string[]> {
+  const cmds = await exportedCommands(rel);
+  const problems = cmds.length === 0 ? [`${rel}: exports no command`] : [];
+  for (const cmd of cmds) {
+    if (!COMMANDS.includes(cmd)) problems.push(`${rel}: bkit ${cmd.noun} is not in COMMANDS`);
+  }
+  return problems;
 }
 
 describe("registered commands", () => {
@@ -186,13 +198,7 @@ describe("command sources", () => {
 
   it("each export a command, and every exported command is in COMMANDS (reachable)", async () => {
     const problems: string[] = [];
-    for (const rel of sources) {
-      const cmds = await exportedCommands(rel);
-      if (cmds.length === 0) problems.push(`${rel}: exports no command`);
-      for (const cmd of cmds) {
-        if (!COMMANDS.includes(cmd)) problems.push(`${rel}: bkit ${cmd.noun} is not in COMMANDS`);
-      }
-    }
+    for (const rel of sources) problems.push(...(await exportProblems(rel)));
     expect(problems).toEqual([]);
   });
 
@@ -205,10 +211,9 @@ describe("command sources", () => {
 
   it("the engine's shared/ helpers each have a test file next to them", () => {
     const dir = path.join(SRC, "shared");
-    const untested = fs
-      .readdirSync(dir)
-      .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
-      .filter((f) => !fs.existsSync(path.join(dir, f.replace(/\.ts$/, ".test.ts"))));
+    const untested = sourceFiles(dir).filter(
+      (f) => !fs.existsSync(path.join(dir, f.replace(/\.ts$/, ".test.ts"))),
+    );
     expect(untested).toEqual([]);
   });
 

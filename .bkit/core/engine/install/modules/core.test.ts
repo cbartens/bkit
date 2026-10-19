@@ -38,7 +38,8 @@ describe("runCoreModule first-install advisory (BAR-141: structured finding)", (
     const match = MODULES_SRC.match(
       /id: "first-install-postinstall-steps"[\s\S]*?action:\s*"([\s\S]*?)",/,
     );
-    const action = match ? match[1] : MODULES_SRC;
+    expect(match).not.toBeNull();
+    const action = match![1];
     expect(action).not.toContain("onlyBuiltDependencies");
   });
 

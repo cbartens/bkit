@@ -313,7 +313,8 @@ describe("detectWorkflowLintToolsMissing", () => {
   });
   it("fires (advisory) when a tool is missing, naming it", () => {
     writeWorkflow();
-    spawnSync.mockImplementation((cmd: string) => ({ status: cmd === "actionlint" ? 1 : 0 }));
+    // Only actionlint is missing: it exits 1, every other tool exits 0.
+    spawnSync.mockImplementation((cmd: string) => ({ status: Number(cmd === "actionlint") }));
     const f = detectWorkflowLintToolsMissing(tmpDir);
     expect(f?.id).toBe("workflow-lint-tools-missing");
     expect(f?.severity).toBe("advisory");

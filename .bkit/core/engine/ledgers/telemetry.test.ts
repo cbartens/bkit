@@ -1,7 +1,8 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   DEFERRAL_REASONS,
@@ -20,6 +21,7 @@ import {
   humanizeDuration,
   fold,
   foldFrom,
+  gitEnv,
   identity,
   parse,
   validate,
@@ -33,6 +35,27 @@ import { getBkitDocsRoot } from "../shared/package-roots";
 
 /** The event row of one `kind`. */
 type EventOf<K extends TelemetryEvent["kind"]> = Extract<TelemetryEvent, { kind: K }>;
+
+/**
+ * A throwaway git repo in os.tmpdir() holding `commits` empty commits and one
+ * `origin` remote per URL in `remotes`. The caller removes it.
+ */
+function makeGitRepo(commits: number, remotes: string[]): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-telemetry-git-"));
+  const git = (...args: string[]) => {
+    const res = spawnSync("git", args, { cwd: dir, encoding: "utf-8", env: gitEnv() });
+    expect(res.status, `git ${args.join(" ")}: ${res.stderr}`).toBe(0);
+  };
+  git("init", "-q");
+  for (const url of remotes) git("remote", "add", "origin", url);
+  for (let i = 0; i < commits; i++) {
+    git(
+      ...["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"],
+      ...["commit", "--allow-empty", "-q", "-m", `c${i}`],
+    );
+  }
+  return dir;
+}
 
 function baseEnvelope(
   kind: TelemetryEvent["kind"],
@@ -583,37 +606,62 @@ describe("jsonl.md examples — validated against the codec", () => {
     return out;
   }
 
+  /**
+   * Full-row examples. The § Updating a Row walkthrough trims the envelope for
+   * readability and says so; only full rows (those carrying `repo`) are held to
+   * validate().
+   */
+  function fullExamples(): Array<Record<string, unknown>> {
+    return specExamples().filter((ex) => Boolean(ex["repo"]));
+  }
+
+  /** The spec's Generic Fields set and each kind's Per-Kind Fields set. */
+  function specFieldTables(): { generic: Set<string>; perKind: Map<string, Set<string>> } {
+    const src = fs.readFileSync(SPEC, "utf-8");
+    const section = (heading: string) => src.split(`## ${heading}\n`)[1]?.split(/\n## /)[0] ?? "";
+    const generic = new Set(
+      [...section("Generic Fields (all kinds)").matchAll(/^\| `(\w+)` \|/gm)].map(
+        (m) => m[1] ?? "",
+      ),
+    );
+    const perKind = new Map<string, Set<string>>();
+    for (const m of section("Per-Kind Fields").matchAll(/^\| `(\w+)` \| (.*) \|$/gm)) {
+      perKind.set(
+        m[1] ?? "",
+        new Set([...(m[2] ?? "").matchAll(/`(\w+)[?:`]/g)].map((f) => f[1] ?? "")),
+      );
+    }
+    return { generic, perKind };
+  }
+
+  /** `listed` may be undefined (no Per-Kind row); the union is then just `generic`. */
+  function unionOf(generic: Set<string>, listed: Set<string> | undefined): Set<string> {
+    return new Set([...generic, ...(listed ?? [])]);
+  }
+
   it("every full example row is a valid event", () => {
-    const examples = specExamples();
-    expect(examples.length).toBeGreaterThan(5);
-    for (const ex of examples) {
-      // The § Updating a Row walkthrough trims the envelope for readability and
-      // says so; only full rows are held to validate().
-      if (!ex["repo"]) continue;
+    expect(specExamples().length).toBeGreaterThan(5);
+    const rows = fullExamples();
+    expect(rows.length).toBeGreaterThan(5);
+    for (const ex of rows) {
       const r = validate(ex);
       expect(r.ok, `${String(ex["kind"])} example invalid: ${r.reason}`).toBe(true);
     }
   });
 
   it("every example field is a Generic Field or listed in its kind's Per-Kind Fields row", () => {
-    const src = fs.readFileSync(SPEC, "utf-8");
-    const section = (heading: string) => src.split(`## ${heading}\n`)[1]?.split(/\n## /)[0] ?? "";
-    const generic = new Set(
-      [...section("Generic Fields (all kinds)").matchAll(/^\| `(\w+)` \|/gm)].map((m) => m[1]),
-    );
-    const perKind = new Map<string, Set<string>>();
-    for (const m of section("Per-Kind Fields").matchAll(/^\| `(\w+)` \| (.*) \|$/gm)) {
-      perKind.set(m[1] ?? "", new Set([...(m[2] ?? "").matchAll(/`(\w+)[?:`]/g)].map((f) => f[1])));
-    }
+    const { generic, perKind } = specFieldTables();
     expect(generic.size).toBeGreaterThan(5);
-    for (const ex of specExamples()) {
-      if (!ex["repo"]) continue;
+    const rows = fullExamples();
+    expect(rows.length).toBeGreaterThan(5);
+    for (const ex of rows) {
       const kind = String(ex["kind"]);
       const listed = perKind.get(kind);
       expect(listed, `no Per-Kind Fields row for ${kind}`).toBeDefined();
+      const allowed = unionOf(generic, listed);
       for (const field of Object.keys(ex)) {
         expect(
-          generic.has(field) || listed?.has(field),
+          allowed.has(field),
           `${kind} example field "${field}" is in neither Generic Fields nor its Per-Kind Fields row`,
         ).toBe(true);
       }
@@ -629,16 +677,17 @@ describe("jsonl.md examples — validated against the codec", () => {
   // collapsed: `step` held agent names on most rows while `subagent` sat empty on
   // all 141, costing the harvest two of its five dimensions.
   it("no example puts an agent name in step", () => {
-    for (const ex of specExamples()) {
-      const step = ex["step"];
-      if (typeof step !== "string") continue;
+    const steps = specExamples()
+      .map((ex) => ex["step"])
+      .filter((step): step is string => typeof step === "string");
+    expect(steps.length).toBeGreaterThan(0);
+    for (const step of steps) {
       expect(step.startsWith("bkit-"), `step "${step}" is an agent name, not a step`).toBe(false);
     }
   });
 
   it("model appears exactly where subagent does — never on an orchestrator row", () => {
-    for (const ex of specExamples()) {
-      if (!ex["repo"]) continue;
+    for (const ex of fullExamples()) {
       expect(Boolean(ex["model"]), `${String(ex["kind"])}: model must be set iff subagent is`).toBe(
         Boolean(ex["subagent"]),
       );
@@ -646,9 +695,10 @@ describe("jsonl.md examples — validated against the codec", () => {
   });
 
   it("the triaged kinds' examples carry severity and references", () => {
-    for (const ex of specExamples()) {
+    const triaged = fullExamples().filter((ex) => SEVERITY_KINDS.has(ex["kind"] as string));
+    expect(triaged.length).toBeGreaterThan(0);
+    for (const ex of triaged) {
       const kind = ex["kind"] as string;
-      if (!ex["repo"] || !SEVERITY_KINDS.has(kind)) continue;
       expect(ex["severity"], `${kind} example lacks severity`).toBeDefined();
       // references is the one cross-entry pointer — an example omitting it teaches
       // writers to omit it, which is how the Related: graph evaporated.
@@ -688,13 +738,25 @@ describe("repo slug — one resolver, from the git remote", () => {
     expect(parseRemoteUrlToSlug("https://github.com/cbartens/bkit.git")).toBe("cbartens/bkit");
   });
 
-  it("resolves this repo's real slug from its remote", () => {
-    const root = path.resolve(import.meta.dirname, "..", "..", "..", "..");
-    // Skip gracefully where there is no remote (fresh clone in CI without origin).
-    const slug = resolveRepoSlug(root);
-    if (!slug) return;
-    expect(slug).toMatch(/^[^/@]+\/[^/]+$/);
-    expect(slug.startsWith("@")).toBe(false);
+  it("resolves the slug from a repo's origin remote", () => {
+    const repo = makeGitRepo(0, ["https://github.com/cbartens/bkit.git"]);
+    try {
+      const slug = resolveRepoSlug(repo);
+      expect(slug).toBe("cbartens/bkit");
+      expect(slug).toMatch(/^[^/@]+\/[^/]+$/);
+      expect(slug.startsWith("@")).toBe(false);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("returns empty for a git repo with no origin remote", () => {
+    const repo = makeGitRepo(0, []);
+    try {
+      expect(resolveRepoSlug(repo)).toBe("");
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
   });
 
   it("returns empty for a directory that is not a git repo", () => {
@@ -708,29 +770,35 @@ describe("repo slug — one resolver, from the git remote", () => {
 // "pass"), and parentSha is in identity(), so successive runs shared one identity
 // and folded into each other.
 describe("resolveGitSha — parentSha must be a real SHA before it reaches a row", () => {
-  const REPO = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+  let repo: string;
+  beforeAll(() => {
+    // Two commits, so HEAD~1 resolves.
+    repo = makeGitRepo(2, []);
+  });
+  afterAll(() => {
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
 
   it("resolves a rev to a hex SHA the grader's guard accepts", () => {
-    const sha = resolveGitSha("HEAD", REPO);
-    if (!sha) return; // no commits (fresh CI clone) — nothing to assert
-    expect(sha).toMatch(/^[0-9a-f]{7,40}$/);
+    expect(resolveGitSha("HEAD", repo)).toMatch(/^[0-9a-f]{7,40}$/);
   });
 
   it("never returns the rev it was given", () => {
-    const sha = resolveGitSha("HEAD~1", REPO);
-    if (!sha) return;
+    const sha = resolveGitSha("HEAD~1", repo);
+    expect(sha).toMatch(/^[0-9a-f]{7,40}$/);
     expect(sha).not.toBe("HEAD~1");
   });
 
   it("gives DIFFERENT SHAs for different revs — so identity cannot collapse runs", () => {
-    const head = resolveGitSha("HEAD", REPO);
-    const parent = resolveGitSha("HEAD~1", REPO);
-    if (!head || !parent) return;
+    const head = resolveGitSha("HEAD", repo);
+    const parent = resolveGitSha("HEAD~1", repo);
+    expect(head).toMatch(/^[0-9a-f]{7,40}$/);
+    expect(parent).toMatch(/^[0-9a-f]{7,40}$/);
     expect(head).not.toBe(parent);
   });
 
   it.each(["no-such-rev", "HEAD~99999", ""])("returns empty for unresolvable %j", (rev) => {
-    expect(resolveGitSha(rev, REPO)).toBe("");
+    expect(resolveGitSha(rev, repo)).toBe("");
   });
 
   it("returns empty outside a git repo rather than throwing", () => {
@@ -1207,8 +1275,8 @@ describe("workflowTelemetry — per-workflow summary signals", () => {
     const foldResult = foldFrom([hotPath]);
     const summary = workflowTelemetry(foldResult);
     expect(summary.maxRowsWarning).toBe(true);
-    const warningLine = summary.lines.find(
-      (l) => l.includes("[bkit-telemetry]") && l.includes("MAX_ROWS_BEFORE_ROLLUP"),
+    const warningLine = summary.lines.find((l) =>
+      ["[bkit-telemetry]", "MAX_ROWS_BEFORE_ROLLUP"].every((part) => l.includes(part)),
     );
     expect(warningLine).toBeDefined();
     expect(warningLine).toContain("WARNING");
@@ -1256,23 +1324,25 @@ describe("workflowTelemetry — this-run vs med·5 baseline", () => {
 
   it("baselines a brief run only against prior brief runs, and shows planSource", () => {
     // Five planned runs at 600s, then three brief runs at 60s; this run is brief.
-    const durs: [number, boolean][] = [
-      [600, false],
-      [600, false],
-      [600, false],
-      [600, false],
-      [600, false],
-      [60, true],
-      [60, true],
-      [60, true],
-      [90, true],
+    const planned = {};
+    const brief = { planSource: "brief" };
+    const durs: [number, object][] = [
+      [600, planned],
+      [600, planned],
+      [600, planned],
+      [600, planned],
+      [600, planned],
+      [60, brief],
+      [60, brief],
+      [60, brief],
+      [90, brief],
     ];
-    const runs = durs.map(([dur, brief], i) =>
+    const runs = durs.map(([dur, source], i) =>
       outcomeEvent({
         ts: 2000 + i,
         parentSha: `b${i}`,
         durationSeconds: dur,
-        ...(brief ? { planSource: "brief" } : {}),
+        ...source,
       } as Partial<TelemetryEvent>),
     );
     const s = workflowTelemetry(foldFrom([writeStats(runs)]), "build");
@@ -1401,10 +1471,12 @@ describe("telemetry-invariant", () => {
    * (each verify attempt starts from a different HEAD).
    */
   function countVerifyAttemptRows(rows: TelemetryEvent[]): number {
-    return rows.filter(
-      (e) =>
-        e.kind === "counter" && (e as { counterName?: string }).counterName === "verifyAttempt",
-    ).length;
+    return rows.filter(isVerifyAttemptRow).length;
+  }
+
+  /** True for a counter row named `verifyAttempt`. */
+  function isVerifyAttemptRow(e: TelemetryEvent): boolean {
+    return e.kind === "counter" && (e as { counterName?: string }).counterName === "verifyAttempt";
   }
 
   /**
@@ -1488,10 +1560,7 @@ describe("telemetry-invariant", () => {
       // Only 1 unique row because same identity (repo + workflow + parentSha + counterName)
       expect(countVerifyAttemptRows(allRows)).toBe(1);
       // The surviving row should have the higher ts (last-write-wins)
-      const row = allRows.find(
-        (e) =>
-          e.kind === "counter" && (e as { counterName?: string }).counterName === "verifyAttempt",
-      );
+      const row = allRows.find(isVerifyAttemptRow);
       expect(row?.ts).toBe(1_700_000_002_000);
     });
 
@@ -1539,10 +1608,9 @@ describe("telemetry-invariant", () => {
       const state = fold(parsed);
       const allRows = [...state.values()];
 
-      const verifyRow = allRows.find(
-        (e) =>
-          e.kind === "counter" && (e as { counterName?: string }).counterName === "verifyAttempt",
-      ) as TelemetryEvent & { counterSource?: string };
+      const verifyRow = allRows.find(isVerifyAttemptRow) as TelemetryEvent & {
+        counterSource?: string;
+      };
 
       expect(verifyRow?.counterSource).toBe("shell-bus");
     });

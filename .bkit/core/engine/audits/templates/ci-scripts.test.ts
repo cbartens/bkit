@@ -288,6 +288,67 @@ function capstoneOf(workflow: string): CapstoneJob {
 const callsScript = (step: Step) =>
   /\bnode scripts\/ci\/check-capstone\.mjs\b/.test(step.run ?? "");
 
+const envOf = (step: Step): Record<string, string> => step.env ?? {};
+
+/** The `LANES` list a capstone step declares, sorted. */
+function declaredLanes(env: Record<string, string>): string[] {
+  return (env.LANES ?? "").split(",").sort();
+}
+
+/**
+ * Per-lane `<LANE>_RESULT` wiring (required) plus the optional `<LANE>_RAN` /
+ * `<LANE>_CACHE_SKIP` wiring (checked only when the step sets them), as `key: expected, got` lines.
+ */
+function laneEnvMismatches(lanes: string[], env: Record<string, string>): string[] {
+  const out: string[] = [];
+  for (const lane of lanes) {
+    const prefix = lane.toUpperCase().replace(/-/g, "_");
+    const wanted: Array<[string, string]> = [
+      [`${prefix}_RESULT`, `\${{ needs.bkit-tests-${lane}.result }}`],
+      [`${prefix}_RAN`, `\${{ needs.bkit-tests-${lane}.outputs.tests_ran }}`],
+      [`${prefix}_CACHE_SKIP`, `\${{ needs.bkit-tests-${lane}.outputs.cache_skip }}`],
+    ];
+    for (const [key, expected] of wanted) {
+      const required = key.endsWith("_RESULT");
+      const mismatched = env[key] !== expected && (required || env[key] !== undefined);
+      if (mismatched) out.push(`${key}: expected ${expected}, got ${env[key]}`);
+    }
+  }
+  return out;
+}
+
+/** `PLAN` / `SCOPE_RESULT` wiring, required only when the capstone needs the scope job. */
+function scopeEnvMismatches(needs: string[], env: Record<string, string>): string[] {
+  if (!needs.includes("bkit-tests-scope")) return [];
+  const wanted: Array<[string, string]> = [
+    ["PLAN", "\${{ needs.bkit-tests-scope.outputs.plan }}"],
+    ["SCOPE_RESULT", "\${{ needs.bkit-tests-scope.result }}"],
+  ];
+  return wanted
+    .filter(([key, expected]) => env[key] !== expected)
+    .map(([key, expected]) => `${key}: expected ${expected}, got ${env[key]}`);
+}
+
+describe("capstone env wiring checks", () => {
+  it("flag a lane whose result is not wired to its job", () => {
+    expect(laneEnvMismatches(["unit"], {})).toHaveLength(1);
+    expect(
+      laneEnvMismatches(["unit"], { UNIT_RESULT: "\${{ needs.bkit-tests-unit.result }}" }),
+    ).toEqual([]);
+  });
+
+  it("flag a wrongly wired optional lane variable but accept an absent one", () => {
+    const result = "\${{ needs.bkit-tests-unit.result }}";
+    expect(laneEnvMismatches(["unit"], { UNIT_RESULT: result, UNIT_RAN: "7" })).toHaveLength(1);
+    expect(laneEnvMismatches(["unit"], { UNIT_RESULT: result })).toEqual([]);
+  });
+
+  it("require PLAN and SCOPE_RESULT only when the capstone needs the scope job", () => {
+    expect(scopeEnvMismatches(["bkit-tests-scope"], {})).toHaveLength(2);
+    expect(scopeEnvMismatches(["bkit-tests-static"], {})).toEqual([]);
+  });
+});
+
 describe("check-capstone", () => {
   it("passes its own copy-and-own test file (bkit's own copy)", () => {
     const res = spawnSync(process.execPath, [path.resolve("scripts/ci/check-capstone.test.mjs")], {
@@ -305,32 +366,13 @@ describe("check-capstone", () => {
         assertStep,
         `${workflow}: no capstone step runs scripts/ci/check-capstone.mjs`,
       ).toBeDefined();
-      const env = assertStep!.env ?? {};
+      const env = envOf(assertStep!);
       const lanes = needs
         .filter((job) => job !== "bkit-tests-scope")
         .map((j) => j.replace(/^bkit-tests-/, ""));
-      expect((env.LANES ?? "").split(",").sort()).toEqual([...lanes].sort());
-      for (const lane of lanes) {
-        const prefix = lane.toUpperCase().replace(/-/g, "_");
-        expect(env[`${prefix}_RESULT`], `${prefix}_RESULT`).toBe(
-          `\${{ needs.bkit-tests-${lane}.result }}`,
-        );
-        for (const [suffix, output] of [
-          ["RAN", "tests_ran"],
-          ["CACHE_SKIP", "cache_skip"],
-        ] as const) {
-          const value = env[`${prefix}_${suffix}`];
-          if (value !== undefined) {
-            expect(value, `${prefix}_${suffix}`).toBe(
-              `\${{ needs.bkit-tests-${lane}.outputs.${output} }}`,
-            );
-          }
-        }
-      }
-      if (needs.includes("bkit-tests-scope")) {
-        expect(env.PLAN).toBe("\${{ needs.bkit-tests-scope.outputs.plan }}");
-        expect(env.SCOPE_RESULT).toBe("\${{ needs.bkit-tests-scope.result }}");
-      }
+      expect(declaredLanes(env)).toEqual([...lanes].sort());
+      expect(laneEnvMismatches(lanes, env)).toEqual([]);
+      expect(scopeEnvMismatches(needs, env)).toEqual([]);
     },
   );
 
@@ -379,7 +421,7 @@ describe("check-capstone", () => {
     }
 
     it("sets exactly the variables this test supplies", () => {
-      expect(Object.keys(step().env ?? {}).sort()).toEqual(Object.keys(lanesEnv).sort());
+      expect(Object.keys(envOf(step())).sort()).toEqual(Object.keys(lanesEnv).sort());
     });
 
     it("reds with a copy-the-script message when scripts/ci/check-capstone.mjs is missing", () => {

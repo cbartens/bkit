@@ -25,9 +25,8 @@ describe("getPkgRoot() — context 1: dist/ arm (consumer context)", () => {
     const fakeDistDir = path.join("/some", "pkg", "dist");
     // Arm 1: does NOT end with ENGINE_SUBPATH → resolves one level up.
     const expectedPkgRoot = path.resolve(fakeDistDir, "..");
-    const result = fakeDistDir.endsWith(ENGINE_SUBPATH)
-      ? path.resolve(fakeDistDir, "..", "..", "..")
-      : path.resolve(fakeDistDir, "..");
+    expect(fakeDistDir.endsWith(ENGINE_SUBPATH)).toBe(false);
+    const result = path.resolve(fakeDistDir, "..");
     expect(result).toBe(expectedPkgRoot);
     expect(result).toBe(path.join("/some", "pkg"));
   });
@@ -49,9 +48,8 @@ describe("getPkgRoot() — context 2: tsx-from-source arm (dev/test context)", (
     // Construct a fake scriptDir whose suffix equals ENGINE_SUBPATH.
     const fakeSrcDir = path.join("/some", "pkg") + path.sep + ENGINE_SUBPATH;
     const expectedPkgRoot = path.resolve(fakeSrcDir, "..", "..", "..");
-    const result = fakeSrcDir.endsWith(ENGINE_SUBPATH)
-      ? path.resolve(fakeSrcDir, "..", "..", "..")
-      : path.resolve(fakeSrcDir, "..");
+    expect(fakeSrcDir.endsWith(ENGINE_SUBPATH)).toBe(true);
+    const result = path.resolve(fakeSrcDir, "..", "..", "..");
     expect(result).toBe(expectedPkgRoot);
     expect(result).toBe(path.join("/some", "pkg"));
   });
@@ -83,9 +81,8 @@ describe("getPkgRoot() — context 3: packed-tarball arm (node_modules layout)",
     const fakeNmDistDir = path.join("/consumer", "node_modules", "@cbartens", "bkit", "dist");
     // Arm 1: does NOT end with ENGINE_SUBPATH → one level up.
     const expectedPkgRoot = path.resolve(fakeNmDistDir, "..");
-    const result = fakeNmDistDir.endsWith(ENGINE_SUBPATH)
-      ? path.resolve(fakeNmDistDir, "..", "..", "..")
-      : path.resolve(fakeNmDistDir, "..");
+    expect(fakeNmDistDir.endsWith(ENGINE_SUBPATH)).toBe(false);
+    const result = path.resolve(fakeNmDistDir, "..");
     expect(result).toBe(expectedPkgRoot);
     expect(result).toBe(path.join("/consumer", "node_modules", "@cbartens", "bkit"));
   });

@@ -118,9 +118,9 @@ describe("install never writes or flags an adopted template copy", () => {
     // cloud setup advisories name the templates: they say what to copy.
     const setupIds = new Set(["bkit-cloud-setup", "cloud-env-customize"]);
     expect(
-      ctx.advisories.filter(
-        (a) => !setupIds.has(a.id) && adopted.some((rel) => a.detect.includes(rel)),
-      ),
+      ctx.advisories
+        .filter((a) => !setupIds.has(a.id))
+        .filter((a) => adopted.some((rel) => a.detect.includes(rel))),
     ).toEqual([]);
   });
 });
@@ -278,9 +278,7 @@ describe(".bkit-version write-order regression (Reviewer 1 #7 + MED-4)", () => {
     expect(bkitVersionIdx).toBeGreaterThanOrEqual(0);
 
     // .bkit-version should be the LAST write (postDispatch runs after all module writes)
-    if (writeOrder.length > 1) {
-      expect(bkitVersionIdx).toBe(writeOrder.length - 1);
-    }
+    expect(bkitVersionIdx).toBe(writeOrder.length - 1);
   });
 
   it(".bkit-version is absent if postDispatch is NOT flushed (mid-install crash simulation)", () => {
@@ -792,14 +790,17 @@ describe("permissions-parity", () => {
       agent_message?: string;
       hookSpecificOutput?: { additionalContext?: string; permissionDecision?: string };
     };
-    if (host === "cursor") {
-      // A block would show up as a non-allow permission — assert it never does.
-      expect(doc.permission).toBe("allow");
-      return doc.agent_message ?? "";
-    }
-    expect(doc.hookSpecificOutput?.permissionDecision).toBeUndefined();
-    return doc.hookSpecificOutput?.additionalContext ?? "";
+    const decision =
+      host === "cursor" ? doc.permission : doc.hookSpecificOutput?.permissionDecision;
+    // A block would show up as a non-allow permission — assert it never does.
+    expect(decision).toBe(NO_BLOCK_DECISION[host]);
+    return host === "cursor"
+      ? (doc.agent_message ?? "")
+      : (doc.hookSpecificOutput?.additionalContext ?? "");
   }
+
+  /** What each host's hook output carries as its permission decision when it does not block. */
+  const NO_BLOCK_DECISION = { claude: undefined, codex: undefined, cursor: "allow" } as const;
 
   const HOSTS = ["claude", "codex", "cursor"] as const;
 
@@ -1056,22 +1057,17 @@ describe("permissions-parity", () => {
           }
         ).domains;
 
-        const missing: string[] = [];
-        for (const base of bases) {
+        const surfaces = bases.flatMap((base): Array<[label: string, granted: boolean]> => [
           // Claude — fetch tool only (a permission table cannot match a URL host).
-          if (!claudeAllow.includes(`WebFetch(domain:${base})`))
-            missing.push(`claude tool:${base}`);
+          [`claude tool:${base}`, claudeAllow.includes(`WebFetch(domain:${base})`)],
           // OpenCode — fetch tool AND shell.
-          if (opencodePerm.webfetch[`*${base}*`] !== "allow") missing.push(`opencode tool:${base}`);
-          if (opencodePerm.bash[`curl *${base}*`] !== "allow") {
-            missing.push(`opencode shell curl:${base}`);
-          }
-          if (opencodePerm.bash[`wget *${base}*`] !== "allow") {
-            missing.push(`opencode shell wget:${base}`);
-          }
+          [`opencode tool:${base}`, opencodePerm.webfetch[`*${base}*`] === "allow"],
+          [`opencode shell curl:${base}`, opencodePerm.bash[`curl *${base}*`] === "allow"],
+          [`opencode shell wget:${base}`, opencodePerm.bash[`wget *${base}*`] === "allow"],
           // Cursor — shell, read by the hook from this artifact.
-          if (!cursorDomains.includes(base)) missing.push(`cursor shell:${base}`);
-        }
+          [`cursor shell:${base}`, cursorDomains.includes(base)],
+        ]);
+        const missing = surfaces.filter(([, granted]) => !granted).map(([label]) => label);
         expect(missing).toEqual([]);
       } finally {
         fs.rmSync(cwd, { recursive: true, force: true });

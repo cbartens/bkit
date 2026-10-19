@@ -43,6 +43,7 @@ import {
   BKIT_EGRESS_SOURCES,
   MULTI_LABEL_SUFFIXES,
   MULTI_TENANT_APEXES,
+  type OpencodeProvider,
 } from "../shared/egress";
 import { isOpencodeProvider } from "../render/models";
 import { ISSUE_TRACKERS } from "./manifest";
@@ -815,6 +816,11 @@ describe("writeCursorCliPermissionsArtifact — .cursor/cli.json writer", () => 
 describe("egress registry — completeness, invariants and the anti-widening gate", () => {
   const providerRows = BKIT_EGRESS_SOURCES.filter((r) => r.kind === "opencode-provider");
 
+  /** True when `host` equals a base or is a subdomain of one. */
+  function hostIsCovered(host: string, bases: readonly string[]): boolean {
+    return bases.some((b) => host === b || host.endsWith(`.${b}`));
+  }
+
   // T1 — every registry key has exactly one row, and every row is well-formed.
   it("T1: one opencode-provider row per provider key, ids unique, rows well-formed", () => {
     const providerKeys = Object.keys(OPENCODE_PROVIDER_DEFAULTS).sort();
@@ -823,48 +829,46 @@ describe("egress registry — completeness, invariants and the anti-widening gat
     const ids = BKIT_EGRESS_SOURCES.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
 
-    for (const row of BKIT_EGRESS_SOURCES) {
-      // non-empty bases OR an explicit reason for having none
-      expect(row.bases.length > 0 || typeof row.reason === "string").toBe(true);
-      // a row that grants bases must name the hosts those bases exist for
-      if (row.bases.length > 0) expect(row.hosts.length).toBeGreaterThan(0);
-    }
+    // non-empty bases OR an explicit reason for having none
+    const noBases = BKIT_EGRESS_SOURCES.filter((r) => r.bases.length === 0);
+    expect(noBases.filter((r) => typeof r.reason !== "string").map((r) => r.id)).toEqual([]);
+    // a row that grants bases must name the hosts those bases exist for
+    const withBases = BKIT_EGRESS_SOURCES.filter((r) => r.bases.length > 0);
+    expect(withBases.filter((r) => r.hosts.length === 0).map((r) => r.id)).toEqual([]);
   });
 
   // T1 (continued) — the tracker/updater sweep, asserting WHAT was skipped, not just the count.
   it("T1: every issue tracker but the 'none' sentinel has an mcp row, and 'none' was the only skip", () => {
-    const skipped: string[] = [];
-    for (const tracker of ISSUE_TRACKERS) {
-      if (tracker === "none") {
-        skipped.push(tracker);
-        continue;
-      }
+    const skipped = ISSUE_TRACKERS.filter((tracker) => tracker === "none");
+    expect(skipped).toEqual(["none"]);
+    for (const tracker of ISSUE_TRACKERS.filter((t) => t !== "none")) {
       expect(BKIT_EGRESS_SOURCES.find((r) => r.id === `mcp-${tracker}`)?.kind).toBe("tracker-mcp");
     }
-    expect(skipped).toEqual(["none"]);
   });
 
   // T2 — the literals in the leaf are tied back to the provider baseURL they claim to derive from.
   it("T2: provider rows match their baseURL host, and every host is covered by a base", () => {
-    for (const row of providerRows) {
-      if (!isOpencodeProvider(row.id))
-        throw new Error(`row ${row.id} is not an allowlisted provider`);
-      const baseURL = OPENCODE_PROVIDER_DEFAULTS[row.id].baseURL;
-      if (baseURL !== "") {
-        // the derived literal must still equal what the provider's baseURL resolves to
-        expect(row.hosts).toContain(new URL(baseURL).hostname);
-        expect(row.bases).toContain(proposeEgressBase(baseURL));
-      } else {
-        // a builtin contributes no baseURL, so its row must say why it still carries hosts
-        expect(typeof row.reason).toBe("string");
-      }
+    expect(providerRows.filter((r) => !isOpencodeProvider(r.id)).map((r) => r.id)).toEqual([]);
+    const withURLs = providerRows.map((row) => ({
+      row,
+      baseURL: OPENCODE_PROVIDER_DEFAULTS[row.id as OpencodeProvider].baseURL,
+    }));
+    const withBaseURL = withURLs.filter(({ baseURL }) => baseURL !== "");
+    const builtins = withURLs.filter(({ baseURL }) => baseURL === "");
+    expect(withBaseURL.length).toBeGreaterThan(0);
+    for (const { row, baseURL } of withBaseURL) {
+      // the derived literal must still equal what the provider's baseURL resolves to
+      expect(row.hosts).toContain(new URL(baseURL).hostname);
+      expect(row.bases).toContain(proposeEgressBase(baseURL));
     }
-    for (const row of BKIT_EGRESS_SOURCES) {
-      const uncovered = row.hosts.filter(
-        (h) => !row.bases.some((b) => h === b || h.endsWith(`.${b}`)),
-      );
-      if (uncovered.length > 0) expect(typeof row.reason).toBe("string");
+    for (const { row } of builtins) {
+      // a builtin contributes no baseURL, so its row must say why it still carries hosts
+      expect(typeof row.reason, row.id).toBe("string");
     }
+    const withUncoveredHosts = BKIT_EGRESS_SOURCES.filter((row) =>
+      row.hosts.some((h) => !hostIsCovered(h, row.bases)),
+    );
+    for (const row of withUncoveredHosts) expect(typeof row.reason, row.id).toBe("string");
   });
 
   // T3 — the gate. Deny checks only: an unknown platform apex passes rather than being blocked.

@@ -45,6 +45,13 @@ const mkdir = (prefix: string) => {
   return d;
 };
 
+/** PATH with `bin` first, ahead of the PATH the test started with. */
+const pathWith = (bin: string) => `${bin}${path.delimiter}${savedEnv.PATH ?? ""}`;
+
+/** A child killed by SIGTERM reports either exit status 143 (shell) or signal SIGTERM (node). */
+const diedOfSigterm = (res: { status: number | null; signal: NodeJS.Signals | null }) =>
+  res.status === 143 || res.signal === "SIGTERM";
+
 beforeEach(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   delete process.env.SLOP_BASE_REF;
@@ -115,7 +122,7 @@ function fakeSlop(summary: Record<string, unknown> | string, exit = 0) {
     ].join("\n"),
     { mode: 0o755 },
   );
-  process.env.PATH = `${bin}${path.delimiter}${savedEnv.PATH ?? ""}`;
+  process.env.PATH = pathWith(bin);
   process.env.FAKE_SLOP_JSON = json;
   process.env.FAKE_SLOP_EXIT = String(exit);
   process.env.FAKE_SLOP_LOG = log;
@@ -349,7 +356,7 @@ describe("bkit ci slop — large reports", () => {
       ].join("\n"),
       { mode: 0o755 },
     );
-    process.env.PATH = `${bin}${path.delimiter}${savedEnv.PATH ?? ""}`;
+    process.env.PATH = pathWith(bin);
     const r = await run(cwd, [`--base=${base}`]);
     expect(r.err).not.toContain("output is not JSON");
     expect(r.code).toBe(0);
@@ -389,7 +396,7 @@ describe("bkit ci slop — real slop-scan", () => {
     for (const [rel, body] of Object.entries(files)) write(cwd, rel, body);
     const base = commit(cwd, "base");
     commit(cwd, "head");
-    process.env.PATH = `${REPO_BIN}${path.delimiter}${savedEnv.PATH ?? ""}`;
+    process.env.PATH = pathWith(REPO_BIN);
     return { cwd, base };
   };
 
@@ -441,10 +448,10 @@ describe("bkit ci slop — interrupted", () => {
     const res = spawnSync(requireTsx(), [driver], {
       cwd: REPO,
       encoding: "utf-8",
-      env: { ...process.env, PATH: `${bin}${path.delimiter}${savedEnv.PATH ?? ""}` },
+      env: { ...process.env, PATH: pathWith(bin) },
     });
     expect(res.stdout).not.toContain("returned");
-    expect(res.status === 143 || res.signal === "SIGTERM").toBe(true);
+    expect(diedOfSigterm(res)).toBe(true);
     expectCleaned(cwd);
   }, 30_000);
 });
@@ -474,7 +481,7 @@ function fakeVale(exit = 0, sync = false) {
     ].join("\n"),
     { mode: 0o755 },
   );
-  process.env.PATH = `${bin}${path.delimiter}${savedEnv.PATH ?? ""}`;
+  process.env.PATH = pathWith(bin);
   process.env.FAKE_VALE_LOG = log;
   process.env.FAKE_VALE_EXIT = String(exit);
   process.env.FAKE_VALE_SYNC = sync ? "1" : "0";

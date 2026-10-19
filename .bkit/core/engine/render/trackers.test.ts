@@ -191,7 +191,7 @@ describe("real workflow sources", () => {
         path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`),
         "utf-8",
       );
-      const count = (re: RegExp) => (src.match(re) ?? []).length;
+      const count = (re: RegExp) => [...src.matchAll(re)].length;
       const gh = count(/<!--\s*bkit:tracker\s+github\s+start\s*-->/g);
       const ln = count(/<!--\s*bkit:tracker\s+linear\s+start\s*-->/g);
       // No-tracker content uses `false`, never a `none` marker.
@@ -248,12 +248,9 @@ describe("real workflow sources", () => {
         path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`),
         "utf-8",
       );
-      const identical: string[] = [];
-      let m: RegExpExecArray | null;
-      PAIR_RE.lastIndex = 0;
-      while ((m = PAIR_RE.exec(src)) !== null) {
-        if (m[1].trim() === m[2].trim()) identical.push(m[1].trim().slice(0, 60));
-      }
+      const identical = [...src.matchAll(PAIR_RE)]
+        .filter((m) => m[1].trim() === m[2].trim())
+        .map((m) => m[1].trim().slice(0, 60));
       expect(
         identical,
         `${wf} has byte-identical github/linear pair(s) — use \`true\`: ${identical.join(" | ")}`,
@@ -270,6 +267,10 @@ describe("real prompt sources", () => {
   const PROMPTS_DIR = path.join(REPO_ROOT, ".bkit", "core", "prompts");
   const prompts = fs.readdirSync(PROMPTS_DIR).filter((f) => f.endsWith(".md"));
 
+  /** The text between a file's first two `---` lines; "" when there is none. */
+  const frontmatterOf = (file: string): string =>
+    fs.readFileSync(file, "utf-8").split(/^---$/m)[1] ?? "";
+
   for (const tracker of ["github", "linear", "none"] as const) {
     it(`every prompt resolves cleanly for ${tracker}`, () => {
       for (const f of prompts) {
@@ -284,7 +285,7 @@ describe("real prompt sources", () => {
 
   it("source frontmatter carries no bare HTML-comment line (invalid YAML)", () => {
     for (const f of prompts) {
-      const fm = fs.readFileSync(path.join(PROMPTS_DIR, f), "utf-8").split(/^---$/m)[1] ?? "";
+      const fm = frontmatterOf(path.join(PROMPTS_DIR, f));
       expect(fm, `bare <!-- line in ${f} frontmatter`).not.toMatch(/^[ \t]*<!--/m);
     }
   });

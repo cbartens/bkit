@@ -137,6 +137,28 @@ function isContractLine(text: string): boolean {
   return /^(Verdict|Failures|Spike):/.test(text.trim());
 }
 
+/** Vocabulary literals written bare (not inside a code span) in `text`. */
+function bareVocabulary(text: string): string[] {
+  return [...text.matchAll(/\b([A-Z][A-Z0-9_]{1,})\b/g)]
+    .filter((m) => VOCABULARY.has(m[1]) && outsideCode(text, m.index!))
+    .map((m) => m[1]);
+}
+
+/** Untouched-by-backticks enum sets in `text` whose every member is vocabulary. */
+function untightEnumSets(text: string): Array<{ raw: string; parts: string[] }> {
+  return [...text.matchAll(/\b[A-Z][A-Z0-9_]{1,}(?:\s*[/|]\s*[A-Z][A-Z0-9_]{1,})+\b/g)]
+    .map((m) => ({ raw: m[0], parts: m[0].split(/[/|]/).map((p) => p.trim()), at: m.index! }))
+    .filter(({ parts, at }) => parts.every((p) => VOCABULARY.has(p)) && outsideCode(text, at))
+    .map(({ raw, parts }) => ({ raw, parts }));
+}
+
+/** Bracketed `[...]` instruction spans on fenced, non-contract lines. */
+function instructionSpans(): Array<{ line: Line; span: string }> {
+  return promptLines()
+    .filter((line) => line.fenced && !isContractLine(line.text))
+    .flatMap((line) => [...line.text.matchAll(/\[[^\]]*\]/g)].map((s) => ({ line, span: s[0] })));
+}
+
 describe("prompt notation: bracketed instructions inside a template are prose", () => {
   /**
    * A fenced output template holds two different kinds of content:
@@ -155,75 +177,59 @@ describe("prompt notation: bracketed instructions inside a template are prose", 
    * the safer invariant there, enforced by the template test below.
    */
   it("no bare vocabulary literal inside a bracketed instruction span", () => {
-    const bad: string[] = [];
-    for (const line of promptLines()) {
-      if (!line.fenced || isContractLine(line.text)) continue;
-      for (const span of line.text.matchAll(/\[[^\]]*\]/g)) {
-        for (const m of span[0].matchAll(/\b([A-Z][A-Z0-9_]{1,})\b/g)) {
-          if (!VOCABULARY.has(m[1])) continue;
-          if (!outsideCode(span[0], m.index!)) continue;
-          bad.push(`${line.file}:${line.no}: bare ${m[1]} in template instruction`);
-        }
-      }
-    }
+    const bad = instructionSpans().flatMap(({ line, span }) =>
+      bareVocabulary(span).map((v) => `${line.file}:${line.no}: bare ${v} in template instruction`),
+    );
     expect(bad.slice(0, 20)).toEqual([]);
   });
 
   it("enum sets inside a bracketed instruction use the tight union form", () => {
-    const bad: string[] = [];
-    for (const line of promptLines()) {
-      if (!line.fenced || isContractLine(line.text)) continue;
-      for (const span of line.text.matchAll(/\[[^\]]*\]/g)) {
-        for (const m of span[0].matchAll(
-          /\b[A-Z][A-Z0-9_]{1,}(?:\s*[/|]\s*[A-Z][A-Z0-9_]{1,})+\b/g,
-        )) {
-          const parts = m[0].split(/[/|]/).map((p) => p.trim());
-          if (!parts.every((p) => VOCABULARY.has(p))) continue;
-          if (!outsideCode(span[0], m.index!)) continue;
-          bad.push(`${line.file}:${line.no}: ${m[0]} — write \`${parts.join("|")}\``);
-        }
-        for (const hit of splitBacktickedEnums(span[0])) {
-          bad.push(`${line.file}:${line.no}: ${hit}`);
-        }
-      }
-    }
+    const bad = instructionSpans().flatMap(({ line, span }) => [
+      ...untightEnumSets(span).map(
+        ({ raw, parts }) => `${line.file}:${line.no}: ${raw} — write \`${parts.join("|")}\``,
+      ),
+      ...splitBacktickedEnums(span).map((hit) => `${line.file}:${line.no}: ${hit}`),
+    ]);
     expect(bad).toEqual([]);
   });
 });
 
 describe("prompt notation: closed-vocabulary tokens are backticked in prose", () => {
+  const proseLines = () => promptLines().filter((line) => !line.fenced);
+
   it("no bare vocabulary literal outside a fence", () => {
-    const bad: string[] = [];
-    for (const line of promptLines()) {
-      if (line.fenced) continue;
-      for (const m of line.text.matchAll(/\b([A-Z][A-Z0-9_]{1,})\b/g)) {
-        if (!VOCABULARY.has(m[1])) continue;
-        if (!outsideCode(line.text, m.index!)) continue;
-        bad.push(`${line.file}:${line.no}: bare ${m[1]} — write \`${m[1]}\``);
-      }
-    }
+    const bad = proseLines().flatMap((line) =>
+      bareVocabulary(line.text).map((v) => `${line.file}:${line.no}: bare ${v} — write \`${v}\``),
+    );
     expect(bad.slice(0, 20)).toEqual([]);
   });
 
   it("enum sets use one tight backticked union, not spaced slashes or pipes", () => {
-    const bad: string[] = [];
-    for (const line of promptLines()) {
-      if (line.fenced) continue;
-      for (const m of line.text.matchAll(
-        /\b[A-Z][A-Z0-9_]{1,}(?:\s*[/|]\s*[A-Z][A-Z0-9_]{1,})+\b/g,
-      )) {
-        const parts = m[0].split(/[/|]/).map((p) => p.trim());
-        if (!parts.every((p) => VOCABULARY.has(p))) continue;
-        if (!outsideCode(line.text, m.index!)) continue;
-        bad.push(`${line.file}:${line.no}: ${m[0]} — write \`${parts.join("|")}\``);
-      }
-      for (const hit of splitBacktickedEnums(line.text)) {
-        bad.push(`${line.file}:${line.no}: ${hit}`);
-      }
-    }
+    const bad = proseLines().flatMap((line) => [
+      ...untightEnumSets(line.text).map(
+        ({ raw, parts }) => `${line.file}:${line.no}: ${raw} — write \`${parts.join("|")}\``,
+      ),
+      ...splitBacktickedEnums(line.text).map((hit) => `${line.file}:${line.no}: ${hit}`),
+    ]);
     expect(bad).toEqual([]);
   });
 });
+
+/** Fenced template lines matching `re`, with their regex match. */
+function fencedMatches(re: RegExp): Array<{ line: Line; match: RegExpExecArray }> {
+  return promptLines()
+    .filter((line) => line.fenced)
+    .flatMap((line) => {
+      const match = re.exec(line.text.trim());
+      return match ? [{ line, match }] : [];
+    });
+}
+
+/** Verdict values named in a template `Verdict:` line, minus the PENDING placeholder. */
+function verdictValues(declaration: string): string[] {
+  const found: string[] = declaration.match(/\b[A-Z][A-Z_]{2,}\b/g) ?? [];
+  return found.filter((v) => v !== "PENDING");
+}
 
 describe("prompt notation: fenced output templates stay literal", () => {
   /**
@@ -232,22 +238,16 @@ describe("prompt notation: fenced output templates stay literal", () => {
    * the artifact's bytes, not just its appearance.
    */
   it("no backtick in a template's Verdict / Failures / Spike line", () => {
-    const bad: string[] = [];
-    for (const line of promptLines()) {
-      if (!line.fenced) continue;
-      if (!/^(Verdict|Failures|Spike):/.test(line.text.trim())) continue;
-      if (line.text.includes("`")) bad.push(`${line.file}:${line.no}: ${line.text.trim()}`);
-    }
+    const bad = fencedMatches(/^(Verdict|Failures|Spike):/)
+      .filter(({ line }) => line.text.includes("`"))
+      .map(({ line }) => `${line.file}:${line.no}: ${line.text.trim()}`);
     expect(bad).toEqual([]);
   });
 
   it("every template Verdict line still parses to a vocabulary set", () => {
     const seen: string[] = [];
-    for (const line of promptLines()) {
-      if (!line.fenced) continue;
-      const m = /^Verdict:\s*(.+)$/.exec(line.text.trim());
-      if (!m) continue;
-      const vals = (m[1].match(/\b[A-Z][A-Z_]{2,}\b/g) ?? []).filter((v) => v !== "PENDING");
+    for (const { line, match } of fencedMatches(/^Verdict:\s*(.+)$/)) {
+      const vals = verdictValues(match[1]);
       expect(vals.length, `${line.file}:${line.no} declares no verdict values`).toBeGreaterThan(1);
       expect(
         vals.filter((v) => !VOCABULARY.has(v)),

@@ -56,6 +56,10 @@ const rows = (file: string) =>
     .split("\n")
     .filter(Boolean)
     .map((l) => JSON.parse(l) as Record<string, unknown>);
+/** True while git holds a rebase open (merge-backend or apply-backend state dir). */
+const rebaseInProgress = (gitDir: string) =>
+  fs.existsSync(path.join(gitDir, "rebase-merge")) ||
+  fs.existsSync(path.join(gitDir, "rebase-apply"));
 const statusOf = (cwd: string) => path.join(cwd, REL, "status.jsonl");
 
 async function run(cwd: string, argv: string[]) {
@@ -234,10 +238,7 @@ describe("bkit workflows fail", () => {
     git(cwd, "commit", "-qam", "ours");
     git(cwd, "rebase", "other");
     const gitDir = git(cwd, "rev-parse", "--absolute-git-dir");
-    expect(
-      fs.existsSync(path.join(gitDir, "rebase-merge")) ||
-        fs.existsSync(path.join(gitDir, "rebase-apply")),
-    ).toBe(true);
+    expect(rebaseInProgress(gitDir)).toBe(true);
     const r = await run(cwd, wf("fail", "build", `--month=${M}`, "--token=t"));
     expect(r.json.rebaseAborted).toBe(true);
     expect(fs.existsSync(path.join(gitDir, "rebase-merge"))).toBe(false);
@@ -686,7 +687,7 @@ describe("bkit workflows close — commit, outbox, comment", () => {
   it("--record-step writes the close step's row before workflow-done", async () => {
     const cwd = started("design");
     await run(cwd, wf("close", "design", "--record-step"));
-    const kinds = rows(statusOf(cwd)).map((x) => `${x.type}:${x.step ?? ""}`);
+    const kinds = rows(statusOf(cwd)).map((x) => [x.type, x.step].join(":"));
     expect(kinds.slice(-2)).toEqual(["step-done:design-close-workflow", "workflow-done:"]);
   });
 

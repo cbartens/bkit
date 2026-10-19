@@ -255,6 +255,19 @@ function readStatusRows(workspaceDir: string, fid: string): unknown[] {
   });
 }
 
+/** The `dev-dispatch-dropped` row the step wrote to the run summary, or null when it wrote none. */
+function devDispatchDroppedRow(
+  summary: string,
+): { type: string; fid: string; headSha: string; latestSha: string } | null {
+  const line = /^\{"type":"dev-dispatch-dropped".*$/m.exec(summary)?.[0] ?? "null";
+  return JSON.parse(line) as ReturnType<typeof devDispatchDroppedRow>;
+}
+
+/** The step's `arg` output; "" when the step did not set one. */
+function outputArg(result: RunResult): string {
+  return result.outputs.arg ?? "";
+}
+
 describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", () => {
   let tmpRoot: string;
   let fixture: Fixture;
@@ -663,9 +676,7 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
     expect(result.stdout).toContain("Stale dev CI");
     // The dev-dispatch-dropped row goes to the RUN SUMMARY, not a committed
     // status.jsonl (this branch is reached only after dev advanced).
-    const dropped = JSON.parse(
-      /^\{"type":"dev-dispatch-dropped".*$/m.exec(result.summary)?.[0] ?? "null",
-    ) as { type: string; fid: string; headSha: string; latestSha: string } | null;
+    const dropped = devDispatchDroppedRow(result.summary);
     expect(dropped, `no drop row in run summary:\n${result.summary}`).not.toBeNull();
     expect(dropped!.fid).toBe("363-widen-bkit-cloud-trigger");
     expect(dropped!.headSha).toBe("stale-sha");
@@ -714,6 +725,6 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
     });
     expect(result.outputs.skip).toBe("true");
     expect(result.stdout).toContain("Cannot derive FID");
-    expect(result.outputs.arg ?? "").not.toContain("999-unrelated-feature");
+    expect(outputArg(result)).not.toContain("999-unrelated-feature");
   });
 });

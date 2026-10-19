@@ -243,28 +243,31 @@ async function run(host: Host, c: Call): Promise<string> {
   return runOpencode(c);
 }
 
-/** Tells the host the conversation was summarised. */
-async function compact(host: Host, session: string): Promise<void> {
+/** Sends the host its compaction signal and returns the hook's JSON response ({} when it has none). */
+async function sendCompactSignal(host: Host, session: string): Promise<unknown> {
   if (host === "claude" || host === "codex") {
     const hook = host === "claude" ? CLAUDE_HOOK : CODEX_HOOK;
-    expect(
-      spawnHook(hook, { hook_event_name: "PreCompact", session_id: session, trigger: "auto" }),
-    ).toEqual({});
-  } else if (host === "cursor") {
-    expect(
-      spawnHook(CURSOR_HOOK, {
-        hook_event_name: "preCompact",
-        conversation_id: session,
-        trigger: "auto",
-      }),
-    ).toEqual({});
-  } else if (host === "opencode") {
+    return spawnHook(hook, { hook_event_name: "PreCompact", session_id: session, trigger: "auto" });
+  }
+  if (host === "cursor") {
+    return spawnHook(CURSOR_HOOK, {
+      hook_event_name: "preCompact",
+      conversation_id: session,
+      trigger: "auto",
+    });
+  }
+  if (host === "opencode") {
     // OpenCode 1.x: server() returns the event hook.
     const hooks = await (await loadOpencode()).server();
     await hooks.event({ event: { type: "session.compacted", properties: { sessionID: session } } });
-  } else {
-    throw new Error(`${host} has no compaction signal`);
+    return {};
   }
+  throw new Error(`${host} has no compaction signal`);
+}
+
+/** Tells the host the conversation was summarised. */
+async function compact(host: Host, session: string): Promise<void> {
+  expect(await sendCompactSignal(host, session)).toEqual({});
 }
 
 // ---------------------------------------------------------------------------

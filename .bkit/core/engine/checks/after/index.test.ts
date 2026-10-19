@@ -546,10 +546,6 @@ describe("challenge-tests", () => {
       const result = detectBkitVersionMajorDowngrade(tmpDir, "1.0.0");
       // Primary assertion: no finding emitted for malformed version
       expect(result).toBeNull();
-      // Defensive: if the implementation returns something, its detect must not mention NaN
-      if (result !== null) {
-        expect(result.detect).not.toContain("NaN");
-      }
     });
 
     it("still emits an advisory when .bkit-version is valid and major is higher", () => {

@@ -418,10 +418,12 @@ describe("bkit counters max", () => {
   });
 
   it("every threshold is a non-negative integer, and every attempt cap is at least 1", () => {
-    for (const [name, value] of Object.entries(THRESHOLDS)) {
-      expect(Number.isInteger(value) && value >= 0, name).toBe(true);
-      if (name !== "MAX_CHALLENGE_REMEDIATE_ATTEMPT") expect(value, name).toBeGreaterThanOrEqual(1);
-    }
+    const thresholds = Object.entries(THRESHOLDS);
+    expect(thresholds.length).toBeGreaterThan(0);
+    expect(thresholds.filter(([, value]) => !Number.isInteger(value))).toEqual([]);
+    expect(thresholds.filter(([, value]) => value < 0)).toEqual([]);
+    const attemptCaps = thresholds.filter(([name]) => name !== "MAX_CHALLENGE_REMEDIATE_ATTEMPT");
+    expect(attemptCaps.filter(([, value]) => value < 1)).toEqual([]);
   });
 
   it("bkit-cloud.yml (both copies) declares MAX_DEV_DISPATCH_ATTEMPTS equal to THRESHOLDS", () => {

@@ -167,17 +167,21 @@ function commit(dir: string, files: Record<string, string>, message: string) {
   git(dir, "commit", "-q", "-m", message);
 }
 
+/** The paths a .gitattributes file marks merge=union (comment lines skipped). */
+function mergeUnionPaths(gitattributes: string): string[] {
+  return gitattributes
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("#") && /\bmerge=union\b/.test(l))
+    .map((l) => l.trim().split(/\s+/)[0]!);
+}
+
 // ---------------------------------------------------------------------------
 // rebase — classification
 // ---------------------------------------------------------------------------
 
 describe("branches rebase: classification", () => {
   it("ledger list does not drift from .gitattributes merge=union", () => {
-    const union = fs
-      .readFileSync(GITATTRIBUTES, "utf-8")
-      .split("\n")
-      .filter((l) => !l.trim().startsWith("#") && /\bmerge=union\b/.test(l))
-      .map((l) => l.trim().split(/\s+/)[0]!);
+    const union = mergeUnionPaths(fs.readFileSync(GITATTRIBUTES, "utf-8"));
     for (const p of union) expect(LEDGERS, `${p} carries merge=union`).toContain(p);
     // The one extra: friction ships unlisted but is resolved at rebase time.
     expect(LEDGERS.filter((l) => !union.includes(l))).toEqual([".bkit/friction.jsonl"]);
@@ -316,22 +320,23 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
   });
 
   it("produces byte-identical output to merge=union", async () => {
-    const build = async (withAttr: boolean): Promise<string> => {
-      const dir = makeRepo(withAttr ? "attr" : "cmd");
-      if (withAttr) {
-        write(dir, ".gitattributes", "docs/knowledge.jsonl merge=union\n");
-        git(dir, "add", "-A");
-        git(dir, "commit", "-q", "-m", "attr");
-      }
+    const divergeKnowledge = (dir: string) =>
       diverge(
         dir,
         { "docs/knowledge.jsonl": '{"key":"B","ts":5}\n{"key":"B2","ts":6}\n' },
         { "docs/knowledge.jsonl": '{"key":"C","ts":7}\n' },
       );
-      if (!withAttr) expect((await run(dir, ["rebase"])).code).toBe(0);
-      return read(dir, "docs/knowledge.jsonl");
-    };
-    expect(await build(false)).toBe(await build(true));
+    // The native git merge driver: .gitattributes names merge=union and git resolves it.
+    const attrDir = makeRepo("attr");
+    write(attrDir, ".gitattributes", "docs/knowledge.jsonl merge=union\n");
+    git(attrDir, "add", "-A");
+    git(attrDir, "commit", "-q", "-m", "attr");
+    divergeKnowledge(attrDir);
+    // bkit's own resolver: no .gitattributes, `bkit branches rebase` resolves the ledger.
+    const cmdDir = makeRepo("cmd");
+    divergeKnowledge(cmdDir);
+    expect((await run(cmdDir, ["rebase"])).code).toBe(0);
+    expect(read(cmdDir, "docs/knowledge.jsonl")).toBe(read(attrDir, "docs/knowledge.jsonl"));
   });
 
   it("restores a trailing newline so the next append starts on its own line", async () => {

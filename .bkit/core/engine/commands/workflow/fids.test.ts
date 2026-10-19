@@ -58,7 +58,7 @@ describe("readIssueTracker", () => {
 });
 
 describe("bkit fids check", () => {
-  it.each([
+  const FID_CASES: [tracker: string, fid: string, valid: boolean, issueId: string | null][] = [
     ["github", "341-three-runtimes", true, "341"],
     ["github", "341", false, null],
     ["github", "abc-1-x", false, null],
@@ -78,12 +78,26 @@ describe("bkit fids check", () => {
     ["any", "341-x", true, "341"],
     ["any", "abc-123-x", true, "ABC-123"],
     ["any", "plain-slug", false, null],
-  ])("tracker %s, FID %j -> valid %s, issueId %j", async (tracker, fid, valid, issueId) => {
-    const r = await run(project(), ["check", `--fid=${fid}`, `--tracker=${tracker}`]);
-    expect(r.code).toBe(valid ? 0 : 1);
-    expect(r.json).toMatchObject({ tracker, valid, issueId });
-    if (!valid) expect(r.err).toContain("does not match");
-  });
+  ];
+
+  it.each(FID_CASES.filter(([, , valid]) => valid))(
+    "tracker %s, FID %j -> valid %s, issueId %j",
+    async (tracker, fid, valid, issueId) => {
+      const r = await run(project(), ["check", `--fid=${fid}`, `--tracker=${tracker}`]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ tracker, valid, issueId });
+    },
+  );
+
+  it.each(FID_CASES.filter(([, , valid]) => !valid))(
+    "tracker %s, FID %j -> valid %s, issueId %j",
+    async (tracker, fid, valid, issueId) => {
+      const r = await run(project(), ["check", `--fid=${fid}`, `--tracker=${tracker}`]);
+      expect(r.code).toBe(1);
+      expect(r.json).toMatchObject({ tracker, valid, issueId });
+      expect(r.err).toContain("does not match");
+    },
+  );
 
   it("lowercases a linear FID in its output", async () => {
     const r = await run(project(), ["check", "--fid=ABC-123-slug", "--tracker=linear"]);
@@ -235,5 +249,44 @@ describe("bkit fids find", () => {
     fs.mkdirSync(path.join(d, "docs/plans/202605/logs"), { recursive: true });
     fs.writeFileSync(path.join(d, "docs/plans/202605/logs/68-file"), "");
     expect((await run(d, ["find", "--issue=68"])).code).toBe(1);
+  });
+});
+
+describe("bkit fids design", () => {
+  function plans(...files: string[]) {
+    const d = project();
+    spawnSync("git", ["init", "-q"], { cwd: d });
+    for (const rel of files) {
+      fs.mkdirSync(path.dirname(path.join(d, "docs", "plans", rel)), { recursive: true });
+      fs.writeFileSync(path.join(d, "docs", "plans", rel), "# Design\n");
+    }
+    return d;
+  }
+
+  it("finds the feature's design doc in the given bucket (exit 0)", async () => {
+    const d = plans("202609/50-sync-design.md", "202610/50-sync-design.md");
+    expect(await run(d, ["design", "--fid=50-sync", "--month=202609"])).toMatchObject({
+      code: 0,
+      json: { fid: "50-sync", month: "202609", path: "docs/plans/202609/50-sync-design.md" },
+    });
+  });
+
+  it("falls back to the newest bucket holding it when the given bucket has none", async () => {
+    const d = plans("202608/50-sync-design.md", "202609/50-sync-design.md");
+    expect((await run(d, ["design", "--fid=50-sync", "--month=202610"])).json.month).toBe("202609");
+    expect((await run(d, ["design", "--fid=50-sync"])).json.month).toBe("202609");
+  });
+
+  it("exits 1 for no design doc, another feature's doc, a plan only, or no docs/plans", async () => {
+    const d = plans(
+      "202610/51-other-design.md",
+      "202610/50-sync-plan.md",
+      "archive/50-sync-design.md",
+    );
+    expect(await run(d, ["design", "--fid=50-sync", "--month=202610"])).toMatchObject({
+      code: 1,
+      json: { fid: null, month: null, path: null },
+    });
+    expect((await run(plans(), ["design", "--fid=50-sync"])).code).toBe(1);
   });
 });

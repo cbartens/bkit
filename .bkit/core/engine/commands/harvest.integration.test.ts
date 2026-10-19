@@ -427,7 +427,7 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     runHarvest(bkitRoot);
 
     const destDir = path.join(bkitRoot, HARVEST_DEST_DIR);
-    const copiedFiles = fs.existsSync(destDir) ? fs.readdirSync(destDir) : [];
+    const copiedFiles = fs.readdirSync(destDir);
 
     // Only named .jsonl files (plus the consumer list that lives there) are allowed in the harvest dest
     const allowed = [...HARVEST_COPY_FILES, path.basename(CONSUMERS_FILE)];

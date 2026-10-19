@@ -65,10 +65,7 @@ describe("P4.T5 — diffFile", () => {
       "template content\n",
       {},
     );
-    expect(result.action).toBe("new");
-    if (result.action === "new") {
-      expect(result.templateContent).toBe("template content\n");
-    }
+    expect(result).toMatchObject({ action: "new", templateContent: "template content\n" });
   });
 
   it('returns "skip" when template content matches canonical hash (no change)', () => {
@@ -97,10 +94,7 @@ describe("P4.T5 — diffFile", () => {
       newTemplateContent,
       canonicalHashes,
     );
-    expect(result.action).toBe("update");
-    if (result.action === "update") {
-      expect(result.templateContent).toBe(newTemplateContent);
-    }
+    expect(result).toMatchObject({ action: "update", templateContent: newTemplateContent });
   });
 
   it('returns "conflict" when template changed + disk differs from canonical hash (consumer drift)', () => {
@@ -116,11 +110,11 @@ describe("P4.T5 — diffFile", () => {
       newTemplateContent,
       canonicalHashes,
     );
-    expect(result.action).toBe("conflict");
-    if (result.action === "conflict") {
-      expect(result.templateContent).toBe(newTemplateContent);
-      expect(result.diskContent).toBe(consumerModifiedContent);
-    }
+    expect(result).toMatchObject({
+      action: "conflict",
+      templateContent: newTemplateContent,
+      diskContent: consumerModifiedContent,
+    });
   });
 
   it('returns "skip" when disk content already equals template (idempotent)', () => {
@@ -713,8 +707,10 @@ describe("planSelfBump", () => {
 
   it("rejects a non-semver --to value as invalid (no resolveLatest call)", () => {
     const p = planSelfBump("4.1.4", { toVersion: "latest", latest: false }, neverResolve);
-    expect(p.kind).toBe("invalid");
-    if (p.kind === "invalid") expect(p.message).toContain("must be a semver");
+    expect(p).toMatchObject({
+      kind: "invalid",
+      message: expect.stringContaining("must be a semver"),
+    });
   });
 
   it("--latest resolves via the injected resolver, then bumps", () => {
@@ -729,7 +725,9 @@ describe("planSelfBump", () => {
 
   it("--latest that resolves to garbage → invalid (pin explicitly)", () => {
     const p = planSelfBump("4.1.4", { toVersion: null, latest: true }, () => "not-a-version");
-    expect(p.kind).toBe("invalid");
-    if (p.kind === "invalid") expect(p.message).toContain("--to=<version>");
+    expect(p).toMatchObject({
+      kind: "invalid",
+      message: expect.stringContaining("--to=<version>"),
+    });
   });
 });

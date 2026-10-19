@@ -63,6 +63,39 @@ function ledgersBlocks(ship: string): string[] {
     .filter((block) => /"\{BKIT\}" ledgers /.test(block));
 }
 
+/** True for a line that appends a hand-built `type:"..."` jq row to a file. */
+function isHandBuiltRowAppend(line: string): boolean {
+  return />>\s*"/.test(line) && /type:"/.test(line);
+}
+
+/** Step keys the ship workflow writes, including `ship-close-workflow` from a `--flush` close. */
+function writtenStepKeys(lines: string[]): Set<string> {
+  const keys = lines
+    .map((l) => /"\{BKIT\}" steps (?:done|finish)\b.*--step=(ship-[a-z-]+)/.exec(l)?.[1])
+    .filter((k): k is string => k !== undefined);
+  const flushes = lines.some((l) =>
+    /"\{BKIT\}" workflows close --workflow=ship\b.*--flush\b/.test(l),
+  );
+  return new Set(flushes ? [...keys, "ship-close-workflow"] : keys);
+}
+
+/** Ledger stage/commit commands that neither exit-guard themselves nor end their fence. */
+function unguardedLedgerCalls(ship: string): string[] {
+  const out: string[] = [];
+  for (const f of fences(ship)) {
+    const lines = f
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    lines.forEach((l, i) => {
+      const isLedgerCall = /"\{BKIT\}" ledgers (commit|union)\b/.test(l);
+      const guarded = /\|\|\s*\{[^}]*exit 1;?\s*\}/.test(l) || i === lines.length - 1;
+      if (isLedgerCall && !guarded) out.push(`unguarded: ${l}`);
+    });
+  }
+  return out;
+}
+
 /** Fenced bash bodies, `\`-continuations joined so one command is one line. */
 function fences(content: string): string[] {
   return [...content.matchAll(/^[ \t]*```bash\n([\s\S]*?)^[ \t]*```/gm)].map((m) =>
@@ -160,6 +193,9 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
     (/\{SHIP_BRANCH\}/.test(line) || /"\$B"/.test(line) || /--mode=feature\b/.test(line));
   const isForcedPush = (line: string) =>
     isPush(line) && (/--force/.test(line) || /--mode=feature\b/.test(line));
+  const isBareForcePush = (line: string) => isPush(line) && /--force(?!-with-lease)/.test(line);
+  const isBookkeepingPush = (l: { step: string; line: string }) =>
+    l.step === "Commit + Push Bookkeeping" && isPush(l.line);
   const stepsWhere = (pred: (line: string) => boolean) =>
     [
       ...new Set(
@@ -181,15 +217,13 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
 
   it("force-pushes only in Integrate (B2), and never a bare --force", () => {
     expect(stepsWhere(isForcedPush)).toEqual(["Integrate (Path B only)"]);
-    const bare = fencedLinesByStep(readShip()).filter(
-      (l) => isPush(l.line) && /--force(?!-with-lease)/.test(l.line),
-    );
+    const bare = fencedLinesByStep(readShip()).filter((l) => isBareForcePush(l.line));
     expect(bare).toEqual([]);
   });
 
   it("the pre-merge bookkeeping push is a plain push — never forced", () => {
     const pushes = fencedLinesByStep(readShip())
-      .filter((l) => l.step === "Commit + Push Bookkeeping" && isPush(l.line))
+      .filter(isBookkeepingPush)
       .map((l) => l.line);
     expect(pushes).toEqual(['git push origin "{SHIP_BRANCH}"']);
   });
@@ -277,7 +311,7 @@ describe("bkit-ship.md — bookkeeping and status writes", () => {
     expect(recorded).toHaveLength(2);
     expect(recorded.some((l) => /--capstone-only/.test(l))).toBe(true);
     // A hand-built jq row may only land in an outbox file, never status.jsonl.
-    const handBuilt = lines.filter((l) => />>\s*"/.test(l) && /type:"/.test(l));
+    const handBuilt = lines.filter(isHandBuiltRowAppend);
     expect(handBuilt).toEqual([]);
   });
 });
@@ -378,13 +412,7 @@ describe("bkit-ship.md — canonical 15 ship-* step-key set", () => {
     // (commands/workflow/workflows.test.ts); every other key by a
     // `bkit steps done|finish --step=<key>` call.
     const lines = fencedLinesByStep(readShip()).map((l) => l.line);
-    const written = new Set(
-      lines
-        .map((l) => /"\{BKIT\}" steps (?:done|finish)\b.*--step=(ship-[a-z-]+)/.exec(l)?.[1])
-        .filter((k): k is string => k !== undefined),
-    );
-    if (lines.some((l) => /"\{BKIT\}" workflows close --workflow=ship\b.*--flush\b/.test(l)))
-      written.add("ship-close-workflow");
+    const written = writtenStepKeys(lines);
     expect(CANONICAL_SHIP_STEP_KEYS.filter((k) => !written.has(k))).toEqual([]);
     expect([...written].filter((k) => !CANONICAL_SHIP_STEP_KEYS.includes(k))).toEqual([]);
     // Nothing anywhere names a ship step outside the set.
@@ -599,16 +627,6 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
   it("every bkit ledgers stage / commit stops the step on a non-zero exit", () => {
     // Guarded with `|| { ...; exit 1; }`, or the fence's last command, whose
     // exit is the block's.
-    for (const f of fences(readShip())) {
-      const lines = f
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean);
-      lines.forEach((l, i) => {
-        if (!/"\{BKIT\}" ledgers (commit|union)\b/.test(l)) return;
-        const guarded = /\|\|\s*\{[^}]*exit 1;?\s*\}/.test(l) || i === lines.length - 1;
-        expect(guarded, `unguarded: ${l}`).toBe(true);
-      });
-    }
+    expect(unguardedLedgerCalls(readShip())).toEqual([]);
   });
 });
