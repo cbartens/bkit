@@ -288,7 +288,7 @@ export function git(cwd, args) {
 // for the command modules that already import it from this module.
 export { parseJson } from "../shared/json.js";
 // The shared-branch rule (`dev`, `main`) lives in shared/ so checks can read it too.
-export { DEV, SHARED_BRANCHES, isSharedBranch } from "../shared/branches.js";
+export { DEV, isSharedBranch } from "../shared/branches.js";
 /**
  * Run a tool other than git, never throwing. Hook-exported GIT_* vars are scrubbed
  * so gh and friends answer for `cwd`; `input` goes to stdin.

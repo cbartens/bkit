@@ -1,12 +1,11 @@
 // shared/branches.test.ts — Unit tests for the shared-branch rule.
 
 import { describe, expect, it } from "vitest";
-import { DEV, SHARED_BRANCHES, isSharedBranch } from "./branches";
+import { DEV, isSharedBranch } from "./branches";
 
 describe("shared/branches", () => {
-  it("names dev as the integration branch and dev + main as the shared branches", () => {
+  it("names dev as the integration branch", () => {
     expect(DEV).toBe("dev");
-    expect([...SHARED_BRANCHES].sort()).toEqual(["dev", "main"]);
   });
 
   it("isSharedBranch is true for dev and main", () => {
