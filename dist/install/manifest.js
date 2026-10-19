@@ -159,7 +159,8 @@ const CLAUDE_MANIFEST = [
 // `gate-missing-called-scripts` advisory names any that are missing.
 //
 // The SAME names are what the git hook templates run (`.husky/pre-commit`,
-// `.husky/pre-push`). `bkit-ci.yml` does NOT call the gates; it calls the scripts directly.
+// `.husky/pre-push`). `bkit-ci.yml` does NOT call the gates; it calls the same scripts
+// directly, one step each.
 //
 // `lint:slop` is in no gate: `slop-scan scan` is report-only and never fails. The gate
 // that fails on new findings is `slop:delta`.
@@ -173,7 +174,8 @@ export const BKIT_GATE_SCRIPTS = {
     // `.husky/pre-commit`: prettier --write over staged files, and nothing else —
     // seconds, not minutes. Prose is a whole-repo scan, so it gates at pre-push.
     "bkit:gate:format": "pnpm lint-staged",
-    // Everything that needs no test runner. Mirrors the bkit-tests-static CI job.
+    // Everything that needs no test runner. Every part has a matching step in the
+    // bkit-tests-static CI job; audits/templates/template-ci-yml.test.ts fails when one is missing.
     // Callers: build's plan-execute loop between tasks, and the `.husky/pre-push` revert
     // path.
     "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
