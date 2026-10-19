@@ -430,6 +430,7 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 
 - **Runner:** Vitest 4 (`pnpm test` → `vitest run`). Shell: bats (`pnpm bkit:test:bats`).
 - **Test files** sit next to the file they test under `.bkit/core/engine/`; tests that read shipped text (workflows, templates, hooks, this repo's own docs and ledgers) sit in `.bkit/core/engine/audits/{workflows,templates,hooks,repo}/`. `tests/` = bats (`tests/*.bats`) + fixtures (`tests/fixtures/`).
+- **Test lint:** Oxlint (`.oxlintrc.json`, `pnpm lint`, inside `bkit:gate:static`) lints `**/*.test.ts` with only these rules, all `error`: `vitest/expect-expect`, `vitest/no-conditional-in-test`, `vitest/no-conditional-expect`, `vitest/valid-expect` (`maxArgs: 2` — `expect(value, message)` is legal), `typescript/no-floating-promises` (type-aware against `tsconfig.test.json`). A hit is fixed in the test: no baseline, no ignore list, no disable comment. Branch on state by splitting into one `it` per case (`it.each` for tables); never `if (…) return;`.
 - **No mocking framework.** Real filesystem (`os.tmpdir()`) over mocked `fs`. `vi.spyOn(process, "exit", ...)` only for `process.exit(1)` paths. Narrow exception: `.bkit/core/engine/checks/after/index.test.ts` mocks `node:child_process` via `vi.hoisted` — extend mock when boundary grows.
 
 ## Tiers

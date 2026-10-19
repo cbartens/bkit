@@ -651,11 +651,9 @@ describe(".bkit/templates.md gate tool scripts (consumers copy and run them)", (
     expect(scripts["slop:delta"]).toBe("bkit ci slop");
   });
 
-  it("lists the lint value this repo runs", () => {
-    const pkg = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
-      scripts: Record<string, string>;
-    };
-    expect(scripts["lint"]).toBe(pkg.scripts["lint"]);
+  it("lists a stack-agnostic lint value: eslint when configured, a skip line otherwise", () => {
+    expect(scripts["lint"]).toContain("npx eslint .");
+    expect(scripts["lint"]).toContain("skipping lint");
   });
 
   it("lists every script the default gates chain, except test and build", () => {
