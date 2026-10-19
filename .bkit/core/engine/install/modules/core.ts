@@ -277,7 +277,7 @@ export function runBkitDocs(
   migrateShortcutsToLite(dryRun, ws, logPrefix);
 }
 
-// Migration (5.1.0 – 5.2.4 installs, `docs/migrations.md`): the lite flows lived at
+// Migration (5.1.0 – 5.2.4 installs, `docs/migrations.md`): the lite workflows lived at
 // `.agents/shortcuts.md`. The consumer's own lines below `bkit:end` (minus the seeded
 // heading) move under `.bkit/lite.md`'s consumer section; the old file is deleted. Runs
 // after the docs loop, so `.bkit/lite.md` is already written. The delete is recorded in

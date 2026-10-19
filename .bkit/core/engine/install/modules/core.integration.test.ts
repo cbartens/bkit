@@ -618,7 +618,7 @@ describe("migrateShortcutsToLite (via runBkitDocs)", () => {
     expect(paths(ctx)).toContain(OLD);
   });
 
-  it("moves the consumer's own lines under ## Project Lite Flows, without the old heading", () => {
+  it("moves the consumer's own lines under ## Project Lite Workflows, without the old heading", () => {
     seedOld(`\n${OWN}\n`);
     run();
     expect(fs.existsSync(OLD)).toBe(false);
