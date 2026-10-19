@@ -475,6 +475,7 @@ jobs:
       - name: Install Vale
         if: steps.cache.outputs.skip != 'true'
         env:
+          # renovate: datasource=github-releases depName=errata-ai/vale
           VALE_VERSION: "3.9.1"
           # sha256 of vale_${VALE_VERSION}_Linux_64-bit.tar.gz (from the release's checksums.txt).
           # Bump alongside VALE_VERSION; verified before extract so a tampered/CDN-swapped tarball fails closed.
@@ -525,6 +526,7 @@ jobs:
           curl -sSfL --retry 3 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
           # download-actionlint.bash fetches the binary from GitHub releases — retry to survive a transient CDN/network blip.
           for i in 1 2 3; do
+            # renovate: datasource=github-releases depName=rhysd/actionlint
             bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP" && break
             [ "$i" = 3 ] && { echo "::error::actionlint download failed after 3 attempts"; exit 1; }
             echo "::warning::actionlint download attempt $i failed — retrying in 5s"; sleep 5
@@ -570,6 +572,7 @@ jobs:
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
         env:
           # PyPI distribution is `graphifyy`; the CLI it exposes is `graphify`.
+          # renovate: datasource=pypi depName=graphifyy
           GRAPHIFY_SPEC: "graphifyy[sql]==0.9.50"
         run: |
           uv tool install "$GRAPHIFY_SPEC"
