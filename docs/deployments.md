@@ -475,7 +475,7 @@ Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces
 
 **Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → run `pnpm bkit:gate:static` instead of `pnpm bkit:gate:static-unit`, dropping the unit lane only. Gates 5-9 still run — prose unaffected; slop:delta reports removals as `resolved`. Rollback trees intentionally inconsistent; surviving tests may reference deleted files. Non-revert: all applicable gates.
 
-Pre-commit: `pnpm bkit:gate:format` — prettier over staged files, seconds. Prose is NOT here: `lint:prose` scans a fixed whole-repo file set, so it gates at pre-push inside `bkit:gate:static`. Enforcing slop gate: pre-push `pnpm slop:delta` via the same gate (Gate 5); `pnpm lint:slop` is report-only and sits in no lane. CI re-runs prose + slop:delta in `bkit-tests-static`.
+Pre-commit: `pnpm bkit:gate:format` — prettier over staged files, seconds. Prose is NOT here: `lint:prose` scans a fixed whole-repo file set, so it gates at pre-push inside `bkit:gate:static`. Enforcing slop gate: pre-push `pnpm slop:delta` via the same gate (Gate 6); `pnpm lint:slop` is report-only and sits in no lane. CI re-runs prose + slop:delta in `bkit-tests-static`.
 
 Gate fails locally → fix + re-stage; do not `--no-verify` or amend over failed hook (skip-ci must not be HEAD when PR created). Genuinely broken gate (flaky external) → STOP, document blocker; do not push.
 
