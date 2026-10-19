@@ -11,7 +11,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { parseRemoteUrlToSlug } from "../../ledgers/telemetry.js";
-import { EXIT, git, repoRoot, runGit, runTool, type CommandSpec } from "../lib.js";
+import { DEV, EXIT, git, repoRoot, runGit, runTool, type CommandSpec } from "../lib.js";
 import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 
 /** Exit code: neither gh nor the origin remote named an owner/repo. */
@@ -137,7 +137,7 @@ export const repoCommand: CommandSpec = {
       },
       run: (ctx) => {
         if (ctx.flags.fetch === true) {
-          const res = runGit(ctx.cwd, ["fetch", "origin", "dev"]);
+          const res = runGit(ctx.cwd, ["fetch", "origin", DEV]);
           if (!res.ok)
             ctx.log(
               `git fetch origin dev failed — behindDev is as of the last fetch: ${res.stderr}`,

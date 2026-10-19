@@ -3,9 +3,9 @@
 // Flag parsing, one JSON object on stdout, `[bkit-<noun>]`-tagged logs on stderr,
 // the exit-code table, `--help` rendering, and the repo facts several workflow
 // steps each re-derived by hand: repo root, UTC month, where `status.jsonl` lives,
-// and the skip-CI tokens. A command declares its flags, output keys and exit codes
-// in its spec; `--help` and the convention test both read that spec, so the help
-// text cannot drift from what the command accepts.
+// the skip-CI tokens, and which branches are shared. A command declares its flags,
+// output keys and exit codes in its spec; `--help` and the convention test both read
+// that spec, so the help text cannot drift from what the command accepts.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -372,6 +372,9 @@ export function git(cwd: string, args: string[]): string | null {
 // Shared with the files that are not commands (checks, install): re-exported here
 // for the command modules that already import it from this module.
 export { parseJson } from "../shared/json.js";
+
+// The shared-branch rule (`dev`, `main`) lives in shared/ so checks can read it too.
+export { DEV, SHARED_BRANCHES, isSharedBranch } from "../shared/branches.js";
 
 export interface ToolResult {
   /** False when the binary is not on PATH (or could not be spawned). */

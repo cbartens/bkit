@@ -28,8 +28,10 @@ import {
   bodySkipToken,
   commitMessage,
   CommandError,
+  DEV,
   EXIT,
   git,
+  isSharedBranch,
   parseJson,
   runGh,
   runGit,
@@ -247,7 +249,7 @@ export async function waitLoop(
 function currentPr(cwd: string, gh: Gh): { pr: string | null; missing: boolean } {
   const branch = git(cwd, ["branch", "--show-current"]);
   if (!branch) return { pr: null, missing: false };
-  const res = gh(["pr", "list", "--head", branch, "--base", "dev", "--json", "number"]);
+  const res = gh(["pr", "list", "--head", branch, "--base", DEV, "--json", "number"]);
   if (res.missing) return { pr: null, missing: true };
   const n = obj(arr(res.ok ? jsonOrUndefined(res.stdout) : undefined)[0]).number;
   return { pr: typeof n === "number" ? String(n) : null, missing: false };
@@ -308,10 +310,9 @@ function pushCurrentBranch(cwd: string): boolean {
   const branch = git(cwd, ["branch", "--show-current"]);
   if (!branch) return false;
   // Shared branches never force; a feature branch is rewritten only by this run.
-  const args =
-    branch === "dev" || branch === "main"
-      ? ["push", "origin", branch]
-      : ["push", "--force-with-lease", "origin", branch];
+  const args = isSharedBranch(branch)
+    ? ["push", "origin", branch]
+    : ["push", "--force-with-lease", "origin", branch];
   return runGit(cwd, args).ok;
 }
 
@@ -1733,7 +1734,7 @@ async function runContext(ctx: RunContext): Promise<number> {
       mode: "CI_DEV",
       fid: arg,
       issueId: tracker === "none" ? null : issueIdOf(arg, "any"),
-      branch: "dev",
+      branch: DEV,
       headSha: git(ctx.cwd, ["rev-parse", "origin/dev"]) ?? "",
     });
     return EXIT.OK;
@@ -1807,7 +1808,7 @@ async function runContext(ctx: RunContext): Promise<number> {
 async function runMirror(ctx: RunContext): Promise<number> {
   const f = ctx.flags;
   const head = String(f.head);
-  const branch = str(f.branch) ?? "dev";
+  const branch = str(f.branch) ?? DEV;
   if (!branch) throw new CommandError(EXIT.USAGE, "--branch must not be empty");
   const o: MirrorOptions = {
     head,

@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { getModuleManifest } from "../../install/manifest.js";
 import { readManagedVersion } from "../../install/version-file.js";
+import { isSharedBranch } from "../../shared/branches.js";
 import { getPkgRoot } from "../../shared/package-roots.js";
 import { detectMarkerStyle, extractManagedBlock, findLineAnchoredMarkers, findUnmarkedCopy, selectMarkers, stripManagedBlock, } from "../../install/managed-block.js";
 import { listStampedFiles } from "../../install/modules/index.js";
@@ -32,8 +33,6 @@ function readPkgVersion() {
 // and a non-blocking ADVISORY everywhere else (still shown in the checklist). A PR
 // INTO main/dev re-asserts the blocker (via GITHUB_BASE_REF).
 // ---------------------------------------------------------------------------
-/** Branches where a stale managed-version marker is a hard blocker, not a warning. */
-const PROTECTED_BRANCHES = new Set(["main", "dev"]);
 /**
  * Resolve the branch the check is effectively gating, preferring the CI signal:
  *   1. `GITHUB_BASE_REF` — set on `pull_request` events to the MERGE TARGET. A PR
@@ -68,7 +67,7 @@ export function isOnProtectedBranch(cwd = process.cwd()) {
     const b = currentBranch(cwd);
     if (b === null)
         return true; // undeterminable → fail safe to blocker
-    return PROTECTED_BRANCHES.has(b);
+    return isSharedBranch(b);
 }
 /**
  * Version of the managed-version marker inside a file's first `bkit:start`…`bkit:end`
@@ -109,7 +108,7 @@ export function readManagedBlockVersion(content) {
  * on disk are skipped. A dev tree without a readable package version (`0.0.0` / empty)
  * yields null, as does a repo with nothing stamped.
  *
- * Severity is branch-scoped (see PROTECTED_BRANCHES): a `blocker` on main/dev (or a PR
+ * Severity is branch-scoped (see isSharedBranch): a `blocker` on main/dev (or a PR
  * into them), an `advisory` on feature branches. `installingVersion` and
  * `onProtectedBranch` are injected for testability.
  */
