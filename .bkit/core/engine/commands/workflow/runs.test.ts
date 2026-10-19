@@ -167,6 +167,45 @@ const gate = (cwd: string, ...args: string[]) =>
   cli(cwd, ["gate", "--repo=example/example", ...args]);
 
 describe("bkit runs gate", () => {
+  type Job = { name: string; status: string; conclusion: string | null };
+  /** A fixture root holding one run at `sha` with the given status / conclusion and jobs. */
+  function fixtureRun(
+    sha: string,
+    run: { status: string; conclusion: string | null },
+    jobs: Job[],
+  ): void {
+    const root = tmp();
+    fs.cpSync(FIXTURES, root, { recursive: true });
+    const id = 1900;
+    fs.writeFileSync(
+      path.join(root, "runs", `${sha}.json`),
+      JSON.stringify({
+        total_count: 1,
+        workflow_runs: [
+          {
+            id,
+            head_sha: sha,
+            ...run,
+            event: "push",
+            html_url: `https://github.com/example/example/actions/runs/${id}`,
+            updated_at: "2026-10-10T10:00:00Z",
+          },
+        ],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(root, "jobs", `${id}.json`),
+      JSON.stringify({ total_count: jobs.length, jobs }),
+    );
+    env({ BKIT_FAKE_GH_FIXTURE_ROOT: root });
+  }
+  const capstone = (status: string, conclusion: string | null): Job => ({
+    name: "bkit-tests-check",
+    status,
+    conclusion,
+  });
+  const deployFailed: Job = { name: "deploy", status: "completed", conclusion: "failure" };
+
   it("accepts a green capstone at the head (exit 0) and says so", async () => {
     fixtureGh();
     const r = await gate(tmp(), "--head=green-capstone");
@@ -236,6 +275,27 @@ describe("bkit runs gate", () => {
     const r = await gate(tmp(), "--head=cancelled");
     expect(r.code).toBe(15);
     expect(r.err).toContain("selected run was CANCELLED at head cancelled");
+  });
+
+  // A green run whose capstone is anything but `success` (e.g. the capstone's `if:` went false
+  // and it was skipped) must still refuse; only the capstone check sees this combination.
+  it.each([
+    "cancelled",
+    "skipped",
+    "timed_out",
+    "neutral",
+    "action_required",
+    "stale",
+    "startup_failure",
+  ])("rejects a green run whose capstone concluded '%s' (12)", async (conclusion) => {
+    fixtureGh();
+    fixtureRun("green-run-bad-capstone", { status: "completed", conclusion: "success" }, [
+      capstone("completed", conclusion),
+    ]);
+    const r = await gate(tmp(), "--head=green-run-bad-capstone");
+    expect(r.code).toBe(12);
+    expect(r.json.passed).toBe(false);
+    expect(r.err).toContain(`concluded '${conclusion}' (not success)`);
   });
 
   // #533: `--repo` must resolve the PR, not the checkout's remote.
@@ -502,45 +562,6 @@ describe("bkit runs gate", () => {
   });
 
   describe("--capstone-only (ship post-merge)", () => {
-    type Job = { name: string; status: string; conclusion: string | null };
-    /** A fixture root holding one run at `sha` with the given status / conclusion and jobs. */
-    function fixtureRun(
-      sha: string,
-      run: { status: string; conclusion: string | null },
-      jobs: Job[],
-    ): void {
-      const root = tmp();
-      fs.cpSync(FIXTURES, root, { recursive: true });
-      const id = 1900;
-      fs.writeFileSync(
-        path.join(root, "runs", `${sha}.json`),
-        JSON.stringify({
-          total_count: 1,
-          workflow_runs: [
-            {
-              id,
-              head_sha: sha,
-              ...run,
-              event: "push",
-              html_url: `https://github.com/example/example/actions/runs/${id}`,
-              updated_at: "2026-10-10T10:00:00Z",
-            },
-          ],
-        }),
-      );
-      fs.writeFileSync(
-        path.join(root, "jobs", `${id}.json`),
-        JSON.stringify({ total_count: jobs.length, jobs }),
-      );
-      env({ BKIT_FAKE_GH_FIXTURE_ROOT: root });
-    }
-    const capstone = (status: string, conclusion: string | null): Job => ({
-      name: "bkit-tests-check",
-      status,
-      conclusion,
-    });
-    const deployFailed: Job = { name: "deploy", status: "completed", conclusion: "failure" };
-
     it("a failed run whose capstone passed passes: other jobs do not count", async () => {
       fixtureGh();
       fixtureRun("deploy-red", { status: "completed", conclusion: "failure" }, [
