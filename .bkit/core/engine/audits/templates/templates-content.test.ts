@@ -149,10 +149,22 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     // steps must ship COMMENTED (opt-in) so installing the scaffold can never red an existing repo.
     expect(content).toContain("# bkit-stub:coverage");
     expect(content).toContain("davelosert/vitest-coverage-report-action");
-    expect(content).toContain("# - name: Report Unit Coverage on PR");
+    expect(content).toContain("# - name: Report Unit Coverage\n");
     expect(content).toContain("# - name: Report Integration Coverage on PR");
     // Neither is an ACTIVE (uncommented) step: coverage is opt-in.
-    expect(content).not.toMatch(/^\s*- name: Report (Unit|Integration) Coverage on PR/m);
+    expect(content).not.toMatch(/^\s*- name: Report (Unit|Integration) Coverage/m);
+  });
+
+  it("ships the unit coverage report reading the floor file and running on every event", () => {
+    // The step that prints the floor beside the measured figure: vitest.unit.config.ts is the
+    // file vitest gates on, so the job summary and PR comment show the same number that gates.
+    const step = content.slice(content.indexOf("# - name: Report Unit Coverage\n"));
+    const block = step.slice(0, step.indexOf("# - name: Report Integration Coverage on PR"));
+    expect(block).toContain("#     vite-config-path: vitest.unit.config.ts");
+    expect(block).toContain("#   if: ${{ !cancelled() && steps.cache.outputs.skip != 'true'");
+    expect(block).toContain(
+      "#     comment-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) && 'pr' || 'none' }}",
+    );
   });
 
   it("ships the bkit-stub:e2e-coverage block commented (Playwright E2E coverage report)", () => {
