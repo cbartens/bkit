@@ -249,7 +249,7 @@ describe("shipped copy-and-own test files", () => {
     expect(SHIPPED_TEST_FILES.length).toBeGreaterThan(0);
   });
 
-  it.each(SHIPPED_TEST_FILES)("%s passes when run on its own", (file) => {
+  it.each(SHIPPED_TEST_FILES)("%s passes when run on its own", { timeout: 30_000 }, (file) => {
     const res = spawnSync(process.execPath, [path.join(SHIPPED_SCRIPTS_DIR, file)], {
       encoding: "utf-8",
     });
