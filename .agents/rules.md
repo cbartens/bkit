@@ -165,11 +165,7 @@
 
 #### Naming Conventions
 
-- **Server actions / SDK:** `{crud}{TableName}{FieldName}` camel case.
-- **Deployed functions:** `{table}-{verb}-{object}[-{qualifier}]` lowercase kebab case.
-- **Migrations:** `YYYYMMDDHHMMSS_{description}.sql` lowercase snake case.
-- **Tests:** `*.test.ts` Vitest unit, `*.integration.test.ts` Vitest integration, `*.spec.ts` Playwright E2E.
-- **Logs:** `console.error("[Namespace] constant-label", { payload })`.
+- **Tests:** `*.test.ts` Vitest unit, `*.integration.test.ts` Vitest integration.
 
 #### Repo Authoring
 
