@@ -31,6 +31,7 @@ import {
   installFile,
   listMdFiles,
   readInstallingVersion,
+  removeOrphans,
   trackMirrorWrite,
 } from "./core.js";
 import { isOpencodeProvider, opencodeProviderId } from "../../render/models.js";
@@ -76,20 +77,11 @@ export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
       }
     }
 
-    // Remove orphan agent files (bkit-prefix only, no allowlist gate needed — .opencode/agents
-    // is a dynamic mirror dir like .claude/agents and .cursor/agents). dryRun still reports
-    // would-deletes into ws.writes so `bkit check` fails on stale mirrors.
-    if (fs.existsSync(dest)) {
-      for (const f of fs.readdirSync(dest)) {
-        if (!f.endsWith(".md")) continue;
-        if (!f.startsWith(BKIT_PREFIX)) continue;
-        if (!sourceSet.has(f)) {
-          const rel = path.join(dest, f);
-          if (!dryRun) fs.rmSync(path.join(dest, f));
-          console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
-          trackMirrorWrite(ctx, rel, written);
-        }
-      }
+    // dryRun still reports would-deletes into ws.writes so `bkit check` fails on stale mirrors.
+    for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
+      const rel = path.join(dest, f);
+      console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+      trackMirrorWrite(ctx, rel, written);
     }
   }
 
@@ -115,17 +107,10 @@ export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
       }
     }
 
-    if (fs.existsSync(dest)) {
-      for (const f of fs.readdirSync(dest)) {
-        if (!f.endsWith(".md")) continue;
-        if (!f.startsWith(BKIT_PREFIX)) continue;
-        if (!sourceSet.has(f)) {
-          const rel = path.join(dest, f);
-          if (!dryRun) fs.rmSync(path.join(dest, f));
-          console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
-          trackMirrorWrite(ctx, rel, written);
-        }
-      }
+    for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
+      const rel = path.join(dest, f);
+      console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+      trackMirrorWrite(ctx, rel, written);
     }
   }
   return written;

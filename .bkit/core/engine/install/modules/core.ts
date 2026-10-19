@@ -72,25 +72,46 @@ const ORPHAN_PRUNE_DIRS = [
   ".claude/commands",
   ".cursor/agents",
   ".cursor/commands",
+  ".opencode/agents",
+  ".opencode/commands",
+  ".codex/agents",
+  ".agents/skills",
+  ".agents/plugins/bkit/agents",
+  ".agents/plugins/bkit/skills",
 ] as const;
 
+export interface RemoveOrphansOptions {
+  /** Entry-name suffix an orphan must carry. Default `.md`; `""` matches every name. */
+  extension?: string;
+  /** Orphans are whole folders (skill dirs) removed recursively; `extension` is ignored. */
+  wholeFolders?: boolean;
+}
+
+/**
+ * Removes entries of `destDir` that start with `prefix` and are absent from `sourceNames`
+ * (entry names as they appear in `destDir`). Returns the removed names; with `dryRun` it
+ * reports them without deleting. Throws for any `destDir` outside `ORPHAN_PRUNE_DIRS`.
+ */
 export function removeOrphans(
   destDir: string,
-  sourceFiles: Set<string>,
+  sourceNames: Set<string>,
   dryRun: boolean,
   prefix?: string,
+  options: RemoveOrphansOptions = {},
 ): string[] {
   const resolved = path.resolve(destDir);
   if (!ORPHAN_PRUNE_DIRS.some((d) => path.resolve(d) === resolved)) {
     throw new Error(`removeOrphans: refusing orphan removal outside allowlist: ${destDir}`);
   }
   if (!fs.existsSync(destDir)) return [];
+  const { extension = ".md", wholeFolders = false } = options;
   const removed: string[] = [];
   for (const f of fs.readdirSync(destDir)) {
-    if (!f.endsWith(".md")) continue;
+    if (!wholeFolders && !f.endsWith(extension)) continue;
     if (prefix && !f.startsWith(prefix)) continue;
-    if (!sourceFiles.has(f)) {
-      if (!dryRun) fs.rmSync(path.join(destDir, f));
+    if (!sourceNames.has(f)) {
+      const target = path.join(destDir, f);
+      if (!dryRun) fs.rmSync(target, { recursive: wholeFolders, force: wholeFolders });
       removed.push(f);
     }
   }

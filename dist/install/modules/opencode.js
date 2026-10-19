@@ -10,7 +10,7 @@ import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { resolveNetworkAllowlist, extractMcpServers, networkAllowlistBases } from "../cloud-env.js";
 import { OPENCODE_PROVIDER_DEFAULTS } from "../../shared/egress.js";
-import { BKIT_PREFIX, installFile, listMdFiles, readInstallingVersion, trackMirrorWrite, } from "./core.js";
+import { BKIT_PREFIX, installFile, listMdFiles, readInstallingVersion, removeOrphans, trackMirrorWrite, } from "./core.js";
 import { isOpencodeProvider, opencodeProviderId } from "../../render/models.js";
 export function renderOpencodeAgentsCommands(ctx) {
     const { dryRun, opencodeModelLookup, effortMap, opencodeProvider, logPrefix } = ctx;
@@ -42,23 +42,11 @@ export function renderOpencodeAgentsCommands(ctx) {
                 trackMirrorWrite(ctx, rel, written);
             }
         }
-        // Remove orphan agent files (bkit-prefix only, no allowlist gate needed — .opencode/agents
-        // is a dynamic mirror dir like .claude/agents and .cursor/agents). dryRun still reports
-        // would-deletes into ws.writes so `bkit check` fails on stale mirrors.
-        if (fs.existsSync(dest)) {
-            for (const f of fs.readdirSync(dest)) {
-                if (!f.endsWith(".md"))
-                    continue;
-                if (!f.startsWith(BKIT_PREFIX))
-                    continue;
-                if (!sourceSet.has(f)) {
-                    const rel = path.join(dest, f);
-                    if (!dryRun)
-                        fs.rmSync(path.join(dest, f));
-                    console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
-                    trackMirrorWrite(ctx, rel, written);
-                }
-            }
+        // dryRun still reports would-deletes into ws.writes so `bkit check` fails on stale mirrors.
+        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
+            const rel = path.join(dest, f);
+            console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+            trackMirrorWrite(ctx, rel, written);
         }
     }
     // --- Commands: tracker substitution + applyOpencodeCommand ---
@@ -78,20 +66,10 @@ export function renderOpencodeAgentsCommands(ctx) {
                 trackMirrorWrite(ctx, rel, written);
             }
         }
-        if (fs.existsSync(dest)) {
-            for (const f of fs.readdirSync(dest)) {
-                if (!f.endsWith(".md"))
-                    continue;
-                if (!f.startsWith(BKIT_PREFIX))
-                    continue;
-                if (!sourceSet.has(f)) {
-                    const rel = path.join(dest, f);
-                    if (!dryRun)
-                        fs.rmSync(path.join(dest, f));
-                    console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
-                    trackMirrorWrite(ctx, rel, written);
-                }
-            }
+        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
+            const rel = path.join(dest, f);
+            console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+            trackMirrorWrite(ctx, rel, written);
         }
     }
     return written;

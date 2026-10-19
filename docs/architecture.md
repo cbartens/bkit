@@ -48,6 +48,7 @@ cbartens/bkit (this repo)
 │   │   └── workflow/ ci/ setup/ # `bkit <noun> <verb>` workflow commands
 │   ├── install/                 # what gets written into a consumer repo, and how
 │   │   ├── modules/index.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
+│   │   ├── modules/core.ts      # Core module + file helpers the host modules share; `removeOrphans` is the ONLY sweep of stale `bkit-*` mirror entries (every host's agent/command/skill folder) — refuses any folder outside `ORPHAN_PRUNE_DIRS`; `extension` option for files, `wholeFolders` for skill dirs
 │   │   ├── template-copies.ts   # Dotfile remap + whole-templates-root copy/delete sync (syncTemplateCopies)
 │   │   ├── write.ts             # Format-aware file-write primitives (fully-managed / markered-text) + deepContains/writeTier2JsonContained
 │   │   ├── placeholders.ts      # Token resolver (default branch, project name, managed-version marker)
@@ -55,7 +56,7 @@ cbartens/bkit (this repo)
 │   │   ├── manifest.ts          # Per-module install-write manifest (drives uninstall + the upgrade walk)
 │   │   └── cloud-env.ts         # Resolves the `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds BKIT_LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-agnostic
 │   ├── render/                  # workflow and prompt sources → host agent and command copies
-│   │   ├── hosts.ts             # Host transforms (T1/T2/T3, frontmatter, agent/command/skill renders)
+│   │   ├── hosts.ts             # Host transforms (T1/T2/T3, frontmatter, agent/command/skill renders); the four subagent renderers open with `requireSubagentModel` (name required, model lookup, exit 1)
 │   │   ├── models.ts            # Model lookup, overrides, effort map and the gateway columns
 │   │   └── trackers.ts          # Tracker-provider substitution engine (github / linear / none)
 │   ├── checks/                  # detection before and after writes
