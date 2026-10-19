@@ -56,10 +56,13 @@ function deny(userMessage, agentMessage) {
   };
 }
 
-/** @param {string} cmd */
-function decideShell(cmd) {
+/**
+ * @param {string} cmd
+ * @param {string[]} dirs where to look for the network allowlist (`hookDirs`)
+ */
+function decideShell(cmd, dirs) {
   const c = cmd.trim();
-  const v = classifyShell(c);
+  const v = classifyShell(c, dirs);
   if (!v) return allow();
   switch (v.tier) {
     case "deny":
@@ -108,13 +111,13 @@ function decideRead(filePath) {
  * opinion on this call (the caller decides what a no-opinion result means).
  */
 function bkitGuardrails(payload) {
-  // beforeShellExecution: { command }
+  // beforeShellExecution: { command, cwd, workspace_roots }
   if (
     typeof payload.command === "string" &&
     payload.tool_name == null &&
     payload.tool_input == null
   ) {
-    return decideShell(payload.command);
+    return decideShell(payload.command, hookDirs(payload));
   }
 
   // preToolUse Read/TabRead: { tool_name, tool_input: { path|file_path|target_file|... } }

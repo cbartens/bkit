@@ -4,7 +4,12 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { readDependencyNames, readInstallingVersion, readPackageJson } from "./package-json";
+import {
+  readDependencyNames,
+  readDependencySpec,
+  readInstallingVersion,
+  readPackageJson,
+} from "./package-json";
 import { getPkgRoot } from "./package-roots";
 
 const dirs: string[] = [];
@@ -56,6 +61,22 @@ describe("readDependencyNames", () => {
     ["a dependency field that is not an object", '{"dependencies":"a"}'],
   ])("%s -> no names", (_, body) => {
     expect(readDependencyNames(dir(body))).toEqual([]);
+  });
+});
+
+describe("readDependencySpec", () => {
+  it("reads the spec from dependencies, devDependencies or optionalDependencies", () => {
+    for (const field of ["dependencies", "devDependencies", "optionalDependencies"]) {
+      const d = dir(JSON.stringify({ [field]: { "@cbartens/bkit": "file:../bkit.tgz" } }));
+      expect(readDependencySpec(d, "@cbartens/bkit")).toBe("file:../bkit.tgz");
+    }
+  });
+
+  it("returns null when undeclared, peer-only, or package.json is unreadable", () => {
+    expect(readDependencySpec(dir("{}"), "x")).toBeNull();
+    expect(readDependencySpec(dir('{"peerDependencies":{"x":"^1"}}'), "x")).toBeNull();
+    expect(readDependencySpec(dir("{oops"), "x")).toBeNull();
+    expect(readDependencySpec(dir(), "x")).toBeNull();
   });
 });
 

@@ -90,7 +90,7 @@ const deriveAssign = (name: string) =>
 
 /**
  * Step names whose attempts a call counts, in a block or file: `counters derive --step=`,
- * `--attempt-of=<step>:`, `--of=<step>:`, `--count-field=<key>=<step>:`, and the row
+ * `--attempt-of=<step>:`, `--of=<step>[,<step>...]:`, `--count-field=<key>=<step>:`, and the row
  * step itself on a `steps done|finish` line with `--attempt=next`.
  */
 function derivedSteps(text: string): string[] {
@@ -98,8 +98,8 @@ function derivedSteps(text: string): string[] {
   for (const line of text.split("\n")) {
     for (const m of line.matchAll(/\bcounters derive\b[^\n]*?--step="?([\w-]+)"?/g))
       out.push(m[1]!);
-    for (const m of line.matchAll(/--(?:attempt-of|of|count-field=\w+)=([\w-]+):/g))
-      out.push(m[1]!);
+    for (const m of line.matchAll(/--(?:attempt-of|of|count-field=\w+)=([\w,-]+):/g))
+      out.push(...m[1]!.split(","));
     if (/\bsteps (?:done|finish)\b/.test(line) && /--attempt=next\b/.test(line)) {
       const m = /--step="?([\w-]+)"?/.exec(line);
       if (m) out.push(m[1]!);

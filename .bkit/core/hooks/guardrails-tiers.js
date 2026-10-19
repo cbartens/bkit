@@ -263,8 +263,9 @@ function shellSecretRead(c) {
  *   `{ tier: "fetch" }`           — curl / wget to a host off the network allowlist;
  *   `{ tier: "edit", edits }`     — the shell used as an edit channel (advisory only);
  *   null                          — nothing to say.
+ * `dirs` locate the network allowlist (`hookDirs`).
  */
-function classifyShell(c) {
+function classifyShell(c, dirs) {
   if (!c) return null;
   const denied = denyRule(c);
   if (denied) return { tier: "deny", ...denied };
@@ -272,7 +273,7 @@ function classifyShell(c) {
   if (what) return { tier: "ask", what };
   const secret = shellSecretRead(c);
   if (secret) return { tier: "secret", path: secret };
-  if (usesFetch(c)) return curlWgetHostAllowed(c) ? null : { tier: "fetch" };
+  if (usesFetch(c)) return curlWgetHostAllowed(c, dirs) ? null : { tier: "fetch" };
   const edits = shellEditTargets(c);
   return edits.length > 0 ? { tier: "edit", edits } : null;
 }

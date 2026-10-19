@@ -6,7 +6,7 @@ $ARGUMENTS
 
 # Debug Feature (Workflow 4/5)
 
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Remediate feature failures and push to branch.
@@ -237,15 +237,17 @@ $ARGUMENTS
    "{BKIT}" steps finish --file="{STATUS}" --workflow=debug --step=debug-run-tests --verdict={TEST_VERDICT} --failures={TEST_FAILURES} --scope="{TEST_SCOPE}" --attempt=next --artifact=docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md --clamp-log=debug-run-tests:{DEBUG_ATTEMPT} --commit=none --number=3 --title="Run Tests"
    ```
    → hold `attempt` as `{NORMAL_ATTEMPT}`.
-3. **If** `TEST_VERDICT` = PASS → route on whether a fix preceded this pass:
+3. **If** `TEST_VERDICT` = PASS → route on the fix and reproduce rows in the active run:
    ```bash
    "{BKIT}" status route --file="{STATUS}" --workflow=debug --step=debug-run-tests --expect=verdict=PASS >/dev/null || exit 2
-   "{BKIT}" counters route --name=NORMAL_ATTEMPT --of=debug-run-tests:current --file="{STATUS}" --workflow=debug --max=1 --continue=step-10 --exceeded=step-9
+   "{BKIT}" counters route --name=FIX_ATTEMPT --of=debug-failure-remediate,debug-failure-soak:count --file="{STATUS}" --workflow=debug --max=0 --continue=unfixed --exceeded=step-9 || exit $?
+   "{BKIT}" counters route --name=REPRODUCE_ATTEMPT --of=debug-failure-reproduce:count --file="{STATUS}" --workflow=debug --max=0 --continue=first-pass --exceeded=step-10
    ```
    Route:
-   - **If** exit 1 (printed `step-9`, a fix preceded this pass) → Step 9.
-   - **If** exit 0 (printed `step-10`, first attempt) **and** `REPRO` = true → Step 4.
-   - **If** exit 0 (printed `step-10`, first attempt) → Step 10.
+   - **If** exit 1 **and** printed `step-9` (a fix step ran) → Step 9.
+   - **If** exit 1 **and** printed `step-10` (reproduce tests committed, passed with no fix) → Step 10.
+   - **If** exit 0 (printed `first-pass`) **and** `REPRO` = true → Step 4.
+   - **If** exit 0 (printed `first-pass`) → Step 10.
    - **Else** → **Failure Path**.
 4. **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = NORMAL → run counter routing:
    ```bash

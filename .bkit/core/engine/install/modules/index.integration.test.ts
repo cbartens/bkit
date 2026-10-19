@@ -5,21 +5,26 @@ import { spawnSync } from "node:child_process";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readTemplate } from "../../render/parts";
 import type { WriteSet } from "../write";
-import { parseModelLookup, parseEffortMap } from "../../render/models";
+import {
+  buildAntigravityModelLookup,
+  buildOpencodeModelLookup,
+  parseEffortMap,
+  parseModelLookup,
+} from "../../render/models";
 import { listFilesRecursive, remapTemplateDest } from "../template-copies";
-import { getBkitDocsRoot, getPkgRoot, getTemplatesRoot } from "../../shared/package-roots";
+import { getBkitDocsRoot, getTemplatesRoot } from "../../shared/package-roots";
 import { runCoreModule } from "./core";
 import { renderOpencodeJson } from "./opencode";
 import { dispatchModules, type ModuleContext } from "./index";
 import { BKIT_GATE_SCRIPTS } from "../manifest";
-import { readBkitVersion } from "../version-file";
+import { readBkitVersion, writeBkitVersion } from "../version-file";
 import { writeCursorCliPermissionsArtifact } from "../cloud-env";
 import {
   networkAllowlistBases,
   resolveClaudeDerivedAllows,
   resolveNetworkAllowlist,
-  writeNetworkAllowlistArtifact,
 } from "../cloud-env";
+import { NETWORK_ALLOWLIST_RELPATH, writeNetworkAllowlist } from "../network-allowlist";
 import { enrichClaudeSettingsAllows } from "./claude";
 
 // ---------------------------------------------------------------------------
@@ -176,6 +181,50 @@ describe("module dispatch: --core alone seeds no host or tooling file", () => {
       expect(p).not.toMatch(/[/\\]\.github[/\\]workflows[/\\]/);
     }
     expect(consumerOutputPaths).toContain("AGENTS.md");
+  });
+});
+
+describe("module dispatch: the network allowlist reaches every host whose hook reads it", () => {
+  const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+  const hostCtx = (ws: WriteSet): ModuleContext =>
+    makeCtx({
+      ws,
+      modelLookup: parseModelLookup(promptsMd),
+      codexModelLookup: buildOpencodeModelLookup(promptsMd, "openai"),
+      antigravityModelLookup: buildAntigravityModelLookup(promptsMd),
+      effortMap: parseEffortMap(promptsMd),
+    });
+
+  for (const host of ["claude", "codex", "antigravity", "cursor"] as const) {
+    it(`--${host} writes .bkit/allowlist.json and no .cursor/allowlist.json`, () => {
+      const ws = makeWriteSet();
+      dispatchModules(new Set(["core", host]), hostCtx(ws));
+      const doc = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, NETWORK_ALLOWLIST_RELPATH), "utf-8"),
+      );
+      expect(doc.domains).toContain("github.com");
+      expect(ws.writes.map((w) => w.path)).toContain(NETWORK_ALLOWLIST_RELPATH);
+      expect(fs.existsSync(path.join(tmpDir, ".cursor", "allowlist.json"))).toBe(false);
+    });
+  }
+
+  it("re-install moves a recorded .cursor/allowlist.json to .bkit/allowlist.json", () => {
+    dispatchModules(new Set(["core", "cursor"]), hostCtx(makeWriteSet()));
+    // What an install up to 5.2.4 left: the cursor copy, recorded in .bkit/version.
+    const retired = path.join(".cursor", "allowlist.json");
+    fs.copyFileSync(path.join(tmpDir, NETWORK_ALLOWLIST_RELPATH), path.join(tmpDir, retired));
+    const versionPath = path.join(tmpDir, ".bkit", "version");
+    const version = readBkitVersion(versionPath)!;
+    writeBkitVersion(versionPath, {
+      ...version,
+      canonicalHashes: { ...version.canonicalHashes, [retired]: "0".repeat(64) },
+    });
+
+    const ws = makeWriteSet();
+    dispatchModules(new Set(["core", "cursor"]), hostCtx(ws));
+    expect(fs.existsSync(path.join(tmpDir, retired))).toBe(false);
+    expect(ws.writes.map((w) => w.path)).toContain(retired);
+    expect(readBkitVersion(versionPath)?.canonicalHashes[retired]).toBeUndefined();
   });
 });
 
@@ -458,6 +507,10 @@ describe("permissions-parity", () => {
     ANTIGRAVITY_GUARDRAILS,
     readTemplate(path.resolve(".bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs")),
   );
+  // GENERATED doubles as the consumer repo every hook runs in: a `.git` root holding the
+  // `.bkit/allowlist.json` install writes (shipped hosts only — no allowed-domains).
+  fs.mkdirSync(path.join(GENERATED, ".git"));
+  writeNetworkAllowlist(GENERATED, false, makeWriteSet(), "[test]");
 
   type Verdict = "deny" | "ask" | "allow";
 
@@ -496,6 +549,33 @@ describe("permissions-parity", () => {
     { cmd: "git push -fu origin dev", expect: "deny", why: "force-push in a short-flag cluster" },
     { cmd: "git push origin +dev", expect: "deny", why: "force-push via a +refspec" },
     { cmd: "git push --force --no-verify", expect: "deny", why: "force-push wins over ask" },
+    { cmd: "git -C ../x push --force", expect: "deny", why: "force-push after a git option" },
+    {
+      cmd: "git -C ../x push origin dev -f",
+      expect: "deny",
+      why: "force-push, short flag, after a git option",
+    },
+    {
+      cmd: "git -C ../x push -fu origin dev",
+      expect: "deny",
+      why: "force-push cluster after a git option",
+    },
+    { cmd: "git -c a=b push origin +dev", expect: "deny", why: "+refspec after a git option" },
+    { cmd: "git push -uf origin dev", expect: "deny", why: "force letter second in a cluster" },
+    { cmd: "git push origin dev -uf", expect: "deny", why: "force letter second, after args" },
+    {
+      cmd: "git -C ../x push -vf origin dev",
+      expect: "deny",
+      why: "force letter second, after a git option",
+    },
+    {
+      cmd: "git -C ../x push --force-with-lease origin dev",
+      expect: "allow",
+      why: "lease-guarded push after a git option",
+    },
+    { cmd: "git -C ../x push origin dev", expect: "allow", why: "plain push after a git option" },
+    { cmd: "git push -u origin feature", expect: "allow", why: "upstream push, f in the branch" },
+    { cmd: "git push -u origin fix -n", expect: "allow", why: "dry run, f in the branch" },
     { cmd: "git push origin dev", expect: "allow", why: "plain push" },
     { cmd: "git push --force-with-lease", expect: "allow", why: "bare lease-guarded push" },
     {
@@ -623,10 +703,10 @@ describe("permissions-parity", () => {
   }
 
   function cursorVerdict(payload: unknown): Verdict {
-    // Run from the package root: the hook reads `.cursor/allowlist.json` relative to
-    // process.cwd(), and the suite's top-level beforeEach has chdir'd to a temp consumer.
+    // Run inside GENERATED: the hook finds `.bkit/allowlist.json` by walking up from the
+    // payload dirs and its own cwd to the `.git` root.
     const res = spawnSync("node", [GUARDRAILS], {
-      cwd: getPkgRoot(),
+      cwd: GENERATED,
       input: JSON.stringify(payload),
       encoding: "utf-8",
     });
@@ -642,7 +722,7 @@ describe("permissions-parity", () => {
    */
   function codexVerdict(cmd: string): Verdict {
     const res = spawnSync("node", [CODEX_GUARDRAILS], {
-      cwd: getPkgRoot(),
+      cwd: GENERATED,
       input: JSON.stringify({ tool_name: "Bash", tool_input: { command: cmd } }),
       encoding: "utf-8",
     });
@@ -657,11 +737,11 @@ describe("permissions-parity", () => {
   /** Antigravity reads arrive as `view_file` with an `AbsolutePath`; stdout `{ decision }`. */
   function antigravityReadVerdict(file: string): Verdict {
     const res = spawnSync("node", [ANTIGRAVITY_GUARDRAILS], {
-      cwd: getPkgRoot(),
+      cwd: GENERATED,
       input: JSON.stringify({
         conversationId: `perm-parity-${process.pid}`,
         toolCall: { name: "view_file", args: { AbsolutePath: file } },
-        workspacePaths: [getPkgRoot()],
+        workspacePaths: [GENERATED],
       }),
       encoding: "utf-8",
     });
@@ -671,11 +751,11 @@ describe("permissions-parity", () => {
   /** Antigravity shell calls arrive as `run_command` with a `CommandLine`. */
   function antigravityShellVerdict(cmd: string): Verdict {
     const res = spawnSync("node", [ANTIGRAVITY_GUARDRAILS], {
-      cwd: getPkgRoot(),
+      cwd: GENERATED,
       input: JSON.stringify({
         conversationId: `perm-parity-shell-${process.pid}`,
         toolCall: { name: "run_command", args: { CommandLine: cmd } },
-        workspacePaths: [getPkgRoot()],
+        workspacePaths: [GENERATED],
       }),
       encoding: "utf-8",
     });
@@ -779,7 +859,7 @@ describe("permissions-parity", () => {
     const payload =
       host === "cursor" ? { command: cmd } : { tool_name: "Bash", tool_input: { command: cmd } };
     const res = spawnSync("node", [script], {
-      cwd: getPkgRoot(),
+      cwd: GENERATED,
       input: JSON.stringify(payload),
       encoding: "utf-8",
     });
@@ -1014,12 +1094,74 @@ describe("permissions-parity", () => {
 
   describe("cross-host gate parity — network allowlist", () => {
     it("the guardrails hook carries no hardcoded host list of its own", () => {
-      // The single artifact is `.cursor/allowlist.json`, written from the registry at
-      // install; the hook carries no literal list.
-      const guardrails = fs.readFileSync(GUARDRAILS, "utf-8");
-      expect(guardrails).not.toContain("SHIPPED_NETWORK_BASES");
-      expect(guardrails).toContain(".cursor");
-      expect(guardrails).toContain("allowlist.json");
+      // The single artifact is `.bkit/allowlist.json`, written from the registry at
+      // install; every host's hook reads it and carries no literal list.
+      for (const hook of [
+        GUARDRAILS,
+        CODEX_GUARDRAILS,
+        ANTIGRAVITY_GUARDRAILS,
+        CLAUDE_GUARDRAILS,
+      ]) {
+        const guardrails = fs.readFileSync(hook, "utf-8");
+        expect(guardrails).not.toContain("SHIPPED_NETWORK_BASES");
+        expect(guardrails).toContain('path.join(".bkit", "allowlist.json")');
+      }
+    });
+
+    it("every host's hook finds the allowlist from the payload's repo dirs, whatever its own cwd", () => {
+      // Antigravity runs plugin hooks with cwd set to the plugin dir, and any host may run
+      // its hook outside the repo: the hook locates the repo from the payload, then walks up.
+      const ALLOWED = "curl -fsSL https://api.github.com/repos/x/y";
+      const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-hook-cwd-"));
+      const pluginDir = path.join(GENERATED, ".agents", "plugins", "bkit");
+      fs.mkdirSync(pluginDir, { recursive: true });
+      const run = (script: string, cwd: string, payload: unknown): string =>
+        spawnSync("node", [script], {
+          cwd,
+          input: JSON.stringify(payload),
+          encoding: "utf-8",
+        }).stdout.trim();
+      const bash = (extra: object) => ({
+        tool_name: "Bash",
+        tool_input: { command: ALLOWED },
+        ...extra,
+      });
+      const agy = (extra: object) => ({
+        conversationId: `perm-parity-cwd-${process.pid}`,
+        toolCall: { name: "run_command", args: { CommandLine: ALLOWED } },
+        ...extra,
+      });
+      const cursorOut = (cwd: string, payload: unknown) =>
+        (JSON.parse(run(GUARDRAILS, cwd, payload)) as { permission: Verdict }).permission;
+      const agyOut = (cwd: string, payload: unknown) =>
+        (JSON.parse(run(ANTIGRAVITY_GUARDRAILS, cwd, payload)) as { decision: Verdict }).decision;
+      try {
+        expect({
+          cursorRoots: cursorOut(outside, { command: ALLOWED, workspace_roots: [GENERATED] }),
+          cursorCwd: cursorOut(outside, { command: ALLOWED, cwd: pluginDir }),
+          codex: run(CODEX_GUARDRAILS, outside, bash({ cwd: pluginDir })),
+          claude: run(CLAUDE_GUARDRAILS, outside, bash({ cwd: pluginDir })),
+          antigravityPluginDir: agyOut(pluginDir, agy({ workspacePaths: [GENERATED] })),
+          antigravityWalkUp: agyOut(pluginDir, agy({})),
+          antigravityOutside: agyOut(outside, agy({ workspacePaths: [GENERATED] })),
+        }).toEqual({
+          cursorRoots: "allow",
+          cursorCwd: "allow",
+          codex: "",
+          claude: "",
+          antigravityPluginDir: "allow",
+          antigravityWalkUp: "allow",
+          antigravityOutside: "allow",
+        });
+        // Control: with no repo dir anywhere the hook finds no allowlist — Cursor asks,
+        // Antigravity blocks once to show its fetch advisory.
+        expect(cursorOut(outside, { command: ALLOWED })).toBe("ask");
+        expect(agyOut(outside, agy({ conversationId: `perm-parity-cwd-ctl-${process.pid}` }))).toBe(
+          "deny",
+        );
+      } finally {
+        fs.rmSync(outside, { recursive: true, force: true });
+      }
     });
 
     it("the shipped Claude settings seed no host grants of its own", () => {
@@ -1050,9 +1192,9 @@ describe("permissions-parity", () => {
         const opencodePerm = JSON.parse(
           renderOpencodeJson(OPENCODE_JSON, "github", "openrouter", cwd),
         ).permission as { bash: Record<string, string>; webfetch: Record<string, string> };
-        writeNetworkAllowlistArtifact(cwd, false);
-        const cursorDomains = (
-          JSON.parse(fs.readFileSync(path.join(cwd, ".cursor", "allowlist.json"), "utf-8")) as {
+        writeNetworkAllowlist(cwd, false, makeWriteSet(), "[test]");
+        const hookDomains = (
+          JSON.parse(fs.readFileSync(path.join(cwd, NETWORK_ALLOWLIST_RELPATH), "utf-8")) as {
             domains: string[];
           }
         ).domains;
@@ -1064,8 +1206,8 @@ describe("permissions-parity", () => {
           [`opencode tool:${base}`, opencodePerm.webfetch[`*${base}*`] === "allow"],
           [`opencode shell curl:${base}`, opencodePerm.bash[`curl *${base}*`] === "allow"],
           [`opencode shell wget:${base}`, opencodePerm.bash[`wget *${base}*`] === "allow"],
-          // Cursor — shell, read by the hook from this artifact.
-          [`cursor shell:${base}`, cursorDomains.includes(base)],
+          // Cursor / Codex / Antigravity / Claude hooks — shell, read from this artifact.
+          [`hook shell:${base}`, hookDomains.includes(base)],
         ]);
         const missing = surfaces.filter(([, granted]) => !granted).map(([label]) => label);
         expect(missing).toEqual([]);

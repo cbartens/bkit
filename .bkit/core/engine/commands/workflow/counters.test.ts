@@ -399,6 +399,32 @@ describe("bkit counters route --of", () => {
     expect((await route(rows(), "build-failure-diagnose:current", "3")).code).toBe(4);
   });
 
+  it("sums the DONE rows of several steps with <step>,<step>:count", async () => {
+    const file = rows();
+    const both = await route(file, "build-run-tests,build-plan-verify:count", "2");
+    expect(both.code).toBe(1);
+    expect(both.json).toMatchObject({ value: 3, exceeded: true, next: "failure-path" });
+    const none = await route(file, "build-failure-diagnose,build-failure-remediate:count", "0");
+    expect(none.code).toBe(0);
+    expect(none.json).toMatchObject({ value: 0, exceeded: false, next: "step-15" });
+    expect((await route(file, "build-run-tests,ghost-step:count", "0")).json.value).toBe(2);
+  });
+
+  it("refuses a step list off :count, a repeated step, or an empty list entry", async () => {
+    const file = rows();
+    for (const of of [
+      "build-run-tests,build-plan-verify:next",
+      "build-run-tests,build-plan-verify:current",
+      "build-run-tests,build-run-tests:count",
+      "build-run-tests,:count",
+      ",build-run-tests:count",
+    ]) {
+      const r = await route(file, of, "3");
+      expect(r.code, of).toBe(2);
+      expect(r.out, of).toBe("");
+    }
+  });
+
   it("needs exactly one of --value and --of, and --file with --workflow for --of", async () => {
     const file = rows();
     expect((await route(file, "build-run-tests:next", "3", "--value=1")).code).toBe(2);

@@ -7,6 +7,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterAll, describe, expect, it } from "vitest";
+import { writeNetworkAllowlist } from "../../install/network-allowlist";
 import { readTemplate } from "../../render/parts";
 
 const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gr-antigravity-"));
@@ -132,5 +133,48 @@ describe("antigravity guardrails.cjs — Antigravity contract", () => {
     const res = spawnSync("node", [HOOK], { input: "{not json", encoding: "utf-8" });
     expect(res.status).toBe(0);
     expect(JSON.parse(res.stdout)).toEqual({ decision: "allow" });
+  });
+});
+
+describe("antigravity guardrails.cjs — network allowlist from the plugin dir", () => {
+  // Antigravity runs plugin hooks with cwd set to the plugin dir, so the hook locates
+  // the repo's `.bkit/allowlist.json` from the payload, then by walking up to `.git`.
+  const REPO = path.join(GENERATED, "repo");
+  const PLUGIN_DIR = path.join(REPO, ".agents", "plugins", "bkit");
+  const PLUGIN_HOOK = path.join(PLUGIN_DIR, "hooks", "bkit-guardrails.cjs");
+  fs.mkdirSync(path.dirname(PLUGIN_HOOK), { recursive: true });
+  fs.mkdirSync(path.join(REPO, ".git"));
+  fs.copyFileSync(HOOK, PLUGIN_HOOK);
+  writeNetworkAllowlist(REPO, false, { writes: [] }, "[test]");
+  const ALLOWED = "curl -fsSL https://api.github.com/repos/x/y";
+
+  function fetchDecision(cwd: string, command: string, payload: object): string | undefined {
+    const res = spawnSync("node", [PLUGIN_HOOK], {
+      cwd,
+      input: JSON.stringify({
+        conversationId: newConversation(),
+        toolCall: { name: "run_command", args: { CommandLine: command } },
+        ...payload,
+      }),
+      encoding: "utf-8",
+    });
+    expect(res.status).toBe(0);
+    return (JSON.parse(res.stdout.trim()) as { decision?: string }).decision;
+  }
+
+  it("allows an allowlisted host when the hook runs in the plugin dir", () => {
+    expect(fetchDecision(PLUGIN_DIR, ALLOWED, { workspacePaths: [REPO] })).toBe("allow");
+    // No workspacePaths: the walk up from the plugin dir reaches the repo root.
+    expect(fetchDecision(PLUGIN_DIR, ALLOWED, {})).toBe("allow");
+  });
+
+  it("allows an allowlisted host from the payload's workspace when cwd is outside the repo", () => {
+    expect(fetchDecision(os.tmpdir(), ALLOWED, { workspacePaths: [REPO] })).toBe("allow");
+  });
+
+  it("still blocks an undeclared host once with the fetch advisory", () => {
+    expect(
+      fetchDecision(PLUGIN_DIR, "curl https://evil.example/x", { workspacePaths: [REPO] }),
+    ).toBe("deny");
   });
 });

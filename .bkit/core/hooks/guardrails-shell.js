@@ -197,18 +197,52 @@ function shellEditAdvisory(hits) {
   );
 }
 
+/** Repo-relative path of the install-written network allowlist every host's hook reads. */
+const NETWORK_ALLOWLIST_FILE = path.join(".bkit", "allowlist.json");
+
 /**
- * Hosts come from `.cursor/allowlist.json`, the one install-written artifact carrying
- * the resolved network allowlist (the shipped egress registry union the consumer's
- * `allowed-domains`); every host's hook reads it. There is NO hardcoded fallback list:
- * absent (cursor module not installed) or unreadable, this returns empty and every
- * host is treated as unknown.
+ * Directories a hook call names, most authoritative first: the workspace roots (Cursor
+ * `workspace_roots`; Antigravity `workspacePaths`, carried over by its payload adapter),
+ * the payload `cwd` (Claude, Codex, Cursor), then the hook process's own cwd — which on
+ * Antigravity is the plugin dir, not the repo.
  */
-function loadNetworkAllowlistBases() {
+function hookDirs(payload) {
+  const p = payload && typeof payload === "object" ? payload : {};
+  const roots = Array.isArray(p.workspace_roots) ? p.workspace_roots : [];
+  return [...roots, p.cwd, process.cwd()].filter((d) => typeof d === "string" && d !== "");
+}
+
+/**
+ * The network allowlist file for a hook call: walking up from each of `dirs` in turn,
+ * the first `.bkit/allowlist.json` found. A directory holding `.git` (the repo root)
+ * ends that walk. null when none is found.
+ */
+function findNetworkAllowlist(dirs) {
+  for (const start of dirs) {
+    let dir = path.resolve(start);
+    for (;;) {
+      const file = path.join(dir, NETWORK_ALLOWLIST_FILE);
+      if (fs.existsSync(file)) return file;
+      const parent = path.dirname(dir);
+      if (parent === dir || fs.existsSync(path.join(dir, ".git"))) break;
+      dir = parent;
+    }
+  }
+  return null;
+}
+
+/**
+ * Hosts come from `.bkit/allowlist.json`, the one install-written artifact carrying the
+ * resolved network allowlist (the shipped egress registry union the consumer's
+ * `allowed-domains`); every host's hook reads it, found from the hook call's
+ * directories (`hookDirs`). There is NO hardcoded fallback list: absent or unreadable,
+ * this returns empty and every host is treated as unknown.
+ */
+function loadNetworkAllowlistBases(dirs) {
   const bases = new Set();
   try {
-    const p = path.join(process.cwd(), ".cursor", "allowlist.json");
-    if (fs.existsSync(p)) {
+    const p = findNetworkAllowlist(dirs);
+    if (p) {
       const doc = JSON.parse(fs.readFileSync(p, "utf8"));
       const domains = Array.isArray(doc.domains) ? doc.domains : [];
       for (const d of domains) {
@@ -255,11 +289,12 @@ function hostMatchesBase(host, base) {
  * True when EVERY URL in the command targets an allowlisted host.
  *
  * Only each URL's host is consulted, never the rest of the command string (query
- * params, headers). No parseable URL, or any host off the list → false.
+ * params, headers). No parseable URL, or any host off the list → false. `dirs` locate
+ * the allowlist (`hookDirs`).
  */
-function curlWgetHostAllowed(cmd) {
+function curlWgetHostAllowed(cmd, dirs) {
   const hosts = extractUrlHosts(cmd);
   if (hosts.length === 0) return false;
-  const bases = loadNetworkAllowlistBases();
+  const bases = loadNetworkAllowlistBases(dirs);
   return hosts.every((h) => [...bases].some((b) => hostMatchesBase(h, b)));
 }

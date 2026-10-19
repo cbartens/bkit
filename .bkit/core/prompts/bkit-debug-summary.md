@@ -43,7 +43,7 @@ maxTurns: 50
 8. Base verdict only on read files. never assume outcomes or infer results.
 9. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = failure resolved (no retries, no fragility, no rot signals).
-   - `CONCERNS` = follow-up needed (retries occurred, fragile fix, partial resolution, most recent remediation input = `CONCERNS`, any rot signals detected, or `Reproduced: NO`).
+   - `CONCERNS` = follow-up needed (retries occurred, fragile fix, partial resolution, most recent remediation input = `CONCERNS`, any rot signals detected, `Reproduced: NO`, or `Reproduced: YES` with no remediate / soak log).
    - `FAIL` = aborted at attempt N, root cause unresolved, or any remediation step ends `BLOCKED` with no later `DONE`.
 
 **Output format:**

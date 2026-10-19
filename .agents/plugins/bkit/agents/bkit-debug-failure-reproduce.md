@@ -12,7 +12,7 @@ tools:
   - replace_file_content
   - run_command
 ---
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior QE engineer turning bug reports into failing tests that reproduce them, before any fix.
 **Scope:** As specified by input and Read / Update / Create section.

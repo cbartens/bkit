@@ -7,7 +7,7 @@ import { applyT1, applyT2, applyT3 } from "../../render/hosts.js";
 import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from "../../shared/package-roots.js";
 import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
-import { writeCursorCloudDoc, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, } from "../cloud-env.js";
+import { writeCursorCloudDoc, writeCursorCliPermissionsArtifact } from "../cloud-env.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
 import { reconcileMcpJson } from "./claude.js";
@@ -144,15 +144,11 @@ export function runCursorModule(ctx) {
             }
         }
     }
-    // Cursor-only runtime curl/wget allowlist (bkit-guardrails.cjs reads `.cursor/allowlist.json`).
-    // Same domain set as Claude WebFetch / OpenCode bash allows — sourced from tooling
-    // defaults ∪ consumer `allowed-domains`. Not under `.bkit/` (IDE-scoped artifact).
     // Cursor CLI / cloud-agent MCP allows (`.cursor/cli.json`) from consumer `mcp-servers` —
     // same server set as Claude `mcp__…` allows / OpenCode `<server>_*` permission rows.
-    for (const art of [
-        writeNetworkAllowlistArtifact(process.cwd(), dryRun),
-        writeCursorCliPermissionsArtifact(process.cwd(), dryRun),
-    ]) {
+    // The curl/wget allowlist the guardrails hook reads is core's `.bkit/allowlist.json`.
+    {
+        const art = writeCursorCliPermissionsArtifact(process.cwd(), dryRun);
         if (art.wrote) {
             ws.writes.push({ path: art.path, action: "write" });
             console.log(`${logPrefix} ${tag}cursor: ${art.path}`);

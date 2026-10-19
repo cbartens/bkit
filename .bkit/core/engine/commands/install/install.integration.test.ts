@@ -1294,3 +1294,92 @@ describe("Scenario — Codex + Antigravity install side by side without conflict
     assertCleanCheck("codex→antigravity");
   }, 180_000);
 });
+
+// A tracker switch and an active-provider uninstall leave a consumer `bkit check` passes.
+// Real tmpdir consumer, spawned binary.
+describe("Scenario — tracker switch and active opencode provider removal leave check green", () => {
+  const cliPath = (): string =>
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+
+  const run = (args: string[]) =>
+    spawnSync(requireTsx(), [cliPath(), ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 120_000,
+    });
+
+  const runOk = (args: string[]): string => {
+    const r = run(args);
+    const out = combinedOutput(r);
+    expect(r.status, `${args.join(" ")} failed:\n${out}`).toBe(0);
+    return out;
+  };
+
+  const seedConsumer = (): void => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "scratch-consumer", version: "0.0.0" }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+  };
+
+  const readJson = (rel: string): Record<string, Record<string, unknown>> =>
+    JSON.parse(fs.readFileSync(path.join(tmpDir, rel), "utf-8")) as Record<
+      string,
+      Record<string, unknown>
+    >;
+
+  const agentModels = (): string[] => {
+    const dir = path.join(tmpDir, ".opencode", "agents");
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => /^model:\s*(\S+)/m.exec(fs.readFileSync(path.join(dir, f), "utf-8"))?.[1] ?? "");
+  };
+
+  it("--tracker=linear then --tracker=github removes the linear MCP entry everywhere", () => {
+    seedConsumer();
+    const hosts = ["--claude", "--cursor", "--opencode=openrouter"];
+    runOk(["install", ...hosts, "--tracker=linear"]);
+    expect(readJson(".mcp.json").mcpServers).toHaveProperty("linear");
+    expect(readJson(".opencode/opencode.json").mcp).toHaveProperty("linear");
+
+    const out = runOk(["install", ...hosts, "--tracker=github"]);
+    expect(out).toContain("removed .mcp.json mcpServers.linear");
+    for (const rel of [".mcp.json", ".cursor/mcp.json"]) {
+      expect(readJson(rel).mcpServers, rel).not.toHaveProperty("linear");
+      expect(readJson(rel).mcpServers, rel).toHaveProperty("github");
+    }
+    expect(readJson(".opencode/opencode.json").mcp).not.toHaveProperty("linear");
+    expect(readJson(".opencode/opencode.json").mcp).toHaveProperty("github");
+    runOk(["check"]);
+  }, 240_000);
+
+  it("a linear entry the consumer edited survives the switch, with a warning", () => {
+    seedConsumer();
+    runOk(["install", "--claude", "--tracker=linear"]);
+    const mcp = readJson(".mcp.json");
+    const edited = { type: "http", url: "https://mcp.linear.app/mcp", headers: { X: "1" } };
+    mcp.mcpServers!.linear = edited;
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify(mcp, null, 2) + "\n");
+
+    const out = runOk(["install", "--claude", "--tracker=github"]);
+    expect(out).toContain("kept .mcp.json mcpServers.linear: edited since bkit wrote it");
+    expect(readJson(".mcp.json").mcpServers!.linear).toEqual(edited);
+  }, 240_000);
+
+  it("uninstall --opencode=<active> re-renders the agents to the remaining provider", () => {
+    seedConsumer();
+    runOk(["install", "--opencode=openrouter"]);
+    runOk(["install", "--opencode=ollama"]);
+    expect(agentModels().every((m) => m.startsWith("ollama/"))).toBe(true);
+
+    const out = runOk(["uninstall", "--opencode=ollama"]);
+    expect(out).toContain('active provider switched to "openrouter"');
+    const models = agentModels();
+    expect(models.length).toBeGreaterThan(0);
+    expect(models.filter((m) => !m.startsWith("openrouter/"))).toEqual([]);
+    runOk(["check"]);
+  }, 240_000);
+});

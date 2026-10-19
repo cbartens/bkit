@@ -723,6 +723,41 @@ describe("planSelfBump", () => {
     expect(p).toEqual({ kind: "noop", target: "4.1.4" });
   });
 
+  it("--to the installed version from a non-registry spec → bump, naming the spec", () => {
+    for (const spec of [
+      "file:../bkit-4.1.4.tgz",
+      "link:../bkit",
+      "workspace:*",
+      "github:cbartens/bkit#v4.1.4",
+      "git+https://github.com/cbartens/bkit.git",
+      "https://example.test/bkit-4.1.4.tgz",
+      "npm:@cbartens/bkit@4.1.4",
+      "../bkit",
+    ]) {
+      expect(
+        planSelfBump("4.1.4", { toVersion: "4.1.4", latest: false }, neverResolve, spec),
+      ).toEqual({ kind: "bump", target: "4.1.4", fromSpec: spec });
+    }
+  });
+
+  it("--to the installed version from a registry spec (or no declared spec) → noop", () => {
+    for (const spec of ["4.1.4", "^4.1.0", "~4.1.4", ">=4 <5", "latest", "*", null]) {
+      expect(
+        planSelfBump("4.1.4", { toVersion: "4.1.4", latest: false }, neverResolve, spec),
+      ).toEqual({ kind: "noop", target: "4.1.4" });
+    }
+  });
+
+  it("--latest at the installed version from a file: tarball → bump", () => {
+    const p = planSelfBump("4.1.4", { toVersion: null, latest: true }, () => "4.1.4", "file:x.tgz");
+    expect(p).toEqual({ kind: "bump", target: "4.1.4", fromSpec: "file:x.tgz" });
+  });
+
+  it("a different target bumps whatever the spec, with no fromSpec", () => {
+    const p = planSelfBump("4.1.4", { toVersion: "4.2.0", latest: false }, neverResolve, "file:x");
+    expect(p).toEqual({ kind: "bump", target: "4.2.0" });
+  });
+
   it("--latest that resolves to garbage → invalid (pin explicitly)", () => {
     const p = planSelfBump("4.1.4", { toVersion: null, latest: true }, () => "not-a-version");
     expect(p).toMatchObject({

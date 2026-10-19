@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildDecisionTable,
   formatDecisionTable,
+  removeUnusedTrackerMcpEntries,
   runUninstall,
   uninstallSummaryLine,
   type UninstallContext,
@@ -19,6 +20,7 @@ import {
 } from "../../install/version-file";
 import { findTemplateSource, getSharedRoot } from "../../shared/package-roots";
 import { renderOpencodeJson } from "../../install/modules/opencode";
+import type { WriteSet } from "../../install/write";
 
 let tmpDir: string;
 
@@ -567,6 +569,99 @@ describe("runUninstall — MCP config keeps the consumer's servers", () => {
     );
     await runUninstall(["cursor"], makeCtx());
     expect(fileExists(rel)).toBe(false);
+  });
+});
+
+describe("removeUnusedTrackerMcpEntries — tracker switch", () => {
+  const templatesRoot = getSharedRoot();
+  const templateServers = (rel: string): Record<string, unknown> =>
+    (
+      JSON.parse(fs.readFileSync(path.join(templatesRoot, rel), "utf-8")) as {
+        mcpServers: Record<string, unknown>;
+      }
+    ).mcpServers;
+  const cursorRel = path.join(".cursor", "mcp.json");
+  const opencodeRel = path.join(".opencode", "opencode.json");
+  const opencodeLinearDoc = (): Record<string, unknown> => {
+    const templatePath = findTemplateSource(opencodeRel);
+    if (templatePath === null) throw new Error("opencode.json template missing");
+    return JSON.parse(renderOpencodeJson(templatePath, "linear", "openrouter", tmpDir)) as Record<
+      string,
+      unknown
+    >;
+  };
+
+  it("removes an unedited linear entry from all three files and keeps github and a consumer server", () => {
+    const servers = templateServers(".mcp.json");
+    const consumer = { type: "stdio", command: "my-mcp" };
+    writeFile(
+      ".mcp.json",
+      JSON.stringify({ mcpServers: { linear: servers.linear, github: servers.github } }, null, 2),
+    );
+    writeFile(
+      cursorRel,
+      JSON.stringify({ mcpServers: { linear: templateServers(cursorRel).linear, mine: consumer } }),
+    );
+    writeFile(opencodeRel, JSON.stringify(opencodeLinearDoc(), null, 2));
+
+    const ws: WriteSet = { writes: [] };
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const written = removeUnusedTrackerMcpEntries(tmpDir, "github", false, ws, "[t]");
+    log.mockRestore();
+
+    expect(written).toHaveLength(3);
+    expect(ws.writes.map((w) => w.path)).toEqual(written);
+    expect(JSON.parse(readFile(".mcp.json"))).toEqual({ mcpServers: { github: servers.github } });
+    expect(JSON.parse(readFile(cursorRel))).toEqual({ mcpServers: { mine: consumer } });
+    const opencode = JSON.parse(readFile(opencodeRel)) as Record<string, unknown>;
+    expect(opencode).not.toHaveProperty("mcp");
+    expect(opencode).toHaveProperty("permission");
+  });
+
+  it("keeps an emptied mcpServers map in .mcp.json", () => {
+    writeFile(
+      ".mcp.json",
+      JSON.stringify({ mcpServers: { linear: templateServers(".mcp.json").linear } }),
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    removeUnusedTrackerMcpEntries(tmpDir, "none", false, { writes: [] }, "[t]");
+    log.mockRestore();
+    expect(JSON.parse(readFile(".mcp.json"))).toEqual({ mcpServers: {} });
+  });
+
+  it("keeps a consumer-edited linear entry and warns about it", () => {
+    const edited = { type: "http", url: "https://mcp.linear.app/mcp", headers: { X: "1" } };
+    const before = JSON.stringify({ mcpServers: { linear: edited } }, null, 2);
+    writeFile(".mcp.json", before);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const written = removeUnusedTrackerMcpEntries(tmpDir, "github", false, { writes: [] }, "[t]");
+    const warnings = warn.mock.calls.map((c) => String(c[0]));
+    warn.mockRestore();
+
+    expect(written).toEqual([]);
+    expect(readFile(".mcp.json")).toBe(before);
+    expect(warnings.some((w) => w.includes(".mcp.json mcpServers.linear: edited"))).toBe(true);
+  });
+
+  it("dry-run reports the write but leaves the file untouched", () => {
+    const before = JSON.stringify({ mcpServers: { linear: templateServers(".mcp.json").linear } });
+    writeFile(".mcp.json", before);
+    const ws: WriteSet = { writes: [] };
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    removeUnusedTrackerMcpEntries(tmpDir, "github", true, ws, "[t]");
+    log.mockRestore();
+    expect(ws.writes).toHaveLength(1);
+    expect(readFile(".mcp.json")).toBe(before);
+  });
+
+  it("switching to linear removes nothing", () => {
+    const servers = templateServers(".mcp.json");
+    const before = JSON.stringify({ mcpServers: { github: servers.github } });
+    writeFile(".mcp.json", before);
+    expect(removeUnusedTrackerMcpEntries(tmpDir, "linear", false, { writes: [] }, "[t]")).toEqual(
+      [],
+    );
+    expect(readFile(".mcp.json")).toBe(before);
   });
 });
 

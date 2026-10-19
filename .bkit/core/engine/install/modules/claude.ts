@@ -309,8 +309,9 @@ export function buildMcpJson(templatePath: string, tracker: IssueTracker): strin
  * other key and the existing key order stay the consumer's. Absent file → write the
  * `buildMcpJson` render. Malformed JSON → throw (refuse to merge; the consumer fixes it).
  * Tracker `none` owns no entry, so a present file is left alone. Writes only on change, so
- * dry-run and live compute the identical WriteSet. Another tracker's entry from an earlier
- * install is left in place (`detectExtraMcpServers` advises on it).
+ * dry-run and live compute the identical WriteSet. Another tracker's entry is not touched
+ * here: a `--tracker` switch removes an unedited one first (`removeUnusedTrackerMcpEntries`),
+ * and `detectExtraMcpServers` advises on an edited one.
  */
 export function reconcileMcpJson(
   templatePath: string,

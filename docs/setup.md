@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
@@ -94,7 +94,7 @@ Single package — no turbo / affected-graph. Run scripts directly:
 pnpm bkit:gate:static-unit   # pre-push gates (docs/deployments.md § Pre-push checklist)
 pnpm bkit check              # drift gate
 pnpm bkit:check:dist         # dist freshness (source-repo only)
-pnpm exec bkit doctor        # token + advisory sweep (read-only, never fails)
+pnpm exec bkit doctor        # token + advisory sweep (rewrites .bkit/advisories.md only, never fails)
 ```
 
 ## Troubleshooting

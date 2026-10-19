@@ -247,7 +247,8 @@ export function renderCloudEnvNotes(res: CloudEnvResolution): string {
   if (!res.hasEnvrc) {
     return (
       "_No `.envrc` found — the block above lists only the bkit baseline token names as " +
-      "placeholders. Add your `.envrc` (`bkit install` seeds one) and re-run to inline real values._"
+      "placeholders. Copy `.bkit/templates/.envrc` to the repo root, fill the files it sources, " +
+      "and re-run to inline real values._"
     );
   }
   const bullets: string[] = [];
@@ -564,31 +565,13 @@ export function resolveClaudeDerivedAllows(cwd: string): string[] {
   ];
 }
 
-/** Cursor-relative path of the install-written curl/wget allowlist (guardrails). */
-export const NETWORK_ALLOWLIST_RELPATH = path.join(".cursor", "allowlist.json");
-
-/**
- * Write `.cursor/allowlist.json` for Cursor `bkit-guardrails.cjs` (runtime curl/wget host
- * checks). Claude/OpenCode bake the same domain set into their own configs at
- * install/upgrade — they do not read this file. Call only when the cursor module
- * is installed (do not create `.cursor/` for claude-only consumers).
- */
-export function writeNetworkAllowlistArtifact(
-  cwd: string,
-  dryRun: boolean,
-): { path: string; domains: string[]; wrote: boolean } {
-  const domains = resolveNetworkAllowlist(cwd);
-  const rel = NETWORK_ALLOWLIST_RELPATH;
-  return { path: rel, domains, wrote: writeGeneratedJson(cwd, rel, { domains }, dryRun) };
-}
-
 /** Cursor-relative path of the install-written Cursor CLI permissions (MCP allows). */
 export const CURSOR_CLI_PERMISSIONS_RELPATH = path.join(".cursor", "cli.json");
 
 /**
  * Write `.cursor/cli.json` — the project-level Cursor CLI / cloud-agent permissions —
  * with one `Mcp(<server>:*)` allow per {@link extractMcpServers} entry. bkit-owned and
- * regenerated whole, like `.cursor/allowlist.json`: hand edits do not survive, the
+ * regenerated whole, like `.bkit/allowlist.json`: hand edits do not survive, the
  * `mcp-servers` block is the source. Call only when the cursor module is installed.
  */
 export function writeCursorCliPermissionsArtifact(

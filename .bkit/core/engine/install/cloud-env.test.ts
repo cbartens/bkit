@@ -16,7 +16,6 @@ import {
   extractAllowedDomains,
   expandAllowedDomains,
   networkAllowlistBases,
-  writeNetworkAllowlistArtifact,
   writeCursorCliPermissionsArtifact,
   extractMcpServers,
   resolveClaudeDerivedAllows,
@@ -228,7 +227,10 @@ describe("renderCloudEnvNotes", () => {
 
   it("emits a no-.envrc message when none exists", () => {
     write("package.json", JSON.stringify({ name: "x" }));
-    expect(renderCloudEnvNotes(resolveCloudEnvVars(tmpDir))).toContain("No `.envrc` found");
+    const notes = renderCloudEnvNotes(resolveCloudEnvVars(tmpDir));
+    expect(notes).toContain("No `.envrc` found");
+    expect(notes).toContain("Copy `.bkit/templates/.envrc` to the repo root");
+    expect(notes).not.toContain("seeds one");
   });
 });
 
@@ -269,7 +271,65 @@ describe("template generation sentinels", () => {
   it("cache-bust sentinel sits at the top of the setup script (after the shebang)", () => {
     expect(template).toContain("#!/bin/bash\n@@CLOUD_CACHE_BUST@@\n");
   });
+
+  it("installs the pinned Node onto PATH before corepack runs", () => {
+    const extractIdx = template.indexOf(
+      'tar -xJf "node-v${NODE_VERSION}-linux-x64.tar.xz" -C /usr/local --strip-components=1',
+    );
+    const pathIdx = template.indexOf('export PATH="/usr/local/bin:$PATH"');
+    expect(extractIdx).toBeGreaterThan(-1);
+    expect(template).toContain(
+      'echo "${NODE_SHA256}  node-v${NODE_VERSION}-linux-x64.tar.xz" | sha256sum -c -',
+    );
+    expect(pathIdx).toBeGreaterThan(extractIdx);
+    expect(template.indexOf("@@CLOUD_COREPACK@@")).toBeGreaterThan(pathIdx);
+  });
+
+  it("pins a Node major that satisfies package.json engines.node", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(pkgRoot, "package.json"), "utf-8")) as {
+      engines: { node: string };
+    };
+    const minMajor = Number(/^>=(\d+)/.exec(pkg.engines.node)?.[1]);
+    const nodeVersion = pins(template).get("NODE_VERSION");
+    expect(minMajor).toBeGreaterThan(0);
+    expect(Number(nodeVersion?.split(".")[0])).toBeGreaterThanOrEqual(minMajor);
+  });
+
+  it("shares every version + sha256 pin with the Cursor Dockerfile template", () => {
+    const dockerfile = fs.readFileSync(
+      path.join(pkgRoot, ".bkit", "templates", ".cursor", "Dockerfile"),
+      "utf-8",
+    );
+    const script = pins(template);
+    const docker = pins(dockerfile);
+    for (const tool of ["NODE", "GH", "VALE"]) {
+      for (const key of [`${tool}_VERSION`, `${tool}_SHA256`]) {
+        expect(script.get(key), key).toBeDefined();
+        expect(script.get(key), key).toBe(docker.get(key));
+      }
+    }
+  });
+
+  it("puts a renovate comment directly above every *_VERSION pin", () => {
+    const lines = template.split("\n");
+    const versionLines = lines
+      .map((l, i) => [l, i] as const)
+      .filter(([l]) => /^[A-Z]+_VERSION=/.test(l));
+    expect(versionLines.length).toBeGreaterThanOrEqual(4);
+    for (const [l, i] of versionLines) {
+      expect(lines[i - 1], l).toMatch(/^# renovate: datasource=\S+ depName=\S+/);
+    }
+  });
 });
+
+/** `NAME_VERSION` / `NAME_SHA256` assignments (shell `X="v"` or Dockerfile `ARG X=v`). */
+function pins(text: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of text.matchAll(/^(?:ARG )?([A-Z]+_(?:VERSION|SHA256))="?([^"\s]+)"?$/gm)) {
+    out.set(m[1], m[2]);
+  }
+  return out;
+}
 
 describe("extractContextFetchProvisionRecipes / renderCloudContextFetchProvision", () => {
   const MANAGED =
@@ -695,50 +755,6 @@ describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
     // Sanity: the real template exists, so a normal call returns true. (Absence is
     // covered structurally — writeCursorCloudDoc short-circuits on a missing src.)
     expect(writeCursorCloudDoc(tmpDir, TOKENS, "none")).toBe(true);
-  });
-});
-
-describe("writeNetworkAllowlistArtifact — .cursor/allowlist.json writer", () => {
-  const rel = path.join(".cursor", "allowlist.json");
-
-  it("writes the file when absent (dry-run=false) and reports wrote=true", () => {
-    const res = writeNetworkAllowlistArtifact(tmpDir, false);
-    expect(res.wrote).toBe(true);
-    expect(res.path).toBe(rel);
-    const written = JSON.parse(fs.readFileSync(path.join(tmpDir, rel), "utf-8"));
-    expect(Array.isArray(written.domains)).toBe(true);
-    expect(written.domains.length).toBeGreaterThan(0);
-    // Shipped defaults must be apex + wildcard expanded
-    expect(written.domains).toContain("github.com");
-    expect(written.domains).toContain("*.github.com");
-  });
-
-  it("is idempotent — a second write with no change reports wrote=false", () => {
-    writeNetworkAllowlistArtifact(tmpDir, false);
-    const res = writeNetworkAllowlistArtifact(tmpDir, false);
-    expect(res.wrote).toBe(false);
-  });
-
-  it("dry-run does NOT write, but reports wrote=true when the file is missing", () => {
-    const res = writeNetworkAllowlistArtifact(tmpDir, true);
-    expect(res.wrote).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, rel))).toBe(false);
-  });
-
-  it("dry-run reports wrote=false when the file already matches", () => {
-    writeNetworkAllowlistArtifact(tmpDir, false); // seed
-    const res = writeNetworkAllowlistArtifact(tmpDir, true);
-    expect(res.wrote).toBe(false);
-  });
-
-  it("picks up consumer allowed-domains from .agents/context.md", () => {
-    write(
-      ".agents/context.md",
-      "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nexample.invalid\n<!-- allowed-domains:end -->\n",
-    );
-    const res = writeNetworkAllowlistArtifact(tmpDir, false);
-    expect(res.domains).toContain("example.invalid");
-    expect(res.domains).toContain("*.example.invalid");
   });
 });
 

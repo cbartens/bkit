@@ -77,6 +77,12 @@ const CORE_MANIFEST = [
     // their own attributes outside the block, so this is markered-text (not whole-file).
     { path: ".gitattributes", format: "markered-text", module: "core" },
     { path: ".bkit/version", format: "byte-equal-text", module: "core" },
+    // Curl/wget host allowlist read at runtime by every host's bkit-guardrails.cjs (Claude,
+    // Cursor, Codex, Antigravity). No template backs it — `writeNetworkAllowlist`
+    // (install/network-allowlist.ts) computes the domain set from the consumer's own config,
+    // so it is `generated` and its hash is in `canonicalHashes`. Core-owned: it stays until
+    // the last host goes (full/core uninstall).
+    { path: ".bkit/allowlist.json", format: "byte-equal-text", module: "core", generated: true },
     // Canonical bkit-authored reference docs. They live package-side under
     // `.bkit/core/.bkit/` and are read from there at runtime (getBkitDocsRoot); these
     // consumer copies are force-overwritten mirrors (writeTier1) so a consumer can read
@@ -283,10 +289,6 @@ const CURSOR_MANIFEST = [
         format: "markered-text",
         module: "cursor",
     },
-    // Curl/wget host allowlist read at runtime by bkit-guardrails.cjs. No template backs it —
-    // `writeNetworkAllowlistArtifact` (install/cloud-env.ts) computes the domain set from the
-    // consumer's own config, so it is `generated` and its hash is in `canonicalHashes`.
-    { path: ".cursor/allowlist.json", format: "byte-equal-text", module: "cursor", generated: true },
     // Cursor CLI / cloud-agent MCP allows — `writeCursorCliPermissionsArtifact`
     // (install/cloud-env.ts) renders it from the consumer's `mcp-servers` block; same contract.
     { path: ".cursor/cli.json", format: "byte-equal-text", module: "cursor", generated: true },

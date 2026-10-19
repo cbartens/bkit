@@ -595,6 +595,7 @@ Usage:
                                  re-rendering. Copies under .bkit/templates/ are refreshed by
                                  install/upgrade and checked for staleness — adopt one by
                                  copying it elsewhere; that copy is yours. The CI gate.
+                                 Changes no managed file; rewrites .bkit/advisories.md.
   bkit upgrade [--to=<version>|--latest] [--auto-apply] [--dry-run]
                                  Upgrade everything installed (no module flags). Diffs old
                                  vs new templates; conflict list emitted to stderr. Use
@@ -614,8 +615,9 @@ Usage:
                                  --nuke to force-remove manifest-listed files). Target with the
                                  same module flags as install (e.g. uninstall --claude); a
                                  targeted uninstall leaves core untouched.
-  bkit doctor                   Read-only preflight + post-install advisory replay.
-                                 Diagnose token surfaces and config drift. Exits 0.
+  bkit doctor                   Preflight + post-install advisory replay (changes no
+                                 managed file; rewrites .bkit/advisories.md). Diagnose
+                                 token surfaces and config drift. Exits 0.
   bkit tips [--workflow=<name>] [--all]
                                  Setup tips: what this repo has not set up yet, most useful
                                  first, each with a sentence to ask your agent. Top three
@@ -627,7 +629,8 @@ Usage:
                                  bkit.ignoreAdvisories silences it), except under
                                  --workflow=audit|utility. Local checks only. Exits 0.
   bkit status                   Read-only host/provider status. Reports current host+provider
-                                 (sampled from .opencode/opencode.json, .claude/, .cursor/).
+                                 (sampled from .claude/, .cursor/, package.json, and the
+                                 opencode agent model pins in .opencode/agents/).
                                  Writes nothing. Exits 0.
   bkit cursor                   Launch Cursor with .bkit/.env loaded into its environment.
                                  macOS GUI apps launched from the Dock/Finder do not inherit
@@ -730,7 +733,8 @@ Cross-cutting / modifiers:
   --tracker=<name>      Wire issue tracker integration. Values: github, linear, none
                         (default). Records bkit.issueTracker in package.json and substitutes
                         tracker snippets into command mirrors. Switching is free (re-run with
-                        a new value). Does NOT own AGENTS.md (which is tracker-agnostic).
+                        a new value); a switch removes the old tracker's MCP entry unless you
+                        edited it. Does NOT own AGENTS.md (which is tracker-agnostic).
 
 Install flags:
   --auto-revert         On a Phase 3 blocker, automatically run uninstall and exit 1.
@@ -745,8 +749,9 @@ Uninstall flags:
   --opencode=<provider>
                   Surgical provider removal: removes that provider's block from
                   opencode.json + drops it from bkit.opencodeProviders. Does NOT remove
-                  agents/commands/gateguard. If the removed provider was active, re-render
-                  agents by running bkit install --opencode=<remaining> or bkit upgrade.
+                  agents/commands/gateguard. If the removed provider was active, the first
+                  remaining provider becomes active and the agents are re-rendered to its
+                  model pins.
                   Bare --opencode (no value) tears down the entire opencode host.
   --force         Delete owned whole-file files even if consumer modified them.
   --nuke          Delete ALL bkit-managed files regardless of tier/hash (requires confirm).

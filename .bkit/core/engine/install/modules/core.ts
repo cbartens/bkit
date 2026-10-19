@@ -15,6 +15,7 @@ import { extractManagedBlock, stripManagedBlock } from "../managed-block.js";
 import type { TokenMap } from "../placeholders.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
+import { writeNetworkAllowlist } from "../network-allowlist.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
 import { readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
@@ -565,6 +566,10 @@ export function runCoreModule(ctx: ModuleContext): void {
       action: `Browse-only — bkit reads its payload from the package regardless. To add the view by hand on POSIX: ln -s ../node_modules/@cbartens/bkit/${rel} ${rel}`,
     });
   }
+
+  // 3b4. `.bkit/allowlist.json` — the network allowlist every host's guardrails hook
+  // reads (writeNetworkAllowlist), plus the move off the retired `.cursor/` copy.
+  writeNetworkAllowlist(cwd, dryRun, ws, logPrefix);
 
   // 3c. The bkit:gate:* / bkit:deps:* package.json scripts (add-if-missing). The
   // advisories read the result.

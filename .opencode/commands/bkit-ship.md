@@ -6,7 +6,7 @@ $ARGUMENTS
 
 # Ship Feature (Workflow 5/5)
 
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Merge feature PR to default integration branch.
@@ -251,7 +251,7 @@ $ARGUMENTS
 
 ## 🧠 Step 4 — Integrate (Path B only)
 
-**Run only if** `BASE_PATH` = B. Path A skips this step entirely.
+**Run only if** `BASE_PATH` = B.
 
 1. **If** `MERGEABLE` = MERGEABLE (B1 — no textual conflict): refresh the PR head server-side → Step 5:
    ```bash
@@ -493,7 +493,7 @@ $ARGUMENTS
 
 ## 🧠 Step 12 — Failure Remediate
 
-**Run only if** `state` != MERGED. Code-level failures route back to build (via handover), not a source-file retry loop that re-merges identical remote content.
+**Run only if** `state` != MERGED.
 
 1. Derive the next strategy rung from `{STATUS}`:
    ```bash
@@ -508,7 +508,7 @@ $ARGUMENTS
    ```bash
    "{BKIT}" steps finish --workflow=ship --step=ship-failure-remediate --file="{STATUS}" --attempt-of=ship-merge-pr:current --agent=bkit-debug-failure-remediate --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-<attempt>-log.md" --commit=none --number=12 --title="Failure Remediate"
    ```
-4. **If** `verdict` = PASS → Step 10 (re-run merge). **Else** → **Failure Path** (code-level failures route back to build via handover — no source-file retry loop).
+4. **If** `verdict` = PASS → Step 10 (re-run merge). **Else** → **Failure Path**.
 
 ### 🔒 Gate 12 — Failure Remediate
 

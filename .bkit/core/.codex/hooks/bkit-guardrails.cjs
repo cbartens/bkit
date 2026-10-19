@@ -55,10 +55,13 @@ function deny(reason) {
   return { verdict: "deny", reason };
 }
 
-/** @param {string} cmd */
-function decideShell(cmd) {
+/**
+ * @param {string} cmd
+ * @param {string[]} dirs where to look for the network allowlist (`hookDirs`)
+ */
+function decideShell(cmd, dirs) {
   const c = String(cmd || "").trim();
-  const v = classifyShell(c);
+  const v = classifyShell(c, dirs);
   if (!v) return allow();
   switch (v.tier) {
     case "deny":
@@ -100,7 +103,7 @@ function bkitGuardrails(payload) {
   // Codex passes the command as a string, or as an argv array for some shells.
   const cmd = Array.isArray(input.command) ? input.command.join(" ") : input.command;
   if (typeof cmd !== "string") return null;
-  const decision = decideShell(cmd);
+  const decision = decideShell(cmd, hookDirs(payload));
   return decision.verdict === "allow" ? null : decision;
 }
 

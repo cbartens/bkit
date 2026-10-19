@@ -54,7 +54,7 @@ function bkitGuardrails(payload) {
   if (!c) return null;
 
   const notes = [];
-  if (usesFetch(c) && !curlWgetHostAllowed(c)) {
+  if (usesFetch(c) && !curlWgetHostAllowed(c, hookDirs(payload))) {
     notes.push(
       "bkit guardrails: outbound fetch to a host that is not on this repo's network allowlist " +
         "(.agents/context.md § allowed-domains, plus bkit's shipped tooling hosts). Not blocked — " +

@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Deployments
 
@@ -571,7 +571,7 @@ Or Actions tab → CI → Run workflow → select branch. Same pattern as consum
 2. **Phase 2 — Install (direct writes).** Modules write straight to destinations; NOT atomic across modules. `.bkit-staging/<module>/` = per-run scratch for derived files, removed by `discardAllStaging` after every dispatch. Mid-dispatch error → earlier modules' files stay written, `.bkit/version` not re-pinned → re-run `bkit install` (idempotent).
 3. **Phase 3 — Post-install.** Re-detect token/ci/vale/devDeps. Cross-phase dedupe: Phase 3 wins. `bkit check`: Phase 3 read-only. **Phase 3 blockers exit 1** + recovery line; `--auto-revert` → `runUninstall` in-process.
 
-`pnpm bkit install` — all three phases. `pnpm bkit check` — Phase 1 + 3 read-only; exit 1 on Tier-1 / Tier-2 drift. `pnpm bkit doctor` — Phase 1 + 3, no writes. `pnpm bkit upgrade` — diff vs `canonicalHashes`; conflicts stderr (`--auto-apply` non-zero). Offline re-render at installed version; `--latest`/`--to=<version>` bump + re-exec atomically. Also re-renders output outside `.bkit/templates/` — host agents / commands + `.bkit/*.md` (`runBkitDocs`) per installed host (by `agents/` dir). Force-overwritten; `.bkit/prompts.md` markered — consumer overrides below `bkit:end` block-merge-preserved.
+`pnpm bkit install` — all three phases. `pnpm bkit check` / `pnpm bkit doctor` — Phase 1 + 3; write only `.bkit/advisories.md`. `check` exits 1 on Tier-1 / Tier-2 drift. `pnpm bkit upgrade` — diff vs `canonicalHashes`; conflicts stderr (`--auto-apply` non-zero). Offline re-render at installed version; `--latest`/`--to=<version>` bump + re-exec atomically. Also re-renders output outside `.bkit/templates/` — host agents / commands + `.bkit/*.md` (`runBkitDocs`) per installed host (by `agents/` dir). Force-overwritten; `.bkit/prompts.md` markered — consumer overrides below `bkit:end` block-merge-preserved.
 
 ### `bkit-cloud.yml` — dual-job cloud-agent lane
 

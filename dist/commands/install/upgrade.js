@@ -26,7 +26,7 @@ import { detectMarkerStyle } from "../../install/managed-block.js";
 import { applyTokens, resolveTokens } from "../../install/placeholders.js";
 import { readTemplate } from "../../render/parts.js";
 import { TEMPLATE_COPIES_DIR, getCoreRoot, getSharedRoot, getBkitDocsRoot, } from "../../shared/package-roots.js";
-import { readInstallingVersion } from "../../shared/package-json.js";
+import { readDependencySpec, readInstallingVersion } from "../../shared/package-json.js";
 import { requireOpencodeProvider, detectOpencodeProviders, runUpgradeAdvisories, } from "./install.js";
 import { setLogPrefix } from "../../shared/log-prefix.js";
 import { BKIT_PACKAGE, lookupLatestPublished } from "../../shared/bkit-latest.js";
@@ -37,7 +37,7 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
-import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, } from "../../install/cloud-env.js";
+import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeCursorCliPermissionsArtifact, } from "../../install/cloud-env.js";
 import { syncTemplateCopies, formatTemplateChanges } from "../../install/template-copies.js";
 import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payload-links.js";
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
@@ -62,11 +62,24 @@ const EMPTY_TOKENS = {
 /** Accepts X.Y.Z with an optional prerelease tag (e.g. 4.1.5, 4.2.0-rc.1). */
 const SELF_BUMP_SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 /**
+ * True when a `package.json` dependency spec resolves from the registry: a version, range or
+ * dist-tag. `file:` / `link:` / `workspace:` / `npm:` alias / git / URL / path specs are not.
+ */
+export function isRegistrySpec(spec) {
+    const s = spec.trim();
+    return !/[:/\\]/.test(s) && !s.startsWith(".");
+}
+/**
  * Resolve the self-bump target and decide the action. `resolveLatest` is only
  * invoked for `--latest` (it shells out to the registry in production); injected
  * so tests stay offline. A leading `v` is tolerated on either source.
+ *
+ * `installedSpec` is the consumer `package.json` spec for @cbartens/bkit (`null` when
+ * undeclared). A matching version string is a no-op only when that spec resolves from the
+ * registry: a `file:` tarball or other non-registry install at the same version still bumps,
+ * so `pnpm add` replaces it with the published package.
  */
-export function planSelfBump(installed, flags, resolveLatest) {
+export function planSelfBump(installed, flags, resolveLatest, installedSpec = null) {
     let target;
     if (flags.toVersion !== null) {
         target = flags.toVersion.trim().replace(/^v/, "");
@@ -86,9 +99,11 @@ export function planSelfBump(installed, flags, resolveLatest) {
             };
         }
     }
-    if (target === installed.trim().replace(/^v/, ""))
+    if (target !== installed.trim().replace(/^v/, ""))
+        return { kind: "bump", target };
+    if (installedSpec === null || isRegistrySpec(installedSpec))
         return { kind: "noop", target };
-    return { kind: "bump", target };
+    return { kind: "bump", target, fromSpec: installedSpec };
 }
 export const LOG_PREFIX = "[bkit-upgrade]";
 export function diffFile(relPath, absolutePath, templateContent, canonicalHashes) {
@@ -367,7 +382,7 @@ export async function runSelfBump(flags, cwd) {
     const installed = readInstallingVersion();
     // Resolve the latest first (only when asked), then feed planSelfBump a constant.
     const latestVersion = flags.latest ? resolveLatestPublishedVersion(cwd) : "";
-    const resolvedPlan = planSelfBump(installed, { toVersion: flags.toVersion, latest: flags.latest }, () => latestVersion);
+    const resolvedPlan = planSelfBump(installed, { toVersion: flags.toVersion, latest: flags.latest }, () => latestVersion, readDependencySpec(cwd, BKIT_PACKAGE));
     if (resolvedPlan.kind === "invalid") {
         console.error(`${LOG_PREFIX} ${resolvedPlan.message}`);
         process.exit(1);
@@ -392,14 +407,15 @@ export async function runSelfBump(flags, cwd) {
         `@cbartens/bkit@${resolvedPlan.target}`,
     ];
     const addCmd = [PACKAGE_RUNNER, ...addArgs].join(" ");
+    const from = resolvedPlan.fromSpec ? `${installed} (${resolvedPlan.fromSpec})` : installed;
     if (flags.dryRun) {
-        console.log(`${LOG_PREFIX} [dry-run] would bump @cbartens/bkit ${installed} -> ${resolvedPlan.target} ` +
+        console.log(`${LOG_PREFIX} [dry-run] would bump @cbartens/bkit ${from} -> ${resolvedPlan.target} ` +
             `(${addCmd}), then re-render + re-pin via the ` +
             `freshly-installed binary. No changes made.`);
         return true;
     }
     const { spawnSync } = await import("node:child_process");
-    console.log(`${LOG_PREFIX} bumping @cbartens/bkit ${installed} -> ${resolvedPlan.target} ...`);
+    console.log(`${LOG_PREFIX} bumping @cbartens/bkit ${from} -> ${resolvedPlan.target} ...`);
     const add = spawnSync(PACKAGE_RUNNER, addArgs, {
         cwd,
         stdio: "inherit",
@@ -718,20 +734,17 @@ export async function runUpgradeCommand(upgradeFlags) {
         }
     }
     // Network allowlist + MCP allows — OpenCode from renderOpencodeJson; Claude enrich
-    // below; Cursor `.cursor/allowlist.json` + `.cursor/cli.json` only when cursor
-    // module installed. Written artifacts get their canonicalHashes refreshed below.
+    // below; `.bkit/allowlist.json` in renderManagedOutputs above; Cursor
+    // `.cursor/cli.json` only when cursor module installed. Written artifacts get their
+    // canonicalHashes refreshed below.
     const artifactWrites = [];
     {
         const cwd = process.cwd();
         if (renderModules.has("cursor")) {
-            for (const art of [
-                writeNetworkAllowlistArtifact(cwd, upgradeFlags.dryRun),
-                writeCursorCliPermissionsArtifact(cwd, upgradeFlags.dryRun),
-            ]) {
-                if (art.wrote) {
-                    artifactWrites.push(art.path);
-                    console.log(`${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${art.path}`);
-                }
+            const art = writeCursorCliPermissionsArtifact(cwd, upgradeFlags.dryRun);
+            if (art.wrote) {
+                artifactWrites.push(art.path);
+                console.log(`${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${art.path}`);
             }
         }
         if (renderModules.has("claude") && fs.existsSync(path.join(cwd, ".claude", "settings.json"))) {

@@ -1667,10 +1667,11 @@ describe("upgrade-render", () => {
       expect(recordedHash(), "upgrade must not re-record the consumer's content").toBe(before);
     }, 180_000);
 
-    it("re-records the hash of .cursor/allowlist.json when upgrade regenerates it, so uninstall still deletes it", () => {
-      expect(runBkit(["install", "--cursor"]).status).toBe(0);
+    it("re-records the hash of .bkit/allowlist.json when upgrade regenerates it, so uninstall still deletes it", () => {
+      // Codex: a host whose guardrails hook reads the allowlist without the cursor module.
+      expect(runBkit(["install", "--codex"]).status).toBe(0);
 
-      const rel = path.join(".cursor", "allowlist.json");
+      const rel = path.join(".bkit", "allowlist.json");
       const abs = path.join(tmpDir, rel);
       const versionPath = path.join(tmpDir, ".bkit", "version");
       const recordedHash = (): string | undefined =>
@@ -1691,6 +1692,30 @@ describe("upgrade-render", () => {
 
       expect(runBkit(["uninstall"]).status).toBe(0);
       expect(fs.existsSync(abs)).toBe(false);
+    }, 180_000);
+
+    it("upgrade moves a recorded .cursor/allowlist.json to .bkit/allowlist.json", () => {
+      expect(runBkit(["install", "--cursor"]).status).toBe(0);
+      // What an install up to 5.2.4 left: the cursor copy, recorded in .bkit/version.
+      const retired = path.join(".cursor", "allowlist.json");
+      const versionPath = path.join(tmpDir, ".bkit", "version");
+      fs.copyFileSync(path.join(tmpDir, ".bkit", "allowlist.json"), path.join(tmpDir, retired));
+      const version = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+        canonicalHashes: Record<string, string>;
+      };
+      version.canonicalHashes[retired] = sha256(
+        fs.readFileSync(path.join(tmpDir, retired), "utf-8"),
+      );
+      fs.writeFileSync(versionPath, JSON.stringify(version, null, 2) + "\n", "utf-8");
+
+      expect(runBkit(["upgrade"]).status).toBe(0);
+      expect(fs.existsSync(path.join(tmpDir, retired))).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, ".bkit", "allowlist.json"))).toBe(true);
+      const after = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+        canonicalHashes: Record<string, string>;
+      };
+      expect(after.canonicalHashes[retired]).toBeUndefined();
+      expect(runBkit(["check"]).status).toBe(0);
     }, 180_000);
   });
 
@@ -1764,6 +1789,43 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
     // Dry-run must not have touched the consumer's package.json.
     const pkg = fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8");
     expect(pkg).not.toContain("99.0.0");
+  });
+
+  // The same version string from a `file:` tarball is not the published package: --to still
+  // runs `pnpm add` so the registry build replaces it.
+  it("bumps when --to names the installed version but package.json pins a file: tarball", () => {
+    const dir = path.dirname(new URL(import.meta.url).pathname);
+    const installed = (
+      JSON.parse(fs.readFileSync(path.resolve(dir, "../../../../../package.json"), "utf-8")) as {
+        version: string;
+      }
+    ).version;
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "x",
+        devDependencies: { "@cbartens/bkit": `file:../cbartens-bkit-${installed}.tgz` },
+      }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const result = spawnSync(
+      requireTsx(),
+      [path.resolve(dir, "../../cli.ts"), "upgrade", `--to=${installed}`, "--dry-run"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
+    const combined = combinedOutput(result);
+    expect(combined, combined).toContain(
+      `[dry-run] would bump @cbartens/bkit ${installed} (file:../cbartens-bkit-${installed}.tgz) -> ${installed}`,
+    );
+    expect(combined).toContain(`pnpm add -D @cbartens/bkit@${installed}`);
+    expect(combined).not.toContain("already at");
+    expect(result.status, `expected exit 0, got ${result.status}:\n${combined}`).toBe(0);
   });
 
   // In a pnpm workspace root, `pnpm add` refuses without -w (ERR_PNPM_ADDING_TO_ROOT),

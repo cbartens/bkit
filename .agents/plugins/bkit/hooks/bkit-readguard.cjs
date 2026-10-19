@@ -30,7 +30,7 @@
 
 // bkit:start
 
-// bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh
 
 const fs = require("node:fs");
 const os = require("node:os");
@@ -389,6 +389,7 @@ function fromAntigravityPayload(payload) {
     tool_input: args,
     session_id: payload.conversationId,
     cwd: typeof args.Cwd === "string" ? args.Cwd : root,
+    workspace_roots: Array.isArray(roots) ? roots : [],
   };
 }
 

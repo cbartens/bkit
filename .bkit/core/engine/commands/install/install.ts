@@ -38,7 +38,7 @@ import {
 } from "../../render/models.js";
 import { getBkitDocsRoot } from "../../shared/package-roots.js";
 import type { WriteSet } from "../../install/write.js";
-import { type UninstallContext, runUninstall } from "./uninstall.js";
+import { type UninstallContext, removeUnusedTrackerMcpEntries, runUninstall } from "./uninstall.js";
 
 // ---------------------------------------------------------------------------
 // Staging scratch area
@@ -246,7 +246,8 @@ export async function runInstall(
   // already-recorded tracker.
   // Resolved BEFORE preflight: preflight's tracker-dependent detectors grade the tracker
   // this run INSTALLS, not the one on disk from the previous run. Read-only — no writes here.
-  const issueTracker: IssueTracker = tracker ?? readBkitConfig(process.cwd()).issueTracker;
+  const recordedTracker: IssueTracker = readBkitConfig(process.cwd()).issueTracker;
+  const issueTracker: IssueTracker = tracker ?? recordedTracker;
 
   // --- Phase 1: Preflight (read-only, before any writes) ---
   // Must run BEFORE resolveTokens to short-circuit cleanly on blockers.
@@ -418,6 +419,13 @@ export async function runInstall(
         // non-fatal
       }
     }
+  }
+
+  // Tracker switch: drop the bkit MCP entries the new tracker does not use, while each still
+  // equals bkit's template (an edited one stays, with a warning). Runs before dispatch so the
+  // `.bkit/version` hashes core records cover the final file content.
+  if (!dryRun && tracker !== null && tracker !== recordedTracker) {
+    removeUnusedTrackerMcpEntries(process.cwd(), tracker, dryRun, ws, LOG_PREFIX);
   }
 
   const ctx: ModuleContext = {

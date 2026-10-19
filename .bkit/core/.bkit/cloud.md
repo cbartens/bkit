@@ -56,9 +56,10 @@ Three cloud stacks — each agent pairs with one tracker. Pick row for agent you
 
 **Alignment guarantees bkit enforces:**
 
+- Same Node (24.21.0, sha256-checked, from nodejs.org) on both clouds — web setup script and `.cursor/Dockerfile` carry the identical `NODE_VERSION` + `NODE_SHA256` pair.
 - Same vale version (3.9.1) pre-installed on both clouds.
 - pnpm via corepack on both. Pastes pre-warm bkit's pin (`10.34.4`), but corepack resolves **each repo's own `packageManager`** in-repo — one setup script serves any pnpm pin; pre-warm version not load-bearing.
-- gh CLI on both: web setup script installs latest binary (same `github.com` release-download style as vale); GitHub-Actions runner ships pre-installed. Auth shared via `bkit-cloud-bootstrap.sh` (`gh auth login --with-token` with `BKIT_GH_TOKEN`, skipped when `GITHUB_TOKEN` already auths on runner).
+- gh CLI on both: web setup script installs a pinned, sha256-checked binary (`GH_VERSION`, same `github.com` release-download style as vale); GitHub-Actions runner ships pre-installed. Auth shared via `bkit-cloud-bootstrap.sh` (`gh auth login --with-token` with `BKIT_GH_TOKEN`, skipped when `GITHUB_TOKEN` already auths on runner).
 - Same opt-in-guard pattern — opt-in label `bkit:auto` — wrapped in `<!-- bkit:start --> ... <!-- bkit:end -->` (bkit-managed in consumer repos). Label `bkit:auto` on both trackers.
 
 ## Background
@@ -68,7 +69,7 @@ Both clouds run Ubuntu 24.04 (4 vCPU / 16 GB RAM / 30 GB disk class). Pre-instal
 <!-- prettier-ignore -->
 | Pre-installed | Claude Code on the web | Cursor Cloud Agents (after bkit Dockerfile) |
 | --- | --- | --- |
-| Node | 20 + 22 | 24 (template default, checksum-pinned; match your `engines.node` / `.nvmrc`) |
+| Node | 20 + 22 — setup script adds 24 (checksum-pinned, into `/usr/local`, first on `PATH`) | 24 (template default, checksum-pinned; match your `engines.node` / `.nvmrc`) |
 | Package manager | pnpm + bun (latest) | pnpm (corepack-pinned in `.cursor/Dockerfile`; each repo's `packageManager` honored in-repo) |
 | Python | Yes + ruff | Yes (system `python3` only) |
 | Databases | Postgres 16, Redis 7 | Not installed (add to Dockerfile if needed) |
@@ -169,7 +170,7 @@ SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/da
 What it does and why split from in-repo hook:
 
 - **`# cache-bust <date>-<n>`** first line generator writes (`bkit install` / `bkit upgrade` re-stamp). Snapshot keyed on setup script exact text — only job is to change: new date (or bumped same-day counter) forces fresh snapshot on next paste, re-pulling any unpinned tool a `context-fetch:provision` recipe installs, plus base-image drift even when rest byte-identical. Leave in place — do not hand-edit.
-- **Base tools (vale, gh, jq)** install once into snapshot from upstream releases, each pinned to a version and checked with `sha256sum -c` before it is unpacked or made executable (the `# renovate:` comment above each `*_VERSION` lets Renovate bump the pin) — `gh` from the `cli/cli` release tarball (not `apt`), `jq` because `curl`-based context-fetch blocks pipe through it. Binaries cloud lacks but laptop has — not repo-level hook.
+- **Base tools (Node, vale, gh, jq)** install once into snapshot from upstream releases, each pinned to a version and checked with `sha256sum -c` before it is unpacked or made executable (the `# renovate:` comment above each `*_VERSION` lets Renovate bump the pin) — Node 24 from the nodejs.org `linux-x64` tarball into `/usr/local`, then `/usr/local/bin` prepended to `PATH` so corepack and every later step run on it (bkit needs Node >=24; image ships 20 + 22); `gh` from the `cli/cli` release tarball (not `apt`), `jq` because `curl`-based context-fetch blocks pipe through it. Node, gh and vale pins match `.cursor/Dockerfile`. Binaries cloud lacks but laptop has — not repo-level hook.
 - **pnpm corepack pre-warm** seeds one pnpm into snapshot via `corepack enable` (no hard-pinned version). In-repo, corepack resolves repo's `packageManager` (fetching if differs) — one setup script serves any pnpm pin; pre-warm is warm cache.
 - `pnpm install` and `vale sync` **not** here — belong in `.claude/hooks/bkit-cloud-bootstrap.sh` for resumed sessions when lockfile/styles drifted; each repo installs own deps.
 
@@ -361,7 +362,7 @@ Each repo gets **own** Claude environment, named after repo. Reason: **secrets, 
 
 Shared across repos (copy, don't re-derive) — non-secret only:
 
-- **Setup script** — generic binaries only (vale, gh, pnpm via corepack); repo-specific install deferred to committed `bkit-cloud-bootstrap.sh` (lockfile → `pnpm install`, `.vale.ini` → `vale sync`). One body fits every repo.
+- **Setup script** — generic binaries only (Node, vale, gh, jq, pnpm via corepack); repo-specific install deferred to committed `bkit-cloud-bootstrap.sh` (lockfile → `pnpm install`, `.vale.ini` → `vale sync`). One body fits every repo.
 - **bkit baseline token _name_** (`BKIT_GH_TOKEN`) + **network policy** (`Trusted`) — same everywhere, values differ. Repo _other_ env vars **not** shared: copy from own env files per `.envrc` — drop `unset`s, skip `BKIT_ANTHROPIC_API_KEY` (§ Environment variables).
 - **Non-secret selectors** (`VERCEL_SCOPE`, `SUPABASE_PROJECT_ID`) stay committed in-repo (§ Environment variables), never in dashboard.
 

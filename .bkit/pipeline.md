@@ -1,9 +1,9 @@
 # bkit — Pipeline Reference
 
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
-> **Purpose:** Human-facing reference. Five-phase pipeline + every subagent (execution order) + every audit template. Evaluation, onboarding — not agent workflow doc-matrix. bkit vs other frameworks and vs _Agentic Design Patterns_: `.bkit/comparison.md`.
+> **Purpose:** Human-facing reference. Five-phase pipeline + every subagent (phases in execution order, then audit and utilities) + every audit template. Evaluation, onboarding — not agent workflow doc-matrix. bkit vs other frameworks and vs _Agentic Design Patterns_: `.bkit/comparison.md`.
 >
 > **Rules:**
 >
@@ -20,7 +20,7 @@
 - [What this is](#what-this-is)
 - [Pipeline map](#pipeline-map) · [CI test scaffold](#ci-scaffold)
 - [Design](#bkit-design) · [Plan](#bkit-plan) · [Build](#bkit-build) · [Debug](#bkit-debug) · [Ship](#bkit-ship)
-- [Audits: every template](#audits)
+- [Audits: every template](#audits) · [Utilities](#utilities)
 
 ## What this is
 
@@ -230,7 +230,7 @@ Output: remediated commit on feature branch. Two modes — normal (diagnose → 
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
-| `bkit-debug-failure-reproduce` | Reproducer (`[repro]` only) | Nothing fails yet → tests failing on the reported symptoms, never a fix; soak mode → tests repeat the scenario. Not reproduced → tests removed, run ends at Summary. |
+| `bkit-debug-failure-reproduce` | Reproducer (`[repro]` only) | Nothing fails yet → tests failing on the reported symptoms, never a fix; soak mode → tests repeat the scenario. Not reproduced → tests removed, run ends at Summary; reproduced but the re-run passes with no fix → Summary. |
 | `bkit-debug-failure-diagnose` | Diagnostician | Reproduces and diagnoses. Accumulates per-attempt context; escalates Standard → Pivot → Final. |
 | `bkit-debug-failure-remediate` | Fixer | Applies whatever the strategy-aware diagnosis produced, with a test loop. |
 | `bkit-debug-summary` | Summarise | Tracker-facing summary. |
@@ -320,6 +320,25 @@ All 35 templates, by area. Template file = `docs/templates/bkit-audit-{template}
 | | Adoption | `adoption` | Whether every file bkit installed is used and used correctly: install current, docs filled in, audits run on schedule, each template adopted or declined with a reason. |
 
 Agent-facing scope per template: `.bkit/prompts.md` § Audit (Ad-hoc).
+
+<a id="utilities"></a>
+
+## Utilities
+
+No command and no phase label. Run on demand, one subagent per run.
+
+<!-- prettier-ignore -->
+| Subagent | Lens / focus | What it does |
+| --- | --- | --- |
+| `bkit-utility-update-roadmap` | Roadmap | Ranks the next items to work on from the board, the ledgers and due audits. Rewrites only the `roadmap-analysis` block. |
+| `bkit-utility-update-documentation` | Docs drift | Syncs every doc listed in `.agents/docs.md` with the current system — drift cleanup across several plans. |
+| `bkit-utility-update-decisions` | Decisions ledger | Checks each active `docs/decisions.jsonl` entry against the docs and the code; appends a corrected or superseded row where it no longer holds. |
+| `bkit-utility-update-knowledge` | Gotchas ledger | Same over `docs/knowledge.jsonl`. Never retracts an entry about upstream behaviour for lack of local evidence. |
+| `bkit-utility-update-deferrals` | Deferrals ledger | Closes `docs/deferrals.jsonl` entries the code already resolves, with evidence. An entry an open tracker issue covers is marked triaged, not closed. |
+| `bkit-utility-update-failures` | Failures ledger | Same over `docs/failures.jsonl`, judged on whether the bug still reproduces from the code. A flaky entry closes only on a landed determinism fix. |
+| `bkit-utility-compress-markdown` | Compressor | Rewrites one markdown file in fewer tokens without changing its meaning. Overwrites the file. |
+
+Agent-facing scope per utility: `.bkit/prompts.md` § Utility (Ad-hoc).
 
 ---
 

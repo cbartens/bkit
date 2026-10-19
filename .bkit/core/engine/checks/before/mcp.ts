@@ -90,14 +90,25 @@ export function detectMissingMcpServers(
 }
 
 /**
+ * The bkit-written MCP servers `tracker` has no use for: `BKIT_MCP_SERVERS` minus the
+ * tracker's own server and `TRACKER_INDEPENDENT_MCP_SERVERS`. What `detectExtraMcpServers`
+ * flags, and what a tracker switch removes while the entry still equals bkit's template.
+ */
+export function unusedTrackerMcpServers(tracker: IssueTracker): readonly string[] {
+  const allowed = requiredMcpServersForTracker(tracker);
+  return BKIT_MCP_SERVERS.filter(
+    (key) => !allowed.includes(key) && !TRACKER_INDEPENDENT_MCP_SERVERS.includes(key),
+  );
+}
+
+/**
  * Advisory: one finding per bkit-written MCP server that is present in the file but NOT
  * required by the resolved tracker (the symmetric counterpart to `detectMissingMcpServers`).
- * Catches the stale-leftover case — e.g. a repo switched to `--tracker=github` but still
- * carrying the `linear` entry.
+ * Catches a leftover a tracker switch kept because the consumer edited it — e.g. a repo
+ * switched to `--tracker=github` still carrying a customised `linear` entry.
  *
- * Only flags tracker-only servers bkit itself writes (`BKIT_MCP_SERVERS` minus
- * `TRACKER_INDEPENDENT_MCP_SERVERS`). Consumer-added MCP servers (custom tooling, other
- * providers) are never flagged for removal.
+ * Only flags `unusedTrackerMcpServers(tracker)`. Consumer-added MCP servers (custom tooling,
+ * other providers) are never flagged for removal.
  *
  * `mapKey` names the server map: `mcpServers` (`.mcp.json`, `.cursor/mcp.json`) or `mcp`
  * (`.opencode/opencode.json`).
@@ -117,10 +128,8 @@ export function detectExtraMcpServers(
   const servers = readMcpServerMap(cwd, relPath, mapKey);
   if (!servers) return [];
 
-  const allowed = requiredMcpServersForTracker(issueTracker);
   const findings: PreflightFinding[] = [];
-  for (const key of BKIT_MCP_SERVERS) {
-    if (allowed.includes(key) || TRACKER_INDEPENDENT_MCP_SERVERS.includes(key)) continue;
+  for (const key of unusedTrackerMcpServers(issueTracker)) {
     if (!Object.prototype.hasOwnProperty.call(servers, key)) continue;
     findings.push({
       id: `mcp-extra-server-${key}-${advisoryPathSlug(relPath)}`,

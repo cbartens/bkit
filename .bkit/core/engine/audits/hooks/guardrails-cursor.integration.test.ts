@@ -6,13 +6,18 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterAll, describe, expect, it } from "vitest";
+import { writeNetworkAllowlist } from "../../install/network-allowlist";
 import { applyTokens } from "../../install/placeholders";
 import { readTemplate } from "../../render/parts";
 
+// GENERATED is the consumer repo the hook runs in: a `.git` root holding the
+// `.bkit/allowlist.json` install writes (shipped hosts only).
 const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gr-cursor-"));
 afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
 const HOOK = path.join(GENERATED, "guardrails.cjs");
 fs.writeFileSync(HOOK, readTemplate(path.resolve(".bkit/core/.cursor/hooks/bkit-guardrails.cjs")));
+fs.mkdirSync(path.join(GENERATED, ".git"));
+writeNetworkAllowlist(GENERATED, false, { writes: [] }, "[test]");
 
 function run(payload: unknown): {
   status: number | null;
@@ -20,6 +25,7 @@ function run(payload: unknown): {
   raw: string;
 } {
   const res = spawnSync("node", [HOOK], {
+    cwd: GENERATED,
     input: JSON.stringify(payload),
     encoding: "utf-8",
   });

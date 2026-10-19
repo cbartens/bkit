@@ -57,23 +57,32 @@ const nonNegativeInt = (v: FlagValue, flag: string): number => {
   return Number(s);
 };
 
-/** `--of=<step>:<position>` over `--file` / `--workflow`: the counter at that position. */
+/**
+ * `--of=<step>:<position>` over `--file` / `--workflow`: the counter at that position.
+ * `--of=<step>,<step>...:count` sums the DONE rows of every listed step.
+ */
 function derivedOf(ctx: RunContext): number {
-  const [step, position] = String(ctx.flags.of).split(":");
-  if (!step || !["next", "current", "count"].includes(position ?? ""))
-    throw new CommandError(EXIT.USAGE, "--of must be <step>:<next|current|count>");
+  const [list, position] = String(ctx.flags.of).split(":");
+  const steps = (list ?? "").split(",");
+  if (steps.some((s) => s === "") || !["next", "current", "count"].includes(position ?? ""))
+    throw new CommandError(EXIT.USAGE, "--of must be <step>[,<step>...]:<next|current|count>");
+  if (steps.length > 1 && (position !== "count" || new Set(steps).size !== steps.length))
+    throw new CommandError(EXIT.USAGE, "--of with several steps takes distinct steps and :count");
   if (ctx.flags.file === undefined || ctx.flags.workflow === undefined)
     throw new CommandError(EXIT.USAGE, "--of needs --file and --workflow");
-  const count = activeDoneSteps(
-    readRuns(statusFile(ctx)),
-    String(ctx.flags.workflow),
-    { step, subPlan: positiveInt(ctx.flags.subPlan, "sub-plan") },
-    str(ctx.flags.since),
-  ).length;
+  const runs = readRuns(statusFile(ctx));
+  const subPlan = positiveInt(ctx.flags.subPlan, "sub-plan");
+  const count = steps.reduce(
+    (n, step) =>
+      n +
+      activeDoneSteps(runs, String(ctx.flags.workflow), { step, subPlan }, str(ctx.flags.since))
+        .length,
+    0,
+  );
   if (position === "current" && count === 0)
     throw new CommandError(
       EXIT_NO_OWN_ROW,
-      `${step}: no DONE row in the active run — the step's own row is missing`,
+      `${steps[0]}: no DONE row in the active run — the step's own row is missing`,
     );
   return position === "next" ? count + 1 : count;
 }
@@ -160,7 +169,7 @@ export const countersCommand: CommandSpec = {
         {
           name: "of",
           type: "string",
-          help: "<step>:<next|current|count> — derive the value from --file (active run)",
+          help: "<step>:<next|current|count> — derive the value from --file (active run); <step>,<step>...:count sums the listed steps",
         },
         { ...FILE_FLAG, required: false, help: "status.jsonl, with --of" },
         { ...WORKFLOW_FLAG, required: false, help: "workflow, with --of" },

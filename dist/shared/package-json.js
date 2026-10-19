@@ -43,6 +43,25 @@ export function readDependencyNames(cwd) {
     return names;
 }
 /**
+ * The spec `package.json` declares for dependency `name` (`"^5.2.0"`, `"file:../x.tgz"`, …),
+ * from `dependencies`, `devDependencies` or `optionalDependencies`; `null` when undeclared or
+ * the file is unreadable.
+ */
+export function readDependencySpec(cwd, name) {
+    const read = readPackageJson(cwd);
+    if (!read.ok)
+        return null;
+    for (const field of ["dependencies", "devDependencies", "optionalDependencies"]) {
+        const deps = read.pkg[field];
+        if (deps && typeof deps === "object") {
+            const spec = deps[name];
+            if (typeof spec === "string")
+                return spec;
+        }
+    }
+    return null;
+}
+/**
  * The version of the bkit package doing the install, read from that package's own
  * `package.json` (`root` defaults to the package root; never the consumer's file).
  * Throws when the file is missing, is not a JSON object, or has no non-empty string

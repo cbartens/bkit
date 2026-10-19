@@ -35,19 +35,32 @@ import {
 import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
 import { parseJson } from "../../shared/json.js";
 import {
+  hashFile,
   isConsumerModified,
   mergeCanonicalHashes,
   readBkitVersion,
   writeBkitVersion,
 } from "../../install/version-file.js";
 import {
+  getBkitDocsRoot,
   getPkgRoot,
   getSharedRoot,
   findTemplateSource,
   TEMPLATE_COPIES_DIR,
 } from "../../shared/package-roots.js";
 import { PAYLOAD_LINKS } from "../../install/payload-links.js";
-import { removeOpencodeProviderBlock, renderOpencodeJson } from "../../install/modules/opencode.js";
+import {
+  removeOpencodeProviderBlock,
+  renderOpencodeAgentsCommands,
+  renderOpencodeJson,
+} from "../../install/modules/opencode.js";
+import {
+  applyModelOverrides,
+  buildOpencodeModelLookup,
+  parseEffortMap,
+} from "../../render/models.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import {
   CLAUDE_CLOUD_RELPATH,
   CURSOR_CLOUD_RELPATH,
@@ -55,6 +68,7 @@ import {
 } from "../../install/cloud-env.js";
 import type { ModuleFlag, UninstallFlags } from "../../cli.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
+import { type McpServerMapKey, unusedTrackerMcpServers } from "../../checks/before/mcp.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -137,15 +151,8 @@ export function stripOpencodeJsonScope(
   cwd: string,
 ): Record<string, JsonValue> {
   const render = (tracker: IssueTracker, provider: string): Record<string, JsonValue> =>
-    JSON.parse(renderOpencodeJson(templatePath, tracker, provider, cwd)) as Record<
-      string,
-      JsonValue
-    >;
-  const ownedMcp: Record<string, JsonValue> = {};
-  for (const tracker of ISSUE_TRACKERS) {
-    const { mcp } = render(tracker, OPENCODE_PROVIDERS[0]);
-    if (isJsonObject(mcp)) Object.assign(ownedMcp, mcp);
-  }
+    renderOpencodeDoc(templatePath, tracker, provider, cwd);
+  const ownedMcp = ownedOpencodeMcpEntries(templatePath, cwd);
   const ownedProviders: Record<string, JsonValue> = {};
   for (const provider of OPENCODE_PROVIDERS) {
     const rendered = render("none", provider).provider;
@@ -159,6 +166,28 @@ export function stripOpencodeJsonScope(
   removeOwnedEntries(out, "mcp", ownedMcp);
   removeOwnedEntries(out, "provider", ownedProviders);
   return stripTier2JsonScope(out, rest);
+}
+
+function renderOpencodeDoc(
+  templatePath: string,
+  tracker: IssueTracker,
+  provider: string,
+  cwd: string,
+): Record<string, JsonValue> {
+  return JSON.parse(renderOpencodeJson(templatePath, tracker, provider, cwd)) as Record<
+    string,
+    JsonValue
+  >;
+}
+
+/** Every tracker's `mcp` entry exactly as bkit renders it into `.opencode/opencode.json`. */
+function ownedOpencodeMcpEntries(templatePath: string, cwd: string): Record<string, JsonValue> {
+  const owned: Record<string, JsonValue> = {};
+  for (const tracker of ISSUE_TRACKERS) {
+    const { mcp } = renderOpencodeDoc(templatePath, tracker, OPENCODE_PROVIDERS[0], cwd);
+    if (isJsonObject(mcp)) Object.assign(owned, mcp);
+  }
+  return owned;
 }
 
 export function stripTier2JsonScope(
@@ -238,19 +267,96 @@ export function stripMcpTrackerEntries(
 
 /**
  * Delete each entry of `doc[key]` identical to the same-named entry in `owned`, then drop
- * `doc[key]` once empty. Entries that differ, and names `owned` lacks, stay. Mutates `doc`.
+ * `doc[key]` once empty (unless `dropEmpty` is false). Entries that differ, and names `owned`
+ * lacks, stay. Mutates `doc`; returns the names deleted.
  */
 function removeOwnedEntries(
   doc: Record<string, JsonValue>,
   key: string,
   owned: Record<string, JsonValue>,
-): void {
+  dropEmpty = true,
+): string[] {
   const entries = doc[key];
-  if (!isJsonObject(entries)) return;
+  if (!isJsonObject(entries)) return [];
+  const removed: string[] = [];
   for (const [name, entry] of Object.entries(owned)) {
-    if (JSON.stringify(entries[name]) === JSON.stringify(entry)) delete entries[name];
+    if (name in entries && JSON.stringify(entries[name]) === JSON.stringify(entry)) {
+      delete entries[name];
+      removed.push(name);
+    }
   }
-  if (Object.keys(entries).length === 0) delete doc[key];
+  if (dropEmpty && Object.keys(entries).length === 0) delete doc[key];
+  return removed;
+}
+
+/** The files bkit writes a tracker MCP entry into, and the key of each one's server map. */
+const TRACKER_MCP_FILES: ReadonlyArray<{ relPath: string; mapKey: McpServerMapKey }> = [
+  { relPath: ".mcp.json", mapKey: "mcpServers" },
+  { relPath: path.join(".cursor", "mcp.json"), mapKey: "mcpServers" },
+  { relPath: path.join(".opencode", "opencode.json"), mapKey: "mcp" },
+];
+
+/**
+ * Tracker switch: remove each `unusedTrackerMcpServers(tracker)` entry from `.mcp.json`,
+ * `.cursor/mcp.json` and `.opencode/opencode.json` while it still equals bkit's template entry
+ * — the rule uninstall applies (`removeOwnedEntries`). An entry the consumer edited stays and
+ * is named in a warning. `.mcp.json` / `.cursor/mcp.json` keep an emptied `mcpServers` (the
+ * tracker-`none` render); `.opencode/opencode.json` drops an emptied `mcp`, as its render does.
+ * Absent and malformed files are skipped (the host module reports malformed JSON). Pushes each
+ * rewritten file onto `ws` and returns its path.
+ */
+export function removeUnusedTrackerMcpEntries(
+  cwd: string,
+  tracker: IssueTracker,
+  dryRun: boolean,
+  ws: WriteSet,
+  logPrefix: string,
+): string[] {
+  const unused = unusedTrackerMcpServers(tracker);
+  const written: string[] = [];
+  for (const { relPath, mapKey } of TRACKER_MCP_FILES) {
+    const absPath = path.join(cwd, relPath);
+    const templatePath = findTemplateSource(relPath);
+    if (unused.length === 0 || templatePath === null || !fs.existsSync(absPath)) continue;
+    const parsed = parseJson(fs.readFileSync(absPath, "utf-8"));
+    const doc = parsed.ok ? (parsed.value as JsonValue) : null;
+    if (!isJsonObject(doc)) continue;
+    const servers = doc[mapKey];
+    if (!isJsonObject(servers)) continue;
+
+    let templateEntries: JsonValue | undefined;
+    if (mapKey === "mcp") {
+      templateEntries = ownedOpencodeMcpEntries(templatePath, cwd);
+    } else {
+      const template = parseJson(fs.readFileSync(templatePath, "utf-8"));
+      const templateDoc = template.ok ? (template.value as JsonValue) : null;
+      templateEntries = isJsonObject(templateDoc) ? templateDoc[mapKey] : undefined;
+    }
+    if (!isJsonObject(templateEntries)) continue;
+    const owned: Record<string, JsonValue> = {};
+    for (const name of unused) {
+      if (name in servers && name in templateEntries) owned[name] = templateEntries[name];
+    }
+
+    const removed = removeOwnedEntries(doc, mapKey, owned, mapKey === "mcp");
+    for (const name of Object.keys(owned).filter((n) => !removed.includes(n))) {
+      console.warn(
+        `${logPrefix} kept ${relPath} ${mapKey}.${name}: edited since bkit wrote it, and the ` +
+          `${tracker} tracker does not use it — remove it by hand if unneeded.`,
+      );
+    }
+    if (removed.length === 0) continue;
+    if (!dryRun) fs.writeFileSync(absPath, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+    ws.writes.push({ path: absPath, action: "update" });
+    written.push(absPath);
+    for (const name of removed) {
+      console.log(
+        `${logPrefix} ${dryRun ? "[dry-run] " : ""}removed ${relPath} ${mapKey}.${name} ` +
+          `(the ${tracker} tracker does not use it)`,
+      );
+    }
+  }
+  return written;
 }
 
 // ---------------------------------------------------------------------------
@@ -1013,13 +1119,68 @@ export async function runSurgicalOpencodeUninstall(
     return;
   }
 
-  // 4. If was active → emit advisory (re-rendering agents requires full ModuleContext)
+  // 4. If was active → re-render the agent pins for the new active provider, so `bkit check`
+  //    finds the mirrors in sync right after.
   if (wasActive && newActive !== null) {
-    console.log(
-      `${LOG_PREFIX}${tag} active provider switched to "${newActive}". ` +
-        `Run \`bkit install --opencode=${newActive}\` or \`bkit upgrade\` to re-render agent frontmatter.`,
-    );
+    if (dryRun) {
+      console.log(
+        `${LOG_PREFIX}${tag} active provider would switch to "${newActive}" — .opencode/agents/ ` +
+          `would be re-rendered to its model pins.`,
+      );
+      return;
+    }
+    const previousCwd = process.cwd();
+    process.chdir(cwd);
+    try {
+      const written = rerenderOpencodeMirrors(newActive, LOG_PREFIX);
+      console.log(
+        `${LOG_PREFIX} active provider switched to "${newActive}" — re-rendered ` +
+          `${written.length} .opencode/ agent/command file(s) to its model pins.`,
+      );
+    } finally {
+      process.chdir(previousCwd);
+    }
   }
+}
+
+/**
+ * Re-render `.opencode/agents/` + `.opencode/commands/` for `provider` — the per-agent model
+ * pins `bkit check` expects once `provider` is the active one, consumer `.bkit/prompts.md`
+ * § Model Overrides applied — and refresh their `.bkit/version` hashes. Renders into
+ * process.cwd(), as the host renderers resolve consumer paths from it. Returns the paths written.
+ */
+function rerenderOpencodeMirrors(provider: string, logPrefix: string): string[] {
+  const cwd = process.cwd();
+  const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+  const opencodeModelLookup = buildOpencodeModelLookup(promptsMd, provider);
+  applyModelOverrides(opencodeModelLookup, provider, path.join(cwd, ".bkit", "prompts.md"));
+  const written = renderOpencodeAgentsCommands({
+    dryRun: false,
+    tokens: { DEFAULT_BRANCH: "", PROJECT_NAME: "", REPO_SLUG: "" },
+    modelLookup: new Map(),
+    opencodeModelLookup,
+    effortMap: parseEffortMap(promptsMd),
+    opencodeProvider: provider,
+    advisories: [],
+    ws: { writes: [] },
+    logPrefix,
+    postDispatch: [],
+    issueTracker: readBkitConfig(cwd).issueTracker,
+    version: readInstallingVersion(),
+  });
+
+  const versionFile = path.join(cwd, ".bkit", "version");
+  const existing = readBkitVersion(versionFile);
+  if (existing && written.length > 0) {
+    const fresh: Record<string, string> = {};
+    for (const rel of written) {
+      const hash = hashFile(path.join(cwd, rel));
+      if (hash) fresh[rel] = hash;
+    }
+    const { canonicalHashes } = mergeCanonicalHashes(cwd, existing.canonicalHashes, fresh);
+    writeBkitVersion(versionFile, { ...existing, canonicalHashes });
+  }
+  return written;
 }
 
 export async function runUninstallCommand(

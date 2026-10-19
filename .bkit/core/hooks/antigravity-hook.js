@@ -23,6 +23,7 @@ function fromAntigravityPayload(payload) {
     tool_input: args,
     session_id: payload.conversationId,
     cwd: typeof args.Cwd === "string" ? args.Cwd : root,
+    workspace_roots: Array.isArray(roots) ? roots : [],
   };
 }
 

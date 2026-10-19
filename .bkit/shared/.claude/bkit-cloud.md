@@ -46,6 +46,23 @@ set -euo pipefail
 
 # Every download is pinned to a version and checked against its published sha256
 # before it is unpacked or made executable. The image targets linux/amd64.
+# Node — nodejs.org tarball checked against SHASUMS256.txt (linux-x64), same pin as
+# `.bkit/templates/.cursor/Dockerfile`. bkit needs Node >=24 and the base image ships
+# older majors, so this one goes into /usr/local and leads PATH for every step below.
+# renovate: datasource=node-version depName=node
+NODE_VERSION="24.21.0"
+NODE_SHA256="fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6"
+if [ "$(/usr/local/bin/node --version 2>/dev/null || true)" != "v${NODE_VERSION}" ]; then
+  command -v xz >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends xz-utils; }
+  cd /tmp
+  curl -fsSLO --retry 3 --retry-all-errors "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"
+  echo "${NODE_SHA256}  node-v${NODE_VERSION}-linux-x64.tar.xz" | sha256sum -c -
+  tar -xJf "node-v${NODE_VERSION}-linux-x64.tar.xz" -C /usr/local --strip-components=1
+  rm -f "node-v${NODE_VERSION}-linux-x64.tar.xz"
+fi
+export PATH="/usr/local/bin:$PATH"
+hash -r
+
 # renovate: datasource=github-releases depName=errata-ai/vale
 VALE_VERSION="3.9.1"
 VALE_SHA256="fbc2eb47d0b8c50220ed1a2c5c611fbe0904ed567d638143d482016a18fd2db0"
@@ -94,7 +111,7 @@ fi
 
 @@CLOUD_CONTEXT_FETCH_PROVISION@@
 
-echo "cloud env ready: $(vale --version), $(gh --version | head -1), jq $(jq --version), pnpm $(pnpm -v)"
+echo "cloud env ready: node $(node --version), $(vale --version), $(gh --version | head -1), jq $(jq --version), pnpm $(pnpm -v)"
 ```
 
 Keep total runtime under ~5 minutes or the snapshot won't build. `pnpm install`
@@ -104,8 +121,11 @@ and `vale sync` are **not** here — they belong in `.claude/hooks/bkit-cloud-bo
 ## 5 · Verify (first session)
 
 ```bash
-vale --version && gh --version && jq --version && pnpm -v
+node --version && vale --version && gh --version && jq --version && pnpm -v
 ```
+
+`node --version` must print `v24.21.0`. An older version means the session `PATH`
+puts the image's own Node ahead of `/usr/local/bin`.
 
 Then confirm workspace trust. Unset, Claude Code ignores every `permissions.allow`
 row in `.claude/settings.json` and reports it on stderr only, where no cloud

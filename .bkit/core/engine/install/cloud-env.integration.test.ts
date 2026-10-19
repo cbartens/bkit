@@ -34,7 +34,7 @@ const bkitInstallPath = path.resolve(here, "../cli.ts");
 const read = (rel: string) => fs.readFileSync(path.join(tmpDir, rel), "utf-8");
 
 describe("T4 — the derived egress set reaches all five surfaces", () => {
-  it("cloud paste, cursor allowlist, claude WebFetch and opencode bash globs all name it", () => {
+  it("cloud paste, hook allowlist, claude WebFetch and opencode bash globs all name it", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "fanout", version: "1.0.0", packageManager: "pnpm@10.34.3" }, null, 2),
@@ -74,8 +74,8 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
     expect(cursorCloud).toContain(probe);
     expect(cursorCloud).not.toContain(`*.${probe}`);
 
-    // 3 — .cursor/allowlist.json domains
-    const allowlist = JSON.parse(read(path.join(".cursor", "allowlist.json"))) as {
+    // 3 — .bkit/allowlist.json domains (every host's guardrails hook)
+    const allowlist = JSON.parse(read(path.join(".bkit", "allowlist.json"))) as {
       domains: string[];
     };
     expect(allowlist.domains).toContain(probe);
