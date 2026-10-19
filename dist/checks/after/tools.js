@@ -3,6 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
+import { readBkitConfig } from "../../shared/settings.js";
 /** True when `cmd --version` runs (binary on PATH, exits 0). */
 function toolVersionRuns(cmd) {
     const res = spawnSync(cmd, ["--version"], {
@@ -303,20 +304,6 @@ function updaterConfigPaths(cwd) {
             : null;
     return { renovate, dependabot };
 }
-/** `bkit.depUpdater: "none"` silences the missing-updater suggestion. Other values are ignored. */
-function depUpdaterOptOut(cwd) {
-    const pkgPath = path.join(cwd, "package.json");
-    if (!fs.existsSync(pkgPath))
-        return false;
-    try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        const bkitField = pkg.bkit;
-        return bkitField?.depUpdater === "none";
-    }
-    catch {
-        return false;
-    }
-}
 /**
  * Read-only dependency-updater check.
  *
@@ -336,7 +323,7 @@ export function buildDepUpdaterSetupAdvisory(cwd) {
     }
     if (renovate || dependabot)
         return null;
-    if (depUpdaterOptOut(cwd))
+    if (readBkitConfig(cwd).depUpdaterOptOut)
         return null;
     if (!fs.existsSync(path.join(cwd, ".github", "workflows")))
         return null;

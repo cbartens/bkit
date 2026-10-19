@@ -6,15 +6,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { PreflightFinding } from "../before/index.js";
-import {
-  parseIssueTracker,
-  DEFAULT_ISSUE_TRACKER,
-  type IssueTracker,
-  parseCloudAgents,
-  DEFAULT_CLOUD_AGENTS,
-  type CloudAgents,
-} from "../../install/manifest.js";
 import { MCP_TOOLSETS_HEADER, parseToolsets } from "../../install/write.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import type { TokenPresence } from "./auth.js";
 
 /**
@@ -70,23 +63,6 @@ export function detectActionsWritePermissions(): TokenPresence {
 }
 
 /**
- * Read `bkit.issueTracker` from the consumer's package.json.
- * Returns the tracker value or the default ("none") when absent / unreadable.
- */
-export function readConsumerIssueTracker(cwd: string): IssueTracker {
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return DEFAULT_ISSUE_TRACKER;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
-    const parsed = parseIssueTracker(bkitField?.issueTracker);
-    return parsed ?? DEFAULT_ISSUE_TRACKER;
-  } catch {
-    return DEFAULT_ISSUE_TRACKER;
-  }
-}
-
-/**
  * Emit a tracker-specific setup advisory.
  *
  * - `github`  → GitHub tracker: the GitHub MCP server authenticates with `BKIT_GH_TOKEN`; `gh` uses `gh auth login`.
@@ -100,7 +76,7 @@ export function buildTrackerSetupAdvisory(cwd: string): PreflightFinding | null 
   const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
   if (!hasClaude && !hasCursor) return null;
 
-  const tracker = readConsumerIssueTracker(cwd);
+  const { issueTracker: tracker, issueTrackerExplicit } = readBkitConfig(cwd);
 
   if (tracker === "github") {
     return {
@@ -126,7 +102,7 @@ export function buildTrackerSetupAdvisory(cwd: string): PreflightFinding | null 
   // tracker === "none". Distinguish opt-out (explicit `bkit.issueTracker: "none"`)
   // from undecided (field absent). An explicit `none` silences the nudge, as with the
   // dep-updater advisory.
-  if (hasExplicitIssueTrackerField(cwd)) return null;
+  if (issueTrackerExplicit) return null;
 
   return {
     id: "tracker-setup-none",
@@ -138,19 +114,6 @@ export function buildTrackerSetupAdvisory(cwd: string): PreflightFinding | null 
   };
 }
 
-/** True when package.json has an explicit `bkit.issueTracker` field (any value). */
-function hasExplicitIssueTrackerField(cwd: string): boolean {
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return false;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
-    return bkitField !== undefined && bkitField.issueTracker !== undefined;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Classify the `bkit.githubProject` board-sync config in package.json:
  *   - "configured" → object with at least `owner` + `number` (the lookup keys)
@@ -158,21 +121,10 @@ function hasExplicitIssueTrackerField(cwd: string): boolean {
  *   - "absent"     → missing, malformed, or unreadable
  */
 function readGithubProjectConfig(cwd: string): "configured" | "opted-out" | "absent" {
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return "absent";
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
-    const gp = bkitField?.githubProject;
-    if (gp === false) return "opted-out";
-    if (gp && typeof gp === "object" && !Array.isArray(gp)) {
-      const obj = gp as Record<string, unknown>;
-      if (obj.owner !== undefined && obj.number !== undefined) return "configured";
-    }
-    return "absent";
-  } catch {
-    return "absent";
-  }
+  const gp = readBkitConfig(cwd).githubProject;
+  if (gp === false) return "opted-out";
+  if (gp !== null && gp.owner !== undefined && gp.number !== undefined) return "configured";
+  return "absent";
 }
 
 /**
@@ -217,7 +169,7 @@ export function buildGithubProjectAdvisory(cwd: string): PreflightFinding | null
   const hasClaude = fs.existsSync(path.join(cwd, ".claude"));
   const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
   if (!hasClaude && !hasCursor) return null;
-  if (readConsumerIssueTracker(cwd) !== "github") return null;
+  if (readBkitConfig(cwd).issueTracker !== "github") return null;
 
   const configState = readGithubProjectConfig(cwd);
   if (configState === "opted-out") return null;
@@ -278,19 +230,9 @@ export function detectGithubProjectFieldIdFormat(cwd: string): PreflightFinding 
   const hasClaude = fs.existsSync(path.join(cwd, ".claude"));
   const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
   if (!hasClaude && !hasCursor) return null;
-  if (readConsumerIssueTracker(cwd) !== "github") return null;
+  const { issueTracker, githubProject: gp } = readBkitConfig(cwd);
+  if (issueTracker !== "github") return null;
 
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return null;
-  let gp: Record<string, unknown> | undefined;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
-    const raw = bkitField?.githubProject;
-    if (raw && typeof raw === "object" && !Array.isArray(raw)) gp = raw as Record<string, unknown>;
-  } catch {
-    return null;
-  }
   // Only judge a board that is otherwise configured (owner + number present) and
   // has a statusFieldId set — absent statusFieldId is handled by the setup advisory.
   if (!gp || gp.owner === undefined || gp.number === undefined) return null;
@@ -316,36 +258,6 @@ export function detectGithubProjectFieldIdFormat(cwd: string): PreflightFinding 
       "each `options[].id` (e.g. `47fc9ee4`) → the option ids (quoted strings). `gh project field-list`'s " +
       "`id` is the GraphQL node id (`PVTSSF_…`) and must NOT be used for `statusFieldId`.",
   };
-}
-
-/**
- * Read `bkit.cloudAgents` from the consumer's package.json. Returns the value
- * or the default ("none") when absent / unreadable.
- */
-export function readConsumerCloudAgents(cwd: string): CloudAgents {
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return DEFAULT_CLOUD_AGENTS;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
-    const parsed = parseCloudAgents(bkitField?.cloudAgents);
-    return parsed ?? DEFAULT_CLOUD_AGENTS;
-  } catch {
-    return DEFAULT_CLOUD_AGENTS;
-  }
-}
-
-/** True when package.json has an explicit `bkit.cloudAgents` field (any value). */
-function hasExplicitCloudAgentsField(cwd: string): boolean {
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return false;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
-    return bkitField !== undefined && bkitField.cloudAgents !== undefined;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -375,8 +287,7 @@ export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
     // Config-consistency assertion: cloud=claude requires id-token: write.
     // If the recorded variant is "claude" and the workflow file lacks id-token: write,
     // surface a consistency finding.
-    const recordedVariant = readConsumerCloudAgents(cwd);
-    if (recordedVariant === "claude") {
+    if (readBkitConfig(cwd).cloudAgents === "claude") {
       const workflowContent = fs.readFileSync(routerPath, "utf-8");
       if (!workflowContent.includes("id-token: write")) {
         return {
@@ -400,7 +311,8 @@ export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
   }
 
   // No router present — distinguish opt-out from undecided.
-  if (readConsumerCloudAgents(cwd) === "none" && hasExplicitCloudAgentsField(cwd)) {
+  const { cloudAgents, cloudAgentsExplicit } = readBkitConfig(cwd);
+  if (cloudAgents === "none" && cloudAgentsExplicit) {
     return null; // consumer explicitly chose `none` — stay quiet
   }
 

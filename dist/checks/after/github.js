@@ -4,8 +4,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
-import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseCloudAgents, DEFAULT_CLOUD_AGENTS, } from "../../install/manifest.js";
 import { MCP_TOOLSETS_HEADER, parseToolsets } from "../../install/write.js";
+import { readBkitConfig } from "../../shared/settings.js";
 /**
  * Detect whether branch protection is configured on `main`.
  * Returns "present" | "missing" | "unknown".
@@ -56,24 +56,6 @@ export function detectActionsWritePermissions() {
     }
 }
 /**
- * Read `bkit.issueTracker` from the consumer's package.json.
- * Returns the tracker value or the default ("none") when absent / unreadable.
- */
-export function readConsumerIssueTracker(cwd) {
-    const pkgPath = path.join(cwd, "package.json");
-    if (!fs.existsSync(pkgPath))
-        return DEFAULT_ISSUE_TRACKER;
-    try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        const bkitField = pkg.bkit;
-        const parsed = parseIssueTracker(bkitField?.issueTracker);
-        return parsed ?? DEFAULT_ISSUE_TRACKER;
-    }
-    catch {
-        return DEFAULT_ISSUE_TRACKER;
-    }
-}
-/**
  * Emit a tracker-specific setup advisory.
  *
  * - `github`  → GitHub tracker: the GitHub MCP server authenticates with `BKIT_GH_TOKEN`; `gh` uses `gh auth login`.
@@ -87,7 +69,7 @@ export function buildTrackerSetupAdvisory(cwd) {
     const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
     if (!hasClaude && !hasCursor)
         return null;
-    const tracker = readConsumerIssueTracker(cwd);
+    const { issueTracker: tracker, issueTrackerExplicit } = readBkitConfig(cwd);
     if (tracker === "github") {
         return {
             id: "tracker-setup-github",
@@ -107,7 +89,7 @@ export function buildTrackerSetupAdvisory(cwd) {
     // tracker === "none". Distinguish opt-out (explicit `bkit.issueTracker: "none"`)
     // from undecided (field absent). An explicit `none` silences the nudge, as with the
     // dep-updater advisory.
-    if (hasExplicitIssueTrackerField(cwd))
+    if (issueTrackerExplicit)
         return null;
     return {
         id: "tracker-setup-none",
@@ -116,20 +98,6 @@ export function buildTrackerSetupAdvisory(cwd) {
         action: 'Optional post-install decision. Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker requires `BKIT_GH_TOKEN` in `.bkit/.env` (fine-grained PAT for one owner, classic PAT across owners). Linear tracker requires `BKIT_LINEAR_API_KEY` in `.bkit/.env`. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
     };
 }
-/** True when package.json has an explicit `bkit.issueTracker` field (any value). */
-function hasExplicitIssueTrackerField(cwd) {
-    const pkgPath = path.join(cwd, "package.json");
-    if (!fs.existsSync(pkgPath))
-        return false;
-    try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        const bkitField = pkg.bkit;
-        return bkitField !== undefined && bkitField.issueTracker !== undefined;
-    }
-    catch {
-        return false;
-    }
-}
 /**
  * Classify the `bkit.githubProject` board-sync config in package.json:
  *   - "configured" → object with at least `owner` + `number` (the lookup keys)
@@ -137,25 +105,12 @@ function hasExplicitIssueTrackerField(cwd) {
  *   - "absent"     → missing, malformed, or unreadable
  */
 function readGithubProjectConfig(cwd) {
-    const pkgPath = path.join(cwd, "package.json");
-    if (!fs.existsSync(pkgPath))
-        return "absent";
-    try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        const bkitField = pkg.bkit;
-        const gp = bkitField?.githubProject;
-        if (gp === false)
-            return "opted-out";
-        if (gp && typeof gp === "object" && !Array.isArray(gp)) {
-            const obj = gp;
-            if (obj.owner !== undefined && obj.number !== undefined)
-                return "configured";
-        }
-        return "absent";
-    }
-    catch {
-        return "absent";
-    }
+    const gp = readBkitConfig(cwd).githubProject;
+    if (gp === false)
+        return "opted-out";
+    if (gp !== null && gp.owner !== undefined && gp.number !== undefined)
+        return "configured";
+    return "absent";
 }
 /**
  * Inspect the root `.mcp.json` github server's `X-MCP-Toolsets` header for the
@@ -202,7 +157,7 @@ export function buildGithubProjectAdvisory(cwd) {
     const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
     if (!hasClaude && !hasCursor)
         return null;
-    if (readConsumerIssueTracker(cwd) !== "github")
+    if (readBkitConfig(cwd).issueTracker !== "github")
         return null;
     const configState = readGithubProjectConfig(cwd);
     if (configState === "opted-out")
@@ -261,22 +216,9 @@ export function detectGithubProjectFieldIdFormat(cwd) {
     const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
     if (!hasClaude && !hasCursor)
         return null;
-    if (readConsumerIssueTracker(cwd) !== "github")
+    const { issueTracker, githubProject: gp } = readBkitConfig(cwd);
+    if (issueTracker !== "github")
         return null;
-    const pkgPath = path.join(cwd, "package.json");
-    if (!fs.existsSync(pkgPath))
-        return null;
-    let gp;
-    try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        const bkitField = pkg.bkit;
-        const raw = bkitField?.githubProject;
-        if (raw && typeof raw === "object" && !Array.isArray(raw))
-            gp = raw;
-    }
-    catch {
-        return null;
-    }
     // Only judge a board that is otherwise configured (owner + number present) and
     // has a statusFieldId set — absent statusFieldId is handled by the setup advisory.
     if (!gp || gp.owner === undefined || gp.number === undefined)
@@ -300,38 +242,6 @@ export function detectGithubProjectFieldIdFormat(cwd) {
             "each `options[].id` (e.g. `47fc9ee4`) → the option ids (quoted strings). `gh project field-list`'s " +
             "`id` is the GraphQL node id (`PVTSSF_…`) and must NOT be used for `statusFieldId`.",
     };
-}
-/**
- * Read `bkit.cloudAgents` from the consumer's package.json. Returns the value
- * or the default ("none") when absent / unreadable.
- */
-export function readConsumerCloudAgents(cwd) {
-    const pkgPath = path.join(cwd, "package.json");
-    if (!fs.existsSync(pkgPath))
-        return DEFAULT_CLOUD_AGENTS;
-    try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        const bkitField = pkg.bkit;
-        const parsed = parseCloudAgents(bkitField?.cloudAgents);
-        return parsed ?? DEFAULT_CLOUD_AGENTS;
-    }
-    catch {
-        return DEFAULT_CLOUD_AGENTS;
-    }
-}
-/** True when package.json has an explicit `bkit.cloudAgents` field (any value). */
-function hasExplicitCloudAgentsField(cwd) {
-    const pkgPath = path.join(cwd, "package.json");
-    if (!fs.existsSync(pkgPath))
-        return false;
-    try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        const bkitField = pkg.bkit;
-        return bkitField !== undefined && bkitField.cloudAgents !== undefined;
-    }
-    catch {
-        return false;
-    }
 }
 /**
  * Emit a cloud-agents setup advisory (parity with the tracker / dep-updater
@@ -359,8 +269,7 @@ export function buildCloudSetupAdvisory(cwd) {
         // Config-consistency assertion: cloud=claude requires id-token: write.
         // If the recorded variant is "claude" and the workflow file lacks id-token: write,
         // surface a consistency finding.
-        const recordedVariant = readConsumerCloudAgents(cwd);
-        if (recordedVariant === "claude") {
+        if (readBkitConfig(cwd).cloudAgents === "claude") {
             const workflowContent = fs.readFileSync(routerPath, "utf-8");
             if (!workflowContent.includes("id-token: write")) {
                 return {
@@ -379,7 +288,8 @@ export function buildCloudSetupAdvisory(cwd) {
         };
     }
     // No router present — distinguish opt-out from undecided.
-    if (readConsumerCloudAgents(cwd) === "none" && hasExplicitCloudAgentsField(cwd)) {
+    const { cloudAgents, cloudAgentsExplicit } = readBkitConfig(cwd);
+    if (cloudAgents === "none" && cloudAgentsExplicit) {
         return null; // consumer explicitly chose `none` — stay quiet
     }
     // Only nudge if there's a workflows dir for the router to wake on.

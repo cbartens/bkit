@@ -10,9 +10,9 @@ import { type ModuleContext, dispatchModules } from "../../install/modules/index
 import {
   type IssueTracker,
   DEFAULT_ISSUE_TRACKER,
-  parseIssueTracker,
   type ModuleName,
 } from "../../install/manifest.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
 import type { ParsedArgs } from "../../cli.js";
 import { detectInstalledModules, reportCheckDrift } from "./check.js";
@@ -163,23 +163,8 @@ export function validateCloudTrackerMatch(
  * smuggle an unsupported provider into the render path.
  */
 export function detectOpencodeProvider(cwd: string): string | null {
-  const pkgPath = path.join(cwd, "package.json");
-  if (fs.existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
-        bkit?: { opencodeProvider?: unknown };
-      };
-      const stored = pkg.bkit?.opencodeProvider;
-      if (
-        typeof stored === "string" &&
-        (OPENCODE_PROVIDERS as readonly string[]).includes(stored)
-      ) {
-        return stored;
-      }
-    } catch {
-      // unparseable package.json — fall through to opencode.json detection
-    }
-  }
+  const stored = readBkitConfig(cwd).opencodeProvider;
+  if (stored !== null) return stored;
   const jsonPath = path.join(cwd, ".opencode", "opencode.json");
   if (!fs.existsSync(jsonPath)) return null;
   try {
@@ -204,23 +189,7 @@ export function detectOpencodeProvider(cwd: string): string | null {
  * the field is absent.
  */
 export function detectOpencodeProviders(cwd: string): string[] {
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return [];
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
-      bkit?: { opencodeProviders?: unknown };
-    };
-    const arr = pkg.bkit?.opencodeProviders;
-    if (Array.isArray(arr)) {
-      return arr.filter(
-        (v): v is string =>
-          typeof v === "string" && (OPENCODE_PROVIDERS as readonly string[]).includes(v),
-      );
-    }
-  } catch {
-    // unparseable — return empty
-  }
-  return [];
+  return readBkitConfig(cwd).opencodeProviders;
 }
 
 /**
@@ -297,24 +266,7 @@ export async function runInstall(
   // already-recorded tracker.
   // Resolved BEFORE preflight: preflight's tracker-dependent detectors grade the tracker
   // this run INSTALLS, not the one on disk from the previous run. Read-only — no writes here.
-  let issueTracker: IssueTracker = DEFAULT_ISSUE_TRACKER;
-  {
-    const consumerPkgPath = path.join(process.cwd(), "package.json");
-    if (fs.existsSync(consumerPkgPath)) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(consumerPkgPath, "utf-8")) as Record<
-          string,
-          unknown
-        >;
-        const bkitField = pkg.bkit as Record<string, unknown> | undefined;
-        const stored = parseIssueTracker(bkitField?.issueTracker);
-        if (stored !== null) issueTracker = stored;
-      } catch {
-        // non-fatal — keep default
-      }
-    }
-    if (tracker !== null) issueTracker = tracker;
-  }
+  const issueTracker: IssueTracker = tracker ?? readBkitConfig(process.cwd()).issueTracker;
 
   // --- Phase 1: Preflight (read-only, before any writes) ---
   // Must run BEFORE resolveTokens to short-circuit cleanly on blockers.

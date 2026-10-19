@@ -30,8 +30,9 @@ import { getInstallingVersion, requireOpencodeProvider, detectOpencodeProviders,
 import { setLogPrefix } from "../../shared/log-prefix.js";
 import { BKIT_PACKAGE, lookupLatestPublished } from "../../shared/bkit-latest.js";
 import { PACKAGE_RUNNER } from "../../shared/package-manager.js";
-import { getInstallManifest, getModuleManifest, DEFAULT_ISSUE_TRACKER, parseIssueTracker, } from "../../install/manifest.js";
+import { getInstallManifest, getModuleManifest, } from "../../install/manifest.js";
 import { OPTIN_MODULES } from "../../install/manifest.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
@@ -465,16 +466,7 @@ export async function runUpgradeCommand(upgradeFlags) {
     const installedModules = detectInstalledModules(process.cwd());
     // Resolve the consumer's tracker so upgrade renders tracker-conditional files
     // (opencode.json, the mcp.json files) the same way install does.
-    let upgradeTracker = DEFAULT_ISSUE_TRACKER;
-    try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8"));
-        const stored = parseIssueTracker(pkg.bkit?.issueTracker);
-        if (stored !== null)
-            upgradeTracker = stored;
-    }
-    catch {
-        // package.json absent/unparseable — default tracker
-    }
+    const upgradeTracker = readBkitConfig(process.cwd()).issueTracker;
     // opencode.json is provider/tracker-templated on install (renderOpencodeJson resolves the
     // `@@OPENCODE_*@@` sentinels). Upgrade renders it the same way, with the installed
     // provider, so no raw sentinel key reaches the consumer's config.

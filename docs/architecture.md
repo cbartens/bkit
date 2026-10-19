@@ -69,7 +69,8 @@ cbartens/bkit (this repo)
 │   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine (#234 WS-1)
 │   ├── shared/                  # helpers every folder uses
 │   │   ├── package-roots.ts     # Single resolver seam — getCoreRoot / getSharedRoot / getTemplatesRoot / getPkgRoot
-│   │   └── protected-paths.ts   # IDE mirror prefix table (`isMirrorPath`); used by the compliance grader
+│   │   ├── protected-paths.ts   # IDE mirror prefix table (`isMirrorPath`); used by the compliance grader
+│   │   └── settings.ts          # The consumer's `package.json` `bkit` key: `readBkitConfig` is its only reader
 │   ├── tools/wording.ts         # repo-only `pnpm wording:sync`, not a bkit command
 │   └── audits/                  # tests only: read shipped text (workflows/ templates/ hooks/ repo/)
 ├── dist/                   # Compiled output (committed; published in tarball)

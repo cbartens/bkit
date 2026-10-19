@@ -3,7 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
-import { readConsumerCloudAgents } from "./github.js";
+import { readBkitConfig } from "../../shared/settings.js";
 /**
  * Detect whether BKIT_GH_TOKEN is set in the shell environment. Distinguishes
  * empty from unset so action text can guide the user precisely. Never reads the
@@ -109,7 +109,7 @@ export function buildCloudDashboardsAdvisory(cwd) {
     // cloud=claude path (bkit-cloud.yml): GitHub-tracker only, ANTHROPIC_API_KEY only.
     // cloud=cursor path (.cursor/): BKIT_LINEAR_API_KEY for Cursor dashboard.
     // Distinguish by recorded variant; fall back to presence-based detection.
-    const recordedVariant = readConsumerCloudAgents(cwd);
+    const recordedVariant = readBkitConfig(cwd).cloudAgents;
     const isCursorCloud = recordedVariant === "cursor" || (!hasRouter && hasCursor);
     const secretList = isCursorCloud ? "`BKIT_LINEAR_API_KEY`" : "`ANTHROPIC_API_KEY`";
     const ghSetLines = isCursorCloud

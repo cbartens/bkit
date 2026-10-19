@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import type { PreflightFinding } from "../before/index.js";
+import { readBkitConfig } from "../../shared/settings.js";
 
 /** True when `cmd --version` runs (binary on PATH, exits 0). */
 function toolVersionRuns(cmd: string): boolean {
@@ -376,19 +377,6 @@ function updaterConfigPaths(cwd: string): { renovate: string | null; dependabot:
   return { renovate, dependabot };
 }
 
-/** `bkit.depUpdater: "none"` silences the missing-updater suggestion. Other values are ignored. */
-function depUpdaterOptOut(cwd: string): boolean {
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return false;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
-    return bkitField?.depUpdater === "none";
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Read-only dependency-updater check.
  *
@@ -411,7 +399,7 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
   }
 
   if (renovate || dependabot) return null;
-  if (depUpdaterOptOut(cwd)) return null;
+  if (readBkitConfig(cwd).depUpdaterOptOut) return null;
   if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;
 
   return {

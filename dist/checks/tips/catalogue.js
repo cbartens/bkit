@@ -23,7 +23,7 @@
 import { detectContextFetchMissing } from "../before/context-fetch.js";
 import { detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, detectMissingDotenv, isCloudOrCi, } from "../before/env.js";
 import { detectGhMcpToken, hasGithubMcpServer } from "../after/auth.js";
-import { buildTrackerSetupAdvisory, readConsumerCloudAgents, readConsumerIssueTracker, } from "../after/github.js";
+import { buildTrackerSetupAdvisory } from "../after/github.js";
 import { buildDepUpdaterSetupAdvisory } from "../after/tools.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { readBkitConfig } from "../../shared/settings.js";
@@ -55,7 +55,7 @@ export const SETUP_TIPS = [
         ask: "Add my GitHub token as `BKIT_GH_TOKEN` in .bkit/.env, check .mcp.json has the `github` server, then run `direnv allow` and tell me to restart the editor.",
         steps: "`.bkit/install.md` § Local env setup. The `github` server entry belongs in `.mcp.json` / `.cursor/mcp.json` (`.bkit/cloud.md` § MCP issue-tracker integration).",
         advisories: ["gh-mcp-token-unset-shell", "gh-mcp-token-empty-shell"],
-        fires: (cwd) => readConsumerIssueTracker(cwd) === "github" &&
+        fires: (cwd) => readBkitConfig(cwd).issueTracker === "github" &&
             (!hasGithubMcpServer(cwd) || detectGhMcpToken(cwd) !== null),
     },
     {
@@ -70,7 +70,7 @@ export const SETUP_TIPS = [
         fires: (cwd) => {
             if (isCloudOrCi())
                 return false;
-            const tracker = readConsumerIssueTracker(cwd);
+            const tracker = readBkitConfig(cwd).issueTracker;
             return (detectMissingDotenv(cwd, tracker) !== null || detectBlankDotenvKeys(cwd, tracker).length > 0);
         },
     },
@@ -86,7 +86,7 @@ export const SETUP_TIPS = [
         fires: (cwd) => {
             if (isCloudOrCi() || !exists(cwd, ".bkit/.env"))
                 return false;
-            const tracker = readConsumerIssueTracker(cwd);
+            const tracker = readBkitConfig(cwd).issueTracker;
             return (!exists(cwd, ".envrc") ||
                 detectDirenvMissing(cwd, tracker) !== null ||
                 detectDirenvNotAllowed(cwd, tracker) !== null);
@@ -173,7 +173,7 @@ export const SETUP_TIPS = [
         ask: "Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml and .bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh to .claude/hooks/ (for Cursor: .bkit/templates/.cursor/environment.json and .bkit/templates/.cursor/Dockerfile to .cursor/), run `gh secret set ANTHROPIC_API_KEY`, then tell me which dashboard settings are left.",
         steps: "`.bkit/cloud.md`; `.bkit/templates.md` § Cloud-agent workflow and § Cursor.",
         fires: (cwd) => {
-            const cloud = readConsumerCloudAgents(cwd);
+            const cloud = readBkitConfig(cwd).cloudAgents;
             if (cloud === "none")
                 return false;
             if (cloud === "cursor") {

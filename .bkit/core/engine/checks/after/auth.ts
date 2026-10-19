@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import type { PreflightFinding } from "../before/index.js";
-import { readConsumerCloudAgents } from "./github.js";
+import { readBkitConfig } from "../../shared/settings.js";
 
 // ---------------------------------------------------------------------------
 // Token-surface detectors
@@ -119,7 +119,7 @@ export function buildCloudDashboardsAdvisory(cwd: string): PreflightFinding | nu
   // cloud=claude path (bkit-cloud.yml): GitHub-tracker only, ANTHROPIC_API_KEY only.
   // cloud=cursor path (.cursor/): BKIT_LINEAR_API_KEY for Cursor dashboard.
   // Distinguish by recorded variant; fall back to presence-based detection.
-  const recordedVariant = readConsumerCloudAgents(cwd);
+  const recordedVariant = readBkitConfig(cwd).cloudAgents;
   const isCursorCloud = recordedVariant === "cursor" || (!hasRouter && hasCursor);
 
   const secretList = isCursorCloud ? "`BKIT_LINEAR_API_KEY`" : "`ANTHROPIC_API_KEY`";

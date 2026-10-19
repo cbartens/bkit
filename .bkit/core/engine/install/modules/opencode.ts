@@ -25,6 +25,7 @@ import { type IssueTracker, DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { resolveNetworkAllowlist, extractMcpServers, networkAllowlistBases } from "../cloud-env.js";
 import { OPENCODE_PROVIDER_DEFAULTS } from "../../shared/egress.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import type { ModuleContext } from "./index.js";
 import {
   BKIT_PREFIX,
@@ -163,19 +164,8 @@ export function detectOpencodeYmlProviderDrift(cwd: string): PreflightFinding | 
   if (!fs.existsSync(ymlPath)) return null;
 
   // The installed provider — package.json `bkit.opencodeProvider` is the authoritative record
-  // written on install. Absent/broken → the null-guard below skips silently.
-  let provider: string | null = null;
-  const pkgPath = path.join(cwd, "package.json");
-  if (fs.existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
-        bkit?: { opencodeProvider?: unknown };
-      };
-      if (typeof pkg.bkit?.opencodeProvider === "string") provider = pkg.bkit.opencodeProvider;
-    } catch {
-      // Malformed package.json — leave provider null; a JSON-drift advisory covers that separately.
-    }
-  }
+  // written on install. Absent/broken/unsupported → the null-guard below skips silently.
+  const provider = readBkitConfig(cwd).opencodeProvider;
   if (!provider) return null;
 
   const expectedPrefix = opencodeProviderId(provider); // model id form is `<providerId>/<model>`

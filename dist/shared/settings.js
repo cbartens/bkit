@@ -2,7 +2,8 @@
 //
 // One reader, one set of defaults, so no command hard-codes a CI workflow name,
 // a check name, or an app folder.
-import { DEFAULT_ISSUE_TRACKER, parseIssueTracker, } from "../install/manifest.js";
+import { DEFAULT_CLOUD_AGENTS, DEFAULT_ISSUE_TRACKER, parseCloudAgents, parseIssueTracker, } from "../install/manifest.js";
+import { isOpencodeProvider } from "../render/models.js";
 import { readPackageJson } from "./package-json.js";
 export const CONFIG_DEFAULTS = {
     ciWorkflow: "bkit-ci.yml",
@@ -12,6 +13,12 @@ export const CONFIG_DEFAULTS = {
     issueTracker: DEFAULT_ISSUE_TRACKER,
     githubProject: null,
     shipGateRequiredLanes: [],
+    opencodeProvider: null,
+    opencodeProviders: [],
+    cloudAgents: DEFAULT_CLOUD_AGENTS,
+    depUpdaterOptOut: false,
+    issueTrackerExplicit: false,
+    cloudAgentsExplicit: false,
 };
 const nonEmptyString = (v) => typeof v === "string" && v.trim() !== "";
 /**
@@ -26,6 +33,8 @@ export function readBkitConfig(root) {
     const copy = worktree.copy;
     const project = bkit.githubProject;
     const lanes = bkit.shipGateRequiredLanes;
+    const provider = bkit.opencodeProvider;
+    const providers = bkit.opencodeProviders;
     return {
         ciWorkflow: nonEmptyString(bkit.ciWorkflow) ? bkit.ciWorkflow : CONFIG_DEFAULTS.ciWorkflow,
         capstoneJob: nonEmptyString(bkit.capstoneJob) ? bkit.capstoneJob : CONFIG_DEFAULTS.capstoneJob,
@@ -40,5 +49,13 @@ export function readBkitConfig(root) {
                 ? project
                 : null,
         shipGateRequiredLanes: Array.isArray(lanes) ? lanes.filter(nonEmptyString) : [],
+        opencodeProvider: typeof provider === "string" && isOpencodeProvider(provider) ? provider : null,
+        opencodeProviders: Array.isArray(providers)
+            ? providers.filter((v) => typeof v === "string" && isOpencodeProvider(v))
+            : [],
+        cloudAgents: parseCloudAgents(bkit.cloudAgents) ?? CONFIG_DEFAULTS.cloudAgents,
+        depUpdaterOptOut: bkit.depUpdater === "none",
+        issueTrackerExplicit: bkit.issueTracker !== undefined,
+        cloudAgentsExplicit: bkit.cloudAgents !== undefined,
     };
 }
