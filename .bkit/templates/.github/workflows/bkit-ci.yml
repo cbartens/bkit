@@ -306,7 +306,7 @@ jobs:
       # docs/capabilities.md is not what this tree produces, so the register cannot drift
       # silently. Self-skips when the graphify wrapper is absent — a repo that did not adopt
       # scripts/graphify/ is a no-op. graphify is pinned because its output must match the
-      # committed register to the byte: bump GRAPHIFY_SPEC and refresh the register together.
+      # committed register to the byte: bump GRAPHIFY_SPEC (bkit-graphify.sh) and refresh the register together.
       # Push events only — a pull_request checkout is the MERGE ref, whose tree (base + head)
       # can differ from the head the register was built against: a false red no author can clear.
       - name: Setup uv
@@ -317,12 +317,10 @@ jobs:
 
       - name: Check Capability Register
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
-        env:
-          # PyPI distribution is `graphifyy`; the CLI it exposes is `graphify`.
-          # renovate: datasource=pypi depName=graphifyy
-          GRAPHIFY_SPEC: "graphifyy[sql]==0.9.50"
+        # The graphify release is pinned once, in GRAPHIFY_SPEC in bkit-graphify.sh: the
+        # register is built and judged with that release here, in the pre-push gate and by hand.
         run: |
-          uv tool install "$GRAPHIFY_SPEC"
+          uv tool install "$(bash scripts/graphify/bkit-graphify.sh spec)"
           # `uv tool install` drops the shim in ~/.local/bin, not on this step's PATH.
           export PATH="$HOME/.local/bin:$PATH"
           pnpm graph:check

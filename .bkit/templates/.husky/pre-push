@@ -20,15 +20,21 @@ set -e
 # all-zero local sha. When EVERY line is a delete, the push carries no commits. A push
 # mixing a delete with a real update still gates, and so does an empty ref list. Reading
 # stdin here is safe: every later command redirects from /dev/null. `[ -t 0 ]` keeps a
-# hand-run hook from hanging.
+# hand-run hook from hanging. The same loop notes the commit a push sends to dev in
+# PUSH_DEV_SHA, for repo extras that gate only pushes to dev (e.g. the graphify register
+# block, scripts/graphify/bkit-graph-pre-push.sh).
 PUSH_SAW_REF=0
 PUSH_HAS_COMMITS=0
+PUSH_DEV_SHA=""
 if [ ! -t 0 ]; then
-  while read -r _push_local_ref push_local_sha _push_remote_ref _push_remote_sha; do
+  while read -r _push_local_ref push_local_sha push_remote_ref _push_remote_sha; do
     [ -n "$push_local_sha" ] || continue
     PUSH_SAW_REF=1
     case "$push_local_sha" in
-      *[!0]*) PUSH_HAS_COMMITS=1 ;;
+      *[!0]*)
+        PUSH_HAS_COMMITS=1
+        [ "$push_remote_ref" = "refs/heads/dev" ] && PUSH_DEV_SHA="$push_local_sha"
+        ;;
     esac
   done
 fi

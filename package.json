@@ -81,6 +81,7 @@
     "graph:check": "bash scripts/graphify/bkit-graphify.sh check",
     "graph:clean": "bash scripts/graphify/bkit-graphify.sh clean",
     "graph:graphml": "bash scripts/graphify/bkit-graphify.sh graphml",
+    "graph:refresh": "bash scripts/graphify/bkit-graphify.sh refresh",
     "graph:rollup": "bash scripts/graphify/bkit-graphify.sh rollup",
     "graph:scoped": "bash scripts/graphify/bkit-graphify.sh scoped",
     "graph:tree": "bash scripts/graphify/bkit-graphify.sh tree",

@@ -451,13 +451,13 @@ Issues are the first input every workflow reads. One form per way work starts; e
 
 ## graphify — map
 
-On-demand only — not an installed skill or git hook. graphify ships an MCP server (`graphify-mcp`, stdio default); it stays unwired because its answers come from the `graph.json` snapshot and build/debug agents invalidate the graph faster than it rebuilds — Serena (no index to go stale) owns the agent surface. The one CI touch is the self-skipping register-freshness gate below: on pushes it installs a pinned graphify and runs `pnpm graph:check`, forcing `docs/capabilities.md` to be current. Agents read `docs/capabilities.md`; audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. Only tracked output: `docs/capabilities.md`. Mermaid views: `docs/graphify-out/reports/graph-packages.mmd`, `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
+On-demand only — not an installed skill or git hook. graphify ships an MCP server (`graphify-mcp`, stdio default); it stays unwired because its answers come from the `graph.json` snapshot and build/debug agents invalidate the graph faster than it rebuilds — Serena (no index to go stale) owns the agent surface. Two gates keep `docs/capabilities.md` current on dev: the pre-push block below blocks a push to dev the register does not match, and the self-skipping CI step re-checks every push. Agents read `docs/capabilities.md`; audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. Only tracked output: `docs/capabilities.md`. Mermaid views: `docs/graphify-out/reports/graph-packages.mmd`, `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
 
 ```bash
-uv tool install "graphifyy[sql]"
+uv tool install "$(bash scripts/graphify/bkit-graphify.sh spec)"
 ```
 
-PyPI name `graphifyy`, CLI `graphify`. `[sql]` adds `.sql` files to corpus.
+PyPI name `graphifyy`, CLI `graphify`. `[sql]` adds `.sql` files to corpus. One release builds and judges the register: `GRAPHIFY_SPEC` in `bkit-graphify.sh` (`spec` prints it). `check`, `check-at`, `rollup`, `register` and `refresh` refuse any other installed release, since another release can draw different edges. CI installs the same spec. Renovate bumps it (`scripts/graphify/bkit-graphify.sh` is in the shipped `customManagers` file list); refresh the register in the same change.
 
 `package.json` scripts:
 
@@ -467,6 +467,7 @@ PyPI name `graphifyy`, CLI `graphify`. `[sql]` adds `.sql` files to corpus.
   "graph:check": "bash scripts/graphify/bkit-graphify.sh check",
   "graph:clean": "bash scripts/graphify/bkit-graphify.sh clean",
   "graph:graphml": "bash scripts/graphify/bkit-graphify.sh graphml",
+  "graph:refresh": "bash scripts/graphify/bkit-graphify.sh refresh",
   "graph:rollup": "bash scripts/graphify/bkit-graphify.sh rollup",
   "graph:scoped": "bash scripts/graphify/bkit-graphify.sh scoped",
   "graph:tree": "bash scripts/graphify/bkit-graphify.sh tree",
@@ -486,8 +487,8 @@ export GRAPHIFY_OUT=docs/graphify-out
 graphify-out/
 ```
 
-- Paste `scripts/graphify/bkit-graph-pre-push.sh` at the end of your `.husky/pre-push`, below the bkit lines. Warn-only: does not run graphify, does not block push.
-- `.github/workflows/bkit-ci.yml` ships `Check Capability Register` (push events): installs pinned graphify and runs `pnpm graph:check`, so a stale register fails CI. Self-skips without `scripts/graphify/bkit-graphify.sh`; bump `GRAPHIFY_SPEC` and refresh the register in the same change.
+- Paste `scripts/graphify/bkit-graph-pre-push.sh` at the end of your `.husky/pre-push`, below the bkit lines. A push to dev runs `check-at` on the pushed commit, in a throwaway checkout, and is blocked when the register does not match; uncommitted edits, a concurrent session's included, cannot change the answer. graphify not installed → loud "NOT checked" warning, push goes on (CI still checks). Other branches → warn-only staleness note. Needs `PUSH_DEV_SHA`, which the bkit pre-push template sets from git's ref list; an older copy of the hook lacks it, so re-copy the stdin loop from `.bkit/templates/.husky/pre-push`.
+- `.github/workflows/bkit-ci.yml` ships `Check Capability Register` (push events): installs the `spec` release and runs `pnpm graph:check`, so a stale register fails CI. Self-skips without `scripts/graphify/bkit-graphify.sh`.
 - graphify's MCP server is opt-in: install `graphifyy[mcp]` (`mcp` + `starlette`; HTTP transport also needs `uvicorn`) and pass the graph path explicitly — `graphify-mcp` defaults to `graphify-out/graph.json`, not the pinned `docs/graphify-out/graph.json`. Snapshot-dated answers suit audit/orientation, never build or debug.
 - `.graphifyignore` merges `.gitignore`.
 - Keep `package.json` in corpus — excluding it drops workspace `name` fields graphify resolves package imports with; graph still looks complete.
@@ -501,7 +502,9 @@ graphify-out/
 | `pnpm graph:clean` | Same, after deleting `docs/graphify-out/`. Required after any tsconfig `paths` change. `--force` does not invalidate the module-resolution cache. |
 | `pnpm graph:update` | Re-extract changed files, then recluster. |
 | `pnpm graph:rollup` | Package and module views, plus `docs/capabilities.md`. |
-| `pnpm graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces. Shipped as a self-skipping CI step (push events); enabled in bkit's own CI. |
+| `pnpm graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces. Reads uncommitted edits. Shipped as a self-skipping CI step (push events); enabled in bkit's own CI. |
+| `bash scripts/graphify/bkit-graphify.sh check-at <rev>` | `check` in a throwaway checkout of `<rev>` (default HEAD). The pre-push gate runs it on the commit pushed to dev. |
+| `pnpm graph:refresh` | Rebuild the register in a throwaway checkout of HEAD and copy it over `docs/capabilities.md`. The fix for a red gate; commit the result. |
 | `pnpm graph:scoped [path]` | One subtree. Default `apps/web/src`. |
 | `pnpm graph:graphml` | Opt-in GraphML for Gephi / yEd. |
 
