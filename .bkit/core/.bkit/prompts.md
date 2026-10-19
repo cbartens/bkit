@@ -397,7 +397,7 @@ Every template under `docs/templates/bkit-audit-*.md`:
 | `bkit-audit-flakes` | Flake Triage | Pass-on-retry or fail-on-one-surface; the change that removes each. |
 | `bkit-audit-gates` | Gate Candidates | Detective sweeps → preventive gates, order, which stay audits. |
 | `bkit-audit-issues` | Issue Prioritisation | Size + priority per open tracker issue; two rules a later run re-applies identically; board membership, parent, milestone, blocked-by links. |
-| `bkit-audit-llm` | LLM Audit | Per model call — effect, stop on hostile input: prompts, tool bounds, output checks, limits, evals. |
+| `bkit-audit-llm` | LLM Audit | Per model call — effect, stop on hostile input: prompts, tool bounds, output checks, job scope, limits, evals. |
 | `bkit-audit-logs` | Log Triage | Error-tracker stream + logs it misses — real issue, wrong level, failure that never arrived. |
 | `bkit-audit-models` | Model Audit | Call site = latest capable fit; model + fallbacks still live; one registry. |
 | `bkit-audit-privacy` | Privacy Audit | Personal data — held, where it goes, retention, deletion removes the person, disclosure matches code. |
