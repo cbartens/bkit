@@ -1,7 +1,8 @@
 // audits/templates/ci-scripts.test.ts — coverage for the CI helper scripts bkit ships as
 // copy-and-own templates. Unit-tests the accepted-divergence guard and the dependency-audit
-// gate, and runs the capstone gate's own test file and the workflow steps that call it, so a
-// consumer's copy is exercised by bkit's own suite before it is adopted.
+// gate, runs every shipped .test.mjs under .bkit/templates/scripts/ as its own process, and
+// runs the workflow steps that call the capstone gate, so a consumer's copy is exercised by
+// bkit's own suite before it is adopted.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -236,12 +237,23 @@ describe("check-dependency-audit", () => {
       runAuditGuard({ error: { code: "ERR_PNPM_AUDIT_BAD_RESPONSE" } }, { accepted: [] }),
     ).toBe(1);
   });
+});
 
-  it("passes its own copy-and-own test file", () => {
-    const res = spawnSync(process.execPath, [AUDIT.replace(/\.mjs$/, ".test.mjs")], {
+const SHIPPED_SCRIPTS_DIR = path.resolve(".bkit/templates/scripts");
+const SHIPPED_TEST_FILES = (fs.readdirSync(SHIPPED_SCRIPTS_DIR, { recursive: true }) as string[])
+  .filter((file) => file.endsWith(".test.mjs"))
+  .sort();
+
+describe("shipped copy-and-own test files", () => {
+  it("finds the shipped .test.mjs files", () => {
+    expect(SHIPPED_TEST_FILES.length).toBeGreaterThan(0);
+  });
+
+  it.each(SHIPPED_TEST_FILES)("%s passes when run on its own", (file) => {
+    const res = spawnSync(process.execPath, [path.join(SHIPPED_SCRIPTS_DIR, file)], {
       encoding: "utf-8",
     });
-    expect(res.status, res.stdout).toBe(0);
+    expect(res.status, res.stdout + res.stderr).toBe(0);
   });
 });
 
@@ -277,11 +289,10 @@ const callsScript = (step: Step) =>
   /\bnode scripts\/ci\/check-capstone\.mjs\b/.test(step.run ?? "");
 
 describe("check-capstone", () => {
-  it.each([
-    ["the template", ".bkit/templates/scripts/ci/check-capstone.test.mjs"],
-    ["bkit's own copy", "scripts/ci/check-capstone.test.mjs"],
-  ])("passes its own copy-and-own test file (%s)", (_label, file) => {
-    const res = spawnSync(process.execPath, [path.resolve(file)], { encoding: "utf-8" });
+  it("passes its own copy-and-own test file (bkit's own copy)", () => {
+    const res = spawnSync(process.execPath, [path.resolve("scripts/ci/check-capstone.test.mjs")], {
+      encoding: "utf-8",
+    });
     expect(res.status, res.stdout + res.stderr).toBe(0);
   });
 
