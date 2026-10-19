@@ -104,8 +104,8 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
                          context-fetch blocks; tracker: related issues by error
                          signature → feeds diagnose below)
   [repro] (first run passes — bug not reproduced yet):
-  2. fetch context, then reproduce (one test that fails on the reported
-                        symptom → back to 1; can't reproduce → summary)
+  2. fetch context, then reproduce (tests that fail on the reported
+                        symptoms → back to 1; can't reproduce → summary)
   Normal mode (localisable failure):
   3. diagnose           (reads docs/knowledge.jsonl for prior failures;
                         Standard → Pivot → Final strategy escalation)
@@ -230,7 +230,7 @@ Output: remediated commit on feature branch. Two modes — normal (diagnose → 
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
-| `bkit-debug-failure-reproduce` | Reproducer (`[repro]` only) | Nothing fails yet → one test failing on the reported symptom, never a fix; soak mode → test repeats the scenario. Not reproduced → test removed, run ends at Summary. |
+| `bkit-debug-failure-reproduce` | Reproducer (`[repro]` only) | Nothing fails yet → tests failing on the reported symptoms, never a fix; soak mode → tests repeat the scenario. Not reproduced → tests removed, run ends at Summary. |
 | `bkit-debug-failure-diagnose` | Diagnostician | Reproduces and diagnoses. Accumulates per-attempt context; escalates Standard → Pivot → Final. |
 | `bkit-debug-failure-remediate` | Fixer | Applies whatever the strategy-aware diagnosis produced, with a test loop. |
 | `bkit-debug-summary` | Summarise | Tracker-facing summary. |

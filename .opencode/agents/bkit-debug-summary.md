@@ -73,7 +73,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Remediation Status
 
-[Summarise: reproduce input `Test` or `Reproduced: NO`? Fix applied? Tests passing? Or aborted at attempt N? Live tests ran and passed? Initially set to `PENDING`.]
+[Summarise: reproduce input `Tests` or `Reproduced: NO`? Fix applied? Tests passing? Or aborted at attempt N? Live tests ran and passed? Initially set to `PENDING`.]
 
 ## Observation
 
