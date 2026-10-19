@@ -10,7 +10,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { readBkitConfig } from "../../shared/settings.js";
 import { appendLine, statusTimestamp } from "../../ledgers/status.js";
-import { bodySkipToken, CommandError, EXIT, ghUnavailable, git, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
+import { bodySkipToken, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { EXIT_NO_STATUS, FILE_FLAG, readStatusRows, statusFile, str } from "./status.js";
 // ---------------------------------------------------------------------------
@@ -161,9 +161,9 @@ export function openPrFor(cwd, o, log) {
         log(`refusing: PR title carries the CI-suppressing token ${token[0]} — CI would never run`);
         return { code: EXIT_SKIP_CI_TITLE, out: null };
     }
-    const base = refFlag(o.base ?? "dev", "base");
+    const base = refFlag(o.base ?? DEV, "base");
     const head = o.head === undefined ? currentBranch(cwd) : refFlag(o.head, "head");
-    if (head === base || head === "dev" || head === "main") {
+    if (head === base || isSharedBranch(head)) {
         throw new CommandError(EXIT.USAGE, `refusing to open a PR from "${head}" into "${base}"`);
     }
     let plan = o.plan;

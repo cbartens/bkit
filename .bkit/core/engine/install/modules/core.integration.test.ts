@@ -14,10 +14,10 @@ import {
   detectGateAdvisories,
   detectNoopGates,
   isNoopScript,
-  readInstallingVersion,
   runBkitDocs,
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
+import { readInstallingVersion } from "../../shared/package-json";
 import { getBkitDocsRoot, getPkgRoot } from "../../shared/package-roots";
 import { BKIT_GATE_SCRIPTS } from "../manifest";
 import { hashFile, readBkitVersion, readManagedVersion, writeBkitVersion } from "../version-file";
@@ -92,6 +92,8 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     "install.md",
     "jsonl.md",
     "LICENSE.md",
+    "lite.md",
+    "pipeline.md",
     "providers.md",
     "prompts.md",
     "templates.md",
@@ -188,10 +190,14 @@ describe("core package.json scripts — bkit:gate:* names, add-if-missing", () =
     return JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
   }
 
+  function readScripts(): Record<string, string> {
+    return readPkg().scripts ?? {};
+  }
+
   it("an existing gate value is never touched; missing gate names are added", () => {
     writePkg({ scripts: { "bkit:gate:static": "ruff check .", "bkit:gate:format": "true" } });
     dispatchModules(new Set(["core"]), makeCtx({}));
-    const scripts = readPkg().scripts ?? {};
+    const scripts = readScripts();
     expect(scripts["bkit:gate:static"]).toBe("ruff check .");
     expect(scripts["bkit:gate:format"]).toBe("true");
     for (const name of Object.keys(BKIT_GATE_SCRIPTS)) {
@@ -221,7 +227,7 @@ describe("core package.json scripts — bkit:gate:* names, add-if-missing", () =
     // so a declared value — even a retired one — is the consumer's and is never rewritten.
     writePkg({ scripts: { "slop:delta": "bash scripts/slop/bkit-slop-delta.sh" } });
     dispatchModules(new Set(["core"]), makeCtx({}));
-    const scripts = readPkg().scripts ?? {};
+    const scripts = readScripts();
     expect(scripts["slop:delta"]).toBe("bash scripts/slop/bkit-slop-delta.sh");
     expect(scripts.typecheck).toBeUndefined();
     expect(scripts["lint:prose"]).toBeUndefined();
@@ -301,7 +307,7 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
       runCoreModule(ctx);
       return ctx.advisories
         .map((f) => f.id)
-        .filter((id) => id.startsWith("gate-") || id === "test-file-script-missing");
+        .filter((id) => /^(gate-|test-file-script-missing$)/.test(id));
     };
     const check = idsFor(true);
     expect(check).toEqual(
@@ -491,7 +497,7 @@ describe(".bkit/version canonicalHashes — install prunes entries for absent pa
 // out-of-block content.
 // ---------------------------------------------------------------------------
 
-describe("bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to consumers", () => {
+describe("bkit-source `.agents/{rules,docs,skills}.md` must not leak to consumers", () => {
   it("first install matches the template (no out-of-block content from bkit's source rules.md)", () => {
     const ctx = makeCtx();
     runCoreModule(ctx);
@@ -501,8 +507,7 @@ describe("bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to
 
     // Template content (what consumers SHOULD get) lives in the package's
     // .bkit/core/.agents/rules.md — resolve from the running package root.
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
+    const pkgRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
     const templatePath = path.join(pkgRoot, ".bkit", "core", ".agents", "rules.md");
     const template = applyTokens(fs.readFileSync(templatePath, "utf-8"), ctx.tokens);
 
@@ -512,26 +517,6 @@ describe("bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to
     const templateBlock = extractManagedBlock(template, "html-comment");
     expect(consumerBlock).not.toBeNull();
     expect(consumerBlock).toBe(templateBlock);
-
-    // Critically: bkit's own out-of-block content (its `## Project Rules`
-    // children — e.g. "### bkit Repo Authoring", "### Pre-push Checklist
-    // (this repo)") MUST NOT appear in a consumer install.
-    expect(consumerRules).not.toMatch(/###\s+bkit Repo Authoring/);
-    expect(consumerRules).not.toMatch(/###\s+Pre-push Checklist \(this repo\)/);
-  });
-
-  it("first install of friction.md does not carry bkit's friction-log entries", () => {
-    const ctx = makeCtx();
-    runCoreModule(ctx);
-    flushPostDispatch(ctx);
-
-    const frictionPath = path.join(tmpDir, ".bkit", "friction.md");
-    if (!fs.existsSync(frictionPath)) return; // friction.md is optional in some module sets
-    const consumerFriction = fs.readFileSync(frictionPath, "utf-8");
-
-    // bkit-source friction.md has dated incident entries outside bkit:end.
-    // Heading shape: `## <topic> (YYYY-MM-DD)`. None of those should land here.
-    expect(consumerFriction).not.toMatch(/^##\s+.+\(\d{4}-\d{2}-\d{2}\)/m);
   });
 
   it("rules.md is reachable via the templates pass — no additive leak path", () => {
@@ -580,5 +565,80 @@ describe.each([
     const after = fs.readFileSync(abs, "utf-8");
     expect(after).toBe(managed + CONSUMER);
     expect(again.ws.writes.some((w) => path.normalize(w.path) === REL)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Migration: .agents/shortcuts.md (5.1.0 – 5.2.4) → .bkit/lite.md
+// ---------------------------------------------------------------------------
+
+describe("migrateShortcutsToLite (via runBkitDocs)", () => {
+  const FIXTURE = path.join(getPkgRoot(), "tests/fixtures/shortcuts-5.2.4/shortcuts.md.txt");
+  const OLD = path.join(".agents", "shortcuts.md");
+  const LITE = path.join(".bkit", "lite.md");
+  const OWN = "### hotfix\n\n```text\nShip the hotfix below.\n```";
+
+  const seedOld = (extra = ""): void => {
+    fs.mkdirSync(".agents", { recursive: true });
+    fs.writeFileSync(OLD, fs.readFileSync(FIXTURE, "utf-8") + extra, "utf-8");
+  };
+  const renderedLite = (): string =>
+    applyTokens(
+      fs.readFileSync(path.join(getBkitDocsRoot(), "lite.md"), "utf-8"),
+      makeCtx().tokens,
+    );
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const paths = (ctx: ModuleContext): string[] => ctx.ws.writes.map((w) => path.normalize(w.path));
+
+  it("deletes a pristine 5.2.4 copy and leaves .bkit/lite.md as rendered", () => {
+    seedOld();
+    const ctx = run();
+    expect(fs.existsSync(OLD)).toBe(false);
+    expect(fs.readFileSync(LITE, "utf-8")).toBe(renderedLite());
+    expect(paths(ctx)).toContain(OLD);
+  });
+
+  it("moves the consumer's own lines under ## Project Lite Workflows, without the old heading", () => {
+    seedOld(`\n${OWN}\n`);
+    run();
+    expect(fs.existsSync(OLD)).toBe(false);
+    const lite = fs.readFileSync(LITE, "utf-8");
+    expect(lite).toBe(`${renderedLite().replace(/\n*$/, "\n\n")}${OWN}\n`);
+    expect(lite).not.toContain("## Project Shortcuts");
+    expect(extractManagedBlock(lite, "html-comment")).not.toBeNull();
+  });
+
+  it("is idempotent: a second run changes nothing", () => {
+    seedOld(`\n${OWN}\n`);
+    run();
+    expect(fs.existsSync(OLD)).toBe(false);
+    const after = fs.readFileSync(LITE, "utf-8");
+    const again = run();
+    expect(fs.readFileSync(LITE, "utf-8")).toBe(after);
+    expect(paths(again)).not.toContain(OLD);
+    expect(paths(again)).not.toContain(LITE);
+  });
+
+  it("dry-run touches nothing and records the same writes as the real run", () => {
+    seedOld(`\n${OWN}\n`);
+    const dry = run(true);
+    expect(fs.readFileSync(OLD, "utf-8")).toContain(OWN);
+    expect(fs.existsSync(LITE)).toBe(false);
+    expect(paths(dry).filter((p) => [LITE, OLD].includes(p))).toEqual([LITE, LITE, OLD]);
+    const real = run();
+    expect(paths(dry)).toEqual(paths(real));
+  });
+
+  it("leaves an old copy without a managed block in place", () => {
+    fs.mkdirSync(".agents", { recursive: true });
+    fs.writeFileSync(OLD, `# Shortcuts\n\n${OWN}\n`, "utf-8");
+    const ctx = run();
+    expect(fs.readFileSync(OLD, "utf-8")).toContain(OWN);
+    expect(fs.readFileSync(LITE, "utf-8")).toBe(renderedLite());
+    expect(paths(ctx)).not.toContain(OLD);
   });
 });

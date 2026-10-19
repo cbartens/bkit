@@ -23,6 +23,8 @@ const files = fs
   .filter((f) => f.endsWith(".md"))
   .sort();
 
+const SAFE_PATH = process.env.PATH ?? "/usr/bin:/bin";
+
 type Block = { kind: "start" | "provision"; name: string; body: string };
 
 /** Fetch and provision blocks in file order, each with its fenced bash body. */
@@ -108,7 +110,7 @@ describe(".bkit/templates/context/", () => {
       encoding: "utf-8",
       timeout: 30_000,
       env: {
-        PATH: process.env.PATH ?? "/usr/bin:/bin",
+        PATH: SAFE_PATH,
         HOME: home,
         GH_CONFIG_DIR: path.join(home, "gh"),
         CLOUDSDK_CONFIG: path.join(home, "gcloud"),
@@ -120,13 +122,13 @@ describe(".bkit/templates/context/", () => {
     expect(r.stdout).toBe("");
   });
 
-  it("names no consumer: no gether / bartens string in the context templates", () => {
+  it("names no maintainer: no bartens string in the context templates", () => {
     const sources = [
       ...files.map((f) => path.join(CONTEXT_DIR, f)),
       path.join(getCoreRoot(), ".agents", "context.md"),
     ];
     for (const abs of sources) {
-      expect(fs.readFileSync(abs, "utf-8"), abs).not.toMatch(/\b(?:gether|c?bartens)\b/i);
+      expect(fs.readFileSync(abs, "utf-8"), abs).not.toMatch(/\bc?bartens\b/i);
     }
   });
 

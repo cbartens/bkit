@@ -22,6 +22,7 @@ import { compareTs, parse, resolveRepoSlug, validate } from "../../ledgers/telem
 import { readBkitVersion } from "../../install/version-file.js";
 import {
   CommandError,
+  DEV,
   EXIT,
   git,
   parseJson,
@@ -455,8 +456,8 @@ async function mirror(ctx: RunContext): Promise<number> {
   try {
     const prior = git(root, ["branch", "--show-current"]) ?? "";
     if (
-      !runGit(root, ["checkout", "dev"]).ok ||
-      !runGit(root, ["pull", "--ff-only", "origin", "dev"]).ok
+      !runGit(root, ["checkout", DEV]).ok ||
+      !runGit(root, ["pull", "--ff-only", "origin", DEV]).ok
     ) {
       if (prior) runGit(root, ["checkout", prior]);
       return done(false, "dev checkout / pull failed");
@@ -472,7 +473,7 @@ async function mirror(ctx: RunContext): Promise<number> {
       "--",
       ...ROADMAP_FILES,
     ]);
-    const pushed = runGit(root, ["push", "origin", "dev"]).ok;
+    const pushed = runGit(root, ["push", "origin", DEV]).ok;
     if (!pushed) ctx.log("dev push failed — feat-side row already written");
     if (prior) runGit(root, ["checkout", prior]);
     return done(pushed, pushed ? null : "dev push failed");

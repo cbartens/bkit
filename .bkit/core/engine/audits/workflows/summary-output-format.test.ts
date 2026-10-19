@@ -82,6 +82,11 @@ function placeholders(file: string): Array<{ section: string; body: string; line
   return out;
 }
 
+/** True when a placeholder neither opens with a closed-set verb nor carries the exempt prefix. */
+function lacksContractVerb(body: string): boolean {
+  return !contractOf(body) && !body.slice(1).startsWith(EXEMPT_PREFIX);
+}
+
 describe("every bkit-*-summary prompt exists and has an Output format block", () => {
   it("finds all five summary prompts", () => {
     expect(summaryFiles).toEqual([
@@ -101,7 +106,7 @@ describe("every bkit-*-summary prompt exists and has an Output format block", ()
 describe("every Output format placeholder names its contract", () => {
   it.each(summaryFiles)("%s: each placeholder opens with a closed-set verb", (file) => {
     const offenders = placeholders(file)
-      .filter(({ body }) => !contractOf(body) && !body.slice(1).startsWith(EXEMPT_PREFIX))
+      .filter(({ body }) => lacksContractVerb(body))
       .map(({ section, line }) => `${file}:${line} § ${section}`);
     expect(offenders).toEqual([]);
   });
@@ -119,17 +124,18 @@ describe("the verb is the whole contract — nothing restates it", () => {
     /\bdo NOT reword\b/i,
   ];
 
+  /** Placeholders of `file` whose tail restates the verb's contract. */
+  function restatementOffenders(file: string): string[] {
+    return placeholders(file).flatMap(({ section, body, line }) => {
+      const tail = contractOf(body)?.tail ?? "";
+      return RESTATEMENTS.filter((re) => re.test(tail)).map(
+        (re) => `${file}:${line} § ${section} — ${re.source}`,
+      );
+    });
+  }
+
   it.each(summaryFiles)("%s: no placeholder repeats its own verb", (file) => {
-    const offenders: string[] = [];
-    for (const { section, body, line } of placeholders(file)) {
-      const contract = contractOf(body);
-      if (!contract) continue;
-      const { tail } = contract;
-      for (const re of RESTATEMENTS) {
-        if (re.test(tail)) offenders.push(`${file}:${line} § ${section} — ${re.source}`);
-      }
-    }
-    expect(offenders).toEqual([]);
+    expect(restatementOffenders(file)).toEqual([]);
   });
 });
 
@@ -153,8 +159,7 @@ describe("sections shared across phases carry the same contract", () => {
   it.each(shared)("%s uses one verb everywhere it appears", (section) => {
     const seen = new Map<string, string>();
     for (const file of summaryFiles) {
-      for (const p of placeholders(file)) {
-        if (p.section !== section) continue;
+      for (const p of placeholders(file).filter((ph) => ph.section === section)) {
         const contract = contractOf(p.body);
         expect(contract, `${file} § ${section} has no closed-set verb`).toBeDefined();
         seen.set(file, contract!.verb);

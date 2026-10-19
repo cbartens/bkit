@@ -1209,8 +1209,9 @@ Final return: Display `{{summary}}` content verbatim as final message to user; d
 Final return: Display `{{summary}}` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
 ```
 
-### workflow-plain-english-append
+### plain-english-append
 
+- prompt: where-used
 - workflow: where-used
 
 ```text
@@ -1227,6 +1228,7 @@ Append as last line `Would you like me to explain this in plain English?`
 
 ### workflow-setup-tips-collect
 
+- prompt: where-used
 - workflow: where-used
 
 ```text
@@ -1235,18 +1237,20 @@ Collect setup tips:
 
 ### workflow-setup-tips-hold
 
+- prompt: where-used
 - workflow: where-used
 
 ```text
-Plain text, not JSON. Hold stdout as `{SETUP_TIPS}`; prints nothing or exits non-zero → `{SETUP_TIPS}` empty.
+Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
 ```
 
 ### workflow-setup-tips-append
 
+- prompt: where-used
 - workflow: where-used
 
 ```text
-Append `{SETUP_TIPS}` under a `## Setup Tips` heading, unless empty.
+Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
 ```
 
 ### workflow-issue-link

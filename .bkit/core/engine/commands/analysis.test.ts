@@ -18,6 +18,7 @@ import {
   newFailuresThisRun,
   runAnalysis,
   type ComplianceRow,
+  type CounterRow,
   type DeferralRow,
   type OutcomeRow,
 } from "./analysis";
@@ -43,12 +44,15 @@ function outcomeRow(
   linesAdded: number,
   filesChanged: number,
   errorFields: Partial<OutcomeRow> = {},
-  trustTier: "shell-bus" | "model-self-report" = "shell-bus",
 ): OutcomeRow {
   return {
     ts,
+    kind: "outcome",
     repo: "cbartens/bkit",
     bkitVersion: "4.1.4",
+    workflow: "ship",
+    step: "ship-close-workflow",
+    parentSha: `sha-${ts}`,
     prNumber: ts % 10000,
     linesAdded: linesAdded,
     linesDeleted: Math.floor(linesAdded * 0.2),
@@ -58,8 +62,28 @@ function outcomeRow(
     durationSeconds: 3600,
     deferrals: 0,
     failures: 0,
-    counterSource: trustTier,
     ...errorFields,
+  };
+}
+
+/** The counter row the workflow close writes alongside an outcome row (same repo/workflow/parentSha). */
+function counterRowFor(
+  outcome: OutcomeRow,
+  counterSource: CounterRow["counterSource"] = "shell-bus",
+  over: Partial<CounterRow> = {},
+): CounterRow {
+  return {
+    ts: outcome.ts - 1,
+    kind: "counter",
+    repo: outcome.repo,
+    bkitVersion: outcome.bkitVersion,
+    workflow: outcome.workflow,
+    step: outcome.step,
+    counterName: "SHIP_ATTEMPT",
+    counterValue: 1,
+    parentSha: outcome.parentSha ?? "",
+    counterSource,
+    ...over,
   };
 }
 
@@ -120,7 +144,7 @@ describe("newFailuresThisRun — per-run delta over cumulative totals", () => {
     expect(newFailuresThisRun(rows[2]!, rows)).toBe(0);
 
     // Only the first run is an error run — an absolute-total test would flag all three.
-    const result = computeRegression(rows);
+    const result = computeRegression(rows, []);
     const xs = result.buckets.find((b) => b.label.startsWith("XS"))!;
     expect(xs.count).toBe(3);
     expect(xs.errorCount).toBe(1);
@@ -172,7 +196,7 @@ describe("computeRegression — #183 size↔outcome (WS4-T3)", () => {
       outcomeRow(1006, 2000, 40, { correctiveCommits: 1 }),
     ];
 
-    const result = computeRegression(rows);
+    const result = computeRegression(rows, []);
 
     const xs = result.buckets.find((b) => b.label.startsWith("XS"))!;
     const m = result.buckets.find((b) => b.label.startsWith("M"))!;
@@ -201,7 +225,7 @@ describe("computeRegression — #183 size↔outcome (WS4-T3)", () => {
       outcomeRow(1004, 300, 9, { ciTrySuccess: 3 }),
     ];
 
-    const result = computeRegression(rows);
+    const result = computeRegression(rows, []);
 
     // M is first bucket with errorRate > 0.5 (S is exactly 0.5 = NOT strictly > 0.5)
     expect(result.dispatchSizeThreshold).toBe(200); // M bucket min
@@ -210,38 +234,62 @@ describe("computeRegression — #183 size↔outcome (WS4-T3)", () => {
   it("defaults dispatch-size threshold to 1000 when no bucket exceeds 50%", () => {
     const rows: OutcomeRow[] = [outcomeRow(1001, 10, 2), outcomeRow(1002, 300, 5)];
 
-    const result = computeRegression(rows);
+    const result = computeRegression(rows, []);
     expect(result.dispatchSizeThreshold).toBe(1000);
   });
 
-  it("labels counterSource trust tier correctly", () => {
-    const rows: OutcomeRow[] = [
-      outcomeRow(1001, 10, 2, {}, "shell-bus"),
-      outcomeRow(1002, 20, 3, {}, "shell-bus"),
-      outcomeRow(1003, 30, 4, {}, "model-self-report"),
-    ];
+  it("counts an outcome row as trusted when a shell-bus counter row shares its repo, workflow and parentSha", () => {
+    const rows = [outcomeRow(1001, 10, 2), outcomeRow(1002, 20, 3), outcomeRow(1003, 30, 4)];
+    const counters = [counterRowFor(rows[0]!), counterRowFor(rows[1]!)];
 
-    const result = computeRegression(rows);
+    const result = computeRegression(rows, counters);
     expect(result.shellBusCount).toBe(2);
     expect(result.modelSelfReportCount).toBe(1);
     expect(result.totalRows).toBe(3);
   });
 
-  it("model-self-report rows are labelled untrusted (pre-P3)", () => {
-    const rows: OutcomeRow[] = [
-      outcomeRow(1001, 100, 5, {}, "model-self-report"),
-      outcomeRow(1002, 200, 6, {}, "model-self-report"),
-    ];
+  it("counts an outcome row with no counter row as untrusted", () => {
+    const rows = [outcomeRow(1001, 100, 5), outcomeRow(1002, 200, 6)];
 
-    const result = computeRegression(rows);
+    const result = computeRegression(rows, []);
     expect(result.modelSelfReportCount).toBe(2);
     expect(result.shellBusCount).toBe(0);
     // Still computes regression — just labels them untrusted
     expect(result.totalRows).toBe(2);
   });
 
+  it("counts an outcome row as untrusted when its matching counter row is model-self-report", () => {
+    const row = outcomeRow(1001, 100, 5);
+
+    const result = computeRegression([row], [counterRowFor(row, "model-self-report")]);
+    expect(result.shellBusCount).toBe(0);
+    expect(result.modelSelfReportCount).toBe(1);
+  });
+
+  it("does not trust an outcome row because of a shell-bus counter from another parentSha, workflow or repo", () => {
+    const row = outcomeRow(1001, 100, 5);
+    const counters = [
+      counterRowFor(row, "shell-bus", { parentSha: "some-other-sha" }),
+      counterRowFor(row, "shell-bus", { workflow: "build" }),
+      counterRowFor(row, "shell-bus", { repo: "other/repo" }),
+    ];
+
+    const result = computeRegression([row], counters);
+    expect(result.shellBusCount).toBe(0);
+    expect(result.modelSelfReportCount).toBe(1);
+  });
+
+  it("counts an outcome row without a parentSha as untrusted", () => {
+    const row = outcomeRow(1001, 100, 5);
+    delete row.parentSha;
+
+    const result = computeRegression([row], [counterRowFor(row, "shell-bus", { parentSha: "" })]);
+    expect(result.shellBusCount).toBe(0);
+    expect(result.modelSelfReportCount).toBe(1);
+  });
+
   it("handles empty input", () => {
-    const result = computeRegression([]);
+    const result = computeRegression([], []);
     expect(result.totalRows).toBe(0);
     expect(result.shellBusCount).toBe(0);
     expect(result.modelSelfReportCount).toBe(0);
@@ -472,7 +520,15 @@ describe("runAnalysis — full report (WS4-T3)", () => {
         durationSeconds: 3600,
         deferrals: 0,
         failures: 0,
+        parentSha: "abc123",
+      },
+      {
+        ...baseEnvelope("counter"),
+        ts: 1_700_000_000_999,
+        counterName: "SHIP_ATTEMPT",
+        counterValue: 1,
         counterSource: "shell-bus",
+        parentSha: "abc123",
       },
       {
         ...baseEnvelope("compliance"),
@@ -497,13 +553,46 @@ describe("runAnalysis — full report (WS4-T3)", () => {
 
     // Report lines should describe counts, regression, compliance
     const joined = report.reportLines.join("\n");
-    expect(joined).toMatch(/rows: 3/);
+    expect(joined).toMatch(/rows: 4/);
     expect(joined).toMatch(/compliance.*2/i);
     expect(joined).toMatch(/no-mirror-edit/);
     expect(report.complianceRates).toHaveLength(1);
     expect(report.complianceRates[0]!.rule).toBe("no-mirror-edit");
     expect(report.regression.totalRows).toBe(1);
     expect(report.regression.shellBusCount).toBe(1);
+    expect(joined).toContain("counterSource trust: shell-bus=1 (trusted) | model-self-report=0");
+  });
+
+  it("matches counter rows to outcome rows by parentSha when printing the trust line", () => {
+    const statsPath = path.join(tmpDir, "stats.jsonl");
+    const outcomeFields = {
+      linesAdded: 5,
+      linesDeleted: 1,
+      linesChanged: 6,
+      filesChanged: 1,
+      taskCount: 1,
+      durationSeconds: 60,
+      deferrals: 0,
+      failures: 0,
+    };
+    const rows = [
+      {
+        ...baseEnvelope("counter"),
+        ts: 1_700_000_000_001,
+        counterName: "SHIP_ATTEMPT",
+        counterValue: 1,
+        counterSource: "shell-bus",
+        parentSha: "sha-a",
+      },
+      { ...baseEnvelope("outcome"), ts: 1_700_000_000_002, parentSha: "sha-a", ...outcomeFields },
+      { ...baseEnvelope("outcome"), ts: 1_700_000_000_003, parentSha: "sha-b", ...outcomeFields },
+    ];
+    fs.writeFileSync(statsPath, rows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
+
+    const report = runAnalysis([statsPath]);
+    expect(report.reportLines.join("\n")).toContain(
+      "counterSource trust: shell-bus=1 (trusted) | model-self-report=1 (untrusted",
+    );
   });
 
   it("handles missing files gracefully", () => {

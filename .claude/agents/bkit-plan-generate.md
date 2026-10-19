@@ -11,9 +11,9 @@ tools:
   - Write
   - Edit
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 200
 ---
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect translating design docs into chronological implementation plans.
 **Scope:** As specified by input and Read / Update / Create section.

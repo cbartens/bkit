@@ -2,14 +2,16 @@
 // allows, and the tracker entry in the MCP config files (`.mcp.json`, `.cursor/mcp.json`).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { writeTier1, writeTier2, writeTier2JsonContained, ensureDir, } from "../write.js";
+import { writeTier1, writeTier2, writeTier2JsonContained, ensureDir, mergeTrackerEntry, trackerEntryInSync, } from "../write.js";
 import { readBkitVersion, stampManagedVersion } from "../version-file.js";
+import { readJsonFile } from "../../shared/json.js";
 import { applyEffortRemap } from "../../render/hosts.js";
 import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from "../../shared/package-roots.js";
 import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { writeClaudeCloudDoc, resolveClaudeDerivedAllows } from "../cloud-env.js";
-import { BKIT_PREFIX, installFile, listMdFiles, readInstallingVersion, removeOrphans, trackMirrorWrite, } from "./core.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
+import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
 export function renderClaudeAgentsCommands(ctx) {
     const { dryRun, logPrefix, effortMap } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
@@ -192,13 +194,10 @@ export function runClaudeModule(ctx) {
 export function enrichClaudeSettingsAllows(settingsDst, cwd, dryRun, ws, advisories) {
     if (!fs.existsSync(settingsDst))
         return null;
-    let doc;
-    try {
-        doc = JSON.parse(fs.readFileSync(settingsDst, "utf-8"));
-    }
-    catch {
+    const settings = readJsonFile(settingsDst);
+    if (!settings.ok)
         return null;
-    }
+    const doc = settings.value;
     const allow = doc.permissions?.allow;
     if (!Array.isArray(allow))
         return null;
@@ -247,12 +246,14 @@ export function buildMcpJson(templatePath, tracker) {
 }
 /**
  * Reconcile bkit's tracker entry into a consumer's `.mcp.json` / `.cursor/mcp.json`. bkit
- * owns exactly one key, `mcpServers[<tracker>]`, and sets it to the template's entry; every
+ * owns exactly one key, `mcpServers[<tracker>]`, and within it only what the template sets
+ * (`mergeTrackerEntry`: extra keys, headers and toolsets stay the consumer's); every
  * other key and the existing key order stay the consumer's. Absent file → write the
  * `buildMcpJson` render. Malformed JSON → throw (refuse to merge; the consumer fixes it).
  * Tracker `none` owns no entry, so a present file is left alone. Writes only on change, so
- * dry-run and live compute the identical WriteSet. Another tracker's entry from an earlier
- * install is left in place (`detectExtraMcpServers` advises on it).
+ * dry-run and live compute the identical WriteSet. Another tracker's entry is not touched
+ * here: a `--tracker` switch removes an unedited one first (`removeUnusedTrackerMcpEntries`),
+ * and `detectExtraMcpServers` advises on an edited one.
  */
 export function reconcileMcpJson(templatePath, relDst, tracker, dryRun, ws) {
     const rendered = buildMcpJson(templatePath, tracker);
@@ -264,24 +265,19 @@ export function reconcileMcpJson(templatePath, relDst, tracker, dryRun, ws) {
         ws.writes.push({ path: relDst, action: "write" });
         return;
     }
-    // Parse-or-sentinel idiom (see reconcileOpencodeJson): the throw stays out of the catch.
-    let existing = null;
-    try {
-        existing = JSON.parse(fs.readFileSync(relDst, "utf-8"));
-    }
-    catch {
-        existing = null;
-    }
+    const read = readJsonFile(relDst);
+    const existing = read.ok ? read.value : null;
     if (existing === null || typeof existing !== "object" || Array.isArray(existing)) {
         throw new Error(`[bkit] ${relDst} is malformed JSON — fix manually before running bkit install`);
     }
     const owned = JSON.parse(rendered).mcpServers;
     const servers = existing.mcpServers;
     const serversObj = servers !== null && typeof servers === "object" && !Array.isArray(servers) ? servers : {};
-    const inSync = Object.entries(owned).every(([k, v]) => JSON.stringify(serversObj[k]) === JSON.stringify(v));
+    const inSync = Object.entries(owned).every(([k, v]) => trackerEntryInSync(serversObj[k], v));
     if (inSync)
         return;
-    const next = { ...existing, mcpServers: { ...serversObj, ...owned } };
+    const merged = Object.fromEntries(Object.entries(owned).map(([k, v]) => [k, mergeTrackerEntry(serversObj[k], v)]));
+    const next = { ...existing, mcpServers: { ...serversObj, ...merged } };
     if (!dryRun)
         fs.writeFileSync(relDst, JSON.stringify(next, null, 2) + "\n", "utf-8");
     ws.writes.push({ path: relDst, action: "update" });

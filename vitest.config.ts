@@ -15,8 +15,8 @@ export default defineConfig({
     ...unitTimeouts(),
     // Report-only coverage — dogfoods the bkit-stub:coverage scaffold shipped to
     // consumers. json-summary + json are load-bearing: vitest-coverage-report-action
-    // reads coverage-summary.json and coverage-final.json. No thresholds by design
-    // (report-only never reds the lane); a gate is opt-in per consumer.
+    // reads coverage-summary.json and coverage-final.json. No thresholds here, so the
+    // integration run stays report-only; the unit floor lives in vitest.unit.config.ts.
     coverage: {
       provider: "v8",
       // "text" pins skipFull: false explicitly — vitest 4.x auto-forces skipFull:

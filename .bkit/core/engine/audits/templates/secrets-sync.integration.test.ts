@@ -323,7 +323,8 @@ describe("bkit-secrets.mjs", () => {
     expect(fs.existsSync(ghFile("OLD_NAME"))).toBe(false);
     expect(fs.existsSync(ghFile("HAND_SET"))).toBe(true);
     expect(supabase.get("WEBHOOK_URL")?.value).toBe("https://dev.example/hooks");
-    expect(supabase.has("SUPABASE_URL") && supabase.has("HAND_SET_FN")).toBe(true);
+    expect(supabase.has("SUPABASE_URL")).toBe(true);
+    expect(supabase.has("HAND_SET_FN")).toBe(true);
     expect(vercel.map((e) => `${e.key}:${e.target.join()}:${e.type}`).sort()).toEqual([
       "DATABASE_URL:preview:encrypted",
       "DATABASE_URL:production:encrypted",

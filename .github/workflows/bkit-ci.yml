@@ -318,7 +318,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── bkit-tests-static ────────────────────────────────────────────────────
-  # Static-analysis lane: typecheck, format, prose lint, slop, actionlint,
+  # Static-analysis lane: typecheck, lint, format, prose lint, slop, actionlint,
   # bkit check. Runs on a CLEAN tree (no test artifacts). Parallel sibling of
   # bkit-tests-unit — wall-clock = MAX(lane).
   bkit-tests-static:
@@ -354,13 +354,13 @@ jobs:
       # Node/TS toolchain region. On a non-Node repo, replace these steps with your
       # stack's setup / install commands (and the typecheck / lint / test steps below with
       # its own). Replace `{{NODE_VERSION}}` with your Node major (`.bkit/templates.md`).
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
       # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       # Under [verbose ci]: propagate DEBUG to all subsequent steps via $GITHUB_ENV. Note
       # that steps with their own `env:` block override $GITHUB_ENV — those steps must
@@ -459,11 +459,15 @@ jobs:
       # Static checks first — they read the source tree and must scan it CLEAN.
       # Vitest/build run AFTER (below): they write coverage, dist/, and other
       # artifacts that would otherwise pollute the Slop Scan and bkit check inputs.
-      # Keep this group (typecheck → prettier → vale → slop → bkit check) ahead of
+      # Keep this group (typecheck → lint → prettier → vale → slop → bkit check) ahead of
       # the test/build group if you reorder.
       - name: Run Typecheck
         if: steps.cache.outputs.skip != 'true'
         run: pnpm typecheck
+
+      - name: Run Lint
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm lint
 
       - name: Run Prettier
         if: steps.cache.outputs.skip != 'true'
@@ -475,6 +479,7 @@ jobs:
       - name: Install Vale
         if: steps.cache.outputs.skip != 'true'
         env:
+          # renovate: datasource=github-releases depName=errata-ai/vale
           VALE_VERSION: "3.9.1"
           # sha256 of vale_${VALE_VERSION}_Linux_64-bit.tar.gz (from the release's checksums.txt).
           # Bump alongside VALE_VERSION; verified before extract so a tampered/CDN-swapped tarball fails closed.
@@ -525,6 +530,7 @@ jobs:
           curl -sSfL --retry 3 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
           # download-actionlint.bash fetches the binary from GitHub releases — retry to survive a transient CDN/network blip.
           for i in 1 2 3; do
+            # renovate: datasource=github-releases depName=rhysd/actionlint
             bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP" && break
             [ "$i" = 3 ] && { echo "::error::actionlint download failed after 3 attempts"; exit 1; }
             echo "::warning::actionlint download attempt $i failed — retrying in 5s"; sleep 5
@@ -557,22 +563,21 @@ jobs:
       # docs/capabilities.md is not what this tree produces, so the register cannot drift
       # silently. Self-skips when the graphify wrapper is absent — a repo that did not adopt
       # scripts/graphify/ is a no-op. graphify is pinned because its output must match the
-      # committed register to the byte: bump GRAPHIFY_SPEC and refresh the register together.
+      # committed register to the byte: bump GRAPHIFY_SPEC (bkit-graphify.sh) and refresh the register together.
       # Push events only — a pull_request checkout is the MERGE ref, whose tree (base + head)
       # can differ from the head the register was built against: a false red no author can clear.
       - name: Setup uv
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          version: "0.12.6"
+          version: "0.13.0"
 
       - name: Check Capability Register
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
-        env:
-          # PyPI distribution is `graphifyy`; the CLI it exposes is `graphify`.
-          GRAPHIFY_SPEC: "graphifyy[sql]==0.9.50"
+        # graphify release pinned once: GRAPHIFY_SPEC in bkit-graphify.sh. Same release here,
+        # in the pre-push gate and by hand.
         run: |
-          uv tool install "$GRAPHIFY_SPEC"
+          uv tool install "$(bash scripts/graphify/bkit-graphify.sh spec)"
           # `uv tool install` drops the shim in ~/.local/bin, not on this step's PATH.
           export PATH="$HOME/.local/bin:$PATH"
           pnpm graph:check
@@ -602,11 +607,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       # NODE_OPTIONS is a job-level `env:` key above, never a $GITHUB_ENV write — the runner
       # rejects that write and still reports success. See bkit-tests-static's block comment.
@@ -657,6 +662,27 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
+      # Workflow-fence syntax tests run each shell block under zsh, and the template test lints
+      # the shipped bkit-ci.yml with actionlint. Each skips itself when its tool is absent, and the
+      # runner image has neither on PATH, so without these steps they skip on every run.
+      - name: Install zsh
+        if: steps.cache.outputs.skip != 'true'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
+
+      - name: Install actionlint
+        if: steps.cache.outputs.skip != 'true'
+        run: |
+          # Script pinned to the v1.7.12 commit SHA (the git tag is mutable/forgeable); the binary version
+          # is pinned separately via the 1.7.12 arg passed to the script below.
+          curl -sSfL --retry 3 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
+          # download-actionlint.bash fetches the binary from GitHub releases — retry to survive a transient CDN/network blip.
+          for i in 1 2 3; do
+            bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP" && break
+            [ "$i" = 3 ] && { echo "::error::actionlint download failed after 3 attempts"; exit 1; }
+            echo "::warning::actionlint download attempt $i failed — retrying in 5s"; sleep 5
+          done
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
       # Unit coverage: `test:coverage:unit` scopes --coverage.include to the logic files and
       # carries the --coverage.thresholds.branches floor; bkit:gate:static-unit runs the same
       # script. The JSON reporter feeds the executed-count bkit-tests-check asserts.
@@ -673,17 +699,22 @@ jobs:
       # bkit repo only: bats over the shipped hook scripts and the gh stub harness.
       - name: Run Shell Tests (bats)
         if: steps.cache.outputs.skip != 'true'
-        run: npx --yes bats tests/*.bats
+        run: pnpm exec bats tests/*.bats
 
       # A distinct name: keys each sticky comment so the two do not collide.
-      - name: Report Unit Coverage on PR
-        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
+      # Runs on every event, including a red unit run (reportOnFailure keeps the summary), and
+      # writes the coverage table with the floor as its target to the job summary; comments on
+      # same-repo PRs only. vite-config-path is the file the floor lives in.
+      - name: Report Unit Coverage
+        if: ${{ !cancelled() && steps.cache.outputs.skip != 'true' && hashFiles('coverage/unit/coverage-summary.json') != '' }}
+        uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
         with:
           name: unit
           json-summary-path: coverage/unit/coverage-summary.json
           json-final-path: coverage/unit/coverage-final.json
+          vite-config-path: vitest.unit.config.ts
           file-coverage-mode: changes          # per-file table limited to files changed in the PR
+          comment-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) && 'pr' || 'none' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # ── bkit-tests-integration ────────────────────────────────────────────────
@@ -710,11 +741,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - name: Configure Verbose CI
         if: env.VERBOSE_CI == '1'
@@ -763,6 +794,13 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
+      # The workflow snippet tests re-run the plan-close and lock blocks under zsh. They skip
+      # themselves when zsh is absent and the runner image has none, so without this step they
+      # skip on every run.
+      - name: Install zsh
+        if: steps.cache.outputs.skip != 'true'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
+
       # Integration coverage, scoped via --coverage.include to the engine surface.
       - name: Run Integration Tests
         id: vitest
@@ -779,7 +817,7 @@ jobs:
       - name: Report Integration Coverage on PR
         # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
-        uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
+        uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
         with:
           name: integration
           json-summary-path: coverage/integration/coverage-summary.json
@@ -810,11 +848,11 @@ jobs:
       # checkout on a plan that may be absent is fragile.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
@@ -833,7 +871,13 @@ jobs:
         run: pnpm bkit runs mirror --head="$PR_HEAD_SHA" --branch=dev --max-minutes=170
 
       - name: Assert Test Plan Followed
+        # The verdict is scripts/ci/check-capstone.mjs, tested by check-capstone.test.mjs.
+        # scope must succeed; with run_level != none every lane must succeed, and unit and
+        # integration (the lanes with a *_RAN variable) must have run more than 0 tests unless
+        # cache_skip=true; with run_level=none every lane must be skipped; a plan that does
+        # not parse reds. docs/testing.md § Validated means executed.
         env:
+          LANES: static,unit,integration
           PLAN: ${{ needs.bkit-tests-scope.outputs.plan }}
           SCOPE_RESULT: ${{ needs.bkit-tests-scope.result }}
           STATIC_RESULT: ${{ needs.bkit-tests-static.result }}
@@ -843,49 +887,4 @@ jobs:
           INTEGRATION_RESULT: ${{ needs.bkit-tests-integration.result }}
           INTEGRATION_RAN: ${{ needs.bkit-tests-integration.outputs.tests_ran }}
           INTEGRATION_CACHE_SKIP: ${{ needs.bkit-tests-integration.outputs.cache_skip }}
-        run: |
-          FAIL=0
-          plan_run_level=$(echo "$PLAN" | jq -r '.run_level' 2>/dev/null || echo "")
-          if [ "$SCOPE_RESULT" != "success" ]; then
-            echo "::error::bkit-tests-scope did not succeed (result=$SCOPE_RESULT)"
-            FAIL=1
-          fi
-          if [ "$plan_run_level" != "none" ] && [ "$STATIC_RESULT" != "success" ]; then
-            echo "::error::plan.run_level=$plan_run_level but bkit-tests-static result=$STATIC_RESULT"
-            FAIL=1
-          fi
-          if [ "$plan_run_level" != "none" ] && [ "$UNIT_RESULT" != "success" ]; then
-            echo "::error::plan.run_level=$plan_run_level but bkit-tests-unit result=$UNIT_RESULT"
-            FAIL=1
-          fi
-          if [ "$plan_run_level" != "none" ] && [ "$INTEGRATION_RESULT" != "success" ]; then
-            echo "::error::plan.run_level=$plan_run_level but bkit-tests-integration result=$INTEGRATION_RESULT"
-            FAIL=1
-          fi
-          # NON-HOLLOW: a real run (not a SHA-cache short-circuit) of a test lane must have executed
-          # >0 tests — guards the green-with-zero hole (vitest exiting 0 having run nothing:
-          # --passWithNoTests / glob drift / all-skipped). cache_skip=true was already validated on
-          # the cached SHA, and run_level=none is a skip — both assert nothing. Checked
-          # PER LANE (unit + integration) so a hollow either-tier is caught.
-          assert_ran() {
-            lane="$1"; ran="$2"
-            case "$ran" in
-              ''|*[!0-9]*)
-                echo "::error::$lane succeeded but its executed-test count is non-numeric ('$ran') — cannot confirm tests ran."
-                FAIL=1 ;;
-              0)
-                echo "::error::$lane succeeded but executed 0 tests — vacuous green (expected >0)."
-                FAIL=1 ;;
-            esac
-          }
-          if [ "$plan_run_level" != "none" ] && [ "$UNIT_RESULT" = "success" ] && [ "$UNIT_CACHE_SKIP" != "true" ]; then
-            assert_ran "bkit-tests-unit" "$UNIT_RAN"
-          fi
-          if [ "$plan_run_level" != "none" ] && [ "$INTEGRATION_RESULT" = "success" ] && [ "$INTEGRATION_CACHE_SKIP" != "true" ]; then
-            assert_ran "bkit-tests-integration" "$INTEGRATION_RAN"
-          fi
-          if [ "$FAIL" = "1" ]; then
-            echo "::error::bkit-tests-check FAILED — plan was not honoured. See above."
-            exit 1
-          fi
-          echo "✅ bkit-tests-check passed — planned suite ran (static=$STATIC_RESULT, unit=${UNIT_RAN:-cache-skip/none}, integration=${INTEGRATION_RAN:-cache-skip/none} tests) and succeeded (run_level=$plan_run_level)."
+        run: node scripts/ci/check-capstone.mjs

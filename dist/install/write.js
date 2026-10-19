@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { updateManagedBlock, extractFullManagedBlock, extractManagedBlock, findLineAnchoredMarkers, findUnmarkedCopy, selectMarkers, } from "./managed-block.js";
 import { readTemplate } from "../render/parts.js";
+import { parseJson } from "../shared/json.js";
 import { applyTokens } from "./placeholders.js";
 import { sha256 } from "./version-file.js";
 export function deepContains(template, consumer, pathPrefix = "") {
@@ -135,6 +136,51 @@ export function deepMergeJson(base, override) {
     return result;
 }
 // ---------------------------------------------------------------------------
+// MCP tracker entry — bkit owns the template's parts of the entry, not the whole entry (#613)
+//
+//   - every key the template sets is reset to the template's value
+//   - `headers["X-MCP-Toolsets"]` keeps the consumer's list and appends any template toolset
+//     it lacks, so a consumer can enable extra toolsets and a toolset bkit adds still lands
+//   - every other consumer key, header and toolset is kept
+// ---------------------------------------------------------------------------
+export const MCP_TOOLSETS_HEADER = "X-MCP-Toolsets";
+/** Split an `X-MCP-Toolsets` value into toolset names (trimmed, empties dropped). */
+export function parseToolsets(value) {
+    return value
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s !== "");
+}
+/** True for a JSON object (not null, not an array). */
+export function isJsonObject(v) {
+    return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+/** Merge bkit's tracker entry `owned` into the consumer's `existing` entry (rules above). */
+export function mergeTrackerEntry(existing, owned) {
+    if (!isJsonObject(existing) || !isJsonObject(owned))
+        return owned;
+    const merged = deepMergeJson(existing, owned);
+    const ownedHeaders = owned.headers;
+    const existingHeaders = existing.headers;
+    if (isJsonObject(ownedHeaders) && isJsonObject(existingHeaders)) {
+        const ownedSets = ownedHeaders[MCP_TOOLSETS_HEADER];
+        const existingSets = existingHeaders[MCP_TOOLSETS_HEADER];
+        if (typeof ownedSets === "string" && typeof existingSets === "string") {
+            const have = parseToolsets(existingSets);
+            const missing = parseToolsets(ownedSets).filter((t) => !have.includes(t));
+            merged.headers[MCP_TOOLSETS_HEADER] =
+                missing.length === 0 ? existingSets : [...have, ...missing].join(",");
+        }
+    }
+    return merged;
+}
+/** True when `existing` already holds everything `mergeTrackerEntry` would write. */
+export function trackerEntryInSync(existing, owned) {
+    if (existing === undefined)
+        return false;
+    return deepContains(mergeTrackerEntry(existing, owned), existing).ok;
+}
+// ---------------------------------------------------------------------------
 // writeTier2JsonContained — deep-containment JSON helper (BAR-167 Phase 1)
 //
 // Contract:
@@ -147,13 +193,11 @@ export function deepMergeJson(base, override) {
 // ---------------------------------------------------------------------------
 export function writeTier2JsonContained(srcPath, dstPath, dryRun, ws) {
     const srcRaw = fs.readFileSync(srcPath, "utf-8");
-    let template;
-    try {
-        template = JSON.parse(srcRaw);
-    }
-    catch {
+    const templateRead = parseJson(srcRaw);
+    if (!templateRead.ok) {
         throw new Error(`writeTier2JsonContained: template at ${srcPath} is not valid JSON`);
     }
+    const template = templateRead.value;
     if (!fs.existsSync(dstPath)) {
         // First install — write template as-is
         ensureDir(path.dirname(dstPath));
@@ -167,14 +211,12 @@ export function writeTier2JsonContained(srcPath, dstPath, dryRun, ws) {
     }
     // dest exists — read and check containment
     const dstRaw = fs.readFileSync(dstPath, "utf-8");
-    let existing;
-    try {
-        existing = JSON.parse(dstRaw);
-    }
-    catch {
+    const existingRead = parseJson(dstRaw);
+    if (!existingRead.ok) {
         // Malformed destination — refuse to overwrite; require manual fix (matches malformed-package-json blocker discipline)
         throw new Error(`[bkit] ${dstPath} is malformed JSON — fix manually before running bkit install`);
     }
+    const existing = existingRead.value;
     // Check if existing already contains the template
     const containsResult = deepContains(template, existing);
     if (containsResult.ok) {
@@ -364,13 +406,11 @@ export function ensurePackageJsonScripts(scripts, dryRun, ws) {
         return { added: [], preserved: [], missingPkg: true, malformed: false };
     }
     const raw = fs.readFileSync(pkgPath, "utf-8");
-    let pkg;
-    try {
-        pkg = JSON.parse(raw);
-    }
-    catch {
+    const parsed = parseJson(raw);
+    if (!parsed.ok) {
         return { added: [], preserved: [], missingPkg: false, malformed: true };
     }
+    const pkg = parsed.value;
     let pkgScripts = pkg.scripts ?? undefined;
     const added = [];
     const preserved = [];

@@ -25,7 +25,7 @@
 
 // bkit:start
 
-// bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -33,7 +33,7 @@ const path = require("node:path");
 // --- Shell detection: identical in every host's guardrails hook (bkit renders it from
 // one source). Needs `fs` and `path` in scope; the host's own code above declares them.
 
-/** Wrappers that precede the real command; skipped when finding a segment's head. */
+/** Wrappers that precede the real command; skipped when finding a command's program. */
 const CMD_WRAPPERS = new Set(["sudo", "env", "time", "nohup", "nice", "command", "exec", "xargs"]);
 
 /** Split a command line into pipeline / list segments. */
@@ -43,156 +43,6 @@ function shellSegments(cmd) {
     .map((s) => s.trim())
     .filter(Boolean);
 }
-
-/**
- * The program a segment actually runs: leading `VAR=val` assignments and wrappers
- * skipped, path stripped (`/usr/bin/curl` -> `curl`).
- *
- * A token that only appears as an argument (`grep -n 'curl' file`,
- * `sed -n '/sed -i/p' notes.md`) is not the segment's program.
- */
-function segmentHead(seg) {
-  const words = seg.split(/\s+/).filter(Boolean);
-  let i = 0;
-  while (
-    i < words.length &&
-    (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) || CMD_WRAPPERS.has(words[i]))
-  )
-    i++;
-  return (words[i] || "").replace(/^.*\//, "");
-}
-
-/** True when some segment actually INVOKES curl or wget. */
-function usesFetch(cmd) {
-  return shellSegments(cmd).some((s) => {
-    const h = segmentHead(s);
-    return h === "curl" || h === "wget";
-  });
-}
-
-/** Source-ish extensions: a redirect into one of these is plausibly a file edit. */
-const SOURCE_EXT_RE =
-  /\.(ts|tsx|js|jsx|cjs|mjs|json|md|sh|bash|py|rb|go|rs|java|css|scss|html|ya?ml|toml|sql)$/i;
-
-/**
- * Detect a shell command being used as an edit channel. Returns a list of human
- * descriptions, empty when the command edits nothing.
- *
- * Quiet on `> /dev/null`, `>> "$GITHUB_ENV"`, `mktemp` handoff files and log capture.
- * Only a redirect whose target both looks like a repo path AND carries a source
- * extension is reported.
- */
-function shellEditTargets(cmd) {
-  const hits = [];
-  for (const seg of shellSegments(cmd)) {
-    const head = segmentHead(seg);
-    if ((head === "sed" || head === "perl") && /\s-i(?:\.\S*)?(?:\s|$)/.test(seg)) {
-      hits.push("in-place sed/perl (-i)");
-    }
-    if (head === "awk" && /\s-i\s+inplace\b/.test(seg)) hits.push("awk -i inplace");
-  }
-
-  const redir = /(?:^|[^>&\d])>>?\s*("([^"]+)"|'([^']+)'|([^\s;|&<>]+))/g;
-  let m;
-  while ((m = redir.exec(cmd)) !== null) {
-    const target = (m[2] || m[3] || m[4] || "").trim();
-    if (!target) continue;
-    // Scratch and env sinks — never a source edit.
-    if (target.startsWith("$") || target.startsWith("&")) continue;
-    if (/^\/(dev|tmp|var\/folders|var\/tmp)\//.test(target)) continue;
-    if (/\.(log|bak|tmp|out|err|orig)$/i.test(target)) continue;
-    if (!SOURCE_EXT_RE.test(target)) continue;
-    hits.push(`redirect into ${target}`);
-  }
-  return [...new Set(hits)];
-}
-
-/** Shared advisory string, identical on every host. */
-function shellEditAdvisory(hits) {
-  return (
-    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). ` +
-    "Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of " +
-    "them. Use the edit/write tool instead unless this is one of the sanctioned exceptions " +
-    "in .agents/rules.md (generating files from a script, or a bulk mechanical rewrite). " +
-    "Not blocked — proceed if it is."
-  );
-}
-
-/**
- * Hosts come from `.cursor/allowlist.json`, the one install-written artifact carrying
- * the resolved network allowlist (the shipped egress registry union the consumer's
- * `allowed-domains`); every host's hook reads it. There is NO hardcoded fallback list:
- * absent (cursor module not installed) or unreadable, this returns empty and every
- * host is treated as unknown.
- */
-function loadNetworkAllowlistBases() {
-  const bases = new Set();
-  try {
-    const p = path.join(process.cwd(), ".cursor", "allowlist.json");
-    if (fs.existsSync(p)) {
-      const doc = JSON.parse(fs.readFileSync(p, "utf8"));
-      const domains = Array.isArray(doc.domains) ? doc.domains : [];
-      for (const d of domains) {
-        const b = String(d).replace(/^\*\./, "").trim();
-        if (b) bases.add(b);
-      }
-    }
-  } catch {
-    /* corrupt allowlist → empty set: every host reads as unknown; never crashes */
-  }
-  return bases;
-}
-
-/**
- * Pull the HOST out of every `http(s)://…` URL in a command.
- *
- * Strict: only an explicit scheme counts; a scheme-less token (`./deploy.sh`,
- * `pkg.json`) is never read as a URL.
- */
-function extractUrlHosts(cmd) {
-  const hosts = [];
-  const re = /\bhttps?:\/\/([^\s"'`\\|;&<>()]+)/gi;
-  let m;
-  while ((m = re.exec(cmd)) !== null) {
-    // Authority ends at the first /, ? or #.
-    let authority = m[1].split(/[/?#]/)[0];
-    // Strip userinfo — `https://github.com@evil.tld/` is a request to evil.tld.
-    const at = authority.lastIndexOf("@");
-    if (at >= 0) authority = authority.slice(at + 1);
-    // Strip port.
-    authority = authority.split(":")[0];
-    if (authority) hosts.push(authority.toLowerCase());
-  }
-  return hosts;
-}
-
-/** Suffix match on host labels — `github.com` covers `api.github.com`, not `github.com.evil.tld`. */
-function hostMatchesBase(host, base) {
-  const b = String(base).toLowerCase();
-  return host === b || host.endsWith("." + b);
-}
-
-/**
- * True when EVERY URL in the command targets an allowlisted host.
- *
- * Only each URL's host is consulted, never the rest of the command string (query
- * params, headers). No parseable URL, or any host off the list → false.
- */
-function curlWgetHostAllowed(cmd) {
-  const hosts = extractUrlHosts(cmd);
-  if (hosts.length === 0) return false;
-  const bases = loadNetworkAllowlistBases();
-  return hosts.every((h) => [...bases].some((b) => hostMatchesBase(h, b)));
-}
-
-// --- Shell tiers: identical in the Cursor, Codex and Google Antigravity guardrails hooks
-// (bkit renders them from one source). Each host maps a tier to its own output shape and
-// wording. Needs `shellSegments` and `CMD_WRAPPERS` from `guardrails-shell.js` above it.
-//
-// git commands are classified by their parsed words — subcommand, flag set (any order,
-// short clusters such as `-fdx` expanded), positionals, `+refspec` — never by a literal
-// prefix, so `git reset -q --hard` and `git push origin +dev` land in the same tier as
-// `git reset --hard` and `git push --force`.
 
 /**
  * A segment's words: single / double quotes group and are dropped, a backslash escapes
@@ -268,6 +118,228 @@ function commandLines(cmd, depth = 0) {
   }
   return lines;
 }
+
+/** The program a command line runs, path stripped (`/usr/bin/curl` -> `curl`). */
+function commandProgram(words) {
+  return (words[0] || "").replace(/^.*\//, "");
+}
+
+/**
+ * True when some command line actually INVOKES curl or wget, including inside
+ * `sh -c '…'`, `$(…)`, backticks and `( … )`.
+ *
+ * A token that only appears as an argument (`grep -n 'curl' file`) is not a program.
+ */
+function usesFetch(cmd) {
+  return commandLines(cmd).some((line) => {
+    const p = commandProgram(commandWords(line));
+    return p === "curl" || p === "wget";
+  });
+}
+
+/** Source-ish extensions: a redirect into one of these is plausibly a file edit. */
+const SOURCE_EXT_RE =
+  /\.(ts|tsx|js|jsx|cjs|mjs|json|md|sh|bash|py|rb|go|rs|java|css|scss|html|ya?ml|toml|sql)$/i;
+
+/**
+ * Targets of every unquoted `>` / `>>` redirect in a command line. A `>` inside single
+ * or double quotes is text (`rg 'a > b.ts'`), a backslash-escaped `>` is a literal, and
+ * `2>`, `&>` and `>&` forms (fd redirects) are not file targets.
+ */
+function redirectTargets(text) {
+  const targets = [];
+  let quote = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === quote) quote = "";
+      else if (ch === "\\" && quote === '"') i++;
+      continue;
+    }
+    if (ch === "'" || ch === '"') quote = ch;
+    else if (ch === "\\") i++;
+    else if (ch === ">") {
+      const prev = text[i - 1] ?? "";
+      let j = i + 1;
+      if (text[j] === ">") j++;
+      const fdOrAmp = /[>&\d]/.test(prev);
+      i = j - 1;
+      if (fdOrAmp) continue;
+      while (/\s/.test(text[j] ?? "")) j++;
+      const open = text[j];
+      let target = "";
+      if (open === '"' || open === "'") {
+        const end = text.indexOf(open, j + 1);
+        target = end < 0 ? "" : text.slice(j + 1, end);
+        i = end < 0 ? text.length : end;
+      } else {
+        const m = /^[^\s;|&<>]+/.exec(text.slice(j));
+        target = m ? m[0] : "";
+        i = j + target.length - 1;
+      }
+      if (target.trim()) targets.push(target.trim());
+    }
+  }
+  return targets;
+}
+
+/**
+ * Detect a shell command being used as an edit channel. Returns a list of human
+ * descriptions, empty when the command edits nothing.
+ *
+ * Quiet on `> /dev/null`, `>> "$GITHUB_ENV"`, `mktemp` handoff files and log capture.
+ * Only a redirect whose target both looks like a repo path AND carries a source
+ * extension is reported.
+ */
+function shellEditTargets(cmd) {
+  const hits = [];
+  const lines = commandLines(cmd);
+  for (const line of lines) {
+    const words = commandWords(line);
+    const program = commandProgram(words);
+    const args = words.slice(1);
+    if ((program === "sed" || program === "perl") && args.some((w) => /^-i(?:\..*)?$/.test(w))) {
+      hits.push("in-place sed/perl (-i)");
+    }
+    if (program === "awk" && args.some((w, i) => w === "-i" && args[i + 1] === "inplace")) {
+      hits.push("awk -i inplace");
+    }
+  }
+  for (const text of [String(cmd), ...lines]) {
+    for (const target of redirectTargets(text)) {
+      // Scratch and env sinks — never a source edit.
+      if (target.startsWith("$") || target.startsWith("&")) continue;
+      if (/^\/(dev|tmp|var\/folders|var\/tmp)\//.test(target)) continue;
+      if (/\.(log|bak|tmp|out|err|orig)$/i.test(target)) continue;
+      if (!SOURCE_EXT_RE.test(target)) continue;
+      hits.push(`redirect into ${target}`);
+    }
+  }
+  return [...new Set(hits)];
+}
+
+/** Shared advisory string, identical on every host. */
+function shellEditAdvisory(hits) {
+  return (
+    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). ` +
+    "Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of " +
+    "them. Use the edit/write tool instead unless this is one of the sanctioned exceptions " +
+    "in .agents/rules.md (generating files from a script, or a bulk mechanical rewrite). " +
+    "Not blocked — proceed if it is."
+  );
+}
+
+/** Repo-relative path of the install-written network allowlist every host's hook reads. */
+const NETWORK_ALLOWLIST_FILE = path.join(".bkit", "allowlist.json");
+
+/**
+ * Directories a hook call names, most authoritative first: the workspace roots (Cursor
+ * `workspace_roots`; Antigravity `workspacePaths`, carried over by its payload adapter),
+ * the payload `cwd` (Claude, Codex, Cursor), then the hook process's own cwd — which on
+ * Antigravity is the plugin dir, not the repo.
+ */
+function hookDirs(payload) {
+  const p = payload && typeof payload === "object" ? payload : {};
+  const roots = Array.isArray(p.workspace_roots) ? p.workspace_roots : [];
+  return [...roots, p.cwd, process.cwd()].filter((d) => typeof d === "string" && d !== "");
+}
+
+/**
+ * The network allowlist file for a hook call: walking up from each of `dirs` in turn,
+ * the first `.bkit/allowlist.json` found. A directory holding `.git` (the repo root)
+ * ends that walk. null when none is found.
+ */
+function findNetworkAllowlist(dirs) {
+  for (const start of dirs) {
+    let dir = path.resolve(start);
+    for (;;) {
+      const file = path.join(dir, NETWORK_ALLOWLIST_FILE);
+      if (fs.existsSync(file)) return file;
+      const parent = path.dirname(dir);
+      if (parent === dir || fs.existsSync(path.join(dir, ".git"))) break;
+      dir = parent;
+    }
+  }
+  return null;
+}
+
+/**
+ * Hosts come from `.bkit/allowlist.json`, the one install-written artifact carrying the
+ * resolved network allowlist (the shipped egress registry union the consumer's
+ * `allowed-domains`); every host's hook reads it, found from the hook call's
+ * directories (`hookDirs`). There is NO hardcoded fallback list: absent or unreadable,
+ * this returns empty and every host is treated as unknown.
+ */
+function loadNetworkAllowlistBases(dirs) {
+  const bases = new Set();
+  try {
+    const p = findNetworkAllowlist(dirs);
+    if (p) {
+      const doc = JSON.parse(fs.readFileSync(p, "utf8"));
+      const domains = Array.isArray(doc.domains) ? doc.domains : [];
+      for (const d of domains) {
+        const b = String(d).replace(/^\*\./, "").trim();
+        if (b) bases.add(b);
+      }
+    }
+  } catch {
+    /* corrupt allowlist → empty set: every host reads as unknown; never crashes */
+  }
+  return bases;
+}
+
+/**
+ * Pull the HOST out of every `http(s)://…` URL in a command.
+ *
+ * Strict: only an explicit scheme counts; a scheme-less token (`./deploy.sh`,
+ * `pkg.json`) is never read as a URL.
+ */
+function extractUrlHosts(cmd) {
+  const hosts = [];
+  const re = /\bhttps?:\/\/([^\s"'`\\|;&<>()]+)/gi;
+  let m;
+  while ((m = re.exec(cmd)) !== null) {
+    // Authority ends at the first /, ? or #.
+    let authority = m[1].split(/[/?#]/)[0];
+    // Strip userinfo — `https://github.com@evil.tld/` is a request to evil.tld.
+    const at = authority.lastIndexOf("@");
+    if (at >= 0) authority = authority.slice(at + 1);
+    // Strip port.
+    authority = authority.split(":")[0];
+    if (authority) hosts.push(authority.toLowerCase());
+  }
+  return hosts;
+}
+
+/** Suffix match on host labels — `github.com` covers `api.github.com`, not `github.com.evil.tld`. */
+function hostMatchesBase(host, base) {
+  const b = String(base).toLowerCase();
+  return host === b || host.endsWith("." + b);
+}
+
+/**
+ * True when EVERY URL in the command targets an allowlisted host.
+ *
+ * Only each URL's host is consulted, never the rest of the command string (query
+ * params, headers). No parseable URL, or any host off the list → false. `dirs` locate
+ * the allowlist (`hookDirs`).
+ */
+function curlWgetHostAllowed(cmd, dirs) {
+  const hosts = extractUrlHosts(cmd);
+  if (hosts.length === 0) return false;
+  const bases = loadNetworkAllowlistBases(dirs);
+  return hosts.every((h) => [...bases].some((b) => hostMatchesBase(h, b)));
+}
+
+// --- Shell tiers: identical in the Cursor, Codex and Google Antigravity guardrails hooks
+// (bkit renders them from one source). Each host maps a tier to its own output shape and
+// wording. Needs `commandWords`, `commandLines` and `shellSegments` from `guardrails-shell.js`
+// above it.
+//
+// git commands are classified by their parsed words — subcommand, flag set (any order,
+// short clusters such as `-fdx` expanded), positionals, `+refspec` — never by a literal
+// prefix, so `git reset -q --hard` and `git push origin +dev` land in the same tier as
+// `git reset --hard` and `git push --force`.
 
 /** git global options that take the next word as their value (`git -C dir push`). */
 const GIT_GLOBAL_VALUE_OPTS = new Set([
@@ -524,8 +596,9 @@ function shellSecretRead(c) {
  *   `{ tier: "fetch" }`           — curl / wget to a host off the network allowlist;
  *   `{ tier: "edit", edits }`     — the shell used as an edit channel (advisory only);
  *   null                          — nothing to say.
+ * `dirs` locate the network allowlist (`hookDirs`).
  */
-function classifyShell(c) {
+function classifyShell(c, dirs) {
   if (!c) return null;
   const denied = denyRule(c);
   if (denied) return { tier: "deny", ...denied };
@@ -533,7 +606,7 @@ function classifyShell(c) {
   if (what) return { tier: "ask", what };
   const secret = shellSecretRead(c);
   if (secret) return { tier: "secret", path: secret };
-  if (usesFetch(c)) return curlWgetHostAllowed(c) ? null : { tier: "fetch" };
+  if (usesFetch(c)) return curlWgetHostAllowed(c, dirs) ? null : { tier: "fetch" };
   const edits = shellEditTargets(c);
   return edits.length > 0 ? { tier: "edit", edits } : null;
 }
@@ -577,10 +650,13 @@ function deny(userMessage, agentMessage) {
   };
 }
 
-/** @param {string} cmd */
-function decideShell(cmd) {
+/**
+ * @param {string} cmd
+ * @param {string[]} dirs where to look for the network allowlist (`hookDirs`)
+ */
+function decideShell(cmd, dirs) {
   const c = cmd.trim();
-  const v = classifyShell(c);
+  const v = classifyShell(c, dirs);
   if (!v) return allow();
   switch (v.tier) {
     case "deny":
@@ -629,13 +705,13 @@ function decideRead(filePath) {
  * opinion on this call (the caller decides what a no-opinion result means).
  */
 function bkitGuardrails(payload) {
-  // beforeShellExecution: { command }
+  // beforeShellExecution: { command, cwd, workspace_roots }
   if (
     typeof payload.command === "string" &&
     payload.tool_name == null &&
     payload.tool_input == null
   ) {
-    return decideShell(payload.command);
+    return decideShell(payload.command, hookDirs(payload));
   }
 
   // preToolUse Read/TabRead: { tool_name, tool_input: { path|file_path|target_file|... } }

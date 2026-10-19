@@ -11,7 +11,7 @@ tools:
   - Write
   - Edit
 permissionMode: acceptEdits
-maxTurns: 50
+maxTurns: 100
 ---
 
 **Role:** Senior auditor verifying every plan task has scope, criteria, and verification.

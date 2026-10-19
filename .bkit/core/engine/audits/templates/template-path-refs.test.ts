@@ -82,6 +82,11 @@ const ALLOWED: Array<{ file: string; text: string; why: string }> = [
   },
 ];
 
+/** True when `line` is covered by an allowed text that itself names `name`. */
+function isAllowedLine(allowed: string[], name: string, line: string): boolean {
+  return allowed.some((a) => a.includes(name) && line.includes(a));
+}
+
 function corpus(): Array<{ file: string; text: string }> {
   const dirs = [
     path.join(repo, ".bkit", "core", "workflows"),
@@ -146,7 +151,7 @@ describe("no workflow or prompt names a template path", () => {
         .split("\n")
         .map((line, i) => ({ line, n: i + 1 }))
         .filter(({ line }) => line.includes(name))
-        .filter(({ line }) => !allowed.some((a) => a.includes(name) && line.includes(a)))
+        .filter(({ line }) => !isAllowedLine(allowed, name, line))
         .map(({ line, n }) => `${n}: ${name} — ${line.trim().slice(0, 120)}`),
     );
     expect(hits).toEqual([]);

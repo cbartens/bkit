@@ -14,7 +14,7 @@ tools:
   - read_url
   - search_web
 ---
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior debug engineer soaking unknown-cause runtime failures — one accumulating-context instrument-and-fix step per iteration.
 **Scope:** As specified by input and Read / Update / Create section.

@@ -14,6 +14,7 @@ import type { EffortMap } from "../../render/models.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
 import { getCoreRoot, getSharedRoot } from "../../shared/package-roots.js";
 import { getInstallManifest, type IssueTracker } from "../manifest.js";
+import { writeNetworkAllowlist } from "../network-allowlist.js";
 import {
   BKIT_PREFIX,
   listCoreTemplateFiles,
@@ -115,7 +116,8 @@ export type ModuleFn = (ctx: ModuleContext) => void;
 // renderManagedOutputs — re-render the bkit-managed OUTPUT files that the
 // `bkit upgrade` payload walk does NOT cover:
 // host agents/commands (source-rendered), the `.bkit/*.md` canonical docs
-// (runBkitDocs) and core's package.json scripts (seedCorePackageJsonScripts).
+// (runBkitDocs), `.bkit/allowlist.json` (writeNetworkAllowlist) and core's
+// package.json scripts (seedCorePackageJsonScripts).
 // `.bkit/prompts.md` is markered → runBkitDocs block-merges it (managed block
 // refreshed, consumer `## Model Overrides` below bkit:end preserved).
 //
@@ -139,6 +141,10 @@ export function renderManagedOutputs(modules: Set<ModuleFlag>, ctx: ModuleContex
   for (let i = docsBefore; i < ctx.ws.writes.length; i++) {
     written.push(String(ctx.ws.writes[i].path));
   }
+
+  // `.bkit/allowlist.json` — the same pass install's core module runs (writeNetworkAllowlist
+  // records into ctx.ws, so the caller refreshes its canonicalHashes).
+  written.push(...writeNetworkAllowlist(process.cwd(), ctx.dryRun, ctx.ws, ctx.logPrefix));
 
   // Core package.json scripts — the same pass install runs, so `bkit check` after a
   // clean upgrade finds no missing gate name and no superseded script value.

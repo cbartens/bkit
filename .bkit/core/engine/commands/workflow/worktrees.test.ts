@@ -121,16 +121,18 @@ describe("bkit worktrees setup — adopt in place", () => {
     expect((await setup(wt, "plan")).json.worktreePath).toBe(cwd);
   });
 
-  it.each(["design", "plan", "build", "ship"])(
-    "%s refuses to work in place on dev",
-    async (workflow) => {
-      const cwd = repo("dev");
-      git(cwd, "branch", `feat/${FID}`);
-      // Ship adopts by switching to its branch, so it only refuses when that lands on dev.
-      const r = await setup(cwd, workflow, ...(workflow === "ship" ? ["--branch=dev"] : []));
-      expect(r.code).toBe(7);
-    },
-  );
+  it.each([
+    ["design", []],
+    ["plan", []],
+    ["build", []],
+    // Ship adopts by switching to its branch, so it only refuses when that lands on dev.
+    ["ship", ["--branch=dev"]],
+  ])("%s refuses to work in place on dev", async (workflow, extraArgs) => {
+    const cwd = repo("dev");
+    git(cwd, "branch", `feat/${FID}`);
+    const r = await setup(cwd, workflow, ...extraArgs);
+    expect(r.code).toBe(7);
+  });
 
   it("refuses a detached HEAD", async () => {
     const cwd = repo("claude/session");

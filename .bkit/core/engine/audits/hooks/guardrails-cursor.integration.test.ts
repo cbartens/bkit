@@ -6,13 +6,18 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterAll, describe, expect, it } from "vitest";
+import { writeNetworkAllowlist } from "../../install/network-allowlist";
 import { applyTokens } from "../../install/placeholders";
 import { readTemplate } from "../../render/parts";
 
+// GENERATED is the consumer repo the hook runs in: a `.git` root holding the
+// `.bkit/allowlist.json` install writes (shipped hosts only).
 const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-gr-cursor-"));
 afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
 const HOOK = path.join(GENERATED, "guardrails.cjs");
 fs.writeFileSync(HOOK, readTemplate(path.resolve(".bkit/core/.cursor/hooks/bkit-guardrails.cjs")));
+fs.mkdirSync(path.join(GENERATED, ".git"));
+writeNetworkAllowlist(GENERATED, false, { writes: [] }, "[test]");
 
 function run(payload: unknown): {
   status: number | null;
@@ -20,6 +25,7 @@ function run(payload: unknown): {
   raw: string;
 } {
   const res = spawnSync("node", [HOOK], {
+    cwd: GENERATED,
     input: JSON.stringify(payload),
     encoding: "utf-8",
   });
@@ -228,8 +234,8 @@ describe("T6 — guardrails.cjs installed mirror is its rendered template", () =
 
   for (const [host, template, mirror] of PAIRS) {
     it(`${host}: mirror matches its template`, () => {
-      // Absent mirror = this host is not installed in the bkit repo; nothing to compare.
-      if (!fs.existsSync(mirror)) return;
+      // bkit's own repo installs every host in PAIRS and tracks the mirrors.
+      expect(fs.existsSync(mirror), `${mirror} is missing — run \`pnpm bkit install\``).toBe(true);
       expect(
         fs.readFileSync(mirror, "utf-8"),
         `${mirror} is stale — run \`pnpm bkit install\``,
@@ -247,9 +253,8 @@ describe("T6 — guardrails.cjs installed mirror is its rendered template", () =
     // The allowlist artifact is the only source; no hook carries a literal list.
     for (const [, template, mirror] of PAIRS) {
       expect(readTemplate(template)).not.toContain("SHIPPED_NETWORK_BASES");
-      if (fs.existsSync(mirror)) {
-        expect(fs.readFileSync(mirror, "utf-8")).not.toContain("SHIPPED_NETWORK_BASES");
-      }
+      expect(fs.existsSync(mirror), `${mirror} is missing — run \`pnpm bkit install\``).toBe(true);
+      expect(fs.readFileSync(mirror, "utf-8")).not.toContain("SHIPPED_NETWORK_BASES");
     }
   });
 });

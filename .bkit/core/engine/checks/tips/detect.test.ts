@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   claudeSettingsHas,
   codexTopLevelHas,
+  hasJsTestRunner,
   hasLintStagedConfig,
   hasMcpServer,
+  hasTestLinter,
   listMcpServers,
   unlockedMcpServers,
 } from "./detect";
@@ -122,5 +124,66 @@ describe("hasLintStagedConfig", () => {
   it("accepts .lintstagedrc.json", () => {
     write(".lintstagedrc.json", "{}");
     expect(hasLintStagedConfig(cwd)).toBe(true);
+  });
+});
+
+describe("hasJsTestRunner", () => {
+  it.each([
+    ["vitest", "devDependencies"],
+    ["jest", "dependencies"],
+    ["vitest", "peerDependencies"],
+  ])("accepts %s under %s", (runner, field) => {
+    expect(hasJsTestRunner(cwd)).toBe(false);
+    write("package.json", JSON.stringify({ [field]: { [runner]: "*" } }));
+    expect(hasJsTestRunner(cwd)).toBe(true);
+  });
+
+  it("rejects other dependencies, including names that merely contain a runner's", () => {
+    write(
+      "package.json",
+      JSON.stringify({ devDependencies: { "jest-dom": "*", "vitest-x": "*" } }),
+    );
+    expect(hasJsTestRunner(cwd)).toBe(false);
+  });
+});
+
+describe("hasTestLinter", () => {
+  it("is false for a bare repo and for an ESLint config that names no test plugin", () => {
+    expect(hasTestLinter(cwd)).toBe(false);
+    write("eslint.config.mjs", "export default [{ rules: { semi: 'error' } }];\n");
+    expect(hasTestLinter(cwd)).toBe(false);
+  });
+
+  it.each([[".oxlintrc.json"], ["oxlint.config.ts"], ["oxlint.config.mjs"]])(
+    "accepts the Oxlint config %s",
+    (file) => {
+      write(file, "");
+      expect(hasTestLinter(cwd)).toBe(true);
+    },
+  );
+
+  it("accepts oxlint as a dependency", () => {
+    write("package.json", JSON.stringify({ devDependencies: { oxlint: "^1.0.0" } }));
+    expect(hasTestLinter(cwd)).toBe(true);
+  });
+
+  it.each([
+    ["eslint.config.js", 'import vitest from "@vitest/eslint-plugin";'],
+    ["eslint.config.mjs", 'import playwright from "eslint-plugin-playwright";'],
+    [".eslintrc.json", '{ "plugins": ["testing-library"] }'],
+    [".eslintrc.cjs", 'module.exports = { extends: ["plugin:jest/recommended"] };'],
+  ])("accepts the ESLint config %s naming a test plugin", (file, content) => {
+    write(file, content);
+    expect(hasTestLinter(cwd)).toBe(true);
+  });
+
+  it("accepts a package.json eslintConfig naming a test plugin", () => {
+    write("package.json", JSON.stringify({ eslintConfig: { plugins: ["vitest"] } }));
+    expect(hasTestLinter(cwd)).toBe(true);
+  });
+
+  it("rejects a package.json eslintConfig naming none", () => {
+    write("package.json", JSON.stringify({ eslintConfig: { extends: "eslint:recommended" } }));
+    expect(hasTestLinter(cwd)).toBe(false);
   });
 });

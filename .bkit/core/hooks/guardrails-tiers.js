@@ -1,86 +1,12 @@
 // --- Shell tiers: identical in the Cursor, Codex and Google Antigravity guardrails hooks
 // (bkit renders them from one source). Each host maps a tier to its own output shape and
-// wording. Needs `shellSegments` and `CMD_WRAPPERS` from `guardrails-shell.js` above it.
+// wording. Needs `commandWords`, `commandLines` and `shellSegments` from `guardrails-shell.js`
+// above it.
 //
 // git commands are classified by their parsed words — subcommand, flag set (any order,
 // short clusters such as `-fdx` expanded), positionals, `+refspec` — never by a literal
 // prefix, so `git reset -q --hard` and `git push origin +dev` land in the same tier as
 // `git reset --hard` and `git push --force`.
-
-/**
- * A segment's words: single / double quotes group and are dropped, a backslash escapes
- * the next character, an unquoted `#` at a word start ends the segment (comment). An
- * unterminated quote runs to the end of the segment.
- */
-function shellWords(seg) {
-  const words = [];
-  let cur = "";
-  let started = false;
-  let quote = "";
-  for (let i = 0; i < seg.length; i++) {
-    const ch = seg[i];
-    if (quote) {
-      if (ch === quote) quote = "";
-      else if (ch === "\\" && quote === '"' && i + 1 < seg.length) cur += seg[++i];
-      else cur += ch;
-      continue;
-    }
-    if (ch === "#" && !started) break;
-    if (ch === "'" || ch === '"') {
-      quote = ch;
-      started = true;
-    } else if (ch === "\\" && i + 1 < seg.length) {
-      cur += seg[++i];
-      started = true;
-    } else if (/\s/.test(ch)) {
-      if (started) words.push(cur);
-      cur = "";
-      started = false;
-    } else {
-      cur += ch;
-      started = true;
-    }
-  }
-  if (started) words.push(cur);
-  return words;
-}
-
-/** The words a segment runs: subshell punctuation, `VAR=val` and wrappers skipped. */
-function commandWords(seg) {
-  const words = shellWords(seg.replace(/^(?:\$\(|[({`!\s])+/, "").replace(/[)}`\s]+$/, ""));
-  let i = 0;
-  while (
-    i < words.length &&
-    (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) || CMD_WRAPPERS.has(words[i]))
-  )
-    i++;
-  return words.slice(i);
-}
-
-const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
-
-/**
- * Every command line the input runs: each list / pipeline segment, the script of a
- * `sh -c '…'`, and the body of each `$(…)` / backtick substitution, recursively.
- */
-function commandLines(cmd, depth = 0) {
-  const lines = [];
-  if (depth < 3) {
-    for (const m of String(cmd).matchAll(/\$\(([^()]*)\)|`([^`]*)`/g)) {
-      lines.push(...commandLines(m[1] ?? m[2] ?? "", depth + 1));
-    }
-  }
-  for (const seg of shellSegments(cmd)) {
-    lines.push(seg);
-    if (depth >= 3) continue;
-    const words = commandWords(seg);
-    const head = (words[0] || "").replace(/^.*\//, "");
-    if (!SHELLS.has(head)) continue;
-    const c = words.findIndex((w, i) => i > 0 && /^-[a-z]*c$/.test(w));
-    if (c > 0 && words[c + 1]) lines.push(...commandLines(words[c + 1], depth + 1));
-  }
-  return lines;
-}
 
 /** git global options that take the next word as their value (`git -C dir push`). */
 const GIT_GLOBAL_VALUE_OPTS = new Set([
@@ -337,8 +263,9 @@ function shellSecretRead(c) {
  *   `{ tier: "fetch" }`           — curl / wget to a host off the network allowlist;
  *   `{ tier: "edit", edits }`     — the shell used as an edit channel (advisory only);
  *   null                          — nothing to say.
+ * `dirs` locate the network allowlist (`hookDirs`).
  */
-function classifyShell(c) {
+function classifyShell(c, dirs) {
   if (!c) return null;
   const denied = denyRule(c);
   if (denied) return { tier: "deny", ...denied };
@@ -346,7 +273,7 @@ function classifyShell(c) {
   if (what) return { tier: "ask", what };
   const secret = shellSecretRead(c);
   if (secret) return { tier: "secret", path: secret };
-  if (usesFetch(c)) return curlWgetHostAllowed(c) ? null : { tier: "fetch" };
+  if (usesFetch(c)) return curlWgetHostAllowed(c, dirs) ? null : { tier: "fetch" };
   const edits = shellEditTargets(c);
   return edits.length > 0 ? { tier: "edit", edits } : null;
 }

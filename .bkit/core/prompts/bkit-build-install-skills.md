@@ -9,7 +9,7 @@ tools:
   - Glob
   - Bash
 permissionMode: acceptEdits
-maxTurns: 50
+maxTurns: 100
 ---
 
 **Role:** Senior technical lead matching feature requirements to relevant installable skills.

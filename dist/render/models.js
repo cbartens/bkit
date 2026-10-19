@@ -3,7 +3,7 @@
 import * as fs from "node:fs";
 import { findLineAnchoredMarkers, selectMarkers } from "../install/managed-block.js";
 import { LOG_PREFIX } from "../shared/log-prefix.js";
-import { OPENCODE_PROVIDER_DEFAULTS } from "../shared/egress.js";
+import { OPENCODE_PROVIDERS, OPENCODE_PROVIDER_DEFAULTS, } from "../shared/egress.js";
 /**
  * Parse .bkit/prompts.md § Models table → Map<name, columnValue>.
  * columnHeader is the column header label to extract (e.g. "Cursor model", "opencode model").
@@ -83,6 +83,9 @@ export function parseModelLookup(subagentsMdPath) {
  *
  * Cells hold the BARE, gateway-scoped model id. Any prefix a program's config format needs
  * is added at render time by formatModelPin — never stored in the table.
+ *
+ * Every allowlisted opencode provider MUST have an entry; the `satisfies Record<OpencodeProvider | …>`
+ * check fails tsc when one is missing.
  */
 const GATEWAY_COLUMN = {
     anthropic: "Anthropic",
@@ -94,6 +97,9 @@ const GATEWAY_COLUMN = {
     openai: "OpenAI",
     google: "Google",
 };
+function isGatewayKey(value) {
+    return Object.hasOwn(GATEWAY_COLUMN, value);
+}
 /**
  * Spell a model pin the way a program's config file expects it.
  *
@@ -110,17 +116,16 @@ export function formatModelPin(program, gateway, bareModel) {
     return bareModel;
 }
 /**
- * Build the per-agent opencode model lookup for the selected provider.
- * Source of truth = prompts.md § Models, which carries one curated column per
- * provider ("OpenRouter", "Ollama"). Header-addressed. Every allowlisted provider
- * ships a column; an absent one throws.
+ * Build the per-agent model lookup for one gateway: an opencode provider, or the Codex
+ * "openai" column. Source of truth = prompts.md § Models, which carries one curated column per
+ * gateway ("OpenRouter", "Ollama", "OpenAI"). Header-addressed. Every key of GATEWAY_COLUMN
+ * ships a column; any other key throws.
  */
 export function buildOpencodeModelLookup(subagentsMdPath, provider) {
-    const header = GATEWAY_COLUMN[provider];
-    if (!header) {
+    if (!isGatewayKey(provider)) {
         throw new Error(`buildOpencodeModelLookup: no prompts.md § Models column for provider ${JSON.stringify(provider)}`);
     }
-    return parseModelLookupForColumn(subagentsMdPath, header);
+    return parseModelLookupForColumn(subagentsMdPath, GATEWAY_COLUMN[provider]);
 }
 /**
  * Build the per-agent Antigravity model lookup for Google models.
@@ -293,5 +298,11 @@ export function lookupEffort(effortMap, program, sourceEffort) {
  * keys pass through unchanged.
  */
 export function opencodeProviderId(providerKey) {
-    return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.providerId ?? providerKey;
+    if (!isOpencodeProvider(providerKey))
+        return providerKey;
+    return OPENCODE_PROVIDER_DEFAULTS[providerKey].providerId ?? providerKey;
+}
+/** Narrow a raw string to the opencode provider allowlist. */
+export function isOpencodeProvider(value) {
+    return OPENCODE_PROVIDERS.some((provider) => provider === value);
 }

@@ -17,9 +17,11 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readJsonFile } from "../shared/json.js";
 import { getPkgRoot } from "../shared/package-roots.js";
 import { isMirrorPath } from "../shared/protected-paths.js";
 import {
+  gitEnv,
   resolveGitSha,
   resolveRepoSlug,
   type TelemetryEnvelope,
@@ -72,6 +74,7 @@ export const realGitAdapter: GitAdapter = {
     try {
       const output = execFileSync("git", ["diff", "--name-only", `${parentSha}..HEAD`], {
         cwd,
+        env: gitEnv(),
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       });
@@ -89,6 +92,7 @@ export const realGitAdapter: GitAdapter = {
     try {
       return execFileSync("git", ["log", "-1", "--format=%s"], {
         cwd,
+        env: gitEnv(),
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       }).trim();
@@ -342,23 +346,20 @@ export function formatComplianceSummary(violations: Violation[]): string {
  * running bkit package's root). Returns "0.0.0" on any read/parse error (fail-open).
  */
 export function readBkitVersion(searchFrom?: string): string {
-  try {
-    // Walk up looking for a package.json with a `version` field; stop at the filesystem root.
-    let dir = path.resolve(searchFrom ?? getPkgRoot());
-    for (let i = 0; i < 8; i++) {
-      const candidate = path.join(dir, "package.json");
-      if (fs.existsSync(candidate)) {
-        const pkg = JSON.parse(fs.readFileSync(candidate, "utf8")) as {
-          version?: string;
-        };
-        if (typeof pkg.version === "string") return pkg.version;
-      }
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
+  // Walk up looking for a package.json with a `version` field; stop at the filesystem root.
+  let dir = path.resolve(searchFrom ?? getPkgRoot());
+  for (let i = 0; i < 8; i++) {
+    const candidate = path.join(dir, "package.json");
+    if (fs.existsSync(candidate)) {
+      const read = readJsonFile(candidate);
+      // Fail-open: a package.json that cannot be read ends the search with the default.
+      if (!read.ok || read.value === null) return "0.0.0";
+      const pkg = read.value as { version?: string };
+      if (typeof pkg.version === "string") return pkg.version;
     }
-  } catch (_e) {
-    void _e; // fail-open: version read errors return default
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
   }
   return "0.0.0";
 }

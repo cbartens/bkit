@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # bkit Adoption Audit
 
@@ -46,7 +46,7 @@ bkit ships three folders. Path inside a folder = path it lands at in the repo.
 **Anchor Standards:** record bkit version and date read. Newer version → `Standards` step reads what changed.
 
 - bkit, at the installed version: `.bkit/templates.md` (Contract, placeholders, Context-fetch blocks), `.bkit/README.md` § File ownership and § Ongoing CLI, `.bkit/install.md`; release notes since pinned version.
-- Config reference of each tool behind an adopted template (e.g. Husky, lint-staged, Vale, Prettier, Renovate, Dependabot, GitHub Actions workflow syntax, direnv); record version read.
+- Config reference of each tool behind an adopted template (e.g. Husky, lint-staged, Vale, Prettier, Renovate, Dependabot, Trivy, GitHub Actions workflow syntax, direnv); record version read.
 
 ### Scope
 

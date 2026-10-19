@@ -6,10 +6,11 @@ import * as path from "node:path";
 import { dedupeById } from "../before/index.js";
 import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, } from "../before/env.js";
 import { getPkgRoot } from "../../shared/package-roots.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { detectOpencodeYmlProviderDrift } from "../../install/modules/opencode.js";
 import { detectManagedDuplicate, detectManagedStale } from "./managed.js";
 import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectGhMcpToken } from "./auth.js";
-import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildTrackerSetupAdvisory, detectActionsWritePermissions, detectGithubProjectFieldIdFormat, detectMainBranchProtection, readConsumerIssueTracker, } from "./github.js";
+import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildTrackerSetupAdvisory, detectActionsWritePermissions, detectGithubProjectFieldIdFormat, detectMainBranchProtection, } from "./github.js";
 import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
 import { detectBkitCloudYmlAlwaysTrueGate, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
 import { dropTipSilencedAdvisories, setupTipsChecklistLines, setupTipsMarkdownLines, } from "../tips/index.js";
@@ -389,7 +390,7 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     // writes, so Phase 1 cannot see it on first install.
     // Pass the consumer's tracker so the mcp-env prose omits BKIT_LINEAR_API_KEY on github/none
     // repos.
-    const mcpEnvTracker = readConsumerIssueTracker(cwd);
+    const mcpEnvTracker = readBkitConfig(cwd).issueTracker;
     const missingDotenv = detectMissingDotenv(cwd, mcpEnvTracker);
     if (missingDotenv)
         phase3.push(missingDotenv);

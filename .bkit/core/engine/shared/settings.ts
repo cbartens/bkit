@@ -4,10 +4,15 @@
 // a check name, or an app folder.
 
 import {
+  DEFAULT_CLOUD_AGENTS,
   DEFAULT_ISSUE_TRACKER,
+  parseCloudAgents,
   parseIssueTracker,
+  type CloudAgents,
   type IssueTracker,
 } from "../install/manifest.js";
+import { isOpencodeProvider } from "../render/models.js";
+import type { OpencodeProvider } from "./egress.js";
 import { readPackageJson } from "./package-json.js";
 
 export interface BkitConfig {
@@ -25,6 +30,18 @@ export interface BkitConfig {
   githubProject: Record<string, unknown> | false | null;
   /** CI lanes whose `skipped` conclusion refuses a ship merge; empty = the capstone's green decides. */
   shipGateRequiredLanes: string[];
+  /** The opencode provider recorded on install; null = absent or not a supported provider. */
+  opencodeProvider: OpencodeProvider | null;
+  /** Every installed opencode provider, supported ones only; empty = none recorded. */
+  opencodeProviders: OpencodeProvider[];
+  /** The post-CI cloud-agent variant; `none` is both the default and the explicit opt-out. */
+  cloudAgents: CloudAgents;
+  /** `bkit.depUpdater` is `"none"`: silences the missing-dependency-updater advisory. */
+  depUpdaterOptOut: boolean;
+  /** `bkit.issueTracker` is present with any value, so `none` is a choice, not an undecided install. */
+  issueTrackerExplicit: boolean;
+  /** `bkit.cloudAgents` is present with any value, so `none` is a choice, not an undecided install. */
+  cloudAgentsExplicit: boolean;
 }
 
 export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
@@ -35,6 +52,12 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   issueTracker: DEFAULT_ISSUE_TRACKER,
   githubProject: null,
   shipGateRequiredLanes: [],
+  opencodeProvider: null,
+  opencodeProviders: [],
+  cloudAgents: DEFAULT_CLOUD_AGENTS,
+  depUpdaterOptOut: false,
+  issueTrackerExplicit: false,
+  cloudAgentsExplicit: false,
 };
 
 const nonEmptyString = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
@@ -51,6 +74,8 @@ export function readBkitConfig(root: string): BkitConfig {
   const copy = worktree.copy;
   const project = bkit.githubProject;
   const lanes = bkit.shipGateRequiredLanes;
+  const provider = bkit.opencodeProvider;
+  const providers = bkit.opencodeProviders;
   return {
     ciWorkflow: nonEmptyString(bkit.ciWorkflow) ? bkit.ciWorkflow : CONFIG_DEFAULTS.ciWorkflow,
     capstoneJob: nonEmptyString(bkit.capstoneJob) ? bkit.capstoneJob : CONFIG_DEFAULTS.capstoneJob,
@@ -68,5 +93,16 @@ export function readBkitConfig(root: string): BkitConfig {
           ? (project as Record<string, unknown>)
           : null,
     shipGateRequiredLanes: Array.isArray(lanes) ? lanes.filter(nonEmptyString) : [],
+    opencodeProvider:
+      typeof provider === "string" && isOpencodeProvider(provider) ? provider : null,
+    opencodeProviders: Array.isArray(providers)
+      ? providers.filter(
+          (v): v is OpencodeProvider => typeof v === "string" && isOpencodeProvider(v),
+        )
+      : [],
+    cloudAgents: parseCloudAgents(bkit.cloudAgents) ?? CONFIG_DEFAULTS.cloudAgents,
+    depUpdaterOptOut: bkit.depUpdater === "none",
+    issueTrackerExplicit: bkit.issueTracker !== undefined,
+    cloudAgentsExplicit: bkit.cloudAgents !== undefined,
   };
 }

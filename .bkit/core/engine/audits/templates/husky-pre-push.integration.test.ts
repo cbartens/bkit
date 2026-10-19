@@ -217,3 +217,136 @@ describe(".husky/pre-push tmp/ prune", () => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// graphify register gate — shipped snippet run for real. Stub
+// `scripts/graphify/bkit-graphify.sh` logs its args and fails `check-at` on request; stub
+// `graphify` on PATH = installed. PATH cut to system dirs so a real graphify cannot answer.
+// ---------------------------------------------------------------------------
+
+describe("graphify register pre-push gate", () => {
+  const REPO = process.cwd();
+  const SNIPPET = ".bkit/templates/scripts/graphify/bkit-graph-pre-push.sh";
+  const SHA = "b".repeat(40);
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-graph-")));
+    fs.mkdirSync(path.join(tmp, "bin"));
+    fs.mkdirSync(path.join(tmp, "docs"));
+    fs.writeFileSync(path.join(tmp, "docs", "capabilities.md"), "# Capabilities\n");
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  /** Adopt a stub wrapper; `check-at` exits `checkStatus`, `spec` prints a pin. */
+  const adopt = (checkStatus: number) => {
+    fs.mkdirSync(path.join(tmp, "scripts", "graphify"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, "scripts", "graphify", "bkit-graphify.sh"),
+      `echo "$*" >> "${tmp}/graph.log"\n` +
+        `[ "$1" = spec ] && { echo 'graphifyy[sql]==9.9.9'; exit 0; }\n` +
+        `exit ${checkStatus}\n`,
+    );
+  };
+  const installGraphify = () =>
+    fs.writeFileSync(path.join(tmp, "bin", "graphify"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+
+  const run = (env: Record<string, string>) => {
+    const result = spawnSync("sh", [path.join(REPO, SNIPPET)], {
+      cwd: tmp,
+      encoding: "utf-8",
+      timeout: 10_000,
+      env: { PATH: `${path.join(tmp, "bin")}:/usr/bin:/bin`, HOME: tmp, ...env },
+    });
+    const log = path.join(tmp, "graph.log");
+    return {
+      status: result.status,
+      stderr: result.stderr,
+      calls: fs.existsSync(log) ? fs.readFileSync(log, "utf-8") : "",
+    };
+  };
+
+  it("push to dev, register stale → blocked, check-at ran on the pushed commit", () => {
+    adopt(1);
+    installGraphify();
+    const r = run({ PUSH_DEV_SHA: SHA });
+    expect(r.status).toBe(1);
+    expect(r.calls).toContain(`check-at ${SHA}`);
+    expect(r.stderr).toContain(
+      "BLOCKED: docs/capabilities.md is not what the pushed commit builds",
+    );
+  });
+
+  it("push to dev, register current → push goes on", () => {
+    adopt(0);
+    installGraphify();
+    const r = run({ PUSH_DEV_SHA: SHA });
+    expect(r.status).toBe(0);
+    expect(r.calls).toContain(`check-at ${SHA}`);
+  });
+
+  it("push to dev, graphify not installed → loud NOT-checked warning, push goes on", () => {
+    adopt(1);
+    const r = run({ PUSH_DEV_SHA: SHA });
+    expect(r.status).toBe(0);
+    expect(r.calls).not.toContain("check-at");
+    expect(r.stderr).toContain("docs/capabilities.md was NOT checked");
+    expect(r.stderr).toContain("uv tool install 'graphifyy[sql]==9.9.9'");
+  });
+
+  it("push to another branch → no check, push goes on", () => {
+    adopt(1);
+    installGraphify();
+    const r = run({ PUSH_DEV_SHA: "" });
+    expect(r.status).toBe(0);
+    expect(r.calls).toBe("");
+  });
+
+  it("revert push to dev → no check, push goes on", () => {
+    adopt(1);
+    installGraphify();
+    const r = run({ PUSH_DEV_SHA: SHA, IS_REVERT: "1" });
+    expect(r.status).toBe(0);
+    expect(r.calls).toBe("");
+  });
+
+  it("graphify not adopted → nothing runs", () => {
+    installGraphify();
+    const r = run({ PUSH_DEV_SHA: SHA });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toBe("");
+  });
+
+  // bkit's own hook carries the snippet: git's stdin ref reaches it as PUSH_DEV_SHA only for
+  // a push to dev. Stub pnpm passes every gate, reports no skip-CI token.
+  const runRepoHook = (stdin: string) => {
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      `#!/bin/sh\ncase "$*" in *skip-token*) exit 1 ;; esac\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    return spawnSync("sh", [path.join(REPO, ".husky/pre-push")], {
+      cwd: tmp,
+      input: stdin,
+      encoding: "utf-8",
+      timeout: 20_000,
+      env: { PATH: `${path.join(tmp, "bin")}:/usr/bin:/bin`, HOME: tmp },
+    });
+  };
+
+  it(".husky/pre-push: push to dev → the register gate checks the pushed commit and blocks", () => {
+    adopt(1);
+    installGraphify();
+    const r = runRepoHook(`refs/heads/dev ${SHA} refs/heads/dev ${"0".repeat(40)}\n`);
+    expect(r.status).toBe(1);
+    expect(fs.readFileSync(path.join(tmp, "graph.log"), "utf-8")).toContain(`check-at ${SHA}`);
+  });
+
+  it(".husky/pre-push: push to a feature branch → the register gate does not run", () => {
+    adopt(1);
+    installGraphify();
+    const r = runRepoHook(`refs/heads/x ${SHA} refs/heads/feature ${"0".repeat(40)}\n`);
+    expect(r.status).toBe(0);
+    expect(fs.existsSync(path.join(tmp, "graph.log"))).toBe(false);
+  });
+});

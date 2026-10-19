@@ -11,12 +11,15 @@ import {
   hashFile,
   mergeCanonicalHashes,
 } from "../version-file.js";
+import { extractManagedBlock, stripManagedBlock } from "../managed-block.js";
 import type { TokenMap } from "../placeholders.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
+import { writeNetworkAllowlist } from "../network-allowlist.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
+import { readJsonFile } from "../../shared/json.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
 import {
-  getPkgRoot,
   getCoreRoot,
   getSharedRoot,
   getBkitDocsRoot,
@@ -71,25 +74,46 @@ const ORPHAN_PRUNE_DIRS = [
   ".claude/commands",
   ".cursor/agents",
   ".cursor/commands",
+  ".opencode/agents",
+  ".opencode/commands",
+  ".codex/agents",
+  ".agents/skills",
+  ".agents/plugins/bkit/agents",
+  ".agents/plugins/bkit/skills",
 ] as const;
 
+export interface RemoveOrphansOptions {
+  /** Entry-name suffix an orphan must carry. Default `.md`; `""` matches every name. */
+  extension?: string;
+  /** Orphans are whole folders (skill dirs) removed recursively; `extension` is ignored. */
+  wholeFolders?: boolean;
+}
+
+/**
+ * Removes entries of `destDir` that start with `prefix` and are absent from `sourceNames`
+ * (entry names as they appear in `destDir`). Returns the removed names; with `dryRun` it
+ * reports them without deleting. Throws for any `destDir` outside `ORPHAN_PRUNE_DIRS`.
+ */
 export function removeOrphans(
   destDir: string,
-  sourceFiles: Set<string>,
+  sourceNames: Set<string>,
   dryRun: boolean,
   prefix?: string,
+  options: RemoveOrphansOptions = {},
 ): string[] {
   const resolved = path.resolve(destDir);
   if (!ORPHAN_PRUNE_DIRS.some((d) => path.resolve(d) === resolved)) {
     throw new Error(`removeOrphans: refusing orphan removal outside allowlist: ${destDir}`);
   }
   if (!fs.existsSync(destDir)) return [];
+  const { extension = ".md", wholeFolders = false } = options;
   const removed: string[] = [];
   for (const f of fs.readdirSync(destDir)) {
-    if (!f.endsWith(".md")) continue;
+    if (!wholeFolders && !f.endsWith(extension)) continue;
     if (prefix && !f.startsWith(prefix)) continue;
-    if (!sourceFiles.has(f)) {
-      if (!dryRun) fs.rmSync(path.join(destDir, f));
+    if (!sourceNames.has(f)) {
+      const target = path.join(destDir, f);
+      if (!dryRun) fs.rmSync(target, { recursive: wholeFolders, force: wholeFolders });
       removed.push(f);
     }
   }
@@ -117,13 +141,7 @@ interface CoreTemplateFile {
 }
 
 /** The markered-text `.agents/*.md` blocks core owns. */
-const CORE_AGENT_FILES = [
-  "context.md",
-  "docs.md",
-  "rules.md",
-  "shortcuts.md",
-  "skills.md",
-] as const;
+const CORE_AGENT_FILES = ["context.md", "docs.md", "rules.md", "skills.md"] as const;
 
 // The two shared-root files core writes: stored in `shared/`, owned by the core
 // manifest, written as html-comment managed blocks.
@@ -228,16 +246,18 @@ function runCoreTemplates(
 // mirrored into the consumer's `.bkit/` on every install so a consumer can read them
 // in-repo without spelunking node_modules. Force-overwritten (Tier 1) — bkit owns
 // them, so a consumer edit is replaced. Source of truth is the package's own
-// `.bkit/core/.bkit/<name>`. (`advisories.md` is a regenerated runtime artifact,
-// `wording.md` is repo-only tooling and `friction.md` is a consumer-owned seed —
-// none belongs here. `LICENSE.md` is the MIT notice that travels with the files bkit
-// writes: MIT requires the copyright and permission notice in every copy.)
+// `.bkit/core/.bkit/<name>`. (`advisories.md` is a regenerated runtime artifact and
+// `wording.md` is repo-only tooling — neither belongs here. `LICENSE.md` is the MIT
+// notice that travels with the files bkit writes: MIT requires the copyright and
+// permission notice in every copy.)
 export const BKIT_CANONICAL_DOCS = [
   "cloud.md",
   "comparison.md",
   "install.md",
   "jsonl.md",
   "LICENSE.md",
+  "lite.md",
+  "pipeline.md",
   "providers.md",
   "prompts.md",
   "templates.md",
@@ -278,6 +298,44 @@ export function runBkitDocs(
       console.log(`${logPrefix} ${tag}core: ${dstPath}`);
     }
   }
+  migrateShortcutsToLite(dryRun, ws, logPrefix);
+}
+
+// Migration (5.1.0 – 5.2.4 installs, `docs/migrations.md`): the lite workflows lived at
+// `.agents/shortcuts.md`. The consumer's own lines below `bkit:end` (minus the seeded
+// heading) move under `.bkit/lite.md`'s consumer section; the old file is deleted. Runs
+// after the docs loop, so `.bkit/lite.md` is already written. The delete is recorded in
+// ws (as orphan-mirror deletes are) so `bkit check` fails until upgrade runs.
+const RETIRED_SHORTCUTS = path.join(".agents", "shortcuts.md");
+const RETIRED_SHORTCUTS_HEADING = "## Project Shortcuts";
+
+export function migrateShortcutsToLite(dryRun: boolean, ws: WriteSet, logPrefix: string): void {
+  if (!fs.existsSync(RETIRED_SHORTCUTS)) return;
+  if (!fs.existsSync(path.join(getBkitDocsRoot(), "lite.md"))) return;
+  const tag = dryRun ? "[dry-run] " : "";
+  const dst = path.join(".bkit", "lite.md");
+  const old = fs.readFileSync(RETIRED_SHORTCUTS, "utf-8");
+  if (extractManagedBlock(old, "html-comment") === null) {
+    console.warn(
+      `${logPrefix} ${RETIRED_SHORTCUTS} has no single bkit managed block — left in place. Move your own lines into ${dst} below \`<!-- bkit:end -->\`, then delete it.`,
+    );
+    return;
+  }
+  const own = stripManagedBlock(old, "html-comment")
+    .split("\n")
+    .filter((line) => line.trim() !== RETIRED_SHORTCUTS_HEADING)
+    .join("\n")
+    .trim();
+  if (own.length > 0) {
+    if (!dryRun) {
+      const current = fs.readFileSync(dst, "utf-8");
+      fs.writeFileSync(dst, `${current.replace(/\n*$/, "\n\n")}${own}\n`, "utf-8");
+    }
+    ws.writes.push({ path: dst, action: "update" });
+  }
+  if (!dryRun) fs.rmSync(RETIRED_SHORTCUTS);
+  ws.writes.push({ path: RETIRED_SHORTCUTS, action: "write" });
+  console.log(`${logPrefix} ${tag}core: moved ${RETIRED_SHORTCUTS} → ${dst}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -291,29 +349,6 @@ export function runBkitDocs(
 // (installFile does not touch ws), matching the install path exactly. Each returns
 // the consumer-relative dest paths it wrote (for the upgrade summary).
 // ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Managed-version stamping. The marker shape (stampManagedVersion + regexes) lives
-// in install/version-file.ts, shared by the renderer and the `bkit check` detector. Here we
-// only resolve WHICH version to stamp: ctx.version (set by install/upgrade) with a
-// package-root fallback.
-// ---------------------------------------------------------------------------
-
-/**
- * Best-effort read of the installing bkit version from the package root's
- * package.json. Mirrors getInstallingVersion in commands/install/install.ts; duplicated here
- * (not imported) to avoid a modules → install dependency cycle. Returns "0.0.0"
- * when unreadable — the same non-fatal fallback the install side uses.
- */
-export function readInstallingVersion(): string {
-  try {
-    const pkgPath = path.join(getPkgRoot(), "package.json");
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as { version?: string };
-    return pkg.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}
 
 /** Record a host mirror would-write so `bkit check` exits 1 on content drift. */
 export function trackMirrorWrite(ctx: ModuleContext, relPath: string, written: string[]): void {
@@ -368,17 +403,12 @@ const PNPM_NOT_A_SCRIPT = new Set([
  * package.json yields none.
  */
 export function detectGateAdvisories(cwd: string): PreflightFinding[] {
-  let declared: Record<string, string>;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8")) as {
-      scripts?: Record<string, string>;
-    };
-    declared = { ...BKIT_GATE_SCRIPTS, ...pkg.scripts };
-  } catch {
-    // Absent or malformed package.json — preflight's no-package-json /
-    // malformed-package-json blockers already report it.
-    return [];
-  }
+  const read = readJsonFile(path.join(cwd, "package.json"));
+  // Absent or malformed package.json — preflight's no-package-json /
+  // malformed-package-json blockers already report it.
+  if (!read.ok || read.value === null) return [];
+  const pkg = read.value as { scripts?: Record<string, string> };
+  const declared: Record<string, string> = { ...BKIT_GATE_SCRIPTS, ...pkg.scripts };
   const findings: PreflightFinding[] = [];
 
   // Every script a seeded gate default chains MUST exist, or the gate dies on the first
@@ -454,16 +484,11 @@ export function isNoopScript(value: string): boolean {
  * every branch. Read-only; an absent or unparseable package.json yields none.
  */
 export function detectNoopGates(cwd: string): PreflightFinding[] {
-  let declared: Record<string, unknown>;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8")) as {
-      scripts?: Record<string, unknown>;
-    };
-    declared = pkg.scripts ?? {};
-  } catch {
-    // Absent or malformed package.json — preflight's blockers already report it.
-    return [];
-  }
+  const read = readJsonFile(path.join(cwd, "package.json"));
+  // Absent or malformed package.json — preflight's blockers already report it.
+  if (!read.ok || read.value === null) return [];
+  const pkg = read.value as { scripts?: Record<string, unknown> };
+  const declared: Record<string, unknown> = pkg.scripts ?? {};
   const noop = Object.entries(declared)
     .filter(([name, value]) => name.startsWith("bkit:gate:") && typeof value === "string")
     .filter(([, value]) => isNoopScript(value as string))
@@ -485,15 +510,7 @@ export function runCoreModule(ctx: ModuleContext): void {
   const { dryRun, ws, advisories, logPrefix, postDispatch } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
   const cwd = process.cwd();
-  const PKG_ROOT = getPkgRoot();
-  const PKG_PACKAGE_JSON = path.join(PKG_ROOT, "package.json");
-
-  if (!fs.existsSync(PKG_PACKAGE_JSON)) {
-    console.error(`${logPrefix} package.json not found at ${PKG_PACKAGE_JSON} — package corrupt?`);
-    process.exit(1);
-  }
-
-  const pkgVersion = JSON.parse(fs.readFileSync(PKG_PACKAGE_JSON, "utf-8")).version as string;
+  const pkgVersion = readInstallingVersion();
 
   // Capture first-install signal NOW (before any writes) — used for the post-install banner.
   // The .bkit/version write happens in postDispatch, so a mid-install crash in a later
@@ -507,7 +524,7 @@ export function runCoreModule(ctx: ModuleContext): void {
   runCoreTemplates(dryRun, ctx.tokens, ws, logPrefix);
 
   // 3b. bkit canonical docs pass — mirror the package's reference docs
-  // (cloud/IDEs/prompts/trackers/workflows/README/install/comparison) into the
+  // (cloud/IDEs/prompts/trackers/workflows/README/install/comparison/pipeline) into the
   // consumer's `.bkit/` so they are readable in-repo. Force-overwrite (Tier 1).
   console.log(`${logPrefix} ${tag}Running bkit docs pass`);
   runBkitDocs(dryRun, ctx.tokens, ws, logPrefix);
@@ -549,6 +566,10 @@ export function runCoreModule(ctx: ModuleContext): void {
       action: `Browse-only — bkit reads its payload from the package regardless. To add the view by hand on POSIX: ln -s ../node_modules/@cbartens/bkit/${rel} ${rel}`,
     });
   }
+
+  // 3b4. `.bkit/allowlist.json` — the network allowlist every host's guardrails hook
+  // reads (writeNetworkAllowlist), plus the move off the retired `.cursor/` copy.
+  writeNetworkAllowlist(cwd, dryRun, ws, logPrefix);
 
   // 3c. The bkit:gate:* / bkit:deps:* package.json scripts (add-if-missing). The
   // advisories read the result.

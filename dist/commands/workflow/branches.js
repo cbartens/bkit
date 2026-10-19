@@ -14,7 +14,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { gitEnv } from "../../ledgers/telemetry.js";
-import { bodySkipToken, CommandError, EXIT, git, parseJson, repoRoot, runGit, SKIP_CI_TOKEN, } from "../lib.js";
+import { bodySkipToken, CommandError, DEV, EXIT, git, isSharedBranch, parseJson, repoRoot, runGit, SKIP_CI_TOKEN, } from "../lib.js";
 import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { commitBookkeeping } from "./ledgers.js";
@@ -27,9 +27,7 @@ import { removeWorktree } from "./worktrees.js";
 import { COULD_NOT_RUN_EXIT_CODES, LOCKFILE_REGENERATE, installCommand, } from "../../shared/package-manager.js";
 import { str } from "./status.js";
 const REMOTE = "origin";
-const DEV = "dev";
 const UPSTREAM = `${REMOTE}/${DEV}`;
-const SHARED_BRANCHES = new Set([DEV, "main"]);
 /** Exit codes, distinct across verbs so a code means one thing anywhere in this noun. */
 export const EXIT_REFUSED = 3;
 export const EXIT_NO_REBASE = 4;
@@ -477,7 +475,7 @@ export function pushBranch(cwd, o, log) {
             return notPushed(EXIT_SKIP_CI, { skipped: "skip-ci" });
         }
     }
-    const shared = SHARED_BRANCHES.has(branch);
+    const shared = isSharedBranch(branch);
     if (mode === "abort" && !shared) {
         const pr = openPrFlag === undefined
             ? openPrNumber(cwd, branch)
@@ -598,7 +596,7 @@ function syncVerb(ctx) {
             ctx.log("no branch checked out (detached HEAD) — cannot merge dev's docs");
             return EXIT_DETACHED;
         }
-        if (!SHARED_BRANCHES.has(branch) && docsBehind > 0) {
+        if (!isSharedBranch(branch) && docsBehind > 0) {
             ctx.log(`docs/ is ${docsBehind} commit(s) behind ${UPSTREAM} — merging it in`);
             if (!quietGit(top, ["merge", "--no-edit", UPSTREAM]).ok) {
                 const outcome = resolveDocsMerge(top);

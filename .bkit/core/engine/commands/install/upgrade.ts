@@ -39,26 +39,25 @@ import {
   getCoreRoot,
   getSharedRoot,
   getBkitDocsRoot,
-  getPkgRoot,
 } from "../../shared/package-roots.js";
-import type { ModuleFlag, UpgradeFlags } from "../../cli.js";
+import { readDependencySpec, readInstallingVersion } from "../../shared/package-json.js";
+import type { UpgradeFlags } from "../../cli.js";
 import {
-  getInstallingVersion,
   requireOpencodeProvider,
   detectOpencodeProviders,
   runUpgradeAdvisories,
 } from "./install.js";
 import { setLogPrefix } from "../../shared/log-prefix.js";
 import { BKIT_PACKAGE, lookupLatestPublished } from "../../shared/bkit-latest.js";
+import { PACKAGE_RUNNER } from "../../shared/package-manager.js";
 import {
   getInstallManifest,
   getModuleManifest,
   type ModuleName,
   type IssueTracker,
-  DEFAULT_ISSUE_TRACKER,
-  parseIssueTracker,
 } from "../../install/manifest.js";
 import { OPTIN_MODULES } from "../../install/manifest.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
@@ -67,7 +66,6 @@ import {
   CURSOR_CLOUD_RELPATH,
   writeClaudeCloudDoc,
   writeCursorCloudDoc,
-  writeNetworkAllowlistArtifact,
   writeCursorCliPermissionsArtifact,
 } from "../../install/cloud-env.js";
 import { syncTemplateCopies, formatTemplateChanges } from "../../install/template-copies.js";
@@ -108,18 +106,36 @@ export type SelfBumpPlan =
   | { kind: "invalid"; message: string }
   /** Already at the target → caller falls through to a normal in-place re-render. */
   | { kind: "noop"; target: string }
-  /** Install `target`, then re-exec the new binary to re-render + re-pin. */
-  | { kind: "bump"; target: string };
+  /**
+   * Install `target`, then re-exec the new binary to re-render + re-pin. `fromSpec` names the
+   * non-registry spec being replaced when the installed version already equals `target`.
+   */
+  | { kind: "bump"; target: string; fromSpec?: string };
+
+/**
+ * True when a `package.json` dependency spec resolves from the registry: a version, range or
+ * dist-tag. `file:` / `link:` / `workspace:` / `npm:` alias / git / URL / path specs are not.
+ */
+export function isRegistrySpec(spec: string): boolean {
+  const s = spec.trim();
+  return !/[:/\\]/.test(s) && !s.startsWith(".");
+}
 
 /**
  * Resolve the self-bump target and decide the action. `resolveLatest` is only
  * invoked for `--latest` (it shells out to the registry in production); injected
  * so tests stay offline. A leading `v` is tolerated on either source.
+ *
+ * `installedSpec` is the consumer `package.json` spec for @cbartens/bkit (`null` when
+ * undeclared). A matching version string is a no-op only when that spec resolves from the
+ * registry: a `file:` tarball or other non-registry install at the same version still bumps,
+ * so `pnpm add` replaces it with the published package.
  */
 export function planSelfBump(
   installed: string,
   flags: { toVersion: string | null; latest: boolean },
   resolveLatest: () => string,
+  installedSpec: string | null = null,
 ): SelfBumpPlan {
   let target: string;
   if (flags.toVersion !== null) {
@@ -141,8 +157,9 @@ export function planSelfBump(
       };
     }
   }
-  if (target === installed.trim().replace(/^v/, "")) return { kind: "noop", target };
-  return { kind: "bump", target };
+  if (target !== installed.trim().replace(/^v/, "")) return { kind: "bump", target };
+  if (installedSpec === null || isRegistrySpec(installedSpec)) return { kind: "noop", target };
+  return { kind: "bump", target, fromSpec: installedSpec };
 }
 
 export const LOG_PREFIX = "[bkit-upgrade]";
@@ -482,7 +499,7 @@ export function updateCanonicalHashesAfterUpgrade(
 
   const fresh: Record<string, string> = {};
   for (const relPath of seedablePaths) {
-    // Exclude .agents/ internal files (docs.md, friction.md, rules.md, shortcuts.md,
+    // Exclude .agents/ internal files (docs.md, rules.md,
     // skills.md, .env.example etc.) from canonicalHashes — they are not consumer-facing files
     // whose hashes bkit uses for drift detection. Mirrors the same filter applied
     // in the install path (install/modules/index.ts postDispatch). Template copies carry no
@@ -561,13 +578,14 @@ function resolveLatestPublishedVersion(cwd: string): string {
  * caller falls through to a normal in-place re-render.
  */
 export async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boolean> {
-  const installed = getInstallingVersion();
+  const installed = readInstallingVersion();
   // Resolve the latest first (only when asked), then feed planSelfBump a constant.
   const latestVersion = flags.latest ? resolveLatestPublishedVersion(cwd) : "";
   const resolvedPlan = planSelfBump(
     installed,
     { toVersion: flags.toVersion, latest: flags.latest },
     () => latestVersion,
+    readDependencySpec(cwd, BKIT_PACKAGE),
   );
 
   if (resolvedPlan.kind === "invalid") {
@@ -596,10 +614,11 @@ export async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boo
     ...(inWorkspaceRoot ? ["-w"] : []),
     `@cbartens/bkit@${resolvedPlan.target}`,
   ];
-  const addCmd = `pnpm ${addArgs.join(" ")}`;
+  const addCmd = [PACKAGE_RUNNER, ...addArgs].join(" ");
+  const from = resolvedPlan.fromSpec ? `${installed} (${resolvedPlan.fromSpec})` : installed;
   if (flags.dryRun) {
     console.log(
-      `${LOG_PREFIX} [dry-run] would bump @cbartens/bkit ${installed} -> ${resolvedPlan.target} ` +
+      `${LOG_PREFIX} [dry-run] would bump @cbartens/bkit ${from} -> ${resolvedPlan.target} ` +
         `(${addCmd}), then re-render + re-pin via the ` +
         `freshly-installed binary. No changes made.`,
     );
@@ -607,8 +626,8 @@ export async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boo
   }
 
   const { spawnSync } = await import("node:child_process");
-  console.log(`${LOG_PREFIX} bumping @cbartens/bkit ${installed} -> ${resolvedPlan.target} ...`);
-  const add = spawnSync("pnpm", addArgs, {
+  console.log(`${LOG_PREFIX} bumping @cbartens/bkit ${from} -> ${resolvedPlan.target} ...`);
+  const add = spawnSync(PACKAGE_RUNNER, addArgs, {
     cwd,
     stdio: "inherit",
   });
@@ -624,7 +643,7 @@ export async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boo
   console.log(`${LOG_PREFIX} re-rendering with @cbartens/bkit@${resolvedPlan.target} ...`);
   const reArgs = ["exec", "bkit", "upgrade"];
   if (flags.nonInteractive) reArgs.push("--auto-apply");
-  const re = spawnSync("pnpm", reArgs, { cwd, stdio: "inherit" });
+  const re = spawnSync(PACKAGE_RUNNER, reArgs, { cwd, stdio: "inherit" });
   process.exit(re.status ?? 1);
 }
 
@@ -640,6 +659,9 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
     const handled = await runSelfBump(upgradeFlags, process.cwd());
     if (handled) return;
   }
+
+  // Read before any write: a damaged bkit package stops the run with nothing changed.
+  const installingVersion = readInstallingVersion();
 
   console.log(
     `${LOG_PREFIX} Running upgrade${upgradeFlags.dryRun ? " (dry-run)" : ""}${upgradeFlags.nonInteractive ? " (non-interactive)" : ""}`,
@@ -686,16 +708,7 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
 
   // Resolve the consumer's tracker so upgrade renders tracker-conditional files
   // (opencode.json, the mcp.json files) the same way install does.
-  let upgradeTracker: IssueTracker = DEFAULT_ISSUE_TRACKER;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8")) as {
-      bkit?: { issueTracker?: unknown };
-    };
-    const stored = parseIssueTracker(pkg.bkit?.issueTracker);
-    if (stored !== null) upgradeTracker = stored;
-  } catch {
-    // package.json absent/unparseable — default tracker
-  }
+  const upgradeTracker: IssueTracker = readBkitConfig(process.cwd()).issueTracker;
 
   // opencode.json is provider/tracker-templated on install (renderOpencodeJson resolves the
   // `@@OPENCODE_*@@` sentinels). Upgrade renders it the same way, with the installed
@@ -901,7 +914,7 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
     cloudVariant: null,
     // Re-stamp every rendered agent + command at the version we are upgrading TO,
     // so a clean upgrade refreshes the managed-version marker and `bkit check` stays green.
-    version: getInstallingVersion(),
+    version: installingVersion,
     // The detected host set — read by the Antigravity module for the Codex-overlap advisory.
     installedModules: renderModules,
   };
@@ -960,22 +973,17 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
   }
 
   // Network allowlist + MCP allows — OpenCode from renderOpencodeJson; Claude enrich
-  // below; Cursor `.cursor/allowlist.json` + `.cursor/cli.json` only when cursor
-  // module installed. Written artifacts get their canonicalHashes refreshed below.
+  // below; `.bkit/allowlist.json` in renderManagedOutputs above; Cursor
+  // `.cursor/cli.json` only when cursor module installed. Written artifacts get their
+  // canonicalHashes refreshed below.
   const artifactWrites: string[] = [];
   {
     const cwd = process.cwd();
     if (renderModules.has("cursor")) {
-      for (const art of [
-        writeNetworkAllowlistArtifact(cwd, upgradeFlags.dryRun),
-        writeCursorCliPermissionsArtifact(cwd, upgradeFlags.dryRun),
-      ]) {
-        if (art.wrote) {
-          artifactWrites.push(art.path);
-          console.log(
-            `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${art.path}`,
-          );
-        }
+      const art = writeCursorCliPermissionsArtifact(cwd, upgradeFlags.dryRun);
+      if (art.wrote) {
+        artifactWrites.push(art.path);
+        console.log(`${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${art.path}`);
       }
     }
     if (renderModules.has("claude") && fs.existsSync(path.join(cwd, ".claude", "settings.json"))) {
@@ -1002,8 +1010,6 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
   // exit), so feed those writes into canonicalHashes — keeping install/upgrade `.bkit/version`
   // parity.
   if (!upgradeFlags.dryRun) {
-    const pkgVersion = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8"))
-      .version as string;
     const renderedDocPaths = renderWs.writes.map((w) =>
       path.relative(
         process.cwd(),
@@ -1025,7 +1031,7 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
       {
         dryRun: false,
         cwd: process.cwd(),
-        pinnedVersion: pkgVersion,
+        pinnedVersion: installingVersion,
         claudeAllowDerived: upgradeClaudeAllowDerived,
       },
     );

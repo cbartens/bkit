@@ -5,6 +5,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseJson } from "../../shared/json.js";
 import type { CloudAgents } from "../manifest.js";
 import type { ModuleContext } from "./index.js";
 
@@ -26,7 +27,9 @@ function setConsumerBkitField(field: string, value: string, dryRun: boolean): vo
   if (!fs.existsSync(pkgPath)) return;
   try {
     const raw = fs.readFileSync(pkgPath, "utf-8");
-    const pkg = JSON.parse(raw) as Record<string, unknown>;
+    const parsed = parseJson(raw);
+    if (!parsed.ok) return;
+    const pkg = parsed.value as Record<string, unknown>;
     const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
     if (bkit[field] === value) return; // already set — avoid a no-op rewrite
     bkit[field] = value;
@@ -101,7 +104,7 @@ export function runCloudModule(ctx: ModuleContext): void {
         "  - Adopt `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` as `.claude/hooks/bkit-cloud-bootstrap.sh` and edit it freely — the baseline runs `pnpm install` / `vale sync` and the gh login on each cloud session; add your own repo-specific steps (Supabase start, turbo prebuild, etc. — examples inlined). The `.claude/settings.json` SessionStart entry runs it only when present (`test -f … || true`).\n\n" +
         "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
         "  - Name: the repo name (e.g. `acme-web`) — one environment per repo, since secrets are per-repo.\n" +
-        "  - Setup script: paste from bkit's `cloud.md` § Setup script (installs vale + gh + corepack-pinned pnpm — exact versions live in cloud.md, not duplicated here).\n" +
+        "  - Setup script: paste from bkit's `cloud.md` § Setup script (installs Node 24 + vale + gh + jq + corepack-pinned pnpm — exact versions live in cloud.md, not duplicated here).\n" +
         "  - Environment variables: `BKIT_GH_TOKEN` (fine-grained for one owner, classic across owners — GitHub MCP).\n" +
         "  - Tracker env vars (GitHub): `BKIT_GH_TOKEN` above is the only tracker credential — the GitHub MCP server sends it on every call, and the bootstrap hook signs `gh` in with it.\n" +
         "  - Network access: `Trusted` (default). One environment per repo (secrets differ per repo); the setup script + variable *names* are identical across repos, only the values change. See cloud.md § Sharing across repos → Claude.",

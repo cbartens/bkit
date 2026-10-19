@@ -69,6 +69,38 @@ describe("untrusted-fence", () => {
     ".agents/rules.md",
   ].flatMap(filesUnder);
 
+  /** Surfaces carrying some instruction lines but not the whole fence verbatim and in order. */
+  function partialFenceCopies(): string[] {
+    const partial: string[] = [];
+    for (const rel of OTHER_SURFACES) {
+      const content = read(rel);
+      const counts = FENCE_INSTRUCTION_LINES.map((line) => countOf(content, line));
+      const whole = [...FENCE_INSTRUCTION_LINES, FENCE_OPEN].join("\n");
+      if (counts.every((c) => c === 0)) continue;
+      if (new Set(counts).size !== 1) {
+        partial.push(`${rel}: fence lines out of step (${counts.join("/")})`);
+      } else if (countOf(content, whole) !== counts[0]) {
+        partial.push(`${rel}: fence reordered or split`);
+      }
+    }
+    return partial;
+  }
+
+  /** Lines that print their own UNTRUSTED marker banner. */
+  function ownFenceMarkers(text: string): string[] {
+    return text.match(/^.*={3,}[^\n]*UNTRUSTED.*$/gm) ?? [];
+  }
+
+  /** True when the line above a `Read:` is a `Context:` line that names `Untrusted:` input. */
+  function namesUntrustedInput(context: string | undefined): boolean {
+    return /^\s*Context:/.test(context ?? "") && (context ?? "").includes("Untrusted:");
+  }
+
+  /** True for a `Read:` line that lists a fetched-evidence artifact. */
+  function isUntrustedRead(line: string): boolean {
+    return /^\s*Read:/.test(line) && UNTRUSTED_ARTIFACTS.test(line);
+  }
+
   describe("the fence is written once, by bkit context run-block", () => {
     it("enumerates workflow files (not vacuous)", () => {
       expect(WORKFLOWS.length).toBeGreaterThanOrEqual(6);
@@ -86,18 +118,7 @@ describe("untrusted-fence", () => {
     }
 
     it("any other copy of the instruction lines is the whole fence, in order", () => {
-      const partial: string[] = [];
-      for (const rel of OTHER_SURFACES) {
-        const content = read(rel);
-        const counts = FENCE_INSTRUCTION_LINES.map((line) => countOf(content, line));
-        if (counts.every((c) => c === 0)) continue;
-        if (new Set(counts).size !== 1) {
-          partial.push(`${rel}: fence lines out of step (${counts.join("/")})`);
-          continue;
-        }
-        const whole = [...FENCE_INSTRUCTION_LINES, FENCE_OPEN].join("\n");
-        if (countOf(content, whole) !== counts[0]) partial.push(`${rel}: fence reordered or split`);
-      }
+      const partial = partialFenceCopies();
       expect(partial).toEqual([]);
     });
   });
@@ -113,7 +134,7 @@ describe("untrusted-fence", () => {
       .map((f) => `.bkit/templates/context/${f}`);
     for (const rel of [".agents/context.md", ...contextTemplates]) {
       it(`${rel} fetch blocks emit no fence of their own`, () => {
-        const emitted = read(rel).match(/^.*={3,}[^\n]*UNTRUSTED.*$/gm) ?? [];
+        const emitted = ownFenceMarkers(read(rel));
         expect(emitted, `${rel} emits its own fence marker`).toEqual([]);
       });
     }
@@ -125,15 +146,15 @@ describe("untrusted-fence", () => {
         const lines = read(rel).split("\n");
         const readLines = lines
           .map((line, i) => ({ line, i }))
-          .filter(({ line }) => /^\s*Read:/.test(line) && UNTRUSTED_ARTIFACTS.test(line));
+          .filter(({ line }) => isUntrustedRead(line));
         expect(readLines.length, `no untrusted Read: paths found in ${rel}`).toBeGreaterThan(0);
-        for (const { line, i } of readLines) {
-          const context = lines[i - 1] ?? "";
-          expect(
-            /^\s*Context:/.test(context) && context.includes("Untrusted:"),
-            `${rel}:${i + 1} reads untrusted artifacts but its Context: line does not say so — ${line.trim().slice(0, 60)}…`,
-          ).toBe(true);
-        }
+        const unannounced = readLines
+          .filter(({ i }) => !namesUntrustedInput(lines[i - 1]))
+          .map(
+            ({ line, i }) =>
+              `${rel}:${i + 1} reads untrusted artifacts but its Context: line does not say so — ${line.trim().slice(0, 60)}…`,
+          );
+        expect(unannounced).toEqual([]);
       });
     }
   });

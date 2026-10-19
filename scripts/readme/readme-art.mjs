@@ -1,4 +1,4 @@
-// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details, audit map), light + dark,
+// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details, audit map, token use), light + dark,
 // plus the repo's social preview card, into .github/assets/ as both .svg and .png. Edit the copy
 // below, then: node scripts/readme/readme-art.mjs
 // Text is not auto-wrapped: keep tile lines short and eyeball the output at ~880px.
@@ -631,7 +631,7 @@ function pipeline(t) {
   b += `<rect x="${dx}" y="${dy}" width="${CW}" height="6" rx="3" fill="${dcol}"/>`;
   b += text(dx + 24, dy + 40, "/bkit-debug", { size: 17, fill: dcol, font: MONO, weight: 600 });
   b += text(dx + 24, dy + 74, "Debug", { size: 26, weight: 700, fill: t.text });
-  b += dots(dx + 32, dy + 100, 5, dcol);
+  b += dots(dx + 32, dy + 100, 6, dcol);
   b += text(dx + 24, dy + 132, "find cause, fix, remember", { size: 17, fill: t.text });
 
   // Ship -> merged to dev; production stays with you
@@ -672,7 +672,7 @@ function pipeline(t) {
     W,
     footH(672),
     b + footer(t, W, 672, 48, 40),
-    "The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 40 AI agents: 10 in design, 10 in plan, 11 in build, 5 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode.",
+    "The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 41 AI agents: 10 in design, 10 in plan, 11 in build, 6 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode.",
   );
 }
 
@@ -1455,6 +1455,171 @@ function context(t) {
   );
 }
 
+// ---------- Token use (why compression saves so little) ----------
+// Source: tests/compression/bkit-caveman-headroom-compression-proxy-comparison.md (T3, T4, T5, T7).
+// The two greys are the part no compressor can touch; each segment is labelled, so they need no hue.
+function tokens(t) {
+  const W = 1200,
+    X0 = 60,
+    BW = W - 2 * X0,
+    BY = 340,
+    BH = 56;
+  const dark = t.bg === THEMES.dark.bg;
+  const seg = [
+    [69.3, dark ? "#484f58" : "#afb8c1"],
+    [3.8, dark ? "#9198a1" : "#59636e"],
+    [24.9, t.plan],
+    [2.0, dark ? "#bb8009" : t.gate],
+  ];
+  const pros = [
+    ["Saves 1–3% of the bill", ["on typical bkit work"]],
+    ["Big cuts on huge logs", ["up to 95% on one 1.2 MB git log"]],
+    ["Prompt cache stays intact", ["so nothing else gets more expensive"]],
+  ];
+  const cons = [
+    [
+      "Wrong answers.",
+      [
+        "An agent answered a question wrongly from a compressed log",
+        "and never fetched the original.",
+      ],
+    ],
+    [
+      "Broken code.",
+      [
+        "Headroom turned “=> void” into “void”. RTK strips indentation and cuts lines",
+        "at 80 characters, so edits that quote those lines fail.",
+      ],
+    ],
+    [
+      "Hidden content.",
+      [
+        "Cut text comes back only if the agent spots the marker and asks for it,",
+        "and asking costs tokens, which eats into the saving.",
+      ],
+    ],
+    [
+      "Silent failures.",
+      [
+        "A missing dependency or an ignored setting turns compression off with no warning.",
+        "Seen with caveman and Headroom; RTK's hook is built to do the same.",
+      ],
+    ],
+    [
+      "A proxy sees all your model traffic.",
+      ["A supply-chain and security risk. The caveman release we tested", "was one day old."],
+    ],
+    [
+      "Clashes with bkit's own setup.",
+      [
+        "A tool added to every agent (caveman), a second permission check beside",
+        "bkit's gates (RTK), edits to your global settings.",
+      ],
+    ],
+  ];
+  const STEP = 86,
+    top = 690;
+  const H = top + cons.length * STEP - 20;
+  let b = `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(H) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
+  b += text(X0, 64, "TOKEN USE", { size: 14, weight: 700, fill: t.plan, ls: 2.4 });
+  b += text(X0 - 2, 128, "Compression saves 1–3%.", {
+    size: 56,
+    weight: 800,
+    fill: t.text,
+    ls: -1.5,
+  });
+  b += text(X0 - 2, 190, "The risks cost more.", {
+    size: 56,
+    weight: 800,
+    fill: t.muted,
+    ls: -1.5,
+  });
+  b += text(
+    X0,
+    234,
+    "Where Claude Code's cost goes across 456 real bkit transcripts. The whole bar is the bill.",
+    { size: 19, fill: t.muted },
+  );
+  b += text(X0, 292, "69%  Re-reading everything else", { size: 20, weight: 700, fill: t.text });
+  b += text(X0, 318, "system prompt, rules, tool list and the conversation, on every request", {
+    size: 15,
+    fill: t.muted,
+  });
+  b += text(W - X0, 292, "27%  Big tool output", {
+    size: 20,
+    weight: 700,
+    fill: t.text,
+    anchor: "end",
+  });
+  b += text(W - X0, 318, "the only part a compressor can touch", {
+    size: 15,
+    fill: t.muted,
+    anchor: "end",
+  });
+  // 2px surface gap between segments; the clip rounds only the bar's outer ends.
+  let x = X0;
+  const mid = [];
+  b += `<clipPath id="tokens-bar"><rect x="${X0}" y="${BY}" width="${BW}" height="${BH}" rx="8"/></clipPath><g clip-path="url(#tokens-bar)">`;
+  seg.forEach(([pct, fill], i) => {
+    const w = (BW * pct) / 100,
+      l = x + (i ? 1 : 0),
+      r = x + w - (i < seg.length - 1 ? 1 : 0);
+    b += `<rect x="${l.toFixed(1)}" y="${BY}" width="${(r - l).toFixed(1)}" height="${BH}" fill="${fill}"/>`;
+    mid.push(x + w / 2);
+    x += w;
+  });
+  b += "</g>";
+  const tick = (cx, len) =>
+    `<line x1="${cx.toFixed(1)}" y1="${BY + BH + 2}" x2="${cx.toFixed(1)}" y2="${BY + BH + len}" stroke="${t.muted}"/>`;
+  b += tick(mid[1], 26);
+  b += `<text x="${(mid[1] + 8).toFixed(1)}" y="${BY + BH + 24}" font-family="${SANS}" font-size="16" fill="${t.muted}"><tspan font-weight="700" fill="${t.text}">4%</tspan>  The model's own writing</text>`;
+  b += tick(mid[3], 64);
+  b += `<text x="${(mid[3] - 8).toFixed(1)}" y="${BY + BH + 62}" font-family="${SANS}" font-size="17" fill="${t.text}" text-anchor="end"><tspan font-weight="800">1–3%</tspan>  What the tools actually remove</text>`;
+  b += text(
+    X0,
+    BY + BH + 108,
+    "The tools that remove more get there by cutting code and logs the agent needs word for word.",
+    { size: 15, fill: t.muted },
+  );
+
+  // Is it worth it? Gains on the left, costs on the right; each header carries an icon and a label.
+  const PY = 580,
+    LX = X0,
+    RX = 470;
+  b += `<line x1="${X0}" y1="${PY - 50}" x2="${W - X0}" y2="${PY - 50}" stroke="${t.border}"/>`;
+  b += text(X0, PY, "Is it worth it? A modest saving, real risks.", {
+    size: 28,
+    weight: 800,
+    fill: t.text,
+    ls: -0.5,
+  });
+  const head = (hx, glyph, fill, label) =>
+    `<circle cx="${hx + 11}" cy="${PY + 45}" r="11" fill="${fill}"/>` +
+    text(hx + 11, PY + 51, glyph, { size: 16, weight: 800, fill: t.gateInk, anchor: "middle" }) +
+    text(hx + 32, PY + 51, label, { size: 18, weight: 700, fill: t.text });
+  b += head(LX, "+", t.ok, "What you gain");
+  b += head(RX, "!", t.debug, "What it costs you");
+  const list = (lx, items) =>
+    items
+      .map(
+        ([lead, rest], i) =>
+          text(lx, top + i * STEP, lead, { size: 17, weight: 700, fill: t.text }) +
+          rest
+            .map((line, j) =>
+              text(lx, top + i * STEP + 24 + j * 22, line, { size: 15, fill: t.muted }),
+            )
+            .join(""),
+      )
+      .join("");
+  b += list(LX, pros) + list(RX, cons);
+  return svg(
+    W,
+    footH(H),
+    b + footer(t, W, H),
+    "Compression saves 1 to 3 percent; the risks cost more. Where Claude Code's cost goes across 456 real bkit transcripts: 69 percent is the model re-reading the system prompt, rules, tool list and conversation on every request; 4 percent is the model's own writing; 27 percent is big tool output, the only part a compressor can touch; the tools remove 1 to 3 percent of the bill. What you gain: 1 to 3 percent of the bill saved, big cuts on huge logs, prompt cache intact. What it costs you: wrong answers from compressed logs, broken code when lines are rewritten or cut, hidden content that costs tokens to fetch back, silent failures that turn compression off, a proxy that sees all your model traffic, and clashes with bkit's own setup.",
+  );
+}
+
 // ---------- What's in the box ----------
 function features(t) {
   const W = 1000;
@@ -1579,6 +1744,7 @@ for (const [name, t] of Object.entries(THEMES)) {
   images.push([`bkit-ci-${name}`, ci(t)]);
   images.push([`bkit-fences-details-${name}`, fenceDetails(t)]);
   images.push([`bkit-audits-${name}`, audits(t)]);
+  images.push([`bkit-tokens-${name}`, tokens(t)]);
 }
 // One social image: link previews have no light/dark switch, and dark reads on both.
 images.push(["bkit-social", social(THEMES.dark)]);

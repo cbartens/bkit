@@ -165,6 +165,7 @@ describe("getInstallManifest", () => {
       "comparison.md",
       "install.md",
       "jsonl.md",
+      "pipeline.md",
       "providers.md",
       "trackers.md",
       "workflows.md",
@@ -178,6 +179,9 @@ describe("getInstallManifest", () => {
     const promptsEntry = entries.find((e) => e.path === ".bkit/prompts.md");
     expect(promptsEntry, "core manifest must list .bkit/prompts.md").toBeDefined();
     expect(promptsEntry!.format).toBe("markered-text");
+    const liteEntry = entries.find((e) => e.path === ".bkit/lite.md");
+    expect(liteEntry, "core manifest must list .bkit/lite.md").toBeDefined();
+    expect(liteEntry!.format).toBe("markered-text");
   });
 
   it("cloud owns no manifest entry (bkit-cloud-bootstrap.sh is a copy-and-own template)", () => {
@@ -205,17 +209,18 @@ describe("getModuleManifest", () => {
     "cloud",
   ];
 
-  it("every file-writing module has at least one entry; cloud writes none", () => {
-    for (const m of ALL_MODULES) {
-      const entries = getModuleManifest(m);
-      if (m === "cloud") {
-        // Every cloud file (workflow, bkit-cloud-bootstrap.sh, Cursor Dockerfile /
-        // environment.json) ships as a copy-and-own template.
-        expect(entries, m).toEqual([]);
-        continue;
-      }
-      expect(entries.length, m).toBeGreaterThan(0);
+  it("every file-writing module has at least one entry", () => {
+    const fileWriting = ALL_MODULES.filter((m) => m !== "cloud");
+    expect(fileWriting.length).toBeGreaterThan(0);
+    for (const m of fileWriting) {
+      expect(getModuleManifest(m).length, m).toBeGreaterThan(0);
     }
+  });
+
+  it("cloud writes no manifest entries", () => {
+    // Every cloud file (workflow, bkit-cloud-bootstrap.sh, Cursor Dockerfile /
+    // environment.json) ships as a copy-and-own template.
+    expect(getModuleManifest("cloud")).toEqual([]);
   });
 
   it("all entries have correct module field", () => {
@@ -426,6 +431,7 @@ describe("install/manifest: single dispatch on entry.format", () => {
     expect(paths).toContain(".bkit/version");
     expect(paths).toContain(".bkit/.env.example");
     expect(paths).toContain(".bkit/comparison.md");
+    expect(paths).toContain(".bkit/pipeline.md");
     expect(paths).toContain(".bkit/install.md");
   });
 

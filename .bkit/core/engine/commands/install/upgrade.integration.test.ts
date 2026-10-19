@@ -25,8 +25,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runUpgrade, updateCanonicalHashesAfterUpgrade, type UpgradeCandidate } from "./upgrade";
 import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
 import { listStampedFiles } from "../../install/modules/index";
-import { readInstallingVersion } from "../../install/modules/core";
+import { readInstallingVersion } from "../../shared/package-json";
 import { getTemplatesRoot } from "../../shared/package-roots";
+import { PACKAGE_RUNNER } from "../../shared/package-manager";
 import {
   detectMarkerStyle,
   findLineAnchoredMarkers,
@@ -39,9 +40,20 @@ import {
   readManagedVersion,
   type BkitVersion,
 } from "../../install/version-file";
+import { requireTsx } from "../../../../../vitest.tsx-bin";
 
 let tmpDir: string;
 let originalCwd: string;
+
+/** A finished child's stdout then stderr; empty when the child never produced them. */
+function combinedOutput(r: { stdout?: string | null; stderr?: string | null }): string {
+  return `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
+}
+
+/** The first `bkit-*.md` file directly inside `dir`, if any. */
+function firstBkitMarkdown(dir: string): string | undefined {
+  return fs.readdirSync(dir).find((f) => f.startsWith("bkit-") && f.endsWith(".md"));
+}
 
 const FIXTURES_DIR = path.resolve(
   path.dirname(new URL(import.meta.url).pathname),
@@ -92,11 +104,6 @@ function writeVersionFile(canonicalHashes: Record<string, string> = {}): void {
 
 describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", () => {
   it("detects conflict on customised .cursor/hooks.json (failClosed, loop_limit preserved)", () => {
-    if (!fs.existsSync(FIXTURES_DIR)) {
-      console.warn(`Fixture missing at ${FIXTURES_DIR} — skipping`);
-      return;
-    }
-
     seedCursorHooksFromFixture();
 
     // Simulate what bkit@0.4.x would have written as the canonical content:
@@ -160,11 +167,6 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
   });
 
   it("does not silently overwrite consumer drift in --non-interactive mode", () => {
-    if (!fs.existsSync(FIXTURES_DIR)) {
-      console.warn(`Fixture missing at ${FIXTURES_DIR} — skipping`);
-      return;
-    }
-
     seedCursorHooksFromFixture();
 
     const bkit04CanonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
@@ -192,11 +194,6 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
   });
 
   it("conflict list has relPath and both content versions for AI-actionable diff", () => {
-    if (!fs.existsSync(FIXTURES_DIR)) {
-      console.warn(`Fixture missing at ${FIXTURES_DIR} — skipping`);
-      return;
-    }
-
     seedCursorHooksFromFixture();
 
     const bkit04CanonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
@@ -224,11 +221,6 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
   });
 
   it("upgrades non-conflicting file while preserving conflicting consumer file", () => {
-    if (!fs.existsSync(FIXTURES_DIR)) {
-      console.warn(`Fixture missing at ${FIXTURES_DIR} — skipping`);
-      return;
-    }
-
     seedCursorHooksFromFixture();
 
     const bkit04CanonicalHooksContent =
@@ -292,13 +284,8 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runBkitUpgrade() {
-    return spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--auto-apply"], {
+    return spawnSync(requireTsx(), [bkitInstallPath, "upgrade", "--auto-apply"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -307,7 +294,6 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   }
 
   it("does not create .github/renovate.json5 or .github/dependabot.yml for a non-opted-in consumer", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     // Minimal consumer: package.json + .bkit-version, no opt-in configs present.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -334,14 +320,13 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   });
 
   it("install --claude does not write Serena or graphify examples", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "consumer" }),
       "utf-8",
     );
     fs.mkdirSync(path.join(tmpDir, ".git"));
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "install", "--claude"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -360,7 +345,6 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   });
 
   it("upgrade does not rewrite a consumer-owned bkit-graphify.sh", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "consumer" }),
@@ -383,7 +367,6 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   });
 
   it("does not rewrite a consumer-owned .github/renovate.json5", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({
@@ -411,7 +394,6 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   });
 
   it("preserves consumer prose after bkit:end in docs/*.md through a real `bkit upgrade` (#129 §1/§6)", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "consumer" }),
@@ -450,13 +432,8 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -474,7 +451,6 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
   }
 
   it("present, unmodified .mcp.json + .cursor/mcp.json → same-version upgrade leaves them byte-identical", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     setup();
     expect(runCli(["install", "--claude", "--cursor", "--tracker=github"]).status).toBe(0);
     const mcpBefore = fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8");
@@ -489,7 +465,6 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
   });
 
   it("upgrade restores bkit's edited entry, keeps a consumer server, and check is then clean", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     setup();
     expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
     const mcpPath = path.join(tmpDir, ".mcp.json");
@@ -524,7 +499,6 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
   });
 
   it("malformed .mcp.json fails install instead of being overwritten", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     setup();
     fs.writeFileSync(path.join(tmpDir, ".mcp.json"), "{ not json", "utf-8");
     const install = runCli(["install", "--claude", "--tracker=github"]);
@@ -544,13 +518,8 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -567,7 +536,6 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
   }
 
   it("an install with every host and cloud lane creates no template outside .bkit/templates/", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -576,8 +544,11 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
     );
     const hosts = ["--claude", "--cursor", "--codex", "--opencode=openrouter"];
     // --auto=cursor needs the Linear tracker.
-    for (const lane of ["--auto=claude", "--auto=cursor", "--auto=opencode"]) {
-      const tracker = lane === "--auto=cursor" ? "--tracker=linear" : "--tracker=github";
+    for (const [lane, tracker] of [
+      ["--auto=claude", "--tracker=github"],
+      ["--auto=cursor", "--tracker=linear"],
+      ["--auto=opencode", "--tracker=github"],
+    ] as const) {
       const install = runCli(["install", ...hosts, lane, tracker]);
       expect(install.status, `${lane}\n${install.stdout}\n${install.stderr}`).toBe(0);
     }
@@ -590,7 +561,6 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
   });
 
   it("an adopted copy of every template survives upgrade and check", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -629,7 +599,6 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
   ])(
     "check flags a stale %s block; upgrade refreshes it and keeps the consumer's content",
     (rel, consumer) => {
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
       fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
       fs.writeFileSync(
         path.join(tmpDir, "package.json"),
@@ -673,19 +642,14 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    const r = spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    const r = spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
       timeout: 120_000,
     });
-    return { status: r.status, out: `${r.stdout ?? ""}\n${r.stderr ?? ""}` };
+    return { status: r.status, out: combinedOutput(r) };
   }
 
   function installEverything(): void {
@@ -718,33 +682,34 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
       .sort();
   }
 
-  // The first non-blank line inside the file's bkit block, or undefined without a block.
-  function firstBlockLine(content: string): string | undefined {
+  // The first non-blank line inside the file's bkit block, or "" without a block.
+  function firstBlockLine(content: string): string {
     const style = detectMarkerStyle(content);
-    if (style === null) return undefined;
+    if (style === null) return "";
     const start = findLineAnchoredMarkers(content, selectMarkers(style)[0])[0]!;
-    return content
-      .slice(content.indexOf("\n", start) + 1)
-      .split("\n")
-      .find((l) => l.trim() !== "");
+    return (
+      content
+        .slice(content.indexOf("\n", start) + 1)
+        .split("\n")
+        .find((l) => l.trim() !== "") ?? ""
+    );
   }
 
   it("every written file carries a marker at the installing version, and check derives the same set", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     installEverything();
     const version = readInstallingVersion();
     const written = writtenFiles();
     expect(written.length).toBeGreaterThan(0);
 
     const stamped = new Map(listStampedFiles(tmpDir).map((f) => [f.path, f.scope]));
-    for (const rel of written) {
-      const content = fs.readFileSync(path.join(tmpDir, rel), "utf-8");
-      expect(readManagedVersion(content), rel).toBe(version);
-      if (stamped.get(rel) === "block") {
-        expect(readManagedVersion(firstBlockLine(content) ?? ""), `${rel} block line 1`).toBe(
-          version,
-        );
-      }
+    const contentOf = (rel: string) => fs.readFileSync(path.join(tmpDir, rel), "utf-8");
+    for (const rel of written) expect(readManagedVersion(contentOf(rel)), rel).toBe(version);
+    const blockScoped = written.filter((rel) => stamped.get(rel) === "block");
+    expect(blockScoped.length).toBeGreaterThan(0);
+    for (const rel of blockScoped) {
+      expect(readManagedVersion(firstBlockLine(contentOf(rel))), `${rel} block line 1`).toBe(
+        version,
+      );
     }
     expect(
       [...stamped.keys()].filter((rel) => fs.existsSync(path.join(tmpDir, rel))).sort(),
@@ -752,7 +717,6 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
   });
 
   it("check flags an old marker; upgrade restamps every marker with no conflict; check is then clean", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     installEverything();
     const version = readInstallingVersion();
     const written = writtenFiles();
@@ -761,13 +725,17 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
     // recorded hashes and pin are what that older bkit wrote.
     const versionFile = path.join(tmpDir, ".bkit", "version");
     const recorded = readBkitVersion(versionFile)!;
-    for (const rel of written) {
-      const abs = path.join(tmpDir, rel);
-      const aged = fs
-        .readFileSync(abs, "utf-8")
-        .replaceAll(`bkit:managed v${version} `, "bkit:managed v4.0.0 ");
-      fs.writeFileSync(abs, aged, "utf-8");
-      if (rel in recorded.canonicalHashes) recorded.canonicalHashes[rel] = sha256(aged);
+    const aged = new Map(
+      written.map((rel) => [
+        rel,
+        fs
+          .readFileSync(path.join(tmpDir, rel), "utf-8")
+          .replaceAll(`bkit:managed v${version} `, "bkit:managed v4.0.0 "),
+      ]),
+    );
+    for (const [rel, content] of aged) fs.writeFileSync(path.join(tmpDir, rel), content, "utf-8");
+    for (const rel of written.filter((r) => r in recorded.canonicalHashes)) {
+      recorded.canonicalHashes[rel] = sha256(aged.get(rel)!);
     }
     writeBkitVersion(versionFile, { ...recorded, pinnedVersion: "4.0.0" });
 
@@ -804,13 +772,8 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -819,7 +782,6 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
   }
 
   it("claude-only install → upgrade seeds no cursor/lint files or templates, and check stays clean", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -862,7 +824,6 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
   });
 
   it("upgrade creates a file a newer release adds to an installed opt-in host (#550)", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -893,7 +854,6 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
   });
 
   it("upgrade moves a 5.1.0 Antigravity hooks.json onto the current matchers (guardrails gates view_file)", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -923,7 +883,6 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
   });
 
   it("upgrade seeds missing bkit:gate:* names, so check stays clean (#489)", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     const pkgPath = path.join(tmpDir, "package.json");
     fs.writeFileSync(
@@ -971,13 +930,8 @@ describe("#281 Task 3 — upgrade re-renders all installed provider blocks", () 
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -986,7 +940,6 @@ describe("#281 Task 3 — upgrade re-renders all installed provider blocks", () 
   }
 
   it("upgrade reconverges ALL provider blocks — openrouter (active) + ollama (secondary)", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1053,13 +1006,8 @@ describe("#281 AC — bkit check exits 0 with multiple providers installed", () 
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -1068,7 +1016,6 @@ describe("#281 AC — bkit check exits 0 with multiple providers installed", () 
   }
 
   it("bkit check exits 0 after installing two providers (openrouter + ollama)", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1097,13 +1044,8 @@ describe("#422 — gateguard markered-text upgrade round-trip (site-9 regression
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -1112,7 +1054,6 @@ describe("#422 — gateguard markered-text upgrade round-trip (site-9 regression
   }
 
   it("install, tamper outside the block AND stale the block content, upgrade: outside survives, block is refreshed", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1502,14 +1443,8 @@ describe("upgrade-render", () => {
 
   const getInstallPath = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
-  const getTsxBin = () =>
-    path.resolve(
-      path.dirname(new URL(import.meta.url).pathname),
-      "../../../../../node_modules/.bin/tsx",
-    );
-
   function runBkit(args: string[]): { stdout: string; stderr: string; status: number | null } {
-    const result = spawnSync(getTsxBin(), [getInstallPath(), ...args], {
+    const result = spawnSync(requireTsx(), [getInstallPath(), ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -1551,9 +1486,6 @@ describe("upgrade-render", () => {
 
   describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => {
     it("restores tampered agents + docs and refreshes the prompts.md block while preserving consumer overrides", () => {
-      const tsxBin = getTsxBin();
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
-
       // --- Install: core + claude + opencode host (gives .claude/agents, .opencode/agents,
       //     .claude/commands, .opencode/commands, and the .bkit/*.md docs). ---
       const install = runBkit(["install", "--claude", "--opencode=openrouter"]);
@@ -1571,12 +1503,8 @@ describe("upgrade-render", () => {
       expect(fs.existsSync(opencodeAgentsDir)).toBe(true);
       expect(fs.existsSync(promptsPath)).toBe(true);
 
-      const claudeAgentFile = fs
-        .readdirSync(claudeAgentsDir)
-        .find((f) => f.startsWith("bkit-") && f.endsWith(".md"));
-      const opencodeAgentFile = fs
-        .readdirSync(opencodeAgentsDir)
-        .find((f) => f.startsWith("bkit-") && f.endsWith(".md"));
+      const claudeAgentFile = firstBkitMarkdown(claudeAgentsDir);
+      const opencodeAgentFile = firstBkitMarkdown(opencodeAgentsDir);
       expect(claudeAgentFile, "expected a bkit-* agent in .claude/agents").toBeTruthy();
       expect(opencodeAgentFile, "expected a bkit-* agent in .opencode/agents").toBeTruthy();
 
@@ -1627,9 +1555,6 @@ describe("upgrade-render", () => {
     }, 180_000);
 
     it("upgrade renders opencode.json with provider/tracker sentinels resolved (no raw @@…@@ leak, #245)", () => {
-      const tsxBin = getTsxBin();
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
-
       // Install the opencode host (openrouter) — opencode.json is templated with @@OPENCODE_*@@
       // sentinels that renderOpencodeJson resolves on install.
       const install = runBkit(["install", "--opencode=openrouter"]);
@@ -1664,9 +1589,6 @@ describe("upgrade-render", () => {
     }, 180_000);
 
     it("opencode-go gateway: install records the manifest provider; upgrade re-renders the opencode-go block (no ollama fallback)", () => {
-      const tsxBin = getTsxBin();
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
-
       type OpencodeDoc = {
         provider?: Record<string, { npm?: string; options?: Record<string, unknown> }>;
       };
@@ -1718,9 +1640,6 @@ describe("upgrade-render", () => {
 
   describe("#459 — bkit upgrade keeps bkit's recorded hash for a consumer-edited whole-file", () => {
     it("a no-op upgrade does not re-record a hand-edited canonical file as bkit's content", () => {
-      const tsxBin = getTsxBin();
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
-
       const install = runBkit(["install", "--claude"]);
       expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
 
@@ -1748,12 +1667,11 @@ describe("upgrade-render", () => {
       expect(recordedHash(), "upgrade must not re-record the consumer's content").toBe(before);
     }, 180_000);
 
-    it("re-records the hash of .cursor/allowlist.json when upgrade regenerates it, so uninstall still deletes it", () => {
-      const tsxBin = getTsxBin();
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
-      expect(runBkit(["install", "--cursor"]).status).toBe(0);
+    it("re-records the hash of .bkit/allowlist.json when upgrade regenerates it, so uninstall still deletes it", () => {
+      // Codex: a host whose guardrails hook reads the allowlist without the cursor module.
+      expect(runBkit(["install", "--codex"]).status).toBe(0);
 
-      const rel = path.join(".cursor", "allowlist.json");
+      const rel = path.join(".bkit", "allowlist.json");
       const abs = path.join(tmpDir, rel);
       const versionPath = path.join(tmpDir, ".bkit", "version");
       const recordedHash = (): string | undefined =>
@@ -1775,12 +1693,34 @@ describe("upgrade-render", () => {
       expect(runBkit(["uninstall"]).status).toBe(0);
       expect(fs.existsSync(abs)).toBe(false);
     }, 180_000);
+
+    it("upgrade moves a recorded .cursor/allowlist.json to .bkit/allowlist.json", () => {
+      expect(runBkit(["install", "--cursor"]).status).toBe(0);
+      // What an install up to 5.2.4 left: the cursor copy, recorded in .bkit/version.
+      const retired = path.join(".cursor", "allowlist.json");
+      const versionPath = path.join(tmpDir, ".bkit", "version");
+      fs.copyFileSync(path.join(tmpDir, ".bkit", "allowlist.json"), path.join(tmpDir, retired));
+      const version = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+        canonicalHashes: Record<string, string>;
+      };
+      version.canonicalHashes[retired] = sha256(
+        fs.readFileSync(path.join(tmpDir, retired), "utf-8"),
+      );
+      fs.writeFileSync(versionPath, JSON.stringify(version, null, 2) + "\n", "utf-8");
+
+      expect(runBkit(["upgrade"]).status).toBe(0);
+      expect(fs.existsSync(path.join(tmpDir, retired))).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, ".bkit", "allowlist.json"))).toBe(true);
+      const after = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+        canonicalHashes: Record<string, string>;
+      };
+      expect(after.canonicalHashes[retired]).toBeUndefined();
+      expect(runBkit(["check"]).status).toBe(0);
+    }, 180_000);
   });
 
   describe("advisories — check and upgrade report what install reports", () => {
     it("surfaces test-file-script-missing on check, and upgrade rewrites .bkit/advisories.md", () => {
-      const tsxBin = getTsxBin();
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
       const advisoriesPath = path.join(tmpDir, ".bkit", "advisories.md");
 
       const install = runBkit(["install", "--claude"]);
@@ -1829,17 +1769,19 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
 
     const dir = path.dirname(new URL(import.meta.url).pathname);
     const bkitInstallPath = path.resolve(dir, "../../cli.ts");
-    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     // Target a version far above the installed one so it's always a "bump", never a noop.
-    const result = spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 60_000,
-    });
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const result = spawnSync(
+      requireTsx(),
+      [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
+    const combined = combinedOutput(result);
     expect(combined, combined).toContain("[dry-run] would bump @cbartens/bkit");
     expect(combined).toContain("99.0.0");
     expect(combined).toContain("pnpm add -D @cbartens/bkit@99.0.0");
@@ -1847,6 +1789,43 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
     // Dry-run must not have touched the consumer's package.json.
     const pkg = fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8");
     expect(pkg).not.toContain("99.0.0");
+  });
+
+  // The same version string from a `file:` tarball is not the published package: --to still
+  // runs `pnpm add` so the registry build replaces it.
+  it("bumps when --to names the installed version but package.json pins a file: tarball", () => {
+    const dir = path.dirname(new URL(import.meta.url).pathname);
+    const installed = (
+      JSON.parse(fs.readFileSync(path.resolve(dir, "../../../../../package.json"), "utf-8")) as {
+        version: string;
+      }
+    ).version;
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "x",
+        devDependencies: { "@cbartens/bkit": `file:../cbartens-bkit-${installed}.tgz` },
+      }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const result = spawnSync(
+      requireTsx(),
+      [path.resolve(dir, "../../cli.ts"), "upgrade", `--to=${installed}`, "--dry-run"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
+    const combined = combinedOutput(result);
+    expect(combined, combined).toContain(
+      `[dry-run] would bump @cbartens/bkit ${installed} (file:../cbartens-bkit-${installed}.tgz) -> ${installed}`,
+    );
+    expect(combined).toContain(`pnpm add -D @cbartens/bkit@${installed}`);
+    expect(combined).not.toContain("already at");
+    expect(result.status, `expected exit 0, got ${result.status}:\n${combined}`).toBe(0);
   });
 
   // In a pnpm workspace root, `pnpm add` refuses without -w (ERR_PNPM_ADDING_TO_ROOT),
@@ -1861,28 +1840,67 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
 
     const dir = path.dirname(new URL(import.meta.url).pathname);
     const bkitInstallPath = path.resolve(dir, "../../cli.ts");
-    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 60_000,
-    });
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const result = spawnSync(
+      requireTsx(),
+      [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
+    const combined = combinedOutput(result);
     expect(combined, combined).toContain("pnpm add -D -w @cbartens/bkit@99.0.0");
     expect(result.status, `expected exit 0, got ${result.status}:\n${combined}`).toBe(0);
+  });
+
+  // The self-bump starts PACKAGE_RUNNER twice: `add -D ...` to install the target, then
+  // `exec bkit upgrade` to re-render with the new binary. A stub on PATH records both.
+  it("starts the package runner for the install and the re-exec", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-upgrade-runner-"));
+    const stubLog = path.join(stubDir, "calls.log");
+    const stub = path.join(stubDir, PACKAGE_RUNNER);
+    fs.writeFileSync(stub, `#!/bin/sh\necho "$*" >> "${stubLog}"\nexit 0\n`);
+    fs.chmodSync(stub, 0o755);
+
+    const dir = path.dirname(new URL(import.meta.url).pathname);
+    const bkitInstallPath = path.resolve(dir, "../../cli.ts");
+
+    try {
+      const result = spawnSync(requireTsx(), [bkitInstallPath, "upgrade", "--to=99.0.0"], {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: {
+          ...process.env,
+          NODE_NO_WARNINGS: "1",
+          PATH: [stubDir, process.env.PATH].join(path.delimiter),
+        },
+        timeout: 60_000,
+      });
+      const combined = combinedOutput(result);
+      expect(result.status, `expected exit 0, got ${result.status}:\n${combined}`).toBe(0);
+      expect(fs.readFileSync(stubLog, "utf-8").trim().split("\n")).toEqual([
+        "add -D @cbartens/bkit@99.0.0",
+        "exec bkit upgrade",
+      ]);
+    } finally {
+      fs.rmSync(stubDir, { recursive: true, force: true });
+    }
   });
 
   it("rejects --to=<version> with --latest (mutually exclusive) at exit 1", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }));
     const dir = path.dirname(new URL(import.meta.url).pathname);
     const bkitInstallPath = path.resolve(dir, "../../cli.ts");
-    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     const result = spawnSync(
-      tsxBin,
+      requireTsx(),
       [bkitInstallPath, "upgrade", "--to=4.2.0", "--latest", "--dry-run"],
       {
         cwd: tmpDir,
@@ -1891,7 +1909,7 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
         timeout: 60_000,
       },
     );
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const combined = combinedOutput(result);
     expect(combined, combined).toContain("mutually exclusive");
     expect(result.status).toBe(1);
   });

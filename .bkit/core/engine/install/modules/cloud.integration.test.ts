@@ -129,10 +129,13 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
       fs.writeFileSync(path.join(tmpDir, rel), `mine: ${rel}\n`, "utf-8");
     }
-    for (const cloudVariant of ["claude", "opencode", "cursor"] as const) {
-      runCloudModule(
-        makeCtx({ cloudVariant, issueTracker: cloudVariant === "cursor" ? "linear" : "github" }),
-      );
+    const variantTrackers = [
+      ["claude", "github"],
+      ["opencode", "github"],
+      ["cursor", "linear"],
+    ] as const;
+    for (const [cloudVariant, issueTracker] of variantTrackers) {
+      runCloudModule(makeCtx({ cloudVariant, issueTracker }));
     }
     for (const rel of [routerRel, dockerRel, envRel]) {
       expect(fs.readFileSync(path.join(tmpDir, rel), "utf-8")).toBe(`mine: ${rel}\n`);

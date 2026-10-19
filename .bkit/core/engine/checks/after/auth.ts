@@ -5,7 +5,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import type { PreflightFinding } from "../before/index.js";
-import { readConsumerCloudAgents } from "./github.js";
+import { readJsonFile } from "../../shared/json.js";
+import { readBkitConfig } from "../../shared/settings.js";
 
 // ---------------------------------------------------------------------------
 // Token-surface detectors
@@ -36,13 +37,12 @@ export function hasGithubMcpServer(cwd: string): boolean {
   for (const rel of [".mcp.json", path.join(".cursor", "mcp.json")]) {
     const p = path.join(cwd, rel);
     if (!fs.existsSync(p)) continue;
-    try {
-      const cfg = JSON.parse(fs.readFileSync(p, "utf-8")) as Record<string, unknown>;
-      const servers = cfg.mcpServers as Record<string, unknown> | undefined;
-      if (servers?.github) return true;
-    } catch {
-      // Malformed config — ignore; a JSON-drift advisory covers that separately.
-    }
+    // Malformed config — ignore; a JSON-drift advisory covers that separately.
+    const cfg = readJsonFile(p);
+    if (!cfg.ok || typeof cfg.value !== "object" || cfg.value === null) continue;
+    const servers = (cfg.value as Record<string, unknown>).mcpServers as
+      Record<string, unknown> | undefined;
+    if (servers?.github) return true;
   }
   return false;
 }
@@ -119,7 +119,7 @@ export function buildCloudDashboardsAdvisory(cwd: string): PreflightFinding | nu
   // cloud=claude path (bkit-cloud.yml): GitHub-tracker only, ANTHROPIC_API_KEY only.
   // cloud=cursor path (.cursor/): BKIT_LINEAR_API_KEY for Cursor dashboard.
   // Distinguish by recorded variant; fall back to presence-based detection.
-  const recordedVariant = readConsumerCloudAgents(cwd);
+  const recordedVariant = readBkitConfig(cwd).cloudAgents;
   const isCursorCloud = recordedVariant === "cursor" || (!hasRouter && hasCursor);
 
   const secretList = isCursorCloud ? "`BKIT_LINEAR_API_KEY`" : "`ANTHROPIC_API_KEY`";

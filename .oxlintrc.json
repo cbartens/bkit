@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [],
+  "categories": {
+    "correctness": "off"
+  },
+  "ignorePatterns": [".bkit/templates/**", "scripts/ci/**/*.test.mjs"],
+  "overrides": [
+    {
+      "files": ["**/*.test.ts"],
+      "plugins": ["vitest", "typescript"],
+      "rules": {
+        "vitest/expect-expect": ["error", { "assertFunctionNames": ["expect", "expectExit"] }],
+        "vitest/no-conditional-in-test": "error",
+        "vitest/no-conditional-expect": "error",
+        "vitest/valid-expect": ["error", { "maxArgs": 2 }],
+        "typescript/no-floating-promises": "error"
+      }
+    }
+  ]
+}

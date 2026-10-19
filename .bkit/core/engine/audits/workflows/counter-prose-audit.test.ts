@@ -90,7 +90,7 @@ const deriveAssign = (name: string) =>
 
 /**
  * Step names whose attempts a call counts, in a block or file: `counters derive --step=`,
- * `--attempt-of=<step>:`, `--of=<step>:`, `--count-field=<key>=<step>:`, and the row
+ * `--attempt-of=<step>:`, `--of=<step>[,<step>...]:`, `--count-field=<key>=<step>:`, and the row
  * step itself on a `steps done|finish` line with `--attempt=next`.
  */
 function derivedSteps(text: string): string[] {
@@ -98,8 +98,8 @@ function derivedSteps(text: string): string[] {
   for (const line of text.split("\n")) {
     for (const m of line.matchAll(/\bcounters derive\b[^\n]*?--step="?([\w-]+)"?/g))
       out.push(m[1]!);
-    for (const m of line.matchAll(/--(?:attempt-of|of|count-field=\w+)=([\w-]+):/g))
-      out.push(m[1]!);
+    for (const m of line.matchAll(/--(?:attempt-of|of|count-field=\w+)=([\w,-]+):/g))
+      out.push(...m[1]!.split(","));
     if (/\bsteps (?:done|finish)\b/.test(line) && /--attempt=next\b/.test(line)) {
       const m = /--step="?([\w-]+)"?/.exec(line);
       if (m) out.push(m[1]!);
@@ -152,6 +152,11 @@ function findProseCounterArithmetic(content: string): string[] {
     .filter((l) => /\{[A-Z][A-Z0-9_]*_ATTEMPT\}/.test(l))
     .filter((l) => /\{[A-Z][A-Z0-9_]*_ATTEMPT\}`?\s*[-+]\s*\d|\bincrement|\breset\b/i.test(l))
     .map((l) => l.trim());
+}
+
+/** The first capture group of a regex match that is set. */
+function firstCapture(m: RegExpMatchArray): string | undefined {
+  return m[1] ?? m[2] ?? m[3];
 }
 
 describe("1. no bare *_ATTEMPT token and no counter arithmetic in workflow prose", () => {
@@ -245,7 +250,7 @@ describe("2. MAX_* thresholds: none dead, none unknown", () => {
       ...executableCorpus().matchAll(
         /--limit=(MAX_\w+)|counters max --name=(MAX_\w+)|--name=(MAX_\w+)/g,
       ),
-    ].map((m) => m[1] ?? m[2] ?? m[3]);
+    ].map(firstCapture);
     expect(named.length).toBeGreaterThan(0);
     for (const n of named) expect(names, `unknown threshold ${n} exits 2`).toContain(n);
   });
@@ -587,6 +592,7 @@ const COUNTER_STEP_MAP: Record<string, string[]> = {
   "build-failure-diagnose": ["build-run-tests"],
   "build-failure-remediate": ["build-run-tests"],
   "debug-run-tests": ["debug-run-tests"],
+  "debug-failure-reproduce": ["debug-run-tests"],
   "debug-failure-diagnose": ["debug-run-tests"],
   "debug-failure-remediate": ["debug-run-tests"],
   "debug-failure-soak": ["debug-run-tests", "debug-failure-soak"],
@@ -759,12 +765,11 @@ describe.each([
         `\\b${name}=\\$\\((?:"\\{BKIT\\}" status route|printf '%s' "\\$ROUTE")`,
       );
       const required = new RegExp(`"\\{BKIT\\}" status route\\b[^\\n]*--require=${field}`);
-      for (const { block } of fencedBlocks(readRepo(file))) {
-        if (!uses.test(block)) continue;
+      for (const { block } of fencedBlocks(readRepo(file)).filter((b) => uses.test(b.block))) {
         expect(
-          assigned.test(block) && required.test(block),
+          [assigned.test(block), required.test(block)],
           `fence uses $${name} without reading it from status route:\n${block.slice(0, 200)}`,
-        ).toBe(true);
+        ).toEqual([true, true]);
       }
     });
   }

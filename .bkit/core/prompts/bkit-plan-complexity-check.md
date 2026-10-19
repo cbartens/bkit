@@ -10,7 +10,7 @@ tools:
   - mcp__serena__*
   - Write
 permissionMode: acceptEdits
-maxTurns: 50
+maxTurns: 100
 ---
 
 **Role:** Senior engineer estimating whether plans fit a single high-quality execution session.

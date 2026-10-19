@@ -14,8 +14,8 @@
 //   - The prune gate is byte-for-byte CONTENT, never identity.
 //   - The central store ACCUMULATES across runs (never cleared) and holds every
 //     DISTINCT row, deduped by content only. It is never rewritten from the fold. It is
-//     the only record of pruned consumer friction until the caller commits it; readers
-//     fold it.
+//     gitignored (private consumer content), so it is the only record of pruned consumer
+//     friction; readers fold it.
 //   - Malformed consumer lines are NEVER pruned (not ours to delete).
 //   - Grep-able [bkit-harvest] log lines.
 //   - Relies on the tolerant `parse` for half-written tails.
@@ -24,11 +24,12 @@
 // copy -> fsync -> verify -> prune; a crash at any point re-copies idempotently on the
 // next run.
 //
-// Consumers are listed in `docs/consumers.md` (one absolute path per line).
+// Consumers are listed in `harvest/consumers.md` (one absolute path per line).
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fold, parse, resolveRepoSlug, } from "../ledgers/telemetry.js";
+import { parseJson } from "../shared/json.js";
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -43,17 +44,17 @@ export const HARVEST_PRUNE_FILES = ["friction.jsonl"];
 /** Files to COUNT-ONLY from each consumer's `docs/` directory (metadata only). */
 export const HARVEST_COUNT_FILES = ["deferrals.jsonl", "failures.jsonl"];
 /** Path (relative to bkit repo root) for the consumers list. */
-export const CONSUMERS_FILE = "docs/consumers.md";
+export const CONSUMERS_FILE = "harvest/consumers.md";
 /**
  * Destination directory in bkit for harvested data. Repo root, NOT under `.bkit/`
  * (bkit's managed/installed surface).
  */
 export const HARVEST_DEST_DIR = "harvest";
 // ---------------------------------------------------------------------------
-// Read consumer list from `docs/consumers.md`
+// Read consumer list from `harvest/consumers.md`
 // ---------------------------------------------------------------------------
 /**
- * Read the list of consumer repo root paths from `docs/consumers.md`.
+ * Read the list of consumer repo root paths from `harvest/consumers.md`.
  * Returns an array of absolute paths (non-empty lines, comments stripped).
  */
 export function readConsumerPaths(bkitRoot) {
@@ -176,14 +177,12 @@ export function pruneConsumerFile(srcPath, consumerSlug, durable) {
     for (const line of raw.split("\n")) {
         if (line.trim() === "")
             continue;
-        let event;
-        try {
-            event = JSON.parse(line.trim());
-        }
-        catch {
+        const parsed = parseJson(line.trim());
+        if (!parsed.ok) {
             kept.push(line); // malformed — never ours to delete
             continue;
         }
+        const event = parsed.value;
         if (durable.rows.has(canonicalRow(stampRepo(event, consumerSlug)))) {
             removed++;
             continue;
@@ -221,7 +220,7 @@ function fsyncFile(filePath) {
 // Run harvest across all consumers
 // ---------------------------------------------------------------------------
 /**
- * Run harvest across all consumers listed in `docs/consumers.md`.
+ * Run harvest across all consumers listed in `harvest/consumers.md`.
  * Deduplicates the store by row content after collecting all rows.
  */
 export function runHarvest(bkitRoot) {
@@ -296,7 +295,7 @@ export function runHarvest(bkitRoot) {
     }
     console.error(`[bkit-harvest] Done — total rows collected: ${totalCopied}, entities after fold: ${dedupedRows}, pruned from consumers: ${totalPruned}, kept in consumers: ${totalKept}`);
     if (totalPruned > 0) {
-        console.error(`[bkit-harvest] ${totalPruned} row(s) now exist ONLY in ${HARVEST_DEST_DIR}/ — commit it to make them durable.`);
+        console.error(`[bkit-harvest] ${totalPruned} row(s) now exist ONLY in ${HARVEST_DEST_DIR}/ (gitignored) — back it up to make them durable.`);
     }
     return {
         consumers: consumerResults,

@@ -393,15 +393,31 @@ Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips th
 | Row without `advisory`, `reason` or a `YYYY-MM-DD` `expires`, or listed twice | Fix the row |
 | Audit prints no report after 3 tries | Fails closed; rerun |
 
-`blocking` = severity → max days per acceptance: the repo's fix-time policy, held only there. Not `auditConfig.ignoreGhsas`: it ignores forever and records no reason. New advisory reds an unrelated push → upgrade or accept in the next push. Non-pnpm repo → adapt `blockingFindings()`.
+`blocking` = severity → max days per acceptance: the repo's fix-time policy, held only there. Not `auditConfig.ignoreGhsas`: it ignores forever and records no reason. New advisory reds an unrelated push → upgrade or accept in the next push. Non-pnpm repo → adapt `blockingFindings()`, or let the Trivy scan own the lockfile.
 
-**Hands off bkit-owned trees.** Renovate: ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them; scanning them is noise). A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file, so use `ignorePaths`. Workflows you copied from `.bkit/templates/` (`bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml`) are yours: leave them out of that list so their pins refresh.
+**Scan beyond the pnpm lockfile.** `.bkit/templates/.github/workflows/bkit-trivy.yml` → `.github/workflows/bkit-trivy.yml` fails on HIGH / CRITICAL findings in any lockfile, Dockerfile / IaC settings and committed secrets, on push, pull request and daily. With `check-dependency-audit.mjs` adopted it skips `pnpm-lock.yaml`, so each pnpm advisory is accepted in one file. Acceptances, pinning, traps → `.bkit/templates.md` § Trivy.
+
+**Hands off bkit-owned trees.** Renovate: ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them; scanning them is noise). A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file, so use `ignorePaths`. Workflows you copied from `.bkit/templates/` (`bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml`, `bkit-trivy.yml`) are yours: leave them out of that list so their pins refresh.
+
+**Renovate example settings.** The example extends `config:best-practices` (`config:recommended` plus Docker and GitHub Actions digest pinning, exact devDependency pins, config-migration PRs, an abandoned-packages section on the dashboard). That preset gates npm packages at 3 days; the example's first `packageRules` entry restores `7 days`. Other settings:
+
+<!-- prettier-ignore -->
+| Setting | Effect |
+| --- | --- |
+| `rebaseWhen: "conflicted"` | A PR is rebased only when it conflicts; the default re-runs CI on every auto-merge PR each time the base branch moves. |
+| `lockFileMaintenance.schedule` | First day of the month. |
+| Majors rule `dependencyDashboardApproval: true` | No branch, PR or CI run until you tick the update on the Dependency Dashboard issue. |
+| `ignorePaths` | Replaces the `:ignoreModulesAndTests` default, so the example repeats its entries (`node_modules`, `bower_components`, `vendor`, `examples`, `__tests__`, `test`, `tests`, `__fixtures__`) and adds `docs/plans/**` plus the bkit-owned trees. |
+| Non-major group `matchDepTypes` | `devDependencies` and `packageManager`: a pnpm bump joins the group instead of opening alone. |
+| `customManagers` | One regex manager for pins that sit in no package file (below). |
+
+**Pins outside package files.** The `customManagers` entry scans `Dockerfile`, `.claude/bkit-cloud.md` and `.github/workflows/*.yml` for a comment line directly above the pin: `# renovate: datasource=<datasource> depName=<name>` (optional `packageName=`, `versioning=`, `extractVersion=`). The next line is read as `[ARG|export] <NAME>_VERSION=<v>` or `<NAME>_VERSION: "<v>"`, `<NAME>_SPEC: "<pkg>==<v>"`, `npm install -g <pkg>@<v>`, or `bash "<installer>" <v>`. Renovate bumps the version only. A pin paired with a checksum (Vale, gh, jq, Node, actionlint) needs its sha256 updated by hand in the same PR, or the install fails closed.
 
 **Land config on the default branch before the bot runs.** GitHub Apps and Dependabot read config from the default branch. The example sets `baseBranchPatterns: ["dev"]` (PRs land on `dev`) and `useBaseBranchConfig: "merge"` (edits on `dev` apply to dev-targeted runs). `useBaseBranchConfig` itself is read from the default branch, so it needs one merge there before dev-side edits take effect.
 
 **Renovate, Mend.** Install the App at https://github.com/apps/renovate only after `renovate.json5` is on the default branch. No `gh api` equivalent. Within a few minutes the App opens an onboarding PR; merge it.
 
-**Renovate, self-hosted.** Copy the workflow example. Suspend the Mend App for this repo (Settings → Applications → Renovate → Configure → remove this repo) or both open `renovate/*` PRs. The cron wakes the bot daily; `renovate.json5` `schedule` still gates normal PRs. Do not narrow the cron to weekly, because `osvVulnerabilityAlerts` PRs need the daily wake.
+**Renovate, self-hosted.** Copy the workflow example; it pins `renovate-version` to an exact Renovate release. A `# renovate:` annotation on that line reads GitHub releases (dated, so `minimumReleaseAge` holds) and the example disables the native lookup of the same line, which uses ghcr.io image tags that carry no publish date and would hold every update as pending. Suspend the Mend App for this repo (Settings → Applications → Renovate → Configure → remove this repo) or both open `renovate/*` PRs. The cron wakes the bot daily; `renovate.json5` `schedule` still gates normal PRs. Do not narrow the cron to weekly, because `osvVulnerabilityAlerts` PRs need the daily wake.
 
 Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs do not trigger CI, so required checks and automerge never fire). Use a **fine-grained** PAT when this repo is the only owner-scope bkit touches; use a **classic** PAT when the same token must cover more than one owner — fine-grained PATs cannot span organizations. Fine-grained permissions for this repo:
 
@@ -434,7 +450,7 @@ Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs 
 
 When Renovate is the updater, leave alerts on and turn security updates and version updates off so Dependabot does not open competing PRs.
 
-**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml` and `bkit-renovate.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in both jobs: replace it with a label (e.g. `ubuntu-latest`).
+**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml` and `bkit-trivy.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in both jobs: replace it with a label (e.g. `ubuntu-latest`).
 
 ### Manual CVE handling (when an alert fires)
 

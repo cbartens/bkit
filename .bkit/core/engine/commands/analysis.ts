@@ -5,7 +5,8 @@
 //   2. Size↔outcome regression (logistic approximation: error ~ log(linesAdded)
 //      + filesChanged) over `kind:"outcome"` rows.
 //   3. Dispatch-size threshold computation for plan-complexity-check / plan-split.
-//   4. `counterSource` trust labelling (model-self-report pre-P3, shell-bus post-P3).
+//   4. `counterSource` trust labelling: each outcome row is joined to its `counter` row
+//      (model-self-report pre-P3, shell-bus post-P3).
 //   5. Per-rule compliance rate over `kind:"compliance"` rows.
 //   6. Per-`bkitVersion`→CHANGELOG release-attributed regression.
 //
@@ -18,32 +19,25 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { UNJUSTIFIED_REASON, foldFrom, type TelemetryEvent } from "../ledgers/telemetry.js";
+import {
+  UNJUSTIFIED_REASON,
+  foldFrom,
+  type CounterPayload,
+  type OutcomePayload,
+  type TelemetryEnvelope,
+  type TelemetryEvent,
+} from "../ledgers/telemetry.js";
 import { HARVEST_DEST_DIR } from "./harvest.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export interface OutcomeRow {
-  ts: number;
-  repo: string;
-  bkitVersion: string;
-  /** Ship-only: the merged PR number. Absent on non-ship workflow run rows. */
-  prNumber?: number;
-  linesAdded: number;
-  linesDeleted: number;
-  linesChanged: number;
-  filesChanged: number;
-  taskCount: number;
-  durationSeconds: number;
-  ciTrySuccess?: number;
-  correctiveCommits?: number;
-  reviewIterations?: number;
-  deferrals: number;
-  failures: number;
-  counterSource?: string;
-}
+/** A `kind:"outcome"` ledger row: the shared envelope plus the outcome payload. */
+export type OutcomeRow = TelemetryEnvelope & OutcomePayload;
+
+/** A `kind:"counter"` ledger row; `counterSource` lives here, never on the outcome row. */
+export type CounterRow = TelemetryEnvelope & CounterPayload;
 
 export interface ComplianceRow {
   ts: number;
@@ -142,8 +136,9 @@ export interface RegressionResult {
    */
   dispatchSizeThreshold: number;
   /**
-   * Trust tier split: rows labelled by counterSource.
-   * "shell-bus" = post-P3 deterministic; "model-self-report" = pre-P3 untrusted.
+   * Trust tier split: an outcome row is shell-bus when a `counter` row with the same
+   * repo + workflow + parentSha carries `counterSource: "shell-bus"` (post-P3
+   * deterministic); every other outcome row is model-self-report (pre-P3 untrusted).
    */
   shellBusCount: number;
   modelSelfReportCount: number;
@@ -185,7 +180,18 @@ function isErrorRun(row: OutcomeRow, allRows: OutcomeRow[]): boolean {
   );
 }
 
-export function computeRegression(rows: OutcomeRow[]): RegressionResult {
+/** Identity of one workflow run: the key the close writes on both its counter and outcome rows. */
+function runKey(row: { repo: string; workflow: string; parentSha?: string }): string | undefined {
+  return row.parentSha ? JSON.stringify([row.repo, row.workflow, row.parentSha]) : undefined;
+}
+
+export function computeRegression(rows: OutcomeRow[], counterRows: CounterRow[]): RegressionResult {
+  const shellBusRuns = new Set<string>();
+  for (const c of counterRows) {
+    const key = runKey(c);
+    if (c.counterSource === "shell-bus" && key !== undefined) shellBusRuns.add(key);
+  }
+
   const buckets: SizeBucket[] = SIZE_BUCKETS.map((b) => ({
     label: b.label,
     minLines: b.min,
@@ -200,7 +206,8 @@ export function computeRegression(rows: OutcomeRow[]): RegressionResult {
 
   for (const row of rows) {
     // Trust tier labelling
-    if (row.counterSource === "shell-bus") {
+    const key = runKey(row);
+    if (key !== undefined && shellBusRuns.has(key)) {
       shellBusCount++;
     } else {
       modelSelfReportCount++;
@@ -411,12 +418,15 @@ export function runAnalysis(paths: string[]): AnalysisReport {
   const events = [...state.values()];
 
   const outcomeRows: OutcomeRow[] = [];
+  const counterRows: CounterRow[] = [];
   const complianceRows: ComplianceRow[] = [];
   const deferralRows: DeferralRow[] = [];
 
   for (const ev of events) {
     if (ev.kind === "outcome") {
       outcomeRows.push(ev);
+    } else if (ev.kind === "counter") {
+      counterRows.push(ev);
     } else if (ev.kind === "compliance") {
       complianceRows.push(ev);
     } else if (ev.kind === "deferral") {
@@ -426,7 +436,7 @@ export function runAnalysis(paths: string[]): AnalysisReport {
 
   const counts = computeCounts(events);
   const elapsed = computeElapsedStats(outcomeRows);
-  const regression = computeRegression(outcomeRows);
+  const regression = computeRegression(outcomeRows, counterRows);
   const complianceRates = computeComplianceRates(complianceRows);
   const versionCompliance = computeVersionCompliance(complianceRows);
   const deferralDiscipline = computeDeferralDiscipline(deferralRows);

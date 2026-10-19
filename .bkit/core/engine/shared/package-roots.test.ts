@@ -5,10 +5,9 @@
 // (context 2).
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getPkgRoot, ENGINE_SUBPATH, getTemplatesRoot, isDogfood } from "./package-roots";
+import { describe, expect, it } from "vitest";
+import { getPkgRoot, ENGINE_SUBPATH, getTemplatesRoot } from "./package-roots";
 
 // ---------------------------------------------------------------------------
 // Context 1 — dist/ (compiled; what consumers run)
@@ -26,9 +25,8 @@ describe("getPkgRoot() — context 1: dist/ arm (consumer context)", () => {
     const fakeDistDir = path.join("/some", "pkg", "dist");
     // Arm 1: does NOT end with ENGINE_SUBPATH → resolves one level up.
     const expectedPkgRoot = path.resolve(fakeDistDir, "..");
-    const result = fakeDistDir.endsWith(ENGINE_SUBPATH)
-      ? path.resolve(fakeDistDir, "..", "..", "..")
-      : path.resolve(fakeDistDir, "..");
+    expect(fakeDistDir.endsWith(ENGINE_SUBPATH)).toBe(false);
+    const result = path.resolve(fakeDistDir, "..");
     expect(result).toBe(expectedPkgRoot);
     expect(result).toBe(path.join("/some", "pkg"));
   });
@@ -50,9 +48,8 @@ describe("getPkgRoot() — context 2: tsx-from-source arm (dev/test context)", (
     // Construct a fake scriptDir whose suffix equals ENGINE_SUBPATH.
     const fakeSrcDir = path.join("/some", "pkg") + path.sep + ENGINE_SUBPATH;
     const expectedPkgRoot = path.resolve(fakeSrcDir, "..", "..", "..");
-    const result = fakeSrcDir.endsWith(ENGINE_SUBPATH)
-      ? path.resolve(fakeSrcDir, "..", "..", "..")
-      : path.resolve(fakeSrcDir, "..");
+    expect(fakeSrcDir.endsWith(ENGINE_SUBPATH)).toBe(true);
+    const result = path.resolve(fakeSrcDir, "..", "..", "..");
     expect(result).toBe(expectedPkgRoot);
     expect(result).toBe(path.join("/some", "pkg"));
   });
@@ -84,9 +81,8 @@ describe("getPkgRoot() — context 3: packed-tarball arm (node_modules layout)",
     const fakeNmDistDir = path.join("/consumer", "node_modules", "@cbartens", "bkit", "dist");
     // Arm 1: does NOT end with ENGINE_SUBPATH → one level up.
     const expectedPkgRoot = path.resolve(fakeNmDistDir, "..");
-    const result = fakeNmDistDir.endsWith(ENGINE_SUBPATH)
-      ? path.resolve(fakeNmDistDir, "..", "..", "..")
-      : path.resolve(fakeNmDistDir, "..");
+    expect(fakeNmDistDir.endsWith(ENGINE_SUBPATH)).toBe(false);
+    const result = path.resolve(fakeNmDistDir, "..");
     expect(result).toBe(expectedPkgRoot);
     expect(result).toBe(path.join("/consumer", "node_modules", "@cbartens", "bkit"));
   });
@@ -105,56 +101,5 @@ describe("getTemplatesRoot()", () => {
 
   it("is rooted at getPkgRoot()", () => {
     expect(getTemplatesRoot().startsWith(getPkgRoot())).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// isDogfood()
-// ---------------------------------------------------------------------------
-
-describe("isDogfood()", () => {
-  it("returns a boolean", () => {
-    expect(typeof isDogfood()).toBe("boolean");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// dogfood-noop
-// ---------------------------------------------------------------------------
-// dogfood-noop — dogfood detection inside the bkit repo itself.
-describe("dogfood-noop", () => {
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
-
-  let originalCwd: string;
-
-  beforeEach(() => {
-    originalCwd = process.cwd();
-  });
-
-  afterEach(() => {
-    process.chdir(originalCwd);
-  });
-
-  // ---------------------------------------------------------------------------
-  // Dogfood detection
-  // ---------------------------------------------------------------------------
-
-  describe("isDogfood() — in-repo detection", () => {
-    it("returns true when CWD equals the package root (tsx-from-source context)", () => {
-      // In the tsx-from-source run context, getPkgRoot() resolves to the repo root.
-      // Change CWD to the repo root so isDogfood() returns true.
-      const pkgRoot = getPkgRoot();
-      process.chdir(pkgRoot);
-      expect(isDogfood()).toBe(true);
-    });
-
-    it("returns false when CWD is a different directory", () => {
-      // Change CWD to a temp dir — guaranteed to be different from pkgRoot and accessible.
-      const tmp = os.tmpdir();
-      process.chdir(tmp);
-      expect(isDogfood()).toBe(false);
-    });
   });
 });

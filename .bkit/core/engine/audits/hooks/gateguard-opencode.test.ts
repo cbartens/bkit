@@ -653,29 +653,25 @@ describe("gateguard opencode plugin — multi-file patch tool", () => {
     };
   }
 
-  it.each(["patch", "apply_patch"])(
-    "%s: checks every Add / Update / Move-to / Delete target (2.0 and 1.x drivers)",
-    async (tool) => {
-      for (const drive of ["v2", "v1"] as const) {
-        const session = newSession();
-        const { hookInput, output } = patchInput(tool, session, PATCH);
-        const result =
-          drive === "v2"
-            ? await invokeHook(plugin, orchestratorClient(), hookInput, output)
-            : await invokeHookV1(plugin, orchestratorClient(), hookInput, output);
-        expect(result.threw).toBe(false);
-        for (const file of [
-          "src/patch-added.ts",
-          "src/patch-updated.ts",
-          "src/patch-moved.ts",
-          "src/patch-deleted.ts",
-        ]) {
-          expect(isWarned(session, file)).toBe(true);
-          expect(result.advice).toContain(path.basename(file));
-        }
-      }
-    },
-  );
+  const patchDrivers = { v2: invokeHook, v1: invokeHookV1 };
+
+  it.each(
+    ["patch", "apply_patch"].flatMap((tool) => [[tool, "v2"] as const, [tool, "v1"] as const]),
+  )("%s (%s driver): checks every Add / Update / Move-to / Delete target", async (tool, drive) => {
+    const session = newSession();
+    const { hookInput, output } = patchInput(tool, session, PATCH);
+    const result = await patchDrivers[drive](plugin, orchestratorClient(), hookInput, output);
+    expect(result.threw).toBe(false);
+    for (const file of [
+      "src/patch-added.ts",
+      "src/patch-updated.ts",
+      "src/patch-moved.ts",
+      "src/patch-deleted.ts",
+    ]) {
+      expect(isWarned(session, file)).toBe(true);
+      expect(result.advice).toContain(path.basename(file));
+    }
+  });
 
   it("deny mode blocks when any patch target is a first touch, and records all of them", async () => {
     const session = newSession();

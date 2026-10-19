@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   # ── bkit-tests-static ────────────────────────────────────────────────────
-  # Static-analysis lane: typecheck, format, prose lint, slop, actionlint,
+  # Static-analysis lane: typecheck, lint, format, prose lint, slop, actionlint,
   # bkit check. Runs on a CLEAN tree (no test artifacts). Parallel sibling of
   # bkit-tests-unit — wall-clock = MAX(lane).
   bkit-tests-static:
@@ -64,13 +64,13 @@ jobs:
       # Node/TS toolchain region. On a non-Node repo, replace these steps with your
       # stack's setup / install commands (and the typecheck / lint / test steps below with
       # its own). Replace `{{NODE_VERSION}}` with your Node major (`.bkit/templates.md`).
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: {{NODE_VERSION}}
 
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
       # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       # Under [verbose ci]: propagate DEBUG to all subsequent steps via $GITHUB_ENV. Note
       # that steps with their own `env:` block override $GITHUB_ENV — those steps must
@@ -212,13 +212,19 @@ jobs:
       # Static checks first — they read the source tree and must scan it CLEAN.
       # Vitest/build run AFTER (below): they write coverage, dist/, and other
       # artifacts that would otherwise pollute the Slop Scan and bkit check inputs.
-      # Keep this group (typecheck → prettier → vale → slop → bkit check) ahead of
+      # Keep this group (typecheck → lint → prettier → vale → slop → bkit check) ahead of
       # the test/build group if you reorder.
       - name: Run Typecheck
         if: steps.cache.outputs.skip != 'true'
         env:
           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
         run: pnpm typecheck
+
+      - name: Run Lint
+        if: steps.cache.outputs.skip != 'true'
+        env:
+          TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
+        run: pnpm lint
 
       - name: Run Prettier
         if: steps.cache.outputs.skip != 'true'
@@ -232,6 +238,7 @@ jobs:
       - name: Install Vale
         if: steps.cache.outputs.skip != 'true'
         env:
+          # renovate: datasource=github-releases depName=errata-ai/vale
           VALE_VERSION: "3.9.1"
           # sha256 of vale_${VALE_VERSION}_Linux_64-bit.tar.gz (from the release's checksums.txt).
           # Bump alongside VALE_VERSION; verified before extract so a tampered/CDN-swapped tarball fails closed.
@@ -276,6 +283,7 @@ jobs:
           curl -sSfL --retry 3 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
           # download-actionlint.bash fetches the binary from GitHub releases — retry to survive a transient CDN/network blip.
           for i in 1 2 3; do
+            # renovate: datasource=github-releases depName=rhysd/actionlint
             bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP" && break
             [ "$i" = 3 ] && { echo "::error::actionlint download failed after 3 attempts"; exit 1; }
             echo "::warning::actionlint download attempt $i failed — retrying in 5s"; sleep 5
@@ -298,22 +306,21 @@ jobs:
       # docs/capabilities.md is not what this tree produces, so the register cannot drift
       # silently. Self-skips when the graphify wrapper is absent — a repo that did not adopt
       # scripts/graphify/ is a no-op. graphify is pinned because its output must match the
-      # committed register to the byte: bump GRAPHIFY_SPEC and refresh the register together.
+      # committed register to the byte: bump GRAPHIFY_SPEC (bkit-graphify.sh) and refresh the register together.
       # Push events only — a pull_request checkout is the MERGE ref, whose tree (base + head)
       # can differ from the head the register was built against: a false red no author can clear.
       - name: Setup uv
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          version: "0.12.6"
+          version: "0.13.0"
 
       - name: Check Capability Register
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
-        env:
-          # PyPI distribution is `graphifyy`; the CLI it exposes is `graphify`.
-          GRAPHIFY_SPEC: "graphifyy[sql]==0.9.50"
+        # graphify release pinned once: GRAPHIFY_SPEC in bkit-graphify.sh. Same release here,
+        # in the pre-push gate and by hand.
         run: |
-          uv tool install "$GRAPHIFY_SPEC"
+          uv tool install "$(bash scripts/graphify/bkit-graphify.sh spec)"
           # `uv tool install` drops the shim in ~/.local/bin, not on this step's PATH.
           export PATH="$HOME/.local/bin:$PATH"
           pnpm graph:check
@@ -341,11 +348,11 @@ jobs:
           # Full history needed for E2E / supabase stubs when enabled.
           fetch-depth: 0
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: {{NODE_VERSION}}
 
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       # NODE_OPTIONS is a job-level `env:` key above, never a $GITHUB_ENV write — the runner
       # rejects that write and still reports success. See bkit-tests-static's block comment.
@@ -502,7 +509,7 @@ jobs:
             echo "::warning::test:integration script not found in package.json — skipping integration tests"
           fi
 
-      # bkit-stub:coverage — Report vitest coverage on PRs via davelosert/vitest-coverage-report-action (free, runs entirely inside Actions with GITHUB_TOKEN — no third-party service, safe for private repos). Report-only by default: nothing fails the build until YOU set a threshold. PER-TIER: unit and integration are measured and commented SEPARATELY (a single merged number lets integration mask a hollow unit suite). To enable: make the edits below, uncomment the two steps, and delete this stub header.
+      # bkit-stub:coverage — Report vitest coverage on PRs and in every run's job summary via davelosert/vitest-coverage-report-action (free, runs entirely inside Actions with GITHUB_TOKEN — no third-party service, safe for private repos). Report-only by default: nothing fails the build until YOU set a threshold. PER-TIER: unit and integration are measured and commented SEPARATELY (a single merged number lets integration mask a hollow unit suite). To enable: make the edits below, uncomment the two steps, and delete this stub header.
       #   1. devDep + config. Add `@vitest/coverage-v8` (pin to your vitest major) and a coverage block in vitest.config:
       #        coverage: {
       #          provider: 'v8',
@@ -516,12 +523,20 @@ jobs:
       #      Wire these into the "Run Unit Tests" step(s) above (or your test / test:integration scripts). Separate dirs
       #      also avoid the clobber a second same-dir --coverage run would cause (last-writer-wins, not a merge).
       #   3. Thresholds (opt-in) live PER TIER, never merged:
-      #        UNIT = the gate. Set coverage.thresholds.branches in the config your UNIT run uses (branches is the
-      #               meaningful floor; line/statement % overstates confidence). Set it to your CURRENT coverage and
-      #               ratchet up. Example: --coverage.thresholds.branches=70. vitest coverage is per-RUN (root config),
-      #               NOT per-project — `projects` does NOT scope it, and a `thresholds` block in vitest.config reds BOTH
-      #               runs. Pass the floor as a CLI flag on the UNIT run only (it cannot leak to integration); reach for a
-      #               second vitest.<tier>.config.ts (run with -c) only if the per-run flags get unwieldy.
+      #        UNIT = the gate. Put coverage.thresholds.branches in a vitest.unit.config.ts that ONLY your unit run loads
+      #               (`vitest run -c vitest.unit.config.ts --coverage …`); branches is the meaningful floor (line/statement
+      #               % overstates confidence). Set it to your CURRENT coverage and ratchet up:
+      #                 import { defineConfig, mergeConfig } from 'vitest/config'
+      #                 import base from './vitest.config'
+      #                 export default mergeConfig(base, defineConfig({ test: { coverage: { thresholds: {
+      #                   branches: 70,
+      #                 } } } }))
+      #               vitest coverage is per-RUN (root config), NOT per-project — `projects` does NOT scope it, and a
+      #               `thresholds` block in vitest.config reds BOTH runs. One file feeds both readers: vitest gates on it,
+      #               and the Report Unit Coverage step's vite-config-path shows it as the 🎯 target. The action reads
+      #               that file as raw TEXT and regex-matches `<metric>: <number>`: keep the floor on one unquoted line
+      #               and write no other metric name + colon + number in the file, or the target silently goes wrong.
+      #               A --coverage.thresholds.branches=<n> CLI flag also gates, but the report cannot read it.
       #        INTEGRATION = REPORT-ONLY, no threshold. Gate integration on EXECUTION (the capstone's integration_ran > 0),
       #               not a %: a whole-repo integration % is denominator-noise (it covers boundaries/flows, not pure logic,
       #               and rarely drives every branch). For a real integration %, add --coverage.include='src/server/**'
@@ -537,26 +552,32 @@ jobs:
       #   integration as its OWN lane (bkit-tests-integration — the shape bkit's own CI + consumer repos run; see the
       #   FULL CI SCAFFOLD REFERENCE below), move the integration coverage run + its Report step + a pull-requests: write
       #   permissions block into THAT lane instead. Each lane posts its own comment; the distinct name: keeps them apart.
-      #   Fork PRs: GITHUB_TOKEN is read-only for PRs from a fork, so the steps fail — the head.repo == repo guard in the
-      #   if: below skips them there (or adopt the action's workflow_run two-workflow pattern to support forks).
+      #   Fork PRs: GITHUB_TOKEN is read-only for PRs from a fork, so commenting fails — the unit step sets comment-on: none
+      #   there (its job summary still lands) and the integration step's head.repo == repo guard skips it (or adopt the
+      #   action's workflow_run two-workflow pattern to comment on forks).
       #   Monorepo: set working-directory so the action finds the right report. Base-branch delta (up/down vs the default
       #   branch) needs the base's coverage-summary.json — see the action's json-summary-compare-path input (optional).
       #   The action is SHA-pinned to a commit (# vX.Y.Z comment) per best practice; your updater (Renovate/Dependabot,
       #   github-actions ecosystem) keeps the pin current — refresh the SHA if you enable this on a newer release.
       #   A distinct name: keys each sticky comment so the two do not collide.
-      # - name: Report Unit Coverage on PR
-      #   if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-      #   uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
+      # - name: Report Unit Coverage
+      #   # Every event, including a red unit run (reportOnFailure keeps the summary): writes the coverage table, with
+      #   # the floor as its target, to the job summary; comments on same-repo PRs only. No floor yet → drop
+      #   # vite-config-path (a missing file only warns, on every run).
+      #   if: ${{ !cancelled() && steps.cache.outputs.skip != 'true' && hashFiles('coverage/unit/coverage-summary.json') != '' }}
+      #   uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
       #   with:
       #     name: unit
       #     json-summary-path: coverage/unit/coverage-summary.json
       #     json-final-path: coverage/unit/coverage-final.json
+      #     vite-config-path: vitest.unit.config.ts   # the file the floor lives in
       #     file-coverage-mode: changes          # per-file table limited to files changed in the PR
+      #     comment-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) && 'pr' || 'none' }}
       #     github-token: ${{ secrets.GITHUB_TOKEN }}
       # - name: Report Integration Coverage on PR
       #   # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
       #   if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
-      #   uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
+      #   uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
       #   with:
       #     name: integration
       #     json-summary-path: coverage/integration/coverage-summary.json
@@ -648,7 +669,7 @@ jobs:
       # - name: Report E2E Coverage on PR
       #   # Same gate as Run E2E Tests (coverage exists only if E2E ran); hashFiles skips repos that produced no E2E report.
       #   if: (steps.detect.outputs.should_run_full == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/e2e/coverage-summary.json') != ''
-      #   uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
+      #   uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
       #   with:
       #     name: e2e
       #     json-summary-path: coverage/e2e/coverage-summary.json
@@ -682,47 +703,39 @@ jobs:
   # always(): a concurrency cancel must not stamp a failure. Each lane must succeed; a failed,
   # skipped or cancelled lane reds it. A lane that writes an executed-test count must have run
   # more than 0 tests. Each lane you adopt from the reference below joins needs: and the assert.
+  # The assert is scripts/ci/check-capstone.mjs, required with this file (copy it from
+  # .bkit/templates/scripts/ci/); the step reds when the script is missing.
   bkit-tests-check:
     needs: [bkit-tests-static, bkit-tests-unit]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
+      # Ungated checkout, never continue-on-error: it fetches the script below. A checkout
+      # gated on a plan value leaves some runs with no script, and the required check then
+      # exits on "cannot find module" instead of judging the lanes.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Assert Lanes Passed
+        # The verdict is scripts/ci/check-capstone.mjs (copy it with this file from
+        # .bkit/templates/scripts/ci/; check-capstone.test.mjs tests it). Every lane in LANES
+        # must succeed; a lane with a *_RAN variable must have run more than 0 tests unless
+        # cache_skip=true. EMPTY_COUNT=warn: a lane that writes no count yet warns instead of
+        # failing; delete it once every counted lane writes one. Add each lane you adopt to
+        # LANES and to its *_RESULT / *_RAN / *_CACHE_SKIP variables.
         env:
+          LANES: static,unit
+          EMPTY_COUNT: warn
           STATIC_RESULT: ${{ needs.bkit-tests-static.result }}
           UNIT_RESULT: ${{ needs.bkit-tests-unit.result }}
           UNIT_RAN: ${{ needs.bkit-tests-unit.outputs.tests_ran }}
           UNIT_CACHE_SKIP: ${{ needs.bkit-tests-unit.outputs.cache_skip }}
         run: |
-          FAIL=0
-          if [ "$STATIC_RESULT" != "success" ]; then
-            echo "::error::bkit-tests-static result=$STATIC_RESULT (expected success)"
-            FAIL=1
-          fi
-          if [ "$UNIT_RESULT" != "success" ]; then
-            echo "::error::bkit-tests-unit result=$UNIT_RESULT (expected success)"
-            FAIL=1
-          fi
-          # NON-HOLLOW: a real run (not a SHA-cache short-circuit) of a lane that writes a count
-          # must have executed >0 tests. An empty count is a lane that writes none yet.
-          if [ "$UNIT_RESULT" = "success" ] && [ "$UNIT_CACHE_SKIP" != "true" ]; then
-            case "$UNIT_RAN" in
-              '')
-                echo "::warning::bkit-tests-unit writes no executed-test count — green does not prove tests ran (see its Run Unit Tests step)." ;;
-              *[!0-9]*)
-                echo "::error::bkit-tests-unit executed-test count is non-numeric ('$UNIT_RAN')."
-                FAIL=1 ;;
-              0)
-                echo "::error::bkit-tests-unit succeeded but executed 0 tests — vacuous green."
-                FAIL=1 ;;
-            esac
-          fi
-          if [ "$FAIL" = "1" ]; then
-            echo "::error::bkit-tests-check FAILED — see above."
+          if [ ! -f scripts/ci/check-capstone.mjs ]; then
+            echo "::error::scripts/ci/check-capstone.mjs is missing. Copy it from .bkit/templates/scripts/ci/ into scripts/ci/; without it bkit-tests-check cannot tell a green lane from a lane that ran no tests."
             exit 1
           fi
-          echo "✅ bkit-tests-check passed (static=$STATIC_RESULT, unit=$UNIT_RESULT, unit tests executed=${UNIT_RAN:-unreported})."
+          node scripts/ci/check-capstone.mjs
 
 # bkit-stub:smoke — Post-CI smoke triggered by workflow_run on {{DEFAULT_BRANCH}}. To enable: copy the YAML below into .github/workflows/smoke.yml (separate file — workflow_run cannot share a file with push/pull_request) and delete this stub header.
 # name: Smoke
@@ -889,7 +902,7 @@ jobs:
 #       # docs/testing.md § Schema-invariant DB checks.
 #       - name: Run DB Tests (pgTAP)          # [DB] if: schema invariants matter; runs supabase/tests/*.sql
 #       - name: Run Unit Tests         # [U] the one tier every repo has (source CI_ENV_FILE if needed)
-#       - name: Report Coverage on PR # [U/PR] bkit-stub:coverage — davelosert/vitest-coverage-report-action posts a per-tier coverage comment (distinct name: unit|integration|e2e). With SEPARATE lanes each posts from its OWN lane: unit-cov here (gated on branches), integration-cov in bkit-tests-integration (report-only, gate-on-execution), e2e-cov in bkit-tests-e2e-web (bkit-stub:e2e-coverage, Monocart). Each lane needs job-level pull-requests: write + the json-summary/json reporters.
+#       - name: Report Coverage # [U/PR] bkit-stub:coverage — davelosert/vitest-coverage-report-action posts a per-tier coverage comment (distinct name: unit|integration|e2e); the unit report also writes its table, with the floor as target, to the job summary on every event. With SEPARATE lanes each posts from its OWN lane: unit-cov here (gated on branches), integration-cov in bkit-tests-integration (report-only, gate-on-execution), e2e-cov in bkit-tests-e2e-web (bkit-stub:e2e-coverage, Monocart). Each lane needs job-level pull-requests: write + the json-summary/json reporters.
 #       - name: Build All Packages            # moves to bkit-tests-build-web. Not this catalogue.
 #       - name: Run Integration Tests         # moves to bkit-tests-integration. Not this catalogue.
 #       - name: Check Stale Test Data         # [DB] continue-on-error. Lives in the lane that touches the shared resource.

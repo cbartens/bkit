@@ -6,6 +6,8 @@ import type { PreflightFinding } from "../before/index";
 import type { SuppressionNote } from "../after/suppression";
 import type { SetupTip } from "./catalogue";
 import {
+  STAR_TIP,
+  STAR_TIP_ID,
   TIPS_CAP,
   TIPS_DETAILS_POINTER,
   collectTips,
@@ -65,6 +67,12 @@ describe("collectTips", () => {
 
   it("keeps firing tips in catalogue order", () => {
     expect(collectTips(cwd, catalogue).tips.map((t) => t.id)).toEqual(["a", "c"]);
+  });
+
+  it("keeps the star line until its id is ignored", () => {
+    expect(collectTips(cwd, catalogue).star).toBe(true);
+    ignore([STAR_TIP_ID]);
+    expect(collectTips(cwd, catalogue).star).toBe(false);
   });
 
   it("moves silenced tips to suppressed", () => {
@@ -151,6 +159,39 @@ describe("formatTips", () => {
     expect(build).not.toContain(tipsIntro(1));
     expect(formatTips(tagged, { workflow: "debug" }).startsWith("**Title comms.**")).toBe(true);
     expect(formatTips(tagged, { workflow: "debug", all: true })).toContain("1. Title comms");
+  });
+});
+
+describe("formatTips — star line", () => {
+  const tips = [fake("a", true), fake("b", true)];
+
+  it("closes every mode, after the details pointer", () => {
+    for (const opts of [{}, { all: true }, { workflow: "build" as const }]) {
+      const out = formatTips(tips, { ...opts, star: true });
+      expect(out.endsWith(`${TIPS_DETAILS_POINTER}\n\n${STAR_TIP}`)).toBe(true);
+    }
+  });
+
+  it("stands alone when no tip fires, and is absent when silenced", () => {
+    expect(formatTips([], { workflow: "ship", star: true })).toBe(STAR_TIP);
+    expect(formatTips(tips, { star: false })).not.toContain(STAR_TIP);
+    expect(formatTips([], { star: false })).toBe("");
+  });
+
+  it("is left out of audit and utility output, which often run back to back", () => {
+    for (const workflow of ["audit", "utility"] as const) {
+      const out = formatTips(tips, { workflow, star: true });
+      expect(out, workflow).not.toContain(STAR_TIP);
+      expect(out.endsWith(TIPS_DETAILS_POINTER), workflow).toBe(true);
+      expect(formatTips([], { workflow, star: true }), workflow).toBe("");
+    }
+  });
+
+  it("never counts toward the cap or the 'more' line", () => {
+    const out = formatTips(tips, { workflow: "build", star: true });
+    expect(out).toContain("1 more: `bkit tips --all`.");
+    expect(out).toContain("**Title a.**");
+    expect(out).not.toContain("**Title b.**");
   });
 });
 

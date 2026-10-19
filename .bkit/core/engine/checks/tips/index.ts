@@ -7,8 +7,8 @@ import {
   type SuppressionNote,
   type SuppressionReporter,
 } from "../after/suppression.js";
-import type { ComplyPhase } from "../../cli.js";
-import { SETUP_TIPS, type SetupTip } from "./catalogue.js";
+import type { TipsContext } from "../../cli.js";
+import { ALL_WORKFLOWS, SETUP_TIPS, type SetupTip } from "./catalogue.js";
 
 /** Tips `bkit tips` prints without `--all` or `--workflow`. */
 export const TIPS_CAP = 3;
@@ -26,6 +26,17 @@ export const tipsIntro = (n: number) =>
 /** Where the full tip list lives. */
 export const TIPS_DETAILS_POINTER =
   "Details for every tip: .bkit/advisories.md § Setup tips (refreshed by `bkit check`).";
+
+/** `bkit.ignoreAdvisories` key that silences `STAR_TIP`. */
+export const STAR_TIP_ID = "star";
+
+/**
+ * Last line of `bkit tips` output while not silenced, in bare `bkit tips` and the phase
+ * workflows only — audits and the ledger / roadmap updaters often run back to back. Not a
+ * gap, so never in the checklist.
+ */
+export const STAR_TIP =
+  "Do you like bkit? Then give it a star at [https://github.com/cbartens/bkit](https://github.com/cbartens/bkit)!";
 
 /** Intro of the Setup tips section: who reads which field, and how to silence a tip. */
 export const TIPS_SECTION_INTRO =
@@ -48,6 +59,8 @@ export interface TipsResult {
   tips: SetupTip[];
   /** Firing tips the root `bkit.ignoreAdvisories` silenced. */
   suppressed: SuppressionNote[];
+  /** False when the root `bkit.ignoreAdvisories` names `STAR_TIP_ID`. */
+  star: boolean;
 }
 
 /** Every firing tip in priority order, minus the ones the root package.json silences. */
@@ -60,7 +73,7 @@ export function collectTips(cwd: string, catalogue: readonly SetupTip[] = SETUP_
     if (isTipSilenced(tip, ignored)) suppressed.push({ id: tip.id, scope: "." });
     else tips.push(tip);
   }
-  return { tips, suppressed };
+  return { tips, suppressed, star: !ignored.has(STAR_TIP_ID) };
 }
 
 /**
@@ -93,7 +106,7 @@ function tipTextLines(tip: SetupTip, n: number): string[] {
   return lines;
 }
 
-/** One tip as markdown paragraphs for a workflow's `## Setup Tips` section. */
+/** One tip as markdown paragraphs for a workflow's `## bkit Tips` section. */
 function tipMarkdownLines(tip: SetupTip): string[] {
   const lines = [`**${tip.title}.** ${tip.line}`, "", `Ask your agent: "${tip.ask}"`];
   if (tip.caution) lines.push("", `Caution: ${tip.caution}`);
@@ -104,22 +117,38 @@ function tipMarkdownLines(tip: SetupTip): string[] {
  * `tips` with the ones that matter in `workflow` first, each group in catalogue order.
  * Comms tips name every workflow, so they stay first everywhere.
  */
-export function orderForWorkflow(tips: readonly SetupTip[], workflow: ComplyPhase): SetupTip[] {
+export function orderForWorkflow(tips: readonly SetupTip[], workflow: TipsContext): SetupTip[] {
   const own = tips.filter((t) => t.workflows?.includes(workflow));
   return [...own, ...tips.filter((t) => !own.includes(t))];
 }
 
+/** True when `STAR_TIP` closes the output in `workflow`: bare `bkit tips` or a phase workflow. */
+export function starShownIn(workflow: TipsContext | null | undefined): boolean {
+  return !workflow || (ALL_WORKFLOWS as readonly string[]).includes(workflow);
+}
+
 /**
- * `bkit tips` output, then where the rest live. `""` when no tip fires.
+ * `bkit tips` output, then where the rest live, then `STAR_TIP` when `star` is set and
+ * `starShownIn(workflow)`. `""` when no tip fires and no star line shows.
  *   - `workflow`: the `WORKFLOW_TIPS_CAP` tips that matter most in that workflow, as
  *     markdown paragraphs with no intro or numbers — the workflow appends them under its
- *     own `## Setup Tips` heading.
+ *     own `## bkit Tips` heading.
  *   - neither: the top `TIPS_CAP` tips as a numbered terminal list.
  *   - `all`: every tip as a numbered list (in the workflow's order when `workflow` is set).
  */
 export function formatTips(
   tips: readonly SetupTip[],
-  opts: { all?: boolean; workflow?: ComplyPhase | null } = {},
+  opts: { all?: boolean; workflow?: TipsContext | null; star?: boolean } = {},
+): string {
+  const body = formatSetupTips(tips, opts);
+  if (!opts.star || !starShownIn(opts.workflow)) return body;
+  return body ? `${body}\n\n${STAR_TIP}` : STAR_TIP;
+}
+
+/** `formatTips` without `STAR_TIP`. */
+function formatSetupTips(
+  tips: readonly SetupTip[],
+  opts: { all?: boolean; workflow?: TipsContext | null },
 ): string {
   if (tips.length === 0) return "";
   const ordered = opts.workflow ? orderForWorkflow(tips, opts.workflow) : [...tips];

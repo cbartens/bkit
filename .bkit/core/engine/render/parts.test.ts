@@ -12,6 +12,13 @@ import { readTemplate, renderParts } from "./parts";
 
 const PART_LINE = /\{\{BKIT_PART /;
 
+/** Syntax-check `file` as the template `rel`'s language: `bash -n` for shell, `node --check` for JS. */
+function syntaxCheck(rel: string, file: string) {
+  return rel.endsWith(".sh")
+    ? spawnSync("bash", ["-n", file], { encoding: "utf-8" })
+    : spawnSync(process.execPath, ["--check", file], { encoding: "utf-8" });
+}
+
 let tmp: string;
 beforeEach(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-parts-"));
@@ -94,14 +101,17 @@ describe("shipped hook templates", () => {
   });
 
   it("every part is used by at least two hosts, and no part line survives rendering", () => {
-    const uses = new Map(fs.readdirSync(partsDir).map((p) => [p, 0]));
+    const referenced = templates.flatMap((rel) =>
+      [...readRaw(rel).matchAll(/\{\{BKIT_PART ([A-Za-z0-9._-]+)\}\}/g)].map((m) => m[1]!),
+    );
     for (const rel of templates) {
-      for (const m of readRaw(rel).matchAll(/\{\{BKIT_PART ([A-Za-z0-9._-]+)\}\}/g)) {
-        uses.set(m[1]!, (uses.get(m[1]!) ?? 0) + 1);
-      }
       expect(readTemplate(path.join(root, rel)), rel).not.toMatch(PART_LINE);
     }
-    for (const [part, n] of uses) expect(n, part).toBeGreaterThanOrEqual(2);
+    // Every part on disk, plus any part a template names that is not on disk.
+    for (const part of new Set([...fs.readdirSync(partsDir), ...referenced])) {
+      const n = referenced.filter((name) => name === part).length;
+      expect(n, part).toBeGreaterThanOrEqual(2);
+    }
   });
 
   it("every part line sits inside the bkit-managed block", () => {
@@ -118,13 +128,10 @@ describe("shipped hook templates", () => {
 
   it("every generated hook parses: node --check for JS, bash -n for shell", () => {
     for (const rel of templates) {
-      const isShell = rel.endsWith(".sh");
       // `.mjs` for the opencode plugin: an ES module with no package.json beside it.
       const out = path.join(tmp, path.basename(rel).replace(/\.js$/, ".mjs"));
       fs.writeFileSync(out, readTemplate(path.join(root, rel)));
-      const res = isShell
-        ? spawnSync("bash", ["-n", out], { encoding: "utf-8" })
-        : spawnSync(process.execPath, ["--check", out], { encoding: "utf-8" });
+      const res = syntaxCheck(rel, out);
       expect(res.status, `${rel}: ${res.stderr}`).toBe(0);
     }
   });

@@ -16,9 +16,11 @@ import { appendLine, statusTimestamp, type StatusRow } from "../../ledgers/statu
 import {
   bodySkipToken,
   CommandError,
+  DEV,
   EXIT,
   ghUnavailable,
   git,
+  isSharedBranch,
   parseJson,
   repoRoot,
   runGh,
@@ -241,9 +243,9 @@ export function openPrFor(cwd: string, o: OpenInput, log: (m: string) => void): 
     return { code: EXIT_SKIP_CI_TITLE, out: null };
   }
 
-  const base = refFlag(o.base ?? "dev", "base");
+  const base = refFlag(o.base ?? DEV, "base");
   const head = o.head === undefined ? currentBranch(cwd) : refFlag(o.head, "head");
-  if (head === base || head === "dev" || head === "main") {
+  if (head === base || isSharedBranch(head)) {
     throw new CommandError(EXIT.USAGE, `refusing to open a PR from "${head}" into "${base}"`);
   }
 

@@ -1,0 +1,67 @@
+# Example Trivy scan. Copy it to `.github/workflows/bkit-trivy.yml` and own it.
+# bkit install does not write this file and does not overwrite a copy.
+#
+# Fails on a HIGH or CRITICAL finding in any lockfile (every language Trivy reads), in
+# config files (Dockerfile, Terraform, Kubernetes, Helm, CloudFormation) and in secrets
+# committed to tracked files. Accept a finding in `.trivyignore.yaml`, each entry with a
+# `statement` (why) and an `expired_at` (when it comes back). See
+# `.bkit/templates.md` § Trivy.
+#
+# Runs the official image pinned by tag AND digest. Never reference
+# `aquasecurity/trivy-action` or `setup-trivy` by tag: in March 2026 their tags were
+# re-pointed at a credential stealer. This file is yours, so Renovate bumps the tag and
+# digest together. Do NOT add this path to renovate.json5 `ignorePaths`.
+name: Trivy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [{{DEFAULT_BRANCH}}, dev]
+  pull_request:
+    branches: [{{DEFAULT_BRANCH}}, dev]
+  schedule:
+    # New advisories land without a code change; the daily run catches them.
+    - cron: "41 5 * * *"
+
+# The scan reads the checkout and needs no secret and no write scope.
+permissions:
+  contents: read
+
+concurrency:
+  group: trivy-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy:
+    runs-on: ubuntu-latest # Edit this label in your copy.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # `scripts/ci/check-dependency-audit.mjs` (bkit-ci.yml `Check Dependency Audit`)
+      # already gates pnpm-lock.yaml against `accepted-advisories.json`; scanning it here
+      # too would need every acceptance twice. Without that gate, Trivy owns the lockfile.
+      - name: Plan Scan
+        id: plan
+        run: |
+          args=""
+          if [ -f scripts/ci/check-dependency-audit.mjs ]; then
+            args="$args --skip-files pnpm-lock.yaml"
+          fi
+          if [ -f .trivyignore.yaml ]; then
+            args="$args --ignorefile .trivyignore.yaml"
+          fi
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+
+      # --include-dev-deps: without it Trivy drops every dev dependency from npm, yarn
+      # and pnpm lockfiles, and a repo of dev tooling scans zero packages and passes.
+      # --skip-dirs .bkit/templates: bkit rewrites those files; your adopted copies are
+      # scanned where they live.
+      - name: Run Trivy
+        uses: docker://ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+        with:
+          args: >-
+            fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --exit-code 1
+            --include-dev-deps --skip-dirs .bkit/templates ${{ steps.plan.outputs.args }} .

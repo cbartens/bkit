@@ -42,6 +42,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** Put an env var back to its saved value; undefined means it was unset. */
+function restoreEnv(key: string, saved: string | undefined): void {
+  if (saved === undefined) delete process.env[key];
+  else process.env[key] = saved;
+}
+
 function writeBkitEnv(content: string): void {
   const dir = path.join(tmpDir, ".bkit");
   fs.mkdirSync(dir, { recursive: true });
@@ -159,19 +165,15 @@ describe("resolveBinaryPath — binary path resolution", () => {
       BKIT_CURSOR_BIN: "/nonexistent/Cursor-xyz",
     });
     expect("error" in result).toBe(true);
-    if ("error" in result) {
-      expect(result.error).toMatch(/cursor binary not found/i);
-      expect(result.error).toContain("BKIT_CURSOR_BIN");
-    }
+    expect(result).toMatchObject({ error: expect.stringMatching(/cursor binary not found/i) });
+    expect(result).toMatchObject({ error: expect.stringContaining("BKIT_CURSOR_BIN") });
   });
 
   it("returns binPath when override path exists (real file)", () => {
     const fakeBin = makeFakeBin("fake-cursor");
     const result = resolveBinaryPath("cursor", { BKIT_CURSOR_BIN: fakeBin });
     expect("binPath" in result).toBe(true);
-    if ("binPath" in result) {
-      expect(result.binPath).toBe(fakeBin);
-    }
+    expect(result).toMatchObject({ binPath: fakeBin });
   });
 
   it("opencode uses BKIT_OPENCODE_BIN override", () => {
@@ -179,9 +181,7 @@ describe("resolveBinaryPath — binary path resolution", () => {
       BKIT_OPENCODE_BIN: "/nonexistent/opencode-xyz",
     });
     expect("error" in result).toBe(true);
-    if ("error" in result) {
-      expect(result.error).toContain("BKIT_OPENCODE_BIN");
-    }
+    expect(result).toMatchObject({ error: expect.stringContaining("BKIT_OPENCODE_BIN") });
   });
 
   it("opencode returns binPath when override exists", () => {
@@ -279,8 +279,7 @@ describe("launchApp — exit 1 when binary not found", () => {
       const errors = await withExit(() => launchApp("cursor", tmpDir));
       expect(errors).toMatch(/not found/i);
     } finally {
-      if (origEnv === undefined) delete process.env["BKIT_CURSOR_BIN"];
-      else process.env["BKIT_CURSOR_BIN"] = origEnv;
+      restoreEnv("BKIT_CURSOR_BIN", origEnv);
     }
   });
 });

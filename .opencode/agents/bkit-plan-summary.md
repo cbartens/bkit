@@ -9,7 +9,7 @@ tools:
   write: true
   edit: true
 ---
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating completed plans for build-readiness.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -76,7 +76,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Design Alignment
 
-[Summarise: plan `Narrative` and `Success Criteria` match the design doc verbatim? Plan scope within design scope?; initially set to `PENDING`.]
+[Summarise: plan `Narrative` and `Success Criteria` match the design doc verbatim (no design → the issue's)? Plan scope within design scope (no design → the issue's)?; initially set to `PENDING`.]
 
 ## Deferred & Out-of-Scope
 

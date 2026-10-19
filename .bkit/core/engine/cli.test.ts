@@ -279,7 +279,7 @@ describe("printUsage — help output", () => {
   });
 
   it("names every host flag in the install 'Hosts compose' line", () => {
-    const composeLine = usage().match(/Hosts compose:[^.]*\./s)?.[0] ?? "";
+    const composeLine = String(usage().match(/Hosts compose:[^.]*\./s)?.[0]);
     for (const host of [
       "--claude",
       "--cursor",
@@ -832,6 +832,8 @@ describe("parseArgs — tips verb", () => {
   it("--workflow names the workflow; bare tips names none", () => {
     expect(parseArgs(["tips"]).tipsWorkflow).toBeNull();
     expect(parseArgs(["tips", "--workflow=debug"]).tipsWorkflow).toBe("debug");
+    expect(parseArgs(["tips", "--workflow=audit"]).tipsWorkflow).toBe("audit");
+    expect(parseArgs(["tips", "--workflow=utility"]).tipsWorkflow).toBe("utility");
   });
 
   it("--workflow refuses an unknown workflow", () => {
@@ -948,7 +950,7 @@ describe("validateModuleFlagsForVerb — #252 Step 2/3 verb/module-flag validati
   });
 
   it("names every host flag and every --auto variant in the bare-install error", () => {
-    const err = validateModuleFlagsForVerb("install", flags()) ?? "";
+    const err = String(validateModuleFlagsForVerb("install", flags()));
     for (const host of [
       "--claude",
       "--cursor",

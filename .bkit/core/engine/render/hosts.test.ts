@@ -685,7 +685,7 @@ describe("#386: line 1 of a rendered command is a description, never the marker"
       expect(expected).toBeTruthy();
       expect(lines[0]).toBe(expected);
       expect(lines[0]).not.toContain("bkit:managed");
-      expect((out.match(/bkit:managed/g) ?? []).length).toBe(1);
+      expect([...out.matchAll(/bkit:managed/g)]).toHaveLength(1);
     });
 
     it(`opencode: ${f}`, () => {
@@ -694,7 +694,7 @@ describe("#386: line 1 of a rendered command is a description, never the marker"
         "9.9.9",
       );
       expect(out.split("\n")[0]).not.toContain("bkit:managed");
-      expect((out.match(/bkit:managed/g) ?? []).length).toBe(1);
+      expect([...out.matchAll(/bkit:managed/g)]).toHaveLength(1);
     });
   }
 });
@@ -816,5 +816,51 @@ describe("applyAntigravitySkill", () => {
   it("supplies frontmatter when the workflow has none", () => {
     const out = applyAntigravitySkill("# Bare\n", "bkit-x");
     expect(out).toMatch(/^---\nname: bkit-x\ndescription: .+\n---\n/);
+  });
+});
+
+describe("subagent renderers — shared opening (name required, model looked up, exit 1)", () => {
+  const renderers: ReadonlyArray<
+    readonly [host: string, render: (c: string) => string, missingModel: string]
+  > = [
+    ["cursor", (c) => applyT3(c, lookup), "Missing model lookup for nope"],
+    ["opencode", (c) => applyOpencodeAgent(c, lookup), "Missing opencode model lookup for nope"],
+    ["codex", (c) => applyCodexAgent(c, lookup), "Missing codex model lookup for nope"],
+    [
+      "antigravity",
+      (c) => applyAntigravityPrompt(c, lookup),
+      "Missing antigravity model lookup for nope",
+    ],
+  ];
+
+  function loggedBeforeExit(render: () => string): string[] {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((code: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as never);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      expect(render).toThrow("process.exit(1)");
+      return errorSpy.mock.calls.map((c) => String(c[0]));
+    } finally {
+      errorSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
+  }
+
+  it.each(renderers)("%s: a missing `name` exits 1 with the name message", (_host, render) => {
+    const logged = loggedBeforeExit(() => render(md("description: d")));
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/ Subagent frontmatter missing 'name' field$/);
+  });
+
+  it.each(renderers)("%s: a missing model exits 1 with the lookup message", (_h, render, msg) => {
+    const logged = loggedBeforeExit(() => render(md("name: nope\ndescription: d")));
+    expect(logged).toHaveLength(1);
+    expect(logged[0].endsWith(` ${msg}`)).toBe(true);
+  });
+
+  it.each(renderers)("%s: content without frontmatter passes through", (_host, render) => {
+    const bare = "# No frontmatter\nBody.\n";
+    expect(render(bare)).toBe(bare);
   });
 });

@@ -24,7 +24,7 @@ import { appendLine as telemetryLine, foldFrom, resolveRepoSlug, validate, workf
 import { readBkitVersion } from "../../install/version-file.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { gradeCompliance } from "../comply.js";
-import { CommandError, EXIT, git, parseJson, repoRoot, runGh, runGit, statusLocation, statusRelPath, } from "../lib.js";
+import { CommandError, DEV, EXIT, git, parseJson, repoRoot, runGh, runGit, statusLocation, statusRelPath, } from "../lib.js";
 import { anchorBkitStatus, pushBranch, readAnchor, stampAnchor } from "./branches.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX, buildComment, linearState, transitionLabels, } from "./issues.js";
 import { EXIT_EMPTY, commitBookkeeping, unionLedgers } from "./ledgers.js";
@@ -261,15 +261,15 @@ async function shipFlush(ctx, o) {
             return { code: EXIT.OK, pushed: false, ref: null, skipped: "dev-lock-busy" };
         }
         release = () => releaseLock(lock.path, { workflow: "ship", fid: o.fid, token: lock.token });
-        runGit(root, ["checkout", "dev"]);
-        if (git(root, ["branch", "--show-current"]) !== "dev") {
+        runGit(root, ["checkout", DEV]);
+        if (git(root, ["branch", "--show-current"]) !== DEV) {
             release();
             ctx.log(`not on dev after checkout — FAILED bookkeeping left uncommitted in ${bookRoot}`);
             return { code: EXIT_FLUSH_FAILED, pushed: false, ref: null, skipped: null };
         }
-        runGit(root, ["pull", "--ff-only", "origin", "dev"]);
+        runGit(root, ["pull", "--ff-only", "origin", DEV]);
         wt = root;
-        target = "dev";
+        target = DEV;
     }
     else {
         ctx.log("RUNTIME_DEVPUSHES=false — the FAILED record commits on the current branch");
@@ -615,7 +615,7 @@ export function closeWorkflow(cwd, o, log) {
         : ["[bkit-telemetry] stats.jsonl not found — no telemetry rows yet"];
     const ref = o.ref ??
         (["design", "plan", "ship"].includes(workflow)
-            ? "dev"
+            ? DEV
             : (git(cwd, ["branch", "--show-current"]) ?? "HEAD"));
     const artifacts = artifactLinks(where.root, ref, where.month, o.fid, workflow, o.ownerRepo ?? repo);
     let comment = null;
@@ -698,8 +698,8 @@ async function shipClose(ctx, o, token) {
     try {
         let wt;
         if (o.devPushes) {
-            runGit(root, ["checkout", "dev"]);
-            if (git(root, ["branch", "--show-current"]) !== "dev")
+            runGit(root, ["checkout", DEV]);
+            if (git(root, ["branch", "--show-current"]) !== DEV)
                 return fail("not on dev after checkout — aborting dev ops");
             wt = root;
         }
@@ -712,7 +712,7 @@ async function shipClose(ctx, o, token) {
             closeRoot = wt;
         }
         else {
-            if (!runGit(wt, ["fetch", "origin", "dev"]).ok)
+            if (!runGit(wt, ["fetch", "origin", DEV]).ok)
                 return fail(`fetch origin dev failed — close bookkeeping left uncommitted in ${wt}`);
             closeRoot = path.join(outbox, "close");
             if (fs.existsSync(closeRoot))
@@ -734,11 +734,11 @@ async function shipClose(ctx, o, token) {
         if (released.removeFailed)
             return fail("Lock removal failed");
         if (o.devPushes) {
-            if (!runGit(closeRoot, ["push", "origin", "dev"]).ok) {
+            if (!runGit(closeRoot, ["push", "origin", DEV]).ok) {
                 ctx.log("dev push failed");
                 return { code: EXIT_PUSH_FAILED, out };
             }
-            landed = { ref: "dev", via: "dev-push" };
+            landed = { ref: DEV, via: "dev-push" };
         }
     }
     finally {
@@ -746,7 +746,7 @@ async function shipClose(ctx, o, token) {
     }
     if (!o.devPushes) {
         if (runGit(closeRoot, ["push", "origin", "HEAD:dev"]).ok) {
-            landed = { ref: "dev", via: "head-push" };
+            landed = { ref: DEV, via: "head-push" };
         }
         else {
             // dev refused the push: publish the close commit through its own PR.
@@ -758,7 +758,7 @@ async function shipClose(ctx, o, token) {
                 "pr",
                 "create",
                 "--base",
-                "dev",
+                DEV,
                 "--head",
                 branch,
                 "--title",
@@ -768,7 +768,7 @@ async function shipClose(ctx, o, token) {
             ]);
             if (!created.ok)
                 return fail(`gh pr create failed: ${created.stderr}`);
-            const pr = probePr(closeRoot, { head: branch, base: "dev", state: "open" });
+            const pr = probePr(closeRoot, { head: branch, base: DEV, state: "open" });
             const number = pr.kind === "ok" ? pr.pr?.number : undefined;
             if (number === undefined)
                 return fail(`close PR not found for ${branch}`);
@@ -1317,7 +1317,7 @@ export const workflowsCommand = {
                 const fid = String(ctx.flags.fid);
                 const root = repoRoot(ctx.cwd);
                 const month = resolveMonth(root, fid, str(ctx.flags.month));
-                const artifacts = artifactLinks(root, str(ctx.flags.ref) ?? "dev", month, fid, workflow, str(ctx.flags.ownerRepo) ?? (resolveRepoSlug(root) || "unknown/repo"));
+                const artifacts = artifactLinks(root, str(ctx.flags.ref) ?? DEV, month, fid, workflow, str(ctx.flags.ownerRepo) ?? (resolveRepoSlug(root) || "unknown/repo"));
                 let comment = null;
                 const outbox = str(ctx.flags.outbox);
                 if (outbox !== undefined) {

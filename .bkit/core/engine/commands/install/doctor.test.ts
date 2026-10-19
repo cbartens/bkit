@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
-import { runStatus } from "./doctor";
+import { formatOpencodeModelPins, readOpencodeModelPins, runStatus } from "./doctor";
 
 describe("runStatus — read-only host/provider status", () => {
   let cwd: string;
@@ -63,6 +63,87 @@ describe("runStatus — read-only host/provider status", () => {
     fs.mkdirSync(path.join(cwd, ".opencode"), { recursive: true });
     fs.writeFileSync(path.join(cwd, ".opencode", "opencode.json"), "{ bad", "utf-8");
     runStatus(cwd, "[bkit]");
-    expect(out()).toContain("parse-error");
+    expect(out()).toContain("opencode.json: parse-error");
+  });
+
+  const writeAgent = (name: string, model: string | null): void => {
+    const dir = path.join(cwd, ".opencode", "agents");
+    fs.mkdirSync(dir, { recursive: true });
+    const modelLine = model === null ? "" : `model: ${model}\n`;
+    fs.writeFileSync(
+      path.join(dir, name),
+      `---\nmode: subagent\nname: ${name}\n${modelLine}---\n\nBody.\n`,
+      "utf-8",
+    );
+  };
+
+  it("reports the per-agent model pins rendered into .opencode/agents/", () => {
+    writeAgent("bkit-a.md", "openrouter/deepseek/deepseek-v4.1-flash");
+    writeAgent("bkit-b.md", "openrouter/deepseek/deepseek-v4.1-flash");
+    writeAgent("bkit-c.md", "openrouter/moonshotai/kimi-k3");
+    writeAgent("bkit-d.md", null);
+    fs.writeFileSync(path.join(cwd, ".opencode", "opencode.json"), "{}", "utf-8");
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({
+        bkit: { opencodeProvider: "openrouter", opencodeProviders: ["openrouter"] },
+      }),
+      "utf-8",
+    );
+    runStatus(cwd, "[bkit]");
+    const o = out();
+    expect(o).toContain(
+      "opencode: INSTALLED  (provider: openrouter / models: openrouter/deepseek/deepseek-v4.1-flash (2 agents), openrouter/moonshotai/kimi-k3 (1 agent))",
+    );
+    expect(o).not.toContain("unknown");
+  });
+
+  it("names the single pin, and opencode.json's own default model when set", () => {
+    writeAgent("bkit-a.md", "opencode-go/kimi-k3");
+    fs.writeFileSync(
+      path.join(cwd, ".opencode", "opencode.json"),
+      JSON.stringify({ model: "opencode-go/glm-5.3" }),
+      "utf-8",
+    );
+    runStatus(cwd, "[bkit]");
+    expect(out()).toContain("model: opencode-go/kimi-k3; default model: opencode-go/glm-5.3");
+  });
+
+  it("says no pin is rendered when .opencode/agents/ carries none", () => {
+    fs.mkdirSync(path.join(cwd, ".opencode"), { recursive: true });
+    runStatus(cwd, "[bkit]");
+    expect(out()).toContain("model: none pinned in .opencode/agents/");
+  });
+});
+
+describe("readOpencodeModelPins / formatOpencodeModelPins", () => {
+  it("groups pins by model, most-used first, ties by id", () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-pins-"));
+    try {
+      const dir = path.join(cwd, ".opencode", "agents");
+      fs.mkdirSync(dir, { recursive: true });
+      const pin = (f: string, m: string) =>
+        fs.writeFileSync(path.join(dir, f), `---\nmodel: ${m}\n---\n`, "utf-8");
+      pin("a.md", "p/z");
+      pin("b.md", "p/y");
+      pin("c.md", "p/y");
+      pin("d.md", "p/x");
+      fs.writeFileSync(path.join(dir, "notes.txt"), "model: p/ignored\n", "utf-8");
+      const pins = readOpencodeModelPins(cwd);
+      expect(pins).toEqual([
+        { model: "p/y", agents: 2 },
+        { model: "p/x", agents: 1 },
+        { model: "p/z", agents: 1 },
+      ]);
+      expect(formatOpencodeModelPins(pins)).toBe(
+        "models: p/y (2 agents), p/x (1 agent), p/z (1 agent)",
+      );
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("returns [] when .opencode/agents/ is absent", () => {
+    expect(readOpencodeModelPins(path.join(os.tmpdir(), "bkit-no-such-dir-xyz"))).toEqual([]);
   });
 });

@@ -149,13 +149,3 @@ export function getHooksRoot(): string {
 export function getBkitDocsRoot(): string {
   return path.join(getCoreRoot(), ".bkit");
 }
-
-// ---------------------------------------------------------------------------
-// isDogfood — true when bkit is running inside its own repo (in-repo install).
-// In this case the source tree IS the consumer's .agents/ directory, so any
-// payload copy would overwrite the source with itself.
-// ---------------------------------------------------------------------------
-
-export function isDogfood(): boolean {
-  return getPkgRoot() === process.cwd();
-}

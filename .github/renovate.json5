@@ -11,8 +11,11 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
 
-  // `config:recommended` is Renovate's curated baseline (timezone-aware schedules,
-  // dependency dashboard, etc.). Repo-specific rules go in this file.
+  // `config:best-practices` is Renovate's curated baseline: `config:recommended` plus
+  // digest pinning for Docker images and GitHub Actions, exact-version pinning of
+  // devDependencies, config-migration PRs, an abandoned-packages section on the
+  // dashboard, and a 3-day npm release-age gate (raised to 7 days in the first
+  // packageRule below). Repo-specific rules go in this file.
   // A `local>` preset with no `#` is read from the default branch. `useBaseBranchConfig`
   // does not change that fetch. Append the branch `baseBranchPatterns` names — a branch
   // after `#` works (branch, tag, or commit SHA):
@@ -20,7 +23,7 @@
   // The `extends` line itself is still read from the default branch, so `#dev` needs
   // one merge there before edits on `dev` apply.
   extends: [
-    "config:recommended",
+    "config:best-practices",
     ":dependencyDashboard",
   ],
 
@@ -67,23 +70,40 @@
   minimumReleaseAge: "7 days",
 
   // Lockfile maintenance — picks up indirect-dependency updates that a
-  // direct-dependency bump alone wouldn't catch. Same weekly slot.
+  // direct-dependency bump alone wouldn't catch. Monthly: it rewrites the whole
+  // lockfile, so a weekly PR is mostly churn.
   lockFileMaintenance: {
     enabled: true,
-    schedule: ["before 6am on Monday"],
+    schedule: ["before 6am on the first day of the month"],
   },
 
-  // Respect ignore paths from .gitignore + add common monorepo cruft.
+  // Rebase a Renovate PR only when it conflicts. The default re-bases every open PR
+  // each time the base branch moves, which re-runs CI on PRs that auto-merge.
+  rebaseWhen: "conflicted",
+
+  // A repo-level `ignorePaths` REPLACES the list from `:ignoreModulesAndTests`
+  // (pulled in by `config:best-practices`), so that preset's entries are repeated
+  // here. `docs/plans/**` holds archived plans and spike code, never live
+  // dependencies. `**/tests/**` and `**/__fixtures__/**` hold fixture manifests.
   // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned and stay out of
   // the scan. To keep Renovate off a file entirely, list it here:
   // a packageRule `enabled: false` suppresses version bumps, but the github-actions
   // manager still scans the file and applies tag->SHA pinDigests. Workflows you
-  // copied from `.bkit/templates/` (bkit-ci.yml, bkit-cloud.yml, bkit-renovate.yml) are yours —
+  // copied from `.bkit/templates/` (bkit-ci.yml, bkit-cloud.yml, bkit-renovate.yml,
+  // bkit-trivy.yml) are yours —
   // leave them out of ignorePaths so their action pins refresh.
   ignorePaths: [
     "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/examples/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/__fixtures__/**",
     "**/dist/**",
     "**/build/**",
+    "docs/plans/**",
     ".bkit/templates/**",
     ".agents/skills/**",
   ],
@@ -92,7 +112,62 @@
   prConcurrentLimit: 10,
   prHourlyLimit: 4,
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Pinned CLIs and tools that live in no package manifest. A comment line
+  //   # renovate: datasource=<datasource> depName=<name> [packageName=<n>] [versioning=<v>] [extractVersion=<regex>]
+  // directly above the pin tells Renovate what to look up. Forms matched:
+  //   ARG NODE_VERSION=24.11.0 · GH_VERSION="2.83.0"      (Dockerfile / shell)
+  //   VALE_VERSION: "3.9.1" · renovate-version: "44.x.y"  (workflow env / `with:` input)
+  //   GRAPHIFY_SPEC="graphifyy[sql]==0.9.50"              (pip spec in bkit-graphify.sh: value after `==`)
+  //   npm install -g @opencode/cli@2.0.26                 (npm global install)
+  //   bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 (installer-script version argument)
+  // Pins paired with a checksum (Vale, gh, jq, Node, actionlint) get the new VERSION
+  // from Renovate, but the sha256 beside it stays old: update it by hand in the same
+  // PR, or the install fails closed. See the NOTE in the docker images rule below.
+  // ─────────────────────────────────────────────────────────────────────
+  customManagers: [
+    {
+      customType: "regex",
+      managerFilePatterns: [
+        "/(^|/)Dockerfile$/",
+        "/(^|/)\\.claude/bkit-cloud\\.md$/",
+        "/(^|/)\\.github/workflows/[^/]+\\.ya?ml$/",
+        "/(^|/)scripts/graphify/bkit-graphify\\.sh$/",
+      ],
+      matchStrings: [
+        "# renovate: datasource=(?<datasource>[a-zA-Z0-9-._]+?) depName=(?<depName>\\S+?)(?: packageName=(?<packageName>\\S+?))?(?: versioning=(?<versioning>\\S+?))?(?: extractVersion=(?<extractVersion>\\S+?))?\\s+(?:(?:ARG|export)\\s+)?[\\w-]*(?:VERSION|version)[=:]\\s*\"?(?<currentValue>[^\"\\s]+)\"?",
+        "# renovate: datasource=(?<datasource>[a-zA-Z0-9-._]+?) depName=(?<depName>\\S+?)(?: packageName=(?<packageName>\\S+?))?(?: versioning=(?<versioning>\\S+?))?(?: extractVersion=(?<extractVersion>\\S+?))?\\s+\\w*_SPEC[=:]\\s*\"[^\"=\\s]+==(?<currentValue>[^\"\\s]+)\"",
+        "# renovate: datasource=(?<datasource>[a-zA-Z0-9-._]+?) depName=(?<depName>\\S+?)(?: packageName=(?<packageName>\\S+?))?(?: versioning=(?<versioning>\\S+?))?(?: extractVersion=(?<extractVersion>\\S+?))?\\s+npm install -g \\S+@(?<currentValue>[^\\s\"]+)",
+        "# renovate: datasource=(?<datasource>[a-zA-Z0-9-._]+?) depName=(?<depName>\\S+?)(?: packageName=(?<packageName>\\S+?))?(?: versioning=(?<versioning>\\S+?))?(?: extractVersion=(?<extractVersion>\\S+?))?\\s+bash \"[^\"]+\" (?<currentValue>[0-9][^\\s\"]*)",
+      ],
+    },
+  ],
+
   packageRules: [
+    // ─────────────────────────────────────────────────────────────────────
+    // `config:best-practices` sets a 3-day npm release-age gate as a packageRule,
+    // which beats the root-level `minimumReleaseAge: "7 days"` for npm packages.
+    // This rule restores 7 days. Rules in this file are applied after the preset's
+    // rules, so it wins; the preset's `internalChecksFilter: "strict"` stays on.
+    // ─────────────────────────────────────────────────────────────────────
+    {
+      matchDatasources: ["npm"],
+      minimumReleaseAge: "7 days",
+    },
+
+    // ─────────────────────────────────────────────────────────────────────
+    // `renovate-version` in bkit-renovate.yml. Renovate's github-actions manager
+    // finds it as a Docker image (ghcr.io/renovatebot/renovate), but ghcr.io tags
+    // carry no publish date, so `minimumReleaseAge` would hold every update as
+    // "pending" forever. That lookup is switched off; the `customManagers` entry
+    // below reads the same line through GitHub releases, which are dated.
+    // ─────────────────────────────────────────────────────────────────────
+    {
+      matchManagers: ["github-actions"],
+      matchDepNames: ["ghcr.io/renovatebot/renovate"],
+      enabled: false,
+    },
+
     // ─────────────────────────────────────────────────────────────────────
     // The bkit package itself — Renovate does not bump it.
     // Upgrade with `pnpm bkit upgrade --latest`, which bumps the pin and
@@ -111,7 +186,8 @@
     {
       matchManagers: ["npm"],
       matchUpdateTypes: ["minor", "patch"],
-      matchDepTypes: ["devDependencies"],
+      // `packageManager` is the pnpm pin in package.json; its bumps join the group.
+      matchDepTypes: ["devDependencies", "packageManager"],
       groupName: "non-major dependencies",
       automerge: true,
       automergeType: "pr",
@@ -136,10 +212,12 @@
       automerge: false,
     },
 
-    // Major bumps — always separate, never auto-merged.
+    // Major bumps — always separate, never auto-merged, and held until you tick
+    // the update on the Dependency Dashboard issue (no branch, PR or CI run before).
     {
       matchUpdateTypes: ["major"],
       automerge: false,
+      dependencyDashboardApproval: true,
       labels: ["dep-major"],
     },
 
@@ -206,9 +284,10 @@
     // comment, or the dockerfile manager can't map the digest to its tag.
     // Reviewed manually.
     // NOTE: version+checksum-paired installer fetches (e.g. the Vale tarball
-    // sha256, the pinned actionlint download-script SHA in bkit-ci.yml) are NOT
-    // Renovate-managed — it cannot recompute a tarball checksum — so bump those
-    // version+sha pairs by hand. See docs/deployments.md § GitHub Actions pinning.
+    // sha256, the pinned actionlint download-script SHA in bkit-ci.yml) are only
+    // half Renovate-managed — the `customManagers` entry below bumps the version
+    // but cannot recompute a tarball checksum — so update those version+sha pairs
+    // by hand in the same PR. See docs/deployments.md § GitHub Actions pinning.
     // ─────────────────────────────────────────────────────────────────────
     {
       matchManagers: ["dockerfile"],

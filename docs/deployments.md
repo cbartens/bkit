@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Deployments
 
@@ -393,15 +393,31 @@ Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips th
 | Row without `advisory`, `reason` or a `YYYY-MM-DD` `expires`, or listed twice | Fix the row |
 | Audit prints no report after 3 tries | Fails closed; rerun |
 
-`blocking` = severity → max days per acceptance: the repo's fix-time policy, held only there. Not `auditConfig.ignoreGhsas`: it ignores forever and records no reason. New advisory reds an unrelated push → upgrade or accept in the next push. Non-pnpm repo → adapt `blockingFindings()`.
+`blocking` = severity → max days per acceptance: the repo's fix-time policy, held only there. Not `auditConfig.ignoreGhsas`: it ignores forever and records no reason. New advisory reds an unrelated push → upgrade or accept in the next push. Non-pnpm repo → adapt `blockingFindings()`, or let the Trivy scan own the lockfile.
 
-**Hands off bkit-owned trees.** Renovate: ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them; scanning them is noise). A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file, so use `ignorePaths`. Workflows you copied from `.bkit/templates/` (`bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml`) are yours: leave them out of that list so their pins refresh.
+**Scan beyond the pnpm lockfile.** `.bkit/templates/.github/workflows/bkit-trivy.yml` → `.github/workflows/bkit-trivy.yml` fails on HIGH / CRITICAL findings in any lockfile, Dockerfile / IaC settings and committed secrets, on push, pull request and daily. With `check-dependency-audit.mjs` adopted it skips `pnpm-lock.yaml`, so each pnpm advisory is accepted in one file. Acceptances, pinning, traps → `.bkit/templates.md` § Trivy.
+
+**Hands off bkit-owned trees.** Renovate: ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them; scanning them is noise). A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file, so use `ignorePaths`. Workflows you copied from `.bkit/templates/` (`bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml`, `bkit-trivy.yml`) are yours: leave them out of that list so their pins refresh.
+
+**Renovate example settings.** The example extends `config:best-practices` (`config:recommended` plus Docker and GitHub Actions digest pinning, exact devDependency pins, config-migration PRs, an abandoned-packages section on the dashboard). That preset gates npm packages at 3 days; the example's first `packageRules` entry restores `7 days`. Other settings:
+
+<!-- prettier-ignore -->
+| Setting | Effect |
+| --- | --- |
+| `rebaseWhen: "conflicted"` | A PR is rebased only when it conflicts; the default re-runs CI on every auto-merge PR each time the base branch moves. |
+| `lockFileMaintenance.schedule` | First day of the month. |
+| Majors rule `dependencyDashboardApproval: true` | No branch, PR or CI run until you tick the update on the Dependency Dashboard issue. |
+| `ignorePaths` | Replaces the `:ignoreModulesAndTests` default, so the example repeats its entries (`node_modules`, `bower_components`, `vendor`, `examples`, `__tests__`, `test`, `tests`, `__fixtures__`) and adds `docs/plans/**` plus the bkit-owned trees. |
+| Non-major group `matchDepTypes` | `devDependencies` and `packageManager`: a pnpm bump joins the group instead of opening alone. |
+| `customManagers` | One regex manager for pins that sit in no package file (below). |
+
+**Pins outside package files.** The `customManagers` entry scans `Dockerfile`, `.claude/bkit-cloud.md` and `.github/workflows/*.yml` for a comment line directly above the pin: `# renovate: datasource=<datasource> depName=<name>` (optional `packageName=`, `versioning=`, `extractVersion=`). The next line is read as `[ARG|export] <NAME>_VERSION=<v>` or `<NAME>_VERSION: "<v>"`, `<NAME>_SPEC: "<pkg>==<v>"`, `npm install -g <pkg>@<v>`, or `bash "<installer>" <v>`. Renovate bumps the version only. A pin paired with a checksum (Vale, gh, jq, Node, actionlint) needs its sha256 updated by hand in the same PR, or the install fails closed.
 
 **Land config on the default branch before the bot runs.** GitHub Apps and Dependabot read config from the default branch. The example sets `baseBranchPatterns: ["dev"]` (PRs land on `dev`) and `useBaseBranchConfig: "merge"` (edits on `dev` apply to dev-targeted runs). `useBaseBranchConfig` itself is read from the default branch, so it needs one merge there before dev-side edits take effect.
 
 **Renovate, Mend.** Install the App at https://github.com/apps/renovate only after `renovate.json5` is on the default branch. No `gh api` equivalent. Within a few minutes the App opens an onboarding PR; merge it.
 
-**Renovate, self-hosted.** Copy the workflow example. Suspend the Mend App for this repo (Settings → Applications → Renovate → Configure → remove this repo) or both open `renovate/*` PRs. The cron wakes the bot daily; `renovate.json5` `schedule` still gates normal PRs. Do not narrow the cron to weekly, because `osvVulnerabilityAlerts` PRs need the daily wake.
+**Renovate, self-hosted.** Copy the workflow example; it pins `renovate-version` to an exact Renovate release. A `# renovate:` annotation on that line reads GitHub releases (dated, so `minimumReleaseAge` holds) and the example disables the native lookup of the same line, which uses ghcr.io image tags that carry no publish date and would hold every update as pending. Suspend the Mend App for this repo (Settings → Applications → Renovate → Configure → remove this repo) or both open `renovate/*` PRs. The cron wakes the bot daily; `renovate.json5` `schedule` still gates normal PRs. Do not narrow the cron to weekly, because `osvVulnerabilityAlerts` PRs need the daily wake.
 
 Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs do not trigger CI, so required checks and automerge never fire). Use a **fine-grained** PAT when this repo is the only owner-scope bkit touches; use a **classic** PAT when the same token must cover more than one owner — fine-grained PATs cannot span organizations. Fine-grained permissions for this repo:
 
@@ -434,7 +450,7 @@ Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs 
 
 When Renovate is the updater, leave alerts on and turn security updates and version updates off so Dependabot does not open competing PRs.
 
-**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml` and `bkit-renovate.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in both jobs: replace it with a label (e.g. `ubuntu-latest`).
+**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml` and `bkit-trivy.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in both jobs: replace it with a label (e.g. `ubuntu-latest`).
 
 ### Manual CVE handling (when an alert fires)
 
@@ -452,27 +468,28 @@ Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs immediately again
 
 ### Pre-push checklist
 
-Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces mechanically; `--no-verify` is a violation. Order matches `bkit-tests-static` (gates 1, 3-8) + `bkit-tests-unit` (gate 2):
+Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces mechanically; `--no-verify` is a violation. Order matches `bkit-tests-static` (gates 1-2, 4-9) + `bkit-tests-unit` (gate 3):
 
 <!-- prettier-ignore -->
 | # | Gate | Command | Hook block | Failure mode |
 | --- | --- | --- | --- | --- |
 | 1 | Typecheck | `pnpm typecheck` | template, via `bkit:gate:static-unit` | TS error → fix source. In this repo `typecheck` also runs `bkit:typecheck:tests` (`tsconfig.test.json`: the engine's `*.test.ts` under Vitest's bundler resolution), so a test-file type error fails the gate and the CI static lane. |
-| 2 | Unit and integration tests | `pnpm test` | template, via `bkit:gate:static-unit` | Test failure → fix code, never delete the test. |
-| 3 | Prettier format check | `pnpm format:check` | template, via `bkit:gate:static-unit` | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier"; without this gate, formatting failures only surface in CI after push. |
-| 4 | Prose lint | `pnpm lint:prose` | template, via `bkit:gate:static-unit` | Vale warning → fix the prose. `bkit ci prose` (what `pnpm lint:prose` runs) skips when vale is absent (install vale to enforce locally), restores a missing write-good from the main worktree else `vale sync`, and skips loudly when both fail; CI installs vale so it always enforces there. |
-| 5 | Slop delta | `pnpm slop:delta` | template, via `bkit:gate:static-unit` | A finding this push ADDS or WORSENS the repo on NET → fix it (the pre-existing baseline is never yours to fix on the way out). `bkit ci slop` (what `pnpm slop:delta [base-sha]` runs) materialises the base ref as a worktree and gates on slop-scan's **net** delta (`netFindingCount` / `netRepoScore`), NOT raw `--fail-on added`: a pure line-shift of an existing finding (slop-scan 0.3.0's position-keyed delta reports it as resolved+added at net zero) must NOT fail the gate. Note `lint:slop` (`slop-scan scan`) is report-only and is NOT a gate. |
-| 6 | bkit self-check | `pnpm bkit check` | template (`.bkit/templates/.husky/pre-push` — the consumer copies and owns it) | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
-| 7 | Dist freshness | `pnpm bkit:check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
-| 8 | Workflow lint | `pnpm bkit:lint:workflows` | source-repo only (appended directly; not in the consumer template) | actionlint finding in `.github/workflows/*` → fix the workflow. Guard-skips when actionlint is absent locally; CI installs it so it always enforces there. A YAML parse is not enough, because actionlint catches valid-YAML-but-invalid-GHA. |
+| 2 | Lint | `pnpm lint` | template, via `bkit:gate:static-unit` | Lint finding → fix source. Mirrors CI step "Run Lint"; `audits/templates/template-ci-yml.test.ts` fails when `bkit:gate:static` and the template's `bkit-tests-static` steps diverge. |
+| 3 | Unit and integration tests | `pnpm test` | template, via `bkit:gate:static-unit` | Test failure → fix code, never delete the test. |
+| 4 | Prettier format check | `pnpm format:check` | template, via `bkit:gate:static-unit` | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier"; without this gate, formatting failures only surface in CI after push. |
+| 5 | Prose lint | `pnpm lint:prose` | template, via `bkit:gate:static-unit` | Vale warning → fix the prose. `bkit ci prose` (what `pnpm lint:prose` runs) skips when vale is absent (install vale to enforce locally), restores a missing write-good from the main worktree else `vale sync`, and skips loudly when both fail; CI installs vale so it always enforces there. |
+| 6 | Slop delta | `pnpm slop:delta` | template, via `bkit:gate:static-unit` | A finding this push ADDS or WORSENS the repo on NET → fix it (the pre-existing baseline is never yours to fix on the way out). `bkit ci slop` (what `pnpm slop:delta [base-sha]` runs) materialises the base ref as a worktree and gates on slop-scan's **net** delta (`netFindingCount` / `netRepoScore`), NOT raw `--fail-on added`: a pure line-shift of an existing finding (slop-scan 0.3.0's position-keyed delta reports it as resolved+added at net zero) must NOT fail the gate. Note `lint:slop` (`slop-scan scan`) is report-only and is NOT a gate. |
+| 7 | bkit self-check | `pnpm bkit check` | template (`.bkit/templates/.husky/pre-push` — the consumer copies and owns it) | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
+| 8 | Dist freshness | `pnpm bkit:check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
+| 9 | Workflow lint | `pnpm bkit:lint:workflows` | source-repo only (appended directly; not in the consumer template) | actionlint finding in `.github/workflows/*` → fix the workflow. Guard-skips when actionlint is absent locally; CI installs it so it always enforces there. A YAML parse is not enough, because actionlint catches valid-YAML-but-invalid-GHA. |
 
 **Delete-only push (pre-push, first):** every stdin ref carries an all-zero local SHA (`git push origin --delete <branch>`) → exit 0, no gates. Any ref with a non-zero local SHA, empty stdin, or stdin a terminal (hook run by hand) → all gates run.
 
 **CI-suppressor HEAD guard (pre-push, before gates):** non-`dev`/`main` branch + HEAD carries `[skip ci]`/`[ci skip]`/`[no ci]`/`[skip actions]`/`[actions skip]` (`bkit ci skip-token` exits 0) → probe `gh pr list --head <branch> --state open`. Open PR → **BLOCKED** (vacuously green checks); add clean trigger commit + re-push. No open PR → allowed (sanctioned `[skip ci]` for mid-loop status, abort handover). `gh` unavailable → warn + allow (manual-push backstop; workflow CI-Dispatch Gate covers close push).
 
-**Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → run `pnpm bkit:gate:static` instead of `pnpm bkit:gate:static-unit`, dropping the unit lane only. Gates 4-8 still run — prose unaffected; slop:delta reports removals as `resolved`. Rollback trees intentionally inconsistent; surviving tests may reference deleted files. Non-revert: all applicable gates.
+**Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → run `pnpm bkit:gate:static` instead of `pnpm bkit:gate:static-unit`, dropping the unit lane only. Gates 5-9 still run — prose unaffected; slop:delta reports removals as `resolved`. Rollback trees intentionally inconsistent; surviving tests may reference deleted files. Non-revert: all applicable gates.
 
-Pre-commit: `pnpm bkit:gate:format` — prettier over staged files, seconds. Prose is NOT here: `lint:prose` scans a fixed whole-repo file set, so it gates at pre-push inside `bkit:gate:static`. Enforcing slop gate: pre-push `pnpm slop:delta` via the same gate (Gate 5); `pnpm lint:slop` is report-only and sits in no lane. CI re-runs prose + slop:delta in `bkit-tests-static`.
+Pre-commit: `pnpm bkit:gate:format` — prettier over staged files, seconds. Prose is NOT here: `lint:prose` scans a fixed whole-repo file set, so it gates at pre-push inside `bkit:gate:static`. Enforcing slop gate: pre-push `pnpm slop:delta` via the same gate (Gate 6); `pnpm lint:slop` is report-only and sits in no lane. CI re-runs prose + slop:delta in `bkit-tests-static`.
 
 Gate fails locally → fix + re-stage; do not `--no-verify` or amend over failed hook (skip-ci must not be HEAD when PR created). Genuinely broken gate (flaky external) → STOP, document blocker; do not push.
 
@@ -495,7 +512,7 @@ Source-repo only. Any `.bkit/core/engine/**/*.ts` change MUST include `pnpm buil
 
 This repo's `.github/renovate.json5` is its copy of the template plus one bkit-repo block (vite and pnpm majors held back).
 
-- `ignorePaths`: `.bkit/templates/**`, `.agents/skills/**`.
+- `ignorePaths`: the preset defaults the example repeats, plus `docs/plans/**`, `.bkit/templates/**`, `.agents/skills/**`.
 - A packageRule disables `@cbartens/bkit`. Bump it with `pnpm bkit upgrade --latest` (or `--to=<version>`).
 
 Template workflow pins under `.bkit/templates/.github/workflows/` sit on an ignored path, so Renovate does not bump them. This repo's `.github/workflows/*.yml` stays in scope. Refresh template pins by hand when revising CI.
@@ -554,7 +571,7 @@ Or Actions tab → CI → Run workflow → select branch. Same pattern as consum
 2. **Phase 2 — Install (direct writes).** Modules write straight to destinations; NOT atomic across modules. `.bkit-staging/<module>/` = per-run scratch for derived files, removed by `discardAllStaging` after every dispatch. Mid-dispatch error → earlier modules' files stay written, `.bkit/version` not re-pinned → re-run `bkit install` (idempotent).
 3. **Phase 3 — Post-install.** Re-detect token/ci/vale/devDeps. Cross-phase dedupe: Phase 3 wins. `bkit check`: Phase 3 read-only. **Phase 3 blockers exit 1** + recovery line; `--auto-revert` → `runUninstall` in-process.
 
-`pnpm bkit install` — all three phases. `pnpm bkit check` — Phase 1 + 3 read-only; exit 1 on Tier-1 / Tier-2 drift. `pnpm bkit doctor` — Phase 1 + 3, no writes. `pnpm bkit upgrade` — diff vs `canonicalHashes`; conflicts stderr (`--auto-apply` non-zero). Offline re-render at installed version; `--latest`/`--to=<version>` bump + re-exec atomically. Also re-renders output outside `.bkit/templates/` — host agents / commands + `.bkit/*.md` (`runBkitDocs`) per installed host (by `agents/` dir). Force-overwritten; `.bkit/prompts.md` markered — consumer overrides below `bkit:end` block-merge-preserved.
+`pnpm bkit install` — all three phases. `pnpm bkit check` / `pnpm bkit doctor` — Phase 1 + 3; write only `.bkit/advisories.md`. `check` exits 1 on Tier-1 / Tier-2 drift. `pnpm bkit upgrade` — diff vs `canonicalHashes`; conflicts stderr (`--auto-apply` non-zero). Offline re-render at installed version; `--latest`/`--to=<version>` bump + re-exec atomically. Also re-renders output outside `.bkit/templates/` — host agents / commands + `.bkit/*.md` (`runBkitDocs`) per installed host (by `agents/` dir). Force-overwritten; `.bkit/prompts.md` markered — consumer overrides below `bkit:end` block-merge-preserved.
 
 ### `bkit-cloud.yml` — dual-job cloud-agent lane
 
@@ -572,11 +589,13 @@ The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it t
 - **`--auto=opencode` requires `tracker=github`.**
 - **Single fanned-out `OPENCODE_PROVIDER_KEY`** under committed `opencode.json` `envVar`; no `BKIT_ANTHROPIC_API_KEY` in opencode job. GHA-injection hardened, with `PHASE` / `ARG` via `env:`; `ARG` validated `^[0-9A-Za-z.*/-]+$`.
 - **SHA pins** follow § GitHub Actions pinning; your updater refreshes them in your copy. **`bkit [auto route]` gate** — commit-tag taxonomy.
+- **Disabled in bkit's own repo.** `.github/workflows/bkit-cloud.yml` (the dogfood copy of the template) is disabled in repo settings (`gh workflow list --all` shows `disabled_manually`); no `ANTHROPIC_API_KEY` / `OPENCODE_PROVIDER_KEY` secret is set. Re-enable with `gh workflow enable bkit-cloud.yml` after setting a key as a repo secret.
 
 ### GitHub Release
 
 `.github/workflows/release.yml` creates one per tag: notes = tag's `## [X.Y.Z]` block in `CHANGELOG.md` + npmjs version link.
 
+- Step "Require the tagged commit on main" runs first: tagged commit not an ancestor of `origin/main` → run fails, nothing publishes. `main` takes only PR merges that passed `bkit-tests-check` (`bkit setup protect-main`) → every publish went through a PR + the required check. Tag ONLY a commit already on `main`.
 - Step "Extract release notes" runs before `npm publish`; missing / empty block → run fails.
 - Step "Create GitHub Release" runs after `npm publish`. Prerelease tags (containing `-`) → marked prerelease, never "Latest".
 - Only "Create GitHub Release" failed → never re-run the workflow; run `gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file <notes>`.
@@ -604,3 +623,20 @@ Breaking changes ship as `v2.0.0` and the workflow auto-creates a separate `v2` 
 - Prerelease tags (any tag containing `-`, e.g. `v1.0.3-rc.1`) are skipped — sliding tags only advance on stable releases.
 - Requires `permissions: contents: write` at the workflow level (set in `release.yml`); the default `GITHUB_TOKEN` is sufficient — no PAT needed.
 - Bootstrap: the first `v{N}.x.y` release creates `v{N}` automatically. No manual `git tag -a v1` step required.
+
+### Security incident runbook
+
+Owner runs every step by hand; agents propose, never execute. Triggers: compromised or wrongly published npm version, provenance check fails (`docs/security.md` § Verify a published version), leaked token or key, private vulnerability report confirmed. Run only the steps that apply, in this order.
+
+1. **Stop publishing.** npmjs.com → `@cbartens/bkit` → Settings → Trusted publishing → remove the `release.yml` publisher. Check Publishing access is still "Require two-factor authentication and disallow tokens"; `npm owner ls @cbartens/bkit` lists the owner only; `npm token list` → `npm token revoke <id>` for every token.
+2. **Revoke leaked credentials.** `BKIT_GH_TOKEN` → revoke at github.com/settings/tokens → re-mint per `docs/security.md` § Credential surfaces → update `.bkit/.env` + `gh secret set BKIT_GH_TOKEN` together. Any other key in `.bkit/.env` → revoke at its provider, re-mint, update `.bkit/.env`. Revoke first: rewriting git history does not un-publish a pushed secret.
+3. **Withdraw the bad version.**
+   - `npm deprecate @cbartens/bkit@<bad> "<reason>; upgrade to <fixed or last-good>"`.
+   - `latest` points at it → `npm dist-tag add @cbartens/bkit@<last-good> latest`.
+   - Sliding tag points at it → `git tag -f v<N> v<last-good> && git push origin v<N> --force`.
+   - `gh release edit v<bad> --prerelease --notes "Withdrawn: <reason>. Use v<last-good>."` drops it from "Latest".
+   - `npm unpublish @cbartens/bkit@<bad>` ONLY when it ships malicious code or a secret and npm's unpublish policy still allows it (72 hours, no dependents); the version number can never be reused.
+4. **Fix privately.** Security → Advisories → New draft advisory (ecosystem npm, package `@cbartens/bkit`, affected and patched versions) → work in its temporary private fork. Details stay out of public issues / PRs / commits until step 6 (`docs/security.md` § Public repo content).
+5. **Supersede.** Re-add the trusted publisher (npmjs.com → Trusted publishing → GitHub Actions, `cbartens/bkit`, workflow `release.yml`) → merge the fix to `main` → tag → release per § GitHub Release → verify the new version per `docs/security.md` § Verify a published version.
+6. **Tell consumers.** Publish the advisory (request a CVE in the draft). GitHub reviews it into the Advisory Database → `pnpm audit` / `npm audit` and Dependabot / Renovate alerts flag affected versions in consumer repos.
+7. **Record.** Append a `docs/failures.jsonl` row after the advisory is public: key, root cause, references (advisory URL, fixed version).

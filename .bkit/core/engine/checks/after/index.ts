@@ -12,6 +12,7 @@ import {
   detectDirenvNotAllowed,
 } from "../before/env.js";
 import { getPkgRoot } from "../../shared/package-roots.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { detectOpencodeYmlProviderDrift } from "../../install/modules/opencode.js";
 import { detectManagedDuplicate, detectManagedStale } from "./managed.js";
 import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectGhMcpToken } from "./auth.js";
@@ -22,7 +23,6 @@ import {
   detectActionsWritePermissions,
   detectGithubProjectFieldIdFormat,
   detectMainBranchProtection,
-  readConsumerIssueTracker,
 } from "./github.js";
 import {
   buildDepUpdaterSetupAdvisory,
@@ -489,7 +489,7 @@ export function runPostInstallCheck(
   // writes, so Phase 1 cannot see it on first install.
   // Pass the consumer's tracker so the mcp-env prose omits BKIT_LINEAR_API_KEY on github/none
   // repos.
-  const mcpEnvTracker = readConsumerIssueTracker(cwd);
+  const mcpEnvTracker = readBkitConfig(cwd).issueTracker;
   const missingDotenv = detectMissingDotenv(cwd, mcpEnvTracker);
   if (missingDotenv) phase3.push(missingDotenv);
   phase3.push(...detectBlankDotenvKeys(cwd, mcpEnvTracker));

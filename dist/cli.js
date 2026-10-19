@@ -69,6 +69,17 @@ export function parseComplyPhase(value) {
         ? value
         : null;
 }
+/**
+ * Where `bkit tips --workflow=<name>` runs: a phase workflow, `audit` (`@bkit-audit-generate`)
+ * or `utility` (the ledger and roadmap updaters).
+ */
+export const TIPS_CONTEXTS = [...COMPLY_PHASES, "audit", "utility"];
+/** Narrow an unknown string to `TipsContext` or return null if invalid. */
+export function parseTipsContext(value) {
+    return typeof value === "string" && TIPS_CONTEXTS.includes(value)
+        ? value
+        : null;
+}
 // Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing) is
 // intercepted by a dedicated branch in parseArgs before this set is consulted; the
 // generic check only ever validates claude/cursor/codex. `full`, `core` and `cloud`
@@ -318,9 +329,9 @@ export function parseArgs(argv) {
             }
             if (flag.startsWith("workflow=") && verb === "tips") {
                 const value = flag.slice("workflow=".length);
-                tipsWorkflow = parseComplyPhase(value);
+                tipsWorkflow = parseTipsContext(value);
                 if (tipsWorkflow === null) {
-                    console.error(`[bkit] Unknown workflow: "${value}". Valid values: ${COMPLY_PHASES.join(", ")}`);
+                    console.error(`[bkit] Unknown workflow: "${value}". Valid values: ${TIPS_CONTEXTS.join(", ")}`);
                     process.exit(1);
                 }
                 continue;
@@ -427,6 +438,7 @@ Usage:
                                  re-rendering. Copies under .bkit/templates/ are refreshed by
                                  install/upgrade and checked for staleness — adopt one by
                                  copying it elsewhere; that copy is yours. The CI gate.
+                                 Changes no managed file; rewrites .bkit/advisories.md.
   bkit upgrade [--to=<version>|--latest] [--auto-apply] [--dry-run]
                                  Upgrade everything installed (no module flags). Diffs old
                                  vs new templates; conflict list emitted to stderr. Use
@@ -446,17 +458,22 @@ Usage:
                                  --nuke to force-remove manifest-listed files). Target with the
                                  same module flags as install (e.g. uninstall --claude); a
                                  targeted uninstall leaves core untouched.
-  bkit doctor                   Read-only preflight + post-install advisory replay.
-                                 Diagnose token surfaces and config drift. Exits 0.
+  bkit doctor                   Preflight + post-install advisory replay (changes no
+                                 managed file; rewrites .bkit/advisories.md). Diagnose
+                                 token surfaces and config drift. Exits 0.
   bkit tips [--workflow=<name>] [--all]
                                  Setup tips: what this repo has not set up yet, most useful
                                  first, each with a sentence to ask your agent. Top three
                                  by default; --workflow=design|plan|build|debug|ship puts
                                  the tips that matter there first and prints one (each
-                                 workflow runs this at its close); --all lists every one.
-                                 Local checks only. Exits 0.
+                                 workflow runs this at its close; audit and utility do the
+                                 same for audits and the ledger / roadmap updaters);
+                                 --all lists every one. Ends with a star line ("star" in
+                                 bkit.ignoreAdvisories silences it), except under
+                                 --workflow=audit|utility. Local checks only. Exits 0.
   bkit status                   Read-only host/provider status. Reports current host+provider
-                                 (sampled from .opencode/opencode.json, .claude/, .cursor/).
+                                 (sampled from .claude/, .cursor/, package.json, and the
+                                 opencode agent model pins in .opencode/agents/).
                                  Writes nothing. Exits 0.
   bkit cursor                   Launch Cursor with .bkit/.env loaded into its environment.
                                  macOS GUI apps launched from the Dock/Finder do not inherit
@@ -476,12 +493,13 @@ Usage:
   bkit harvest                  Cross-repo harvest — COPIES consumer .bkit/stats.jsonl
                                  and MOVES .bkit/friction.jsonl into harvest/ (COUNT-ONLY
                                  for docs/deferrals.jsonl and docs/failures.jsonl).
-                                 Reads consumer paths from docs/consumers.md.
+                                 Reads consumer paths from harvest/consumers.md.
                                  DESTRUCTIVE: harvested friction rows are REMOVED from
                                  the consumer, but only after they are fsync'd and read
                                  back from harvest/. stats.jsonl is never modified.
-                                 harvest/ accumulates and is never cleared — commit it,
-                                 as it is the only record of pruned rows. Never commits
+                                 harvest/ accumulates and is never cleared; it is
+                                 gitignored, so it is the only record of pruned rows —
+                                 back it up. Never commits
                                  in any repo. Deduplicates by per-kind composite
                                  identity. Advisory + fail-open: exits 0.
   bkit telemetry summary [--phase=<workflow>]
@@ -505,7 +523,7 @@ Usage:
 
 Core (implicit — no flag; installed/upgraded on every install):
   AGENTS.md (cross-host dispatch router), .agents/rules.md + .agents/context.md +
-  .agents/docs.md + .agents/shortcuts.md + .agents/skills.md managed blocks, .gitignore +
+  .agents/docs.md + .agents/skills.md managed blocks, .gitignore +
   .gitattributes managed blocks, docs/, .bkit/*.md, .bkit/version, the template copies in
   .bkit/templates/, and the bkit:gate:* / bkit:deps:* package.json scripts every workflow
   runs (added when missing, never overwritten, left by uninstall). The tool scripts those
@@ -558,7 +576,8 @@ Cross-cutting / modifiers:
   --tracker=<name>      Wire issue tracker integration. Values: github, linear, none
                         (default). Records bkit.issueTracker in package.json and substitutes
                         tracker snippets into command mirrors. Switching is free (re-run with
-                        a new value). Does NOT own AGENTS.md (which is tracker-agnostic).
+                        a new value); a switch removes the old tracker's MCP entry unless you
+                        edited it. Does NOT own AGENTS.md (which is tracker-agnostic).
 
 Install flags:
   --auto-revert         On a Phase 3 blocker, automatically run uninstall and exit 1.
@@ -573,8 +592,9 @@ Uninstall flags:
   --opencode=<provider>
                   Surgical provider removal: removes that provider's block from
                   opencode.json + drops it from bkit.opencodeProviders. Does NOT remove
-                  agents/commands/gateguard. If the removed provider was active, re-render
-                  agents by running bkit install --opencode=<remaining> or bkit upgrade.
+                  agents/commands/gateguard. If the removed provider was active, the first
+                  remaining provider becomes active and the agents are re-rendered to its
+                  model pins.
                   Bare --opencode (no value) tears down the entire opencode host.
   --force         Delete owned whole-file files even if consumer modified them.
   --nuke          Delete ALL bkit-managed files regardless of tier/hash (requires confirm).

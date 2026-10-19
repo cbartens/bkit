@@ -18,7 +18,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { compareTs, parse, resolveRepoSlug, validate } from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
-import { CommandError, EXIT, git, parseJson, repoRoot, runGit, } from "../lib.js";
+import { CommandError, DEV, EXIT, git, parseJson, repoRoot, runGit, } from "../lib.js";
 import { acquireDevLock, releaseLock } from "./locks.js";
 import { str } from "./status.js";
 /** Roadmap status each workflow's close moves the feature to. */
@@ -374,8 +374,8 @@ async function mirror(ctx) {
     }
     try {
         const prior = git(root, ["branch", "--show-current"]) ?? "";
-        if (!runGit(root, ["checkout", "dev"]).ok ||
-            !runGit(root, ["pull", "--ff-only", "origin", "dev"]).ok) {
+        if (!runGit(root, ["checkout", DEV]).ok ||
+            !runGit(root, ["pull", "--ff-only", "origin", DEV]).ok) {
             if (prior)
                 runGit(root, ["checkout", prior]);
             return done(false, "dev checkout / pull failed");
@@ -392,7 +392,7 @@ async function mirror(ctx) {
             "--",
             ...ROADMAP_FILES,
         ]);
-        const pushed = runGit(root, ["push", "origin", "dev"]).ok;
+        const pushed = runGit(root, ["push", "origin", DEV]).ok;
         if (!pushed)
             ctx.log("dev push failed — feat-side row already written");
         if (prior)

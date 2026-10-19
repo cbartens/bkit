@@ -89,6 +89,40 @@ const synthetic = (over: Partial<Clause> & Pick<Clause, "texts">): Clause => ({
   ...over,
 });
 
+/** One finding as a single line: `file[:line] clause: problem`. */
+function formatFinding(f: ReturnType<typeof checkWording>[number]): string {
+  const where = f.line ? `${f.file}:${f.line}` : f.file;
+  return `${where} ${f.clause}: ${f.problem}`;
+}
+
+/**
+ * Names of the clauses no surface they apply to reaches the cut-off for. Files
+ * count by basename, so an adopted audit copy never counts twice.
+ */
+function underusedClauseNames(): string[] {
+  const prose = CORPUS.map((f) => {
+    const lines = f.content.split("\n");
+    return { file: f, lines: proseLineIndexes(f).map((i) => lines[i]!) };
+  });
+  return CLAUSES.filter((c) => {
+    const forms = c.texts.map(compileText);
+    const users = (s: Surface) =>
+      new Set(
+        prose
+          .filter(
+            ({ file, lines }) =>
+              file.surface === s &&
+              lines.some((line) => forms.some((r) => [...line.matchAll(r.re)].length > 0)),
+          )
+          .map(({ file }) => file.name),
+      ).size;
+    return !(Object.keys(c.modes) as Surface[]).some(
+      (s) =>
+        c.modes[s] !== "forbidden" && SHARED_MIN[s] !== undefined && users(s) >= SHARED_MIN[s]!,
+    );
+  }).map((c) => c.name);
+}
+
 describe("the corpus matches the wording file", () => {
   it(
     "finds prompts, workflows, both rules files, and every audit template with its adopted copy",
@@ -110,9 +144,7 @@ describe("the corpus matches the wording file", () => {
   );
 
   it("has no findings", { timeout: 60_000 }, () => {
-    const findings = checkWording(CLAUSES, CORPUS).map(
-      (f) => `${f.file}${f.line ? `:${f.line}` : ""} ${f.clause}: ${f.problem}`,
-    );
+    const findings = checkWording(CLAUSES, CORPUS).map(formatFinding);
     expect(
       findings,
       `${findings.length} finding(s); run pnpm wording:sync, then fix the rest by hand`,
@@ -125,30 +157,8 @@ describe("the corpus matches the wording file", () => {
 
   it("every clause reaches the cut-off of one surface it applies to", { timeout: 60_000 }, () => {
     // The cut-off works both ways: a clause used by fewer files belongs back in
-    // those files, not in the wording file. Files count by basename, so an
-    // adopted audit copy never counts twice.
-    const prose = CORPUS.map((f) => {
-      const lines = f.content.split("\n");
-      return { file: f, lines: proseLineIndexes(f).map((i) => lines[i]!) };
-    });
-    const underused = CLAUSES.filter((c) => {
-      const forms = c.texts.map(compileText);
-      const users = (s: Surface) =>
-        new Set(
-          prose
-            .filter(
-              ({ file, lines }) =>
-                file.surface === s &&
-                lines.some((line) => forms.some((r) => [...line.matchAll(r.re)].length > 0)),
-            )
-            .map(({ file }) => file.name),
-        ).size;
-      return !(Object.keys(c.modes) as Surface[]).some(
-        (s) =>
-          c.modes[s] !== "forbidden" && SHARED_MIN[s] !== undefined && users(s) >= SHARED_MIN[s]!,
-      );
-    }).map((c) => c.name);
-    expect(underused).toEqual([]);
+    // those files, not in the wording file.
+    expect(underusedClauseNames()).toEqual([]);
   });
 });
 
@@ -330,9 +340,8 @@ describe("the checker rejects what it should", () => {
 
   it("a sentence ending its line and the same sentence continued with ; count as one", () => {
     const shared = "Always cite the exact line you changed";
-    const files = Array.from({ length: PROMPT_MIN }, (_, n) =>
-      prompt(`p${n}`, n % 2 === 0 ? `${shared}.\n` : `${shared}; keep it short.\n`),
-    );
+    const endings = [`${shared}.\n`, `${shared}; keep it short.\n`];
+    const files = Array.from({ length: PROMPT_MIN }, (_, n) => prompt(`p${n}`, endings[n % 2]!));
     expect(checkWording([], files).map((x) => x.problem)).toEqual([
       `shared by ${PROMPT_MIN} prompts but not in .bkit/wording.md: "${shared}"`,
     ]);

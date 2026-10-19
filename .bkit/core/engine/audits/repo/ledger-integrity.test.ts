@@ -77,6 +77,101 @@ function parsed(rel: string): Parsed[] {
   });
 }
 
+/** Envelope problems (missing fields, non-numeric ts) for every parseable row of a ledger. */
+function envelopeProblems(rel: string): string[] {
+  // Unparseable lines are reported by the parse test.
+  return parsed(rel).flatMap(({ line, row }) => {
+    const out: string[] = [];
+    const missing = ENVELOPE.filter((f) => row?.[f] === undefined);
+    const numericTsOk = row?.ts === undefined || typeof row.ts === "number";
+    if (row !== undefined && missing.length > 0) {
+      out.push(`${rel}:${line}: missing ${missing.join(", ")}`);
+    }
+    if (row !== undefined && !numericTsOk) {
+      out.push(`${rel}:${line}: ts is ${typeof row.ts}, not number`);
+    }
+    return out;
+  });
+}
+
+/** Rows whose string `kind` is not legal in this ledger. */
+function wrongKindRows(rel: string, kinds: string[]): string[] {
+  return parsed(rel).flatMap(({ line, row }) => {
+    const kind = row?.kind;
+    const isWrong = typeof kind === "string" && !kinds.includes(kind);
+    return isWrong ? [`${rel}:${line}: kind=${kind}`] : [];
+  });
+}
+
+/** Parseable rows (line + object) across every ledger; unparseable lines are skipped. */
+function allParsedRows(): Array<{ rel: string; line: number; row: Record<string, unknown> }> {
+  return Object.keys(LEDGERS).flatMap((rel) =>
+    parsed(rel).flatMap(({ line, row }) => (row === undefined ? [] : [{ rel, line, row }])),
+  );
+}
+
+/** Raw ledger lines that carry a shell substitution outside any JSON string. */
+function unexpandedSubstitutionLines(): string[] {
+  return Object.keys(LEDGERS).flatMap((rel) =>
+    rows(rel)
+      // A substitution inside a JSON string is prose (a row may quote a
+      // command); one outside quotes is an append that never expanded.
+      .filter(({ raw }) => /\$\(|\$\{/.test(raw.replace(/"(?:[^"\\]|\\.)*"/g, '""')))
+      .map(({ line }) => `${rel}:${line}`),
+  );
+}
+
+/** Rows whose numeric ts lies after `now`. */
+function futureTsRows(now: number): string[] {
+  return allParsedRows().flatMap(({ rel, line, row }) => {
+    const ts = row.ts;
+    return typeof ts === "number" && ts > now
+      ? [`${rel}:${line}: ts=${ts} (${new Date(ts).toISOString()})`]
+      : [];
+  });
+}
+
+/** Rows at or after `from` whose numeric ts is a whole second. */
+function wholeSecondTsRows(from: number): string[] {
+  return allParsedRows().flatMap(({ rel, line, row }) => {
+    const ts = row.ts;
+    const gated = typeof ts === "number" && ts >= from;
+    return gated && ts % 1000 === 0
+      ? [`${rel}:${line}: ts=${ts} (${new Date(ts).toISOString()}) is whole-second`]
+      : [];
+  });
+}
+
+/** True for a deferral event a reviewer marked `unjustified`. */
+function isUnjustifiedDeferral(e: { kind?: string; reason?: unknown }): boolean {
+  return e.kind === "deferral" && e.reason === UNJUSTIFIED_REASON;
+}
+
+/** True when a folded entity was once `unjustified` but no longer carries that reason. */
+function dropsUnjustified(row: Record<string, unknown>, everUnjustified: Set<string>): boolean {
+  return everUnjustified.has(identity(row as never)) && row.reason !== UNJUSTIFIED_REASON;
+}
+
+/** True when a folded deferral carries a `reason` outside the enum. */
+function hasReasonOutsideEnum(row: Record<string, unknown>): boolean {
+  return row.reason !== undefined && !DEFERRAL_REASONS.has(row.reason as string);
+}
+
+/** True when a folded deferral updated at or after `from` carries no `reason`. */
+function lacksReasonSince(row: Record<string, unknown>, from: number): boolean {
+  return typeof row.ts === "number" && row.ts >= from && !row.reason;
+}
+
+/** True when a folded deferral updated at or after `from` names a writer outside the sanctioned list. */
+function hasUnsanctionedWriterSince(row: Record<string, unknown>, from: number): boolean {
+  return (
+    typeof row.ts === "number" &&
+    row.ts >= from &&
+    typeof row.subagent === "string" &&
+    !DEFERRAL_WRITERS.has(row.subagent)
+  );
+}
+
 describe("live ledgers are machine-readable", () => {
   for (const [rel, kinds] of Object.entries(LEDGERS)) {
     describe(rel, () => {
@@ -89,29 +184,11 @@ describe("live ledgers are machine-readable", () => {
 
       it("every row carries the full envelope with a numeric ts", () => {
         // Unparseable lines are reported by the parse test above.
-        const bad = parsed(rel).flatMap(({ line, row }) => {
-          if (!row) return [];
-          const out: string[] = [];
-          const missing = ENVELOPE.filter((f) => row[f] === undefined);
-          if (missing.length) out.push(`${rel}:${line}: missing ${missing.join(", ")}`);
-          if (row.ts !== undefined && typeof row.ts !== "number") {
-            out.push(`${rel}:${line}: ts is ${typeof row.ts}, not number`);
-          }
-          return out;
-        });
-        expect(bad).toEqual([]);
+        expect(envelopeProblems(rel)).toEqual([]);
       });
 
       it("every row's kind belongs in this ledger", () => {
-        const wrong = parsed(rel)
-          .flatMap(({ line, row }) => {
-            const kind = row?.kind;
-            return typeof kind === "string" && !kinds.includes(kind)
-              ? [`${rel}:${line}: kind=${kind}`]
-              : [];
-          })
-          .slice(0, 10);
-        expect(wrong).toEqual([]);
+        expect(wrongKindRows(rel, kinds).slice(0, 10)).toEqual([]);
       });
     });
   }
@@ -131,7 +208,7 @@ describe("live ledgers are machine-readable", () => {
 
     it("every entity's reason is in the enum", () => {
       const bad = entities()
-        .filter((row) => row.reason !== undefined && !DEFERRAL_REASONS.has(row.reason as string))
+        .filter(hasReasonOutsideEnum)
         .map((row) => `${String(row.key)}: reason=${JSON.stringify(row.reason)}`);
       expect(bad).toEqual([]);
     });
@@ -141,24 +218,16 @@ describe("live ledgers are machine-readable", () => {
     it("no entity drops an `unjustified` verdict a later row was meant to carry", () => {
       const raw = fs.readFileSync(path.join(REPO_ROOT, "docs/deferrals.jsonl"), "utf-8");
       const { events } = parse(raw);
-      const everUnjustified = new Set(
-        events
-          .filter((e) => e.kind === "deferral" && e.reason === UNJUSTIFIED_REASON)
-          .map((e) => identity(e)),
-      );
+      const everUnjustified = new Set(events.filter(isUnjustifiedDeferral).map((e) => identity(e)));
       const dropped = entities()
-        .filter(
-          (row) => everUnjustified.has(identity(row as never)) && row.reason !== UNJUSTIFIED_REASON,
-        )
+        .filter((row) => dropsUnjustified(row, everUnjustified))
         .map((row) => `${String(row.key)}: now reason=${JSON.stringify(row.reason)}`);
       expect(dropped).toEqual([]);
     });
 
     it("every entity updated since the field landed carries a reason", () => {
       const bare = entities()
-        .filter(
-          (row) => typeof row.ts === "number" && row.ts >= REASON_REQUIRED_FROM && !row.reason,
-        )
+        .filter((row) => lacksReasonSince(row, REASON_REQUIRED_FROM))
         .map((row) => `${String(row.key)}: ts=${String(row.ts)}`);
       expect(bare).toEqual([]);
     });
@@ -166,29 +235,14 @@ describe("live ledgers are machine-readable", () => {
     // The writer list is exhaustive. Same cutoff as above.
     it("no entity since the cutoff names an unsanctioned writer", () => {
       const rogue = entities()
-        .filter(
-          (row) =>
-            typeof row.ts === "number" &&
-            row.ts >= REASON_REQUIRED_FROM &&
-            typeof row.subagent === "string" &&
-            !DEFERRAL_WRITERS.has(row.subagent),
-        )
+        .filter((row) => hasUnsanctionedWriterSince(row, REASON_REQUIRED_FROM))
         .map((row) => `${String(row.key)}: subagent=${String(row.subagent)}`);
       expect(rogue).toEqual([]);
     });
   });
 
   it("no row smuggles an unexpanded shell substitution into a field", () => {
-    const offenders: string[] = [];
-    for (const rel of Object.keys(LEDGERS)) {
-      for (const { line, raw } of rows(rel)) {
-        // A substitution inside a JSON string is prose (a row may quote a
-        // command); one outside quotes is an append that never expanded.
-        const outsideStrings = raw.replace(/"(?:[^"\\]|\\.)*"/g, '""');
-        if (/\$\(|\$\{/.test(outsideStrings)) offenders.push(`${rel}:${line}`);
-      }
-    }
-    expect(offenders).toEqual([]);
+    expect(unexpandedSubstitutionLines()).toEqual([]);
   });
 
   // A future `ts` is permanent: `fold()` is last-wins by `ts`, so the row outranks
@@ -197,22 +251,8 @@ describe("live ledgers are machine-readable", () => {
   // survives the merge beside its replacement and still wins. Caught once already
   // and repaired; this is the gate that keeps it caught.
   it("no row carries a ts in the future", () => {
-    const now = Date.now();
-    const offenders: string[] = [];
-    for (const rel of Object.keys(LEDGERS)) {
-      for (const { line, raw } of rows(rel)) {
-        let row: Record<string, unknown>;
-        try {
-          row = JSON.parse(raw) as Record<string, unknown>;
-        } catch {
-          continue; // reported by the parse test above
-        }
-        if (typeof row.ts === "number" && row.ts > now) {
-          offenders.push(`${rel}:${line}: ts=${row.ts} (${new Date(row.ts).toISOString()})`);
-        }
-      }
-    }
-    expect(offenders).toEqual([]);
+    // Unparseable lines are reported by the parse test above.
+    expect(futureTsRows(Date.now())).toEqual([]);
   });
 
   /**
@@ -226,25 +266,8 @@ describe("live ledgers are machine-readable", () => {
   const HANDTYPED_TS_GATED_FROM = 1787788800000; // 2026-08-27T00:00:00Z
 
   it("no row since the cutoff carries a hand-typed whole-second ts", () => {
-    const offenders: string[] = [];
-    for (const rel of Object.keys(LEDGERS)) {
-      for (const { line, raw } of rows(rel)) {
-        let row: Record<string, unknown>;
-        try {
-          row = JSON.parse(raw) as Record<string, unknown>;
-        } catch {
-          continue; // reported by the parse test above
-        }
-        const ts = row.ts;
-        if (typeof ts !== "number" || ts < HANDTYPED_TS_GATED_FROM) continue;
-        if (ts % 1000 === 0) {
-          offenders.push(
-            `${rel}:${line}: ts=${ts} (${new Date(ts).toISOString()}) is whole-second`,
-          );
-        }
-      }
-    }
-    expect(offenders).toEqual([]);
+    // Unparseable lines are reported by the parse test above.
+    expect(wholeSecondTsRows(HANDTYPED_TS_GATED_FROM)).toEqual([]);
   });
 });
 

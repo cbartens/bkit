@@ -42,6 +42,7 @@ import { TIMEOUTS } from "../../shared/timeouts.js";
 import { gradeCompliance } from "../comply.js";
 import {
   CommandError,
+  DEV,
   EXIT,
   git,
   parseJson,
@@ -354,15 +355,15 @@ async function shipFlush(
       return { code: EXIT.OK, pushed: false, ref: null, skipped: "dev-lock-busy" };
     }
     release = () => releaseLock(lock.path, { workflow: "ship", fid: o.fid, token: lock.token });
-    runGit(root, ["checkout", "dev"]);
-    if (git(root, ["branch", "--show-current"]) !== "dev") {
+    runGit(root, ["checkout", DEV]);
+    if (git(root, ["branch", "--show-current"]) !== DEV) {
       release();
       ctx.log(`not on dev after checkout — FAILED bookkeeping left uncommitted in ${bookRoot}`);
       return { code: EXIT_FLUSH_FAILED, pushed: false, ref: null, skipped: null };
     }
-    runGit(root, ["pull", "--ff-only", "origin", "dev"]);
+    runGit(root, ["pull", "--ff-only", "origin", DEV]);
     wt = root;
-    target = "dev";
+    target = DEV;
   } else {
     ctx.log("RUNTIME_DEVPUSHES=false — the FAILED record commits on the current branch");
     target = git(wt, ["branch", "--show-current"]) ?? "";
@@ -789,7 +790,7 @@ export function closeWorkflow(
   const ref =
     o.ref ??
     (["design", "plan", "ship"].includes(workflow)
-      ? "dev"
+      ? DEV
       : (git(cwd, ["branch", "--show-current"]) ?? "HEAD"));
   const artifacts = artifactLinks(
     where.root,
@@ -884,8 +885,8 @@ async function shipClose(ctx: RunContext, o: CloseInput, token: string | undefin
   try {
     let wt: string;
     if (o.devPushes) {
-      runGit(root, ["checkout", "dev"]);
-      if (git(root, ["branch", "--show-current"]) !== "dev")
+      runGit(root, ["checkout", DEV]);
+      if (git(root, ["branch", "--show-current"]) !== DEV)
         return fail("not on dev after checkout — aborting dev ops");
       wt = root;
     } else {
@@ -898,7 +899,7 @@ async function shipClose(ctx: RunContext, o: CloseInput, token: string | undefin
     if (o.devPushes) {
       closeRoot = wt;
     } else {
-      if (!runGit(wt, ["fetch", "origin", "dev"]).ok)
+      if (!runGit(wt, ["fetch", "origin", DEV]).ok)
         return fail(`fetch origin dev failed — close bookkeeping left uncommitted in ${wt}`);
       closeRoot = path.join(outbox, "close");
       if (fs.existsSync(closeRoot)) runGit(wt, ["worktree", "remove", "--force", closeRoot]);
@@ -924,11 +925,11 @@ async function shipClose(ctx: RunContext, o: CloseInput, token: string | undefin
     );
     if (released.removeFailed) return fail("Lock removal failed");
     if (o.devPushes) {
-      if (!runGit(closeRoot, ["push", "origin", "dev"]).ok) {
+      if (!runGit(closeRoot, ["push", "origin", DEV]).ok) {
         ctx.log("dev push failed");
         return { code: EXIT_PUSH_FAILED, out };
       }
-      landed = { ref: "dev", via: "dev-push" };
+      landed = { ref: DEV, via: "dev-push" };
     }
   } finally {
     releaseLock(lock.path, { workflow: "ship", fid: o.fid, token: lock.token });
@@ -936,7 +937,7 @@ async function shipClose(ctx: RunContext, o: CloseInput, token: string | undefin
 
   if (!o.devPushes) {
     if (runGit(closeRoot, ["push", "origin", "HEAD:dev"]).ok) {
-      landed = { ref: "dev", via: "head-push" };
+      landed = { ref: DEV, via: "head-push" };
     } else {
       // dev refused the push: publish the close commit through its own PR.
       const branch = `ship-close/${o.fid}`;
@@ -947,7 +948,7 @@ async function shipClose(ctx: RunContext, o: CloseInput, token: string | undefin
         "pr",
         "create",
         "--base",
-        "dev",
+        DEV,
         "--head",
         branch,
         "--title",
@@ -956,7 +957,7 @@ async function shipClose(ctx: RunContext, o: CloseInput, token: string | undefin
         "",
       ]);
       if (!created.ok) return fail(`gh pr create failed: ${created.stderr}`);
-      const pr = probePr(closeRoot, { head: branch, base: "dev", state: "open" });
+      const pr = probePr(closeRoot, { head: branch, base: DEV, state: "open" });
       const number = pr.kind === "ok" ? pr.pr?.number : undefined;
       if (number === undefined) return fail(`close PR not found for ${branch}`);
       const merged = mergePr(
@@ -1545,7 +1546,7 @@ export const workflowsCommand: CommandSpec = {
         const month = resolveMonth(root, fid, str(ctx.flags.month));
         const artifacts = artifactLinks(
           root,
-          str(ctx.flags.ref) ?? "dev",
+          str(ctx.flags.ref) ?? DEV,
           month,
           fid,
           workflow,

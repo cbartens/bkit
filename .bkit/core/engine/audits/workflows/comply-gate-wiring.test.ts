@@ -28,6 +28,15 @@ function readWorkflow(name: string): string {
 const bashBlocks = (content: string) =>
   [...content.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]!);
 
+/** True when the tracker close comment embeds the close telemetry, by any of the three routes. */
+function embedsTelemetry(closeLine: string, content: string): boolean {
+  return (
+    /--number=\d+/.test(closeLine) ||
+    /workflows links [^\n]*--outbox="\{OUTBOX\}"/.test(content) ||
+    /issues comment [^\n]*--section="Telemetry=\{OUTBOX\}\/close-telemetry\.md"/.test(content)
+  );
+}
+
 describe("every phase workflow grades itself at close through bkit workflows close", () => {
   for (const phase of PHASES) {
     const content = readWorkflow(`bkit-${phase}.md`);
@@ -50,10 +59,7 @@ describe("every phase workflow grades itself at close through bkit workflows clo
 
     it(`bkit-${phase}.md writes close telemetry once and embeds it in the close comment`, () => {
       expect(closeLines[0]).toContain('--outbox="{OUTBOX}"');
-      const embedded =
-        /--number=\d+/.test(closeLines[0]!) ||
-        /workflows links [^\n]*--outbox="\{OUTBOX\}"/.test(content) ||
-        /issues comment [^\n]*--section="Telemetry=\{OUTBOX\}\/close-telemetry\.md"/.test(content);
+      const embedded = embedsTelemetry(closeLines[0]!, content);
       expect(embedded, "the close comment carries the telemetry report").toBe(true);
     });
   }

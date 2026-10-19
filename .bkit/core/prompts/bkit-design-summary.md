@@ -96,11 +96,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Suggested Workstreams
 
-[List all items and summarise each: every `WS-{N}` workstream including its `Requires` prerequisites; initially set to `PENDING`.]
+[List all items and summarise each: every `WS-{N}` workstream including its `Requires` prerequisites. **If** 2+ workstreams → last line `File these as one issue each? Body per .bkit/trackers.md § Issue shapes; file in Requires order.`; initially set to `PENDING`.]
 
 ## Recommended Next Step
 
-[Copy-paste handoff. Advisory only, never auto-trigger. `<ref>` = issue reference recovered from `FID` in Create path — numeric issue segment (`160-slug` → `#160`), prefixed issue segment (`abc-123-slug` → `ABC-123`), no issue segment i.e. no tracker wired (`my-branch-slug` → omit `<ref>`, emit `<cmd>` alone). `PASS` → `/bkit-plan`; `CONCERNS` → `/bkit-plan` (carry caveat) or `/bkit-design` (revise); `FAIL` → `/bkit-design` (revise). Emit `text` block: L1 `<cmd> <ref>`, L2 `Brief: <plan focus, caveat, design-doc link — 1-3 lines>`. Initially set to `PENDING`.]
+[Copy-paste handoff. Advisory only, never auto-trigger. `<ref>` = issue reference recovered from `FID` in Create path — numeric issue segment (`160-slug` → `#160`), prefixed issue segment (`abc-123-slug` → `ABC-123`), no issue segment i.e. no tracker wired (`my-branch-slug` → omit `<ref>`, emit `<cmd>` alone). `PASS` → `/bkit-plan`; `CONCERNS` → `/bkit-plan` (carry caveat) or `/bkit-design` (revise); `FAIL` → `/bkit-design` (revise). **If** `<cmd>` = `/bkit-plan` **and** 2+ workstreams → `<ref>` = `<first root workstream's new issue>`, L1 prefixed `File the Suggested Workstreams issues, then `. Emit `text` block: L1 `<cmd> <ref>`, L2 `Brief: <plan focus, caveat, design-doc link — 1-3 lines>`. Initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do not edit any file outside the output.**

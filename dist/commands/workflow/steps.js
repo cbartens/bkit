@@ -242,6 +242,7 @@ export const ROW_FIELDS = {
     "build/build-summary": ["attempt"],
     "debug/debug-run-tests": ["attempt", "scope"],
     "debug/context-fetch": ["attempt"],
+    "debug/debug-failure-reproduce": ["attempt"],
     "debug/debug-failure-diagnose": ["attempt", "strategy"],
     "debug/debug-failure-remediate": ["attempt", "strategy"],
     "debug/debug-failure-soak": ["attempt"],

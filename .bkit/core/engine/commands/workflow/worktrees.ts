@@ -17,12 +17,20 @@ import * as path from "node:path";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
-import { CommandError, EXIT, git, repoRoot, runGit, type CommandSpec } from "../lib.js";
+import {
+  CommandError,
+  DEV,
+  EXIT,
+  git,
+  isSharedBranch,
+  repoRoot,
+  runGit,
+  type CommandSpec,
+} from "../lib.js";
 import { detect } from "./runtime.js";
 import { WORKFLOW_FLAG } from "./status.js";
 
 const WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
-const DEV = "dev";
 const ORIGIN_DEV = `origin/${DEV}`;
 
 export const EXIT_REBASE_CONFLICT = 3;
@@ -103,7 +111,7 @@ function shipBranch(root: string, fid: string, named: string | undefined, sessio
   if (named) return named;
   const feat = `feat/${fid}`;
   if (hasLocal(root, feat) || remoteHas(root, feat) === "yes") return feat;
-  return session === DEV || session === "main" || session === "" ? feat : session;
+  return isSharedBranch(session) || session === "" ? feat : session;
 }
 
 /**
@@ -249,7 +257,7 @@ export function removeWorktree(
   branch: string | undefined,
   log: (m: string) => void,
 ): RemoveResult {
-  if (branch !== undefined && (branch === DEV || branch === "main")) {
+  if (branch !== undefined && isSharedBranch(branch)) {
     throw new CommandError(EXIT.USAGE, `refusing to delete branch ${branch}`);
   }
   const root = repoRoot(cwd);
@@ -368,7 +376,7 @@ export const worktreesCommand: CommandSpec = {
           );
         }
         const target = workflow === "ship" ? shipBranch(root, fid, named, session) : `feat/${fid}`;
-        if (target === DEV || target === "main") {
+        if (isSharedBranch(target)) {
           throw new CommandError(EXIT_REFUSED, `refusing to ship ${target} as a feature branch`);
         }
 

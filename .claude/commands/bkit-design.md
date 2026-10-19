@@ -1,7 +1,7 @@
 ---
 description: "Design Feature — Autonomous design phase"
 ---
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Design Feature (Workflow 1/5)
 
@@ -432,10 +432,10 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    "{BKIT}" tips --workflow=design
    ```
-   Plain text, not JSON. Hold stdout as `{SETUP_TIPS}`; prints nothing or exits non-zero → `{SETUP_TIPS}` empty.
+   Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
 6. Final return: Display `design-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-plan`.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
-   Append `{SETUP_TIPS}` under a `## Setup Tips` heading, unless empty.
+   Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
    Append as last line `Would you like me to explain this in plain English?`
 7. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 

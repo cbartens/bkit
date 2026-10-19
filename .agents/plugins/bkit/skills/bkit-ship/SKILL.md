@@ -2,7 +2,7 @@
 name: bkit-ship
 description: "Ship Feature — Autonomous merge and archive"
 ---
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Ship Feature (Workflow 5/5)
 
@@ -249,7 +249,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ## 🧠 Step 4 — Integrate (Path B only)
 
-**Run only if** `BASE_PATH` = B. Path A skips this step entirely.
+**Run only if** `BASE_PATH` = B.
 
 1. **If** `MERGEABLE` = MERGEABLE (B1 — no textual conflict): refresh the PR head server-side → Step 5:
    ```bash
@@ -491,7 +491,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ## 🧠 Step 12 — Failure Remediate
 
-**Run only if** `state` != MERGED. Code-level failures route back to build (via handover), not a source-file retry loop that re-merges identical remote content.
+**Run only if** `state` != MERGED.
 
 1. Derive the next strategy rung from `{STATUS}`:
    ```bash
@@ -506,7 +506,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" steps finish --workflow=ship --step=ship-failure-remediate --file="{STATUS}" --attempt-of=ship-merge-pr:current --agent=bkit-debug-failure-remediate --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-<attempt>-log.md" --commit=none --number=12 --title="Failure Remediate"
    ```
-4. **If** `verdict` = PASS → Step 10 (re-run merge). **Else** → **Failure Path** (code-level failures route back to build via handover — no source-file retry loop).
+4. **If** `verdict` = PASS → Step 10 (re-run merge). **Else** → **Failure Path**.
 
 ### 🔒 Gate 12 — Failure Remediate
 
@@ -573,10 +573,10 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" tips --workflow=ship
    ```
-   Plain text, not JSON. Hold stdout as `{SETUP_TIPS}`; prints nothing or exits non-zero → `{SETUP_TIPS}` empty.
+   Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
 5. Final return: Display `ship-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **If** `ship-summary.md` absent → display `PR was already merged — no ship summary this run.` **HARD STOP**.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
-   Append `{SETUP_TIPS}` under a `## Setup Tips` heading, unless empty.
+   Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
    Append as last line `Would you like me to explain this in plain English?`
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 

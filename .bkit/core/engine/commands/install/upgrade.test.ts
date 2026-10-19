@@ -65,10 +65,7 @@ describe("P4.T5 — diffFile", () => {
       "template content\n",
       {},
     );
-    expect(result.action).toBe("new");
-    if (result.action === "new") {
-      expect(result.templateContent).toBe("template content\n");
-    }
+    expect(result).toMatchObject({ action: "new", templateContent: "template content\n" });
   });
 
   it('returns "skip" when template content matches canonical hash (no change)', () => {
@@ -97,10 +94,7 @@ describe("P4.T5 — diffFile", () => {
       newTemplateContent,
       canonicalHashes,
     );
-    expect(result.action).toBe("update");
-    if (result.action === "update") {
-      expect(result.templateContent).toBe(newTemplateContent);
-    }
+    expect(result).toMatchObject({ action: "update", templateContent: newTemplateContent });
   });
 
   it('returns "conflict" when template changed + disk differs from canonical hash (consumer drift)', () => {
@@ -116,11 +110,11 @@ describe("P4.T5 — diffFile", () => {
       newTemplateContent,
       canonicalHashes,
     );
-    expect(result.action).toBe("conflict");
-    if (result.action === "conflict") {
-      expect(result.templateContent).toBe(newTemplateContent);
-      expect(result.diskContent).toBe(consumerModifiedContent);
-    }
+    expect(result).toMatchObject({
+      action: "conflict",
+      templateContent: newTemplateContent,
+      diskContent: consumerModifiedContent,
+    });
   });
 
   it('returns "skip" when disk content already equals template (idempotent)', () => {
@@ -713,8 +707,10 @@ describe("planSelfBump", () => {
 
   it("rejects a non-semver --to value as invalid (no resolveLatest call)", () => {
     const p = planSelfBump("4.1.4", { toVersion: "latest", latest: false }, neverResolve);
-    expect(p.kind).toBe("invalid");
-    if (p.kind === "invalid") expect(p.message).toContain("must be a semver");
+    expect(p).toMatchObject({
+      kind: "invalid",
+      message: expect.stringContaining("must be a semver"),
+    });
   });
 
   it("--latest resolves via the injected resolver, then bumps", () => {
@@ -727,9 +723,46 @@ describe("planSelfBump", () => {
     expect(p).toEqual({ kind: "noop", target: "4.1.4" });
   });
 
+  it("--to the installed version from a non-registry spec → bump, naming the spec", () => {
+    for (const spec of [
+      "file:../bkit-4.1.4.tgz",
+      "link:../bkit",
+      "workspace:*",
+      "github:cbartens/bkit#v4.1.4",
+      "git+https://github.com/cbartens/bkit.git",
+      "https://example.test/bkit-4.1.4.tgz",
+      "npm:@cbartens/bkit@4.1.4",
+      "../bkit",
+    ]) {
+      expect(
+        planSelfBump("4.1.4", { toVersion: "4.1.4", latest: false }, neverResolve, spec),
+      ).toEqual({ kind: "bump", target: "4.1.4", fromSpec: spec });
+    }
+  });
+
+  it("--to the installed version from a registry spec (or no declared spec) → noop", () => {
+    for (const spec of ["4.1.4", "^4.1.0", "~4.1.4", ">=4 <5", "latest", "*", null]) {
+      expect(
+        planSelfBump("4.1.4", { toVersion: "4.1.4", latest: false }, neverResolve, spec),
+      ).toEqual({ kind: "noop", target: "4.1.4" });
+    }
+  });
+
+  it("--latest at the installed version from a file: tarball → bump", () => {
+    const p = planSelfBump("4.1.4", { toVersion: null, latest: true }, () => "4.1.4", "file:x.tgz");
+    expect(p).toEqual({ kind: "bump", target: "4.1.4", fromSpec: "file:x.tgz" });
+  });
+
+  it("a different target bumps whatever the spec, with no fromSpec", () => {
+    const p = planSelfBump("4.1.4", { toVersion: "4.2.0", latest: false }, neverResolve, "file:x");
+    expect(p).toEqual({ kind: "bump", target: "4.2.0" });
+  });
+
   it("--latest that resolves to garbage → invalid (pin explicitly)", () => {
     const p = planSelfBump("4.1.4", { toVersion: null, latest: true }, () => "not-a-version");
-    expect(p.kind).toBe("invalid");
-    if (p.kind === "invalid") expect(p.message).toContain("--to=<version>");
+    expect(p).toMatchObject({
+      kind: "invalid",
+      message: expect.stringContaining("--to=<version>"),
+    });
   });
 });

@@ -103,22 +103,10 @@ export function antigravityToolsBlock(toolsBlock) {
  * lookup missing for name.
  */
 export function applyOpencodeAgent(content, opencodeModelLookup, effortMap, provider) {
-    const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
-    if (!fmMatch)
+    const subagent = requireSubagentModel(content, opencodeModelLookup, "opencode");
+    if (!subagent)
         return content;
-    const fmBlock = fmMatch[2];
-    const afterFm = content.slice(fmMatch[0].length);
-    const parsed = parseFrontmatter(fmBlock);
-    const name = parsed.get("name") ?? "";
-    if (!name) {
-        console.error(`${LOG_PREFIX} Subagent frontmatter missing 'name' field`);
-        process.exit(1);
-    }
-    const opencodeModel = opencodeModelLookup.get(name);
-    if (!opencodeModel) {
-        console.error(`${LOG_PREFIX} Missing opencode model lookup for ${name}`);
-        process.exit(1);
-    }
+    const { fmBlock, afterFm, parsed, name, model: opencodeModel } = subagent;
     const description = parsed.get("description") ?? "";
     const effort = parsed.get("effort");
     const toolsBlock = extractFrontmatterField(fmBlock, "tools");
@@ -201,22 +189,11 @@ function tomlString(key, value) {
  * host (documented in providers.md).
  */
 export function applyCodexAgent(content, codexModelLookup, effortMap) {
-    const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
-    if (!fmMatch)
+    const subagent = requireSubagentModel(content, codexModelLookup, "codex");
+    if (!subagent)
         return content;
-    const fmBlock = fmMatch[2];
-    const body = content.slice(fmMatch[0].length).trim();
-    const parsed = parseFrontmatter(fmBlock);
-    const name = parsed.get("name") ?? "";
-    if (!name) {
-        console.error(`${LOG_PREFIX} Subagent frontmatter missing 'name' field`);
-        process.exit(1);
-    }
-    const model = codexModelLookup.get(name);
-    if (!model) {
-        console.error(`${LOG_PREFIX} Missing codex model lookup for ${name}`);
-        process.exit(1);
-    }
+    const { afterFm, parsed, name, model } = subagent;
+    const body = afterFm.trim();
     const effort = parsed.get("effort");
     let out = "";
     out += tomlString("name", name);
@@ -347,27 +324,37 @@ function extractFrontmatterField(fmBlock, field) {
     const m = fmBlock.match(re);
     return m ? m[1] : null;
 }
-// T3: Cursor subagent frontmatter rewrite.
-// Emits: name, description, model, tools (passthrough — Cursor 2.4+ accepts identical tool names per BAR-113),
-// effort (from prompts.md Cursor column). Drops: permissionMode, maxTurns, readonly, is_background.
-// Hard-fails with non-zero exit if model lookup missing for name.
-export function applyT3(content, modelLookup, effortMap) {
+// Shared opening of the subagent renderers: split off the frontmatter, require `name`, look
+// the model up. Returns null when `content` has no frontmatter (the renderer passes it
+// through); exits 1 when `name` or the model is missing. `host` qualifies the model-lookup
+// message ("" for the unqualified Cursor message).
+function requireSubagentModel(content, lookup, host) {
     const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
     if (!fmMatch)
-        return content;
+        return null;
     const fmBlock = fmMatch[2];
-    const afterFm = content.slice(fmMatch[0].length);
     const parsed = parseFrontmatter(fmBlock);
     const name = parsed.get("name") ?? "";
     if (!name) {
         console.error(`${LOG_PREFIX} Subagent frontmatter missing 'name' field`);
         process.exit(1);
     }
-    const cursorModel = modelLookup.get(name);
-    if (!cursorModel) {
-        console.error(`${LOG_PREFIX} Missing model lookup for ${name}`);
+    const model = lookup.get(name);
+    if (!model) {
+        console.error(`${LOG_PREFIX} Missing ${host ? `${host} ` : ""}model lookup for ${name}`);
         process.exit(1);
     }
+    return { fmBlock, afterFm: content.slice(fmMatch[0].length), parsed, name, model };
+}
+// T3: Cursor subagent frontmatter rewrite.
+// Emits: name, description, model, tools (passthrough — Cursor 2.4+ accepts identical tool names per BAR-113),
+// effort (from prompts.md Cursor column). Drops: permissionMode, maxTurns, readonly, is_background.
+// Hard-fails with non-zero exit if model lookup missing for name.
+export function applyT3(content, modelLookup, effortMap) {
+    const subagent = requireSubagentModel(content, modelLookup, "");
+    if (!subagent)
+        return content;
+    const { fmBlock, afterFm, parsed, name, model: cursorModel } = subagent;
     const description = parsed.get("description") ?? "";
     const effort = parsed.get("effort");
     const toolsBlock = extractFrontmatterField(fmBlock, "tools");
@@ -427,22 +414,10 @@ export function applyAntigravityToolRewrites(content, agentsDir = ANTIGRAVITY_AG
  * readonly) are dropped. Hard-fails with non-zero exit if the model lookup is missing.
  */
 export function applyAntigravityPrompt(content, modelLookup, effortMap) {
-    const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
-    if (!fmMatch)
+    const subagent = requireSubagentModel(content, modelLookup, "antigravity");
+    if (!subagent)
         return content;
-    const fmBlock = fmMatch[2];
-    const afterFm = content.slice(fmMatch[0].length);
-    const parsed = parseFrontmatter(fmBlock);
-    const name = parsed.get("name") ?? "";
-    if (!name) {
-        console.error(`${LOG_PREFIX} Subagent frontmatter missing 'name' field`);
-        process.exit(1);
-    }
-    const model = modelLookup.get(name);
-    if (!model) {
-        console.error(`${LOG_PREFIX} Missing antigravity model lookup for ${name}`);
-        process.exit(1);
-    }
+    const { fmBlock, afterFm, parsed, name, model } = subagent;
     const description = parsed.get("description") ?? "";
     const effort = parsed.get("effort");
     const toolsBlock = extractFrontmatterField(fmBlock, "tools");

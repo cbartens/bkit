@@ -21,6 +21,11 @@ const workflowFiles = fs
   .filter((f) => f.endsWith(".md"))
   .map((f) => path.join(WORKFLOWS_DIR, f));
 
+/** How many `bkit ledgers commit|union|only-bookkeeping` calls a workflow makes. */
+function countLedgersCalls(content: string): number {
+  return (content.match(/"\{BKIT\}" ledgers (commit|union|only-bookkeeping)\b/g) ?? []).length;
+}
+
 describe("workflow bookkeeping pathspec — no BOOK_PATHS regression (#446)", () => {
   it("at least one workflow file exists to check", () => {
     expect(workflowFiles.length).toBeGreaterThan(0);
@@ -60,11 +65,7 @@ describe("workflow bookkeeping pathspec — no BOOK_PATHS regression (#446)", ()
   it("bookkeeping commits are wired through bkit ledgers", () => {
     const totalCalls = workflowFiles
       .map((file) => fs.readFileSync(file, "utf-8"))
-      .reduce(
-        (n, content) =>
-          n + (content.match(/"\{BKIT\}" ledgers (commit|union|only-bookkeeping)\b/g) ?? []).length,
-        0,
-      );
+      .reduce((n, content) => n + countLedgersCalls(content), 0);
     // The bookkeeping call sites left in the markdown: the three pre-worktree
     // commits (design, plan, build) and ship's B2 stage and bookkeeping commit.
     // The land, close, flush and re-validate bookkeeping runs inside commands.

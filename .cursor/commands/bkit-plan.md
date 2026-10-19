@@ -2,7 +2,7 @@ Plan Feature — Autonomous plan generation
 
 # Plan Feature (Workflow 2/5)
 
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Create plan in `docs/plans/{YYYYMM}/` (canonical month bucket, discovered or set at start) — no code, no execution.
@@ -90,7 +90,14 @@ Plan Feature — Autonomous plan generation
    ```
    Hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
 6. Extract plan inputs from issue `DESCRIPTION` and the session prompt.
-   - `PARENT_FID`: a `**Parent design:**` markdown link whose target is `docs/plans/{YYYYMM}/{FID}-design.md`. `PARENT_YYYYMM` = that bucket. Absent → `PARENT_FID` empty.
+   - `PARENT_FID`: a `**Parent design:**` markdown link whose target is `docs/plans/{YYYYMM}/{FID}-design.md`. `PARENT_YYYYMM` = that bucket. Absent → this feature's own design doc:
+     ```bash
+     "{BKIT}" fids design --fid={FID} --month={YYYYMM}
+     ```
+     Decide `PARENT_FID`:
+     - **If** exit 0 → hold `fid` as `{PARENT_FID}`, `month` as `{PARENT_YYYYMM}`.
+     - **If** exit 1 → `PARENT_FID` empty.
+     - **Else** → **Failure Path**.
    - `AUDIT_PATHS`: every `docs/audits/{YYYYMM}/*.md` path, from a `**Audit reports:**` line or any markdown link or bare path. Absent → empty. A named path that is not a file → **Failure Path**.
 7. Compute the phase transition — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
@@ -112,7 +119,7 @@ Plan Feature — Autonomous plan generation
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
-- [ ] Parent FID extraction attempted (`PARENT_FID`, from issue description)
+- [ ] Parent FID extraction attempted (`PARENT_FID`, from issue description, else `fids design`)
 - [ ] Audit report paths extracted (`AUDIT_PATHS`, from issue description and session prompt)
 
 
@@ -414,10 +421,10 @@ Plan Feature — Autonomous plan generation
    ```bash
    "{BKIT}" tips --workflow=plan
    ```
-   Plain text, not JSON. Hold stdout as `{SETUP_TIPS}`; prints nothing or exits non-zero → `{SETUP_TIPS}` empty.
+   Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
 6. Final return: Display `plan-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-build`.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
-   Append `{SETUP_TIPS}` under a `## Setup Tips` heading, unless empty.
+   Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
    Append as last line `Would you like me to explain this in plain English?`
 7. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 

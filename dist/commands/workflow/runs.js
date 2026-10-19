@@ -22,7 +22,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { statusTimestamp } from "../../ledgers/status.js";
-import { bodySkipToken, commitMessage, CommandError, EXIT, git, parseJson, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
+import { bodySkipToken, commitMessage, CommandError, DEV, EXIT, git, isSharedBranch, parseJson, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } from "./fids.js";
@@ -171,7 +171,7 @@ function currentPr(cwd, gh) {
     const branch = git(cwd, ["branch", "--show-current"]);
     if (!branch)
         return { pr: null, missing: false };
-    const res = gh(["pr", "list", "--head", branch, "--base", "dev", "--json", "number"]);
+    const res = gh(["pr", "list", "--head", branch, "--base", DEV, "--json", "number"]);
     if (res.missing)
         return { pr: null, missing: true };
     const n = obj(arr(res.ok ? jsonOrUndefined(res.stdout) : undefined)[0]).number;
@@ -184,7 +184,7 @@ function pushCurrentBranch(cwd) {
     if (!branch)
         return false;
     // Shared branches never force; a feature branch is rewritten only by this run.
-    const args = branch === "dev" || branch === "main"
+    const args = isSharedBranch(branch)
         ? ["push", "origin", branch]
         : ["push", "--force-with-lease", "origin", branch];
     return runGit(cwd, args).ok;
@@ -1324,7 +1324,7 @@ async function runContext(ctx) {
             mode: "CI_DEV",
             fid: arg,
             issueId: tracker === "none" ? null : issueIdOf(arg, "any"),
-            branch: "dev",
+            branch: DEV,
             headSha: git(ctx.cwd, ["rev-parse", "origin/dev"]) ?? "",
         });
         return EXIT.OK;
@@ -1395,7 +1395,7 @@ async function runContext(ctx) {
 async function runMirror(ctx) {
     const f = ctx.flags;
     const head = String(f.head);
-    const branch = str(f.branch) ?? "dev";
+    const branch = str(f.branch) ?? DEV;
     if (!branch)
         throw new CommandError(EXIT.USAGE, "--branch must not be empty");
     const o = {

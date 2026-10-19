@@ -49,6 +49,19 @@ const read = (p: string) => fs.readFileSync(p, "utf-8");
 const lines = (n: number, width = 8, prefix = "L") =>
   Array.from({ length: n }, (_, i) => `${prefix}${i + 1}`.padEnd(width - 1, "x")).join("\n") + "\n";
 
+/** `n` filler lines `<prefix> <i>`; a test overwrites the few that matter. */
+const quietLines = (n: number, prefix = "quiet line") =>
+  Array.from({ length: n }, (_, i) => `${prefix} ${i}`);
+
+/** Nine thousand lines where every third one is an `error` signal line. */
+const DENSE_SIGNAL_LINES = Array.from({ length: 9000 }, (_, i) =>
+  i % 3 === 0 ? `error ${i}` : "q",
+);
+
+/** The lines a clamped file keeps as content: no blanks, no [bkit] markers, no footer. */
+const contentLines = (text: string) =>
+  text.split("\n").filter((l) => l !== "" && !l.startsWith("> [bkit]") && l !== FOOTER_2);
+
 const clamp = (file: string, profile: string, ...extra: string[]) =>
   run(["clamp", `--artifact=${file}`, `--profile=${profile}`, ...extra]);
 
@@ -93,9 +106,7 @@ describe("bkit context clamp (#427 T1)", () => {
   it("reports counts that match the clamped file, and the artifact as given", async () => {
     const f = write("counts.md", lines(500));
     const r = await clamp("counts.md", "ledger");
-    const body = read(f)
-      .split("\n")
-      .filter((l) => l !== "" && !l.startsWith("> [bkit]") && l !== FOOTER_2);
+    const body = contentLines(read(f));
     expect(body.length).toBe(r.json.keptLines);
     expect(Buffer.byteLength(body.join("\n") + "\n")).toBe(r.json.keptBytes);
     expect(r.json.artifact).toBe("counts.md");
@@ -117,9 +128,8 @@ describe("bkit context clamp (#427 T1)", () => {
   });
 
   it("never drops a signal line buried in the middle", async () => {
-    const body = Array.from({ length: 9000 }, (_, i) =>
-      i === 4500 ? "AssertionError: expected 3 to be 4" : `quiet line ${i}`,
-    );
+    const body = quietLines(9000);
+    body[4500] = "AssertionError: expected 3 to be 4";
     const f = write("buried.md", body.join("\n") + "\n");
     const r = await clamp(f, "debug-evidence");
     const out = read(f);
@@ -131,20 +141,19 @@ describe("bkit context clamp (#427 T1)", () => {
   });
 
   it("keeps every signal line when they are scattered throughout", async () => {
-    const body = Array.from({ length: 9000 }, (_, i) =>
-      i % 50 === 0 ? `FAIL spec-${i} timed out` : `quiet line ${i}`,
-    );
+    const body = quietLines(9000);
+    for (let i = 0; i < body.length; i += 50) body[i] = `FAIL spec-${i} timed out`;
     const f = write("scattered.md", body.join("\n") + "\n");
     await clamp(f, "debug-evidence");
     const out = read(f);
-    const missing = body.filter((l) => l.startsWith("FAIL") && !out.includes(l));
-    expect(missing).toEqual([]);
+    const signal = body.filter((l) => l.startsWith("FAIL"));
+    expect(signal).toHaveLength(180);
+    expect(signal.filter((l) => !out.includes(l))).toEqual([]);
   });
 
   it("matches the multibyte signal glyphs too", async () => {
-    const body = Array.from({ length: 6000 }, (_, i) =>
-      i === 3000 ? "  ✕ widget renders" : `quiet ${i}`,
-    );
+    const body = quietLines(6000, "quiet");
+    body[3000] = "  ✕ widget renders";
     const f = write("glyph.md", body.join("\n") + "\n");
     await clamp(f, "debug-evidence");
     expect(read(f)).toContain("✕ widget renders");
@@ -176,13 +185,12 @@ describe("bkit context clamp (#427 T1)", () => {
   });
 
   it("marks every removal in place, not just in the footer", async () => {
-    const body = Array.from({ length: 9000 }, (_, i) =>
-      i % 1000 === 0 ? `FAIL case ${i}` : `quiet line ${i}`,
-    );
+    const body = quietLines(9000);
+    for (let i = 0; i < body.length; i += 1000) body[i] = `FAIL case ${i}`;
     const f = write("gaps.md", body.join("\n") + "\n");
     await clamp(f, "debug-evidence");
     const out = read(f);
-    const gaps = out.match(/^> \[bkit\] TRUNCATED HERE — \d+ lines? omitted\./gm) ?? [];
+    const gaps = [...out.matchAll(/^> \[bkit\] TRUNCATED HERE — \d+ lines? omitted\./gm)];
     expect(gaps.length).toBeGreaterThan(1);
     expect(out).not.toContain("— 1 lines omitted");
     expect(out).toContain("the rest is NOT in this file, re-run the source to see it.");
@@ -253,7 +261,8 @@ describe("bkit context clamp (#427 T1)", () => {
 
   it("shortens an over-long line by bytes, not characters", async () => {
     // 3000 x "é" is 6000 bytes: cut at byte 2000, so 4000 bytes dropped (not 1000 chars).
-    const body = Array.from({ length: 3500 }, (_, i) => (i === 7 ? "é".repeat(3000) : `q ${i}`));
+    const body = quietLines(3500, "q");
+    body[7] = "é".repeat(3000);
     const f = write("multibyte.md", body.join("\n") + "\n");
     const r = await clamp(f, "debug-evidence");
     expect(r.json).toMatchObject({ clamped: true, lineCapped: 1, origLines: 3500 });
@@ -263,10 +272,7 @@ describe("bkit context clamp (#427 T1)", () => {
 
   it("over the threshold but every line kept by signal context: untouched, not clamped", async () => {
     for (const [name, content] of [
-      [
-        "dense-signal.md",
-        Array.from({ length: 9000 }, (_, i) => (i % 3 === 0 ? `error ${i}` : "q")),
-      ],
+      ["dense-signal.md", DENSE_SIGNAL_LINES],
       ["all-fail.md", Array.from({ length: 5000 }, (_, i) => `fail ${i}`)],
     ] as const) {
       const text = content.join("\n") + "\n";
@@ -279,9 +285,9 @@ describe("bkit context clamp (#427 T1)", () => {
   });
 
   it("a gap no larger than its own marker is kept instead of marked", async () => {
-    const body = Array.from({ length: 9000 }, (_, i) =>
-      i === 4000 ? "FAIL a" : i === 4006 ? "FAIL b" : `quiet line ${i}`,
-    );
+    const body = quietLines(9000);
+    body[4000] = "FAIL a";
+    body[4006] = "FAIL b";
     const f = write("small-gap.md", body.join("\n") + "\n");
     const r = await clamp(f, "debug-evidence");
     const out = read(f);

@@ -17,6 +17,16 @@ let tmpDir: string;
 const CORE_LINK = path.join(".bkit", "core");
 const SHARED_LINK = path.join(".bkit", "shared");
 
+type SymlinkCall = { target: string; link: string; type?: string };
+
+/** A symlink double that records each call and refuses `dir` links, as a platform without the privilege does. */
+function refusingDirSymlink(calls: SymlinkCall[]) {
+  return (target: string, link: string, type?: "dir" | "junction"): void => {
+    calls.push({ target, link, type });
+    if (type === "dir") throw new Error("EPERM: operation not permitted, symlink");
+  };
+}
+
 beforeEach(() => {
   // realpath: process.cwd() reports /private/var on macOS, and link resolution compares against it.
   tmpDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-payload-links-")));
@@ -37,11 +47,8 @@ describe("createPayloadLink", () => {
   });
 
   it("falls back to an absolute junction when the platform refuses a dir symlink", () => {
-    const calls: Array<{ target: string; link: string; type?: string }> = [];
-    const fake = (target: string, link: string, type?: "dir" | "junction"): void => {
-      calls.push({ target, link, type });
-      if (type === "dir") throw new Error("EPERM: operation not permitted, symlink");
-    };
+    const calls: SymlinkCall[] = [];
+    const fake = refusingDirSymlink(calls);
     const kind = createPayloadLink("/pkg/.bkit/core", "/consumer/.bkit/core", fake);
     expect(kind).toBe("junction");
     expect(calls).toEqual([

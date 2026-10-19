@@ -13,6 +13,8 @@ import {
   parseFlags,
   repoRoot,
   runCommand,
+  runGit,
+  runTool,
   statusLocation,
   utcMonth,
   verbHelp,
@@ -349,5 +351,63 @@ describe("repo facts on a real repository", () => {
     expect(statusLocation({ ...base, devPushes: true }).bookRoot).toBe(root);
     expect(statusLocation({ ...base, devPushes: false }).bookRoot).toBe(worktree);
     expect(statusLocation(base).bookRoot).toBe(worktree);
+  });
+});
+
+describe("runGit / runTool output limit", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  /** A repo holding one blob of `bytes` bytes; returns its sha for `git cat-file -p`. */
+  function repoWithBlob(bytes: number) {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lib-buf-")));
+    dirs.push(root);
+    spawnSync("git", ["init", "-q"], { cwd: root });
+    const res = spawnSync("git", ["hash-object", "-w", "--stdin"], {
+      cwd: root,
+      input: Buffer.alloc(bytes, "x"),
+      encoding: "utf-8",
+    });
+    return { root, sha: res.stdout.trim() };
+  }
+
+  it("runGit keeps output past Node's 1MB default", () => {
+    const { root, sha } = repoWithBlob(2 * 1024 * 1024);
+    const res = runGit(root, ["cat-file", "-p", sha]);
+    expect(res.ok).toBe(true);
+    expect(res.stdout.length).toBe(2 * 1024 * 1024);
+  });
+
+  it("runGit names ENOBUFS when output passes the limit", () => {
+    const { root, sha } = repoWithBlob((1 << 26) + 1024);
+    const res = runGit(root, ["cat-file", "-p", sha]);
+    expect(res.ok).toBe(false);
+    expect(res.stderr).toMatch(/^git cat-file: output passed the 64 MiB limit \(ENOBUFS\)/);
+  });
+
+  it("runGit names a spawn error instead of failing silently", () => {
+    const res = runGit(path.join(os.tmpdir(), "bkit-no-such-dir-586"), ["status"]);
+    expect(res.ok).toBe(false);
+    expect(res.stderr).toContain("ENOENT");
+  });
+
+  it("runTool reports ENOBUFS as found, with the cause, not as missing from PATH", () => {
+    const { root, sha } = repoWithBlob((1 << 26) + 1024);
+    const res = runTool("git", ["cat-file", "-p", sha], root);
+    expect(res.found).toBe(true);
+    expect(res.status).not.toBe(0);
+    expect(res.stderr).toMatch(/^git cat-file: output passed the 64 MiB limit \(ENOBUFS\)/);
+  });
+
+  it("runTool still reports a missing binary as not found", () => {
+    const res = runTool("bkit-no-such-binary-586", [], os.tmpdir());
+    expect(res).toEqual({
+      found: false,
+      status: 127,
+      stdout: "",
+      stderr: "bkit-no-such-binary-586 not found on PATH",
+    });
   });
 });

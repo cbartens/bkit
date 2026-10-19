@@ -201,15 +201,12 @@ describe("detectDirenvMissing", () => {
     process.env.PATH = "/nonexistent-path-for-testing";
     try {
       const f = detectDirenvMissing(tmpDir);
-      // If direnv is actually installed at /usr/bin/direnv or similar outside
-      // the normal PATH entries, this might still return null. That's acceptable —
-      // we can only assert the shape when the finding fires.
-      if (f !== null) {
-        expect(f.id).toBe("mcp-env-direnv-missing");
-        expect(f.severity).toBe("advisory");
-        expect(f.action).toContain("[mcp-env]");
-        expect(f.action).not.toMatch(/BAR-\d+/);
-      }
+      // With PATH emptied, `which` itself cannot be spawned, so direnv cannot be found.
+      expect(f).not.toBeNull();
+      expect(f?.id).toBe("mcp-env-direnv-missing");
+      expect(f?.severity).toBe("advisory");
+      expect(f?.action).toContain("[mcp-env]");
+      expect(f?.action).not.toMatch(/BAR-\d+/);
     } finally {
       process.env.PATH = savedPath;
     }

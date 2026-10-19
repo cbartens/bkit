@@ -5,7 +5,8 @@
 //   2. Size↔outcome regression (logistic approximation: error ~ log(linesAdded)
 //      + filesChanged) over `kind:"outcome"` rows.
 //   3. Dispatch-size threshold computation for plan-complexity-check / plan-split.
-//   4. `counterSource` trust labelling (model-self-report pre-P3, shell-bus post-P3).
+//   4. `counterSource` trust labelling: each outcome row is joined to its `counter` row
+//      (model-self-report pre-P3, shell-bus post-P3).
 //   5. Per-rule compliance rate over `kind:"compliance"` rows.
 //   6. Per-`bkitVersion`→CHANGELOG release-attributed regression.
 //
@@ -17,7 +18,7 @@
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { UNJUSTIFIED_REASON, foldFrom } from "../ledgers/telemetry.js";
+import { UNJUSTIFIED_REASON, foldFrom, } from "../ledgers/telemetry.js";
 import { HARVEST_DEST_DIR } from "./harvest.js";
 export function computeCounts(events) {
     const byKind = {};
@@ -84,7 +85,17 @@ function isErrorRun(row, allRows) {
         (row.reviewIterations !== undefined && row.reviewIterations > 1) ||
         newFailuresThisRun(row, allRows) > 0);
 }
-export function computeRegression(rows) {
+/** Identity of one workflow run: the key the close writes on both its counter and outcome rows. */
+function runKey(row) {
+    return row.parentSha ? JSON.stringify([row.repo, row.workflow, row.parentSha]) : undefined;
+}
+export function computeRegression(rows, counterRows) {
+    const shellBusRuns = new Set();
+    for (const c of counterRows) {
+        const key = runKey(c);
+        if (c.counterSource === "shell-bus" && key !== undefined)
+            shellBusRuns.add(key);
+    }
     const buckets = SIZE_BUCKETS.map((b) => ({
         label: b.label,
         minLines: b.min,
@@ -97,7 +108,8 @@ export function computeRegression(rows) {
     let modelSelfReportCount = 0;
     for (const row of rows) {
         // Trust tier labelling
-        if (row.counterSource === "shell-bus") {
+        const key = runKey(row);
+        if (key !== undefined && shellBusRuns.has(key)) {
             shellBusCount++;
         }
         else {
@@ -214,11 +226,15 @@ export function runAnalysis(paths) {
     const { state, rowCount, malformedLineCount } = foldFrom(paths);
     const events = [...state.values()];
     const outcomeRows = [];
+    const counterRows = [];
     const complianceRows = [];
     const deferralRows = [];
     for (const ev of events) {
         if (ev.kind === "outcome") {
             outcomeRows.push(ev);
+        }
+        else if (ev.kind === "counter") {
+            counterRows.push(ev);
         }
         else if (ev.kind === "compliance") {
             complianceRows.push(ev);
@@ -229,7 +245,7 @@ export function runAnalysis(paths) {
     }
     const counts = computeCounts(events);
     const elapsed = computeElapsedStats(outcomeRows);
-    const regression = computeRegression(outcomeRows);
+    const regression = computeRegression(outcomeRows, counterRows);
     const complianceRates = computeComplianceRates(complianceRows);
     const versionCompliance = computeVersionCompliance(complianceRows);
     const deferralDiscipline = computeDeferralDiscipline(deferralRows);

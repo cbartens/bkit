@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Summarise bkit-compression-replay.py output.
 
-    bkit-compression-summary.py <replay.jsonl> [--no-kompress <replay-no-kompress.jsonl>] [--by-type] [--rows]
-                                [--project Bash=0.235,Read=0.030]
+    bkit-compression-summary.py <replay.jsonl> [--no-kompress <replay-no-kompress.jsonl>] [--rtk <rtk.jsonl>]
+                                [--by-type] [--rows] [--project Bash=0.235,Read=0.030]
 
 Per tool: share of cache-weighted tokens each compressor removes, and how many samples it touched.
 --no-kompress  add a column for Headroom with Kompress off (same files, joined by tool + file).
+--rtk          add RTK columns from bkit-compression-rtk-replay.py: "rtk" counts samples it could
+               not re-run as 0% saved, "rtk-unmeasured-mid" gives them the measured rate.
 --by-type      Bash samples by content type (caveman's classifier label) instead of by tool.
 --rows         one line per sample.
 --project      projected share of total cost saved: each tool's share of cost in tool results
@@ -48,11 +50,18 @@ def main():
         sys.exit(__doc__)
     rows = load(args[0])
     extra = load(args[args.index("--no-kompress") + 1]) if "--no-kompress" in args else {}
+    rtk = load(args[args.index("--rtk") + 1]) if "--rtk" in args else {}
     for key, r in rows.items():
         s = extra.get(key)
         if s and "hr_before" in s:
             r["hn_before"], r["hn_after"] = s["hr_before"], s["hr_after"]
+        k = rtk.get(key)
+        if k:
+            # rk counts unmeasured samples as 0% saved; rm gives them the measured rate
+            r["rk_before"], r["rk_after"] = k["rk_before"], k["rk_after"]
+            r["rm_before"], r["rm_after"] = k["rk_before"], k["rk_after_mid"]
     arms = [("cv", "caveman"), ("hr", "headroom")] + ([("hn", "hr-no-kompress")] if extra else [])
+    arms += [("rk", "rtk"), ("rm", "rtk-unmeasured-mid")] if rtk else []
     if "--rows" in args:
         for r in rows.values():
             cells = "   ".join(f"{name} {pct(r.get(k + '_before', 0), r.get(k + '_after', 0)):>5.0%}" for k, name in arms)

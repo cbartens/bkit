@@ -2,19 +2,54 @@
 // `bkit status` (read-only host/provider status).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { detectOpencodeProvider, detectOpencodeProviders, getInstallingVersion, } from "./install.js";
+import { detectOpencodeProvider, detectOpencodeProviders } from "./install.js";
 import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
+import { readJsonFile } from "../../shared/json.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
 import { getCoreRoot, getSharedRoot, getTemplatesRoot } from "../../shared/package-roots.js";
 import { runPreflight } from "../../checks/before/index.js";
 import { runPostInstallCheck, formatChecklist, writeAdvisoriesArtifact, } from "../../checks/after/index.js";
 import { collectTips } from "../../checks/tips/index.js";
 import { parseDotenv } from "../../install/cloud-env.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
+import { parseFrontmatter } from "../../render/hosts.js";
+/**
+ * The `model:` pins in the frontmatter of `.opencode/agents/*.md` — where bkit renders the
+ * opencode per-agent pins — grouped by model, most-used first (ties by model id). `[]` when
+ * the directory is absent or no agent carries a pin.
+ */
+export function readOpencodeModelPins(cwd) {
+    const agentsDir = path.join(cwd, ".opencode", "agents");
+    if (!fs.existsSync(agentsDir))
+        return [];
+    const counts = new Map();
+    for (const name of fs.readdirSync(agentsDir)) {
+        if (!name.endsWith(".md"))
+            continue;
+        const content = fs.readFileSync(path.join(agentsDir, name), "utf-8");
+        const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+        const model = fm ? parseFrontmatter(fm[1]).get("model")?.trim() : undefined;
+        if (model)
+            counts.set(model, (counts.get(model) ?? 0) + 1);
+    }
+    return [...counts]
+        .map(([model, agents]) => ({ model, agents }))
+        .sort((a, b) => b.agents - a.agents || a.model.localeCompare(b.model));
+}
+/** `model: <id>` for one distinct pin, else `models: <id> (N agents), …`. */
+export function formatOpencodeModelPins(pins) {
+    if (pins.length === 0)
+        return "model: none pinned in .opencode/agents/";
+    if (pins.length === 1)
+        return `model: ${pins[0].model}`;
+    const list = pins.map((p) => `${p.model} (${p.agents} agent${p.agents === 1 ? "" : "s"})`);
+    return `models: ${list.join(", ")}`;
+}
 /**
  * `bkit status` — read-only host/provider status.
- * Reports current host+provider sampled from .opencode/opencode.json,
- * .claude/, and .cursor/ presence. Writes nothing.
+ * Reports current host+provider sampled from .claude/, .cursor/, package.json and the
+ * opencode agent model pins in .opencode/agents/. Writes nothing.
  */
 export function runStatus(cwd, logPrefix) {
     console.log(`${logPrefix} Host/provider status (read-only — no writes)`);
@@ -25,13 +60,12 @@ export function runStatus(cwd, logPrefix) {
     const claudeSettingsPath = path.join(claudeDir, "settings.json");
     let claudeModel = "claude (default)";
     if (claudePresent && fs.existsSync(claudeSettingsPath)) {
-        try {
-            const settings = JSON.parse(fs.readFileSync(claudeSettingsPath, "utf-8"));
+        // Best-effort: an unreadable settings file keeps the default label.
+        const read = readJsonFile(claudeSettingsPath);
+        if (read.ok && typeof read.value === "object" && read.value !== null) {
+            const settings = read.value;
             if (settings.model)
                 claudeModel = settings.model;
-        }
-        catch {
-            // best-effort
         }
     }
     console.log(`${logPrefix} claude:  ${claudePresent ? "INSTALLED" : "absent"}  (provider: anthropic / ${claudeModel})`);
@@ -46,22 +80,20 @@ export function runStatus(cwd, logPrefix) {
     const activeOpencodeProvider = detectOpencodeProvider(cwd);
     // All installed providers.
     const allOpencodeProviders = detectOpencodeProviders(cwd);
-    let opencodeModel = "unknown";
+    // bkit pins models per agent in .opencode/agents/*.md frontmatter; opencode.json carries
+    // only the consumer's optional top-level default `model`.
+    let opencodeModel = formatOpencodeModelPins(readOpencodeModelPins(cwd));
     const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
     if (opencodePresent && fs.existsSync(opencodeJsonPath)) {
-        try {
-            const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8"));
-            if (cfg.model)
-                opencodeModel = cfg.model;
-            // Fallback: look for non-empty models map
-            if (opencodeModel === "unknown" && cfg.models) {
-                const modelKeys = Object.keys(cfg.models);
-                if (modelKeys.length > 0)
-                    opencodeModel = `${modelKeys.length} model(s) configured`;
-            }
+        const read = readJsonFile(opencodeJsonPath);
+        if (!read.ok || read.value === null || typeof read.value !== "object") {
+            opencodeModel += "; opencode.json: parse-error";
         }
-        catch {
-            opencodeModel = "parse-error";
+        else {
+            const cfg = read.value;
+            if (typeof cfg.model === "string" && cfg.model) {
+                opencodeModel += `; default model: ${cfg.model}`;
+            }
         }
     }
     let opencodeProviderDisplay;
@@ -85,7 +117,7 @@ export function runStatus(cwd, logPrefix) {
     // --- antigravity host ---
     const antigravityPresent = detectInstalledHostModules(cwd).has("antigravity");
     const opencodeStatus = opencodePresent
-        ? `INSTALLED  (${providerLabel}: ${opencodeProviderDisplay} / model: ${opencodeModel})`
+        ? `INSTALLED  (${providerLabel}: ${opencodeProviderDisplay} / ${opencodeModel})`
         : "absent (run: bkit install --opencode=<provider>)";
     console.log(`${logPrefix} opencode: ${opencodeStatus}`);
     console.log(`${logPrefix} codex:   ${codexPresent ? "INSTALLED  (provider: openai)" : "absent (run: bkit install --codex)"}`);
@@ -132,7 +164,7 @@ export async function runDoctor(modules, opencodeProvider) {
     writeAdvisoriesArtifact(allFindings, {
         cwd: process.cwd(),
         mode: "doctor",
-        version: getInstallingVersion(),
+        version: readInstallingVersion(),
         logPrefix: LOG_PREFIX,
         suppressed,
         tips,

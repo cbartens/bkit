@@ -12,6 +12,7 @@
 // BKIT_ANTHROPIC_API_KEY — both derived here without a bespoke key list.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readJsonFile } from "../shared/json.js";
 import { getSharedRoot } from "../shared/package-roots.js";
 import { applyTokens } from "./placeholders.js";
 import { BKIT_EGRESS_SOURCES } from "../shared/egress.js";
@@ -197,7 +198,8 @@ function fmtList(items) {
 export function renderCloudEnvNotes(res) {
     if (!res.hasEnvrc) {
         return ("_No `.envrc` found — the block above lists only the bkit baseline token names as " +
-            "placeholders. Add your `.envrc` (`bkit install` seeds one) and re-run to inline real values._");
+            "placeholders. Copy `.bkit/templates/.envrc` to the repo root, fill the files it sources, " +
+            "and re-run to inline real values._");
     }
     const bullets = [];
     if (res.placeholders.length) {
@@ -217,15 +219,13 @@ export function renderCloudEnvNotes(res) {
 }
 /** Parse the pnpm `X.Y.Z` from `package.json` `packageManager` ("" if absent/non-pnpm). */
 export function resolveConsumerPnpm(cwd) {
-    try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8"));
-        const pm = typeof pkg["packageManager"] === "string" ? pkg["packageManager"] : "";
-        const m = pm.match(/^pnpm@(\d+\.\d+\.\d+)/);
-        return m?.[1] ?? "";
-    }
-    catch {
+    const read = readJsonFile(path.join(cwd, "package.json"));
+    if (!read.ok || typeof read.value !== "object" || read.value === null)
         return "";
-    }
+    const pkg = read.value;
+    const pm = typeof pkg["packageManager"] === "string" ? pkg["packageManager"] : "";
+    const m = pm.match(/^pnpm@(\d+\.\d+\.\d+)/);
+    return m?.[1] ?? "";
 }
 /**
  * Render the setup-script corepack line from the consumer's own `packageManager`
@@ -495,25 +495,12 @@ export function resolveClaudeDerivedAllows(cwd) {
         ...extractMcpServers(cwd).flatMap((s) => [`mcp__${s}__*`, `mcp__claude_ai_${s}__*`]),
     ];
 }
-/** Cursor-relative path of the install-written curl/wget allowlist (guardrails). */
-export const NETWORK_ALLOWLIST_RELPATH = path.join(".cursor", "allowlist.json");
-/**
- * Write `.cursor/allowlist.json` for Cursor `bkit-guardrails.cjs` (runtime curl/wget host
- * checks). Claude/OpenCode bake the same domain set into their own configs at
- * install/upgrade — they do not read this file. Call only when the cursor module
- * is installed (do not create `.cursor/` for claude-only consumers).
- */
-export function writeNetworkAllowlistArtifact(cwd, dryRun) {
-    const domains = resolveNetworkAllowlist(cwd);
-    const rel = NETWORK_ALLOWLIST_RELPATH;
-    return { path: rel, domains, wrote: writeGeneratedJson(cwd, rel, { domains }, dryRun) };
-}
 /** Cursor-relative path of the install-written Cursor CLI permissions (MCP allows). */
 export const CURSOR_CLI_PERMISSIONS_RELPATH = path.join(".cursor", "cli.json");
 /**
  * Write `.cursor/cli.json` — the project-level Cursor CLI / cloud-agent permissions —
  * with one `Mcp(<server>:*)` allow per {@link extractMcpServers} entry. bkit-owned and
- * regenerated whole, like `.cursor/allowlist.json`: hand edits do not survive, the
+ * regenerated whole, like `.bkit/allowlist.json`: hand edits do not survive, the
  * `mcp-servers` block is the source. Call only when the cursor module is installed.
  */
 export function writeCursorCliPermissionsArtifact(cwd, dryRun) {

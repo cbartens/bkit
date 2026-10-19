@@ -8,7 +8,8 @@ import type { PreflightFinding } from "../before/index.js";
 import type { ModuleFlag } from "../../cli.js";
 import { getModuleManifest } from "../../install/manifest.js";
 import { readManagedVersion } from "../../install/version-file.js";
-import { getPkgRoot } from "../../shared/package-roots.js";
+import { isSharedBranch } from "../../shared/branches.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
 import {
   detectMarkerStyle,
   extractManagedBlock,
@@ -18,26 +19,7 @@ import {
   stripManagedBlock,
 } from "../../install/managed-block.js";
 import { listStampedFiles } from "../../install/modules/index.js";
-
-// ---------------------------------------------------------------------------
-// detectManagedStale — managed-version marker gate over every stamped file
-// ---------------------------------------------------------------------------
-
-/**
- * Best-effort read of the installing bkit version from the package root.
- * Mirrors getInstallingVersion (commands/install/install.ts) / readInstallingVersion
- * (install/modules/index.ts); kept local to avoid a postinstall → install/modules import.
- */
-function readPkgVersion(): string {
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8")) as {
-      version?: string;
-    };
-    return pkg.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}
+import { gitEnv } from "../../ledgers/telemetry.js";
 
 // ---------------------------------------------------------------------------
 // Branch-scoped severity for the stale gates
@@ -46,9 +28,6 @@ function readPkgVersion(): string {
 // and a non-blocking ADVISORY everywhere else (still shown in the checklist). A PR
 // INTO main/dev re-asserts the blocker (via GITHUB_BASE_REF).
 // ---------------------------------------------------------------------------
-
-/** Branches where a stale managed-version marker is a hard blocker, not a warning. */
-const PROTECTED_BRANCHES = new Set(["main", "dev"]);
 
 /**
  * Resolve the branch the check is effectively gating, preferring the CI signal:
@@ -67,6 +46,7 @@ function currentBranch(cwd: string): string | null {
   // not a thrown error needing a swallowing catch — null then means "undeterminable".
   const r = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
     cwd,
+    env: gitEnv(),
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "ignore"],
   });
@@ -82,7 +62,7 @@ function currentBranch(cwd: string): string | null {
 export function isOnProtectedBranch(cwd: string = process.cwd()): boolean {
   const b = currentBranch(cwd);
   if (b === null) return true; // undeterminable → fail safe to blocker
-  return PROTECTED_BRANCHES.has(b);
+  return isSharedBranch(b);
 }
 
 /**
@@ -122,16 +102,16 @@ export function readManagedBlockVersion(content: string): string | null | undefi
  *
  * A block-scoped file without a bkit block is the consumer's (they dropped the block, or
  * never had bkit's) and is skipped; a whole file without a marker is stale. Files absent
- * on disk are skipped. A dev tree without a readable package version (`0.0.0` / empty)
+ * on disk are skipped. An installing version of `0.0.0` or empty (an unreleased tree)
  * yields null, as does a repo with nothing stamped.
  *
- * Severity is branch-scoped (see PROTECTED_BRANCHES): a `blocker` on main/dev (or a PR
+ * Severity is branch-scoped (see isSharedBranch): a `blocker` on main/dev (or a PR
  * into them), an `advisory` on feature branches. `installingVersion` and
  * `onProtectedBranch` are injected for testability.
  */
 export function detectManagedStale(
   cwd: string,
-  installingVersion: string = readPkgVersion(),
+  installingVersion: string = readInstallingVersion(),
   onProtectedBranch: boolean = isOnProtectedBranch(cwd),
 ): PreflightFinding | null {
   if (!installingVersion || installingVersion === "0.0.0") return null;

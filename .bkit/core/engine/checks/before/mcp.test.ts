@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { detectMissingMcpServers, detectExtraMcpServers } from "./mcp";
+import { detectMissingMcpServers, detectExtraMcpServers, unusedTrackerMcpServers } from "./mcp";
 import { runPreflight } from "./index";
 
 // ---------------------------------------------------------------------------
@@ -245,14 +245,17 @@ describe("detectExtraMcpServers", () => {
     expect(findings[0]!.id).toContain("mcp-extra-server-linear");
   });
 
-  it.each(["linear", "none"] as const)(
+  it.each([
+    ["linear", { linear: { url: "https://mcp.linear.app/mcp" } }],
+    ["none", {}],
+  ] as const)(
     "%s tracker: never flags github — the gh MCP fallback calls it under every tracker",
-    (tracker) => {
+    (tracker, trackerServer) => {
       fs.writeFileSync(
         path.join(tmpDir, ".mcp.json"),
         JSON.stringify({
           mcpServers: {
-            ...(tracker === "linear" ? { linear: { url: "https://mcp.linear.app/mcp" } } : {}),
+            ...trackerServer,
             github: { url: "https://api.githubcopilot.com/mcp/" },
           },
         }),
@@ -358,5 +361,16 @@ describe("detectExtraMcpServers", () => {
     expect(advisories.map((f) => f.id)).toContain(
       "mcp-extra-server-linear--opencode-opencode-json",
     );
+  });
+});
+
+describe("unusedTrackerMcpServers", () => {
+  it("github and none trackers have no use for linear; github is never unused", () => {
+    expect(unusedTrackerMcpServers("github")).toEqual(["linear"]);
+    expect(unusedTrackerMcpServers("none")).toEqual(["linear"]);
+  });
+
+  it("the linear tracker leaves nothing unused (github stays for the workflow fallback)", () => {
+    expect(unusedTrackerMcpServers("linear")).toEqual([]);
   });
 });

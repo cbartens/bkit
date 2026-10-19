@@ -11,9 +11,9 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 200
 ---
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
 **Scope:** As specified by input and Read / Update / Create section.

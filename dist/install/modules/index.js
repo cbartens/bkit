@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getCoreRoot, getSharedRoot } from "../../shared/package-roots.js";
 import { getInstallManifest } from "../manifest.js";
+import { writeNetworkAllowlist } from "../network-allowlist.js";
 import { BKIT_PREFIX, listCoreTemplateFiles, listSharedTemplateFiles, runBkitDocs, runCoreModule, seedCorePackageJsonScripts, } from "./core.js";
 import { renderClaudeAgentsCommands, runClaudeModule } from "./claude.js";
 import { renderCursorAgentsCommands, runCursorModule } from "./cursor.js";
@@ -19,7 +20,8 @@ import { runCloudModule } from "./cloud.js";
 // renderManagedOutputs — re-render the bkit-managed OUTPUT files that the
 // `bkit upgrade` payload walk does NOT cover:
 // host agents/commands (source-rendered), the `.bkit/*.md` canonical docs
-// (runBkitDocs) and core's package.json scripts (seedCorePackageJsonScripts).
+// (runBkitDocs), `.bkit/allowlist.json` (writeNetworkAllowlist) and core's
+// package.json scripts (seedCorePackageJsonScripts).
 // `.bkit/prompts.md` is markered → runBkitDocs block-merges it (managed block
 // refreshed, consumer `## Model Overrides` below bkit:end preserved).
 //
@@ -41,6 +43,9 @@ export function renderManagedOutputs(modules, ctx) {
     for (let i = docsBefore; i < ctx.ws.writes.length; i++) {
         written.push(String(ctx.ws.writes[i].path));
     }
+    // `.bkit/allowlist.json` — the same pass install's core module runs (writeNetworkAllowlist
+    // records into ctx.ws, so the caller refreshes its canonicalHashes).
+    written.push(...writeNetworkAllowlist(process.cwd(), ctx.dryRun, ctx.ws, ctx.logPrefix));
     // Core package.json scripts — the same pass install runs, so `bkit check` after a
     // clean upgrade finds no missing gate name and no superseded script value.
     written.push(...seedCorePackageJsonScripts(ctx));

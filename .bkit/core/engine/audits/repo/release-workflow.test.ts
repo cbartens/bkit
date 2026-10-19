@@ -207,6 +207,14 @@ describe("release.yml structural assertions (BAR-138)", () => {
     expect(content).toContain("npm publish --provenance");
   });
 
+  it("refuses to publish a tag whose commit is not on main, before any other step", () => {
+    const gateIdx = lineIndex('git merge-base --is-ancestor "$GITHUB_SHA" origin/main');
+    expect(content).toContain("fetch-depth: 0");
+    expect(gateIdx).toBeGreaterThan(-1);
+    expect(gateIdx).toBeLessThan(lineIndex("pnpm install --frozen-lockfile"));
+    expect(gateIdx).toBeLessThan(lineIndex("npm publish"));
+  });
+
   it("npm publish step appears after pnpm bkit:check:dist", () => {
     const distIdx = lineIndex("pnpm bkit:check:dist");
     const publishIdx = lineIndex("npm publish");

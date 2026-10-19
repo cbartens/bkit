@@ -266,6 +266,39 @@ describe("gateguard behaviour parity — advisory content", () => {
         expect(r.advisory).toContain("quality-gate config");
       });
 
+      // JS / TS ecosystem configs (and the doc linter), matched on the basename wherever the
+      // file sits.
+      it.each([
+        "tsconfig.build.json",
+        "path/to/tsconfig.build.json",
+        "vitest.config.ts",
+        "vite.config.mts",
+        "eslint.config.js",
+        ".eslintrc",
+        ".eslintrc.json",
+        ".prettierrc",
+        ".prettierrc.json",
+        "prettier.config.js",
+        ".prettierignore",
+        "biome.json",
+        "biome.jsonc",
+        ".vale.ini",
+        "slop-scan.config.json",
+        ".lintstagedrc.json",
+        "lint-staged.config.js",
+      ])("a %s gate config gets the weaken-the-gate advisory", async (file) => {
+        const r = await run(host, { file, session: newSession() });
+        expect(r.advisory).toContain("quality-gate config");
+      });
+
+      it.each(["README.md", "src/index.ts"])(
+        "ordinary file %s is not treated as a gate config",
+        async (file) => {
+          const r = await run(host, { file, session: newSession() });
+          expect(r.advisory).not.toContain("quality-gate config");
+        },
+      );
+
       it("BKIT_ALLOW_CONFIG_EDIT=1 downgrades a gate config to the normal checklist", async () => {
         const r = await run(host, {
           file: "tsconfig.json",
@@ -315,27 +348,42 @@ describe("gateguard behaviour parity — template copies", () => {
       const r = await run(host, { file, session: newSession() });
       expect(r.advisory).toContain("quality-gate config");
     });
+
+    it(`${host}: a relative .bkit/templates/.vale.ini resolves against the cwd's package (this is bkit's repo)`, async () => {
+      const r = await run(host, { file: ".bkit/templates/.vale.ini", session: newSession() });
+      expect(r.advisory).toContain("quality-gate config");
+    });
+
+    it(`${host}: a folder that merely ends in .bkit/templates is not a template copy`, async () => {
+      const file = path.join(consumer, "x.bkit/templates/.vale.ini");
+      const r = await run(host, { file, session: newSession() });
+      expect(r.advisory).toContain("quality-gate config");
+    });
   }
 });
 
 describe("gateguard behaviour parity — docs density advisory", () => {
-  const cases: { file: string; expected: boolean; why: string }[] = [
-    { file: "docs/architecture.md", expected: true, why: "a docs markdown file" },
-    { file: ".bkit/shared/docs/architecture.md", expected: true, why: "nested docs tree" },
-    { file: "Documents/architecture.md", expected: false, why: "segment match, not substring" },
-    {
-      file: "docs/plans/202608/x/design.md",
-      expected: false,
-      why: "plans follow the plan template",
-    },
-    { file: "docs/knowledge.jsonl", expected: false, why: "gated on .md" },
+  type DocsCase = { file: string; why: string };
+  const firing: DocsCase[] = [
+    { file: "docs/architecture.md", why: "a docs markdown file" },
+    { file: ".bkit/shared/docs/architecture.md", why: "nested docs tree" },
+  ];
+  const silent: DocsCase[] = [
+    { file: "Documents/architecture.md", why: "segment match, not substring" },
+    { file: "docs/plans/202608/x/design.md", why: "plans follow the plan template" },
+    { file: "docs/knowledge.jsonl", why: "gated on .md" },
   ];
   for (const host of HOSTS) {
-    for (const c of cases) {
-      it(`${host}: ${c.expected ? "fires" : "does not fire"} on ${c.file} (${c.why})`, async () => {
+    for (const c of firing) {
+      it(`${host}: fires on ${c.file} (${c.why})`, async () => {
         const r = await run(host, { file: c.file, session: newSession() });
-        if (c.expected) expect(r.advisory).toContain("docs/*.md authoring");
-        else expect(r.advisory).not.toContain("docs/*.md authoring");
+        expect(r.advisory).toContain("docs/*.md authoring");
+      });
+    }
+    for (const c of silent) {
+      it(`${host}: does not fire on ${c.file} (${c.why})`, async () => {
+        const r = await run(host, { file: c.file, session: newSession() });
+        expect(r.advisory).not.toContain("docs/*.md authoring");
       });
     }
   }

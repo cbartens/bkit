@@ -192,8 +192,12 @@ describe("bkit steps verdict", () => {
     expect(r.json).toEqual({ verdict: "FAIL", fields: { Verdict: "FAIL", Failures: "2" } });
   });
 
+  it("a missing artifact exits 4", async () => {
+    const cwd = repo();
+    expect((await run(cwd, ["steps", "verdict", "--file=logs/a.md"])).code).toBe(4);
+  });
+
   it.each([
-    ["missing", null, 4],
     ["empty", "", 4],
     ["pending", "Verdict: PENDING\n<!-- verdict:end -->\n", 5],
     ["no marker", "Verdict: PASS\n", 6],
@@ -201,7 +205,7 @@ describe("bkit steps verdict", () => {
     ["bad failures", "Verdict: PASS\nFailures: some\n<!-- verdict:end -->\n", 6],
   ])("%s artifact exits %#", async (_, body, code) => {
     const cwd = repo();
-    if (body !== null) write(cwd, "logs/a.md", body);
+    write(cwd, "logs/a.md", body);
     expect((await run(cwd, ["steps", "verdict", "--file=logs/a.md"])).code).toBe(code);
   });
 
@@ -410,6 +414,39 @@ describe("status row field names", () => {
   });
 });
 
+/** A finish call's `--agent` writes `strategy` when its prompt's header declares one. */
+const agentWritesStrategy = (line: string) =>
+  [...line.matchAll(/--agent=([a-z0-9-]+)/g)].some((m) =>
+    promptHeader(m[1]!).fields.some((f) => f.name === "Strategy"),
+  );
+
+/** The row fields each workflow's `steps done|finish` call writes, read from the workflow files. */
+function workflowRowFields(): Record<string, string[]> {
+  const dir = path.join(REPO_ROOT, ".bkit", "core", "workflows");
+  const written: Record<string, string[]> = {};
+  for (const name of fs.readdirSync(dir).filter((n) => /^bkit-.*\.md$/.test(n))) {
+    const text = fs.readFileSync(path.join(dir, name), "utf-8").replace(/\\\n\s*/g, " ");
+    for (const line of text.split("\n")) {
+      // `context finalise --record` writes the context-fetch row with this run's attempt.
+      if (/"\{BKIT\}" context finalise\b.*--record\b/.test(line)) {
+        written["debug/context-fetch"] = ["attempt"];
+        continue;
+      }
+      if (!/"\{BKIT\}" steps (done|finish)\b/.test(line)) continue;
+      const workflow = /--workflow=([a-z]+)/.exec(line)?.[1];
+      const step = /--step=([a-z0-9-]+)/.exec(line)?.[1];
+      if (!workflow || !step) continue;
+      const fields = [
+        /--attempt(-of)?[= ]/.test(line) ? "attempt" : "",
+        /--strategy=/.test(line) || agentWritesStrategy(line) ? "strategy" : "",
+        /--field="?scope=|--scope=/.test(line) ? "scope" : "",
+      ].filter(Boolean);
+      if (fields.length) written[`${workflow}/${step}`] = fields;
+    }
+  }
+  return written;
+}
+
 describe("bkit steps gate checks attempt / strategy / scope where the step writes them", () => {
   /** Write a row with `steps done --commit=none`, then gate it. */
   async function rowThenGate(workflow: string, step: string, done: string[], gate: string[] = []) {
@@ -461,35 +498,8 @@ describe("bkit steps gate checks attempt / strategy / scope where the step write
   });
 
   it("ROW_FIELDS lists exactly the fields each workflow's `steps done|finish` call writes", () => {
-    const dir = path.join(REPO_ROOT, ".bkit", "core", "workflows");
-    const written: Record<string, string[]> = {};
-    /** A finish call's `--agent` writes `strategy` when its prompt's header declares one. */
-    const agentWritesStrategy = (line: string) =>
-      [...line.matchAll(/--agent=([a-z0-9-]+)/g)].some((m) =>
-        promptHeader(m[1]!).fields.some((f) => f.name === "Strategy"),
-      );
-    for (const name of fs.readdirSync(dir).filter((n) => /^bkit-.*\.md$/.test(n))) {
-      const text = fs.readFileSync(path.join(dir, name), "utf-8").replace(/\\\n\s*/g, " ");
-      for (const line of text.split("\n")) {
-        // `context finalise --record` writes the context-fetch row with this run's attempt.
-        if (/"\{BKIT\}" context finalise\b.*--record\b/.test(line)) {
-          written["debug/context-fetch"] = ["attempt"];
-          continue;
-        }
-        if (!/"\{BKIT\}" steps (done|finish)\b/.test(line)) continue;
-        const workflow = /--workflow=([a-z]+)/.exec(line)?.[1];
-        const step = /--step=([a-z0-9-]+)/.exec(line)?.[1];
-        if (!workflow || !step) continue;
-        const fields = [
-          /--attempt(-of)?[= ]/.test(line) ? "attempt" : "",
-          /--strategy=/.test(line) || agentWritesStrategy(line) ? "strategy" : "",
-          /--field="?scope=|--scope=/.test(line) ? "scope" : "",
-        ].filter(Boolean);
-        if (fields.length) written[`${workflow}/${step}`] = fields;
-      }
-    }
     const table = Object.fromEntries(Object.entries(ROW_FIELDS).map(([k, v]) => [k, [...v]]));
-    expect(written).toEqual(table);
+    expect(workflowRowFields()).toEqual(table);
   });
 });
 

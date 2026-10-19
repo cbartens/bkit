@@ -3,9 +3,9 @@
 // Flag parsing, one JSON object on stdout, `[bkit-<noun>]`-tagged logs on stderr,
 // the exit-code table, `--help` rendering, and the repo facts several workflow
 // steps each re-derived by hand: repo root, UTC month, where `status.jsonl` lives,
-// and the skip-CI tokens. A command declares its flags, output keys and exit codes
-// in its spec; `--help` and the convention test both read that spec, so the help
-// text cannot drift from what the command accepts.
+// the skip-CI tokens, and which branches are shared. A command declares its flags,
+// output keys and exit codes in its spec; `--help` and the convention test both read
+// that spec, so the help text cannot drift from what the command accepts.
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -253,13 +253,29 @@ export async function runCommand(argv, commands, options) {
 // ---------------------------------------------------------------------------
 // Repo facts
 // ---------------------------------------------------------------------------
+/** Captured stdout / stderr cap for `runGit` / `runTool`; hook output (pre-push) counts. */
+const OUTPUT_LIMIT = 1 << 26;
+/** Spawn error as a stderr lead line: ENOBUFS names the limit, anything else Node's message. */
+function spawnErrorText(cmd, args, err) {
+    return err.code === "ENOBUFS"
+        ? `${cmd} ${args[0] ?? ""}: output passed the ${OUTPUT_LIMIT / (1 << 20)} MiB limit (ENOBUFS)`
+        : err.message;
+}
 /** `git <args>` in `cwd`, never throwing: exit status plus trimmed stdout / stderr. */
 export function runGit(cwd, args) {
-    const res = spawnSync("git", args, { cwd, encoding: "utf-8", env: gitEnv() });
+    const res = spawnSync("git", args, {
+        cwd,
+        encoding: "utf-8",
+        env: gitEnv(),
+        maxBuffer: OUTPUT_LIMIT,
+    });
+    const stderr = (res.stderr ?? "").trim();
     return {
-        ok: res.status === 0,
+        ok: !res.error && res.status === 0,
         stdout: (res.stdout ?? "").trim(),
-        stderr: (res.stderr ?? "").trim(),
+        stderr: res.error
+            ? [spawnErrorText("git", args, res.error), stderr].filter(Boolean).join("\n")
+            : stderr,
     };
 }
 /** `git <args>` in `cwd`; stdout trimmed, or null on a non-zero exit. */
@@ -271,6 +287,8 @@ export function git(cwd, args) {
 // Shared with the files that are not commands (checks, install): re-exported here
 // for the command modules that already import it from this module.
 export { parseJson } from "../shared/json.js";
+// The shared-branch rule (`dev`, `main`) lives in shared/ so checks can read it too.
+export { DEV, isSharedBranch } from "../shared/branches.js";
 /**
  * Run a tool other than git, never throwing. Hook-exported GIT_* vars are scrubbed
  * so gh and friends answer for `cwd`; `input` goes to stdin.
@@ -281,16 +299,20 @@ export function runTool(cmd, args, cwd, opts = {}) {
         encoding: "utf-8",
         env: gitEnv(),
         input: opts.input,
-        maxBuffer: 1 << 26,
+        maxBuffer: OUTPUT_LIMIT,
     });
-    if (res.error) {
+    if (res.error && res.pid === 0) {
         return { found: false, status: 127, stdout: "", stderr: `${cmd} not found on PATH` };
     }
+    const status = res.status ?? 128 + signalNumber(res.signal);
     return {
         found: true,
-        status: res.status ?? 128 + signalNumber(res.signal),
+        // A spawn error is never a success: the child can exit 0 before ENOBUFS kills it.
+        status: res.error && status === 0 ? 1 : status,
         stdout: res.stdout ?? "",
-        stderr: res.stderr ?? "",
+        stderr: res.error
+            ? [spawnErrorText(cmd, args, res.error), res.stderr ?? ""].filter(Boolean).join("\n")
+            : (res.stderr ?? ""),
     };
 }
 const signalNumber = (signal) => (signal ? os.constants.signals[signal] : undefined) ?? 1;

@@ -29,6 +29,14 @@ const commandLines = (text: string, verb: string) =>
     .split("\n")
     .filter((l) => l.includes(`"{BKIT}" ${verb}`));
 
+/** The marker line of a tracker block still open at the end of `text`; undefined when none is. */
+function unclosedTrackerMarker(text: string): string | undefined {
+  const lastOpen = text.lastIndexOf("<!-- bkit:tracker");
+  const tail = text.slice(lastOpen);
+  const closes = /^<!-- bkit:tracker \S+ end -->/.test(tail);
+  return lastOpen === -1 || closes ? undefined : tail.split("\n")[0];
+}
+
 describe("bkit lookup", () => {
   it.each(ALL)("%s resolves the binary once, in Step 1, and holds it as {BKIT}", (name) => {
     const text = workflow(name);
@@ -50,8 +58,10 @@ describe("Step 1 FID check", () => {
     expect(at, `${name}: no fids check in Step 1`).toBeGreaterThanOrEqual(0);
     // Not inside a tracker block: the last block marker before it closes one (or there is none).
     const before = step1.slice(0, at);
-    const lastOpen = before.lastIndexOf("<!-- bkit:tracker");
-    if (lastOpen !== -1) expect(before.slice(lastOpen)).toMatch(/^<!-- bkit:tracker \S+ end -->/);
+    expect(
+      unclosedTrackerMarker(before),
+      `${name}: fids check sits inside a tracker block`,
+    ).toBeUndefined();
     // Gate 1 re-checks the FID shape and the lock mechanically.
     const gate = commandLines(step1, "steps gate");
     expect(gate, name).toHaveLength(1);
@@ -330,8 +340,8 @@ describe("setup tips at the close", () => {
     expect(commandLines(collect, "tips"), name).toEqual([
       expect.stringContaining(`"{BKIT}" tips --workflow=${name}`),
     ]);
-    expect(collect).toContain("`{SETUP_TIPS}`");
+    expect(collect).toContain("`{BKIT_TIPS}`");
     const final = lines.slice(finalIdx, finalIdx + 8).join("\n");
-    expect(final).toContain("Append `{SETUP_TIPS}`");
+    expect(final).toContain("Append `{BKIT_TIPS}`");
   });
 });

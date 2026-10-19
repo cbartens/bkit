@@ -78,15 +78,6 @@ describe("gitattributes — .bkit/issues.jsonl + docs/roadmap.md (#380)", () => 
       expect(attr, `${filePath} should have merge=union`).toBe("union");
     });
   }
-
-  it("root + template .gitattributes do not name docs/completed.md", () => {
-    for (const p of [".gitattributes", ".bkit/shared/.gitattributes"]) {
-      const content = fs.readFileSync(path.join(REPO_ROOT, p), "utf-8");
-      expect(content, `${p} must not reference docs/completed.md`).not.toContain(
-        "docs/completed.md",
-      );
-    }
-  });
 });
 
 /**

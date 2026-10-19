@@ -706,19 +706,12 @@ const BOOK_PATHS_ALLOW_LIST: readonly string[] = [
 describe("bookPathspecs — frozen bookkeeping allow-list", () => {
   it("scope=pr reaches every frozen entry, the FID log dir, and the docs/*.jsonl ledger glob", () => {
     const pr = bookPathspecs("202610", "1-x", "pr");
-    for (const p of BOOK_PATHS_ALLOW_LIST) {
-      expect(
-        pr.some((s) => s === p || s === `${p}/*`),
-        p,
-      ).toBe(true);
-    }
+    // An entry is reached as itself or as its `/*` glob; list every one that is neither.
+    const unreached = BOOK_PATHS_ALLOW_LIST.filter((p) => !pr.includes(p)).filter(
+      (p) => !pr.includes(`${p}/*`),
+    );
+    expect(unreached).toEqual([]);
     expect(pr).toContain("docs/plans/202610/logs/1-x/*");
     expect(pr).toContain("docs/*.jsonl"); // .bkit/issues.jsonl's route is the .bkit/*.jsonl glob
-  });
-
-  it("never names docs/completed.md (#380)", () => {
-    for (const scope of ["core", "full", "pr"] as const) {
-      expect(bookPathspecs("202610", "1-x", scope)).not.toContain("docs/completed.md");
-    }
   });
 });

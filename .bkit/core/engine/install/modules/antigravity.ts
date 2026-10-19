@@ -19,14 +19,9 @@ import {
 } from "../../shared/package-roots.js";
 import { type IssueTracker, DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
 import type { ModuleContext } from "./index.js";
-import {
-  BKIT_PREFIX,
-  installFile,
-  listMdFiles,
-  readInstallingVersion,
-  trackMirrorWrite,
-} from "./core.js";
+import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
 
 // ---------------------------------------------------------------------------
 // runAntigravityModule — Google Antigravity IDE host (opt-in via --antigravity)
@@ -115,16 +110,12 @@ export function renderAntigravityAgentsSkills(ctx: ModuleContext): string[] {
       }
     }
 
-    // Orphan sweep is bkit-prefix scoped — the plugin's agents/ is bkit-owned.
-    if (fs.existsSync(dest)) {
-      for (const f of fs.readdirSync(dest)) {
-        if (!f.startsWith(BKIT_PREFIX)) continue;
-        if (sourceSet.has(f)) continue;
-        const rel = path.join(dest, f);
-        if (!dryRun) fs.rmSync(rel, { force: true });
-        console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
-        trackMirrorWrite(ctx, rel, written);
-      }
+    // Orphan sweep is bkit-prefix scoped — the plugin's agents/ is bkit-owned, so every
+    // bkit-* entry counts, whatever its extension.
+    for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX, { extension: "" })) {
+      const rel = path.join(dest, f);
+      console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+      trackMirrorWrite(ctx, rel, written);
     }
   }
 
@@ -148,15 +139,13 @@ export function renderAntigravityAgentsSkills(ctx: ModuleContext): string[] {
     }
 
     // Prefix-scoped sweep inside the bkit plugin's skills/.
-    if (fs.existsSync(ANTIGRAVITY_SKILLS_DIR)) {
-      for (const d of fs.readdirSync(ANTIGRAVITY_SKILLS_DIR)) {
-        if (!d.startsWith(BKIT_PREFIX)) continue;
-        if (sourceStems.has(d)) continue;
-        const rel = path.join(ANTIGRAVITY_SKILLS_DIR, d);
-        if (!dryRun) fs.rmSync(rel, { recursive: true, force: true });
-        console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
-        trackMirrorWrite(ctx, rel, written);
-      }
+    const orphans = removeOrphans(ANTIGRAVITY_SKILLS_DIR, sourceStems, dryRun, BKIT_PREFIX, {
+      wholeFolders: true,
+    });
+    for (const d of orphans) {
+      const rel = path.join(ANTIGRAVITY_SKILLS_DIR, d);
+      console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+      trackMirrorWrite(ctx, rel, written);
     }
   }
 

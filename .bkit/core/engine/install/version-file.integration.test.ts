@@ -65,7 +65,7 @@ describe("C1 regression: .bkit-version JSON format → pinnedVersion extraction"
     });
 
     const parsed = readBkitVersion(versionFile);
-    const pinnedVersion = parsed?.pinnedVersion ?? "";
+    const pinnedVersion = parsed?.pinnedVersion;
     // Semver string must match NN.NN.NN pattern (JSON blob would not match)
     expect(pinnedVersion).toMatch(/^\d+\.\d+\.\d+/);
   });

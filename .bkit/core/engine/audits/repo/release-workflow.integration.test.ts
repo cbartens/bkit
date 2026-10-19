@@ -18,6 +18,11 @@ const repoRoot = path.resolve(
   "..",
 );
 
+/** True for the harvest store and the maintainer's consumer list. */
+function isMaintainerOnlyPath(p: string): boolean {
+  return p.startsWith("harvest/") || p === "docs/consumers.md" || p === ".bkit/consumers.md";
+}
+
 /** File paths a dry-run pack would ship (nothing is written; lifecycle scripts skipped). */
 function packedFiles(packer: "npm" | "pnpm"): string[] {
   const out = execFileSync(packer, ["pack", "--dry-run", "--json"], {
@@ -56,10 +61,8 @@ describe.each(["npm", "pnpm"] as const)(
       expect(offenders).toEqual([]);
     });
 
-    it("tarball does not ship the maintainer consumer list", () => {
-      const offenders = manifestFiles.filter(
-        (p) => p === "docs/consumers.md" || p === ".bkit/consumers.md",
-      );
+    it("tarball does not ship the harvest store or the maintainer consumer list", () => {
+      const offenders = manifestFiles.filter(isMaintainerOnlyPath);
       expect(offenders).toEqual([]);
     });
 

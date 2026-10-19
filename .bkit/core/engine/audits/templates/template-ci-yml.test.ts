@@ -14,6 +14,7 @@ import * as path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { parse as parseYamlText } from "yaml";
 import { runCommand } from "../../commands/lib";
+import { BKIT_GATE_SCRIPTS } from "../../install/manifest";
 import { runsCommand } from "../../commands/workflow/runs";
 import { readBkitConfig } from "../../shared/settings";
 
@@ -55,6 +56,11 @@ interface Job {
   needs?: string | string[];
 }
 
+/** The jobs a job `needs:`, as a list whether the YAML wrote a string, a list or nothing. */
+function needsOf(job: Job): string[] {
+  return ([] as string[]).concat(job.needs ?? []);
+}
+
 describe("template bkit-ci.yml, filled in", () => {
   it("parses as YAML, with the capstone needing every other job", () => {
     const doc = parseYaml(filledTemplate());
@@ -63,7 +69,7 @@ describe("template bkit-ci.yml, filled in", () => {
     const capstoneId = readBkitConfig(tmp()).capstoneJob;
     const capstone = jobs[capstoneId];
     expect(capstone, `no ${capstoneId} job`).toBeDefined();
-    const needs = ([] as string[]).concat(capstone!.needs ?? []);
+    const needs = needsOf(capstone!);
     expect(needs.sort()).toEqual(
       Object.keys(jobs)
         .filter((id) => id !== capstoneId)
@@ -75,6 +81,56 @@ describe("template bkit-ci.yml, filled in", () => {
     const file = filledTemplate();
     const r = spawnSync("actionlint", ["-no-color", file], { encoding: "utf-8" });
     expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+  });
+});
+
+/** Gate parts the CI static job is allowed to omit, each with the reason. Empty: none are. */
+const GATE_PARTS_ABSENT_FROM_CI: Readonly<Record<string, string>> = {};
+
+describe("template bkit-tests-static job matches the bkit:gate:static local gate", () => {
+  const gateParts = (BKIT_GATE_SCRIPTS["bkit:gate:static"] ?? "")
+    .split("&&")
+    .map((part) => /^pnpm ([\w:-]+)(?:\s|$)/.exec(part.trim())?.[1] ?? part.trim());
+
+  /** The `run:` text of every step in the template's static job. */
+  function staticJobRuns(): string[] {
+    const doc = parseYaml(filledTemplate());
+    const job = (doc.jobs as Record<string, { steps?: { run?: string }[] }>)["bkit-tests-static"];
+    expect(job, "no bkit-tests-static job").toBeDefined();
+    return (job!.steps ?? []).flatMap((step) => (typeof step.run === "string" ? [step.run] : []));
+  }
+
+  /** Whether any run line invokes `pnpm <script>` (arguments after the name are allowed). */
+  const runsScript = (runs: string[], script: string): boolean =>
+    runs.some((run) =>
+      run.split("\n").some((line) => {
+        const m = /^\s*pnpm ([\w:-]+)(?:\s|$)/.exec(line);
+        return m?.[1] === script;
+      }),
+    );
+
+  /** A gate part with neither a named exception nor a `run: pnpm <part>` step. */
+  const isUncovered = (part: string, runs: string[]): boolean =>
+    !(part in GATE_PARTS_ABSENT_FROM_CI) && !runsScript(runs, part);
+
+  it("reads the gate as a chain of pnpm scripts", () => {
+    expect(gateParts).toEqual(["typecheck", "lint", "format:check", "lint:prose", "slop:delta"]);
+  });
+
+  it("runs every part of the local static gate as a step, bar the named exceptions", () => {
+    const runs = staticJobRuns();
+    const missing = gateParts.filter((part) => isUncovered(part, runs));
+    expect(
+      missing,
+      `bkit-tests-static has no 'run: pnpm <script>' step for: ${missing.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("lists only exceptions that are still parts of the gate", () => {
+    const stale = Object.keys(GATE_PARTS_ABSENT_FROM_CI).filter(
+      (part) => !gateParts.includes(part),
+    );
+    expect(stale).toEqual([]);
   });
 });
 
@@ -137,6 +193,9 @@ describe("ship gate against the template's job names", () => {
     return { code, json: JSON.parse(out.join("")) as Record<string, unknown>, err: err.join("") };
   }
 
+  const capstoneFails = (name: string): string =>
+    name === "bkit-tests-check" ? "failure" : "success";
+
   it("finds the capstone among the template's jobs and passes when it is green", async () => {
     fixture("template-ci-green", () => "success");
     const r = await gate("template-ci-green");
@@ -145,7 +204,7 @@ describe("ship gate against the template's job names", () => {
   });
 
   it("refuses when the template's capstone job fails", async () => {
-    fixture("template-ci-red", (name) => (name === "bkit-tests-check" ? "failure" : "success"));
+    fixture("template-ci-red", capstoneFails);
     const r = await gate("template-ci-red");
     expect(r.code).toBe(12);
     expect(r.err).toContain("capstone 'bkit-tests-check' concluded 'failure'");

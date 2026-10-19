@@ -42,23 +42,23 @@
 > [!IMPORTANT]
 > What good looks like; canonical for the plan phase. Subagents (plan generate, plan review, plan summary) must follow this spec. No plan subagent restates rules; this section = single source of truth for the plan.
 
-- **Narrative:** 1–2 sentences, user POV (not system POV). User action + what they get back. Design → verbatim. Audits only (`docs/audits/`) → user/operator impact from in-scope findings. Neither, or design lacks `## Acceptance Scenario` → both fields = `⚠️ MISSING: no design doc and no audit report — human must provide before plan proceeds`; never fabricate; Gate 1 blocked until human fills.
-- **Success Criteria:** <=5 bullets, measurable / testable. Outcomes (e.g. "user sees their event in the list within 2s"), not steps (e.g. "call API, render component"). Design count ≠ 5 → smallest set proving feature. Design → verbatim. Audits only → one bullet per in-scope finding id from `Expected`; no 5-bullet cap.
+- **Narrative:** 1–2 sentences, user POV (not system POV). User action + what they get back. Source, first that carries it wins: design `## Acceptance Scenario` → verbatim; issue `Narrative` (change shape, `.bkit/trackers.md` § Issue shapes) → verbatim; audits only (`docs/audits/`) → user/operator impact from in-scope findings. None → both fields = `⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds`; never fabricate; Gate 1 blocked until human fills.
+- **Success Criteria:** <=5 bullets, measurable / testable. Outcomes (e.g. "user sees their event in the list within 2s"), not steps (e.g. "call API, render component"). Design count ≠ 5 → smallest set proving feature. Design → verbatim. No design → issue `Success Criteria` verbatim. Audits only → one bullet per in-scope finding id from `Expected`; no 5-bullet cap.
 - **Process Sketch:** Design → plan inherits/refines. same happy-path (`Concrete Example`) + branches (`Edge Cases`) as `WHEN X → THEN Y` (3–7 lines); reuse exact examples, do not invent. Outcomes, not steps.
 - **Key Edge Cases:** Design → plan inherits. Concurrency, conflicts, failures, cross-feature — not trivial validation (plan adds that).
-- **Edge Cases:** Plan phase — design Key Edge Cases verbatim + validation / error / boundary cases.
+- **Edge Cases:** Plan phase — design Key Edge Cases verbatim (no design → issue `Edge Cases` rows verbatim) + validation / error / boundary cases.
 - **Concrete Example:** Plan phase only. Role, starting state, numbered steps, observable outcome. One scenario, not a list.
-- **Derived Test Matrix:** Plan phase only. One row per testable behaviour → exactly one `Agent Execution Runbook` task. No row without a target file. In-scope audit behaviour → one row.
+- **Derived Test Matrix:** Plan phase only. One row per testable behaviour → exactly one `Agent Execution Runbook` task. No row without a target file. In-scope audit behaviour → one row. Issue `Derived Test Matrix` rows → kept verbatim; add missing rows.
 
 ### Narrative
 
-> Inherited from design; do not rewrite.
+> Inherited from design, else the issue; do not rewrite.
 
 [Copied verbatim from `{FID}-design.md` § Acceptance Scenario → Narrative. No design → per Spec above; initially set to `PENDING`.]
 
 ### Success Criteria
 
-> Inherited from design; do not rewrite.
+> Inherited from design, else the issue; do not rewrite.
 
 [Copied verbatim from `{FID}-design.md` § Acceptance Scenario → Success Criteria. No design → per Spec above; initially set to `PENDING`.]
 
@@ -406,6 +406,8 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 > **Build order and test source.** Order tasks by build dependency (schema → API → UI). Behaviour tests only from `Derived Test Matrix` rows — do not invent. Boundary-crossing tasks (DB / API / model / network / migration) carry paired non-mock `Done when` tests; pure-function tasks exempt from pairing, not from unit tests.
 >
 > **Test first.** Every task MUST include `**Test first:**` after `Done when`. Behaviour change at unit / integration tier → one or more tests, `;`-separated, each `` `{test file}` `` `` `{test name}` `` fails on {assertion} — repo-relative test files, test names as the runner reports them or their last segments, no `;` in assertion text; build sees each fail against stubs before writing the task's code. No behaviour change (docs, config, pure refactor) or E2E / `@live` tier only → `n/a — {reason naming which}`.
+>
+> **Issue tasks.** Change-shape issue (`.bkit/trackers.md` § Issue shapes) → its `Tasks` lines are the starting runbook; keep each `Done when` / `Test first` (tighten, never weaken); renumber in build order.
 
 - [ ] **Task 1:** [e.g., Create DB migration (`npx supabase db diff`)]. **Done when:** [e.g., `supabase/migrations/{timestamp}_add_items_status.sql` exists; `npx supabase db push --local` applies cleanly]. **Test first:** [e.g., n/a — migration; fresh-DB replay tier].
 - [ ] **Task 2:** [e.g., Implement backend API action `action.ts`]. **Done when:** [e.g., `packages/api/src/items/setStatus.ts` exports `setStatus` with Zod-validated input; unit test `packages/api/src/items/setStatus.test.ts` covers each status transition; integration test in `packages/api/items.integration.test.ts` passes]. **Test first:** [e.g., `packages/api/src/items/setStatus.test.ts` `rejects an unknown status` fails on the thrown validation error — stub accepts any status; `packages/api/items.integration.test.ts` `persists the new status` fails on the stored row — stub writes nothing].

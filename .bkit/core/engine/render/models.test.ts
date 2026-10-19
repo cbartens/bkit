@@ -17,6 +17,7 @@ import {
   parseModelLookupForColumn,
   opencodeProviderId,
 } from "./models";
+import { OPENCODE_PROVIDERS } from "../shared/egress";
 import { getBkitDocsRoot, getPromptsRoot } from "../shared/package-roots";
 
 // ---------------------------------------------------------------------------
@@ -33,6 +34,18 @@ function makeSubagentsMd(
     )
     .join("\n");
   return `# Subagents\n\n## Models\n\n| Prompt | Cursor | Ollama (Local) | Effort | Cursor RO | Role |\n| --- | --- | --- | --- | --- | --- |\n${tableRows}\n`;
+}
+
+/** The frontmatter `name` of every non-empty-named prompt file in .bkit/prompts/. */
+function promptAgentNames(): string[] {
+  return fs
+    .readdirSync(getPromptsRoot())
+    .filter((f) => f.endsWith(".md"))
+    .map((f) =>
+      fs.readFileSync(path.join(getPromptsRoot(), f), "utf-8").match(/^---\r?\n([\s\S]*?)\r?\n---/),
+    )
+    .flatMap((fmMatch) => (fmMatch ? [parseFrontmatter(fmMatch[1]).get("name") ?? ""] : []))
+    .filter((name) => name !== "");
 }
 
 // ---------------------------------------------------------------------------
@@ -52,17 +65,9 @@ describe("parseModelLookup", () => {
 
   it("all .bkit/prompts/ files have a lookup row", () => {
     const lookup = parseModelLookup(path.join(getBkitDocsRoot(), "prompts.md"));
-    const agentFiles = fs.readdirSync(getPromptsRoot()).filter((f) => f.endsWith(".md"));
-    const missingNames: string[] = [];
-    for (const f of agentFiles) {
-      const content = fs.readFileSync(path.join(getPromptsRoot(), f), "utf-8");
-      const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-      if (!fmMatch) continue;
-      const parsed = parseFrontmatter(fmMatch[1]);
-      const name = parsed.get("name") ?? "";
-      if (name && !lookup.has(name)) missingNames.push(name);
-    }
-    expect(missingNames).toEqual([]);
+    const names = promptAgentNames();
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.filter((name) => !lookup.has(name))).toEqual([]);
   });
 
   it("parses model lookup from inline table string", () => {
@@ -164,17 +169,9 @@ describe("buildOpencodeModelLookup — default column reader", () => {
       path.join(getBkitDocsRoot(), "prompts.md"),
       "opencode-zen",
     );
-    const agentFiles = fs.readdirSync(getPromptsRoot()).filter((f) => f.endsWith(".md"));
-    const missingNames: string[] = [];
-    for (const f of agentFiles) {
-      const content = fs.readFileSync(path.join(getPromptsRoot(), f), "utf-8");
-      const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-      if (!fmMatch) continue;
-      const parsed = parseFrontmatter(fmMatch[1]);
-      const name = parsed.get("name") ?? "";
-      if (name && !lookup.has(name)) missingNames.push(name);
-    }
-    expect(missingNames).toEqual([]);
+    const names = promptAgentNames();
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.filter((name) => !lookup.has(name))).toEqual([]);
   });
 
   it("count matches parseModelLookup count (same catalog)", () => {
@@ -258,22 +255,28 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     }
   });
 
-  it("ollama (cloud): kimi-k2.7-code opus+sonnet, deepseek-v4.1-flash haiku, deepseek-v4-pro convergent", () => {
+  it("ollama (cloud): deepseek-v4.1-flash opus+sonnet+haiku, kimi-k3 convergent", () => {
     const lookup = buildOpencodeModelLookup(path.join(getBkitDocsRoot(), "prompts.md"), "ollama");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("kimi-k2.7-code");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("kimi-k2.7-code");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash");
     expect(lookup.get("bkit-design-summary")).toBe("deepseek-v4.1-flash");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4-pro");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("kimi-k3");
     expect(formatModelPin("opencode", "ollama", lookup.get("bkit-design-summary")!)).toBe(
       "ollama/deepseek-v4.1-flash",
     );
   });
 
-  it("every allowlisted provider ships a curated column (all four)", () => {
-    for (const provider of ["openrouter", "ollama", "opencode-zen", "opencode-go"]) {
+  it("every allowlisted provider ships a curated column", () => {
+    for (const provider of OPENCODE_PROVIDERS) {
       const lookup = buildOpencodeModelLookup(path.join(getBkitDocsRoot(), "prompts.md"), provider);
       expect(lookup.size).toBeGreaterThan(0);
     }
+  });
+
+  it("openai (the Codex gateway) ships a column even though it is not an opencode provider", () => {
+    const lookup = buildOpencodeModelLookup(path.join(getBkitDocsRoot(), "prompts.md"), "openai");
+    expect(lookup.size).toBeGreaterThan(0);
   });
 
   it("unknown provider throws — no column, no substitute", () => {
@@ -301,10 +304,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash"); // sonnet
     expect(lookup.get("bkit-design-summary")).toBe("glm-5.3-flash"); // haiku
-    expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4-pro"); // convergent
+    expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3"); // convergent
   });
 
-  it("opencode-go: curated OpenCode Go column (deepseek-v4-pro / deepseek-v4.1-flash)", () => {
+  it("opencode-go: curated OpenCode Go column (deepseek-v4.1-flash / kimi-k3)", () => {
     // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go catalog is
     // invisible to /zen/v1/models — sourced via models.dev.
     const lookup = buildOpencodeModelLookup(
@@ -316,10 +319,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
       expect(model).not.toMatch(/^opencode-go\//);
       expect(formatModelPin("opencode", "opencode-go", model)).toMatch(/^opencode-go\//);
     }
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4-pro"); // opus
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4-pro"); // sonnet
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash"); // sonnet
     expect(lookup.get("bkit-design-summary")).toBe("deepseek-v4.1-flash"); // haiku
-    expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4-pro"); // convergent
+    expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3"); // convergent
   });
 });
 
@@ -423,11 +426,10 @@ describe("parseModelLookupForColumn regression — header-addressed", () => {
       "opencode-zen",
     );
     // At least some values must differ (opencode uses ollama/*, cursor uses various)
-    let diffCount = 0;
-    for (const [name] of cursorLookup) {
-      if (cursorLookup.get(name) !== opencodeLookup.get(name)) diffCount++;
-    }
-    expect(diffCount).toBeGreaterThan(0);
+    const differing = [...cursorLookup.keys()].filter(
+      (name) => cursorLookup.get(name) !== opencodeLookup.get(name),
+    );
+    expect(differing.length).toBeGreaterThan(0);
   });
 });
 

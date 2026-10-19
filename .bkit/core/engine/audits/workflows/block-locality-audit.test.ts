@@ -285,6 +285,47 @@ function tally(findings: Finding[]): Record<string, Record<string, number>> {
   return out;
 }
 
+/** True for a file under the two audited source roots. */
+function isSourceFile(f: string): boolean {
+  return f.startsWith(".bkit/core/workflows/") || f.startsWith(".bkit/core/prompts/");
+}
+
+/** How many fenced shell blocks the audit reaches, and how many `$VAR` references sit in them. */
+function shellCensus(): { shell: number; refs: number } {
+  let shell = 0;
+  let refs = 0;
+  for (const rel of auditedFiles()) {
+    const content = fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
+    for (const b of fencedBlocks(content).filter((blk) => SHELL_LANGS.has(blk.lang))) {
+      shell += 1;
+      const text = b.body.map(([, t]) => t).join("\n");
+      refs += (text.match(/\$\{?[A-Za-z_]/g) ?? []).length;
+    }
+  }
+  return { shell, refs };
+}
+
+/** Per-name drift between the audited tally and the KNOWN inventory for one file; empty when equal. */
+function ratchetDrift(file: string, actual: Record<string, Record<string, number>>): string {
+  const got = actual[file] ?? {};
+  const want = KNOWN[file] ?? {};
+  const names = [...new Set([...Object.keys(got), ...Object.keys(want)])].sort();
+  const drift: string[] = [];
+  for (const n of names) {
+    const g = got[n] ?? 0;
+    const w = want[n] ?? 0;
+    if (g > w) {
+      drift.push(
+        `  $${n}: ${g} unassigned reference(s), inventory allows ${w}.\n` +
+          `      Assign it at the top of the block — ${n}="{${n}}" — or derive it there.`,
+      );
+    } else if (g < w) {
+      drift.push(`  $${n}: down to ${g} from ${w} — lower the KNOWN inventory in this commit.`);
+    }
+  }
+  return drift.join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -301,9 +342,7 @@ describe("#440: audit scope is bkit source, never the rendered mirrors", () => {
   const MIRRORS = [".claude/commands", ".cursor/commands", ".opencode/commands", ".bkit/templates"];
 
   it("audits only .bkit/core/workflows and .bkit/core/prompts", () => {
-    const stray = auditedFiles().filter(
-      (f) => !f.startsWith(".bkit/core/workflows/") && !f.startsWith(".bkit/core/prompts/"),
-    );
+    const stray = auditedFiles().filter((f) => !isSourceFile(f));
     expect(stray).toEqual([]);
   });
 
@@ -416,21 +455,7 @@ describe("#440: the detector itself works", () => {
    * that shell is broken.
    */
   it("reaches real shipped shell blocks", () => {
-    let shell = 0;
-    let refs = 0;
-    for (const rel of auditedFiles()) {
-      const content = fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
-      for (const b of fencedBlocks(content)) {
-        if (!SHELL_LANGS.has(b.lang)) continue;
-        shell += 1;
-        refs += (
-          b.body
-            .map(([, t]) => t)
-            .join("\n")
-            .match(/\$\{?[A-Za-z_]/g) ?? []
-        ).length;
-      }
-    }
+    const { shell, refs } = shellCensus();
     expect(shell).toBeGreaterThan(100);
     // Most blocks hold model values as `{VAR}` and run `"{BKIT}"`, so shell
     // expansions are few; the ones left must still be reached.
@@ -455,23 +480,8 @@ describe("#440: block locality ratchet", () => {
 
   for (const file of [...files].sort()) {
     it(`${file}: no new unassigned $VAR in a fenced shell block`, () => {
-      const got = actual[file] ?? {};
-      const want = KNOWN[file] ?? {};
-      const names = [...new Set([...Object.keys(got), ...Object.keys(want)])].sort();
-      const drift: string[] = [];
-      for (const n of names) {
-        const g = got[n] ?? 0;
-        const w = want[n] ?? 0;
-        if (g > w) {
-          drift.push(
-            `  $${n}: ${g} unassigned reference(s), inventory allows ${w}.\n` +
-              `      Assign it at the top of the block — ${n}="{${n}}" — or derive it there.`,
-          );
-        } else if (g < w) {
-          drift.push(`  $${n}: down to ${g} from ${w} — lower the KNOWN inventory in this commit.`);
-        }
-      }
-      expect(drift.join("\n"), `${file}\n${drift.join("\n")}`).toBe("");
+      const drift = ratchetDrift(file, actual);
+      expect(drift, `${file}\n${drift}`).toBe("");
     });
   }
 });

@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior verifier checking that plan deliverables actually exist in the codebase.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -50,7 +50,7 @@ tools:
    - `no-red` on a task the plan-currency report classifies `Broken` with work already landed **and** the execute log records `DONE — already landed` → no gap.
    - `no-red`, `no-test-first`, `test-first-malformed`, `red-evidence-missing` → not fixable.
    - `Enforced: false` → reason in `Notes`; no gap.
-9. Per task → assert codebase satisfies `Done when` (file exists, signature matches, test passes, observable behaviour) and has no test-first audit gap; `BLOCKED` log lines, `docs/deferrals.jsonl` rows, and out-of-scope notes never satisfy it. **If** satisfied → tick `[x]`. **If** not satisfied or missing → leave `[ ]`, append log; **If** the gap is not fixable by gap-remediate → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass. **If** no plan file exists → `build-input-*.md` is the plan; tasks = its requested outcomes; outcome as worded is the bar; missing `Done when` alone is not a `FAIL`; never create or tick plan file.
+9. Per task → assert codebase satisfies `Done when` (file exists, signature matches, test passes, observable behaviour) and has no test-first audit gap; `BLOCKED` log lines, `docs/deferrals.jsonl` rows, and out-of-scope notes never satisfy it. **If** satisfied → tick `[x]`. **If** not satisfied or missing → leave `[ ]`, append log; **If** the gap is not fixable by gap-remediate → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass. **If** no plan file exists → `build-input-*.md` is the plan; tasks = its `- [ ] **Task N:**` lines, else its requested outcomes; bar = task `Done when`, else outcome as worded; missing `Done when` alone is not a `FAIL`; never create or tick plan file.
 10. Update **Create** — set `Failures` via `Edit` = count of unresolved gaps.
 11. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no gaps.

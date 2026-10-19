@@ -3,9 +3,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
-import { getPkgRoot } from "../../shared/package-roots.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
 import { dispatchModules } from "../../install/modules/index.js";
-import { DEFAULT_ISSUE_TRACKER, parseIssueTracker, } from "../../install/manifest.js";
+import { DEFAULT_ISSUE_TRACKER, } from "../../install/manifest.js";
+import { parseJson, readJsonFile } from "../../shared/json.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
 import { detectInstalledModules, reportCheckDrift } from "./check.js";
 import { runPreflight } from "../../checks/before/index.js";
@@ -15,7 +17,7 @@ import { findMissingOwnedHooks, detectOwnedHookMissing } from "../../checks/afte
 import { resolveTokens } from "../../install/placeholders.js";
 import { parseModelLookup, applyModelOverrides, buildOpencodeModelLookup, buildAntigravityModelLookup, parseEffortMap, } from "../../render/models.js";
 import { getBkitDocsRoot } from "../../shared/package-roots.js";
-import { runUninstall } from "./uninstall.js";
+import { removeUnusedTrackerMcpEntries, runUninstall } from "./uninstall.js";
 // ---------------------------------------------------------------------------
 // Staging scratch area
 //
@@ -56,24 +58,6 @@ export function requireOpencodeProvider(cwd, context) {
         process.exit(1);
     }
     return detected;
-}
-/**
- * Read the installing bkit version from the package root's package.json.
- * Returns "0.0.0" when unreadable (e.g. dev tree without a package.json at the
- * resolved root) — keeps the advisories artifact informational, not fatal.
- */
-export function getInstallingVersion() {
-    try {
-        const pkgJsonPath = path.join(getPkgRoot(), "package.json");
-        if (fs.existsSync(pkgJsonPath)) {
-            const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-            return pkg.version ?? "0.0.0";
-        }
-    }
-    catch {
-        return "0.0.0"; // best-effort: unreadable/garbled package.json
-    }
-    return "0.0.0";
 }
 /**
  * Render a resolved module set back into valid CLI flags for
@@ -130,35 +114,23 @@ export function validateCloudTrackerMatch(cloudVariant, hasCloudModule, issueTra
  * smuggle an unsupported provider into the render path.
  */
 export function detectOpencodeProvider(cwd) {
-    const pkgPath = path.join(cwd, "package.json");
-    if (fs.existsSync(pkgPath)) {
-        try {
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-            const stored = pkg.bkit?.opencodeProvider;
-            if (typeof stored === "string" &&
-                OPENCODE_PROVIDERS.includes(stored)) {
-                return stored;
-            }
-        }
-        catch {
-            // unparseable package.json — fall through to opencode.json detection
-        }
-    }
+    const stored = readBkitConfig(cwd).opencodeProvider;
+    if (stored !== null)
+        return stored;
     const jsonPath = path.join(cwd, ".opencode", "opencode.json");
     if (!fs.existsSync(jsonPath))
         return null;
-    try {
-        const cfg = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
-        if (cfg.provider && typeof cfg.provider === "object") {
-            const first = Object.keys(cfg.provider)[0];
-            if (!first)
-                return null;
-            // Zen's opencode.json block is keyed by the built-in id `opencode`, not the CLI key.
-            return first === "opencode" ? "opencode-zen" : first;
-        }
-    }
-    catch {
-        return null; // unparseable opencode.json — fall back to the default provider
+    // Unparseable opencode.json — fall back to the default provider.
+    const read = readJsonFile(jsonPath);
+    if (!read.ok || typeof read.value !== "object" || read.value === null)
+        return null;
+    const cfg = read.value;
+    if (cfg.provider && typeof cfg.provider === "object") {
+        const first = Object.keys(cfg.provider)[0];
+        if (!first)
+            return null;
+        // Zen's opencode.json block is keyed by the built-in id `opencode`, not the CLI key.
+        return first === "opencode" ? "opencode-zen" : first;
     }
     return null;
 }
@@ -168,20 +140,7 @@ export function detectOpencodeProvider(cwd) {
  * the field is absent.
  */
 export function detectOpencodeProviders(cwd) {
-    const pkgPath = path.join(cwd, "package.json");
-    if (!fs.existsSync(pkgPath))
-        return [];
-    try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        const arr = pkg.bkit?.opencodeProviders;
-        if (Array.isArray(arr)) {
-            return arr.filter((v) => typeof v === "string" && OPENCODE_PROVIDERS.includes(v));
-        }
-    }
-    catch {
-        // unparseable — return empty
-    }
-    return [];
+    return readBkitConfig(cwd).opencodeProviders;
 }
 /**
  * Re-run Phase 1 detection after the writes. The Phase 1 advisory seeds (the first
@@ -241,24 +200,8 @@ export async function runInstall(args, upgradeReport = false) {
     // already-recorded tracker.
     // Resolved BEFORE preflight: preflight's tracker-dependent detectors grade the tracker
     // this run INSTALLS, not the one on disk from the previous run. Read-only — no writes here.
-    let issueTracker = DEFAULT_ISSUE_TRACKER;
-    {
-        const consumerPkgPath = path.join(process.cwd(), "package.json");
-        if (fs.existsSync(consumerPkgPath)) {
-            try {
-                const pkg = JSON.parse(fs.readFileSync(consumerPkgPath, "utf-8"));
-                const bkitField = pkg.bkit;
-                const stored = parseIssueTracker(bkitField?.issueTracker);
-                if (stored !== null)
-                    issueTracker = stored;
-            }
-            catch {
-                // non-fatal — keep default
-            }
-        }
-        if (tracker !== null)
-            issueTracker = tracker;
-    }
+    const recordedTracker = readBkitConfig(process.cwd()).issueTracker;
+    const issueTracker = tracker ?? recordedTracker;
     // --- Phase 1: Preflight (read-only, before any writes) ---
     // Must run BEFORE resolveTokens to short-circuit cleanly on blockers.
     const { blockers, advisories: preflightAdvisories } = runPreflight(effectiveModules, process.cwd(), undefined, issueTracker);
@@ -271,7 +214,7 @@ export async function runInstall(args, upgradeReport = false) {
             writeAdvisoriesArtifact(blockers, {
                 cwd: process.cwd(),
                 mode: "upgrade",
-                version: getInstallingVersion(),
+                version: readInstallingVersion(),
                 logPrefix: LOG_PREFIX,
             });
             return;
@@ -379,37 +322,47 @@ export async function runInstall(args, upgradeReport = false) {
         if (fs.existsSync(consumerPkgPath2)) {
             try {
                 const raw = fs.readFileSync(consumerPkgPath2, "utf-8");
-                const pkg = JSON.parse(raw);
-                const bkit = (pkg.bkit ?? {});
-                if (persistTracker)
-                    bkit.issueTracker = tracker;
-                if (persistProvider) {
-                    bkit.opencodeProvider = opencodeProvider; // active (drives agent frontmatter)
-                    // Update providers array (deduped).
-                    const existingArr = Array.isArray(bkit.opencodeProviders)
-                        ? [...bkit.opencodeProviders]
-                        : [];
-                    if (!existingArr.includes(opencodeProvider)) {
-                        existingArr.push(opencodeProvider);
+                // A package.json that is not JSON is left as-is (the preflight blocker reports it).
+                const parsed = parseJson(raw);
+                if (parsed.ok) {
+                    const pkg = parsed.value;
+                    const bkit = (pkg.bkit ?? {});
+                    if (persistTracker)
+                        bkit.issueTracker = tracker;
+                    if (persistProvider) {
+                        bkit.opencodeProvider = opencodeProvider; // active (drives agent frontmatter)
+                        // Update providers array (deduped).
+                        const existingArr = Array.isArray(bkit.opencodeProviders)
+                            ? [...bkit.opencodeProviders]
+                            : [];
+                        if (!existingArr.includes(opencodeProvider)) {
+                            existingArr.push(opencodeProvider);
+                        }
+                        bkit.opencodeProviders = existingArr;
                     }
-                    bkit.opencodeProviders = existingArr;
-                }
-                pkg.bkit = bkit;
-                const indentMatch = raw.match(/\n([ \t]+)"/);
-                const indent = indentMatch ? indentMatch[1] : "  ";
-                const trailingNewline = raw.endsWith("\n") ? "\n" : "";
-                fs.writeFileSync(consumerPkgPath2, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
-                if (persistTracker) {
-                    console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
-                }
-                if (persistProvider) {
-                    console.log(`${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" and updated bkit.opencodeProviders in package.json`);
+                    pkg.bkit = bkit;
+                    const indentMatch = raw.match(/\n([ \t]+)"/);
+                    const indent = indentMatch ? indentMatch[1] : "  ";
+                    const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+                    fs.writeFileSync(consumerPkgPath2, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+                    if (persistTracker) {
+                        console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
+                    }
+                    if (persistProvider) {
+                        console.log(`${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" and updated bkit.opencodeProviders in package.json`);
+                    }
                 }
             }
             catch {
                 // non-fatal
             }
         }
+    }
+    // Tracker switch: drop the bkit MCP entries the new tracker does not use, while each still
+    // equals bkit's template (an edited one stays, with a warning). Runs before dispatch so the
+    // `.bkit/version` hashes core records cover the final file content.
+    if (!dryRun && tracker !== null && tracker !== recordedTracker) {
+        removeUnusedTrackerMcpEntries(process.cwd(), tracker, dryRun, ws, LOG_PREFIX);
     }
     const ctx = {
         dryRun,
@@ -427,7 +380,7 @@ export async function runInstall(args, upgradeReport = false) {
         issueTracker,
         cloudVariant,
         // Stamped into every rendered agent + command as the managed-version marker.
-        version: getInstallingVersion(),
+        version: readInstallingVersion(),
         // Full host set for this run: dispatched ∪ already-on-disk. Read by the Antigravity
         // module to warn when Codex is also installed (both hosts' `bkit-*` workflow skills
         // then surface in Antigravity's skill selector).
@@ -477,18 +430,9 @@ export async function runInstall(args, upgradeReport = false) {
     // Runs for both install AND check — detectors are read-only, so check produces
     // the same advisory set as install would emit against the same filesystem state.
     // Changelog version-delta header (A7): surface what changed in the installed version.
-    try {
-        const pkgJsonPath = path.join(getPkgRoot(), "package.json");
-        if (fs.existsSync(pkgJsonPath)) {
-            const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-            const deltaHeader = readChangelogVersionDelta(pkg.version ?? "");
-            if (deltaHeader)
-                console.log(deltaHeader);
-        }
-    }
-    catch (err) {
-        void err; // Non-fatal — changelog header is informational
-    }
+    const deltaHeader = readChangelogVersionDelta(readInstallingVersion());
+    if (deltaHeader)
+        console.log(deltaHeader);
     const suppressed = [];
     const postFindings = runPostInstallCheck(ctx.advisories, process.cwd(), suppressed);
     if (postWriteBlockers.length > 0) {
@@ -509,7 +453,7 @@ export async function runInstall(args, upgradeReport = false) {
     writeAdvisoriesArtifact(postFindings, {
         cwd: process.cwd(),
         mode: upgradeReport ? "upgrade" : dryRun ? "check" : "install",
-        version: getInstallingVersion(),
+        version: readInstallingVersion(),
         logPrefix: LOG_PREFIX,
         suppressed,
         tips,

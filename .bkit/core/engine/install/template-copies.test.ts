@@ -74,9 +74,8 @@ describe("getTemplatesRoot() — context resolution regression tests", () => {
   it("simulated dist/ arm: non-.bkit/core/engine suffix resolves one level up (same as getPkgRoot)", () => {
     // Replicate the resolver logic for the dist/ arm.
     const fakeDistDir = path.join("/pkg", "dist");
-    const result = fakeDistDir.endsWith(ENGINE_SUBPATH)
-      ? path.resolve(fakeDistDir, "..", "..", "..")
-      : path.resolve(fakeDistDir, "..");
+    expect(fakeDistDir.endsWith(ENGINE_SUBPATH)).toBe(false);
+    const result = path.resolve(fakeDistDir, "..");
     // getTemplatesRoot() for a dist/ pkg root would be:
     const expectedTemplates = path.join(result, ".bkit", "templates");
     expect(expectedTemplates).toBe(path.join("/pkg", ".bkit", "templates"));
@@ -86,9 +85,8 @@ describe("getTemplatesRoot() — context resolution regression tests", () => {
 
   it("simulated tsx-from-source arm: .bkit/core/engine suffix resolves three levels up", () => {
     const fakeSrcDir = path.join("/pkg") + path.sep + ENGINE_SUBPATH;
-    const result = fakeSrcDir.endsWith(ENGINE_SUBPATH)
-      ? path.resolve(fakeSrcDir, "..", "..", "..")
-      : path.resolve(fakeSrcDir, "..");
+    expect(fakeSrcDir.endsWith(ENGINE_SUBPATH)).toBe(true);
+    const result = path.resolve(fakeSrcDir, "..", "..", "..");
     const expectedTemplates = path.join(result, ".bkit", "templates");
     expect(expectedTemplates).toBe(path.join("/pkg", ".bkit", "templates"));
   });

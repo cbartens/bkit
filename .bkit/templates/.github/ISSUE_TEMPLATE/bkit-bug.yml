@@ -1,0 +1,78 @@
+# Example issue form. Copy the ISSUE_TEMPLATE folder to `.github/ISSUE_TEMPLATE/` and own it.
+# bkit install does not write this file and does not overwrite a copy.
+# Shape and reference lines: .bkit/trackers.md § Issue shapes.
+name: Bug
+description: Something that worked, or should work, does not.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Next step:
+        - A test or CI run already fails → `/bkit-debug #<issue number>`, on the branch the fix should land on (debug commits to the branch it runs on).
+        - Nothing fails yet → `/bkit-debug #<issue number> [repro]`: writes a test that fails the way this report describes, then fixes the code until it passes; no test fails → stops and says so.
+
+        Intermittent? Add `[soak]`; with `[repro]`, the test repeats the scenario until it fails.
+  - type: textarea
+    id: failing
+    attributes:
+      label: Failing test or CI run
+      description: The failing test's file and name, or a link to the failing CI run. Write "none yet" if nothing fails.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: What you saw, with the exact error text.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered, from a clean start.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often
+      options:
+        - Every time
+        - Sometimes
+        - Once
+  - type: textarea
+    id: area
+    attributes:
+      label: Affected area
+      description: The route, command, file or module that misbehaves. Files named here are treated as what to fix; files only seen in a stack trace are not.
+  - type: textarea
+    id: where
+    attributes:
+      label: Where and when
+      description: Environment (for example production or preview), version or commit, first and last seen in UTC, and the last version that worked.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Logs, error-tracker IDs or links, screenshots.
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Related issues with their title, the feature that introduced it, ledger rows by `key`. Nothing fetches these, so write exact keys and numbers agents can search for.
+      placeholder: |
+        Related: #<number> — <its title>
+        Introduced by: 41-csv-import
+        Ledger: docs/failures.jsonl key `csv-import-bom-header`

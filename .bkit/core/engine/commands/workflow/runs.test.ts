@@ -137,7 +137,8 @@ describe("fixture gh stub", () => {
     const pages = stub(["api", url, "--paginate"]).stdout.trim().split("\n");
     expect(pages).toHaveLength(2);
     const slurped = JSON.parse(stub(["api", url, "--paginate", "--slurp"]).stdout);
-    expect(Array.isArray(slurped) && slurped.length).toBe(2);
+    expect(Array.isArray(slurped)).toBe(true);
+    expect(slurped).toHaveLength(2);
     expect(slurped.flatMap((p: { jobs: unknown[] }) => p.jobs)).toHaveLength(3);
   });
 
@@ -167,6 +168,45 @@ const gate = (cwd: string, ...args: string[]) =>
   cli(cwd, ["gate", "--repo=example/example", ...args]);
 
 describe("bkit runs gate", () => {
+  type Job = { name: string; status: string; conclusion: string | null };
+  /** A fixture root holding one run at `sha` with the given status / conclusion and jobs. */
+  function fixtureRun(
+    sha: string,
+    run: { status: string; conclusion: string | null },
+    jobs: Job[],
+  ): void {
+    const root = tmp();
+    fs.cpSync(FIXTURES, root, { recursive: true });
+    const id = 1900;
+    fs.writeFileSync(
+      path.join(root, "runs", `${sha}.json`),
+      JSON.stringify({
+        total_count: 1,
+        workflow_runs: [
+          {
+            id,
+            head_sha: sha,
+            ...run,
+            event: "push",
+            html_url: `https://github.com/example/example/actions/runs/${id}`,
+            updated_at: "2026-10-10T10:00:00Z",
+          },
+        ],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(root, "jobs", `${id}.json`),
+      JSON.stringify({ total_count: jobs.length, jobs }),
+    );
+    env({ BKIT_FAKE_GH_FIXTURE_ROOT: root });
+  }
+  const capstone = (status: string, conclusion: string | null): Job => ({
+    name: "bkit-tests-check",
+    status,
+    conclusion,
+  });
+  const deployFailed: Job = { name: "deploy", status: "completed", conclusion: "failure" };
+
   it("accepts a green capstone at the head (exit 0) and says so", async () => {
     fixtureGh();
     const r = await gate(tmp(), "--head=green-capstone");
@@ -236,6 +276,27 @@ describe("bkit runs gate", () => {
     const r = await gate(tmp(), "--head=cancelled");
     expect(r.code).toBe(15);
     expect(r.err).toContain("selected run was CANCELLED at head cancelled");
+  });
+
+  // A green run whose capstone is anything but `success` (e.g. the capstone's `if:` went false
+  // and it was skipped) must still refuse; only the capstone check sees this combination.
+  it.each([
+    "cancelled",
+    "skipped",
+    "timed_out",
+    "neutral",
+    "action_required",
+    "stale",
+    "startup_failure",
+  ])("rejects a green run whose capstone concluded '%s' (12)", async (conclusion) => {
+    fixtureGh();
+    fixtureRun("green-run-bad-capstone", { status: "completed", conclusion: "success" }, [
+      capstone("completed", conclusion),
+    ]);
+    const r = await gate(tmp(), "--head=green-run-bad-capstone");
+    expect(r.code).toBe(12);
+    expect(r.json.passed).toBe(false);
+    expect(r.err).toContain(`concluded '${conclusion}' (not success)`);
   });
 
   // #533: `--repo` must resolve the PR, not the checkout's remote.
@@ -502,45 +563,6 @@ describe("bkit runs gate", () => {
   });
 
   describe("--capstone-only (ship post-merge)", () => {
-    type Job = { name: string; status: string; conclusion: string | null };
-    /** A fixture root holding one run at `sha` with the given status / conclusion and jobs. */
-    function fixtureRun(
-      sha: string,
-      run: { status: string; conclusion: string | null },
-      jobs: Job[],
-    ): void {
-      const root = tmp();
-      fs.cpSync(FIXTURES, root, { recursive: true });
-      const id = 1900;
-      fs.writeFileSync(
-        path.join(root, "runs", `${sha}.json`),
-        JSON.stringify({
-          total_count: 1,
-          workflow_runs: [
-            {
-              id,
-              head_sha: sha,
-              ...run,
-              event: "push",
-              html_url: `https://github.com/example/example/actions/runs/${id}`,
-              updated_at: "2026-10-10T10:00:00Z",
-            },
-          ],
-        }),
-      );
-      fs.writeFileSync(
-        path.join(root, "jobs", `${id}.json`),
-        JSON.stringify({ total_count: jobs.length, jobs }),
-      );
-      env({ BKIT_FAKE_GH_FIXTURE_ROOT: root });
-    }
-    const capstone = (status: string, conclusion: string | null): Job => ({
-      name: "bkit-tests-check",
-      status,
-      conclusion,
-    });
-    const deployFailed: Job = { name: "deploy", status: "completed", conclusion: "failure" };
-
     it("a failed run whose capstone passed passes: other jobs do not count", async () => {
       fixtureGh();
       fixtureRun("deploy-red", { status: "completed", conclusion: "failure" }, [
@@ -933,6 +955,12 @@ function fakeGhBin(replies: Record<string, string>) {
 const instant = async (ms: number) => ms;
 const noLog = () => undefined;
 
+/** A fake sleep: the first `onTime` calls return on time, every later one overshoots by 6 s. */
+function sleepBlockedAfter(onTime: number) {
+  let sleeps = 0;
+  return async (ms: number) => (++sleeps > onTime ? ms + 6000 : ms);
+}
+
 describe("bkit runs wait", () => {
   const prTarget = {
     kind: "pr-present" as const,
@@ -1272,11 +1300,10 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
 
   it("a hand-off in the re-poll resumes with --retriggered and no second re-trigger commit", async () => {
     const { cwd } = closeRepo();
-    let sleeps = 0;
     const r = await ciDispatchGate(base(cwd), {
       gh: sequenceGh([NONE]).gh,
       // The first poll's five sleeps return on time; the re-poll's first sleep is blocked.
-      sleep: async (ms) => (++sleeps > 5 ? ms + 6000 : ms),
+      sleep: sleepBlockedAfter(5),
       log: noLog,
     });
     expect(r).toMatchObject({ phase: "repoll", handoff: 81, retrigger: true, attempts: 7 });

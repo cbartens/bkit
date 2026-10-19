@@ -20,7 +20,6 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { getWorkflowsRoot } from "../../shared/package-roots";
 
-const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const WORKFLOWS_DIR = getWorkflowsRoot();
 
 function readWorkflow(name: string): string {
@@ -200,12 +199,15 @@ describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () 
 // `bkit prs open --existing=reuse`, and runs the gate on every feature-branch
 // close so a missing run trips the Failure Path instead of passing silently.
 // ---------------------------------------------------------------------------
+/** True for a fence that runs `bkit prs probe` against the close branch. */
+function isBranchProbe(fence: string): boolean {
+  return /"\{BKIT\}" prs probe\b/.test(fence) && /--head="?\{BRANCH\}"?/.test(fence);
+}
+
 describe("bkit-debug.md — close decides from live PR state", () => {
   it("probes the live PR for the close branch on any base, before the close commit", () => {
     const blocks = fences(debugMd);
-    const probeAt = blocks.findIndex(
-      (f) => /"\{BKIT\}" prs probe\b/.test(f) && /--head="?\{BRANCH\}"?/.test(f),
-    );
+    const probeAt = blocks.findIndex(isBranchProbe);
     expect(probeAt, "close `bkit prs probe` block not found").toBeGreaterThan(-1);
     // A PR into another base must read as open, or `prs open --existing=reuse` opens a second.
     expect(blocks[probeAt]!).not.toContain("--base");

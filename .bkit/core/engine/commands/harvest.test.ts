@@ -19,6 +19,11 @@ import type { TelemetryEvent } from "../ledgers/telemetry";
 // Fixtures
 // ---------------------------------------------------------------------------
 
+/** A file's text, or "" when it does not exist. */
+function readOrEmpty(file: string): string {
+  return fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+}
+
 function makeRow(kind: string, ts: number, extra: Record<string, unknown> = {}): string {
   const base = {
     ts,
@@ -226,10 +231,7 @@ describe("Harvest tolerant-tail: half-written tail is skipped+counted (WS4-T2)",
     expect(() => runHarvest(bkitRoot)).not.toThrow();
     // Dest may or may not exist; no rows
     const statsPath = path.join(bkitRoot, HARVEST_DEST_DIR, "stats.jsonl");
-    if (fs.existsSync(statsPath)) {
-      const content = fs.readFileSync(statsPath, "utf-8").trim();
-      expect(content).toBe("");
-    }
+    expect(readOrEmpty(statsPath).trim()).toBe("");
   });
 
   it("handles a file with only malformed lines without throwing", () => {

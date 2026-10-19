@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse as parseYamlText } from "yaml";
 import { listFilesRecursive } from "../../install/template-copies";
 import { BKIT_GATE_SCRIPTS } from "../../install/manifest";
 import { getBkitDocsRoot } from "../../shared/package-roots";
@@ -13,6 +14,55 @@ import { getBkitDocsRoot } from "../../shared/package-roots";
 const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml");
 const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/.prettierignore");
 const CONSUMER_RENOVATE_TEMPLATE = path.resolve(".bkit/templates/.github/renovate.json5");
+const OXLINT_TEMPLATE = path.resolve(".bkit/templates/.oxlintrc.json");
+
+type OxlintRuleValue = string | [string, unknown];
+
+/** Severity of every rule the Oxlint template turns on, by rule name. */
+function oxlintTemplateSeverities(): Record<string, string> {
+  const config = JSON.parse(fs.readFileSync(OXLINT_TEMPLATE, "utf-8")) as {
+    overrides: Array<{ rules: Record<string, OxlintRuleValue> }>;
+  };
+  const rules = config.overrides.flatMap((o) => Object.entries(o.rules));
+  return Object.fromEntries(
+    rules.map(([name, value]) => [name, Array.isArray(value) ? value[0] : value]),
+  );
+}
+
+/** True for a line that writes NODE_OPTIONS into $GITHUB_ENV. */
+function writesNodeOptionsToGithubEnv(line: string): boolean {
+  return /NODE_OPTIONS\s*=/.test(line) && line.includes("GITHUB_ENV");
+}
+
+/** True for a job-level NODE_OPTIONS key gated on the [verbose ci] marker with trace flags. */
+function isVerboseNodeOptionsKey(line: string): boolean {
+  return (
+    /^\s+NODE_OPTIONS:\s*\$\{\{/.test(line) &&
+    line.includes("[verbose ci]") &&
+    line.includes("--trace-warnings")
+  );
+}
+
+/** The "Check Default Branch Lags Dev" step text, or "" when the step is missing. */
+function defaultBranchLagStep(ci: string): string {
+  const found = ci.match(
+    /- name: Check Default Branch Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/,
+  );
+  return found?.[0] ?? "";
+}
+
+/** Scripts the default gates chain (`pnpm <name>`) that the doc's script block does not list. */
+function chainedScriptsMissingFrom(scripts: Record<string, string>): string[] {
+  const chained = new Set<string>();
+  const gates = Object.entries(BKIT_GATE_SCRIPTS).filter(([gate]) => gate.startsWith("bkit:gate:"));
+  for (const [, value] of gates) {
+    for (const m of value.matchAll(/pnpm ([\w:-]+)/g)) chained.add(m[1]);
+  }
+  const external = new Set(["install", "test", "build", "lint-staged"]);
+  return [...chained].filter(
+    (name) => !name.startsWith("bkit:gate:") && !external.has(name) && !(name in scripts),
+  );
+}
 
 describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)", () => {
   let content: string;
@@ -58,9 +108,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     // YAML works. The two assertions are a pair: no $GITHUB_ENV write, and the static key
     // present.
     it("never writes NODE_OPTIONS to $GITHUB_ENV", () => {
-      const offenders = content
-        .split("\n")
-        .filter((l) => /NODE_OPTIONS\s*=/.test(l) && l.includes("GITHUB_ENV"));
+      const offenders = content.split("\n").filter(writesNodeOptionsToGithubEnv);
       expect(offenders).toEqual([]);
     });
 
@@ -70,14 +118,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
       const verboseLanes = content
         .split("\n")
         .filter((l) => /^\s+VERBOSE_CI:\s*\$\{\{/.test(l)).length;
-      const nodeOptionKeys = content
-        .split("\n")
-        .filter(
-          (l) =>
-            /^\s+NODE_OPTIONS:\s*\$\{\{/.test(l) &&
-            l.includes("[verbose ci]") &&
-            l.includes("--trace-warnings"),
-        ).length;
+      const nodeOptionKeys = content.split("\n").filter(isVerboseNodeOptionsKey).length;
       expect(verboseLanes).toBeGreaterThan(0);
       expect(nodeOptionKeys).toBe(verboseLanes);
     });
@@ -111,10 +152,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     it("keys ONLY on consumed-from-default-branch surfaces (renovate config + workflows)", () => {
       // The trigger is the stale-consumed-surface set, not any dev-ahead-of-main —
       // so ordinary app-code dev pushes stay quiet.
-      const step =
-        content.match(
-          /- name: Check Default Branch Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/,
-        )?.[0] ?? "";
+      const step = defaultBranchLagStep(content);
       expect(step).toContain(".github/renovate.json5");
       expect(step).toContain(".github/workflows");
       expect(step).toMatch(/git diff --name-only "origin\/\$DEFAULT_BRANCH" HEAD/);
@@ -123,20 +161,14 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     it("is token-free (default branch read at runtime, so the step is identical per repo)", () => {
       // No bkit {{TOKEN}} inside the step; the default branch comes from the Actions
       // context at runtime.
-      const block =
-        content.match(
-          /- name: Check Default Branch Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/,
-        )?.[0] ?? "";
+      const block = defaultBranchLagStep(content);
       expect(block).toContain("- name: Check Default Branch Lags Dev");
       expect(block).toContain("DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}");
       expect(block).not.toMatch(/\{\{[A-Z_]+\}\}/);
     });
 
     it("is non-blocking — warns via ::warning:: and never exits non-zero", () => {
-      const step =
-        content.match(
-          /- name: Check Default Branch Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/,
-        )?.[0] ?? "";
+      const step = defaultBranchLagStep(content);
       expect(step).toContain("::warning::");
       // No `exit 1` (or any non-zero exit) — the step is a nudge, not a gate.
       expect(step).not.toMatch(/exit [1-9]/);
@@ -148,10 +180,22 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     // steps must ship COMMENTED (opt-in) so installing the scaffold can never red an existing repo.
     expect(content).toContain("# bkit-stub:coverage");
     expect(content).toContain("davelosert/vitest-coverage-report-action");
-    expect(content).toContain("# - name: Report Unit Coverage on PR");
+    expect(content).toContain("# - name: Report Unit Coverage\n");
     expect(content).toContain("# - name: Report Integration Coverage on PR");
     // Neither is an ACTIVE (uncommented) step: coverage is opt-in.
-    expect(content).not.toMatch(/^\s*- name: Report (Unit|Integration) Coverage on PR/m);
+    expect(content).not.toMatch(/^\s*- name: Report (Unit|Integration) Coverage/m);
+  });
+
+  it("ships the unit coverage report reading the floor file and running on every event", () => {
+    // The step that prints the floor beside the measured figure: vitest.unit.config.ts is the
+    // file vitest gates on, so the job summary and PR comment show the same number that gates.
+    const step = content.slice(content.indexOf("# - name: Report Unit Coverage\n"));
+    const block = step.slice(0, step.indexOf("# - name: Report Integration Coverage on PR"));
+    expect(block).toContain("#     vite-config-path: vitest.unit.config.ts");
+    expect(block).toContain("#   if: ${{ !cancelled() && steps.cache.outputs.skip != 'true'");
+    expect(block).toContain(
+      "#     comment-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) && 'pr' || 'none' }}",
+    );
   });
 
   it("ships the bkit-stub:e2e-coverage block commented (Playwright E2E coverage report)", () => {
@@ -165,7 +209,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     expect(content).not.toMatch(/^\s*- name: Report E2E Coverage on PR/m);
   });
 
-  it("ships the gether lane-name stubs (web, device, reset, deploy, health)", () => {
+  it("ships the reference lane-name stubs (web, device, reset, deploy, health)", () => {
     for (const sentinel of [
       "# bkit-stub:bkit-tests-integration —",
       "# bkit-stub:bkit-tests-e2e-web —",
@@ -193,8 +237,24 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     expect(content).toMatch(/MSG="\$PR_TITLE"/);
   });
 
-  it("snapshot matches expected template content (regression guard)", () => {
-    expect(content).toMatchSnapshot();
+  describe("parts of the workflow that guard something", () => {
+    const doc = parseYamlText(
+      content.replaceAll("{{DEFAULT_BRANCH}}", "main").replaceAll("{{NODE_VERSION}}", "22"),
+    ) as {
+      concurrency: { group: string; "cancel-in-progress": string };
+      jobs: Record<string, { if?: string }>;
+    };
+
+    it("the capstone runs on !cancelled(), never always()", () => {
+      // A concurrency cancel must not stamp a failure on the required check.
+      expect(doc.jobs["bkit-tests-check"]!.if).toBe("${{ !cancelled() }}");
+    });
+
+    it("a pull request keys its run on its number and the default branch queues", () => {
+      expect(doc.concurrency.group).toContain("format('pr-{0}', github.event.pull_request.number)");
+      expect(doc.concurrency.group).not.toContain("github.run_id");
+      expect(doc.concurrency["cancel-in-progress"]).toBe("${{ github.ref != 'refs/heads/main' }}");
+    });
   });
 });
 
@@ -219,8 +279,19 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/commitMessagePrefix:\s*"chore\(deps\):"/);
   });
 
-  it("extends Renovate's config:recommended baseline", () => {
-    expect(content).toMatch(/"config:recommended"/);
+  it("extends Renovate's config:best-practices baseline (digest pinning, abandonment flags, config migration)", () => {
+    expect(content).toMatch(/extends:\s*\[\s*"config:best-practices"/);
+    expect(content).not.toMatch(/"config:recommended"/);
+  });
+
+  it("restores the 7-day npm release-age gate that config:best-practices lowers to 3 days", () => {
+    expect(content).toMatch(
+      /matchDatasources:\s*\[\s*"npm"\s*\][\s\S]*?minimumReleaseAge:\s*"7 days"/,
+    );
+  });
+
+  it("rebases a Renovate PR only when it conflicts (no CI re-run on every base move)", () => {
+    expect(content).toMatch(/rebaseWhen:\s*"conflicted"/);
   });
 
   it("does not extend a renovate-local preset (the copy is the whole config)", () => {
@@ -232,9 +303,12 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/osvVulnerabilityAlerts:\s*true/);
   });
 
-  it("enables lockFileMaintenance with weekly schedule", () => {
+  it("enables lockFileMaintenance on a monthly schedule", () => {
     expect(content).toMatch(/lockFileMaintenance:/);
     expect(content).toMatch(/enabled:\s*true/);
+    expect(content).toMatch(
+      /lockFileMaintenance:\s*\{[\s\S]*?schedule:\s*\["before 6am on the first day of the month"\]/,
+    );
   });
 
   it("ships the pnpm-11 OOM mitigation: worker-cap env + Renovate minimumReleaseAge (#308)", () => {
@@ -264,6 +338,34 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/ignorePaths:[\s\S]*"\.agents\/skills\/\*\*"/);
   });
 
+  it("keeps archived plans, test directories and fixtures out of the scan, and repeats the preset's defaults", () => {
+    // A repo-level ignorePaths replaces :ignoreModulesAndTests, so its entries are repeated.
+    for (const glob of [
+      "docs/plans/**",
+      "**/tests/**",
+      "**/__fixtures__/**",
+      "**/node_modules/**",
+      "**/bower_components/**",
+      "**/test/**",
+    ]) {
+      expect(content).toContain(`"${glob}"`);
+    }
+  });
+
+  it("holds major bumps on the dependency dashboard until approved", () => {
+    expect(content).toMatch(
+      /matchUpdateTypes:\s*\["major"\],\s*automerge:\s*false,\s*dependencyDashboardApproval:\s*true/,
+    );
+  });
+
+  it("tracks off-manifest pins through one regex custom manager (Dockerfile, bkit-cloud.md, workflows)", () => {
+    expect(content).toMatch(/customManagers:\s*\[\s*\{\s*customType:\s*"regex"/);
+    expect(content).toContain("# renovate: datasource=(?<datasource>");
+    expect(content).toContain("(^|/)Dockerfile$");
+    expect(content).toContain("bkit-cloud\\\\.md$");
+    expect(content).toContain("workflows/[^/]+\\\\.ya?ml$");
+  });
+
   it("disables Renovate for the @cbartens/bkit package itself (#132)", () => {
     // bkit upgrades via `bkit upgrade`.
     expect(content).toMatch(
@@ -279,7 +381,7 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     // devDeps non-major + prod patch + @types + eslint share a single
     // groupName so they land in ONE PR.
     expect(content).toMatch(
-      /matchDepTypes:\s*\[\s*"devDependencies"\s*\][\s\S]*?groupName:\s*"non-major dependencies"[\s\S]*?automerge:\s*true/,
+      /matchDepTypes:\s*\[\s*"devDependencies",\s*"packageManager"\s*\][\s\S]*?groupName:\s*"non-major dependencies"[\s\S]*?automerge:\s*true/,
     );
     // No per-type group names — the four dependency types share one group.
     expect(content).not.toMatch(/groupName:\s*"devDependencies \(non-major\)"/);
@@ -327,6 +429,13 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
     expect(content).toMatch(/uses:\s*renovatebot\/github-action@[0-9a-f]{40}\s*#/);
     expect(content).toMatch(/runs-on:\s*ubuntu-latest/);
     expect(content).not.toMatch(/\{\{RENOVATE_RUNNER\}\}/);
+  });
+
+  it("pins an exact Renovate release with a dated-lookup annotation the custom manager reads", () => {
+    expect(content).toMatch(/\n\s*renovate-version:\s*"\d+\.\d+\.\d+"/);
+    expect(content).toMatch(
+      /# renovate: datasource=github-releases depName=renovatebot\/renovate\n\s*renovate-version:/,
+    );
   });
 
   it("wires RENOVATE_GIT_AUTHOR from a repo variable (portable commit author for org repos)", () => {
@@ -383,6 +492,60 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
 
   it("uses least-privilege job permissions (contents: read)", () => {
     expect(content).toMatch(/permissions:\s+contents:\s*read/);
+  });
+});
+
+describe("trivy scan workflow template (.bkit/templates/.github/workflows/bkit-trivy.yml) (#547)", () => {
+  const content = fs.readFileSync(
+    path.resolve(".bkit/templates/.github/workflows/bkit-trivy.yml"),
+    "utf-8",
+  );
+
+  it("runs the trivy image pinned by tag and digest, never the hijackable actions", () => {
+    expect(content).toMatch(
+      /uses:\s*docker:\/\/ghcr\.io\/aquasecurity\/trivy:\d+\.\d+\.\d+@sha256:[0-9a-f]{64}\n/,
+    );
+    expect(content).not.toMatch(/uses:\s*aquasecurity\/(trivy-action|setup-trivy)/);
+  });
+
+  it("never pins a release published by the March 2026 compromise (0.69.4 - 0.69.6)", () => {
+    expect(content).not.toMatch(/trivy:0\.69\.[4-6]@/);
+  });
+
+  it("scans dev dependencies, or a dev-tooling lockfile reads as zero packages", () => {
+    expect(content).toMatch(/--include-dev-deps/);
+  });
+
+  it("fails on HIGH and CRITICAL across lockfiles, config and secrets", () => {
+    expect(content).toMatch(/--scanners vuln,misconfig,secret/);
+    expect(content).toMatch(/--severity HIGH,CRITICAL/);
+    expect(content).toMatch(/--exit-code 1/);
+  });
+
+  it("skips the bkit-owned templates tree", () => {
+    expect(content).toMatch(/--skip-dirs \.bkit\/templates/);
+  });
+
+  it("leaves pnpm-lock.yaml to the dependency-audit gate once that gate is adopted", () => {
+    expect(content).toMatch(
+      /if \[ -f scripts\/ci\/check-dependency-audit\.mjs \]; then\n\s+args="\$args --skip-files pnpm-lock\.yaml"/,
+    );
+  });
+
+  it("reads .trivyignore.yaml only when the repo has one", () => {
+    expect(content).toMatch(
+      /if \[ -f \.trivyignore\.yaml \]; then\n\s+args="\$args --ignorefile \.trivyignore\.yaml"/,
+    );
+  });
+
+  it("runs daily as well as on change, since advisories land without a code change", () => {
+    expect(content).toMatch(/schedule:\s*\n(\s*#.*\n)*\s*- cron:/);
+  });
+
+  it("uses a read-only token and reads no secret", () => {
+    expect(content).toMatch(/permissions:\s+contents:\s*read/);
+    expect(content).toMatch(/persist-credentials:\s*false/);
+    expect(content).not.toMatch(/secrets\./);
   });
 });
 
@@ -478,7 +641,6 @@ describe("templates", () => {
     );
     expect(rules).toContain("new ExampleClient(");
     expect(rules).not.toContain("family_members");
-    expect(rules).not.toContain("app-gether-life");
   });
 
   it("generates capabilities.md and Mermaid from the wrapper", () => {
@@ -569,23 +731,21 @@ describe(".bkit/templates.md gate tool scripts (consumers copy and run them)", (
     expect(scripts["slop:delta"]).toBe("bkit ci slop");
   });
 
-  it("lists the lint value this repo runs", () => {
-    const pkg = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
-      scripts: Record<string, string>;
-    };
-    expect(scripts["lint"]).toBe(pkg.scripts["lint"]);
+  it("lists a lint value that runs Oxlint type-aware with the shipped config and fails on any hit", () => {
+    expect(scripts["lint"]).toBe("oxlint -c .oxlintrc.json --type-aware --deny-warnings");
+  });
+
+  it("ships the .oxlintrc.json the lint value names, with its five test rules at error", () => {
+    expect(oxlintTemplateSeverities()).toEqual({
+      "vitest/expect-expect": "error",
+      "vitest/no-conditional-in-test": "error",
+      "vitest/no-conditional-expect": "error",
+      "vitest/valid-expect": "error",
+      "typescript/no-floating-promises": "error",
+    });
   });
 
   it("lists every script the default gates chain, except test and build", () => {
-    const chained = new Set<string>();
-    for (const [gate, value] of Object.entries(BKIT_GATE_SCRIPTS)) {
-      if (!gate.startsWith("bkit:gate:")) continue;
-      for (const m of value.matchAll(/pnpm ([\w:-]+)/g)) chained.add(m[1]);
-    }
-    const external = new Set(["install", "test", "build", "lint-staged"]);
-    const missing = [...chained].filter(
-      (name) => !name.startsWith("bkit:gate:") && !external.has(name) && !(name in scripts),
-    );
-    expect(missing).toEqual([]);
+    expect(chainedScriptsMissingFrom(scripts)).toEqual([]);
   });
 });

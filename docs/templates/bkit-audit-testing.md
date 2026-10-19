@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Testing Audit
 
@@ -44,7 +44,7 @@ Green suite = tests passed — not that they could fail, that every promise has 
 - OWASP ASVS and the OWASP API Security Top 10; record the edition read.
 - Visual and accessibility snapshots (e.g. Playwright `toHaveScreenshot` / `toMatchAriaSnapshot`, device screenshots); record the runner version.
 - Test-smell catalogue (e.g. xUnit Test Patterns, Meszaros 2007).
-- Test lint (e.g. `@vitest/eslint-plugin`, `eslint-plugin-playwright`, `eslint-plugin-testing-library`); record each version.
+- Test lint (e.g. `@vitest/eslint-plugin`, `eslint-plugin-playwright`, `eslint-plugin-testing-library`, or Oxlint's `vitest` + `typescript` plugins); record each version. typescript-eslint type-aware rules need a TypeScript version it supports; newer → Oxlint `--type-aware` (oxlint-tsgolint).
 - Network mock that fails closed (e.g. MSW); record the major read.
 
 ### Scope
@@ -90,7 +90,7 @@ Verify only when applicable.
 - [ ] **Mutation Tool:** Tool exists for the language → Step 6 — e.g. Stryker, mutmut. Fallback: hand-break code tests protect; scores `Not Checked`.
 - [ ] **E2E Runner:** Browser or device E2E → Steps 3, 7, 9 — e.g. Playwright, Cypress, Maestro. Fallback: unit and integration only.
 - [ ] **DB Tests:** Row-level policies, buckets, or data migrations → Step 4 — e.g. pgTAP, `supabase db test`, deployed-schema check. Fallback: read existing tests; live matrix = hypothesis.
-- [ ] **Test Lint:** Test files linted → Step 8 — e.g. eslint-plugin-vitest, eslint-plugin-playwright. Fallback: text search for the shapes.
+- [ ] **Test Lint:** Test files linted → Step 8 — e.g. `@vitest/eslint-plugin`, `eslint-plugin-playwright`, Oxlint `vitest` / `typescript` plugins. Fallback: text search for the shapes.
 - [ ] **Language Server:** Typed language → Step 11 — references, e.g. Serena, `tsserver`. Fallback: text search; name it.
 
 ### 🔒 Gate 1: Prerequisites Check
@@ -139,6 +139,7 @@ Verify only when applicable.
   - Setup skipping code. Fake DB always empty — branch under test never runs.
   - Test locking in bug. Asserts wrong behaviour; no decision wanted it.
   - Positive control that cannot fail. Asserts absent using selector/text that never existed.
+  - Absence guard outliving its writer. Asserts a file / path / name is not written, shipped or listed, yet no source writes, copies or templates it any more (retired / deprecated name) and no migration / cleanup removes it — search sources for each named path. Also absence samples (headings, strings) present nowhere → guard passes whatever leaks. Keep: secret / credential guards, removal checks for a migration that still runs.
   - Guard tested in different setup from runtime (cwd, config, env).
   - String scan cut short. Comment stripper cutting at marker also cuts marker inside strings.
   - Wrong surface. Write one place, assertion reads another — for every write, assertion reads surface write meant to change. Derived copies → `bkit-audit-database`.
@@ -148,7 +149,7 @@ Verify only when applicable.
 
   New shape → propose under `Process Improvements`. Do not edit this list during run. **Done when:** every hit in `Shapes`, or `none`.
 
-- [ ] **Step 8 — Guards:** Shape tools can catch → lint rule or setup file, not per-run search. Confirm enabled for test files; record violation count per test-stack lint rule catching each shape (e.g. JS: `vitest/expect-expect`, `vitest/valid-expect`, `vitest/no-conditional-in-test`, `playwright/missing-playwright-await`, `playwright/no-wait-for-timeout`, `playwright/prefer-web-first-assertions`, `playwright/no-networkidle`, `playwright/no-force-option`, `@typescript-eslint/no-floating-promises`; Python: `flake8-pytest-style`). No test-stack linter → text search for the shapes, say so. Rule would catch Step 7 shape and is off → finding, destination `bkit-audit-gates`. Confirm network mock fails test on unhandled request (e.g. MSW `onUnhandledRequest: 'error'`). Else unmocked call reaches real service or hangs. Fixtures/factories typed to generated DB types and schema validators, where the project has them. Grep tests for type-check escapes (e.g. TS `as any`, `as unknown as`; Python `cast(Any, ...)`, `# type: ignore`) — fixture drifts to shape production never produces; untyped language → `N/A`. Count snapshot assertions and size. List snapshot files (e.g. `.snap`) changed same commit as covered code since previous report commit. Large snapshot or wholesale `-u` update behaves like assertion matching anything. **Done when:** counts and hits in `Guards`.
+- [ ] **Step 8 — Guards:** Shape tools can catch → lint rule or setup file, not per-run search. Confirm enabled for test files; record violation count per test-stack lint rule catching each shape (e.g. JS: `vitest/expect-expect`, `vitest/valid-expect`, `vitest/no-conditional-in-test`, `vitest/no-conditional-expect`, `playwright/missing-playwright-await`, `playwright/no-wait-for-timeout`, `playwright/prefer-web-first-assertions`, `playwright/no-networkidle`, `playwright/no-force-option`, `@typescript-eslint/no-floating-promises` (Oxlint: `typescript/no-floating-promises` with `--type-aware`); Python: `flake8-pytest-style`). No test-stack linter → text search for the shapes, say so. Rule would catch Step 7 shape and is off → finding, destination `bkit-audit-gates`. Confirm network mock fails test on unhandled request (e.g. MSW `onUnhandledRequest: 'error'`). Else unmocked call reaches real service or hangs. Fixtures/factories typed to generated DB types and schema validators, where the project has them. Grep tests for type-check escapes (e.g. TS `as any`, `as unknown as`; Python `cast(Any, ...)`, `# type: ignore`) — fixture drifts to shape production never produces; untyped language → `N/A`. Count snapshot assertions and size. List snapshot files (e.g. `.snap`) changed same commit as covered code since previous report commit. Large snapshot or wholesale `-u` update behaves like assertion matching anything. **Done when:** counts and hits in `Guards`.
 - [ ] **Step 9 — Runs:** Every test file has a lane. Names putting file outside every run (see Step 6). Suites skipping when setup fails instead of failing. Skips (e.g. `test.skip`, `fixme`, `describe.skip`, `pytest.mark.skip`), env-dependent skips. Stale build output runner now collects (e.g. Vitest 4 and later does not ignore `dist/` by default). The 20 slowest tests per tier from runner reports. Slow test = next one someone skips. **Done when:** rows in `Runs`.
 - [ ] **Step 10 — Time:** Date/calendar/timezone logic → unit tests with `TZ` non-UTC zone observing DST (e.g. `Pacific/Auckland`, `America/St_Johns`) on process before workers spawn. Then date-touching suites with clock pinned near month end and DST change (e.g. `vi.setSystemTime`, Playwright `page.clock`), throwaway setup removed after. Record tests whose result changes. List suites never pinning clock. **Done when:** results in `Time`, or skip with evidence.
 - [ ] **Step 11 — Copies:** Same test procedure in several places (open dialog, create user, read credentials). Disagreeing copies first. Agreeing copies need single owner only if likely to drift. One owner created → next step adds guard failing on new copy. Code graph finds copied functions; copied statement sequences need syntax-tree scan. Product-code duplication → `bkit-audit-duplication`. **Done when:** groups in `Copies`, or `none`.
@@ -279,3 +280,13 @@ PENDING
 <!-- bkit:end -->
 
 ## Project Instructions
+
+- **Permissions:** Bash probes this audit needs: `./node_modules/.bin/vitest run`, `bats tests/*.bats`, `node <file>.test.mjs`, `git log` / `git grep` / `git ls-files` / `git worktree add|remove`, `gh run list` / `gh run view` (read-only), `cmp`, `/usr/bin/time -l`, `jq` (ledger append). WebFetch `registry.npmjs.org`, `api-security.owasp.org`, `github.com`, `kentcdodds.com`.
+- **Pre-Flight / Test Runner:** Vitest config `vitest.config.ts` (include = `.bkit/core/engine/**`), worker setup `vitest.setup.ts`, load-scaled timeouts `vitest.timeout-budget.ts`. Tier rubric and per-file tier labels → `docs/testing.md` § Tiers and § Key test files. Shell tier = `tests/*.bats`. Copy-and-own CI script tests (`.bkit/templates/scripts/ci/**/*.test.mjs`, `scripts/ci/**/*.test.mjs`) sit outside the Vitest include; run each with `node <file>`.
+- **Pre-Flight / Mutation Tool:** none installed. Hand-break in a throwaway detached worktree: `git worktree add --detach .worktrees/<name> HEAD`, symlink `node_modules` from the main checkout, `mkdir tmp`; runner script in repo-root `tmp/` that asserts the find string matches once, writes the mutant, runs `./node_modules/.bin/vitest run <files> --reporter=json --outputFile=tmp/<out>.json`, restores the original bytes in `finally` and checks sha256. Re-run every survivor with no file filter (full suite). Remove the `node_modules` symlink and `tmp/` before `git worktree remove .worktrees/<name>`.
+- **Pre-Flight / Language Server:** TypeScript 7 (Go port) exposes no JS compiler API — syntax-tree scans need a text / brace-matching script; Serena TypeScript works for symbol lookups.
+- **Step 3 — Behaviours:** promise sources = `docs/security.md`, `docs/testing.md`, `docs/architecture.md` § Consumer Integration Model (host list); fixed rows in `docs/failures.jsonl` — check each by a revert-the-fix mutant, not by test names.
+- **Step 4 / Step 5:** no database (`docs/security.md` § RLS, `docs/architecture.md`); GitHub boundary fixtures and the fail-closed `gh` stub live under `tests/fixtures/gh/`; older-install upgrade fixtures under `tests/fixtures/antigravity-*` and `tests/fixtures/heavy-customised-*`.
+- **Step 9 — Runs:** lanes = `bkit-tests-unit`, `bkit-tests-integration`, capstone `bkit-tests-check` in `.github/workflows/bkit-ci.yml`. CI skip counts per file: `gh run view --job <id> --log | sed -E 's/\x1b\[[0-9;]*m//g' | grep -E '[0-9]+ skipped'` (local runs can show none). Slowest tests: Vitest JSON reporter `assertionResults[].duration`.
+- **Step 10 — Time:** Vitest has no `--setupFiles` CLI flag. Pin via a throwaway config in repo-root `tmp/` that `mergeConfig`s `vitest.config.ts` and adds a setup file calling `vi.setSystemTime(new Date(process.env.AUDIT_CLOCK_PIN))`; run with `TZ=… AUDIT_CLOCK_PIN=… vitest run --config <that file> <suites>`. `mergeConfig` concatenates `include` arrays — to run a lone probe file, override `test.include` by object spread, not merge. Prove the pin with a one-test probe. The pin covers in-process `Date` only; child `git` / `node` keep the real clock. Delete the throwaway config, setup and probe after.
+- **Shell (zsh):** zsh does not word-split `$VAR` — feed file lists with `xargs < file`; an unmatched glob aborts the whole command — quote globs or split commands.

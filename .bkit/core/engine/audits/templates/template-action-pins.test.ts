@@ -10,6 +10,8 @@
  *   - Floating refs (`@v4`, `@main`) fail outright: every third-party `uses:` in
  *     a shipped template is SHA-pinned (`docs/deployments.md` § GitHub Actions
  *     pinning), so the template ships exactly what bkit runs.
+ *   - A `uses: docker://<image>:<tag>@sha256:<digest>` step is pinned by its digest and
+ *     tracked like an action, keyed `docker://<image>`.
  *   - Template-only actions (nothing in `.github/workflows/` uses them) have no
  *     reference pin to compare against and are skipped.
  */
@@ -29,6 +31,7 @@ const TEMPLATE_WORKFLOWS = path.join(REPO_ROOT, ".bkit/templates/.github/workflo
 const HELD_BACK: Record<string, string> = {};
 
 const PIN_RE = /uses:\s*([a-zA-Z0-9._/-]+)@([0-9a-f]{40})\s*#\s*(\S+)/g;
+const IMAGE_PIN_RE = /uses:\s*(docker:\/\/[^\s@]+):([^\s:@]+)@(sha256:[0-9a-f]{64})/g;
 
 interface Pin {
   sha: string;
@@ -53,12 +56,58 @@ function pins(dir: string): Map<string, Pin[]> {
       list.push({ sha: m[2]!, tag: m[3]!, file: entry });
       out.set(m[1]!, list);
     }
+    for (const m of body.matchAll(IMAGE_PIN_RE)) {
+      const list = out.get(m[1]!) ?? [];
+      list.push({ sha: m[3]!, tag: m[2]!, file: entry });
+      out.set(m[1]!, list);
+    }
   }
   return out;
 }
 
 const describePins = (list: Pin[]): string =>
   list.map((p) => `${p.tag} (${p.sha.slice(0, 10)}, ${p.file})`).join(" | ");
+
+/** True for a `uses:` line that is an action reference but not SHA/digest-pinned with a tag. */
+function isUnpinnedUses(line: string): boolean {
+  const isUses = /uses:\s*[^\s@]+@/.test(line);
+  const shaPinned = /uses:\s*[a-zA-Z0-9._/-]+@[0-9a-f]{40}\s*#\s*\S+/.test(line);
+  const digestPinned = /uses:\s*docker:\/\/[^\s@]+:[^\s:@]+@sha256:[0-9a-f]{64}\s*$/.test(line);
+  return isUses && !shaPinned && !digestPinned;
+}
+
+/** Every unpinned `uses:` line across the shipped template workflows (commented stubs included). */
+function unpinnedTemplateUses(): string[] {
+  const unpinned: string[] = [];
+  const entries = fs
+    .readdirSync(TEMPLATE_WORKFLOWS)
+    .filter((entry) => entry.endsWith(".yml") || entry.endsWith(".yaml"));
+  for (const entry of entries) {
+    const lines = fs.readFileSync(path.join(TEMPLATE_WORKFLOWS, entry), "utf-8").split("\n");
+    lines.forEach((line, i) => {
+      if (isUnpinnedUses(line)) unpinned.push(`${entry}:${i + 1}: ${line.trim()}`);
+    });
+  }
+  return unpinned;
+}
+
+/** Template pins that match no SHA the repo runs, skipping template-only and held-back actions. */
+function driftedTemplatePins(): string[] {
+  const repo = pins(REPO_WORKFLOWS);
+  const drifted: string[] = [];
+  for (const [action, tpls] of pins(TEMPLATE_WORKFLOWS)) {
+    const ours = repo.get(action);
+    // Template-only actions have no reference pin; held-back ones are listed with a reason.
+    if (ours === undefined || action in HELD_BACK) continue;
+    const running = new Set(ours.map((p) => p.sha));
+    for (const tpl of tpls.filter((t) => !running.has(t.sha))) {
+      drifted.push(
+        `${action}: template ${tpl.tag} (${tpl.sha.slice(0, 10)}, ${tpl.file}) not among repo pins ${describePins(ours)}`,
+      );
+    }
+  }
+  return drifted;
+}
 
 describe("shipped CI templates track the repo's own action pins", () => {
   it("finds SHA-pinned actions on both surfaces", () => {
@@ -68,39 +117,21 @@ describe("shipped CI templates track the repo's own action pins", () => {
 
   it("every template `uses:` is SHA-pinned with a tag comment", () => {
     // Commented-out stubs count: consumers uncomment them as shipped.
-    const unpinned: string[] = [];
-    for (const entry of fs.readdirSync(TEMPLATE_WORKFLOWS)) {
-      if (!entry.endsWith(".yml") && !entry.endsWith(".yaml")) continue;
-      const lines = fs.readFileSync(path.join(TEMPLATE_WORKFLOWS, entry), "utf-8").split("\n");
-      lines.forEach((line, i) => {
-        if (!/uses:\s*[^\s@]+@/.test(line)) return;
-        if (/uses:\s*[a-zA-Z0-9._/-]+@[0-9a-f]{40}\s*#\s*\S+/.test(line)) return;
-        unpinned.push(`${entry}:${i + 1}: ${line.trim()}`);
-      });
-    }
+    const unpinned = unpinnedTemplateUses();
     expect(
       unpinned,
-      "pin each to `@<40-char-sha> # vX.Y.Z` (`git ls-remote https://github.com/<owner>/<repo>.git 'refs/tags/vX.Y.Z'`)",
+      "pin each to `@<40-char-sha> # vX.Y.Z` (`git ls-remote https://github.com/<owner>/<repo>.git 'refs/tags/vX.Y.Z'`), or an image to `docker://<image>:<tag>@sha256:<digest>`",
     ).toEqual([]);
   });
 
-  it("every template pin is one the repo actually runs", () => {
-    const repo = pins(REPO_WORKFLOWS);
-    const template = pins(TEMPLATE_WORKFLOWS);
-    const drifted: string[] = [];
+  it("tracks a docker image step by its digest", () => {
+    const tpl = pins(TEMPLATE_WORKFLOWS).get("docker://ghcr.io/aquasecurity/trivy");
+    expect(tpl?.[0]?.sha).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(tpl?.[0]?.tag).toMatch(/^\d+\.\d+\.\d+$/);
+  });
 
-    for (const [action, tpls] of template) {
-      const ours = repo.get(action);
-      if (!ours) continue; // template-only action — no reference pin
-      if (action in HELD_BACK) continue;
-      const running = new Set(ours.map((p) => p.sha));
-      for (const tpl of tpls) {
-        if (running.has(tpl.sha)) continue;
-        drifted.push(
-          `${action}: template ${tpl.tag} (${tpl.sha.slice(0, 10)}, ${tpl.file}) not among repo pins ${describePins(ours)}`,
-        );
-      }
-    }
+  it("every template pin is one the repo actually runs", () => {
+    const drifted = driftedTemplatePins();
 
     expect(
       drifted,

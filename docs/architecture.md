@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Architecture
 
@@ -48,6 +48,7 @@ cbartens/bkit (this repo)
 │   │   └── workflow/ ci/ setup/ # `bkit <noun> <verb>` workflow commands
 │   ├── install/                 # what gets written into a consumer repo, and how
 │   │   ├── modules/index.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
+│   │   ├── modules/core.ts      # Core module + file helpers the host modules share; `removeOrphans` is the ONLY sweep of stale `bkit-*` mirror entries (every host's agent/command/skill folder) — refuses any folder outside `ORPHAN_PRUNE_DIRS`; `extension` option for files, `wholeFolders` for skill dirs
 │   │   ├── template-copies.ts   # Dotfile remap + whole-templates-root copy/delete sync (syncTemplateCopies)
 │   │   ├── write.ts             # Format-aware file-write primitives (fully-managed / markered-text) + deepContains/writeTier2JsonContained
 │   │   ├── placeholders.ts      # Token resolver (default branch, project name, managed-version marker)
@@ -55,7 +56,7 @@ cbartens/bkit (this repo)
 │   │   ├── manifest.ts          # Per-module install-write manifest (drives uninstall + the upgrade walk)
 │   │   └── cloud-env.ts         # Resolves the `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds BKIT_LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-agnostic
 │   ├── render/                  # workflow and prompt sources → host agent and command copies
-│   │   ├── hosts.ts             # Host transforms (T1/T2/T3, frontmatter, agent/command/skill renders)
+│   │   ├── hosts.ts             # Host transforms (T1/T2/T3, frontmatter, agent/command/skill renders); the four subagent renderers open with `requireSubagentModel` (name required, model lookup, exit 1)
 │   │   ├── models.ts            # Model lookup, overrides, effort map and the gateway columns
 │   │   └── trackers.ts          # Tracker-provider substitution engine (github / linear / none)
 │   ├── checks/                  # detection before and after writes
@@ -67,8 +68,11 @@ cbartens/bkit (this repo)
 │   │   ├── status.ts            # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in commands/install/doctor.ts)
 │   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine (#234 WS-1)
 │   ├── shared/                  # helpers every folder uses
-│   │   ├── package-roots.ts     # Single resolver seam — getCoreRoot / getSharedRoot / getTemplatesRoot / getPkgRoot / isDogfood
-│   │   └── protected-paths.ts   # Single protected-path table (mirror prefixes + gate-config basenames); source of truth for the grader AND the committed generated .cjs
+│   │   ├── json.ts              # `parseJson` / `readJsonFile`: the only place a failed JSON parse is caught; `audits/repo/json-parse-owner.test.ts` fails on a `JSON.parse` inside a `try` anywhere else
+│   │   ├── package-json.ts      # `readPackageJson` (a checkout's manifest, or why it could not be read); `readInstallingVersion` is the only reader of the version of the bkit doing the install and throws when bkit's own `package.json` is missing, not a JSON object, or has no string `version`
+│   │   ├── package-roots.ts     # Single resolver seam — getCoreRoot / getSharedRoot / getTemplatesRoot / getPkgRoot
+│   │   ├── protected-paths.ts   # IDE mirror prefix table (`isMirrorPath`); used by the compliance grader
+│   │   └── settings.ts          # The consumer's `package.json` `bkit` key: `readBkitConfig` is its only reader
 │   ├── tools/wording.ts         # repo-only `pnpm wording:sync`, not a bkit command
 │   └── audits/                  # tests only: read shipped text (workflows/ templates/ hooks/ repo/)
 ├── dist/                   # Compiled output (committed; published in tarball)
@@ -80,12 +84,14 @@ cbartens/bkit (this repo)
 │                           #   .env.example, settings/hooks/mcp JSON, bkit-cloud.md, docs/*.md blocks
 └── .bkit/templates/        # Copy-and-own templates: copied raw to the consumer's
                             #   .bkit/templates/, never applied
-├── harvest/                # Central store for `bkit harvest` — consumer stats/friction rows (#343).
+├── harvest/                # Central store for `bkit harvest` — consumer stats/friction rows (#343)
+│                           # + consumers.md (maintainer-local consumer checkout paths, one per line).
 │                           # bkit-repo only; deliberately OUTSIDE .bkit/ (that is bkit's managed
 │                           # install surface; harvested consumer data is neither managed nor shipped).
-│                           # Holds every distinct row ever harvested; readers fold it by identity.
-│                           # Accumulates across runs and is never cleared — once harvest prunes a
-│                           # consumer's friction row, this is the only copy until it is committed.
+│                           # Gitignored: private consumer content + local paths never enter the
+│                           # public repo. Holds every distinct row ever harvested; readers fold it by
+│                           # identity. Accumulates across runs and is never cleared — once harvest
+│                           # prunes a consumer's friction row, this local store is the only copy.
 └── package.json            # bin: bkit → dist/cli.js
 ```
 
@@ -162,7 +168,7 @@ Workflow / prompt SOURCES not shipped into consumer `.agents/`; live in installe
 
 `.claude/hooks/bkit-gateguard.cjs`, `.cursor/hooks/bkit-gateguard.cjs`, `.codex/hooks/bkit-gateguard.cjs`, `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` and `.opencode/plugin/bkit-gateguard.js` (the GateGuard advisory hooks — pre-edit on Claude / Cursor / Codex / Antigravity, appended to the tool result on opencode), the same five paths with `bkit-readguard` (the ReadGuard repeat-read advisory hooks, `.bkit/providers.md` § ReadGuard) plus `.claude/hooks/bkit-guardrails.cjs`, `.cursor/hooks/bkit-guardrails.cjs`, `.codex/hooks/bkit-guardrails.cjs` and `.agents/plugins/bkit/hooks/bkit-guardrails.cjs` (shell gates: destructive ops, secret exposure, URL-host checks and shell-as-edit-channel) — like the two `bkit-preflight.sh` hooks, generated at install from a per-host template plus the shared `.bkit/core/hooks/` (`render/parts.ts`) — are markered-text (slash-comment: `// bkit:start` / `// bkit:end`) — bkit owns only the pure advisory engine between the markers; the stdin / stdout driver (Claude) or exported plugin (opencode) around it is consumer-owned from first install onward, so a consumer can add their own advisories without losing them on upgrade. A pre-markers install (no markers, hash matches a prior canonical hash) is replaced wholesale on the next install / upgrade; a genuinely consumer-authored file (no markers, unknown hash) gets the block appended plus printed wiring instructions.
 
-Every non-JSON file bkit writes or refreshes carries the managed-version marker, one text in the file's comment syntax: `<!-- bkit:managed vX.Y.Z … -->` (markdown), `# <!-- bkit:managed vX.Y.Z … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, codex TOML), `// bkit:managed vX.Y.Z …` (JS hooks, `.mjs`). The full MIT text and copyright notice travel at `.bkit/LICENSE.md` (`runBkitDocs`). Rendered agents / commands / skills are stamped by `stampManagedVersion`; every other file carries `{{BKIT_MANAGED_MARKER}}` in its source, resolved by `applyTokens`. The marker sits on the first line inside the `bkit:start` block, or below the first heading of a whole file. `listStampedFiles` (`.bkit/core/engine/install/modules/index.ts`) derives the set from the core templates, the manifest and the rendered mirrors; marker drift on any of them → `bkit check` emits `bkit-managed-stale` (never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main` / `dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
+Every non-JSON file bkit writes or refreshes carries the managed-version marker, one text in the file's comment syntax: `<!-- bkit:managed vX.Y.Z … -->` (markdown), `# <!-- bkit:managed vX.Y.Z … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, codex TOML), `// bkit:managed vX.Y.Z …` (JS hooks, `.mjs`). The full MIT text and copyright notice travel at `.bkit/LICENSE.md` (`runBkitDocs`). Rendered agents / commands / skills are stamped by `stampManagedVersion`; every other file carries `{{BKIT_MANAGED_MARKER}}` in its source, resolved by `applyTokens`. The stamped version, the `.bkit/version` pin and the staleness check all read `readInstallingVersion()`; a damaged package stops the command instead of stamping a guessed version. The marker sits on the first line inside the `bkit:start` block, or below the first heading of a whole file. `listStampedFiles` (`.bkit/core/engine/install/modules/index.ts`) derives the set from the core templates, the manifest and the rendered mirrors; marker drift on any of them → `bkit check` emits `bkit-managed-stale` (never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main` / `dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
 
 ## Compliance Grader Subsystem (#234 WS-2)
 
@@ -171,8 +177,8 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 **Components:**
 
 - `.bkit/core/engine/commands/comply.ts` — pure grader (`ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`); no side effects, no `process.exit`.
-- `.bkit/core/engine/shared/protected-paths.ts` — protected-path table (mirror prefixes + gate-config basenames); shared by grader + committed `.cjs`.
-- `.claude/hooks/gate-paths.generated.cjs` — generated from `.bkit/core/engine/shared/protected-paths.ts`; drift in `.bkit/core/engine/shared/protected-paths.test.ts`. bkit's own repo only; install never writes it.
+- `.bkit/core/engine/shared/protected-paths.ts` — IDE mirror prefix table (`MIRROR_PATH_PREFIXES`, `isMirrorPath`) used by the grader.
+- `.bkit/core/hooks/gateguard-engine.js` — the only gate-config list (`GATE_CONFIG_PATTERNS`, `isGateConfig`); inlined into every host's `bkit-gateguard` hook. Asserted by `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`.
 - `.bkit/core/engine/cli.ts` — `comply` verb + `--phase` dispatch (DE-34).
 
 **Crash isolation (DE-34):** `comply` dispatch try/catch; crash → `[bkit-comply] internal error: …`, exit 0. Workflow wiring: `|| echo "[bkit-comply] grader unavailable, skipping"` silences non-zero.

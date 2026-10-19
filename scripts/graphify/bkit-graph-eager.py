@@ -133,10 +133,10 @@ def inside_callable(path, line):
 
 
 # --- who imports this, transitively -------------------------------------------
-# graph.json already carries the ~540 imports graphify cannot resolve — a `.js`
+# graph.json already carries the imports graphify cannot resolve — a `.js`
 # specifier never reaching a `.tsx` file, and workspace subpaths through an
 # `exports` map. bkit-graph-repair.py injects them during `pnpm graph`, so they are
-# read here like any other edge; warns if the graph predates that step.
+# read here like any other edge; warns if graph.json lacks any of them.
 INBOUND = collections.defaultdict(set)
 for link in raw["links"]:
     if link.get("relation") not in DEP_RELATIONS:

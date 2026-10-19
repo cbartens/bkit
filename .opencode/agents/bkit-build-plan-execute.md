@@ -13,7 +13,7 @@ tools:
   edit: true
   bash: true
 ---
-<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer implementing plan tasks step-by-step against checklists and gates.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -43,15 +43,15 @@ tools:
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Read plan (`[x]` = done, `[ ]` = pending) → resume at first `[ ]` task. **If** no plan file exists → `build-input-*.md` is the plan; tasks = its requested outcomes, in order; never create plan file.
-5. Satisfy each task `Done when` before next task. Missing `Done when` in plan file → set `Verdict` = `FAIL` via `Edit`. **If** no plan file exists → outcome as worded is the bar.
+4. Read plan (`[x]` = done, `[ ]` = pending) → resume at first `[ ]` task. **If** no plan file exists → `build-input-*.md` is the plan; tasks = its `- [ ] **Task N:**` lines (numbers kept), else its requested outcomes, in order; never create plan file.
+5. Satisfy each task `Done when` before next task. Missing `Done when` in plan file → set `Verdict` = `FAIL` via `Edit`. **If** no plan file exists → bar = task `Done when`, else outcome as worded.
 6. **If** plan-currency report supplied → only apply to tasks it names; never edit plan file:
    - `Reword` → implement at current paths.
    - `Broken` already landed → log `DONE — already landed`.
    - `Broken` not landed → implement against current code or `BLOCKED`.
 7. Update **Create** after each task — append `DONE|BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
 8. Implement sequentially, per task:
-   - **If** task `Test first` names tests **and** task not logged `DONE — already landed` → write those tests plus stubs of the code they call; run the supplied red command once per test with the task number, the test position in `Test first`, its file and its name; every red MUST be recorded before the task code is written. **If** refused as `passed` → `BLOCKED`; never undo code to force a red. **If** refused otherwise → fix tests / stubs per the printed reason; re-run. **If** `bkit:test:file` not declared → log `red not enforced` once; continue. **If** could not run → `BLOCKED`. **If** no plan file exists **or** no red command supplied → write the tests first; record nothing.
+   - **If** task `Test first` names tests **and** task not logged `DONE — already landed` → write those tests plus stubs of the code they call; run the supplied red command once per test with the task number, the test position in `Test first`, its file and its name; every red MUST be recorded before the task code is written. **If** refused as `passed` → `BLOCKED`; never undo code to force a red. **If** refused otherwise → fix tests / stubs per the printed reason; re-run. **If** `bkit:test:file` not declared → log `red not enforced` once; continue. **If** could not run → `BLOCKED`. **If** no red command supplied **or** task not a `**Task N:**` line → write the tests first; record nothing.
    - Edit / create source → task tests pass → refactor with tests green → at every gate confirm conditions met → append log → proceed.
    - Honour plan `Reuse Inventory` when present: `EXTEND` row → modify named artifact, never parallel file. Reusable artifact found mid-build → fold in and log, never fork.
 9. Run `pnpm bkit:gate:static` — all local lint / typecheck MUST pass.

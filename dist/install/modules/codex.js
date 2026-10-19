@@ -7,7 +7,8 @@ import { applyCodexAgent, parseFrontmatter } from "../../render/hosts.js";
 import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from "../../shared/package-roots.js";
 import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
-import { BKIT_PREFIX, installFile, listMdFiles, readInstallingVersion, trackMirrorWrite, } from "./core.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
+import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
 /**
  * Convert a workflow orchestrator (`.bkit/core/workflows/*.md`) into a Codex SKILL.md.
  *
@@ -69,8 +70,8 @@ export function renderCodexAgentsSkills(ctx) {
         if (!dryRun)
             ensureDir(dest);
         const files = listMdFiles(src, BKIT_PREFIX);
-        // Destination basenames are .toml, so the orphan sweep has to compare on stem.
-        const sourceStems = new Set(files.map((f) => f.replace(/\.md$/, "")));
+        // Destination basenames are .toml, so the orphan sweep compares on the .toml names.
+        const sourceNames = new Set(files.map((f) => f.replace(/\.md$/, ".toml")));
         for (const f of files) {
             const stem = f.replace(/\.md$/, "");
             const transform = (c) => `${managedVersionMarker(version, "hash")}\n` +
@@ -81,20 +82,10 @@ export function renderCodexAgentsSkills(ctx) {
                 trackMirrorWrite(ctx, rel, written);
             }
         }
-        if (fs.existsSync(dest)) {
-            for (const f of fs.readdirSync(dest)) {
-                if (!f.endsWith(".toml"))
-                    continue;
-                if (!f.startsWith(BKIT_PREFIX))
-                    continue;
-                if (!sourceStems.has(f.replace(/\.toml$/, ""))) {
-                    const rel = path.join(dest, f);
-                    if (!dryRun)
-                        fs.rmSync(path.join(dest, f));
-                    console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
-                    trackMirrorWrite(ctx, rel, written);
-                }
-            }
+        for (const f of removeOrphans(dest, sourceNames, dryRun, BKIT_PREFIX, { extension: ".toml" })) {
+            const rel = path.join(dest, f);
+            console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+            trackMirrorWrite(ctx, rel, written);
         }
     }
     // --- Workflow skills: one directory per workflow, each holding SKILL.md ---
@@ -120,18 +111,13 @@ export function renderCodexAgentsSkills(ctx) {
         }
         // Orphan sweep is bkit-prefix scoped: `.agents/skills/` is SHARED with third-party
         // skills installed via skills.sh, so anything not named bkit-* is off limits here.
-        if (fs.existsSync(CODEX_SKILLS_DIR)) {
-            for (const d of fs.readdirSync(CODEX_SKILLS_DIR)) {
-                if (!d.startsWith(BKIT_PREFIX))
-                    continue;
-                if (sourceStems.has(d))
-                    continue;
-                const rel = path.join(CODEX_SKILLS_DIR, d);
-                if (!dryRun)
-                    fs.rmSync(rel, { recursive: true, force: true });
-                console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
-                trackMirrorWrite(ctx, rel, written);
-            }
+        const orphans = removeOrphans(CODEX_SKILLS_DIR, sourceStems, dryRun, BKIT_PREFIX, {
+            wholeFolders: true,
+        });
+        for (const d of orphans) {
+            const rel = path.join(CODEX_SKILLS_DIR, d);
+            console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+            trackMirrorWrite(ctx, rel, written);
         }
     }
     return written;

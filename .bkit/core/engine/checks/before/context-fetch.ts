@@ -4,7 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getTemplatesRoot } from "../../shared/package-roots.js";
-import { readPackageJson } from "../../shared/package-json.js";
+import { readDependencyNames } from "../../shared/package-json.js";
 import type { PreflightFinding } from "./index.js";
 
 /**
@@ -103,26 +103,6 @@ const CONTEXT_FETCH_BACKEND_EVIDENCE: Record<string, (cwd: string) => boolean> =
     fs.existsSync(path.join(cwd, ".vercel")) ||
     readDependencyNames(cwd).includes("vercel"),
 };
-
-/** Every dependency name across the four package.json dependency fields. */
-function readDependencyNames(cwd: string): string[] {
-  const read = readPackageJson(cwd);
-  if (!read.ok) return [];
-  const pkg = read.pkg;
-  const names: string[] = [];
-  for (const field of [
-    "dependencies",
-    "devDependencies",
-    "optionalDependencies",
-    "peerDependencies",
-  ]) {
-    const deps = pkg[field];
-    if (deps && typeof deps === "object") {
-      names.push(...Object.keys(deps as Record<string, unknown>));
-    }
-  }
-  return names;
-}
 
 /**
  * Advisory: consumer's `.agents/context.md` has the bkit-managed block but no

@@ -3,6 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
+import { readJsonFile } from "../../shared/json.js";
 import { isCloudOrCi } from "./env.js";
 // ---------------------------------------------------------------------------
 // Blocker detectors
@@ -21,18 +22,14 @@ export function detectMalformedPackageJson(cwd) {
     const pkgPath = path.join(cwd, "package.json");
     if (!fs.existsSync(pkgPath))
         return null;
-    try {
-        JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+    if (readJsonFile(pkgPath).ok)
         return null;
-    }
-    catch {
-        return {
-            id: "malformed-package-json",
-            severity: "blocker",
-            detect: "package.json exists but contains invalid JSON.",
-            action: "Fix the JSON syntax error in package.json (run `node -e \"JSON.parse(require('fs').readFileSync('package.json','utf8'))\"` to locate the error), then re-run `pnpm bkit install`.",
-        };
-    }
+    return {
+        id: "malformed-package-json",
+        severity: "blocker",
+        detect: "package.json exists but contains invalid JSON.",
+        action: "Fix the JSON syntax error in package.json (run `node -e \"JSON.parse(require('fs').readFileSync('package.json','utf8'))\"` to locate the error), then re-run `pnpm bkit install`.",
+    };
 }
 export function detectNotGitRepo(cwd, modules) {
     if (!modules.has("core"))

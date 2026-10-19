@@ -47,6 +47,23 @@ export function logged(root, issue) {
     }
     return [...found].sort();
 }
+/**
+ * The canonical design doc for a feature, `docs/plans/{YYYYMM}/{fid}-design.md`: the
+ * `month` bucket first, else the newest bucket holding one. null when none exists.
+ */
+export function designDoc(root, fid, month) {
+    const plans = path.join(root, "docs", "plans");
+    if (!fs.existsSync(plans))
+        return null;
+    const at = (m) => fs.existsSync(path.join(plans, m, `${fid}-design.md`));
+    const months = fs
+        .readdirSync(plans)
+        .filter((m) => /^[0-9]{6}$/.test(m))
+        .sort()
+        .reverse();
+    const hit = month !== undefined && months.includes(month) && at(month) ? month : months.find(at);
+    return hit === undefined ? null : { month: hit, path: `docs/plans/${hit}/${fid}-design.md` };
+}
 /** `package.json` `bkit.issueTracker` at the main checkout (cwd outside git); default `none`. */
 export function readIssueTracker(cwd) {
     const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
@@ -193,6 +210,28 @@ export const fidsCommand = {
                 }
                 ctx.emit({ ...viaBranch.parsed, tracker });
                 return EXIT.OK;
+            },
+        },
+        design: {
+            summary: "The feature's own design doc, docs/plans/{YYYYMM}/{FID}-design.md: exit 0 found, exit 1 none.",
+            flags: [
+                { name: "fid", type: "string", required: true, help: "feature id" },
+                {
+                    name: "month",
+                    type: "string",
+                    help: "YYYYMM bucket checked first; else the newest bucket holding the doc",
+                },
+            ],
+            output: {
+                fid: "the FID when its design doc exists, else null",
+                month: "the bucket holding it, else null",
+                path: "repo-relative path, else null",
+            },
+            run: (ctx) => {
+                const fid = String(ctx.flags.fid);
+                const hit = designDoc(repoRoot(ctx.cwd), fid, str(ctx.flags.month));
+                ctx.emit(hit ? { fid, month: hit.month, path: hit.path } : { fid: null, month: null, path: null });
+                return hit ? EXIT.OK : EXIT.NO;
             },
         },
         find: {

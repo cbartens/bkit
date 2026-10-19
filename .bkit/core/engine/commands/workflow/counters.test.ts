@@ -399,6 +399,32 @@ describe("bkit counters route --of", () => {
     expect((await route(rows(), "build-failure-diagnose:current", "3")).code).toBe(4);
   });
 
+  it("sums the DONE rows of several steps with <step>,<step>:count", async () => {
+    const file = rows();
+    const both = await route(file, "build-run-tests,build-plan-verify:count", "2");
+    expect(both.code).toBe(1);
+    expect(both.json).toMatchObject({ value: 3, exceeded: true, next: "failure-path" });
+    const none = await route(file, "build-failure-diagnose,build-failure-remediate:count", "0");
+    expect(none.code).toBe(0);
+    expect(none.json).toMatchObject({ value: 0, exceeded: false, next: "step-15" });
+    expect((await route(file, "build-run-tests,ghost-step:count", "0")).json.value).toBe(2);
+  });
+
+  it("refuses a step list off :count, a repeated step, or an empty list entry", async () => {
+    const file = rows();
+    for (const of of [
+      "build-run-tests,build-plan-verify:next",
+      "build-run-tests,build-plan-verify:current",
+      "build-run-tests,build-run-tests:count",
+      "build-run-tests,:count",
+      ",build-run-tests:count",
+    ]) {
+      const r = await route(file, of, "3");
+      expect(r.code, of).toBe(2);
+      expect(r.out, of).toBe("");
+    }
+  });
+
   it("needs exactly one of --value and --of, and --file with --workflow for --of", async () => {
     const file = rows();
     expect((await route(file, "build-run-tests:next", "3", "--value=1")).code).toBe(2);
@@ -418,10 +444,12 @@ describe("bkit counters max", () => {
   });
 
   it("every threshold is a non-negative integer, and every attempt cap is at least 1", () => {
-    for (const [name, value] of Object.entries(THRESHOLDS)) {
-      expect(Number.isInteger(value) && value >= 0, name).toBe(true);
-      if (name !== "MAX_CHALLENGE_REMEDIATE_ATTEMPT") expect(value, name).toBeGreaterThanOrEqual(1);
-    }
+    const thresholds = Object.entries(THRESHOLDS);
+    expect(thresholds.length).toBeGreaterThan(0);
+    expect(thresholds.filter(([, value]) => !Number.isInteger(value))).toEqual([]);
+    expect(thresholds.filter(([, value]) => value < 0)).toEqual([]);
+    const attemptCaps = thresholds.filter(([name]) => name !== "MAX_CHALLENGE_REMEDIATE_ATTEMPT");
+    expect(attemptCaps.filter(([, value]) => value < 1)).toEqual([]);
   });
 
   it("bkit-cloud.yml (both copies) declares MAX_DEV_DISPATCH_ATTEMPTS equal to THRESHOLDS", () => {

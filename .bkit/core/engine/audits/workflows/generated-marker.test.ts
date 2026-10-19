@@ -48,10 +48,15 @@ const CUT_MARKER = `###### ${CUT_TOKEN}`;
 const CUT_MARKER_LINE_RE = new RegExp(`^[ \\t]*${CUT_MARKER}[ \\t]*$`);
 const read = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
 
+/** Every ```comment fence line in `text`. */
+function commentTemplateFences(text: string): string[] {
+  return text.match(/^[ \t]*```comment$/gm) ?? [];
+}
+
 describe("comment bodies come from bkit commands, never a hand-written template", () => {
   for (const rel of WORKFLOW_FILES) {
     it(`${rel}: carries no \`\`\`comment template`, () => {
-      const fences = read(rel).match(/^[ \t]*```comment$/gm) ?? [];
+      const fences = commentTemplateFences(read(rel));
       expect(
         fences,
         `${rel} hand-writes a comment body; build it with bkit issues comment`,

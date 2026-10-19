@@ -1,9 +1,9 @@
 // checks/tips/detect.ts — local-only probes the setup-tip catalogue keys on: host MCP
-// configs, host settings files, lint-staged config forms. No network.
+// configs, host settings files, lint-staged and test-linter config forms. No network.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseJson } from "../../shared/json.js";
-import { readPackageJson } from "../../shared/package-json.js";
+import { readDependencyNames, readPackageJson } from "../../shared/package-json.js";
 /** True when `rel` exists under `cwd`. */
 export const exists = (cwd, rel) => fs.existsSync(path.join(cwd, rel));
 /** Parsed JSON object at `rel`, or `null` when absent, unparseable or not an object. */
@@ -121,10 +121,49 @@ const LINT_STAGED_CONFIGS = [
     "lint-staged.config.cjs",
     "lint-staged.config.js",
 ];
+/** True when any `.github/workflows/*.yml` / `*.yaml` contains `needle`. */
+export function anyWorkflowMentions(cwd, needle) {
+    const dir = path.join(cwd, ".github", "workflows");
+    if (!fs.existsSync(dir))
+        return false;
+    return fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+        .some((f) => readText(cwd, path.join(".github", "workflows", f)).includes(needle));
+}
 /** True when lint-staged is configured: any of its config files, or `package.json` `lint-staged`. */
 export function hasLintStagedConfig(cwd) {
     if (LINT_STAGED_CONFIGS.some((rel) => exists(cwd, rel)))
         return true;
     const pkg = readPackageJson(cwd);
     return pkg.ok && pkg.pkg["lint-staged"] !== undefined;
+}
+const OXLINT_CONFIGS = [
+    ".oxlintrc.json",
+    ...["ts", "mts", "cts", "js", "mjs", "cjs"].map((ext) => `oxlint.config.${ext}`),
+];
+const ESLINT_CONFIGS = [
+    ".eslintrc",
+    ...["json", "js", "cjs", "yaml", "yml"].map((ext) => `.eslintrc.${ext}`),
+    ...["js", "mjs", "cjs", "ts", "mts", "cts"].map((ext) => `eslint.config.${ext}`),
+];
+/** A test-framework or test-library name inside an ESLint config means it lints tests. */
+const TEST_LINT_PLUGIN = /vitest|jest|playwright|testing-library/i;
+/** True when `package.json` lists a JS / TS test runner (Vitest or Jest) as a dependency. */
+export const hasJsTestRunner = (cwd) => readDependencyNames(cwd).some((name) => name === "vitest" || name === "jest");
+/**
+ * True when the repo already lints its test files: an Oxlint config or `oxlint` dependency,
+ * or an ESLint config (file or `package.json` `eslintConfig`) that names a test plugin.
+ */
+export function hasTestLinter(cwd) {
+    if (OXLINT_CONFIGS.some((rel) => exists(cwd, rel)))
+        return true;
+    if (readDependencyNames(cwd).includes("oxlint"))
+        return true;
+    const eslintConfigs = ESLINT_CONFIGS.map((rel) => readText(cwd, rel));
+    const pkg = readPackageJson(cwd);
+    if (pkg.ok && pkg.pkg["eslintConfig"] !== undefined) {
+        eslintConfigs.push(JSON.stringify(pkg.pkg["eslintConfig"]));
+    }
+    return eslintConfigs.some((text) => TEST_LINT_PLUGIN.test(text));
 }

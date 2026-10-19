@@ -492,6 +492,11 @@ export const testsCommand = {
                     help: "candidate plan file; the first that exists is audited",
                 },
                 {
+                    name: "brief",
+                    type: "string",
+                    help: "the build input, audited when no plan file exists and it carries `**Task N:**` lines with `Test first:`",
+                },
+                {
                     name: "log",
                     type: "string",
                     required: true,
@@ -501,7 +506,7 @@ export const testsCommand = {
             output: {
                 enforced: "false when there is nothing to audit (reason says why)",
                 reason: "why test-first is not enforced",
-                plan: "the plan file audited",
+                plan: "the plan file audited (the brief when no plan file exists and it carries Test first lines)",
                 gaps: "[{task, kind, detail}]: no-test-first | test-first-malformed | no-red | red-mismatch | red-evidence-missing | test-changed | not-green",
                 log: "where the report was written (as given)",
             },
@@ -516,14 +521,22 @@ export const testsCommand = {
                     throw new CommandError(EXIT.USAGE, "--log must be non-empty");
                 const log = path.resolve(ctx.cwd, logArg);
                 const top = toplevel(ctx.cwd);
-                const plan = ctx.flags.plan.find((p) => fs.existsSync(path.resolve(ctx.cwd, p)));
+                const exists = (p) => fs.existsSync(path.resolve(ctx.cwd, p));
+                const planFile = ctx.flags.plan.find(exists);
+                const briefArg = str(ctx.flags.brief);
+                const brief = planFile === undefined && briefArg !== undefined && exists(briefArg)
+                    ? briefArg
+                    : undefined;
+                const plan = planFile ?? brief;
                 const specs = plan
                     ? readTestFirst(fs.readFileSync(path.resolve(ctx.cwd, plan), "utf-8"))
                     : [];
                 const reason = plan === undefined
                     ? "no plan file — the build runs from its brief"
                     : !specs.some((s) => s.kind !== "missing")
-                        ? "the plan has no `Test first:` lines"
+                        ? brief !== undefined
+                            ? "no plan file, and the brief has no `**Task N:**` lines with `Test first:`"
+                            : "the plan has no `Test first:` lines"
                         : resolveGate(top, [BKIT_TEST_FILE_SCRIPT]) === null
                             ? `\`${BKIT_TEST_FILE_SCRIPT}\` is not declared in package.json`
                             : undefined;

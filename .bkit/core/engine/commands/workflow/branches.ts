@@ -19,8 +19,10 @@ import { gitEnv } from "../../ledgers/telemetry.js";
 import {
   bodySkipToken,
   CommandError,
+  DEV,
   EXIT,
   git,
+  isSharedBranch,
   parseJson,
   repoRoot,
   runGit,
@@ -46,9 +48,7 @@ import {
 import { str } from "./status.js";
 
 const REMOTE = "origin";
-const DEV = "dev";
 const UPSTREAM = `${REMOTE}/${DEV}`;
-const SHARED_BRANCHES = new Set([DEV, "main"]);
 
 /** Exit codes, distinct across verbs so a code means one thing anywhere in this noun. */
 export const EXIT_REFUSED = 3;
@@ -600,7 +600,7 @@ export function pushBranch(
       return notPushed(EXIT_SKIP_CI, { skipped: "skip-ci" });
     }
   }
-  const shared = SHARED_BRANCHES.has(branch);
+  const shared = isSharedBranch(branch);
   if (mode === "abort" && !shared) {
     const pr =
       openPrFlag === undefined
@@ -733,7 +733,7 @@ function syncVerb(ctx: RunContext): number {
       ctx.log("no branch checked out (detached HEAD) — cannot merge dev's docs");
       return EXIT_DETACHED;
     }
-    if (!SHARED_BRANCHES.has(branch) && docsBehind > 0) {
+    if (!isSharedBranch(branch) && docsBehind > 0) {
       ctx.log(`docs/ is ${docsBehind} commit(s) behind ${UPSTREAM} — merging it in`);
       if (!quietGit(top, ["merge", "--no-edit", UPSTREAM]).ok) {
         const outcome = resolveDocsMerge(top);

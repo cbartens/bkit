@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import type { ModuleFlag } from "../../cli.js";
+import { readJsonFile } from "../../shared/json.js";
 import type { PreflightFinding } from "./index.js";
 import { isCloudOrCi } from "./env.js";
 
@@ -26,18 +27,14 @@ export function detectNoPackageJson(cwd: string): PreflightFinding | null {
 export function detectMalformedPackageJson(cwd: string): PreflightFinding | null {
   const pkgPath = path.join(cwd, "package.json");
   if (!fs.existsSync(pkgPath)) return null;
-  try {
-    JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-    return null;
-  } catch {
-    return {
-      id: "malformed-package-json",
-      severity: "blocker",
-      detect: "package.json exists but contains invalid JSON.",
-      action:
-        "Fix the JSON syntax error in package.json (run `node -e \"JSON.parse(require('fs').readFileSync('package.json','utf8'))\"` to locate the error), then re-run `pnpm bkit install`.",
-    };
-  }
+  if (readJsonFile(pkgPath).ok) return null;
+  return {
+    id: "malformed-package-json",
+    severity: "blocker",
+    detect: "package.json exists but contains invalid JSON.",
+    action:
+      "Fix the JSON syntax error in package.json (run `node -e \"JSON.parse(require('fs').readFileSync('package.json','utf8'))\"` to locate the error), then re-run `pnpm bkit install`.",
+  };
 }
 
 export function detectNotGitRepo(cwd: string, modules: Set<ModuleFlag>): PreflightFinding | null {

@@ -3,6 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
+import { readBkitConfig } from "../../shared/settings.js";
 /** True when `cmd --version` runs (binary on PATH, exits 0). */
 function toolVersionRuns(cmd) {
     const res = spawnSync(cmd, ["--version"], {
@@ -105,7 +106,7 @@ const BKIT_STUBS = [
     {
         id: "coverage",
         file: ".github/workflows/bkit-ci.yml",
-        description: "Report vitest coverage on PRs via davelosert/vitest-coverage-report-action (free, runs inside Actions with GITHUB_TOKEN — no third-party service, safe for private repos). PER-TIER: unit and integration are measured and commented SEPARATELY (a single merged number lets integration mask a hollow unit suite — coverage is a union). Report-only by default: nothing fails the build until a threshold is set. Enabling (documented in the stub header): (1) add `@vitest/coverage-v8` (pinned to your vitest major) plus a vitest.config coverage block with `reporter: ['text','json-summary','json']` and `reportOnFailure: true` — json-summary + json are load-bearing (the action reads coverage-summary.json and coverage-final.json); (2) run coverage TWICE into separate dirs — unit → coverage/unit (exclude integration files), integration → coverage/integration — so each tier gets its own honest number (avoids the last-writer-wins clobber a second same-dir run would cause); (3) add a JOB-LEVEL permissions block to bkit-tests-unit with `actions: read` + `contents: read` + `pull-requests: write` — job-level REPLACES the workflow-level block (not additive) and the Check SHA Cache step needs `actions: read`, so omitting it breaks the cache step; (4) two report steps with distinct `name:` (unit / integration) pointing at each dir's coverage-summary.json + coverage-final.json. SEPARATE LANES (one job per tier): put the integration run + report + its OWN pull-requests: write block in bkit-tests-integration, not bkit-tests-unit — each lane posts its own comment. Thresholds are opt-in and PER TIER: UNIT is the gate — pass `--coverage.thresholds.branches` as a CLI flag on the unit run ONLY (vitest coverage is per-RUN/root config, NOT per-project — `projects` does not scope it and a config `thresholds` block reds BOTH runs; a per-run flag cannot leak to integration; branches is the meaningful floor, set to current and ratchet up). INTEGRATION is REPORT-ONLY — gate it on EXECUTION (the capstone's integration_ran > 0), not a %: a whole-repo integration % is denominator-noise (it covers boundaries/flows, not pure logic). For a real integration %, add `--coverage.include=src/server/**` on the integration run (same CLI-flag idiom as --exclude) then set a floor, or ratchet from current — never a picked number. Fork PRs: GITHUB_TOKEN is read-only, so keep the `head.repo == repo` guard on the steps (or use the action's workflow_run two-workflow pattern). Guard the integration report on `hashFiles('coverage/integration/coverage-summary.json') != ''` so a repo with no integration tier skips it cleanly.",
+        description: "Report vitest coverage on PRs and in every run's job summary via davelosert/vitest-coverage-report-action (free, runs inside Actions with GITHUB_TOKEN — no third-party service, safe for private repos). PER-TIER: unit and integration are measured and commented SEPARATELY (a single merged number lets integration mask a hollow unit suite — coverage is a union). Report-only by default: nothing fails the build until a threshold is set. Enabling (documented in the stub header): (1) add `@vitest/coverage-v8` (pinned to your vitest major) plus a vitest.config coverage block with `reporter: ['text','json-summary','json']` and `reportOnFailure: true` — json-summary + json are load-bearing (the action reads coverage-summary.json and coverage-final.json); (2) run coverage TWICE into separate dirs — unit → coverage/unit (exclude integration files), integration → coverage/integration — so each tier gets its own honest number (avoids the last-writer-wins clobber a second same-dir run would cause); (3) add a JOB-LEVEL permissions block to bkit-tests-unit with `actions: read` + `contents: read` + `pull-requests: write` — job-level REPLACES the workflow-level block (not additive) and the Check SHA Cache step needs `actions: read`, so omitting it breaks the cache step; (4) two report steps with distinct `name:` (unit / integration) pointing at each dir's coverage-summary.json + coverage-final.json; the unit step runs on every event (`if: !cancelled()` plus a `hashFiles` guard on its summary), sets `vite-config-path: vitest.unit.config.ts` so the job summary and PR comment show the floor as the target, and comments only on same-repo PRs (`comment-on: pr`, else `none`). SEPARATE LANES (one job per tier): put the integration run + report + its OWN pull-requests: write block in bkit-tests-integration, not bkit-tests-unit — each lane posts its own comment. Thresholds are opt-in and PER TIER: UNIT is the gate — put `coverage.thresholds.branches` in a `vitest.unit.config.ts` (`mergeConfig` over vitest.config) that ONLY the unit run loads via `-c` (vitest coverage is per-RUN/root config, NOT per-project — `projects` does not scope it and a `thresholds` block in vitest.config reds BOTH runs; the report action reads the same file as raw text, so keep the floor on one unquoted `branches: <n>` line and no other metric name + colon + number in it; branches is the meaningful floor, set to current and ratchet up). INTEGRATION is REPORT-ONLY — gate it on EXECUTION (the capstone's integration_ran > 0), not a %: a whole-repo integration % is denominator-noise (it covers boundaries/flows, not pure logic). For a real integration %, add `--coverage.include=src/server/**` on the integration run (same CLI-flag idiom as --exclude) then set a floor, or ratchet from current — never a picked number. Fork PRs: GITHUB_TOKEN is read-only, so the unit step sets `comment-on: none` there (its job summary still lands) and the integration step keeps the `head.repo == repo` guard (or use the action's workflow_run two-workflow pattern). Guard the integration report on `hashFiles('coverage/integration/coverage-summary.json') != ''` so a repo with no integration tier skips it cleanly.",
     },
     {
         id: "e2e-coverage",
@@ -303,20 +304,6 @@ function updaterConfigPaths(cwd) {
             : null;
     return { renovate, dependabot };
 }
-/** `bkit.depUpdater: "none"` silences the missing-updater suggestion. Other values are ignored. */
-function depUpdaterOptOut(cwd) {
-    const pkgPath = path.join(cwd, "package.json");
-    if (!fs.existsSync(pkgPath))
-        return false;
-    try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        const bkitField = pkg.bkit;
-        return bkitField?.depUpdater === "none";
-    }
-    catch {
-        return false;
-    }
-}
 /**
  * Read-only dependency-updater check.
  *
@@ -336,7 +323,7 @@ export function buildDepUpdaterSetupAdvisory(cwd) {
     }
     if (renovate || dependabot)
         return null;
-    if (depUpdaterOptOut(cwd))
+    if (readBkitConfig(cwd).depUpdaterOptOut)
         return null;
     if (!fs.existsSync(path.join(cwd, ".github", "workflows")))
         return null;

@@ -1,7 +1,7 @@
 // vitest.timeout-budget.ts — this repo's per-test and per-hook time limits, scaled to how
 // overloaded the machine is when the run starts.
 //
-// Mirror of app-gether-life #1392 (tooling/vitest/timeout-budget.ts). The unit tier's limits
+// Mirror of a consumer's load-scaled timeout budget. The unit tier's limits
 // are sampled once, when `vitest.config.ts` loads; `vitest.setup.ts` re-reads them as each test
 // FILE starts, so a load ramp mid-run (a second agent session, a build) cannot starve late
 // files past a stale budget. CI pins the factor to 1, so the gate stays strict there (5s unit /

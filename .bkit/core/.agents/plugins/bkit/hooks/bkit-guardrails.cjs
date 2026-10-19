@@ -95,7 +95,7 @@ function bkitGuardrails(payload) {
   if (typeof raw !== "string") return null;
 
   const cmd = raw.trim();
-  const tier = classifyShell(cmd);
+  const tier = classifyShell(cmd, hookDirs(p));
   if (!tier) return null;
   if (tier.tier === "deny") {
     return {

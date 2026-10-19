@@ -5,6 +5,8 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as os from "node:os";
 import { guardCoreRoot, removeOrphans } from "./core";
+import { CODEX_SKILLS_DIR } from "./codex";
+import { ANTIGRAVITY_AGENTS_DIR, ANTIGRAVITY_SKILLS_DIR } from "./antigravity";
 
 // Every non-test source in `dir`, concatenated — read as text to inspect the constant bodies
 // without executing the modules (avoids import side-effects and keeps tests fast).
@@ -36,7 +38,8 @@ describe("runCoreModule first-install advisory (BAR-141: structured finding)", (
     const match = MODULES_SRC.match(
       /id: "first-install-postinstall-steps"[\s\S]*?action:\s*"([\s\S]*?)",/,
     );
-    const action = match ? match[1] : MODULES_SRC;
+    expect(match).not.toBeNull();
+    const action = match![1];
     expect(action).not.toContain("onlyBuiltDependencies");
   });
 
@@ -141,5 +144,105 @@ describe("removeOrphans — prune stale bkit mirror files, allowlisted dirs only
     seed("docs", ["bkit-stale.md"]);
     expect(() => removeOrphans("docs", new Set(), false, "bkit-")).toThrow(/outside allowlist/);
     expect(fs.existsSync("docs/bkit-stale.md")).toBe(true);
+  });
+
+  it.each([".opencode/agents", ".opencode/commands", ".agents/plugins/bkit/agents"])(
+    "%s: removes a stale bkit-* .md file and keeps the current one",
+    (dir) => {
+      seed(dir, ["bkit-keep.md", "bkit-stale.md", "custom.md"]);
+      expect(removeOrphans(dir, new Set(["bkit-keep.md"]), false, "bkit-")).toEqual([
+        "bkit-stale.md",
+      ]);
+      expect(fs.readdirSync(dir).sort()).toEqual(["bkit-keep.md", "custom.md"]);
+    },
+  );
+
+  it(".codex/agents: with extension .toml removes a stale bkit-* .toml and keeps the rest", () => {
+    seed(".codex/agents", ["bkit-keep.toml", "bkit-stale.toml", "bkit-stale.md", "custom.toml"]);
+    const removed = removeOrphans(".codex/agents", new Set(["bkit-keep.toml"]), false, "bkit-", {
+      extension: ".toml",
+    });
+    expect(removed).toEqual(["bkit-stale.toml"]);
+    expect(fs.readdirSync(".codex/agents").sort()).toEqual([
+      "bkit-keep.toml",
+      "bkit-stale.md",
+      "custom.toml",
+    ]);
+  });
+
+  it("an empty extension matches every bkit-* entry whatever its suffix", () => {
+    seed(".agents/plugins/bkit/agents", [
+      "bkit-keep.md",
+      "bkit-stale.md",
+      "bkit-stale.txt",
+      "x.md",
+    ]);
+    const removed = removeOrphans(
+      ".agents/plugins/bkit/agents",
+      new Set(["bkit-keep.md"]),
+      false,
+      "bkit-",
+      { extension: "" },
+    );
+    expect(removed.sort()).toEqual(["bkit-stale.md", "bkit-stale.txt"]);
+    expect(fs.readdirSync(".agents/plugins/bkit/agents").sort()).toEqual(["bkit-keep.md", "x.md"]);
+  });
+
+  describe("wholeFolders mode — skill folders removed recursively", () => {
+    function seedSkills(dir: string): void {
+      for (const d of ["bkit-keep", "bkit-stale", "third-party"]) {
+        fs.mkdirSync(path.join(dir, d), { recursive: true });
+        fs.writeFileSync(path.join(dir, d, "SKILL.md"), "x");
+      }
+    }
+
+    it.each([".agents/skills", ".agents/plugins/bkit/skills"])(
+      "%s: removes a stale bkit-* folder with its contents and keeps current and foreign ones",
+      (dir) => {
+        seedSkills(dir);
+        const removed = removeOrphans(dir, new Set(["bkit-keep"]), false, "bkit-", {
+          wholeFolders: true,
+        });
+        expect(removed).toEqual(["bkit-stale"]);
+        expect(fs.readdirSync(dir).sort()).toEqual(["bkit-keep", "third-party"]);
+      },
+    );
+
+    it("dry-run reports the stale folder without deleting it", () => {
+      seedSkills(".agents/skills");
+      const removed = removeOrphans(".agents/skills", new Set(["bkit-keep"]), true, "bkit-", {
+        wholeFolders: true,
+      });
+      expect(removed).toEqual(["bkit-stale"]);
+      expect(fs.existsSync(".agents/skills/bkit-stale/SKILL.md")).toBe(true);
+    });
+
+    it("returns nothing when the folder does not exist", () => {
+      expect(
+        removeOrphans(".agents/skills", new Set(), false, "bkit-", { wholeFolders: true }),
+      ).toEqual([]);
+    });
+
+    it("throws and deletes nothing for a folder outside the allowlist", () => {
+      seedSkills("skills");
+      expect(() =>
+        removeOrphans("skills", new Set(), false, "bkit-", { wholeFolders: true }),
+      ).toThrow(/outside allowlist/);
+      expect(fs.existsSync("skills/bkit-stale/SKILL.md")).toBe(true);
+    });
+  });
+
+  it("accepts the folder constants the host modules sweep", () => {
+    for (const dir of [CODEX_SKILLS_DIR, ANTIGRAVITY_AGENTS_DIR, ANTIGRAVITY_SKILLS_DIR]) {
+      expect(removeOrphans(dir, new Set(), true, "bkit-", { wholeFolders: true })).toEqual([]);
+    }
+  });
+
+  it("dry-run with the extension option reports without deleting", () => {
+    seed(".codex/agents", ["bkit-stale.toml"]);
+    expect(
+      removeOrphans(".codex/agents", new Set(), true, "bkit-", { extension: ".toml" }),
+    ).toEqual(["bkit-stale.toml"]);
+    expect(fs.existsSync(".codex/agents/bkit-stale.toml")).toBe(true);
   });
 });

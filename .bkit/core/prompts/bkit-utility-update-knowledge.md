@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 400
 ---
 
 **Role:** Senior editor correcting gotchas the docs or codebase have since contradicted.
@@ -49,7 +49,14 @@ maxTurns: 100
 6. Per `key` changed above → append one row to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format with same `key` and updated values; copy unchanged field values verbatim.
 7. Per doc passage that states facts you just corrected → follow doc `Rules` header and edit only the passages to match appended row; do not run full doc sync.
 8. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
-9. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+9. Collect setup tips:
+   ```bash
+   "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" tips --workflow=utility
+   ```
+   Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
+10. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+    Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
+    Append as last line `Would you like me to explain this in plain English?`
 
 **Output format:**
 

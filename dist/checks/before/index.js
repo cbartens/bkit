@@ -7,12 +7,11 @@
 //   deepContains          — from install/write.ts (JSON containment primitive)
 //   extractManagedBlock   — from install/managed-block.ts (marker block extraction)
 //   findTemplateSource    — from shared/package-roots.ts (dest → payload source, the dotfile remap)
-//   parseIssueTracker     — from install/manifest.ts (pure data, no cycle)
+//   readBkitConfig        — from shared/settings.ts (the consumer's `bkit` settings)
+//   readInstallingVersion — from shared/package-json.ts (the version of the bkit doing the install)
 //   readTemplate          — from render/parts.ts (template with its shared parts spliced in)
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { getPkgRoot } from "../../shared/package-roots.js";
-import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, } from "../../install/manifest.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { detectBkitNotOnPath, detectMalformedPackageJson, detectNoPackageJson, detectNotGitRepo, } from "./repo.js";
 import { MARKERED_TEXT_DRIFT_PATHS, detectGitignoreBlockDuplicates, detectPlaywrightReporterHostile, detectTier2JsonDrift, detectTier2TextDrift, } from "./files.js";
 import { detectBkitVersionMajorDowngrade, detectBkitVersionPinStale } from "./version.js";
@@ -35,25 +34,6 @@ export function dedupeById(findings) {
 // runPreflight — main Phase 1 entry point
 // ---------------------------------------------------------------------------
 /**
- * Read `bkit.issueTracker` from the consumer's package.json.
- * Returns the tracker value or the default ("none") when absent / unreadable.
- * Internal helper — not exported; use runPreflight's `issueTracker` param.
- */
-function readConsumerIssueTrackerForPreflight(cwd) {
-    const pkgPath = path.join(cwd, "package.json");
-    if (!fs.existsSync(pkgPath))
-        return DEFAULT_ISSUE_TRACKER;
-    try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        const bkitField = pkg.bkit;
-        const parsed = parseIssueTracker(bkitField?.issueTracker);
-        return parsed ?? DEFAULT_ISSUE_TRACKER;
-    }
-    catch {
-        return DEFAULT_ISSUE_TRACKER;
-    }
-}
-/**
  * Run all Phase 1 (read-only) detectors.
  * Returns deduplicated { blockers, advisories } — intra-phase dedup by id,
  * first occurrence wins.
@@ -68,27 +48,11 @@ function readConsumerIssueTrackerForPreflight(cwd) {
  * gate is a no-op — the GitHub gate is enforced by workflow Step 1 via MCP.
  */
 export function runPreflight(modules, cwd = process.cwd(), installingVersion, issueTracker) {
-    // Resolve installing version if not provided
-    let version = installingVersion;
-    if (!version) {
-        try {
-            const pkgJsonPath = path.join(getPkgRoot(), "package.json");
-            if (fs.existsSync(pkgJsonPath)) {
-                const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-                version = pkg.version ?? "0.0.0";
-            }
-            else {
-                version = "0.0.0";
-            }
-        }
-        catch {
-            version = "0.0.0";
-        }
-    }
+    const version = installingVersion || readInstallingVersion();
     // Resolve issueTracker: use provided value or read from consumer package.json.
     // GitHub tracker gate: when issueTracker === "github", Linear preflight is a no-op
     // (the GitHub gate is enforced by workflow Step 1 via MCP — hook is no-op).
-    const resolvedTracker = issueTracker ?? readConsumerIssueTrackerForPreflight(cwd);
+    const resolvedTracker = issueTracker ?? readBkitConfig(cwd).issueTracker;
     const blockers = [];
     const advisories = [];
     // --- Blocker detectors ---

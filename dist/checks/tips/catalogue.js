@@ -1,12 +1,13 @@
 // checks/tips/catalogue.ts — the setup-tip catalogue: one entry per template, tool or
-// setting a consumer has not set up yet. Each workflow prints one tip at its close
-// (`bkit tips --workflow=<name>`); `bkit tips` prints the top three; `.bkit/advisories.md`
-// lists every firing tip under `Setup tips`.
+// setting a consumer has not set up yet. Each workflow, `@bkit-audit-generate` and the
+// ledger / roadmap updaters print one tip at their close (`bkit tips --workflow=<name>`,
+// `audit` / `utility` for the agents); `bkit tips` prints the top three;
+// `.bkit/advisories.md` lists every firing tip under `Setup tips`.
 //
 // Array order is the priority: comms first (can workflows reach anything), then change
 // quality (design → build), delivery (debug → ship), running cost, nice-to-have, and
 // setup-specific plumbing last. `workflows` names where a tip matters: a workflow shows
-// its own tips first, in array order, then the rest. Comms tips name every workflow, so
+// its own tips first, in array order, then the rest. Comms tips name every context, so
 // they lead everywhere until fixed.
 //
 // Text rules: `line`, `why`, `caution` and `ask` are for the person, in plain English, and
@@ -22,19 +23,21 @@
 import { detectContextFetchMissing } from "../before/context-fetch.js";
 import { detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, detectMissingDotenv, isCloudOrCi, } from "../before/env.js";
 import { detectGhMcpToken, hasGithubMcpServer } from "../after/auth.js";
-import { buildTrackerSetupAdvisory, readConsumerCloudAgents, readConsumerIssueTracker, } from "../after/github.js";
+import { buildTrackerSetupAdvisory } from "../after/github.js";
 import { buildDepUpdaterSetupAdvisory } from "../after/tools.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { claudeSettingsHas, codexTopLevelHas, exists, hasLintStagedConfig, hasMcpServer, unlockedMcpServers, } from "./detect.js";
+import { anyWorkflowMentions, claudeSettingsHas, codexTopLevelHas, exists, hasJsTestRunner, hasLintStagedConfig, hasMcpServer, hasTestLinter, unlockedMcpServers, } from "./detect.js";
 const hosts = (cwd) => detectInstalledHostModules(cwd);
 /** Every phase workflow. A value import of `COMPLY_PHASES` would cycle through cli.ts. */
 export const ALL_WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
+/** Every `bkit tips --workflow=` context: the phase workflows, then the two agent closes. */
+export const EVERY_CONTEXT = [...ALL_WORKFLOWS, "audit", "utility"];
 export const SETUP_TIPS = [
     // --- connect: can bkit talk to anything at all -------------------------------------
     {
         id: "tracker",
-        workflows: ALL_WORKFLOWS,
+        workflows: EVERY_CONTEXT,
         title: "Connect an issue tracker",
         line: "bkit isn't connected to an issue tracker, so it can't read the task it's working on or record what it did. Connect GitHub or Linear, or switch this tip off if you don't want one.",
         why: "Every workflow starts by reading the issue it's working on and reports progress back to it as it goes. Without a tracker, you have to paste in what the agent should look at each time, and nothing records what changed or why.",
@@ -45,19 +48,19 @@ export const SETUP_TIPS = [
     },
     {
         id: "gh-mcp",
-        workflows: ALL_WORKFLOWS,
+        workflows: EVERY_CONTEXT,
         title: "Give bkit its GitHub token",
         line: "You chose GitHub as your tracker, but bkit has no GitHub token, so every attempt to read an issue or open a pull request will fail. Add the token.",
         why: "Choosing GitHub only tells bkit where your issues live. The token is what lets it actually sign in. Without it the setting looks right but nothing works, which is confusing to track down.",
         ask: "Add my GitHub token as `BKIT_GH_TOKEN` in .bkit/.env, check .mcp.json has the `github` server, then run `direnv allow` and tell me to restart the editor.",
         steps: "`.bkit/install.md` § Local env setup. The `github` server entry belongs in `.mcp.json` / `.cursor/mcp.json` (`.bkit/cloud.md` § MCP issue-tracker integration).",
         advisories: ["gh-mcp-token-unset-shell", "gh-mcp-token-empty-shell"],
-        fires: (cwd) => readConsumerIssueTracker(cwd) === "github" &&
+        fires: (cwd) => readBkitConfig(cwd).issueTracker === "github" &&
             (!hasGithubMcpServer(cwd) || detectGhMcpToken(cwd) !== null),
     },
     {
         id: "bkit-env",
-        workflows: ALL_WORKFLOWS,
+        workflows: EVERY_CONTEXT,
         title: "Create bkit's private settings file",
         line: "bkit's private settings file (.bkit/.env) is missing or has blank entries, so nothing that needs to sign in can. Create it and fill it in.",
         why: "This one file holds the sign-in tokens every bkit tool reads. It's never shared or committed. Most other tips depend on it, so do this one early.",
@@ -67,13 +70,13 @@ export const SETUP_TIPS = [
         fires: (cwd) => {
             if (isCloudOrCi())
                 return false;
-            const tracker = readConsumerIssueTracker(cwd);
+            const tracker = readBkitConfig(cwd).issueTracker;
             return (detectMissingDotenv(cwd, tracker) !== null || detectBlankDotenvKeys(cwd, tracker).length > 0);
         },
     },
     {
         id: "direnv",
-        workflows: ALL_WORKFLOWS,
+        workflows: EVERY_CONTEXT,
         title: "Load your tokens automatically",
         line: "Your sign-in tokens are saved in .bkit/.env but not being loaded, so sign-ins will fail even though the file looks right. Set up direnv so they load whenever you open the project.",
         why: "A saved file does nothing until something reads it. This is the most frustrating kind of breakage: nothing looks wrong, but every sign-in fails. direnv (a small tool that loads settings when you open a folder) fixes it once.",
@@ -83,7 +86,7 @@ export const SETUP_TIPS = [
         fires: (cwd) => {
             if (isCloudOrCi() || !exists(cwd, ".bkit/.env"))
                 return false;
-            const tracker = readConsumerIssueTracker(cwd);
+            const tracker = readBkitConfig(cwd).issueTracker;
             return (!exists(cwd, ".envrc") ||
                 detectDirenvMissing(cwd, tracker) !== null ||
                 detectDirenvNotAllowed(cwd, tracker) !== null);
@@ -92,7 +95,7 @@ export const SETUP_TIPS = [
     // --- quality: is the change good -----------------------------------------------------
     {
         id: "serena",
-        workflows: ["design", "plan", "build"],
+        workflows: ["design", "plan", "build", "audit", "utility"],
         title: "Let agents look code up directly",
         line: "Agents are finding code by searching for words, which is slower, costs more, and misses things. Set up Serena so they can look code up directly.",
         why: 'Serena lets agents look up code the way your editor does ("where is this defined, and what uses it?") instead of guessing from text search and reading whole files. That means fewer accidental changes, fewer rounds of you correcting them, and lower running costs because they read less. It can only look things up, never change your files.',
@@ -102,7 +105,7 @@ export const SETUP_TIPS = [
     },
     {
         id: "ci-workflow",
-        workflows: ["build", "ship"],
+        workflows: ["build", "ship", "audit"],
         title: "Automatic checks on every change",
         line: "Nothing checks your changes automatically before they're merged, so broken code can land unnoticed. Add bkit's check workflow.",
         why: 'This runs your tests and checks on GitHub every time something changes, and bkit\'s ship step waits for it to pass before merging. Without it, "shipped" only means "merged", not "checked".',
@@ -141,6 +144,16 @@ export const SETUP_TIPS = [
         fires: (cwd) => !exists(cwd, "slop-scan.config.json"),
     },
     {
+        id: "test-lint",
+        workflows: ["build"],
+        title: "Catch tests that can't fail",
+        line: "Nothing checks your test files, so a test that asserts nothing, or asserts only inside an if, still passes and the suite stays green having proved nothing. Add Oxlint with bkit's test rules.",
+        why: "Oxlint (a fast code linter) fails the check on a test with no assertion, a branch inside a test, an assertion that may never run, a malformed assertion, or a promise nobody waits for. Without it those tests pass whatever the code does.",
+        ask: "Run `pnpm add -D oxlint oxlint-tsgolint`, copy .bkit/templates/.oxlintrc.json to .oxlintrc.json, and set the `lint` script in package.json to run `oxlint -c .oxlintrc.json --type-aware --deny-warnings` (add `&&` and the current lint command if the script already has one). Then fix every hit in the tests themselves.",
+        steps: "`.bkit/templates.md` § Oxlint.",
+        fires: (cwd) => hasJsTestRunner(cwd) && !hasTestLinter(cwd),
+    },
+    {
         id: "vale",
         workflows: ["design", "plan"],
         title: "Keep written docs tight",
@@ -170,7 +183,7 @@ export const SETUP_TIPS = [
         ask: "Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml and .bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh to .claude/hooks/ (for Cursor: .bkit/templates/.cursor/environment.json and .bkit/templates/.cursor/Dockerfile to .cursor/), run `gh secret set ANTHROPIC_API_KEY`, then tell me which dashboard settings are left.",
         steps: "`.bkit/cloud.md`; `.bkit/templates.md` § Cloud-agent workflow and § Cursor.",
         fires: (cwd) => {
-            const cloud = readConsumerCloudAgents(cwd);
+            const cloud = readBkitConfig(cwd).cloudAgents;
             if (cloud === "none")
                 return false;
             if (cloud === "cursor") {
@@ -240,8 +253,18 @@ export const SETUP_TIPS = [
     },
     // --- optional: nice to have ------------------------------------------------------------
     {
+        id: "issue-forms",
+        workflows: ["design", "plan", "debug"],
+        title: "Issue forms",
+        line: "Optional: add issue forms so every new issue asks for what the agent reads first.",
+        why: "Each workflow starts from the issue. A form for an idea, a well-defined change or a bug asks for the problem, what done looks like, or the steps to reproduce. Without one, issues often arrive as a title and a line, and the agent has to guess.",
+        ask: "Copy .bkit/templates/.github/ISSUE_TEMPLATE/ to .github/ISSUE_TEMPLATE/ and commit it to the default branch.",
+        steps: "`.bkit/templates.md` § Issue forms.",
+        fires: (cwd) => readBkitConfig(cwd).issueTracker === "github" && !exists(cwd, ".github/ISSUE_TEMPLATE"),
+    },
+    {
         id: "graphify",
-        workflows: ["design", "plan"],
+        workflows: ["design", "plan", "audit"],
         title: "A map of the code",
         line: "Optional: add graphify to keep an up-to-date map of how your code fits together.",
         why: "With a map, agents check what already exists before building it again. Without one, agents and reviews work out the structure from scratch each time. That's slower, and it's easy to miss how one change ripples into another part of the code.",
@@ -251,7 +274,7 @@ export const SETUP_TIPS = [
     },
     {
         id: "dependabot-renovate",
-        workflows: ["ship"],
+        workflows: ["ship", "audit"],
         title: "Automatic updates",
         line: "Nothing keeps the project's libraries up to date. Add an updater so you get small, safe updates instead of one big risky one later.",
         why: "An updater opens a small pull request whenever a library you use has a new version. Skip it and updates pile up into one large upgrade that's far more likely to break something.",
@@ -259,6 +282,16 @@ export const SETUP_TIPS = [
         steps: "`.bkit/templates.md` § Dependabot and Renovate.",
         advisories: ["dep-updater-absent"],
         fires: (cwd) => buildDepUpdaterSetupAdvisory(cwd)?.id === "dep-updater-absent",
+    },
+    {
+        id: "trivy",
+        workflows: ["ship", "audit"],
+        title: "Security scan",
+        line: "Nothing stops a change that adds a known-vulnerable library, a risky container setting or a leaked password from merging. Add the scan that fails the check when it finds one.",
+        why: "An updater only offers fixes, and only once a fixed version exists. The scan checks every change, plus once a day, so a known problem fails the check before it merges and one with no fix yet still shows up.",
+        ask: "Copy .bkit/templates/.github/workflows/bkit-trivy.yml to .github/workflows/bkit-trivy.yml, replace {{DEFAULT_BRANCH}} with my default branch, and commit it.",
+        steps: "`.bkit/templates.md` § Trivy. Accept a finding in `.trivyignore.yaml` with `statement` + `expired_at`; never drop `--include-dev-deps`.",
+        fires: (cwd) => exists(cwd, ".github/workflows") && !anyWorkflowMentions(cwd, "aquasecurity/trivy"),
     },
     {
         id: "prettier-tables",

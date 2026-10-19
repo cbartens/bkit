@@ -2,7 +2,7 @@
 // the provider-templated `opencode.json`.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { writeTier2, deepMergeJson, ensureDir } from "../write.js";
+import { writeTier2, deepMergeJson, ensureDir, isJsonObject, mergeTrackerEntry, } from "../write.js";
 import { stampManagedVersion } from "../version-file.js";
 import { applyOpencodeAgent, applyOpencodeCommand } from "../../render/hosts.js";
 import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from "../../shared/package-roots.js";
@@ -10,8 +10,11 @@ import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { resolveNetworkAllowlist, extractMcpServers, networkAllowlistBases } from "../cloud-env.js";
 import { OPENCODE_PROVIDER_DEFAULTS } from "../../shared/egress.js";
-import { BKIT_PREFIX, installFile, listMdFiles, readInstallingVersion, trackMirrorWrite, } from "./core.js";
-import { opencodeProviderId } from "../../render/models.js";
+import { parseJson, readJsonFile } from "../../shared/json.js";
+import { readBkitConfig } from "../../shared/settings.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
+import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
+import { isOpencodeProvider, opencodeProviderId } from "../../render/models.js";
 export function renderOpencodeAgentsCommands(ctx) {
     const { dryRun, opencodeModelLookup, effortMap, opencodeProvider, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
@@ -42,23 +45,11 @@ export function renderOpencodeAgentsCommands(ctx) {
                 trackMirrorWrite(ctx, rel, written);
             }
         }
-        // Remove orphan agent files (bkit-prefix only, no allowlist gate needed — .opencode/agents
-        // is a dynamic mirror dir like .claude/agents and .cursor/agents). dryRun still reports
-        // would-deletes into ws.writes so `bkit check` fails on stale mirrors.
-        if (fs.existsSync(dest)) {
-            for (const f of fs.readdirSync(dest)) {
-                if (!f.endsWith(".md"))
-                    continue;
-                if (!f.startsWith(BKIT_PREFIX))
-                    continue;
-                if (!sourceSet.has(f)) {
-                    const rel = path.join(dest, f);
-                    if (!dryRun)
-                        fs.rmSync(path.join(dest, f));
-                    console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
-                    trackMirrorWrite(ctx, rel, written);
-                }
-            }
+        // dryRun still reports would-deletes into ws.writes so `bkit check` fails on stale mirrors.
+        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
+            const rel = path.join(dest, f);
+            console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+            trackMirrorWrite(ctx, rel, written);
         }
     }
     // --- Commands: tracker substitution + applyOpencodeCommand ---
@@ -78,20 +69,10 @@ export function renderOpencodeAgentsCommands(ctx) {
                 trackMirrorWrite(ctx, rel, written);
             }
         }
-        if (fs.existsSync(dest)) {
-            for (const f of fs.readdirSync(dest)) {
-                if (!f.endsWith(".md"))
-                    continue;
-                if (!f.startsWith(BKIT_PREFIX))
-                    continue;
-                if (!sourceSet.has(f)) {
-                    const rel = path.join(dest, f);
-                    if (!dryRun)
-                        fs.rmSync(path.join(dest, f));
-                    console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
-                    trackMirrorWrite(ctx, rel, written);
-                }
-            }
+        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
+            const rel = path.join(dest, f);
+            console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+            trackMirrorWrite(ctx, rel, written);
         }
     }
     return written;
@@ -118,7 +99,7 @@ export function renderOpencodeAgentsCommands(ctx) {
  * secret against the installed provider.
  */
 export function opencodeProviderEnvVar(providerKey) {
-    return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.envVar ?? "";
+    return isOpencodeProvider(providerKey) ? OPENCODE_PROVIDER_DEFAULTS[providerKey].envVar : "";
 }
 /**
  * Detect drift between the self-installed `.github/workflows/opencode.yml` reactive `/oc` handler
@@ -141,19 +122,8 @@ export function detectOpencodeYmlProviderDrift(cwd) {
     if (!fs.existsSync(ymlPath))
         return null;
     // The installed provider — package.json `bkit.opencodeProvider` is the authoritative record
-    // written on install. Absent/broken → the null-guard below skips silently.
-    let provider = null;
-    const pkgPath = path.join(cwd, "package.json");
-    if (fs.existsSync(pkgPath)) {
-        try {
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-            if (typeof pkg.bkit?.opencodeProvider === "string")
-                provider = pkg.bkit.opencodeProvider;
-        }
-        catch {
-            // Malformed package.json — leave provider null; a JSON-drift advisory covers that separately.
-        }
-    }
+    // written on install. Absent/broken/unsupported → the null-guard below skips silently.
+    const provider = readBkitConfig(cwd).opencodeProvider;
     if (!provider)
         return null;
     const expectedPrefix = opencodeProviderId(provider); // model id form is `<providerId>/<model>`
@@ -222,10 +192,10 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
     const raw = fs.readFileSync(templatePath, "utf-8");
     // Strict allowlist: provider is gated to OPENCODE_PROVIDERS at the CLI, so it is always
     // a known key here. An unknown id throws; no substitute provider.
-    const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider];
-    if (!providerDefaults) {
+    if (!isOpencodeProvider(provider)) {
         throw new Error(`renderOpencodeJson: unknown opencode provider ${JSON.stringify(provider)}`);
     }
+    const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider];
     // Resolve tracker MCP entry
     // opencode's MCP schema differs from Claude/Cursor: remote servers use type "remote"
     // (NOT "http" — not in opencode's enum, which makes the whole config invalid) and read
@@ -237,7 +207,7 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
     let mcpEntry;
     if (tracker === "github") {
         mcpEntry =
-            '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "oauth": false, "headers": { "Authorization": "Bearer {env:BKIT_GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
+            '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "oauth": false, "headers": { "Authorization": "Bearer {env:BKIT_GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects,actions" } }';
     }
     else if (tracker === "linear") {
         mcpEntry = '"linear": { "type": "remote", "url": "https://mcp.linear.app/mcp" }';
@@ -251,7 +221,10 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
     rendered = rendered.replace(OPENCODE_PROVIDER_BASE_URL_SENTINEL, providerDefaults.baseURL);
     // Parse + re-serialize to normalise JSON (removes empty mcp entry if tracker=none)
     try {
-        const parsed = JSON.parse(rendered);
+        const renderedDoc = parseJson(rendered);
+        if (!renderedDoc.ok)
+            return rendered;
+        const parsed = renderedDoc.value;
         // Clean up empty mcp object when tracker=none
         const mcp = parsed.mcp;
         if (mcp && Object.keys(mcp).length === 0) {
@@ -350,20 +323,22 @@ export function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
         ws.writes.push({ path: relDst, action: "write" });
         return;
     }
-    // Parse into a sentinel and validate AFTER the catch — keeping the throw out of the catch
-    // body (matches the codebase's parse-or-sentinel idiom; a throw inside catch obscures the
-    // original error). Malformed consumer JSON is a hard stop: refuse to merge, require a fix.
-    let existing = null;
-    try {
-        existing = JSON.parse(fs.readFileSync(relDst, "utf-8"));
-    }
-    catch {
-        existing = null;
-    }
+    // Malformed consumer JSON is a hard stop: refuse to merge, require a fix.
+    const read = readJsonFile(relDst);
+    const existing = read.ok ? read.value : null;
     if (existing === null) {
         throw new Error(`[bkit] ${relDst} is malformed JSON — fix manually before running bkit install`);
     }
     const merged = deepMergeJson(existing, template);
+    // The tracker `mcp` entry keeps the consumer's extra toolsets (`mergeTrackerEntry`), which
+    // the plain merge above would overwrite with the template's list.
+    const tmplMcp = template.mcp;
+    const existingMcp = existing.mcp;
+    if (isJsonObject(tmplMcp) && isJsonObject(existingMcp) && isJsonObject(merged.mcp)) {
+        for (const [k, v] of Object.entries(tmplMcp)) {
+            merged.mcp[k] = mergeTrackerEntry(existingMcp[k], v);
+        }
+    }
     // Replace (do not deep-merge) each provider key the template seeds — heals hijacked
     // npm/baseURL/name while keeping other provider keys additive.
     //
@@ -411,14 +386,8 @@ export function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
 export function removeOpencodeProviderBlock(dst, providerKey, dryRun, ws) {
     if (!fs.existsSync(dst))
         return;
-    // Parse-or-sentinel idiom: keep the early-return outside the catch body.
-    let existing = null;
-    try {
-        existing = JSON.parse(fs.readFileSync(dst, "utf-8"));
-    }
-    catch {
-        existing = null;
-    }
+    const read = readJsonFile(dst);
+    const existing = read.ok ? read.value : null;
     if (existing === null) {
         console.warn(`[bkit] ${dst} is malformed — leaving as-is`);
         return;
@@ -494,7 +463,7 @@ export function runOpencodeModule(ctx) {
         detect: `opencode host installed (provider: ${provider}). The opencode CLI and your provider credentials are required before running agents.`,
         action: `opencode setup for provider "${provider}":\n\n` +
             (() => {
-                const pd = OPENCODE_PROVIDER_DEFAULTS[provider];
+                const pd = isOpencodeProvider(provider) ? OPENCODE_PROVIDER_DEFAULTS[provider] : undefined;
                 if (!pd) {
                     return (`  1. Set ${provider.toUpperCase()}_API_KEY in your environment / .bkit/.env.\n` +
                         `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`);
@@ -518,7 +487,7 @@ export function runOpencodeModule(ctx) {
             `     env — {env:KEY} placeholders in opencode.json resolve empty without this. Quit the\n` +
             `     running app first (a running instance ignores the new env).\n` +
             `  4. Model IDs: all four providers (openrouter, ollama, opencode-zen, opencode-go) install ready-to-run curated per-agent pins. ` +
-            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama opus/convergent pins (kimi-k2.7-code, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. opencode-go pins (minimax-m3, qwen3.7-plus, deepseek-v4-pro/-flash) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
+            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: every ollama pin (deepseek-v4.1-flash, kimi-k3) needs a paid Ollama plan. opencode-go pins (deepseek-v4.1-flash, kimi-k3) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
             `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
     });
 }

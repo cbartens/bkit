@@ -58,10 +58,10 @@ SRC = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".sql")
 
 # graphify misses two whole classes of import: a `.js` specifier is never
 # resolved to a `.tsx` file, and workspace subpaths through an `exports` map are
-# not resolved at all. ~540 edges on this repo. bkit-graph-repair.py writes them into
-# graph.json during `pnpm graph`, so this reads them like any other edge and
-# does NOT re-derive them. A graph built without that step gets a warning, and the
-# numbers below are understated.
+# not resolved at all. bkit-graph-repair.py writes them into graph.json during
+# `pnpm graph`, so this reads them like any other edge and does NOT add them on
+# read. A graph lacking any of them gets a warning, and the numbers below are
+# understated.
 # bkit-graph-imports.py is hyphenated, which `import` cannot spell, so it is loaded
 # by path.
 import importlib.util as _ilu
@@ -760,7 +760,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         ">",
         "> **Rules:**",
         ">",
-        "> - Generated — do not edit. `pnpm graph:update && pnpm graph:rollup` rewrites this file.",
+        "> - Generated — do not edit. `pnpm graph:refresh` rewrites this file.",
         f"> - Source of truth: `{rules_path}`. Every status derived from live source, never typed.",
         "> - Add a capability = add a rule there: capability · lane · owner module · one literal marker.",
         "> - Markers literal, never regex, because `new Ratelimit(` as a regex is an unclosed group matching nothing.",

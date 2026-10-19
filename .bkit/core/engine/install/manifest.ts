@@ -125,10 +125,17 @@ const CORE_MANIFEST: ManifestEntry[] = [
   // their own attributes outside the block, so this is markered-text (not whole-file).
   { path: ".gitattributes", format: "markered-text", module: "core" },
   { path: ".bkit/version", format: "byte-equal-text", module: "core" },
+  // Curl/wget host allowlist read at runtime by every host's bkit-guardrails.cjs (Claude,
+  // Cursor, Codex, Antigravity). No template backs it — `writeNetworkAllowlist`
+  // (install/network-allowlist.ts) computes the domain set from the consumer's own config,
+  // so it is `generated` and its hash is in `canonicalHashes`. Core-owned: it stays until
+  // the last host goes (full/core uninstall).
+  { path: ".bkit/allowlist.json", format: "byte-equal-text", module: "core", generated: true },
   // Canonical bkit-authored reference docs. They live package-side under
   // `.bkit/core/.bkit/` and are read from there at runtime (getBkitDocsRoot); these
   // consumer copies are force-overwritten mirrors (writeTier1) so a consumer can read
-  // them in-repo. Whole file is bkit-owned → byte-equal-text (refreshed every install).
+  // them in-repo. Whole file is bkit-owned → byte-equal-text (refreshed every install);
+  // prompts.md and lite.md are markered-text, keeping the consumer section below `bkit:end`.
   { path: ".bkit/cloud.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/comparison.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/install.md", format: "byte-equal-text", module: "core" },
@@ -136,6 +143,8 @@ const CORE_MANIFEST: ManifestEntry[] = [
   // The MIT notice that travels with the files bkit writes: the full text and copyright
   // notice. Sourced from `.bkit/core/.bkit/LICENSE.md`.
   { path: ".bkit/LICENSE.md", format: "byte-equal-text", module: "core" },
+  { path: ".bkit/lite.md", format: "markered-text", module: "core" },
+  { path: ".bkit/pipeline.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/prompts.md", format: "markered-text", module: "core" },
   { path: ".bkit/templates.md", format: "byte-equal-text", module: "core" },
@@ -209,7 +218,8 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
 // `gate-missing-called-scripts` advisory names any that are missing.
 //
 // The SAME names are what the git hook templates run (`.husky/pre-commit`,
-// `.husky/pre-push`). `bkit-ci.yml` does NOT call the gates; it calls the scripts directly.
+// `.husky/pre-push`). `bkit-ci.yml` does NOT call the gates; it calls the same scripts
+// directly, one step each.
 //
 // `lint:slop` is in no gate: `slop-scan scan` is report-only and never fails. The gate
 // that fails on new findings is `slop:delta`.
@@ -223,7 +233,8 @@ export const BKIT_GATE_SCRIPTS: Readonly<Record<string, string>> = {
   // `.husky/pre-commit`: prettier --write over staged files, and nothing else —
   // seconds, not minutes. Prose is a whole-repo scan, so it gates at pre-push.
   "bkit:gate:format": "pnpm lint-staged",
-  // Everything that needs no test runner. Mirrors the bkit-tests-static CI job.
+  // Everything that needs no test runner. Every part has a matching step in the
+  // bkit-tests-static CI job; audits/templates/template-ci-yml.test.ts fails when one is missing.
   // Callers: build's plan-execute loop between tasks, and the `.husky/pre-push` revert
   // path.
   "bkit:gate:static":
@@ -339,10 +350,6 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
     format: "markered-text",
     module: "cursor",
   },
-  // Curl/wget host allowlist read at runtime by bkit-guardrails.cjs. No template backs it —
-  // `writeNetworkAllowlistArtifact` (install/cloud-env.ts) computes the domain set from the
-  // consumer's own config, so it is `generated` and its hash is in `canonicalHashes`.
-  { path: ".cursor/allowlist.json", format: "byte-equal-text", module: "cursor", generated: true },
   // Cursor CLI / cloud-agent MCP allows — `writeCursorCliPermissionsArtifact`
   // (install/cloud-env.ts) renders it from the consumer's `mcp-servers` block; same contract.
   { path: ".cursor/cli.json", format: "byte-equal-text", module: "cursor", generated: true },
