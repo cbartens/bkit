@@ -14,6 +14,20 @@ import { getBkitDocsRoot } from "../../shared/package-roots";
 const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml");
 const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/.prettierignore");
 const CONSUMER_RENOVATE_TEMPLATE = path.resolve(".bkit/templates/.github/renovate.json5");
+const OXLINT_TEMPLATE = path.resolve(".bkit/templates/.oxlintrc.json");
+
+type OxlintRuleValue = string | [string, unknown];
+
+/** Severity of every rule the Oxlint template turns on, by rule name. */
+function oxlintTemplateSeverities(): Record<string, string> {
+  const config = JSON.parse(fs.readFileSync(OXLINT_TEMPLATE, "utf-8")) as {
+    overrides: Array<{ rules: Record<string, OxlintRuleValue> }>;
+  };
+  const rules = config.overrides.flatMap((o) => Object.entries(o.rules));
+  return Object.fromEntries(
+    rules.map(([name, value]) => [name, Array.isArray(value) ? value[0] : value]),
+  );
+}
 
 /** True for a line that writes NODE_OPTIONS into $GITHUB_ENV. */
 function writesNodeOptionsToGithubEnv(line: string): boolean {
@@ -668,9 +682,18 @@ describe(".bkit/templates.md gate tool scripts (consumers copy and run them)", (
     expect(scripts["slop:delta"]).toBe("bkit ci slop");
   });
 
-  it("lists a stack-agnostic lint value: eslint when configured, a skip line otherwise", () => {
-    expect(scripts["lint"]).toContain("npx eslint .");
-    expect(scripts["lint"]).toContain("skipping lint");
+  it("lists a lint value that runs Oxlint type-aware with the shipped config and fails on any hit", () => {
+    expect(scripts["lint"]).toBe("oxlint -c .oxlintrc.json --type-aware --deny-warnings");
+  });
+
+  it("ships the .oxlintrc.json the lint value names, with its five test rules at error", () => {
+    expect(oxlintTemplateSeverities()).toEqual({
+      "vitest/expect-expect": "error",
+      "vitest/no-conditional-in-test": "error",
+      "vitest/no-conditional-expect": "error",
+      "vitest/valid-expect": "error",
+      "typescript/no-floating-promises": "error",
+    });
   });
 
   it("lists every script the default gates chain, except test and build", () => {

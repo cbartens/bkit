@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { readInstallingVersion, readPackageJson } from "./package-json";
+import { readDependencyNames, readInstallingVersion, readPackageJson } from "./package-json";
 import { getPkgRoot } from "./package-roots";
 
 const dirs: string[] = [];
@@ -34,6 +34,28 @@ describe("readPackageJson", () => {
     ["JSON null", "null", "unparseable"],
   ])("%s -> %s", (_, body, reason) => {
     expect(readPackageJson(dir(body))).toEqual({ ok: false, reason });
+  });
+});
+
+describe("readDependencyNames", () => {
+  it("lists the names across all four dependency fields", () => {
+    const body = JSON.stringify({
+      dependencies: { a: "1" },
+      devDependencies: { b: "1" },
+      optionalDependencies: { c: "1" },
+      peerDependencies: { d: "1" },
+      scripts: { e: "x" },
+    });
+    expect(readDependencyNames(dir(body))).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it.each([
+    ["no file", undefined],
+    ["not JSON", "{oops"],
+    ["no dependency fields", '{"name":"x"}'],
+    ["a dependency field that is not an object", '{"dependencies":"a"}'],
+  ])("%s -> no names", (_, body) => {
+    expect(readDependencyNames(dir(body))).toEqual([]);
   });
 });
 

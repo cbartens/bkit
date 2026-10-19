@@ -25,6 +25,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Git hooks (Husky) | Same checks locally on commit and push, in seconds. | Failures surface minutes later in CI, after the agent moved on. |
 | Prettier ignore list | One formatting baseline; stops Prettier reformatting bkit's managed files. | Reviews fill with spacing noise; every bkit upgrade shows false changes. |
 | slop-scan | Flags net-new junk code AI tends to write (filler, dead code, type escapes). | Junk passes skim review and piles up. |
+| Oxlint | Fails lint on a test that cannot fail: no assertion, a branch inside a test, an assertion that may never run, a malformed `expect`, an unawaited promise. JS / TS repos. | A test that asserts nothing passes; the suite stays green having proved nothing. |
 | Vale | Prose lint for docs and agent instructions. | Padded, vague docs every agent re-reads on every run. |
 | lint-staged | Formats only the staged files inside the commit hook. | Commit hook does nothing, or is slow enough to get skipped. |
 | Cloud-agent workflow + SessionStart hook | CI result starts a cloud agent: ship on green, debug on red; hook installs the cloud toolchain. | Every next step needs a local session. |
@@ -52,6 +53,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | lint-staged | `.bkit/templates/.lintstagedrc.json` | `.lintstagedrc.json` | that file |
 | Vale | `.bkit/templates/.vale.ini`, `.bkit/templates/.vale/styles/House/` | `.vale.ini`, `.vale/styles/House/` | `.vale.ini` + the four House styles |
 | slop-scan | `.bkit/templates/slop-scan.config.json`, `.bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs` | `slop-scan.config.json`, `scripts/slop/bkit-slop-type-suppression.mjs` | both files |
+| Oxlint | `.bkit/templates/.oxlintrc.json` | `.oxlintrc.json` | that file |
 | direnv | `.bkit/templates/.envrc` | `.envrc` | that file |
 | Launchd GUI env | `.bkit/templates/scripts/launchd/` | `scripts/launchd/bkit-launchd-env.sh`, `~/Library/LaunchAgents/ai.bkit.launchd.plist`, `~/.config/bkit/launchd.env` | `scripts/launchd/bkit-launchd-env.sh` only |
 | Cursor editor + cloud agent | `.bkit/templates/.cursor/settings.json`, `environment.json`, `Dockerfile` | same paths under `.cursor/` | the files you use |
@@ -81,7 +83,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
 - **What changed on upgrade.** `bkit upgrade` lists changed / added / removed template paths. For each one you adopted: `diff .bkit/templates/<path> <path>`, merge what you want (placeholder lines differ by design). `git diff .bkit/templates` in the upgrade commit = the package change.
-- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) → ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini` and `slop-scan.config.json` templates already do; check your adopted copy does too.
+- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) → ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini`, `slop-scan.config.json` and `.oxlintrc.json` templates already do; check your adopted copy does too.
 - Templates are written in Node unless the tool they wrap already needs another runtime (graphify and Serena: Python + shell launchers; git hooks: POSIX `sh`).
 - `bkit.depUpdater: "none"` → skips install-time absence advisory for updaters.
 - No manifest key for any template. `docs/templates/bkit-audit-adoption.md` lists every template each run: adopted and wired, or not adopted and why.
@@ -152,7 +154,7 @@ bkit seeds only the `bkit:gate:*` / `bkit:deps:*` names (add-if-missing). The to
 ```json
 {
   "typecheck": "tsc --noEmit",
-  "lint": "bash -c 'if [ -f eslint.config.js ] || [ -f eslint.config.mjs ] || [ -f .eslintrc.json ]; then npx eslint .; else echo \"[bkit] no eslint config - skipping lint (bkit typechecks with tsc and scans with slop-scan)\"; fi'",
+  "lint": "oxlint -c .oxlintrc.json --type-aware --deny-warnings",
   "format:check": "prettier --check .",
   "lint:prose": "bkit ci prose",
   "lint:slop": "slop-scan scan .",
@@ -165,7 +167,7 @@ bkit seeds only the `bkit:gate:*` / `bkit:deps:*` names (add-if-missing). The to
 pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 ```
 
-- `lint` must exist: with no `lint` script, `pnpm lint` falls through to any `lint` binary on `PATH` and the gate goes green through the wrong program. No eslint config → the value above prints a skip line.
+- `lint` must exist: with no `lint` script, `pnpm lint` falls through to any `lint` binary on `PATH` and the gate goes green through the wrong program. The value above runs the Oxlint test rules (§ Oxlint) and fails on any hit; it needs `oxlint` + `oxlint-tsgolint` installed and fails loudly without them. A repo with its own linter chains both: `<your linter> && oxlint -c .oxlintrc.json --type-aware --deny-warnings`.
 - No `tsconfig.json` → `"typecheck": "echo \"[bkit] typecheck: no tsconfig.json — skipping\" >&2"`.
 - `slop:delta` runs `bkit ci slop` (bkit devDep on `PATH` through the package script). CI passes the base sha as its one bare argument.
 - `lint:prose` runs `bkit ci prose`: Vale over every `*.md` outside `node_modules/`. Narrow it with repeatable `--glob=<pattern>` (`*`, `**`, `?`, relative to the repo root), e.g. `bkit ci prose --glob='docs/*.md' --glob='.agents/*.md'`.
@@ -254,6 +256,36 @@ cp .bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs scripts/slop/
 - The plugin is a template: copy `scripts/slop/bkit-slop-type-suppression.mjs` and point the config's `plugins` entry at it (`boundary/type-suppression`, `boundary/gate-suppression`). No plugin → drop the `plugins` entry and both `boundary/*` rules.
 - Adapt: `ignores` for generated / vendored trees; per-file `overrides` with a reason, never a rule disabled repo-wide.
 - Traps: keep `**/.bkit/templates/**` in `ignores`, or copied `.mjs` / `.py` count as net-new slop on the upgrade commit. Nothing imports the copied plugin — a reachability scanner (knip, ts-prune, vulture) reads it as dead: register it as an entry point, and where `scripts/` is its own scanner workspace, register there, not the root workspace.
+
+## Oxlint — test-file lint, `.oxlintrc.json`
+
+Fails `lint` on a test that cannot fail. Oxlint (a fast linter) runs five rules on test files only; every other check stays off. For JS / TS repos with Vitest or Jest. Reference: https://oxc.rs/docs/guide/usage/linter.html.
+
+```bash
+pnpm add -D oxlint@^1.87.0 oxlint-tsgolint@^7.0.2004
+cp .bkit/templates/.oxlintrc.json .oxlintrc.json
+```
+
+Set `lint` to the value in § Gate tool scripts.
+
+<!-- prettier-ignore -->
+| Rule | Fails on |
+| --- | --- |
+| `vitest/expect-expect` | A test with no assertion. |
+| `vitest/no-conditional-in-test` | `if`, `?:`, `&&`, `??` or `||` inside a test: the branch under test may never run. |
+| `vitest/no-conditional-expect` | An `expect` inside a branch or `catch`: it may never run. |
+| `vitest/valid-expect` (`maxArgs: 2`) | `expect(x)` with no matcher; more than a value and a message. |
+| `typescript/no-floating-promises` | A promise nobody awaits: the test ends before its assertion runs. |
+
+- Scope: `**/*.{test,spec}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`; source files are not linted. The `vitest/` rules read Jest-style `describe` / `it` / `expect` too.
+- `ignorePatterns` skips `.bkit/templates/` and `scripts/ci/**/*.test.mjs`: the CI script tests run on plain Node with their own `test()` helper, which the rules misread.
+- Keep `--type-aware`: without it `typescript/no-floating-promises` never runs and the gate stays green. `oxlint-tsgolint` (peer of `oxlint`) carries its own TypeScript engine, so it needs no `typescript` dependency. `oxlint` 1.87.0 with `oxlint-tsgolint` 7.0.2004 is the tested pair.
+- No path argument lints the working directory. Narrow it (`oxlint … src`); add `--tsconfig <file>` when tests sit outside the root `tsconfig.json`.
+- Adapt: `files` glob; `assertFunctionNames` on `expect-expect` (default `expect`) when your own helper asserts, e.g. `["expect", "expectHttpError"]`. Turn a rule off per file in `overrides`, never repo-wide.
+- An existing suite lights up many hits. Fix each in its test: one `it` per case (`it.each` for tables), `await expect(…).rejects` in place of `try` / `catch`, `await` on every promise. No baseline file, no disable comment, no `.skip`.
+- Why not ESLint: typescript-eslint's type-aware rules need TypeScript `<6.1`.
+- Non-JS repo → keep its own linter and its test-lint rules (e.g. `flake8-pytest-style`); `lint` stays yours.
+- `bkit tips` suggests it (tip `test-lint`) when `package.json` lists `vitest` or `jest` and the repo has no Oxlint config, no `oxlint` dependency and no ESLint config naming a test plugin.
 
 ## direnv — `.envrc`
 

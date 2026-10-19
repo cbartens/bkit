@@ -245,10 +245,10 @@ function runCoreTemplates(
 // mirrored into the consumer's `.bkit/` on every install so a consumer can read them
 // in-repo without spelunking node_modules. Force-overwritten (Tier 1) — bkit owns
 // them, so a consumer edit is replaced. Source of truth is the package's own
-// `.bkit/core/.bkit/<name>`. (`advisories.md` is a regenerated runtime artifact,
-// `wording.md` is repo-only tooling and `friction.md` is a consumer-owned seed —
-// none belongs here. `LICENSE.md` is the MIT notice that travels with the files bkit
-// writes: MIT requires the copyright and permission notice in every copy.)
+// `.bkit/core/.bkit/<name>`. (`advisories.md` is a regenerated runtime artifact and
+// `wording.md` is repo-only tooling — neither belongs here. `LICENSE.md` is the MIT
+// notice that travels with the files bkit writes: MIT requires the copyright and
+// permission notice in every copy.)
 export const BKIT_CANONICAL_DOCS = [
   "cloud.md",
   "comparison.md",

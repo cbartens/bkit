@@ -40,8 +40,10 @@ import {
   claudeSettingsHas,
   codexTopLevelHas,
   exists,
+  hasJsTestRunner,
   hasLintStagedConfig,
   hasMcpServer,
+  hasTestLinter,
   unlockedMcpServers,
 } from "./detect.js";
 
@@ -191,6 +193,16 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     ask: 'Run `pnpm add -D slop-scan`, copy .bkit/templates/slop-scan.config.json to slop-scan.config.json and .bkit/templates/scripts/slop/ to scripts/slop/, and add `"lint:slop": "slop-scan scan ."` and `"slop:delta": "bkit ci slop"` to the package.json scripts.',
     steps: "`.bkit/templates.md` § slop-scan.",
     fires: (cwd) => !exists(cwd, "slop-scan.config.json"),
+  },
+  {
+    id: "test-lint",
+    workflows: ["build"],
+    title: "Catch tests that can't fail",
+    line: "Nothing checks your test files, so a test that asserts nothing, or asserts only inside an if, still passes and the suite stays green having proved nothing. Add Oxlint with bkit's test rules.",
+    why: "Oxlint (a fast code linter) fails the check on a test with no assertion, a branch inside a test, an assertion that may never run, a malformed assertion, or a promise nobody waits for. Without it those tests pass whatever the code does.",
+    ask: "Run `pnpm add -D oxlint oxlint-tsgolint`, copy .bkit/templates/.oxlintrc.json to .oxlintrc.json, and set the `lint` script in package.json to run `oxlint -c .oxlintrc.json --type-aware --deny-warnings` (add `&&` and the current lint command if the script already has one). Then fix every hit in the tests themselves.",
+    steps: "`.bkit/templates.md` § Oxlint.",
+    fires: (cwd) => hasJsTestRunner(cwd) && !hasTestLinter(cwd),
   },
   {
     id: "vale",

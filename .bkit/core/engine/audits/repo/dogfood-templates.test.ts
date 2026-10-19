@@ -290,6 +290,23 @@ const ADOPTED: Record<string, Entry> = {
     ],
   },
   ".lintstagedrc.json": identical,
+  ".oxlintrc.json": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "bkit-only",
+        what: "every test file here is *.test.ts",
+        fill: '"files": ["**/*.{test,spec}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"]',
+        with: '"files": ["**/*.test.ts"]',
+      },
+      {
+        kind: "bkit-only",
+        what: "expectExit is bkit's assertion helper for CLI exit codes",
+        fill: '"vitest/expect-expect": "error"',
+        with: '"vitest/expect-expect": ["error", { "assertFunctionNames": ["expect", "expectExit"] }]',
+      },
+    ],
+  },
   "scripts/ci/lanes/resolve-push-base.mjs": identical,
   "scripts/ci/lanes/resolve-push-base.test.mjs": identical,
   "scripts/ci/check-accepted-divergences.mjs": {

@@ -298,7 +298,7 @@ export function updateCanonicalHashesAfterUpgrade(result, options) {
     const seedablePaths = new Set([...result.updated, ...result.skippedSeedable]);
     const fresh = {};
     for (const relPath of seedablePaths) {
-        // Exclude .agents/ internal files (docs.md, friction.md, rules.md,
+        // Exclude .agents/ internal files (docs.md, rules.md,
         // skills.md, .env.example etc.) from canonicalHashes — they are not consumer-facing files
         // whose hashes bkit uses for drift detection. Mirrors the same filter applied
         // in the install path (install/modules/index.ts postDispatch). Template copies carry no

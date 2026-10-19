@@ -12,6 +12,26 @@ import { STAR_TIP_ID, orderForWorkflow } from "./index";
 
 const tip = (id: string): SetupTip => SETUP_TIPS.find((t) => t.id === id)!;
 
+/** The advisory ids a tip reuses; none when it reuses none. */
+const advisoriesOf = (t: SetupTip): readonly string[] => t.advisories ?? [];
+
+/** The contexts a tip names; none when it names none. */
+const workflowsOf = (t: SetupTip): readonly string[] => t.workflows ?? [];
+
+/** Tips that matter in only some contexts: the comms tips, which name every context, are left out. */
+const ownTips = (tips: readonly SetupTip[]): SetupTip[] =>
+  tips.filter((t) => workflowsOf(t).length < EVERY_CONTEXT.length);
+
+/** Own tips that name `ctx`, in catalogue order. */
+const ownTipsFor = (ctx: string): SetupTip[] =>
+  ownTips(SETUP_TIPS).filter((t) => workflowsOf(t).includes(ctx));
+
+/** True when `pattern` names an advisory id in `ids`: exactly, or as a prefix when it ends in `*`. */
+const matchesAdvisoryId = (pattern: string, ids: readonly string[]): boolean =>
+  pattern.endsWith("*")
+    ? ids.some((id) => id.startsWith(pattern.slice(0, -1)))
+    : ids.includes(pattern);
+
 /** Every `id: "<literal>"` / `` id: `<prefix>${…}` `` an advisory detector emits. */
 function advisoryIdsInSource(): string[] {
   const root = path.join(getCoreRoot(), "engine");
@@ -59,13 +79,10 @@ describe("SETUP_TIPS — catalogue", () => {
 
   it("comms tips matter in every context, and every context has its own tips", () => {
     for (const id of ["tracker", "gh-mcp", "bkit-env", "direnv"]) {
-      expect([...(tip(id).workflows ?? [])], id).toEqual([...EVERY_CONTEXT]);
+      expect([...workflowsOf(tip(id))], id).toEqual([...EVERY_CONTEXT]);
     }
     for (const ctx of EVERY_CONTEXT) {
-      const own = SETUP_TIPS.filter(
-        (t) => t.workflows?.includes(ctx) && t.workflows.length < EVERY_CONTEXT.length,
-      );
-      expect(own.length, ctx).toBeGreaterThan(0);
+      expect(ownTipsFor(ctx).length, ctx).toBeGreaterThan(0);
     }
   });
 
@@ -78,16 +95,12 @@ describe("SETUP_TIPS — catalogue", () => {
     ["audit", "serena"],
     ["utility", "serena"],
   ] as const)("%s leads with %s once the comms tips are done", (wf, first) => {
-    const own = orderForWorkflow(SETUP_TIPS, wf).filter(
-      (t) => (t.workflows?.length ?? 0) < EVERY_CONTEXT.length,
-    );
+    const own = ownTips(orderForWorkflow(SETUP_TIPS, wf));
     expect(own[0]?.id).toBe(first);
   });
 
   it("audit tips are the code-reading, CI and dependency-safety ones", () => {
-    const audit = SETUP_TIPS.filter(
-      (t) => t.workflows?.includes("audit") && t.workflows.length < EVERY_CONTEXT.length,
-    ).map((t) => t.id);
+    const audit = ownTipsFor("audit").map((t) => t.id);
     expect(audit).toEqual(["serena", "ci-workflow", "graphify", "dependabot-renovate", "trivy"]);
   });
 
@@ -110,12 +123,8 @@ describe("SETUP_TIPS — catalogue", () => {
   it("every reused advisory id is one a detector emits", () => {
     const advisoryIds = advisoryIdsInSource();
     for (const t of SETUP_TIPS) {
-      for (const pattern of t.advisories ?? []) {
-        const prefix = pattern.endsWith("*") ? pattern.slice(0, -1) : null;
-        const found = prefix
-          ? advisoryIds.some((id) => id.startsWith(prefix))
-          : advisoryIds.includes(pattern);
-        expect(found, `${t.id} → ${pattern}`).toBe(true);
+      for (const pattern of advisoriesOf(t)) {
+        expect(matchesAdvisoryId(pattern, advisoryIds), `${t.id} → ${pattern}`).toBe(true);
       }
     }
   });
@@ -223,6 +232,49 @@ describe("SETUP_TIPS — detection", () => {
       "steps:\n  - uses: docker://ghcr.io/aquasecurity/trivy:0.75.0\n",
     );
     expect(tip("trivy").fires(cwd)).toBe(false);
+  });
+
+  it("test-lint stays quiet until the repo lists a JS test runner", () => {
+    expect(tip("test-lint").fires(cwd)).toBe(false);
+    write("package.json", JSON.stringify({ devDependencies: { prettier: "^3.0.0" } }));
+    expect(tip("test-lint").fires(cwd)).toBe(false);
+  });
+
+  it.each([
+    ["vitest", "devDependencies"],
+    ["jest", "dependencies"],
+  ])("test-lint fires for %s in %s with no test linter", (runner, field) => {
+    write("package.json", JSON.stringify({ [field]: { [runner]: "^1.0.0" } }));
+    expect(tip("test-lint").fires(cwd)).toBe(true);
+  });
+
+  it.each([
+    [".oxlintrc.json", "{}"],
+    ["oxlint.config.ts", "export default {};\n"],
+    ["eslint.config.js", 'import vitest from "@vitest/eslint-plugin";\nexport default [];\n'],
+    [".eslintrc.json", '{ "extends": ["plugin:jest/recommended"] }'],
+  ])("test-lint goes quiet once %s lints tests", (file, content) => {
+    write("package.json", JSON.stringify({ devDependencies: { vitest: "^4.0.0" } }));
+    expect(tip("test-lint").fires(cwd)).toBe(true);
+    write(file, content);
+    expect(tip("test-lint").fires(cwd)).toBe(false);
+  });
+
+  it("test-lint goes quiet when oxlint is a dependency", () => {
+    write(
+      "package.json",
+      JSON.stringify({ devDependencies: { vitest: "^4.0.0", oxlint: "^1.0.0" } }),
+    );
+    expect(tip("test-lint").fires(cwd)).toBe(false);
+  });
+
+  it("test-lint still fires when the ESLint config names no test plugin", () => {
+    write("package.json", JSON.stringify({ devDependencies: { vitest: "^4.0.0" } }));
+    write(
+      "eslint.config.js",
+      'import js from "@eslint/js";\nexport default [js.configs.recommended];\n',
+    );
+    expect(tip("test-lint").fires(cwd)).toBe(true);
   });
 
   it("cloud fires only once cloud agents are chosen", () => {

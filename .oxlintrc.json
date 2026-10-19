@@ -4,6 +4,7 @@
   "categories": {
     "correctness": "off"
   },
+  "ignorePatterns": [".bkit/templates/**", "scripts/ci/**/*.test.mjs"],
   "overrides": [
     {
       "files": ["**/*.test.ts"],

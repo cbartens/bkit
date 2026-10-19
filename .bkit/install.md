@@ -298,6 +298,8 @@ Use one. `bkit.depUpdater: "none"` skips the install-time absence advisory. Setu
 
 **Security scan.** Updater only offers fixes once a fixed release exists. To fail CI on known-vulnerable packages, risky config or committed secrets, copy `.bkit/templates/.github/workflows/bkit-trivy.yml` and own it. No advisory; `bkit tips` suggests it. Setup: `.bkit/templates.md` § Trivy.
 
+**Test lint.** JS / TS repos: to fail `lint` on a test that cannot fail (no assertion, a branch inside a test, an unawaited promise), copy `.bkit/templates/.oxlintrc.json` and own it, add `oxlint` + `oxlint-tsgolint`, set `lint` to `oxlint -c .oxlintrc.json --type-aware --deny-warnings`. No advisory; `bkit tips` suggests it. Setup: `.bkit/templates.md` § Oxlint.
+
 **All templates.** Copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
 
 **Why opt-in, not part of a default install:**
@@ -331,7 +333,7 @@ bkit tips --all              # every firing tip
 <!-- prettier-ignore -->
 | Rule | Behaviour |
 | --- | --- |
-| Order | One fixed priority list. `--workflow=<name>` moves the tips that matter in that workflow to the front: tracker, GitHub token, `.bkit/.env` and direnv matter in every workflow, so they lead until fixed; then e.g. context-fetch for debug, Husky / slop-scan for build, CI workflow / cloud for ship, Serena / CI workflow / graphify / updater / Trivy for `audit`, Serena for `utility`. |
+| Order | One fixed priority list. `--workflow=<name>` moves the tips that matter in that workflow to the front: tracker, GitHub token, `.bkit/.env` and direnv matter in every workflow, so they lead until fixed; then e.g. context-fetch for debug, Husky / slop-scan / Oxlint for build, CI workflow / cloud for ship, Serena / CI workflow / graphify / updater / Trivy for `audit`, Serena for `utility`. |
 | Detection | Local only — files, settings, environment; no network. A tip clears once its local half exists; dashboard steps live in the tip text. |
 | Reuse | A tip for a gap an advisory already detects calls that advisory's detector — tip and advisory never disagree. |
 | Artifact | `bkit install` / `check` / `upgrade` / `doctor` list every firing tip, with its id, in `.bkit/advisories.md` § Setup tips and the console banner: line, why, caution, ask-your-agent sentence, agent steps. |

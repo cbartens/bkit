@@ -31,6 +31,25 @@ export function readPackageJson(dir: string): PackageJsonRead {
   return { ok: true, pkg: parsed.value as Record<string, unknown> };
 }
 
+/** Every dependency name across the four `package.json` dependency fields; `[]` when unreadable. */
+export function readDependencyNames(cwd: string): string[] {
+  const read = readPackageJson(cwd);
+  if (!read.ok) return [];
+  const names: string[] = [];
+  for (const field of [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+  ]) {
+    const deps = read.pkg[field];
+    if (deps && typeof deps === "object") {
+      names.push(...Object.keys(deps as Record<string, unknown>));
+    }
+  }
+  return names;
+}
+
 /**
  * The version of the bkit package doing the install, read from that package's own
  * `package.json` (`root` defaults to the package root; never the consumer's file).

@@ -84,6 +84,7 @@ describe("the templates root is the copy-and-own set", () => {
       ".vale.ini",
       ".vale/styles/House/LLMSlop.yml",
       ".prettierignore",
+      ".oxlintrc.json",
       ".envrc",
       ".cursor/Dockerfile",
       ".claude/hooks/bkit-cloud-bootstrap.sh",
