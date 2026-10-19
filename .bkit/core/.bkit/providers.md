@@ -497,10 +497,10 @@ Installed provider catalog changes. Look up model IDs before pinning in `.openco
 | Claude (Anthropic) | `curl https://api.anthropic.com/v1/models -H "x-api-key: $BKIT_ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01"` | Canonical `Claude` column source. No key in-shell → cross-check via the OpenRouter `anthropic/*` mirror. |
 | Cursor | `curl https://api.cursor.com/v0/models -u "$BKIT_CURSOR_API_KEY:"` | `Cursor` column source. Catalog churns. Probed 2026-10-06: `cursor-grok-4.5-high`, `composer-2.5`, `claude-opus-5-thinking-high`, `claude-sonnet-5-thinking-high`/`-xhigh`, `gpt-5.6-*`, Fable 5. No Grok 4.7. No Opus 5.5 / Sonnet 5.5. |
 | OpenRouter | `curl https://openrouter.ai/api/v1/models` | **Public — no key.** Aggregator; `vendor/model` slugs (`:free` variants exist). Filter for tool-calling + coding models before pinning. |
-| Ollama | `curl https://ollama.com/v1/models -H "Authorization: Bearer $BKIT_OLLAMA_API_KEY"` | Hosted Ollama; cloud-tagged models (e.g. `qwen3.5:397b`, `kimi-k2.7-code`). |
+| Ollama | `curl https://ollama.com/v1/models -H "Authorization: Bearer $BKIT_OLLAMA_API_KEY"` | Hosted Ollama; cloud-tagged models (e.g. `qwen3.5:397b`, `kimi-k3`). |
 | OpenCode Zen / Go (opencode-native gateways) | `curl https://models.dev/api.json` — read providers `.opencode` (Zen) and `.["opencode-go"]` (Go) `.models` | **models.dev is the source of truth — not `/zen/v1/models`.** The REST catalog `curl https://opencode.ai/zen/v1/models` returns only the Zen catalog and cannot see Go-only models (`minimax-m3`, `qwen3.7-plus`/`qwen3.7-max`, …), so it must not be used to curate the Go column. Two DISTINCT providers: `opencode` (name "OpenCode Zen", api `https://opencode.ai/zen/v1`) and `opencode-go` (name "OpenCode Go", api `https://opencode.ai/zen/**go**/v1` — nested under `/zen/`). Both auth via `BKIT_OPENCODE_API_KEY`. Tool-call smoke: `POST <api>/chat/completions` with a `tools:` payload (bare model id, e.g. `minimax-m3`). |
 
-**Model ID format:** opencode provider-prefixed frontmatter: `<provider>/<model-id>` (e.g. `openrouter/moonshotai/kimi-k3`, `ollama/kimi-k2.7-code`). Pins = `prompts.md` § Models — **one column per provider** (`OpenRouter`, `Ollama`, `OpenCode Zen`, `OpenCode Go`). Gateways: `opencode/<id>` Zen, `opencode-go/<id>` Go. CLI keys `opencode-zen` / `opencode-go`.
+**Model ID format:** opencode provider-prefixed frontmatter: `<provider>/<model-id>` (e.g. `openrouter/moonshotai/kimi-k3`, `ollama/deepseek-v4.1-flash`). Pins = `prompts.md` § Models — **one column per provider** (`OpenRouter`, `Ollama`, `OpenCode Zen`, `OpenCode Go`). Gateways: `opencode/<id>` Zen, `opencode-go/<id>` Go. CLI keys `opencode-zen` / `opencode-go`.
 
 **Lookup mechanic (install pin resolution).** `bkit install --opencode=<provider>` → `buildOpencodeModelLookup(promptsMdPath, provider)` (`.bkit/core/engine/render/models.ts`):
 
@@ -570,13 +570,13 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 <!-- prettier-ignore -->
 | Model | Score | $/task | Role in bkit |
 | --- | --- | --- | --- |
-| `deepseek-v4.1-flash` | **77.3** | $0.06 | `openrouter` opus+sonnet — 16+ endpoints, auto cache; clears 65.2. Haiku on `ollama` + `opencode-go` |
+| `deepseek-v4.1-flash` | **77.3** | $0.06 | every opencode column's opus+sonnet — 16+ OpenRouter endpoints, auto cache; clears 65.2. Haiku on `ollama` + `opencode-go` |
 | `claude-opus-5-5` (max) | 71.7 | $4.48 | Claude opus pin at `max` |
 | `claude-opus-5-5` (xhigh) | 65.4 | $1.40 | Claude opus pin at `xhigh` — level with the opus target at about a quarter of the cost |
 | `claude-opus-5` (max) | **65.2** | $5.34 | **opus target** |
 | `deepseek-v4-flash-vision-exp` | 65.1 | $0.11 | **not pinned** — experimental; its own datasheet claims text parity with `deepseek-v4-flash-0731`, which measures 46.8. Score not trusted |
 | `qwen3.8-max` | 64.6 | $1.75 | **not pinned** — single endpoint (Alibaba) and **no caching available**: Alibaba requires explicit breakpoints and this slug is absent from its supported list |
-| `kimi-k3` | 62.2 | $1.76 | `openrouter` convergent — 17 endpoints, auto cache (reads 0.10x, writes free) |
+| `kimi-k3` | 62.2 | $1.76 | `openrouter` + `ollama` convergent — 17 OpenRouter endpoints, auto cache (reads 0.10x, writes free) |
 | `claude-fable-5` (max) | 62.2 | $8.86 | not adopted — below Opus 5 at 1.7x the cost |
 | `qwen3.8-27b` | 61.4 | $1.52 | **not pinned** — 3.57M input tokens/task; `$0.95` on LiveBench's assumed price, `$1.52` at OpenRouter's |
 | `glm-5.3` | 60.9 | $1.60 | **not pinned** — 27 endpoints, auto cache; dominated by V4.1 Flash |
@@ -591,9 +591,9 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 | `claude-haiku-5-5` (xhigh) | **51.4** | $0.07 | **haiku target** — closest measured rung to bkit's `high` (CursorBench: `high` 42.3%, `xhigh` 44.3%) |
 | `gpt-6-luna` | 51.2 | $0.03 | `OpenAI` (Codex) haiku — existence via models.dev only |
 | `claude-opus-4-8` (max) | 50.5 | $4.96 | superseded — shows the 4.8 → 5 generational jump (+14.7) |
-| `kimi-k2.7-code` | 45.7 | $0.39 | `ollama`-cloud opus+sonnet (Zen re-pinned to V4.1 Flash — no model variants, so a `variant:` pin hard-errors on 2.0) |
+| `kimi-k2.7-code` | 45.7 | $0.39 | **not pinned** — dominated by `deepseek-v4.1-flash` (77.3 · $0.06) on every column that carries both |
 | `qwen3.7-max` | 43.6 | $0.80 | not pinned (anchor for the unmeasured `qwen3.7-plus`) |
-| `deepseek-v4-pro` | 42.6 | $0.14 | convergent on `ollama` / both gateways; `opencode-go` opus+sonnet. Gone from Ollama's advertised catalog (2026-10-09) but still resolves — re-pin the `ollama` convergent cell before it stops. **Frozen on the 0423 snapshot** — the undated slug does not float |
+| `deepseek-v4-pro` | 42.6 | $0.14 | convergent on both gateways. **Frozen on the 0423 snapshot** — the undated slug does not float |
 | `qwen3.6-plus` | 41.4 | $1.55 | **not pinned** — strictly dominated by `kimi-k2.7-code` (lower score, 4x cost) |
 | `minimax-m3` | 40.7 | $0.42 | **not pinned** — `deepseek-v4-pro` scores higher at a third the cost |
 | `claude-sonnet-5-5` (xhigh) | 39.3 | $0.50 | **not read as a target** — Anthropic recalibrated effort on 5.5, and this run wrote about half Sonnet 5's output tokens before stopping. CursorBench, Artificial Analysis and Anthropic all put 5.5 above 5 at every effort |
@@ -613,9 +613,9 @@ Cells show pin · score · $/task. Deltas are against that column's target. Conv
 | `claude` | `claude-opus-5-5` 65.4 at `xhigh` | `claude-sonnet-5-5` (see board) | `claude-haiku-5-5` at `high` (51.4 at `xhigh`) | (opus) | Pins are 5.5 ($4/$20 opus, $2/$10 sonnet, $0.10/$0.50 haiku, 1M context). Opus and sonnet targets stay the 5.0 scores (`claude-opus-5` **65.2** · $5.34, `claude-sonnet-5` **59.4** · $2.14): Opus 5.5 lands level at `xhigh`, and Sonnet 5.5's LiveBench rows don't read cleanly. Haiku target = Haiku 5.5 at `xhigh`. |
 | `openrouter` | `deepseek/deepseek-v4.1-flash` 77.3 · $0.06 (+12.1) | same (+17.9) | `z-ai/glm-5.3-flash` 56.8 · $0.11 (+5.4) | `moonshotai/kimi-k3` 62.2 · $1.76 | Aggregator; broad catalog to re-pin from. Opus+sonnet collapse on V4.1 Flash (clears 65.2). Haiku = GLM-5.3 Flash (cheapest sufficient). Convergent = Kimi K3 (distinct CoT). All three auto-cache. Never pin `anthropic/*` — column carries Claude-quota overflow. |
 | `cursor` | `cursor-grok-4.5-high` 56.5 · $0.54 (−8.7) | `composer-2.5` **n/m** | `composer-2.5` **n/m** | (opus) | Ceiling is grok-4.5 — no Cursor model reaches the opus target, which is the correct outcome, not a gap. `composer-2.5` is the one unresolved cell in the matrix: vendor-claimed ≈ Opus 4.7 (which measures 50.7), never on LiveBench. Probe or override before relying on it for sonnet-tier work. Haiku stays `composer-2.5` too: the only measured first-party model over ~51 is `cursor-grok-4.5-high` (56.5), at about 8x the cost. |
-| `ollama` (cloud) | `kimi-k2.7-code` 45.7 · $0.39 (−19.5) | `kimi-k2.7-code` (−13.7) | `deepseek-v4.1-flash` 77.3 · $0.06 (+25.9) | `deepseek-v4-pro` | **Whole column needs a paid Ollama plan.** **No model variants** — the ollama provider builds catalog entries with none, so bkit omits `variant:` on this column (2.0 would reject it); agents run at opencode's default reasoning. `deepseek-v4-pro` (convergent) has left the advertised catalog but still resolves. The free `qwen3.5:397b` / `gpt-oss:20b` are unmeasured or ~10 — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
+| `ollama` (cloud) | `deepseek-v4.1-flash` 77.3 · $0.06 (+12.1) | same (+17.9) | `deepseek-v4.1-flash` 77.3 · $0.06 (+25.9) | `kimi-k3` 62.2 · $1.76 | **Whole column needs a paid Ollama plan.** **No model variants** — the ollama provider builds catalog entries with none, so bkit omits `variant:` on this column (2.0 would reject it); agents run at opencode's default reasoning. Opus+sonnet+haiku collapse on V4.1 Flash (clears 65.2); convergent = Kimi K3 (distinct CoT), matching `openrouter`. The free `qwen3.5:397b` / `gpt-oss:20b` are unmeasured or ~10 — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
 | `opencode-zen` | `opencode/deepseek-v4.1-flash` 77.3 · $0.06 (+12.1) | same (+17.9) | `opencode/glm-5.3-flash` 56.8 · $0.11 (+5.4) | `opencode/deepseek-v4-pro` | Opus+sonnet re-pinned from `kimi-k2.7-code` (45.7 · $0.39): 2.0 hard-errors on a `variant:` the model does not expose, and `kimi-k2.7-code` exposes none. V4.1 Flash clears 65.2 and carries variants; **Zen bills it at $0.30/$1.20** (higher than the LiveBench $/task shown). Haiku = GLM-5.3 Flash. Existence-validated via models.dev. |
-| `opencode-go` | `opencode-go/deepseek-v4-pro` 42.6 · $0.14 (−22.6) | same (−16.8) | `opencode-go/deepseek-v4.1-flash` 77.3 · $0.06 (+25.9) | `opencode-go/deepseek-v4-pro` | Budget open-weight plan. `minimax-m3`/`qwen3.7-plus` not pinned (see the board). Prefer pins inside the Go 5h window. DeepSeek models need the workspace privacy setting on "Global regions". |
+| `opencode-go` | `opencode-go/deepseek-v4.1-flash` 77.3 · $0.06 (+12.1) | same (+17.9) | `opencode-go/deepseek-v4.1-flash` 77.3 · $0.06 (+25.9) | `opencode-go/deepseek-v4-pro` | Budget open-weight plan. `minimax-m3`/`qwen3.7-plus` not pinned (see the board). Prefer pins inside the Go 5h window. DeepSeek models need the workspace privacy setting on "Global regions". |
 
 **n/m** = not measured on LiveBench (see the unmeasured list above) — the cell is a catalog/constraint choice, not a scored one.
 

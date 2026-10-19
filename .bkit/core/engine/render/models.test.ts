@@ -255,12 +255,13 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     }
   });
 
-  it("ollama (cloud): kimi-k2.7-code opus+sonnet, deepseek-v4.1-flash haiku, deepseek-v4-pro convergent", () => {
+  it("ollama (cloud): deepseek-v4.1-flash opus+sonnet+haiku, kimi-k3 convergent", () => {
     const lookup = buildOpencodeModelLookup(path.join(getBkitDocsRoot(), "prompts.md"), "ollama");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("kimi-k2.7-code");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("kimi-k2.7-code");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash");
     expect(lookup.get("bkit-design-summary")).toBe("deepseek-v4.1-flash");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4-pro");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("kimi-k3");
     expect(formatModelPin("opencode", "ollama", lookup.get("bkit-design-summary")!)).toBe(
       "ollama/deepseek-v4.1-flash",
     );
@@ -306,7 +307,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4-pro"); // convergent
   });
 
-  it("opencode-go: curated OpenCode Go column (deepseek-v4-pro / deepseek-v4.1-flash)", () => {
+  it("opencode-go: curated OpenCode Go column (deepseek-v4.1-flash / deepseek-v4-pro)", () => {
     // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go catalog is
     // invisible to /zen/v1/models — sourced via models.dev.
     const lookup = buildOpencodeModelLookup(
@@ -318,8 +319,8 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
       expect(model).not.toMatch(/^opencode-go\//);
       expect(formatModelPin("opencode", "opencode-go", model)).toMatch(/^opencode-go\//);
     }
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4-pro"); // opus
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4-pro"); // sonnet
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash"); // sonnet
     expect(lookup.get("bkit-design-summary")).toBe("deepseek-v4.1-flash"); // haiku
     expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4-pro"); // convergent
   });
