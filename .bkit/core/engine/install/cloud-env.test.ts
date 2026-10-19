@@ -235,7 +235,7 @@ describe("template generation sentinels", () => {
   });
 
   it("trust + user-settings sentinels sit AFTER the jq install (both regions need jq)", () => {
-    const jqIdx = template.indexOf("chmod +x /usr/local/bin/jq");
+    const jqIdx = template.indexOf("install -m 0755 jq-linux-amd64 /usr/local/bin/jq");
     expect(jqIdx).toBeGreaterThan(-1);
     expect(template.indexOf("@@CLOUD_WORKSPACE_TRUST@@")).toBeGreaterThan(jqIdx);
     expect(template.indexOf("@@CLOUD_USER_SETTINGS@@")).toBeGreaterThan(jqIdx);
