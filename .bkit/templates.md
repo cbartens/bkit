@@ -304,7 +304,7 @@ launchctl getenv BKIT_OPENROUTER_API_KEY    # bootstrap proof
 
 Editor defaults (`settings.json`: prettier format-on-save, extension recommendations) and the Cursor Cloud Agent image (`environment.json` → `Dockerfile` + per-snapshot `install`). Cloud agents run bkit workflows; `bkit install --auto=cursor` (needs `--tracker=linear`) points at the two cloud files. Reference: https://cursor.com/docs/cloud-agent/setup.
 
-- `Dockerfile`: the `bkit toolchain` section installs what bkit's workflows use (git, jq, python3, gh, pinned Vale, corepack-pinned pnpm). Adapt `FROM`, the Node major and repo extras outside it.
+- `Dockerfile`: the `bkit toolchain` section installs what bkit's workflows use (git, jq, python3, pinned and sha256-checked gh and Vale, corepack-pinned pnpm). Node 24 is installed outside it from a sha256-checked nodejs.org tarball. Adapt `FROM`, the Node version and repo extras outside the toolchain section.
 - `environment.json` `install`: `pnpm install --frozen-lockfile`, then `vale sync` when `.vale.ini` exists.
 - Secrets: Cloud Agents dashboard → Runtime Secrets (`.bkit/cloud.md`).
 - Traps: the corepack pnpm pin must match `packageManager`. Keep the `bkit toolchain` section as shipped so the template diff on upgrade stays readable.

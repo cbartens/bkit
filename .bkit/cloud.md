@@ -68,13 +68,13 @@ Both clouds run Ubuntu 24.04 (4 vCPU / 16 GB RAM / 30 GB disk class). Pre-instal
 <!-- prettier-ignore -->
 | Pre-installed | Claude Code on the web | Cursor Cloud Agents (after bkit Dockerfile) |
 | --- | --- | --- |
-| Node | 20 + 22 | 20 (template default; pin to your `engines.node` / `.nvmrc`) |
+| Node | 20 + 22 | 24 (template default, checksum-pinned; match your `engines.node` / `.nvmrc`) |
 | Package manager | pnpm + bun (latest) | pnpm (corepack-pinned in `.cursor/Dockerfile`; each repo's `packageManager` honored in-repo) |
 | Python | Yes + ruff | Yes (system `python3` only) |
 | Databases | Postgres 16, Redis 7 | Not installed (add to Dockerfile if needed) |
 | Docker | Yes (host engine) | N/A — we are inside Docker |
 | Utilities | git, jq, ripgrep | git, jq |
-| `gh` CLI | **Not pre-installed** — setup script adds it | Added via Dockerfile |
+| `gh` CLI | **Not pre-installed** — setup script adds it | Added via Dockerfile (pinned release tarball, sha256-checked) |
 | `vale` | **Not pre-installed** — setup script adds 3.9.1 | Added via Dockerfile (3.9.1) |
 | Playwright | Not pre-installed | Not installed (commented example in the consumer section of `.cursor/Dockerfile`) |
 
@@ -168,8 +168,8 @@ SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/da
 
 What it does and why split from in-repo hook:
 
-- **`# cache-bust <date>-<n>`** first line generator writes (`bkit install` / `bkit upgrade` re-stamp). Snapshot keyed on setup script exact text — only job is to change: new date (or bumped same-day counter) forces fresh snapshot on next paste, re-pulling "latest"-resolved `gh` / `gcloud` binaries and base-image drift even when rest byte-identical. Leave in place — do not hand-edit.
-- **Base tools (vale, gh, jq)** install once into snapshot from upstream releases — `gh` from `cli/cli` releases redirect (not `apt`), `jq` because `curl`-based context-fetch blocks pipe through it. Binaries cloud lacks but laptop has — not repo-level hook.
+- **`# cache-bust <date>-<n>`** first line generator writes (`bkit install` / `bkit upgrade` re-stamp). Snapshot keyed on setup script exact text — only job is to change: new date (or bumped same-day counter) forces fresh snapshot on next paste, re-pulling any unpinned tool a `context-fetch:provision` recipe installs, plus base-image drift even when rest byte-identical. Leave in place — do not hand-edit.
+- **Base tools (vale, gh, jq)** install once into snapshot from upstream releases, each pinned to a version and checked with `sha256sum -c` before it is unpacked or made executable (the `# renovate:` comment above each `*_VERSION` lets Renovate bump the pin) — `gh` from the `cli/cli` release tarball (not `apt`), `jq` because `curl`-based context-fetch blocks pipe through it. Binaries cloud lacks but laptop has — not repo-level hook.
 - **pnpm corepack pre-warm** seeds one pnpm into snapshot via `corepack enable` (no hard-pinned version). In-repo, corepack resolves repo's `packageManager` (fetching if differs) — one setup script serves any pnpm pin; pre-warm is warm cache.
 - `pnpm install` and `vale sync` **not** here — belong in `.claude/hooks/bkit-cloud-bootstrap.sh` for resumed sessions when lockfile/styles drifted; each repo installs own deps.
 
@@ -284,7 +284,7 @@ Everything in repo under `.cursor/`. bkit ships canonical content for all four f
 <!-- prettier-ignore -->
 | File | Role | bkit ownership |
 | --- | --- | --- |
-| `.cursor/Dockerfile` | Cloud image — vale + gh + Node 20 (template default) + pnpm (corepack-pinned); browsers etc. added by the consumer | Template: copy from `.bkit/templates/.cursor/Dockerfile`; yours after |
+| `.cursor/Dockerfile` | Cloud image — vale + gh + Node 24 (template default) + pnpm (corepack-pinned); Node, gh and vale are version-pinned and sha256-checked; browsers etc. added by the consumer | Template: copy from `.bkit/templates/.cursor/Dockerfile`; yours after |
 | `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Template: copy from `.bkit/templates/.cursor/environment.json`; yours after |
 | `.cursor/hooks.json` | Wires `sessionStart` → `bkit-preflight.sh` (`failClosed: true`) | Tier 2 contained JSON |
 | `.cursor/hooks/bkit-preflight.sh` | Tracker opt-in guard — `bkit:auto` label + non-terminal status. Skips silently on IDE sessions | Tier 2 contained (bkit:start/end markers) |
@@ -384,7 +384,7 @@ When bkit reference Dockerfile changes (e.g. vale bump):
 1. `pnpm bkit install` — bkit-managed toolchain updates land in the written payload; `.claude/hooks/bkit-cloud-bootstrap.sh` is a copy-and-own template, so diff it against `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` when `bkit upgrade` lists that path and merge what you want. `.cursor/Dockerfile` is your copy of a template: diff it against `.bkit/templates/.cursor/Dockerfile` when `bkit upgrade` lists that path.
 2. Set `BKIT_LINEAR_API_KEY`, `BKIT_GH_TOKEN` as **Runtime Secret**s in the Cloud Agents dashboard (`cursor.com/dashboard/cloud-agents` → your environment → **Secrets** tab). Paste-ready values are in `.cursor/bkit-cloud.md`.
 3. Add Claude environment **named after repo** at `claude.ai/code`; paste recipe from § Claude Code on the web (one environment per repo — secrets per-repo).
-4. Customise `.cursor/Dockerfile` Node major / Playwright / extra system deps. Keep the `bkit toolchain` section as the template ships it, so a template diff stays readable.
+4. Customise `.cursor/Dockerfile` Node version (`NODE_VERSION` + `NODE_SHA256`) / Playwright / extra system deps. Keep the `bkit toolchain` section as the template ships it, so a template diff stays readable.
 
 # Post-CI auto-routing
 

@@ -44,33 +44,46 @@ start fast.
 @@CLOUD_CACHE_BUST@@
 set -euo pipefail
 
+# Every download is pinned to a version and checked against its published sha256
+# before it is unpacked or made executable. The image targets linux/amd64.
+# renovate: datasource=github-releases depName=errata-ai/vale
 VALE_VERSION="3.9.1"
+VALE_SHA256="fbc2eb47d0b8c50220ed1a2c5c611fbe0904ed567d638143d482016a18fd2db0"
 if ! command -v vale >/dev/null 2>&1; then
   cd /tmp
   curl -fsSLO --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
+  echo "${VALE_SHA256}  vale_${VALE_VERSION}_Linux_64-bit.tar.gz" | sha256sum -c -
   tar -xzf "vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -C /usr/local/bin vale
   chmod +x /usr/local/bin/vale
 fi
 
+# renovate: datasource=github-releases depName=cli/cli
+GH_VERSION="2.102.0"
+GH_SHA256="bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386"
 if ! command -v gh >/dev/null 2>&1; then
   cd /tmp
-  # Resolve the latest gh tag via the /releases/latest redirect, then download the
-  # binary — same github.com host + install style as vale above (a setup script is
-  # snapshotted once, so "latest" is fine and needs no pin). Reliable regardless of
-  # the base image's apt repos; `apt install gh` is not (gh isn't in default repos).
-  GH_VERSION=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/cli/cli/releases/latest" | sed -E 's#.*/tag/v##')
+  # Pinned release tarball from github.com (same host + install style as vale above),
+  # checked against the release's checksums.txt. Reliable regardless of the base
+  # image's apt repos; `apt install gh` is not (gh isn't in default repos).
   curl -fsSLO --retry 3 --retry-all-errors "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
+  echo "${GH_SHA256}  gh_${GH_VERSION}_linux_amd64.tar.gz" | sha256sum -c -
   tar -xzf "gh_${GH_VERSION}_linux_amd64.tar.gz" -C /usr/local/bin --strip-components=2 "gh_${GH_VERSION}_linux_amd64/bin/gh"
   chmod +x /usr/local/bin/gh
 fi
 
+# renovate: datasource=github-releases depName=jqlang/jq extractVersion=^jq-(?<version>.+)$
+JQ_VERSION="1.7.1"
+JQ_SHA256="5942c9b0934e510ee61eb3e30273f1b3fe2590df93933a93d7c58b81d19c8ff5"
 if ! command -v jq >/dev/null 2>&1; then
-  # jq is a single static binary — fetch it from the jqlang release (same github.com
-  # host + snapshot-once rationale as vale/gh above). context-fetch blocks, including the
-  # .bkit/templates/context/ ones, pipe their output through `| jq …` and assume it is
-  # present; the base image may not ship it.
-  curl -fsSL --retry 3 --retry-all-errors "https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64" -o /usr/local/bin/jq
-  chmod +x /usr/local/bin/jq
+  # jq is a single static binary — fetched from the jqlang release (same github.com
+  # host as vale/gh above) and checked against the release's sha256sum.txt before it is
+  # installed. context-fetch blocks, including the .bkit/templates/context/ ones,
+  # pipe their output through `| jq …` and assume it is present; the base image may not ship it.
+  cd /tmp
+  curl -fsSLO --retry 3 --retry-all-errors "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-amd64"
+  echo "${JQ_SHA256}  jq-linux-amd64" | sha256sum -c -
+  install -m 0755 jq-linux-amd64 /usr/local/bin/jq
+  rm -f jq-linux-amd64
 fi
 
 @@CLOUD_WORKSPACE_TRUST@@
