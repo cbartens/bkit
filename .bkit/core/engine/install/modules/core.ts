@@ -255,6 +255,7 @@ export const BKIT_CANONICAL_DOCS = [
   "jsonl.md",
   "LICENSE.md",
   "lite.md",
+  "pipeline.md",
   "providers.md",
   "prompts.md",
   "templates.md",
@@ -531,7 +532,7 @@ export function runCoreModule(ctx: ModuleContext): void {
   runCoreTemplates(dryRun, ctx.tokens, ws, logPrefix);
 
   // 3b. bkit canonical docs pass — mirror the package's reference docs
-  // (cloud/IDEs/prompts/trackers/workflows/README/install/comparison) into the
+  // (cloud/IDEs/prompts/trackers/workflows/README/install/comparison/pipeline) into the
   // consumer's `.bkit/` so they are readable in-repo. Force-overwrite (Tier 1).
   console.log(`${logPrefix} ${tag}Running bkit docs pass`);
   runBkitDocs(dryRun, ctx.tokens, ws, logPrefix);

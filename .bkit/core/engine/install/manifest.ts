@@ -138,6 +138,7 @@ const CORE_MANIFEST: ManifestEntry[] = [
   // notice. Sourced from `.bkit/core/.bkit/LICENSE.md`.
   { path: ".bkit/LICENSE.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/lite.md", format: "markered-text", module: "core" },
+  { path: ".bkit/pipeline.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/prompts.md", format: "markered-text", module: "core" },
   { path: ".bkit/templates.md", format: "byte-equal-text", module: "core" },

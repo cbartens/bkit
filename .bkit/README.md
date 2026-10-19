@@ -246,7 +246,7 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `.gitattributes` | core | `.bkit/shared/.gitattributes` | Tier 2 html-comment (`merge=union` for the append-only ledgers) |
 | `.bkit/templates/**` | — | the whole `.bkit/templates/` root | Raw copies, refreshed on every install and upgrade; never hashed. Upgrade prints the changed paths. |
 | `.bkit/{core,shared}` | core | symlink into `node_modules/@cbartens/bkit/.bkit/{core,shared}` | View link, not a copy — browse the payload in-repo; always the installed version. Gitignored (dangles on a fresh clone / CI; install recreates). A real directory is never clobbered; `bkit uninstall` removes the link. |
-| `.bkit/{cloud,comparison,install,jsonl,LICENSE,lite,providers,prompts,trackers,workflows,README}.md` | core | `.bkit/core/.bkit/` | Tier 1 (canonical-overwrite); `prompts.md` and `lite.md` Tier 2 html-comment. The reference docs agents read at runtime, plus `LICENSE.md`: the MIT text and copyright notice that travel with every file bkit writes. |
+| `.bkit/{cloud,comparison,install,jsonl,LICENSE,lite,pipeline,providers,prompts,trackers,workflows,README}.md` | core | `.bkit/core/.bkit/` | Tier 1 (canonical-overwrite); `prompts.md` and `lite.md` Tier 2 html-comment. The reference docs agents read at runtime, plus `LICENSE.md`: the MIT text and copyright notice that travel with every file bkit writes. |
 | `.claude/commands/bkit-*.md` | claude | `.bkit/core/workflows/` (byte-identical) | Host pass — always overwrite |
 | `.claude/agents/bkit-*.md` | claude | `.bkit/core/prompts/` (byte-identical) | Host pass — always overwrite |
 | `.claude/settings.json` | claude | `.bkit/shared/.claude/settings.json` | Tier 2 JSON deep-containment. Permission allow/deny/ask + SessionStart / PreToolUse hook wiring. |
@@ -397,7 +397,8 @@ the package, so editors resolve them to the `node_modules/…` paths).
 | File | Purpose |
 | --- | --- |
 | `.bkit/install.md` | First-time install and upgrade, install lifecycle, uninstall |
-| `.bkit/comparison.md` | Pipeline reference + comparison to agentic design patterns / peer frameworks |
+| `.bkit/pipeline.md` | Pipeline reference: every subagent in execution order, CI scaffold, every audit template |
+| `.bkit/comparison.md` | Comparison to peer frameworks / agentic design patterns |
 | `node_modules/@cbartens/bkit/.bkit/core/workflows/` | Canonical slash-command source (rendered into `.claude/commands/`, `.cursor/commands/`, `.opencode/commands/`) |
 | `node_modules/@cbartens/bkit/.bkit/core/prompts/` | Canonical subagent source (rendered into `.claude/agents/`, `.cursor/agents/`, `.opencode/agents/`) |
 | `node_modules/@cbartens/bkit/.bkit/{core,shared}/` | Sources `bkit install` writes from (see § What install writes) |

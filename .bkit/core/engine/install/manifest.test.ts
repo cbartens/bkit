@@ -165,6 +165,7 @@ describe("getInstallManifest", () => {
       "comparison.md",
       "install.md",
       "jsonl.md",
+      "pipeline.md",
       "providers.md",
       "trackers.md",
       "workflows.md",
@@ -429,6 +430,7 @@ describe("install/manifest: single dispatch on entry.format", () => {
     expect(paths).toContain(".bkit/version");
     expect(paths).toContain(".bkit/.env.example");
     expect(paths).toContain(".bkit/comparison.md");
+    expect(paths).toContain(".bkit/pipeline.md");
     expect(paths).toContain(".bkit/install.md");
   });
 

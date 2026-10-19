@@ -275,14 +275,14 @@
     ".bkit/templates.md": "f5c3883e0f477a8e6baa4a87d1684ce35d3e504153828091d233862d25ec36a2",
     "docs/templates/bkit-audit-adoption.md": "0eaa4768f8d79f777b3aea180a7d9317704aac29e5106faf57ed7c249feecdec",
     ".bkit/cloud.md": "24dd51d746bb22df857a8468d14ee430d2e2cffaba96bce96b738ec3dbdc1c97",
-    ".bkit/comparison.md": "776fd58ef185d1a142068a9edb8c90d1705ae9aedef875151be8535ab19d1dff",
+    ".bkit/comparison.md": "489e1248d8000cdf1b2f4dbda0ae9acd51f54a95b532d1bb4d5923bf4a863cf4",
     ".bkit/install.md": "5494bf71d6d28d724561162f13daf3a375119998e6e2c74cb6faebbf15c3d59e",
     ".bkit/jsonl.md": "ee28933f095131e5153af7950dea153f3af751b6a379f4d3e347d9399081a9fd",
     ".bkit/providers.md": "4b8fb9c34d067a82f9567a4b420533ca69476bebf7a2fc8693b7bb13e62c11e8",
     ".bkit/prompts.md": "af631d3a6d101709dfedb18234b7ef41f33d8767aa415a2f093f086fc2458ff9",
     ".bkit/trackers.md": "460f9dc03d2bce19ac85de71cb78c15615d3b28ff9dd1d2c7246608887c84978",
     ".bkit/workflows.md": "4902ffb7597a90d7c68cdc3d0a6e2fe2d3ba9964754bf22e8fd346e8d33c1c15",
-    ".bkit/README.md": "ad22ab5157f1c4ed7d0be764d299ce553f42842400d8474c4398418a91c5ea60",
+    ".bkit/README.md": "aecf15467d294d559430d586d0316294a3ed77b240ba22ad21221c5b8b3ccc8d",
     ".cursor/rules/bkit-rules.mdc": "a3c64d427214ad4567da1d9ba18697c4c6dddd4459094813766c9531025199ca",
     ".claude/hooks/bkit-gateguard.cjs": "1794805ae47b8b1c5c0c786493eacfae9e357659dfc8fd5db2c68fe2ba936e94",
     ".claude/hooks/bkit-guardrails.cjs": "8ebe78af974d8595b4d4040e4dd5eb0067719981a9bd0984264dbe3ca3b3bd0b",
@@ -298,7 +298,8 @@
     ".claude/hooks/bkit-readguard.cjs": "5ecdcc1bc3f1ab3e96405fa3589c9e265ff3f41bf1908c411ed769b0948dc1f1",
     ".cursor/hooks/bkit-readguard.cjs": "5d571a169e7ced04c47eb4da038fbdbf47055f51863e0aab346e164c2d16b67b",
     ".opencode/plugin/bkit-readguard.js": "fb291da966f3c01e312ad18188664487d4bdef9c7f9a617330d983d057443347",
-    ".codex/hooks/bkit-readguard.cjs": "beb41587b1f3d1bdec77575aec642f4d6677a8bfcf8ff9fa9f3b68471b9e0f0c"
+    ".codex/hooks/bkit-readguard.cjs": "beb41587b1f3d1bdec77575aec642f4d6677a8bfcf8ff9fa9f3b68471b9e0f0c",
+    ".bkit/pipeline.md": "0907ba9692b73de0e264176991f44d77ae180f79deb82b9f24b6c035934c81a2"
   },
   "claudeAllowDerived": [
     "WebFetch(domain:12factor.net)",

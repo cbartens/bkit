@@ -54,7 +54,7 @@ tools:
 12. Symmetry + footprint — targeted uninstall removes ONLY its module, others intact; full uninstall leaves no bkit-authored file or empty dir beyond docs-declared preserves. Any miss → asymmetric install / uninstall finding.
 13. Docs vs behaviour — docs out of sync with CLI → finding. Search shipped docs for option, verb, file, advisory id, version pin, or link not matching source of truth (removed / renamed flags, stale version / toolchain pins, dropped / unseeded files, advisory ids never emitted). Read each hit before recording. Cover consumer-facing docs AND `.bkit/*.md` maintainer docs in tarball. Cross-check each structured surface against real source of truth; list, table row, or field maintainer doc claims that code no longer emits → finding:
     - Host + provider lists (`.bkit/providers.md`, `.bkit/README.md`, `.bkit/cloud.md` support matrix) vs CLI parser + renderer defaults
-    - subagent catalog + phase order (`.bkit/workflows.md`, `.bkit/comparison.md`) vs shipped prompt / workflow files
+    - subagent catalog + phase order (`.bkit/workflows.md`, `.bkit/pipeline.md`) vs shipped prompt / workflow files
     - prompt frontmatter table (`.bkit/prompts.md`) vs each `.bkit/core/prompts/*.md` frontmatter (model, effort, `maxTurns`, tools)
     - ledger fields (`.bkit/jsonl.md`) vs telemetry codec (`.bkit/core/engine/ledgers/telemetry.ts`)
     - tracker marker contract (`.bkit/trackers.md`) vs inline blocks

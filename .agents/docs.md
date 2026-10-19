@@ -70,7 +70,8 @@
 | `.bkit/stats.jsonl` | ○ | ○ | ○ | ○ | ○ | Run telemetry — `compliance`, `outcome`, `counter`. Append-only. |
 | `README.md` | — | — | — | — | ○ | Package page — pitch, what ships, quick start. Humans only. |
 | `.bkit/install.md` | — | — | — | — | ○ | First-time install / upgrade paste, token + CI + Vercel auth, install lifecycle, uninstall. |
-| `.bkit/comparison.md` | — | — | — | — | — | Pipeline in execution order, plus peer comparison. Humans only. |
+| `.bkit/pipeline.md` | — | — | — | — | — | Pipeline in execution order, every subagent, every audit template. Humans only. |
+| `.bkit/comparison.md` | — | — | — | — | — | Peer-framework + agentic-patterns comparison. Humans only. |
 | `CHANGELOG.md` | — | — | — | ○ | ○ | Release record — notable changes per version. |
 | `docs/migrations.md` | ○ | ○ | ○ | ○ | ○ | Register of every upgrade migration in the engine — what it rewrites, release range, where it runs. |
 | `harvest/consumers.md` | — | — | — | — | — | Maintainer-local dogfood checkout paths. `bkit harvest` reads it. Gitignored, not shipped. |

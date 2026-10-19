@@ -93,6 +93,7 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     "jsonl.md",
     "LICENSE.md",
     "lite.md",
+    "pipeline.md",
     "providers.md",
     "prompts.md",
     "templates.md",
