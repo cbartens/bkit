@@ -304,10 +304,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash"); // sonnet
     expect(lookup.get("bkit-design-summary")).toBe("glm-5.3-flash"); // haiku
-    expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4-pro"); // convergent
+    expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3"); // convergent
   });
 
-  it("opencode-go: curated OpenCode Go column (deepseek-v4.1-flash / deepseek-v4-pro)", () => {
+  it("opencode-go: curated OpenCode Go column (deepseek-v4.1-flash / kimi-k3)", () => {
     // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go catalog is
     // invisible to /zen/v1/models — sourced via models.dev.
     const lookup = buildOpencodeModelLookup(
@@ -322,7 +322,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash"); // sonnet
     expect(lookup.get("bkit-design-summary")).toBe("deepseek-v4.1-flash"); // haiku
-    expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4-pro"); // convergent
+    expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3"); // convergent
   });
 });
 
