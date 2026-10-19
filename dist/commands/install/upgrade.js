@@ -25,8 +25,9 @@ import { writeTier2, writeTier2JsonContained } from "../../install/write.js";
 import { detectMarkerStyle } from "../../install/managed-block.js";
 import { applyTokens, resolveTokens } from "../../install/placeholders.js";
 import { readTemplate } from "../../render/parts.js";
-import { TEMPLATE_COPIES_DIR, getCoreRoot, getSharedRoot, getBkitDocsRoot, getPkgRoot, } from "../../shared/package-roots.js";
-import { getInstallingVersion, requireOpencodeProvider, detectOpencodeProviders, runUpgradeAdvisories, } from "./install.js";
+import { TEMPLATE_COPIES_DIR, getCoreRoot, getSharedRoot, getBkitDocsRoot, } from "../../shared/package-roots.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
+import { requireOpencodeProvider, detectOpencodeProviders, runUpgradeAdvisories, } from "./install.js";
 import { setLogPrefix } from "../../shared/log-prefix.js";
 import { BKIT_PACKAGE, lookupLatestPublished } from "../../shared/bkit-latest.js";
 import { PACKAGE_RUNNER } from "../../shared/package-manager.js";
@@ -363,7 +364,7 @@ function resolveLatestPublishedVersion(cwd) {
  * caller falls through to a normal in-place re-render.
  */
 export async function runSelfBump(flags, cwd) {
-    const installed = getInstallingVersion();
+    const installed = readInstallingVersion();
     // Resolve the latest first (only when asked), then feed planSelfBump a constant.
     const latestVersion = flags.latest ? resolveLatestPublishedVersion(cwd) : "";
     const resolvedPlan = planSelfBump(installed, { toVersion: flags.toVersion, latest: flags.latest }, () => latestVersion);
@@ -428,6 +429,8 @@ export async function runUpgradeCommand(upgradeFlags) {
         if (handled)
             return;
     }
+    // Read before any write: a damaged bkit package stops the run with nothing changed.
+    const installingVersion = readInstallingVersion();
     console.log(`${LOG_PREFIX} Running upgrade${upgradeFlags.dryRun ? " (dry-run)" : ""}${upgradeFlags.nonInteractive ? " (non-interactive)" : ""}`);
     // Collect bkit-managed payload candidates from the package: `shared/` and
     // `core/` hold every file install writes. `templates/` is excluded — it is
@@ -670,7 +673,7 @@ export async function runUpgradeCommand(upgradeFlags) {
         cloudVariant: null,
         // Re-stamp every rendered agent + command at the version we are upgrading TO,
         // so a clean upgrade refreshes the managed-version marker and `bkit check` stays green.
-        version: getInstallingVersion(),
+        version: installingVersion,
         // The detected host set — read by the Antigravity module for the Codex-overlap advisory.
         installedModules: renderModules,
     };
@@ -747,8 +750,6 @@ export async function runUpgradeCommand(upgradeFlags) {
     // exit), so feed those writes into canonicalHashes — keeping install/upgrade `.bkit/version`
     // parity.
     if (!upgradeFlags.dryRun) {
-        const pkgVersion = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8"))
-            .version;
         const renderedDocPaths = renderWs.writes.map((w) => path.relative(process.cwd(), path.isAbsolute(w.path) ? w.path : path.resolve(process.cwd(), w.path)));
         updateCanonicalHashesAfterUpgrade({
             updated: [
@@ -763,7 +764,7 @@ export async function runUpgradeCommand(upgradeFlags) {
         }, {
             dryRun: false,
             cwd: process.cwd(),
-            pinnedVersion: pkgVersion,
+            pinnedVersion: installingVersion,
             claudeAllowDerived: upgradeClaudeAllowDerived,
         });
     }

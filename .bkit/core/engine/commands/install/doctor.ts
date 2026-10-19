@@ -3,14 +3,11 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-  detectOpencodeProvider,
-  detectOpencodeProviders,
-  getInstallingVersion,
-} from "./install.js";
+import { detectOpencodeProvider, detectOpencodeProviders } from "./install.js";
 import { type ModuleFlag } from "../../cli.js";
 import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
 import { getCoreRoot, getSharedRoot, getTemplatesRoot } from "../../shared/package-roots.js";
 import { runPreflight } from "../../checks/before/index.js";
 import {
@@ -168,7 +165,7 @@ export async function runDoctor(
   writeAdvisoriesArtifact(allFindings, {
     cwd: process.cwd(),
     mode: "doctor",
-    version: getInstallingVersion(),
+    version: readInstallingVersion(),
     logPrefix: LOG_PREFIX,
     suppressed,
     tips,

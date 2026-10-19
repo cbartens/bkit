@@ -25,7 +25,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runUpgrade, updateCanonicalHashesAfterUpgrade, type UpgradeCandidate } from "./upgrade";
 import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
 import { listStampedFiles } from "../../install/modules/index";
-import { readInstallingVersion } from "../../install/modules/core";
+import { readInstallingVersion } from "../../shared/package-json";
 import { getTemplatesRoot } from "../../shared/package-roots";
 import { PACKAGE_RUNNER } from "../../shared/package-manager";
 import {

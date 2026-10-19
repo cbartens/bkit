@@ -14,10 +14,10 @@ import {
   detectGateAdvisories,
   detectNoopGates,
   isNoopScript,
-  readInstallingVersion,
   runBkitDocs,
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
+import { readInstallingVersion } from "../../shared/package-json";
 import { getBkitDocsRoot, getPkgRoot } from "../../shared/package-roots";
 import { BKIT_GATE_SCRIPTS } from "../manifest";
 import { hashFile, readBkitVersion, readManagedVersion, writeBkitVersion } from "../version-file";

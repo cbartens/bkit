@@ -7,7 +7,8 @@ import { applyCodexAgent, parseFrontmatter } from "../../render/hosts.js";
 import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from "../../shared/package-roots.js";
 import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
-import { BKIT_PREFIX, installFile, listMdFiles, readInstallingVersion, removeOrphans, trackMirrorWrite, } from "./core.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
+import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite, } from "./core.js";
 /**
  * Convert a workflow orchestrator (`.bkit/core/workflows/*.md`) into a Codex SKILL.md.
  *

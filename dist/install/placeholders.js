@@ -1,22 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
-import { getPkgRoot } from "../shared/package-roots.js";
+import { readInstallingVersion } from "../shared/package-json.js";
 import { managedVersionMarker } from "./version-file.js";
 import { gitEnv, resolveRepoSlug } from "../ledgers/telemetry.js";
-// Read the INSTALLING bkit version from the package root (NOT the consumer's
-// package.json — that is a different version). Mirrors readInstallingVersion
-// (install/modules/index.ts) / readPkgVersion (checks/after/index.ts); kept local to avoid a
-// tokens → modules import cycle. "0.0.0" on any read failure.
-function readInstallingBkitVersion() {
-    try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8"));
-        return pkg.version ?? "0.0.0";
-    }
-    catch {
-        return "0.0.0";
-    }
-}
 // Resolve DEFAULT_BRANCH: git symbolic-ref refs/remotes/origin/HEAD → "main"
 function resolveDefaultBranch(cwd) {
     try {
@@ -58,7 +45,7 @@ export async function resolveTokens(cwd) {
         DEFAULT_BRANCH: resolveDefaultBranch(cwd),
         PROJECT_NAME: name.trim(),
         REPO_SLUG: resolveRepoSlug(cwd),
-        BKIT_VERSION: readInstallingBkitVersion(),
+        BKIT_VERSION: readInstallingVersion(),
     };
 }
 // Substitute {{TOKEN}} placeholders in content string.
@@ -78,7 +65,7 @@ export function applyTokens(content, tokens) {
     // so `# {{BKIT_MANAGED_MARKER}}` yields the hash form. The version is read from the
     // package only when the token is present and the TokenMap omits BKIT_VERSION.
     if (out.includes("{{BKIT_MANAGED_MARKER}}")) {
-        const version = tokens.BKIT_VERSION ?? readInstallingBkitVersion();
+        const version = tokens.BKIT_VERSION ?? readInstallingVersion();
         out = out
             .replace(/^\/\/ \{\{BKIT_MANAGED_MARKER\}\}/gm, () => managedVersionMarker(version, "slash"))
             .replace(/\{\{BKIT_MANAGED_MARKER\}\}/g, () => managedVersionMarker(version, "html"));

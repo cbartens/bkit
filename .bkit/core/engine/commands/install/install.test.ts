@@ -9,7 +9,6 @@ import {
   detectOpencodeProviders,
   modulesToCliFlags,
   validateCloudTrackerMatch,
-  getInstallingVersion,
   refreshPreflightAfterWrites,
 } from "./install";
 import type { ModuleFlag } from "../../cli";
@@ -208,12 +207,6 @@ describe("detectOpencodeProviders — all installed providers", () => {
   it("returns [] when bkit.opencodeProviders is absent, whatever bkit.opencodeProvider says", () => {
     writePkg({ opencodeProvider: "openrouter" });
     expect(detectOpencodeProviders(cwd)).toEqual([]);
-  });
-});
-
-describe("getInstallingVersion — bkit's own version, best-effort", () => {
-  it("returns the semver from the installing package.json", () => {
-    expect(getInstallingVersion()).toMatch(/^\d+\.\d+\.\d+/);
   });
 });
 

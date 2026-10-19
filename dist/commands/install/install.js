@@ -3,7 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
-import { getPkgRoot } from "../../shared/package-roots.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
 import { dispatchModules } from "../../install/modules/index.js";
 import { DEFAULT_ISSUE_TRACKER, } from "../../install/manifest.js";
 import { readBkitConfig } from "../../shared/settings.js";
@@ -57,24 +57,6 @@ export function requireOpencodeProvider(cwd, context) {
         process.exit(1);
     }
     return detected;
-}
-/**
- * Read the installing bkit version from the package root's package.json.
- * Returns "0.0.0" when unreadable (e.g. dev tree without a package.json at the
- * resolved root) — keeps the advisories artifact informational, not fatal.
- */
-export function getInstallingVersion() {
-    try {
-        const pkgJsonPath = path.join(getPkgRoot(), "package.json");
-        if (fs.existsSync(pkgJsonPath)) {
-            const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-            return pkg.version ?? "0.0.0";
-        }
-    }
-    catch {
-        return "0.0.0"; // best-effort: unreadable/garbled package.json
-    }
-    return "0.0.0";
 }
 /**
  * Render a resolved module set back into valid CLI flags for
@@ -231,7 +213,7 @@ export async function runInstall(args, upgradeReport = false) {
             writeAdvisoriesArtifact(blockers, {
                 cwd: process.cwd(),
                 mode: "upgrade",
-                version: getInstallingVersion(),
+                version: readInstallingVersion(),
                 logPrefix: LOG_PREFIX,
             });
             return;
@@ -387,7 +369,7 @@ export async function runInstall(args, upgradeReport = false) {
         issueTracker,
         cloudVariant,
         // Stamped into every rendered agent + command as the managed-version marker.
-        version: getInstallingVersion(),
+        version: readInstallingVersion(),
         // Full host set for this run: dispatched ∪ already-on-disk. Read by the Antigravity
         // module to warn when Codex is also installed (both hosts' `bkit-*` workflow skills
         // then surface in Antigravity's skill selector).
@@ -437,18 +419,9 @@ export async function runInstall(args, upgradeReport = false) {
     // Runs for both install AND check — detectors are read-only, so check produces
     // the same advisory set as install would emit against the same filesystem state.
     // Changelog version-delta header (A7): surface what changed in the installed version.
-    try {
-        const pkgJsonPath = path.join(getPkgRoot(), "package.json");
-        if (fs.existsSync(pkgJsonPath)) {
-            const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-            const deltaHeader = readChangelogVersionDelta(pkg.version ?? "");
-            if (deltaHeader)
-                console.log(deltaHeader);
-        }
-    }
-    catch (err) {
-        void err; // Non-fatal — changelog header is informational
-    }
+    const deltaHeader = readChangelogVersionDelta(readInstallingVersion());
+    if (deltaHeader)
+        console.log(deltaHeader);
     const suppressed = [];
     const postFindings = runPostInstallCheck(ctx.advisories, process.cwd(), suppressed);
     if (postWriteBlockers.length > 0) {
@@ -469,7 +442,7 @@ export async function runInstall(args, upgradeReport = false) {
     writeAdvisoriesArtifact(postFindings, {
         cwd: process.cwd(),
         mode: upgradeReport ? "upgrade" : dryRun ? "check" : "install",
-        version: getInstallingVersion(),
+        version: readInstallingVersion(),
         logPrefix: LOG_PREFIX,
         suppressed,
         tips,

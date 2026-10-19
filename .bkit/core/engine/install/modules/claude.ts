@@ -25,12 +25,12 @@ import {
 import { type IssueTracker, DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { writeClaudeCloudDoc, resolveClaudeDerivedAllows } from "../cloud-env.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
 import type { ModuleContext } from "./index.js";
 import {
   BKIT_PREFIX,
   installFile,
   listMdFiles,
-  readInstallingVersion,
   removeOrphans,
   trackMirrorWrite,
 } from "./core.js";

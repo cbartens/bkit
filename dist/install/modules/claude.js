@@ -9,7 +9,8 @@ import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from ".
 import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { writeClaudeCloudDoc, resolveClaudeDerivedAllows } from "../cloud-env.js";
-import { BKIT_PREFIX, installFile, listMdFiles, readInstallingVersion, removeOrphans, trackMirrorWrite, } from "./core.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
+import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite, } from "./core.js";
 export function renderClaudeAgentsCommands(ctx) {
     const { dryRun, logPrefix, effortMap } = ctx;
     const tag = dryRun ? "[dry-run] " : "";

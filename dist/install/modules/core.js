@@ -8,7 +8,8 @@ import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, } fr
 import { extractManagedBlock, stripManagedBlock } from "../managed-block.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
-import { getPkgRoot, getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
+import { getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
 import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
 export function listMdFiles(dir, prefix) {
     if (!fs.existsSync(dir))
@@ -275,28 +276,6 @@ export function migrateShortcutsToLite(dryRun, ws, logPrefix) {
 // (installFile does not touch ws), matching the install path exactly. Each returns
 // the consumer-relative dest paths it wrote (for the upgrade summary).
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Managed-version stamping. The marker shape (stampManagedVersion + regexes) lives
-// in install/version-file.ts, shared by the renderer and the `bkit check` detector. Here we
-// only resolve WHICH version to stamp: ctx.version (set by install/upgrade) with a
-// package-root fallback.
-// ---------------------------------------------------------------------------
-/**
- * Best-effort read of the installing bkit version from the package root's
- * package.json. Mirrors getInstallingVersion in commands/install/install.ts; duplicated here
- * (not imported) to avoid a modules → install dependency cycle. Returns "0.0.0"
- * when unreadable — the same non-fatal fallback the install side uses.
- */
-export function readInstallingVersion() {
-    try {
-        const pkgPath = path.join(getPkgRoot(), "package.json");
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        return pkg.version ?? "0.0.0";
-    }
-    catch {
-        return "0.0.0";
-    }
-}
 /** Record a host mirror would-write so `bkit check` exits 1 on content drift. */
 export function trackMirrorWrite(ctx, relPath, written) {
     written.push(relPath);
@@ -454,13 +433,7 @@ export function runCoreModule(ctx) {
     const { dryRun, ws, advisories, logPrefix, postDispatch } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const cwd = process.cwd();
-    const PKG_ROOT = getPkgRoot();
-    const PKG_PACKAGE_JSON = path.join(PKG_ROOT, "package.json");
-    if (!fs.existsSync(PKG_PACKAGE_JSON)) {
-        console.error(`${logPrefix} package.json not found at ${PKG_PACKAGE_JSON} — package corrupt?`);
-        process.exit(1);
-    }
-    const pkgVersion = JSON.parse(fs.readFileSync(PKG_PACKAGE_JSON, "utf-8")).version;
+    const pkgVersion = readInstallingVersion();
     // Capture first-install signal NOW (before any writes) — used for the post-install banner.
     // The .bkit/version write happens in postDispatch, so a mid-install crash in a later
     // module leaves no .bkit/version on disk.

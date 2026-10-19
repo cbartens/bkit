@@ -18,12 +18,12 @@ import {
   writeNetworkAllowlistArtifact,
   writeCursorCliPermissionsArtifact,
 } from "../cloud-env.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
 import type { ModuleContext } from "./index.js";
 import {
   BKIT_PREFIX,
   installFile,
   listMdFiles,
-  readInstallingVersion,
   removeOrphans,
   trackMirrorWrite,
 } from "./core.js";

@@ -26,12 +26,12 @@ import { substituteWorkflow } from "../../render/trackers.js";
 import { resolveNetworkAllowlist, extractMcpServers, networkAllowlistBases } from "../cloud-env.js";
 import { OPENCODE_PROVIDER_DEFAULTS } from "../../shared/egress.js";
 import { readBkitConfig } from "../../shared/settings.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
 import type { ModuleContext } from "./index.js";
 import {
   BKIT_PREFIX,
   installFile,
   listMdFiles,
-  readInstallingVersion,
   removeOrphans,
   trackMirrorWrite,
 } from "./core.js";

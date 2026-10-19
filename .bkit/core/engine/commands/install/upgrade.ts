@@ -39,11 +39,10 @@ import {
   getCoreRoot,
   getSharedRoot,
   getBkitDocsRoot,
-  getPkgRoot,
 } from "../../shared/package-roots.js";
+import { readInstallingVersion } from "../../shared/package-json.js";
 import type { UpgradeFlags } from "../../cli.js";
 import {
-  getInstallingVersion,
   requireOpencodeProvider,
   detectOpencodeProviders,
   runUpgradeAdvisories,
@@ -561,7 +560,7 @@ function resolveLatestPublishedVersion(cwd: string): string {
  * caller falls through to a normal in-place re-render.
  */
 export async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boolean> {
-  const installed = getInstallingVersion();
+  const installed = readInstallingVersion();
   // Resolve the latest first (only when asked), then feed planSelfBump a constant.
   const latestVersion = flags.latest ? resolveLatestPublishedVersion(cwd) : "";
   const resolvedPlan = planSelfBump(
@@ -640,6 +639,9 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
     const handled = await runSelfBump(upgradeFlags, process.cwd());
     if (handled) return;
   }
+
+  // Read before any write: a damaged bkit package stops the run with nothing changed.
+  const installingVersion = readInstallingVersion();
 
   console.log(
     `${LOG_PREFIX} Running upgrade${upgradeFlags.dryRun ? " (dry-run)" : ""}${upgradeFlags.nonInteractive ? " (non-interactive)" : ""}`,
@@ -892,7 +894,7 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
     cloudVariant: null,
     // Re-stamp every rendered agent + command at the version we are upgrading TO,
     // so a clean upgrade refreshes the managed-version marker and `bkit check` stays green.
-    version: getInstallingVersion(),
+    version: installingVersion,
     // The detected host set — read by the Antigravity module for the Codex-overlap advisory.
     installedModules: renderModules,
   };
@@ -993,8 +995,6 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
   // exit), so feed those writes into canonicalHashes — keeping install/upgrade `.bkit/version`
   // parity.
   if (!upgradeFlags.dryRun) {
-    const pkgVersion = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8"))
-      .version as string;
     const renderedDocPaths = renderWs.writes.map((w) =>
       path.relative(
         process.cwd(),
@@ -1016,7 +1016,7 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
       {
         dryRun: false,
         cwd: process.cwd(),
-        pinnedVersion: pkgVersion,
+        pinnedVersion: installingVersion,
         claudeAllowDerived: upgradeClaudeAllowDerived,
       },
     );
