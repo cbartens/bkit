@@ -607,3 +607,20 @@ Breaking changes ship as `v2.0.0` and the workflow auto-creates a separate `v2` 
 - Prerelease tags (any tag containing `-`, e.g. `v1.0.3-rc.1`) are skipped — sliding tags only advance on stable releases.
 - Requires `permissions: contents: write` at the workflow level (set in `release.yml`); the default `GITHUB_TOKEN` is sufficient — no PAT needed.
 - Bootstrap: the first `v{N}.x.y` release creates `v{N}` automatically. No manual `git tag -a v1` step required.
+
+### Security incident runbook
+
+Owner runs every step by hand; agents propose, never execute. Triggers: compromised or wrongly published npm version, provenance check fails (`docs/security.md` § Verify a published version), leaked token or key, private vulnerability report confirmed. Run only the steps that apply, in this order.
+
+1. **Stop publishing.** npmjs.com → `@cbartens/bkit` → Settings → Trusted publishing → remove the `release.yml` publisher. Check Publishing access is still "Require two-factor authentication and disallow tokens"; `npm owner ls @cbartens/bkit` lists the owner only; `npm token list` → `npm token revoke <id>` for every token.
+2. **Revoke leaked credentials.** `BKIT_GH_TOKEN` → revoke at github.com/settings/tokens → re-mint per `docs/security.md` § Credential surfaces → update `.bkit/.env` + `gh secret set BKIT_GH_TOKEN` together. Any other key in `.bkit/.env` → revoke at its provider, re-mint, update `.bkit/.env`. Revoke first: rewriting git history does not un-publish a pushed secret.
+3. **Withdraw the bad version.**
+   - `npm deprecate @cbartens/bkit@<bad> "<reason>; upgrade to <fixed or last-good>"`.
+   - `latest` points at it → `npm dist-tag add @cbartens/bkit@<last-good> latest`.
+   - Sliding tag points at it → `git tag -f v<N> v<last-good> && git push origin v<N> --force`.
+   - `gh release edit v<bad> --prerelease --notes "Withdrawn: <reason>. Use v<last-good>."` drops it from "Latest".
+   - `npm unpublish @cbartens/bkit@<bad>` ONLY when it ships malicious code or a secret and npm's unpublish policy still allows it (72 hours, no dependents); the version number can never be reused.
+4. **Fix privately.** Security → Advisories → New draft advisory (ecosystem npm, package `@cbartens/bkit`, affected and patched versions) → work in its temporary private fork. Details stay out of public issues / PRs / commits until step 6 (`docs/security.md` § Public repo content).
+5. **Supersede.** Re-add the trusted publisher (npmjs.com → Trusted publishing → GitHub Actions, `cbartens/bkit`, workflow `release.yml`) → merge the fix to `main` → tag → release per § GitHub Release → verify the new version per `docs/security.md` § Verify a published version.
+6. **Tell consumers.** Publish the advisory (request a CVE in the draft). GitHub reviews it into the Advisory Database → `pnpm audit` / `npm audit` and Dependabot / Renovate alerts flag affected versions in consumer repos.
+7. **Record.** Append a `docs/failures.jsonl` row after the advisory is public: key, root cause, references (advisory URL, fixed version).

@@ -67,18 +67,6 @@ App / stack credentials do not belong here — runtime keys and `/bkit-debug` ob
 | opencode provider keys | opencode host model access | Referenced as `{env:KEY}` in `.opencode/opencode.json` — never inlined. In CI the single `OPENCODE_PROVIDER_KEY` secret fans out to the configured provider's env-var name. |
 | `BKIT_ANTHROPIC_API_KEY` / `BKIT_CURSOR_API_KEY` / `BKIT_LINEAR_API_KEY` | Cloud agents and tracker | Optional; opt-in surfaces only. |
 
-### Repository controls (`cbartens/bkit`)
-
-<!-- prettier-ignore -->
-| Control | State |
-| --- | --- |
-| Access | Owner is the sole collaborator (admin). New collaborator → re-check every row below. |
-| `main` | `bkit setup protect-main`: PR only, `bkit-tests-check` required + up to date, applies to admins, linear history, no force-push / deletion. |
-| `dev` | Unprotected; no ruleset. |
-| Publishing | Tag publishes ONLY when its commit is on `main` → `docs/deployments.md` § GitHub Release. |
-| Secret scanning | Push protection on: a push containing a recognised secret is rejected. |
-| Consumer data | `harvest/` (store + `consumers.md`) gitignored; never name consumers → `.agents/rules.md` § Repo Authoring. Pre-redaction copies remain in git history. |
-
 ### `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` — generated, hold live secrets
 
 `bkit install` / `upgrade` generate `.claude/bkit-cloud.md` (Claude Code on the web) and `.cursor/bkit-cloud.md` (Cursor Cloud Agents) with the dashboard env / secret block resolved to **REAL secret values**. Both share one resolver (`.bkit/core/engine/install/cloud-env.ts`); a per-cloud policy differs only in baseline tokens (Cursor+Linear adds `BKIT_LINEAR_API_KEY`). Rules:
@@ -88,6 +76,59 @@ App / stack credentials do not belong here — runtime keys and `/bkit-debug` ob
 - **Session-hijack keys always dropped** from the block: `ANTHROPIC_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, because exporting them redirects the agent's own model calls to API-key billing vs subscription.
 - Empty-valued keys skipped; absent baseline tokens (`BKIT_GH_TOKEN`) → placeholder, never fabricated.
 - **Cursor secret type:** the `.cursor/bkit-cloud.md` doc directs you to add each as a **Runtime Secret** (loaded as an env var but redacted from the agent's transcript) in the Cloud Agents dashboard → Secrets tab, so tools read the value while the agent transcript never sees it.
+
+## Release & Distribution
+
+Disclosure policy (supported versions, reporting channel, response targets) → `.github/SECURITY.md`. Compromised release / leaked credential → `docs/deployments.md` § Security incident runbook.
+
+### Release path
+
+`v*` tag push → `.github/workflows/release.yml` → tagged commit on `origin/main` check → typecheck / test / format / prose / slop / `dist/` freshness → `npm publish --provenance` (OIDC) → GitHub Release → sliding `v{N}` tag re-pointed → consumers `pnpm add -D @cbartens/bkit` + `pnpm exec bkit install`.
+
+<!-- prettier-ignore -->
+| Gate | State |
+| --- | --- |
+| Tag on `main` | Step "Require the tagged commit on main": commit not an ancestor of `origin/main` → run fails, nothing publishes. Mechanics → `docs/deployments.md` § GitHub Release. |
+| `main` merges | PR only, `bkit-tests-check` required (`bkit setup protect-main`); 0 required approving reviews. |
+| Tags | No tag ruleset: any write collaborator can push a `v*` tag. |
+| `environment:` approval | None on the `release` job. Second write collaborator → add `environment: production` with a required reviewer. |
+| npm auth | Trusted publisher bound to `cbartens/bkit` + `release.yml`; `id-token: write`; no npm token (§ Credential surfaces). |
+| Provenance | `--provenance` attaches a SLSA v1 attestation naming repo, workflow path and tag ref. |
+| Sliding `v{N}` tag | `release.yml` force-pushes it with `GITHUB_TOKEN`; prerelease tags (containing `-`) never move it. |
+
+### Verify a published version
+
+```bash
+npm view @cbartens/bkit@<version> dist.attestations.provenance   # predicateType https://slsa.dev/provenance/v1
+npm audit signatures --json --include-attestations \
+  | jq -r '.verified[] | select(.name=="@cbartens/bkit") | .attestationBundles[] | select(.predicateType|test("slsa")) | .bundle.dsseEnvelope.payload' \
+  | base64 -d | jq -c '.predicate.buildDefinition.externalParameters.workflow'
+```
+
+Run `npm audit signatures` in a directory with the package installed (`node_modules/`; pnpm layout works). Expected workflow: `"repository":"https://github.com/cbartens/bkit"`, `"path":".github/workflows/release.yml"`, `"ref":"refs/tags/v<version>"`. Missing attestation, different repository or path, or a `ref` not matching the version → treat as compromised (`docs/deployments.md` § Security incident runbook).
+
+### Repository controls (`cbartens/bkit`)
+
+<!-- prettier-ignore -->
+| Control | State |
+| --- | --- |
+| Access | Owner is the sole collaborator (admin). Write access = publish rights: merge to `main` + push a `v*` tag (§ Release path). New collaborator → re-check every row in this table and § Release path. |
+| `main` | `bkit setup protect-main`: PR only, `bkit-tests-check` required + up to date, applies to admins, linear history, no force-push / deletion. |
+| `dev` | Unprotected; no ruleset. |
+| Publishing | Tag publishes ONLY when its commit is on `main` → `docs/deployments.md` § GitHub Release. |
+| Secret scanning | Push protection on: a push containing a recognised secret is rejected. |
+| Private vulnerability reporting | On; advertised in `.github/SECURITY.md`. |
+| Consumer data | `harvest/` (store + `consumers.md`) gitignored; never name consumers → `.agents/rules.md` § Repo Authoring. Pre-redaction copies remain in git history. |
+
+### Public repo content
+
+Everything committed is public, including history. NEVER commit:
+
+- Secrets: `.bkit/.env`, `.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md`, any token or key (§ Secrets Management).
+- Consumer names or consumer data (`harvest/`).
+- Details of an exploitable, unfixed vulnerability in a published version: triage and fix inside a draft GitHub Security Advisory (private fork), not an issue, PR or commit.
+
+Secret already pushed → revoke it first (`docs/deployments.md` § Security incident runbook); rewriting history does not un-publish it.
 
 ## Shell Injection
 
