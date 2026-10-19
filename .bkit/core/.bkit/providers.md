@@ -299,8 +299,8 @@ Per-action gates, all five hosts, subagents included. Overview only; per-host en
 | `readguard-engine.js` | Claude, Cursor, Codex, Google Antigravity, opencode `readguard` | shell-read parser, line-range log per (session, agent), repeat-read note, `resetReadLog` |
 | `readguard-payload.js` | Claude, Cursor, Codex, Google Antigravity `readguard` | read / shell payload adapter `bkitReadguard(payload)`; compaction event → reset |
 | `antigravity-hook.js` | Google Antigravity `gateguard`, `guardrails`, `readguard` | Antigravity envelope → Claude-family shape (`fromAntigravityPayload`), call signature, deny-once advisory delivery (`adviseOnce`) |
-| `guardrails-shell.js` | Claude, Cursor, Codex, Google Antigravity `guardrails` | segment parsing, curl / wget host allowlist, shell-as-edit-channel detection |
-| `guardrails-tiers.js` | Cursor, Codex, Google Antigravity `guardrails` | shell word / git parsing (`parseGit`), deny + ask rules, `secretFileKind`, shell secret-read detection, `classifyShell` precedence |
+| `guardrails-shell.js` | Claude, Cursor, Codex, Google Antigravity `guardrails` | shell parsing (`shellSegments`, `shellWords`, `commandWords`, `commandLines`: `sh -c` scripts, `$(…)`, backticks, `( … )`), curl / wget host allowlist, shell-as-edit-channel detection (quote-aware redirects) |
+| `guardrails-tiers.js` | Cursor, Codex, Google Antigravity `guardrails` | git parsing (`parseGit`), deny + ask rules, `secretFileKind`, shell secret-read detection, `classifyShell` precedence |
 | `guardrails-read.js` | Cursor, Google Antigravity `guardrails` | `classifyRead` over `secretFileKind`: deny `*.pem` / `*.p12` / `id_rsa`, ask `.env` / `.env.*` (not `.env.example`) |
 | `preflight-linear.sh` | Claude, Cursor `preflight` | Linear key / issue checks, GraphQL query, `bkit:auto` + terminal-state guards |
 
