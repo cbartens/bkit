@@ -636,7 +636,7 @@ const violations = runGrader({ parentSha, phase: "ship", gitAdapter: realGitAdap
 <!-- prettier-ignore -->
 | File | Tier | Scope |
 | --- | --- | --- |
-| `.bkit/core/engine/shared/protected-paths.test.ts` | Unit | Drift test: committed `.cjs` === `generateGatePathsCjs()` output; `isMirrorPath` / `isGateConfig` correctness. |
+| `.bkit/core/engine/shared/protected-paths.test.ts` | Unit | `isMirrorPath` / `MIRROR_PATH_PREFIXES` correctness. Gate-config matching is asserted against the generated hooks in `audits/hooks/gateguard-parity.integration.test.ts`. |
 | `.bkit/core/engine/commands/comply.test.ts` | Unit | `ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`, `formatComplianceSummary` — determinism, pass / fail, row shape (`bkitVersion` on every row); `gradeCompliance` (the pass `workflows close` runs first): one row per rule, violations returned, fail-open with no commits or an unwritable stats file. |
 | `.bkit/core/engine/commands/comply.integration.test.ts` | Integration (boundary: git diff) | Temp git repo and `realGitAdapter`; asserts `no-mirror-edit` flagged on actual diff output. |
 | `.bkit/core/engine/audits/workflows/comply-gate-wiring.test.ts` | Integration (boundary: workflow files) | Grep-based audit: one committing `workflows close` per phase, `--outbox` telemetry embedded in the close comment, no direct `bkit comply`. |

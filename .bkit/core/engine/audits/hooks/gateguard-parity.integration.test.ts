@@ -266,6 +266,39 @@ describe("gateguard behaviour parity — advisory content", () => {
         expect(r.advisory).toContain("quality-gate config");
       });
 
+      // JS / TS ecosystem configs (and the doc linter), matched on the basename wherever the
+      // file sits.
+      it.each([
+        "tsconfig.build.json",
+        "path/to/tsconfig.build.json",
+        "vitest.config.ts",
+        "vite.config.mts",
+        "eslint.config.js",
+        ".eslintrc",
+        ".eslintrc.json",
+        ".prettierrc",
+        ".prettierrc.json",
+        "prettier.config.js",
+        ".prettierignore",
+        "biome.json",
+        "biome.jsonc",
+        ".vale.ini",
+        "slop-scan.config.json",
+        ".lintstagedrc.json",
+        "lint-staged.config.js",
+      ])("a %s gate config gets the weaken-the-gate advisory", async (file) => {
+        const r = await run(host, { file, session: newSession() });
+        expect(r.advisory).toContain("quality-gate config");
+      });
+
+      it.each(["README.md", "src/index.ts"])(
+        "ordinary file %s is not treated as a gate config",
+        async (file) => {
+          const r = await run(host, { file, session: newSession() });
+          expect(r.advisory).not.toContain("quality-gate config");
+        },
+      );
+
       it("BKIT_ALLOW_CONFIG_EDIT=1 downgrades a gate config to the normal checklist", async () => {
         const r = await run(host, {
           file: "tsconfig.json",
@@ -312,6 +345,17 @@ describe("gateguard behaviour parity — template copies", () => {
 
     it(`${host}: bkit's own .bkit/templates/.vale.ini is a gate config`, async () => {
       const file = path.join(dogfood, ".bkit/templates/.vale.ini");
+      const r = await run(host, { file, session: newSession() });
+      expect(r.advisory).toContain("quality-gate config");
+    });
+
+    it(`${host}: a relative .bkit/templates/.vale.ini resolves against the cwd's package (this is bkit's repo)`, async () => {
+      const r = await run(host, { file: ".bkit/templates/.vale.ini", session: newSession() });
+      expect(r.advisory).toContain("quality-gate config");
+    });
+
+    it(`${host}: a folder that merely ends in .bkit/templates is not a template copy`, async () => {
+      const file = path.join(consumer, "x.bkit/templates/.vale.ini");
       const r = await run(host, { file, session: newSession() });
       expect(r.advisory).toContain("quality-gate config");
     });

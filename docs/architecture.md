@@ -68,7 +68,7 @@ cbartens/bkit (this repo)
 │   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine (#234 WS-1)
 │   ├── shared/                  # helpers every folder uses
 │   │   ├── package-roots.ts     # Single resolver seam — getCoreRoot / getSharedRoot / getTemplatesRoot / getPkgRoot / isDogfood
-│   │   └── protected-paths.ts   # Single protected-path table (mirror prefixes + gate-config basenames); source of truth for the grader AND the committed generated .cjs
+│   │   └── protected-paths.ts   # IDE mirror prefix table (`isMirrorPath`); used by the compliance grader
 │   ├── tools/wording.ts         # repo-only `pnpm wording:sync`, not a bkit command
 │   └── audits/                  # tests only: read shipped text (workflows/ templates/ hooks/ repo/)
 ├── dist/                   # Compiled output (committed; published in tarball)
@@ -173,8 +173,8 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 **Components:**
 
 - `.bkit/core/engine/commands/comply.ts` — pure grader (`ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`); no side effects, no `process.exit`.
-- `.bkit/core/engine/shared/protected-paths.ts` — protected-path table (mirror prefixes + gate-config basenames); shared by grader + committed `.cjs`.
-- `.claude/hooks/gate-paths.generated.cjs` — generated from `.bkit/core/engine/shared/protected-paths.ts`; drift in `.bkit/core/engine/shared/protected-paths.test.ts`. bkit's own repo only; install never writes it.
+- `.bkit/core/engine/shared/protected-paths.ts` — IDE mirror prefix table (`MIRROR_PATH_PREFIXES`, `isMirrorPath`) used by the grader.
+- `.bkit/core/hooks/gateguard-engine.js` — the only gate-config list (`GATE_CONFIG_PATTERNS`, `isGateConfig`); inlined into every host's `bkit-gateguard` hook. Asserted by `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`.
 - `.bkit/core/engine/cli.ts` — `comply` verb + `--phase` dispatch (DE-34).
 
 **Crash isolation (DE-34):** `comply` dispatch try/catch; crash → `[bkit-comply] internal error: …`, exit 0. Workflow wiring: `|| echo "[bkit-comply] grader unavailable, skipping"` silences non-zero.
