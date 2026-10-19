@@ -77,8 +77,6 @@ describe("detectTier2JsonDrift advisory", () => {
   });
 
   it("returns null when consumer contains the full template scope", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
     const relPath = ".cursor/hooks.json";
     const templatePath = findTemplateSource(relPath)!;
     // Copy template as-is to consumer
@@ -121,10 +119,6 @@ describe("tier2-json-drift advisory on managed JSON, never on a template", () =>
 
 describe("Task 23 — detectTier2TextDrift block logic (AGENTS.md)", () => {
   const relPath = "AGENTS.md";
-  const pkgRoot = (() => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    return path.resolve(scriptsDir, "..", "..", "..", "..", "..");
-  })();
   const ROUTER_LINE = "> This file is a **workflow router only**. It does not execute workflows.";
   const readRendered = (): string =>
     applyTokens(fs.readFileSync(findTemplateSource(relPath)!, "utf-8"), makeCtx().tokens);

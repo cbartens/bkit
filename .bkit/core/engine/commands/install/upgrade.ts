@@ -41,7 +41,7 @@ import {
   getBkitDocsRoot,
   getPkgRoot,
 } from "../../shared/package-roots.js";
-import type { ModuleFlag, UpgradeFlags } from "../../cli.js";
+import type { UpgradeFlags } from "../../cli.js";
 import {
   getInstallingVersion,
   requireOpencodeProvider,

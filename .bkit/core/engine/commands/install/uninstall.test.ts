@@ -570,7 +570,6 @@ describe("runUninstall — MCP config keeps the consumer's servers", () => {
 // ---------------------------------------------------------------------------
 
 describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
-  const templatesRoot = getSharedRoot();
   // Exact rendered opencode.json a `--opencode=opencode-go --tracker=github` install writes.
   const RENDERED_OPENCODE =
     JSON.stringify(

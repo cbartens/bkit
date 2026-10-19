@@ -28,7 +28,6 @@ import { getWorkflowsRoot } from "../../shared/package-roots";
 //        metacharacter FIDs (including inside a PR-body marker) and ACCEPT
 //        the well-formed FID each tracker mints.
 describe("auto-fid-guard", () => {
-  const REPO_ROOT = path.resolve(__dirname, "../../../../..");
   const AUTO = fs.readFileSync(path.join(getWorkflowsRoot(), "bkit-auto.md"), "utf-8");
 
   /** Every ```bash block body in bkit-auto.md. */
