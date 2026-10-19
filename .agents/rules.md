@@ -160,6 +160,13 @@
 - **Tests:** `*.test.ts` Vitest unit, `*.integration.test.ts` Vitest integration, `*.spec.ts` Playwright E2E.
 - **Logs:** `console.error("[Namespace] constant-label", { payload })`.
 
+#### Workflows & Process
+
+- **Tracker issue creation:** NEVER create issues yourself; ONLY suggest; create ONLY after explicit human confirmation.
+- **Tracker issue settings:** Title MAX 70 characters or two lines on mobile; ALWAYS set labels, project, priority, size, and milestone; check similar issues if unclear.
+- **Tracker issue mentions:** NEVER mention issue IDs on their own; ALWAYS mention issue IDs together with their title and URL.
+- **Tracker work comments:** ANY issues worked on outside `/bkit-*` workflows → post ONE comment per landed unit (commit / PR / blocked stop) with outcome / links only; NEVER paste diffs / restate code.
+
 #### Repo Authoring
 
 - **Source of truth:** Install engine lives in `.bkit/core/engine/`; the written payload lives in `.bkit/core/` and `.bkit/shared/`; copy-and-own templates live in `.bkit/templates/`. Mirror sources (`core/workflows`, `core/prompts`) and the bkit-authoring docs (`core/.bkit/`) live under `core/`. bkit's own agent runtime lives in `.agents/` exactly as a consumer's does — NEVER conflate the two.
