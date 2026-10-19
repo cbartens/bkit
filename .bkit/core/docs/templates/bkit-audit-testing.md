@@ -139,6 +139,7 @@ Verify only when applicable.
   - Setup skipping code. Fake DB always empty — branch under test never runs.
   - Test locking in bug. Asserts wrong behaviour; no decision wanted it.
   - Positive control that cannot fail. Asserts absent using selector/text that never existed.
+  - Absence guard outliving its writer. Asserts a file / path / name is not written, shipped or listed, but no source writes, copies or templates it anymore (retired or deprecated name) and no migration / cleanup removes it — search sources for each named path. Also absence samples (headings, strings) no longer present anywhere, so the guard passes whatever leaks. Keep: secret / credential guards, removal checks for a migration that still runs.
   - Guard tested in different setup from runtime (cwd, config, env).
   - String scan cut short. Comment stripper cutting at marker also cuts marker inside strings.
   - Wrong surface. Write one place, assertion reads another — for every write, assertion reads surface write meant to change. Derived copies → `bkit-audit-database`.

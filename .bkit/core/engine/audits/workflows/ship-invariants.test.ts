@@ -259,13 +259,6 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
 // ---------------------------------------------------------------------------
 
 describe("bkit-ship.md — bookkeeping and status writes", () => {
-  it("the roadmap migration is complete — no docs/completed.md in the install record", () => {
-    // .bkit/issues.jsonl is the feature ledger; docs/completed.md is absent. The
-    // staging allow-list side lives in commands/workflow/ledgers.test.ts.
-    const version = fs.readFileSync(path.join(REPO_ROOT, ".bkit/version"), "utf-8");
-    expect(version).not.toContain("docs/completed.md");
-  });
-
   it("Step 1 resolves the status log through bkit status path, with --dev-pushes only when the runtime pushes dev", () => {
     // Finding 4: one variable resolving to two trees. `bkit status path`
     // picks the book root (main checkout with --dev-pushes, else the current

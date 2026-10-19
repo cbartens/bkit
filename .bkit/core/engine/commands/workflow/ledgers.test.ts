@@ -714,10 +714,4 @@ describe("bookPathspecs — frozen bookkeeping allow-list", () => {
     expect(pr).toContain("docs/plans/202610/logs/1-x/*");
     expect(pr).toContain("docs/*.jsonl"); // .bkit/issues.jsonl's route is the .bkit/*.jsonl glob
   });
-
-  it("never names docs/completed.md (#380)", () => {
-    for (const scope of ["core", "full", "pr"] as const) {
-      expect(bookPathspecs("202610", "1-x", scope)).not.toContain("docs/completed.md");
-    }
-  });
 });

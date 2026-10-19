@@ -517,12 +517,6 @@ describe("bkit-source `.agents/{rules,docs,skills}.md` must not leak to consumer
     const templateBlock = extractManagedBlock(template, "html-comment");
     expect(consumerBlock).not.toBeNull();
     expect(consumerBlock).toBe(templateBlock);
-
-    // Critically: bkit's own out-of-block content (its `## Project Rules`
-    // children — e.g. "### bkit Repo Authoring", "### Pre-push Checklist
-    // (this repo)") MUST NOT appear in a consumer install.
-    expect(consumerRules).not.toMatch(/###\s+bkit Repo Authoring/);
-    expect(consumerRules).not.toMatch(/###\s+Pre-push Checklist \(this repo\)/);
   });
 
   it("rules.md is reachable via the templates pass — no additive leak path", () => {
