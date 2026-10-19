@@ -11,7 +11,7 @@ import { substituteWorkflow } from "../../render/trackers.js";
 import { resolveNetworkAllowlist, extractMcpServers, networkAllowlistBases } from "../cloud-env.js";
 import { OPENCODE_PROVIDER_DEFAULTS } from "../../shared/egress.js";
 import { BKIT_PREFIX, installFile, listMdFiles, readInstallingVersion, trackMirrorWrite, } from "./core.js";
-import { opencodeProviderId } from "../../render/models.js";
+import { isOpencodeProvider, opencodeProviderId } from "../../render/models.js";
 export function renderOpencodeAgentsCommands(ctx) {
     const { dryRun, opencodeModelLookup, effortMap, opencodeProvider, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
@@ -118,7 +118,7 @@ export function renderOpencodeAgentsCommands(ctx) {
  * secret against the installed provider.
  */
 export function opencodeProviderEnvVar(providerKey) {
-    return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.envVar ?? "";
+    return isOpencodeProvider(providerKey) ? OPENCODE_PROVIDER_DEFAULTS[providerKey].envVar : "";
 }
 /**
  * Detect drift between the self-installed `.github/workflows/opencode.yml` reactive `/oc` handler
@@ -222,10 +222,10 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
     const raw = fs.readFileSync(templatePath, "utf-8");
     // Strict allowlist: provider is gated to OPENCODE_PROVIDERS at the CLI, so it is always
     // a known key here. An unknown id throws; no substitute provider.
-    const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider];
-    if (!providerDefaults) {
+    if (!isOpencodeProvider(provider)) {
         throw new Error(`renderOpencodeJson: unknown opencode provider ${JSON.stringify(provider)}`);
     }
+    const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider];
     // Resolve tracker MCP entry
     // opencode's MCP schema differs from Claude/Cursor: remote servers use type "remote"
     // (NOT "http" — not in opencode's enum, which makes the whole config invalid) and read
@@ -503,7 +503,7 @@ export function runOpencodeModule(ctx) {
         detect: `opencode host installed (provider: ${provider}). The opencode CLI and your provider credentials are required before running agents.`,
         action: `opencode setup for provider "${provider}":\n\n` +
             (() => {
-                const pd = OPENCODE_PROVIDER_DEFAULTS[provider];
+                const pd = isOpencodeProvider(provider) ? OPENCODE_PROVIDER_DEFAULTS[provider] : undefined;
                 if (!pd) {
                     return (`  1. Set ${provider.toUpperCase()}_API_KEY in your environment / .bkit/.env.\n` +
                         `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`);

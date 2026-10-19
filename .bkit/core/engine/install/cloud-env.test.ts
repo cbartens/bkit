@@ -44,6 +44,7 @@ import {
   MULTI_LABEL_SUFFIXES,
   MULTI_TENANT_APEXES,
 } from "../shared/egress";
+import { isOpencodeProvider } from "../render/models";
 import { ISSUE_TRACKERS } from "./manifest";
 import type { TokenMap } from "./placeholders";
 
@@ -846,6 +847,8 @@ describe("egress registry — completeness, invariants and the anti-widening gat
   // T2 — the literals in the leaf are tied back to the provider baseURL they claim to derive from.
   it("T2: provider rows match their baseURL host, and every host is covered by a base", () => {
     for (const row of providerRows) {
+      if (!isOpencodeProvider(row.id))
+        throw new Error(`row ${row.id} is not an allowlisted provider`);
       const baseURL = OPENCODE_PROVIDER_DEFAULTS[row.id].baseURL;
       if (baseURL !== "") {
         // the derived literal must still equal what the provider's baseURL resolves to

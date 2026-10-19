@@ -17,6 +17,7 @@ import {
   parseModelLookupForColumn,
   opencodeProviderId,
 } from "./models";
+import { OPENCODE_PROVIDERS } from "../shared/egress";
 import { getBkitDocsRoot, getPromptsRoot } from "../shared/package-roots";
 
 // ---------------------------------------------------------------------------
@@ -269,11 +270,16 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     );
   });
 
-  it("every allowlisted provider ships a curated column (all four)", () => {
-    for (const provider of ["openrouter", "ollama", "opencode-zen", "opencode-go"]) {
+  it("every allowlisted provider ships a curated column", () => {
+    for (const provider of OPENCODE_PROVIDERS) {
       const lookup = buildOpencodeModelLookup(path.join(getBkitDocsRoot(), "prompts.md"), provider);
       expect(lookup.size).toBeGreaterThan(0);
     }
+  });
+
+  it("openai (the Codex gateway) ships a column even though it is not an opencode provider", () => {
+    const lookup = buildOpencodeModelLookup(path.join(getBkitDocsRoot(), "prompts.md"), "openai");
+    expect(lookup.size).toBeGreaterThan(0);
   });
 
   it("unknown provider throws — no column, no substitute", () => {

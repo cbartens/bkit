@@ -33,7 +33,7 @@ import {
   readInstallingVersion,
   trackMirrorWrite,
 } from "./core.js";
-import { opencodeProviderId } from "../../render/models.js";
+import { isOpencodeProvider, opencodeProviderId } from "../../render/models.js";
 
 export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
   const { dryRun, opencodeModelLookup, effortMap, opencodeProvider, logPrefix } = ctx;
@@ -154,7 +154,7 @@ export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
  * secret against the installed provider.
  */
 export function opencodeProviderEnvVar(providerKey: string): string {
-  return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.envVar ?? "";
+  return isOpencodeProvider(providerKey) ? OPENCODE_PROVIDER_DEFAULTS[providerKey].envVar : "";
 }
 
 /**
@@ -274,10 +274,10 @@ export function renderOpencodeJson(
   const raw = fs.readFileSync(templatePath, "utf-8");
   // Strict allowlist: provider is gated to OPENCODE_PROVIDERS at the CLI, so it is always
   // a known key here. An unknown id throws; no substitute provider.
-  const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider];
-  if (!providerDefaults) {
+  if (!isOpencodeProvider(provider)) {
     throw new Error(`renderOpencodeJson: unknown opencode provider ${JSON.stringify(provider)}`);
   }
+  const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider];
 
   // Resolve tracker MCP entry
   // opencode's MCP schema differs from Claude/Cursor: remote servers use type "remote"
@@ -575,7 +575,7 @@ export function runOpencodeModule(ctx: ModuleContext): void {
     action:
       `opencode setup for provider "${provider}":\n\n` +
       (() => {
-        const pd = OPENCODE_PROVIDER_DEFAULTS[provider];
+        const pd = isOpencodeProvider(provider) ? OPENCODE_PROVIDER_DEFAULTS[provider] : undefined;
         if (!pd) {
           return (
             `  1. Set ${provider.toUpperCase()}_API_KEY in your environment / .bkit/.env.\n` +
