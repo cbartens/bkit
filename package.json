@@ -40,7 +40,7 @@
     "CHANGELOG.md"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "packageManager": "pnpm@10.34.6",
   "repository": {
@@ -74,7 +74,7 @@
     "bkit:lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
     "test": "vitest run",
     "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/core/engine/{cli,commands/analysis,install/cloud-env,commands/comply,commands/harvest,commands/install/install,commands/launch,install/manifest,install/managed-block,shared/package-roots,shared/protected-paths,checks/after/index,checks/after/auth,checks/after/ci-yml,checks/after/github,checks/after/managed,checks/after/tools,checks/after/suppression,checks/before/index,checks/before/context-fetch,checks/before/env,checks/before/files,checks/before/mcp,checks/before/repo,checks/before/version,ledgers/status,ledgers/telemetry,install/write,install/placeholders,install/template-copies,render/trackers,render/hosts,render/models,commands/install/uninstall,commands/install/upgrade,install/version-file,tools/wording}.ts' --coverage.include='.bkit/core/engine/commands/**/*.ts' --coverage.include='.bkit/core/engine/shared/{settings,package-json,package-manager,timeouts}.ts' --coverage.thresholds.branches=70",
-    "bkit:test:bats": "bash -c 'if command -v bats >/dev/null 2>&1; then bats tests/*.bats; else echo \"[bkit] bats missing - skipping bats suite (install bats to enable)\" >&2; fi'",
+    "bkit:test:bats": "pnpm exec bats tests/*.bats",
     "build": "tsc && chmod +x dist/cli.js",
     "bkit:check:dist": "rm -rf dist && tsc && chmod +x dist/cli.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
     "graph": "bash scripts/graphify/bkit-graphify.sh build",
@@ -90,18 +90,19 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
-    "@vitest/coverage-v8": "^4.1.7",
+    "@types/node": "24.19.2",
+    "@vitest/coverage-v8": "5.0.3",
+    "bats": "1.13.0",
     "bkit": "link:.",
-    "husky": "^9.1.7",
-    "lint-staged": "^17.0.0",
-    "prettier": "^3.5.3",
-    "slop-scan": "^0.3.0",
-    "tsx": "^4.19.2",
-    "typescript": "^7.0.0",
-    "vite": "^6.4.2",
-    "vitest": "^4.1.7",
-    "yaml": "^2.9.1"
+    "husky": "9.1.7",
+    "lint-staged": "17.6.0",
+    "prettier": "3.9.10",
+    "slop-scan": "0.3.0",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "6.4.4",
+    "vitest": "5.0.3",
+    "yaml": "2.9.1"
   },
   "pnpm": {
     "overrides": {

@@ -22,10 +22,10 @@
 <!-- prettier-ignore -->
 | Technology | Version | Usage |
 | --- | --- | --- |
-| Node.js | `>=20` (engines field) | Runtime for all CLI scripts |
-| TypeScript | `^7.0.0` | Source language for `.bkit/core/engine/**/*.ts` |
+| Node.js | `>=24` (engines field) | Runtime for all CLI scripts |
+| TypeScript | `7.x` | Source language for `.bkit/core/engine/**/*.ts` |
 | ESM | `"type": "module"` in `package.json` | All scripts are native ESM modules |
-| `tsx` | `^4.19` | Used by integration tests to spawn `bkit` without a pre-build step |
+| `tsx` | `4.x` | Used by integration tests to spawn `bkit` without a pre-build step |
 
 ## Package Management
 
@@ -33,6 +33,7 @@
 | Technology | Version | Usage |
 | --- | --- | --- |
 | pnpm | tracks `package.json#packageManager` (single SoT; Corepack-resolved) | Monorepo / consumer package management |
+| pnpm settings | `pnpm-workspace.yaml` | bkit repo only: `minimumReleaseAge: 10080` (7 days), `trustPolicy: no-downgrade`, `blockExoticSubdeps`, `strictDepBuilds`, `onlyBuiltDependencies: [esbuild]`. `devDependencies` are exact versions (no ranges) |
 | npm registry | `https://registry.npmjs.org` | Distribution target for `@cbartens/bkit` |
 
 ## Build & Output
@@ -65,10 +66,10 @@ OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `
 <!-- prettier-ignore -->
 | Technology | Version | Usage |
 | --- | --- | --- |
-| Vitest | `^4.1.7` | Unit (`*.test.ts`) and integration (`*.integration.test.ts`) test runner |
-| `@vitest/coverage-v8` | `^4.1.7` | Per-tier coverage; branch-threshold gate on the unit run (`test:coverage:unit`) |
-| `yaml` | `^2.9` | Test-only YAML parsing (template workflows parsed in-process; no python / ruby) |
-| bats | via `npx --yes bats` (no devDep) | Shell tier — `tests/*.bats`, for logic that lives in shell (the bkit-cloud-bootstrap hook's `gh` preflight, the `gh` stub harness) |
+| Vitest | `5.x` | Unit (`*.test.ts`) and integration (`*.integration.test.ts`) test runner; mocks are cleared before every test (the v5 `clearMocks` default) |
+| `@vitest/coverage-v8` | `5.x` | Per-tier coverage; branch-threshold gate on the unit run (`test:coverage:unit`) |
+| `yaml` | `2.x` | Test-only YAML parsing (template workflows parsed in-process; no python / ruby) |
+| bats | `1.x` (devDependency; `pnpm exec bats`) | Shell tier — `tests/*.bats`, for logic that lives in shell (the bkit-cloud-bootstrap hook's `gh` preflight, the `gh` stub harness) |
 | Real-filesystem fixtures | `os.tmpdir()` scratch dirs | Integration tests spawn `bkit` against temporary consumer directories — no mock `fs` |
 
 See `docs/testing.md` for tier boundaries, CI execution order, and spawning patterns.
@@ -78,17 +79,17 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 <!-- prettier-ignore -->
 | Technology | Config | Usage |
 | --- | --- | --- |
-| Prettier | `^3.5`, `.prettierrc.json` | Code and markdown formatting (`pnpm format:check` in CI) |
+| Prettier | `3.x`, `.prettierrc.json` | Code and markdown formatting (`pnpm format:check` in CI) |
 | Vale | `3.9.1`, system-installed locally; CI installs a sha256-verified pinned tarball | Prose linting of `.agents/`, `.bkit/`, `docs/` and root markdown (`pnpm lint:prose` → `bkit ci prose --glob=…`). Skips only when the vale binary is absent; a missing `.vale/styles/write-good` (gitignored, so absent in fresh checkouts and worktrees) self-heals by copying from the main worktree, else `vale sync`, and warns loudly on stderr if neither works. CI installs both so it always enforces there |
 | actionlint | `1.7.12`, downloaded in-lane (SHA-pinned script) | GitHub-Actions-aware lint of `.github/workflows/*` — expression syntax + shellcheck on `run:` bodies. `pnpm bkit:lint:workflows` guard-skips locally when absent |
-| slop-scan | `^0.3`, `slop-scan.config.json` | Detects code-shaped slop in source — empty catches, over-fragmentation, pass-through wrappers. `pnpm lint:slop` reports (never fails); `pnpm slop:delta` is the gate that fails on net-new findings vs the base |
+| slop-scan | `0.3.x`, `slop-scan.config.json` | Detects code-shaped slop in source — empty catches, over-fragmentation, pass-through wrappers. `pnpm lint:slop` reports (never fails); `pnpm slop:delta` is the gate that fails on net-new findings vs the base |
 
 ## Git Hooks
 
 <!-- prettier-ignore -->
 | Technology | Config | Usage |
 | --- | --- | --- |
-| husky | `^9.1`, `.husky/` | Pre-commit and pre-push hooks |
+| husky | `9.x`, `.husky/` | Pre-commit and pre-push hooks |
 | Pre-push hook | `.husky/pre-push` | Runs `pnpm bkit:gate:static-unit` (or `bkit:gate:static` on `revert-*`) + `pnpm bkit check` before push — the SAME gate scripts the agent workflows dispatch through, so a human push and an agent run enforce one set. Source-repo copy additionally runs `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; consumer template does not. Neither copy runs `pnpm build`. |
 
 ## CI/CD

@@ -188,7 +188,7 @@ Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; f
 - Install: `bkit install --auto=claude` (points at the `.claude/hooks/bkit-cloud-bootstrap.sh` template) or `--auto=opencode` (needs `--opencode=<provider>` first). Both need `--tracker=github`.
 - Secrets: `ANTHROPIC_API_KEY` + the Claude GitHub App (`/install-github-app`) for `claude`; `OPENCODE_PROVIDER_KEY` for `opencode`. Repo Actions permissions: read and write, PR creation allowed.
 - Adapt: `{{CLOUD_RUNNER}}` in all three jobs.
-- Traps: the file runs bkit by command name, so a changed invocation reaches you only as a changed template path on `bkit upgrade` — diff it on every upgrade. The opencode install version is a plain argument no updater bumps. Keep the file out of updater `ignorePaths` so action pins refresh.
+- Traps: the file runs bkit by command name, so a changed invocation reaches you only as a changed template path on `bkit upgrade` — diff it on every upgrade. The opencode install version is a plain argument; the `# renovate:` comment above it lets the example `renovate.json5` bump it. Keep the file out of updater `ignorePaths` so action pins refresh.
 
 ## Git hooks — Husky
 
@@ -304,7 +304,7 @@ launchctl getenv BKIT_OPENROUTER_API_KEY    # bootstrap proof
 
 Editor defaults (`settings.json`: prettier format-on-save, extension recommendations) and the Cursor Cloud Agent image (`environment.json` → `Dockerfile` + per-snapshot `install`). Cloud agents run bkit workflows; `bkit install --auto=cursor` (needs `--tracker=linear`) points at the two cloud files. Reference: https://cursor.com/docs/cloud-agent/setup.
 
-- `Dockerfile`: the `bkit toolchain` section installs what bkit's workflows use (git, jq, python3, gh, pinned Vale, corepack-pinned pnpm). Adapt `FROM`, the Node major and repo extras outside it.
+- `Dockerfile`: the `bkit toolchain` section installs what bkit's workflows use (git, jq, python3, pinned and sha256-checked gh and Vale, corepack-pinned pnpm). Node 24 is installed outside it from a sha256-checked nodejs.org tarball. Adapt `FROM`, the Node version and repo extras outside the toolchain section.
 - `environment.json` `install`: `pnpm install --frozen-lockfile`, then `vale sync` when `.vale.ini` exists.
 - Secrets: Cloud Agents dashboard → Runtime Secrets (`.bkit/cloud.md`).
 - Traps: the corepack pnpm pin must match `packageManager`. Keep the `bkit toolchain` section as shipped so the template diff on upgrade stays readable.
@@ -326,7 +326,10 @@ Renovate (Mend) — commit `.github/renovate.json5` on the default branch, then 
 gh secret set BKIT_GH_TOKEN
 ```
 
-- Examples ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them). Your copied workflows (`bkit-ci.yml`, `bkit-cloud.yml`) stay in scope so their pins refresh.
+- Examples ignore `.bkit/templates/**`, `.agents/skills/**` (bkit rewrites them), `docs/plans/**` and the `tests` / `__fixtures__` trees. Your copied workflows (`bkit-ci.yml`, `bkit-cloud.yml`) stay in scope so their pins refresh.
+- Examples extend `config:best-practices`; major bumps wait for a tick on the Dependency Dashboard (`dependencyDashboardApproval`); `lockFileMaintenance` runs monthly; PRs rebase only on conflict.
+- A `# renovate: datasource=<ds> depName=<name>` comment above a pinned CLI version (Dockerfile, `bkit-cloud.md`, workflows) lets the example `customManagers` entry bump it. Checksum-paired pins (Vale, gh, jq, Node, actionlint): update the sha256 by hand in the same PR.
+- `bkit-renovate.yml` pins `renovate-version` to an exact release; the same kind of `# renovate:` comment keeps it current.
 - `enabled: false` on a Renovate package rule does not stop digest pinning; use `ignorePaths` to keep Renovate off a file.
 - Land config on default branch before bot runs. Examples set `baseBranchPatterns: ["dev"]`.
 - App install, self-hosted token, private-package host rule, CVE handling → `docs/deployments.md` § Dependency updaters.
