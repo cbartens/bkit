@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **BREAKING — Node 24 or newer is required.** `engines.node` rises from `>=20` to `>=24`, the version bkit's own CI and release already run on. A repo on Node 20 or 22 can no longer install or run this bkit; move to Node 24 first. The release that carries this change is a major version.
+
 ### Added
 
 - **Oxlint test-lint template.** New copy-and-own `.oxlintrc.json` fails lint on a test that cannot fail, in JS / TS repos: `vitest/expect-expect` (no assertion), `vitest/no-conditional-in-test` (a branch inside a test), `vitest/no-conditional-expect` (an `expect` that may never run), `vitest/valid-expect` (`maxArgs: 2`) and the type-aware `typescript/no-floating-promises` (an unawaited promise). Every other check is off. It covers `*.test.*` and `*.spec.*` files only and skips `.bkit/templates/` and `scripts/ci/**/*.test.mjs`. The suggested `lint` script in `.bkit/templates.md` § Gate tool scripts is now `oxlint -c .oxlintrc.json --type-aware --deny-warnings`; it was ESLint when a config existed and otherwise a skip line, so a repo without an ESLint config got a lint step that went green having checked nothing. bkit never edits your `package.json`, so an existing `lint` value stays until you change it. ESLint is not the default because typescript-eslint's type-aware rules need TypeScript `<6.1`. `bkit tips` suggests it (tip `test-lint`) when `package.json` lists `vitest` or `jest` and the repo has no Oxlint config, no `oxlint` dependency and no ESLint config naming a test plugin; `bkit check` does not warn. `.bkit/templates.md` § Oxlint. #612

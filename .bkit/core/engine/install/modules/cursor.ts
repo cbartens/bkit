@@ -20,13 +20,7 @@ import {
 } from "../cloud-env.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import type { ModuleContext } from "./index.js";
-import {
-  BKIT_PREFIX,
-  installFile,
-  listMdFiles,
-  removeOrphans,
-  trackMirrorWrite,
-} from "./core.js";
+import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
 import { reconcileMcpJson } from "./claude.js";
 
 export function renderCursorAgentsCommands(ctx: ModuleContext): string[] {

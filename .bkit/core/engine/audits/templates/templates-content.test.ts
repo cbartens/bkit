@@ -279,8 +279,19 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/commitMessagePrefix:\s*"chore\(deps\):"/);
   });
 
-  it("extends Renovate's config:recommended baseline", () => {
-    expect(content).toMatch(/"config:recommended"/);
+  it("extends Renovate's config:best-practices baseline (digest pinning, abandonment flags, config migration)", () => {
+    expect(content).toMatch(/extends:\s*\[\s*"config:best-practices"/);
+    expect(content).not.toMatch(/"config:recommended"/);
+  });
+
+  it("restores the 7-day npm release-age gate that config:best-practices lowers to 3 days", () => {
+    expect(content).toMatch(
+      /matchDatasources:\s*\[\s*"npm"\s*\][\s\S]*?minimumReleaseAge:\s*"7 days"/,
+    );
+  });
+
+  it("rebases a Renovate PR only when it conflicts (no CI re-run on every base move)", () => {
+    expect(content).toMatch(/rebaseWhen:\s*"conflicted"/);
   });
 
   it("does not extend a renovate-local preset (the copy is the whole config)", () => {
@@ -292,9 +303,12 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/osvVulnerabilityAlerts:\s*true/);
   });
 
-  it("enables lockFileMaintenance with weekly schedule", () => {
+  it("enables lockFileMaintenance on a monthly schedule", () => {
     expect(content).toMatch(/lockFileMaintenance:/);
     expect(content).toMatch(/enabled:\s*true/);
+    expect(content).toMatch(
+      /lockFileMaintenance:\s*\{[\s\S]*?schedule:\s*\["before 6am on the first day of the month"\]/,
+    );
   });
 
   it("ships the pnpm-11 OOM mitigation: worker-cap env + Renovate minimumReleaseAge (#308)", () => {
@@ -324,6 +338,34 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/ignorePaths:[\s\S]*"\.agents\/skills\/\*\*"/);
   });
 
+  it("keeps archived plans, test directories and fixtures out of the scan, and repeats the preset's defaults", () => {
+    // A repo-level ignorePaths replaces :ignoreModulesAndTests, so its entries are repeated.
+    for (const glob of [
+      "docs/plans/**",
+      "**/tests/**",
+      "**/__fixtures__/**",
+      "**/node_modules/**",
+      "**/bower_components/**",
+      "**/test/**",
+    ]) {
+      expect(content).toContain(`"${glob}"`);
+    }
+  });
+
+  it("holds major bumps on the dependency dashboard until approved", () => {
+    expect(content).toMatch(
+      /matchUpdateTypes:\s*\["major"\],\s*automerge:\s*false,\s*dependencyDashboardApproval:\s*true/,
+    );
+  });
+
+  it("tracks off-manifest pins through one regex custom manager (Dockerfile, bkit-cloud.md, workflows)", () => {
+    expect(content).toMatch(/customManagers:\s*\[\s*\{\s*customType:\s*"regex"/);
+    expect(content).toContain("# renovate: datasource=(?<datasource>");
+    expect(content).toContain("(^|/)Dockerfile$");
+    expect(content).toContain("bkit-cloud\\\\.md$");
+    expect(content).toContain("workflows/[^/]+\\\\.ya?ml$");
+  });
+
   it("disables Renovate for the @cbartens/bkit package itself (#132)", () => {
     // bkit upgrades via `bkit upgrade`.
     expect(content).toMatch(
@@ -339,7 +381,7 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     // devDeps non-major + prod patch + @types + eslint share a single
     // groupName so they land in ONE PR.
     expect(content).toMatch(
-      /matchDepTypes:\s*\[\s*"devDependencies"\s*\][\s\S]*?groupName:\s*"non-major dependencies"[\s\S]*?automerge:\s*true/,
+      /matchDepTypes:\s*\[\s*"devDependencies",\s*"packageManager"\s*\][\s\S]*?groupName:\s*"non-major dependencies"[\s\S]*?automerge:\s*true/,
     );
     // No per-type group names — the four dependency types share one group.
     expect(content).not.toMatch(/groupName:\s*"devDependencies \(non-major\)"/);
@@ -387,6 +429,13 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
     expect(content).toMatch(/uses:\s*renovatebot\/github-action@[0-9a-f]{40}\s*#/);
     expect(content).toMatch(/runs-on:\s*ubuntu-latest/);
     expect(content).not.toMatch(/\{\{RENOVATE_RUNNER\}\}/);
+  });
+
+  it("pins an exact Renovate release with a dated-lookup annotation the custom manager reads", () => {
+    expect(content).toMatch(/\n\s*renovate-version:\s*"\d+\.\d+\.\d+"/);
+    expect(content).toMatch(
+      /# renovate: datasource=github-releases depName=renovatebot\/renovate\n\s*renovate-version:/,
+    );
   });
 
   it("wires RENOVATE_GIT_AUTHOR from a repo variable (portable commit author for org repos)", () => {

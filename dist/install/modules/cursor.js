@@ -9,7 +9,7 @@ import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { writeCursorCloudDoc, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, } from "../cloud-env.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
-import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite, } from "./core.js";
+import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
 import { reconcileMcpJson } from "./claude.js";
 export function renderCursorAgentsCommands(ctx) {
     const { dryRun, modelLookup, effortMap, logPrefix } = ctx;

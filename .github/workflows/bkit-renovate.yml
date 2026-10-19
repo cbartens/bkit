@@ -65,7 +65,7 @@ jobs:
       #       app-id: ${{ secrets.RENOVATE_APP_ID }}
       #       private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
       # then set `token: ${{ steps.app-token.outputs.token }}` below.
-      - uses: renovatebot/github-action@dd5302ec17783b2fc721b19ae7209b57b1587765 # v46.1.17
+      - uses: renovatebot/github-action@230ce922b08968d0a4f6f70f295601daff09ef1d # v46.3.7
         with:
           # PAT secret (default). FINE-GRAINED repository permissions (this repo):
           #   Contents: Read and write · Pull requests: Read and write ·
@@ -78,6 +78,13 @@ jobs:
           # lets Renovate use your verified email as the git author — org-owned tokens have no
           # such permission, so set RENOVATE_GIT_AUTHOR below instead.)
           token: ${{ secrets.BKIT_GH_TOKEN }}
+          # Exact Renovate image tag. Unset, the action runs the floating `renovate:<major>`
+          # tag, which can sit a major behind the latest. renovate.json5 `customManagers`
+          # reads the comment below and opens a PR when a newer release lands. The lookup
+          # uses GitHub releases (they carry publish dates, so `minimumReleaseAge` applies);
+          # the image tags on ghcr.io carry none.
+          # renovate: datasource=github-releases depName=renovatebot/renovate
+          renovate-version: "44.151.0"
         env:
           # Scope to THIS repo only — never org-wide autodiscover.
           RENOVATE_REPOSITORIES: ${{ github.repository }}

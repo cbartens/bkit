@@ -9,7 +9,7 @@
   <a href="https://github.com/cbartens/bkit/actions/workflows/bkit-ci.yml"><img alt="CI" src="https://github.com/cbartens/bkit/actions/workflows/bkit-ci.yml/badge.svg?branch=main"></a>
   <a href="https://www.npmjs.com/package/@cbartens/bkit"><img alt="npm version" src="https://img.shields.io/npm/v/@cbartens/bkit"></a>
   <a href="#license"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <img alt="Node 20+" src="https://img.shields.io/badge/node-%E2%89%A520-339933">
+  <img alt="Node 24+" src="https://img.shields.io/badge/node-%E2%89%A524-339933">
   <img alt="Works with Claude Code, Cursor, Codex, Antigravity and opencode" src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Codex%20%C2%B7%20Antigravity%20%C2%B7%20opencode-8250df">
 </p>
 
@@ -148,7 +148,7 @@ How the lanes join into the one final check, and what happens on green or red: [
 
 ## Quick start
 
-**You need** a GitHub repo with a `package.json`, Node 20+, pnpm, and at least one of Claude Code, Cursor, Codex, Google Antigravity or opencode.
+**You need** a GitHub repo with a `package.json`, Node 24+, pnpm, and at least one of Claude Code, Cursor, Codex, Google Antigravity or opencode.
 
 **Easiest:** copy the [install prompt](.bkit/install.md#install--first-time) into your AI coding tool and let it do the setup.
 
