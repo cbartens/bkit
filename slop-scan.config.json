@@ -210,27 +210,10 @@
       }
     },
     {
-      "files": [
-        ".bkit/core/engine/install/modules/claude.ts",
-        ".bkit/core/engine/install/modules/cloud.ts",
-        ".bkit/core/engine/install/modules/core.ts",
-        ".bkit/core/engine/install/modules/opencode.ts"
-      ],
-      "_reason": "Fail-open catches on consumer-authored JSON and version files: package.json (setConsumerBkitField in cloud.ts, detectGateAdvisories / detectNoopGates in core.ts), .bkit/version (readInstallingVersion in core.ts), .claude/settings.json (enrichClaudeSettingsAllows in claude.ts), .mcp.json and .cursor/mcp.json (reconcileMcpJson in claude.ts), and .opencode/opencode.json plus opencode.yml (detectOpencodeYmlProviderDrift, renderOpencodeJson, reconcileOpencodeJson, removeOpencodeProviderBlock in opencode.ts). install must NOT crash on a consumer's corrupt file; slop-scan's log+rethrow shape would abort install/upgrade on consumer input we cannot fix from here. Each catch carries a comment naming its fallback. Scoped per-rule to these files.",
+      "files": [".bkit/templates/scripts/ci"],
+      "_reason": "Shipped CI scripts, each paired with its .test.mjs, plus their accepted-* data files. Consumers adopt each one at scripts/ci/<name>, and dogfood-templates.test.ts maps every file to that same path in this repo's own scripts/ci/. Splitting the folder into subfolders would change the adopted paths for every consumer. Scoped to this folder + rule.",
       "rules": {
-        "defensive.empty-catch": {
-          "enabled": false
-        },
-        "defensive.error-obscuring": {
-          "enabled": false
-        }
-      }
-    },
-    {
-      "files": [".bkit/core/engine/commands/install/install.ts"],
-      "_reason": "detectOpencodeProvider's fail-open catches on consumer-authored JSON (package.json, .opencode/opencode.json): a corrupt consumer file must fall through to the default provider, not abort install/upgrade. Rethrowing would make bkit's install depend on the consumer's JSON validity \u2014 wrong direction. The empty catch with the 'fall back' comment is the contract. Scoped to this file + rule.",
-      "rules": {
-        "defensive.error-obscuring": {
+        "structure.directory-fanout-hotspot": {
           "enabled": false
         }
       }
