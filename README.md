@@ -16,12 +16,12 @@
 <p align="center">
   <a href="#how-it-works">How it works</a> ·
   <a href="#why-its-different">Why it's different</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#audits">Audits</a> ·
   <a href="#memory">Memory</a> ·
+  <a href="#audits">Audits</a> ·
   <a href="#templates">Templates</a> ·
   <a href="#token-costs">Token costs</a> ·
-  <a href="#faq">FAQ</a>
+  <a href="#faq">FAQ</a> ·
+  <a href="#quick-start">Quick start</a>
 </p>
 
 <p align="center">
@@ -54,6 +54,25 @@ AI agents design it, plan it, build it, have it reviewed by agents that didn't w
   </picture>
 </p>
 
+<a id="whats-inside"></a>
+
+## What's inside: 200+ files of best practice
+
+Everything a senior team would otherwise write down over years, in files you can read:
+
+<!-- prettier-ignore -->
+| What | How many | What it does for you |
+| --- | --- | --- |
+| [Agents](.bkit/prompts.md) | 40+ | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
+| [Workflows](.bkit/workflows.md) | 6 | The five phases plus a cloud router. Every step ends in a checklist and a mechanical check before the next one starts. |
+| [Agent rules](.agents/rules.md) | 70+ | One rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
+| [Guardrails](.bkit/providers.md#guardrails) | 10+ hook files | Block dangerous commands and secret reads, and make agents investigate before they edit, on all five AI tools. |
+| [Audits](.bkit/pipeline.md#audits) | 35 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
+| [Project docs](.bkit/shared/docs/) | 10 + [index](.agents/docs.md) | Architecture, data schema, deployments, testing, security, monitoring, design system, tech stack, setup, and an index telling each agent what to read at each step. |
+| [Templates](.bkit/templates.md) | 60+ | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, and 10+ ready-made connectors for your platforms. |
+
+**These are the files your agents read, so they're written for agents:** short, dense, tables over prose. For day-to-day use, start with [`.bkit/README.md`](.bkit/README.md); for every agent in the order it runs, see the [pipeline reference](.bkit/pipeline.md).
+
 <a id="how-it-works"></a>
 
 ## How it works
@@ -80,6 +99,35 @@ AI agents design it, plan it, build it, have it reviewed by agents that didn't w
 | Housekeeping | 7 utility agents | Keep docs, decisions, lessons and known bugs current, and rank what to work on next. |
 
 Every agent in each phase, in the order it runs and what it checks: [pipeline reference](.bkit/pipeline.md#pipeline-map). Every step, verdict and contract: [`.bkit/workflows.md`](.bkit/workflows.md).
+
+<a id="models"></a>
+
+## Which model does each job
+
+**Claude sets the bar, and every other tool gets the model that comes closest to it.** On every other tool, each agent runs on the model that does the same job about as well as Claude, for the least money. You don't pick: install sets each agent's model.
+
+**How the picks are made.** Each kind of job has a bar: Claude's score on [LiveBench Agentic Coding](https://livebench.ai/#/?cats=Agentic+Coding), a public test where models fix real code in JavaScript, TypeScript and Python. For each tool, bkit takes the **cheapest model that reaches the bar**. Where nothing reaches it, the tool's best model gets the job. One model can fill two columns: on opencode, DeepSeek V4.1 Flash clears the bar for the hardest jobs, so it does the everyday jobs too, for a fraction of Claude's cost. Claude is never used on opencode, because opencode is where work goes when your Claude allowance runs out.
+
+<!-- prettier-ignore -->
+| Tool | Hardest jobs: design, plans, reviews, security, audits | Everyday jobs: writing code and docs, the second model in each review pair | Summaries |
+| --- | --- | --- | --- |
+| Claude Code | `claude-opus-5-5` · bar **65.2** | `claude-sonnet-5-5` · bar **59.4** | `claude-haiku-5-5` · bar **~51** |
+| Cursor | `cursor-grok-4.5-high` · 56.5 | `composer-2.5` · not measured | `composer-2.5` · not measured |
+| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash` · 77.3; `moonshotai/kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash` · 77.3 | `z-ai/glm-5.3-flash` · 56.8 |
+| opencode + Ollama | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 | `deepseek-v4.1-flash` · 77.3 |
+| opencode + OpenCode Zen | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 | `glm-5.3-flash` · 56.8 |
+| opencode + OpenCode Go | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 | `deepseek-v4.1-flash` · 77.3 |
+| Codex | `gpt-6-astra` · not measured | `gpt-5.6-terra` · not measured | `gpt-6-luna` · 51.2 |
+| Google Antigravity | `gemini-3.8-pro` · not measured | `gemini-3.8-pro` · not measured | `gemini-3.8-flash` · not measured |
+
+**Reading the table:**
+
+- **The bars are Claude Opus 5 and Sonnet 5 scores.** bkit runs the 5.5 versions. Opus 5.5 scores level with Opus 5. Sonnet 5.5 scores below Sonnet 5 on LiveBench, but one of its runs stopped early and other benchmarks put it above, so the bar stays at Sonnet 5. Every score and why: [the score board](.bkit/providers.md#agentic-coding-parity-board).
+- **Risk, security and root-cause agents get a second model** that reasons differently from the main one, so they don't share its blind spots. On every opencode provider that second model is Kimi K3, which scores a little under the bar for the hardest jobs.
+- **Cursor's own models don't reach the bar.** Claude models in Cursor spend paid API credits, so they're opt-in: paste the ready-made Opus block from [Model Overrides](.bkit/prompts.md#model-overrides).
+- **"Not measured" means LiveBench hasn't scored that model.** Those Codex, Antigravity and Cursor picks follow each vendor's own description of the model. Check them before you rely on them.
+- **Ollama needs a paid plan for every column.** The free models are far below the bar or not scored.
+- **Want a different model for one agent?** On Cursor and opencode, add a row to [Model Overrides](.bkit/prompts.md#model-overrides) and run `bkit install` again. Every agent with its model and thinking depth: [`.bkit/prompts.md` § Models](.bkit/prompts.md#models).
 
 <a id="why-its-different"></a>
 
@@ -144,33 +192,24 @@ The agent hooks come with install. Serena, graphify and the git hooks are [templ
 
 How the lanes join into the one final check, and what happens on green or red: [CI test scaffold](.bkit/pipeline.md#ci-scaffold).
 
-<a id="quick-start"></a>
+<a id="memory"></a>
 
-## Quick start
+## Right context at the right step
 
-**You need** a GitHub repo with a `package.json`, Node 24+, pnpm, and at least one of Claude Code, Cursor, Codex, Google Antigravity or opencode.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-context-dark.svg">
+    <img alt="What it knows: right context, right step, written back as it learns. In your repo, bkit reads project docs at every step and updates them at ship; reads and writes lessons, decisions, postponed work and known bugs; writes designs and plans that later steps read; reads audit reports at plan and a code map at every step; keeps run state and stats at every step; adds skills at build and removes them at ship. Outside your repo, it reads and updates the GitHub or Linear issue at every step, searches related issues at design, plan and debug, searches the web at design and debug, reads CI runs and test reports at debug and ship, reads runtime platforms such as Sentry, Vercel, Supabase and Stripe at debug, and opens, fixes and merges the pull request." src=".github/assets/bkit-context-light.svg" width="100%">
+  </picture>
+</p>
 
-**Easiest:** copy the [install prompt](.bkit/install.md#install--first-time) into your AI coding tool and let it do the setup.
+**A chat forgets everything when it ends; bkit doesn't.** It keeps what it knows in plain files in your repo and on your tracker issues. Each step reads what it needs and writes back what it learned:
 
-**By hand:** bkit is public on npm and installs like any other package, with no token or registry setup.
-
-```bash
-pnpm add -D @cbartens/bkit
-pnpm bkit install --claude    # pick your tools: --claude --cursor --codex --antigravity --opencode=<provider>
-# opencode provider: openrouter | ollama | opencode-zen | opencode-go
-```
-
-**Check it worked:** `pnpm bkit check` confirms every installed file matches the version you pinned (CI runs the same check), and `pnpm bkit tips` lists what isn't set up yet, most useful first.
-
-Adopt the [templates](#templates) you want from `.bkit/templates/`, open an issue, and run the first step from your AI tool:
-
-```text
-/bkit-design ISSUE-123
-```
-
-Already know exactly what to build? Start at `/bkit-plan`. Something broken? `/bkit-debug`; add `[repro]` if nothing fails yet, and it writes the failing test first.
-
-Full install, upgrade and CI setup: [`.bkit/install.md`](.bkit/install.md). Tracker labels and environment variables: [`.bkit/README.md`](.bkit/README.md#prerequisites).
+- **Docs that keep themselves current.** Install sets up the docs a professional project keeps: architecture, data schema, deployments, testing, security, monitoring, design system, tech stack and local setup. Agents fill them in as they work, `/bkit-ship` updates them after every feature, and [an index](.agents/docs.md) tells each agent which docs to read at each step. They stay current because the agents depend on them.
+- **Project memory agents actually read.** Four ledgers record lessons from every fix (`docs/knowledge.jsonl`), decisions and their reasons (`docs/decisions.jsonl`), work consciously postponed (`docs/deferrals.jsonl`) and known bugs (`docs/failures.jsonl`). Plan reviewers see the past bugs and postponed work closest to the new feature, debug reads the lessons first, and `/bkit-ship` checks nothing postponed was quietly dropped. Four utility agents keep them honest: they correct lessons and decisions the code has since contradicted, and close postponed work and known bugs that have already been fixed.
+- **Tracker issues are memory too.** Every step reads the whole tracker issue (e.g. GitHub, Linear), comments included, and adds what it did as a new comment without editing earlier ones, so the issue becomes the feature's running record. bkit skips its own comments when it reads, so agents act on what people wrote. Design, plan and debug also search your other tracker issues, closed ones included, for earlier designs, duplicate work and past incidents.
+- **Outside evidence, when it's needed.** Design searches the web for feasibility. Debug pulls failed CI logs, the diff since the last green run, end-to-end reports and runtime errors. 10+ ready-made connectors cover GitHub, Sentry, Vercel, Supabase, Stripe, Expo, Playwright, Maestro, Inngest, Resend, Cloud Run, Tavily web search and Serena, each easy to customise, extend or leave out. A connector that isn't set up is reported as such, never read as "all clear".
+- **Progress lives in your repo, not a chat window.** Run state is saved after every step, so a crashed run resumes where it stopped, on any tool.
 
 <a id="audits"></a>
 
@@ -206,30 +245,11 @@ All 35, grouped by area, with what each one finds: [the full audit list](.bkit/p
 - **Run one whenever you want.** Name a template to `@bkit-audit-generate` and it writes a report to `docs/audits/{YYYYMM}/`. It reads your code and, where you've connected them, your live platforms, and lists anything it couldn't check rather than calling it clean.
 - **Findings turn into work.** Hand the report to `/bkit-plan` and the fixes are planned, built, tested and shipped like any other feature.
 
-<a id="memory"></a>
-
-## Right context at the right step
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-context-dark.svg">
-    <img alt="What it knows: right context, right step, written back as it learns. In your repo, bkit reads project docs at every step and updates them at ship; reads and writes lessons, decisions, postponed work and known bugs; writes designs and plans that later steps read; reads audit reports at plan and a code map at every step; keeps run state and stats at every step; adds skills at build and removes them at ship. Outside your repo, it reads and updates the GitHub or Linear issue at every step, searches related issues at design, plan and debug, searches the web at design and debug, reads CI runs and test reports at debug and ship, reads runtime platforms such as Sentry, Vercel, Supabase and Stripe at debug, and opens, fixes and merges the pull request." src=".github/assets/bkit-context-light.svg" width="100%">
-  </picture>
-</p>
-
-**A chat forgets everything when it ends; bkit doesn't.** It keeps what it knows in plain files in your repo and on your tracker issues. Each step reads what it needs and writes back what it learned:
-
-- **Docs that keep themselves current.** Install sets up the docs a professional project keeps: architecture, data schema, deployments, testing, security, monitoring, design system, tech stack and local setup. Agents fill them in as they work, `/bkit-ship` updates them after every feature, and [an index](.agents/docs.md) tells each agent which docs to read at each step. They stay current because the agents depend on them.
-- **Project memory agents actually read.** Four ledgers record lessons from every fix (`docs/knowledge.jsonl`), decisions and their reasons (`docs/decisions.jsonl`), work consciously postponed (`docs/deferrals.jsonl`) and known bugs (`docs/failures.jsonl`). Plan reviewers see the past bugs and postponed work closest to the new feature, debug reads the lessons first, and `/bkit-ship` checks nothing postponed was quietly dropped. Four utility agents keep them honest: they correct lessons and decisions the code has since contradicted, and close postponed work and known bugs that have already been fixed.
-- **Tracker issues are memory too.** Every step reads the whole tracker issue (e.g. GitHub, Linear), comments included, and adds what it did as a new comment without editing earlier ones, so the issue becomes the feature's running record. bkit skips its own comments when it reads, so agents act on what people wrote. Design, plan and debug also search your other tracker issues, closed ones included, for earlier designs, duplicate work and past incidents.
-- **Outside evidence, when it's needed.** Design searches the web for feasibility. Debug pulls failed CI logs, the diff since the last green run, end-to-end reports and runtime errors. 10+ ready-made connectors cover GitHub, Sentry, Vercel, Supabase, Stripe, Expo, Playwright, Maestro, Inngest, Resend, Cloud Run, Tavily web search and Serena, each easy to customise, extend or leave out. A connector that isn't set up is reported as such, never read as "all clear".
-- **Progress lives in your repo, not a chat window.** Run state is saved after every step, so a crashed run resumes where it stopped, on any tool.
-
 <a id="templates"></a>
 
 ## Templates ready to adopt
 
-**bkit installs only what its workflows run.** Everything you or another tool runs ships as a template: install puts the latest set in your `.bkit/templates/`, and every upgrade lists which ones changed. **Copy in what you want and own it;** bkit never writes over your copy. The install prompt asks your AI to adopt what fits, and each workflow ends with a tip on the next one worth adding. Audits aren't templates: they come installed, so there's nothing to copy ([above](#audits)).
+**bkit installs only what its workflows run.** Everything you or another tool runs ships as a template: install puts the latest set in your `.bkit/templates/`, and every upgrade lists which ones changed. **Copy in what you want and own it;** bkit never writes over your copy. The install prompt asks your AI to adopt what fits, and each workflow ends with a tip on the next one worth adding. Audit templates fall under the first rule: bkit's own audit agent runs them, so install puts them straight into `docs/templates/` and there's nothing to copy.
 
 The ones that matter most, in the order to adopt them:
 
@@ -245,6 +265,7 @@ The ones that matter most, in the order to adopt them:
 | **graphify** | Keeps a map of how your code fits together (`docs/capabilities.md`), so agents check what already exists before building it again. |
 | **Dependency updates** | Small, grouped update pull requests from Renovate or Dependabot instead of one big risky upgrade later. GitHub Actions stay pinned, and security fixes skip the queue. |
 | **Security scan** | Trivy fails the check when a change adds a known-vulnerable library in any language, a risky container or cluster setting, or a committed password. A daily run catches problems that have no fix yet, which an updater never shows. |
+| **Audits** | 35 specialist checklists, one per area: testing, security, privacy, reliability, cost and more. Already installed in `docs/templates/`, so there's nothing to copy: name one to `@bkit-audit-generate` and hand its report to `/bkit-plan` ([above](#audits)). |
 
 All templates, what each is for, and how to install them: [`.bkit/templates.md`](.bkit/templates.md).
 
@@ -276,35 +297,6 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 - **Decide in plain English, not code.** Before any code is written you approve two short documents: a design ("three ways to build this; we recommend this one, because…") and a plan ("these twelve steps, and how we'll know each is done").
 - **Three sign-offs, and production stays yours.** The full workflows stop after the design, after the plan and before merging. bkit merges into your `dev` branch and never touches `main`: promoting to production is always your call. Cloud mode ships on green without you only for issues you've labelled `bkit:auto`; removing the label stops it. Lite workflows skip the stops, and only run when you choose them for a small change.
 - **Guardrails on the AI itself.** Dangerous commands like force-pushing or rewriting history are blocked, private keys can't be read, and each agent only gets the tools its job needs. [What each guard does](.bkit/providers.md#guardrails) and [what it tells agents](.bkit/prompts.md#hook-injected-text).
-
-<a id="models"></a>
-
-## Which model does each job
-
-**Claude sets the bar, and every other tool gets the model that comes closest to it.** On every other tool, each agent runs on the model that does the same job about as well as Claude, for the least money. You don't pick: install sets each agent's model.
-
-**How the picks are made.** Each kind of job has a bar: Claude's score on [LiveBench Agentic Coding](https://livebench.ai/#/?cats=Agentic+Coding), a public test where models fix real code in JavaScript, TypeScript and Python. For each tool, bkit takes the **cheapest model that reaches the bar**. Where nothing reaches it, the tool's best model gets the job. One model can fill two columns: on opencode, DeepSeek V4.1 Flash clears the bar for the hardest jobs, so it does the everyday jobs too, for a fraction of Claude's cost. Claude is never used on opencode, because opencode is where work goes when your Claude allowance runs out.
-
-<!-- prettier-ignore -->
-| Tool | Hardest jobs: design, plans, reviews, security, audits | Everyday jobs: writing code and docs, the second model in each review pair | Summaries |
-| --- | --- | --- | --- |
-| Claude Code | `claude-opus-5-5` · bar **65.2** | `claude-sonnet-5-5` · bar **59.4** | `claude-haiku-5-5` · bar **~51** |
-| Cursor | `cursor-grok-4.5-high` · 56.5 | `composer-2.5` · not measured | `composer-2.5` · not measured |
-| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash` · 77.3; `moonshotai/kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash` · 77.3 | `z-ai/glm-5.3-flash` · 56.8 |
-| opencode + Ollama | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 | `deepseek-v4.1-flash` · 77.3 |
-| opencode + OpenCode Zen | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 | `glm-5.3-flash` · 56.8 |
-| opencode + OpenCode Go | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 | `deepseek-v4.1-flash` · 77.3 |
-| Codex | `gpt-6-astra` · not measured | `gpt-5.6-terra` · not measured | `gpt-6-luna` · 51.2 |
-| Google Antigravity | `gemini-3.8-pro` · not measured | `gemini-3.8-pro` · not measured | `gemini-3.8-flash` · not measured |
-
-**Reading the table:**
-
-- **The bars are Claude Opus 5 and Sonnet 5 scores.** bkit runs the 5.5 versions. Opus 5.5 scores level with Opus 5. Sonnet 5.5 scores below Sonnet 5 on LiveBench, but one of its runs stopped early and other benchmarks put it above, so the bar stays at Sonnet 5. Every score and why: [the score board](.bkit/providers.md#agentic-coding-parity-board).
-- **Risk, security and root-cause agents get a second model** that reasons differently from the main one, so they don't share its blind spots. On every opencode provider that second model is Kimi K3, which scores a little under the bar for the hardest jobs.
-- **Cursor's own models don't reach the bar.** Claude models in Cursor spend paid API credits, so they're opt-in: paste the ready-made Opus block from [Model Overrides](.bkit/prompts.md#model-overrides).
-- **"Not measured" means LiveBench hasn't scored that model.** Those Codex, Antigravity and Cursor picks follow each vendor's own description of the model. Check them before you rely on them.
-- **Ollama needs a paid plan for every column.** The free models are far below the bar or not scored.
-- **Want a different model for one agent?** On Cursor and opencode, add a row to [Model Overrides](.bkit/prompts.md#model-overrides) and run `bkit install` again. Every agent with its model and thinking depth: [`.bkit/prompts.md` § Models](.bkit/prompts.md#models).
 
 <a id="token-costs"></a>
 
@@ -355,25 +347,6 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 - **Switch off claude.ai connectors** (MCP servers from your claude.ai account) in Claude Code for this project: `"disableClaudeAiConnectors": true` in `.claude/settings.json`. Otherwise their tool lists are re-sent with every request, used or not.
 - **Lock MCP servers to this project.** A server that can see your whole account makes agents look up account and project IDs before every task; locked, those extra calls disappear.
 - **Summarise long sessions earlier:** `"autoCompactWindow": 300000` in `.claude/settings.json`, or `model_auto_compact_token_limit` in `.codex/config.toml`. By default a session grows close to the model's full size before it summarises, and every request re-reads all of it. Summaries lose some detail, so bkit suggests this rather than setting it.
-
-<a id="whats-inside"></a>
-
-## What's inside: 200+ files of best practice
-
-Everything a senior team would otherwise write down over years, in files you can read:
-
-<!-- prettier-ignore -->
-| What | How many | What it does for you |
-| --- | --- | --- |
-| [Agents](.bkit/prompts.md) | 40+ | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
-| [Workflows](.bkit/workflows.md) | 6 | The five phases plus a cloud router. Every step ends in a checklist and a mechanical check before the next one starts. |
-| [Agent rules](.agents/rules.md) | 70+ | One rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
-| [Guardrails](.bkit/providers.md#guardrails) | 10+ hook files | Block dangerous commands and secret reads, and make agents investigate before they edit, on all five AI tools. |
-| [Audits](.bkit/pipeline.md#audits) | 35 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
-| [Project docs](.bkit/shared/docs/) | 10 + [index](.agents/docs.md) | Architecture, data schema, deployments, testing, security, monitoring, design system, tech stack, setup, and an index telling each agent what to read at each step. |
-| [Templates](.bkit/templates.md) | 60+ | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, and 10+ ready-made connectors for your platforms. |
-
-**These are the files your agents read, so they're written for agents:** short, dense, tables over prose. For day-to-day use, start with [`.bkit/README.md`](.bkit/README.md); for every agent in the order it runs, see the [pipeline reference](.bkit/pipeline.md).
 
 ## FAQ
 
@@ -439,6 +412,34 @@ On real bkit sessions they saved 1–3% of the bill, and each changes what the a
 | [`.bkit/pipeline.md`](.bkit/pipeline.md) | Every agent in the order it runs, the CI scaffold, every audit template |
 | [`.bkit/comparison.md`](.bkit/comparison.md) | Comparison with other AI development frameworks and with _Agentic Design Patterns_ |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each release |
+
+<a id="quick-start"></a>
+
+## Quick start
+
+**You need** a GitHub repo with a `package.json`, Node 24+, pnpm, and at least one of Claude Code, Cursor, Codex, Google Antigravity or opencode.
+
+**Easiest:** copy the [install prompt](.bkit/install.md#install--first-time) into your AI coding tool and let it do the setup.
+
+**By hand:** bkit is public on npm and installs like any other package, with no token or registry setup.
+
+```bash
+pnpm add -D @cbartens/bkit
+pnpm bkit install --claude    # pick your tools: --claude --cursor --codex --antigravity --opencode=<provider>
+# opencode provider: openrouter | ollama | opencode-zen | opencode-go
+```
+
+**Check it worked:** `pnpm bkit check` confirms every installed file matches the version you pinned (CI runs the same check), and `pnpm bkit tips` lists what isn't set up yet, most useful first.
+
+Adopt the [templates](#templates) you want from `.bkit/templates/`, open an issue, and run the first step from your AI tool:
+
+```text
+/bkit-design ISSUE-123
+```
+
+Already know exactly what to build? Start at `/bkit-plan`. Something broken? `/bkit-debug`; add `[repro]` if nothing fails yet, and it writes the failing test first.
+
+Full install, upgrade and CI setup: [`.bkit/install.md`](.bkit/install.md). Tracker labels and environment variables: [`.bkit/README.md`](.bkit/README.md#prerequisites).
 
 ## Credits
 

@@ -115,6 +115,39 @@ Always `Custom` — the rendered list carries bkit's own shipped hosts (trackers
 
 No `allowed-domains` block still needs `Custom`: `Trusted` does not reach bkit's own tracker MCP, provider catalog or search hosts. Ticking **Also include default list of common package managers** keeps npm, the vale tarball on `objects.githubusercontent.com`, Docker Hub and PyPI. Raise to `Full` only for open-internet tasks.
 
+### Setup script
+
+`bkit install` generates copy-paste-ready setup script into `.claude/bkit-cloud.md` § Setup script — resolved for this repo, with cache-bust line, base-tool installs, any `context-fetch:provision` recipes. **Paste that**, not hand-copied snippet: stale copy drifts (hard-pinned pnpm can seed version known to break `bkit` download; `apt install gh` unreliable — gh not in default repos).
+
+What it does and why split from in-repo hook:
+
+- **`# cache-bust <date>-<n>`** first line generator writes (`bkit install` / `bkit upgrade` re-stamp). Snapshot keyed on setup script exact text — only job is to change: new date (or bumped same-day counter) forces fresh snapshot on next paste, re-pulling any unpinned tool a `context-fetch:provision` recipe installs, plus base-image drift even when rest byte-identical. Leave in place — do not hand-edit.
+- **Base tools (Node, vale, gh, jq)** install once into snapshot from upstream releases, each pinned to a version and checked with `sha256sum -c` before it is unpacked or made executable (the `# renovate:` comment above each `*_VERSION` lets Renovate bump the pin) — Node 24 from the nodejs.org `linux-x64` tarball into `/usr/local`, then `/usr/local/bin` prepended to `PATH` so corepack and every later step run on it (bkit needs Node >=24; image ships 20 + 22); `gh` from the `cli/cli` release tarball (not `apt`), `jq` because `curl`-based context-fetch blocks pipe through it. Node, gh and vale pins match `.cursor/Dockerfile`. Binaries cloud lacks but laptop has — not repo-level hook.
+- **pnpm corepack pre-warm** seeds one pnpm into snapshot via `corepack enable` (no hard-pinned version). In-repo, corepack resolves repo's `packageManager` (fetching if differs) — one setup script serves any pnpm pin; pre-warm is warm cache.
+- `pnpm install` and `vale sync` **not** here — belong in `.claude/hooks/bkit-cloud-bootstrap.sh` for resumed sessions when lockfile/styles drifted; each repo installs own deps.
+
+Keep total runtime under ~5 minutes or snapshot won't build.
+
+#### Workspace trust + auto-mode config
+
+`permissions.allow` / `permissions.additionalDirectories` in `.claude/settings.json` **grant** capability — applied only after the workspace trust dialog, never shown in a cloud (`-p` / SDK) session. `deny` / `ask` unaffected (restrict-only). Untrusted → every `allow` row ignored; sole notice one stderr line no cloud session surfaces.
+
+Setup script writes both host-side, after the `jq` install:
+
+<!-- prettier-ignore -->
+| Written | Where | Why setup script |
+| --- | --- | --- |
+| `projects[<repo path>].hasTrustDialogAccepted = true` | `~/.claude.json` | Settings resolve **before** `SessionStart` (hook too late); `.claude/` is a protected path (in-session write refused). Setup script = root, pre-clone, pre-Claude, snapshotted. |
+| `autoMode.environment` — `"$defaults"` first, `Host containment` entry, network-allowlist hosts | `~/.claude/settings.json` | Classifier reads `autoMode` from user / managed settings **only** — never `.claude/settings.json` / `.claude/settings.local.json`. Not shippable in-repo. |
+
+Both `jq`-merge, never clobber; `autoMode.environment` seeded `//=` (consumer list never overwritten). Omit `"$defaults"` → **whole built-in list discarded** for that section (incl. `Trusted repo`); renderer always emits it.
+
+Neither file is committable: `~/.claude/settings.json` resolves outside the repo tree; a git-**tracked** `.claude/settings.local.json` counts as repository-supplied, same trust gate.
+
+Baked path `/home/user/<repo-name>` = observation of the current image, **not** a contract (no env var names the repo root). `.claude/hooks/bkit-cloud-bootstrap.sh` re-checks the discovered git root each session and warns on mismatch — diagnosis only, no repair. Fix: re-paste setup script.
+
+Auto mode drops blanket `Bash(*)` on entry (narrow rows survive) → cloud auto-mode sessions run on classifier verdicts + `autoMode.environment`, not the allow list. Default classifier trust = working repo + remotes; every context-fetch host external until named. `Host containment` default assumes an open-internet dev machine.
+
 ### Environment variables
 
 Minimum:
@@ -162,39 +195,6 @@ SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/da
 - Claude app warns "don't add secrets" — env vars visible to anyone with edit rights. Personal account = just you; team account = treat as low-trust.
 - Earlier auto-compaction: set `autoCompactWindow` in committed `.claude/settings.json` (`.bkit/providers.md` § Context compaction) — applies to cloud sessions as-is; no env var.
 - **Env vars set in Claude app are not visible inside setup script.** Injected only after Claude Code starts → `SessionStart` hooks + interactive shell, not snapshot build. Tool needing token to bootstrap must inline it — leak you want to avoid. Avoided today: vale / gh / corepack don't need auth.
-
-### Setup script
-
-`bkit install` generates copy-paste-ready setup script into `.claude/bkit-cloud.md` § Setup script — resolved for this repo, with cache-bust line, base-tool installs, any `context-fetch:provision` recipes. **Paste that**, not hand-copied snippet: stale copy drifts (hard-pinned pnpm can seed version known to break `bkit` download; `apt install gh` unreliable — gh not in default repos).
-
-What it does and why split from in-repo hook:
-
-- **`# cache-bust <date>-<n>`** first line generator writes (`bkit install` / `bkit upgrade` re-stamp). Snapshot keyed on setup script exact text — only job is to change: new date (or bumped same-day counter) forces fresh snapshot on next paste, re-pulling any unpinned tool a `context-fetch:provision` recipe installs, plus base-image drift even when rest byte-identical. Leave in place — do not hand-edit.
-- **Base tools (Node, vale, gh, jq)** install once into snapshot from upstream releases, each pinned to a version and checked with `sha256sum -c` before it is unpacked or made executable (the `# renovate:` comment above each `*_VERSION` lets Renovate bump the pin) — Node 24 from the nodejs.org `linux-x64` tarball into `/usr/local`, then `/usr/local/bin` prepended to `PATH` so corepack and every later step run on it (bkit needs Node >=24; image ships 20 + 22); `gh` from the `cli/cli` release tarball (not `apt`), `jq` because `curl`-based context-fetch blocks pipe through it. Node, gh and vale pins match `.cursor/Dockerfile`. Binaries cloud lacks but laptop has — not repo-level hook.
-- **pnpm corepack pre-warm** seeds one pnpm into snapshot via `corepack enable` (no hard-pinned version). In-repo, corepack resolves repo's `packageManager` (fetching if differs) — one setup script serves any pnpm pin; pre-warm is warm cache.
-- `pnpm install` and `vale sync` **not** here — belong in `.claude/hooks/bkit-cloud-bootstrap.sh` for resumed sessions when lockfile/styles drifted; each repo installs own deps.
-
-Keep total runtime under ~5 minutes or snapshot won't build.
-
-#### Workspace trust + auto-mode config
-
-`permissions.allow` / `permissions.additionalDirectories` in `.claude/settings.json` **grant** capability — applied only after the workspace trust dialog, never shown in a cloud (`-p` / SDK) session. `deny` / `ask` unaffected (restrict-only). Untrusted → every `allow` row ignored; sole notice one stderr line no cloud session surfaces.
-
-Setup script writes both host-side, after the `jq` install:
-
-<!-- prettier-ignore -->
-| Written | Where | Why setup script |
-| --- | --- | --- |
-| `projects[<repo path>].hasTrustDialogAccepted = true` | `~/.claude.json` | Settings resolve **before** `SessionStart` (hook too late); `.claude/` is a protected path (in-session write refused). Setup script = root, pre-clone, pre-Claude, snapshotted. |
-| `autoMode.environment` — `"$defaults"` first, `Host containment` entry, network-allowlist hosts | `~/.claude/settings.json` | Classifier reads `autoMode` from user / managed settings **only** — never `.claude/settings.json` / `.claude/settings.local.json`. Not shippable in-repo. |
-
-Both `jq`-merge, never clobber; `autoMode.environment` seeded `//=` (consumer list never overwritten). Omit `"$defaults"` → **whole built-in list discarded** for that section (incl. `Trusted repo`); renderer always emits it.
-
-Neither file is committable: `~/.claude/settings.json` resolves outside the repo tree; a git-**tracked** `.claude/settings.local.json` counts as repository-supplied, same trust gate.
-
-Baked path `/home/user/<repo-name>` = observation of the current image, **not** a contract (no env var names the repo root). `.claude/hooks/bkit-cloud-bootstrap.sh` re-checks the discovered git root each session and warns on mismatch — diagnosis only, no repair. Fix: re-paste setup script.
-
-Auto mode drops blanket `Bash(*)` on entry (narrow rows survive) → cloud auto-mode sessions run on classifier verdicts + `autoMode.environment`, not the allow list. Default classifier trust = working repo + remotes; every context-fetch host external until named. `Host containment` default assumes an open-internet dev machine.
 
 ## Environment variables
 
