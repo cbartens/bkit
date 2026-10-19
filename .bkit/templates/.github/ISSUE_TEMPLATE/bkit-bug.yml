@@ -10,9 +10,9 @@ body:
       value: |
         Next step:
         - A test or CI run already fails → `/bkit-debug #<issue number>`, on the branch the fix should land on (debug commits to the branch it runs on).
-        - Nothing fails yet → `/bkit-build #<issue number>`: it writes a test that reproduces the bug, then the fix.
+        - Nothing fails yet → `/bkit-debug #<issue number> [repro]`: writes a test that fails the way this report describes, then fixes the code until it passes; no test fails → stops and says so.
 
-        Intermittent? Add `[soak]` to the debug command.
+        Intermittent? Add `[soak]`; with `[repro]`, the test repeats the scenario until it fails.
   - type: textarea
     id: failing
     attributes:

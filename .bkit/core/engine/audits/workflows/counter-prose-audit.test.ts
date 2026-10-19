@@ -592,6 +592,7 @@ const COUNTER_STEP_MAP: Record<string, string[]> = {
   "build-failure-diagnose": ["build-run-tests"],
   "build-failure-remediate": ["build-run-tests"],
   "debug-run-tests": ["debug-run-tests"],
+  "debug-failure-reproduce": ["debug-run-tests"],
   "debug-failure-diagnose": ["debug-run-tests"],
   "debug-failure-remediate": ["debug-run-tests"],
   "debug-failure-soak": ["debug-run-tests", "debug-failure-soak"],

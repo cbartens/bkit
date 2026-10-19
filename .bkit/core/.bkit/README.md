@@ -36,7 +36,7 @@ Throughout: workflows hold `.lock`, write `status.jsonl` (resume SoT), own track
 | Design | `/bkit-design` | 10 | `docs/plans/{YYYYMM}/{FID}-design.md` | Yes — review before plan |
 | Plan | `/bkit-plan` | 12 | `docs/plans/{YYYYMM}/{FID}-plan.md` (+ `-N.md` if split) | Yes — review before build |
 | Build | `/bkit-build` | 17 | PR to `dev` | No — CI continues |
-| Debug | `/bkit-debug` | 10 | Remediation commit on feature branch | No |
+| Debug | `/bkit-debug` | 11 | Remediation commit on feature branch | No |
 | Ship | `/bkit-ship` | 13 | Squash-merged PR, issue `In Review` + `bkit:merged` (plans stay canonical at `docs/plans/{YYYYMM}/`) | Yes |
 
 **Where an issue starts.** Issue body + comments = every workflow's first input; shapes and machine-read lines: `.bkit/trackers.md` § Issue shapes; example forms: `.bkit/templates.md` § Issue forms.
@@ -45,9 +45,9 @@ Throughout: workflows hold `.lock`, write `status.jsonl` (resume SoT), own track
 | Issue | Start with |
 | --- | --- |
 | Idea — how it should work still open | `/bkit-design` |
-| Change — what to build and "done" known | `/bkit-plan`; or `/bkit-build` / `lite:build` with no plan (issue = plan; test-first written, not enforced) |
+| Change — what to build and "done" known | `/bkit-plan`; or `/bkit-build` / `lite:build` with no plan (issue = plan; `/bkit-build` checks each `Test first` red, `lite:build` does not) |
 | Bug — a test or CI run already fails | `/bkit-debug`, on the branch the fix lands on |
-| Bug — nothing fails yet | `/bkit-build` (reproducing test first) |
+| Bug — nothing fails yet | `/bkit-debug [repro]` (writes a failing test first, then fixes) |
 
 **Per-step detail, verdict routing, retry / timeout constants, label flips, status.jsonl shape, comment lifecycle:** `.bkit/workflows.md`.
 

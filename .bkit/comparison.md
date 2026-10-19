@@ -24,7 +24,7 @@
 
 ## What this is
 
-bkit turns a single coding-agent request into gated, peer-reviewed engineering: five commands (`/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`), 48 single-purpose subagents, 35 audit templates, same pipeline on Claude Code, Cursor, Codex, Google Antigravity and opencode. Every subagent in execution order and every audit template: [`.bkit/pipeline.md`](pipeline.md).
+bkit turns a single coding-agent request into gated, peer-reviewed engineering: five commands (`/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`), 49 single-purpose subagents, 35 audit templates, same pipeline on Claude Code, Cursor, Codex, Google Antigravity and opencode. Every subagent in execution order and every audit template: [`.bkit/pipeline.md`](pipeline.md).
 
 This doc: bkit vs 10 other AI development frameworks (one table, then agents and CI in detail), then bkit vs Gulli's agentic patterns.
 
@@ -129,7 +129,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | Reflection (producer-critic) | Already does | Build execute → verify → remediate loop; plan and design generate → review → update. |
 | Tool Use | Already does | Per-role minimum-capability tool allowlists — stricter than the book's additive model. |
 | Planning | Already does | `/bkit-plan` is a first-class artifact with a template and durable checkbox state. |
-| Multi-Agent Collaboration | Already does | 48 subagents, orchestrator-as-coordinator; subagents are leaves (no nested orchestration). |
+| Multi-Agent Collaboration | Already does | 49 subagents, orchestrator-as-coordinator; subagents are leaves (no nested orchestration). |
 | Model Context Protocol (MCP) | Already does | Tracker MCP held at the workflow layer only — cleaner separation than the book's examples. |
 | Exception Handling & Recovery | Already does | Universal failure path, bounded retries (3), 3600s timeouts, runaway-turn caps, human handover. |
 | Human-in-the-Loop | Already does | Mandatory hard stops after design / plan / ship; "recommend, do not decide." |

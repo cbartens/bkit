@@ -375,6 +375,19 @@ describe("bkit tests red / green", () => {
       cwd,
       "green",
     );
+  const greenBrief = (brief: string) =>
+    run(
+      [
+        `--file=${STATUS}`,
+        "--workflow=build",
+        "--sub-plan=1",
+        "--plan=missing.md",
+        `--brief=${brief}`,
+        "--log=logs/green.md",
+      ],
+      cwd,
+      "green",
+    );
   const rows = () =>
     fs
       .readFileSync(path.join(cwd, STATUS), "utf-8")
@@ -485,6 +498,36 @@ describe("bkit tests red / green", () => {
     writePlan(TASK_1);
     r = await green();
     expect(r.json.reason).toContain("not declared");
+  });
+
+  it("green: no plan file -> a brief with plan-shaped tasks is audited; a plain brief is not", async () => {
+    fs.writeFileSync(path.join(cwd, "brief.md"), `# Session prompt\n\nAdd clamp.\n`);
+    let r = await greenBrief("brief.md");
+    expect(r.json).toMatchObject({ enforced: false });
+    expect(r.json.reason).toContain("the brief has no `**Task N:**` lines");
+    fs.writeFileSync(path.join(cwd, "brief.md"), `# Session prompt\n\n### Tasks\n\n${TASK_1}\n`);
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    expect((await red()).code).toBe(0);
+    vi.stubEnv("FAKE_EXIT", "0");
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+    r = await greenBrief("brief.md");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ enforced: true, plan: "brief.md", gaps: [] });
+    writePlan("- [ ] **Task 1:** Old plan. **Done when:** done.");
+    r = await run(
+      [
+        `--file=${STATUS}`,
+        "--workflow=build",
+        "--sub-plan=1",
+        "--plan=plan.md",
+        "--brief=brief.md",
+        "--log=logs/green.md",
+      ],
+      cwd,
+      "green",
+    );
+    expect(r.json.reason).toContain("the plan has no `Test first:` lines");
   });
 
   it("green: red recorded, test unchanged, named test passing -> no gaps", async () => {

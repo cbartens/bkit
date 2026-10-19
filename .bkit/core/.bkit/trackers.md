@@ -95,7 +95,7 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 | --- | --- | --- | --- |
 | idea | how it should work still open | `/bkit-design #N` | **Problem**, **Outcome**, Success criteria, Constraints and non-goals, Decisions already made, Open questions, References |
 | change | what to build + how to tell done both known | `/bkit-plan #N`; or `/bkit-build #N` / `lite:build` straight from issue | **Narrative**, **Success Criteria**, Edge Cases, **Derived Test Matrix**, **Tasks**, Open Questions & Assumptions, Breaking Changes & Naming, Out of Scope, References |
-| bug | worked / should work, does not | test or CI run already fails → `/bkit-debug #N` on branch fix lands on (`[soak]` if intermittent); nothing fails → `/bkit-build #N` (repro test first) | **Failing test or CI run** (`none yet` allowed), **What happened**, **What should happen**, **Steps to reproduce**, How often, Affected area, Where and when, Evidence, References |
+| bug | worked / should work, does not | test or CI run already fails → `/bkit-debug #N` on branch fix lands on (`[soak]` if intermittent); nothing fails → `/bkit-debug #N [repro]` (failing test first; `[soak]` too if intermittent) | **Failing test or CI run** (`none yet` allowed), **What happened**, **What should happen**, **Steps to reproduce**, How often, Affected area, Where and when, Evidence, References |
 
 **Change shape syntax** (plan keeps it, `docs/templates/bkit-plan.md` § Spec):
 
@@ -108,14 +108,14 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
   - [ ] **Task N:** {change}. **Done when:** {verifiable check}. **Test first:** `{test file}` `{test name}` fails on {assertion}.
   ```
 
-- Build with no plan reads Tasks as guide only: test-first not enforced, Done when not gated. Nothing ticks issue boxes.
+- `/bkit-build` with no plan builds these Tasks: each `Test first` test must fail before its code (`tests green --brief=`); missing `Done when` not a FAIL. `lite:build` checks neither. Nothing ticks issue boxes.
 
 **Machine-read lines** — exact syntax, anywhere in body; nothing else in References is fetched:
 
 <!-- prettier-ignore -->
 | Line | Read by | Effect |
 | --- | --- | --- |
-| `**Parent design:** [{FID}-design.md](docs/plans/{YYYYMM}/{FID}-design.md)` | plan Step 1 | sets `PARENT_FID` → design = spec source |
+| `**Parent design:** [{FID}-design.md](docs/plans/{YYYYMM}/{FID}-design.md)` | plan Step 1 | sets `PARENT_FID` → design = spec source; absent → the design made on the same issue (`bkit fids design`) |
 | `**Audit reports:** docs/audits/{YYYYMM}/{slug}.md (findings {ids})` | plan Step 1 | each path → `AUDIT_PATHS`; path not a file → Failure Path |
 | `###### bkit:blocked-by start` · `- #{N}` per line · `###### bkit:blocked-by end` | build `issue-blockers-check` (github; linear → native relations) | any listed issue open → build stops |
 | `###### bkit:ignore-earlier` | `bkit issues text` | drops all earlier content; human-placed only |

@@ -44,7 +44,7 @@ maxTurns: 50
 8. Base verdict only on read files. never assume outcomes or infer results.
 9. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = failure resolved (no retries, no fragility, no rot signals).
-   - `CONCERNS` = follow-up needed (retries occurred, fragile fix, partial resolution, most recent remediation input = `CONCERNS`, or any rot signals detected).
+   - `CONCERNS` = follow-up needed (retries occurred, fragile fix, partial resolution, most recent remediation input = `CONCERNS`, any rot signals detected, or `Reproduced: NO`).
    - `FAIL` = aborted at attempt N, root cause unresolved, or any remediation step ends `BLOCKED` with no later `DONE`.
 
 **Output format:**
@@ -74,7 +74,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Remediation Status
 
-[Summarise: fix applied? Tests passing? Or aborted at attempt N? Live tests ran and passed? Initially set to `PENDING`.]
+[Summarise: reproduce input `Test` or `Reproduced: NO`? Fix applied? Tests passing? Or aborted at attempt N? Live tests ran and passed? Initially set to `PENDING`.]
 
 ## Observation
 
@@ -90,7 +90,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Recommended Next Step
 
-[Copy-paste handoff. Advisory only, never auto-trigger. `<ref>` = issue reference recovered from `FID` in Create path — numeric issue segment (`160-slug` → `#160`), prefixed issue segment (`abc-123-slug` → `ABC-123`), no issue segment i.e. no tracker wired (`my-branch-slug` → omit `<ref>`, emit `<cmd>` alone). `PASS` → `/bkit-ship`; `CONCERNS` → `/bkit-ship` (carry caveat) or `/bkit-debug` (re-run); `FAIL` → manual handover, no command (cite handover artifact). Emit `text` block: L1 `<cmd> <ref>` (omit on `FAIL`), then `Brief: <residual risk, caveat, debug-summary link — 1-3 lines>`. Initially set to `PENDING`.]
+[Copy-paste handoff. Advisory only, never auto-trigger. `<ref>` = issue reference recovered from `FID` in Create path — numeric issue segment (`160-slug` → `#160`), prefixed issue segment (`abc-123-slug` → `ABC-123`), no issue segment i.e. no tracker wired (`my-branch-slug` → omit `<ref>`, emit `<cmd>` alone). `PASS` → `/bkit-ship`; `CONCERNS` → `/bkit-ship` (carry caveat) or `/bkit-debug` (re-run); `Reproduced: NO` → `/bkit-debug <ref> [repro]`, or `/bkit-debug <ref> [repro] [soak]` when intermittent (`Brief`: evidence its `Reproduction` asks for); `FAIL` → manual handover, no command (cite handover artifact). Emit `text` block: L1 `<cmd> <ref>` (omit on `FAIL`), then `Brief: <residual risk, caveat, debug-summary link — 1-3 lines>`. Initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do not edit any file outside the output.**

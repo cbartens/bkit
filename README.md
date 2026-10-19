@@ -61,7 +61,7 @@ AI agents design it, plan it, build it, have it reviewed by agents that didn't w
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-pipeline-dark.svg">
-    <img alt="The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 40 AI agents: 10 in design, 10 in plan, 11 in build, 5 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode." src=".github/assets/bkit-pipeline-light.svg" width="100%">
+    <img alt="The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 41 AI agents: 10 in design, 10 in plan, 11 in build, 6 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode." src=".github/assets/bkit-pipeline-light.svg" width="100%">
   </picture>
 </p>
 
@@ -168,7 +168,7 @@ Adopt the [templates](#templates) you want from `.bkit/templates/`, open an issu
 /bkit-design ISSUE-123
 ```
 
-Already know exactly what to build? Start at `/bkit-plan`. Something broken? `/bkit-debug` if a test already fails, `/bkit-build` if not.
+Already know exactly what to build? Start at `/bkit-plan`. Something broken? `/bkit-debug`; add `[repro]` if nothing fails yet, and it writes the failing test first.
 
 Full install, upgrade and CI setup: [`.bkit/install.md`](.bkit/install.md). Tracker labels and environment variables: [`.bkit/README.md`](.bkit/README.md#prerequisites).
 

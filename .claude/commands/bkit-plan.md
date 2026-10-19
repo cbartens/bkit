@@ -91,7 +91,14 @@ description: "Plan Feature — Autonomous plan generation"
    ```
    Hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
 6. Extract plan inputs from issue `DESCRIPTION` and the session prompt.
-   - `PARENT_FID`: a `**Parent design:**` markdown link whose target is `docs/plans/{YYYYMM}/{FID}-design.md`. `PARENT_YYYYMM` = that bucket. Absent → `PARENT_FID` empty.
+   - `PARENT_FID`: a `**Parent design:**` markdown link whose target is `docs/plans/{YYYYMM}/{FID}-design.md`. `PARENT_YYYYMM` = that bucket. Absent → this feature's own design doc:
+     ```bash
+     "{BKIT}" fids design --fid={FID} --month={YYYYMM}
+     ```
+     Decide `PARENT_FID`:
+     - **If** exit 0 → hold `fid` as `{PARENT_FID}`, `month` as `{PARENT_YYYYMM}`.
+     - **If** exit 1 → `PARENT_FID` empty.
+     - **Else** → **Failure Path**.
    - `AUDIT_PATHS`: every `docs/audits/{YYYYMM}/*.md` path, from a `**Audit reports:**` line or any markdown link or bare path. Absent → empty. A named path that is not a file → **Failure Path**.
 7. Compute the phase transition — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
@@ -113,7 +120,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
-- [ ] Parent FID extraction attempted (`PARENT_FID`, from issue description)
+- [ ] Parent FID extraction attempted (`PARENT_FID`, from issue description, else `fids design`)
 - [ ] Audit report paths extracted (`AUDIT_PATHS`, from issue description and session prompt)
 
 

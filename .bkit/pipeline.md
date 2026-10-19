@@ -24,7 +24,7 @@
 
 ## What this is
 
-bkit turns a single coding-agent request into gated, peer-reviewed engineering. Five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — each fans out to specialised single-purpose subagents (48 in total, phases + audit + utilities). Many run parallel under different _lenses_ (bug review vs security review) → independent review before human sees output. Same pipeline on five hosts: Claude Code, Cursor, Codex, Google Antigravity, opencode.
+bkit turns a single coding-agent request into gated, peer-reviewed engineering. Five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — each fans out to specialised single-purpose subagents (49 in total, phases + audit + utilities). Many run parallel under different _lenses_ (bug review vs security review) → independent review before human sees output. Same pipeline on five hosts: Claude Code, Cursor, Codex, Google Antigravity, opencode.
 
 Beside those commands, 35 read-only audit templates live at `docs/templates/bkit-audit-*.md`. `@bkit-audit-generate` runs one and writes `docs/audits/{YYYYMM}/{slug}.md`. `/bkit-plan` takes a design, one or more of those reports, or both.
 
@@ -103,6 +103,9 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
                          test output; diff vs last-passing CI; runtime logs via
                          context-fetch blocks; tracker: related issues by error
                          signature → feeds diagnose below)
+  [repro] (first run passes — bug not reproduced yet):
+  2. fetch context, then reproduce (one test that fails on the reported
+                        symptom → back to 1; can't reproduce → summary)
   Normal mode (localisable failure):
   3. diagnose           (reads docs/knowledge.jsonl for prior failures;
                         Standard → Pivot → Final strategy escalation)
@@ -227,6 +230,7 @@ Output: remediated commit on feature branch. Two modes — normal (diagnose → 
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
+| `bkit-debug-failure-reproduce` | Reproducer (`[repro]` only) | Nothing fails yet → one test failing on the reported symptom, never a fix; soak mode → test repeats the scenario. Not reproduced → test removed, run ends at Summary. |
 | `bkit-debug-failure-diagnose` | Diagnostician | Reproduces and diagnoses. Accumulates per-attempt context; escalates Standard → Pivot → Final. |
 | `bkit-debug-failure-remediate` | Fixer | Applies whatever the strategy-aware diagnosis produced, with a test loop. |
 | `bkit-debug-summary` | Summarise | Tracker-facing summary. |

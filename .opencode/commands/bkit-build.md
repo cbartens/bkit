@@ -295,7 +295,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Hold `value` as `{VERIFY_ATTEMPT}`.
 6. Audit the sub-plan's test-first reds:
    ```bash
-   "{BKIT}" tests green --file="{STATUS}" --workflow=build --sub-plan={SUB_PLAN} --plan=docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md --plan=docs/plans/{YYYYMM}/{FID}-plan.md --log="docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{SUB_PLAN}-{VERIFY_ATTEMPT}.md"
+   "{BKIT}" tests green --file="{STATUS}" --workflow=build --sub-plan={SUB_PLAN} --plan=docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md --plan=docs/plans/{YYYYMM}/{FID}-plan.md --brief=docs/plans/{YYYYMM}/logs/{FID}/build-input-{RUN}.md --log="docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{SUB_PLAN}-{VERIFY_ATTEMPT}.md"
    ```
    **If** exit >= 2 → **Failure Path**.
 7. **Subagent:** Invoke `/bkit-build-plan-verify` using `subagent` tool:
