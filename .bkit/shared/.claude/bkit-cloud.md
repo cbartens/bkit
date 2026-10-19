@@ -22,18 +22,7 @@ per-repo) → fill the fields below → **Save**.
 
 @@CLOUD_NETWORK_ALLOWLIST@@
 
-## 3 · Environment variables
-
-Paste into the **Environment variables** field (`.env` format, one `KEY=value`
-per line):
-
-```dotenv
-@@CLOUD_ENV_VARS@@
-```
-
-@@CLOUD_ENV_NOTES@@
-
-## 4 · Setup script
+## 3 · Setup script
 
 Paste into the **Setup script** field. Runs once as root before the first
 session; the resulting filesystem is snapshotted and reused, so later sessions
@@ -117,6 +106,17 @@ echo "cloud env ready: node $(node --version), $(vale --version), $(gh --version
 Keep total runtime under ~5 minutes or the snapshot won't build. `pnpm install`
 and `vale sync` are **not** here — they belong in `.claude/hooks/bkit-cloud-bootstrap.sh`
 (installed by `bkit install --auto=claude`) so they re-run on resumed sessions.
+
+## 4 · Environment variables
+
+Paste into the **Environment variables** field (`.env` format, one `KEY=value`
+per line):
+
+```dotenv
+@@CLOUD_ENV_VARS@@
+```
+
+@@CLOUD_ENV_NOTES@@
 
 ## 5 · Verify (first session)
 
