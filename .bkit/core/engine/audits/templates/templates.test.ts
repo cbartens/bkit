@@ -54,6 +54,34 @@ function listAuditTemplates(): string[] {
     .map((name) => path.posix.join("docs/templates", name));
 }
 
+/**
+ * Anchor refs in `- bkit block of `docs/<doc>` (…): <ref>; <ref>` lines that the shipped
+ * `.bkit/shared/docs/<doc>` cannot satisfy. A ref is `§ <## or ### heading>`, `Rules`
+ * (the doc's caution-block rules), or `every rule and section`.
+ */
+function unresolvedBkitDocAnchors(content: string): string[] {
+  const unresolved: string[] = [];
+  for (const [, doc, refs] of content.matchAll(
+    /^- bkit block of `docs\/([a-z-]+\.md)` \([^)]*\): (.+)$/gm,
+  )) {
+    const docPath = path.join(SHARED_ROOT, "docs", doc!);
+    if (!fs.existsSync(docPath)) {
+      unresolved.push(`docs/${doc}`);
+      continue;
+    }
+    const shipped = fs.readFileSync(docPath, "utf-8");
+    const headings = new Set([...shipped.matchAll(/^#{2,3} (.+)$/gm)].map((m) => m[1]!.trim()));
+    for (const ref of refs!.split("; ")) {
+      const ok =
+        ref === "every rule and section" ||
+        (ref === "Rules" && shipped.includes("> **Rules:**")) ||
+        (ref.startsWith("§ ") && headings.has(ref.slice(2)));
+      if (!ok) unresolved.push(`docs/${doc} ${ref}`);
+    }
+  }
+  return unresolved;
+}
+
 const GROUP_A_MD_FILES: Array<[root: string, rel: string]> = [
   [CORE_ROOT, "AGENTS.md"],
   [SHARED_ROOT, "CLAUDE.md"],
@@ -84,6 +112,11 @@ describe("audit templates — managed block plus consumer stub", () => {
     expect(content).not.toContain("bkit:managed v");
     const end = content.indexOf("<!-- bkit:end -->");
     expect(content.slice(end + "<!-- bkit:end -->".length)).toBe("\n\n## Project Instructions\n");
+  });
+
+  it.each(audits)("%s bkit doc anchors resolve to shipped headings", (relPath) => {
+    const content = fs.readFileSync(path.join(CORE_ROOT, relPath), "utf-8");
+    expect(unresolvedBkitDocAnchors(content)).toEqual([]);
   });
 
   // Below `bkit:end` is consumer-owned, and bkit is a consumer of its own templates:

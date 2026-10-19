@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Added
+
+- **Audits check the repo against bkit's own doc blocks.** 15 audit templates now list the bkit block of the `docs/*.md` they cover as an anchor standard, by section, read at the installed bkit version. Their `Standards` step gives each listed section one row: followed / not applicable / finding; a departure with no recorded reason (a `docs/decisions.jsonl` row, an accepted-divergence entry) is a finding. Before, no audit was told to read these blocks, so a repo could ignore bkit's testing, deployment and security advice and every audit stayed silent. Mapping: `docs/testing.md` → `bkit-audit-testing`, `-gates`, `-flakes`, `-ci-performance`; `docs/deployments.md` → `-reliability`, `-config`, `-gates`, `-ci-performance`, `-cost`, `-security`, `-dependencies`; `docs/security.md` → `-security`, `-llm`, `-red-team`; `docs/design.md` → `-accessibility`, `-gates`; `docs/observability.md` + `docs/noise.md` → `-logs`; `docs/setup.md` Rules → `-database`; `.bkit/trackers.md` § Issue shapes + the issue forms → `-issues`. A test fails when a listed section no longer exists in the shipped doc.
+
 ## [5.3.0] — 2026-10-19
 
 ### Breaking Changes

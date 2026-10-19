@@ -42,6 +42,8 @@ An error tracker does not distinguish a bug from a handled outcome logged at err
 - OpenTelemetry semantic conventions, including GenAI; record the semconv version.
 - W3C Trace Context, Level 1.
 - Alerting on SLOs (e.g. Google SRE Workbook, "Alerting on SLOs").
+- bkit block of `docs/observability.md` (bkit version from `.bkit/version`): every rule and section
+- bkit block of `docs/noise.md` (bkit version from `.bkit/version`): every rule and section
 
 ### Scope
 
@@ -162,7 +164,7 @@ Verify only when applicable.
 
   No error tracker → monitor list and alert rules `Not Checked`; cron coverage still from repo. Before launch, much unproven for lack of traffic. Record what could not be proven and why. Missing monitor = next step, not this run. **Done when:** `Alarms` row per monitor and cron: last check-in · runs left unfinished · what could not be proven. Alert-quality numbers and on-call answer included.
 
-- [ ] **Step 13 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per tracker setup practice (symbolication, release, environment, release health, grouping, ownership, quotas, spike protection, scrubbing) and per trace-propagation and SLO-alerting practice → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
+- [ ] **Step 13 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per tracker setup practice (symbolication, release, environment, release health, grouping, ownership, quotas, spike protection, scrubbing) and per trace-propagation and SLO-alerting practice → checked (name step) / not applicable (why) / finding. Per bkit anchor (doc section, rule, or issue shape): one row → followed (name step or evidence) / not applicable (why) / finding; departure with no recorded reason (e.g. `docs/decisions.jsonl` row, accepted-divergence entry) = finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
 - [ ] **Step 14 — Anything Else:** (a) Everything changed since previous report's commit touching error reporting and logs (tracker init and integrations, scrubber, upstream-outage classifier, new error-level call sites, alert rules, uptime and cron monitors, log-fetch blocks, new outside services) → one-line verdict each. (b) Bounded ~30 min pass: what senior SRE flags that no step asks; read since previous run (incidents, new `docs/failures.jsonl` rows, vendor status incidents) — what would no step catch? Any error source this run saw that `Runtime Logs` does not name → record and propose source in `Process Improvements`. **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check

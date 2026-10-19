@@ -39,6 +39,7 @@
 - FinOps Framework (e.g. the current edition). Capabilities this audit uses: Allocation, Anomaly Management, Budgeting, Forecasting, Unit Economics, and Rate Optimization, across Public Cloud, SaaS, and AI.
 - FOCUS (FinOps Open Cost and Usage Specification); record the version.
 - Vendor spend-control docs (e.g. host spend management, database spend cap, model-gateway guardrails, error-tracker spike protection); record the date read.
+- bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Disable GitHub Code Quality billing
 
 ### Scope
 
@@ -117,7 +118,7 @@ Verify only when applicable.
 
   Anomalies since previous report: how found (alert or invoice), time to find, cost avoided. Cap that only notifies, omits line items, or pauses production → owner decision on notify/cap/pause with what each would stop; this run does not set it. **Done when:** `Caps` row per usage-billed vendor, and anomaly list.
 
-- [ ] **Step 9 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per FinOps capability (Allocation, Anomaly Management, Budgeting, Forecasting, Unit Economics, and Rate Optimization) → checked (name step) / not applicable (why) / finding. Score each capability crawl, walk, or run; name next to raise. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
+- [ ] **Step 9 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per FinOps capability (Allocation, Anomaly Management, Budgeting, Forecasting, Unit Economics, and Rate Optimization) → checked (name step) / not applicable (why) / finding. Score each capability crawl, walk, or run; name next to raise. Per bkit anchor (doc section, rule, or issue shape): one row → followed (name step or evidence) / not applicable (why) / finding; departure with no recorded reason (e.g. `docs/decisions.jsonl` row, accepted-divergence entry) = finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
 - [ ] **Step 10 — Anything Else:** (a) Everything changed since previous report's commit touching cost (SDKs, outbound hosts, vendors, plans, crons, schedules, fan-outs, model calls, sample rates, environment, seat changes) → one-line verdict each. (b) Bounded ~30 min pass: what senior FinOps flags that no step asks; read since previous run (incidents, log-audit reports under `docs/audits/`, new `docs/failures.jsonl` rows, vendor status incidents) — what would no step catch? Include invoice charges Steps 4–8 do not explain (new line item, fee, tax, FX, overage). **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check

@@ -1721,6 +1721,14 @@ Scale per `.bkit/jsonl.md` § Severity.
 Confirm current version per anchor standard; read changes since previous report's version.
 ```
 
+### audit-standards-bkit
+
+- audit: where-used
+
+```text
+Per bkit anchor (doc section, rule, or issue shape): one row → followed (name step or evidence) / not applicable (why) / finding; departure with no recorded reason (e.g. `docs/decisions.jsonl` row, accepted-divergence entry) = finding.
+```
+
 ### audit-standards-practice
 
 - audit: required
