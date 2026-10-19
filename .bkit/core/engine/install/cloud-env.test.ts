@@ -36,6 +36,7 @@ import {
   renderCursorContextFetchProvision,
   renderCursorNetworkAllowlist,
   writeCursorCloudDoc,
+  SESSION_HIJACK_KEYS,
 } from "./cloud-env";
 import {
   OPENCODE_PROVIDER_DEFAULTS,
@@ -158,6 +159,28 @@ describe("resolveCloudEnvVars", () => {
     expect(res.emptySkipped).toContain("EMPTY_VAR");
     // BKIT_GH_TOKEN present → not a placeholder; no other baseline key.
     expect(res.placeholders).toEqual([]);
+  });
+
+  it("drops exactly the three documented session-hijack keys (docs/security.md)", () => {
+    expect([...SESSION_HIJACK_KEYS]).toEqual([
+      "ANTHROPIC_API_KEY",
+      "BKIT_ANTHROPIC_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+    ]);
+  });
+
+  it.each(SESSION_HIJACK_KEYS)("never lets %s into the paste block", (key) => {
+    write(".envrc", "dotenv_if_exists .bkit/.env");
+    write(".bkit/.env", ["BKIT_GH_TOKEN=real", `${key}=sk-must-not-leak`].join("\n"));
+
+    const res = resolveCloudEnvVars(tmpDir);
+    const block = renderCloudEnvBlock(res);
+
+    expect(res.hijackDropped).toContain(key);
+    expect(res.included.map(([k]) => k)).not.toContain(key);
+    expect(block).not.toContain(key);
+    expect(block).not.toContain("sk-must-not-leak");
+    expect(block).toContain("BKIT_GH_TOKEN=real");
   });
 
   it("returns an empty resolution (the sole baseline placeholder) when no .envrc exists", () => {
