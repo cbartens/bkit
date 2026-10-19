@@ -174,8 +174,9 @@ const CORE_TEMPLATE_DOCTRINE = [
     { path: ".agents/context.md", format: "markered-text", module: "core" },
     { path: ".agents/docs.md", format: "markered-text", module: "core" },
     { path: ".agents/rules.md", format: "markered-text", module: "core" },
-    { path: ".agents/shortcuts.md", format: "markered-text", module: "core" },
     { path: ".agents/skills.md", format: "markered-text", module: "core" },
+    // Retired path of `.bkit/lite.md` (5.1.0 – 5.2.4), for an install never upgraded since.
+    { path: ".agents/shortcuts.md", format: "markered-text", module: "core" },
 ];
 /**
  * The top-level `docs/*.md` the core payload pass installs: each carries bkit's managed

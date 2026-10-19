@@ -178,6 +178,9 @@ describe("getInstallManifest", () => {
     const promptsEntry = entries.find((e) => e.path === ".bkit/prompts.md");
     expect(promptsEntry, "core manifest must list .bkit/prompts.md").toBeDefined();
     expect(promptsEntry!.format).toBe("markered-text");
+    const liteEntry = entries.find((e) => e.path === ".bkit/lite.md");
+    expect(liteEntry, "core manifest must list .bkit/lite.md").toBeDefined();
+    expect(liteEntry!.format).toBe("markered-text");
   });
 
   it("cloud owns no manifest entry (bkit-cloud-bootstrap.sh is a copy-and-own template)", () => {

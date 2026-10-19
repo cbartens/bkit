@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeTier1, writeTier2, ensurePackageJsonScripts } from "../write.js";
 import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, } from "../version-file.js";
+import { extractManagedBlock, stripManagedBlock } from "../managed-block.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { getPkgRoot, getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
@@ -70,13 +71,7 @@ export function removeOrphans(destDir, sourceFiles, dryRun, prefix) {
     return removed;
 }
 /** The markered-text `.agents/*.md` blocks core owns. */
-const CORE_AGENT_FILES = [
-    "context.md",
-    "docs.md",
-    "rules.md",
-    "shortcuts.md",
-    "skills.md",
-];
+const CORE_AGENT_FILES = ["context.md", "docs.md", "rules.md", "skills.md"];
 // The two shared-root files core writes: stored in `shared/`, owned by the core
 // manifest, written as html-comment managed blocks.
 const CORE_SHARED_FILES = [
@@ -181,6 +176,7 @@ export const BKIT_CANONICAL_DOCS = [
     "install.md",
     "jsonl.md",
     "LICENSE.md",
+    "lite.md",
     "providers.md",
     "prompts.md",
     "templates.md",
@@ -217,6 +213,43 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
             console.log(`${logPrefix} ${tag}core: ${dstPath}`);
         }
     }
+    migrateShortcutsToLite(dryRun, ws, logPrefix);
+}
+// Migration (5.1.0 – 5.2.4 installs, `docs/migrations.md`): the lite flows lived at
+// `.agents/shortcuts.md`. The consumer's own lines below `bkit:end` (minus the seeded
+// heading) move under `.bkit/lite.md`'s consumer section; the old file is deleted. Runs
+// after the docs loop, so `.bkit/lite.md` is already written. The delete is recorded in
+// ws (as orphan-mirror deletes are) so `bkit check` fails until upgrade runs.
+const RETIRED_SHORTCUTS = path.join(".agents", "shortcuts.md");
+const RETIRED_SHORTCUTS_HEADING = "## Project Shortcuts";
+export function migrateShortcutsToLite(dryRun, ws, logPrefix) {
+    if (!fs.existsSync(RETIRED_SHORTCUTS))
+        return;
+    if (!fs.existsSync(path.join(getBkitDocsRoot(), "lite.md")))
+        return;
+    const tag = dryRun ? "[dry-run] " : "";
+    const dst = path.join(".bkit", "lite.md");
+    const old = fs.readFileSync(RETIRED_SHORTCUTS, "utf-8");
+    if (extractManagedBlock(old, "html-comment") === null) {
+        console.warn(`${logPrefix} ${RETIRED_SHORTCUTS} has no single bkit managed block — left in place. Move your own lines into ${dst} below \`<!-- bkit:end -->\`, then delete it.`);
+        return;
+    }
+    const own = stripManagedBlock(old, "html-comment")
+        .split("\n")
+        .filter((line) => line.trim() !== RETIRED_SHORTCUTS_HEADING)
+        .join("\n")
+        .trim();
+    if (own.length > 0) {
+        if (!dryRun) {
+            const current = fs.readFileSync(dst, "utf-8");
+            fs.writeFileSync(dst, `${current.replace(/\n*$/, "\n\n")}${own}\n`, "utf-8");
+        }
+        ws.writes.push({ path: dst, action: "update" });
+    }
+    if (!dryRun)
+        fs.rmSync(RETIRED_SHORTCUTS);
+    ws.writes.push({ path: RETIRED_SHORTCUTS, action: "write" });
+    console.log(`${logPrefix} ${tag}core: moved ${RETIRED_SHORTCUTS} → ${dst}`);
 }
 // ---------------------------------------------------------------------------
 // Source-rendered host outputs — agents (.agents/prompts source) and commands

@@ -520,7 +520,7 @@ Usage:
 
 Core (implicit — no flag; installed/upgraded on every install):
   AGENTS.md (cross-host dispatch router), .agents/rules.md + .agents/context.md +
-  .agents/docs.md + .agents/shortcuts.md + .agents/skills.md managed blocks, .gitignore +
+  .agents/docs.md + .agents/skills.md managed blocks, .gitignore +
   .gitattributes managed blocks, docs/, .bkit/*.md, .bkit/version, the template copies in
   .bkit/templates/, and the bkit:gate:* / bkit:deps:* package.json scripts every workflow
   runs (added when missing, never overwritten, left by uninstall). The tool scripts those

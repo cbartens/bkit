@@ -92,6 +92,7 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     "install.md",
     "jsonl.md",
     "LICENSE.md",
+    "lite.md",
     "providers.md",
     "prompts.md",
     "templates.md",
@@ -580,5 +581,80 @@ describe.each([
     const after = fs.readFileSync(abs, "utf-8");
     expect(after).toBe(managed + CONSUMER);
     expect(again.ws.writes.some((w) => path.normalize(w.path) === REL)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Migration: .agents/shortcuts.md (5.1.0 – 5.2.4) → .bkit/lite.md
+// ---------------------------------------------------------------------------
+
+describe("migrateShortcutsToLite (via runBkitDocs)", () => {
+  const FIXTURE = path.join(getPkgRoot(), "tests/fixtures/shortcuts-5.2.4/shortcuts.md.txt");
+  const OLD = path.join(".agents", "shortcuts.md");
+  const LITE = path.join(".bkit", "lite.md");
+  const OWN = "### hotfix\n\n```text\nShip the hotfix below.\n```";
+
+  const seedOld = (extra = ""): void => {
+    fs.mkdirSync(".agents", { recursive: true });
+    fs.writeFileSync(OLD, fs.readFileSync(FIXTURE, "utf-8") + extra, "utf-8");
+  };
+  const renderedLite = (): string =>
+    applyTokens(
+      fs.readFileSync(path.join(getBkitDocsRoot(), "lite.md"), "utf-8"),
+      makeCtx().tokens,
+    );
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const paths = (ctx: ModuleContext): string[] => ctx.ws.writes.map((w) => path.normalize(w.path));
+
+  it("deletes a pristine 5.2.4 copy and leaves .bkit/lite.md as rendered", () => {
+    seedOld();
+    const ctx = run();
+    expect(fs.existsSync(OLD)).toBe(false);
+    expect(fs.readFileSync(LITE, "utf-8")).toBe(renderedLite());
+    expect(paths(ctx)).toContain(OLD);
+  });
+
+  it("moves the consumer's own lines under ## Project Lite Flows, without the old heading", () => {
+    seedOld(`\n${OWN}\n`);
+    run();
+    expect(fs.existsSync(OLD)).toBe(false);
+    const lite = fs.readFileSync(LITE, "utf-8");
+    expect(lite).toBe(`${renderedLite().replace(/\n*$/, "\n\n")}${OWN}\n`);
+    expect(lite).not.toContain("## Project Shortcuts");
+    expect(extractManagedBlock(lite, "html-comment")).not.toBeNull();
+  });
+
+  it("is idempotent: a second run changes nothing", () => {
+    seedOld(`\n${OWN}\n`);
+    run();
+    expect(fs.existsSync(OLD)).toBe(false);
+    const after = fs.readFileSync(LITE, "utf-8");
+    const again = run();
+    expect(fs.readFileSync(LITE, "utf-8")).toBe(after);
+    expect(paths(again)).not.toContain(OLD);
+    expect(paths(again)).not.toContain(LITE);
+  });
+
+  it("dry-run touches nothing and records the same writes as the real run", () => {
+    seedOld(`\n${OWN}\n`);
+    const dry = run(true);
+    expect(fs.readFileSync(OLD, "utf-8")).toContain(OWN);
+    expect(fs.existsSync(LITE)).toBe(false);
+    expect(paths(dry).filter((p) => p === LITE || p === OLD)).toEqual([LITE, LITE, OLD]);
+    const real = run();
+    expect(paths(dry)).toEqual(paths(real));
+  });
+
+  it("leaves an old copy without a managed block in place", () => {
+    fs.mkdirSync(".agents", { recursive: true });
+    fs.writeFileSync(OLD, `# Shortcuts\n\n${OWN}\n`, "utf-8");
+    const ctx = run();
+    expect(fs.readFileSync(OLD, "utf-8")).toContain(OWN);
+    expect(fs.readFileSync(LITE, "utf-8")).toBe(renderedLite());
+    expect(paths(ctx)).not.toContain(OLD);
   });
 });
