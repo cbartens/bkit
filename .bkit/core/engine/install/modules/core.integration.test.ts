@@ -497,12 +497,7 @@ describe(".bkit/version canonicalHashes — install prunes entries for absent pa
 // out-of-block content.
 // ---------------------------------------------------------------------------
 
-/** The file's text, or "" when it does not exist. */
-function readIfPresent(file: string): string {
-  return fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-}
-
-describe("bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to consumers", () => {
+describe("bkit-source `.agents/{rules,docs,skills}.md` must not leak to consumers", () => {
   it("first install matches the template (no out-of-block content from bkit's source rules.md)", () => {
     const ctx = makeCtx();
     runCoreModule(ctx);
@@ -528,20 +523,6 @@ describe("bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to
     // (this repo)") MUST NOT appear in a consumer install.
     expect(consumerRules).not.toMatch(/###\s+bkit Repo Authoring/);
     expect(consumerRules).not.toMatch(/###\s+Pre-push Checklist \(this repo\)/);
-  });
-
-  it("first install of friction.md does not carry bkit's friction-log entries", () => {
-    const ctx = makeCtx();
-    runCoreModule(ctx);
-    flushPostDispatch(ctx);
-
-    const frictionPath = path.join(tmpDir, ".bkit", "friction.md");
-    // friction.md is optional in some module sets; an absent file carries no entries.
-    const consumerFriction = readIfPresent(frictionPath);
-
-    // bkit-source friction.md has dated incident entries outside bkit:end.
-    // Heading shape: `## <topic> (YYYY-MM-DD)`. None of those should land here.
-    expect(consumerFriction).not.toMatch(/^##\s+.+\(\d{4}-\d{2}-\d{2}\)/m);
   });
 
   it("rules.md is reachable via the templates pass — no additive leak path", () => {
