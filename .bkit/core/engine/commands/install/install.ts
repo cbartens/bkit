@@ -12,6 +12,7 @@ import {
   DEFAULT_ISSUE_TRACKER,
   type ModuleName,
 } from "../../install/manifest.js";
+import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
 import type { ParsedArgs } from "../../cli.js";
@@ -149,18 +150,15 @@ export function detectOpencodeProvider(cwd: string): string | null {
   if (stored !== null) return stored;
   const jsonPath = path.join(cwd, ".opencode", "opencode.json");
   if (!fs.existsSync(jsonPath)) return null;
-  try {
-    const cfg = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as {
-      provider?: Record<string, unknown>;
-    };
-    if (cfg.provider && typeof cfg.provider === "object") {
-      const first = Object.keys(cfg.provider)[0];
-      if (!first) return null;
-      // Zen's opencode.json block is keyed by the built-in id `opencode`, not the CLI key.
-      return first === "opencode" ? "opencode-zen" : first;
-    }
-  } catch {
-    return null; // unparseable opencode.json — fall back to the default provider
+  // Unparseable opencode.json — fall back to the default provider.
+  const read = readJsonFile(jsonPath);
+  if (!read.ok || typeof read.value !== "object" || read.value === null) return null;
+  const cfg = read.value as { provider?: Record<string, unknown> };
+  if (cfg.provider && typeof cfg.provider === "object") {
+    const first = Object.keys(cfg.provider)[0];
+    if (!first) return null;
+    // Zen's opencode.json block is keyed by the built-in id `opencode`, not the CLI key.
+    return first === "opencode" ? "opencode-zen" : first;
   }
   return null;
 }
@@ -381,36 +379,40 @@ export async function runInstall(
     if (fs.existsSync(consumerPkgPath2)) {
       try {
         const raw = fs.readFileSync(consumerPkgPath2, "utf-8");
-        const pkg = JSON.parse(raw) as Record<string, unknown>;
-        const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
-        if (persistTracker) bkit.issueTracker = tracker;
-        if (persistProvider) {
-          bkit.opencodeProvider = opencodeProvider; // active (drives agent frontmatter)
-          // Update providers array (deduped).
-          const existingArr: string[] = Array.isArray(bkit.opencodeProviders)
-            ? [...(bkit.opencodeProviders as string[])]
-            : [];
-          if (!existingArr.includes(opencodeProvider!)) {
-            existingArr.push(opencodeProvider!);
+        // A package.json that is not JSON is left as-is (the preflight blocker reports it).
+        const parsed = parseJson(raw);
+        if (parsed.ok) {
+          const pkg = parsed.value as Record<string, unknown>;
+          const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
+          if (persistTracker) bkit.issueTracker = tracker;
+          if (persistProvider) {
+            bkit.opencodeProvider = opencodeProvider; // active (drives agent frontmatter)
+            // Update providers array (deduped).
+            const existingArr: string[] = Array.isArray(bkit.opencodeProviders)
+              ? [...(bkit.opencodeProviders as string[])]
+              : [];
+            if (!existingArr.includes(opencodeProvider!)) {
+              existingArr.push(opencodeProvider!);
+            }
+            bkit.opencodeProviders = existingArr;
           }
-          bkit.opencodeProviders = existingArr;
-        }
-        pkg.bkit = bkit;
-        const indentMatch = raw.match(/\n([ \t]+)"/);
-        const indent = indentMatch ? indentMatch[1] : "  ";
-        const trailingNewline = raw.endsWith("\n") ? "\n" : "";
-        fs.writeFileSync(
-          consumerPkgPath2,
-          JSON.stringify(pkg, null, indent) + trailingNewline,
-          "utf-8",
-        );
-        if (persistTracker) {
-          console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
-        }
-        if (persistProvider) {
-          console.log(
-            `${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" and updated bkit.opencodeProviders in package.json`,
+          pkg.bkit = bkit;
+          const indentMatch = raw.match(/\n([ \t]+)"/);
+          const indent = indentMatch ? indentMatch[1] : "  ";
+          const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+          fs.writeFileSync(
+            consumerPkgPath2,
+            JSON.stringify(pkg, null, indent) + trailingNewline,
+            "utf-8",
           );
+          if (persistTracker) {
+            console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
+          }
+          if (persistProvider) {
+            console.log(
+              `${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" and updated bkit.opencodeProviders in package.json`,
+            );
+          }
         }
       } catch {
         // non-fatal

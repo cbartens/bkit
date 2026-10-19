@@ -68,6 +68,7 @@ cbartens/bkit (this repo)
 │   │   ├── status.ts            # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in commands/install/doctor.ts)
 │   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine (#234 WS-1)
 │   ├── shared/                  # helpers every folder uses
+│   │   ├── json.ts              # `parseJson` / `readJsonFile`: the only place a failed JSON parse is caught; `audits/repo/json-parse-owner.test.ts` fails on a `JSON.parse` inside a `try` anywhere else
 │   │   ├── package-json.ts      # `readPackageJson` (a checkout's manifest, or why it could not be read); `readInstallingVersion` is the only reader of the version of the bkit doing the install and throws when bkit's own `package.json` is missing, not a JSON object, or has no string `version`
 │   │   ├── package-roots.ts     # Single resolver seam — getCoreRoot / getSharedRoot / getTemplatesRoot / getPkgRoot
 │   │   ├── protected-paths.ts   # IDE mirror prefix table (`isMirrorPath`); used by the compliance grader

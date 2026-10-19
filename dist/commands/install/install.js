@@ -6,6 +6,7 @@ import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { dispatchModules } from "../../install/modules/index.js";
 import { DEFAULT_ISSUE_TRACKER, } from "../../install/manifest.js";
+import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
 import { detectInstalledModules, reportCheckDrift } from "./check.js";
@@ -119,18 +120,17 @@ export function detectOpencodeProvider(cwd) {
     const jsonPath = path.join(cwd, ".opencode", "opencode.json");
     if (!fs.existsSync(jsonPath))
         return null;
-    try {
-        const cfg = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
-        if (cfg.provider && typeof cfg.provider === "object") {
-            const first = Object.keys(cfg.provider)[0];
-            if (!first)
-                return null;
-            // Zen's opencode.json block is keyed by the built-in id `opencode`, not the CLI key.
-            return first === "opencode" ? "opencode-zen" : first;
-        }
-    }
-    catch {
-        return null; // unparseable opencode.json — fall back to the default provider
+    // Unparseable opencode.json — fall back to the default provider.
+    const read = readJsonFile(jsonPath);
+    if (!read.ok || typeof read.value !== "object" || read.value === null)
+        return null;
+    const cfg = read.value;
+    if (cfg.provider && typeof cfg.provider === "object") {
+        const first = Object.keys(cfg.provider)[0];
+        if (!first)
+            return null;
+        // Zen's opencode.json block is keyed by the built-in id `opencode`, not the CLI key.
+        return first === "opencode" ? "opencode-zen" : first;
     }
     return null;
 }
@@ -321,31 +321,35 @@ export async function runInstall(args, upgradeReport = false) {
         if (fs.existsSync(consumerPkgPath2)) {
             try {
                 const raw = fs.readFileSync(consumerPkgPath2, "utf-8");
-                const pkg = JSON.parse(raw);
-                const bkit = (pkg.bkit ?? {});
-                if (persistTracker)
-                    bkit.issueTracker = tracker;
-                if (persistProvider) {
-                    bkit.opencodeProvider = opencodeProvider; // active (drives agent frontmatter)
-                    // Update providers array (deduped).
-                    const existingArr = Array.isArray(bkit.opencodeProviders)
-                        ? [...bkit.opencodeProviders]
-                        : [];
-                    if (!existingArr.includes(opencodeProvider)) {
-                        existingArr.push(opencodeProvider);
+                // A package.json that is not JSON is left as-is (the preflight blocker reports it).
+                const parsed = parseJson(raw);
+                if (parsed.ok) {
+                    const pkg = parsed.value;
+                    const bkit = (pkg.bkit ?? {});
+                    if (persistTracker)
+                        bkit.issueTracker = tracker;
+                    if (persistProvider) {
+                        bkit.opencodeProvider = opencodeProvider; // active (drives agent frontmatter)
+                        // Update providers array (deduped).
+                        const existingArr = Array.isArray(bkit.opencodeProviders)
+                            ? [...bkit.opencodeProviders]
+                            : [];
+                        if (!existingArr.includes(opencodeProvider)) {
+                            existingArr.push(opencodeProvider);
+                        }
+                        bkit.opencodeProviders = existingArr;
                     }
-                    bkit.opencodeProviders = existingArr;
-                }
-                pkg.bkit = bkit;
-                const indentMatch = raw.match(/\n([ \t]+)"/);
-                const indent = indentMatch ? indentMatch[1] : "  ";
-                const trailingNewline = raw.endsWith("\n") ? "\n" : "";
-                fs.writeFileSync(consumerPkgPath2, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
-                if (persistTracker) {
-                    console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
-                }
-                if (persistProvider) {
-                    console.log(`${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" and updated bkit.opencodeProviders in package.json`);
+                    pkg.bkit = bkit;
+                    const indentMatch = raw.match(/\n([ \t]+)"/);
+                    const indent = indentMatch ? indentMatch[1] : "  ";
+                    const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+                    fs.writeFileSync(consumerPkgPath2, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+                    if (persistTracker) {
+                        console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
+                    }
+                    if (persistProvider) {
+                        console.log(`${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" and updated bkit.opencodeProviders in package.json`);
+                    }
                 }
             }
             catch {

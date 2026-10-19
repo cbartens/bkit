@@ -3,6 +3,7 @@
 // run levels, turbo inputs and the integration env.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readJsonFile } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { isAdvisorySuppressed } from "./suppression.js";
 // ---------------------------------------------------------------------------
@@ -372,16 +373,15 @@ export function detectTaggedTestsWithoutCiHome(cwd, onSuppressed) {
     const pkgScripts = new Map();
     const declaredScripts = new Set();
     for (const pj of packageJsons) {
-        try {
-            const parsed = JSON.parse(fs.readFileSync(pj, "utf-8"));
-            const scripts = parsed.scripts ?? {};
-            pkgScripts.set(pj, scripts);
-            for (const name of Object.keys(scripts))
-                declaredScripts.add(name);
-        }
-        catch {
+        const parsed = readJsonFile(pj);
+        if (!parsed.ok || parsed.value === null) {
             pkgScripts.set(pj, {});
+            continue;
         }
+        const scripts = parsed.value.scripts ?? {};
+        pkgScripts.set(pj, scripts);
+        for (const name of Object.keys(scripts))
+            declaredScripts.add(name);
     }
     const nearestPkg = (fileDir) => {
         let dir = fileDir;
@@ -470,13 +470,10 @@ export function detectTurboIntegrationInputs(cwd) {
     const turboPath = path.join(cwd, "turbo.json");
     if (!fs.existsSync(turboPath))
         return findings;
-    let doc;
-    try {
-        doc = JSON.parse(fs.readFileSync(turboPath, "utf-8"));
-    }
-    catch {
+    const turbo = readJsonFile(turboPath);
+    if (!turbo.ok)
         return findings;
-    }
+    const doc = turbo.value;
     // turbo v2 → `tasks`; turbo v1 → `pipeline`. Either may be present.
     const tasks = doc.tasks ?? doc.pipeline ?? {};
     const externalProxyHints = ["migrations", "fixtures", "seed", ".env"];

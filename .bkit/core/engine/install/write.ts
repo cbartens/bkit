@@ -10,6 +10,7 @@ import {
   type MarkerStyle,
 } from "./managed-block.js";
 import { readTemplate } from "../render/parts.js";
+import { parseJson } from "../shared/json.js";
 import { applyTokens, type TokenMap } from "./placeholders.js";
 import { sha256 } from "./version-file.js";
 
@@ -264,12 +265,11 @@ export function writeTier2JsonContained(
   ws: WriteSet,
 ): void {
   const srcRaw = fs.readFileSync(srcPath, "utf-8");
-  let template: Record<string, JsonValue>;
-  try {
-    template = JSON.parse(srcRaw) as Record<string, JsonValue>;
-  } catch {
+  const templateRead = parseJson(srcRaw);
+  if (!templateRead.ok) {
     throw new Error(`writeTier2JsonContained: template at ${srcPath} is not valid JSON`);
   }
+  const template = templateRead.value as Record<string, JsonValue>;
 
   if (!fs.existsSync(dstPath)) {
     // First install — write template as-is
@@ -285,15 +285,14 @@ export function writeTier2JsonContained(
 
   // dest exists — read and check containment
   const dstRaw = fs.readFileSync(dstPath, "utf-8");
-  let existing: Record<string, JsonValue>;
-  try {
-    existing = JSON.parse(dstRaw) as Record<string, JsonValue>;
-  } catch {
+  const existingRead = parseJson(dstRaw);
+  if (!existingRead.ok) {
     // Malformed destination — refuse to overwrite; require manual fix (matches malformed-package-json blocker discipline)
     throw new Error(
       `[bkit] ${dstPath} is malformed JSON — fix manually before running bkit install`,
     );
   }
+  const existing = existingRead.value as Record<string, JsonValue>;
 
   // Check if existing already contains the template
   const containsResult = deepContains(template as JsonValue, existing as JsonValue);
@@ -534,12 +533,11 @@ export function ensurePackageJsonScripts(
     return { added: [], preserved: [], missingPkg: true, malformed: false };
   }
   const raw = fs.readFileSync(pkgPath, "utf-8");
-  let pkg: Record<string, unknown>;
-  try {
-    pkg = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
+  const parsed = parseJson(raw);
+  if (!parsed.ok) {
     return { added: [], preserved: [], missingPkg: false, malformed: true };
   }
+  const pkg = parsed.value as Record<string, unknown>;
 
   let pkgScripts = (pkg.scripts as Record<string, string> | undefined) ?? undefined;
   const added: string[] = [];

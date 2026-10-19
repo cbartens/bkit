@@ -29,6 +29,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fold, parse, resolveRepoSlug, } from "../ledgers/telemetry.js";
+import { parseJson } from "../shared/json.js";
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -176,14 +177,12 @@ export function pruneConsumerFile(srcPath, consumerSlug, durable) {
     for (const line of raw.split("\n")) {
         if (line.trim() === "")
             continue;
-        let event;
-        try {
-            event = JSON.parse(line.trim());
-        }
-        catch {
+        const parsed = parseJson(line.trim());
+        if (!parsed.ok) {
             kept.push(line); // malformed — never ours to delete
             continue;
         }
+        const event = parsed.value;
         if (durable.rows.has(canonicalRow(stampRepo(event, consumerSlug)))) {
             removed++;
             continue;

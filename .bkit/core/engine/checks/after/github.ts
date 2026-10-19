@@ -7,6 +7,7 @@ import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { PreflightFinding } from "../before/index.js";
 import { MCP_TOOLSETS_HEADER, parseToolsets } from "../../install/write.js";
+import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import type { TokenPresence } from "./auth.js";
 
@@ -50,7 +51,9 @@ export function detectActionsWritePermissions(): TokenPresence {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 5000,
     });
-    const parsed = JSON.parse(out) as {
+    const response = parseJson(out);
+    if (!response.ok) return "unknown";
+    const parsed = response.value as {
       default_workflow_permissions?: string;
       can_approve_pull_request_reviews?: boolean;
     };
@@ -140,17 +143,15 @@ function readGithubProjectConfig(cwd: string): "configured" | "opted-out" | "abs
 export function detectProjectsToolset(cwd: string): TokenPresence {
   const mcpPath = path.join(cwd, ".mcp.json");
   if (!fs.existsSync(mcpPath)) return "unknown";
-  try {
-    const cfg = JSON.parse(fs.readFileSync(mcpPath, "utf-8")) as Record<string, unknown>;
-    const servers = cfg.mcpServers as Record<string, unknown> | undefined;
-    const gh = servers?.github as Record<string, unknown> | undefined;
-    const headers = gh?.headers as Record<string, unknown> | undefined;
-    const toolsets = headers?.[MCP_TOOLSETS_HEADER];
-    if (typeof toolsets !== "string") return "unknown";
-    return parseToolsets(toolsets).includes("projects") ? "present" : "missing";
-  } catch {
-    return "unknown";
-  }
+  const cfg = readJsonFile(mcpPath);
+  if (!cfg.ok || typeof cfg.value !== "object" || cfg.value === null) return "unknown";
+  const servers = (cfg.value as Record<string, unknown>).mcpServers as
+    Record<string, unknown> | undefined;
+  const gh = servers?.github as Record<string, unknown> | undefined;
+  const headers = gh?.headers as Record<string, unknown> | undefined;
+  const toolsets = headers?.[MCP_TOOLSETS_HEADER];
+  if (typeof toolsets !== "string") return "unknown";
+  return parseToolsets(toolsets).includes("projects") ? "present" : "missing";
 }
 
 /**

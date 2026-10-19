@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import type { PreflightFinding } from "../before/index.js";
+import { readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 
 // ---------------------------------------------------------------------------
@@ -36,13 +37,12 @@ export function hasGithubMcpServer(cwd: string): boolean {
   for (const rel of [".mcp.json", path.join(".cursor", "mcp.json")]) {
     const p = path.join(cwd, rel);
     if (!fs.existsSync(p)) continue;
-    try {
-      const cfg = JSON.parse(fs.readFileSync(p, "utf-8")) as Record<string, unknown>;
-      const servers = cfg.mcpServers as Record<string, unknown> | undefined;
-      if (servers?.github) return true;
-    } catch {
-      // Malformed config — ignore; a JSON-drift advisory covers that separately.
-    }
+    // Malformed config — ignore; a JSON-drift advisory covers that separately.
+    const cfg = readJsonFile(p);
+    if (!cfg.ok || typeof cfg.value !== "object" || cfg.value === null) continue;
+    const servers = (cfg.value as Record<string, unknown>).mcpServers as
+      Record<string, unknown> | undefined;
+    if (servers?.github) return true;
   }
   return false;
 }

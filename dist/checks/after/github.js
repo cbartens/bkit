@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { MCP_TOOLSETS_HEADER, parseToolsets } from "../../install/write.js";
+import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 /**
  * Detect whether branch protection is configured on `main`.
@@ -46,7 +47,10 @@ export function detectActionsWritePermissions() {
             stdio: ["ignore", "pipe", "pipe"],
             timeout: 5000,
         });
-        const parsed = JSON.parse(out);
+        const response = parseJson(out);
+        if (!response.ok)
+            return "unknown";
+        const parsed = response.value;
         const canWrite = parsed.default_workflow_permissions === "write";
         const canApprovePrs = parsed.can_approve_pull_request_reviews === true;
         return canWrite && canApprovePrs ? "present" : "missing";
@@ -126,19 +130,16 @@ export function detectProjectsToolset(cwd) {
     const mcpPath = path.join(cwd, ".mcp.json");
     if (!fs.existsSync(mcpPath))
         return "unknown";
-    try {
-        const cfg = JSON.parse(fs.readFileSync(mcpPath, "utf-8"));
-        const servers = cfg.mcpServers;
-        const gh = servers?.github;
-        const headers = gh?.headers;
-        const toolsets = headers?.[MCP_TOOLSETS_HEADER];
-        if (typeof toolsets !== "string")
-            return "unknown";
-        return parseToolsets(toolsets).includes("projects") ? "present" : "missing";
-    }
-    catch {
+    const cfg = readJsonFile(mcpPath);
+    if (!cfg.ok || typeof cfg.value !== "object" || cfg.value === null)
         return "unknown";
-    }
+    const servers = cfg.value.mcpServers;
+    const gh = servers?.github;
+    const headers = gh?.headers;
+    const toolsets = headers?.[MCP_TOOLSETS_HEADER];
+    if (typeof toolsets !== "string")
+        return "unknown";
+    return parseToolsets(toolsets).includes("projects") ? "present" : "missing";
 }
 /**
  * GitHub Projects v2 board-sync prerequisite advisory. Board status sync needs

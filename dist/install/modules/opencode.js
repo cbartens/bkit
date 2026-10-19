@@ -10,9 +10,10 @@ import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { resolveNetworkAllowlist, extractMcpServers, networkAllowlistBases } from "../cloud-env.js";
 import { OPENCODE_PROVIDER_DEFAULTS } from "../../shared/egress.js";
+import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
-import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite, } from "./core.js";
+import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
 import { isOpencodeProvider, opencodeProviderId } from "../../render/models.js";
 export function renderOpencodeAgentsCommands(ctx) {
     const { dryRun, opencodeModelLookup, effortMap, opencodeProvider, logPrefix } = ctx;
@@ -220,7 +221,10 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
     rendered = rendered.replace(OPENCODE_PROVIDER_BASE_URL_SENTINEL, providerDefaults.baseURL);
     // Parse + re-serialize to normalise JSON (removes empty mcp entry if tracker=none)
     try {
-        const parsed = JSON.parse(rendered);
+        const renderedDoc = parseJson(rendered);
+        if (!renderedDoc.ok)
+            return rendered;
+        const parsed = renderedDoc.value;
         // Clean up empty mcp object when tracker=none
         const mcp = parsed.mcp;
         if (mcp && Object.keys(mcp).length === 0) {
@@ -319,16 +323,9 @@ export function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
         ws.writes.push({ path: relDst, action: "write" });
         return;
     }
-    // Parse into a sentinel and validate AFTER the catch — keeping the throw out of the catch
-    // body (matches the codebase's parse-or-sentinel idiom; a throw inside catch obscures the
-    // original error). Malformed consumer JSON is a hard stop: refuse to merge, require a fix.
-    let existing = null;
-    try {
-        existing = JSON.parse(fs.readFileSync(relDst, "utf-8"));
-    }
-    catch {
-        existing = null;
-    }
+    // Malformed consumer JSON is a hard stop: refuse to merge, require a fix.
+    const read = readJsonFile(relDst);
+    const existing = read.ok ? read.value : null;
     if (existing === null) {
         throw new Error(`[bkit] ${relDst} is malformed JSON — fix manually before running bkit install`);
     }
@@ -389,14 +386,8 @@ export function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
 export function removeOpencodeProviderBlock(dst, providerKey, dryRun, ws) {
     if (!fs.existsSync(dst))
         return;
-    // Parse-or-sentinel idiom: keep the early-return outside the catch body.
-    let existing = null;
-    try {
-        existing = JSON.parse(fs.readFileSync(dst, "utf-8"));
-    }
-    catch {
-        existing = null;
-    }
+    const read = readJsonFile(dst);
+    const existing = read.ok ? read.value : null;
     if (existing === null) {
         console.warn(`[bkit] ${dst} is malformed — leaving as-is`);
         return;

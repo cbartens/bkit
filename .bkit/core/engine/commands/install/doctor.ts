@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { detectOpencodeProvider, detectOpencodeProviders } from "./install.js";
 import { type ModuleFlag } from "../../cli.js";
 import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
+import { readJsonFile } from "../../shared/json.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { getCoreRoot, getSharedRoot, getTemplatesRoot } from "../../shared/package-roots.js";
@@ -35,13 +36,11 @@ export function runStatus(cwd: string, logPrefix: string): void {
   const claudeSettingsPath = path.join(claudeDir, "settings.json");
   let claudeModel = "claude (default)";
   if (claudePresent && fs.existsSync(claudeSettingsPath)) {
-    try {
-      const settings = JSON.parse(fs.readFileSync(claudeSettingsPath, "utf-8")) as {
-        model?: string;
-      };
+    // Best-effort: an unreadable settings file keeps the default label.
+    const read = readJsonFile(claudeSettingsPath);
+    if (read.ok && typeof read.value === "object" && read.value !== null) {
+      const settings = read.value as { model?: string };
       if (settings.model) claudeModel = settings.model;
-    } catch {
-      // best-effort
     }
   }
   console.log(
@@ -63,19 +62,17 @@ export function runStatus(cwd: string, logPrefix: string): void {
   let opencodeModel = "unknown";
   const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
   if (opencodePresent && fs.existsSync(opencodeJsonPath)) {
-    try {
-      const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as {
-        model?: string;
-        models?: Record<string, unknown>;
-      };
+    const read = readJsonFile(opencodeJsonPath);
+    if (!read.ok || read.value === null) {
+      opencodeModel = "parse-error";
+    } else {
+      const cfg = read.value as { model?: string; models?: Record<string, unknown> };
       if (cfg.model) opencodeModel = cfg.model;
       // Fallback: look for non-empty models map
       if (opencodeModel === "unknown" && cfg.models) {
         const modelKeys = Object.keys(cfg.models);
         if (modelKeys.length > 0) opencodeModel = `${modelKeys.length} model(s) configured`;
       }
-    } catch {
-      opencodeModel = "parse-error";
     }
   }
   let opencodeProviderDisplay: string;

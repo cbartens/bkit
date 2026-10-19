@@ -4,13 +4,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeTier1, writeTier2, writeTier2JsonContained, ensureDir, mergeTrackerEntry, trackerEntryInSync, } from "../write.js";
 import { readBkitVersion, stampManagedVersion } from "../version-file.js";
+import { readJsonFile } from "../../shared/json.js";
 import { applyEffortRemap } from "../../render/hosts.js";
 import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from "../../shared/package-roots.js";
 import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { writeClaudeCloudDoc, resolveClaudeDerivedAllows } from "../cloud-env.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
-import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite, } from "./core.js";
+import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
 export function renderClaudeAgentsCommands(ctx) {
     const { dryRun, logPrefix, effortMap } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
@@ -193,13 +194,10 @@ export function runClaudeModule(ctx) {
 export function enrichClaudeSettingsAllows(settingsDst, cwd, dryRun, ws, advisories) {
     if (!fs.existsSync(settingsDst))
         return null;
-    let doc;
-    try {
-        doc = JSON.parse(fs.readFileSync(settingsDst, "utf-8"));
-    }
-    catch {
+    const settings = readJsonFile(settingsDst);
+    if (!settings.ok)
         return null;
-    }
+    const doc = settings.value;
     const allow = doc.permissions?.allow;
     if (!Array.isArray(allow))
         return null;
@@ -266,14 +264,8 @@ export function reconcileMcpJson(templatePath, relDst, tracker, dryRun, ws) {
         ws.writes.push({ path: relDst, action: "write" });
         return;
     }
-    // Parse-or-sentinel idiom (see reconcileOpencodeJson): the throw stays out of the catch.
-    let existing = null;
-    try {
-        existing = JSON.parse(fs.readFileSync(relDst, "utf-8"));
-    }
-    catch {
-        existing = null;
-    }
+    const read = readJsonFile(relDst);
+    const existing = read.ok ? read.value : null;
     if (existing === null || typeof existing !== "object" || Array.isArray(existing)) {
         throw new Error(`[bkit] ${relDst} is malformed JSON — fix manually before running bkit install`);
     }

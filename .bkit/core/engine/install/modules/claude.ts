@@ -14,6 +14,7 @@ import {
   type JsonValue,
 } from "../write.js";
 import { readBkitVersion, stampManagedVersion } from "../version-file.js";
+import { readJsonFile } from "../../shared/json.js";
 import { applyEffortRemap } from "../../render/hosts.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
 import {
@@ -27,13 +28,7 @@ import { substituteWorkflow } from "../../render/trackers.js";
 import { writeClaudeCloudDoc, resolveClaudeDerivedAllows } from "../cloud-env.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import type { ModuleContext } from "./index.js";
-import {
-  BKIT_PREFIX,
-  installFile,
-  listMdFiles,
-  removeOrphans,
-  trackMirrorWrite,
-} from "./core.js";
+import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
 
 export function renderClaudeAgentsCommands(ctx: ModuleContext): string[] {
   const { dryRun, logPrefix, effortMap } = ctx;
@@ -249,14 +244,11 @@ export function enrichClaudeSettingsAllows(
   advisories?: PreflightFinding[],
 ): readonly string[] | null {
   if (!fs.existsSync(settingsDst)) return null;
-  let doc: {
+  const settings = readJsonFile(settingsDst);
+  if (!settings.ok) return null;
+  const doc = settings.value as {
     permissions?: { allow?: string[] };
   };
-  try {
-    doc = JSON.parse(fs.readFileSync(settingsDst, "utf-8")) as typeof doc;
-  } catch {
-    return null;
-  }
   const allow = doc.permissions?.allow;
   if (!Array.isArray(allow)) return null;
 
@@ -337,13 +329,8 @@ export function reconcileMcpJson(
     return;
   }
 
-  // Parse-or-sentinel idiom (see reconcileOpencodeJson): the throw stays out of the catch.
-  let existing: JsonValue | null = null;
-  try {
-    existing = JSON.parse(fs.readFileSync(relDst, "utf-8")) as JsonValue;
-  } catch {
-    existing = null;
-  }
+  const read = readJsonFile(relDst);
+  const existing = read.ok ? (read.value as JsonValue) : null;
   if (existing === null || typeof existing !== "object" || Array.isArray(existing)) {
     throw new Error(
       `[bkit] ${relDst} is malformed JSON — fix manually before running bkit install`,

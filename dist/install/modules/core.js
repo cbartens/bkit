@@ -8,6 +8,7 @@ import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, } fr
 import { extractManagedBlock, stripManagedBlock } from "../managed-block.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
+import { readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
 import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
@@ -324,16 +325,13 @@ const PNPM_NOT_A_SCRIPT = new Set([
  * package.json yields none.
  */
 export function detectGateAdvisories(cwd) {
-    let declared;
-    try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8"));
-        declared = { ...BKIT_GATE_SCRIPTS, ...pkg.scripts };
-    }
-    catch {
-        // Absent or malformed package.json — preflight's no-package-json /
-        // malformed-package-json blockers already report it.
+    const read = readJsonFile(path.join(cwd, "package.json"));
+    // Absent or malformed package.json — preflight's no-package-json /
+    // malformed-package-json blockers already report it.
+    if (!read.ok || read.value === null)
         return [];
-    }
+    const pkg = read.value;
+    const declared = { ...BKIT_GATE_SCRIPTS, ...pkg.scripts };
     const findings = [];
     // Every script a seeded gate default chains MUST exist, or the gate dies on the first
     // missing one and the workflow reads that as a real failure. Checked only where the
@@ -405,15 +403,12 @@ export function isNoopScript(value) {
  * every branch. Read-only; an absent or unparseable package.json yields none.
  */
 export function detectNoopGates(cwd) {
-    let declared;
-    try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8"));
-        declared = pkg.scripts ?? {};
-    }
-    catch {
-        // Absent or malformed package.json — preflight's blockers already report it.
+    const read = readJsonFile(path.join(cwd, "package.json"));
+    // Absent or malformed package.json — preflight's blockers already report it.
+    if (!read.ok || read.value === null)
         return [];
-    }
+    const pkg = read.value;
+    const declared = pkg.scripts ?? {};
     const noop = Object.entries(declared)
         .filter(([name, value]) => name.startsWith("bkit:gate:") && typeof value === "string")
         .filter(([, value]) => isNoopScript(value))

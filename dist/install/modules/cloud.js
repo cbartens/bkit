@@ -4,6 +4,7 @@
 // environment) ships as a copy-and-own template.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseJson } from "../../shared/json.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -23,7 +24,10 @@ function setConsumerBkitField(field, value, dryRun) {
         return;
     try {
         const raw = fs.readFileSync(pkgPath, "utf-8");
-        const pkg = JSON.parse(raw);
+        const parsed = parseJson(raw);
+        if (!parsed.ok)
+            return;
+        const pkg = parsed.value;
         const bkit = (pkg.bkit ?? {});
         if (bkit[field] === value)
             return; // already set — avoid a no-op rewrite

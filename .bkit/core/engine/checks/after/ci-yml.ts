@@ -4,6 +4,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readJsonFile } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import type { PreflightFinding } from "../before/index.js";
 import { isAdvisorySuppressed, type SuppressionReporter } from "./suppression.js";
@@ -394,14 +395,15 @@ export function detectTaggedTestsWithoutCiHome(
   const pkgScripts = new Map<string, Record<string, unknown>>();
   const declaredScripts = new Set<string>();
   for (const pj of packageJsons) {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(pj, "utf-8")) as Record<string, unknown>;
-      const scripts = (parsed.scripts as Record<string, unknown>) ?? {};
-      pkgScripts.set(pj, scripts);
-      for (const name of Object.keys(scripts)) declaredScripts.add(name);
-    } catch {
+    const parsed = readJsonFile(pj);
+    if (!parsed.ok || parsed.value === null) {
       pkgScripts.set(pj, {});
+      continue;
     }
+    const scripts =
+      ((parsed.value as Record<string, unknown>).scripts as Record<string, unknown>) ?? {};
+    pkgScripts.set(pj, scripts);
+    for (const name of Object.keys(scripts)) declaredScripts.add(name);
   }
 
   const nearestPkg = (fileDir: string): string | null => {
@@ -489,12 +491,12 @@ export function detectTurboIntegrationInputs(cwd: string): PreflightFinding[] {
   const findings: PreflightFinding[] = [];
   const turboPath = path.join(cwd, "turbo.json");
   if (!fs.existsSync(turboPath)) return findings;
-  let doc: { tasks?: Record<string, unknown>; pipeline?: Record<string, unknown> };
-  try {
-    doc = JSON.parse(fs.readFileSync(turboPath, "utf-8")) as typeof doc;
-  } catch {
-    return findings;
-  }
+  const turbo = readJsonFile(turboPath);
+  if (!turbo.ok) return findings;
+  const doc = turbo.value as {
+    tasks?: Record<string, unknown>;
+    pipeline?: Record<string, unknown>;
+  };
   // turbo v2 → `tasks`; turbo v1 → `pipeline`. Either may be present.
   const tasks = doc.tasks ?? doc.pipeline ?? {};
   const externalProxyHints = ["migrations", "fixtures", "seed", ".env"];

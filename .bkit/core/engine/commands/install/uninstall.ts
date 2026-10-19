@@ -33,6 +33,7 @@ import {
   ISSUE_TRACKERS,
 } from "../../install/manifest.js";
 import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
+import { parseJson } from "../../shared/json.js";
 import {
   isConsumerModified,
   mergeCanonicalHashes,
@@ -601,12 +602,16 @@ export async function runUninstall(
                 break;
               }
               const raw = fs.readFileSync(absPath, "utf-8");
-              const consumerDoc = JSON.parse(raw) as Record<string, JsonValue>;
+              const consumerParsed = parseJson(raw);
+              if (!consumerParsed.ok) throw new Error(`${summary.file} is not valid JSON`);
+              const consumerDoc = consumerParsed.value as Record<string, JsonValue>;
               const templateRaw = fs.readFileSync(templatePath, "utf-8");
               // opencode.json ships `@@OPENCODE_*@@` sentinel KEYS; stripOpencodeJsonScope
               // renders them for every tracker and provider bkit can have written.
               const isOpencodeJson = templateRaw.includes("@@OPENCODE_TRACKER_MCP@@");
-              const templateDoc = JSON.parse(templateRaw) as Record<string, JsonValue>;
+              const templateParsed = parseJson(templateRaw);
+              if (!templateParsed.ok) throw new Error(`${templatePath} is not valid JSON`);
+              const templateDoc = templateParsed.value as Record<string, JsonValue>;
               // `.claude/settings.json` is not written verbatim: after rendering the
               // template, install appends one `WebFetch(domain:<d>)` grant per entry in
               // the resolved network allowlist and `mcp__…` grants per declared MCP
@@ -956,13 +961,8 @@ export async function runSurgicalOpencodeUninstall(
 
   if (fs.existsSync(pkgPath)) {
     const raw = fs.readFileSync(pkgPath, "utf-8");
-    // Parse-or-sentinel idiom: keep the early-return outside the catch body.
-    let pkg: Record<string, unknown> | null = null;
-    try {
-      pkg = JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      pkg = null;
-    }
+    const parsed = parseJson(raw);
+    const pkg = parsed.ok ? (parsed.value as Record<string, unknown> | null) : null;
     if (pkg === null) {
       console.warn(`${LOG_PREFIX} package.json is malformed — skipping bkit section update`);
       return;

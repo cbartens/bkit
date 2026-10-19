@@ -25,6 +25,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseJson } from "../shared/json.js";
 import { getWorkflowsRoot } from "../shared/package-roots.js";
 // ---------------------------------------------------------------------------
 // Canonical ship step order (mirrors audits/workflows/ship-invariants.test.ts
@@ -274,12 +275,10 @@ export function auditStatusJsonl(statusJsonl, shipMd) {
         const trimmed = line.trim();
         if (!trimmed)
             continue;
-        try {
-            rows.push(JSON.parse(trimmed));
-        }
-        catch (_e) {
-            void _e; // skip unparseable lines (advisory — never throw)
-        }
+        // Unparseable lines are skipped (advisory — never throw).
+        const row = parseJson(trimmed);
+        if (row.ok)
+            rows.push(row.value);
     }
     // Filter to ship step-done rows + workflow-failed rows
     const shipStepRows = rows.filter((r) => r.type === "step-done" && r.workflow === "ship" && typeof r.step === "string");

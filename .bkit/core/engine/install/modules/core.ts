@@ -16,6 +16,7 @@ import type { TokenMap } from "../placeholders.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
+import { readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import {
   getCoreRoot,
@@ -401,17 +402,12 @@ const PNPM_NOT_A_SCRIPT = new Set([
  * package.json yields none.
  */
 export function detectGateAdvisories(cwd: string): PreflightFinding[] {
-  let declared: Record<string, string>;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8")) as {
-      scripts?: Record<string, string>;
-    };
-    declared = { ...BKIT_GATE_SCRIPTS, ...pkg.scripts };
-  } catch {
-    // Absent or malformed package.json — preflight's no-package-json /
-    // malformed-package-json blockers already report it.
-    return [];
-  }
+  const read = readJsonFile(path.join(cwd, "package.json"));
+  // Absent or malformed package.json — preflight's no-package-json /
+  // malformed-package-json blockers already report it.
+  if (!read.ok || read.value === null) return [];
+  const pkg = read.value as { scripts?: Record<string, string> };
+  const declared: Record<string, string> = { ...BKIT_GATE_SCRIPTS, ...pkg.scripts };
   const findings: PreflightFinding[] = [];
 
   // Every script a seeded gate default chains MUST exist, or the gate dies on the first
@@ -487,16 +483,11 @@ export function isNoopScript(value: string): boolean {
  * every branch. Read-only; an absent or unparseable package.json yields none.
  */
 export function detectNoopGates(cwd: string): PreflightFinding[] {
-  let declared: Record<string, unknown>;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8")) as {
-      scripts?: Record<string, unknown>;
-    };
-    declared = pkg.scripts ?? {};
-  } catch {
-    // Absent or malformed package.json — preflight's blockers already report it.
-    return [];
-  }
+  const read = readJsonFile(path.join(cwd, "package.json"));
+  // Absent or malformed package.json — preflight's blockers already report it.
+  if (!read.ok || read.value === null) return [];
+  const pkg = read.value as { scripts?: Record<string, unknown> };
+  const declared: Record<string, unknown> = pkg.scripts ?? {};
   const noop = Object.entries(declared)
     .filter(([name, value]) => name.startsWith("bkit:gate:") && typeof value === "string")
     .filter(([, value]) => isNoopScript(value as string))

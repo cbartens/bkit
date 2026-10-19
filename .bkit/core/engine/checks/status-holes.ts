@@ -27,6 +27,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseJson } from "../shared/json.js";
 import { getWorkflowsRoot } from "../shared/package-roots.js";
 
 // ---------------------------------------------------------------------------
@@ -344,11 +345,9 @@ export function auditStatusJsonl(statusJsonl: string, shipMd: string): HoleRepor
   for (const line of statusJsonl.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    try {
-      rows.push(JSON.parse(trimmed) as StatusRow);
-    } catch (_e) {
-      void _e; // skip unparseable lines (advisory — never throw)
-    }
+    // Unparseable lines are skipped (advisory — never throw).
+    const row = parseJson(trimmed);
+    if (row.ok) rows.push(row.value as StatusRow);
   }
 
   // Filter to ship step-done rows + workflow-failed rows

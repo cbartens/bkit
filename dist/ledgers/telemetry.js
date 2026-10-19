@@ -18,6 +18,7 @@
 // so an unexpected version surfaces for triage.
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import { parseJson } from "../shared/json.js";
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -397,11 +398,11 @@ export function parse(raw) {
         const trimmed = line.trim();
         if (trimmed === "")
             continue;
-        try {
-            const obj = JSON.parse(trimmed);
-            result.events.push(obj);
+        const obj = parseJson(trimmed);
+        if (obj.ok) {
+            result.events.push(obj.value);
         }
-        catch {
+        else {
             result.malformedLineCount++;
         }
     }

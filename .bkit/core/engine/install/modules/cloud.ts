@@ -5,6 +5,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseJson } from "../../shared/json.js";
 import type { CloudAgents } from "../manifest.js";
 import type { ModuleContext } from "./index.js";
 
@@ -26,7 +27,9 @@ function setConsumerBkitField(field: string, value: string, dryRun: boolean): vo
   if (!fs.existsSync(pkgPath)) return;
   try {
     const raw = fs.readFileSync(pkgPath, "utf-8");
-    const pkg = JSON.parse(raw) as Record<string, unknown>;
+    const parsed = parseJson(raw);
+    if (!parsed.ok) return;
+    const pkg = parsed.value as Record<string, unknown>;
     const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
     if (bkit[field] === value) return; // already set — avoid a no-op rewrite
     bkit[field] = value;

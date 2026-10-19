@@ -36,6 +36,7 @@ import {
   type FoldedState,
   type TelemetryEvent,
 } from "../ledgers/telemetry.js";
+import { parseJson } from "../shared/json.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -256,13 +257,12 @@ export function pruneConsumerFile(
 
   for (const line of raw.split("\n")) {
     if (line.trim() === "") continue;
-    let event: TelemetryEvent;
-    try {
-      event = JSON.parse(line.trim()) as TelemetryEvent;
-    } catch {
+    const parsed = parseJson(line.trim());
+    if (!parsed.ok) {
       kept.push(line); // malformed — never ours to delete
       continue;
     }
+    const event = parsed.value as TelemetryEvent;
     if (durable.rows.has(canonicalRow(stampRepo(event, consumerSlug)))) {
       removed++;
       continue;

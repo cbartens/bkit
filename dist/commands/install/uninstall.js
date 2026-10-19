@@ -26,6 +26,7 @@ import { stripManagedBlock, detectMarkerStyle } from "../../install/managed-bloc
 import { readTemplate } from "../../render/parts.js";
 import { getInstallManifest, ISSUE_TRACKERS, } from "../../install/manifest.js";
 import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
+import { parseJson } from "../../shared/json.js";
 import { isConsumerModified, mergeCanonicalHashes, readBkitVersion, writeBkitVersion, } from "../../install/version-file.js";
 import { getPkgRoot, getSharedRoot, findTemplateSource, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
 import { PAYLOAD_LINKS } from "../../install/payload-links.js";
@@ -465,12 +466,18 @@ export async function runUninstall(modules, ctx) {
                                 break;
                             }
                             const raw = fs.readFileSync(absPath, "utf-8");
-                            const consumerDoc = JSON.parse(raw);
+                            const consumerParsed = parseJson(raw);
+                            if (!consumerParsed.ok)
+                                throw new Error(`${summary.file} is not valid JSON`);
+                            const consumerDoc = consumerParsed.value;
                             const templateRaw = fs.readFileSync(templatePath, "utf-8");
                             // opencode.json ships `@@OPENCODE_*@@` sentinel KEYS; stripOpencodeJsonScope
                             // renders them for every tracker and provider bkit can have written.
                             const isOpencodeJson = templateRaw.includes("@@OPENCODE_TRACKER_MCP@@");
-                            const templateDoc = JSON.parse(templateRaw);
+                            const templateParsed = parseJson(templateRaw);
+                            if (!templateParsed.ok)
+                                throw new Error(`${templatePath} is not valid JSON`);
+                            const templateDoc = templateParsed.value;
                             // `.claude/settings.json` is not written verbatim: after rendering the
                             // template, install appends one `WebFetch(domain:<d>)` grant per entry in
                             // the resolved network allowlist and `mcp__…` grants per declared MCP
@@ -800,14 +807,8 @@ export async function runSurgicalOpencodeUninstall(providerKey, dryRun, cwd) {
     let newActive = null;
     if (fs.existsSync(pkgPath)) {
         const raw = fs.readFileSync(pkgPath, "utf-8");
-        // Parse-or-sentinel idiom: keep the early-return outside the catch body.
-        let pkg = null;
-        try {
-            pkg = JSON.parse(raw);
-        }
-        catch {
-            pkg = null;
-        }
+        const parsed = parseJson(raw);
+        const pkg = parsed.ok ? parsed.value : null;
         if (pkg === null) {
             console.warn(`${LOG_PREFIX} package.json is malformed — skipping bkit section update`);
             return;

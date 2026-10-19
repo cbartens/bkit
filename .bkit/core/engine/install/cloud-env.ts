@@ -14,6 +14,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { IssueTracker } from "./manifest.js";
+import { readJsonFile } from "../shared/json.js";
 import { getSharedRoot } from "../shared/package-roots.js";
 import { applyTokens, type TokenMap } from "./placeholders.js";
 import { BKIT_EGRESS_SOURCES, type EgressSource } from "../shared/egress.js";
@@ -276,17 +277,12 @@ export function renderCloudEnvNotes(res: CloudEnvResolution): string {
 
 /** Parse the pnpm `X.Y.Z` from `package.json` `packageManager` ("" if absent/non-pnpm). */
 export function resolveConsumerPnpm(cwd: string): string {
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8")) as Record<
-      string,
-      unknown
-    >;
-    const pm = typeof pkg["packageManager"] === "string" ? (pkg["packageManager"] as string) : "";
-    const m = pm.match(/^pnpm@(\d+\.\d+\.\d+)/);
-    return m?.[1] ?? "";
-  } catch {
-    return "";
-  }
+  const read = readJsonFile(path.join(cwd, "package.json"));
+  if (!read.ok || typeof read.value !== "object" || read.value === null) return "";
+  const pkg = read.value as Record<string, unknown>;
+  const pm = typeof pkg["packageManager"] === "string" ? pkg["packageManager"] : "";
+  const m = pm.match(/^pnpm@(\d+\.\d+\.\d+)/);
+  return m?.[1] ?? "";
 }
 
 /**

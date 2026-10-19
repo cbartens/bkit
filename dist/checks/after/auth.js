@@ -3,6 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
+import { readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 /**
  * Detect whether BKIT_GH_TOKEN is set in the shell environment. Distinguishes
@@ -29,15 +30,13 @@ export function hasGithubMcpServer(cwd) {
         const p = path.join(cwd, rel);
         if (!fs.existsSync(p))
             continue;
-        try {
-            const cfg = JSON.parse(fs.readFileSync(p, "utf-8"));
-            const servers = cfg.mcpServers;
-            if (servers?.github)
-                return true;
-        }
-        catch {
-            // Malformed config — ignore; a JSON-drift advisory covers that separately.
-        }
+        // Malformed config — ignore; a JSON-drift advisory covers that separately.
+        const cfg = readJsonFile(p);
+        if (!cfg.ok || typeof cfg.value !== "object" || cfg.value === null)
+            continue;
+        const servers = cfg.value.mcpServers;
+        if (servers?.github)
+            return true;
     }
     return false;
 }

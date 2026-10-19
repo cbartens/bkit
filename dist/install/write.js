@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { updateManagedBlock, extractFullManagedBlock, extractManagedBlock, findLineAnchoredMarkers, findUnmarkedCopy, selectMarkers, } from "./managed-block.js";
 import { readTemplate } from "../render/parts.js";
+import { parseJson } from "../shared/json.js";
 import { applyTokens } from "./placeholders.js";
 import { sha256 } from "./version-file.js";
 export function deepContains(template, consumer, pathPrefix = "") {
@@ -192,13 +193,11 @@ export function trackerEntryInSync(existing, owned) {
 // ---------------------------------------------------------------------------
 export function writeTier2JsonContained(srcPath, dstPath, dryRun, ws) {
     const srcRaw = fs.readFileSync(srcPath, "utf-8");
-    let template;
-    try {
-        template = JSON.parse(srcRaw);
-    }
-    catch {
+    const templateRead = parseJson(srcRaw);
+    if (!templateRead.ok) {
         throw new Error(`writeTier2JsonContained: template at ${srcPath} is not valid JSON`);
     }
+    const template = templateRead.value;
     if (!fs.existsSync(dstPath)) {
         // First install — write template as-is
         ensureDir(path.dirname(dstPath));
@@ -212,14 +211,12 @@ export function writeTier2JsonContained(srcPath, dstPath, dryRun, ws) {
     }
     // dest exists — read and check containment
     const dstRaw = fs.readFileSync(dstPath, "utf-8");
-    let existing;
-    try {
-        existing = JSON.parse(dstRaw);
-    }
-    catch {
+    const existingRead = parseJson(dstRaw);
+    if (!existingRead.ok) {
         // Malformed destination — refuse to overwrite; require manual fix (matches malformed-package-json blocker discipline)
         throw new Error(`[bkit] ${dstPath} is malformed JSON — fix manually before running bkit install`);
     }
+    const existing = existingRead.value;
     // Check if existing already contains the template
     const containsResult = deepContains(template, existing);
     if (containsResult.ok) {
@@ -409,13 +406,11 @@ export function ensurePackageJsonScripts(scripts, dryRun, ws) {
         return { added: [], preserved: [], missingPkg: true, malformed: false };
     }
     const raw = fs.readFileSync(pkgPath, "utf-8");
-    let pkg;
-    try {
-        pkg = JSON.parse(raw);
-    }
-    catch {
+    const parsed = parseJson(raw);
+    if (!parsed.ok) {
         return { added: [], preserved: [], missingPkg: false, malformed: true };
     }
+    const pkg = parsed.value;
     let pkgScripts = pkg.scripts ?? undefined;
     const added = [];
     const preserved = [];

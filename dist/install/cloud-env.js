@@ -12,6 +12,7 @@
 // BKIT_ANTHROPIC_API_KEY — both derived here without a bespoke key list.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readJsonFile } from "../shared/json.js";
 import { getSharedRoot } from "../shared/package-roots.js";
 import { applyTokens } from "./placeholders.js";
 import { BKIT_EGRESS_SOURCES } from "../shared/egress.js";
@@ -217,15 +218,13 @@ export function renderCloudEnvNotes(res) {
 }
 /** Parse the pnpm `X.Y.Z` from `package.json` `packageManager` ("" if absent/non-pnpm). */
 export function resolveConsumerPnpm(cwd) {
-    try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8"));
-        const pm = typeof pkg["packageManager"] === "string" ? pkg["packageManager"] : "";
-        const m = pm.match(/^pnpm@(\d+\.\d+\.\d+)/);
-        return m?.[1] ?? "";
-    }
-    catch {
+    const read = readJsonFile(path.join(cwd, "package.json"));
+    if (!read.ok || typeof read.value !== "object" || read.value === null)
         return "";
-    }
+    const pkg = read.value;
+    const pm = typeof pkg["packageManager"] === "string" ? pkg["packageManager"] : "";
+    const m = pm.match(/^pnpm@(\d+\.\d+\.\d+)/);
+    return m?.[1] ?? "";
 }
 /**
  * Render the setup-script corepack line from the consumer's own `packageManager`
