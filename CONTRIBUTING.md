@@ -9,7 +9,7 @@ bkit is a one-maintainer project, and outside contributions are welcome: bug rep
 
 ## Development setup
 
-- Node.js `>=20`
+- Node.js `>=24`
 - pnpm, via `corepack enable`
 - Vale, for prose checks (`brew install vale`), then run `vale sync` once
 

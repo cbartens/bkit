@@ -354,13 +354,13 @@ jobs:
       # Node/TS toolchain region. On a non-Node repo, replace these steps with your
       # stack's setup / install commands (and the typecheck / lint / test steps below with
       # its own). Replace `{{NODE_VERSION}}` with your Node major (`.bkit/templates.md`).
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
       # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       # Under [verbose ci]: propagate DEBUG to all subsequent steps via $GITHUB_ENV. Note
       # that steps with their own `env:` block override $GITHUB_ENV — those steps must
@@ -564,7 +564,7 @@ jobs:
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          version: "0.12.6"
+          version: "0.13.0"
 
       - name: Check Capability Register
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
@@ -602,11 +602,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       # NODE_OPTIONS is a job-level `env:` key above, never a $GITHUB_ENV write — the runner
       # rejects that write and still reports success. See bkit-tests-static's block comment.
@@ -673,12 +673,12 @@ jobs:
       # bkit repo only: bats over the shipped hook scripts and the gh stub harness.
       - name: Run Shell Tests (bats)
         if: steps.cache.outputs.skip != 'true'
-        run: npx --yes bats tests/*.bats
+        run: pnpm exec bats tests/*.bats
 
       # A distinct name: keys each sticky comment so the two do not collide.
       - name: Report Unit Coverage on PR
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
+        uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
         with:
           name: unit
           json-summary-path: coverage/unit/coverage-summary.json
@@ -710,11 +710,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - name: Configure Verbose CI
         if: env.VERBOSE_CI == '1'
@@ -779,7 +779,7 @@ jobs:
       - name: Report Integration Coverage on PR
         # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
-        uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
+        uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
         with:
           name: integration
           json-summary-path: coverage/integration/coverage-summary.json
@@ -810,11 +810,11 @@ jobs:
       # checkout on a plan that may be absent is fragile.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile

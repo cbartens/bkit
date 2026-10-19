@@ -490,7 +490,7 @@ jobs:
           git config user.email 'bkit-auto@users.noreply.github.com'
 
       - name: Dispatch /bkit-auto on Claude Code runner
-        uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1.0.244
+        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         with:
           # Orchestrator contract: `/bkit-auto <phase> <arg>` where <arg> is the open
           # PR number (ship/debug) or the tracker issue number/id (design/plan/build).
