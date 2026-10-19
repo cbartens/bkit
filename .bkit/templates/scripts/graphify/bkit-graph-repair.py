@@ -102,8 +102,9 @@ graph["links"].extend(added)
 # NO top-level marker: a `graph["import_repair"] = {...}` key does not survive
 # `cluster-only`, which rewrites graph.json and keeps only the keys it writes
 # itself (`built_at_commit` survives because graphify sets it). The per-link
-# `_origin` DOES survive, so that is what consumers check
-# — see warn_if_unrepaired / repair_state in bkit-graph-imports.py.
+# `_origin` DOES survive, but a zero count is no proof the step was skipped, so
+# readers compare against source instead — see warn_if_unrepaired /
+# missing_import_edges in bkit-graph-imports.py.
 
 tmp = args.graph_json + ".repair.tmp"
 with open(tmp, "w", encoding="utf-8") as fh:

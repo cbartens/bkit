@@ -211,8 +211,7 @@ cluster() {
 
 # Put back the imports graphify cannot resolve — a `.js` specifier never reaches
 # a `.tsx` file, and workspace subpaths through an `exports` map resolve to
-# nothing. ~540 edges here, 16% of relative imports. Upstream Graphify-Labs/
-# graphify#3486 and #3487, open on v8.
+# nothing. Upstream Graphify-Labs/graphify#3486 and #3487, open on v8.
 #
 # Runs BEFORE cluster, so communities, the god-node ranking and the cycle list in
 # graph-report.md are computed from the repaired graph. Runs on every command that

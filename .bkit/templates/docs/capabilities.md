@@ -9,7 +9,7 @@
 >
 > **Rules:**
 >
-> - GENERATED. `pnpm graph:update && pnpm graph:rollup` rewrites this file.
+> - GENERATED. `pnpm graph:refresh` rewrites this file.
 > - Source of truth: `scripts/graphify/bkit-graph-drift-rules.json`. Status is derived from the tree, never typed.
 > - Markers literal, never regex. Regex metacharacter in a marker matches nothing → reads as clean result.
 > - Optional `scope`: path prefixes. Optional `surface`: `product` (default), `tests`, or `all`.

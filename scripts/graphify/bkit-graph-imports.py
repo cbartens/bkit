@@ -8,13 +8,13 @@ Importable module, not a CLI — underscored so `import graph_imports` works fro
 the sibling `graph-*.py` scripts, which are standalone and cannot be imported
 themselves.
 
-ONE WRITER. `bkit-graph-repair.py` is the only caller of `resolved_import_edges()`;
-it injects the result into graph.json during `pnpm graph`, so `graphify affected` /
+ONE WRITER. `bkit-graph-repair.py` is the only script that writes
+`resolved_import_edges()` into graph.json, during `pnpm graph`, so `graphify affected` /
 `explain` / `path` / `query` see the same edges these scripts do. bkit-graph-eager.py
-and bkit-graphify-rollup.py call `warn_if_unrepaired()` and otherwise just read the
-graph.
+and bkit-graphify-rollup.py call `warn_if_unrepaired()`, which compares the same set
+against graph.json, and otherwise just read the graph.
 
-Two independent gaps, ~550 edges on this repo.
+Two independent gaps.
 
 ── GAP 1: a `.js` specifier never resolves to a `.tsx` file ──────────────────
 
@@ -99,34 +99,57 @@ ALL_CONDITIONS = ("react-native", "default", "node", "import", "require")
 
 
 REPAIR_ORIGIN = "graph-repair"
+DEP_RELATIONS = {"imports", "imports_from", "re_exports", "dynamic_import"}
 
 
 def repair_state(graph):
-    """(edges injected by bkit-graph-repair.py, was the repair run at all).
+    """Edges injected by bkit-graph-repair.py still in graph.json.
 
-    Consumers call this instead of re-deriving the edges themselves.
-
-    There is no top-level marker to check: `cluster-only` rewrites graph.json
-    and drops keys it does not own. The per-link `_origin` survives, so that is
-    the signal. A genuinely zero-repair graph reads as unrepaired here.
+    Counts the per-link `_origin`, the one repair mark that survives
+    `cluster-only` (it drops top-level keys it does not own). Zero does NOT mean
+    the repair never ran: when graphify already resolves every import there is
+    nothing to inject, and clustering merges an injected edge into graphify's own
+    when two files import each other. `missing_import_edges` answers that.
     """
-    n = sum(1 for l in graph.get("links", ()) if l.get("_origin") == REPAIR_ORIGIN)
-    return n, n > 0
+    return sum(1 for l in graph.get("links", ()) if l.get("_origin") == REPAIR_ORIGIN)
+
+
+def missing_import_edges(graph):
+    """Import pairs bkit-graph-repair.py adds that graph.json does not carry.
+
+    Reads source and compares; writes nothing. A pair counts as present in either
+    direction, because clustering keeps one link per file pair. Pairs with an
+    endpoint absent from the graph are left out, as the repair leaves them out.
+    """
+    nodes = {n["id"]: n for n in graph.get("nodes", ())}
+    files = {str(n.get("source_file") or "") for n in nodes.values()
+             if n.get("source_location") == "L1"}
+    files.discard("")
+    present = set()
+    for l in graph.get("links", ()):
+        if l.get("relation") not in DEP_RELATIONS:
+            continue
+        a = str(nodes.get(l["source"], {}).get("source_file") or "")
+        b = str(nodes.get(l["target"], {}).get("source_file") or "")
+        present.add((a, b))
+        present.add((b, a))
+    return {(src, dst) for src, dst in resolved_import_edges()
+            if src in files and dst in files and (src, dst) not in present}
 
 
 def warn_if_unrepaired(graph, who, stream=None):
-    """Print a loud warning when graph.json has not been through bkit-graph-repair.py.
+    """Print a loud warning when graph.json lacks imports bkit-graph-repair.py adds.
 
-    Warns only; never repairs on read.
+    Warns only; never repairs on read. Returns the count of injected edges.
     """
     import sys as _sys
-    count, ok = repair_state(graph)
-    if not ok:
-        print(f"[{who}] WARNING: graph.json carries no graph-repair edges. "
-              f"graphify misses ~540 imports in this repo, so reachability and "
-              f"blast-radius numbers below are UNDERSTATED. Run 'pnpm graph:update'.",
+    missing = missing_import_edges(graph)
+    if missing:
+        print(f"[{who}] WARNING: graph.json lacks {len(missing)} imports that "
+              f"bkit-graph-repair.py adds, so reachability and blast-radius numbers "
+              f"below are UNDERSTATED. Run 'pnpm graph:update'.",
               file=stream or _sys.stderr)
-    return count
+    return repair_state(graph)
 
 
 def _strip_output_ext(path):
