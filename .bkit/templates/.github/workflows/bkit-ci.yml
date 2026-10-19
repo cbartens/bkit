@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   # ── bkit-tests-static ────────────────────────────────────────────────────
-  # Static-analysis lane: typecheck, format, prose lint, slop, actionlint,
+  # Static-analysis lane: typecheck, lint, format, prose lint, slop, actionlint,
   # bkit check. Runs on a CLEAN tree (no test artifacts). Parallel sibling of
   # bkit-tests-unit — wall-clock = MAX(lane).
   bkit-tests-static:
@@ -212,13 +212,19 @@ jobs:
       # Static checks first — they read the source tree and must scan it CLEAN.
       # Vitest/build run AFTER (below): they write coverage, dist/, and other
       # artifacts that would otherwise pollute the Slop Scan and bkit check inputs.
-      # Keep this group (typecheck → prettier → vale → slop → bkit check) ahead of
+      # Keep this group (typecheck → lint → prettier → vale → slop → bkit check) ahead of
       # the test/build group if you reorder.
       - name: Run Typecheck
         if: steps.cache.outputs.skip != 'true'
         env:
           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
         run: pnpm typecheck
+
+      - name: Run Lint
+        if: steps.cache.outputs.skip != 'true'
+        env:
+          TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
+        run: pnpm lint
 
       - name: Run Prettier
         if: steps.cache.outputs.skip != 'true'

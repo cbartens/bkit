@@ -142,7 +142,7 @@ const ADOPTED: Record<string, Entry> = {
         what: "no turbo",
         fill: "        env:\n          TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}\n",
         with: "",
-        count: 2,
+        count: 3,
       },
       {
         kind: "bkit-only",

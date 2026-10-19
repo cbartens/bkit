@@ -144,7 +144,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 The template `bkit-ci.yml` (copied into `.bkit/templates/`, adopted and owned by the consumer) is static: two lanes run in parallel and the `bkit-tests-check` capstone joins them as the single branch-protection check. No planner. The capstone fails unless both lanes concluded `success`, and fails a unit lane that reports zero executed tests.
 
 ```
-bkit-tests-static   (typecheck, format, prose lint, slop, actionlint, bkit check)
+bkit-tests-static   (typecheck, lint, format, prose lint, slop, actionlint, bkit check)
 bkit-tests-unit     (unit tests; writes the executed-test count)
         │
         ▼

@@ -14,6 +14,7 @@ import * as path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { parse as parseYamlText } from "yaml";
 import { runCommand } from "../../commands/lib";
+import { BKIT_GATE_SCRIPTS } from "../../install/manifest";
 import { runsCommand } from "../../commands/workflow/runs";
 import { readBkitConfig } from "../../shared/settings";
 
@@ -75,6 +76,54 @@ describe("template bkit-ci.yml, filled in", () => {
     const file = filledTemplate();
     const r = spawnSync("actionlint", ["-no-color", file], { encoding: "utf-8" });
     expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+  });
+});
+
+/** Gate parts the CI static job is allowed to omit, each with the reason. Empty: none are. */
+const GATE_PARTS_ABSENT_FROM_CI: Readonly<Record<string, string>> = {};
+
+describe("template bkit-tests-static job matches the bkit:gate:static local gate", () => {
+  const gateParts = (BKIT_GATE_SCRIPTS["bkit:gate:static"] ?? "")
+    .split("&&")
+    .map((part) => /^pnpm ([\w:-]+)(?:\s|$)/.exec(part.trim())?.[1] ?? part.trim());
+
+  /** The `run:` text of every step in the template's static job. */
+  function staticJobRuns(): string[] {
+    const doc = parseYaml(filledTemplate());
+    const job = (doc.jobs as Record<string, { steps?: { run?: string }[] }>)["bkit-tests-static"];
+    expect(job, "no bkit-tests-static job").toBeDefined();
+    return (job!.steps ?? []).flatMap((step) => (typeof step.run === "string" ? [step.run] : []));
+  }
+
+  /** Whether any run line invokes `pnpm <script>` (arguments after the name are allowed). */
+  const runsScript = (runs: string[], script: string): boolean =>
+    runs.some((run) =>
+      run.split("\n").some((line) => {
+        const m = /^\s*pnpm ([\w:-]+)(?:\s|$)/.exec(line);
+        return m?.[1] === script;
+      }),
+    );
+
+  it("reads the gate as a chain of pnpm scripts", () => {
+    expect(gateParts).toEqual(["typecheck", "lint", "format:check", "lint:prose", "slop:delta"]);
+  });
+
+  it("runs every part of the local static gate as a step, bar the named exceptions", () => {
+    const runs = staticJobRuns();
+    const missing = gateParts.filter(
+      (part) => !(part in GATE_PARTS_ABSENT_FROM_CI) && !runsScript(runs, part),
+    );
+    expect(
+      missing,
+      `bkit-tests-static has no 'run: pnpm <script>' step for: ${missing.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("lists only exceptions that are still parts of the gate", () => {
+    const stale = Object.keys(GATE_PARTS_ABSENT_FROM_CI).filter(
+      (part) => !gateParts.includes(part),
+    );
+    expect(stale).toEqual([]);
   });
 });
 
