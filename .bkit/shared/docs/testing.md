@@ -140,7 +140,7 @@ Read table as rule: **`bkit-tests-live-web` and the device E2E lanes are the lan
 
 **Missing gate variable → honest detectable skip — never silent pass.** Tier needing URL / credential run lacks must report skipped (and, if planned, fail capstone), not exit 0 having run nothing. Per-file assert where it matters — e.g. (Vitest JSON) `numPassedTests >= 1 && numPendingTests === 0` — catches ghost-green no-op and quiet skip.
 
-**Missing tool a test needs (binary, CLI, interpreter) → fail loudly, never `return` early.** Resolve the tool through ONE shared test helper that throws when it is absent (e.g. a `requireTsx()`); no test file checks for it on its own. An early `return` reports a pass having asserted nothing. A test that skips itself when a tool is absent (`skipIf(!hasTool)`) must not skip on CI: install the tool on that lane, or fail when `CI` is set — else the lane skips the same tests every run, green.
+**Missing tool a test needs (binary, CLI, interpreter) → fail loudly, never `return` early.** Resolve it via ONE shared test helper that throws when absent (e.g. `requireTsx()`); no per-file check. Early `return` = pass having asserted nothing. Self-skip on absent tool (`skipIf(!hasTool)`) must not skip on CI: install the tool on that lane, or fail when `CI` is set — else the lane skips the same tests every run, green.
 
 ### Validated means executed, not "didn't fail"
 
@@ -267,7 +267,7 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 ### Static
 
 - Run the whole non-test gate set: typecheck · format check · lint · prose lint · code-slop scan (full **plus** a PR **delta** gate that fails only net-new findings) · drift check · workflow linter. Locally this set is one script, `bkit:gate:static`, and `bkit:gate:static-unit` chains the unit tier on top — the same scripts pre-push, the build loop and the remediate agents all run, so a green push and a green agent gate mean the same thing. CI runs the rest fail-fast **before** any env pull or heavy tier.
-- Lint covers **test files** too, with rules that catch tests that cannot fail: no assertion, a conditional inside a test, a conditional `expect`, an unawaited promise. Linter is consumer-owned (e.g. Vitest's `expect-expect`, `no-conditional-in-test`, `no-conditional-expect`, `valid-expect`; type-aware `no-floating-promises`); `.bkit/templates/.oxlintrc.json` is the optional JS / TS starting point.
+- Lint covers **test files** too, with rules catching tests that cannot fail: no assertion, conditional inside a test, conditional `expect`, unawaited promise. Linter consumer-owned (e.g. Vitest `expect-expect`, `no-conditional-in-test`, `no-conditional-expect`, `valid-expect`; type-aware `no-floating-promises`); optional JS / TS start: `.bkit/templates/.oxlintrc.json`.
 - Scan a **clean tree** — run static **before** the test tiers write coverage / result artifacts, or the scan flags the artifacts instead of your code.
 - On PRs scope to the **affected graph** (e.g. a monorepo task runner's `--filter=...[base]`) over a **non-shallow checkout** (full history) — never a shallow clone that fails affected-selection open to "everything".
 - **Not:** a green CI that never ran the slop / drift / prose gates because they sat behind a test step that exited early.

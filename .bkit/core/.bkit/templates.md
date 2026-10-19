@@ -167,7 +167,7 @@ bkit seeds only the `bkit:gate:*` / `bkit:deps:*` names (add-if-missing). The to
 pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 ```
 
-- `lint` must exist: with no `lint` script, `pnpm lint` falls through to any `lint` binary on `PATH` and the gate goes green through the wrong program. The value above runs the Oxlint test rules (§ Oxlint) and fails on any hit; it needs `oxlint` + `oxlint-tsgolint` installed and fails loudly without them. A repo with its own linter chains both: `<your linter> && oxlint -c .oxlintrc.json --type-aware --deny-warnings`.
+- `lint` must exist: without it `pnpm lint` falls through to any `lint` binary on `PATH` → gate green via the wrong program. Value above runs the Oxlint test rules (§ Oxlint), fails on any hit; needs `oxlint` + `oxlint-tsgolint`, fails loudly without them. Own linter → chain both: `<your linter> && oxlint -c .oxlintrc.json --type-aware --deny-warnings`.
 - No `tsconfig.json` → `"typecheck": "echo \"[bkit] typecheck: no tsconfig.json — skipping\" >&2"`.
 - `slop:delta` runs `bkit ci slop` (bkit devDep on `PATH` through the package script). CI passes the base sha as its one bare argument.
 - `lint:prose` runs `bkit ci prose`: Vale over every `*.md` outside `node_modules/`. Narrow it with repeatable `--glob=<pattern>` (`*`, `**`, `?`, relative to the repo root), e.g. `bkit ci prose --glob='docs/*.md' --glob='.agents/*.md'`.
@@ -259,7 +259,7 @@ cp .bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs scripts/slop/
 
 ## Oxlint — test-file lint, `.oxlintrc.json`
 
-Fails `lint` on a test that cannot fail. Oxlint (a fast linter) runs five rules on test files only; every other check stays off. For JS / TS repos with Vitest or Jest. Reference: https://oxc.rs/docs/guide/usage/linter.html.
+Fails `lint` on a test that cannot fail. Oxlint (fast linter) runs five rules on test files only; all other checks off. JS / TS repos with Vitest or Jest. Reference: https://oxc.rs/docs/guide/usage/linter.html.
 
 ```bash
 pnpm add -D oxlint@^1.87.0 oxlint-tsgolint@^7.0.2004
@@ -278,11 +278,11 @@ Set `lint` to the value in § Gate tool scripts.
 | `typescript/no-floating-promises` | A promise nobody awaits: the test ends before its assertion runs. |
 
 - Scope: `**/*.{test,spec}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`; source files are not linted. The `vitest/` rules read Jest-style `describe` / `it` / `expect` too.
-- `ignorePatterns` skips `.bkit/templates/` and `scripts/ci/**/*.test.mjs`: the CI script tests run on plain Node with their own `test()` helper, which the rules misread.
-- Keep `--type-aware`: without it `typescript/no-floating-promises` never runs and the gate stays green. `oxlint-tsgolint` (peer of `oxlint`) carries its own TypeScript engine, so it needs no `typescript` dependency. `oxlint` 1.87.0 with `oxlint-tsgolint` 7.0.2004 is the tested pair.
-- No path argument lints the working directory. Narrow it (`oxlint … src`); add `--tsconfig <file>` when tests sit outside the root `tsconfig.json`.
+- `ignorePatterns` skips `.bkit/templates/` and `scripts/ci/**/*.test.mjs`: CI script tests run on plain Node with their own `test()` helper, which the rules misread.
+- Keep `--type-aware`: without it `typescript/no-floating-promises` never runs, gate stays green. `oxlint-tsgolint` (peer of `oxlint`) bundles its own TypeScript engine → no `typescript` dependency. Tested pair: `oxlint` 1.87.0 + `oxlint-tsgolint` 7.0.2004.
+- No path argument → lints the working directory. Narrow it (`oxlint … src`); tests outside root `tsconfig.json` → add `--tsconfig <file>`.
 - Adapt: `files` glob; `assertFunctionNames` on `expect-expect` (default `expect`) when your own helper asserts, e.g. `["expect", "expectHttpError"]`. Turn a rule off per file in `overrides`, never repo-wide.
-- An existing suite lights up many hits. Fix each in its test: one `it` per case (`it.each` for tables), `await expect(…).rejects` in place of `try` / `catch`, `await` on every promise. No baseline file, no disable comment, no `.skip`.
+- Existing suite → many hits. Fix each in its test: one `it` per case (`it.each` for tables), `await expect(…).rejects` in place of `try` / `catch`, `await` on every promise. No baseline file, no disable comment, no `.skip`.
 - Why not ESLint: typescript-eslint's type-aware rules need TypeScript `<6.1`.
 - Non-JS repo → keep its own linter and its test-lint rules (e.g. `flake8-pytest-style`); `lint` stays yours.
 - `bkit tips` suggests it (tip `test-lint`) when `package.json` lists `vitest` or `jest` and the repo has no Oxlint config, no `oxlint` dependency and no ESLint config naming a test plugin.
@@ -451,13 +451,13 @@ Issues are the first input every workflow reads. One form per way work starts; e
 
 ## graphify — map
 
-On-demand only — not an installed skill or git hook. graphify ships an MCP server (`graphify-mcp`, stdio default); it stays unwired because its answers come from the `graph.json` snapshot and build/debug agents invalidate the graph faster than it rebuilds — Serena (no index to go stale) owns the agent surface. Two gates keep `docs/capabilities.md` current on dev: the pre-push block below blocks a push to dev the register does not match, and the self-skipping CI step re-checks every push. Agents read `docs/capabilities.md`; audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. Only tracked output: `docs/capabilities.md`. Mermaid views: `docs/graphify-out/reports/graph-packages.mmd`, `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
+On-demand only — not an installed skill or git hook. graphify ships an MCP server (`graphify-mcp`, stdio default); it stays unwired because its answers come from the `graph.json` snapshot and build/debug agents invalidate the graph faster than it rebuilds — Serena (no index to go stale) owns the agent surface. Two gates keep `docs/capabilities.md` current on dev: pre-push block below (blocks a stale push to dev) + self-skipping CI step (every push). Agents read `docs/capabilities.md`; audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. Only tracked output: `docs/capabilities.md`. Mermaid views: `docs/graphify-out/reports/graph-packages.mmd`, `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
 
 ```bash
 uv tool install "$(bash scripts/graphify/bkit-graphify.sh spec)"
 ```
 
-PyPI name `graphifyy`, CLI `graphify`. `[sql]` adds `.sql` files to corpus. One release builds and judges the register: `GRAPHIFY_SPEC` in `bkit-graphify.sh` (`spec` prints it). `check`, `check-at`, `rollup`, `register` and `refresh` refuse any other installed release, since another release can draw different edges. CI installs the same spec. Renovate bumps it (`scripts/graphify/bkit-graphify.sh` is in the shipped `customManagers` file list); refresh the register in the same change.
+PyPI name `graphifyy`, CLI `graphify`. `[sql]` adds `.sql` files to corpus. One pinned release builds and judges the register: `GRAPHIFY_SPEC` in `bkit-graphify.sh` (`spec` prints it; CI installs it). Another release draws different edges → `check`, `check-at`, `rollup`, `register`, `refresh` refuse it. Renovate bumps the pin (shipped `customManagers` scans `scripts/graphify/bkit-graphify.sh`); refresh the register in the same change.
 
 `package.json` scripts:
 
@@ -487,8 +487,8 @@ export GRAPHIFY_OUT=docs/graphify-out
 graphify-out/
 ```
 
-- Paste `scripts/graphify/bkit-graph-pre-push.sh` at the end of your `.husky/pre-push`, below the bkit lines. A push to dev runs `check-at` on the pushed commit, in a throwaway checkout, and is blocked when the register does not match; uncommitted edits, a concurrent session's included, cannot change the answer. graphify not installed → loud "NOT checked" warning, push goes on (CI still checks). Other branches → warn-only staleness note. Needs `PUSH_DEV_SHA`, which the bkit pre-push template sets from git's ref list; an older copy of the hook lacks it, so re-copy the stdin loop from `.bkit/templates/.husky/pre-push`.
-- `.github/workflows/bkit-ci.yml` ships `Check Capability Register` (push events): installs the `spec` release and runs `pnpm graph:check`, so a stale register fails CI. Self-skips without `scripts/graphify/bkit-graphify.sh`.
+- Paste `scripts/graphify/bkit-graph-pre-push.sh` at the end of your `.husky/pre-push`, below the bkit lines. Push to dev → `check-at` on the pushed commit in a throwaway checkout → blocked on mismatch; uncommitted edits (a concurrent session's included) cannot change the answer. graphify not installed → loud "NOT checked" warning, push goes on (CI still checks). Other branches → warn-only staleness note. Reads `PUSH_DEV_SHA` from the bkit pre-push template's stdin loop; older hook copy → re-copy that loop from `.bkit/templates/.husky/pre-push`.
+- `.github/workflows/bkit-ci.yml` ships `Check Capability Register` (push events): installs the `spec` release, runs `pnpm graph:check` → stale register fails CI. Self-skips without `scripts/graphify/bkit-graphify.sh`.
 - graphify's MCP server is opt-in: install `graphifyy[mcp]` (`mcp` + `starlette`; HTTP transport also needs `uvicorn`) and pass the graph path explicitly — `graphify-mcp` defaults to `graphify-out/graph.json`, not the pinned `docs/graphify-out/graph.json`. Snapshot-dated answers suit audit/orientation, never build or debug.
 - `.graphifyignore` merges `.gitignore`.
 - Keep `package.json` in corpus — excluding it drops workspace `name` fields graphify resolves package imports with; graph still looks complete.
@@ -503,8 +503,8 @@ graphify-out/
 | `pnpm graph:update` | Re-extract changed files, then recluster. |
 | `pnpm graph:rollup` | Package and module views, plus `docs/capabilities.md`. |
 | `pnpm graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces. Reads uncommitted edits. Shipped as a self-skipping CI step (push events); enabled in bkit's own CI. |
-| `bash scripts/graphify/bkit-graphify.sh check-at <rev>` | `check` in a throwaway checkout of `<rev>` (default HEAD). The pre-push gate runs it on the commit pushed to dev. |
-| `pnpm graph:refresh` | Rebuild the register in a throwaway checkout of HEAD and copy it over `docs/capabilities.md`. The fix for a red gate; commit the result. |
+| `bash scripts/graphify/bkit-graphify.sh check-at <rev>` | `check` in a throwaway checkout of `<rev>` (default HEAD); pre-push gate runs it on the commit pushed to dev. |
+| `pnpm graph:refresh` | Rebuild register in a throwaway checkout of HEAD → copy over `docs/capabilities.md`. Fixes a red gate; commit result. |
 | `pnpm graph:scoped [path]` | One subtree. Default `apps/web/src`. |
 | `pnpm graph:graphml` | Opt-in GraphML for Gephi / yEd. |
 

@@ -219,10 +219,9 @@ describe(".husky/pre-push tmp/ prune", () => {
 });
 
 // ---------------------------------------------------------------------------
-// graphify register gate — the shipped snippet run for real. A stub
-// `scripts/graphify/bkit-graphify.sh` records its arguments and fails `check-at` when
-// asked to; a stub `graphify` on PATH stands for an installed graphify. PATH is cut down
-// to the system dirs so a real graphify on this machine cannot answer instead.
+// graphify register gate — shipped snippet run for real. Stub
+// `scripts/graphify/bkit-graphify.sh` logs its args and fails `check-at` on request; stub
+// `graphify` on PATH = installed. PATH cut to system dirs so a real graphify cannot answer.
 // ---------------------------------------------------------------------------
 
 describe("graphify register pre-push gate", () => {
@@ -318,9 +317,8 @@ describe("graphify register pre-push gate", () => {
     expect(r.stderr).toBe("");
   });
 
-  // bkit's own hook carries the snippet: the ref git feeds on stdin must reach it as
-  // PUSH_DEV_SHA only when the push targets dev. Stub pnpm passes every gate and reports
-  // no skip-CI token.
+  // bkit's own hook carries the snippet: git's stdin ref reaches it as PUSH_DEV_SHA only for
+  // a push to dev. Stub pnpm passes every gate, reports no skip-CI token.
   const runRepoHook = (stdin: string) => {
     fs.writeFileSync(
       path.join(tmp, "bin", "pnpm"),

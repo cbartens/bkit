@@ -2,18 +2,16 @@
 # Example. Paste at the end of your .husky/pre-push, below the bkit lines, and own it.
 # bkit install does not write this file and does not overwrite a copy.
 #
-# The capability register is current on dev. BLOCKS a push to dev when
-# docs/capabilities.md is not what the pushed commit builds. Reads PUSH_DEV_SHA, the commit
-# this push sends to dev, which the bkit pre-push template sets while it reads git's ref
-# list on stdin (stdin is consumed by then, so this block cannot read it again).
+# Capability register current on dev. BLOCKS a push to dev when docs/capabilities.md is not
+# what the pushed commit builds. Reads PUSH_DEV_SHA (commit pushed to dev), set by the bkit
+# pre-push template while reading git's ref list on stdin; stdin is consumed by now.
 #
-# graphify reads the working tree, so the check runs in a throwaway checkout of the pushed
-# commit (`check-at`, seconds to a minute): uncommitted edits, a concurrent session's
-# included, cannot change the answer. A different graphify release blocks with the install
-# command. graphify NOT INSTALLED only warns, and says the check did not run: a cloud
-# session without it must still be able to push, and CI's Check Capability Register runs
-# the same check on every push to dev. Revert pushes (IS_REVERT=1) skip it, as they skip
-# the test tiers. A push to any other branch gets a warn-only staleness note.
+# graphify reads the working tree → check runs in a throwaway checkout of the pushed commit
+# (`check-at`): uncommitted edits, a concurrent session's included, cannot change the answer.
+# Other graphify release → blocked, with the install command. graphify NOT INSTALLED → warn
+# only, saying the check did not run: a cloud session without it must still push; CI's Check
+# Capability Register runs the same check on every push to dev. Revert pushes (IS_REVERT=1)
+# skip it, as they skip the test tiers. Other branches → warn-only staleness note.
 CAP_DOC="docs/capabilities.md"
 if [ -f scripts/graphify/bkit-graphify.sh ] && [ -f "$CAP_DOC" ]; then
   if [ -n "${PUSH_DEV_SHA:-}" ] && [ "${IS_REVERT:-0}" != "1" ]; then
@@ -28,8 +26,8 @@ if [ -f scripts/graphify/bkit-graphify.sh ] && [ -f "$CAP_DOC" ]; then
       exit 1
     fi
   else
-    # Warn-only. A fresh register is stamped at the parent of the commit that carries it,
-    # so staleness is source files changed since that stamp.
+    # Warn-only. A fresh register is stamped at the parent of its commit → staleness =
+    # source files changed since that stamp.
     CAP_SHA=$(sed -n 's/.*Diagrams from `graph\.json` @ `\([0-9a-f]\{7,\}\)`.*/\1/p' "$CAP_DOC" | head -1)
     if [ -n "$CAP_SHA" ] && git cat-file -e "$CAP_SHA^{commit}" 2>/dev/null; then
       CAP_CHANGED=$(git diff --name-only "$CAP_SHA..HEAD" -- '*.ts' '*.tsx' 2>/dev/null | wc -l | tr -d ' ')

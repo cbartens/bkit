@@ -44,7 +44,7 @@ Green suite = tests passed — not that they could fail, that every promise has 
 - OWASP ASVS and the OWASP API Security Top 10; record the edition read.
 - Visual and accessibility snapshots (e.g. Playwright `toHaveScreenshot` / `toMatchAriaSnapshot`, device screenshots); record the runner version.
 - Test-smell catalogue (e.g. xUnit Test Patterns, Meszaros 2007).
-- Test lint (e.g. `@vitest/eslint-plugin`, `eslint-plugin-playwright`, `eslint-plugin-testing-library`, or Oxlint's `vitest` + `typescript` plugins); record each version. typescript-eslint type-aware rules run only on TypeScript versions typescript-eslint supports; newer TypeScript → Oxlint type-aware mode (`--type-aware`, oxlint-tsgolint).
+- Test lint (e.g. `@vitest/eslint-plugin`, `eslint-plugin-playwright`, `eslint-plugin-testing-library`, or Oxlint's `vitest` + `typescript` plugins); record each version. typescript-eslint type-aware rules need a TypeScript version it supports; newer → Oxlint `--type-aware` (oxlint-tsgolint).
 - Network mock that fails closed (e.g. MSW); record the major read.
 
 ### Scope
@@ -139,7 +139,7 @@ Verify only when applicable.
   - Setup skipping code. Fake DB always empty — branch under test never runs.
   - Test locking in bug. Asserts wrong behaviour; no decision wanted it.
   - Positive control that cannot fail. Asserts absent using selector/text that never existed.
-  - Absence guard outliving its writer. Asserts a file / path / name is not written, shipped or listed, but no source writes, copies or templates it anymore (retired or deprecated name) and no migration / cleanup removes it — search sources for each named path. Also absence samples (headings, strings) no longer present anywhere, so the guard passes whatever leaks. Keep: secret / credential guards, removal checks for a migration that still runs.
+  - Absence guard outliving its writer. Asserts a file / path / name is not written, shipped or listed, yet no source writes, copies or templates it any more (retired / deprecated name) and no migration / cleanup removes it — search sources for each named path. Also absence samples (headings, strings) present nowhere → guard passes whatever leaks. Keep: secret / credential guards, removal checks for a migration that still runs.
   - Guard tested in different setup from runtime (cwd, config, env).
   - String scan cut short. Comment stripper cutting at marker also cuts marker inside strings.
   - Wrong surface. Write one place, assertion reads another — for every write, assertion reads surface write meant to change. Derived copies → `bkit-audit-database`.

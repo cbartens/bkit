@@ -295,7 +295,7 @@ Two capabilities **opt-in**, excluded from default install: **issue tracker** (`
 
 **Security scan.** `.bkit/templates/.github/workflows/bkit-trivy.yml` fails CI on a HIGH or CRITICAL vulnerable package, risky config or committed secret, and runs daily. Copy it and own it; accept findings in `.trivyignore.yaml`. `bkit check` does not report its absence; `bkit tips` suggests it. See `.bkit/templates.md` § Trivy.
 
-**Test lint.** `.bkit/templates/.oxlintrc.json` runs five Oxlint rules on JS / TS test files and fails `lint` on a test that cannot fail. Copy it and own it; set the `lint` script to `oxlint -c .oxlintrc.json --type-aware --deny-warnings`. `bkit check` does not report its absence; `bkit tips` suggests it. See `.bkit/templates.md` § Oxlint.
+**Test lint.** `.bkit/templates/.oxlintrc.json`: five Oxlint rules on JS / TS test files; `lint` fails on a test that cannot fail. Copy and own; set `lint` to `oxlint -c .oxlintrc.json --type-aware --deny-warnings`. Absent → `bkit check` silent, `bkit tips` suggests it. `.bkit/templates.md` § Oxlint.
 
 **All templates.** Copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
 

@@ -298,7 +298,7 @@ Use one. `bkit.depUpdater: "none"` skips the install-time absence advisory. Setu
 
 **Security scan.** Updater only offers fixes once a fixed release exists. To fail CI on known-vulnerable packages, risky config or committed secrets, copy `.bkit/templates/.github/workflows/bkit-trivy.yml` and own it. No advisory; `bkit tips` suggests it. Setup: `.bkit/templates.md` § Trivy.
 
-**Test lint.** JS / TS repos: to fail `lint` on a test that cannot fail (no assertion, a branch inside a test, an unawaited promise), copy `.bkit/templates/.oxlintrc.json` and own it, add `oxlint` + `oxlint-tsgolint`, set `lint` to `oxlint -c .oxlintrc.json --type-aware --deny-warnings`. No advisory; `bkit tips` suggests it. Setup: `.bkit/templates.md` § Oxlint.
+**Test lint.** JS / TS repos, to fail `lint` on a test that cannot fail (no assertion, branch inside a test, unawaited promise): copy and own `.bkit/templates/.oxlintrc.json`, add `oxlint` + `oxlint-tsgolint`, set `lint` to `oxlint -c .oxlintrc.json --type-aware --deny-warnings`. No advisory; `bkit tips` suggests it. Setup: `.bkit/templates.md` § Oxlint.
 
 **All templates.** Copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
 

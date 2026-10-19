@@ -574,8 +574,8 @@ jobs:
 
       - name: Check Capability Register
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
-        # The graphify release is pinned once, in GRAPHIFY_SPEC in bkit-graphify.sh: the
-        # register is built and judged with that release here, in the pre-push gate and by hand.
+        # graphify release pinned once: GRAPHIFY_SPEC in bkit-graphify.sh. Same release here,
+        # in the pre-push gate and by hand.
         run: |
           uv tool install "$(bash scripts/graphify/bkit-graphify.sh spec)"
           # `uv tool install` drops the shim in ~/.local/bin, not on this step's PATH.
