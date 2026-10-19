@@ -198,6 +198,14 @@ const ADOPTED: Record<string, Entry> = {
           "          fi\n" +
           '          pnpm slop:delta "$BASE_SHA"\n',
       },
+      {
+        kind: "bkit-only",
+        what: "unit lane installs zsh and actionlint: bkit's workflow-fence and template tests skip themselves without them",
+        region: {
+          template: ["      # Unit coverage:", "      # Unit coverage:"],
+          copy: ["      # Workflow-fence syntax tests run", "      # Unit coverage:"],
+        },
+      },
     ],
   },
   ".github/workflows/bkit-cloud.yml": {

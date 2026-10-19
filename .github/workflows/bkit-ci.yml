@@ -661,6 +661,27 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
+      # Workflow-fence syntax tests run each shell block under zsh, and the template test lints
+      # the shipped bkit-ci.yml with actionlint. Each skips itself when its tool is absent, and the
+      # runner image has neither on PATH, so without these steps they skip on every run.
+      - name: Install zsh
+        if: steps.cache.outputs.skip != 'true'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
+
+      - name: Install actionlint
+        if: steps.cache.outputs.skip != 'true'
+        run: |
+          # Script pinned to the v1.7.12 commit SHA (the git tag is mutable/forgeable); the binary version
+          # is pinned separately via the 1.7.12 arg passed to the script below.
+          curl -sSfL --retry 3 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
+          # download-actionlint.bash fetches the binary from GitHub releases — retry to survive a transient CDN/network blip.
+          for i in 1 2 3; do
+            bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP" && break
+            [ "$i" = 3 ] && { echo "::error::actionlint download failed after 3 attempts"; exit 1; }
+            echo "::warning::actionlint download attempt $i failed — retrying in 5s"; sleep 5
+          done
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
       # Unit coverage: `test:coverage:unit` scopes --coverage.include to the logic files and
       # carries the --coverage.thresholds.branches floor; bkit:gate:static-unit runs the same
       # script. The JSON reporter feeds the executed-count bkit-tests-check asserts.
@@ -771,6 +792,13 @@ jobs:
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
+
+      # The workflow snippet tests re-run the plan-close and lock blocks under zsh. They skip
+      # themselves when zsh is absent and the runner image has none, so without this step they
+      # skip on every run.
+      - name: Install zsh
+        if: steps.cache.outputs.skip != 'true'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
 
       # Integration coverage, scoped via --coverage.include to the engine surface.
       - name: Run Integration Tests

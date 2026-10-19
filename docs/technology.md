@@ -80,7 +80,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | --- | --- | --- |
 | Prettier | `^3.5`, `.prettierrc.json` | Code and markdown formatting (`pnpm format:check` in CI) |
 | Vale | `3.9.1`, system-installed locally; CI installs a sha256-verified pinned tarball | Prose linting of `.agents/`, `.bkit/`, `docs/` and root markdown (`pnpm lint:prose` → `bkit ci prose --glob=…`). Skips only when the vale binary is absent; a missing `.vale/styles/write-good` (gitignored, so absent in fresh checkouts and worktrees) self-heals by copying from the main worktree, else `vale sync`, and warns loudly on stderr if neither works. CI installs both so it always enforces there |
-| actionlint | `1.7.12`, downloaded in-lane (SHA-pinned script) | GitHub-Actions-aware lint of `.github/workflows/*` — expression syntax + shellcheck on `run:` bodies. `pnpm bkit:lint:workflows` guard-skips locally when absent |
+| actionlint | `1.7.12`, downloaded in-lane on the static and unit lanes (SHA-pinned script) | GitHub-Actions-aware lint of `.github/workflows/*` — expression syntax + shellcheck on `run:` bodies. `pnpm bkit:lint:workflows` guard-skips locally when absent |
 | slop-scan | `^0.3`, `slop-scan.config.json` | Detects code-shaped slop in source — empty catches, over-fragmentation, pass-through wrappers. `pnpm lint:slop` reports (never fails); `pnpm slop:delta` is the gate that fails on net-new findings vs the base |
 
 ## Git Hooks

@@ -8,8 +8,6 @@ import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const bkitInstallPath = path.resolve(__dirname, "../../cli.ts");
-const tsxBin = path.resolve(__dirname, "../../../../../node_modules/.bin/tsx");
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -61,11 +59,9 @@ function seedStaleVersionPin(dir: string): void {
 
 describe("bkit doctor — integration", () => {
   it("exits 0 on a minimal consumer (no crash)", () => {
-    if (!fs.existsSync(tsxBin)) return; // skip if tsx not available (CI without devDeps)
-
     seedMinimalConsumer(tmpDir);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "doctor"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -79,11 +75,9 @@ describe("bkit doctor — integration", () => {
   });
 
   it("prints [bkit-doctor] log prefix", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     seedMinimalConsumer(tmpDir);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "doctor"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -94,11 +88,9 @@ describe("bkit doctor — integration", () => {
   });
 
   it("prints Payload roots line (WS5-T1)", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     seedMinimalConsumer(tmpDir);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "doctor"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -109,12 +101,10 @@ describe("bkit doctor — integration", () => {
   });
 
   it("emits bkit-version-pin-stale advisory when installed version > on-disk version", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     seedMinimalConsumer(tmpDir);
     seedStaleVersionPin(tmpDir);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "doctor"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -130,14 +120,12 @@ describe("bkit doctor — integration", () => {
   });
 
   it("writes only the .bkit/advisories.md artifact (no other side effects)", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     seedMinimalConsumer(tmpDir);
 
     // Capture all files before
     const filesBefore = listFilesRecursive(tmpDir);
 
-    spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+    spawnSync(requireTsx(), [bkitInstallPath, "doctor"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -161,11 +149,9 @@ describe("bkit doctor — integration", () => {
 
 describe("bkit status — integration", () => {
   it("exits 0 and prints [bkit-status] prefix", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     seedMinimalConsumer(tmpDir);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "status"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -180,13 +166,11 @@ describe("bkit status — integration", () => {
   });
 
   it("writes zero files (purely read-only — write-set assertion)", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     seedMinimalConsumer(tmpDir);
 
     const filesBefore = listFilesRecursive(tmpDir);
 
-    spawnSync(tsxBin, [bkitInstallPath, "status"], {
+    spawnSync(requireTsx(), [bkitInstallPath, "status"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -201,14 +185,12 @@ describe("bkit status — integration", () => {
   });
 
   it("reports installed hosts (at minimum claude and cursor on a fresh consumer)", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     // Seed a consumer with .claude and .cursor directories
     seedMinimalConsumer(tmpDir);
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "status"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -221,11 +203,9 @@ describe("bkit status — integration", () => {
   });
 
   it("reports opencode as absent when .opencode/ does not exist", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     seedMinimalConsumer(tmpDir);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "status"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -254,6 +234,7 @@ function listFilesRecursive(dir: string): string[] {
 import { detectDirenvMissing, detectDirenvNotAllowed } from "../../checks/before/env";
 import { runPreflight } from "../../checks/before/index";
 import { runPostInstallCheck } from "../../checks/after/index";
+import { requireTsx } from "../../../../../vitest.tsx-bin";
 
 describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
   it("tier2-json-drift surfaces through runPreflight", () => {
@@ -390,13 +371,11 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
   });
 
   it("doctor subprocess surfaces mcp-env advisory in output when .env.example present without .env", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     seedMinimalConsumer(tmpDir);
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "BKIT_GH_TOKEN=\n", "utf-8");
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "doctor"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -459,11 +438,9 @@ function seedMultiProvider(dir: string): void {
 
 describe("bkit status — multi-provider (Task 5 / #281)", () => {
   it("shows both providers with (active) marker on the active one", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     seedMultiProvider(tmpDir);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "status"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -483,8 +460,6 @@ describe("bkit status — multi-provider (Task 5 / #281)", () => {
   });
 
   it("keeps singular provider: format when only one provider installed", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     // Single-provider fixture
     seedMinimalConsumer(tmpDir);
     fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
@@ -505,7 +480,7 @@ describe("bkit status — multi-provider (Task 5 / #281)", () => {
       "utf-8",
     );
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "status"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -521,11 +496,9 @@ describe("bkit status — multi-provider (Task 5 / #281)", () => {
 
 describe("bkit doctor — multi-provider cred check (Task 5 / #281)", () => {
   it("checks credentials for ALL installed providers", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     seedMultiProvider(tmpDir);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "doctor"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
@@ -541,11 +514,9 @@ describe("bkit doctor — multi-provider cred check (Task 5 / #281)", () => {
   });
 
   it("marks the active provider with (active) label in doctor output", () => {
-    if (!fs.existsSync(tsxBin)) return;
-
     seedMultiProvider(tmpDir);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "doctor"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,

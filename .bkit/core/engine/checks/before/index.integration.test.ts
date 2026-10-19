@@ -9,10 +9,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { requireTsx } from "../../../../../vitest.tsx-bin";
 
 const bkitInstallPath = path.resolve(__dirname, "../../cli.ts");
-const tsxBin = path.resolve(__dirname, "../../../../../node_modules/.bin/tsx");
-
 let tmpDir: string;
 let originalCwd: string;
 
@@ -43,7 +42,7 @@ function seedLinearConsumer(dir: string): void {
 }
 
 function runCheckWithTrackerSwitch(dir: string): string {
-  const result = spawnSync(tsxBin, [bkitInstallPath, "check", "--tracker=github"], {
+  const result = spawnSync(requireTsx(), [bkitInstallPath, "check", "--tracker=github"], {
     cwd: dir,
     encoding: "utf-8",
     timeout: 60_000,
@@ -54,8 +53,6 @@ function runCheckWithTrackerSwitch(dir: string): string {
 
 describe("preflight tracker resolution order — integration", () => {
   it("grades --tracker=github, not the linear value still on disk", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
-
     seedLinearConsumer(tmpDir);
     const output = runCheckWithTrackerSwitch(tmpDir);
 
@@ -67,8 +64,6 @@ describe("preflight tracker resolution order — integration", () => {
   });
 
   it("names the tracker being installed in the advisory text", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
-
     seedLinearConsumer(tmpDir);
     const output = runCheckWithTrackerSwitch(tmpDir);
 

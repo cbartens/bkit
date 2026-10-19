@@ -40,6 +40,7 @@ import {
   readManagedVersion,
   type BkitVersion,
 } from "../../install/version-file";
+import { requireTsx } from "../../../../../vitest.tsx-bin";
 
 let tmpDir: string;
 let originalCwd: string;
@@ -293,13 +294,8 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runBkitUpgrade() {
-    return spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--auto-apply"], {
+    return spawnSync(requireTsx(), [bkitInstallPath, "upgrade", "--auto-apply"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -308,7 +304,6 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   }
 
   it("does not create .github/renovate.json5 or .github/dependabot.yml for a non-opted-in consumer", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     // Minimal consumer: package.json + .bkit-version, no opt-in configs present.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -335,14 +330,13 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   });
 
   it("install --claude does not write Serena or graphify examples", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "consumer" }),
       "utf-8",
     );
     fs.mkdirSync(path.join(tmpDir, ".git"));
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "install", "--claude"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -361,7 +355,6 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   });
 
   it("upgrade does not rewrite a consumer-owned bkit-graphify.sh", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "consumer" }),
@@ -384,7 +377,6 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   });
 
   it("does not rewrite a consumer-owned .github/renovate.json5", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({
@@ -412,7 +404,6 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   });
 
   it("preserves consumer prose after bkit:end in docs/*.md through a real `bkit upgrade` (#129 §1/§6)", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "consumer" }),
@@ -451,13 +442,8 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -475,7 +461,6 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
   }
 
   it("present, unmodified .mcp.json + .cursor/mcp.json → same-version upgrade leaves them byte-identical", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     setup();
     expect(runCli(["install", "--claude", "--cursor", "--tracker=github"]).status).toBe(0);
     const mcpBefore = fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8");
@@ -490,7 +475,6 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
   });
 
   it("upgrade restores bkit's edited entry, keeps a consumer server, and check is then clean", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     setup();
     expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
     const mcpPath = path.join(tmpDir, ".mcp.json");
@@ -525,7 +509,6 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
   });
 
   it("malformed .mcp.json fails install instead of being overwritten", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     setup();
     fs.writeFileSync(path.join(tmpDir, ".mcp.json"), "{ not json", "utf-8");
     const install = runCli(["install", "--claude", "--tracker=github"]);
@@ -545,13 +528,8 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -568,7 +546,6 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
   }
 
   it("an install with every host and cloud lane creates no template outside .bkit/templates/", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -591,7 +568,6 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
   });
 
   it("an adopted copy of every template survives upgrade and check", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -630,7 +606,6 @@ describe("#489 — install and upgrade leave the consumer's own files alone", ()
   ])(
     "check flags a stale %s block; upgrade refreshes it and keeps the consumer's content",
     (rel, consumer) => {
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
       fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
       fs.writeFileSync(
         path.join(tmpDir, "package.json"),
@@ -674,13 +649,8 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    const r = spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    const r = spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -731,7 +701,6 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
   }
 
   it("every written file carries a marker at the installing version, and check derives the same set", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     installEverything();
     const version = readInstallingVersion();
     const written = writtenFiles();
@@ -753,7 +722,6 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
   });
 
   it("check flags an old marker; upgrade restamps every marker with no conflict; check is then clean", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     installEverything();
     const version = readInstallingVersion();
     const written = writtenFiles();
@@ -805,13 +773,8 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -820,7 +783,6 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
   }
 
   it("claude-only install → upgrade seeds no cursor/lint files or templates, and check stays clean", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -863,7 +825,6 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
   });
 
   it("upgrade creates a file a newer release adds to an installed opt-in host (#550)", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -894,7 +855,6 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
   });
 
   it("upgrade moves a 5.1.0 Antigravity hooks.json onto the current matchers (guardrails gates view_file)", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -924,7 +884,6 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
   });
 
   it("upgrade seeds missing bkit:gate:* names, so check stays clean (#489)", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     const pkgPath = path.join(tmpDir, "package.json");
     fs.writeFileSync(
@@ -972,13 +931,8 @@ describe("#281 Task 3 — upgrade re-renders all installed provider blocks", () 
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -987,7 +941,6 @@ describe("#281 Task 3 — upgrade re-renders all installed provider blocks", () 
   }
 
   it("upgrade reconverges ALL provider blocks — openrouter (active) + ollama (secondary)", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1054,13 +1007,8 @@ describe("#281 AC — bkit check exits 0 with multiple providers installed", () 
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -1069,7 +1017,6 @@ describe("#281 AC — bkit check exits 0 with multiple providers installed", () 
   }
 
   it("bkit check exits 0 after installing two providers (openrouter + ollama)", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1098,13 +1045,8 @@ describe("#422 — gateguard markered-text upgrade round-trip (site-9 regression
     path.dirname(new URL(import.meta.url).pathname),
     "../../cli.ts",
   );
-  const tsxBin = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
   function runCli(args: string[]) {
-    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -1113,7 +1055,6 @@ describe("#422 — gateguard markered-text upgrade round-trip (site-9 regression
   }
 
   it("install, tamper outside the block AND stale the block content, upgrade: outside survives, block is refreshed", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1503,14 +1444,8 @@ describe("upgrade-render", () => {
 
   const getInstallPath = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
-  const getTsxBin = () =>
-    path.resolve(
-      path.dirname(new URL(import.meta.url).pathname),
-      "../../../../../node_modules/.bin/tsx",
-    );
-
   function runBkit(args: string[]): { stdout: string; stderr: string; status: number | null } {
-    const result = spawnSync(getTsxBin(), [getInstallPath(), ...args], {
+    const result = spawnSync(requireTsx(), [getInstallPath(), ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -1552,9 +1487,6 @@ describe("upgrade-render", () => {
 
   describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => {
     it("restores tampered agents + docs and refreshes the prompts.md block while preserving consumer overrides", () => {
-      const tsxBin = getTsxBin();
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
-
       // --- Install: core + claude + opencode host (gives .claude/agents, .opencode/agents,
       //     .claude/commands, .opencode/commands, and the .bkit/*.md docs). ---
       const install = runBkit(["install", "--claude", "--opencode=openrouter"]);
@@ -1628,9 +1560,6 @@ describe("upgrade-render", () => {
     }, 180_000);
 
     it("upgrade renders opencode.json with provider/tracker sentinels resolved (no raw @@…@@ leak, #245)", () => {
-      const tsxBin = getTsxBin();
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
-
       // Install the opencode host (openrouter) — opencode.json is templated with @@OPENCODE_*@@
       // sentinels that renderOpencodeJson resolves on install.
       const install = runBkit(["install", "--opencode=openrouter"]);
@@ -1665,9 +1594,6 @@ describe("upgrade-render", () => {
     }, 180_000);
 
     it("opencode-go gateway: install records the manifest provider; upgrade re-renders the opencode-go block (no ollama fallback)", () => {
-      const tsxBin = getTsxBin();
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
-
       type OpencodeDoc = {
         provider?: Record<string, { npm?: string; options?: Record<string, unknown> }>;
       };
@@ -1719,9 +1645,6 @@ describe("upgrade-render", () => {
 
   describe("#459 — bkit upgrade keeps bkit's recorded hash for a consumer-edited whole-file", () => {
     it("a no-op upgrade does not re-record a hand-edited canonical file as bkit's content", () => {
-      const tsxBin = getTsxBin();
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
-
       const install = runBkit(["install", "--claude"]);
       expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
 
@@ -1750,8 +1673,6 @@ describe("upgrade-render", () => {
     }, 180_000);
 
     it("re-records the hash of .cursor/allowlist.json when upgrade regenerates it, so uninstall still deletes it", () => {
-      const tsxBin = getTsxBin();
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
       expect(runBkit(["install", "--cursor"]).status).toBe(0);
 
       const rel = path.join(".cursor", "allowlist.json");
@@ -1780,8 +1701,6 @@ describe("upgrade-render", () => {
 
   describe("advisories — check and upgrade report what install reports", () => {
     it("surfaces test-file-script-missing on check, and upgrade rewrites .bkit/advisories.md", () => {
-      const tsxBin = getTsxBin();
-      expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
       const advisoriesPath = path.join(tmpDir, ".bkit", "advisories.md");
 
       const install = runBkit(["install", "--claude"]);
@@ -1830,16 +1749,18 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
 
     const dir = path.dirname(new URL(import.meta.url).pathname);
     const bkitInstallPath = path.resolve(dir, "../../cli.ts");
-    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     // Target a version far above the installed one so it's always a "bump", never a noop.
-    const result = spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 60_000,
-    });
+    const result = spawnSync(
+      requireTsx(),
+      [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(combined, combined).toContain("[dry-run] would bump @cbartens/bkit");
     expect(combined).toContain("99.0.0");
@@ -1862,15 +1783,17 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
 
     const dir = path.dirname(new URL(import.meta.url).pathname);
     const bkitInstallPath = path.resolve(dir, "../../cli.ts");
-    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 60_000,
-    });
+    const result = spawnSync(
+      requireTsx(),
+      [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(combined, combined).toContain("pnpm add -D -w @cbartens/bkit@99.0.0");
     expect(result.status, `expected exit 0, got ${result.status}:\n${combined}`).toBe(0);
@@ -1892,11 +1815,9 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
 
     const dir = path.dirname(new URL(import.meta.url).pathname);
     const bkitInstallPath = path.resolve(dir, "../../cli.ts");
-    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     try {
-      const result = spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--to=99.0.0"], {
+      const result = spawnSync(requireTsx(), [bkitInstallPath, "upgrade", "--to=99.0.0"], {
         cwd: tmpDir,
         encoding: "utf-8",
         env: {
@@ -1921,10 +1842,8 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }));
     const dir = path.dirname(new URL(import.meta.url).pathname);
     const bkitInstallPath = path.resolve(dir, "../../cli.ts");
-    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     const result = spawnSync(
-      tsxBin,
+      requireTsx(),
       [bkitInstallPath, "upgrade", "--to=4.2.0", "--latest", "--dry-run"],
       {
         cwd: tmpDir,

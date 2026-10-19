@@ -24,20 +24,15 @@ import { dispatchModules, type ModuleContext } from "../../install/modules/index
 import { parseModelLookup, buildOpencodeModelLookup, parseEffortMap } from "../../render/models";
 import type { WriteSet } from "../../install/write";
 import { getBkitDocsRoot } from "../../shared/package-roots";
+import { requireTsx } from "../../../../../vitest.tsx-bin";
 
 let tmpDir: string;
 let originalCwd: string;
 
 const getInstallPath = () =>
   path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
-const getTsxBin = () =>
-  path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../../../../../node_modules/.bin/tsx",
-  );
-
 function runBkit(args: string[]): { stdout: string; stderr: string; status: number | null } {
-  const result = spawnSync(getTsxBin(), [getInstallPath(), ...args], {
+  const result = spawnSync(requireTsx(), [getInstallPath(), ...args], {
     cwd: tmpDir,
     encoding: "utf-8",
     env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -70,7 +65,6 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   // A clean install must check GREEN for every provider/tracker shape — proving the
   // render-input fallback uses the INSTALLED provider, not the ollama default.
   it("clean install (openrouter + github) → check exits 0, zero would-write drift", () => {
-    if (!fs.existsSync(getTsxBin())) return; // CI without devDeps
     const install = runBkit(["install", "--claude", "--opencode=openrouter", "--tracker=github"]);
     expect(install.status).toBe(0);
     expect(fs.existsSync(opencodeJsonPath())).toBe(true);
@@ -84,7 +78,6 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   // opencode renders an `opencode`-keyed provider block, read through package.json, not the
   // opencode.json provider-block key.
   it("clean install (opencode-go gateway, opencode-go block keyed by provider) → check exits 0, no false drift", () => {
-    if (!fs.existsSync(getTsxBin())) return;
     const install = runBkit(["install", "--claude", "--opencode=opencode-go", "--tracker=github"]);
     expect(install.status).toBe(0);
     // opencode-go renders a built-in block keyed `opencode-go` — confirm the fixture exercises it.
@@ -100,7 +93,6 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
 
   // A keyless provider with tracker=none (no mcp block) must also check green.
   it("clean install (ollama, no tracker) → check exits 0, no false drift", () => {
-    if (!fs.existsSync(getTsxBin())) return;
     const install = runBkit(["install", "--opencode=opencode-go"]);
     expect(install.status).toBe(0);
 
@@ -111,7 +103,6 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
 
   // A consumer who drops the bkit permission sandbox from opencode.json FAILS check.
   it("dropped permission block in opencode.json → check exits 1 (drift detected)", () => {
-    if (!fs.existsSync(getTsxBin())) return;
     expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
     const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath(), "utf-8")) as Record<string, unknown>;
@@ -127,7 +118,6 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   // `// bkit:start` / `// bkit:end`. Tampering INSIDE the block is drift (check must
   // fail); tampering OUTSIDE it is the consumer's own driver code (check must pass).
   it("tampered gateguard.js INSIDE the managed block → check exits 1 (drift detected)", () => {
-    if (!fs.existsSync(getTsxBin())) return;
     expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
     const gateguard = path.join(tmpDir, ".opencode", "plugin", "bkit-gateguard.js");
@@ -150,7 +140,6 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   });
 
   it("tampered gateguard.js OUTSIDE the managed block → check exits 0 (consumer-owned)", () => {
-    if (!fs.existsSync(getTsxBin())) return;
     expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
     const gateguard = path.join(tmpDir, ".opencode", "plugin", "bkit-gateguard.js");
@@ -163,7 +152,6 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   // Host agent/command mirrors push would-writes into ws.writes — content drift (marker
   // still current) must fail check, not only managed-version-marker stale.
   it("tampered agent mirror content → check exits 1 (writeset drift)", () => {
-    if (!fs.existsSync(getTsxBin())) return;
     expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
     const agentDir = path.join(tmpDir, ".opencode", "agents");
@@ -180,7 +168,6 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   // consumer's own extra keys are theirs to keep. (Locks in the deep-contain contract so a
   // future over-eager gate doesn't start failing on benign consumer additions.)
   it("consumer-added extra key in opencode.json → check exits 0 (deep-contain, not drift)", () => {
-    if (!fs.existsSync(getTsxBin())) return;
     expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
     const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath(), "utf-8")) as Record<string, unknown>;
@@ -196,7 +183,6 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   // what the consumer installed; a repo carrying .opencode/ with no recorded provider is
   // reported as a broken install, never rendered against a substitute.
   it("opencode installed but no provider recorded → check exits 1 and names the fix", () => {
-    if (!fs.existsSync(getTsxBin())) return;
     expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
     // Erase both provider signals: the package.json manifest field and the opencode.json block.
@@ -222,7 +208,6 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   });
 
   it("a consumer with no opencode host at all is not failed for a missing provider", () => {
-    if (!fs.existsSync(getTsxBin())) return;
     expect(runBkit(["install", "--claude", "--tracker=github"]).status).toBe(0);
 
     const check = runBkit(["check"]);
@@ -241,7 +226,6 @@ describe("bkit check — antigravity detected from any plugin file", () => {
   const plugin = (rel: string) => path.join(tmpDir, ".agents", "plugins", "bkit", rel);
 
   it("deleted plugin.json + neutered guardrails command + deleted guardrails hook → check exits 1 naming each", () => {
-    if (!fs.existsSync(getTsxBin())) return; // CI without devDeps
     expect(runBkit(["install", "--antigravity"]).status).toBe(0);
     expect(runBkit(["check"]).status).toBe(0);
 
@@ -287,14 +271,8 @@ describe("bkit check — antigravity detected from any plugin file", () => {
 describe("check-owned-hooks", () => {
   const getInstallPath = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
-  const getTsxBin = () =>
-    path.resolve(
-      path.dirname(new URL(import.meta.url).pathname),
-      "../../../../../node_modules/.bin/tsx",
-    );
-
   function runBkit(cwd: string, args: string[]): { combined: string; status: number | null } {
-    const result = spawnSync(getTsxBin(), [getInstallPath(), ...args], {
+    const result = spawnSync(requireTsx(), [getInstallPath(), ...args], {
       cwd,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -392,11 +370,9 @@ describe("check-owned-hooks", () => {
 
   describe("bkit check — exit code on a missing owned hook", () => {
     let dir: string;
-    const haveTsx = fs.existsSync(getTsxBin());
 
     beforeAll(() => {
       dir = makeConsumer("bkit-owned-hooks-check-");
-      if (!haveTsx) return; // CI without devDeps
       const install = runBkit(dir, [
         "install",
         "--claude",
@@ -414,7 +390,6 @@ describe("check-owned-hooks", () => {
     });
 
     it("clean install → check exits 0", () => {
-      if (!haveTsx) return;
       const check = runBkit(dir, ["check"]);
       expect(check.status, check.combined).toBe(0);
       expect(check.combined).not.toContain("owned-hook-missing");
@@ -426,7 +401,6 @@ describe("check-owned-hooks", () => {
       ".codex/hooks/bkit-guardrails.cjs",
       ".opencode/plugin/bkit-gateguard.js",
     ])("missing %s → check exits 1 and names it", (rel) => {
-      if (!haveTsx) return;
       const abs = path.join(dir, rel);
       const saved = fs.readFileSync(abs);
       fs.rmSync(abs);
@@ -440,7 +414,6 @@ describe("check-owned-hooks", () => {
     });
 
     it("claude host without the cloud module → no bkit-cloud-bootstrap.sh required", () => {
-      if (!haveTsx) return;
       const claudeOnly = makeConsumer("bkit-owned-hooks-claude-");
       try {
         expect(runBkit(claudeOnly, ["install", "--claude"]).status).toBe(0);
@@ -706,13 +679,8 @@ describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => 
       path.dirname(new URL(import.meta.url).pathname),
       "../../cli.ts",
     );
-    const tsxBin = path.resolve(
-      path.dirname(new URL(import.meta.url).pathname),
-      "../../../../../node_modules/.bin/tsx",
-    );
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "check"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "check"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -755,8 +723,6 @@ describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () =>
 
     const dir = path.dirname(new URL(import.meta.url).pathname);
     const bkitInstallPath = path.resolve(dir, "../../cli.ts");
-    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
 
     // Force the branch deterministically: clear any ambient CI branch env first.
     const env: NodeJS.ProcessEnv = { ...process.env, NODE_NO_WARNINGS: "1" };
@@ -764,7 +730,7 @@ describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () =>
     delete env.GITHUB_REF_NAME;
     Object.assign(env, branchEnv);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "check"], {
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "check"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env,

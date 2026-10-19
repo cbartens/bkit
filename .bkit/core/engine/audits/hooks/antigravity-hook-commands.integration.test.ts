@@ -10,9 +10,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { requireTsx } from "../../../../../vitest.tsx-bin";
 
 const CLI = path.resolve(".bkit/core/engine/cli.ts");
-const TSX = path.resolve("node_modules/.bin/tsx");
 
 const PLUGIN_REL = ".agents/plugins/bkit";
 const HOOKS = ["gateguard", "guardrails", "readguard"] as const;
@@ -40,7 +40,6 @@ function commandFor(name: HookName): string {
 }
 
 beforeAll(() => {
-  expect(fs.existsSync(TSX), `tsx not found at ${TSX}; run pnpm install`).toBe(true);
   consumer = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ag-cmd-"));
   fs.mkdirSync(path.join(consumer, ".git"), { recursive: true });
   fs.writeFileSync(
@@ -48,7 +47,7 @@ beforeAll(() => {
     JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
     "utf-8",
   );
-  const install = spawnSync(TSX, [CLI, "install", "--antigravity", "--tracker=github"], {
+  const install = spawnSync(requireTsx(), [CLI, "install", "--antigravity", "--tracker=github"], {
     cwd: consumer,
     encoding: "utf-8",
     env: { ...process.env, NODE_NO_WARNINGS: "1" },

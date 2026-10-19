@@ -16,6 +16,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runGrader, realGitAdapter } from "./comply.js";
+import { requireTsx } from "../../../../vitest.tsx-bin";
 
 // ---------------------------------------------------------------------------
 // Temp-repo helpers
@@ -266,13 +267,10 @@ describe("realGitAdapter — hook variables", () => {
 describe("bkit comply — row labels", () => {
   const pkgRoot = path.resolve(__dirname, "../../../..");
   const cli = path.join(pkgRoot, ".bkit", "core", "engine", "cli.ts");
-  const tsxBin = path.join(pkgRoot, "node_modules", ".bin", "tsx");
-
   function comply(cwd: string): Array<Record<string, unknown>> {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     const env: NodeJS.ProcessEnv = { ...process.env, NODE_NO_WARNINGS: "1" };
     for (const key of Object.keys(env)) if (key.startsWith("GIT_")) delete env[key];
-    const r = childProcess.spawnSync(tsxBin, [cli, "comply", "--phase=build"], {
+    const r = childProcess.spawnSync(requireTsx(), [cli, "comply", "--phase=build"], {
       cwd,
       env,
       encoding: "utf-8",

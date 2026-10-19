@@ -13,6 +13,7 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BKIT_SHIPPED_NETWORK_DOMAINS, BKIT_SHIPPED_NETWORK_HOSTS } from "./cloud-env";
+import { requireTsx } from "../../../../vitest.tsx-bin";
 
 let tmpDir: string;
 let originalCwd: string;
@@ -30,13 +31,10 @@ afterEach(() => {
 
 const here = path.dirname(new URL(import.meta.url).pathname);
 const bkitInstallPath = path.resolve(here, "../cli.ts");
-const tsxBin = path.resolve(here, "../../../../node_modules/.bin/tsx");
-
 const read = (rel: string) => fs.readFileSync(path.join(tmpDir, rel), "utf-8");
 
 describe("T4 — the derived egress set reaches all five surfaces", () => {
   it("cloud paste, cursor allowlist, claude WebFetch and opencode bash globs all name it", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "fanout", version: "1.0.0", packageManager: "pnpm@10.34.3" }, null, 2),
@@ -44,7 +42,7 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
 
     const result = spawnSync(
-      tsxBin,
+      requireTsx(),
       [
         bkitInstallPath,
         "install",
@@ -108,7 +106,6 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
 // with and without the provenance record.
 describe("T14 — the provenance field contributes no bkit check drift", () => {
   it("check reports the same write set with and without claudeAllowDerived present", () => {
-    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "drift", version: "1.0.0", packageManager: "pnpm@10.34.3" }, null, 2),
@@ -116,7 +113,7 @@ describe("T14 — the provenance field contributes no bkit check drift", () => {
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
 
     const run = (args: string[]) =>
-      spawnSync(tsxBin, [bkitInstallPath, ...args], {
+      spawnSync(requireTsx(), [bkitInstallPath, ...args], {
         cwd: tmpDir,
         encoding: "utf-8",
         env: { ...process.env, NODE_NO_WARNINGS: "1" },

@@ -140,6 +140,8 @@ Read table as rule: **`bkit-tests-live-web` and the device E2E lanes are the lan
 
 **Missing gate variable → honest detectable skip — never silent pass.** Tier needing URL / credential run lacks must report skipped (and, if planned, fail capstone), not exit 0 having run nothing. Per-file assert where it matters — e.g. (Vitest JSON) `numPassedTests >= 1 && numPendingTests === 0` — catches ghost-green no-op and quiet skip.
 
+**Missing tool a test needs (binary, CLI, interpreter) → fail loudly, never `return` early.** Resolve the tool through ONE shared test helper that throws when it is absent (e.g. a `requireTsx()`); no test file checks for it on its own. An early `return` reports a pass having asserted nothing. A test that skips itself when a tool is absent (`skipIf(!hasTool)`) must not skip on CI: install the tool on that lane, or fail when `CI` is set — else the lane skips the same tests every run, green.
+
 ### Validated means executed, not "didn't fail"
 
 Green capstone = planned tiers ran tests and passed — not merely nothing visibly failed. Three states per tier, gated independently:

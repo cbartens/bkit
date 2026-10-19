@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { requireTsx } from "../../../../../vitest.tsx-bin";
 import { runCommand } from "../lib";
 import {
   ciCommand,
@@ -437,7 +438,7 @@ describe("bkit ci slop — interrupted", () => {
         `process.stdout.write("returned " + code);`,
       ].join("\n"),
     );
-    const res = spawnSync(path.join(REPO_BIN, "tsx"), [driver], {
+    const res = spawnSync(requireTsx(), [driver], {
       cwd: REPO,
       encoding: "utf-8",
       env: { ...process.env, PATH: `${bin}${path.delimiter}${savedEnv.PATH ?? ""}` },
