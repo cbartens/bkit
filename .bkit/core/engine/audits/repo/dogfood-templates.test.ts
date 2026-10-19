@@ -293,6 +293,8 @@ const ADOPTED: Record<string, Entry> = {
     status: "not-adopted",
     what: "ships with the opt-in guard",
   },
+  "scripts/ci/check-capstone.mjs": identical,
+  "scripts/ci/check-capstone.test.mjs": identical,
   "scripts/ci/check-dependency-audit.mjs": identical,
   "scripts/ci/check-dependency-audit.test.mjs": identical,
   "scripts/ci/accepted-advisories.json": {

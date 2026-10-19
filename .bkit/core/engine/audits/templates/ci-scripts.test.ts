@@ -1,6 +1,7 @@
 // audits/templates/ci-scripts.test.ts — coverage for the CI helper scripts bkit ships as
 // copy-and-own templates. Unit-tests the accepted-divergence guard and the dependency-audit
-// gate so a consumer's copy is exercised by bkit's own suite before it is adopted.
+// gate, and runs the capstone gate's own test file and the workflow steps that call it, so a
+// consumer's copy is exercised by bkit's own suite before it is adopted.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -8,6 +9,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { parse as parseYamlText } from "yaml";
 
 const GUARD = path.resolve(".bkit/templates/scripts/ci/check-accepted-divergences.mjs");
 
@@ -240,5 +242,155 @@ describe("check-dependency-audit", () => {
       encoding: "utf-8",
     });
     expect(res.status, res.stdout).toBe(0);
+  });
+});
+
+const CAPSTONE_SCRIPT = path.resolve(".bkit/templates/scripts/ci/check-capstone.mjs");
+const WORKFLOWS = {
+  template: path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml"),
+  repo: path.resolve(".github/workflows/bkit-ci.yml"),
+};
+
+interface Step {
+  name?: string;
+  uses?: string;
+  if?: string;
+  run?: string;
+  env?: Record<string, string>;
+  "continue-on-error"?: unknown;
+}
+interface CapstoneJob {
+  needs: string[];
+  steps: Step[];
+}
+
+function capstoneOf(workflow: string): CapstoneJob {
+  const doc = parseYamlText(fs.readFileSync(workflow, "utf-8")) as {
+    jobs: Record<string, { needs?: string | string[]; steps: Step[] }>;
+  };
+  const job = doc.jobs["bkit-tests-check"];
+  expect(job, `${workflow}: no bkit-tests-check job`).toBeDefined();
+  return { needs: ([] as string[]).concat(job!.needs ?? []), steps: job!.steps };
+}
+
+const callsScript = (step: Step) =>
+  /\bnode scripts\/ci\/check-capstone\.mjs\b/.test(step.run ?? "");
+
+describe("check-capstone", () => {
+  it.each([
+    ["the template", ".bkit/templates/scripts/ci/check-capstone.test.mjs"],
+    ["bkit's own copy", "scripts/ci/check-capstone.test.mjs"],
+  ])("passes its own copy-and-own test file (%s)", (_label, file) => {
+    const res = spawnSync(process.execPath, [path.resolve(file)], { encoding: "utf-8" });
+    expect(res.status, res.stdout + res.stderr).toBe(0);
+  });
+
+  it.each(Object.entries(WORKFLOWS))(
+    "the %s capstone calls the script, with every lane it needs wired in",
+    (_label, workflow) => {
+      const { needs, steps } = capstoneOf(workflow);
+      const assertStep = steps.find(callsScript);
+      expect(
+        assertStep,
+        `${workflow}: no capstone step runs scripts/ci/check-capstone.mjs`,
+      ).toBeDefined();
+      const env = assertStep!.env ?? {};
+      const lanes = needs
+        .filter((job) => job !== "bkit-tests-scope")
+        .map((j) => j.replace(/^bkit-tests-/, ""));
+      expect((env.LANES ?? "").split(",").sort()).toEqual([...lanes].sort());
+      for (const lane of lanes) {
+        const prefix = lane.toUpperCase().replace(/-/g, "_");
+        expect(env[`${prefix}_RESULT`], `${prefix}_RESULT`).toBe(
+          `\${{ needs.bkit-tests-${lane}.result }}`,
+        );
+        for (const [suffix, output] of [
+          ["RAN", "tests_ran"],
+          ["CACHE_SKIP", "cache_skip"],
+        ] as const) {
+          const value = env[`${prefix}_${suffix}`];
+          if (value !== undefined) {
+            expect(value, `${prefix}_${suffix}`).toBe(
+              `\${{ needs.bkit-tests-${lane}.outputs.${output} }}`,
+            );
+          }
+        }
+      }
+      if (needs.includes("bkit-tests-scope")) {
+        expect(env.PLAN).toBe("\${{ needs.bkit-tests-scope.outputs.plan }}");
+        expect(env.SCOPE_RESULT).toBe("\${{ needs.bkit-tests-scope.result }}");
+      }
+    },
+  );
+
+  it.each(Object.entries(WORKFLOWS))(
+    "the %s capstone fetches the script with an ungated checkout before it runs",
+    (_label, workflow) => {
+      const { steps } = capstoneOf(workflow);
+      const checkout = steps.findIndex((s) => s.uses?.startsWith("actions/checkout@"));
+      expect(checkout, `${workflow}: no checkout in the capstone`).toBeGreaterThanOrEqual(0);
+      expect(
+        steps[checkout]!.if,
+        "a gated checkout leaves some runs with no script",
+      ).toBeUndefined();
+      expect(steps[checkout]!["continue-on-error"]).toBeUndefined();
+      expect(checkout).toBeLessThan(steps.findIndex(callsScript));
+    },
+  );
+
+  describe("the template's step", () => {
+    const step = () => capstoneOf(WORKFLOWS.template).steps.find(callsScript)!;
+    const lanesEnv = {
+      LANES: "static,unit",
+      EMPTY_COUNT: "warn",
+      STATIC_RESULT: "success",
+      UNIT_RESULT: "success",
+      UNIT_RAN: "7",
+      UNIT_CACHE_SKIP: "",
+    };
+
+    function run(withScript: boolean, env: Record<string, string>) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "capstone-step-"));
+      tmpDirs.push(dir);
+      if (withScript) {
+        fs.mkdirSync(path.join(dir, "scripts", "ci"), { recursive: true });
+        fs.copyFileSync(CAPSTONE_SCRIPT, path.join(dir, "scripts", "ci", "check-capstone.mjs"));
+      }
+      const res = spawnSync("sh", ["-c", step().run!], {
+        cwd: dir,
+        env: {
+          PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}`,
+          ...env,
+        },
+        encoding: "utf-8",
+      });
+      return { status: res.status, out: res.stdout + res.stderr };
+    }
+
+    it("sets exactly the variables this test supplies", () => {
+      expect(Object.keys(step().env ?? {}).sort()).toEqual(Object.keys(lanesEnv).sort());
+    });
+
+    it("reds with a copy-the-script message when scripts/ci/check-capstone.mjs is missing", () => {
+      const r = run(false, lanesEnv);
+      expect(r.status).toBe(1);
+      expect(r.out).toContain("::error::scripts/ci/check-capstone.mjs is missing");
+      expect(r.out).toContain(".bkit/templates/scripts/ci/");
+    });
+
+    it("never skips itself: a missing script reds even when every lane is green", () => {
+      expect(run(false, lanesEnv).status).not.toBe(0);
+    });
+
+    it("passes with the script present and the lanes green", () => {
+      const r = run(true, lanesEnv);
+      expect(r.status, r.out).toBe(0);
+    });
+
+    it("reds with the script present when the unit lane ran 0 tests", () => {
+      const r = run(true, { ...lanesEnv, UNIT_RAN: "0" });
+      expect(r.status).toBe(1);
+      expect(r.out).toContain("executed 0 tests");
+    });
   });
 });

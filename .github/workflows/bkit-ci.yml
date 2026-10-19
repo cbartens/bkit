@@ -833,7 +833,13 @@ jobs:
         run: pnpm bkit runs mirror --head="$PR_HEAD_SHA" --branch=dev --max-minutes=170
 
       - name: Assert Test Plan Followed
+        # The verdict is scripts/ci/check-capstone.mjs, tested by check-capstone.test.mjs.
+        # scope must succeed; with run_level != none every lane must succeed, and unit and
+        # integration (the lanes with a *_RAN variable) must have run more than 0 tests unless
+        # cache_skip=true; with run_level=none every lane must be skipped; a plan that does
+        # not parse reds. docs/testing.md § Validated means executed.
         env:
+          LANES: static,unit,integration
           PLAN: ${{ needs.bkit-tests-scope.outputs.plan }}
           SCOPE_RESULT: ${{ needs.bkit-tests-scope.result }}
           STATIC_RESULT: ${{ needs.bkit-tests-static.result }}
@@ -843,49 +849,4 @@ jobs:
           INTEGRATION_RESULT: ${{ needs.bkit-tests-integration.result }}
           INTEGRATION_RAN: ${{ needs.bkit-tests-integration.outputs.tests_ran }}
           INTEGRATION_CACHE_SKIP: ${{ needs.bkit-tests-integration.outputs.cache_skip }}
-        run: |
-          FAIL=0
-          plan_run_level=$(echo "$PLAN" | jq -r '.run_level' 2>/dev/null || echo "")
-          if [ "$SCOPE_RESULT" != "success" ]; then
-            echo "::error::bkit-tests-scope did not succeed (result=$SCOPE_RESULT)"
-            FAIL=1
-          fi
-          if [ "$plan_run_level" != "none" ] && [ "$STATIC_RESULT" != "success" ]; then
-            echo "::error::plan.run_level=$plan_run_level but bkit-tests-static result=$STATIC_RESULT"
-            FAIL=1
-          fi
-          if [ "$plan_run_level" != "none" ] && [ "$UNIT_RESULT" != "success" ]; then
-            echo "::error::plan.run_level=$plan_run_level but bkit-tests-unit result=$UNIT_RESULT"
-            FAIL=1
-          fi
-          if [ "$plan_run_level" != "none" ] && [ "$INTEGRATION_RESULT" != "success" ]; then
-            echo "::error::plan.run_level=$plan_run_level but bkit-tests-integration result=$INTEGRATION_RESULT"
-            FAIL=1
-          fi
-          # NON-HOLLOW: a real run (not a SHA-cache short-circuit) of a test lane must have executed
-          # >0 tests — guards the green-with-zero hole (vitest exiting 0 having run nothing:
-          # --passWithNoTests / glob drift / all-skipped). cache_skip=true was already validated on
-          # the cached SHA, and run_level=none is a skip — both assert nothing. Checked
-          # PER LANE (unit + integration) so a hollow either-tier is caught.
-          assert_ran() {
-            lane="$1"; ran="$2"
-            case "$ran" in
-              ''|*[!0-9]*)
-                echo "::error::$lane succeeded but its executed-test count is non-numeric ('$ran') — cannot confirm tests ran."
-                FAIL=1 ;;
-              0)
-                echo "::error::$lane succeeded but executed 0 tests — vacuous green (expected >0)."
-                FAIL=1 ;;
-            esac
-          }
-          if [ "$plan_run_level" != "none" ] && [ "$UNIT_RESULT" = "success" ] && [ "$UNIT_CACHE_SKIP" != "true" ]; then
-            assert_ran "bkit-tests-unit" "$UNIT_RAN"
-          fi
-          if [ "$plan_run_level" != "none" ] && [ "$INTEGRATION_RESULT" = "success" ] && [ "$INTEGRATION_CACHE_SKIP" != "true" ]; then
-            assert_ran "bkit-tests-integration" "$INTEGRATION_RAN"
-          fi
-          if [ "$FAIL" = "1" ]; then
-            echo "::error::bkit-tests-check FAILED — plan was not honoured. See above."
-            exit 1
-          fi
-          echo "✅ bkit-tests-check passed — planned suite ran (static=$STATIC_RESULT, unit=${UNIT_RAN:-cache-skip/none}, integration=${INTEGRATION_RAN:-cache-skip/none} tests) and succeeded (run_level=$plan_run_level)."
+        run: node scripts/ci/check-capstone.mjs

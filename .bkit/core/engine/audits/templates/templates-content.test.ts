@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse as parseYamlText } from "yaml";
 import { listFilesRecursive } from "../../install/template-copies";
 import { BKIT_GATE_SCRIPTS } from "../../install/manifest";
 import { getBkitDocsRoot } from "../../shared/package-roots";
@@ -193,8 +194,24 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     expect(content).toMatch(/MSG="\$PR_TITLE"/);
   });
 
-  it("snapshot matches expected template content (regression guard)", () => {
-    expect(content).toMatchSnapshot();
+  describe("parts of the workflow that guard something", () => {
+    const doc = parseYamlText(
+      content.replaceAll("{{DEFAULT_BRANCH}}", "main").replaceAll("{{NODE_VERSION}}", "22"),
+    ) as {
+      concurrency: { group: string; "cancel-in-progress": string };
+      jobs: Record<string, { if?: string }>;
+    };
+
+    it("the capstone runs on !cancelled(), never always()", () => {
+      // A concurrency cancel must not stamp a failure on the required check.
+      expect(doc.jobs["bkit-tests-check"]!.if).toBe("${{ !cancelled() }}");
+    });
+
+    it("a pull request keys its run on its number and the default branch queues", () => {
+      expect(doc.concurrency.group).toContain("format('pr-{0}', github.event.pull_request.number)");
+      expect(doc.concurrency.group).not.toContain("github.run_id");
+      expect(doc.concurrency["cancel-in-progress"]).toBe("${{ github.ref != 'refs/heads/main' }}");
+    });
   });
 });
 

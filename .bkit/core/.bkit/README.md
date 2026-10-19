@@ -292,7 +292,7 @@ Two capabilities **opt-in**, excluded from default install: **issue tracker** (`
 bkit dogfoods templates: `.bkit/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit copy) must stay byte-equal where they overlap. Updater scans `.github/workflows/` only, not template path. Applies only if bkit-repo opted into updater. When updater PR opens against bkit workflows:
 
 1. Before merge, edit matching `.bkit/templates/.github/workflows/*.yml` with same SHA bump (one `Edit` per file).
-2. Run `pnpm test` (`.bkit/core/engine/audits/templates/templates-content.test.ts` snapshot regenerates via `pnpm vitest run .bkit/core/engine/audits/templates/templates-content.test.ts -u` if bkit-ci.yml shape changed; commit snapshot).
+2. Run `pnpm test` (`.bkit/core/engine/audits/templates/template-action-pins.test.ts` fails when a template pin drifts from the repo's).
 3. Push template-side change to updater PR branch (or follow-up commit on `dev` if branch read-only).
 
 Consumers: `.github/workflows/bkit-ci.yml` and `bkit-cloud.yml` are your copies of templates, so updater bumps survive install and upgrade. New pins in the templates arrive in `.bkit/templates/` on `bkit upgrade`; adopt them like any other template change.

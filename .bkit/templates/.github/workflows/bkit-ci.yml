@@ -682,47 +682,39 @@ jobs:
   # always(): a concurrency cancel must not stamp a failure. Each lane must succeed; a failed,
   # skipped or cancelled lane reds it. A lane that writes an executed-test count must have run
   # more than 0 tests. Each lane you adopt from the reference below joins needs: and the assert.
+  # The assert is scripts/ci/check-capstone.mjs, required with this file (copy it from
+  # .bkit/templates/scripts/ci/); the step reds when the script is missing.
   bkit-tests-check:
     needs: [bkit-tests-static, bkit-tests-unit]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
+      # Ungated checkout, never continue-on-error: it fetches the script below. A checkout
+      # gated on a plan value leaves some runs with no script, and the required check then
+      # exits on "cannot find module" instead of judging the lanes.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Assert Lanes Passed
+        # The verdict is scripts/ci/check-capstone.mjs (copy it with this file from
+        # .bkit/templates/scripts/ci/; check-capstone.test.mjs tests it). Every lane in LANES
+        # must succeed; a lane with a *_RAN variable must have run more than 0 tests unless
+        # cache_skip=true. EMPTY_COUNT=warn: a lane that writes no count yet warns instead of
+        # failing; delete it once every counted lane writes one. Add each lane you adopt to
+        # LANES and to its *_RESULT / *_RAN / *_CACHE_SKIP variables.
         env:
+          LANES: static,unit
+          EMPTY_COUNT: warn
           STATIC_RESULT: ${{ needs.bkit-tests-static.result }}
           UNIT_RESULT: ${{ needs.bkit-tests-unit.result }}
           UNIT_RAN: ${{ needs.bkit-tests-unit.outputs.tests_ran }}
           UNIT_CACHE_SKIP: ${{ needs.bkit-tests-unit.outputs.cache_skip }}
         run: |
-          FAIL=0
-          if [ "$STATIC_RESULT" != "success" ]; then
-            echo "::error::bkit-tests-static result=$STATIC_RESULT (expected success)"
-            FAIL=1
-          fi
-          if [ "$UNIT_RESULT" != "success" ]; then
-            echo "::error::bkit-tests-unit result=$UNIT_RESULT (expected success)"
-            FAIL=1
-          fi
-          # NON-HOLLOW: a real run (not a SHA-cache short-circuit) of a lane that writes a count
-          # must have executed >0 tests. An empty count is a lane that writes none yet.
-          if [ "$UNIT_RESULT" = "success" ] && [ "$UNIT_CACHE_SKIP" != "true" ]; then
-            case "$UNIT_RAN" in
-              '')
-                echo "::warning::bkit-tests-unit writes no executed-test count — green does not prove tests ran (see its Run Unit Tests step)." ;;
-              *[!0-9]*)
-                echo "::error::bkit-tests-unit executed-test count is non-numeric ('$UNIT_RAN')."
-                FAIL=1 ;;
-              0)
-                echo "::error::bkit-tests-unit succeeded but executed 0 tests — vacuous green."
-                FAIL=1 ;;
-            esac
-          fi
-          if [ "$FAIL" = "1" ]; then
-            echo "::error::bkit-tests-check FAILED — see above."
+          if [ ! -f scripts/ci/check-capstone.mjs ]; then
+            echo "::error::scripts/ci/check-capstone.mjs is missing. Copy it from .bkit/templates/scripts/ci/ into scripts/ci/; without it bkit-tests-check cannot tell a green lane from a lane that ran no tests."
             exit 1
           fi
-          echo "✅ bkit-tests-check passed (static=$STATIC_RESULT, unit=$UNIT_RESULT, unit tests executed=${UNIT_RAN:-unreported})."
+          node scripts/ci/check-capstone.mjs
 
 # bkit-stub:smoke — Post-CI smoke triggered by workflow_run on {{DEFAULT_BRANCH}}. To enable: copy the YAML below into .github/workflows/smoke.yml (separate file — workflow_run cannot share a file with push/pull_request) and delete this stub header.
 # name: Smoke
