@@ -9,6 +9,7 @@ import { isSharedBranch } from "../../shared/branches.js";
 import { getPkgRoot } from "../../shared/package-roots.js";
 import { detectMarkerStyle, extractManagedBlock, findLineAnchoredMarkers, findUnmarkedCopy, selectMarkers, stripManagedBlock, } from "../../install/managed-block.js";
 import { listStampedFiles } from "../../install/modules/index.js";
+import { gitEnv } from "../../ledgers/telemetry.js";
 // ---------------------------------------------------------------------------
 // detectManagedStale — managed-version marker gate over every stamped file
 // ---------------------------------------------------------------------------
@@ -52,6 +53,7 @@ function currentBranch(cwd) {
     // not a thrown error needing a swallowing catch — null then means "undeterminable".
     const r = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
         cwd,
+        env: gitEnv(),
         encoding: "utf-8",
         stdio: ["ignore", "pipe", "ignore"],
     });

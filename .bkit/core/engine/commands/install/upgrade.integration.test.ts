@@ -27,6 +27,7 @@ import { listFilesRecursive, remapTemplateDest } from "../../install/template-co
 import { listStampedFiles } from "../../install/modules/index";
 import { readInstallingVersion } from "../../install/modules/core";
 import { getTemplatesRoot } from "../../shared/package-roots";
+import { PACKAGE_RUNNER } from "../../shared/package-manager";
 import {
   detectMarkerStyle,
   findLineAnchoredMarkers,
@@ -1873,6 +1874,47 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(combined, combined).toContain("pnpm add -D -w @cbartens/bkit@99.0.0");
     expect(result.status, `expected exit 0, got ${result.status}:\n${combined}`).toBe(0);
+  });
+
+  // The self-bump starts PACKAGE_RUNNER twice: `add -D ...` to install the target, then
+  // `exec bkit upgrade` to re-render with the new binary. A stub on PATH records both.
+  it("starts the package runner for the install and the re-exec", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-upgrade-runner-"));
+    const stubLog = path.join(stubDir, "calls.log");
+    const stub = path.join(stubDir, PACKAGE_RUNNER);
+    fs.writeFileSync(stub, `#!/bin/sh\necho "$*" >> "${stubLog}"\nexit 0\n`);
+    fs.chmodSync(stub, 0o755);
+
+    const dir = path.dirname(new URL(import.meta.url).pathname);
+    const bkitInstallPath = path.resolve(dir, "../../cli.ts");
+    const tsxBin = path.resolve(dir, "../../../../../node_modules/.bin/tsx");
+    expect(fs.existsSync(tsxBin), `tsx not found at ${tsxBin}; run pnpm install`).toBe(true);
+
+    try {
+      const result = spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--to=99.0.0"], {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: {
+          ...process.env,
+          NODE_NO_WARNINGS: "1",
+          PATH: `${stubDir}${path.delimiter}${process.env.PATH ?? ""}`,
+        },
+        timeout: 60_000,
+      });
+      const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+      expect(result.status, `expected exit 0, got ${result.status}:\n${combined}`).toBe(0);
+      expect(fs.readFileSync(stubLog, "utf-8").trim().split("\n")).toEqual([
+        "add -D @cbartens/bkit@99.0.0",
+        "exec bkit upgrade",
+      ]);
+    } finally {
+      fs.rmSync(stubDir, { recursive: true, force: true });
+    }
   });
 
   it("rejects --to=<version> with --latest (mutually exclusive) at exit 1", () => {

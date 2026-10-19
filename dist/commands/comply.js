@@ -18,7 +18,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getPkgRoot } from "../shared/package-roots.js";
 import { isMirrorPath } from "../shared/protected-paths.js";
-import { resolveGitSha, resolveRepoSlug, } from "../ledgers/telemetry.js";
+import { gitEnv, resolveGitSha, resolveRepoSlug, } from "../ledgers/telemetry.js";
 /** SHA charset guard — only raw hex SHAs from the ledger are accepted. */
 const SHA_RE = /^[0-9a-f]{7,40}$/;
 export const realGitAdapter = {
@@ -30,6 +30,7 @@ export const realGitAdapter = {
         try {
             const output = execFileSync("git", ["diff", "--name-only", `${parentSha}..HEAD`], {
                 cwd,
+                env: gitEnv(),
                 encoding: "utf8",
                 stdio: ["ignore", "pipe", "ignore"],
             });
@@ -47,6 +48,7 @@ export const realGitAdapter = {
         try {
             return execFileSync("git", ["log", "-1", "--format=%s"], {
                 cwd,
+                env: gitEnv(),
                 encoding: "utf8",
                 stdio: ["ignore", "pipe", "ignore"],
             }).trim();

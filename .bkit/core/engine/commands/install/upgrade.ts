@@ -50,6 +50,7 @@ import {
 } from "./install.js";
 import { setLogPrefix } from "../../shared/log-prefix.js";
 import { BKIT_PACKAGE, lookupLatestPublished } from "../../shared/bkit-latest.js";
+import { PACKAGE_RUNNER } from "../../shared/package-manager.js";
 import {
   getInstallManifest,
   getModuleManifest,
@@ -596,7 +597,7 @@ export async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boo
     ...(inWorkspaceRoot ? ["-w"] : []),
     `@cbartens/bkit@${resolvedPlan.target}`,
   ];
-  const addCmd = `pnpm ${addArgs.join(" ")}`;
+  const addCmd = [PACKAGE_RUNNER, ...addArgs].join(" ");
   if (flags.dryRun) {
     console.log(
       `${LOG_PREFIX} [dry-run] would bump @cbartens/bkit ${installed} -> ${resolvedPlan.target} ` +
@@ -608,7 +609,7 @@ export async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boo
 
   const { spawnSync } = await import("node:child_process");
   console.log(`${LOG_PREFIX} bumping @cbartens/bkit ${installed} -> ${resolvedPlan.target} ...`);
-  const add = spawnSync("pnpm", addArgs, {
+  const add = spawnSync(PACKAGE_RUNNER, addArgs, {
     cwd,
     stdio: "inherit",
   });
@@ -624,7 +625,7 @@ export async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boo
   console.log(`${LOG_PREFIX} re-rendering with @cbartens/bkit@${resolvedPlan.target} ...`);
   const reArgs = ["exec", "bkit", "upgrade"];
   if (flags.nonInteractive) reArgs.push("--auto-apply");
-  const re = spawnSync("pnpm", reArgs, { cwd, stdio: "inherit" });
+  const re = spawnSync(PACKAGE_RUNNER, reArgs, { cwd, stdio: "inherit" });
   process.exit(re.status ?? 1);
 }
 

@@ -29,6 +29,7 @@ import { TEMPLATE_COPIES_DIR, getCoreRoot, getSharedRoot, getBkitDocsRoot, getPk
 import { getInstallingVersion, requireOpencodeProvider, detectOpencodeProviders, runUpgradeAdvisories, } from "./install.js";
 import { setLogPrefix } from "../../shared/log-prefix.js";
 import { BKIT_PACKAGE, lookupLatestPublished } from "../../shared/bkit-latest.js";
+import { PACKAGE_RUNNER } from "../../shared/package-manager.js";
 import { getInstallManifest, getModuleManifest, DEFAULT_ISSUE_TRACKER, parseIssueTracker, } from "../../install/manifest.js";
 import { OPTIN_MODULES } from "../../install/manifest.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
@@ -388,7 +389,7 @@ export async function runSelfBump(flags, cwd) {
         ...(inWorkspaceRoot ? ["-w"] : []),
         `@cbartens/bkit@${resolvedPlan.target}`,
     ];
-    const addCmd = `pnpm ${addArgs.join(" ")}`;
+    const addCmd = [PACKAGE_RUNNER, ...addArgs].join(" ");
     if (flags.dryRun) {
         console.log(`${LOG_PREFIX} [dry-run] would bump @cbartens/bkit ${installed} -> ${resolvedPlan.target} ` +
             `(${addCmd}), then re-render + re-pin via the ` +
@@ -397,7 +398,7 @@ export async function runSelfBump(flags, cwd) {
     }
     const { spawnSync } = await import("node:child_process");
     console.log(`${LOG_PREFIX} bumping @cbartens/bkit ${installed} -> ${resolvedPlan.target} ...`);
-    const add = spawnSync("pnpm", addArgs, {
+    const add = spawnSync(PACKAGE_RUNNER, addArgs, {
         cwd,
         stdio: "inherit",
     });
@@ -411,7 +412,7 @@ export async function runSelfBump(flags, cwd) {
     const reArgs = ["exec", "bkit", "upgrade"];
     if (flags.nonInteractive)
         reArgs.push("--auto-apply");
-    const re = spawnSync("pnpm", reArgs, { cwd, stdio: "inherit" });
+    const re = spawnSync(PACKAGE_RUNNER, reArgs, { cwd, stdio: "inherit" });
     process.exit(re.status ?? 1);
 }
 export async function runUpgradeCommand(upgradeFlags) {

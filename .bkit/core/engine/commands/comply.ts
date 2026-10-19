@@ -20,6 +20,7 @@ import * as path from "node:path";
 import { getPkgRoot } from "../shared/package-roots.js";
 import { isMirrorPath } from "../shared/protected-paths.js";
 import {
+  gitEnv,
   resolveGitSha,
   resolveRepoSlug,
   type TelemetryEnvelope,
@@ -72,6 +73,7 @@ export const realGitAdapter: GitAdapter = {
     try {
       const output = execFileSync("git", ["diff", "--name-only", `${parentSha}..HEAD`], {
         cwd,
+        env: gitEnv(),
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       });
@@ -89,6 +91,7 @@ export const realGitAdapter: GitAdapter = {
     try {
       return execFileSync("git", ["log", "-1", "--format=%s"], {
         cwd,
+        env: gitEnv(),
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       }).trim();

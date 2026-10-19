@@ -224,6 +224,45 @@ describe("compliance grader — skip-ci-not-head boundary", () => {
   });
 });
 
+describe("realGitAdapter — hook variables", () => {
+  const hookVars = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"];
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const key of hookVars) saved[key] = process.env[key];
+  });
+  afterEach(() => {
+    for (const key of hookVars) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  });
+
+  it("reads the cwd repo when GIT_DIR points at another repo", () => {
+    const target = path.join(tmpDir, "target");
+    const other = path.join(tmpDir, "other");
+    fs.mkdirSync(target);
+    fs.mkdirSync(other);
+
+    gitInit(target);
+    fs.writeFileSync(path.join(target, "base.ts"), "// base\n");
+    const parentSha = commit(target, "init target");
+    fs.writeFileSync(path.join(target, "added.ts"), "// added\n");
+    commit(target, "feat: target head");
+
+    gitInit(other);
+    fs.writeFileSync(path.join(other, "elsewhere.ts"), "// elsewhere\n");
+    commit(other, "feat: other head");
+
+    process.env.GIT_DIR = path.join(other, ".git");
+    process.env.GIT_WORK_TREE = other;
+    process.env.GIT_INDEX_FILE = path.join(other, ".git", "index");
+
+    expect(realGitAdapter.headSubject(target)).toBe("feat: target head");
+    expect(realGitAdapter.diffPaths(parentSha, target)).toEqual(["added.ts"]);
+  });
+});
+
 describe("bkit comply — row labels", () => {
   const pkgRoot = path.resolve(__dirname, "../../../..");
   const cli = path.join(pkgRoot, ".bkit", "core", "engine", "cli.ts");
