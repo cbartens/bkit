@@ -45,7 +45,7 @@ AI agents design it, plan it, build it, have it reviewed by agents that didn't w
 
 **It ships what other frameworks leave to you:** a full CI pipeline for your project (none of the frameworks in [our comparison](.bkit/comparison.md#frameworks) has one), and 35 [audits](#audits) that find the bugs passing tests miss.
 
-**Researched and battle-tested, not a weekend prompt pack.** bkit is built with bkit: months of research into how agentic engineering works best, refined over **1,700+ commits, 300+ issues and 100+ merged pull requests** run through its own pipeline. Along the way it recorded **300 lessons and 600+ decisions**. They shaped the rules and prompts you install, and your own repo starts its own record from the first feature.
+**Researched and battle-tested, not a weekend prompt pack.** bkit is built with bkit: months of research into how agentic engineering works best, refined over **1,700+ commits, 300+ issues and 100+ merged pull requests** run through its own pipeline. Along the way it recorded **300+ lessons and 600+ decisions**. They shaped the rules and prompts you install, and your own repo starts its own record from the first feature.
 
 <p align="center">
   <picture>
