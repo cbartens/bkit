@@ -54,6 +54,25 @@ AI agents design it, plan it, build it, have it reviewed by agents that didn't w
   </picture>
 </p>
 
+<a id="whats-inside"></a>
+
+## What's inside: 200+ files of best practice
+
+Everything a senior team would otherwise write down over years, in files you can read:
+
+<!-- prettier-ignore -->
+| What | How many | What it does for you |
+| --- | --- | --- |
+| [Agents](.bkit/prompts.md) | 40+ | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
+| [Workflows](.bkit/workflows.md) | 6 | The five phases plus a cloud router. Every step ends in a checklist and a mechanical check before the next one starts. |
+| [Agent rules](.agents/rules.md) | 70+ | One rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
+| [Guardrails](.bkit/providers.md#guardrails) | 10+ hook files | Block dangerous commands and secret reads, and make agents investigate before they edit, on all five AI tools. |
+| [Audits](.bkit/pipeline.md#audits) | 35 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
+| [Project docs](.bkit/shared/docs/) | 10 + [index](.agents/docs.md) | Architecture, data schema, deployments, testing, security, monitoring, design system, tech stack, setup, and an index telling each agent what to read at each step. |
+| [Templates](.bkit/templates.md) | 60+ | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, and 10+ ready-made connectors for your platforms. |
+
+**These are the files your agents read, so they're written for agents:** short, dense, tables over prose. For day-to-day use, start with [`.bkit/README.md`](.bkit/README.md); for every agent in the order it runs, see the [pipeline reference](.bkit/pipeline.md).
+
 <a id="how-it-works"></a>
 
 ## How it works
@@ -109,25 +128,6 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 - **"Not measured" means LiveBench hasn't scored that model.** Those Codex, Antigravity and Cursor picks follow each vendor's own description of the model. Check them before you rely on them.
 - **Ollama needs a paid plan for every column.** The free models are far below the bar or not scored.
 - **Want a different model for one agent?** On Cursor and opencode, add a row to [Model Overrides](.bkit/prompts.md#model-overrides) and run `bkit install` again. Every agent with its model and thinking depth: [`.bkit/prompts.md` § Models](.bkit/prompts.md#models).
-
-<a id="whats-inside"></a>
-
-## What's inside: 200+ files of best practice
-
-Everything a senior team would otherwise write down over years, in files you can read:
-
-<!-- prettier-ignore -->
-| What | How many | What it does for you |
-| --- | --- | --- |
-| [Agents](.bkit/prompts.md) | 40+ | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
-| [Workflows](.bkit/workflows.md) | 6 | The five phases plus a cloud router. Every step ends in a checklist and a mechanical check before the next one starts. |
-| [Agent rules](.agents/rules.md) | 70+ | One rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
-| [Guardrails](.bkit/providers.md#guardrails) | 10+ hook files | Block dangerous commands and secret reads, and make agents investigate before they edit, on all five AI tools. |
-| [Audits](.bkit/pipeline.md#audits) | 35 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
-| [Project docs](.bkit/shared/docs/) | 10 + [index](.agents/docs.md) | Architecture, data schema, deployments, testing, security, monitoring, design system, tech stack, setup, and an index telling each agent what to read at each step. |
-| [Templates](.bkit/templates.md) | 60+ | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, and 10+ ready-made connectors for your platforms. |
-
-**These are the files your agents read, so they're written for agents:** short, dense, tables over prose. For day-to-day use, start with [`.bkit/README.md`](.bkit/README.md); for every agent in the order it runs, see the [pipeline reference](.bkit/pipeline.md).
 
 <a id="why-its-different"></a>
 
