@@ -252,7 +252,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 
 ### Engineering know-how, built in
 
-- **Best model for each job, on every tool.** Each agent has its own model and thinking depth, per tool and provider: deep reasoning models for architecture and security review, quick ones for summaries. Starting a session on a cheaper model never quietly downgrades the reviewers.
+- **Best model for each job, on every tool.** Each agent has its own model and thinking depth, per tool and provider: deep reasoning models for architecture and security review, quick ones for summaries. Starting a session on a cheaper model never quietly downgrades the reviewers. [Which model does each job](#models).
 - **It tests ideas before you commit to them.** When reviewers flag an unknown a design depends on, design writes throwaway probe code to settle it before you approve. A design reviewer also checks failure modes and monitoring, not just whether it can be built.
 - **Big features are split up.** A plan too big for one build becomes a sequence of smaller plans, each re-checked against the current code right before it's built.
 - **Numbers on your own work.** Every run records its time, size of change and retries in `.bkit/stats.jsonl`, and posts them to the issue next to the median of your last five runs.
@@ -276,6 +276,35 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 - **Decide in plain English, not code.** Before any code is written you approve two short documents: a design ("three ways to build this; we recommend this one, because…") and a plan ("these twelve steps, and how we'll know each is done").
 - **Three sign-offs, and production stays yours.** The full workflows stop after the design, after the plan and before merging. bkit merges into your `dev` branch and never touches `main`: promoting to production is always your call. Cloud mode ships on green without you only for issues you've labelled `bkit:auto`; removing the label stops it. Lite workflows skip the stops, and only run when you choose them for a small change.
 - **Guardrails on the AI itself.** Dangerous commands like force-pushing or rewriting history are blocked, private keys can't be read, and each agent only gets the tools its job needs. [What each guard does](.bkit/providers.md#guardrails) and [what it tells agents](.bkit/prompts.md#hook-injected-text).
+
+<a id="models"></a>
+
+## Which model does each job
+
+**Claude sets the bar, and every other tool gets the model that comes closest to it.** On every other tool, each agent runs on the model that does the same job about as well as Claude, for the least money. You don't pick: install sets each agent's model.
+
+**How the picks are made.** Each kind of job has a bar: Claude's score on [LiveBench Agentic Coding](https://livebench.ai/#/?cats=Agentic+Coding), a public test where models fix real code in JavaScript, TypeScript and Python. For each tool, bkit takes the **cheapest model that reaches the bar**. Where nothing reaches it, the tool's best model gets the job. One model can fill two columns: on opencode, DeepSeek V4.1 Flash clears the bar for the hardest jobs, so it does the everyday jobs too, for a fraction of Claude's cost. Claude is never used on opencode, because opencode is where work goes when your Claude allowance runs out.
+
+<!-- prettier-ignore -->
+| Tool | Hardest jobs: design, plans, reviews, security, audits | Everyday jobs: writing code and docs, the second model in each review pair | Summaries |
+| --- | --- | --- | --- |
+| Claude Code | `claude-opus-5-5` · bar **65.2** | `claude-sonnet-5-5` · bar **59.4** | `claude-haiku-5-5` · bar **~51** |
+| Cursor | `cursor-grok-4.5-high` · 56.5 | `composer-2.5` · not measured | `composer-2.5` · not measured |
+| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash` · 77.3; `moonshotai/kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash` · 77.3 | `z-ai/glm-5.3-flash` · 56.8 |
+| opencode + Ollama | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 | `deepseek-v4.1-flash` · 77.3 |
+| opencode + OpenCode Zen | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 | `glm-5.3-flash` · 56.8 |
+| opencode + OpenCode Go | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 | `deepseek-v4.1-flash` · 77.3 |
+| Codex | `gpt-6-astra` · not measured | `gpt-5.6-terra` · not measured | `gpt-6-luna` · 51.2 |
+| Google Antigravity | `gemini-3.8-pro` · not measured | `gemini-3.8-pro` · not measured | `gemini-3.8-flash` · not measured |
+
+**Reading the table:**
+
+- **The bars are Claude Opus 5 and Sonnet 5 scores.** bkit runs the 5.5 versions. Opus 5.5 scores level with Opus 5. Sonnet 5.5 scores below Sonnet 5 on LiveBench, but one of its runs stopped early and other benchmarks put it above, so the bar stays at Sonnet 5. Every score and why: [the score board](.bkit/providers.md#agentic-coding-parity-board).
+- **Risk, security and root-cause agents get a second model** that reasons differently from the main one, so they don't share its blind spots. On every opencode provider that second model is Kimi K3, which scores a little under the bar for the hardest jobs.
+- **Cursor's own models don't reach the bar.** Claude models in Cursor spend paid API credits, so they're opt-in: paste the ready-made Opus block from [Model Overrides](.bkit/prompts.md#model-overrides).
+- **"Not measured" means LiveBench hasn't scored that model.** Those Codex, Antigravity and Cursor picks follow each vendor's own description of the model. Check them before you rely on them.
+- **Ollama needs a paid plan for every column.** The free models are far below the bar or not scored.
+- **Want a different model for one agent?** On Cursor and opencode, add a row to [Model Overrides](.bkit/prompts.md#model-overrides) and run `bkit install` again. Every agent with its model and thinking depth: [`.bkit/prompts.md` § Models](.bkit/prompts.md#models).
 
 <a id="token-costs"></a>
 
