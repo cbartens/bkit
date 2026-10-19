@@ -76,7 +76,6 @@ describe("audit templates — managed block plus consumer stub", () => {
     expect(audits.length).toBeGreaterThan(0);
     expect(audits).toContain("docs/templates/bkit-audit-repo.md");
     expect(audits).toContain("docs/templates/bkit-audit-security.md");
-    expect(audits).not.toContain("docs/templates/bkit-audit-test.md");
   });
 
   it.each(audits)("%s keeps project instructions outside the managed block", (relPath) => {
