@@ -67,7 +67,7 @@ cbartens/bkit (this repo)
 │   │   ├── status.ts            # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in commands/install/doctor.ts)
 │   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine (#234 WS-1)
 │   ├── shared/                  # helpers every folder uses
-│   │   ├── package-roots.ts     # Single resolver seam — getCoreRoot / getSharedRoot / getTemplatesRoot / getPkgRoot / isDogfood
+│   │   ├── package-roots.ts     # Single resolver seam — getCoreRoot / getSharedRoot / getTemplatesRoot / getPkgRoot
 │   │   └── protected-paths.ts   # IDE mirror prefix table (`isMirrorPath`); used by the compliance grader
 │   ├── tools/wording.ts         # repo-only `pnpm wording:sync`, not a bkit command
 │   └── audits/                  # tests only: read shipped text (workflows/ templates/ hooks/ repo/)

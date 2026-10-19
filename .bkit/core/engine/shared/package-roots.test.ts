@@ -5,10 +5,9 @@
 // (context 2).
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getPkgRoot, ENGINE_SUBPATH, getTemplatesRoot, isDogfood } from "./package-roots";
+import { describe, expect, it } from "vitest";
+import { getPkgRoot, ENGINE_SUBPATH, getTemplatesRoot } from "./package-roots";
 
 // ---------------------------------------------------------------------------
 // Context 1 — dist/ (compiled; what consumers run)
@@ -105,56 +104,5 @@ describe("getTemplatesRoot()", () => {
 
   it("is rooted at getPkgRoot()", () => {
     expect(getTemplatesRoot().startsWith(getPkgRoot())).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// isDogfood()
-// ---------------------------------------------------------------------------
-
-describe("isDogfood()", () => {
-  it("returns a boolean", () => {
-    expect(typeof isDogfood()).toBe("boolean");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// dogfood-noop
-// ---------------------------------------------------------------------------
-// dogfood-noop — dogfood detection inside the bkit repo itself.
-describe("dogfood-noop", () => {
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
-
-  let originalCwd: string;
-
-  beforeEach(() => {
-    originalCwd = process.cwd();
-  });
-
-  afterEach(() => {
-    process.chdir(originalCwd);
-  });
-
-  // ---------------------------------------------------------------------------
-  // Dogfood detection
-  // ---------------------------------------------------------------------------
-
-  describe("isDogfood() — in-repo detection", () => {
-    it("returns true when CWD equals the package root (tsx-from-source context)", () => {
-      // In the tsx-from-source run context, getPkgRoot() resolves to the repo root.
-      // Change CWD to the repo root so isDogfood() returns true.
-      const pkgRoot = getPkgRoot();
-      process.chdir(pkgRoot);
-      expect(isDogfood()).toBe(true);
-    });
-
-    it("returns false when CWD is a different directory", () => {
-      // Change CWD to a temp dir — guaranteed to be different from pkgRoot and accessible.
-      const tmp = os.tmpdir();
-      process.chdir(tmp);
-      expect(isDogfood()).toBe(false);
-    });
   });
 });
