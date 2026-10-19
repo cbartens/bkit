@@ -680,14 +680,19 @@ jobs:
         run: npx --yes bats tests/*.bats
 
       # A distinct name: keys each sticky comment so the two do not collide.
-      - name: Report Unit Coverage on PR
-        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      # Runs on every event, including a red unit run (reportOnFailure keeps the summary), and
+      # writes the coverage table with the floor as its target to the job summary; comments on
+      # same-repo PRs only. vite-config-path is the file the floor lives in.
+      - name: Report Unit Coverage
+        if: ${{ !cancelled() && steps.cache.outputs.skip != 'true' && hashFiles('coverage/unit/coverage-summary.json') != '' }}
         uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
         with:
           name: unit
           json-summary-path: coverage/unit/coverage-summary.json
           json-final-path: coverage/unit/coverage-final.json
+          vite-config-path: vitest.unit.config.ts
           file-coverage-mode: changes          # per-file table limited to files changed in the PR
+          comment-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) && 'pr' || 'none' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # ── bkit-tests-integration ────────────────────────────────────────────────

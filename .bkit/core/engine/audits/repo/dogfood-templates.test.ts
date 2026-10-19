@@ -131,7 +131,7 @@ const ADOPTED: Record<string, Entry> = {
       { kind: "adapt", what: "single package", dropStub: "test-presence" },
       {
         kind: "adapt",
-        what: "unit tests with coverage (coverage stub enabled), bats (bkit-only), the bkit-tests-integration lane, a capstone that also asserts the planner and integration; other stubs and the scaffold reference dropped",
+        what: "unit tests with coverage (coverage stub enabled; floor in vitest.unit.config.ts, reported on every event), bats (bkit-only), the bkit-tests-integration lane, a capstone that also asserts the planner and integration; other stubs and the scaffold reference dropped",
         region: {
           template: ["      - name: Run Unit Tests\n", null],
           copy: ["      # Unit coverage:", null],
