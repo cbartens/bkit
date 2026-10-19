@@ -91,7 +91,7 @@
   },
   "devDependencies": {
     "@types/node": "24.19.2",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "5.0.3",
     "bats": "1.13.0",
     "bkit": "link:.",
     "husky": "9.1.7",
@@ -101,7 +101,7 @@
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "6.4.4",
-    "vitest": "4.1.11",
+    "vitest": "5.0.3",
     "yaml": "2.9.1"
   },
   "pnpm": {

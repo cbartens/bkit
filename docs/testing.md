@@ -425,7 +425,7 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 
 ## Stack
 
-- **Runner:** Vitest 4 (`pnpm test` → `vitest run`). Shell: bats (`pnpm bkit:test:bats`).
+- **Runner:** Vitest 5 (`pnpm test` → `vitest run`). Shell: bats (`pnpm bkit:test:bats`).
 - **Test files** sit next to the file they test under `.bkit/core/engine/`; tests that read shipped text (workflows, templates, hooks, this repo's own docs and ledgers) sit in `.bkit/core/engine/audits/{workflows,templates,hooks,repo}/`. `tests/` = bats (`tests/*.bats`) + fixtures (`tests/fixtures/`).
 - **No mocking framework.** Real filesystem (`os.tmpdir()`) over mocked `fs`. `vi.spyOn(process, "exit", ...)` only for `process.exit(1)` paths. Narrow exception: `.bkit/core/engine/checks/after/index.test.ts` mocks `node:child_process` via `vi.hoisted` — extend mock when boundary grows.
 
