@@ -129,7 +129,7 @@ Findings: CRITICAL {n} · HIGH {n} · MEDIUM {n} · LOW {n}
 
 ## Recommended Next Step
 
-[Copy-paste handoff. Advisory only, never auto-trigger. Emit `text` block: L1 `Create issues: Suggested Issues rows {rows to file}`; L2 `{command} {new issue for that row}`; L3 `Brief: {row title, report link — 1-2 lines}`. **If** none → `None`.]
+[Copy-paste handoff. Advisory only, never auto-trigger. Emit `text` block: L1 `Create issues: Suggested Issues rows {rows to file}, bodies per .bkit/trackers.md § Issue shapes, each with **Audit reports:** {report path} (findings {row's IDs})`; L2 `{command} {new issue for that row}`; L3 `Brief: {row title, report link — 1-2 lines}`. **If** none → `None`.]
 ```
 
 > ⛔ **STOP after generating audit report and producing output. Do not code or apply fixes.**

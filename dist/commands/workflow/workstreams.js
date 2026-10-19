@@ -70,7 +70,7 @@ export function parseWorkstreams(md) {
 }
 /** `[]` or `[WS-1, WS-2]`. */
 export const requiresList = (w) => `[${w.requires.join(", ")}]`;
-/** The Step 11 comment: one line per workstream, then the design doc link. */
+/** The Step 11 comment: one line per workstream, the issue-body line, then the design doc link. */
 export function commentBody(ws, opts) {
     const doc = `docs/plans/${opts.month}/${opts.fid}-design.md`;
     return [
@@ -78,6 +78,7 @@ export function commentBody(ws, opts) {
         "### Step 11 — Suggested Workstreams",
         "Advisory only. NEVER auto-trigger.",
         ...ws.map((w) => `- ${w.id}: ${w.name}. Requires: ${requiresList(w)}`),
+        `Filing one issue per workstream: put \`**Parent design:** [${opts.fid}-design.md](${doc})\` in its body, and list the issues it requires in a blocked-by block (.bkit/trackers.md § Issue shapes).`,
         `[${doc}](https://github.com/${opts.ownerRepo}/blob/dev/${doc})`,
     ].join("\n");
 }

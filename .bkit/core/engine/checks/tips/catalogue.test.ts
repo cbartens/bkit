@@ -178,6 +178,15 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("gh-mcp").fires(cwd)).toBe(false);
   });
 
+  it("issue-forms fires only for the GitHub tracker with no issue template folder", () => {
+    pkg({ issueTracker: "linear" });
+    expect(tip("issue-forms").fires(cwd)).toBe(false);
+    pkg({ issueTracker: "github" });
+    expect(tip("issue-forms").fires(cwd)).toBe(true);
+    write(".github/ISSUE_TEMPLATE/bug_report.md");
+    expect(tip("issue-forms").fires(cwd)).toBe(false);
+  });
+
   it("direnv stays quiet until .bkit/.env exists", () => {
     vi.stubEnv("CI", "");
     vi.stubEnv("CLAUDE_CODE_REMOTE", "");

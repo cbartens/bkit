@@ -168,6 +168,8 @@ Adopt the [templates](#templates) you want from `.bkit/templates/`, open an issu
 /bkit-design ISSUE-123
 ```
 
+Already know exactly what to build? Start at `/bkit-plan`. Something broken? `/bkit-debug` if a test already fails, `/bkit-build` if not.
+
 Full install, upgrade and CI setup: [`.bkit/install.md`](.bkit/install.md). Tracker labels and environment variables: [`.bkit/README.md`](.bkit/README.md#prerequisites).
 
 <a id="audits"></a>
@@ -265,6 +267,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 ### Your tracker is the control panel
 
 - **Every run lives on the tracker issue.** bkit reads the tracker issue (e.g. GitHub, Linear), posts progress as it goes, moves the issue along and links the pull request.
+- **Issues that start the right step.** Optional issue forms for a new idea, a well-defined change or a bug ask for what the agents read first, and each names the command to run next. A well-defined change can be the plan itself: what done looks like, the tests and the tasks.
 - **It tells you what to work on next.** `@bkit-utility-update-roadmap` reads your board and the open known bugs and postponed work from the ledgers, then writes a ranked shortlist into `docs/roadmap.md`.
 - **See it live:** [bkit's own board](https://github.com/users/cbartens/projects/1/views/1), and the shortlist bkit ranked from it in [`docs/roadmap.md`](docs/roadmap.md).
 

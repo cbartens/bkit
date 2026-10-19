@@ -30,6 +30,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Cloud-agent workflow + SessionStart hook | CI result starts a cloud agent: ship on green, debug on red; hook installs the cloud toolchain. | Every next step needs a local session. |
 | Context-fetch blocks | `/bkit-debug` reads real CI logs, runtime errors and web results. | Debug guesses from code; real errors stay hidden. |
 | Secrets sync | One local file → every secret store; proves copies match without printing values. | Hand-copied secrets drift: "works for me, broken in production". |
+| Issue forms | Three forms (idea, well-defined change, bug) asking for what design, plan / build and debug read first. | Issues arrive as a title and a line; agents guess at scope, "done" and repro steps. |
 | graphify | Code map (`docs/capabilities.md`) agents check before building something again. | Agents rediscover structure each run; ripple effects missed. |
 | Dependabot / Renovate | Small grouped update PRs; pinned Actions; security fixes skip the queue. | Updates pile into one large risky upgrade. |
 | Trivy | Fails CI on a known-vulnerable package in any language, a risky container or cluster setting, or a committed secret; a daily run catches advisories with no fix yet. | A vulnerable package or leaked key merges unnoticed; an advisory with no fixed release never shows up anywhere. |
@@ -59,6 +60,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Dependabot | `.bkit/templates/.github/dependabot.yml` | `.github/dependabot.yml` | that file |
 | Trivy | `.bkit/templates/.github/workflows/bkit-trivy.yml` | `.github/workflows/bkit-trivy.yml` | that file; `.trivyignore.yaml` once you accept a finding |
 | Serena | `.bkit/templates/scripts/serena/`, `.bkit/templates/.serena/project.yml` | `scripts/serena/`, `.serena/project.yml`, merge `bkit-serena.mcp.json` into `.mcp.json` | `project.yml` only |
+| Issue forms | `.bkit/templates/.github/ISSUE_TEMPLATE/` | `.github/ISSUE_TEMPLATE/` | the forms you use |
 | graphify | `.bkit/templates/scripts/graphify/`, `.bkit/templates/.graphifyignore`, `.bkit/templates/docs/capabilities.md` | same paths at the repo root | `docs/capabilities.md` |
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
@@ -393,6 +395,24 @@ PyPI name `serena-agent`, CLI `serena`. PyPI `serena` is an unrelated package.
 - Serena line numbers are 0-based → add 1 before citing `file:line`.
 - Small / empty answer for an exported symbol = query did not resolve, not "nothing uses it" → corroborate with text search.
 - pnpm monorepo: cross-package references need `composite` + `references` in TypeScript project graph before language server follows them.
+
+## Issue forms — `.github/ISSUE_TEMPLATE/`
+
+Issues are the first input every workflow reads. One form per way work starts; each form's intro names its next command. Section names, syntax and machine-read lines: `.bkit/trackers.md` § Issue shapes. GitHub tracker ONLY (Linear has its own templates). Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
+
+<!-- prettier-ignore -->
+| Form | Use when | Next step | Asks for |
+| --- | --- | --- | --- |
+| `bkit-idea.yml` | How it should work is still open | `/bkit-design #N` | problem, outcome, success criteria, constraints and non-goals, decisions already made, open questions |
+| `bkit-change.yml` | What to build and "done" are known | `/bkit-plan #N`, or `/bkit-build #N` / `lite:build` with no plan | the plan in short: narrative, success criteria, edge cases, test matrix, tasks with `Done when` + `Test first`, breaking changes and names, out of scope |
+| `bkit-bug.yml` | Something does not work | a test or CI run already fails → `/bkit-debug #N`; nothing fails yet → `/bkit-build #N` | failing test or CI run, what happened, what should, repro steps, how often, affected area, where and when, evidence |
+
+- Every form ends with References. The change form shows the lines workflows read: `**Parent design:**` and `**Audit reports:**` (plan), the blocked-by block (build). Other references are not fetched; write exact paths, ledger `key`s and `#N — title`.
+- A change issue is the plan's source when no design or audit report exists: its narrative, success criteria, edge cases, test rows and tasks carry over verbatim. A build with no plan reads the tasks as a guide only: test-first is not enforced and nothing ticks the boxes.
+- Debug commits to the branch it runs on: start it on the branch the fix lands on.
+- Copy the folder, commit on the default branch; GitHub reads forms from there only. Blank issues stay enabled.
+- `labels:` applies `enhancement` / `bug` only when the repo has them; missing labels are skipped, never created. Never add `bkit:*` labels: workflows own them.
+- Existing forms → copy only the `bkit-*` files you want; names never collide.
 
 ## graphify — map
 

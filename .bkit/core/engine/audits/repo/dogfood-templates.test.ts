@@ -250,6 +250,9 @@ const ADOPTED: Record<string, Entry> = {
     ],
   },
   ".github/dependabot.yml": { status: "not-adopted", what: "this repo uses Renovate" },
+  ".github/ISSUE_TEMPLATE/bkit-idea.yml": identical,
+  ".github/ISSUE_TEMPLATE/bkit-change.yml": identical,
+  ".github/ISSUE_TEMPLATE/bkit-bug.yml": identical,
   ".husky/pre-commit": {
     status: "adopted",
     edits: [

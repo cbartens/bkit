@@ -75,7 +75,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Design Alignment
 
-[Summarise: plan `Narrative` and `Success Criteria` match the design doc verbatim? Plan scope within design scope?; initially set to `PENDING`.]
+[Summarise: plan `Narrative` and `Success Criteria` match the design doc verbatim (no design → the issue's)? Plan scope within design scope (no design → the issue's)?; initially set to `PENDING`.]
 
 ## Deferred & Out-of-Scope
 

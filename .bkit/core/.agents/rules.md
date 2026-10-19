@@ -73,7 +73,7 @@
 - **Tracker MCPs:** Issue reads / updates via configured MCP ONLY; use CLI / HTTP shell-outs as backup / fallback ONLY.
 - **Tracker comments:** NEVER mention @claude or @cursor in comment body.
 - **Tracker context cut:** Use `###### bkit:ignore-earlier` on its own line in issue bodies or comments to drop all earlier content from workflow inputs; ALWAYS requires human confirmation; NEVER include unprompted in any output.
-- **Tracker issue creation:** NEVER create issues yourself; ONLY suggest; create ONLY after explicit human confirmation.
+- **Tracker issue creation:** NEVER create issues yourself; ONLY suggest; create ONLY after explicit human confirmation; body per `.bkit/trackers.md` § Issue shapes.
 - **Tracker issue settings:** Title MAX 70 characters or two lines on mobile; ALWAYS set labels, project, priority, size, and milestone; check similar issues if unclear.
 - **Tracker issue mentions:** NEVER mention issue IDs on their own; ALWAYS mention issue IDs together with their title and URL.
 - **Tracker work comments:** ANY issues worked on outside `/bkit-*` workflows → post ONE comment per landed unit (commit / PR / blocked stop) with outcome / links only; NEVER paste diffs / restate code.

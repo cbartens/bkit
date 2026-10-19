@@ -39,6 +39,16 @@ Throughout: workflows hold `.lock`, write `status.jsonl` (resume SoT), own track
 | Debug | `/bkit-debug` | 10 | Remediation commit on feature branch | No |
 | Ship | `/bkit-ship` | 13 | Squash-merged PR, issue `In Review` + `bkit:merged` (plans stay canonical at `docs/plans/{YYYYMM}/`) | Yes |
 
+**Where an issue starts.** Issue body + comments = every workflow's first input; shapes and machine-read lines: `.bkit/trackers.md` § Issue shapes; example forms: `.bkit/templates.md` § Issue forms.
+
+<!-- prettier-ignore -->
+| Issue | Start with |
+| --- | --- |
+| Idea — how it should work still open | `/bkit-design` |
+| Change — what to build and "done" known | `/bkit-plan`; or `/bkit-build` / `lite:build` with no plan (issue = plan; test-first written, not enforced) |
+| Bug — a test or CI run already fails | `/bkit-debug`, on the branch the fix lands on |
+| Bug — nothing fails yet | `/bkit-build` (reproducing test first) |
+
 **Per-step detail, verdict routing, retry / timeout constants, label flips, status.jsonl shape, comment lifecycle:** `.bkit/workflows.md`.
 
 **Per-subagent scope, effort tier, tool surface, `maxTurns`, model assignment:** `.bkit/prompts.md`.
@@ -54,7 +64,7 @@ No `/bkit-audit` command and no phase label. More than 30 procedures ship as `do
 | --- | --- |
 | Report | `docs/audits/{YYYYMM}/{slug}.md`. `{slug}` = template basename without `bkit-audit-`. Same slug already in that month → `{slug}-{TIMESTAMP}.md` (`date -u +%Y%m%dT%H%M%SZ`). Never overwrite. |
 | Writes | The report (template through `bkit:end`) and that template's `Project Instructions` below `bkit:end`. Product code, config, and other docs stay untouched. Fixing findings starts at `/bkit-plan`. |
-| Plan input | `/bkit-plan` takes a design doc, one or more reports, or both. The session prompt or issue names which findings to plan (for example only `CRITICAL` and `HIGH`). The rest of each report stays context. |
+| Plan input | `/bkit-plan` takes a design doc, one or more reports, or both. The issue names a report with an `**Audit reports:**` line; the session prompt or issue names which findings to plan (for example only `CRITICAL` and `HIGH`). The rest of each report stays context. |
 
 Each template's `Purpose` is its scope. Main ones: security, privacy, accessibility, architecture, performance, reliability, testing, database, LLM, cost. Full catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
 

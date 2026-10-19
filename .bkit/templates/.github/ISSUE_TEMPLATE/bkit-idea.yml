@@ -1,0 +1,56 @@
+# Example issue form. Copy the ISSUE_TEMPLATE folder to `.github/ISSUE_TEMPLATE/` and own it.
+# bkit install does not write this file and does not overwrite a copy.
+# Shape and reference lines: .bkit/trackers.md § Issue shapes.
+name: New idea or problem
+description: Something to build where how it should work is still open. Starts with a design.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Next step: `/bkit-design #<issue number>`. Design asks only what this issue leaves open, so every decision you settle here is one question fewer. Keep the title short: it names the feature folder and is not read as input.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who hits it, when, and what it costs them today. Write it so it stands on its own without the title.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: Who uses it, what they do, and what they get back, from their side.
+    validations:
+      required: true
+  - type: textarea
+    id: success-criteria
+    attributes:
+      label: Success criteria
+      description: Up to five outcomes you could measure. Outcomes, not steps.
+      placeholder: |
+        - A user who saves an item sees it in the list within 2s
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and non-goals
+      description: Hard limits (scale, stack, compatibility, cost) and what this is not.
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Decisions already made
+      description: Approaches chosen or ruled out, and trade-offs you would accept.
+  - type: textarea
+    id: open-questions
+    attributes:
+      label: Open questions
+      description: What you already know is undecided.
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Related issues with their title, earlier attempts, docs paths, ledger rows by `key`. Nothing fetches these, so write exact paths and keys agents can search for.
+      placeholder: |
+        Related: #<number> — <its title>
+        Docs: docs/architecture.md § Sync
+        Ledger: docs/decisions.jsonl key `offline-first-sync`

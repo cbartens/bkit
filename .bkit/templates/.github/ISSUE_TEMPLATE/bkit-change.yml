@@ -1,0 +1,90 @@
+# Example issue form. Copy the ISSUE_TEMPLATE folder to `.github/ISSUE_TEMPLATE/` and own it.
+# bkit install does not write this file and does not overwrite a copy.
+# Shape and reference lines: .bkit/trackers.md § Issue shapes.
+name: Well-defined change
+description: You know what to build and how to tell it is done. This issue is the plan.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Write this as the plan: a build with no plan builds from this issue.
+        - `/bkit-plan #<issue number>` turns it into a checked plan; the build then proves each **Test first** test fails before its code exists.
+        - `/bkit-build #<issue number>` (or `lite:build`) builds straight from this issue; tests are written first but not checked, and **Done when** guides rather than gates.
+
+        Keep the title short: it names the feature folder. Nothing ticks boxes in an issue.
+  - type: textarea
+    id: narrative
+    attributes:
+      label: Narrative
+      description: One or two sentences from the user's side. What they do and what they get back.
+    validations:
+      required: true
+  - type: textarea
+    id: success-criteria
+    attributes:
+      label: Success Criteria
+      description: Up to five outcomes you can observe that prove it works. Outcomes, not steps.
+      placeholder: |
+        - A user who saves an item sees it in the list within 2s
+    validations:
+      required: true
+  - type: textarea
+    id: edge-cases
+    attributes:
+      label: Edge Cases
+      description: Failures, conflicts and boundaries, and what should happen in each.
+      placeholder: |
+        | Scenario | Expected Behavior |
+        | --- | --- |
+        | Input is empty | Nothing is saved; the user sees why |
+  - type: textarea
+    id: tests
+    attributes:
+      label: Derived Test Matrix
+      description: |
+        One row per behaviour above, each covered by exactly one task. Type = the lowest tier that really exercises it, named as in `docs/testing.md`: Unit, Integration, E2E, @live (golden) or fresh-DB replay. The test must fail when the behaviour breaks.
+      placeholder: |
+        | Test description | Type | Target file |
+        | --- | --- | --- |
+        | Saved item appears in the list | E2E | `path/to/list.spec` |
+    validations:
+      required: true
+  - type: textarea
+    id: tasks
+    attributes:
+      label: Tasks
+      description: |
+        In build order, one line each, in exactly this shape. **Done when** = a check you can verify in the code (file exists, test passes, behaviour observable). **Test first** = the matrix test that fails before the code exists, as `` `test file` `test name` fails on what it asserts ``; or `n/a — reason` for docs, config, a pure refactor, or E2E / @live only.
+      placeholder: |
+        - [ ] **Task 1:** What changes. **Done when:** what you can check. **Test first:** `path/to/list.test` `rejects an empty name` fails on the thrown error.
+    validations:
+      required: true
+  - type: textarea
+    id: open-questions
+    attributes:
+      label: Open Questions & Assumptions
+      description: Each with its options, your recommendation, and the default if nobody answers.
+  - type: textarea
+    id: breaking-changes
+    attributes:
+      label: Breaking Changes & Naming
+      description: Anything renamed or removed (files, commands, routes, settings, data fields), and new names to agree on.
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of Scope
+      description: Nearby work this change must not do, and where it belongs instead.
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: |
+        The plan reads `**Parent design:**` and `**Audit reports:**` lines; the build refuses to start while an issue in the blocked-by block is open. Write them exactly as shown. Other references are not fetched, so use exact paths, ledger `key`s and issue numbers with titles.
+      placeholder: |
+        **Parent design:** [42-offline-sync-design.md](docs/plans/202610/42-offline-sync-design.md)
+        **Audit reports:** docs/audits/202610/security.md (findings security-3, security-5)
+        ###### bkit:blocked-by start
+        - #<number>
+        ###### bkit:blocked-by end
+        Related: #<number> — <its title>

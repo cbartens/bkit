@@ -3,7 +3,7 @@
 {{BKIT_MANAGED_MARKER}}
 
 > [!CAUTION]
-> **Purpose:** Reference for inline tracker-block model in `.bkit/core/workflows/bkit-*.md` and `.bkit/core/prompts/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents marker contract + cross-cutting per-tracker conventions only.
+> **Purpose:** Reference for inline tracker-block model in `.bkit/core/workflows/bkit-*.md` and `.bkit/core/prompts/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents marker contract, cross-cutting per-tracker conventions, and the issue shapes workflows read (§ Issue shapes).
 >
 > **Rules:**
 >
@@ -85,6 +85,52 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | `pr-body-marker` | Literal PR-body marker line | `<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:fid={FID} -->` |
 
 Phase-label set + additive-label semantics: `.bkit/workflows.md` § Tracker Integration.
+
+## Issue shapes
+
+Workflows read issue body + comments (`bkit issues text`), never title (title → FID slug only). Three shapes; human-filed via example forms (`.bkit/templates.md` § Issue forms); agent-drafted issues (human-confirmed only, `.agents/rules.md` § Tracker issue creation) use same section names as `###` headings.
+
+<!-- prettier-ignore -->
+| Shape | When | Next command | Sections (**required**) |
+| --- | --- | --- | --- |
+| idea | how it should work still open | `/bkit-design #N` | **Problem**, **Outcome**, Success criteria, Constraints and non-goals, Decisions already made, Open questions, References |
+| change | what to build + how to tell done both known | `/bkit-plan #N`; or `/bkit-build #N` / `lite:build` straight from issue | **Narrative**, **Success Criteria**, Edge Cases, **Derived Test Matrix**, **Tasks**, Open Questions & Assumptions, Breaking Changes & Naming, Out of Scope, References |
+| bug | worked / should work, does not | test or CI run already fails → `/bkit-debug #N` on branch fix lands on (`[soak]` if intermittent); nothing fails → `/bkit-build #N` (repro test first) | **Failing test or CI run** (`none yet` allowed), **What happened**, **What should happen**, **Steps to reproduce**, How often, Affected area, Where and when, Evidence, References |
+
+**Change shape syntax** (plan keeps it, `docs/templates/bkit-plan.md` § Spec):
+
+- Success Criteria: ≤5 observable outcome bullets.
+- Edge Cases: `| Scenario | Expected Behavior |`.
+- Derived Test Matrix: `| Test description | Type | Target file |`; Type = lowest tier that exercises it, named per `docs/testing.md`; every row covered by exactly one task.
+- Tasks, build order, one line each; `n/a — {reason}` for docs, config, pure refactor, or E2E / @live only:
+
+  ```text
+  - [ ] **Task N:** {change}. **Done when:** {verifiable check}. **Test first:** `{test file}` `{test name}` fails on {assertion}.
+  ```
+
+- Build with no plan reads Tasks as guide only: test-first not enforced, Done when not gated. Nothing ticks issue boxes.
+
+**Machine-read lines** — exact syntax, anywhere in body; nothing else in References is fetched:
+
+<!-- prettier-ignore -->
+| Line | Read by | Effect |
+| --- | --- | --- |
+| `**Parent design:** [{FID}-design.md](docs/plans/{YYYYMM}/{FID}-design.md)` | plan Step 1 | sets `PARENT_FID` → design = spec source |
+| `**Audit reports:** docs/audits/{YYYYMM}/{slug}.md (findings {ids})` | plan Step 1 | each path → `AUDIT_PATHS`; path not a file → Failure Path |
+| `###### bkit:blocked-by start` · `- #{N}` per line · `###### bkit:blocked-by end` | build `issue-blockers-check` (github; linear → native relations) | any listed issue open → build stops |
+| `###### bkit:ignore-earlier` | `bkit issues text` | drops all earlier content; human-placed only |
+| `###### bkit:generated` (comment first line) | `bkit issues text` | comment dropped from input |
+
+**References** — exact strings agents can search: issue `#N — {title}` (linear `TEAM-N — {title}`); doc `{path} § {section}`; ledger row `docs/{ledger}.jsonl` key `` `{key}` ``. Labels: type label only (`enhancement` / `bug`); never phase or `bkit:*` labels — workflows set them (`.bkit/workflows.md` § Tracker Integration).
+
+**Drafting from bkit output** (suggest only; file after human confirmation):
+
+<!-- prettier-ignore -->
+| Source | Shape | Carry |
+| --- | --- | --- |
+| audit `Suggested Issues` row | by `Next Step`: `/bkit-design` → idea; `/bkit-plan`, `/bkit-build`, `lite:build` → change; `/bkit-debug`, `lite:debug` → bug; `manual` → plain task | `**Audit reports:**` line with row's finding IDs |
+| design `Suggested Workstreams` (2+; design summary asks) | title = workstream name; body = its scope, spec left to design; filed in `Requires` order | `**Parent design:**` line; blocked-by block = issues filed for its `Requires` (linear → `blockedBy` relation) |
+| roadmap item with no issue (ledger row, audit candidate) | by recommended command, as audit row | ledger `key` / report path in References |
 
 ## github — Projects v2 board (optional)
 

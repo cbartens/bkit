@@ -300,6 +300,17 @@ export const SETUP_TIPS: readonly SetupTip[] = [
 
   // --- optional: nice to have ------------------------------------------------------------
   {
+    id: "issue-forms",
+    workflows: ["design", "plan", "debug"],
+    title: "Issue forms",
+    line: "Optional: add issue forms so every new issue asks for what the agent reads first.",
+    why: "Each workflow starts from the issue. A form for an idea, a well-defined change or a bug asks for the problem, what done looks like, or the steps to reproduce. Without one, issues often arrive as a title and a line, and the agent has to guess.",
+    ask: "Copy .bkit/templates/.github/ISSUE_TEMPLATE/ to .github/ISSUE_TEMPLATE/ and commit it to the default branch.",
+    steps: "`.bkit/templates.md` § Issue forms.",
+    fires: (cwd) =>
+      readBkitConfig(cwd).issueTracker === "github" && !exists(cwd, ".github/ISSUE_TEMPLATE"),
+  },
+  {
     id: "graphify",
     workflows: ["design", "plan", "audit"],
     title: "A map of the code",
