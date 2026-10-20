@@ -148,19 +148,21 @@ describe("bkit issues text", () => {
 describe("bkit issues labels", () => {
   const labels = (cwd: string, ...args: string[]) => run(cwd, ["issues", "labels", ...args]);
 
-  it("a new phase drops the old phase and keeps additive and foreign labels", async () => {
+  it("a new phase drops the old phase, next:* and bkit:failed, keeps bkit:auto and foreign labels", async () => {
     const r = await labels(
       dir(),
       "--label=bug",
       "--label=bkit:design",
       "--label=bkit:auto",
       "--label=bkit:failed",
+      "--label=next:plan:lite",
+      "--label=nextjs",
       "--phase=plan",
     );
     expect(r.json).toEqual({
       add: ["bkit:plan"],
-      remove: ["bkit:design"],
-      labels: ["bug", "bkit:auto", "bkit:failed", "bkit:plan"],
+      remove: ["bkit:design", "next:plan:lite", "bkit:failed"],
+      labels: ["bug", "bkit:auto", "nextjs", "bkit:plan"],
       changed: true,
       autoRouteSuffix: " bkit [auto route]",
       linearState: "In Progress",
@@ -179,13 +181,22 @@ describe("bkit issues labels", () => {
     });
   });
 
-  it("bkit:debug is additive: debug on keeps the phase label", async () => {
-    const r = await labels(dir(), "--label=bkit:build", "--debug=on");
+  it("debug is a phase: it replaces the phase it debugs and clears bkit:failed", async () => {
+    const r = await labels(dir(), "--label=bkit:build", "--label=bkit:failed", "--phase=debug");
     expect(r.json).toMatchObject({
       add: ["bkit:debug"],
+      remove: ["bkit:build", "bkit:failed"],
+      labels: ["bkit:debug"],
+      linearState: "In Progress",
+    });
+    expect(transitionLabels(["bkit:debug"], { phase: "ship" }).labels).toEqual(["bkit:ship"]);
+  });
+
+  it("a Failure Path keeps the phase label and next:* is left alone without a phase", () => {
+    expect(transitionLabels(["bkit:build", "next:ship"], { failed: true })).toEqual({
+      add: ["bkit:failed"],
       remove: [],
-      labels: ["bkit:build", "bkit:debug"],
-      linearState: "In Review",
+      labels: ["bkit:build", "next:ship", "bkit:failed"],
     });
   });
 
@@ -215,6 +226,7 @@ describe("bkit issues labels", () => {
       linearState: "In Review",
     });
     expect((await labels(dir(), "--phase=merged", "--failed=on")).code).toBe(2);
+    expect((await labels(dir(), "--phase=build", "--failed=on")).code).toBe(2);
   });
 
   it("autoRouteSuffix follows an exact bkit:auto label, with or without a transition", async () => {
@@ -228,7 +240,7 @@ describe("bkit issues labels", () => {
   });
 
   it("refuses an unknown phase or on/off value", async () => {
-    expect((await labels(dir(), "--phase=debug")).code).toBe(2);
+    expect((await labels(dir(), "--phase=lite")).code).toBe(2);
     expect((await labels(dir(), "--failed=yes")).code).toBe(2);
     expect((await labels(dir(), "--board=done")).code).toBe(2);
   });

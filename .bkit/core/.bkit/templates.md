@@ -441,11 +441,11 @@ Issues are the first input every workflow reads. One form per way work starts; e
 | Form | Use when | Next step | Asks for |
 | --- | --- | --- | --- |
 | `bkit-idea.yml` | How it should work is still open | `/bkit-design #N` | problem, outcome, success criteria, constraints and non-goals, decisions already made, open questions |
-| `bkit-change.yml` | What to build and "done" are known | `/bkit-plan #N`, or `/bkit-build #N` / `lite:build` with no plan | the plan in short: narrative, success criteria, edge cases, test matrix, tasks with `Done when` + `Test first`, breaking changes and names, out of scope |
+| `bkit-change.yml` | What to build and "done" are known | `/bkit-plan #N`, or `/bkit-build #N` / `build:lite` with no plan | the plan in short: narrative, success criteria, edge cases, test matrix, tasks with `Done when` + `Test first`, breaking changes and names, out of scope |
 | `bkit-bug.yml` | Something does not work | a test or CI run already fails → `/bkit-debug #N`; nothing fails yet → `/bkit-debug #N [repro]` | failing test or CI run, what happened, what should, repro steps, how often, affected area, where and when, evidence |
 
 - Every form ends with References. The change form shows the lines workflows read: `**Parent design:**` and `**Audit reports:**` (plan), the blocked-by block (build). Other references are not fetched; write exact paths, ledger `key`s and `#N — title`.
-- A change issue is the plan's source when no design or audit report exists: its narrative, success criteria, edge cases, test rows and tasks carry over verbatim. `/bkit-build` with no plan builds those tasks and checks each `Test first` test failed before its code; `lite:build` checks nothing. Nothing ticks the boxes.
+- A change issue is the plan's source when no design or audit report exists: its narrative, success criteria, edge cases, test rows and tasks carry over verbatim. `/bkit-build` with no plan builds those tasks and checks each `Test first` test failed before its code; `build:lite` checks nothing. Nothing ticks the boxes.
 - Debug commits to the branch it runs on: start it on the branch the fix lands on.
 - Copy the folder, commit on the default branch; GitHub reads forms from there only. Blank issues stay enabled.
 - `labels:` applies `enhancement` / `bug` only when the repo has them; missing labels are skipped, never created. Never add `bkit:*` labels: workflows own them.

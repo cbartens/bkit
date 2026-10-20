@@ -94,7 +94,7 @@ Everything a senior team would otherwise write down over years, in files you can
 | Build it | [`/bkit-build`](.bkit/pipeline.md#bkit-build) | Checks the plan still matches the code, writes each task's tests before its code, verifies every task, hunts for bugs and security holes, adds edge-case tests and opens a pull request. |
 | Fix what broke | [`/bkit-debug`](.bkit/pipeline.md#bkit-debug) | Pulls evidence from CI and your platforms, fixes the root cause, re-tests and records the lesson. Hard runtime bugs get their own mode; if it can't fix something, it stops and writes you a clear handover. |
 | Ship it | [`/bkit-ship`](.bkit/pipeline.md#bkit-ship) | Checks nothing planned was quietly dropped, waits for every test lane to pass, merges into `dev` and updates the docs. |
-| Small, clearly safe change | [`lite:*`](.bkit/lite.md) | One prompt to paste per phase (`lite:design` to `lite:ship`). The agent keeps only the steps and reviewers the change needs and works on the current branch: no separate repo copy, pull request, CI or sign-off stops. Never for schema changes, public APIs, dependencies, secrets, auth or large refactors. |
+| Small, clearly safe change | [`*:lite`](.bkit/lite.md) | One prompt to paste per phase (`design:lite` to `ship:lite`). The agent keeps only the steps and reviewers the change needs and works on the current branch: no separate repo copy, pull request, CI or sign-off stops. Never for schema changes, public APIs, dependencies, secrets, auth or large refactors. |
 | Health check | [35 audits](#audits) | One specialist checklist per area. Findings feed straight into `/bkit-plan`. |
 | Housekeeping | 7 utility agents | Keep docs, decisions, lessons and known bugs current, and rank what to work on next. |
 

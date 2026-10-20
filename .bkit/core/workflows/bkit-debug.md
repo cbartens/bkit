@@ -29,14 +29,14 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 <!-- bkit:tracker github start -->
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; never gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists). `bkit issues labels` computes each transition; MCP writes it.
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new; a phase start also drops every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
 > - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking not required.
 
 <!-- bkit:tracker github end -->
 <!-- bkit:tracker linear start -->
 
 > - **Tracker:** Linear via MCP server `linear` (configured in `.mcp.json` `mcpServers.linear`). Tool names: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all `save_*` writes best-effort; never gate. **If** failure → retry once after 5s, then continue. `save_issue` always includes `id`.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists). `bkit issues labels` computes each transition; MCP writes it.
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new; a phase start also drops every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
 > - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id` — creates new comment) before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. No edit-in-place.
 
 <!-- bkit:tracker linear end -->
@@ -185,9 +185,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{LINEAR_STATE}", labels: [{LABELS}] })`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
-   `{LABELS}` = entries of `labels`, `{LINEAR_STATE}` = `linearState`, `{BOARD}` = `board`, printed by (`{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry; adds `bkit:debug`, clears `bkit:failed`, phase label persists):
+   `{LABELS}` = entries of `labels`, `{LINEAR_STATE}` = `linearState`, `{BOARD}` = `board`, printed by (`{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry; sets phase `bkit:debug`, drops prior phase label, `next:*`, `bkit:failed`):
    ```bash
-   "{BKIT}" issues labels {LABEL_FLAGS} --failed=off --debug=on --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO}
+   "{BKIT}" issues labels --phase=debug --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}
    ```
    <!-- bkit:tracker true end -->
 10. <!-- bkit:tracker true start -->
@@ -212,7 +212,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 <!-- bkit:tracker true start -->
 
-- [ ] Issue update attempted (additive label `bkit:debug`, `bkit:failed` cleared, board / state per `bkit issues labels`)
+- [ ] Issue update attempted (phase label `bkit:debug`, `next:*` and `bkit:failed` cleared, board / state per `bkit issues labels`)
 
 <!-- bkit:tracker true end -->
 
@@ -687,7 +687,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 <!-- bkit:tracker true start -->
 
 - [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
-- [ ] Issue update attempted (status / state `In Review`, phase label and `bkit:debug` unchanged)
+- [ ] Issue update attempted (status / state `In Review`, phase label `bkit:debug` unchanged)
 - [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue)
 - [ ] Artifact link list and telemetry report embedded in `Step 11` comment
 

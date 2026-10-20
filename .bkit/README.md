@@ -45,7 +45,7 @@ Throughout: workflows hold `.lock`, write `status.jsonl` (resume SoT), own track
 | Issue | Start with |
 | --- | --- |
 | Idea — how it should work still open | `/bkit-design` |
-| Change — what to build and "done" known | `/bkit-plan`; or `/bkit-build` / `lite:build` with no plan (issue = plan; `/bkit-build` checks each `Test first` red, `lite:build` does not) |
+| Change — what to build and "done" known | `/bkit-plan`; or `/bkit-build` / `build:lite` with no plan (issue = plan; `/bkit-build` checks each `Test first` red, `build:lite` does not) |
 | Bug — a test or CI run already fails | `/bkit-debug`, on the branch the fix lands on |
 | Bug — nothing fails yet | `/bkit-debug [repro]` (writes a failing test first, then fixes) |
 

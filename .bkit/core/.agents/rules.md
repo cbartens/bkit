@@ -75,6 +75,9 @@
 - **Tracker comments:** NEVER mention @claude or @cursor in comment body.
 - **Tracker context cut:** Use `###### bkit:ignore-earlier` on its own line in issue bodies or comments to drop all earlier content from workflow inputs; ALWAYS requires human confirmation; NEVER include unprompted in any output.
 - **Tracker issue creation:** NEVER create issues yourself; ONLY suggest; create ONLY after explicit human confirmation; body per `.bkit/trackers.md` § Issue shapes.
+- **Tracker workflow labels:** Add `bkit:design` / `bkit:plan` / `bkit:build` / `bkit:debug` / `bkit:ship` ONLY when issue starts that workflow (full or lite); mutually exclusive — next workflow start drops previous; `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. NEVER add by hand to signal intent; use `next:*`.
+- **Tracker failure label:** Any workflow Failure Path → add `bkit:failed` alongside workflow label.
+- **Tracker next labels:** Issue without workflow label → ALWAYS exactly one `next:design` / `next:plan` / `next:build` / `next:debug` / `next:ship`; append `:lite` for lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. NEVER alongside workflow label.
 - **Tracker issue settings:** Title MAX 70 characters or two lines on mobile; ALWAYS set labels, project, priority, size, and milestone; check similar issues if unclear.
 - **Tracker issue mentions:** NEVER mention issue IDs on their own; ALWAYS mention issue IDs together with their title and URL.
 - **Tracker work comments:** ANY issues worked on outside `/bkit-*` workflows → post ONE comment per landed unit (commit / PR / blocked stop) with outcome / links only; NEVER paste diffs / restate code.

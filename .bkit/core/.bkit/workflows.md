@@ -232,7 +232,7 @@ Caution-block bullets of the 6 workflow files, in file order. Every bullet carri
 | **Worktrees** | design, plan, build, debug, ship | Mint mode → `.worktrees/{FID}`, else adopt the current branch in place (debug never creates a branch); cwd persists; `pwd` != `{WORKTREE_PATH}` → **Failure Path**. |
 | **gh MCP fallback** | design, plan, build, debug, ship | `gh` primary for PR / CI / merge; exit 80 or `runtimeGithubCli` = false → mapped MCP tool, recorded with `bkit prs transport-row`; tracker calls stay on MCP. One identical line in all five. |
 | **External tools** | auto | `gh` reads the PR and its CI run inside `bkit runs context`; exit 80 → **Failure Path**; tracker calls stay on MCP. |
-| **Tracker** / **Labels** / **Comments** | all 6, once per tracker block | Tracker MCP tools; writes best-effort, retry once after 5s. Phase labels mutually exclusive; `bkit:auto`, `bkit:failed`, `bkit:debug` additive (§ Tracker Integration). Post the `comment` a step's `bkit` block prints as a new comment before its gate; every gate includes `Issue comment attempted (Step N section)` without listing it; never edit prior content (§ Comment Lifecycle). |
+| **Tracker** / **Labels** / **Comments** | all 6, once per tracker block | Tracker MCP tools; writes best-effort, retry once after 5s. Phase labels mutually exclusive; a phase start drops `next:*` and `bkit:failed`; `bkit:auto`, `bkit:failed` additive (§ Tracker Integration). Post the `comment` a step's `bkit` block prints as a new comment before its gate; every gate includes `Issue comment attempted (Step N section)` without listing it; never edit prior content (§ Comment Lifecycle). |
 | **Timeouts** | all 6 | Workflow or subagent run > 3600 seconds → **Failure Path**. |
 | **Limits** | build, debug, ship | Attempt caps by name from `bkit counters max` / `bkit counters route --limit=`. |
 | **Modes** | debug | `PUSH_MODE` (`PR|LOCAL`) and `DEBUG_MODE` (`NORMAL|SOAK`), both set at Step 1. |
@@ -912,7 +912,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Pre-flight: `bkit repo info --fetch`. `bkit issues labels --failed=off --debug=on`: adds `bkit:debug` additively (prior phase label persists) and clears `bkit:failed`; state `In Progress`. PR-mode: `PR_NUMBER` → `PUSH_MODE`. `DEBUG_ATTEMPT` + `DEBUG_MODE` per Mode detection above. no commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
+| 1 — Start Workflow | — | Pre-flight: `bkit repo info --fetch`. `bkit issues labels --phase=debug`: sets `bkit:debug`, drops the prior phase label, `next:*` and `bkit:failed`; state `In Progress`. PR-mode: `PR_NUMBER` → `PUSH_MODE`. `DEBUG_ATTEMPT` + `DEBUG_MODE` per Mode detection above. no commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
 | 2 — Worktree Setup | — | Branch handling differs from feat workflows: debug MINTS NOTHING. Resume `.worktrees/{FID}` → else adopt an already-existing `feat/{FID}` (local or origin) into a worktree → else adopt the session's current branch in place (`WORKTREE_PATH=$REPO_ROOT`, no `git worktree add`, no `-b`), which is also the path taken when the session is already sitting on `feat/{FID}` (git refuses one branch in two worktrees). Branch eligibility: any branch but `main` — else Failure Path. `bkit worktrees setup` (no `--branch`, no `-b`; `main` → exit 7). Writes `debug-input-{DEBUG_ATTEMPT}.md` (failure description only — no workflow state). Persists `debugAttempt` / `debugMode` / `pushMode` (`bkit status meta`; `--soak-entry` when the run starts in SOAK). |
 | 3 — Run Tests | — | **LOOP HEAD (both modes).** `NORMAL_ATTEMPT` = this row's `attempt` (`steps done --attempt=next`). `bkit tests run` runs the deepest `bkit:gate:*` the consumer declares — descending `static-unit-integration-e2e-live`, `static-unit-integration-e2e`, `static-unit`; `[live=off]` drops the live candidate (§ Local gate scripts). Iteration 1 = reproduce. Records `verdict` + `failures` + `scope` (the gate script name; ends `:live` only when the live gate ran); writes the status row but does not commit it — a `chore(...)` HEAD here would let a preview host's `^chore:` ignore rule cancel the preview and demote CI to a partial tier, skipping the suites the loop is proving; `parentSha` advances transitively through Steps 4-7. PASS routes on active-run rows, not the attempt count: a fix step ran (`debug-failure-remediate` / `debug-failure-soak`, one `counters route --of=<step>,<step>:count`) → Step 9; Failure Reproduce ran, no fix since (reproduce tests passed on the re-run — intermittent) → Step 10 (CONCERNS); neither + `REPRO` → Step 4; neither → Step 10; FAIL + NORMAL + `NORMAL_ATTEMPT` <= `MAX_NORMAL_ATTEMPT` → Step 4; FAIL + NORMAL + exhausted → `bkit status meta --soak-entry --debug-mode=SOAK` (fresh `SOAK_ATTEMPT` budget) → Step 4; FAIL + SOAK + `SOAK_ATTEMPT` < `MAX_SOAK_ATTEMPT` → Step 4; else → Failure Path. |
 | 4 — Fetch Context | — | _(on FAIL with budget, or before Reproduce)_ Mode-agnostic. Every consumer `context-fetch` block (`bkit context list-blocks` → `run-block`, fenced + clamped) + a related-issues tracker search → per-context `context-*-{DEBUG_ATTEMPT}.md` written only when content exists; `bkit context finalise` → `FETCH_VERDICT`, `contextsConfigured`, `clamped`. Routes: PASS → Step 5; SOAK → Step 8; else → Step 6. |
@@ -1053,7 +1053,7 @@ Pluggable via `bkit install --tracker=<github|linear|none>`. Per-tracker MCP end
 
 ### Phase labels (mutually exclusive)
 
-Phase labels carry `bkit:` namespace — no consumer clash. Mutual exclusion in workflow code: drop prior phase label from `{LABELS}` before adding new.
+Phase labels carry `bkit:` namespace — no consumer clash. Mutual exclusion in workflow code: drop prior phase label from `{LABELS}` before adding new. A phase start also drops every `next:*` label (next best workflow for an issue no workflow has started) and `bkit:failed` (a new run supersedes the failed one).
 
 <!-- prettier-ignore -->
 | Label | Meaning |
@@ -1061,10 +1061,11 @@ Phase labels carry `bkit:` namespace — no consumer clash. Mutual exclusion in 
 | `bkit:design` | `/bkit-design` running |
 | `bkit:plan` | `/bkit-plan` running |
 | `bkit:build` | `/bkit-build` running |
+| `bkit:debug` | `/bkit-debug` running |
 | `bkit:ship` | `/bkit-ship` running |
 | `bkit:merged` | `/bkit-ship` completed; PR merged to `dev`; issue left **In Review** (open) — a human reviews post-merge and closes manually (bkit never auto-closes) |
 
-Phase label preserved through Close — tracker state (Linear "In Review", GitHub `open`) carries completion signal; label tells reviewers which workflow finished. Ship exception: Close swaps `bkit:ship` → `bkit:merged`.
+Phase label preserved through Close — tracker state (Linear "In Review", GitHub `open`) carries completion signal; label tells reviewers which workflow finished and names the next best one (`bkit:design` → plan, `bkit:plan` → build, `bkit:build` / `bkit:debug` → ship; with `bkit:failed` → debug). Ship exception: Close swaps `bkit:ship` → `bkit:merged`.
 
 ### Additive labels (do not drop phase)
 
@@ -1072,8 +1073,7 @@ Phase label preserved through Close — tracker state (Linear "In Review", GitHu
 | Label | Added by | When |
 | --- | --- | --- |
 | `bkit:auto` | Human (via tracker UI) at issue creation | Opt-in gate for `/bkit-auto` CI-mode (ship/debug) dispatch. Removed by any workflow that finds `bkit:auto` absent on the linked issue (kill-switch propagation). |
-| `bkit:failed` | Failure Path of any workflow | Workflow hit its Failure Path; human triage required. Phase label persists alongside, so reviewers see which workflow failed. Cleared when `/bkit-debug` Step 1 starts (debug entry supersedes the prior failure marker) and when `/bkit-ship` Step 15 adds `bkit:merged` (terminal success; `--phase=merged` implies `--failed=off`). |
-| `bkit:debug` | `/bkit-debug` Step 1 | `/bkit-debug` is running on top of a prior phase (typically `bkit:build` or `bkit:ship`). Prior phase label persists alongside, so reviewers see which workflow is being debugged. |
+| `bkit:failed` | Failure Path of any workflow | Workflow hit its Failure Path; human triage required. Phase label persists alongside, so reviewers see which workflow failed. Cleared by every phase start (`--phase=*` implies `--failed=off`), including `/bkit-debug` Step 1 and `/bkit-ship` Step 15 `bkit:merged`. |
 
 ### Tracker-specific state
 
@@ -1086,7 +1086,6 @@ Issue state semantics (Linear "In Progress" / "In Review" / "Done"; GitHub `open
 | `issue-update-review` | Close Workflow of `/bkit-design`, `/bkit-plan`, `/bkit-build`, `/bkit-debug`. Hand-off state (Linear "In Review"; GitHub no-op — phase label carries signal). |
 | `issue-update-merged` | `/bkit-ship` Step 15. Ship terminal — drop phase labels, add `bkit:merged`; Linear "In Review", GitHub left **open**. bkit never closes / never sets Done — a human closes on acceptance (merge != acceptance). |
 | `issue-update-failed` | Failure Path. Adds `bkit:failed` additive label. |
-| `issue-update-debug` | `/bkit-debug` Step 1. Adds `bkit:debug` additive label and clears `bkit:failed` (`bkit issues labels --failed=off --debug=on`). |
 | `issue-update-status` | Step 1 (design/plan/build/debug/ship) → "In progress"; phase Close (design/plan/build/debug) → "In review"; `/bkit-ship` Step 15 → "In review" (never "Done" — the board mirrors the issue, which stays open for human close). GitHub Projects v2 board (`bkit.githubProject`; skipped if unset/absent). Linear no-op (issue state already carries it). |
 
 ### Comment lifecycle
@@ -1377,17 +1376,17 @@ No phase needs a plan file. A missing plan is flagged, never fatal; only "nothin
 `bkit issues labels` does the label arithmetic and prints the full set; the tracker MCP call writes it (the command never touches the tracker). Pass each current label as `--label=`.
 
 ```text
-# Phase label (mutually exclusive — drops every other phase label, keeps additive and foreign ones):
-bkit issues labels --phase=<design|plan|build|ship|merged> --label=… → `labels` → `issue-update-phase` tracker snippet
+# Phase label (mutually exclusive — drops every other phase label, every next:* and bkit:failed; keeps bkit:auto and foreign ones):
+bkit issues labels --phase=<design|plan|build|debug|ship|merged> --label=… → `labels` → `issue-update-phase` tracker snippet
 
 # Additive label (phase label persists alongside):
-bkit issues labels --failed=on|off --debug=on|off --label=… → `labels` → `issue-update-failed` / `issue-update-debug` tracker snippet
+bkit issues labels --failed=on|off --label=… → `labels` → `issue-update-failed` tracker snippet
 
 # Auto-route marker (no transition flag needed):
 bkit issues labels --label=… → `autoRouteSuffix` → `AUTO_ROUTE_SUFFIX` in the fence that commits or dispatches
 ```
 
-Phase labels (`bkit:design`/`bkit:plan`/`bkit:build`/`bkit:ship`/`bkit:merged`) are mutually exclusive — drop old before adding new. Additive labels (`bkit:failed`, `bkit:debug`) skip the drop and live alongside the phase label; `bkit:debug` is never a phase. `bkit:failed` is additionally cleared by `/bkit-debug` Step 1 (`--failed=off --debug=on`) and `/bkit-ship` Step 15 (`--phase=merged`, which refuses `--failed=on`) so a successfully-recovered or shipped issue does not carry a stale Failure Path marker. `--board=progress|review` adds the Projects v2 payloads and `linearState`.
+Phase labels (`bkit:design`/`bkit:plan`/`bkit:build`/`bkit:debug`/`bkit:ship`/`bkit:merged`) are mutually exclusive — drop old before adding new. `--phase` also drops every `next:*` label and `bkit:failed` (refuses `--failed=on`), so a started issue carries no stale next-step hint or Failure Path marker. `bkit:failed` skips the drop on its own and lives alongside the phase label. `--board=progress|review` adds the Projects v2 payloads and `linearState`.
 
 ### Sub-plan loop discovery
 

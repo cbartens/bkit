@@ -125,7 +125,16 @@ function textVerb(ctx) {
 // labels
 // ---------------------------------------------------------------------------
 /** Mutually exclusive: setting one drops the others. */
-export const PHASE_LABELS = ["bkit:design", "bkit:plan", "bkit:build", "bkit:ship", "bkit:merged"];
+export const PHASE_LABELS = [
+    "bkit:design",
+    "bkit:plan",
+    "bkit:build",
+    "bkit:debug",
+    "bkit:ship",
+    "bkit:merged",
+];
+/** Prefix of the labels naming an issue's next best workflow; setting a phase drops them. */
+export const NEXT_LABEL_PREFIX = "next:";
 /** The issue label that opts a feature into CI auto-routing. */
 export const AUTO_LABEL = "bkit:auto";
 /** Commit-subject suffix the CI auto-route gate matches; carried only while the issue has `AUTO_LABEL`. */
@@ -145,12 +154,15 @@ export function transitionLabels(current, t) {
         for (const l of have)
             if (PHASE_LABELS.includes(l) && l !== label)
                 remove.add(l);
+        for (const l of have)
+            if (l.startsWith(NEXT_LABEL_PREFIX))
+                remove.add(l);
         want(label, true);
     }
-    if (t.failed !== undefined)
-        want("bkit:failed", t.failed);
-    if (t.debug !== undefined)
-        want("bkit:debug", t.debug);
+    // A phase starting supersedes any earlier Failure Path.
+    const failed = t.failed ?? (t.phase !== undefined ? false : undefined);
+    if (failed !== undefined)
+        want("bkit:failed", failed);
     return {
         add,
         remove: [...remove],
@@ -159,11 +171,11 @@ export function transitionLabels(current, t) {
 }
 /**
  * Linear's issue state for the same transition, as the workflows set it: a
- * shipped, failed or debugged issue waits on a human ("In Review"); a phase
+ * shipped or failed issue waits on a human ("In Review"); a phase
  * starting is "In Progress". Null when the transition sets no state.
  */
 export function linearState(t, board) {
-    if (t.phase === "merged" || t.failed === true || t.debug === true)
+    if (t.phase === "merged" || t.failed === true)
         return "In Review";
     if (t.phase !== undefined)
         return "In Progress";
@@ -253,21 +265,16 @@ function boardPayload(ctx, status) {
 function labelsVerb(ctx) {
     const phase = str(ctx.flags.phase);
     if (phase !== undefined && !PHASE_LABELS.includes(`bkit:${phase}`)) {
-        throw new CommandError(EXIT.USAGE, "--phase must be design, plan, build, ship, or merged");
+        throw new CommandError(EXIT.USAGE, "--phase must be design, plan, build, debug, ship, or merged");
     }
-    let failed = onOff(ctx.flags.failed, "failed");
-    const debug = onOff(ctx.flags.debug, "debug");
-    // A merged issue must not keep a stale Failure Path marker.
-    if (phase === "merged") {
-        if (failed === true)
-            throw new CommandError(EXIT.USAGE, "--phase=merged clears bkit:failed; drop --failed=on");
-        failed = false;
-    }
+    const failed = onOff(ctx.flags.failed, "failed");
+    if (phase !== undefined && failed === true)
+        throw new CommandError(EXIT.USAGE, "--phase clears bkit:failed; drop --failed=on");
     const board = str(ctx.flags.board);
     if (board !== undefined && BOARD_OPTION[board] === undefined) {
         throw new CommandError(EXIT.USAGE, "--board must be progress or review");
     }
-    const t = { phase, failed, debug };
+    const t = { phase, failed };
     const { add, remove, labels } = transitionLabels(ctx.flags.label ?? [], t);
     const { board: payload, boardSkipped } = board === undefined ? { board: null, boardSkipped: null } : boardPayload(ctx, board);
     ctx.emit({
@@ -498,10 +505,9 @@ export const issuesCommand = {
                 {
                     name: "phase",
                     type: "string",
-                    help: "set this phase: design | plan | build | ship | merged",
+                    help: "set this phase: design | plan | build | debug | ship | merged (drops next:* and bkit:failed)",
                 },
-                { name: "failed", type: "string", help: "bkit:failed on | off (merged implies off)" },
-                { name: "debug", type: "string", help: "bkit:debug on | off" },
+                { name: "failed", type: "string", help: "bkit:failed on | off (a phase implies off)" },
                 {
                     name: "board",
                     type: "string",
