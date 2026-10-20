@@ -223,11 +223,6 @@ export const statusCommand = {
                 WORKFLOW_FLAG,
                 { name: "fid", type: "string", required: true, help: "feature id" },
                 { name: "month", type: "string", required: true, help: "month bucket, YYYYMM" },
-                {
-                    name: "dev-pushes",
-                    type: "boolean",
-                    help: "ship only: this runtime pushes to dev (RUNTIME_DEVPUSHES=true)",
-                },
             ],
             output: {
                 path: "absolute path to status.jsonl",
@@ -243,7 +238,6 @@ export const statusCommand = {
                     workflow: String(ctx.flags.workflow),
                     fid: String(ctx.flags.fid),
                     month,
-                    devPushes: ctx.flags.devPushes === true,
                 });
                 ctx.emit({ ...loc, exists: fs.existsSync(loc.path) });
                 return EXIT.OK;

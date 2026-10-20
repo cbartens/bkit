@@ -35,7 +35,7 @@ import {
 } from "../lib.js";
 import { FID_PATTERNS, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
-import { lockRoot, readHolder, resolveMonth, workflowLockPath } from "./locks.js";
+import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import {
   EXIT_NO_STATUS,
   FILE_FLAG,
@@ -435,7 +435,6 @@ interface GateOptions {
   fid?: string;
   month?: string;
   token?: string;
-  devPushes?: boolean;
   placeholders: string[];
 }
 
@@ -466,11 +465,8 @@ function gateChecks(cwd: string, o: GateOptions): Check[] {
       `${tracker} shape`,
     );
     if (o.token !== undefined) {
-      const lock = workflowLockPath(
-        lockRoot(cwd, o.workflow, o.devPushes === true),
-        resolveMonth(repoRoot(cwd), o.fid, o.month),
-        o.fid,
-      );
+      const root = repoRoot(cwd);
+      const lock = workflowLockPath(root, resolveMonth(root, o.fid, o.month), o.fid);
       const holder = readHolder(lock);
       add(
         "workflow lock",
@@ -1234,11 +1230,6 @@ export const stepsCommand: CommandSpec = {
           type: "string",
           help: "the workflow lock must be held with this token (needs --fid)",
         },
-        {
-          name: "dev-pushes",
-          type: "boolean",
-          help: "ship only: the lock lives in the main checkout",
-        },
       ],
       output: { pass: "true when every check passed", checks: "[{check, ok, detail}] per check" },
       exitCodes: {
@@ -1279,7 +1270,6 @@ export const stepsCommand: CommandSpec = {
           fid: str(f.fid),
           month: str(f.month),
           token: str(f.token),
-          devPushes: f.devPushes === true,
           placeholders: list(f.placeholder),
         });
         const pass = checks.every((c) => c.ok);

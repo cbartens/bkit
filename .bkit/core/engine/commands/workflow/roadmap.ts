@@ -31,7 +31,7 @@ import {
   type CommandSpec,
   type RunContext,
 } from "../lib.js";
-import { acquireDevLock, releaseLock } from "./locks.js";
+import { landDir, pushToDev } from "../land.js";
 import { str } from "./status.js";
 
 /** Roadmap status each workflow's close moves the feature to. */
@@ -414,17 +414,14 @@ function feature(ctx: RunContext): number {
   return ctx.flags.strict === true && !r.appended ? EXIT.NO : EXIT.OK;
 }
 
-/** Seconds the mirror waits for a busy dev lock before skipping. */
-export const MIRROR_DEV_LOCK_DEADLINE_S = 60;
-
 const ROADMAP_FILES = [".bkit/issues.jsonl", "docs/roadmap.md"];
 
 /**
- * Build / debug close: append the feature row in the worktree, then copy the
- * SAME row to `dev` in the main checkout under the dev lock — checkout dev,
- * fast-forward, append, commit the two roadmap files, push, return to the prior
- * branch. Skipped in adopt mode (the worktree IS the main checkout) and when the
- * dev lock stays busy. Fail-open throughout: the feat-side row is already written.
+ * Build / debug close: append the feature row in the worktree, then land the
+ * SAME row on `dev` through a throwaway origin/dev checkout (`pushToDev`). The
+ * main checkout is never touched. Skipped when the run's own checkout is on dev
+ * (the row rides that branch's commit). Fail-open throughout: the feat-side row
+ * is already written and reaches dev with ship's merge.
  */
 async function mirror(ctx: RunContext): Promise<number> {
   const workflow = String(ctx.flags.workflow);
@@ -438,47 +435,37 @@ async function mirror(ctx: RunContext): Promise<number> {
     ctx.emit({ row: feat.row, appended: feat.appended, mirrored, skipped });
     return EXIT.OK;
   };
-  if (path.resolve(wt) === path.resolve(root)) return done(false, "adopt mode");
+  if (git(wt, ["branch", "--show-current"]) === DEV) return done(false, "on dev");
 
-  let lock: { path: string; token: string };
-  try {
-    lock = await acquireDevLock({
-      cwd: root,
-      workflow,
-      fid,
-      deadlineS: MIRROR_DEV_LOCK_DEADLINE_S,
-      log: ctx.log,
-    });
-  } catch (err) {
-    // A busy lock skips the mirror; it never fails the close.
-    return done(false, `dev lock busy: ${(err as Error).message}`);
-  }
-  try {
-    const prior = git(root, ["branch", "--show-current"]) ?? "";
-    if (
-      !runGit(root, ["checkout", DEV]).ok ||
-      !runGit(root, ["pull", "--ff-only", "origin", DEV]).ok
-    ) {
-      if (prior) runGit(root, ["checkout", prior]);
-      return done(false, "dev checkout / pull failed");
-    }
-    const onDev = appendFeature(root, { row: JSON.stringify(feat.row) }, ctx.log);
-    if (!onDev.appended) ctx.log("roadmap row skipped on dev");
-    runGit(root, ["add", "--", ...ROADMAP_FILES]);
-    runGit(root, [
-      "commit",
-      "--allow-empty",
-      "-m",
-      `docs(${fid}): ${workflow} roadmap update bkit [skip ci]`,
-      "--",
-      ...ROADMAP_FILES,
-    ]);
-    const pushed = runGit(root, ["push", "origin", DEV]).ok;
-    if (!pushed) ctx.log("dev push failed — feat-side row already written");
-    if (prior) runGit(root, ["checkout", prior]);
-    return done(pushed, pushed ? null : "dev push failed");
-  } finally {
-    releaseLock(lock.path, { workflow, fid, token: lock.token });
+  let appended = false;
+  const res = await pushToDev({
+    root,
+    dir: landDir(root, fid),
+    build: (dir) => {
+      appended = appendFeature(dir, { row: JSON.stringify(feat.row) }, ctx.log).appended;
+      if (!appended) return;
+      runGit(dir, ["add", "--", ...ROADMAP_FILES]);
+      runGit(dir, [
+        "commit",
+        "-m",
+        `docs(${fid}): ${workflow} roadmap update bkit [skip ci]`,
+        "--",
+        ...ROADMAP_FILES,
+      ]);
+    },
+    log: ctx.log,
+  });
+  switch (res.kind) {
+    case "landed":
+      return appended ? done(true, null) : done(false, "row not appended on dev");
+    case "refused":
+      return done(false, `dev push refused: ${res.stderr}`);
+    case "exhausted":
+      return done(false, `dev moved before each of ${res.attempts} pushes`);
+    case "fetch-failed":
+      return done(false, `fetch of dev failed: ${res.stderr}`);
+    case "setup-failed":
+      return done(false, `throwaway checkout failed: ${res.stderr}`);
   }
 }
 
@@ -559,7 +546,7 @@ export const roadmapCommand: CommandSpec = {
     },
     mirror: {
       summary:
-        "Build / debug close: append the feature row in the worktree, then the same row on dev under the dev lock (fail-open).",
+        "Build / debug close: append the feature row in the worktree, then land the same row on dev through a throwaway origin/dev checkout (fail-open).",
       flags: [
         { name: "workflow", type: "string", required: true, help: "build | debug" },
         { name: "fid", type: "string", required: true, help: "feature id (the row's key)" },
@@ -569,7 +556,7 @@ export const roadmapCommand: CommandSpec = {
         appended: "false when the worktree ledger could not be written",
         mirrored: "the row was committed and pushed on dev",
         skipped:
-          "why the dev side was skipped: adopt mode | dev lock busy | dev checkout / pull failed | dev push failed (null when mirrored)",
+          "why the dev side was skipped: on dev | row not appended on dev | dev push refused | dev moved before each push | fetch of dev failed | throwaway checkout failed (null when mirrored)",
       },
       run: (ctx) => mirror(ctx),
     },

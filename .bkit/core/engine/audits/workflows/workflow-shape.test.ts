@@ -97,12 +97,19 @@ describe("Failure Path", () => {
     expect(failure).not.toContain("cat <<");
   });
 
-  it.each(["build", "debug"])("%s hands over through `workflows handover --push`", (name) => {
-    const failure = section(workflow(name), /Failure Path/);
-    expect(failure).toContain(`"{BKIT}" workflows handover --workflow=${name}`);
-    expect(failure).toContain("--push");
-    expect(failure).not.toContain("branches push --mode=abort");
-  });
+  it.each(["design", "plan", "build", "debug"])(
+    "%s always keeps its record through one `workflows handover --push` in the run's worktree",
+    (name) => {
+      const failure = section(workflow(name), /Failure Path/);
+      const calls = commandLines(failure, "workflows handover").map((l) => l.trim());
+      expect(calls, name).toEqual([
+        `"{BKIT}" workflows handover --workflow=${name} --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"`,
+      ]);
+      expect(failure).toContain("**Skip if** `{WORKTREE_PATH}` is not set");
+      expect(failure).not.toContain("branches push --mode=abort");
+      expect(failure).not.toMatch(/HANDOVER_NEEDED` = true → step 4\. \*\*Else\*\* → step 6/);
+    },
+  );
 
   it("ship flushes through `workflows handover --flush`", () => {
     const failure = section(workflow("ship"), /Failure Path/);
@@ -253,17 +260,26 @@ describe("ship", () => {
   const ship = workflow("ship");
 
   it("post-merge check reads the capstone job alone, at the squash commit", () => {
-    const close = section(ship, /Step 15 — Close Workflow/);
+    const close = section(ship, /Step 14 — Close Workflow/);
     expect(close).toContain(
       '"{BKIT}" runs gate --squash-of="{PR_NUMBER}" --repo="{OWNER_REPO}" --capstone-only --record="{STATUS}"',
     );
   });
 
-  it("cleanup removes only a workflow-created worktree and deletes the branch through the command", () => {
-    const cleanup = section(ship, /Step 14 — Worktree Cleanup/);
-    expect(cleanup).toContain('"{BKIT}" worktrees remove --fid="{FID}" --branch="{SHIP_BRANCH}"');
-    expect(cleanup).not.toContain("git branch -D");
-    expect(cleanup).not.toContain("push origin --delete");
+  it("the close removes the worktree and deletes the branch through the command, then leaves it", () => {
+    const close = section(ship, /Step 14 — Close Workflow/);
+    expect(close).toContain('--branch="{SHIP_BRANCH}"');
+    expect(close).toContain('cd "{REPO_ROOT}"; exit $rc');
+    expect(ship).not.toContain('"{BKIT}" worktrees remove');
+    expect(ship).not.toContain("git worktree remove");
+    expect(ship).not.toContain("git branch -D");
+    expect(ship).not.toContain("push origin --delete");
+  });
+
+  it("brings local dev level through `branches sync-dev`, never a checkout", () => {
+    const step13 = section(ship, /Step 13 — Update Local Dev/);
+    expect(step13).toContain('"{BKIT}" branches sync-dev || exit 1');
+    expect(step13).not.toContain('cd "{REPO_ROOT}"');
   });
 
   it("skill prune warns and carries on rather than stopping the ship", () => {
@@ -285,7 +301,7 @@ describe("ship", () => {
   });
 
   it("closes through `workflows close --flush`", () => {
-    const close = section(ship, /Step 15 — Close Workflow/);
+    const close = section(ship, /Step 14 — Close Workflow/);
     expect(close).toContain('"{BKIT}" workflows close --workflow=ship');
     expect(close).toContain('--flush --token="{LOCK_TOKEN}"');
     expect(close).not.toContain("gh pr create");

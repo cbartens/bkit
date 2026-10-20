@@ -47,7 +47,6 @@ export const SHIP_STEP_ORDER = [
     "ship-failure-diagnose",
     "ship-failure-remediate",
     "ship-switch-to-dev",
-    "ship-worktree-cleanup",
     "ship-close-workflow",
 ];
 /** Steps that appear only in the merge-retry loop — never mandatory, never holes. */

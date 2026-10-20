@@ -345,12 +345,11 @@ describe("repo facts on a real repository", () => {
     expect(statusLocation(opts)).toEqual({ bookRoot: worktree, path: path.join(worktree, rel) });
   });
 
-  it("ship: main checkout when the runtime pushes to dev, else the current worktree", () => {
+  it("ship: the tree it runs in — the worktree being shipped, or the adopted checkout", () => {
     const { root, worktree } = repoWithWorktree();
-    const base = { cwd: worktree, workflow: "ship", fid: "9-x", month: "202610" };
-    expect(statusLocation({ ...base, devPushes: true }).bookRoot).toBe(root);
-    expect(statusLocation({ ...base, devPushes: false }).bookRoot).toBe(worktree);
-    expect(statusLocation(base).bookRoot).toBe(worktree);
+    const base = { workflow: "ship", fid: "9-x", month: "202610" };
+    expect(statusLocation({ ...base, cwd: worktree }).bookRoot).toBe(worktree);
+    expect(statusLocation({ ...base, cwd: root }).bookRoot).toBe(root);
   });
 });
 

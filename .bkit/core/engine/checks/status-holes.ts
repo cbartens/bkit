@@ -51,7 +51,6 @@ export const SHIP_STEP_ORDER = [
   "ship-failure-diagnose",
   "ship-failure-remediate",
   "ship-switch-to-dev",
-  "ship-worktree-cleanup",
   "ship-close-workflow",
 ] as const;
 

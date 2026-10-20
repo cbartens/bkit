@@ -191,12 +191,16 @@ export function appendComplianceRows(rows, statsPath) {
 // ---------------------------------------------------------------------------
 /**
  * Grade `phase` over HEAD~1..HEAD (HEAD alone in a one-commit repo) and append
- * its compliance rows to `<cwd>/.bkit/stats.jsonl`. Fail-open: any error is
- * logged and returns null, so a close never stops on the grader.
+ * its compliance rows to `<cwd>/.bkit/stats.jsonl`. With `squashSha` (ship's
+ * close, run in the feature worktree) the diff starts at the squash's parent,
+ * so it covers the whole feature, not only its last commit. Fail-open: any
+ * error is logged and returns null, so a close never stops on the grader.
  */
-export function gradeCompliance(cwd, phase, log) {
+export function gradeCompliance(cwd, phase, log, squashSha) {
     try {
-        const parentSha = resolveGitSha("HEAD~1", cwd) || resolveGitSha("HEAD", cwd);
+        const parentSha = (squashSha === undefined ? "" : resolveGitSha(`${squashSha}~1`, cwd)) ||
+            resolveGitSha("HEAD~1", cwd) ||
+            resolveGitSha("HEAD", cwd);
         if (!parentSha) {
             log("[bkit-comply] cannot resolve a parent SHA (no commits?) — skipping grade");
             return null;

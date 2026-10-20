@@ -640,7 +640,7 @@ describe("bkit roadmap mirror", () => {
     git(main, "init", "-q", "-b", "dev");
     git(main, "config", "user.email", "t@t");
     git(main, "config", "user.name", "t");
-    fs.writeFileSync(path.join(main, ".gitignore"), ".worktrees/\n.bkit/.dev.lock\n");
+    fs.writeFileSync(path.join(main, ".gitignore"), ".worktrees/\n");
     fs.writeFileSync(path.join(main, "docs/roadmap.md"), "# Roadmap\n");
     git(main, "add", "-A");
     git(main, "commit", "-qm", "init");
@@ -664,24 +664,60 @@ describe("bkit roadmap mirror", () => {
     );
     expect(git(remote, "show", "dev:.bkit/issues.jsonl")).toContain('"status":"BUILT"');
     expect(git(main, "branch", "--show-current")).toBe("dev");
-    expect(fs.existsSync(path.join(main, ".bkit/.dev.lock"))).toBe(false);
+    expect(fs.existsSync(path.join(main, ".worktrees", "_land-12-csv"))).toBe(false);
   });
 
-  it("adopt mode (run from the main checkout) writes the row once and mirrors nothing", async () => {
+  it("never touches the main checkout and never pushes its local dev commits", async () => {
+    const { main, remote, wt } = fixture();
+    git(main, "commit", "-q", "--allow-empty", "-m", "wip");
+    fs.writeFileSync(path.join(main, "docs/roadmap.md"), "# Roadmap\nlocal edit\n");
+    const r = await mirror(wt, "--workflow=build", "--fid=12-csv");
+    expect(r.json).toMatchObject({ mirrored: true, skipped: null });
+    expect(git(remote, "log", "--format=%s", "dev")).not.toContain("wip");
+    expect(git(main, "log", "-1", "--format=%s", "dev")).toBe("wip");
+    expect(git(main, "status", "--porcelain")).toBe("M docs/roadmap.md");
+    expect(fs.existsSync(path.join(main, ".bkit/issues.jsonl"))).toBe(false);
+  });
+
+  it("run from a checkout on dev writes the row once and mirrors nothing", async () => {
     const { main, remote } = fixture();
     const before = git(remote, "rev-parse", "dev");
     const r = await mirror(main, "--workflow=debug", "--fid=12-csv");
     expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ mirrored: false, skipped: "adopt mode" });
+    expect(r.json).toMatchObject({ mirrored: false, skipped: "on dev" });
     expect(git(remote, "rev-parse", "dev")).toBe(before);
+  });
+
+  it("adopt mode on its own branch mirrors the row like a worktree does", async () => {
+    const { main, remote } = fixture();
+    git(main, "checkout", "-q", "-b", "claude/session");
+    const r = await mirror(main, "--workflow=debug", "--fid=12-csv");
+    expect(r.json).toMatchObject({ mirrored: true, skipped: null });
+    expect(git(remote, "show", "dev:.bkit/issues.jsonl")).toContain('"key":"12-csv"');
+    expect(git(main, "branch", "--show-current")).toBe("claude/session");
   });
 
   it("a refused dev push is logged, never fails the close", async () => {
     const { remote, wt } = fixture();
-    fs.rmSync(remote, { recursive: true, force: true });
+    fs.writeFileSync(
+      path.join(remote, "hooks", "pre-receive"),
+      '#!/bin/sh\necho "dev is protected" >&2\nexit 1\n',
+      { mode: 0o755 },
+    );
+    const before = git(remote, "rev-parse", "dev");
     const r = await mirror(wt, "--workflow=build", "--fid=12-csv");
     expect(r.code).toBe(0);
     expect(r.json.mirrored).toBe(false);
-    expect(r.json.skipped).toMatch(/dev (checkout \/ pull|push) failed/);
+    expect(r.json.skipped).toContain("dev push refused");
+    expect(git(remote, "rev-parse", "dev")).toBe(before);
+  });
+
+  it("an unreachable remote is logged, never fails the close", async () => {
+    const { remote, wt } = fixture();
+    fs.rmSync(remote, { recursive: true, force: true });
+    const r = await mirror(wt, "--workflow=build", "--fid=12-csv");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ appended: true, mirrored: false });
+    expect(r.json.skipped).toContain("fetch of dev failed");
   });
 });

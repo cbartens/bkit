@@ -752,6 +752,31 @@ Record the failure, abort any rebase, release the lock
 **If** `HANDOVER_NEEDED` = true → step 4.
 ```
 
+### workflow-keep-record
+
+- workflow: where-used
+
+```text
+`git status --short` → remove unintended files, then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
+```
+
+### workflow-keep-record-open-pr
+
+- workflow: where-used
+
+```text
+**If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
+```
+
+### workflow-keep-record-comment
+
+- workflow: where-used
+- anchored: yes
+
+```text
+**Else** → post `comment` (when non-null) → step {{step}}.
+```
+
 ### workflow-post-comment
 
 - workflow: repeatable

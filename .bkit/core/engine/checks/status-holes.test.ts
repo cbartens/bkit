@@ -75,7 +75,6 @@ function pathAStatus(): string {
     row("ship-bookkeeping-push"),
     row("ship-merge-pr", { verdict: "PASS", attempt: 1, failures: 0 }),
     row("ship-switch-to-dev"),
-    row("ship-worktree-cleanup"),
     row("ship-close-workflow"),
   ].join("\n");
 }
@@ -94,7 +93,6 @@ function pathBStatus(): string {
     row("ship-bookkeeping-push"),
     row("ship-merge-pr", { verdict: "PASS", attempt: 1, failures: 0 }),
     row("ship-switch-to-dev"),
-    row("ship-worktree-cleanup"),
     row("ship-close-workflow"),
   ].join("\n");
 }
@@ -109,7 +107,6 @@ function mergedOnEntryStatus(): string {
     JSON.stringify({ type: "ship-merged-on-entry", workflow: "ship", at: "2026-07-29T00:00:00Z" }),
     // Steps 3–12 skipped entirely — PR was already merged
     row("ship-switch-to-dev"),
-    row("ship-worktree-cleanup"),
     row("ship-close-workflow"),
   ].join("\n");
 }
@@ -131,7 +128,6 @@ function retryLoopPathBStatus(): string {
     row("ship-failure-remediate", { verdict: "PASS", attempt: 1, strategy: "STANDARD" }),
     row("ship-merge-pr", { verdict: "PASS", attempt: 2, failures: 0 }),
     row("ship-switch-to-dev"),
-    row("ship-worktree-cleanup"),
     row("ship-close-workflow"),
   ].join("\n");
 }
@@ -242,7 +238,6 @@ describe("classifyRun", () => {
       "ship-bookkeeping-push",
       "ship-merge-pr",
       "ship-switch-to-dev",
-      "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
     expect(classifyRun(observed, false)).toBe("PATH_A");
@@ -261,7 +256,6 @@ describe("classifyRun", () => {
       "ship-bookkeeping-push",
       "ship-merge-pr",
       "ship-switch-to-dev",
-      "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
     expect(classifyRun(observed, false)).toBe("PATH_B");
@@ -271,12 +265,7 @@ describe("classifyRun", () => {
     // bkit-ship.md Step 2 routes on `state` = MERGED at sub-step 5, BEFORE
     // sub-step 8 writes ship-worktree-setup + ship-regression-guard — so a real
     // MERGED-on-entry resume carries neither.
-    const observed = new Set([
-      "ship-start-workflow",
-      "ship-switch-to-dev",
-      "ship-worktree-cleanup",
-      "ship-close-workflow",
-    ]);
+    const observed = new Set(["ship-start-workflow", "ship-switch-to-dev", "ship-close-workflow"]);
     expect(classifyRun(observed, false)).toBe("MERGED_ON_ENTRY");
   });
 
@@ -292,7 +281,6 @@ describe("classifyRun", () => {
       "ship-prune-skills",
       "ship-bookkeeping-push",
       "ship-switch-to-dev",
-      "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
     expect(classifyRun(observed, false)).toBe("PATH_A");
@@ -380,7 +368,6 @@ describe("detectHoles", () => {
       "ship-bookkeeping-push",
       "ship-merge-pr",
       "ship-switch-to-dev",
-      "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
     const { missing, unexpected } = detectHoles(observed, universe, "PATH_A");
@@ -400,7 +387,6 @@ describe("detectHoles", () => {
       "ship-bookkeeping-push",
       "ship-merge-pr",
       "ship-switch-to-dev",
-      "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
     const { missing, unexpected } = detectHoles(observed, universe, "PATH_A");
@@ -421,7 +407,6 @@ describe("detectHoles", () => {
       "ship-bookkeeping-push",
       "ship-merge-pr",
       "ship-switch-to-dev",
-      "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
     // This set has merge-pr + no conflict-resolve → PATH_A classification.
@@ -442,7 +427,6 @@ describe("detectHoles", () => {
       "ship-bookkeeping-push",
       "ship-merge-pr",
       "ship-switch-to-dev",
-      "ship-worktree-cleanup",
       "ship-close-workflow",
       "ship-resume-human-override", // invented name — not in canonical set
     ]);
@@ -463,7 +447,6 @@ describe("detectHoles", () => {
       "ship-bookkeeping-push",
       "ship-merge-pr",
       "ship-switch-to-dev",
-      "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
     const { missing } = detectHoles(observed, universe, "PATH_A");
@@ -538,7 +521,6 @@ describe("auditStatusJsonl (end-to-end)", () => {
       row("ship-update-docs"),
       row("ship-summary"),
       row("ship-prune-skills"),
-      row("ship-worktree-cleanup"),
       row("ship-close-workflow"),
     ].join("\n");
     const report = auditStatusJsonl(holey, shipMd);
@@ -629,7 +611,6 @@ describe("CLI main() — advisory exit 0", () => {
       row("ship-update-docs"),
       row("ship-summary"),
       row("ship-prune-skills"),
-      row("ship-worktree-cleanup"),
       row("ship-close-workflow"),
     ].join("\n");
     fs.writeFileSync(tmpFile, holey, "utf-8");

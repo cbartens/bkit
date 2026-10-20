@@ -28,13 +28,13 @@ import {
   runGit,
   SKIP_CI_TOKEN,
   type CommandSpec,
-  type FlagValue,
   type RunContext,
 } from "../lib.js";
 import { bkitVersionStatus, type BkitVersionStatus } from "../../shared/bkit-latest.js";
+import { landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { commitBookkeeping } from "./ledgers.js";
-import { acquireDevLock, lockRoot, releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
+import { releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
 import {
   closeTransportRow,
   crossCheckRows,
@@ -69,8 +69,6 @@ export const EXIT_FETCH_FAILED = 10;
 export const EXIT_MERGE_CONFLICT = 11;
 export const EXIT_ANCHOR_SKIP = 12;
 export const EXIT_NO_FILE = 13;
-export const EXIT_PULL_FAILED = 14;
-export const EXIT_RUNTIME_REFUSED = 15;
 export const EXIT_INSTALL_FAILED = 16;
 export const EXIT_LAND_STOPPED = 17;
 export const EXIT_LANDED_UNVERIFIED = 18;
@@ -116,12 +114,6 @@ function rebaseInProgress(top: string): boolean {
 }
 
 const currentBranch = (cwd: string) => git(cwd, ["branch", "--show-current"]) ?? "";
-
-const boolString = (v: FlagValue, flag: string): boolean => {
-  if (v === "true") return true;
-  if (v === "false") return false;
-  throw new CommandError(EXIT.USAGE, `--${flag} must be true or false, got "${String(v)}"`);
-};
 
 // ---------------------------------------------------------------------------
 // Conflict classification and resolution (rebase, and sync's docs merge)
@@ -770,102 +762,30 @@ function syncVerb(ctx: RunContext): number {
   return EXIT.OK;
 }
 
-async function switchVerb(ctx: RunContext): Promise<number> {
-  const devPushes = boolString(ctx.flags.devPushes, "dev-pushes");
-  const worktrees = boolString(ctx.flags.worktrees, "worktrees");
+/**
+ * Ship Step 13: after the merge, bring local dev up to origin/dev by a pure
+ * fast-forward without checking anything out, then a frozen install when the
+ * main checkout is on dev and moved. Never pushes.
+ */
+function syncDevVerb(ctx: RunContext): number {
   const root = repoRoot(ctx.cwd);
-  // `bkit install` can leave core.bare=true on the main checkout, which breaks every checkout below.
+  // `bkit install` can leave core.bare=true on the main checkout, which breaks `merge --ff-only` there.
   if (
     git(root, ["config", "--get", "core.bare"]) === "true" &&
     fs.statSync(path.join(root, ".git"), { throwIfNoEntry: false })?.isDirectory()
   ) {
     runGit(root, ["config", "core.bare", "false"]);
   }
-  const out = {
-    switched: false,
-    branch: currentBranch(root),
-    ahead: 0,
-    pushed: false,
-    installed: null as boolean | null,
-    skipped: null as string | null,
-  };
-  if (!devPushes) {
-    ctx.log(
-      `this runtime does not push ${DEV} — skipping the local ${DEV} checkout; the merge already landed server-side`,
-    );
-    ctx.emit({ ...out, skipped: "dev-pushes-false" });
-    return EXIT.OK;
+  const fetch = runGit(root, ["fetch", REMOTE, DEV]);
+  if (!fetch.ok) {
+    ctx.log(`git fetch ${REMOTE} ${DEV} failed: ${fetch.stderr}`);
+    return EXIT_FETCH_FAILED;
   }
-  if (!worktrees) {
-    ctx.log(
-      "refusing a local dev checkout in a runtime without worktrees (devPushes=true, worktrees=false)",
-    );
-    return EXIT_RUNTIME_REFUSED;
-  }
-  const fid = String(ctx.flags.fid);
-  // Still held at the deadline: acquireDevLock throws EXIT.NO naming the holder.
-  const lock = await acquireDevLock({
-    cwd: root,
-    workflow: "ship",
-    fid,
-    deadlineS: TIMEOUTS.SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S,
-    log: ctx.log,
-  });
-  try {
-    runGit(root, ["checkout", DEV]);
-    out.branch = currentBranch(root);
-    if (out.branch !== DEV) {
-      ctx.log(`not on ${DEV} after checkout (on '${out.branch}') — aborting dev ops`);
-      return EXIT_NOT_DEV;
-    }
-    out.switched = true;
-    const fetch = runGit(root, ["fetch", REMOTE, DEV]);
-    if (!fetch.ok) {
-      ctx.log(`git fetch ${REMOTE} ${DEV} failed: ${fetch.stderr}`);
-      return EXIT_FETCH_FAILED;
-    }
-    out.ahead = Number(git(root, ["rev-list", "--count", `${UPSTREAM}..${DEV}`]) ?? "0");
-    if (out.ahead > 0) {
-      const triggering = (git(root, ["log", "--format=%h %s", `${UPSTREAM}..${DEV}`]) ?? "")
-        .split("\n")
-        .filter((l) => l !== "" && !SKIP_CI_TOKEN.test(l));
-      if (triggering.length > 0) {
-        ctx.log(
-          `local ${DEV} is ${out.ahead} commit(s) ahead of ${UPSTREAM}, ${triggering.length} of them would run CI:`,
-        );
-        for (const l of triggering) ctx.log(`  ${l}`);
-        ctx.log(
-          `ship will not push these: a CI run on ${DEV} can cancel the in-flight run validating this merge`,
-        );
-        ctx.log(
-          `reconcile, then re-run ship: git -C "${root}" pull --rebase ${REMOTE} ${DEV} && git -C "${root}" push ${REMOTE} ${DEV}`,
-        );
-        return EXIT.NEEDS_HUMAN;
-      }
-      const pull = quietGit(root, ["pull", "--rebase", REMOTE, DEV]);
-      if (!pull.ok) {
-        ctx.log(`git pull --rebase ${REMOTE} ${DEV} failed: ${pull.stderr}`);
-        return EXIT_PULL_FAILED;
-      }
-      const push = runGit(root, ["push", REMOTE, DEV]);
-      if (!push.ok) {
-        ctx.log(`git push ${REMOTE} ${DEV} failed: ${push.stderr}`);
-        return EXIT_PUSH_FAILED;
-      }
-      out.pushed = true;
-    } else {
-      const pull = runGit(root, ["pull", "--ff-only", REMOTE, DEV]);
-      if (!pull.ok) {
-        ctx.log(`git pull --ff-only ${REMOTE} ${DEV} failed: ${pull.stderr}`);
-        return EXIT_PULL_FAILED;
-      }
-    }
-    out.installed = install(ctx, root);
-    ctx.emit(out);
-    return out.installed === false ? EXIT_INSTALL_FAILED : EXIT.OK;
-  } finally {
-    releaseLock(lock.path, { workflow: "ship", fid, token: lock.token });
-  }
+  const devLocal = fastForwardDev(root, git(root, ["rev-parse", UPSTREAM]) ?? "", ctx.log);
+  const branch = currentBranch(root);
+  const installed = branch === DEV && devLocal === "fast-forwarded" ? install(ctx, root) : null;
+  ctx.emit({ devLocal, branch, installed });
+  return installed === false ? EXIT_INSTALL_FAILED : EXIT.OK;
 }
 
 /** Frozen install in the main checkout: false (logged) when it failed or could not run, null when there is nothing to install. */
@@ -928,34 +848,6 @@ interface Landed {
 }
 
 class Stop extends CommandError {}
-
-/** A dev push git rejected only because dev moved underneath: rebuild on the new dev, push again. */
-const NON_FAST_FORWARD = /\[rejected\][^\n]*\((?:fetch first|non-fast-forward)\)/;
-
-/**
- * Milliseconds to wait before retry `retry` (1-based) of a close: `startS`
- * doubling per retry, capped at `capS`, then jittered down by up to half so two
- * closes that collided once do not retry in step.
- */
-export function landBackoffMs(
-  retry: number,
-  random: () => number = Math.random,
-  startS: number = TIMEOUTS.LAND_BACKOFF_START_S,
-  capS: number = TIMEOUTS.LAND_BACKOFF_CAP_S,
-): number {
-  const s = Math.min(startS * 2 ** (retry - 1), capS);
-  return Math.round(s * 1000 * (0.5 + random() / 2));
-}
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-/** The throwaway checkout a close is built in, beside the feature worktrees. */
-const landDir = (root: string, fid: string) => path.join(root, ".worktrees", `_land-${fid}`);
-
-function dropLandTree(root: string, dir: string): void {
-  if (fs.existsSync(dir)) runGit(root, ["worktree", "remove", "--force", dir]);
-  runGit(root, ["worktree", "prune"]);
-}
 
 /** This run's artifacts written untracked into the main checkout instead of the worktree stop the close. */
 function strayCheck(root: string, month: string, fid: string): void {
@@ -1042,44 +934,31 @@ async function landDirect(
   o: { workflow: string; fid: string; month: string; branch: string },
 ): Promise<Landed | null> {
   const dir = landDir(root, o.fid);
-  for (let attempt = 1; ; attempt++) {
-    let wait = 0;
-    dropLandTree(root, dir);
-    try {
-      if (!runGit(root, ["fetch", REMOTE, DEV]).ok)
-        throw new Stop(
-          EXIT_FETCH_FAILED,
-          `git fetch ${REMOTE} ${DEV} failed — nothing landed; ${o.branch} kept`,
-        );
-      const added = runGit(root, ["worktree", "add", "--detach", dir, UPSTREAM]);
-      if (!added.ok)
-        throw new Stop(
-          EXIT_LAND_STOPPED,
-          `could not create ${dir} — nothing landed: ${added.stderr}`,
-        );
-      buildClose(ctx, dir, o);
-      const pushed = runGit(dir, ["push", REMOTE, `HEAD:${DEV}`]);
-      if (pushed.ok) {
-        const sha = git(dir, ["rev-parse", "HEAD"]) ?? "";
-        return { shape: "local", transport: "git", sha, prNumber: null, pushAttempts: attempt };
-      }
-      if (!NON_FAST_FORWARD.test(pushed.stderr)) {
-        ctx.log(`${REMOTE} refused the dev push — closing through a PR instead: ${pushed.stderr}`);
-        return null;
-      }
-      if (attempt >= TIMEOUTS.LAND_ATTEMPTS)
-        throw new Stop(
-          EXIT_PUSH_FAILED,
-          `dev moved before each of ${attempt} pushes — nothing landed; ${o.branch} and its worktree kept; re-run the land`,
-        );
-      wait = landBackoffMs(attempt);
-      ctx.log(
-        `dev moved before push ${attempt} of ${TIMEOUTS.LAND_ATTEMPTS} — rebuilding on the new dev in ${(wait / 1000).toFixed(1)}s`,
+  const res = await pushToDev({ root, dir, build: (d) => buildClose(ctx, d, o), log: ctx.log });
+  switch (res.kind) {
+    case "landed":
+      return {
+        shape: "local",
+        transport: "git",
+        sha: res.sha,
+        prNumber: null,
+        pushAttempts: res.attempts,
+      };
+    case "refused":
+      ctx.log(`${REMOTE} refused the dev push — closing through a PR instead: ${res.stderr}`);
+      return null;
+    case "fetch-failed":
+      throw new Stop(
+        EXIT_FETCH_FAILED,
+        `git fetch ${REMOTE} ${DEV} failed — nothing landed; ${o.branch} kept`,
       );
-    } finally {
-      dropLandTree(root, dir);
-    }
-    await sleep(wait);
+    case "setup-failed":
+      throw new Stop(EXIT_LAND_STOPPED, `could not create ${dir} — nothing landed: ${res.stderr}`);
+    case "exhausted":
+      throw new Stop(
+        EXIT_PUSH_FAILED,
+        `dev moved before each of ${res.attempts} pushes — nothing landed; ${o.branch} and its worktree kept; re-run the land`,
+      );
   }
 }
 
@@ -1213,11 +1092,12 @@ async function landPr(
 }
 
 /**
- * Laptop only: bring local dev up to the landed commit when that is a pure
- * fast-forward — `merge --ff-only` when the main checkout is on dev, else move
- * the branch pointer alone. Local commits origin/dev lacks, or git refusing (an
- * uncommitted edit the move would overwrite, dev checked out in another
- * worktree), skip it with a log line: the close is on origin/dev either way.
+ * Bring local dev up to `sha` when that is a pure fast-forward — `merge
+ * --ff-only` when the main checkout is on dev, else move the branch pointer
+ * alone; nothing is checked out or pushed. Local commits origin/dev lacks (listed
+ * with the command that publishes them), or git refusing (an uncommitted edit the
+ * move would overwrite, dev checked out in another worktree), skip it with a log
+ * line: what landed is on origin/dev either way.
  */
 function fastForwardDev(
   root: string,
@@ -1228,8 +1108,13 @@ function fastForwardDev(
   if (local === null) return "none";
   if (local === sha) return "current";
   if (!runGit(root, ["merge-base", "--is-ancestor", local, sha]).ok) {
+    const ahead = (git(root, ["log", "--format=%h %s", `${sha}..${local}`]) ?? "")
+      .split("\n")
+      .filter((l) => l !== "");
+    log(`local ${DEV} has ${ahead.length} commit(s) ${UPSTREAM} does not — not fast-forwarded:`);
+    for (const l of ahead) log(`  ${l}`);
     log(
-      `local dev has commits ${UPSTREAM} does not — not fast-forwarded; the close is on ${UPSTREAM}`,
+      `to publish them, on ${DEV} in ${root}: git pull --rebase ${REMOTE} ${DEV} && git push ${REMOTE} ${DEV}`,
     );
     return "skipped";
   }
@@ -1238,7 +1123,7 @@ function fastForwardDev(
       ? runGit(root, ["merge", "--ff-only", "-q", sha])
       : runGit(root, ["fetch", "-q", ".", `${sha}:refs/heads/${DEV}`]);
   if (!moved.ok) {
-    log(`local dev not fast-forwarded — git refused; the close is on ${UPSTREAM}: ${moved.stderr}`);
+    log(`local ${DEV} not fast-forwarded — git refused: ${moved.stderr}`);
     return "skipped";
   }
   return "fast-forwarded";
@@ -1384,7 +1269,7 @@ async function landVerb(ctx: RunContext): Promise<number> {
         );
       }
     }
-    const released = releaseLock(workflowLockPath(lockRoot(root, workflow, false), month, fid), {
+    const released = releaseLock(workflowLockPath(root, month, fid), {
       workflow,
       fid,
       token: str(ctx.flags.token),
@@ -1602,47 +1487,22 @@ export const branchesCommand: CommandSpec = {
       },
       run: rebaseVerb,
     },
-    switch: {
+    "sync-dev": {
       summary:
-        "After a merge, return the main checkout to dev and bring it level with origin/dev, under the dev lock.",
-      flags: [
-        {
-          name: "fid",
-          type: "string",
-          required: true,
-          help: "feature id, recorded in the dev lock",
-        },
-        {
-          name: "dev-pushes",
-          type: "string",
-          required: true,
-          help: "true | false — runtimeDevPushes; false skips the switch",
-        },
-        {
-          name: "worktrees",
-          type: "string",
-          required: true,
-          help: "true | false — runtimeWorktrees; a local dev checkout needs true",
-        },
-      ],
+        "After a merge, fast-forward local dev to origin/dev without checking it out or pushing; frozen install when the main checkout is on dev and moved.",
+      flags: [],
       output: {
-        switched: "true when the checkout is now on dev",
-        branch: "branch checked out afterwards",
-        ahead: "local dev commits that were ahead of origin/dev (all skip-CI, rebased and pushed)",
-        pushed: "true when those commits were pushed",
+        devLocal:
+          "fast-forwarded | current | skipped (local dev has commits origin/dev lacks, listed with the publish command, or git refused) | none (no local dev)",
+        branch: "the branch the main checkout is on (unchanged)",
         installed:
-          "dependency install result: true, false (failed, exit 16), null (no package.json)",
-        skipped: "dev-pushes-false when the runtime does not push dev (null otherwise)",
+          "dependency install result: true, false (failed, exit 16), null (not run: not on dev, dev did not move, or no package.json)",
       },
       exitCodes: {
-        [EXIT_NOT_DEV]: "the checkout is not on dev after git checkout dev",
         [EXIT_FETCH_FAILED]: `git fetch ${REMOTE} ${DEV} failed`,
-        [EXIT_PUSH_FAILED]: "pushing the rebased local dev commits failed",
-        [EXIT_PULL_FAILED]: "git pull failed: local dev is not level with origin/dev",
-        [EXIT_RUNTIME_REFUSED]: "--dev-pushes=true with --worktrees=false",
         [EXIT_INSTALL_FAILED]: "dependency install failed or the package manager could not run",
       },
-      run: switchVerb,
+      run: syncDevVerb,
     },
     land: {
       summary:

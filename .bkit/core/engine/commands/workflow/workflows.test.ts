@@ -136,17 +136,19 @@ describe("bkit workflows start", () => {
     expect(r.json).toMatchObject({ resumed: false, run: 2 });
   });
 
-  it("writes workflow-started for ship too, in the main checkout with --dev-pushes", async () => {
+  it("writes workflow-started for ship in the worktree being shipped, its lock in the main checkout", async () => {
     const cwd = repo();
     const wt = path.join(cwd, ".worktrees", FID);
     git(cwd, "worktree", "add", "-q", wt, "-b", `feat/${FID}`);
-    const r = await run(wt, wf("start", "ship", "--dev-pushes"));
+    const r = await run(wt, wf("start", "ship"));
     expect(r.code).toBe(0);
-    expect(r.json.file).toBe(statusOf(cwd));
-    expect(rows(statusOf(cwd)).at(-1)).toMatchObject({
+    expect(r.json.file).toBe(statusOf(wt));
+    expect(r.json.lock.path).toBe(path.join(cwd, REL, ".lock"));
+    expect(rows(statusOf(wt)).at(-1)).toMatchObject({
       type: "workflow-started",
       workflow: "ship",
     });
+    expect(fs.existsSync(statusOf(cwd))).toBe(false);
   });
 
   it("design / plan / build / debug book in the current worktree", async () => {
@@ -282,14 +284,14 @@ describe("bkit workflows fail", () => {
     expect(fs.existsSync(path.join(wt, REL, ".rebase-failed"))).toBe(false);
   });
 
-  it("clears ship's .deferred-blocked under the book root", async () => {
+  it("clears ship's .deferred-blocked in the worktree being shipped", async () => {
     const cwd = repo();
     const wt = path.join(cwd, ".worktrees", FID);
     git(cwd, "worktree", "add", "-q", wt, "-b", `feat/${FID}`);
-    write(cwd, `${REL}/.deferred-blocked`, "");
-    const r = await run(wt, wf("fail", "ship", `--month=${M}`, "--dev-pushes", "--token=t"));
+    write(wt, `${REL}/.deferred-blocked`, "");
+    const r = await run(wt, wf("fail", "ship", `--month=${M}`, "--token=t"));
     expect(r.json.sentinels).toEqual([
-      { name: ".deferred-blocked", path: path.join(cwd, REL, ".deferred-blocked") },
+      { name: ".deferred-blocked", path: path.join(wt, REL, ".deferred-blocked") },
     ]);
     expect(r.json.handoverNeeded).toBe(true);
   });
@@ -559,10 +561,7 @@ describe("bkit workflows close", () => {
       "coverage/e2e/coverage-summary.json",
       JSON.stringify({ total: { lines: { pct: "n/a" } } }),
     );
-    const r = await run(
-      cwd,
-      wf("close", "ship", "--dev-pushes", "--pr-number=42", `--squash-sha=${squash}`),
-    );
+    const r = await run(cwd, wf("close", "ship", "--pr-number=42", `--squash-sha=${squash}`));
     expect(r.code).toBe(0);
     expect(r.json.outcomeRow).toMatchObject({
       prNumber: 42,
@@ -732,12 +731,21 @@ describe("bkit workflows handover", () => {
     return { cwd, remote };
   }
 
-  it("--push refuses with exit 8 when the handover is missing, committing nothing", async () => {
-    const { cwd } = withRemote();
-    const head = git(cwd, "rev-parse", "HEAD");
-    const r = await run(cwd, wf("handover", "build", `--month=${M}`, "--push", "--open-pr=none"));
-    expect(r.code).toBe(8);
-    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  it("--push commits and pushes the record on the feature branch without a handover", async () => {
+    const { cwd, remote } = withRemote();
+    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "design" }]));
+    const r = await run(cwd, wf("handover", "design", `--month=${M}`, "--push", "--open-pr=none"));
+    expect(r.code).toBe(0);
+    expect(git(remote, "log", "-1", "--format=%s", `feat/${FID}`)).toBe(
+      "docs(12-export-csv): design aborted bkit [skip ci]",
+    );
+    expect(git(remote, "show", `feat/${FID}:${REL}/status.jsonl`)).toContain("workflow-failed");
+    expect(r.json).toMatchObject({
+      handover: null,
+      pushed: true,
+      ref: `feat/${FID}`,
+      comment: null,
+    });
   });
 
   it("--push commits the aborted subject, pushes, and links the handover in the comment", async () => {
@@ -774,48 +782,210 @@ describe("bkit workflows handover", () => {
     expect(r.json.comment).not.toContain("https://github.com");
   });
 
-  it("--flush (ship, no dev pushes) makes ONE FAILED commit on the current branch and pushes it", async () => {
+  /** A remote carrying dev and feat/{FID}, the main checkout on dev, the feature in its worktree. */
+  function withDevRemote() {
     const { cwd, remote } = withRemote();
-    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "ship" }]));
-    const r = await run(cwd, wf("handover", "ship", `--month=${M}`, "--flush"));
+    git(cwd, "checkout", "-q", "dev");
+    git(cwd, "push", "-q", "origin", "dev");
+    const wt = path.join(cwd, ".worktrees", FID);
+    git(cwd, "worktree", "add", "-q", wt, `feat/${FID}`);
+    return { cwd, remote, wt };
+  }
+  const devSubject = (remote: string) => git(remote, "log", "-1", "--format=%s", "dev");
+
+  it("--flush lands ONE FAILED commit on dev from a throwaway checkout, the main checkout untouched", async () => {
+    const { cwd, remote, wt } = withDevRemote();
+    write(wt, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "ship" }]));
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(wt, wf("handover", "ship", `--month=${M}`, "--flush"));
     expect(r.code).toBe(0);
-    expect(git(cwd, "log", "-1", "--format=%s")).toBe(
-      "chore(12-export-csv): ship FAILED bkit [skip ci]",
-    );
-    expect(git(remote, "rev-parse", `feat/${FID}`)).toBe(git(cwd, "rev-parse", "HEAD"));
-    expect(r.json).toMatchObject({
-      pushed: true,
-      ref: `feat/${FID}`,
-      handover: null,
-      comment: null,
-    });
+    expect(devSubject(remote)).toBe("chore(12-export-csv): ship FAILED bkit [skip ci]");
+    expect(git(remote, "show", `dev:${REL}/status.jsonl`)).toContain("workflow-failed");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(git(cwd, "branch", "--show-current")).toBe("dev");
+    expect(fs.existsSync(path.join(cwd, ".worktrees", `_land-${FID}`))).toBe(false);
+    expect(r.json).toMatchObject({ pushed: true, ref: "dev", handover: null, comment: null });
   });
 
   it("--flush with nothing to record commits and pushes nothing", async () => {
-    const { cwd } = withRemote();
-    const head = git(cwd, "rev-parse", "HEAD");
-    const r = await run(cwd, wf("handover", "ship", `--month=${M}`, "--flush"));
+    const { remote, wt } = withDevRemote();
+    const before = git(remote, "rev-parse", "dev");
+    const r = await run(wt, wf("handover", "ship", `--month=${M}`, "--flush"));
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ pushed: false, skipped: "nothing-to-commit" });
-    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(git(remote, "rev-parse", "dev")).toBe(before);
   });
 
-  it("--flush copies the worktree's logs into the book root before committing", async () => {
-    const { cwd } = withRemote();
-    git(cwd, "checkout", "-q", "dev");
-    const wt = path.join(cwd, ".worktrees", FID);
-    git(cwd, "worktree", "add", "-q", wt, `feat/${FID}`);
-    git(cwd, "checkout", "-q", "-b", "book");
+  it("--flush carries the named worktree's logs into the dev commit", async () => {
+    const { cwd, remote, wt } = withDevRemote();
     write(wt, `${REL}/ship-handover.md`, "# Handover\n");
     const r = await run(cwd, wf("handover", "ship", `--month=${M}`, "--flush", `--worktree=${wt}`));
-    expect(fs.existsSync(path.join(cwd, REL, "ship-handover.md"))).toBe(true);
+    expect(r.code).toBe(0);
+    expect(git(remote, "show", `dev:${REL}/ship-handover.md`)).toBe("# Handover");
+    expect(fs.existsSync(path.join(cwd, REL, "ship-handover.md"))).toBe(false);
     expect(r.json.handover).toBe(`${REL}/ship-handover.md`);
+  });
+
+  it("--flush refused by dev keeps the record in the book and exits 10", async () => {
+    const { remote, wt } = withDevRemote();
+    const hook = path.join(remote, "hooks", "pre-receive");
+    fs.writeFileSync(hook, "#!/bin/sh\necho protected >&2\nexit 1\n", { mode: 0o755 });
+    const before = git(remote, "rev-parse", "dev");
+    write(wt, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "ship" }]));
+    const r = await run(wt, wf("handover", "ship", `--month=${M}`, "--flush"));
+    expect(r.code).toBe(10);
+    expect(r.json).toMatchObject({ pushed: false, ref: null });
+    expect(r.err).toContain(`ship FAILED record kept in ${wt}`);
+    expect(git(remote, "rev-parse", "dev")).toBe(before);
+    expect(fs.existsSync(path.join(wt, REL, "status.jsonl"))).toBe(true);
+  });
+
+  it("--push on dev lands only the logs and ledgers through a throwaway checkout, never the checkout's code", async () => {
+    const { cwd, remote } = withDevRemote();
+    const head = git(cwd, "rev-parse", "HEAD");
+    write(cwd, "src.ts", "half-done fix\n");
+    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "debug" }]));
+    write(cwd, `${REL}/debug-handover.md`, "# Handover\n");
+    const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push", "--owner-repo=o/r"));
+    expect(r.code).toBe(0);
+    expect(devSubject(remote)).toBe("chore(12-export-csv): debug FAILED bkit [skip ci]");
+    expect(git(remote, "show", `dev:${REL}/debug-handover.md`)).toBe("# Handover");
+    expect(git(remote, "ls-tree", "--name-only", "dev")).not.toContain("src.ts");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(git(cwd, "status", "--porcelain")).toContain("src.ts");
+    expect(r.json).toMatchObject({ pushed: true, ref: "dev" });
+    expect(r.json.comment).toContain(`https://github.com/o/r/blob/dev/${REL}/debug-handover.md`);
+  });
+
+  it("--push on dev hands the landed record back, so local dev fast-forwards onto it", async () => {
+    const { cwd } = withDevRemote();
+    write(cwd, "docs/decisions.jsonl", jsonl([{ key: "a" }]));
+    git(cwd, "add", "docs/decisions.jsonl");
+    git(cwd, "commit", "-qm", "ledger");
+    git(cwd, "push", "-q", "origin", "dev");
+    fs.appendFileSync(path.join(cwd, "docs/decisions.jsonl"), jsonl([{ key: "b" }]));
+    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "debug" }]));
+    write(cwd, `${REL}/debug-handover.md`, "# Handover\n");
+    const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+    expect(r.code).toBe(0);
+    expect(r.err).toContain("handed back 3 file(s) now on dev");
+    expect(git(cwd, "status", "--porcelain", "--", "docs")).toBe("");
+    git(cwd, "fetch", "-q", "origin", "dev");
+    git(cwd, "merge", "-q", "--ff-only", "origin/dev");
+    expect(git(cwd, "log", "-1", "--format=%s")).toBe(
+      "chore(12-export-csv): debug FAILED bkit [skip ci]",
+    );
+    expect(fs.readFileSync(path.join(cwd, "docs/decisions.jsonl"), "utf-8")).toContain('"b"');
+  });
+
+  it("--push on dev keeps a staged ledger in the checkout and names it", async () => {
+    const { cwd } = withDevRemote();
+    write(cwd, "docs/decisions.jsonl", jsonl([{ key: "a" }]));
+    git(cwd, "add", "docs/decisions.jsonl");
+    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "debug" }]));
+    const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+    expect(r.code).toBe(0);
+    expect(r.err).toContain("kept in");
+    expect(r.err).toContain("docs/decisions.jsonl");
+    expect(git(cwd, "diff", "--cached", "--name-only")).toBe("docs/decisions.jsonl");
+    expect(fs.existsSync(path.join(cwd, REL, "status.jsonl"))).toBe(false);
+  });
+
+  it("--push on dev refused keeps the record in the checkout and exits 10", async () => {
+    const { cwd, remote } = withDevRemote();
+    const hook = path.join(remote, "hooks", "pre-receive");
+    fs.writeFileSync(hook, "#!/bin/sh\necho protected >&2\nexit 1\n", { mode: 0o755 });
+    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "build" }]));
+    const r = await run(cwd, wf("handover", "build", `--month=${M}`, "--push"));
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(`build FAILED record kept in ${cwd}`);
+    expect(fs.existsSync(path.join(cwd, REL, "status.jsonl"))).toBe(true);
+  });
+
+  it("--push commits in the named worktree, not the checkout it runs from", async () => {
+    const { cwd, remote, wt } = withDevRemote();
+    write(wt, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "plan" }]));
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(
+      cwd,
+      wf("handover", "plan", `--month=${M}`, "--push", "--open-pr=none", `--worktree=${wt}`),
+    );
+    expect(r.code).toBe(0);
+    expect(git(remote, "log", "-1", "--format=%s", `feat/${FID}`)).toBe(
+      "docs(12-export-csv): plan aborted bkit [skip ci]",
+    );
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
   });
 
   it("rejects --push with --flush, and --flush outside ship", async () => {
     const cwd = repo();
     expect((await run(cwd, wf("handover", "build", "--push", "--flush"))).code).toBe(2);
     expect((await run(cwd, wf("handover", "build", "--flush"))).code).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("bkit workflows close --flush (ship)", () => {
+  /** Remote with dev; the main checkout on dev; the feature in `.worktrees/{FID}` with a started run. */
+  function shipping(owned: boolean) {
+    const cwd = repo();
+    const remote = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-remote-")),
+    );
+    dirs.push(remote);
+    git(remote, "init", "-q", "--bare");
+    git(cwd, "remote", "set-url", "origin", remote);
+    git(cwd, "push", "-q", "origin", "dev");
+    const wt = path.join(cwd, ".worktrees", FID);
+    git(cwd, "worktree", "add", "-q", wt, "-b", `feat/${FID}`);
+    write(
+      wt,
+      `${REL}/status.jsonl`,
+      jsonl([{ type: "workflow-started", workflow: "ship", at: "2020-01-01T00:00:00Z" }]),
+    );
+    const marker = path.join(cwd, ".git", "bkit-outbox", FID, ".worktree-owned");
+    if (owned) write(cwd, path.relative(cwd, marker), "");
+    const outbox = path.join(cwd, ".git", "bkit-outbox", FID);
+    fs.mkdirSync(outbox, { recursive: true });
+    const close = [
+      ...wf("close", "ship", `--month=${M}`, `--file=${statusOf(wt)}`),
+      "--pr-number=42",
+      `--squash-sha=${git(wt, "rev-parse", "HEAD")}`,
+      `--outbox=${outbox}`,
+      "--flush",
+      `--branch=feat/${FID}`,
+    ];
+    return { cwd, remote, wt, close };
+  }
+
+  it("lands ONE DONE commit on dev carrying the book, then removes the worktree and branch", async () => {
+    const { cwd, remote, wt, close } = shipping(true);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(wt, close);
+    expect(r.code).toBe(0);
+    expect(git(remote, "log", "-1", "--format=%s", "dev")).toBe(
+      "docs(12-export-csv): ship DONE bkit [skip ci]",
+    );
+    const landed = git(remote, "show", `dev:${REL}/status.jsonl`);
+    expect(landed).toContain('"workflow-done"');
+    expect(landed).toContain('"ship-close-workflow"');
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(r.json.landed).toEqual({ ref: "dev", via: "head-push" });
+    expect(r.json.worktree).toMatchObject({ removed: true, branchDeleted: true });
+    expect(fs.existsSync(wt)).toBe(false);
+    expect(git(cwd, "branch", "--list", `feat/${FID}`)).toBe("");
+    expect(fs.existsSync(path.join(cwd, ".worktrees", `_land-${FID}`))).toBe(false);
+  });
+
+  it("leaves a worktree no workflow created, and its branch, in place", async () => {
+    const { cwd, wt, close } = shipping(false);
+    const r = await run(wt, close);
+    expect(r.code).toBe(0);
+    expect(r.json.worktree).toMatchObject({ removed: false, reason: "not-owned" });
+    expect(fs.realpathSync(String(r.json.worktree.branchBlockedBy))).toBe(fs.realpathSync(wt));
+    expect(fs.existsSync(wt)).toBe(true);
+    expect(git(cwd, "branch", "--list", `feat/${FID}`)).not.toBe("");
   });
 });
 

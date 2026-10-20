@@ -45,10 +45,17 @@ Plan Feature — Autonomous plan generation
    ```
    Route:
    - **If** exit 0 **or** 5 → hold `labels` as `{LABELS}`, `linearState` as `{LINEAR_STATE}` → step 2.
-   - **Else** → step 3.
+   - **Else** → step 4.
 2. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    Post `comment` (when non-null).
-3. **STOP**, no further downstream steps.
+3. `git status --short` → remove unintended files, then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
+   ```bash
+   "{BKIT}" workflows handover --workflow=plan --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
+   ```
+   Route:
+   - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
+   - **Else** → post `comment` (when non-null) → step 4.
+4. **STOP**, no further downstream steps.
 
 ---
 

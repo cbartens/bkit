@@ -68,10 +68,7 @@ function initFixture(workflow: "design" | "plan", opts: { docOnDev?: string } = 
   git(repo, "remote", "add", "origin", remote);
   fs.mkdirSync(path.join(repo, "node_modules/.bin"), { recursive: true });
   fs.symlinkSync(BKIT_BIN, path.join(repo, "node_modules/.bin/bkit"));
-  write(
-    path.join(repo, ".gitignore"),
-    ".worktrees/\nnode_modules/\n.bkit/.dev.lock\ndocs/plans/*/logs/**/.lock\n",
-  );
+  write(path.join(repo, ".gitignore"), ".worktrees/\nnode_modules/\ndocs/plans/*/logs/**/.lock\n");
   write(path.join(repo, "docs/roadmap.md"), "# Roadmap\n");
   write(path.join(repo, "src/app.ts"), "export {};\n");
   const docPath = `docs/plans/${MONTH}/${FID}-${workflow}.md`;

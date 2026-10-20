@@ -90,7 +90,7 @@ Compliance grader stderr. Canonical grep patterns:
 - `[bkit-roadmap] could not write {path} — board left as-is (fail-open): {reason}` — `written` false.
 - `[bkit-roadmap] .bkit/issues.jsonl: N malformed line(s) skipped` — one bad line skips only that row.
 - `[bkit-roadmap] {message}` — fold bootstrap / self-heal lines.
-- `[bkit-roadmap] dev lock busy — skipping dev-side roadmap mirror (feat-side row already written)` / `dev push failed — feat-side row already written` — build / debug dev-side mirror fail-open.
+- `[bkit-roadmap] skipping the dev-side roadmap mirror — {reason} (feat-side row already written)` — build / debug dev-side mirror fail-open; `{reason}` is `on dev`, `dev push refused: …`, `dev moved before each of N pushes`, `fetch of dev failed: …`, `throwaway checkout failed: …` or `row not appended on dev`.
 
 ### `[bkit-runs]` prefix — ship merge gate
 

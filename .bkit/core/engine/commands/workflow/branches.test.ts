@@ -8,23 +8,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { LOCKFILE_REGENERATE, PACKAGE_RUNNER } from "../../shared/package-manager";
-import {
-  LEDGERS,
-  branchesCommand,
-  classifyConflict,
-  landBackoffMs,
-  readAnchor,
-  stampAnchor,
-} from "./branches";
+import { LEDGERS, branchesCommand, classifyConflict, readAnchor, stampAnchor } from "./branches";
 
-// `branches switch` contends for the dev lock for SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S; a held
-// lock must answer at once here. `branches land` retries without waiting, three tries in all.
+// `branches land` retries without waiting, three tries in all.
 vi.mock("../../shared/timeouts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../shared/timeouts")>();
   return {
     TIMEOUTS: {
       ...actual.TIMEOUTS,
-      SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S: 0,
       LAND_ATTEMPTS: 3,
       LAND_BACKOFF_START_S: 0,
     },
@@ -1233,12 +1224,11 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
 });
 
 // ---------------------------------------------------------------------------
-// switch
+// sync-dev
 // ---------------------------------------------------------------------------
 
-describe("branches switch", { timeout: GIT_TIMEOUT }, () => {
-  const ARGS = ["switch", "--fid=1-x", "--dev-pushes=true", "--worktrees=true"];
-
+describe("branches sync-dev", { timeout: GIT_TIMEOUT }, () => {
+  /** A clone on feat/1-x whose local dev is one squash-merge behind origin/dev. */
   function shipped(name: string) {
     const { origin, clone } = withOrigin(name);
     git(clone, "checkout", "-q", "-b", "feat/1-x");
@@ -1247,119 +1237,67 @@ describe("branches switch", { timeout: GIT_TIMEOUT }, () => {
     return { origin, clone };
   }
 
-  it("skips when the runtime does not push dev", async () => {
-    const { clone } = shipped("switch-skip");
-    const r = await run(clone, ["switch", "--fid=1-x", "--dev-pushes=false", "--worktrees=false"]);
+  it("fast-forwards local dev without checking it out", async () => {
+    const { origin, clone } = shipped("sync-ff");
+    const r = await run(clone, ["sync-dev"]);
     expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({
-      switched: false,
-      branch: "feat/1-x",
-      skipped: "dev-pushes-false",
-    });
+    expect(r.json).toEqual({ devLocal: "fast-forwarded", branch: "feat/1-x", installed: null });
+    expect(sha(clone, "dev")).toBe(git(origin, "rev-parse", "dev").out);
+    expect(currentBranchOf(clone)).toBe("feat/1-x");
   });
 
-  it("refuses (15) a dev-pushing runtime without worktrees", async () => {
-    const { clone } = shipped("switch-refuse");
-    const r = await run(clone, ["switch", "--fid=1-x", "--dev-pushes=true", "--worktrees=false"]);
-    expect(r.code).toBe(15);
-  });
-
-  it("rejects runtime flags that are not true/false", async () => {
-    const { clone } = shipped("switch-usage");
-    expect(
-      (await run(clone, ["switch", "--fid=1-x", "--dev-pushes=yes", "--worktrees=true"])).code,
-    ).toBe(2);
-  });
-
-  it("switches to dev, fast-forwards it, and releases the lock", async () => {
-    const { origin, clone } = shipped("switch-ff");
-    const r = await run(clone, ARGS);
-    expect(r.code).toBe(0);
-    expect(r.json).toEqual({
-      switched: true,
-      branch: "dev",
-      ahead: 0,
-      pushed: false,
-      installed: null,
-      skipped: null,
-    });
-    expect(sha(clone)).toBe(git(origin, "rev-parse", "dev").out);
-    expect(fs.existsSync(path.join(clone, ".bkit/.dev.lock"))).toBe(false);
-  });
-
-  it("rebases and pushes local dev commits that are all skip-CI", async () => {
-    const { origin, clone } = shipped("switch-ahead");
+  it("on dev: moves the checkout too, and installs only because dev moved", async () => {
+    const { origin, clone } = shipped("sync-on-dev");
     git(clone, "checkout", "-q", "dev");
-    commit(clone, { "docs/x.md": "x\n" }, "docs(1-x): ship bookkeeping bkit [skip ci]");
-    git(clone, "checkout", "-q", "feat/1-x");
-    const r = await run(clone, ARGS);
+    write(clone, "package.json", "{}\n");
+    const env = { PATH: withBin(stubBin({ [PACKAGE_RUNNER]: "exit 0" })) };
+    const r = await run(clone, ["sync-dev"], env);
     expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ switched: true, ahead: 1, pushed: true });
-    expect(git(origin, "rev-parse", "dev").out).toBe(sha(clone));
+    expect(r.json).toEqual({ devLocal: "fast-forwarded", branch: "dev", installed: true });
+    expect(sha(clone)).toBe(git(origin, "rev-parse", "dev").out);
+    const again = await run(clone, ["sync-dev"], env);
+    expect(again.json).toEqual({ devLocal: "current", branch: "dev", installed: null });
   });
 
-  it("needs a human (82) when local dev carries commits that would run CI", async () => {
-    const { origin, clone } = shipped("switch-human");
+  it("a failed install stops ship (16)", async () => {
+    const { clone } = shipped("sync-install-fail");
+    git(clone, "checkout", "-q", "dev");
+    write(clone, "package.json", "{}\n");
+    const r = await run(clone, ["sync-dev"], {
+      PATH: withBin(stubBin({ [PACKAGE_RUNNER]: "exit 1" })),
+    });
+    expect(r.code).toBe(16);
+    expect(r.json).toMatchObject({ devLocal: "fast-forwarded", installed: false });
+    expect(r.err).toContain("dependency install failed");
+  });
+
+  it("lists local-only dev commits with the command to publish them, and pushes nothing", async () => {
+    const { origin, clone } = shipped("sync-ahead");
     git(clone, "checkout", "-q", "dev");
     commit(clone, { "src.txt": "local code\n" }, "feat: local code");
     git(clone, "checkout", "-q", "feat/1-x");
+    const local = sha(clone, "dev");
     const remoteBefore = git(origin, "rev-parse", "dev").out;
-    const r = await run(clone, ARGS);
-    expect(r.code).toBe(82);
+    const r = await run(clone, ["sync-dev"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ devLocal: "skipped" });
     expect(r.err).toContain("feat: local code");
+    expect(r.err).toContain("git pull --rebase origin dev && git push origin dev");
     expect(git(origin, "rev-parse", "dev").out).toBe(remoteBefore);
-    expect(fs.existsSync(path.join(clone, ".bkit/.dev.lock"))).toBe(false);
+    expect(sha(clone, "dev")).toBe(local);
   });
 
-  it("answers no (1) while another run holds the dev lock", async () => {
-    const { clone } = shipped("switch-locked");
-    write(clone, ".bkit/.dev.lock", "2026-10-09T00:00:00Z build 2-y\n");
-    const r = await run(clone, ARGS);
-    expect(r.code).toBe(1);
-    expect(r.err).toContain("build 2-y");
-    expect(currentBranchOf(clone)).toBe("feat/1-x");
-    expect(read(clone, ".bkit/.dev.lock")).toContain("build 2-y");
-  });
-
-  it("clears a stale dev lock and proceeds", async () => {
-    const { clone } = shipped("switch-stale");
-    write(clone, ".bkit/.dev.lock", "old holder\n");
-    const old = new Date(Date.now() - 3_600_000);
-    fs.utimesSync(path.join(clone, ".bkit/.dev.lock"), old, old);
-    expect((await run(clone, ARGS)).code).toBe(0);
-  });
-
-  it("exits 10 when the fetch fails (the shell ignored it)", async () => {
-    const { clone } = shipped("switch-nofetch");
+  it("exits 10 when the fetch fails", async () => {
+    const { clone } = shipped("sync-nofetch");
     git(clone, "remote", "set-url", "origin", path.join(tmp("gone"), "missing"));
-    expect((await run(clone, ARGS)).code).toBe(10);
+    expect((await run(clone, ["sync-dev"])).code).toBe(10);
   });
 
   it("puts core.bare back to false on the main checkout", async () => {
-    const { clone } = shipped("switch-bare");
+    const { clone } = shipped("sync-bare");
     git(clone, "config", "core.bare", "true");
-    await run(clone, ARGS);
+    await run(clone, ["sync-dev"]);
     expect(git(clone, "config", "--get", "core.bare").out).toBe("false");
-  });
-
-  it("installs dependencies when there is a package.json, and a failed install stops ship (16)", async () => {
-    const ok = shipped("switch-install");
-    write(ok.clone, "package.json", "{}\n");
-    const good = await run(ok.clone, ARGS, {
-      PATH: withBin(stubBin({ [PACKAGE_RUNNER]: "exit 0" })),
-    });
-    expect(good.json).toMatchObject({ installed: true });
-
-    const bad = shipped("switch-install-fail");
-    write(bad.clone, "package.json", "{}\n");
-    const failed = await run(bad.clone, ARGS, {
-      PATH: withBin(stubBin({ [PACKAGE_RUNNER]: "exit 1" })),
-    });
-    expect(failed.code).toBe(16);
-    expect(failed.json).toMatchObject({ switched: true, installed: false });
-    expect(failed.err).toContain("dependency install failed");
-    // The dev lock is released on the failure exit too.
-    expect(fs.existsSync(path.join(bad.clone, ".bkit", ".dev.lock"))).toBe(false);
   });
 });
 
@@ -1376,7 +1314,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     git(repo, "init", "-q", "-b", "dev");
     git(repo, "config", "user.email", "t@t");
     git(repo, "config", "user.name", "t");
-    write(repo, ".gitignore", ".bkit/.dev.lock\ndocs/plans/*/logs/**/.lock\n");
+    write(repo, ".gitignore", "docs/plans/*/logs/**/.lock\n");
     write(repo, "docs/roadmap.md", "# Roadmap\n");
     git(repo, "add", "-A");
     git(repo, "commit", "-qm", "init");
@@ -1666,23 +1604,5 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(r.code).toBe(17);
     expect(r.err).toContain("did not reach MERGED (state=CLOSED)");
     expect(fs.existsSync(path.join(gh.base, "updates"))).toBe(false);
-  });
-});
-
-describe("landBackoffMs", () => {
-  it("doubles from the start wait, caps it, and jitters down by at most half", () => {
-    const top = () => 1;
-    expect([1, 2, 3, 4, 5, 9].map((n) => landBackoffMs(n, top, 2, 30))).toEqual([
-      2000, 4000, 8000, 16000, 30000, 30000,
-    ]);
-    expect(landBackoffMs(1, () => 0, 2, 30)).toBe(1000);
-  });
-
-  it("ten tries wait at most three minutes in all", () => {
-    const total = [1, 2, 3, 4, 5, 6, 7, 8, 9].reduce(
-      (t, n) => t + landBackoffMs(n, () => 1, 2, 30),
-      0,
-    );
-    expect(total).toBe(180_000);
   });
 });

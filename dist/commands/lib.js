@@ -350,15 +350,14 @@ export const statusRelPath = (month, fid) => path.join("docs", "plans", month, "
  *
  * - design / plan / build / debug: the feature worktree's copy when it exists
  *   (`.worktrees/{fid}`), else the main checkout's.
- * - ship: the main checkout when this runtime pushes to dev, else the current
- *   worktree's top (the branch being shipped). An unresolved runtime takes the
- *   least-capable answer: current worktree.
+ * - ship: the current worktree's top — the tree ship works in (the feature
+ *   worktree, or the adopted checkout), so asked from inside it.
  */
 export function statusLocation(opts) {
     const root = repoRoot(opts.cwd);
     const rel = statusRelPath(opts.month, opts.fid);
     if (opts.workflow === "ship") {
-        const bookRoot = opts.devPushes === true ? root : (git(opts.cwd, ["rev-parse", "--show-toplevel"]) ?? root);
+        const bookRoot = git(opts.cwd, ["rev-parse", "--show-toplevel"]) ?? root;
         return { bookRoot, path: path.join(bookRoot, rel) };
     }
     const worktree = path.join(root, ".worktrees", opts.fid);

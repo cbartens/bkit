@@ -55,18 +55,18 @@ $ARGUMENTS
    - **Else** → step 6.
 2. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    Post `comment` (when non-null).
-3. **If** `HANDOVER_NEEDED` = true → step 4. **Else** → step 6.
+3. **If** `HANDOVER_NEEDED` = true → step 4. **Else** → step 5.
 4. **Subagent:** Invoke `/bkit-debug-abort-handover` using `subagent` tool:
    Context: You are a subagent in the Build Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md`.
-5. `git status --short` → remove unintended files, then commit and push the handover — NEVER onto a branch with an open PR:
+5. `git status --short` → remove unintended files, then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
    ```bash
-   "{BKIT}" workflows handover --workflow=build --fid={FID} --month={YYYYMM} --push
+   "{BKIT}" workflows handover --workflow=build --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
    ```
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
-   - **Else** → post `comment` (no link unless the push landed) → step 6.
+   - **Else** → post `comment` (when non-null) → step 6.
 6. **STOP**, no further downstream steps.
 
 ---

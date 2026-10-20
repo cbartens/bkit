@@ -3,10 +3,9 @@
 // Two different things:
 //
 //   1. A `bkit [skip ci]` in a docs-only commit SUBJECT: the CI-minutes convention
-//      (`.agents/rules.md` § Docs commits), present on every listed subject. Ship's
-//      promotion-lag guard (`bkit branches switch`) stops for a human when a local
-//      `dev` commit ahead of `origin/dev` lacks the token; ship's own bookkeeping
-//      commit carries it.
+//      (`.agents/rules.md` § Docs commits), present on every listed subject. Ship
+//      never pushes local `dev` (`bkit branches sync-dev` only fast-forwards it),
+//      so a local commit's token never decides whether CI runs.
 //
 //   2. A token INHERITED into a squash-merge BODY (`bkit prs merge` and the MCP merge
 //      tool default the body to the head branch's concatenated commit subjects). The
@@ -98,8 +97,8 @@ const COMMAND_SUBJECTS: Array<{ source: string; description: string; literal: st
   },
   {
     source: "commands/workflow/workflows.ts",
-    description: "ship FAILED (workflows handover --flush)",
-    literal: "chore(${o.fid}): ship FAILED bkit [skip ci]",
+    description: "FAILED record landed on dev (workflows handover --flush / --push from dev)",
+    literal: "chore(${o.fid}): ${o.workflow} FAILED bkit [skip ci]",
   },
 ];
 
@@ -165,16 +164,14 @@ describe("skip-ci subject convention", () => {
     }
   });
 
-  describe("(iv) ship's promotion-lag guard stays satisfiable", () => {
-    // The guard itself (refuse to push local dev commits that would run CI)
-    // lives in `bkit branches switch`; commands/workflow/branches.test.ts
-    // covers both the all-skip-CI push and the stop-for-a-human case. What
-    // stays here is that ship actually goes through it, after writing its
-    // bookkeeping commit with the token — (i) pins the subject.
+  describe("(iv) ship never publishes local dev commits", () => {
+    // `bkit branches sync-dev` lists local-only dev commits and pushes none of
+    // them (commands/workflow/branches.test.ts); ship's own dev commits are
+    // built off origin/dev and carry the token — (i) pins the subjects.
     const shipMd = readWorkflow("bkit-ship.md");
 
-    it("ship switches to dev through bkit branches switch", () => {
-      expect(shipMd).toMatch(/"\{BKIT\}" branches switch --fid=/);
+    it("ship brings local dev level through bkit branches sync-dev", () => {
+      expect(shipMd).toMatch(/"\{BKIT\}" branches sync-dev\b/);
     });
   });
 });

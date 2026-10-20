@@ -18,7 +18,7 @@ import { getPromptsRoot } from "../../shared/package-roots.js";
 import { CommandError, EXIT, repoRoot, runGit, } from "../lib.js";
 import { FID_PATTERNS, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
-import { lockRoot, readHolder, resolveMonth, workflowLockPath } from "./locks.js";
+import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readRunsAt, statusFile, str, } from "./status.js";
 const VERDICT_END = "<!-- verdict:end -->";
 const DEFAULT_VERDICTS = ["PASS", "CONCERNS", "FAIL"];
@@ -329,7 +329,8 @@ function gateChecks(cwd, o) {
             ? undefined
             : `does not match the ${tracker} shape ${FID_PATTERNS[tracker].source}`, `${tracker} shape`);
         if (o.token !== undefined) {
-            const lock = workflowLockPath(lockRoot(cwd, o.workflow, o.devPushes === true), resolveMonth(repoRoot(cwd), o.fid, o.month), o.fid);
+            const root = repoRoot(cwd);
+            const lock = workflowLockPath(root, resolveMonth(root, o.fid, o.month), o.fid);
             const holder = readHolder(lock);
             add("workflow lock", holder === undefined
                 ? `no lock at ${lock}`
@@ -1025,11 +1026,6 @@ export const stepsCommand = {
                     type: "string",
                     help: "the workflow lock must be held with this token (needs --fid)",
                 },
-                {
-                    name: "dev-pushes",
-                    type: "boolean",
-                    help: "ship only: the lock lives in the main checkout",
-                },
             ],
             output: { pass: "true when every check passed", checks: "[{check, ok, detail}] per check" },
             exitCodes: {
@@ -1065,7 +1061,6 @@ export const stepsCommand = {
                     fid: str(f.fid),
                     month: str(f.month),
                     token: str(f.token),
-                    devPushes: f.devPushes === true,
                     placeholders: list(f.placeholder),
                 });
                 const pass = checks.every((c) => c.ok);

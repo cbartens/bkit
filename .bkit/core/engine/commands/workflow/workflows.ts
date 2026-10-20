@@ -12,8 +12,8 @@
 //           ship's one-commit flush (`--flush`), and print the handover comment.
 // close     grade compliance, then the `workflow-done` row, the run's counter and
 //           outcome rows in `.bkit/stats.jsonl`, this workflow's telemetry report
-//           and the artifact links. `--flush` is ship's close: under the dev lock,
-//           on dev or a detached origin/dev worktree, commit and land it.
+//           and the artifact links. `--flush` is ship's close: land it on dev
+//           through a throwaway origin/dev checkout, then remove the worktree.
 // promote   design / plan close: the highest versioned draft becomes the
 //           canonical doc (anchor stamped, a superseded canonical archived).
 // links     the feature docs and this workflow's logs on a ref, as markdown links.
@@ -38,13 +38,14 @@ import {
   type CoverageStats,
 } from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
-import { TIMEOUTS } from "../../shared/timeouts.js";
 import { gradeCompliance } from "../comply.js";
+import { landDir, pushToDev, type DevPush } from "../land.js";
 import {
   CommandError,
   DEV,
   EXIT,
   git,
+  isSharedBranch,
   parseJson,
   repoRoot,
   runGh,
@@ -68,9 +69,7 @@ import { EXIT_EMPTY, commitBookkeeping, unionLedgers } from "./ledgers.js";
 import {
   EXIT_REMOVE_FAILED,
   EXIT_SPLIT_BUCKET,
-  acquireDevLock,
   acquireWorkflowLock,
-  lockRoot,
   owns,
   readHolder,
   releaseLock,
@@ -89,14 +88,13 @@ import {
   str,
 } from "./status.js";
 import { writeStepRow } from "./steps.js";
+import { removeWorktree, type RemoveResult } from "./worktrees.js";
 
 /** Sentinels a workflow leaves in its logs folder; either one existing means a handover is due. */
 export const SENTINELS = [".rebase-failed", ".deferred-blocked"] as const;
 
 /** Exit code (start --lock-held): the lock is missing or belongs to another owner. */
 export const EXIT_LOCK_NOT_HELD = 6;
-/** Exit code (handover --push): the handover artifact is missing or empty. */
-export const EXIT_HANDOVER_MISSING = 8;
 /** Exit code (handover --push): the branch has an open PR, so nothing was pushed. */
 export const EXIT_OPEN_PR_KEPT = 9;
 /** Exit code (handover, close --flush): a push failed. */
@@ -113,7 +111,7 @@ export const EXIT_NO_VERSION = 12;
 interface Where {
   root: string;
   month: string;
-  /** Tree the run works in: ship's book root, else the current worktree's top. */
+  /** Tree the run works in: the current worktree's top. */
   tree: string;
   status: string;
 }
@@ -127,20 +125,14 @@ function workflowName(workflow: string): string {
   return workflow;
 }
 
-/**
- * start and close work in the current tree (ship: its book root), the root
- * `git rev-parse --show-toplevel` reports.
- */
+/** start and close work in the current tree, the root `git rev-parse --show-toplevel` reports. */
 function whereInTree(
   cwd: string,
-  o: { workflow: string; fid: string; month?: string; devPushes: boolean; file?: string },
+  o: { workflow: string; fid: string; month?: string; file?: string },
 ): Where {
   const root = repoRoot(cwd);
   const month = resolveMonth(root, o.fid, o.month);
-  const tree =
-    o.workflow === "ship"
-      ? lockRoot(cwd, o.workflow, o.devPushes)
-      : (git(cwd, ["rev-parse", "--show-toplevel"]) ?? root);
+  const tree = git(cwd, ["rev-parse", "--show-toplevel"]) ?? root;
   const status = o.file ? path.resolve(cwd, o.file) : path.join(tree, statusRelPath(month, o.fid));
   return { root, month, tree, status };
 }
@@ -181,13 +173,12 @@ function abortRebase(tree: string, log: (m: string) => void): boolean {
 
 /** The workflow-failed state: row, rebase abort, lock release, sentinels. */
 function failState(ctx: RunContext, workflow: string, fid: string) {
-  const devPushes = ctx.flags.devPushes === true;
   const root = repoRoot(ctx.cwd);
   const month = resolveMonth(root, fid, str(ctx.flags.month) || undefined);
   const file = str(ctx.flags.file) || undefined;
   const status = file
     ? path.resolve(ctx.cwd, file)
-    : statusLocation({ cwd: ctx.cwd, workflow, fid, month, devPushes }).path;
+    : statusLocation({ cwd: ctx.cwd, workflow, fid, month }).path;
 
   // The run's own tree: the feature worktree when there is one, else this checkout.
   // Never the main checkout behind a worktree, where a rebase would be a human's.
@@ -210,7 +201,7 @@ function failState(ctx: RunContext, workflow: string, fid: string) {
     ctx.log(`${status} does not exist — no workflow-failed row written`);
   }
 
-  const lockFile = workflowLockPath(lockRoot(ctx.cwd, workflow, devPushes), month, fid);
+  const lockFile = workflowLockPath(root, month, fid);
   const { removeFailed, ...lock } = releaseLock(lockFile, {
     workflow,
     fid,
@@ -221,7 +212,7 @@ function failState(ctx: RunContext, workflow: string, fid: string) {
   if (removeFailed) ctx.log(`lock removal failed: ${lockFile}`);
 
   // Each sentinel is cleared where it was created: `.rebase-failed` in the run's
-  // tree, `.deferred-blocked` beside status.jsonl (ship: the book root).
+  // tree, `.deferred-blocked` beside status.jsonl.
   const logDirs = new Set([path.join(tree, logDirRel(month, fid)), path.dirname(status)]);
   const sentinels: Array<{ name: string; path: string }> = [];
   for (const dir of logDirs) {
@@ -314,100 +305,128 @@ function readText(cwd: string, rel: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Ship's Failure Path flush: copy branch-side logs and ledger rows into the book
- * root, then ONE `chore({fid}): ship FAILED bkit [skip ci]` commit and ONE push —
- * to dev under the dev lock when this runtime pushes dev, else the current branch.
+ * Carry a run's book into a dev checkout: the `.md` logs in its log folder that
+ * the checkout lacks, and its ledger rows unioned line-wise (both hold rows the
+ * other does not).
  */
-async function shipFlush(
-  ctx: RunContext,
-  o: { fid: string; month: string; devPushes: boolean; worktree?: string },
-): Promise<{ code: number; pushed: boolean; ref: string | null; skipped: string | null }> {
-  const root = repoRoot(ctx.cwd);
-  const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root;
-  const bookRoot = o.devPushes ? root : top;
-  const rel = logDirRel(o.month, o.fid);
-  const src = o.worktree ?? path.join(root, ".worktrees", o.fid);
-  if (fs.existsSync(path.join(src, rel)) && path.resolve(src) !== path.resolve(bookRoot)) {
-    fs.mkdirSync(path.join(bookRoot, rel), { recursive: true });
+function carryBook(src: string, dst: string, month: string, fid: string): void {
+  const rel = logDirRel(month, fid);
+  if (fs.existsSync(path.join(src, rel))) {
+    fs.mkdirSync(path.join(dst, rel), { recursive: true });
     for (const f of fs.readdirSync(path.join(src, rel)).filter((n) => n.endsWith(".md"))) {
-      const to = path.join(bookRoot, rel, f);
+      const to = path.join(dst, rel, f);
       if (!fs.existsSync(to)) fs.copyFileSync(path.join(src, rel, f), to);
     }
-    unionLedgers(src, bookRoot);
   }
+  unionLedgers(src, dst);
+}
 
-  let wt = bookRoot;
-  let target = "";
-  let release: (() => void) | undefined;
-  if (o.devPushes) {
-    let lock: { path: string; token: string };
-    try {
-      lock = await acquireDevLock({
-        cwd: root,
-        workflow: "ship",
-        fid: o.fid,
-        deadlineS: 60,
-        log: ctx.log,
-      });
-    } catch {
-      // Busy: the FAILED record rides along on the next dev commit; never a second failure.
-      ctx.log(`dev lock busy — ship FAILED bookkeeping left uncommitted in ${bookRoot}`);
-      return { code: EXIT.OK, pushed: false, ref: null, skipped: "dev-lock-busy" };
+/**
+ * After a landing from a dev / main / detached checkout: hand back the
+ * checkout's copies of what landed, so a later fast-forward of dev does not stop
+ * on them — an untracked copy is removed, a modified tracked file returns to
+ * HEAD. A path goes back only when every line of it is in the landed commit and
+ * nothing of it is staged; any other path stays and is named.
+ */
+function handBack(tree: string, sha: string, log: (line: string) => void): void {
+  const listed = runGit(tree, ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", sha]);
+  const lines = (text: string) => text.split("\n").filter((l) => l !== "");
+  const back: string[] = [];
+  const kept: string[] = [];
+  for (const rel of listed.stdout.split("\0").filter((p) => p !== "")) {
+    const abs = path.join(tree, rel);
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
+    const landed = new Set(lines(runGit(tree, ["show", `${sha}:${rel}`]).stdout));
+    const tracked = runGit(tree, ["ls-files", "--error-unmatch", "--", rel]).ok;
+    const covered = lines(fs.readFileSync(abs, "utf-8")).every((l) => landed.has(l));
+    if (!covered || (tracked && !runGit(tree, ["diff", "--cached", "--quiet", "--", rel]).ok)) {
+      kept.push(rel);
+    } else if (!tracked) {
+      fs.rmSync(abs);
+      back.push(rel);
+    } else if (runGit(tree, ["restore", "--source=HEAD", "--worktree", "--", rel]).ok) {
+      back.push(rel);
+    } else {
+      kept.push(rel);
     }
-    release = () => releaseLock(lock.path, { workflow: "ship", fid: o.fid, token: lock.token });
-    runGit(root, ["checkout", DEV]);
-    if (git(root, ["branch", "--show-current"]) !== DEV) {
-      release();
-      ctx.log(`not on dev after checkout — FAILED bookkeeping left uncommitted in ${bookRoot}`);
-      return { code: EXIT_FLUSH_FAILED, pushed: false, ref: null, skipped: null };
-    }
-    runGit(root, ["pull", "--ff-only", "origin", DEV]);
-    wt = root;
-    target = DEV;
-  } else {
-    ctx.log("RUNTIME_DEVPUSHES=false — the FAILED record commits on the current branch");
-    target = git(wt, ["branch", "--show-current"]) ?? "";
   }
+  if (back.length > 0) log(`handed back ${back.length} file(s) now on dev: ${back.join(", ")}`);
+  if (kept.length > 0) log(`kept in ${tree}, not all on dev: ${kept.join(", ")}`);
+}
+
+/** Thrown by a landing's build when the book adds nothing to dev. */
+const NOTHING_TO_LAND = new Error("no bookkeeping delta");
+
+/**
+ * Land a failed run's record on dev: carry its book (the run's tree) into a
+ * throwaway origin/dev checkout, commit it as ONE
+ * `chore({fid}): {workflow} FAILED bkit [skip ci]` and push it. Ship's Failure
+ * Path always lands here; the other workflows land here only from a `dev` /
+ * `main` / detached checkout, where a commit in the checkout would publish code.
+ * Not landed → the record stays in the book, and the next run carries it.
+ */
+async function landFailedRecord(
+  ctx: RunContext,
+  o: { workflow: string; fid: string; month: string; book: string },
+): Promise<{
+  code: number;
+  pushed: boolean;
+  ref: string | null;
+  skipped: string | null;
+  sha?: string;
+}> {
+  const root = repoRoot(ctx.cwd);
+  const { book } = o;
+  const kept = `${o.workflow} FAILED record kept in ${book} — the next ${o.workflow} of ${o.fid} carries it`;
+  const stop = (code: number, why: string) => {
+    ctx.log(`${why} — ${kept}`);
+    return { code, pushed: false, ref: null, skipped: null };
+  };
+  let res: DevPush;
   try {
-    if (target === "") {
-      ctx.log(`push target empty (detached HEAD?) — bookkeeping left uncommitted in ${wt}`);
-      return { code: EXIT_FLUSH_FAILED, pushed: false, ref: null, skipped: null };
-    }
-    const before = headSha(wt);
-    try {
-      commitBookkeeping(
-        {
-          root: wt,
-          month: o.month,
-          fid: o.fid,
-          scope: "full",
-          mode: "commit",
-          message: `chore(${o.fid}): ship FAILED bkit [skip ci]`,
-        },
-        ctx.log,
-      );
-    } catch (err) {
-      if (err instanceof CommandError && err.code === EXIT_EMPTY) {
-        ctx.log("no bookkeeping delta to record — nothing committed, nothing pushed");
-        return { code: EXIT.OK, pushed: false, ref: null, skipped: "nothing-to-commit" };
-      }
-      ctx.log(
-        `bookkeeping commit failed — FAILED bookkeeping left uncommitted in ${wt}: ${(err as Error).message}`,
-      );
-      return { code: EXIT_FLUSH_FAILED, pushed: false, ref: null, skipped: null };
-    }
-    if (headSha(wt) === before) {
+    res = await pushToDev({
+      root,
+      dir: landDir(root, o.fid),
+      build: (dir) => {
+        carryBook(book, dir, o.month, o.fid);
+        const before = headSha(dir);
+        try {
+          commitBookkeeping(
+            {
+              root: dir,
+              month: o.month,
+              fid: o.fid,
+              scope: "full",
+              mode: "commit",
+              message: `chore(${o.fid}): ${o.workflow} FAILED bkit [skip ci]`,
+            },
+            ctx.log,
+          );
+        } catch (err) {
+          throw err instanceof CommandError && err.code === EXIT_EMPTY ? NOTHING_TO_LAND : err;
+        }
+        if (headSha(dir) === before) throw NOTHING_TO_LAND;
+      },
+      log: ctx.log,
+    });
+  } catch (err) {
+    if (err === NOTHING_TO_LAND) {
       ctx.log("no bookkeeping delta to record — nothing committed, nothing pushed");
       return { code: EXIT.OK, pushed: false, ref: null, skipped: "nothing-to-commit" };
     }
-    const push = runGit(wt, ["push", "origin", target]);
-    if (!push.ok) {
-      ctx.log(`git push origin ${target} failed: ${push.stderr}`);
-      return { code: EXIT_PUSH_FAILED, pushed: false, ref: null, skipped: null };
-    }
-    return { code: EXIT.OK, pushed: true, ref: target, skipped: null };
-  } finally {
-    release?.();
+    return stop(EXIT_FLUSH_FAILED, `bookkeeping commit failed: ${(err as Error).message}`);
+  }
+  switch (res.kind) {
+    case "landed":
+      return { code: EXIT.OK, pushed: true, ref: DEV, skipped: null, sha: res.sha };
+    case "refused":
+      return stop(EXIT_PUSH_FAILED, `dev refused the push: ${res.stderr}`);
+    case "exhausted":
+      return stop(EXIT_PUSH_FAILED, `dev moved before each of ${res.attempts} pushes`);
+    case "fetch-failed":
+      return stop(EXIT_FLUSH_FAILED, `fetch of dev failed: ${res.stderr}`);
+    case "setup-failed":
+      return stop(EXIT_FLUSH_FAILED, `throwaway checkout failed: ${res.stderr}`);
   }
 }
 
@@ -429,19 +448,22 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
   let ref = str(ctx.flags.ref) ?? null;
   let pushed = false;
   let skipped: string | null = null;
-  if (push) {
-    if (!present) {
-      ctx.log(`${artifact} is missing or empty — nothing to hand over`);
-      return EXIT_HANDOVER_MISSING;
-    }
-    runGit(ctx.cwd, ["add", "-A"]);
-    const made = runGit(ctx.cwd, [
-      "commit",
-      "-m",
-      `docs(${fid}): ${workflow} aborted bkit [skip ci]`,
-    ]);
+  const tree =
+    worktree === undefined ? (git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? base) : base;
+  const branch = git(tree, ["branch", "--show-current"]) ?? "";
+  let landedSha: string | undefined;
+  if (push && (branch === "" || isSharedBranch(branch))) {
+    const r = await landFailedRecord(ctx, { workflow, fid, month, book: tree });
+    landedSha = r.sha;
+    code = r.code;
+    pushed = r.pushed;
+    ref = r.ref;
+    skipped = r.skipped;
+  } else if (push) {
+    runGit(tree, ["add", "-A"]);
+    const made = runGit(tree, ["commit", "-m", `docs(${fid}): ${workflow} aborted bkit [skip ci]`]);
     if (!made.ok) ctx.log(`abort commit: ${made.stderr || made.stdout}`);
-    const r = pushBranch(ctx.cwd, { mode: "abort", openPr: str(ctx.flags.openPr) }, ctx.log);
+    const r = pushBranch(tree, { mode: "abort", openPr: str(ctx.flags.openPr) }, ctx.log);
     if (r.code === EXIT.USE_MCP) return r.code;
     pushed = r.out.pushed;
     ref = r.out.ref;
@@ -453,12 +475,7 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
           ? EXIT_OPEN_PR_KEPT
           : EXIT_PUSH_FAILED;
   } else if (flush) {
-    const r = await shipFlush(ctx, {
-      fid,
-      month,
-      devPushes: ctx.flags.devPushes === true,
-      worktree: worktree === undefined ? undefined : base,
-    });
+    const r = await landFailedRecord(ctx, { workflow, fid, month, book: tree });
     code = r.code;
     pushed = r.pushed;
     ref = r.ref;
@@ -475,6 +492,7 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
         bodyFile: artifact,
       })
     : null;
+  if (landedSha !== undefined) handBack(tree, landedSha, ctx.log);
   ctx.emit({
     handover: present ? artifact : null,
     pushed,
@@ -675,7 +693,6 @@ export interface CloseInput {
   workflow: string;
   fid: string;
   month?: string;
-  devPushes: boolean;
   file?: string;
   prNumber?: number;
   squashSha?: string;
@@ -709,7 +726,7 @@ export function closeWorkflow(
     throw new CommandError(EXIT.USAGE, `--squash-sha "${o.squashSha}" is not a commit sha`);
 
   // Graded first, so the report below carries this run's grade.
-  const violations = gradeCompliance(where.tree, workflow, log);
+  const violations = gradeCompliance(where.tree, workflow, log, o.squashSha);
 
   const step = `${workflow}-close-workflow`;
   if (o.recordStep === true) {
@@ -857,128 +874,147 @@ export function closeWorkflow(
 }
 
 /**
- * Ship's close: under the dev lock, on dev (this runtime pushes it) or on a
- * detached `origin/dev` worktree in the outbox (it does not), run the close, commit
- * `docs({fid}): ship DONE bkit [skip ci]`, release the workflow lock, then land the
- * commit — push dev, push `HEAD:dev`, or, when that is refused, a `ship-close/{fid}`
- * PR merged with an empty body.
+ * Publish a close commit dev refused through its own `ship-close/{fid}` PR,
+ * merged with an empty body. Returns where it landed, or why it did not.
  */
-async function shipClose(ctx: RunContext, o: CloseInput, token: string | undefined) {
+function closePr(
+  ctx: RunContext,
+  dir: string,
+  fid: string,
+  subject: string,
+): { ref: string; via: string } | { failed: string } {
+  const branch = `ship-close/${fid}`;
+  const head = headSha(dir);
+  if (!runGit(dir, ["push", "origin", `HEAD:refs/heads/${branch}`]).ok)
+    return { failed: `close branch push failed` };
+  const created = runGh(dir, [
+    "pr",
+    "create",
+    "--base",
+    DEV,
+    "--head",
+    branch,
+    "--title",
+    `docs(${fid}): ship DONE`,
+    "--body",
+    "",
+  ]);
+  if (!created.ok) return { failed: `gh pr create failed: ${created.stderr}` };
+  const pr = probePr(dir, { head: branch, base: DEV, state: "open" });
+  const number = pr.kind === "ok" ? pr.pr?.number : undefined;
+  if (number === undefined) return { failed: `close PR not found for ${branch}` };
+  const merged = mergePr(
+    dir,
+    { number: String(number), subject, matchHead: head, deleteBranch: true },
+    ctx.log,
+  );
+  if (!merged.out.merged) ctx.log(`close PR #${number} opened but not merged — merge it by hand`);
+  return { ref: branch, via: merged.out.merged ? "close-pr" : "close-pr-open" };
+}
+
+/**
+ * Ship's close, in the run's tree (the feature worktree, or the adopted
+ * checkout): the close rows there, then ONE `docs({fid}): ship DONE bkit [skip ci]`
+ * commit built in a throwaway origin/dev checkout carrying the run's book and
+ * landed on dev — a refused push publishes it through a `ship-close/{fid}` PR.
+ * Then the workflow lock is released and, once the close is on dev, the feature
+ * worktree and `branch` are removed.
+ */
+async function shipClose(
+  ctx: RunContext,
+  o: CloseInput & { branch?: string },
+  token: string | undefined,
+) {
   const root = repoRoot(ctx.cwd);
-  const outbox = o.outbox === undefined ? undefined : path.resolve(ctx.cwd, o.outbox);
-  if (outbox === undefined) throw new CommandError(EXIT.USAGE, "--flush needs --outbox");
+  if (o.outbox === undefined) throw new CommandError(EXIT.USAGE, "--flush needs --outbox");
   const month = resolveMonth(root, o.fid, o.month);
-  const lock = await acquireDevLock({
-    cwd: root,
-    workflow: "ship",
-    fid: o.fid,
-    deadlineS: TIMEOUTS.SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S,
-    log: ctx.log,
-  });
-  const fail = (why: string) => {
-    ctx.log(why);
-    return { code: EXIT_FLUSH_FAILED, out: null as Record<string, unknown> | null };
-  };
-  let closeRoot = "";
-  let landed: { ref: string; via: string } | null = null;
-  let out: Record<string, unknown> = {};
+  const book = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root;
+  const subject = `docs(${o.fid}): ship DONE bkit [skip ci]`;
+  const kept = `close bookkeeping kept in ${book}`;
+  const out = closeWorkflow(book, { ...o, recordStep: true, message: undefined }, ctx.log);
+
+  let viaPr: { ref: string; via: string } | { failed: string } | null = null;
+  let res: DevPush;
   try {
-    let wt: string;
-    if (o.devPushes) {
-      runGit(root, ["checkout", DEV]);
-      if (git(root, ["branch", "--show-current"]) !== DEV)
-        return fail("not on dev after checkout — aborting dev ops");
-      wt = root;
-    } else {
-      ctx.log(
-        "RUNTIME_DEVPUSHES=false — the close commit lands through a detached origin/dev worktree",
-      );
-      wt = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root;
-    }
-    out = closeWorkflow(wt, { ...o, recordStep: true, message: undefined }, ctx.log);
-    if (o.devPushes) {
-      closeRoot = wt;
-    } else {
-      if (!runGit(wt, ["fetch", "origin", DEV]).ok)
-        return fail(`fetch origin dev failed — close bookkeeping left uncommitted in ${wt}`);
-      closeRoot = path.join(outbox, "close");
-      if (fs.existsSync(closeRoot)) runGit(wt, ["worktree", "remove", "--force", closeRoot]);
-      runGit(wt, ["worktree", "prune"]);
-      if (!runGit(wt, ["worktree", "add", "--detach", closeRoot, "origin/dev"]).ok)
-        return fail(`close worktree add failed — close bookkeeping left uncommitted in ${wt}`);
-      unionLedgers(wt, closeRoot);
-    }
-    commitBookkeeping(
-      {
-        root: closeRoot,
-        month,
-        fid: o.fid,
-        scope: "full",
-        mode: "commit-allow-empty",
-        message: `docs(${o.fid}): ship DONE bkit [skip ci]`,
+    res = await pushToDev({
+      root,
+      dir: landDir(root, o.fid),
+      build: (dir) => {
+        carryBook(book, dir, month, o.fid);
+        commitBookkeeping(
+          {
+            root: dir,
+            month,
+            fid: o.fid,
+            scope: "full",
+            mode: "commit-allow-empty",
+            message: subject,
+          },
+          ctx.log,
+        );
       },
-      ctx.log,
-    );
-    const released = releaseLock(
-      workflowLockPath(lockRoot(ctx.cwd, "ship", o.devPushes), month, o.fid),
-      { workflow: "ship", fid: o.fid, token },
-    );
-    if (released.removeFailed) return fail("Lock removal failed");
-    if (o.devPushes) {
-      if (!runGit(closeRoot, ["push", "origin", DEV]).ok) {
-        ctx.log("dev push failed");
-        return { code: EXIT_PUSH_FAILED, out };
-      }
-      landed = { ref: DEV, via: "dev-push" };
-    }
-  } finally {
-    releaseLock(lock.path, { workflow: "ship", fid: o.fid, token: lock.token });
+      refused: async (dir, stderr) => {
+        ctx.log(`dev refused the close push — publishing it through a PR: ${stderr}`);
+        viaPr = closePr(ctx, dir, o.fid, subject);
+      },
+      log: ctx.log,
+    });
+  } catch (err) {
+    ctx.log(`close commit failed: ${(err as Error).message} — ${kept}`);
+    return { code: EXIT_FLUSH_FAILED, out: null };
   }
 
-  if (!o.devPushes) {
-    if (runGit(closeRoot, ["push", "origin", "HEAD:dev"]).ok) {
-      landed = { ref: DEV, via: "head-push" };
-    } else {
-      // dev refused the push: publish the close commit through its own PR.
-      const branch = `ship-close/${o.fid}`;
-      const head = headSha(closeRoot);
-      if (!runGit(closeRoot, ["push", "origin", `HEAD:refs/heads/${branch}`]).ok)
-        return fail(`close branch push failed — close bookkeeping left in ${closeRoot}`);
-      const created = runGh(closeRoot, [
-        "pr",
-        "create",
-        "--base",
-        DEV,
-        "--head",
-        branch,
-        "--title",
-        `docs(${o.fid}): ship DONE`,
-        "--body",
-        "",
-      ]);
-      if (!created.ok) return fail(`gh pr create failed: ${created.stderr}`);
-      const pr = probePr(closeRoot, { head: branch, base: DEV, state: "open" });
-      const number = pr.kind === "ok" ? pr.pr?.number : undefined;
-      if (number === undefined) return fail(`close PR not found for ${branch}`);
-      const merged = mergePr(
-        closeRoot,
-        {
-          number: String(number),
-          subject: `docs(${o.fid}): ship DONE bkit [skip ci]`,
-          matchHead: head,
-          deleteBranch: true,
-        },
-        ctx.log,
-      );
-      if (!merged.out.merged)
-        ctx.log(`close PR #${number} opened but not merged — merge it by hand`);
-      landed = { ref: branch, via: merged.out.merged ? "close-pr" : "close-pr-open" };
-    }
-    const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root;
-    runGit(top, ["worktree", "remove", "--force", closeRoot]);
-    runGit(top, ["worktree", "prune"]);
+  const released = releaseLock(workflowLockPath(root, month, o.fid), {
+    workflow: "ship",
+    fid: o.fid,
+    token,
+  });
+  if (released.removeFailed) {
+    ctx.log("Lock removal failed");
+    return { code: EXIT_FLUSH_FAILED, out: null };
   }
-  return { code: EXIT.OK, out: { ...out, closeRoot, landed } };
+
+  let landed: { ref: string; via: string } | null = null;
+  switch (res.kind) {
+    case "landed":
+      landed = { ref: DEV, via: "head-push" };
+      break;
+    case "refused": {
+      const pr = viaPr as { ref: string; via: string } | { failed: string } | null;
+      if (pr === null || "failed" in pr) {
+        ctx.log(`${pr === null ? "close PR not attempted" : pr.failed} — ${kept}`);
+        return { code: EXIT_FLUSH_FAILED, out: null };
+      }
+      landed = pr;
+      break;
+    }
+    case "exhausted":
+      ctx.log(`dev moved before each of ${res.attempts} pushes — ${kept}`);
+      return { code: EXIT_PUSH_FAILED, out };
+    case "fetch-failed":
+      ctx.log(`fetch of dev failed: ${res.stderr} — ${kept}`);
+      return { code: EXIT_FLUSH_FAILED, out: null };
+    case "setup-failed":
+      ctx.log(`throwaway checkout failed: ${res.stderr} — ${kept}`);
+      return { code: EXIT_FLUSH_FAILED, out: null };
+  }
+
+  // The book is on dev only once the close landed or its PR merged.
+  let worktree: RemoveResult | null = null;
+  if (landed.via === "close-pr-open") {
+    ctx.log(`close PR not merged — ${kept} until it is`);
+  } else {
+    if (landed.via === "close-pr" && !runGit(root, ["fetch", "origin", DEV]).ok)
+      ctx.log(
+        `fetch of dev after the close PR failed — origin/${DEV} is stale until the next fetch`,
+      );
+    try {
+      worktree = removeWorktree(root, o.fid, o.branch, ctx.log);
+    } catch (err) {
+      ctx.log(`${(err as Error).message} — remove ${book} by hand`);
+    }
+  }
+  return { code: EXIT.OK, out: { ...out, landed, worktree } };
 }
 
 // ---------------------------------------------------------------------------
@@ -1124,11 +1160,6 @@ const MONTH_FLAG: FlagSpec = {
   type: "string",
   help: "month bucket YYYYMM (default: the feature's bucket, else this UTC month)",
 };
-const DEV_PUSHES_FLAG: FlagSpec = {
-  name: "dev-pushes",
-  type: "boolean",
-  help: "ship only: this runtime pushes to dev (logs book in the main checkout)",
-};
 const STATUS_FILE_FLAG: FlagSpec = {
   name: "file",
   type: "string",
@@ -1159,7 +1190,6 @@ export const workflowsCommand: CommandSpec = {
         WORKFLOW_FLAG,
         FID_FLAG,
         MONTH_FLAG,
-        DEV_PUSHES_FLAG,
         STATUS_FILE_FLAG,
         {
           name: "lock-held",
@@ -1183,7 +1213,6 @@ export const workflowsCommand: CommandSpec = {
       run: (ctx) => {
         const workflow = workflowName(String(ctx.flags.workflow));
         const fid = String(ctx.flags.fid);
-        const devPushes = ctx.flags.devPushes === true;
         const token = str(ctx.flags.token);
         if (token !== undefined && ctx.flags.lockHeld !== true)
           throw new CommandError(EXIT.USAGE, "--token applies with --lock-held only");
@@ -1191,13 +1220,12 @@ export const workflowsCommand: CommandSpec = {
           workflow,
           fid,
           month: str(ctx.flags.month),
-          devPushes,
           file: str(ctx.flags.file),
         });
 
         let lock: Record<string, unknown>;
         if (ctx.flags.lockHeld === true) {
-          const file = workflowLockPath(lockRoot(ctx.cwd, workflow, devPushes), where.month, fid);
+          const file = workflowLockPath(where.root, where.month, fid);
           checkHeldLock(file, { workflow, fid, token });
           lock = { path: file };
         } else {
@@ -1207,7 +1235,6 @@ export const workflowsCommand: CommandSpec = {
               workflow,
               fid,
               month: where.month,
-              devPushes,
               log: ctx.log,
             }),
           };
@@ -1246,7 +1273,6 @@ export const workflowsCommand: CommandSpec = {
         WORKFLOW_FLAG,
         { ...FID_FLAG, required: false, help: "feature id (needed with --token)" },
         MONTH_FLAG,
-        DEV_PUSHES_FLAG,
         STATUS_FILE_FLAG,
         {
           ...TOKEN_FLAG,
@@ -1309,7 +1335,7 @@ export const workflowsCommand: CommandSpec = {
     },
     handover: {
       summary:
-        "After the handover subagent: commit and abort-push it (--push), or ship's one-commit flush (--flush); print the handover comment.",
+        "Keep a failed run's record: commit and push it on the feature branch, or land its logs and ledgers on dev (--push from dev / main, ship's --flush); print the handover comment.",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -1317,12 +1343,12 @@ export const workflowsCommand: CommandSpec = {
         {
           name: "push",
           type: "boolean",
-          help: "git add -A, commit `docs({fid}): {workflow} aborted bkit [skip ci]`, push --mode=abort",
+          help: "feature branch: git add -A, commit `docs({fid}): {workflow} aborted bkit [skip ci]`, push --mode=abort; dev / main / detached: lands like --flush, the checkout untouched",
         },
         {
           name: "flush",
           type: "boolean",
-          help: "ship: copy the worktree's logs and ledgers into the book root, ONE FAILED commit, ONE push",
+          help: "ship: carry the run's logs and ledgers into a throwaway origin/dev checkout, ONE `chore({fid}): {workflow} FAILED bkit [skip ci]` commit, landed on dev",
         },
         {
           name: "open-pr",
@@ -1330,11 +1356,10 @@ export const workflowsCommand: CommandSpec = {
           help: "--push: the open-PR answer from MCP (a number, or none) instead of asking gh",
         },
         { name: "ref", type: "string", help: "link the handover at this ref (no push / flush)" },
-        DEV_PUSHES_FLAG,
         {
           name: "worktree",
           type: "string",
-          help: "ship: the worktree holding the handover and the branch-side logs (default: cwd / .worktrees/{fid})",
+          help: "the run's tree: holds the handover and the logs, and is where --push commits (default: cwd's checkout)",
         },
         OWNER_REPO_FLAG,
       ],
@@ -1342,20 +1367,18 @@ export const workflowsCommand: CommandSpec = {
         handover: "the handover artifact, or null when absent",
         pushed: "the push (or flush push) ran and succeeded",
         ref: "where the handover now lives, or null when nothing was pushed",
-        skipped:
-          "why nothing was pushed: open-pr | skip-ci | dev-lock-busy | nothing-to-commit (null otherwise)",
+        skipped: "why nothing was pushed: open-pr | skip-ci | nothing-to-commit (null otherwise)",
         comment:
           "the handover comment body (null when there is no handover); links only when pushed",
       },
       exitCodes: {
         [EXIT_SPLIT_BUCKET]: "no --month and the feature has logs in more than one month bucket",
-        [EXIT_HANDOVER_MISSING]:
-          "--push: the handover artifact is missing or empty (nothing committed)",
         [EXIT_OPEN_PR_KEPT]:
           "--push: the branch has an open PR, nothing pushed (the comment has no link)",
-        [EXIT_PUSH_FAILED]: "the push failed (the comment has no link)",
+        [EXIT_PUSH_FAILED]:
+          "the push failed, or dev refused / kept moving under the FAILED landing (the comment has no link)",
         [EXIT_FLUSH_FAILED]:
-          "--flush: not on dev after checkout, detached HEAD, or the FAILED commit failed",
+          "the dev fetch, the throwaway checkout or the FAILED commit failed; the record stays in the run's tree",
       },
       run: handoverVerb,
     },
@@ -1366,7 +1389,6 @@ export const workflowsCommand: CommandSpec = {
         WORKFLOW_FLAG,
         FID_FLAG,
         MONTH_FLAG,
-        DEV_PUSHES_FLAG,
         STATUS_FILE_FLAG,
         {
           name: "pr-number",
@@ -1415,9 +1437,14 @@ export const workflowsCommand: CommandSpec = {
         {
           name: "flush",
           type: "boolean",
-          help: "ship: under the dev lock, close on dev (or a detached origin/dev worktree), commit `ship DONE`, release the lock (--token), push",
+          help: "ship: commit `ship DONE` in a throwaway origin/dev checkout carrying the run's book, land it on dev (refused: a ship-close PR), release the lock (--token), remove the worktree",
         },
         { ...TOKEN_FLAG, help: "--flush: the workflow lock token to release" },
+        {
+          name: "branch",
+          type: "string",
+          help: "--flush: the shipped branch, deleted locally and on origin with the worktree once the close is on dev",
+        },
       ],
       output: {
         row: "the appended workflow-done row",
@@ -1437,15 +1464,16 @@ export const workflowsCommand: CommandSpec = {
         roadmapFoldNeeded:
           "always true: append the feature row and re-render the board (not run here)",
         featureStatus: "roadmap status this close moves the feature to",
-        closeRoot: "--flush: the checkout the close commit was made in",
-        landed: "--flush: {ref, via: dev-push | head-push | close-pr | close-pr-open}",
+        landed: "--flush: {ref, via: head-push | close-pr | close-pr-open}",
+        worktree:
+          "--flush: the `bkit worktrees remove` result once the close is on dev; null while the close PR is unmerged or the removal failed",
       },
       exitCodes: {
         [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON (nothing written)",
         [EXIT_SPLIT_BUCKET]: "no --month and the feature has logs in more than one month bucket",
-        [EXIT_PUSH_FAILED]: "--flush: the dev push failed",
+        [EXIT_PUSH_FAILED]: "--flush: dev moved before every push",
         [EXIT_FLUSH_FAILED]:
-          "--flush: not on dev after checkout, the dev fetch / close worktree failed, the lock stayed, or the close PR could not be opened",
+          "--flush: the dev fetch, the throwaway checkout or the close commit failed, the lock stayed, or the close PR could not be opened",
       },
       run: async (ctx) => {
         const f = ctx.flags;
@@ -1453,7 +1481,6 @@ export const workflowsCommand: CommandSpec = {
           workflow: String(f.workflow),
           fid: String(f.fid),
           month: str(f.month),
-          devPushes: f.devPushes === true,
           file: str(f.file),
           prNumber: positiveInt(f.prNumber, "pr-number"),
           squashSha: str(f.squashSha),
@@ -1470,7 +1497,7 @@ export const workflowsCommand: CommandSpec = {
         };
         if (f.flush === true) {
           if (input.workflow !== "ship") throw new CommandError(EXIT.USAGE, "--flush is ship only");
-          const r = await shipClose(ctx, input, str(f.token));
+          const r = await shipClose(ctx, { ...input, branch: str(f.branch) }, str(f.token));
           if (r.out) ctx.emit(r.out);
           return r.code;
         }
