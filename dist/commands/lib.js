@@ -327,8 +327,12 @@ export function runGh(cwd, args, input) {
         status: res.status,
     };
 }
-/** gh cannot serve this call here: not installed, or exit 4 (not logged in). */
-export const ghUnavailable = (res) => res.missing || res.status === 4;
+/**
+ * gh cannot serve this call here: not installed, exit 4 (not logged in), or an
+ * HTTP 403 — a token or proxy that may not use this API, where the GitHub MCP
+ * (its own credentials) can.
+ */
+export const ghUnavailable = (res) => res.missing || res.status === 4 || (!res.ok && /\bHTTP 403\b/.test(res.stderr));
 /**
  * The main checkout's root, from any worktree. `--git-common-dir` points at the
  * shared `.git`, so a linked worktree resolves to the same root as the main one.

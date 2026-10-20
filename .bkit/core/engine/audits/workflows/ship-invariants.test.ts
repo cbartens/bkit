@@ -129,12 +129,12 @@ function fencedLinesByStep(ship: string): Array<{ step: string; line: string }> 
 }
 
 // ---------------------------------------------------------------------------
-// FROZEN — canonical 15 ship-* step-key set
+// FROZEN — canonical 14 ship-* step-key set
 // ---------------------------------------------------------------------------
 //
 // Step NUMBERS may move; KEYS may not.
 //
-// 15 keys total (the canonical ship step set), in run order. Keys are added,
+// 14 keys total (the canonical ship step set), in run order. Keys are added,
 // never renamed.
 
 export const CANONICAL_SHIP_STEP_KEYS: readonly string[] = [
@@ -258,17 +258,33 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
 // ---------------------------------------------------------------------------
 
 describe("bkit-ship.md — bookkeeping and status writes", () => {
-  it("Step 2 resolves the status log through bkit status path, inside the worktree", () => {
+  it("Step 1 resolves the status log through bkit status path, inside the worktree", () => {
     // `bkit status path` books ship in the tree it runs in (commands/lib.test.ts
     // statusLocation), so it must run after the `cd` into {WORKTREE_PATH}.
     const ship = readShip();
-    const step2 = section(ship, /^## .*Step 2 —/, /^### .*Gate 2/);
-    const block = fences(step2).find((f) => /"\{BKIT\}" status path\b/.test(f));
-    expect(block, "Step 2 bkit status path block not found").toBeDefined();
+    const step1 = section(ship, /^## .*Step 1 —/, /^### .*Gate 1/);
+    const block = fences(step1).find((f) => /"\{BKIT\}" status path\b/.test(f));
+    expect(block, "Step 1 bkit status path block not found").toBeDefined();
     expect(block!.indexOf('cd "{WORKTREE_PATH}"')).toBeGreaterThanOrEqual(0);
     expect(block!.indexOf('cd "{WORKTREE_PATH}"')).toBeLessThan(block!.indexOf("status path"));
     expect(block!).not.toMatch(/--dev-pushes/);
-    expect(step2).toContain("hold `path` as `{STATUS}`");
+    expect(step1).toContain("hold `path` as `{STATUS}`");
+  });
+
+  it("Step 1 opens the run in the worktree straight after the lock, before any tracker write", () => {
+    // A failure after the lock then always has a book to keep its record in.
+    const step1 = section(readShip(), /^## .*Step 1 —/, /^### .*Gate 1/);
+    const at = (re: RegExp) => step1.search(re);
+    const lock = at(/"\{BKIT\}" locks acquire --kind=workflow/);
+    const setup = at(/"\{BKIT\}" worktrees setup --workflow=ship/);
+    const start = at(/"\{BKIT\}" workflows start --workflow=ship/);
+    const labels = at(/"\{BKIT\}" issues labels --phase=ship/);
+    const preflight = at(/"\{BKIT\}" repo preflight/);
+    expect(lock).toBeGreaterThan(-1);
+    expect(setup).toBeGreaterThan(lock);
+    expect(start).toBeGreaterThan(setup);
+    expect(labels).toBeGreaterThan(start);
+    expect(preflight).toBeGreaterThan(start);
   });
 
   it("no fence reassigns STATUS — every status write takes the resolved {STATUS}", () => {
@@ -393,11 +409,11 @@ describe("bkit-ship.md — Step 6 SHIPPED row comes from bkit roadmap feature --
 });
 
 // ---------------------------------------------------------------------------
-// POSITIVE — canonical 15 ship-* step-key set
+// POSITIVE — canonical 14 ship-* step-key set
 // ---------------------------------------------------------------------------
 
-describe("bkit-ship.md — canonical 15 ship-* step-key set", () => {
-  it("publishes the canonical 15 ship-* step-key set (no invented names)", () => {
+describe("bkit-ship.md — canonical 14 ship-* step-key set", () => {
+  it("publishes the canonical 14 ship-* step-key set (no invented names)", () => {
     // Finding 7: agents invent step names. Every canonical key is written, and
     // nothing else is. `ship-close-workflow` is written by `workflows close --flush`
     // (commands/workflow/workflows.test.ts); every other key by a

@@ -757,7 +757,7 @@ Record the failure, abort any rebase, release the lock
 - workflow: where-used
 
 ```text
-`git status --short` → remove unintended files, then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
+`git status --short` → on a feature branch remove unintended files; on `dev` / `main` remove nothing (only the run's own record lands, through a throwaway checkout). Then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
 ```
 
 ### workflow-keep-record-open-pr

@@ -106,52 +106,12 @@ $ARGUMENTS
    "{BKIT}" locks acquire --kind=workflow --workflow=ship --fid="{FID}"
    ```
    → hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
-7. Compute the label transition and board move — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
-   ```bash
-   "{BKIT}" issues labels --phase=ship --board=progress --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
-   ```
-   → hold `labels` as `{LABELS}`, `board` as `{BOARD}`, `boardSkipped`.
-   `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
-8. Create the outbox (`{OUTBOX}` = `{OUTBOX_ROOT}/{FID}`) and run the repo preflight:
-   ```bash
-   mkdir -p "{OUTBOX}" || exit 1
-   "{BKIT}" repo preflight --owner-repo="{OWNER_REPO}"
-   ```
-9. Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` as read to `{OUTBOX}/issue-comments.json` (empty / `[]` when no tracker), then build `ISSUE_TEXT`:
-   ```bash
-   "{BKIT}" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
-   ```
-   → hold `text` as `{ISSUE_TEXT}`.
-10. Comment:
-    ```bash
-    "{BKIT}" issues comment --workflow=ship --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo="{OWNER_REPO}" --tree="{BRANCH}"
-    ```
-
-### 🔒 Gate 1 — Start Workflow
-
-```bash
-"{BKIT}" steps gate --workflow=ship --step=ship-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=RUNTIME_WORKTREES={RUNTIME_WORKTREES}
-```
-
-- [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
-- [ ] Outbox created (`{OUTBOX}`)
-
-
-- [ ] Issue update attempted (phase label `bkit:ship`, status / state `In Progress`)
-
-
----
-
-## 🤖 Step 2 — Verify PR (Worktree Setup + Regression Guard)
-
-1. Resolve `SHIP_BRANCH`, then create / resume worktree, or adopt it in place (no rebase — Path A); `--branch` = the branch the session prompt names, dropped when it names none:
+7. Resolve `SHIP_BRANCH`, then create / resume worktree, or adopt it in place (no rebase — Path A) — straight after the lock, so every later failure has a book to keep its record in; `--branch` = the branch the session prompt names, dropped when it names none:
    ```bash
    "{BKIT}" worktrees setup --workflow=ship --fid="{FID}" --month="{YYYYMM}" --detect --branch="{PROMPT_BRANCH}"
    ```
    → hold `worktreePath` as `{WORKTREE_PATH}`, `branch` as `{SHIP_BRANCH}`.
-2. Enter the worktree and find where the run books:
+8. Enter the worktree and find where the run books:
    ```bash
    cd "{WORKTREE_PATH}" || exit 1
    [ "$(git branch --show-current)" = "{SHIP_BRANCH}" ] || { echo "[bkit-ship] not on {SHIP_BRANCH} in {WORKTREE_PATH}" >&2; exit 1; }
@@ -167,16 +127,57 @@ $ARGUMENTS
    ```
    → hold `run` as `{RUN}`.
    Update `BRANCH` = `SHIP_BRANCH`; carry `SHIP_BRANCH` to every later step.
-   Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md` in `{WORKTREE_PATH}` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md` (if present).
-3. **If** `BRANCH` does not contain `{FID}` **and** does not contain `{ISSUE_ID}` (case-insensitive) → emit `[bkit-ship] WARNING branch {BRANCH} not named for {FID} — shipping it as named` → continue.
-4. Find the branch's PR — open first, then merged:
+9. Compute the label transition and board move — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
+   ```bash
+   "{BKIT}" issues labels --phase=ship --board=progress --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
+   ```
+   → hold `labels` as `{LABELS}`, `board` as `{BOARD}`, `boardSkipped`.
+   `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+   **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
+10. Create the outbox (`{OUTBOX}` = `{OUTBOX_ROOT}/{FID}`) and run the repo preflight:
+    ```bash
+    mkdir -p "{OUTBOX}" || exit 1
+    "{BKIT}" repo preflight --owner-repo="{OWNER_REPO}"
+    ```
+11. Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` as read to `{OUTBOX}/issue-comments.json` (empty / `[]` when no tracker), then build `ISSUE_TEXT`:
+    ```bash
+    "{BKIT}" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
+    ```
+    → hold `text` as `{ISSUE_TEXT}`.
+12. Comment:
+    ```bash
+    "{BKIT}" issues comment --workflow=ship --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo="{OWNER_REPO}" --tree="{BRANCH}"
+    ```
+
+### 🔒 Gate 1 — Start Workflow
+
+```bash
+"{BKIT}" steps gate --workflow=ship --step=ship-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=RUNTIME_WORKTREES={RUNTIME_WORKTREES}
+```
+
+- [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
+- [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
+- [ ] On `SHIP_BRANCH` (not `dev|main`), worktree created / resumed or adopted (no rebase — Path A) before any tracker write; run opened in the worktree (`workflow-started`, `ship-start-workflow`, `runtime-resolved`)
+- [ ] Outbox created (`{OUTBOX}`)
+
+
+- [ ] Issue update attempted (phase label `bkit:ship`, status / state `In Progress`)
+
+
+---
+
+## 🤖 Step 2 — Verify PR (Worktree Setup + Regression Guard)
+
+1. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md` in `{WORKTREE_PATH}` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md` (if present).
+2. **If** `BRANCH` does not contain `{FID}` **and** does not contain `{ISSUE_ID}` (case-insensitive) → emit `[bkit-ship] WARNING branch {BRANCH} not named for {FID} — shipping it as named` → continue.
+3. Find the branch's PR — open first, then merged:
    ```bash
    "{BKIT}" prs probe --head="{SHIP_BRANCH}" --state=all
    ```
    → hold `number` as `PR_NUMBER`, `baseRefName` as `PR_BASE`, `state`.
    **Route:**
    - **If** exit 0 **and** `PR_BASE` != dev → **Failure Path**.
-   - **If** exit 0 → sub-step 5.
+   - **If** exit 0 → sub-step 4.
    - **If** exit 1 → open PR, `SHIP_OPENED_PR` = true, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present):
      ```bash
      B=$(git branch --show-current)
@@ -192,24 +193,24 @@ $ARGUMENTS
      ```
      **If** exit 80 → `create_pull_request` with the printed `title`, `body`, `base`, `head`. **If** any other non-zero exit → **Failure Path**. Re-run the `bkit prs probe` above → hold `number` as `PR_NUMBER`, `baseRefName` as `PR_BASE`, `state`. Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **Else** → **Failure Path**.
    - **Else** → **Failure Path**.
-5. **Route:**
+4. **Route:**
    - **If** `state` = MERGED → record the resume marker → Step 13:
      ```bash
      "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=ship-merged-on-entry >/dev/null
      ```
    - **Else** → next sub-step.
-6. Read PR head SHA (`ENTRY_HEAD`) and mergeable state:
+5. Read PR head SHA (`ENTRY_HEAD`) and mergeable state:
    ```bash
    "{BKIT}" prs probe --number="{PR_NUMBER}"
    ```
    → hold `headRefOid` as `ENTRY_HEAD`, `mergeable` as `MERGEABLE`. Assert `ENTRY_HEAD` non-empty.
-7. **If** `SHIP_OPENED_PR` = true → wait for CI on the new PR first:
+6. **If** `SHIP_OPENED_PR` = true → wait for CI on the new PR first:
    ```bash
    "{BKIT}" runs wait --pr="{PR_NUMBER}" --until=present --budget-s=120 || exit 1
    "{BKIT}" runs wait --pr="{PR_NUMBER}" --until=completed
    ```
    `"{BKIT}" prs checks --number={PR_NUMBER}` → assert `green` = true. **If** exit 4 (rollup unreadable), `total` = 0, or `green` = false → **Failure Path**.
-8. Finish (bookkeeping to `$BOOK_ROOT`, no branch commit):
+7. Finish (bookkeeping to `$BOOK_ROOT`, no branch commit):
    ```bash
    "{BKIT}" steps done --workflow=ship --step=ship-worktree-setup --file="{STATUS}" --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md" --commit=none >/dev/null || exit 1
    "{BKIT}" steps finish --workflow=ship --step=ship-regression-guard --file="{STATUS}" --verdict=PASS --commit=none --number=2 --title="Verify PR (Worktree Setup + Regression Guard)" --tree="{BRANCH}"
@@ -222,7 +223,7 @@ $ARGUMENTS
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: `ship-input-{RUN}.md`, step `ship-worktree-setup` recorded; `steps finish` exit 0: `ship-regression-guard`)
-- [ ] On `SHIP_BRANCH` (not `dev|main`), worktree created / resumed or adopted (no rebase — Path A); naming warning emitted when not named for `FID` / `ISSUE_ID`
+- [ ] Naming warning emitted when `SHIP_BRANCH` is not named for `FID` / `ISSUE_ID`
 - [ ] PR number non-empty (`PR_NUMBER`); `PR_BASE` = dev (opened by ship, `openedPr` row recorded, CI awaited — when no PR existed)
 - [ ] Entry head and mergeable read (`ENTRY_HEAD`, `MERGEABLE`); no PR CI failures confirmed
 
@@ -541,8 +542,10 @@ $ARGUMENTS
    "{BKIT}" runs gate --squash-of="{PR_NUMBER}" --repo="{OWNER_REPO}" --capstone-only --record="{STATUS}"
    ```
    → hold `head` as `{SQUASH_SHA}`.
-2. Close — land `docs({FID}): ship DONE bkit [skip ci]` on `dev` (refused → `ship-close/{FID}` PR), release the lock, remove the worktree and `{SHIP_BRANCH}`, return to `{REPO_ROOT}`:
+2. Close — keep the summary in the outbox (the close removes the worktree it lives in), land `docs({FID}): ship DONE bkit [skip ci]` on `dev` (refused → `ship-close/{FID}` PR), release the lock, remove the worktree and `{SHIP_BRANCH}`, return to `{REPO_ROOT}`:
    ```bash
+   rm -f "{OUTBOX}/ship-summary.md"
+   [ ! -f "docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md" ] || cp "docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md" "{OUTBOX}/ship-summary.md" || exit 1
    "{BKIT}" workflows close --workflow=ship --fid="{FID}" --month="{YYYYMM}" --file="{STATUS}" --pr-number="{PR_NUMBER}" --squash-sha="{SQUASH_SHA}" --owner-repo="{OWNER_REPO}" --outbox="{OUTBOX}" --flush --token="{LOCK_TOKEN}" --branch="{SHIP_BRANCH}" --number=14 --title="Close Workflow"; rc=$?
    cd "{REPO_ROOT}"; exit $rc
    ```
@@ -559,7 +562,7 @@ $ARGUMENTS
    "{BKIT}" tips --workflow=ship
    ```
    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-5. Final return: Display `ship-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **If** `ship-summary.md` absent → display `PR was already merged — no ship summary this run.` **HARD STOP**.
+5. Final return: Display `{OUTBOX}/ship-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **If** `{OUTBOX}/ship-summary.md` absent → display `PR was already merged — no ship summary this run.` **HARD STOP**.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
    Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
    Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
@@ -574,11 +577,11 @@ $ARGUMENTS
 **If** `CLOSE_VIA` = close-pr-open → drop `--ref`, gate `--file="{STATUS}"`.
 
 - [ ] Squash-merge CI capstone green (`runs gate --squash-of --capstone-only` exit 0 at `SQUASH_SHA`; row `ship-merge-ci` with `verdict`, `reason`)
-- [ ] Close landed (`workflows close --flush` exit 0: `ship` `DONE`, close telemetry committed, single path-scoped `[skip ci]` close commit pushed to `dev` or published through `ship-close/{FID}`, lock released, throwaway checkout removed)
+- [ ] Close landed (`workflows close --flush` exit 0: `ship` `DONE`, close telemetry committed, single path-scoped `[skip ci]` close commit pushed to `dev` or published through `ship-close/{FID}`, lock released, throwaway checkout removed; a close that did not land keeps the lock and goes to the **Failure Path**)
 - [ ] Worktree and `{SHIP_BRANCH}` removed, or kept with a reason; cwd = `{REPO_ROOT}` (`worktree.removed`, `worktree.branchDeleted`, `reason`, `branchBlockedBy`)
 - [ ] Mechanical checks passed (`steps gate` exit 0: step `ship-close-workflow` recorded on `origin/dev`)
 - [ ] Logs retained at `docs/plans/{YYYYMM}/logs/{FID}/` on `dev` for manual cleanup
-- [ ] Final return displayed (`ship-summary.md` content verbatim)
+- [ ] Final return displayed (`{OUTBOX}/ship-summary.md` content verbatim, copied before the close)
 
 
 - [ ] Issue update attempted (phase label `bkit:merged`, status / state `In Review`; issue left open for human close)

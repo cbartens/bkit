@@ -686,16 +686,51 @@ function strayCheck(root, month, fid) {
         throw new Stop(EXIT_LAND_STOPPED, `${fid} artifacts written to the main checkout instead of the worktree:\n${stray.join("\n")}\nMove them under .worktrees/${fid}/ or delete them, then re-run.`);
     }
 }
+/** Non-empty lines of `rev:p`, trimmed; [] when `p` is absent there. */
+function revLines(root, rev, p) {
+    return (git(root, ["show", `${rev}:${p}`]) ?? "")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l !== "");
+}
+/**
+ * Put back the `.jsonl` rows `branch` added that the squash dropped: `-X ours`
+ * keeps dev's side of a conflicting hunk, and a ledger git does not union-merge
+ * (a consumer's `.bkit/friction.jsonl`) loses the branch's rows there. Each
+ * missing row is appended to the staged file.
+ */
+function restoreBranchRows(dir, branch) {
+    const base = git(dir, ["merge-base", "HEAD", branch]);
+    if (base === null)
+        return;
+    const changed = (git(dir, ["diff", "--name-only", "--no-renames", "--diff-filter=d", base, branch]) ?? "")
+        .split("\n")
+        .filter((p) => p.endsWith(".jsonl"));
+    for (const p of changed) {
+        const before = new Set(revLines(dir, base, p));
+        const file = path.join(dir, p);
+        const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+        const have = new Set(text.split("\n").map((l) => l.trim()));
+        const missing = revLines(dir, branch, p).filter((l) => !before.has(l) && !have.has(l));
+        if (missing.length === 0)
+            continue;
+        const sep = text !== "" && !text.endsWith("\n") ? "\n" : "";
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.appendFileSync(file, `${sep}${missing.join("\n")}\n`);
+        runGit(dir, ["add", "--", p]);
+    }
+}
 /**
  * Build the close in `dir`, a detached origin/dev checkout: squash `branch` with
- * -X ours, check only docs came and the canonical docs are the branch's copy, add
- * the roadmap row, commit `{workflow} DONE`.
+ * -X ours, put back ledger rows the squash dropped, check only docs came and the
+ * canonical docs are the branch's copy, add the roadmap row, commit `{workflow} DONE`.
  */
 function buildClose(ctx, dir, o) {
     const squash = runGit(dir, ["merge", "--squash", "-X", "ours", o.branch]);
     if (!squash.ok) {
         throw new Stop(EXIT_LAND_STOPPED, `squash of ${o.branch} onto ${UPSTREAM} failed — nothing landed; ${o.branch} and its worktree kept: ${squash.stderr}`);
     }
+    restoreBranchRows(dir, o.branch);
     const staged = (git(dir, ["diff", "--cached", "--name-only"]) ?? "")
         .split("\n")
         .filter((p) => p !== "" && !CLOSE_DOCS.test(p));
@@ -742,6 +777,8 @@ async function landDirect(ctx, root, o) {
         case "refused":
             ctx.log(`${REMOTE} refused the dev push — closing through a PR instead: ${res.stderr}`);
             return null;
+        case "push-failed":
+            throw new Stop(EXIT_PUSH_FAILED, `dev push failed without a server answer — nothing landed; ${o.branch} and its worktree kept; re-run the land: ${res.stderr}`);
         case "fetch-failed":
             throw new Stop(EXIT_FETCH_FAILED, `git fetch ${REMOTE} ${DEV} failed — nothing landed; ${o.branch} kept`);
         case "setup-failed":
@@ -820,8 +857,9 @@ async function landPr(ctx, root, o) {
                 sha = merged.out.mergeCommitOid ?? "";
                 break;
             }
-            if (merged.out.state !== "OPEN")
-                throw new Stop(EXIT_LAND_STOPPED, `PR ${prNumber} did not reach MERGED (state=${merged.out.state ?? "unread"})`);
+            // An unread state (gh read failed) is retried like an open PR; only a closed PR stops at once.
+            if (merged.out.state !== null && merged.out.state !== "OPEN")
+                throw new Stop(EXIT_LAND_STOPPED, `PR ${prNumber} did not reach MERGED (state=${merged.out.state})`);
             if (attempt >= TIMEOUTS.LAND_ATTEMPTS)
                 throw new Stop(EXIT_LAND_STOPPED, `PR ${prNumber} still not merged after ${attempt} tries — left open; merge it, then re-run with --pr=${prNumber} --merged-sha=<merge commit>`);
             updateBranch(root, prNumber, ctx.log);
@@ -886,10 +924,7 @@ function notOnDev(root, branch) {
     const base = git(root, ["merge-base", UPSTREAM, branch]);
     if (base === null)
         return [`${branch}: no common history with ${UPSTREAM}`];
-    const lines = (rev, p) => (git(root, ["show", `${rev}:${p}`]) ?? "")
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l !== "");
+    const lines = (rev, p) => revLines(root, rev, p);
     return (git(root, ["diff", "--name-only", "--no-renames", "--diff-filter=d", base, branch]) ?? "")
         .split("\n")
         .filter((p) => p !== "" && p !== "docs/roadmap.md")
@@ -953,12 +988,11 @@ async function landVerb(ctx) {
         if (token === undefined)
             throw new Stop(EXIT_LANDED_UNVERIFIED, `post-close body scan errored on ${landed.sha}`);
         const scanResult = token ? "skip-token-found" : "clean";
-        // The status file on disk is this run's only when the checkout holds the landed
-        // commit (laptop: dev fast-forwarded in place) or the branch (a PR runtime).
+        // A PR runtime's checkout holds the branch, so its status file is this run's.
+        // A runtime that pushes dev never writes the main checkout: the cross-check
+        // reads the landed commit's copy, and the transport is in the emitted result.
         const status = path.join(root, "docs", "plans", month, "logs", fid, "status.jsonl");
-        const onDisk = fs.existsSync(status) &&
-            (!devPushes ||
-                (currentBranch(root) === DEV && git(root, ["rev-parse", "HEAD"]) === landed.sha));
+        const onDisk = !devPushes && fs.existsSync(status);
         const rows = onDisk ? readStatusRows(status) : readStatusRowsAt(status, landed.sha);
         const label = onDisk ? status : `${landed.sha}:${path.relative(root, status)}`;
         if (!crossCheckRows(rows, label, landed.transport, ctx.log).ok)
@@ -966,7 +1000,7 @@ async function landVerb(ctx) {
         if (onDisk)
             closeTransportRow(status, { shape: landed.shape, sha: landed.sha, scanResult });
         else
-            ctx.log(`close-transport row not written: this checkout does not hold ${label}`);
+            ctx.log(`close-transport row not written — the main checkout is never written to; shape=${landed.shape} sha=${landed.sha} scan=${scanResult}`);
         if (token)
             throw new Stop(EXIT_LANDED_UNVERIFIED, `landed commit ${landed.sha} inherited a CI-suppression token in its body`);
         if (missing.length)

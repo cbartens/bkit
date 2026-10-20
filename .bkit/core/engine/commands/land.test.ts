@@ -5,7 +5,7 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { landBackoffMs, pushToDev } from "./land";
+import { devMoved, devRefused, landBackoffMs, landDir, pushToDev, withoutHooks } from "./land";
 
 vi.mock("../shared/timeouts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../shared/timeouts")>();
@@ -82,6 +82,62 @@ describe("landBackoffMs", () => {
       0,
     );
     expect(total).toBe(180_000);
+  });
+});
+
+describe("devMoved / devRefused", () => {
+  const before = " ! [rejected]        HEAD -> dev (fetch first)\nerror: failed to push some refs";
+  const nonFf = " ! [rejected]        HEAD -> dev (non-fast-forward)";
+  const during = " ! [remote rejected] HEAD -> dev (incorrect old value provided)";
+  const lockRace =
+    " ! [remote rejected] HEAD -> dev (cannot lock ref 'refs/heads/dev': is at 1 but expected 2)";
+  const hook = " ! [remote rejected] HEAD -> dev (pre-receive hook declined)";
+  const ruleset = "remote: error: GH013: Repository rule violations found for refs/heads/dev.";
+  const http = "error: RPC failed; HTTP 403 curl 22 The requested URL returned error: 403";
+  const network = "fatal: unable to access 'https://github.com/o/r.git/': Could not resolve host";
+
+  it("dev moved before or while the push was sent: retry", () => {
+    for (const e of [before, nonFf, during, lockRace]) {
+      expect(devMoved(e), e).toBe(true);
+      expect(devRefused(e), e).toBe(false);
+    }
+  });
+  it("a server refusal (hook, ruleset, HTTP 403): the PR route", () => {
+    for (const e of [hook, ruleset, http]) {
+      expect(devMoved(e), e).toBe(false);
+      expect(devRefused(e), e).toBe(true);
+    }
+  });
+  it("no server answer: neither", () => {
+    expect(devMoved(network)).toBe(false);
+    expect(devRefused(network)).toBe(false);
+  });
+});
+
+describe("landDir", () => {
+  it("names the throwaway beside the feature worktrees", () => {
+    expect(landDir("/r", "639-land")).toBe(path.join("/r", ".worktrees", "_land-639-land"));
+  });
+  it.each(["../x", "a/b", "", ".hidden", "a..b"])("refuses %j as a feature id", (fid) => {
+    expect(() => landDir("/r", fid)).toThrow("is not a feature id");
+  });
+});
+
+describe("withoutHooks", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("points core.hooksPath nowhere for the call, then restores the environment", async () => {
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "user.name");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", "kept");
+    const seen = await withoutHooks(() => ({
+      count: process.env.GIT_CONFIG_COUNT,
+      key: process.env.GIT_CONFIG_KEY_1,
+      kept: process.env.GIT_CONFIG_KEY_0,
+    }));
+    expect(seen).toEqual({ count: "2", key: "core.hooksPath", kept: "user.name" });
+    expect(process.env.GIT_CONFIG_COUNT).toBe("1");
+    expect(process.env.GIT_CONFIG_KEY_1).toBeUndefined();
+    expect(process.env.GIT_CONFIG_VALUE_1).toBeUndefined();
   });
 });
 
@@ -177,6 +233,60 @@ describe("pushToDev", () => {
     expect(res).toEqual({ kind: "refused", stderr: expect.stringContaining("dev is protected") });
     expect(builds).toBe(1);
     expect(seen).toEqual(["land row.txt", expect.stringContaining("dev is protected")]);
+    expect(fs.existsSync(dir)).toBe(false);
+  });
+
+  it("runs no git hooks in the throwaway checkout, and says so", async () => {
+    const { root, remote, dir } = fixture();
+    const hooks = path.join(root, ".git", "hooks");
+    for (const h of ["pre-commit", "pre-push"])
+      fs.writeFileSync(path.join(hooks, h), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const log: string[] = [];
+    const res = await pushToDev({
+      root,
+      dir,
+      build: (d) => commitIn(d, "row.txt", "row\n"),
+      log: (l) => log.push(l),
+    });
+    expect(res.kind).toBe("landed");
+    expect(git(remote, "show", "dev:row.txt")).toBe("row");
+    expect(log.join("\n")).toContain("git hooks skipped in the throwaway dev checkout");
+  });
+
+  it("removes a locked throwaway a killed landing left behind, then lands", async () => {
+    const { root, remote, dir } = fixture();
+    git(root, "worktree", "add", "--lock", "--detach", dir, "HEAD");
+    fs.writeFileSync(path.join(dir, "stray.txt"), "left\n");
+    const res = await pushToDev({
+      root,
+      dir,
+      build: (d) => {
+        expect(fs.existsSync(path.join(d, "stray.txt"))).toBe(false);
+        commitIn(d, "row.txt", "row\n");
+      },
+      log: () => {},
+    });
+    expect(res.kind).toBe("landed");
+    expect(git(remote, "show", "dev:row.txt")).toBe("row");
+    expect(fs.existsSync(dir)).toBe(false);
+    expect(git(root, "worktree", "list", "--porcelain")).not.toContain("_land-x");
+  });
+
+  it("a push that fails without a server answer is returned once, never retried", async () => {
+    const { root, dir } = fixture();
+    git(root, "remote", "set-url", "--push", "origin", path.join(root, "no-such-remote"));
+    let builds = 0;
+    const res = await pushToDev({
+      root,
+      dir,
+      build: (d) => {
+        builds++;
+        commitIn(d, "row.txt", "row\n");
+      },
+      log: () => {},
+    });
+    expect(res.kind).toBe("push-failed");
+    expect(builds).toBe(1);
     expect(fs.existsSync(dir)).toBe(false);
   });
 

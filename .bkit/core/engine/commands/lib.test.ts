@@ -10,6 +10,7 @@ import {
   EXIT,
   SKIP_CI_TOKEN,
   commandHelp,
+  ghUnavailable,
   parseFlags,
   repoRoot,
   runCommand,
@@ -267,6 +268,28 @@ describe("help", () => {
     expect(help).toContain("--dry-run ");
     expect(help).toMatch(/^ {2}count +how many$/m);
     expect(help).toMatch(/^ {2}3 +no widgets at all$/m);
+  });
+});
+
+describe("ghUnavailable", () => {
+  const res = (o: { ok?: boolean; status?: number; stderr?: string; missing?: boolean }) => ({
+    ok: o.ok ?? false,
+    stdout: "",
+    stderr: o.stderr ?? "",
+    missing: o.missing ?? false,
+    status: o.status ?? 1,
+  });
+  it("hands off when gh is missing, not logged in, or answered HTTP 403", () => {
+    expect(ghUnavailable(res({ missing: true, status: 127 }))).toBe(true);
+    expect(ghUnavailable(res({ status: 4 }))).toBe(true);
+    expect(ghUnavailable(res({ stderr: "HTTP 403: Resource not accessible by integration" }))).toBe(
+      true,
+    );
+  });
+  it("keeps every other failure, and any success, with gh", () => {
+    expect(ghUnavailable(res({ stderr: "HTTP 422: Validation Failed" }))).toBe(false);
+    expect(ghUnavailable(res({ stderr: "pull request #4030 not found" }))).toBe(false);
+    expect(ghUnavailable(res({ ok: true, status: 0, stderr: "HTTP 403 retried" }))).toBe(false);
   });
 });
 

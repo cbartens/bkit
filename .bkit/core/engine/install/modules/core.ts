@@ -299,6 +299,7 @@ export function runBkitDocs(
     }
   }
   migrateShortcutsToLite(dryRun, ws, logPrefix);
+  migrateRetiredDevLock(dryRun, ws, logPrefix);
 }
 
 // Migration (5.1.0 – 5.2.4 installs, `docs/migrations.md`): the lite workflows lived at
@@ -336,6 +337,20 @@ export function migrateShortcutsToLite(dryRun: boolean, ws: WriteSet, logPrefix:
   if (!dryRun) fs.rmSync(RETIRED_SHORTCUTS);
   ws.writes.push({ path: RETIRED_SHORTCUTS, action: "write" });
   console.log(`${logPrefix} ${tag}core: moved ${RETIRED_SHORTCUTS} → ${dst}`);
+}
+
+// Migration (installs up to 5.3.x, `docs/migrations.md`): `.bkit/.dev.lock` was the
+// repo-wide dev lock. Nothing reads it now, so one a crashed run left behind is deleted.
+// bkit owned the name whole. Recorded in ws so `bkit check` fails until upgrade runs.
+const RETIRED_DEV_LOCK = path.join(".bkit", ".dev.lock");
+
+export function migrateRetiredDevLock(dryRun: boolean, ws: WriteSet, logPrefix: string): void {
+  if (!fs.lstatSync(RETIRED_DEV_LOCK, { throwIfNoEntry: false })?.isFile()) return;
+  if (!dryRun) fs.rmSync(RETIRED_DEV_LOCK);
+  ws.writes.push({ path: RETIRED_DEV_LOCK, action: "write" });
+  console.log(
+    `${logPrefix} ${dryRun ? "[dry-run] " : ""}core: removed ${RETIRED_DEV_LOCK} (the dev lock is gone)`,
+  );
 }
 
 // ---------------------------------------------------------------------------

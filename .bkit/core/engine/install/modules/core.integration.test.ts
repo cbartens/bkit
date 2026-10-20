@@ -572,6 +572,44 @@ describe.each([
 // Migration: .agents/shortcuts.md (5.1.0 – 5.2.4) → .bkit/lite.md
 // ---------------------------------------------------------------------------
 
+describe("migrateRetiredDevLock (via runBkitDocs)", () => {
+  const LOCK = path.join(".bkit", ".dev.lock");
+  const HELD = '{"pid":4242,"host":"old","ts":1760000000000,"line":"ship 638-x"}\n';
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const paths = (ctx: ModuleContext): string[] => ctx.ws.writes.map((w) => path.normalize(w.path));
+  const seed = (): void => {
+    fs.mkdirSync(".bkit", { recursive: true });
+    fs.writeFileSync(LOCK, HELD, "utf-8");
+  };
+
+  it("deletes a 5.3.x dev lock left behind and records the delete", () => {
+    seed();
+    const ctx = run();
+    expect(fs.existsSync(LOCK)).toBe(false);
+    expect(paths(ctx)).toContain(LOCK);
+  });
+
+  it("under dry-run records the same delete and leaves the file", () => {
+    seed();
+    const ctx = run(true);
+    expect(fs.readFileSync(LOCK, "utf-8")).toBe(HELD);
+    expect(paths(ctx)).toContain(LOCK);
+  });
+
+  it("is idempotent, and never removes a directory at that path", () => {
+    seed();
+    run();
+    expect(paths(run())).not.toContain(LOCK);
+    fs.mkdirSync(LOCK);
+    expect(paths(run())).not.toContain(LOCK);
+    expect(fs.statSync(LOCK).isDirectory()).toBe(true);
+  });
+});
+
 describe("migrateShortcutsToLite (via runBkitDocs)", () => {
   const FIXTURE = path.join(getPkgRoot(), "tests/fixtures/shortcuts-5.2.4/shortcuts.md.txt");
   const OLD = path.join(".agents", "shortcuts.md");

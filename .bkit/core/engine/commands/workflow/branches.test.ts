@@ -1390,9 +1390,11 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(git(remote, "log", "-1", "--format=%s", "dev").out).toBe(DONE);
     expect(git(remote, "show", `dev:docs/plans/${M}/${FID}-design.md`).out).toBe("# design");
     expect(sha(repo, "dev")).toBe(sha(remote, "dev"));
-    expect(read(repo, `docs/plans/${M}/logs/${FID}/status.jsonl`)).toContain(
+    // The main checkout is never written to: the transport row is logged instead.
+    expect(read(repo, `docs/plans/${M}/logs/${FID}/status.jsonl`)).not.toContain(
       '"type":"close-transport"',
     );
+    expect(r.err).toContain("close-transport row not written");
     expect(fs.existsSync(path.join(repo, ".worktrees", `_land-${FID}`))).toBe(false);
     expect(git(repo, "rev-parse", "-q", "--verify", `refs/heads/feat/${FID}`).ok).toBe(false);
   });
@@ -1511,7 +1513,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
           `  "pr merge") n=$(cat "${base}/n" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "${base}/n"`,
           `    [ $n -ge 2 ] && { : > "${base}/merged"; exit 0; }; echo "not mergeable" >&2; exit 1 ;;`,
           `  "pr update-branch") echo update >> "${base}/updates"; exit 0 ;;`,
-          `  "pr view") if [ -f "${base}/merged" ]; then echo '{"number":5,"state":"MERGED","mergeCommit":{"oid":"${merged}"}}'; else echo '{"number":5,"state":"${state}"}'; fi ;;`,
+          `  "pr view") if [ -f "${base}/merged" ]; then echo '{"number":5,"state":"MERGED","mergeCommit":{"oid":"${merged}"}}'; elif [ "${state}" = UNREAD ] && [ ! -f "${base}/read" ]; then : > "${base}/read"; echo "HTTP 502" >&2; exit 1; elif [ "${state}" = UNREAD ]; then echo '{"number":5,"state":"OPEN"}'; else echo '{"number":5,"state":"${state}"}'; fi ;;`,
           `esac`,
         ].join("\n"),
       }),
@@ -1590,6 +1592,83 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(r.err).toContain(`docs/plans/${M}/logs/${FID}/late.md`);
     expect(read(wt, `docs/plans/${M}/logs/${FID}/late.md`)).toBe("committed after the merge\n");
     expect(git(repo, "rev-parse", "-q", "--verify", `refs/heads/feat/${FID}`).ok).toBe(true);
+  });
+
+  it("PR state unread (one gh view failed): retried like an open PR, then merges", async () => {
+    const { repo } = fixture();
+    const merged = squashOnRemote(repo);
+    const gh = ghMergingOnRetry(merged, "UNREAD");
+    const r = await land(
+      repo,
+      { BKIT_RUNTIME: "CLOUD_CLAUDE", PATH: withBin(gh.bin) },
+      "--pr=5",
+      `--branch=feat/${FID}`,
+    );
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ shape: "pr", landedSha: merged });
+    // Try 1 lost to the failed read, try 2 to the refused merge, try 3 merges.
+    expect(read(gh.base, "updates")).toBe("update\nupdate\n");
+  });
+
+  it("PR merge refused on every try: stops (17) after LAND_ATTEMPTS, PR left open", async () => {
+    const { repo } = fixture();
+    const base = tmp("gh-never");
+    const bin = stubBin({
+      gh: [
+        `case "$1 $2" in`,
+        `  "pr merge") echo "not mergeable" >&2; exit 1 ;;`,
+        `  "pr update-branch") echo update >> "${base}/updates"; exit 0 ;;`,
+        `  "pr view") echo '{"number":5,"state":"OPEN"}' ;;`,
+        `esac`,
+      ].join("\n"),
+    });
+    const r = await land(
+      repo,
+      { BKIT_RUNTIME: "CLOUD_CLAUDE", PATH: withBin(bin) },
+      "--pr=5",
+      `--branch=feat/${FID}`,
+    );
+    expect(r.code).toBe(17);
+    expect(r.err).toContain("PR 5 still not merged after 3 tries — left open");
+    expect(read(base, "updates")).toBe("update\nupdate\n");
+    expect(git(repo, "rev-parse", "-q", "--verify", `refs/heads/feat/${FID}`).ok).toBe(true);
+  });
+
+  it("local: a squash that drops the branch's ledger rows puts them back (no merge=union)", async () => {
+    const { repo, remote } = fixture();
+    const LEDGER = ".bkit/friction.jsonl";
+    // The ledger exists on dev with one row; dev and the branch each append one.
+    git(repo, "checkout", "-q", "dev");
+    write(repo, LEDGER, '{"id":"a"}\n');
+    git(repo, "add", "-A");
+    git(repo, "commit", "-qm", "ledger");
+    git(repo, "push", "-q", "origin", "dev");
+    write(repo, LEDGER, '{"id":"a"}\n{"id":"dev"}\n');
+    git(repo, "commit", "-qam", "dev row");
+    git(repo, "push", "-q", "origin", "dev");
+    git(repo, "checkout", "-q", `feat/${FID}`);
+    git(repo, "merge", "-q", "dev~1");
+    write(repo, LEDGER, '{"id":"a"}\n{"id":"branch"}\n');
+    git(repo, "commit", "-qam", "branch row");
+    git(repo, "checkout", "-q", "dev");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(git(remote, "show", `dev:${LEDGER}`).out.split("\n")).toEqual([
+      '{"id":"a"}',
+      '{"id":"dev"}',
+      '{"id":"branch"}',
+    ]);
+  });
+
+  it("local: a locked throwaway checkout left by a killed close is removed, then the close lands", async () => {
+    const { repo, remote } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    const left = path.join(repo, ".worktrees", `_land-${FID}`);
+    git(repo, "worktree", "add", "-q", "--lock", "--detach", left, "dev");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(git(remote, "log", "-1", "--format=%s", "dev").out).toBe(DONE);
+    expect(fs.existsSync(left)).toBe(false);
   });
 
   it("PR not open (closed): stops (17) at once, no retry", async () => {

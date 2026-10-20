@@ -1,6 +1,6 @@
 // bkit roadmap fold|feature|mirror — rewrite the generated region of
 // docs/roadmap.md from .bkit/issues.jsonl, its SOLE input; append a feature's
-// row; and copy a build / debug close's row to dev under the dev lock.
+// row; and copy a build / debug close's row to dev through a throwaway checkout.
 //
 // The status block is a pure projection of the ledger, re-rendered in full, so
 // a close never parses the board back. The two `## Notes` blocks and the
@@ -356,30 +356,38 @@ async function mirror(ctx) {
     };
     if (git(wt, ["branch", "--show-current"]) === DEV)
         return done(false, "on dev");
-    let appended = false;
+    // A build that commits nothing pushes origin/dev back to itself, which git
+    // reports as success — so a landing counts only when this attempt committed.
+    let committed = "";
     const res = await pushToDev({
         root,
         dir: landDir(root, fid),
         build: (dir) => {
-            appended = appendFeature(dir, { row: JSON.stringify(feat.row) }, ctx.log).appended;
-            if (!appended)
+            committed = "";
+            if (!appendFeature(dir, { row: JSON.stringify(feat.row) }, ctx.log).appended) {
+                committed = "row not appended on dev";
                 return;
+            }
             runGit(dir, ["add", "--", ...ROADMAP_FILES]);
-            runGit(dir, [
+            const made = runGit(dir, [
                 "commit",
                 "-m",
                 `docs(${fid}): ${workflow} roadmap update bkit [skip ci]`,
                 "--",
                 ...ROADMAP_FILES,
             ]);
+            if (!made.ok)
+                committed = `roadmap commit failed: ${made.stderr || made.stdout}`;
         },
         log: ctx.log,
     });
     switch (res.kind) {
         case "landed":
-            return appended ? done(true, null) : done(false, "row not appended on dev");
+            return committed ? done(false, committed) : done(true, null);
         case "refused":
             return done(false, `dev push refused: ${res.stderr}`);
+        case "push-failed":
+            return done(false, `dev push failed: ${res.stderr}`);
         case "exhausted":
             return done(false, `dev moved before each of ${res.attempts} pushes`);
         case "fetch-failed":

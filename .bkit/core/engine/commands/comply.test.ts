@@ -593,6 +593,22 @@ describe("gradeCompliance — the grade bkit workflows close runs before its rep
     ]);
   });
 
+  it("with a squash sha, reads the squash's subject, not the worktree HEAD's", () => {
+    const d = repo("base");
+    git(d, "checkout", "-q", "-b", "feat");
+    git(d, "commit", "-q", "--allow-empty", "-m", "feat(1-x): work");
+    git(d, "checkout", "-q", "-");
+    git(d, "merge", "-q", "--squash", "feat");
+    git(d, "commit", "-q", "--allow-empty", "-m", "feat(1-x): squash");
+    const squash = git(d, "rev-parse", "HEAD").stdout.trim();
+    git(d, "checkout", "-q", "feat");
+    git(d, "commit", "-q", "--allow-empty", "-m", "docs(1-x): ship log [skip ci]");
+    expect(gradeCompliance(d, "ship", () => undefined)?.map((x) => x.ruleId)).toEqual([
+      "skip-ci-not-head",
+    ]);
+    expect(gradeCompliance(d, "ship", () => undefined, squash)).toEqual([]);
+  });
+
   it("passes every rule on a clean head", () => {
     const d = repo("base", "feat(1-x): work");
     expect(gradeCompliance(d, "build", () => undefined)).toEqual([]);

@@ -717,6 +717,13 @@ describe("bkit workflows close — commit, outbox, comment", () => {
 
 // ---------------------------------------------------------------------------
 
+/** A run's status rows: started at `start` (ms), then failed. */
+const startedThenFailed = (workflow: string, start: number) =>
+  jsonl([
+    { type: "workflow-started", workflow, at: new Date(start).toISOString() },
+    { type: "workflow-failed", workflow, at: new Date(start + 500).toISOString() },
+  ]);
+
 describe("bkit workflows handover", () => {
   function withRemote() {
     const cwd = repo();
@@ -863,8 +870,12 @@ describe("bkit workflows handover", () => {
     git(cwd, "add", "docs/decisions.jsonl");
     git(cwd, "commit", "-qm", "ledger");
     git(cwd, "push", "-q", "origin", "dev");
-    fs.appendFileSync(path.join(cwd, "docs/decisions.jsonl"), jsonl([{ key: "b" }]));
-    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "debug" }]));
+    const start = Date.now() - 1000;
+    fs.appendFileSync(
+      path.join(cwd, "docs/decisions.jsonl"),
+      jsonl([{ key: "b", workflow: "debug", ts: start + 1 }]),
+    );
+    write(cwd, `${REL}/status.jsonl`, startedThenFailed("debug", start));
     write(cwd, `${REL}/debug-handover.md`, "# Handover\n");
     const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
     expect(r.code).toBe(0);
@@ -880,15 +891,73 @@ describe("bkit workflows handover", () => {
 
   it("--push on dev keeps a staged ledger in the checkout and names it", async () => {
     const { cwd } = withDevRemote();
-    write(cwd, "docs/decisions.jsonl", jsonl([{ key: "a" }]));
+    const start = Date.now() - 1000;
+    write(cwd, "docs/decisions.jsonl", jsonl([{ key: "a", workflow: "debug", ts: start + 1 }]));
     git(cwd, "add", "docs/decisions.jsonl");
-    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "debug" }]));
+    write(cwd, `${REL}/status.jsonl`, startedThenFailed("debug", start));
     const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
     expect(r.code).toBe(0);
     expect(r.err).toContain("kept in");
     expect(r.err).toContain("docs/decisions.jsonl");
     expect(git(cwd, "diff", "--cached", "--name-only")).toBe("docs/decisions.jsonl");
     expect(fs.existsSync(path.join(cwd, REL, "status.jsonl"))).toBe(false);
+  });
+
+  it("--push on dev carries only this run's rows: other sessions' rows and older rows stay put", async () => {
+    const { cwd, remote } = withDevRemote();
+    write(cwd, "docs/decisions.jsonl", jsonl([{ key: "a" }]));
+    git(cwd, "add", "docs/decisions.jsonl");
+    git(cwd, "commit", "-qm", "ledger");
+    git(cwd, "push", "-q", "origin", "dev");
+    // Local dev ahead of origin/dev with unpushed work: never published.
+    git(cwd, "commit", "-q", "--allow-empty", "-m", "local wip");
+    const start = Date.now() - 1000;
+    const mine = { key: "mine", workflow: "debug", ts: start + 1 };
+    const older = { key: "older", workflow: "debug", ts: start - 60_000 };
+    const other = { key: "other", workflow: "build", ts: start + 2 };
+    fs.appendFileSync(path.join(cwd, "docs/decisions.jsonl"), jsonl([mine, older, other]));
+    write(cwd, ".bkit/friction.jsonl", jsonl([{ id: "f", workflow: "debug", ts: start + 3 }]));
+    write(cwd, `${REL}/status.jsonl`, startedThenFailed("debug", start));
+    write(cwd, "src.ts", "half-done fix\n");
+    const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+    expect(r.code).toBe(0);
+    const onDev = git(remote, "show", "dev:docs/decisions.jsonl");
+    expect(onDev).toContain('"mine"');
+    expect(onDev).not.toContain('"older"');
+    expect(onDev).not.toContain('"other"');
+    expect(git(remote, "show", "dev:.bkit/friction.jsonl")).toContain('"f"');
+    expect(git(remote, "log", "--format=%s", "dev")).not.toContain("local wip");
+    // The hand-back removes exactly the carried lines; the rest stay as they were.
+    const left = fs.readFileSync(path.join(cwd, "docs/decisions.jsonl"), "utf-8");
+    expect(left).not.toContain('"mine"');
+    expect(left).toContain('"older"');
+    expect(left).toContain('"other"');
+    expect(fs.existsSync(path.join(cwd, ".bkit/friction.jsonl"))).toBe(false);
+    expect(fs.readFileSync(path.join(cwd, "src.ts"), "utf-8")).toBe("half-done fix\n");
+  });
+
+  it("--push on dev with no start row carries no shared-ledger row, and says so", async () => {
+    const { cwd, remote } = withDevRemote();
+    write(cwd, "docs/decisions.jsonl", jsonl([{ key: "x", workflow: "debug", ts: Date.now() }]));
+    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "debug" }]));
+    const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+    expect(r.code).toBe(0);
+    expect(r.err).toContain("no shared-ledger row carried");
+    expect(git(remote, "show", "dev:docs/decisions.jsonl")).toBe("");
+    expect(git(remote, "show", `dev:${REL}/status.jsonl`)).toContain("workflow-failed");
+  });
+
+  it("a second --push on dev lands the run's rewritten log, not only new files", async () => {
+    const { cwd, remote } = withDevRemote();
+    const start = Date.now() - 1000;
+    write(cwd, `${REL}/status.jsonl`, startedThenFailed("debug", start));
+    write(cwd, `${REL}/debug-handover.md`, "# Handover v1\n");
+    expect((await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"))).code).toBe(0);
+    git(cwd, "fetch", "-q", "origin", "dev");
+    git(cwd, "merge", "-q", "--ff-only", "origin/dev");
+    write(cwd, `${REL}/debug-handover.md`, "# Handover v2\n");
+    expect((await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"))).code).toBe(0);
+    expect(git(remote, "show", `dev:${REL}/debug-handover.md`)).toBe("# Handover v2");
   });
 
   it("--push on dev refused keeps the record in the checkout and exits 10", async () => {
@@ -976,6 +1045,37 @@ describe("bkit workflows close --flush (ship)", () => {
     expect(fs.existsSync(wt)).toBe(false);
     expect(git(cwd, "branch", "--list", `feat/${FID}`)).toBe("");
     expect(fs.existsSync(path.join(cwd, ".worktrees", `_land-${FID}`))).toBe(false);
+  });
+
+  it("a close that did not land keeps the lock, the worktree and the branch for the Failure Path", async () => {
+    const { cwd, wt, close } = shipping(true);
+    const lock = await run(cwd, [
+      "locks",
+      "acquire",
+      "--kind=workflow",
+      "--workflow=ship",
+      `--fid=${FID}`,
+    ]);
+    git(cwd, "remote", "set-url", "--push", "origin", path.join(cwd, "no-such-remote"));
+    const r = await run(wt, [...close, `--token=${lock.json.token}`]);
+    expect(r.code).toBe(10);
+    expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(true);
+    expect(fs.existsSync(wt)).toBe(true);
+    expect(git(cwd, "branch", "--list", `feat/${FID}`)).not.toBe("");
+  });
+
+  it("a close that landed releases the lock", async () => {
+    const { cwd, wt, close } = shipping(true);
+    const lock = await run(cwd, [
+      "locks",
+      "acquire",
+      "--kind=workflow",
+      "--workflow=ship",
+      `--fid=${FID}`,
+    ]);
+    const r = await run(wt, [...close, `--token=${lock.json.token}`]);
+    expect(r.code).toBe(0);
+    expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(false);
   });
 
   it("leaves a worktree no workflow created, and its branch, in place", async () => {
