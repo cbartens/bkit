@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runCommand } from "../lib";
 import {
   cutEarlier,
+  headingAnchor,
   isGenerated,
   issueText,
   issuesCommand,
@@ -445,6 +446,34 @@ describe("bkit issues comment", () => {
     );
   });
 
+  it("artifact path#Heading links that section of the rendered doc", async () => {
+    const r = await comment(
+      dir(),
+      "--step-number=10",
+      "--step-title=Summary",
+      "--owner-repo=o/r",
+      "--ref=dev",
+      "--artifact=docs/plans/202610/641-x-design.md#Risks & Open Questions",
+    );
+    expect(r.body).toBe(
+      [
+        "###### bkit:generated",
+        "### Step 10 — Summary",
+        "[641-x-design.md § Risks & Open Questions](https://github.com/o/r/blob/dev/docs/plans/202610/641-x-design.md#risks--open-questions)",
+      ].join("\n"),
+    );
+  });
+
+  it.each([
+    ["Overview", "overview"],
+    ["Step 2 — Worktree Setup", "step-2--worktree-setup"],
+    ["`bkit issues comment` (v4.9)", "bkit-issues-comment-v49"],
+    ["snake_case and-hyphen", "snake_case-and-hyphen"],
+    ["Ünïcode Überschrift", "ünïcode-überschrift"],
+  ])("headingAnchor(%j) is GitHub's %j", (heading, anchor) => {
+    expect(headingAnchor(heading)).toBe(anchor);
+  });
+
   it("close: tree, PR and run links, then Artifacts and Telemetry sections", async () => {
     const cwd = dir();
     write(cwd, "a.md", "- a.md\n");
@@ -622,6 +651,7 @@ describe("bkit issues comment", () => {
     [["--kind=other"]],
     [["--step-number=1", "--step-title=X", "--tree=dev"]],
     [["--step-number=1", "--step-title=X", "--owner-repo=o/r", "--artifact=a.md"]],
+    [["--step-number=1", "--step-title=X", "--owner-repo=o/r", "--ref=dev", "--artifact=a.md#"]],
     [["--step-number=1", "--step-title=X", "--field=novalue"]],
     [["--step-number=1", "--step-title=X", "--sub-plan-count=2"]],
     [["--step-number=1", "--step-title=X", "--workflow-heading"]],

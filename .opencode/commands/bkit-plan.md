@@ -94,7 +94,7 @@ $ARGUMENTS
    ```
    Hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
 6. Extract plan inputs from issue `DESCRIPTION` and the session prompt.
-   - `PARENT_FID`: a `**Parent design:**` markdown link whose target is `docs/plans/{YYYYMM}/{FID}-design.md`. `PARENT_YYYYMM` = that bucket. Absent → this feature's own design doc:
+   - `PARENT_FID`: a `**Parent design:**` markdown link whose target ends in `docs/plans/{YYYYMM}/{FID}-design.md`. `PARENT_YYYYMM` = that bucket. Absent → this feature's own design doc:
      ```bash
      "{BKIT}" fids design --fid={FID} --month={YYYYMM}
      ```
@@ -112,8 +112,9 @@ $ARGUMENTS
    **If** `BOARD` = null → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
 8. Comment:
    ```bash
-   "{BKIT}" issues comment --workflow=plan --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo={OWNER_REPO} --tree=dev --line="Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md)}" --line="Audit reports: {None|{AUDIT_PATHS}}"
+   "{BKIT}" issues comment --workflow=plan --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo={OWNER_REPO} --tree=dev --line="Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md)}" --line="Audit reports: {None|[{AUDIT_FILE}](https://github.com/{OWNER_REPO}/blob/dev/{AUDIT_PATH})}"
    ```
+   `Audit reports`: one link per `AUDIT_PATHS` entry, comma-separated; `{AUDIT_FILE}` = file name of `{AUDIT_PATH}`.
 
 ### 🔒 Gate 1 — Start Workflow
 

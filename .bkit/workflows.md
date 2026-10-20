@@ -487,9 +487,13 @@ Stderr: {last 20 lines if shell}
 ```comment
 ###### bkit:generated
 ### Audit Summary: {slug} - Status: {STATUS} - Findings: CRITICAL {n} · HIGH {n} · MEDIUM {n} · LOW {n}
-Report: docs/audits/{YYYYMM}/{slug}.md
+Report: [{slug}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/audits/{YYYYMM}/{slug}.md)
 {final summary, Stopped through Recommended Next Step}
 ```
+
+The audit agent never commits, so the `Report` link resolves once its caller pushes the report to `{BRANCH}`. A detached HEAD has no branch to link at: the path is written unlinked.
+
+**Section links:** `--artifact=<path>#<Heading>` links the rendered doc at that heading — `[{file} § {Heading}](…/blob/{ref}/{path}#{anchor})`. `bkit issues comment` builds the anchor GitHub gives the heading (lowercased, punctuation dropped, spaces to hyphens); a repeated heading's later copies take `-1`, `-2`, so the link names the first. A renamed heading leaves the link opening the doc at the top.
 
 ### Tracker Writes Are Best-Effort
 

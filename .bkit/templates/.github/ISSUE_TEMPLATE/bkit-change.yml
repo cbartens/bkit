@@ -83,7 +83,7 @@ body:
       description: |
         The plan reads `**Parent design:**` and `**Audit reports:**` lines; the build refuses to start while an issue in the blocked-by block is open. Write them exactly as shown. Other references are not fetched, so use exact paths, ledger `key`s and issue numbers with titles.
       placeholder: |
-        **Parent design:** [42-offline-sync-design.md](docs/plans/202610/42-offline-sync-design.md)
+        **Parent design:** [42-offline-sync-design.md](https://github.com/<owner>/<repo>/blob/dev/docs/plans/202610/42-offline-sync-design.md)
         **Audit reports:** docs/audits/202610/security.md (findings security-3, security-5)
         ###### bkit:blocked-by start
         - #<number>

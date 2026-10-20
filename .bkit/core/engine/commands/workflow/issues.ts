@@ -412,7 +412,7 @@ export interface CommentInput {
   prNumber?: string;
   prUrl?: string;
   runId?: string;
-  /** Repo paths linked at `ref` (default `tree`). */
+  /** Repo paths linked at `ref` (default `tree`); `path#Heading` links that section. */
   artifacts?: string[];
   ref?: string;
   lines?: string[];
@@ -440,10 +440,34 @@ function links(o: CommentInput): string[] {
   if (artifacts.length) {
     const ref = o.ref ?? o.tree;
     if (ref === undefined) throw new CommandError(EXIT.USAGE, "--artifact needs --ref (or --tree)");
-    for (const a of artifacts)
-      out.push(`[${path.basename(a)}](${gh}/blob/${ref}/${a.replace(/^\/+/, "")})`);
+    for (const a of artifacts) {
+      const hash = a.indexOf("#");
+      const file = (hash < 0 ? a : a.slice(0, hash)).replace(/^\/+/, "");
+      const heading = hash < 0 ? undefined : a.slice(hash + 1).trim();
+      if (heading === "")
+        throw new CommandError(EXIT.USAGE, `--artifact "${a}" has an empty #Heading`);
+      const url = `${gh}/blob/${ref}/${file}`;
+      out.push(
+        heading === undefined
+          ? `[${path.basename(file)}](${url})`
+          : `[${path.basename(file)} § ${heading}](${url}#${headingAnchor(heading)})`,
+      );
+    }
   }
   return out;
+}
+
+/**
+ * GitHub's anchor for a markdown heading: lowercased, punctuation dropped,
+ * spaces to hyphens. A repeated heading's later copies take `-1`, `-2`; this
+ * names the first.
+ */
+export function headingAnchor(heading: string): string {
+  return heading
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
+    .replace(/ /g, "-");
 }
 
 const KINDS = ["step", "failure", "handover", "audit"];
@@ -658,7 +682,7 @@ export const issuesCommand: CommandSpec = {
           name: "artifact",
           type: "string",
           repeatable: true,
-          help: "link this repo path at --ref",
+          help: "link this repo path at --ref; path#Heading links that section",
         },
         { name: "ref", type: "string", help: "ref the --artifact links point at (default --tree)" },
         { name: "line", type: "string", repeatable: true, help: "a raw line after the links" },

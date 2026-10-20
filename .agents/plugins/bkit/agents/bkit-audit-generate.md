@@ -90,12 +90,13 @@ tools:
        ```bash
        "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
        ```
-       Hold `owner` as `{OWNER}`, `repo` as `{REPO}`, `outboxRoot` as `{OUTBOX_ROOT}`.
+       Hold `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as `{BRANCH}`, `outboxRoot` as `{OUTBOX_ROOT}`.
     2. Write Output format content from `## Stopped` through `## Recommended Next Step` to `{OUTBOX_ROOT}/audit-{slug}/comment.md`; `Embedded Directives` names sources only, never directive text.
     3. Build body; **If** non-zero → `Issue` = `{ISSUE_ID} failed`; skip step:
        ```bash
-       "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" issues comment --kind=audit --audit-slug="{slug}" --field="Status={STATUS}" --field="Findings=CRITICAL {n} · HIGH {n} · MEDIUM {n} · LOW {n}" --line="Report: {Create}" --body-file="{OUTBOX_ROOT}/audit-{slug}/comment.md"
+       "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" issues comment --kind=audit --audit-slug="{slug}" --field="Status={STATUS}" --field="Findings=CRITICAL {n} · HIGH {n} · MEDIUM {n} · LOW {n}" --line="Report: {REPORT}" --body-file="{OUTBOX_ROOT}/audit-{slug}/comment.md"
        ```
+       `{REPORT}` = `[{file name}](https://github.com/{OWNER}/{REPO}/blob/{BRANCH}/{Create})`; `BRANCH` null → **Create** path unlinked; no **Create** → `None`.
        Hold `comment` as `{BODY}`.
     4. Post `{BODY}` verbatim as new comment:
        `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`.

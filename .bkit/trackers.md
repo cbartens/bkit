@@ -114,7 +114,7 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 <!-- prettier-ignore -->
 | Line | Read by | Effect |
 | --- | --- | --- |
-| `**Parent design:** [{FID}-design.md](docs/plans/{YYYYMM}/{FID}-design.md)` | plan Step 1 | sets `PARENT_FID` → design = spec source; absent → the design made on the same issue (`bkit fids design`) |
+| `**Parent design:** [{FID}-design.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/{FID}-design.md)` | plan Step 1 | sets `PARENT_FID` → design = spec source; absent → the design made on the same issue (`bkit fids design`) |
 | `**Audit reports:** docs/audits/{YYYYMM}/{slug}.md (findings {ids})` | plan Step 1 | each path → `AUDIT_PATHS`; path not a file → Failure Path |
 | `###### bkit:blocked-by start` · `- #{N}` per line · `###### bkit:blocked-by end` | build `issue-blockers-check` (github; linear → native relations) | any listed issue open → build stops |
 | `###### bkit:ignore-earlier` | `bkit issues text` | drops all earlier content; human-placed only |
