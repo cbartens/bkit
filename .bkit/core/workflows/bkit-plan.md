@@ -516,7 +516,7 @@ description: "Plan Feature — Autonomous plan generation"
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: step `plan-close-workflow` recorded on `origin/dev`)
-- [ ] Canonical plan promoted and landed (`docs/plans/{YYYYMM}/{FID}-plan.md` and sub-plans on `dev`, close telemetry committed; `branches land` exit 0: squash staged the `feat/{FID}` copies, body scan clean, transport row recorded, lock released)
+- [ ] Canonical plan promoted and landed (`docs/plans/{YYYYMM}/{FID}-plan.md` and sub-plans on `dev`, close telemetry committed; `branches land` exit 0: squash staged the `{BRANCH}` copies, body scan clean, transport cross-check passed, `close-transport` row written when the main checkout holds the landed `status.jsonl` (otherwise its skip logged), lock released)
 - [ ] Worktree removed and feature branch deleted (workflow-created worktree only; branch kept when another worktree holds it, `branchBlockedBy`)
 - [ ] Final return displayed (`plan-summary.md` content verbatim)
 

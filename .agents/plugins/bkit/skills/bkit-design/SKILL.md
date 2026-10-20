@@ -449,7 +449,7 @@ description: "Design Feature — Autonomous design phase"
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: step `design-close-workflow` recorded on `origin/dev`)
-- [ ] Canonical design promoted and landed (`docs/plans/{YYYYMM}/{FID}-design.md` on `dev`, close telemetry committed; `branches land` exit 0: squash staged the `feat/{FID}` copy, body scan clean, transport row recorded, lock released)
+- [ ] Canonical design promoted and landed (`docs/plans/{YYYYMM}/{FID}-design.md` on `dev`, close telemetry committed; `branches land` exit 0: squash staged the `{BRANCH}` copy, body scan clean, transport cross-check passed, `close-transport` row written when the main checkout holds the landed `status.jsonl` (otherwise its skip logged), lock released)
 - [ ] Worktree removed and feature branch deleted (workflow-created worktree only; branch kept when another worktree holds it, `branchBlockedBy`)
 - [ ] Final return displayed (`design-summary.md` content verbatim)
 

@@ -426,9 +426,11 @@ description: "Plan Feature — Autonomous plan generation"
    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
 6. Final return: Display `plan-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-build`.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
+   **If** `## Outstanding Questions` lists any question → append `Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'.`
+   Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
    Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
-   Append as last line `Would you like me to explain this in plain English?`
 7. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
+8. **If** user requests the open questions one by one → ask each `## Outstanding Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 
 ### 🔒 Gate 12 — Close Workflow
 
@@ -437,7 +439,7 @@ description: "Plan Feature — Autonomous plan generation"
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: step `plan-close-workflow` recorded on `origin/dev`)
-- [ ] Canonical plan promoted and landed (`docs/plans/{YYYYMM}/{FID}-plan.md` and sub-plans on `dev`, close telemetry committed; `branches land` exit 0: squash staged the `feat/{FID}` copies, body scan clean, transport row recorded, lock released)
+- [ ] Canonical plan promoted and landed (`docs/plans/{YYYYMM}/{FID}-plan.md` and sub-plans on `dev`, close telemetry committed; `branches land` exit 0: squash staged the `{BRANCH}` copies, body scan clean, transport cross-check passed, `close-transport` row written when the main checkout holds the landed `status.jsonl` (otherwise its skip logged), lock released)
 - [ ] Worktree removed and feature branch deleted (workflow-created worktree only; branch kept when another worktree holds it, `branchBlockedBy`)
 - [ ] Final return displayed (`plan-summary.md` content verbatim)
 
