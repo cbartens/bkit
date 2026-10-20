@@ -60,7 +60,8 @@
 
 - **Subagents:** Leaves ONLY; NEVER invoke other subagents.
 - **Verify tools:** Verify every return; do not assume success.
-- **Empty is inconclusive:** Tool / MCP reads returning empty / zero results are NEVER authoritative absence. ALWAYS corroborate with independent MCP calls or report reads as unavailable.
+- **Empty is inconclusive:** Empty / zero reads are NEVER authoritative absence. ALWAYS re-run once on a known hit and corroborate via independent call; no hit → read broken → report unavailable, NEVER clean. False empties: `rg` skips dot-dirs / ignored files (`--hidden`, `git grep`); no `\s` in `git grep -E` / BSD `sed -E` / `awk` (`[[:space:]]`).
+- **Host shell:** Shell tool = user's login shell. zsh: unquoted `$VAR` no word-split, unmatched glob aborts, `=word` expands; `grep` / `rg` may be functions (`xargs grep` fails → `command grep` / `git grep`). Loops / file lists → `bash -c '…'`.
 
 #### Workflows & Process
 

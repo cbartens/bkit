@@ -146,7 +146,7 @@ Verify only when applicable.
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **Sites read:** every `DUPLICATE` cites `file:line` from an opened file, not a match.
-- [ ] **Tree clean:** `git status` clean; tracked registers / graphs unchanged.
+- [ ] **Tree clean:** no tracked file changed by this run (other writers' paths named); tracked registers / graphs unchanged.
 - [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
