@@ -658,8 +658,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
     <!-- bkit:tracker true start -->
     Append issue link [{ISSUE_ID} {TITLE}]({URL})
     <!-- bkit:tracker true end -->
+    Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
     Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
-    Append as last line `Would you like me to explain this in plain English?`
 13. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 
 ### 🔒 Gate 11 — Close Workflow

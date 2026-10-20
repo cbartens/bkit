@@ -124,8 +124,8 @@ maxTurns: 400
        **If** failure → retry once after 5s; still failing → `Issue` = `{ISSUE_ID} failed`. **Else** → `Issue` = `{ISSUE_ID} posted`.
     <!-- bkit:tracker true end --><!-- bkit:tracker false start --> _No tracker connected, skip step._<!-- bkit:tracker false end -->
 16. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+    Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
     Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
-    Append as last line `Would you like me to explain this in plain English?`
 
 **Report format:**
 

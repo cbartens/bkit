@@ -1235,6 +1235,10 @@ Final return: Display `{{summary}}` content verbatim as final message to user; d
 - workflow: where-used
 
 ```text
+Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
+```
+
+```retired
 Append as last line `Would you like me to explain this in plain English?`
 ```
 

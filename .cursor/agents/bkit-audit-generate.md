@@ -102,8 +102,8 @@ tools:
        `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`.
        **If** failure → retry once after 5s; still failing → `Issue` = `{ISSUE_ID} failed`. **Else** → `Issue` = `{ISSUE_ID} posted`.
 16. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+    Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
     Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
-    Append as last line `Would you like me to explain this in plain English?`
 
 **Report format:**
 

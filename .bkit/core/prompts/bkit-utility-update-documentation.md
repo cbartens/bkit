@@ -40,7 +40,7 @@ maxTurns: 400
 4. Per doc, four passes in order: Sync content (gaps vs implementation) → reorganize structure (dedupe, move misplaced) → compress wording (more token-efficient) → update cross-references (inline `docs/*.md` links).
 5. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
 6. Final return: Display output format verbatim as final message to user; do not summarise or trim.
-   Append as last line `Would you like me to explain this in plain English?`
+   Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
 
 **Output format:**
 
