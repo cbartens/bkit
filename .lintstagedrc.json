@@ -1,3 +1,7 @@
 {
-  "*": "prettier --write --ignore-unknown"
+  "docs/{plans,audits}/**/*.md": [
+    "node scripts/prettier/bkit-insert-ignore.mjs",
+    "prettier --write --ignore-unknown"
+  ],
+  "!(docs/{plans,audits}/**/*.md)": "prettier --write --ignore-unknown"
 }

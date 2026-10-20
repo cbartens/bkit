@@ -228,6 +228,8 @@ Runs prettier over staged files. `bkit:gate:format` (the pre-commit hook) calls 
 pnpm add -D lint-staged@^17.0.0 prettier@^3.5.3
 ```
 
+- Staged `docs/plans/**/*.md` + `docs/audits/**/*.md` (design, plan, audit docs) run `scripts/prettier/bkit-insert-ignore.mjs` before prettier → committed tables carry `<!-- prettier-ignore -->` and `| --- |` separators. Needs § Prettier tables copied; without it, commits touching those files fail.
+- Globs must not overlap: lint-staged runs entries concurrently, so two entries writing one file race. Second entry negates the first.
 - Adapt: add per-glob commands (eslint `--fix`, etc.) — keep them seconds-fast.
 
 ## Vale — prose lint, with House styles
@@ -590,7 +592,7 @@ Prettier aligns markdown tables with no config toggle; one edited cell re-pads e
 | `node scripts/prettier/bkit-insert-ignore.mjs` | Rewrite `.agents/`, `docs/`, `README.md` (or the paths given). |
 | `node scripts/prettier/bkit-insert-ignore.mjs --check` | Write nothing; exit 1 if any file would change. Gate form. |
 
-- Walks skip `skills/` trees (vendored), `docs/audits/`, `docs/plans/` (records, kept as written). A file named on the command line is always processed.
+- Walks skip `skills/` trees (vendored), `docs/audits/`, `docs/plans/` (records, kept as written). A file named on the command line is always processed. New and edited records get it at commit: § lint-staged names each staged file.
 - Skips tables inside ``` / ~~~ fences and tables already wrapped.
 - A pipe inside an inline-code span is escaped to `\|` only when that restores the separator's column count; an existing `\|` stays literal.
 - Exit 1 on damage it cannot repair, with or without `--check`: `truncated-row` (more cells than the separator; GFM drops the overflow) and `unrendered-table` (header ≠ separator count; GFM renders raw text). A bare pipe in cell prose is indistinguishable from a delimiter → escape it as `\|` by hand.
