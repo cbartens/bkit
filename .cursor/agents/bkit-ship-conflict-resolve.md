@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer resolving mechanical rebase conflicts before handover.
 **Scope:** As specified by input and Read / Update / Create section.

@@ -8,7 +8,7 @@ tools:
   - write_to_file
   - replace_file_content
 ---
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating design docs for readiness to enter planning.
 **Scope:** As specified by input and Read / Update / Create section.

@@ -13,7 +13,7 @@ tools:
   edit: true
   bash: true
 ---
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior editor closing deferrals the codebase has already resolved.
 **Scope:** As specified by input or session prompt.

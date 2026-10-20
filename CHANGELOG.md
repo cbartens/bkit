@@ -8,6 +8,8 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+## [5.4.0] — 2026-10-20
+
 ### Breaking Changes
 
 - **BREAKING — the dev lock, `bkit branches switch`, `--dev-pushes` and `--deadline` are gone.** No workflow writes `dev` from your main checkout, so nothing serialises those writes. Removed: the dev lock (`.bkit/.dev.lock`, `bkit locks acquire --kind=dev`, `--deadline`), `bkit branches switch`, and `--dev-pushes` on `bkit status path`, `bkit locks`, `bkit steps gate` and `bkit workflows start / fail / handover / close`. Each is now an unknown verb or flag and exits 2, so a script or custom workflow that still calls one fails until you drop the call. `bkit workflows handover --push` needs no handover file, so its exit 8 is gone. Ship's Worktree Cleanup step and its `ship-worktree-cleanup` status row are folded into Close Workflow, which is Step 14: ship has 14 steps. This ships in a minor release, so a `^5` range picks it up; pin `5.3.x` until those calls are gone. (#639)
