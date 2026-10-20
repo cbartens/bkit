@@ -572,6 +572,23 @@ describe("bkit issues comment", () => {
     );
   });
 
+  it("audit: slug heading, header fields, and the summary", async () => {
+    const cwd = dir();
+    write(cwd, "a.md", "## Overview\n\nAll clear.\n");
+    const r = await comment(
+      cwd,
+      "--kind=audit",
+      "--audit-slug=security",
+      "--field=Status=COMPLETE",
+      "--field=Findings=CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2",
+      "--line=Report: docs/audits/202610/security.md",
+      "--body-file=a.md",
+    );
+    expect(r.body).toBe(
+      "###### bkit:generated\n### Audit Summary: security - Status: COMPLETE - Findings: CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2\nReport: docs/audits/202610/security.md\n## Overview\n\nAll clear.",
+    );
+  });
+
   it("defuses a whole-line cut marker copied in from an artifact", async () => {
     const cwd = dir();
     write(cwd, "s.md", "Above.\n###### bkit:ignore-earlier\nBelow.\n");
@@ -596,6 +613,8 @@ describe("bkit issues comment", () => {
     [["--step-number=1", "--step-title=X", "--field=novalue"]],
     [["--step-number=1", "--step-title=X", "--sub-plan-count=2"]],
     [["--step-number=1", "--step-title=X", "--workflow-heading"]],
+    [["--kind=audit"]],
+    [["--kind=audit", "--audit-slug=Bad Slug"]],
   ])("refuses %j (exit 2)", async (args) => {
     expect((await comment(dir(), ...args)).code).toBe(2);
   });

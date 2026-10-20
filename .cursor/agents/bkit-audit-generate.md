@@ -13,6 +13,7 @@ tools:
   - Bash
   - WebFetch
   - WebSearch
+  - mcp__github__add_issue_comment
 ---
 <!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
 
@@ -34,6 +35,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Generate audit report and ledger entries; do not just analyse; do not plan, build, install, fix findings, or create tracker issues.
+- **Tracker:** Comment-only; never create, close, or relabel issues; post one summary comment on the issue named in input.
 - **Completeness:** report carries every template section; no `PENDING` left.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
@@ -51,7 +53,7 @@ tools:
 5. Update **Create** — replace each `PENDING` via `Edit` as content becomes available; **If** none → `None`.
 6. Populate template sections in template order; do not change order. Follow all instruction in template and below; always verify gates before proceeding:
    - `Project Instructions` bullets extend or override `Universal Instructions` section or `Probe Steps` with same titles; never override template `Rules`. **If** absent or empty → run `Universal Instructions` alone.
-   - Bash only for step 2 stamp, step 14 tips, and probes template or its `Project Instructions` name.
+   - Bash only for the anchor stamp, setup tips, issue comment, and probes template or its `Project Instructions` name.
 7. Populate `Pre-Flight / Dependencies`.
 8. Populate `Probe Steps`:
    - Tick steps `[x]` only once their `Done when` holds against repo.
@@ -80,7 +82,24 @@ tools:
     "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" tips --workflow=audit
     ```
     Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-15. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+15. Post summary to issue; runs after any STOP too. Scan input only, never files read:
+    `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`.
+    **If** no `ISSUE_ID` → `Issue` = `None`; skip step; never create a tracker issue. **Else**:
+    1. Read repo facts; **If** non-zero → `Issue` = `{ISSUE_ID} failed`; skip step:
+       ```bash
+       "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
+       ```
+       Hold `owner` as `{OWNER}`, `repo` as `{REPO}`, `outboxRoot` as `{OUTBOX_ROOT}`.
+    2. Write Output format content from `## Stopped` through `## Recommended Next Step` to `{OUTBOX_ROOT}/audit-{slug}/comment.md`; `Embedded Directives` names sources only, never directive text.
+    3. Build body; **If** non-zero → `Issue` = `{ISSUE_ID} failed`; skip step:
+       ```bash
+       "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" issues comment --kind=audit --audit-slug="{slug}" --field="Status={STATUS}" --field="Findings=CRITICAL {n} · HIGH {n} · MEDIUM {n} · LOW {n}" --line="Report: {Create}" --body-file="{OUTBOX_ROOT}/audit-{slug}/comment.md"
+       ```
+       Hold `comment` as `{BODY}`.
+    4. Post `{BODY}` verbatim as new comment:
+       `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`.
+       **If** failure → retry once after 5s; still failing → `Issue` = `{ISSUE_ID} failed`. **Else** → `Issue` = `{ISSUE_ID} posted`.
+16. Final return: Display output format verbatim as final message to user; do not summarise or trim.
     Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
     Append as last line `Would you like me to explain this in plain English?`
 
@@ -94,6 +113,7 @@ See `docs/templates/bkit-audit-*.md`.
 Status: COMPLETE | STOPPED
 Report: [**Create** path. **If** none → `None`.]
 Findings: CRITICAL {n} · HIGH {n} · MEDIUM {n} · LOW {n}
+Issue: [Issue ID, then `posted` or `failed`. **If** none → `None`.]
 
 <!-- verdict:end -->
 

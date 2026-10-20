@@ -383,7 +383,9 @@ function fenced(text: string): string {
 
 /** Everything one `###### bkit:generated` comment is built from. */
 export interface CommentInput {
-  kind?: "step" | "failure" | "handover";
+  kind?: "step" | "failure" | "handover" | "audit";
+  /** Audit: the template slug in `### Audit Summary: <slug>`. */
+  auditSlug?: string;
   /** With `workflowHeading`: Step 1 puts `## <Workflow>` above the step. */
   workflow?: string;
   workflowHeading?: boolean;
@@ -435,7 +437,7 @@ function links(o: CommentInput): string[] {
   return out;
 }
 
-const KINDS = ["step", "failure", "handover"];
+const KINDS = ["step", "failure", "handover", "audit"];
 
 /** The exact comment body; files (`bodyFile`, `sections`, `stderrFile`, `errorFile`) resolve against `cwd`. */
 export function buildComment(cwd: string, o: CommentInput): string {
@@ -490,6 +492,14 @@ export function buildComment(cwd: string, o: CommentInput): string {
       const captured = tail(readInput(cwd, o.stderrFile, "stderr-file"), 20);
       if (captured.trim() !== "") lines.push("Stderr:", fenced(captured));
     }
+  } else if (kind === "audit") {
+    const slug = o.auditSlug;
+    if (slug === undefined || !/^[a-z0-9-]+$/.test(slug)) {
+      throw new CommandError(EXIT.USAGE, "--kind=audit needs --audit-slug=<template slug>");
+    }
+    lines.push(
+      [`### Audit Summary: ${slug}`, ...(o.fields ?? []).map(([k, v]) => `${k}: ${v}`)].join(" - "),
+    );
   } else {
     lines.push("### Workflow Handover");
   }
@@ -522,11 +532,12 @@ export function commentBody(ctx: RunContext): string {
   }
   return buildComment(ctx.cwd, {
     kind: kind as CommentInput["kind"],
+    auditSlug: str(ctx.flags.auditSlug),
     workflow: str(ctx.flags.workflow),
     workflowHeading: ctx.flags.workflowHeading === true,
     stepNumber: str(ctx.flags.stepNumber),
     stepTitle: str(ctx.flags.stepTitle),
-    fields: kind === "step" ? headerFields(ctx) : [],
+    fields: kind === "step" || kind === "audit" ? headerFields(ctx) : [],
     subStep: str(ctx.flags.subStep),
     error: str(ctx.flags.error),
     errorFile: str(ctx.flags.errorFile),
@@ -604,9 +615,11 @@ export const issuesCommand: CommandSpec = {
       run: labelsVerb,
     },
     comment: {
-      summary: "The exact body of a ###### bkit:generated step, failure, or handover comment.",
+      summary:
+        "The exact body of a ###### bkit:generated step, failure, handover, or audit comment.",
       flags: [
-        { name: "kind", type: "string", help: "step (default) | failure | handover" },
+        { name: "kind", type: "string", help: "step (default) | failure | handover | audit" },
+        { name: "audit-slug", type: "string", help: "audit: template slug, e.g. security" },
         { name: "step-number", type: "string", help: "step number in the heading" },
         { name: "step-title", type: "string", help: "step title in the heading, e.g. Plan Verify" },
         { name: "workflow", type: "string", help: "design | plan | build | debug | ship | auto" },

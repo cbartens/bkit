@@ -64,6 +64,7 @@ No `/bkit-audit` command and no phase label. More than 30 procedures ship as `do
 | --- | --- |
 | Report | `docs/audits/{YYYYMM}/{slug}.md`. `{slug}` = template basename without `bkit-audit-`. Same slug already in that month → `{slug}-{TIMESTAMP}.md` (`date -u +%Y%m%dT%H%M%SZ`). Never overwrite. |
 | Writes | The report (template through `bkit:end`) and that template's `Project Instructions` below `bkit:end`. Product code, config, and other docs stay untouched. Fixing findings starts at `/bkit-plan`. |
+| Issue comment | Invocation names an issue (`#123`, `ABC-123`) and a tracker is wired → the final summary lands on it as one comment, stopped runs included. Never files, edits, or relabels issues. |
 | Plan input | `/bkit-plan` takes a design doc, one or more reports, or both. The issue names a report with an `**Audit reports:**` line; the session prompt or issue names which findings to plan (for example only `CRITICAL` and `HIGH`). The rest of each report stays context. |
 
 Each template's `Purpose` is its scope. Main ones: security, privacy, accessibility, architecture, performance, reliability, testing, database, LLM, cost. Full catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).

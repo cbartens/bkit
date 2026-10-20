@@ -365,7 +365,7 @@ function links(o) {
     }
     return out;
 }
-const KINDS = ["step", "failure", "handover"];
+const KINDS = ["step", "failure", "handover", "audit"];
 /** The exact comment body; files (`bodyFile`, `sections`, `stderrFile`, `errorFile`) resolve against `cwd`. */
 export function buildComment(cwd, o) {
     const kind = o.kind ?? "step";
@@ -406,6 +406,13 @@ export function buildComment(cwd, o) {
                 lines.push("Stderr:", fenced(captured));
         }
     }
+    else if (kind === "audit") {
+        const slug = o.auditSlug;
+        if (slug === undefined || !/^[a-z0-9-]+$/.test(slug)) {
+            throw new CommandError(EXIT.USAGE, "--kind=audit needs --audit-slug=<template slug>");
+        }
+        lines.push([`### Audit Summary: ${slug}`, ...(o.fields ?? []).map(([k, v]) => `${k}: ${v}`)].join(" - "));
+    }
     else {
         lines.push("### Workflow Handover");
     }
@@ -436,11 +443,12 @@ export function commentBody(ctx) {
     }
     return buildComment(ctx.cwd, {
         kind: kind,
+        auditSlug: str(ctx.flags.auditSlug),
         workflow: str(ctx.flags.workflow),
         workflowHeading: ctx.flags.workflowHeading === true,
         stepNumber: str(ctx.flags.stepNumber),
         stepTitle: str(ctx.flags.stepTitle),
-        fields: kind === "step" ? headerFields(ctx) : [],
+        fields: kind === "step" || kind === "audit" ? headerFields(ctx) : [],
         subStep: str(ctx.flags.subStep),
         error: str(ctx.flags.error),
         errorFile: str(ctx.flags.errorFile),
@@ -515,9 +523,10 @@ export const issuesCommand = {
             run: labelsVerb,
         },
         comment: {
-            summary: "The exact body of a ###### bkit:generated step, failure, or handover comment.",
+            summary: "The exact body of a ###### bkit:generated step, failure, handover, or audit comment.",
             flags: [
-                { name: "kind", type: "string", help: "step (default) | failure | handover" },
+                { name: "kind", type: "string", help: "step (default) | failure | handover | audit" },
+                { name: "audit-slug", type: "string", help: "audit: template slug, e.g. security" },
                 { name: "step-number", type: "string", help: "step number in the heading" },
                 { name: "step-title", type: "string", help: "step title in the heading, e.g. Plan Verify" },
                 { name: "workflow", type: "string", help: "design | plan | build | debug | ship | auto" },
