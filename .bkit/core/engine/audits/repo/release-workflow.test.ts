@@ -142,51 +142,34 @@ describe("release.yml structural assertions (BAR-138)", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Full check suite — steps must appear in order
+  // Checks — the on-main check is the gate; `main` already ran the suite on this commit
   // ---------------------------------------------------------------------------
 
   function lineIndex(substr: string): number {
     return lines.findIndex((l) => l.includes(substr));
   }
 
-  it("pnpm typecheck step present", () => {
-    expect(content).toContain("pnpm typecheck");
+  it("re-runs no test or lint step (main ran them on the PR and the merge push)", () => {
+    for (const step of [
+      "pnpm typecheck",
+      "pnpm test",
+      "pnpm format:check",
+      "pnpm lint:prose",
+      "pnpm lint:slop",
+    ]) {
+      expect(content, step).not.toContain(step);
+    }
   });
 
-  it("pnpm test step present", () => {
-    expect(content).toContain("pnpm test");
+  it("pnpm bkit:check:dist step present, after install (dist/ is the code npm ships)", () => {
+    expect(lineIndex("pnpm bkit:check:dist")).toBeGreaterThan(
+      lineIndex("pnpm install --frozen-lockfile"),
+    );
   });
 
-  it("pnpm format:check step present", () => {
-    expect(content).toContain("pnpm format:check");
-  });
-
-  it("pnpm lint:prose step present", () => {
-    expect(content).toContain("pnpm lint:prose");
-  });
-
-  it("pnpm lint:slop step present", () => {
-    expect(content).toContain("pnpm lint:slop");
-  });
-
-  it("pnpm bkit:check:dist step present", () => {
-    expect(content).toContain("pnpm bkit:check:dist");
-  });
-
-  it("check suite steps appear in order: typecheck → test → format:check → lint:prose → lint:slop → bkit:check:dist", () => {
-    const typecheckIdx = lineIndex("pnpm typecheck");
-    const testIdx = lineIndex("pnpm test");
-    const formatIdx = lineIndex("pnpm format:check");
-    const proseIdx = lineIndex("pnpm lint:prose");
-    const slopIdx = lineIndex("pnpm lint:slop");
-    const distIdx = lineIndex("pnpm bkit:check:dist");
-
-    expect(typecheckIdx).toBeGreaterThan(-1);
-    expect(testIdx).toBeGreaterThan(typecheckIdx);
-    expect(formatIdx).toBeGreaterThan(testIdx);
-    expect(proseIdx).toBeGreaterThan(formatIdx);
-    expect(slopIdx).toBeGreaterThan(proseIdx);
-    expect(distIdx).toBeGreaterThan(slopIdx);
+  it("job sets HUSKY=0 (the sliding-tag push must not run the repo's pre-push gates)", () => {
+    expect(content).toContain('HUSKY: "0"');
+    expect(lineIndex('HUSKY: "0"')).toBeLessThan(lineIndex("pnpm install --frozen-lockfile"));
   });
 
   // ---------------------------------------------------------------------------

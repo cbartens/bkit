@@ -62,6 +62,87 @@ describe(".husky/pre-push delete-only push", () => {
 });
 
 // ---------------------------------------------------------------------------
+// .husky/pre-push tag-only skip — bkit's own hook only. A real repo holds commit A on
+// `refs/remotes/origin/main` and commit B on no remote branch; stub `pnpm` records each gate.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push tag-only push (bkit repo only)", () => {
+  const ZERO = "0".repeat(40);
+  const REPO = process.cwd();
+  let tmp: string;
+  let onOrigin: string;
+  let localOnly: string;
+
+  const gitIn = (...args: string[]) =>
+    spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+      cwd: tmp,
+      encoding: "utf-8",
+    }).stdout.trim();
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-tag-")));
+    fs.mkdirSync(path.join(tmp, "bin"));
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/pnpm.log"\nexit 1\n`,
+      { mode: 0o755 },
+    );
+    gitIn("init", "-q", "-b", "dev");
+    gitIn("commit", "-q", "--allow-empty", "-m", "a");
+    onOrigin = gitIn("rev-parse", "HEAD");
+    gitIn("update-ref", "refs/remotes/origin/main", onOrigin);
+    gitIn("tag", "-a", "v1.0.0", "-m", "release", onOrigin);
+    gitIn("commit", "-q", "--allow-empty", "-m", "b");
+    localOnly = gitIn("rev-parse", "HEAD");
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  const runHook = (hook: string, stdin: string) => {
+    const result = spawnSync("sh", [path.join(REPO, hook), "origin", "git@example:o/r.git"], {
+      cwd: tmp,
+      input: stdin,
+      encoding: "utf-8",
+      timeout: 10_000,
+      env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
+    });
+    return { status: result.status, gated: fs.existsSync(path.join(tmp, "pnpm.log")) };
+  };
+  const tagObject = () => gitIn("rev-parse", "refs/tags/v1.0.0");
+
+  it("annotated tag on a commit origin holds → exits 0 without running a gate", () => {
+    const stdin = `refs/tags/v1.0.0 ${tagObject()} refs/tags/v1.0.0 ${ZERO}\n`;
+    expect(runHook(".husky/pre-push", stdin)).toEqual({ status: 0, gated: false });
+  });
+
+  it("tag delete alongside that tag → still skipped", () => {
+    const stdin =
+      `refs/tags/v1.0.0 ${tagObject()} refs/tags/v1.0.0 ${ZERO}\n` +
+      `(delete) ${ZERO} refs/tags/old ${onOrigin}\n`;
+    expect(runHook(".husky/pre-push", stdin)).toEqual({ status: 0, gated: false });
+  });
+
+  it("tag on a commit no origin branch holds → gates run", () => {
+    const r = runHook(".husky/pre-push", `refs/tags/v2 ${localOnly} refs/tags/v2 ${ZERO}\n`);
+    expect(r.gated).toBe(true);
+    expect(r.status).not.toBe(0);
+  });
+
+  it("tag pushed with a branch → gates run", () => {
+    const stdin =
+      `refs/tags/v1.0.0 ${tagObject()} refs/tags/v1.0.0 ${ZERO}\n` +
+      `refs/heads/dev ${localOnly} refs/heads/dev ${onOrigin}\n`;
+    const r = runHook(".husky/pre-push", stdin);
+    expect(r.gated).toBe(true);
+    expect(r.status).not.toBe(0);
+  });
+
+  it(".bkit/templates/.husky/pre-push: the shipped hook gates a tag-only push", () => {
+    const stdin = `refs/tags/v1.0.0 ${tagObject()} refs/tags/v1.0.0 ${ZERO}\n`;
+    expect(runHook(".bkit/templates/.husky/pre-push", stdin).gated).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // .husky/pre-push CI-suppressor guard — the skip-CI token comes from `bkit ci
 // skip-token` (the built CLI), not a regex in the hook. Stub `pnpm` routes that one
 // call to dist/cli.js and records every other call; stub `gh` reports PR #7 open.

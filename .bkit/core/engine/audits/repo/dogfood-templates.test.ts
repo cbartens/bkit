@@ -271,6 +271,14 @@ const ADOPTED: Record<string, Entry> = {
     edits: [
       {
         kind: "bkit-only",
+        what: "tag-only push of commits the remote already holds skips the gates",
+        region: {
+          template: ["set -e\n", "\n# ── delete-only push"],
+          copy: ["set -e\n", "\n# ── delete-only push"],
+        },
+      },
+      {
+        kind: "bkit-only",
         what: "dist freshness and actionlint",
         region: {
           template: ["pnpm bkit check < /dev/null\n", "\n# disk prune"],

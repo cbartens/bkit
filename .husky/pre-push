@@ -14,6 +14,39 @@
 # Revert-branch bypass: on a revert branch the suite is skipped; lint + typecheck still run.
 set -e
 
+# bkit repo only: a push of tags alone, each on a commit a branch of the remote already holds
+# (as last fetched), carries no new code — the release tag on the merged release commit, whose
+# gates already passed. Gates are skipped. A tag on any other commit, or a tag pushed with a
+# branch, still gates; tag deletes count as tags. Git's ref list is saved to a file and put
+# back on stdin for the delete-only check below.
+if [ ! -t 0 ]; then
+  PUSH_REFS_FILE=$(mktemp)
+  trap 'rm -f "$PUSH_REFS_FILE"' EXIT
+  cat > "$PUSH_REFS_FILE"
+  TAG_PUSH_REMOTE="${1:-origin}"
+  TAG_PUSH_KNOWN=0
+  TAG_PUSH_ONLY=1
+  while read -r _tag_local_ref tag_local_sha tag_remote_ref _tag_remote_sha; do
+    [ -n "$tag_local_sha" ] || continue
+    case "$tag_remote_ref" in
+      refs/tags/*) ;;
+      *) TAG_PUSH_ONLY=0; break ;;
+    esac
+    case "$tag_local_sha" in *[!0]*) ;; *) continue ;; esac
+    tag_commit=$(git rev-parse --verify -q "$tag_local_sha^{commit}") || { TAG_PUSH_ONLY=0; break; }
+    if [ -z "$(git for-each-ref --count=1 --contains "$tag_commit" --format='%(refname)' "refs/remotes/$TAG_PUSH_REMOTE")" ]; then
+      TAG_PUSH_ONLY=0
+      break
+    fi
+    TAG_PUSH_KNOWN=1
+  done < "$PUSH_REFS_FILE"
+  if [ "$TAG_PUSH_KNOWN" = "1" ] && [ "$TAG_PUSH_ONLY" = "1" ]; then
+    echo "[pre-push] tags only, on commits $TAG_PUSH_REMOTE already has — gates skipped" >&2
+    exit 0
+  fi
+  exec < "$PUSH_REFS_FILE"
+fi
+
 # ── delete-only push: nothing leaves this machine, so there is nothing to gate ──
 # `git push origin --delete <branch>` runs this hook too. Git feeds one line per ref on
 # stdin — "<local-ref> <local-sha> <remote-ref> <remote-sha>" — and a deleted ref has an

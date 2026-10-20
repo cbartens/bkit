@@ -83,7 +83,7 @@ Disclosure policy (supported versions, reporting channel, response targets) → 
 
 ### Release path
 
-`v*` tag push → `.github/workflows/release.yml` → tagged commit on `origin/main` check → typecheck / test / format / prose / slop / `dist/` freshness → `npm publish --provenance` (OIDC) → GitHub Release → sliding `v{N}` tag re-pointed → consumers `pnpm add -D @cbartens/bkit` + `pnpm exec bkit install`.
+`v*` tag push → `.github/workflows/release.yml` → tagged commit on `origin/main` check → `dist/` freshness → `npm publish --provenance` (OIDC) → GitHub Release → sliding `v{N}` tag re-pointed → consumers `pnpm add -D @cbartens/bkit` + `pnpm exec bkit install`.
 
 <!-- prettier-ignore -->
 | Gate | State |

@@ -24,6 +24,10 @@ jobs:
     # trusted publishing (id-token: write) and no long-lived token. If a second maintainer is
     # ever onboarded, add `environment: production` here and enable required-reviewer.
     runs-on: ubuntu-latest
+    # Keeps `pnpm install` (the `prepare` script) from installing the repo's git hooks here, so
+    # the sliding-tag push does not run the pre-push gates on this runner.
+    env:
+      HUSKY: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -52,21 +56,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Type check
-        run: pnpm typecheck
-
-      - name: Test
-        run: pnpm test
-
-      - name: Format check
-        run: pnpm format:check
-
-      - name: Lint prose
-        run: pnpm lint:prose
-
-      - name: Lint slop
-        run: pnpm lint:slop
-
+      # No test or lint steps: the on-main check above is the gate, and `main` runs the full
+      # suite on the PR and again on the merge push. This check stays because `dist/` is the
+      # code npm ships.
       - name: Verify dist/ is fresh
         run: pnpm bkit:check:dist
 
