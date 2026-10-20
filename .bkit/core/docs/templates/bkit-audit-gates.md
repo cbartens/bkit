@@ -17,7 +17,7 @@
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
+> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
 > - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - never build, wire, or land a gate; never edit workflows, hooks, allowlists, or gate scripts.
 > - NEVER weaken an existing gate — no skip, rule downgrade, lowered floor, or broader ignore — so a candidate looks adoptable.
@@ -42,6 +42,9 @@ Maintenance sweeps find breakage; none prevent the next. Sibling audits repeat �
 - Required status checks and a merge queue (e.g. GitHub rulesets).
 - OpenSSF Scorecard checks, at the Scorecard version read.
 - DORA continuous integration capability.
+- bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § CI test tiers (the bkit scaffold); § Accepted divergences; § Step names say whether a red is real; § Composite actions: two rules that fail silently
+- bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Commit-message force tags; § Workflow-file limits GitHub does not enforce visibly; § Ship gate + bookkeeping
+- bkit block of `docs/design.md` (bkit version from `.bkit/version`): § Machine-checked reference
 
 ### Scope
 
@@ -137,7 +140,7 @@ Verify only when applicable.
 - [ ] **Step 11 — Re-Review:** Gate built and reverted is not settled. Re-read each rejection in `docs/decisions.jsonl` and prior reports; check whether reasoning still holds. Two decisions on one guard, neither retired → criterion cannot be judged = finding. Reasoning no longer holds → score again into `Scores`, with `docs/decisions.jsonl` row that would retire old decision. **Done when:** `Rejections` row per reverted or rejected gate: still holds?
 - [ ] **Step 12 — Health:** Per landed gate, since previous report: fire rate, true-positive rate, overrides/bypasses, own flakes, runtime. Never fired = perfectly preventive or hollow — indistinguishable outside; fresh positive control (`Positive Control`) tells apart. Never fired or hollow → name that control as next step. Every `bkit:gate:*` script in `package.json` = landed gate; workflows, agents, pre-push run only these → expand each (follow every nested `pnpm <script>` to its body) → list each command. Hollow → `CRITICAL`: script missing, empty, or runs nothing that can fail (e.g. `echo`, `true`, `|| exit 0`); command exits 0 when its tool absent (e.g. `command -v … || echo skipping`) = that check hollow → name tool and install step. **Done when:** `Health` row per landed gate, or none landed; each `bkit:gate:*` row lists every command and which can skip.
 - [ ] **Step 13 — Allowlists:** Every allowlist entry (known-offender maps, ratchet baseline, dead-code ignores) past date or with cited issue closed. Each lapsed = finding: renew with reason, or fix offender. Per ratchet baseline, compare entry count vs previous report: grew, or entry with no owner = finding. **Done when:** `Allowlists` lists every lapsed, grown, or ownerless entry, or `none`.
-- [ ] **Step 14 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per anchor practice (fitness functions, static-analysis false-positive bar, new-code gating, ratchets, policy as code, rulesets and merge queue, DORA CI capability) and per OpenSSF Scorecard check → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
+- [ ] **Step 14 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per anchor practice (fitness functions, static-analysis false-positive bar, new-code gating, ratchets, policy as code, rulesets and merge queue, DORA CI capability) and per OpenSSF Scorecard check → checked (name step) / not applicable (why) / finding. Per bkit anchor (doc section, rule, or issue shape): one row → followed (name step or evidence) / not applicable (why) / finding; departure with no recorded reason (e.g. `docs/decisions.jsonl` row, accepted-divergence entry) = finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
 - [ ] **Step 15 — Anything Else:** (a) Everything changed since previous report's commit touching gating (guards and contract tests, hook directory, gate scripts, workflow jobs, rulesets and branch protection, allowlists) → one-line verdict each. (b) Bounded ~30 min pass: what senior build and developer-productivity engineer flags that no step asks; read since previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows, vendor status incidents) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check

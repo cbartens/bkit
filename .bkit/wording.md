@@ -567,15 +567,6 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 **Locks:** Step 1 takes {{lock}} with `bkit locks acquire --kind=workflow` (hold `token`); {{release}}. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
 ```
 
-### workflow-dev-lock
-
-- workflow: where-used
-- anchored: yes
-
-```text
-**Dev lock:** {{holders}} `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout).
-```
-
 ### workflow-status-branch
 
 - workflow: where-used
@@ -648,6 +639,10 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - workflow: repeatable
 
 ```text
+**Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new; a phase start also drops every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path).
+```
+
+```retired
 **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 ```
 
@@ -755,6 +750,31 @@ Record the failure, abort any rebase, release the lock
 
 ```text
 **If** `HANDOVER_NEEDED` = true → step 4.
+```
+
+### workflow-keep-record
+
+- workflow: where-used
+
+```text
+`git status --short` → on a feature branch remove unintended files; on `dev` / `main` remove nothing (only the run's own record lands, through a throwaway checkout). Then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
+```
+
+### workflow-keep-record-open-pr
+
+- workflow: where-used
+
+```text
+**If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
+```
+
+### workflow-keep-record-comment
+
+- workflow: where-used
+- anchored: yes
+
+```text
+**Else** → post `comment` (when non-null) → step {{step}}.
 ```
 
 ### workflow-post-comment
@@ -1215,6 +1235,10 @@ Final return: Display `{{summary}}` content verbatim as final message to user; d
 - workflow: where-used
 
 ```text
+Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
+```
+
+```retired
 Append as last line `Would you like me to explain this in plain English?`
 ```
 
@@ -1442,6 +1466,10 @@ cite docs inline where required.
 - audit: required
 
 ```text
+Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
+```
+
+```retired
 Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
 ```
 
@@ -1719,6 +1747,14 @@ Scale per `.bkit/jsonl.md` § Severity.
 
 ```text
 Confirm current version per anchor standard; read changes since previous report's version.
+```
+
+### audit-standards-bkit
+
+- audit: where-used
+
+```text
+Per bkit anchor (doc section, rule, or issue shape): one row → followed (name step or evidence) / not applicable (why) / finding; departure with no recorded reason (e.g. `docs/decisions.jsonl` row, accepted-divergence entry) = finding.
 ```
 
 ### audit-standards-practice

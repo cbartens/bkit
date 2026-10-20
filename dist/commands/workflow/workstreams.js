@@ -73,13 +73,14 @@ export const requiresList = (w) => `[${w.requires.join(", ")}]`;
 /** The Step 11 comment: one line per workstream, the issue-body line, then the design doc link. */
 export function commentBody(ws, opts) {
     const doc = `docs/plans/${opts.month}/${opts.fid}-design.md`;
+    const url = `https://github.com/${opts.ownerRepo}/blob/dev/${doc}`;
     return [
         "###### bkit:generated",
         "### Step 11 — Suggested Workstreams",
         "Advisory only. NEVER auto-trigger.",
         ...ws.map((w) => `- ${w.id}: ${w.name}. Requires: ${requiresList(w)}`),
-        `Filing one issue per workstream: put \`**Parent design:** [${opts.fid}-design.md](${doc})\` in its body, and list the issues it requires in a blocked-by block (.bkit/trackers.md § Issue shapes).`,
-        `[${doc}](https://github.com/${opts.ownerRepo}/blob/dev/${doc})`,
+        `Filing one issue per workstream: put \`**Parent design:** [${opts.fid}-design.md](${url})\` in its body, and list the issues it requires in a blocked-by block (.bkit/trackers.md § Issue shapes).`,
+        `[${doc}](${url})`,
     ].join("\n");
 }
 const ARTIFACT_FLAG = {

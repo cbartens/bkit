@@ -967,6 +967,10 @@ describe("validateModuleFlagsForVerb — #252 Step 2/3 verb/module-flag validati
     expect(validateModuleFlagsForVerb("install", flags(["claude"]))).toBeNull();
   });
 
+  it("passes when install is given --tracker= alone", () => {
+    expect(validateModuleFlagsForVerb("install", flags(), "github")).toBeNull();
+  });
+
   it("errors when check is given a module flag", () => {
     const err = validateModuleFlagsForVerb("check", flags(["claude"]));
     expect(err).not.toBeNull();

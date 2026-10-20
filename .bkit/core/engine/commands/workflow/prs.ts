@@ -621,16 +621,25 @@ export function crossCheckFile(
   transport: string,
   log: (m: string) => void,
 ): { ok: boolean; runtimeGithubCli: boolean | null; transport: string; fallbackRows: number } {
+  return crossCheckRows(readStatusRows(file), file, transport, log);
+}
+
+/** crossCheckFile over rows already read; `label` names where they came from. */
+export function crossCheckRows(
+  rows: StatusRow[],
+  label: string,
+  transport: string,
+  log: (m: string) => void,
+): { ok: boolean; runtimeGithubCli: boolean | null; transport: string; fallbackRows: number } {
   if (!TRANSPORTS.includes(transport)) {
     throw new CommandError(EXIT.USAGE, `--transport must be ${TRANSPORTS.join(", ")}`);
   }
-  const rows = readStatusRows(file);
   const runtimeGithubCli = capability(lastRow(rows, "runtime-resolved")?.runtimeGithubCli);
   const fallbackRows = rows.filter((r) => r.type === "transport-fallback").length;
   const violated = runtimeGithubCli === false && transport === "mcp" && fallbackRows === 0;
   if (violated) {
     log(
-      `runtime-resolved logged runtimeGithubCli=false and this close used transport mcp, but no transport-fallback row exists in ${file}`,
+      `runtime-resolved logged runtimeGithubCli=false and this close used transport mcp, but no transport-fallback row exists in ${label}`,
     );
   }
   return { ok: !violated, runtimeGithubCli, transport, fallbackRows };

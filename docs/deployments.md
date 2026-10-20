@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Deployments
 
@@ -17,50 +17,50 @@
 
 ## Production rollback runbook
 
-> Bad commit on `main` (production) → unwind to prior known-good SHA. Steps 1-4 are host-agnostic; step 5 re-points the host (commands = Vercel example).
+> Bad release live → move production back to the last good deployment, then fix forward through `dev`. Production moves first; `main` keeps its history. Steps are host-agnostic; commands = Vercel example.
 
 ### Preconditions
 
-- Known-good SHA on `main`. Confirm: `gh run list --branch main --status success --limit 5` (target SHA green).
-- Local repo on `main`, clean tree, `gh auth status` green.
-- `jq` installed (`brew install jq` / system package manager).
+- Last good deployment id: the one production served before the bad release (`bkit-tests-deploy` logs it as the deployment it replaced), else the host's deployment for a commit green on `main` (`gh run list --branch main --status success --limit 5`).
+- `gh auth status` green.
 
 ### Playbook
 
-1. **Save current protection JSON** for verbatim restore. GET and PUT shapes differ; raw GET avoids hand-mapping fields.
-   ```bash
-   gh api repos/{OWNER}/{REPO}/branches/main/protection > /tmp/main-protection.json
-   ```
-2. **Disable protection** so force-reset is accepted.
-   ```bash
-   gh api -X DELETE repos/{OWNER}/{REPO}/branches/main/protection
-   ```
-3. **Force-reset the `main` ref** to the known-good SHA.
-   ```bash
-   gh api -X PATCH repos/{OWNER}/{REPO}/git/refs/heads/main -f sha=<green-sha> -F force=true
-   ```
-4. **Restore protection** from saved JSON. GET → PUT shape mismatch: `required-status-checks` → `required_status_checks`, contexts list, etc. Inspect saved JSON; PUT equivalent shape.
-   ```bash
-   gh api -X PUT repos/{OWNER}/{REPO}/branches/main/protection --input /tmp/main-protection.json
-   ```
-5. **Re-point production deployment** at the host. A host that aliases production to its latest build does not auto-rollback on git ref rewrites, so the alias stays on most-recent push until manually promoted. Look up prior good deployment by commit SHA and promote it. e.g. Vercel:
+1. **Move production back** to the last good deployment. No rebuild, no git change. Move every production host the release moved (site, webhook / background-job aliases), never the website alone. With `bkit-tests-deploy` adopted, run the switch from a `workflow_dispatch` rollback workflow in the deploy job's `concurrency:` group (`cancel-in-progress: false`), so a release and a rollback never switch production at once. e.g. Vercel:
    ```bash
    vercel ls --meta githubCommitSha=<green-sha>
    vercel promote <prior-deployment-url>
    ```
-   Without this step: git ref rolled back but production still serves bad build.
+2. **Mark the bad deployment** (`bkit-tests-deploy` adopted). `bkit-tests-deploy` refuses the deployment id in repo variable `ROLLED_BACK_DEPLOYMENT_ID` (§ Promote before the lanes), so a "Re-run all jobs" of the bad run cannot promote it again.
+   ```bash
+   gh variable set ROLLED_BACK_DEPLOYMENT_ID --body <bad-deployment-id>
+   ```
+3. **Verify** — § Post-rollback verification.
+4. **Fix forward through `dev`.** Revert the bad change on a `revert-*` branch off `dev` (or ship the fix), PR into `dev`, release `dev` → `main` as usual. Hold every other release PR into `main` until it carries the fix, because a release cut from `main`'s tip ships the bad commit again. The release descends from the commit production serves, so `bkit-tests-deploy` promotes it. Database: never rewound or re-seeded; ship a corrective migration (§ Applying migrations at deploy time). The rolled-back build must work on the newer schema (expand first, contract later).
+5. **Reset `main` — last resort**, only when `main` holds commits a `dev` release cannot undo (e.g. a squash that landed on `main` without going through `dev`), and only after step 1. Reset first and `bkit-tests-deploy` refuses every release, the run the reset starts included, until production moves: production's commit is no longer an ancestor of `main`. The reset is a push to `main`: with `bkit-tests-deploy` it starts a release run that builds and promotes a fresh deployment of `<green-sha>`. Needs `jq`, local repo on `main`, clean tree.
+   ```bash
+   # save protection verbatim (GET and PUT shapes differ; raw GET avoids hand-mapping)
+   gh api repos/{OWNER}/{REPO}/branches/main/protection > /tmp/main-protection.json
+   # disable protection so the force-reset is accepted
+   gh api -X DELETE repos/{OWNER}/{REPO}/branches/main/protection
+   # force-reset the ref
+   gh api -X PATCH repos/{OWNER}/{REPO}/git/refs/heads/main -f sha=<green-sha> -F force=true
+   # restore: inspect the saved JSON and PUT the equivalent shape (`required-status-checks` → `required_status_checks`, contexts list, etc.)
+   gh api -X PUT repos/{OWNER}/{REPO}/branches/main/protection --input /tmp/main-protection.json
+   ```
 
-### Why force-push on `main` alone is not enough
+### Revert, not reset
 
-- `git revert` on cross-branch squash (e.g. `feat/*` landed on `main` not `dev`) can delete files `main` code still references → tree fails CI despite "clean" history.
-- `feat/*`-onto-`main` is root cause of destructive recovery; production merges MUST come from `dev` (single-feature squash scope).
+- A reset rewrites the history every clone, open PR and release record points at, and runs with branch protection off; a revert keeps `main` equal to what was released.
+- `git revert` on a cross-branch squash (e.g. `feat/*` landed on `main`, not `dev`) can delete files `main` code still references → tree fails CI despite "clean" history. That squash is the step-5 case; production merges MUST come from `dev` (single-feature squash scope).
 - On `revert-*` branches pre-push drops only the **unit lane** (`bkit:gate:static` in place of `bkit:gate:static-unit`), so the static lane and the bkit drift gate still run → revert PR pushable when source state transitionally inconsistent.
 
 ### Post-rollback verification
 
-- `gh api repos/{OWNER}/{REPO}/git/refs/heads/main --jq .object.sha` must equal the green SHA.
-- `curl -sI https://{prod-alias}` headers report the rolled-back deployment id.
+- Every production host reports the last good deployment id (host API read-back, or `curl -sI https://{prod-alias}` headers).
 - Run the production smoke suite to confirm the rolled-back app behaves as expected.
+- `bkit-tests-deploy` adopted: `gh variable get ROLLED_BACK_DEPLOYMENT_ID` prints the bad deployment id.
+- After a step-5 reset: `gh api repos/{OWNER}/{REPO}/git/refs/heads/main --jq .object.sha` equals the green SHA.
 
 ## Dev rollback runbook
 
@@ -137,7 +137,7 @@ Direct push to `dev` (no merged PR ancestry) auto-busts the task-runner cache (e
 
 ## Autonomous phase-close prerequisites
 
-Design / plan Close Workflow lands docs on `dev` two ways. When the runtime can push `dev` (`RUNTIME_DEVPUSHES=true` — laptop, GitHub-Actions runner) it runs the local squash-merge and direct push: **no repo setting is required, and no PR is created**. When it cannot (cloud agent session, or an unclassified runtime) it opens a PR and squash-merges it, which adds two repo prerequisites. Neither is pre-flighted, because no admin-scope token is required; the dependency asserts itself by the close's own merge failing loudly.
+Design / plan Close Workflow lands docs on `dev` two ways. Every runtime first builds the close commit off `origin/dev` and pushes it straight to `dev`: when that push goes through, **no repo setting is required, and no PR is created**. When GitHub refuses it (branch protection or a ruleset on `dev`) the close opens a PR and squash-merges it, which adds two repo prerequisites. Neither is pre-flighted, because no admin-scope token is required; the dependency asserts itself by the close's own merge failing loudly.
 
 - **Branch protection on `dev` permits the autonomous merge**, because no human review is required. The PR-path merge does **not** wait for checks: its merge subject carries `bkit [skip ci]`, so a docs-only close dispatches no run to wait for. A rule requiring status checks to pass will block it.
 - **"Automatically delete head branches" is enabled** (repo Settings → General). The PR-path close deliberately does not pass `--delete-branch`, because `gh` also deletes the local branch, which fails when that branch is checked out in a worktree and returns non-zero after a successful merge. Head-branch cleanup relies on the repo setting instead.
@@ -300,7 +300,7 @@ To unwind a bad ship surface (the gate command, managed config, or rewritten `bk
 3. **Audit any `BKIT_SHIP_GATE_OVERRIDE` rows** in `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` written in the interim. Each `type:"ship-gate-override"` row is a sanctioned escape that turned a refusal into a merge; treat every row as a PR whose capstone was not green at the merged head and re-verify it against the pinned-good gate (`bkit runs gate --head=<sha>`). `[bkit-runs] override honoured for head …` is the matching `docs/observability.md` grep key.
 4. **No per-workflow pin / revert exists**; the package pin + selective `bkit upgrade` hold is the recovery path. Document any incident in `docs/failures.jsonl`.
 
-Ship's docs sync, summaries, `SHIPPED` roadmap row and skill removals ride the PR: one `[skip ci]` commit on the feature branch before the merge — the only pre-merge push besides conflict-resolve. Status rows (`status.jsonl`) → dev tree from Step 1 when `RUNTIME_DEVPUSHES=true` (modes 1-2), current working branch tree when `false` (mode 3 — cloud); see `.bkit/workflows.md` § Ship `BOOK_ROOT`. Post-merge tail = one `[skip ci]` close commit → push `dev` from the dev checkout (modes 1-2), or built off `origin/dev` → push `dev`, refused → `ship-close/{FID}` PR (mode 3).
+Ship's docs sync, summaries, `SHIPPED` roadmap row and skill removals ride the PR: one `[skip ci]` commit on the feature branch before the merge — the only pre-merge push besides conflict-resolve. Status rows (`status.jsonl`) → the feature worktree's tree on every runtime (`BOOK_ROOT` = `{WORKTREE_PATH}`; ship never checks out `dev`); see `.bkit/workflows.md` § `status.jsonl` — workflow state SoT. Post-merge tail = one `[skip ci]` close commit built in a throwaway checkout of `origin/dev` carrying the book → push `dev` (`dev` moved → rebuilt, pushed again), refused → `ship-close/{FID}` PR.
 
 ## Smoke trigger plumbing
 
@@ -339,6 +339,8 @@ Latent until the first build-time DB read lands, so flag it in review when one i
 ## Promote before the lanes (`bkit-tests-deploy`)
 
 With `bkit-tests-deploy` adopted, the host does not auto-build the default branch. `bkit-tests-build-web` creates this SHA's deployment, polls it to ready, and publishes `deployment_url` + `deployment_id`; the production alias still serves the previous release. `bkit-tests-deploy` `needs: [bkit-tests-migration, bkit-tests-build-web]`, runs on a push to the default branch only, and is not a required check. It promotes the exact `deployment_id` the build lane published — it does not look the deployment up again by SHA — and a `409` is success only when the body says this id is already current production. On `main` it runs **before** the E2E / `@live` lanes: each of those `needs:` it and starts by proving production serves this run's build (by deployment id), so a re-run after a rollback refuses instead of testing the old build and going green. A red deploy job means the release did not happen; production still serves the previous deployment.
+
+Before it promotes, the job refuses, moving nothing, when the deployment id equals repo variable `ROLLED_BACK_DEPLOYMENT_ID` (§ Production rollback runbook step 2), or when this commit is neither the commit production serves nor a descendant of it (e.g. GitHub's compare API `<production-sha>...<this-sha>` status other than `ahead` / `identical`). A re-run of an old run then cannot move production back to an older release. Production unreadable, or its deployment recording no commit → refuse. Same commit → promote (idempotent re-run).
 
 Two guards keep a release honest: the deploy job carries its own `concurrency:` group (`cancel-in-progress: false`, so two releases never overlap), and the workflow-level block queues on `main` (§ One run per branch or pull request) so a newer push waits rather than cancelling a switch in flight. `bkit-tests-migration` waits for static / unit / integration / `build-web` before it touches production's database.
 
@@ -412,6 +414,8 @@ Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips th
 | `customManagers` | One regex manager for pins that sit in no package file (below). |
 
 **Pins outside package files.** The `customManagers` entry scans `Dockerfile`, `.claude/bkit-cloud.md` and `.github/workflows/*.yml` for a comment line directly above the pin: `# renovate: datasource=<datasource> depName=<name>` (optional `packageName=`, `versioning=`, `extractVersion=`). The next line is read as `[ARG|export] <NAME>_VERSION=<v>` or `<NAME>_VERSION: "<v>"`, `<NAME>_SPEC: "<pkg>==<v>"`, `npm install -g <pkg>@<v>`, or `bash "<installer>" <v>`. Renovate bumps the version only. A pin paired with a checksum (Vale, gh, jq, Node, actionlint) needs its sha256 updated by hand in the same PR, or the install fails closed.
+
+**One source per tool.** A version that already lives in a file — an exact pin in a package manifest, or a build service's CLI pin such as `eas.json` `cli.version` — is read from that file by CI, never typed into the workflow: `npm i -g "turbo@$(node -p "require('./package.json').devDependencies.turbo")"`. A typed copy drifts, and Renovate bumps only one of the two. A tool with no such file gets one `<NAME>_VERSION` per workflow with the comment above, used by every call. A bare `npx <tool>` downloads the newest release on every run and skips the release-age wait, so pin it the same way.
 
 **Land config on the default branch before the bot runs.** GitHub Apps and Dependabot read config from the default branch. The example sets `baseBranchPatterns: ["dev"]` (PRs land on `dev`) and `useBaseBranchConfig: "merge"` (edits on `dev` apply to dev-targeted runs). `useBaseBranchConfig` itself is read from the default branch, so it needs one merge there before dev-side edits take effect.
 
@@ -525,11 +529,11 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 
 **Poll anchors the check NAMESPACE, not a lane name**: the capstone `bkit.capstoneJob` minus its last `-segment` (`bkit-tests-check` → any check containing `bkit-tests`). Single-job anchor PROHIBITED. Alignment: `.bkit/core/engine/audits/workflows/ci-dispatch-gate-alignment.test.ts`; legacy scaffolds: `ci-legacy-scaffold-job-names` advisory.
 
-**Gate sites (2):** build Step 18; debug Step 10 sub-step 6 (PR-mode and LOCAL-mode). Ship OUT — Step 15 reads the squash commit's capstone with `bkit runs gate --head=<SQUASH_SHA> --capstone-only`; CI-Dispatch there masks "essential tests skipped".
+**Gate sites (2):** build Step 18; debug Step 10 sub-step 6 (PR-mode and LOCAL-mode). Ship OUT — Step 14 reads the squash commit's capstone with `bkit runs gate --head=<SQUASH_SHA> --capstone-only`; CI-Dispatch there masks "essential tests skipped".
 
 **Open-PR pre-flight (build Step 18):** `bkit prs probe --base=dev` first; open PR → Failure Path (`feat/{FID} already has open PR #N to dev`). `bkit prs open` probes `--head` again before creating: exit 3 on an existing open PR (`--existing=fail`, the default), exit 5 on a `gh` error, never a blind create.
 
-**Abort-push guard (build Failure Path + `.bkit/workflows.md` § Failure Path step 5):** the `[skip ci]` abort commit goes out via `bkit branches push --mode=abort`. Open PR → exit 7, no push, remote HEAD kept. `gh` cannot answer → exit 80, no push; look up the PR via MCP and re-run with `--open-pr=<n>|none`. No PR → push.
+**Abort-push guard (design / plan / build / debug Failure Path + `.bkit/workflows.md` § Failure Path step 4):** feature branch → the `[skip ci]` abort commit goes out via `bkit branches push --mode=abort`. Open PR → exit 7, no push. `gh` cannot answer → exit 80, no push; look up the PR via MCP, re-run with `--open-pr=<n>|none`. No PR → push. `dev` / `main` → nothing pushed from the checkout; only logs + ledgers land on `dev` via the throwaway `origin/dev` checkout.
 
 **Commit-tag taxonomy:**
 
@@ -548,7 +552,7 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 | build / debug PR push (final close-workflow) | `chore({FID}): close-workflow` — no skip tags; loud. Opted-in builds additionally append `bkit [auto route]` (conditional on issue `bkit:auto` at close time). Pushed with `bkit branches push --require-ci`. Debug PR-mode: the push fires `pull_request` synchronize. Build: the push lands before the PR exists; `bkit prs open` then creates the PR, which fires `pull_request`. |
 | build `worktree-setup` commit | `chore({FID}): worktree-setup bkit [skip ci]` — bookkeeping; no CI trigger. |
 | debug LOCAL-mode `create-pr` commit | `chore({FID}): create-pr` — loud; the CI-triggering HEAD in LOCAL mode, pushed with `bkit branches push --require-ci`. Build has no `create-pr` commit. |
-| ship squash merge | `gh pr merge --squash --body ""` — empty body strips PR-body `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Step 15 then runs `bkit runs gate --head=<SQUASH_SHA> --capstone-only` (the capstone job's result alone; deploy and other jobs never fail the close) and records its run in the `ship-merge-ci` row. |
+| ship squash merge | `gh pr merge --squash --body ""` — empty body strips PR-body `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Step 14 then runs `bkit runs gate --head=<SQUASH_SHA> --capstone-only` (the capstone job's result alone; deploy and other jobs never fail the close) and records its run in the `ship-merge-ci` row. |
 
 All other docs-only intermediates (start-workflow, summary, install-skills, update-docs, archive, worktree-cleanup) keep `bkit [skip ci]`. Only trailing `close-workflow` (build / debug; debug LOCAL mode: `create-pr`) + squash-merge subject (ship) are loud.
 

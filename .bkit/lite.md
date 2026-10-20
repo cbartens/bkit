@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Lite Workflows
 
@@ -22,13 +22,13 @@ NEVER a lite workflow for: schema / migrations, public API, dependencies, secret
 
 ## Contract
 
-Read `.agents/rules.md`. Work on the current branch; commit as you go; push only when shipping or when asked. Tracker-wired: issue → **In progress** at start, **In review** at end, one short comment per step. No tracker: skip the tracker lines.
+Read `.agents/rules.md`. Work on the current branch; commit as you go; push only when shipping or when asked. Tracker-wired: issue → **In progress** + `bkit:<phase>` label at start (drops other `bkit:*` workflow labels, `next:*`, `bkit:failed` per `.agents/rules.md` § Tracker workflow labels), **In review** at end, one short comment per step. No tracker: skip the tracker lines.
 
 ## Paste
 
 Start the session on the phase's model from `.bkit/prompts.md` § Orchestrators. Copy one block — its heading is the lite workflow's name — then insert the issue or instructions at the bracketed line.
 
-### lite:design
+### design:lite
 
 ```text
 Handle the issue below as a design. Read `.bkit/workflows.md` § Per-Phase Workflows and `.bkit/prompts.md` as inspiration only — keep the steps that fit, skip the rest. Dispatch each kept subagent step to its `bkit-*` subagent on the model `.bkit/prompts.md` § Models pins for it; NEVER do subagent work inline. No subagent tool → run its prompt file in-session. Follow `.bkit/lite.md` § Contract.
@@ -36,7 +36,7 @@ Handle the issue below as a design. Read `.bkit/workflows.md` § Per-Phase Workf
 [INSERT ISSUE ID / INSTRUCTIONS]
 ```
 
-### lite:plan
+### plan:lite
 
 ```text
 Handle the issue below as a plan. Read `.bkit/workflows.md` § Per-Phase Workflows and `.bkit/prompts.md` as inspiration only — keep the steps that fit, skip the rest. Dispatch each kept subagent step to its `bkit-*` subagent on the model `.bkit/prompts.md` § Models pins for it; NEVER do subagent work inline. No subagent tool → run its prompt file in-session. Follow `.bkit/lite.md` § Contract.
@@ -44,7 +44,7 @@ Handle the issue below as a plan. Read `.bkit/workflows.md` § Per-Phase Workflo
 [INSERT ISSUE ID / INSTRUCTIONS]
 ```
 
-### lite:build
+### build:lite
 
 ```text
 Handle the issue below as a build. Read `.bkit/workflows.md` § Per-Phase Workflows and `.bkit/prompts.md` as inspiration only — keep the steps that fit, skip the rest. Dispatch each kept subagent step to its `bkit-*` subagent on the model `.bkit/prompts.md` § Models pins for it; NEVER do subagent work inline. No subagent tool → run its prompt file in-session. Follow `.bkit/lite.md` § Contract.
@@ -52,7 +52,7 @@ Handle the issue below as a build. Read `.bkit/workflows.md` § Per-Phase Workfl
 [INSERT ISSUE ID / INSTRUCTIONS]
 ```
 
-### lite:debug
+### debug:lite
 
 ```text
 Handle the issue below as a debug. Read `.bkit/workflows.md` § Per-Phase Workflows and `.bkit/prompts.md` as inspiration only — keep the steps that fit, skip the rest. Dispatch each kept subagent step to its `bkit-*` subagent on the model `.bkit/prompts.md` § Models pins for it; NEVER do subagent work inline. No subagent tool → run its prompt file in-session. Follow `.bkit/lite.md` § Contract.
@@ -60,7 +60,7 @@ Handle the issue below as a debug. Read `.bkit/workflows.md` § Per-Phase Workfl
 [INSERT ISSUE ID / INSTRUCTIONS]
 ```
 
-### lite:ship
+### ship:lite
 
 ```text
 Handle the issue below as a ship. Read `.bkit/workflows.md` § Per-Phase Workflows and `.bkit/prompts.md` as inspiration only — keep the steps that fit, skip the rest. Dispatch each kept subagent step to its `bkit-*` subagent on the model `.bkit/prompts.md` § Models pins for it; NEVER do subagent work inline. No subagent tool → run its prompt file in-session. Follow `.bkit/lite.md` § Contract.

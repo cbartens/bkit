@@ -125,7 +125,16 @@ function textVerb(ctx) {
 // labels
 // ---------------------------------------------------------------------------
 /** Mutually exclusive: setting one drops the others. */
-export const PHASE_LABELS = ["bkit:design", "bkit:plan", "bkit:build", "bkit:ship", "bkit:merged"];
+export const PHASE_LABELS = [
+    "bkit:design",
+    "bkit:plan",
+    "bkit:build",
+    "bkit:debug",
+    "bkit:ship",
+    "bkit:merged",
+];
+/** Prefix of the labels naming an issue's next best workflow; setting a phase drops them. */
+export const NEXT_LABEL_PREFIX = "next:";
 /** The issue label that opts a feature into CI auto-routing. */
 export const AUTO_LABEL = "bkit:auto";
 /** Commit-subject suffix the CI auto-route gate matches; carried only while the issue has `AUTO_LABEL`. */
@@ -145,12 +154,15 @@ export function transitionLabels(current, t) {
         for (const l of have)
             if (PHASE_LABELS.includes(l) && l !== label)
                 remove.add(l);
+        for (const l of have)
+            if (l.startsWith(NEXT_LABEL_PREFIX))
+                remove.add(l);
         want(label, true);
     }
-    if (t.failed !== undefined)
-        want("bkit:failed", t.failed);
-    if (t.debug !== undefined)
-        want("bkit:debug", t.debug);
+    // A phase starting supersedes any earlier Failure Path.
+    const failed = t.failed ?? (t.phase !== undefined ? false : undefined);
+    if (failed !== undefined)
+        want("bkit:failed", failed);
     return {
         add,
         remove: [...remove],
@@ -159,11 +171,11 @@ export function transitionLabels(current, t) {
 }
 /**
  * Linear's issue state for the same transition, as the workflows set it: a
- * shipped, failed or debugged issue waits on a human ("In Review"); a phase
+ * shipped or failed issue waits on a human ("In Review"); a phase
  * starting is "In Progress". Null when the transition sets no state.
  */
 export function linearState(t, board) {
-    if (t.phase === "merged" || t.failed === true || t.debug === true)
+    if (t.phase === "merged" || t.failed === true)
         return "In Review";
     if (t.phase !== undefined)
         return "In Progress";
@@ -253,21 +265,16 @@ function boardPayload(ctx, status) {
 function labelsVerb(ctx) {
     const phase = str(ctx.flags.phase);
     if (phase !== undefined && !PHASE_LABELS.includes(`bkit:${phase}`)) {
-        throw new CommandError(EXIT.USAGE, "--phase must be design, plan, build, ship, or merged");
+        throw new CommandError(EXIT.USAGE, "--phase must be design, plan, build, debug, ship, or merged");
     }
-    let failed = onOff(ctx.flags.failed, "failed");
-    const debug = onOff(ctx.flags.debug, "debug");
-    // A merged issue must not keep a stale Failure Path marker.
-    if (phase === "merged") {
-        if (failed === true)
-            throw new CommandError(EXIT.USAGE, "--phase=merged clears bkit:failed; drop --failed=on");
-        failed = false;
-    }
+    const failed = onOff(ctx.flags.failed, "failed");
+    if (phase !== undefined && failed === true)
+        throw new CommandError(EXIT.USAGE, "--phase clears bkit:failed; drop --failed=on");
     const board = str(ctx.flags.board);
     if (board !== undefined && BOARD_OPTION[board] === undefined) {
         throw new CommandError(EXIT.USAGE, "--board must be progress or review");
     }
-    const t = { phase, failed, debug };
+    const t = { phase, failed };
     const { add, remove, labels } = transitionLabels(ctx.flags.label ?? [], t);
     const { board: payload, boardSkipped } = board === undefined ? { board: null, boardSkipped: null } : boardPayload(ctx, board);
     ctx.emit({
@@ -360,12 +367,33 @@ function links(o) {
         const ref = o.ref ?? o.tree;
         if (ref === undefined)
             throw new CommandError(EXIT.USAGE, "--artifact needs --ref (or --tree)");
-        for (const a of artifacts)
-            out.push(`[${path.basename(a)}](${gh}/blob/${ref}/${a.replace(/^\/+/, "")})`);
+        for (const a of artifacts) {
+            const hash = a.indexOf("#");
+            const file = (hash < 0 ? a : a.slice(0, hash)).replace(/^\/+/, "");
+            const heading = hash < 0 ? undefined : a.slice(hash + 1).trim();
+            if (heading === "")
+                throw new CommandError(EXIT.USAGE, `--artifact "${a}" has an empty #Heading`);
+            const url = `${gh}/blob/${ref}/${file}`;
+            out.push(heading === undefined
+                ? `[${path.basename(file)}](${url})`
+                : `[${path.basename(file)} § ${heading}](${url}#${headingAnchor(heading)})`);
+        }
     }
     return out;
 }
-const KINDS = ["step", "failure", "handover"];
+/**
+ * GitHub's anchor for a markdown heading: lowercased, punctuation dropped,
+ * spaces to hyphens. A repeated heading's later copies take `-1`, `-2`; this
+ * names the first.
+ */
+export function headingAnchor(heading) {
+    return heading
+        .trim()
+        .toLowerCase()
+        .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
+        .replace(/ /g, "-");
+}
+const KINDS = ["step", "failure", "handover", "audit"];
 /** The exact comment body; files (`bodyFile`, `sections`, `stderrFile`, `errorFile`) resolve against `cwd`. */
 export function buildComment(cwd, o) {
     const kind = o.kind ?? "step";
@@ -406,6 +434,13 @@ export function buildComment(cwd, o) {
                 lines.push("Stderr:", fenced(captured));
         }
     }
+    else if (kind === "audit") {
+        const slug = o.auditSlug;
+        if (slug === undefined || !/^[a-z0-9-]+$/.test(slug)) {
+            throw new CommandError(EXIT.USAGE, "--kind=audit needs --audit-slug=<template slug>");
+        }
+        lines.push([`### Audit Summary: ${slug}`, ...(o.fields ?? []).map(([k, v]) => `${k}: ${v}`)].join(" - "));
+    }
     else {
         lines.push("### Workflow Handover");
     }
@@ -436,11 +471,12 @@ export function commentBody(ctx) {
     }
     return buildComment(ctx.cwd, {
         kind: kind,
+        auditSlug: str(ctx.flags.auditSlug),
         workflow: str(ctx.flags.workflow),
         workflowHeading: ctx.flags.workflowHeading === true,
         stepNumber: str(ctx.flags.stepNumber),
         stepTitle: str(ctx.flags.stepTitle),
-        fields: kind === "step" ? headerFields(ctx) : [],
+        fields: kind === "step" || kind === "audit" ? headerFields(ctx) : [],
         subStep: str(ctx.flags.subStep),
         error: str(ctx.flags.error),
         errorFile: str(ctx.flags.errorFile),
@@ -490,10 +526,9 @@ export const issuesCommand = {
                 {
                     name: "phase",
                     type: "string",
-                    help: "set this phase: design | plan | build | ship | merged",
+                    help: "set this phase: design | plan | build | debug | ship | merged (drops next:* and bkit:failed)",
                 },
-                { name: "failed", type: "string", help: "bkit:failed on | off (merged implies off)" },
-                { name: "debug", type: "string", help: "bkit:debug on | off" },
+                { name: "failed", type: "string", help: "bkit:failed on | off (a phase implies off)" },
                 {
                     name: "board",
                     type: "string",
@@ -515,9 +550,10 @@ export const issuesCommand = {
             run: labelsVerb,
         },
         comment: {
-            summary: "The exact body of a ###### bkit:generated step, failure, or handover comment.",
+            summary: "The exact body of a ###### bkit:generated step, failure, handover, or audit comment.",
             flags: [
-                { name: "kind", type: "string", help: "step (default) | failure | handover" },
+                { name: "kind", type: "string", help: "step (default) | failure | handover | audit" },
+                { name: "audit-slug", type: "string", help: "audit: template slug, e.g. security" },
                 { name: "step-number", type: "string", help: "step number in the heading" },
                 { name: "step-title", type: "string", help: "step title in the heading, e.g. Plan Verify" },
                 { name: "workflow", type: "string", help: "design | plan | build | debug | ship | auto" },
@@ -548,7 +584,7 @@ export const issuesCommand = {
                     name: "artifact",
                     type: "string",
                     repeatable: true,
-                    help: "link this repo path at --ref",
+                    help: "link this repo path at --ref; path#Heading links that section",
                 },
                 { name: "ref", type: "string", help: "ref the --artifact links point at (default --tree)" },
                 { name: "line", type: "string", repeatable: true, help: "a raw line after the links" },

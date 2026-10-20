@@ -17,10 +17,11 @@
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
+> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
 > - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - never resolve, archive, mute, or edit tracker issues, dashboards, alert rules, or sample rates.
 > - never copy log free text, an event payload, or a personal-data value into the report. Cite ids, status codes, error codes, and timestamps.
+> - Before first vendor-config or error-text read → name fields that can carry credentials (e.g. request headers in monitor config, URLs with query tokens, error messages echoing a request). Field decides, not value shape: value with no secret prefix still counts. Report field and class only (e.g. `auth header present`), never value.
 
 ## Universal Instructions
 
@@ -42,6 +43,8 @@ An error tracker does not distinguish a bug from a handled outcome logged at err
 - OpenTelemetry semantic conventions, including GenAI; record the semconv version.
 - W3C Trace Context, Level 1.
 - Alerting on SLOs (e.g. Google SRE Workbook, "Alerting on SLOs").
+- bkit block of `docs/observability.md` (bkit version from `.bkit/version`): every rule and section
+- bkit block of `docs/noise.md` (bkit version from `.bkit/version`): every rule and section
 
 ### Scope
 
@@ -145,24 +148,25 @@ Verify only when applicable.
 
   Text search finds candidates; read each. Deliberate best-effort (telemetry, fire-and-forget notification) OK when code says so. Real one → `docs/failures.jsonl` row, which the audit agent writes; Expected names `bkit-audit-database` when miss is grant, policy, or write role. Users see same shape: tracker user feedback, support inbox, store reviews since previous report. User-reported failure with no matching event = this class. Next step = runtime half: swallowed DB error may appear in DB log. **Done when:** `Invisible` lists each candidate read, and its verdict.
 
-- [ ] **Step 11 — Runtime Logs:** Read each runtime-log source in `Project Instructions` and each `context=runtime` block in `.agents/context.md` for whole window since previous report, not tool default short window. Record retention from plan page and window part source could not cover. Retention < cadence = finding → drain or shorter cadence. Skipped reader (credential, tool, block) = not read, never clean. No reader → vendor console by hand, or not read and why. Note whether server logs share one structured shape (request id, trace id, hashed tenant id, error code) so queries are filters not text search; tracker log product or OTel log exporter in use. Per log error:
+- [ ] **Step 11 — Runtime Logs:** Read each runtime-log source in `Project Instructions` and each `context=runtime` block in `.agents/context.md` for whole window since previous report, not tool default short window. Record retention from plan page and window part source could not cover. Retention < cadence = finding → drain or shorter cadence. Skipped reader (credential, tool, block) = not read, never clean. No reader → vendor console by hand, or not read and why. Note whether server logs share one structured shape (request id, trace id, hashed tenant id, error code) so queries are filters not text search; tracker log product or OTel log exporter in use. Test and production share vendor resource (e.g. sending domain, API key) → read its reputation signal (e.g. bounce and complaint rate per sender) for window; separate resources → `not shared`; vendor exposes no such metric → name missing signal, `Not Checked`. Per log error:
   - Match tracker first (timestamps; trace id joins). Covered → note platform evidence on issue. Same incident, not second finding.
   - Group by time across sources. Cluster within few minutes = one outage; write once.
   - Tracker empty → gap = finding. Noise (why), or failure that should have been reported. Second → Expected names signal: log at call site, upstream-outage classifier pattern, or health-endpoint check. Monitor/capacity alert = next step, not this run.
   - Never copy log line free text. PII-safe fields reader already selects.
 
-  Check correlation without clock. Every inbound-request → background-work path: one trace (e.g. W3C `traceparent`, tracker trace header) spans host, job runner, DB calls, in tracker and job-runner traces. Broken hop = finding. Without it, time grouping = only join. Platform failure re-reported to tracker → counts must match; platform failure with no tracker event = broken reporter. **Done when:** `Runtime Logs` row per source: read or not (why) · window covered · retention · error count · matched tracker issues. Correlation recorded. `Board` holds reported-vs-platform ratio per reporting platform.
+  Check correlation without clock. Every inbound-request → background-work path: one trace (e.g. W3C `traceparent`, tracker trace header) spans host, job runner, DB calls, in tracker and job-runner traces. Broken hop = finding. Without it, time grouping = only join. Platform failure re-reported to tracker → counts must match; platform failure with no tracker event = broken reporter. **Done when:** `Runtime Logs` row per source: read or not (why) · window covered · retention · error count · matched tracker issues. Row per shared vendor resource: reputation per sender, `not shared`, or `Not Checked` (why). Correlation recorded. `Board` holds reported-vs-platform ratio per reporting platform.
 
 - [ ] **Step 12 — Alarms:** Prior steps read what arrived. This step checks what is meant to arrive still can. Per observability doc (health endpoint, alert routing, uptime monitors):
   - Uptime monitors. List each: last check-in, last failure, still right URL/environment. Status-only assertion can pass on login wall when checker follows redirects.
   - Cron coverage. Every clock job health endpoint should know. Unknown job can stop silently. Read every run, not each job's newest: run started and unfinished past its timeout = finding.
+  - Health state store. Read store health endpoint writes check results to (table, key): per check, last result + last evaluated. Row older than its schedule = finding, whatever its last result (stale `ok` = dead check). No store (checks computed live) → record with evidence. Row without timestamp → record gap. Read needs write-capable credential → `Not Checked`; never borrow one.
   - Alert routing. Rule exists, destination current, last real alert seen. Alert never seen fire since created = unproven, not healthy. Destination by role or doc section; no personal address.
   - Alert quality. Count fired since previous report, share that led to action, time to acknowledge. Rule fired repeatedly with no action = noise; name it. Rule with no environment filter letting non-production noise reach person = noise; name it.
   - On-call. Who gets production alerts OOH, if no ack, whether quiet hours suppress anything critical. Before launch, developer inbox OK only as written answer.
 
-  No error tracker → monitor list and alert rules `Not Checked`; cron coverage still from repo. Before launch, much unproven for lack of traffic. Record what could not be proven and why. Missing monitor = next step, not this run. **Done when:** `Alarms` row per monitor and cron: last check-in · runs left unfinished · what could not be proven. Alert-quality numbers and on-call answer included.
+  No error tracker → monitor list and alert rules `Not Checked`; cron coverage still from repo. Before launch, much unproven for lack of traffic. Record what could not be proven and why. Missing monitor = next step, not this run. **Done when:** `Alarms` row per monitor and cron: last check-in · runs left unfinished · what could not be proven. Row per state-store check: last result · last evaluated, or `no state store` with evidence. Alert-quality numbers and on-call answer included.
 
-- [ ] **Step 13 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per tracker setup practice (symbolication, release, environment, release health, grouping, ownership, quotas, spike protection, scrubbing) and per trace-propagation and SLO-alerting practice → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
+- [ ] **Step 13 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per tracker setup practice (symbolication, release, environment, release health, grouping, ownership, quotas, spike protection, scrubbing) and per trace-propagation and SLO-alerting practice → checked (name step) / not applicable (why) / finding. Per bkit anchor (doc section, rule, or issue shape): one row → followed (name step or evidence) / not applicable (why) / finding; departure with no recorded reason (e.g. `docs/decisions.jsonl` row, accepted-divergence entry) = finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
 - [ ] **Step 14 — Anything Else:** (a) Everything changed since previous report's commit touching error reporting and logs (tracker init and integrations, scrubber, upstream-outage classifier, new error-level call sites, alert rules, uptime and cron monitors, log-fetch blocks, new outside services) → one-line verdict each. (b) Bounded ~30 min pass: what senior SRE flags that no step asks; read since previous run (incidents, new `docs/failures.jsonl` rows, vendor status incidents) — what would no step catch? Any error source this run saw that `Runtime Logs` does not name → record and propose source in `Process Improvements`. **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
@@ -172,7 +176,7 @@ Verify only when applicable.
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **No tracker writes:** nothing resolved, archived, muted, or edited; no sample rate or alert rule changed.
-- [ ] **No payloads:** no log free text, event payload, or personal-data value in the report.
+- [ ] **No payloads:** no log free text, event payload, personal-data value, or credential-field value in the report.
 - [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings

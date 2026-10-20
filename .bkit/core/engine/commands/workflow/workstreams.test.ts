@@ -139,7 +139,7 @@ describe("bkit workstreams comment", () => {
         "- WS-1: Data model. Requires: []",
         "- WS-2: API. Requires: [WS-1]",
         "- WS-3: UI. Requires: [WS-1, WS-2]",
-        "Filing one issue per workstream: put `**Parent design:** [12-csv-design.md](docs/plans/202610/12-csv-design.md)` in its body, and list the issues it requires in a blocked-by block (.bkit/trackers.md § Issue shapes).",
+        "Filing one issue per workstream: put `**Parent design:** [12-csv-design.md](https://github.com/acme/app/blob/dev/docs/plans/202610/12-csv-design.md)` in its body, and list the issues it requires in a blocked-by block (.bkit/trackers.md § Issue shapes).",
         "[docs/plans/202610/12-csv-design.md](https://github.com/acme/app/blob/dev/docs/plans/202610/12-csv-design.md)",
       ].join("\n"),
     );

@@ -11,7 +11,7 @@ body:
         Write this as the plan: a build with no plan builds from this issue.
         - `/bkit-plan #<issue number>` turns it into a checked plan; the build then proves each **Test first** test fails before its code exists.
         - `/bkit-build #<issue number>` builds straight from this issue and, when Tasks keep the exact shape below, proves each **Test first** test fails before its code exists. **Done when** guides rather than gates.
-        - `lite:build` builds from this issue too but checks nothing: no failing-test proof, gates, PR or CI.
+        - `build:lite` builds from this issue too but checks nothing: no failing-test proof, gates, PR or CI.
 
         Keep the title short: it names the feature folder. Nothing ticks boxes in an issue.
   - type: textarea
@@ -83,7 +83,7 @@ body:
       description: |
         The plan reads `**Parent design:**` and `**Audit reports:**` lines; the build refuses to start while an issue in the blocked-by block is open. Write them exactly as shown. Other references are not fetched, so use exact paths, ledger `key`s and issue numbers with titles.
       placeholder: |
-        **Parent design:** [42-offline-sync-design.md](docs/plans/202610/42-offline-sync-design.md)
+        **Parent design:** [42-offline-sync-design.md](https://github.com/<owner>/<repo>/blob/dev/docs/plans/202610/42-offline-sync-design.md)
         **Audit reports:** docs/audits/202610/security.md (findings security-3, security-5)
         ###### bkit:blocked-by start
         - #<number>

@@ -2,7 +2,7 @@
 name: bkit-build
 description: "Build Feature — Autonomous implementation"
 ---
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Build Feature (Workflow 3/5)
 
@@ -30,7 +30,7 @@ description: "Build Feature — Autonomous implementation"
 
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; never gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists). `bkit issues labels` computes each transition; MCP writes it.
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new; a phase start also drops every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
 > - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking not required.
 
 
@@ -53,18 +53,18 @@ description: "Build Feature — Autonomous implementation"
    - **Else** → step 6.
 2. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    Post `comment` (when non-null).
-3. **If** `HANDOVER_NEEDED` = true → step 4. **Else** → step 6.
+3. **If** `HANDOVER_NEEDED` = true → step 4. **Else** → step 5.
 4. **Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-debug-abort-handover.md` using `view_file` tool:
    Context: You are a subagent in the Build Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md`.
-5. `git status --short` → remove unintended files, then commit and push the handover — NEVER onto a branch with an open PR:
+5. `git status --short` → on a feature branch remove unintended files; on `dev` / `main` remove nothing (only the run's own record lands, through a throwaway checkout). Then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
    ```bash
-   "{BKIT}" workflows handover --workflow=build --fid={FID} --month={YYYYMM} --push
+   "{BKIT}" workflows handover --workflow=build --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
    ```
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
-   - **Else** → post `comment` (no link unless the push landed) → step 6.
+   - **Else** → post `comment` (when non-null) → step 6.
 6. **STOP**, no further downstream steps.
 
 ---
@@ -697,8 +697,8 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
 12. Final return: Display `build-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. Append `CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug.`
     Append issue link [{ISSUE_ID} {TITLE}]({URL})
+    Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
     Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
-    Append as last line `Would you like me to explain this in plain English?`
 13. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 
 ### 🔒 Gate 18 — Close Workflow & Create PR

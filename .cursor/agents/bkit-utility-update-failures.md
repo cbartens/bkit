@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior editor closing failures the codebase has already resolved.
 **Scope:** As specified by input or session prompt.
@@ -51,8 +51,8 @@ tools:
     ```
     Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
 11. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+    Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
     Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
-    Append as last line `Would you like me to explain this in plain English?`
 
 **Output format:**
 

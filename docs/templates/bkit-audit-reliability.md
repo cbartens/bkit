@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Reliability Audit
 
@@ -17,7 +17,7 @@
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
+> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
 > - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - never take a dependency down, inject a fault, or change an alert, monitor, or flag. A game day is a separate exercise; this run only records its date and outcome.
 > - never run a replay, retry, send, charge, or restore. Read the procedure only.
@@ -38,6 +38,7 @@ Failure paths are least-tested: happy path is tested; vendor outage stays unwalk
 - Google SRE Book (online edition): Postmortem Culture.
 - AWS Well-Architected Framework, Reliability Pillar: REL05 BP01–BP07 (graceful degradation, throttling, retries, fail fast, client timeouts, stateless, emergency levers), REL11 (static stability), REL13 (disaster recovery). Record the publication date read.
 - Background-job flow-control docs (e.g. Inngest concurrency and `createFunction`, Temporal task queues).
+- bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Production rollback runbook; § Dev rollback runbook; § Consumer rollback path; § Smoke trigger plumbing; § Applying migrations at deploy time; § Build-vs-migration race; § Promote before the lanes (`bkit-tests-deploy`)
 
 ### Scope
 
@@ -113,7 +114,7 @@ Verify only when applicable.
 - [ ] **Step 12 — Deploys:** Most outages follow a change. Version skew: client loaded pre-deploy keeps reaching server code it was built against where platform offers that. Framework may not pin custom client-side fetches (e.g. `fetch` from Next.js client components); check newer-server handling. Schema/code order: expand first, contract later so either rolls back alone. Rollback speed: last rollback duration or rollback runbook drill. No drill and no measured rollback = finding. Progressive rollout: staged rollout or what stops bad deploy reaching all users; neither = finding. Old native clients cannot roll back. API tolerates oldest supported version; forced-update/minimum-version gate; update channels map to runtime versions. Record oldest version in production traffic and support window. Store-side settings → `bkit-audit-app-store`. **Done when:** each check met, finding, or not applicable (why).
 - [ ] **Step 13 — Alerts:** Map each Step 4–9 failure mode to alert (error-tracker, health endpoint, uptime monitors, canaries, data-freshness, dropped-work). No alert = finding; alert with no runbook = finding. Whether alarms fire → `bkit-audit-logs`; this step checks coverage. `Journeys` SLO alert = burn-rate, long and short windows per Workbook, not raw threshold. Near-zero traffic: one failed request can look like outage — minimum request count or synthetic probe behind alert. Each vendor status feed reaches alert channel. **Done when:** `Alerts` maps every failure mode to alert, runbook, sensitivity verdict.
 - [ ] **Step 14 — Incidents:** Severity levels, incident lead per incident, who told at each level and how. User comms: status page or in-app banner for outage plus message template. Drill with date. Never rehearsed = finding. Incidents since previous run: each blameless postmortem with owned actions; record closed actions. Gap = finding with proposal; do not file — report is output. **Done when:** `Incidents` states each requirement met or finding.
-- [ ] **Step 15 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per REL05 BP01–BP07, REL11, REL13, each SLO and error-budget checklist item → checked (name step) / not applicable (why) / finding. Each row pass / partial / fail with evidence. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
+- [ ] **Step 15 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per REL05 BP01–BP07, REL11, REL13, each SLO and error-budget checklist item → checked (name step) / not applicable (why) / finding. Each row pass / partial / fail with evidence. Per bkit anchor (doc section, rule, or issue shape): one row → followed (name step or evidence) / not applicable (why) / finding; departure with no recorded reason (e.g. `docs/decisions.jsonl` row, accepted-divergence entry) = finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
 - [ ] **Step 16 — Anything Else:** (a) Everything changed since previous report's commit touching reliability (outbound calls and hosts, webhook receivers, job functions and flow-control, scheduled jobs, write paths, timeouts and duration limits, alerts and monitors) → one-line verdict each. (b) Bounded ~30 min pass: what senior SRE flags that no step asks; read since previous run (incidents and postmortems, log-audit sweeps, new `docs/failures.jsonl` rows, vendor status incidents) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check

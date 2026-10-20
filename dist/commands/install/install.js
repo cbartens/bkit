@@ -184,13 +184,19 @@ export async function runInstall(args, upgradeReport = false) {
     else if (dryRun)
         console.log(`${LOG_PREFIX} Running in check (dry-run) mode`);
     // `bkit check` scopes drift detection to what is INSTALLED (detected by sentinel files),
-    // not to a fixed full set. `install` keeps its explicit resolved set.
-    const effectiveModules = verb === "check" ? detectInstalledModules(process.cwd()) : modules;
+    // not to a fixed full set. `install` keeps its explicit resolved set, plus every installed
+    // host when `--tracker=` is given: each host renders tracker-specific commands, agents and
+    // MCP entries, so a host left out would keep the old tracker's.
+    const effectiveModules = verb === "check"
+        ? detectInstalledModules(process.cwd())
+        : tracker !== null
+            ? new Set([...modules, ...detectInstalledModules(process.cwd())])
+            : modules;
     // RENDER-input provider resolution. `bkit check` takes no `--opencode=` flag, so the parsed
     // `opencodeProvider` is null on the check path; it falls back to the INSTALLED provider
     // (package.json `bkit.opencodeProvider`, else the opencode.json provider block). On install
-    // `?? detect` never fires: opencode joins the module set only when `--opencode=<provider>`
-    // was given. The PARSED `opencodeProvider` alone drives the persist-to-package.json logic
+    // `?? detect` fires only when opencode joins as an installed host under `--tracker=`; with
+    // `--opencode=<provider>` the flag wins. The PARSED `opencodeProvider` alone drives the persist-to-package.json logic
     // below (gated on `!dryRun` + a real flag). The tracker is resolved from package.json below,
     // so the tracker-dependent opencode mcp block renders the same way on check.
     const renderOpencodeProvider = opencodeProvider ?? detectOpencodeProvider(process.cwd());

@@ -21,3 +21,9 @@ if git diff --cached --name-only --diff-filter=ACM |
   grep -q '^\.bkit/core/engine/.*\.ts$'; then
   pnpm bkit:check:dist < /dev/null
 fi
+
+# disk prune — keep this block last. Starts your min cleanup steps (`bkit disk prune`,
+# .bkit/templates.md § Disk prune) in the background, at most once a day; with no step
+# files it does nothing. Not a gate: a failure warns and the commit goes on.
+pnpm -s bkit disk prune --mode=min --auto < /dev/null > /dev/null ||
+  echo "[pre-commit] WARN: disk prune failed; commit continues" >&2

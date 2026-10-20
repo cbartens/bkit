@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Database Audit
 
@@ -17,7 +17,7 @@
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
+> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
 > - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - Remote catalogue queries ONLY use `SELECT` (non-relational: read-only reads); writes run locally, or in explicitly rolled-back transactions; ALWAYS check remote unchanged.
 > - NEVER push schema to remote by hand; NEVER hard-delete; restore target = throwaway, deleted before report finishes.
@@ -41,6 +41,7 @@ Migrations and integration tests exercise queries; neither verifies privileges, 
 - Platform serverless connection guidance.
 - DB routine-maintenance docs, edition = hosted major (e.g. PostgreSQL Routine Database Maintenance Tasks).
 - Safe-migration rule set (e.g. Squawk); record version.
+- bkit block of `docs/setup.md` (bkit version from `.bkit/version`): Rules
 
 ### Scope
 
@@ -112,7 +113,7 @@ Verify only when applicable.
 - [ ] **Step 15 — Vacuum:** Vacuuming engine (e.g. Postgres) → transaction-ID age per DB and largest tables; dead-tuple ratio, last autovacuum / autoanalyze per hot table. Not vacuumed since previous report, or ID age climbing = finding. Other engine → its routine maintenance (e.g. SQLite `VACUUM`, InnoDB purge lag), or skip with evidence. **Done when:** numbers in `Capacity`, or skip recorded.
 - [ ] **Step 16 — Connections:** Connection limit and pooler size vs peak by application and role. Serverless direct connections → transaction-mode pooler, pool of 1, prepared statements off (or platform equivalent). Idle-in-transaction count and age. Statement and idle-in-transaction timeouts per client / admin role; neither = finding. **Done when:** numbers and each client constructor read in `Capacity`.
 - [ ] **Step 17 — Restore:** (a) From source, list every outbound side effect a clone fires (scheduled jobs, HTTP-calling triggers / functions, DB webhooks, foreign-data wrappers) and how each stops: logical restore stripping them first / fails closed in clone / unscheduled right after restore (harmless first run only). Reaches real users or payments without failing closed → no binary restore. No plan → finding, do not restore. (b) Restore latest backup to throwaway target; schema matches migrations; time taken and data lost; delete target. (c) Record backup type, retention, point-in-time recovery, RTO, RPO. No written targets = finding. Retention < time to notice silent corruption = finding. (d) Logical backup outside platform account: age; restore notes cover key material backups never contain. None = finding. **Done when:** `Restore` holds side-effect plan and result, or the replacing finding.
-- [ ] **Step 18 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per checklist item, advisor lint, inspection report → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
+- [ ] **Step 18 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per checklist item, advisor lint, inspection report → checked (name step) / not applicable (why) / finding. Per bkit anchor (doc section, rule, or issue shape): one row → followed (name step or evidence) / not applicable (why) / finding; departure with no recorded reason (e.g. `docs/decisions.jsonl` row, accepted-divergence entry) = finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
 - [ ] **Step 19 — Anything Else:** (a) Everything changed since previous report's commit touching DB (migrations, tables / columns, functions and grants, policies, extensions, scheduled jobs, buckets, publications, new DB clients) → one-line verdict each. (b) Bounded ~30 min pass: what a senior DBA flags that no step asks; read since previous run (incidents, new `docs/failures.jsonl` rows) — what would no step catch? Include anything catalogue / logs / advisors surfaced unchecked, with query for next run. **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check

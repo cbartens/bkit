@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Issue Prioritisation
 
@@ -17,7 +17,7 @@
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
+> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
 > - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - never write tracker fields, labels, or comments; NEVER close, merge, or open issues. The report proposes size and priority.
 > - never copy a personal-data value from an issue body into the report.
@@ -41,6 +41,7 @@ Board with no stated rule = filing order. Search feature and authorisation bypas
 - Definition of Ready: the Scrum Guide's description of ready items under Product Backlog refinement; record the edition (e.g. November 2020). No separate published standard exists.
 - Severity is not priority (e.g. Mozilla defect-severity guide and Bugzilla triage policy).
 - Tracker dependency links (e.g. GitHub blocked-by / blocking).
+- bkit issue shapes (bkit version from `.bkit/version`): `.bkit/trackers.md` § Issue shapes; example forms `.bkit/templates/.github/ISSUE_TEMPLATE/` (`.bkit/templates.md` § Issue forms)
 
 ### Scope
 
@@ -152,7 +153,7 @@ Verify only when applicable.
 - [ ] **Step 8 — Order:** Four bands tie issues. Order each ready-lane band; report top ten. Proposal does not invent order field. (1) Inside `High`: blockers of `Urgent` first, then severity. Defect with ledger/audit `CRITICAL` before `HIGH`, both before rest. Severity orders in band; never moves band. (2) Cost of delay ÷ size (WSJF). Score 1–3: user/business value, time-criticality, risk reduced/work unblocked. Sum ÷ size: XS 1, S 2, M 3, L 5, XL 8. Tie → older issue. Simplified WSJF; standard uses modified Fibonacci per part and job size. (3) Demand when any: error-tracker volume, store reviews, analytics, support, previous-product users → raise value score; name source. Empty → say so; do not guess. **Done when:** `Order` holds top ten with scores.
 - [ ] **Step 9 — Shipped:** Issues closed since previous report → join ship outcome via closing PR (lines changed, duration). Compare with size given. Sizes overlapping heavily in lines/time → size table no longer means what it says; propose change in `Process Improvements`. **Done when:** `Shipped` holds comparison, or no outcomes and say so.
 - [ ] **Step 10 — Propose:** One proposed size and priority per open item outside done lane, off-board included, from Steps 6–7. Assert set-equality proposal vs open-issue list (Step 2) before report finished. Missing issue = silent otherwise. This run does not write fields. Distribution before (fields as read) and after (proposal) leads `Summary`. `Judgement Calls`: every call owner should overturn — stuck lifts, won't-do, stale, duplicate closes, uncertain bands — recommendation and what would settle each. **Done when:** `Proposal` covers every in-scope item; `Judgement Calls` holds calls.
-- [ ] **Step 11 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per anchor-standard practice (within-band order, classes of service, WIP, and work-item age, definition of ready, severity against priority, dependencies) → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
+- [ ] **Step 11 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per anchor-standard practice (within-band order, classes of service, WIP, and work-item age, definition of ready, severity against priority, dependencies) → checked (name step) / not applicable (why) / finding. Per bkit anchor (doc section, rule, or issue shape): one row → followed (name step or evidence) / not applicable (why) / finding; departure with no recorded reason (e.g. `docs/decisions.jsonl` row, accepted-divergence entry) = finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
 - [ ] **Step 12 — Anything Else:** (a) Everything changed since previous report's commit touching prioritisation (board fields/options, lanes, labels, milestones, issue templates, two rules) → one-line verdict each. (b) Bounded ~30 min pass: what senior delivery lead flags that no step asks; read since previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows, vendor status) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check

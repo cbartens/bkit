@@ -1,6 +1,6 @@
 # bkit — Comparison with Other Frameworks & Agentic Design Patterns
 
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Human-facing reference. bkit vs other AI development frameworks, bkit vs Antonio Gulli's _Agentic Design Patterns_. Evaluation, outreach — not agent workflow doc-matrix. Five-phase pipeline + every subagent + every audit template: `.bkit/pipeline.md`.
@@ -144,7 +144,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | Evaluation & Monitoring | Partial | `friction` / `knowledge` logs, CI gates, and a catalog-parity drift check. No automated regression-fixture eval harness yet. |
 | Exploration & Discovery | Partial | Divergent brainstorm triplet plus feasibility search. No temperature-spread or vote-of-K. |
 | Inter-Agent Communication (A2A) | N/A by design | Agents communicate only via filesystem artifacts — deliberate, to preserve leaf-only and resume guarantees. |
-| Prioritization | N/A by design | Features run in parallel, one worktree each; per-feature `.lock` blocks a second run of the same feature, repo-global `.dev.lock` serialises only `dev` writes. Ordering across features = human / tracker. |
+| Prioritization | N/A by design | Features run in parallel, one worktree each; per-feature `.lock` blocks a second run of the same feature; every `dev` write is built in a throwaway `origin/dev` checkout and rebuilt when `dev` moved, so features never wait on each other. Ordering across features = human / tracker. |
 
 <a id="beyond-the-book"></a>
 

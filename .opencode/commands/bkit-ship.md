@@ -6,7 +6,7 @@ $ARGUMENTS
 
 # Ship Feature (Workflow 5/5)
 
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Merge feature PR to default integration branch.
@@ -21,18 +21,18 @@ $ARGUMENTS
 > - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does not replace **Failure Path**.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
-> - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2. `--dev-pushes` goes on a call only when `RUNTIME_DEVPUSHES` = true.
+> - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 > - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt (`--attempt-of`; `<attempt>` in a path becomes it), checks artifacts and row, writes the row (ship: `--commit=none`, bookkeeping to `$BOOK_ROOT`), prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields, `attempt` as its attempt.
 > - **Resume:** On start, fold `$BOOK_ROOT/.../status.jsonl` — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$BOOK_ROOT/.../status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
-> - **Locks:** Step 1 takes `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); Step 15 releases it via `bkit workflows close --flush --token=`, the **Failure Path** via `bkit workflows fail --token=`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed. **Dev lock:** `bkit branches switch`, `bkit workflows close --flush` and `bkit workflows handover --flush` hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout).
-> - **Status branch:** All steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`{STATUS}`). **If** `RUNTIME_DEVPUSHES` = true → `BOOK_ROOT` = `$REPO_ROOT`. **Else** → current working branch tree. Stage path-scoped via `bkit ledgers commit`; NEVER stage all files (`-A`) or blanket `docs/`. one commit per flush block: Commit + Push Bookkeeping → `docs({FID}): ship bookkeeping bkit [skip ci]` → push `{SHIP_BRANCH}` (pre-merge: docs, logs, ledgers, skill removals); Close Workflow → `docs({FID}): ship DONE bkit [skip ci]` → push `dev`, refused → close PR; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` → **If** `RUNTIME_DEVPUSHES` = true → push `dev`. **Else** → current branch. never both.
-> - **Worktrees:** **If** `runtimeWorktrees` = true (mint mode) → Step 2 `cd`s into `.worktrees/{FID}`. **Else** → adopt current branch in place, `WORKTREE_PATH=$REPO_ROOT`. cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
+> - **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); Step 14 releases it via `bkit workflows close --flush --token=`, the **Failure Path** via `bkit workflows fail --token=`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
+> - **Status branch:** From Step 2 all steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`{STATUS}`); `BOOK_ROOT` = `{WORKTREE_PATH}`. Stage path-scoped via `bkit ledgers commit`; NEVER stage all files (`-A`) or blanket `docs/`. one commit per flush block: Commit + Push Bookkeeping → `docs({FID}): ship bookkeeping bkit [skip ci]` → push `{SHIP_BRANCH}` (pre-merge: docs, logs, ledgers, skill removals); Close Workflow → `docs({FID}): ship DONE bkit [skip ci]`, **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` → push `dev` from a throwaway `origin/dev` checkout; a refused close push → close PR.
+> - **Worktrees:** **If** `runtimeWorktrees` = true (mint mode) → Step 2 `cd`s into `.worktrees/{FID}`. **Else** → adopt current branch in place, `WORKTREE_PATH=$REPO_ROOT`. cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**; Step 14 ends in `{REPO_ROOT}`.
 > - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls always stay on MCP; never invent `gh` read-paths for trackers.
 
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; never gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists). `bkit issues labels` computes each transition; MCP writes it.
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new; a phase start also drops every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
 > - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking not required.
 
 
@@ -49,7 +49,7 @@ $ARGUMENTS
 
 1. Write the error message / tool response to `{OUTBOX_ROOT}/error.md` (`--error-file` dropped while `{OUTBOX_ROOT}` is not held). `{STDERR_FILE}` = `{OUTBOX}/stderr.log` holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command or `{OUTBOX}` is not set yet; drop `--token` when `{LOCK_TOKEN}` is empty, `--pr` when `{PR_NUMBER}` is empty; `--max-exceeded` only when a `counters route` exit 1 (a `MAX_*` limit) sent the run here; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry. Abort any in-progress rebase, record the failure, release the lock, clear sentinels — **state only, no `add` / `commit` / `push`**; a MERGED PR moves the issue to `bkit:merged` plus `bkit:failed`, else the prior phase label persists:
    ```bash
-   "{BKIT}" workflows fail --workflow=ship --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --dev-pushes --max-exceeded --pr={PR_NUMBER} {LABEL_FLAGS} --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}"
+   "{BKIT}" workflows fail --workflow=ship --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --max-exceeded --pr={PR_NUMBER} {LABEL_FLAGS} --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}"
    ```
    → hold `handoverNeeded` as `{HANDOVER_NEEDED}`, `labels` as `{LABELS}`. **If** exit non-zero → log `Lock removal failed` with the printed `lock` to stderr, continue.
 2. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
@@ -59,9 +59,9 @@ $ARGUMENTS
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `{STATUS}`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md`.
-5. Reconcile branch-side artifacts into `BOOK_ROOT`, then flush one commit and one push — **Skip if** `{FID}` or `{YYYYMM}` empty; drop `--worktree` when `{WORKTREE_PATH}` is not set:
+5. Flush the run's book to `dev` as one commit and one push — **Skip if** `{FID}` or `{YYYYMM}` empty; drop `--worktree` when `{WORKTREE_PATH}` is not set:
    ```bash
-   "{BKIT}" workflows handover --workflow=ship --fid={FID} --month={YYYYMM} --flush --dev-pushes --worktree="{WORKTREE_PATH}"
+   "{BKIT}" workflows handover --workflow=ship --fid={FID} --month={YYYYMM} --flush --worktree="{WORKTREE_PATH}"
    ```
    **If** `HANDOVER_NEEDED` = true **and** `comment` non-null → post `comment` (handover linked only where the flush pushed it). **If** the push failed → do not claim success on tracker.
 6. **STOP**, no further downstream steps.
@@ -100,38 +100,51 @@ $ARGUMENTS
    ```bash
    "{BKIT}" runtime detect --fid="{FID}"
    ```
-   → hold `runtimeDevPushes` as `{RUNTIME_DEVPUSHES}`, `runtimeWorktrees` as `{RUNTIME_WORKTREES}`.
+   → hold `runtimeWorktrees` as `{RUNTIME_WORKTREES}`.
 6. Acquire concurrency lock:
    ```bash
-   "{BKIT}" locks acquire --kind=workflow --workflow=ship --fid="{FID}" --dev-pushes
+   "{BKIT}" locks acquire --kind=workflow --workflow=ship --fid="{FID}"
    ```
    → hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
-7. Compute the label transition and board move — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
+7. Resolve `SHIP_BRANCH`, then create / resume worktree, or adopt it in place (no rebase — Path A) — straight after the lock, so every later failure has a book to keep its record in; `--branch` = the branch the session prompt names, dropped when it names none:
+   ```bash
+   "{BKIT}" worktrees setup --workflow=ship --fid="{FID}" --month="{YYYYMM}" --detect --branch="{PROMPT_BRANCH}"
+   ```
+   → hold `worktreePath` as `{WORKTREE_PATH}`, `branch` as `{SHIP_BRANCH}`.
+8. Enter the worktree and find where the run books:
+   ```bash
+   cd "{WORKTREE_PATH}" || exit 1
+   [ "$(git branch --show-current)" = "{SHIP_BRANCH}" ] || { echo "[bkit-ship] not on {SHIP_BRANCH} in {WORKTREE_PATH}" >&2; exit 1; }
+   "{BKIT}" status path --workflow=ship --fid="{FID}" --month="{YYYYMM}"
+   ```
+   → hold `path` as `{STATUS}`, `bookRoot` as `{BOOK_ROOT}`. Open the run — clear stale sentinels, write `workflow-started` and `ship-start-workflow` rows — and record the runtime:
+   ```bash
+   rm -f "{BOOK_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/.deferred-blocked" "{BOOK_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
+   "{BKIT}" workflows start --workflow=ship --fid="{FID}" --month="{YYYYMM}" --file="{STATUS}" --lock-held --token="{LOCK_TOKEN}" || exit 1
+   "{BKIT}" steps done --workflow=ship --step=ship-start-workflow --file="{STATUS}" --commit=none >/dev/null || exit 1
+   "{BKIT}" runtime row --workflow=ship --file="{STATUS}" >/dev/null || exit 1
+   "{BKIT}" runtime assert --workflow=ship --file="{STATUS}" >/dev/null
+   ```
+   → hold `run` as `{RUN}`.
+   Update `BRANCH` = `SHIP_BRANCH`; carry `SHIP_BRANCH` to every later step.
+9. Compute the label transition and board move — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    "{BKIT}" issues labels --phase=ship --board=progress --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
    ```
    → hold `labels` as `{LABELS}`, `board` as `{BOARD}`, `boardSkipped`.
    `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
-8. Find where the run books, then open it — clear stale sentinels, write `workflow-started` and `ship-start-workflow` rows:
-   ```bash
-   "{BKIT}" status path --workflow=ship --fid="{FID}" --month="{YYYYMM}" --dev-pushes
-   ```
-   → hold `path` as `{STATUS}`, `bookRoot` as `{BOOK_ROOT}`; `{OUTBOX}` = `{OUTBOX_ROOT}/{FID}`.
-   ```bash
-   mkdir -p "{OUTBOX}" || exit 1
-   rm -f "{BOOK_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/.deferred-blocked" "{BOOK_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
-   "{BKIT}" workflows start --workflow=ship --fid="{FID}" --month="{YYYYMM}" --file="{STATUS}" --lock-held --token="{LOCK_TOKEN}" --dev-pushes || exit 1
-   "{BKIT}" steps done --workflow=ship --step=ship-start-workflow --file="{STATUS}" --commit=none >/dev/null || exit 1
-   "{BKIT}" repo preflight --owner-repo="{OWNER_REPO}"
-   ```
-   → hold `run` as `{RUN}`.
-9. Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` as read to `{OUTBOX}/issue-comments.json` (empty / `[]` when no tracker), then build `ISSUE_TEXT`:
-   ```bash
-   "{BKIT}" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
-   ```
-   → hold `text` as `{ISSUE_TEXT}`.
-10. Comment:
+10. Create the outbox (`{OUTBOX}` = `{OUTBOX_ROOT}/{FID}`) and run the repo preflight:
+    ```bash
+    mkdir -p "{OUTBOX}" || exit 1
+    "{BKIT}" repo preflight --owner-repo="{OWNER_REPO}"
+    ```
+11. Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` as read to `{OUTBOX}/issue-comments.json` (empty / `[]` when no tracker), then build `ISSUE_TEXT`:
+    ```bash
+    "{BKIT}" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
+    ```
+    → hold `text` as `{ISSUE_TEXT}`.
+12. Comment:
     ```bash
     "{BKIT}" issues comment --workflow=ship --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo="{OWNER_REPO}" --tree="{BRANCH}"
     ```
@@ -139,12 +152,13 @@ $ARGUMENTS
 ### 🔒 Gate 1 — Start Workflow
 
 ```bash
-"{BKIT}" steps gate --file="{STATUS}" --workflow=ship --step=ship-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --dev-pushes --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=BOOK_ROOT={BOOK_ROOT} --placeholder=RUNTIME_DEVPUSHES={RUNTIME_DEVPUSHES} --placeholder=RUNTIME_WORKTREES={RUNTIME_WORKTREES}
+"{BKIT}" steps gate --workflow=ship --step=ship-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=RUNTIME_WORKTREES={RUNTIME_WORKTREES}
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: placeholders and runtime held, FID shape, lock held, step `ship-start-workflow` recorded)
+- [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
-- [ ] Outbox created, stale sentinels cleared, run number set (`{OUTBOX}`, `.deferred-blocked`, `.rebase-failed`, `{RUN}`)
+- [ ] On `SHIP_BRANCH` (not `dev|main`), worktree created / resumed or adopted (no rebase — Path A) before any tracker write; run opened in the worktree (`workflow-started`, `ship-start-workflow`, `runtime-resolved`)
+- [ ] Outbox created (`{OUTBOX}`)
 
 
 - [ ] Issue update attempted (phase label `bkit:ship`, status / state `In Progress`)
@@ -154,29 +168,16 @@ $ARGUMENTS
 
 ## 🤖 Step 2 — Verify PR (Worktree Setup + Regression Guard)
 
-1. Resolve `SHIP_BRANCH`, then create / resume worktree, or adopt it in place (no rebase — Path A); `--branch` = the branch the session prompt names, dropped when it names none:
-   ```bash
-   "{BKIT}" worktrees setup --workflow=ship --fid="{FID}" --month="{YYYYMM}" --detect --branch="{PROMPT_BRANCH}"
-   ```
-   → hold `worktreePath` as `{WORKTREE_PATH}`, `branch` as `{SHIP_BRANCH}`.
-2. Enter the worktree and record the runtime:
-   ```bash
-   cd "{WORKTREE_PATH}" || exit 1
-   [ "$(git branch --show-current)" = "{SHIP_BRANCH}" ] || { echo "[bkit-ship] not on {SHIP_BRANCH} in {WORKTREE_PATH}" >&2; exit 1; }
-   "{BKIT}" runtime row --workflow=ship --file="{STATUS}" >/dev/null || exit 1
-   "{BKIT}" runtime assert --workflow=ship --file="{STATUS}" >/dev/null
-   ```
-   Update `BRANCH` = `SHIP_BRANCH`; carry `SHIP_BRANCH` to every later step.
-   Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md` in `{WORKTREE_PATH}` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md` (if present).
-3. **If** `BRANCH` does not contain `{FID}` **and** does not contain `{ISSUE_ID}` (case-insensitive) → emit `[bkit-ship] WARNING branch {BRANCH} not named for {FID} — shipping it as named` → continue.
-4. Find the branch's PR — open first, then merged:
+1. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md` in `{WORKTREE_PATH}` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md` (if present).
+2. **If** `BRANCH` does not contain `{FID}` **and** does not contain `{ISSUE_ID}` (case-insensitive) → emit `[bkit-ship] WARNING branch {BRANCH} not named for {FID} — shipping it as named` → continue.
+3. Find the branch's PR — open first, then merged:
    ```bash
    "{BKIT}" prs probe --head="{SHIP_BRANCH}" --state=all
    ```
    → hold `number` as `PR_NUMBER`, `baseRefName` as `PR_BASE`, `state`.
    **Route:**
    - **If** exit 0 **and** `PR_BASE` != dev → **Failure Path**.
-   - **If** exit 0 → sub-step 5.
+   - **If** exit 0 → sub-step 4.
    - **If** exit 1 → open PR, `SHIP_OPENED_PR` = true, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present):
      ```bash
      B=$(git branch --show-current)
@@ -192,24 +193,24 @@ $ARGUMENTS
      ```
      **If** exit 80 → `create_pull_request` with the printed `title`, `body`, `base`, `head`. **If** any other non-zero exit → **Failure Path**. Re-run the `bkit prs probe` above → hold `number` as `PR_NUMBER`, `baseRefName` as `PR_BASE`, `state`. Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **Else** → **Failure Path**.
    - **Else** → **Failure Path**.
-5. **Route:**
+4. **Route:**
    - **If** `state` = MERGED → record the resume marker → Step 13:
      ```bash
      "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=ship-merged-on-entry >/dev/null
      ```
    - **Else** → next sub-step.
-6. Read PR head SHA (`ENTRY_HEAD`) and mergeable state:
+5. Read PR head SHA (`ENTRY_HEAD`) and mergeable state:
    ```bash
    "{BKIT}" prs probe --number="{PR_NUMBER}"
    ```
    → hold `headRefOid` as `ENTRY_HEAD`, `mergeable` as `MERGEABLE`. Assert `ENTRY_HEAD` non-empty.
-7. **If** `SHIP_OPENED_PR` = true → wait for CI on the new PR first:
+6. **If** `SHIP_OPENED_PR` = true → wait for CI on the new PR first:
    ```bash
    "{BKIT}" runs wait --pr="{PR_NUMBER}" --until=present --budget-s=120 || exit 1
    "{BKIT}" runs wait --pr="{PR_NUMBER}" --until=completed
    ```
    `"{BKIT}" prs checks --number={PR_NUMBER}` → assert `green` = true. **If** exit 4 (rollup unreadable), `total` = 0, or `green` = false → **Failure Path**.
-8. Finish (bookkeeping to `$BOOK_ROOT`, no branch commit):
+7. Finish (bookkeeping to `$BOOK_ROOT`, no branch commit):
    ```bash
    "{BKIT}" steps done --workflow=ship --step=ship-worktree-setup --file="{STATUS}" --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md" --commit=none >/dev/null || exit 1
    "{BKIT}" steps finish --workflow=ship --step=ship-regression-guard --file="{STATUS}" --verdict=PASS --commit=none --number=2 --title="Verify PR (Worktree Setup + Regression Guard)" --tree="{BRANCH}"
@@ -222,7 +223,7 @@ $ARGUMENTS
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: `ship-input-{RUN}.md`, step `ship-worktree-setup` recorded; `steps finish` exit 0: `ship-regression-guard`)
-- [ ] On `SHIP_BRANCH` (not `dev|main`), worktree created / resumed or adopted (no rebase — Path A); naming warning emitted when not named for `FID` / `ISSUE_ID`
+- [ ] Naming warning emitted when `SHIP_BRANCH` is not named for `FID` / `ISSUE_ID`
 - [ ] PR number non-empty (`PR_NUMBER`); `PR_BASE` = dev (opened by ship, `openedPr` row recorded, CI awaited — when no PR existed)
 - [ ] Entry head and mergeable read (`ENTRY_HEAD`, `MERGEABLE`); no PR CI failures confirmed
 
@@ -517,53 +518,38 @@ $ARGUMENTS
 
 ---
 
-## 🤖 Step 13 — Switch to Dev
+## 🤖 Step 13 — Update Local Dev
 
 **Run only if** `state` = MERGED.
 
-1. Switch to `dev` and bring it level with `origin/dev` under the dev lock when `RUNTIME_DEVPUSHES` = true, then finish:
+1. Fast-forward local `dev` to `origin/dev`, then finish:
    ```bash
-   cd "{REPO_ROOT}" || exit 1
-   "{BKIT}" branches switch --fid="{FID}" --dev-pushes="{RUNTIME_DEVPUSHES}" --worktrees="{RUNTIME_WORKTREES}" || exit 1
-   "{BKIT}" steps finish --workflow=ship --step=ship-switch-to-dev --file="{STATUS}" --commit=none --number=13 --title="Switch to Dev" --tree=dev
+   "{BKIT}" branches sync-dev || exit 1
+   "{BKIT}" steps finish --workflow=ship --step=ship-switch-to-dev --file="{STATUS}" --commit=none --number=13 --title="Update Local Dev" --tree=dev
    ```
 
-### 🔒 Gate 13 — Switch to Dev
+### 🔒 Gate 13 — Update Local Dev
 
-- [ ] On `dev`, level with `origin/dev` (`branches switch` exit 0)
+- [ ] Local `dev` fast-forwarded to `origin/dev`, or its local-only commits logged (`branches sync-dev` exit 0)
 - [ ] Mechanical checks passed (`steps finish` exit 0: step `ship-switch-to-dev` recorded)
 
 ---
 
-## 🤖 Step 14 — Worktree Cleanup
-
-**Run only if** `state` = MERGED.
-
-1. Remove the feature worktree (only one a workflow created), then delete the local and remote feature branch unless another worktree holds it; finish:
-   ```bash
-   "{BKIT}" worktrees remove --fid="{FID}" --branch="{SHIP_BRANCH}" || exit 1
-   "{BKIT}" steps finish --workflow=ship --step=ship-worktree-cleanup --file="{STATUS}" --commit=none --number=14 --title="Worktree Cleanup"
-   ```
-
-### 🔒 Gate 14 — Worktree Cleanup
-
-- [ ] Worktree removed (`.worktrees/{FID}`, or was already absent, or ownership marker absent → skipped) and pruned
-- [ ] Local and remote `{SHIP_BRANCH}` branch deleted or already absent (`branchDeleted`), or both kept and the holding worktree named (`branchBlockedBy`)
-- [ ] Mechanical checks passed (`steps finish` exit 0: step `ship-worktree-cleanup` recorded)
-
----
-
-## 🤖 Step 15 — Close Workflow
+## 🤖 Step 14 — Close Workflow
 
 1. Assert the capstone passed at the squash commit, recording the squash-merge CI verdict (`ship-merge-ci`) before routing:
    ```bash
    "{BKIT}" runs gate --squash-of="{PR_NUMBER}" --repo="{OWNER_REPO}" --capstone-only --record="{STATUS}"
    ```
    → hold `head` as `{SQUASH_SHA}`.
-2. Close under the dev lock — on `dev` when `RUNTIME_DEVPUSHES` = true, else a detached `origin/dev` worktree in the outbox — commit `docs({FID}): ship DONE bkit [skip ci]` (single path-scoped commit carrying the close step row and telemetry), release the workflow lock, then push `dev` (a refused push lands through a `ship-close/{FID}` PR):
+2. Close — keep the summary in the outbox (the close removes the worktree it lives in), land `docs({FID}): ship DONE bkit [skip ci]` on `dev` (refused → `ship-close/{FID}` PR), release the lock, remove the worktree and `{SHIP_BRANCH}`, return to `{REPO_ROOT}`:
    ```bash
-   "{BKIT}" workflows close --workflow=ship --fid="{FID}" --month="{YYYYMM}" --file="{STATUS}" --pr-number="{PR_NUMBER}" --squash-sha="{SQUASH_SHA}" --owner-repo="{OWNER_REPO}" --outbox="{OUTBOX}" --flush --token="{LOCK_TOKEN}" --dev-pushes --number=15 --title="Close Workflow"
+   rm -f "{OUTBOX}/ship-summary.md"
+   [ ! -f "docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md" ] || cp "docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md" "{OUTBOX}/ship-summary.md" || exit 1
+   "{BKIT}" workflows close --workflow=ship --fid="{FID}" --month="{YYYYMM}" --file="{STATUS}" --pr-number="{PR_NUMBER}" --squash-sha="{SQUASH_SHA}" --owner-repo="{OWNER_REPO}" --outbox="{OUTBOX}" --flush --token="{LOCK_TOKEN}" --branch="{SHIP_BRANCH}" --number=14 --title="Close Workflow"; rc=$?
+   cd "{REPO_ROOT}"; exit $rc
    ```
+   → hold `landed.via` as `{CLOSE_VIA}`.
 3. Compute the label transition and board move:
    ```bash
    "{BKIT}" issues labels --phase=merged --board=review --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
@@ -576,25 +562,28 @@ $ARGUMENTS
    "{BKIT}" tips --workflow=ship
    ```
    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-5. Final return: Display `ship-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **If** `ship-summary.md` absent → display `PR was already merged — no ship summary this run.` **HARD STOP**.
+5. Final return: Display `{OUTBOX}/ship-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **If** `{OUTBOX}/ship-summary.md` absent → display `PR was already merged — no ship summary this run.` **HARD STOP**.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
+   Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
    Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
-   Append as last line `Would you like me to explain this in plain English?`
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 
-### 🔒 Gate 15 — Close Workflow
+### 🔒 Gate 14 — Close Workflow
 
 ```bash
-"{BKIT}" steps gate --file="{STATUS}" --workflow=ship --step=ship-close-workflow
+"{BKIT}" steps gate --file="{REPO_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl" --ref=origin/dev --workflow=ship --step=ship-close-workflow
 ```
 
+**If** `CLOSE_VIA` = close-pr-open → drop `--ref`, gate `--file="{STATUS}"`.
+
 - [ ] Squash-merge CI capstone green (`runs gate --squash-of --capstone-only` exit 0 at `SQUASH_SHA`; row `ship-merge-ci` with `verdict`, `reason`)
-- [ ] Close landed (`workflows close --flush` exit 0: `ship` `DONE`, close telemetry committed, single path-scoped `[skip ci]` close commit pushed to `dev` or published through `ship-close/{FID}`, lock released, close worktree removed)
-- [ ] Mechanical checks passed (`steps gate` exit 0: step `ship-close-workflow` recorded)
-- [ ] Logs retained at `docs/plans/{YYYYMM}/logs/{FID}/` for manual cleanup; worktree cleaned up
-- [ ] Final return displayed (`ship-summary.md` content verbatim)
+- [ ] Close landed (`workflows close --flush` exit 0: `ship` `DONE`, close telemetry committed, single path-scoped `[skip ci]` close commit pushed to `dev` or published through `ship-close/{FID}`, lock released, throwaway checkout removed; a close that did not land keeps the lock and goes to the **Failure Path**)
+- [ ] Worktree and `{SHIP_BRANCH}` removed, or kept with a reason; cwd = `{REPO_ROOT}` (`worktree.removed`, `worktree.branchDeleted`, `reason`, `branchBlockedBy`)
+- [ ] Mechanical checks passed (`steps gate` exit 0: step `ship-close-workflow` recorded on `origin/dev`)
+- [ ] Logs retained at `docs/plans/{YYYYMM}/logs/{FID}/` on `dev` for manual cleanup
+- [ ] Final return displayed (`{OUTBOX}/ship-summary.md` content verbatim, copied before the close)
 
 
 - [ ] Issue update attempted (phase label `bkit:merged`, status / state `In Review`; issue left open for human close)
-- [ ] Artifact link list and telemetry report embedded in `Step 15` comment
+- [ ] Artifact link list and telemetry report embedded in `Step 14` comment
 

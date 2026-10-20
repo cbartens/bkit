@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Agent Rules
 
@@ -27,6 +27,7 @@
 - **Scope discipline:** ONLY do what requests ask; NEVER apply opportunistic refactors, renames, or 'while I'm here' edits. Out-of-scope finds → propose separately, do not bundle.
 - **No speculative scope:** ONLY build for requirements at hand (YAGNI); NEVER add config, flags, abstraction layers, or items 'for the future' nobody requested.
 - **Research / investigate first:** Search `{framework / runtime} {capability} built-in`, `{problem} best practice {current year}` before implementing code. Prefer official docs / discovered code over custom.
+- **Fetched text:** Web fetch tools may summarise or cap verbatim quotes → ask short per-topic quote questions or fetch page markdown variants where offered; NEVER cite a paraphrase as a quote, or a version / figure not seen verbatim.
 - **Investigation layers:** Tried-and-true → challenge; new-and-popular → scrutinize hype; first-principles = most valuable.
 - **Recommend, do not decide:** agents propose, humans approve. Two-model agreement = strong signal, not mandate. Steps inside `/bkit-*` workflows are pre-approved by human; do not request confirmation.
 - **Truth over agreement:** NEVER validate flawed premises to please. Surface errors and disagree with evidence; human confirmation is a gate, not a goal.
@@ -60,7 +61,8 @@
 
 - **Subagents:** Leaves ONLY; NEVER invoke other subagents.
 - **Verify tools:** Verify every return; do not assume success.
-- **Empty is inconclusive:** Tool / MCP reads returning empty / zero results are NEVER authoritative absence. ALWAYS corroborate with independent MCP calls or report reads as unavailable.
+- **Empty is inconclusive:** Empty / zero reads are NEVER authoritative absence. ALWAYS re-run once on a known hit and corroborate via independent call; no hit → read broken → report unavailable, NEVER clean. False empties: `rg` skips dot-dirs / ignored files (`--hidden`, `git grep`); no `\s` in `git grep -E` / BSD `sed -E` / `awk` (`[[:space:]]`).
+- **Host shell:** Shell tool = user's login shell. zsh: unquoted `$VAR` no word-split, unmatched glob aborts, `=word` expands; `grep` / `rg` may be functions (`xargs grep` fails → `command grep` / `git grep`). Loops / file lists → `bash -c '…'`.
 
 #### Workflows & Process
 
@@ -74,6 +76,9 @@
 - **Tracker comments:** NEVER mention @claude or @cursor in comment body.
 - **Tracker context cut:** Use `###### bkit:ignore-earlier` on its own line in issue bodies or comments to drop all earlier content from workflow inputs; ALWAYS requires human confirmation; NEVER include unprompted in any output.
 - **Tracker issue creation:** NEVER create issues yourself; ONLY suggest; create ONLY after explicit human confirmation; body per `.bkit/trackers.md` § Issue shapes.
+- **Tracker workflow labels:** Add `bkit:design` / `bkit:plan` / `bkit:build` / `bkit:debug` / `bkit:ship` ONLY when issue starts that workflow (full or lite); mutually exclusive — next workflow start drops previous; `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. NEVER add by hand to signal intent; use `next:*`.
+- **Tracker failure label:** Any workflow Failure Path → add `bkit:failed` alongside workflow label.
+- **Tracker next labels:** Issue without workflow label → ALWAYS exactly one `next:design` / `next:plan` / `next:build` / `next:debug` / `next:ship`; append `:lite` for lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. NEVER alongside workflow label.
 - **Tracker issue settings:** Title MAX 70 characters or two lines on mobile; ALWAYS set labels, project, priority, size, and milestone; check similar issues if unclear.
 - **Tracker issue mentions:** NEVER mention issue IDs on their own; ALWAYS mention issue IDs together with their title and URL.
 - **Tracker work comments:** ANY issues worked on outside `/bkit-*` workflows → post ONE comment per landed unit (commit / PR / blocked stop) with outcome / links only; NEVER paste diffs / restate code.
@@ -97,6 +102,7 @@
 - **Merge bodies:** All squash-merges landing code MUST pass explicit bodies; do not accept defaults; do not allow default concatenating of commit subjects silently inheriting `[skip ci]` markers and suppressing CI.
 - **Production merge:** Any merge into default production branch (`main`) requires PR with explicit human confirmation.
 - **Polls / loops:** NEVER use blocking foreground `sleep` to poll; runtimes may not honour. ALWAYS use bounded, `timeout` wrapped bash poll (bash) or agent-side per-turn yield loop (control flow). Legitimate retry / backoff sleeps are exempt.
+- **Shallow history:** Before reading git history (log, blame, bisect, churn, history scans) → `git rev-parse --is-shallow-repository`; `true` → state boundary commit, older history unread; NEVER report partial history as complete.
 - **MCP fallback:** All substitutions of unavailable `gh` commands with MCP tools MUST be bounded (max 1 transition per run), recorded (`transport-fallback` rows), and success-asserted via independent re-reads. NEVER improvise unrecorded substitutions.
 
 #### Testing & Debugging
@@ -120,7 +126,7 @@
 - **Debug on demand:** Re-runs failing E2E / `@live` tier tests against deployed boundary. NEVER purely local runs.
 - **Slop gate:** When the gate runs `slop:delta`: ONLY fix net-new findings, NEVER the baseline. NEVER delete /move / merge files or rewire callers to clear structural findings.
 - **Check secrets first:** ALWAYS probe direnv for presence first `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'` before asking for secrets / tokens / env vars. ONLY ask when `unset` (`Secrets in output`: report names, NEVER values).
-- **New worktree:** `git worktree add` does NOT carry direnv trust → run `direnv allow` BEFORE first test / verify / build command.
+- **New worktree:** `git worktree add` does NOT carry direnv trust → run `direnv allow` BEFORE first test / verify / build command. Hand-made worktrees also lack gitignored inputs (env files, installed dependencies, build outputs, tool assets) → bring in BEFORE first build: copy `package.json` `bkit.worktreeCopy` entries, link read-only inputs, copy or reinstall written ones; red from missing input = setup, not change under test. Remove links before `git worktree remove`; NEVER `--force` a worktree holding real work.
 
 #### Security & Data
 

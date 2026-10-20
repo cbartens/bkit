@@ -1,7 +1,7 @@
 ---
 description: "Plan Feature — Autonomous plan generation"
 ---
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Plan Feature (Workflow 2/5)
 
@@ -22,14 +22,14 @@ description: "Plan Feature — Autonomous plan generation"
 > - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
-> - **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); release in last step with `bkit branches land` and in Failure Path with `bkit workflows fail`; a lock left in place → **Failure Path** with `Lock removal failed`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed. **Dev lock:** `bkit branches land` holds `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout).
-> - **Status branch:** status.jsonl committed on `{BRANCH}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, no mid-lifecycle pushes. **If** `runtimeDevPushes` = true → state reaches `dev` once in Close Workflow by local squash-merge. **Else** → PR squash-merge.
+> - **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); release in last step with `bkit branches land` and in Failure Path with `bkit workflows fail`; a lock left in place → **Failure Path** with `Lock removal failed`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
+> - **Status branch:** status.jsonl committed on `{BRANCH}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, no mid-lifecycle pushes. State reaches `dev` once, in Close Workflow: `bkit branches land` pushes a squash built off `origin/dev`, or squash-merges a PR when that push is refused.
 > - **Worktrees:** **If** `runtimeWorktrees` = true → Step 2 `bkit worktrees setup` mints / resumes `.worktrees/{FID}`. **Else** → adopts the current branch in place (`WORKTREE_PATH` = main checkout). Its block `cd`s into `worktreePath`. cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
 > - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls always stay on MCP; never invent `gh` read-paths for trackers.
 
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; never gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists). `bkit issues labels` computes each transition; MCP writes it.
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new; a phase start also drops every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
 > - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking not required.
 
 
@@ -46,10 +46,17 @@ description: "Plan Feature — Autonomous plan generation"
    ```
    Route:
    - **If** exit 0 **or** 5 → hold `labels` as `{LABELS}`, `linearState` as `{LINEAR_STATE}` → step 2.
-   - **Else** → step 3.
+   - **Else** → step 4.
 2. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    Post `comment` (when non-null).
-3. **STOP**, no further downstream steps.
+3. `git status --short` → on a feature branch remove unintended files; on `dev` / `main` remove nothing (only the run's own record lands, through a throwaway checkout). Then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
+   ```bash
+   "{BKIT}" workflows handover --workflow=plan --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
+   ```
+   Route:
+   - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
+   - **Else** → post `comment` (when non-null) → step 4.
+4. **STOP**, no further downstream steps.
 
 ---
 
@@ -91,7 +98,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```
    Hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
 6. Extract plan inputs from issue `DESCRIPTION` and the session prompt.
-   - `PARENT_FID`: a `**Parent design:**` markdown link whose target is `docs/plans/{YYYYMM}/{FID}-design.md`. `PARENT_YYYYMM` = that bucket. Absent → this feature's own design doc:
+   - `PARENT_FID`: a `**Parent design:**` markdown link whose target ends in `docs/plans/{YYYYMM}/{FID}-design.md`. `PARENT_YYYYMM` = that bucket. Absent → this feature's own design doc:
      ```bash
      "{BKIT}" fids design --fid={FID} --month={YYYYMM}
      ```
@@ -109,8 +116,9 @@ description: "Plan Feature — Autonomous plan generation"
    **If** `BOARD` = null → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
 8. Comment:
    ```bash
-   "{BKIT}" issues comment --workflow=plan --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo={OWNER_REPO} --tree=dev --line="Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md)}" --line="Audit reports: {None|{AUDIT_PATHS}}"
+   "{BKIT}" issues comment --workflow=plan --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo={OWNER_REPO} --tree=dev --line="Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md)}" --line="Audit reports: {None|[{AUDIT_FILE}](https://github.com/{OWNER_REPO}/blob/dev/{AUDIT_PATH})}"
    ```
+   `Audit reports`: one link per `AUDIT_PATHS` entry, comma-separated; `{AUDIT_FILE}` = file name of `{AUDIT_PATH}`.
 
 ### 🔒 Gate 1 — Start Workflow
 
@@ -398,7 +406,7 @@ description: "Plan Feature — Autonomous plan generation"
    "{BKIT}" workflows promote --workflow=plan --fid={FID} --month={YYYYMM} --file="{STATUS}" || exit 1
    "{BKIT}" workflows close --workflow=plan --fid={FID} --month={YYYYMM} --record-step --outbox="{OUTBOX}" --message="chore({FID}): close-workflow"
    ```
-2. Land on `dev` — local squash under the dev lock, else the PR squash-merge — audit it, release the lock:
+2. Land on `dev` — squash `{BRANCH}` onto `origin/dev` in a throwaway worktree and push it as `dev` (`dev` moved → rebuild and push again, with backoff); push refused → the PR squash-merge — audit it, fast-forward local `dev` when that is a pure fast-forward, release the lock:
    ```bash
    cd "{REPO_ROOT}" && "{BKIT}" branches land --workflow=plan --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --branch="{BRANCH}"
    ```
@@ -425,18 +433,20 @@ description: "Plan Feature — Autonomous plan generation"
    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
 6. Final return: Display `plan-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-build`.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
+   **If** `## Outstanding Questions` lists any question → append `Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'.`
+   Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
    Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
-   Append as last line `Would you like me to explain this in plain English?`
 7. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
+8. **If** user requests the open questions one by one → ask each `## Outstanding Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 
 ### 🔒 Gate 12 — Close Workflow
 
 ```bash
-"{BKIT}" steps gate --file="{REPO_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl" --workflow=plan --step=plan-close-workflow
+"{BKIT}" steps gate --file="{REPO_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl" --ref=origin/dev --workflow=plan --step=plan-close-workflow
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: step `plan-close-workflow` recorded)
-- [ ] Canonical plan promoted and landed (`docs/plans/{YYYYMM}/{FID}-plan.md` and sub-plans on `dev`, close telemetry committed; `branches land` exit 0: squash staged the `feat/{FID}` copies, body scan clean, transport row recorded, lock released)
+- [ ] Mechanical checks passed (`steps gate` exit 0: step `plan-close-workflow` recorded on `origin/dev`)
+- [ ] Canonical plan promoted and landed (`docs/plans/{YYYYMM}/{FID}-plan.md` and sub-plans on `dev`, close telemetry committed; `branches land` exit 0: squash staged the `{BRANCH}` copies, body scan clean, transport cross-check passed, `close-transport` row written only when the run's checkout is the branch (`RUNTIME_DEVPUSHES=false`), otherwise logged — the main checkout is never written to, lock released)
 - [ ] Worktree removed and feature branch deleted (workflow-created worktree only; branch kept when another worktree holds it, `branchBlockedBy`)
 - [ ] Final return displayed (`plan-summary.md` content verbatim)
 

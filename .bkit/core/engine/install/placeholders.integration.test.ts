@@ -65,3 +65,32 @@ describe("resolveTokens — REPO_SLUG", () => {
     expect(tokens.REPO_SLUG).toBe("acme/widget");
   });
 });
+
+// ---------------------------------------------------------------------------
+// DEFAULT_BRANCH resolution — read from refs/remotes/origin/HEAD
+// ---------------------------------------------------------------------------
+
+describe("resolveTokens — DEFAULT_BRANCH from origin/HEAD", () => {
+  function initRepoWithOriginHead(branch: string): void {
+    const env = { ...process.env };
+    delete env["GIT_DIR"];
+    delete env["GIT_WORK_TREE"];
+    const opts = { cwd: tmpDir, stdio: "ignore" as const, env };
+    execSync("git init", opts);
+    execSync(`git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/${branch}`, opts);
+  }
+
+  it("reads the branch origin/HEAD points at, whole", async () => {
+    writeJson("package.json", { name: "proj" });
+    initRepoWithOriginHead("release/prod");
+    const tokens = await resolveTokens(tmpDir);
+    expect(tokens.DEFAULT_BRANCH).toBe("release/prod");
+  });
+
+  it("gives 'main' when origin/HEAD points at dev, the integration branch", async () => {
+    writeJson("package.json", { name: "proj" });
+    initRepoWithOriginHead("dev");
+    const tokens = await resolveTokens(tmpDir);
+    expect(tokens.DEFAULT_BRANCH).toBe("main");
+  });
+});

@@ -1023,6 +1023,25 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
     const r = run(["check"]);
     expect(r.status, `check should be clean:\n${r.stdout}\n${r.stderr}`).toBe(0);
   });
+
+  it("`bkit install --tracker=github` alone switches the tracker on every installed host", () => {
+    expect(run(["install", "--claude", "--cursor"]).status).toBe(0);
+    const r = run(["install", "--tracker=github"]);
+    expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8"));
+    expect(pkg.bkit.issueTracker).toBe("github");
+    expect(fs.readFileSync(path.join(tmp, ".cursor", "mcp.json"), "utf-8")).toContain('"github"');
+    const check = run(["check"]);
+    expect(check.status, `check should be clean:\n${check.stdout}\n${check.stderr}`).toBe(0);
+  });
+
+  it("`bkit install --claude --tracker=github` also re-renders the installed cursor host", () => {
+    expect(run(["install", "--claude", "--cursor"]).status).toBe(0);
+    expect(run(["install", "--claude", "--tracker=github"]).status).toBe(0);
+    expect(fs.readFileSync(path.join(tmp, ".cursor", "mcp.json"), "utf-8")).toContain('"github"');
+    const check = run(["check"]);
+    expect(check.status, `check should be clean:\n${check.stdout}\n${check.stderr}`).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -17,7 +17,7 @@
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
+> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
 > - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - Generated registers / graphs → verify-only mode or throwaway copy; never regenerate a tracked file.
 
@@ -146,7 +146,7 @@ Verify only when applicable.
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **Sites read:** every `DUPLICATE` cites `file:line` from an opened file, not a match.
-- [ ] **Tree clean:** `git status` clean; tracked registers / graphs unchanged.
+- [ ] **Tree clean:** no tracked file changed by this run (other writers' paths named); tracked registers / graphs unchanged.
 - [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings

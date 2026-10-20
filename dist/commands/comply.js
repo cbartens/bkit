@@ -23,13 +23,13 @@ import { gitEnv, resolveGitSha, resolveRepoSlug, } from "../ledgers/telemetry.js
 /** SHA charset guard — only raw hex SHAs from the ledger are accepted. */
 const SHA_RE = /^[0-9a-f]{7,40}$/;
 export const realGitAdapter = {
-    diffPaths(parentSha, cwd) {
-        if (!SHA_RE.test(parentSha)) {
-            console.error(`[bkit-comply] diffPaths: parentSha "${parentSha}" does not match /^[0-9a-f]{7,40}$/ — skipping diff`);
+    diffPaths(parentSha, cwd, head = "HEAD") {
+        if (!SHA_RE.test(parentSha) || (head !== "HEAD" && !SHA_RE.test(head))) {
+            console.error(`[bkit-comply] diffPaths: "${parentSha}..${head}" is not a sha range — skipping diff`);
             return [];
         }
         try {
-            const output = execFileSync("git", ["diff", "--name-only", `${parentSha}..HEAD`], {
+            const output = execFileSync("git", ["diff", "--name-only", `${parentSha}..${head}`], {
                 cwd,
                 env: gitEnv(),
                 encoding: "utf8",
@@ -45,9 +45,11 @@ export const realGitAdapter = {
             return [];
         }
     },
-    headSubject(cwd) {
+    headSubject(cwd, head = "HEAD") {
+        if (head !== "HEAD" && !SHA_RE.test(head))
+            return "";
         try {
-            return execFileSync("git", ["log", "-1", "--format=%s"], {
+            return execFileSync("git", ["log", "-1", "--format=%s", head], {
                 cwd,
                 env: gitEnv(),
                 encoding: "utf8",
@@ -113,8 +115,8 @@ export function runGrader(input) {
     try {
         const cwd = input.cwd ?? process.cwd();
         const adapter = input.gitAdapter ?? realGitAdapter;
-        const diffPaths = adapter.diffPaths(input.parentSha, cwd);
-        const headSubject = adapter.headSubject(cwd);
+        const diffPaths = adapter.diffPaths(input.parentSha, cwd, input.headSha);
+        const headSubject = adapter.headSubject(cwd, input.headSha);
         const violations = [];
         const noMirrorViolation = ruleNoMirrorEdit(diffPaths);
         if (noMirrorViolation)
@@ -191,17 +193,22 @@ export function appendComplianceRows(rows, statsPath) {
 // ---------------------------------------------------------------------------
 /**
  * Grade `phase` over HEAD~1..HEAD (HEAD alone in a one-commit repo) and append
- * its compliance rows to `<cwd>/.bkit/stats.jsonl`. Fail-open: any error is
- * logged and returns null, so a close never stops on the grader.
+ * its compliance rows to `<cwd>/.bkit/stats.jsonl`. With `squashSha` (ship's
+ * close, run in the feature worktree) the squash commit is graded instead —
+ * its subject and `squash~1..squash` — so the grade covers the whole feature
+ * as it reaches main, not the worktree's last commit. Fail-open: any
+ * error is logged and returns null, so a close never stops on the grader.
  */
-export function gradeCompliance(cwd, phase, log) {
+export function gradeCompliance(cwd, phase, log, squashSha) {
     try {
-        const parentSha = resolveGitSha("HEAD~1", cwd) || resolveGitSha("HEAD", cwd);
+        const squashParent = squashSha === undefined ? "" : resolveGitSha(`${squashSha}~1`, cwd);
+        const parentSha = squashParent || resolveGitSha("HEAD~1", cwd) || resolveGitSha("HEAD", cwd);
         if (!parentSha) {
             log("[bkit-comply] cannot resolve a parent SHA (no commits?) — skipping grade");
             return null;
         }
-        const violations = runGrader({ parentSha, phase, cwd });
+        const headSha = squashParent ? squashSha : undefined;
+        const violations = runGrader({ parentSha, phase, cwd, ...(headSha ? { headSha } : {}) });
         const rows = buildComplianceRows({
             violations,
             phase,

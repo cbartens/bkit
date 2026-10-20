@@ -101,3 +101,10 @@ fi
 # Outside the gate scripts: it validates the bkit install, not your source.
 # Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
 pnpm bkit check < /dev/null
+
+# disk prune — keep this block last, so it runs only once every gate above passed. Starts
+# your max cleanup steps (`bkit disk prune`, .bkit/templates.md § Disk prune) in the
+# background, at most once a day, or hourly while free disk is under bkit.disk.minFreeGb;
+# with no step files it does nothing. Not a gate: a failure warns and the push goes on.
+pnpm -s bkit disk prune --mode=max --auto < /dev/null > /dev/null ||
+  echo "[pre-push] WARN: disk prune failed; push continues" >&2

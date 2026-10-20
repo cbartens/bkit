@@ -6,7 +6,6 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
-import { TIMEOUTS } from "../../shared/timeouts";
 import { WORKFLOW_LOCK_IDLE_S, locksCommand, monthBuckets } from "./locks";
 
 // Real git repos and worktrees per test; a busy machine needs more than the default 5s.
@@ -220,85 +219,29 @@ describe("bkit locks acquire --kind=workflow — a lock already there", () => {
   });
 });
 
-describe("bkit locks acquire --kind=workflow — ship's book root", () => {
-  it("main checkout with --dev-pushes, the worktree being shipped without", async () => {
+describe("bkit locks acquire --kind=workflow — ship", () => {
+  it("takes the lock in the main checkout, from the worktree being shipped too", async () => {
     const cwd = repo();
     const wt = path.join(cwd, ".worktrees", FID);
     git(cwd, "worktree", "add", "-q", wt, "-b", `feat/${FID}`);
-    const ship = [
+    const r = await run(wt, [
       "acquire",
       "--kind=workflow",
       "--workflow=ship",
       `--fid=${FID}`,
       "--month=202610",
-    ];
-    const main = await run(wt, [...ship, "--dev-pushes"]);
-    expect(main.json.path).toBe(path.join(logDir(cwd, "202610"), ".lock"));
-    const branch = await run(wt, ship);
-    expect(branch.json.path).toBe(path.join(logDir(wt, "202610"), ".lock"));
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json.path).toBe(path.join(logDir(cwd, "202610"), ".lock"));
   });
 });
 
-describe("bkit locks acquire --kind=dev", () => {
-  const dev = (...extra: string[]) => [
-    "acquire",
-    "--kind=dev",
-    "--workflow=ship",
-    `--fid=${FID}`,
-    ...extra,
-  ];
-
-  it("takes .bkit/.dev.lock in the main checkout, from a linked worktree too", async () => {
+describe("bkit locks acquire — kinds", () => {
+  it("knows only the workflow kind", async () => {
     const cwd = repo();
-    const wt = path.join(cwd, ".worktrees", FID);
-    git(cwd, "worktree", "add", "-q", wt, "-b", `feat/${FID}`);
-    const r = await run(wt, dev());
-    expect(r.code).toBe(0);
-    expect(r.json.path).toBe(path.join(cwd, ".bkit", ".dev.lock"));
-    expect(fs.readFileSync(r.json.path, "utf-8")).toMatch(
-      new RegExp(`^\\S+Z ship ${FID} ${r.json.token}\\n$`),
-    );
-    expect(r.json.month).toBeNull();
-  });
-
-  it("gives up at the deadline on a busy lock, naming the holder", async () => {
-    const cwd = repo();
-    fs.mkdirSync(path.join(cwd, ".bkit"));
-    fs.writeFileSync(path.join(cwd, ".bkit", ".dev.lock"), "2026-10-01T00:00:00Z build 70-x\n");
-    const r = await run(cwd, dev("--deadline=0"));
-    expect(r.code).toBe(1);
-    expect(r.err).toContain(
-      "dev lock held by: 2026-10-01T00:00:00Z build 70-x — serialise this run",
-    );
-  });
-
-  it(`reclaims a lock older than SHIP_DEV_LOCK_STALE_S (${TIMEOUTS.SHIP_DEV_LOCK_STALE_S}s)`, async () => {
-    const cwd = repo();
-    fs.mkdirSync(path.join(cwd, ".bkit"));
-    const file = path.join(cwd, ".bkit", ".dev.lock");
-    fs.writeFileSync(file, "old build 70-x\n");
-    const t = (Date.now() - (TIMEOUTS.SHIP_DEV_LOCK_STALE_S + 5) * 1000) / 1000;
-    fs.utimesSync(file, t, t);
-    const r = await run(cwd, dev("--deadline=0"));
-    expect(r.code).toBe(0);
-    expect(r.json.reclaimed).toBe("old build 70-x");
-  });
-
-  it("waits for a holder that lets go before the deadline", async () => {
-    const cwd = repo();
-    fs.mkdirSync(path.join(cwd, ".bkit"));
-    const file = path.join(cwd, ".bkit", ".dev.lock");
-    fs.writeFileSync(file, "x build 70-x\n");
-    setTimeout(() => fs.rmSync(file), 300);
-    const r = await run(cwd, dev("--deadline=2"));
-    expect(r.code).toBe(0);
-    expect(r.json.waitedS).toBeLessThanOrEqual(3);
-  });
-
-  it("rejects a bad --deadline, and --deadline on the workflow kind", async () => {
-    const cwd = repo();
-    expect((await run(cwd, dev("--deadline=soon"))).code).toBe(2);
-    expect((await run(cwd, acquire("--deadline=5"))).code).toBe(2);
+    expect(
+      (await run(cwd, ["acquire", "--kind=dev", "--workflow=ship", `--fid=${FID}`])).code,
+    ).toBe(2);
     expect((await run(cwd, ["acquire", "--kind=other", "--workflow=x", "--fid=y"])).code).toBe(2);
   });
 });
@@ -346,13 +289,5 @@ describe("bkit locks release", () => {
     const r = await run(repo(), rel("workflow", "build"));
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ existed: false, released: false, heldBy: null });
-  });
-
-  it("releases the dev lock only for its owner", async () => {
-    const cwd = repo();
-    const a = await run(cwd, ["acquire", "--kind=dev", "--workflow=ship", `--fid=${FID}`]);
-    expect((await run(cwd, rel("dev", "build"))).code).toBe(4);
-    expect((await run(cwd, rel("dev", "ship"))).json.released).toBe(true);
-    expect(fs.existsSync(a.json.path)).toBe(false);
   });
 });

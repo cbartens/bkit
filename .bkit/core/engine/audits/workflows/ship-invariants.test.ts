@@ -6,9 +6,9 @@
 // on failure, that every status write targets the one resolved `{STATUS}`,
 // that the merge gate runs before `bkit prs merge` on the same head, and the
 // Failure Path's single-write contract. What the commands do internally
-// (allow-lists, lock files, row shapes, rebase handling, the dev-lock windows of
-// `branches switch`, `workflows close --flush` and `workflows handover --flush`)
-// is covered by their own tests in commands/workflow/*.test.ts, not here.
+// (allow-lists, lock files, row shapes, rebase handling, the throwaway dev
+// checkouts of `workflows close --flush` and `workflows handover --flush`, the
+// fast-forward of `branches sync-dev`) is covered by their own tests in commands/workflow/*.test.ts, not here.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -129,12 +129,12 @@ function fencedLinesByStep(ship: string): Array<{ step: string; line: string }> 
 }
 
 // ---------------------------------------------------------------------------
-// FROZEN — canonical 15 ship-* step-key set
+// FROZEN — canonical 14 ship-* step-key set
 // ---------------------------------------------------------------------------
 //
 // Step NUMBERS may move; KEYS may not.
 //
-// 15 keys total (the canonical ship step set), in run order. Keys are added,
+// 14 keys total (the canonical ship step set), in run order. Keys are added,
 // never renamed.
 
 export const CANONICAL_SHIP_STEP_KEYS: readonly string[] = [
@@ -151,7 +151,6 @@ export const CANONICAL_SHIP_STEP_KEYS: readonly string[] = [
   "ship-failure-diagnose",
   "ship-failure-remediate",
   "ship-switch-to-dev",
-  "ship-worktree-cleanup",
   "ship-close-workflow",
 ] as const;
 
@@ -259,18 +258,33 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
 // ---------------------------------------------------------------------------
 
 describe("bkit-ship.md — bookkeeping and status writes", () => {
-  it("Step 1 resolves the status log through bkit status path, with --dev-pushes only when the runtime pushes dev", () => {
-    // Finding 4: one variable resolving to two trees. `bkit status path`
-    // picks the book root (main checkout with --dev-pushes, else the current
-    // worktree — commands/lib.test.ts statusLocation); ship must pass the
-    // runtime's answer, not guess.
+  it("Step 1 resolves the status log through bkit status path, inside the worktree", () => {
+    // `bkit status path` books ship in the tree it runs in (commands/lib.test.ts
+    // statusLocation), so it must run after the `cd` into {WORKTREE_PATH}.
     const ship = readShip();
     const step1 = section(ship, /^## .*Step 1 —/, /^### .*Gate 1/);
     const block = fences(step1).find((f) => /"\{BKIT\}" status path\b/.test(f));
     expect(block, "Step 1 bkit status path block not found").toBeDefined();
-    expect(block!).toMatch(/"\{BKIT\}" status path --workflow=ship [^\n]*--dev-pushes/);
+    expect(block!.indexOf('cd "{WORKTREE_PATH}"')).toBeGreaterThanOrEqual(0);
+    expect(block!.indexOf('cd "{WORKTREE_PATH}"')).toBeLessThan(block!.indexOf("status path"));
+    expect(block!).not.toMatch(/--dev-pushes/);
     expect(step1).toContain("hold `path` as `{STATUS}`");
-    expect(ship).toContain("`--dev-pushes` goes on a call only when `RUNTIME_DEVPUSHES` = true.");
+  });
+
+  it("Step 1 opens the run in the worktree straight after the lock, before any tracker write", () => {
+    // A failure after the lock then always has a book to keep its record in.
+    const step1 = section(readShip(), /^## .*Step 1 —/, /^### .*Gate 1/);
+    const at = (re: RegExp) => step1.search(re);
+    const lock = at(/"\{BKIT\}" locks acquire --kind=workflow/);
+    const setup = at(/"\{BKIT\}" worktrees setup --workflow=ship/);
+    const start = at(/"\{BKIT\}" workflows start --workflow=ship/);
+    const labels = at(/"\{BKIT\}" issues labels --phase=ship/);
+    const preflight = at(/"\{BKIT\}" repo preflight/);
+    expect(lock).toBeGreaterThan(-1);
+    expect(setup).toBeGreaterThan(lock);
+    expect(start).toBeGreaterThan(setup);
+    expect(labels).toBeGreaterThan(start);
+    expect(preflight).toBeGreaterThan(start);
   });
 
   it("no fence reassigns STATUS — every status write takes the resolved {STATUS}", () => {
@@ -395,11 +409,11 @@ describe("bkit-ship.md — Step 6 SHIPPED row comes from bkit roadmap feature --
 });
 
 // ---------------------------------------------------------------------------
-// POSITIVE — canonical 15 ship-* step-key set
+// POSITIVE — canonical 14 ship-* step-key set
 // ---------------------------------------------------------------------------
 
-describe("bkit-ship.md — canonical 15 ship-* step-key set", () => {
-  it("publishes the canonical 15 ship-* step-key set (no invented names)", () => {
+describe("bkit-ship.md — canonical 14 ship-* step-key set", () => {
+  it("publishes the canonical 14 ship-* step-key set (no invented names)", () => {
     // Finding 7: agents invent step names. Every canonical key is written, and
     // nothing else is. `ship-close-workflow` is written by `workflows close --flush`
     // (commands/workflow/workflows.test.ts); every other key by a
@@ -448,16 +462,18 @@ describe("bkit-ship.md — the merge is pinned to the head the gate passed", () 
 });
 
 // ---------------------------------------------------------------------------
-// POSITIVE — dev-lock windows live in commands
+// POSITIVE — dev writes live in commands
 // ---------------------------------------------------------------------------
 
-describe("bkit-ship.md — dev-lock windows live in commands", () => {
-  it("no fence takes the dev lock by hand; switch, close and flush hold it", () => {
+describe("bkit-ship.md — dev writes live in commands", () => {
+  it("no fence checks out, commits to or pushes dev by hand; sync-dev, close and flush do", () => {
     const ship = readShip();
     expect(ship).not.toMatch(/locks acquire --kind=dev\b/);
     expect(ship).not.toMatch(/\btrap\b/);
     const lines = fencedLinesByStep(ship).map((l) => l.line);
-    expect(lines.some((l) => /"\{BKIT\}" branches switch\b/.test(l))).toBe(true);
+    expect(lines.some((l) => /\bgit (?:checkout|switch) dev\b/.test(l))).toBe(false);
+    expect(lines.some((l) => /\bgit push\b.*\bdev\b/.test(l))).toBe(false);
+    expect(lines.some((l) => /"\{BKIT\}" branches sync-dev\b/.test(l))).toBe(true);
     expect(
       lines.some((l) => /"\{BKIT\}" workflows close --workflow=ship\b.*--flush\b/.test(l)),
     ).toBe(true);
@@ -563,15 +579,15 @@ describe("bkit-ship.md — #363: the auto-route marker comes from labels re-read
 describe("bkit-ship.md — Failure Path single-write contract", () => {
   // The state half (workflow-failed row, rebase abort, lock release, sentinel
   // clearing) is `bkit workflows fail`; the one-commit, one-push flush (reconcile
-  // into the book root, dev lock, RUNTIME_DEVPUSHES-conditional target, refusing
-  // an empty target, asserting the checkout is on dev) is `bkit workflows handover
+  // through a throwaway origin/dev checkout, keeping the record in the book root
+  // when the push is refused) is `bkit workflows handover
   // --flush` — both in commands/workflow/workflows.test.ts.
   it("records the failure through bkit workflows fail, booked where the runtime books", () => {
     const fence = fences(failurePathBlock(readShip())).find((f) =>
       /"\{BKIT\}" workflows fail --workflow=ship\b/.test(f),
     );
     expect(fence, "no bkit workflows fail in the Failure Path").toBeDefined();
-    expect(fence!).toMatch(/workflows fail .*--token=\{LOCK_TOKEN\}.*--dev-pushes/);
+    expect(fence!).toMatch(/workflows fail .*--token=\{LOCK_TOKEN\}/);
   });
 
   it("flushes through bkit workflows handover --flush, once", () => {
@@ -579,7 +595,6 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
       /"\{BKIT\}" workflows handover --workflow=ship [^\n]*--flush/.test(f),
     );
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatch(/--dev-pushes/);
     expect(calls[0]).toMatch(/--worktree="\{WORKTREE_PATH\}"/);
   });
 

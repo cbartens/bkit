@@ -9,8 +9,8 @@
 //   (ii) no workflow sleeps in the foreground. Every wait lives in a command:
 //        CI waits in `bkit runs wait|dispatch` (which hands a blocked sleep to
 //        the agent's turn loop with exit 81, pinned in
-//        commands/workflow/runs.test.ts) and the dev-lock poll in
-//        `bkit locks acquire --kind=dev`. No raw `sleep N` in a workflow.
+//        commands/workflow/runs.test.ts) and the dev-landing backoff in
+//        `pushToDev` (commands/land.ts). No raw `sleep N` in a workflow.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -36,17 +36,13 @@ function readAllWorkflows(): string {
   return WORKFLOW_FILES.map(readWorkflow).join("\n");
 }
 
-// (i) every runtime capability key `bkit runtime assert` emits — the
-// `runtime-resolved` row's three plus the derived `runtimeHeadless` — must have
-// >=1 reader across the workflow corpus, spelled as the command spells it.
+// (i) every runtime capability key a workflow acts on — `runtimeWorktrees`,
+// `runtimeGithubCli` and the derived `runtimeHeadless` — must have >=1 reader
+// across the workflow corpus, spelled as the command spells it.
+// `runtimeDevPushes` is read by `bkit branches land` from the row, never by prose.
 // Whether the runtime can sleep is measured inside `bkit runs wait|dispatch`, not
 // predicted by a capability row.
-const RUNTIME_FLAGS = [
-  "runtimeWorktrees",
-  "runtimeDevPushes",
-  "runtimeGithubCli",
-  "runtimeHeadless",
-] as const;
+const RUNTIME_FLAGS = ["runtimeWorktrees", "runtimeGithubCli", "runtimeHeadless"] as const;
 
 /** Every match of a global regex in `text`, or an empty list. */
 function allMatches(text: string, re: RegExp): string[] {

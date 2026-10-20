@@ -1,6 +1,6 @@
 # bkit — Agent Workflow System
 
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **bkit** wires Claude Code, Cursor, Codex, Google Antigravity and opencode into five-phase tracker-integrated cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts additive, one flag each: `--claude`, `--cursor`, `--codex`, `--antigravity`, `--opencode=<provider>` — opencode providers: `openrouter`, `ollama`, `opencode-zen` + `opencode-go` (opencode-native gateways; auth via `BKIT_OPENCODE_API_KEY`). Same harness on every host; state lives in the repo, so a feature moves between hosts mid-run (see `.bkit/providers.md` § Hosts + Providers).
 
@@ -45,7 +45,7 @@ Throughout: workflows hold `.lock`, write `status.jsonl` (resume SoT), own track
 | Issue | Start with |
 | --- | --- |
 | Idea — how it should work still open | `/bkit-design` |
-| Change — what to build and "done" known | `/bkit-plan`; or `/bkit-build` / `lite:build` with no plan (issue = plan; `/bkit-build` checks each `Test first` red, `lite:build` does not) |
+| Change — what to build and "done" known | `/bkit-plan`; or `/bkit-build` / `build:lite` with no plan (issue = plan; `/bkit-build` checks each `Test first` red, `build:lite` does not) |
 | Bug — a test or CI run already fails | `/bkit-debug`, on the branch the fix lands on |
 | Bug — nothing fails yet | `/bkit-debug [repro]` (writes a failing test first, then fixes) |
 
@@ -64,6 +64,7 @@ No `/bkit-audit` command and no phase label. More than 30 procedures ship as `do
 | --- | --- |
 | Report | `docs/audits/{YYYYMM}/{slug}.md`. `{slug}` = template basename without `bkit-audit-`. Same slug already in that month → `{slug}-{TIMESTAMP}.md` (`date -u +%Y%m%dT%H%M%SZ`). Never overwrite. |
 | Writes | The report (template through `bkit:end`) and that template's `Project Instructions` below `bkit:end`. Product code, config, and other docs stay untouched. Fixing findings starts at `/bkit-plan`. |
+| Issue comment | Invocation names an issue (`#123`, `ABC-123`) and a tracker is wired → the final summary lands on it as one comment, stopped runs included. Never files, edits, or relabels issues. |
 | Plan input | `/bkit-plan` takes a design doc, one or more reports, or both. The issue names a report with an `**Audit reports:**` line; the session prompt or issue names which findings to plan (for example only `CRITICAL` and `HIGH`). The rest of each report stays context. |
 
 Each template's `Purpose` is its scope. Main ones: security, privacy, accessibility, architecture, performance, reliability, testing, database, LLM, cost. Full catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).

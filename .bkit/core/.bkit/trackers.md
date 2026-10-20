@@ -18,7 +18,7 @@
 
 Workflow and prompt sources carry wired tracker variants inline. Installer reads `bkit.issueTracker` from consumer manifest, resolves markers when mirroring `.bkit/core/workflows/bkit-*.md` to every host's commands / skills and `.bkit/core/prompts/bkit-*.md` to every host's agents (`.bkit/core/engine/render/trackers.ts`). Mirrors clean — no markers survive.
 
-Prompt frontmatter `tools:` lists: every marker must be a YAML comment (`  # <!-- bkit:tracker github start -->`) — a bare `<!--` line is invalid YAML; installer strips the `# ` with the marker. A pair inside the YAML list must end with a `false` block, and every block (incl. `false`) must hold at least one list item — the `none` stub and an empty block both break the YAML. `bkit-utility-update-roadmap` carries `- Bash` in all three blocks for this.
+Prompt frontmatter `tools:` lists: every marker must be a YAML comment (`  # <!-- bkit:tracker github start -->`) — a bare `<!--` line is invalid YAML; installer strips the `# ` with the marker. A pair inside the YAML list must end with a `false` block, and every block (incl. `false`) must hold at least one list item — the `none` stub and an empty block both break the YAML. `bkit-utility-update-roadmap` carries `- Bash`, `bkit-audit-generate` `- WebSearch`, in all three blocks for this.
 
 ### Per-tracker pair (`github` / `linear`)
 
@@ -72,10 +72,9 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | `fid-format` | FID slug regex assertion | `^[0-9]+-[a-z0-9-]+$` | `^[a-z]+-[0-9]+-[a-z0-9-]+$` | no strict assert |
 | `issue-read` | Read state + labels + body + comments | `issue_read` `get` / `get_comments` | `get_issue` / `list_comments` | skip (vars empty) |
 | `issue-scan` | Bounded related-issue scan at design/plan/debug entry — writes each hit's body + comments under a `## #{number} — {title} ({state})` heading to a file (advisory, top 10, never gates); broad keyword search in title+body, all states | `search_issues` for ranking only + per-hit `issue_read` `get` / `get_comments` | `list_issues` + per-hit `list_comments` | skip stub (no scan) |
-| `issue-update-phase` | Step 1: set phase label + active state | `issue_write` labels | `save_issue` state+labels | skip |
+| `issue-update-phase` | Step 1: set phase label (`bkit:debug` included; drops `next:*`, `bkit:failed`) + active state | `issue_write` labels | `save_issue` state+labels | skip |
 | `issue-update-review` | phase Close hand-off (non-terminal) | no-op (label carries) | `save_issue` In Review | skip |
 | `issue-update-failed` | Failure Path additive `bkit:failed` | `issue_write` labels | `save_issue` In Review | skip |
-| `issue-update-debug` | `/bkit-debug` Step 1 additive `bkit:debug` | `issue_write` labels | `save_issue` In Review | skip |
 | `issue-update-merged` | Ship terminal — `bkit:merged` + In Review (issue left open; human closes) | `issue_write` `bkit:merged` (no close) | `save_issue` In Review | skip |
 | `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add/update item | no-op (state carries) | skip |
 | `comment-post-step` | new comment per workflow step | `add_issue_comment` | `save_comment` | skip |
@@ -94,7 +93,7 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 | Shape | When | Next command | Sections (**required**) |
 | --- | --- | --- | --- |
 | idea | how it should work still open | `/bkit-design #N` | **Problem**, **Outcome**, Success criteria, Constraints and non-goals, Decisions already made, Open questions, References |
-| change | what to build + how to tell done both known | `/bkit-plan #N`; or `/bkit-build #N` / `lite:build` straight from issue | **Narrative**, **Success Criteria**, Edge Cases, **Derived Test Matrix**, **Tasks**, Open Questions & Assumptions, Breaking Changes & Naming, Out of Scope, References |
+| change | what to build + how to tell done both known | `/bkit-plan #N`; or `/bkit-build #N` / `build:lite` straight from issue | **Narrative**, **Success Criteria**, Edge Cases, **Derived Test Matrix**, **Tasks**, Open Questions & Assumptions, Breaking Changes & Naming, Out of Scope, References |
 | bug | worked / should work, does not | test or CI run already fails → `/bkit-debug #N` on branch fix lands on (`[soak]` if intermittent); nothing fails → `/bkit-debug #N [repro]` (failing test first; `[soak]` too if intermittent) | **Failing test or CI run** (`none yet` allowed), **What happened**, **What should happen**, **Steps to reproduce**, How often, Affected area, Where and when, Evidence, References |
 
 **Change shape syntax** (plan keeps it, `docs/templates/bkit-plan.md` § Spec):
@@ -108,27 +107,27 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
   - [ ] **Task N:** {change}. **Done when:** {verifiable check}. **Test first:** `{test file}` `{test name}` fails on {assertion}.
   ```
 
-- `/bkit-build` with no plan builds these Tasks: each `Test first` test must fail before its code (`tests green --brief=`); missing `Done when` not a FAIL. `lite:build` checks neither. Nothing ticks issue boxes.
+- `/bkit-build` with no plan builds these Tasks: each `Test first` test must fail before its code (`tests green --brief=`); missing `Done when` not a FAIL. `build:lite` checks neither. Nothing ticks issue boxes.
 
 **Machine-read lines** — exact syntax, anywhere in body; nothing else in References is fetched:
 
 <!-- prettier-ignore -->
 | Line | Read by | Effect |
 | --- | --- | --- |
-| `**Parent design:** [{FID}-design.md](docs/plans/{YYYYMM}/{FID}-design.md)` | plan Step 1 | sets `PARENT_FID` → design = spec source; absent → the design made on the same issue (`bkit fids design`) |
+| `**Parent design:** [{FID}-design.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/{FID}-design.md)` | plan Step 1 | sets `PARENT_FID` → design = spec source; absent → the design made on the same issue (`bkit fids design`) |
 | `**Audit reports:** docs/audits/{YYYYMM}/{slug}.md (findings {ids})` | plan Step 1 | each path → `AUDIT_PATHS`; path not a file → Failure Path |
 | `###### bkit:blocked-by start` · `- #{N}` per line · `###### bkit:blocked-by end` | build `issue-blockers-check` (github; linear → native relations) | any listed issue open → build stops |
 | `###### bkit:ignore-earlier` | `bkit issues text` | drops all earlier content; human-placed only |
 | `###### bkit:generated` (comment first line) | `bkit issues text` | comment dropped from input |
 
-**References** — exact strings agents can search: issue `#N — {title}` (linear `TEAM-N — {title}`); doc `{path} § {section}`; ledger row `docs/{ledger}.jsonl` key `` `{key}` ``. Labels: type label only (`enhancement` / `bug`); never phase or `bkit:*` labels — workflows set them (`.bkit/workflows.md` § Tracker Integration).
+**References** — exact strings agents can search: issue `#N — {title}` (linear `TEAM-N — {title}`); doc `{path} § {section}`; ledger row `docs/{ledger}.jsonl` key `` `{key}` ``. Labels: type label (`enhancement` / `bug`) + one `next:*` (`.agents/rules.md` § Tracker next labels); never phase or `bkit:*` labels — workflows set them (`.bkit/workflows.md` § Tracker Integration).
 
 **Drafting from bkit output** (suggest only; file after human confirmation):
 
 <!-- prettier-ignore -->
 | Source | Shape | Carry |
 | --- | --- | --- |
-| audit `Suggested Issues` row | by `Next Step`: `/bkit-design` → idea; `/bkit-plan`, `/bkit-build`, `lite:build` → change; `/bkit-debug`, `lite:debug` → bug; `manual` → plain task | `**Audit reports:**` line with row's finding IDs |
+| audit `Suggested Issues` row | by `Next Step`: `/bkit-design` → idea; `/bkit-plan`, `/bkit-build`, `build:lite` → change; `/bkit-debug`, `debug:lite` → bug; `manual` → plain task | `**Audit reports:**` line with row's finding IDs |
 | design `Suggested Workstreams` (2+; design summary asks) | title = workstream name; body = its scope, spec left to design; filed in `Requires` order | `**Parent design:**` line; blocked-by block = issues filed for its `Requires` (linear → `blockedBy` relation) |
 | roadmap item with no issue (ledger row, audit candidate) | by recommended command, as audit row | ledger `key` / report path in References |
 

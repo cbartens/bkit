@@ -290,8 +290,8 @@ describe("real prompt sources", () => {
     }
   });
 
-  const roadmapTools = (tracker: "github" | "linear" | "none"): string[] => {
-    const src = fs.readFileSync(path.join(PROMPTS_DIR, "bkit-utility-update-roadmap.md"), "utf-8");
+  const promptTools = (prompt: string, tracker: "github" | "linear" | "none"): string[] => {
+    const src = fs.readFileSync(path.join(PROMPTS_DIR, `${prompt}.md`), "utf-8");
     const fm = substituteWorkflow(src, tracker).output.split(/^---$/m)[1];
     const block = fm.match(/^tools:\n((?:.*\n)*?)(?=^\S)/m)?.[1] ?? "";
     for (const line of block.split("\n").filter(Boolean)) {
@@ -305,6 +305,8 @@ describe("real prompt sources", () => {
 
   it("roadmap agent gets only the chosen tracker's read tools", () => {
     const base = ["Read", "Grep", "Glob", "mcp__serena__*", "Write", "Edit", "Bash"];
+    const roadmapTools = (tracker: "github" | "linear" | "none") =>
+      promptTools("bkit-utility-update-roadmap", tracker);
     expect(roadmapTools("github")).toEqual([
       ...base,
       "mcp__github__list_issues",
@@ -316,6 +318,39 @@ describe("real prompt sources", () => {
       "mcp__linear__get_issue",
     ]);
     expect(roadmapTools("none")).toEqual(base);
+  });
+
+  it("audit agent gets only the chosen tracker's comment tool", () => {
+    const auditTools = (tracker: "github" | "linear" | "none") =>
+      promptTools("bkit-audit-generate", tracker);
+    const base = [
+      "Read",
+      "Grep",
+      "Glob",
+      "mcp__serena__*",
+      "Write",
+      "Edit",
+      "Bash",
+      "WebFetch",
+      "WebSearch",
+    ];
+    expect(auditTools("github")).toEqual([...base, "mcp__github__add_issue_comment"]);
+    expect(auditTools("linear")).toEqual([...base, "mcp__linear__save_comment"]);
+    expect(auditTools("none")).toEqual(base);
+  });
+
+  it("audit agent posts its summary only when a tracker is wired", () => {
+    const src = fs.readFileSync(path.join(PROMPTS_DIR, "bkit-audit-generate.md"), "utf-8");
+    const github = substituteWorkflow(src, "github").output;
+    expect(github).toContain("issues comment --kind=audit");
+    expect(github).toContain("mcp__github__add_issue_comment({");
+    expect(github).not.toContain("mcp__linear__");
+    const linear = substituteWorkflow(src, "linear").output;
+    expect(linear).toContain("mcp__linear__save_comment({");
+    expect(linear).not.toContain("mcp__github__");
+    const none = substituteWorkflow(src, "none").output;
+    expect(none).not.toContain("issues comment");
+    expect(none).toMatch(/^15\. _No tracker connected, skip step\._$/m);
   });
 });
 

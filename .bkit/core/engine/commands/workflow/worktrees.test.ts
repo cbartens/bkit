@@ -218,6 +218,41 @@ describe("bkit worktrees setup — resume guard", () => {
     expect((await setup(cwd, "build", "--worktrees")).code).toBe(4);
   });
 
+  describe("low disk", () => {
+    const local = (minFreeGb: number) => {
+      vi.stubEnv("CI", "");
+      vi.stubEnv("CLAUDE_CODE_REMOTE", "");
+      vi.stubEnv("CURSOR_REMOTE_AGENT", "");
+      const cwd = repo("dev");
+      fs.writeFileSync(
+        path.join(cwd, "package.json"),
+        JSON.stringify({ bkit: { disk: { minFreeGb } } }),
+      );
+      return cwd;
+    };
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("stops before minting when free disk stays under bkit.disk.minFreeGb after the max steps", async () => {
+      const cwd = local(1e9);
+      fs.mkdirSync(path.join(cwd, "scripts", "cleanup"), { recursive: true });
+      fs.writeFileSync(
+        path.join(cwd, "scripts", "cleanup", "bkit-disk-prune.mjs"),
+        'export default [{ name: "noop", mode: "max", run: "touch ran" }];\n',
+      );
+      const r = await setup(cwd, "build", "--worktrees");
+      expect(r.code).toBe(12);
+      expect(r.err).toContain("still under bkit.disk.minFreeGb");
+      expect(fs.existsSync(path.join(cwd, "ran"))).toBe(true);
+      expect(fs.existsSync(worktreeDir(cwd, FID))).toBe(false);
+    });
+
+    it("checks no disk when there are no cleanup step files", async () => {
+      const cwd = local(1e9);
+      linked(cwd);
+      expect((await setup(cwd, "build", "--worktrees")).code).toBe(4);
+    });
+  });
+
   it("ship resumes without fetching or rebasing, and copies the configured list", async () => {
     const cwd = repo("dev");
     fs.writeFileSync(

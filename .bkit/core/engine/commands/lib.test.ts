@@ -10,6 +10,7 @@ import {
   EXIT,
   SKIP_CI_TOKEN,
   commandHelp,
+  ghUnavailable,
   parseFlags,
   repoRoot,
   runCommand,
@@ -270,6 +271,28 @@ describe("help", () => {
   });
 });
 
+describe("ghUnavailable", () => {
+  const res = (o: { ok?: boolean; status?: number; stderr?: string; missing?: boolean }) => ({
+    ok: o.ok ?? false,
+    stdout: "",
+    stderr: o.stderr ?? "",
+    missing: o.missing ?? false,
+    status: o.status ?? 1,
+  });
+  it("hands off when gh is missing, not logged in, or answered HTTP 403", () => {
+    expect(ghUnavailable(res({ missing: true, status: 127 }))).toBe(true);
+    expect(ghUnavailable(res({ status: 4 }))).toBe(true);
+    expect(ghUnavailable(res({ stderr: "HTTP 403: Resource not accessible by integration" }))).toBe(
+      true,
+    );
+  });
+  it("keeps every other failure, and any success, with gh", () => {
+    expect(ghUnavailable(res({ stderr: "HTTP 422: Validation Failed" }))).toBe(false);
+    expect(ghUnavailable(res({ stderr: "pull request #4030 not found" }))).toBe(false);
+    expect(ghUnavailable(res({ ok: true, status: 0, stderr: "HTTP 403 retried" }))).toBe(false);
+  });
+});
+
 describe("utcMonth", () => {
   it("uses UTC, not local time, at a month boundary", () => {
     expect(utcMonth(new Date("2026-09-30T23:30:00Z"))).toBe("202609");
@@ -345,12 +368,11 @@ describe("repo facts on a real repository", () => {
     expect(statusLocation(opts)).toEqual({ bookRoot: worktree, path: path.join(worktree, rel) });
   });
 
-  it("ship: main checkout when the runtime pushes to dev, else the current worktree", () => {
+  it("ship: the tree it runs in — the worktree being shipped, or the adopted checkout", () => {
     const { root, worktree } = repoWithWorktree();
-    const base = { cwd: worktree, workflow: "ship", fid: "9-x", month: "202610" };
-    expect(statusLocation({ ...base, devPushes: true }).bookRoot).toBe(root);
-    expect(statusLocation({ ...base, devPushes: false }).bookRoot).toBe(worktree);
-    expect(statusLocation(base).bookRoot).toBe(worktree);
+    const base = { workflow: "ship", fid: "9-x", month: "202610" };
+    expect(statusLocation({ ...base, cwd: worktree }).bookRoot).toBe(worktree);
+    expect(statusLocation({ ...base, cwd: root }).bookRoot).toBe(root);
   });
 });
 

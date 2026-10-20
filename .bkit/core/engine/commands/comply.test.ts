@@ -574,6 +574,41 @@ describe("gradeCompliance — the grade bkit workflows close runs before its rep
     expect(log.join("\n")).toContain("Compliance violations found");
   });
 
+  it("with a squash sha, grades from the squash's parent so earlier feature commits count", () => {
+    const d = repo("base");
+    git(d, "checkout", "-q", "-b", "feat");
+    fs.mkdirSync(path.join(d, ".claude", "agents"), { recursive: true });
+    fs.writeFileSync(path.join(d, ".claude", "agents", "x.md"), "edited\n");
+    git(d, "add", "-A");
+    git(d, "commit", "-qm", "feat(1-x): hand edit");
+    git(d, "commit", "-q", "--allow-empty", "-m", "feat(1-x): last");
+    git(d, "checkout", "-q", "-");
+    git(d, "merge", "-q", "--squash", "feat");
+    git(d, "commit", "-qm", "feat(1-x): squash");
+    const squash = git(d, "rev-parse", "HEAD").stdout.trim();
+    git(d, "checkout", "-q", "feat");
+    expect(gradeCompliance(d, "ship", () => undefined)).toEqual([]);
+    expect(gradeCompliance(d, "ship", () => undefined, squash)?.map((x) => x.ruleId)).toEqual([
+      "no-mirror-edit",
+    ]);
+  });
+
+  it("with a squash sha, reads the squash's subject, not the worktree HEAD's", () => {
+    const d = repo("base");
+    git(d, "checkout", "-q", "-b", "feat");
+    git(d, "commit", "-q", "--allow-empty", "-m", "feat(1-x): work");
+    git(d, "checkout", "-q", "-");
+    git(d, "merge", "-q", "--squash", "feat");
+    git(d, "commit", "-q", "--allow-empty", "-m", "feat(1-x): squash");
+    const squash = git(d, "rev-parse", "HEAD").stdout.trim();
+    git(d, "checkout", "-q", "feat");
+    git(d, "commit", "-q", "--allow-empty", "-m", "docs(1-x): ship log [skip ci]");
+    expect(gradeCompliance(d, "ship", () => undefined)?.map((x) => x.ruleId)).toEqual([
+      "skip-ci-not-head",
+    ]);
+    expect(gradeCompliance(d, "ship", () => undefined, squash)).toEqual([]);
+  });
+
   it("passes every rule on a clean head", () => {
     const d = repo("base", "feat(1-x): work");
     expect(gradeCompliance(d, "build", () => undefined)).toEqual([]);

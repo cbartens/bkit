@@ -219,6 +219,64 @@ describe(".husky/pre-push tmp/ prune", () => {
 });
 
 // ---------------------------------------------------------------------------
+// .husky/pre-push disk prune — `bkit disk prune --mode=max --auto` is the hook's last
+// call, made only once every gate passed, and its failure never blocks the push.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push disk prune", () => {
+  const REPO = process.cwd();
+  const UPDATE = `refs/heads/dev ${"a".repeat(40)} refs/heads/dev ${"0".repeat(40)}\n`;
+  const PRUNE = "-s bkit disk prune --mode=max --auto";
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-disk-")));
+    fs.mkdirSync(path.join(tmp, "bin"));
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  /** Run `hook` with a stub pnpm that logs each call and fails the calls matching `fail`. */
+  const runHook = (hook: string, fail: string) => {
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/pnpm.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    const result = spawnSync("sh", [path.join(REPO, hook)], {
+      cwd: tmp,
+      input: UPDATE,
+      encoding: "utf-8",
+      timeout: 20_000,
+      env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
+    });
+    const log = path.join(tmp, "pnpm.log");
+    const calls = fs.existsSync(log) ? fs.readFileSync(log, "utf-8").trim().split("\n") : [];
+    return { status: result.status, stderr: result.stderr, calls };
+  };
+
+  for (const hook of [".bkit/templates/.husky/pre-push", ".husky/pre-push"]) {
+    it(`${hook}: every gate passes → the disk prune is the last call`, () => {
+      const r = runHook(hook, "*skip-token*");
+      expect(r.status).toBe(0);
+      expect(r.calls).toContain("bkit check");
+      expect(r.calls.at(-1)).toBe(PRUNE);
+    });
+
+    it(`${hook}: a gate fails → no disk prune`, () => {
+      const r = runHook(hook, "*skip-token*|bkit:gate:static-unit");
+      expect(r.status).not.toBe(0);
+      expect(r.calls).not.toContain(PRUNE);
+    });
+
+    it(`${hook}: the disk prune fails → warns, push not blocked`, () => {
+      const r = runHook(hook, "*skip-token*|*disk*");
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain("disk prune failed; push continues");
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // graphify register gate — shipped snippet run for real. Stub
 // `scripts/graphify/bkit-graphify.sh` logs its args and fails `check-at` on request; stub
 // `graphify` on PATH = installed. PATH cut to system dirs so a real graphify cannot answer.

@@ -9,7 +9,7 @@ tools:
   - list_dir
   - run_command
 ---
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical lead matching feature requirements to relevant installable skills.
 **Scope:** As specified by input and Read / Update / Create section.

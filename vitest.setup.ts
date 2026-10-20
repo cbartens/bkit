@@ -1,10 +1,12 @@
 // vitest.setup.ts — runs in every test worker before its test files load.
 //
-// Two jobs: strip inherited git environment variables (below), and re-read the
-// load-scaled test budget as each test file starts (bottom, via
-// vitest.timeout-budget.ts).
+// Three jobs: strip inherited git environment variables (below), point the bkit config
+// and cache folders at an empty temp folder, and re-read the load-scaled test budget as
+// each test file starts (bottom, via vitest.timeout-budget.ts).
 //
 // `globals` is not enabled in vitest.config.ts, so these are imported, not free.
+import * as os from "node:os";
+import * as path from "node:path";
 import { expect, vi } from "vitest";
 
 import { tierTimeouts } from "./vitest.timeout-budget.ts";
@@ -38,6 +40,14 @@ for (const key of Object.keys(process.env)) {
 // repo pinned to an old release would otherwise hit the network on every stamp.
 // Tests of that lookup clear it with `vi.stubEnv("BKIT_NO_UPDATE_CHECK", "")`.
 process.env.BKIT_NO_UPDATE_CHECK = "1";
+
+// No test reads or writes the developer's real bkit config and cache folders: a real
+// `~/.config/bkit/disk-prune.mjs` holds delete steps, and any test that mints a worktree
+// runs `bkit disk prune`'s low-disk check (`commands/workflow/disk.ts`). Each worker gets
+// an empty folder of its own; a test that needs one sets its own.
+const xdg = path.join(os.tmpdir(), `bkit-test-xdg-${process.pid}`);
+process.env.XDG_CONFIG_HOME = path.join(xdg, "config");
+process.env.XDG_CACHE_HOME = path.join(xdg, "cache");
 
 // Budget: re-read once per test file from `vitest.timeout-budget.ts`, scaled by how
 // contended the machine is RIGHT NOW.

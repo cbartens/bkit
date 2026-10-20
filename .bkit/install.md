@@ -1,6 +1,6 @@
 # Install, upgrade, and operate bkit
 
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 First-time install and upgrade, install lifecycle, uninstall and recovery. Ships in the package at `node_modules/@cbartens/bkit/.bkit/core/.bkit/install.md` and is mirrored into the consumer repo at `.bkit/install.md`. Ongoing ops and triggering workflows: `.bkit/README.md`.
 
@@ -88,8 +88,9 @@ bkit install --antigravity               # Google Antigravity host + core
 bkit install --opencode=opencode-go      # additive opencode host (opencode-native gateway) + core
 # opencode provider: openrouter | ollama | opencode-zen | opencode-go
 
-# A bare install errors — name at least one module:
+# A bare install errors — name at least one module, or a tracker:
 bkit install                             # ✗ error: requires ≥1 module flag
+bkit install --tracker=github            # tracker alone: re-renders every installed host
 
 # Ongoing sync — re-render everything installed at the CURRENT version (offline)
 bkit upgrade
@@ -310,7 +311,7 @@ Use one. `bkit.depUpdater: "none"` skips the install-time absence advisory. Setu
 **How to decide:**
 
 1. Run `bkit install --claude --cursor` (or whichever modules you want). Post-install banner lists `tracker-setup-none`, `dep-updater-absent`, `cloud-router-none` if undecided.
-2. Pick tracker: `bkit install --tracker=github` (or `linear`). Persisted to `bkit.issueTracker`; future installs preserve (switching free).
+2. Pick tracker: `bkit install --tracker=github` (or `linear`). Needs no host flag; re-renders every installed host. Persisted to `bkit.issueTracker`; future installs preserve (switching free).
 3. Copy one updater example (table above). Land Renovate config on the default branch before installing the App.
 4. Enable cloud agents: `bkit install --auto=claude|cursor|opencode`. Persisted to `bkit.cloudAgents`; install prints secrets + permissions + dashboard checklist (`bkit-auto-setup`). Shipped `bkit-cloud.yml` carries claude job (`ANTHROPIC_API_KEY` repo secret) and opencode job (`OPENCODE_PROVIDER_KEY`), each runtime-gated.
 5. **To opt out and silence the nudge**, set the field to `"none"` in `package.json` (`bkit.issueTracker` / `bkit.depUpdater` / `bkit.cloudAgents`). Advisory stays quiet.
@@ -337,8 +338,8 @@ bkit tips --all              # every firing tip
 | Detection | Local only — files, settings, environment; no network. A tip clears once its local half exists; dashboard steps live in the tip text. |
 | Reuse | A tip for a gap an advisory already detects calls that advisory's detector — tip and advisory never disagree. |
 | Artifact | `bkit install` / `check` / `upgrade` / `doctor` list every firing tip, with its id, in `.bkit/advisories.md` § Setup tips and the console banner: line, why, caution, ask-your-agent sentence, agent steps. |
-| Star line | `Do you like bkit? Then give it a star at [https://github.com/cbartens/bkit](https://github.com/cbartens/bkit)!` (markdown link) closes bare `bkit tips` and every phase workflow's output, after the tips and outside the cap. Never under `--workflow=audit` / `utility` (those agents often run back to back), in `.bkit/advisories.md` or the console banner. |
-| Silence | Root `package.json` `bkit.ignoreAdvisories`: a tip id, or an advisory id the tip reuses, silences the tip and those advisories together; both show in the suppressed block. `star` silences the star line. |
+| Star line | `Do you like bkit? Then give it a star at [https://github.com/cbartens/bkit](https://github.com/cbartens/bkit)!` (markdown link) closes bare `bkit tips`, after the tips and outside the cap; in a phase workflow it follows the tip, and the silence line follows it. Never under `--workflow=audit` / `utility` (those agents often run back to back), in `.bkit/advisories.md` or the console banner. |
+| Silence | Root `package.json` `bkit.ignoreAdvisories`: a tip id (a workflow's `## bkit Tips` ends with `` Want to silence these tips? Ask your agent to "add `<id>` and `bkit-star` to `bkit.ignoreAdvisories` in package.json". ``, naming what it showed), or an advisory id the tip reuses, silences the tip and those advisories together; both show in the suppressed block. `bkit-star` (or the older `star`) silences the star line. |
 | Exit | Always 0. Prints nothing when no tip fires and no star line shows. |
 
 ## Doctor
@@ -394,7 +395,7 @@ bkit uninstall --nuke --yes
 | --- | --- |
 | `fully-managed` | Always deleted (bkit owns 100% of the file). |
 | `markered-text` | bkit block stripped; consumer content above/below preserved. File deleted if only whitespace remains — or, for a bkit-seeded markdown file (`AGENTS.md`/`CLAUDE.md`), if only its `# Title` heading husk remains. |
-| `byte-equal-text` | Deleted only if current hash matches the hash `.bkit/version` recorded when bkit last wrote it (`canonicalHashes`). Consumer modifications → preserved. `canonicalHashes` is internal state `bkit check` does not verify: a hand-edited or corrupted entry makes uninstall keep that file as consumer-modified (`--force` deletes it anyway) and upgrade's whole-file diff report a conflict instead of updating it. |
+| `byte-equal-text` | Deleted only if current hash matches the hash `.bkit/version` recorded when bkit last wrote it (`canonicalHashes`). Consumer modifications → preserved. `canonicalHashes` is internal state `bkit check` does not verify: a hand-edited or corrupted entry makes uninstall keep that file as consumer-modified (`--force` deletes it anyway) and upgrade's whole-file diff report a conflict instead of updating it. Rendered `.bkit/*.md` skip that diff: upgrade always re-renders them, and `bkit check` flags a hand edit. |
 | `json` | bkit's keys stripped; consumer keys preserved. `.mcp.json` / `.cursor/mcp.json`: only bkit's tracker entry is removed, and only while it still equals the template. `.opencode/opencode.json`: every `mcp` tracker entry (`github`, `linear`) and every `provider` block of a supported provider is removed while it still equals what install renders — all the earlier installs left, not just the active one; an edited entry is kept whole. File deleted when nothing is left. |
 
 ### Idempotency

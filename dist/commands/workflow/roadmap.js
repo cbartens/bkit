@@ -1,6 +1,6 @@
 // bkit roadmap fold|feature|mirror — rewrite the generated region of
 // docs/roadmap.md from .bkit/issues.jsonl, its SOLE input; append a feature's
-// row; and copy a build / debug close's row to dev under the dev lock.
+// row; and copy a build / debug close's row to dev through a throwaway checkout.
 //
 // The status block is a pure projection of the ledger, re-rendered in full, so
 // a close never parses the board back. The two `## Notes` blocks and the
@@ -19,7 +19,7 @@ import * as path from "node:path";
 import { compareTs, parse, resolveRepoSlug, validate } from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
 import { CommandError, DEV, EXIT, git, parseJson, repoRoot, runGit, } from "../lib.js";
-import { acquireDevLock, releaseLock } from "./locks.js";
+import { landDir, pushToDev } from "../land.js";
 import { str } from "./status.js";
 /** Roadmap status each workflow's close moves the feature to. */
 export const FEATURE_STATUS = {
@@ -334,15 +334,13 @@ function feature(ctx) {
     ctx.emit({ ...r });
     return ctx.flags.strict === true && !r.appended ? EXIT.NO : EXIT.OK;
 }
-/** Seconds the mirror waits for a busy dev lock before skipping. */
-export const MIRROR_DEV_LOCK_DEADLINE_S = 60;
 const ROADMAP_FILES = [".bkit/issues.jsonl", "docs/roadmap.md"];
 /**
- * Build / debug close: append the feature row in the worktree, then copy the
- * SAME row to `dev` in the main checkout under the dev lock — checkout dev,
- * fast-forward, append, commit the two roadmap files, push, return to the prior
- * branch. Skipped in adopt mode (the worktree IS the main checkout) and when the
- * dev lock stays busy. Fail-open throughout: the feat-side row is already written.
+ * Build / debug close: append the feature row in the worktree, then land the
+ * SAME row on `dev` through a throwaway origin/dev checkout (`pushToDev`). The
+ * main checkout is never touched. Skipped when the run's own checkout is on dev
+ * (the row rides that branch's commit). Fail-open throughout: the feat-side row
+ * is already written and reaches dev with ship's merge.
  */
 async function mirror(ctx) {
     const workflow = String(ctx.flags.workflow);
@@ -356,51 +354,46 @@ async function mirror(ctx) {
         ctx.emit({ row: feat.row, appended: feat.appended, mirrored, skipped });
         return EXIT.OK;
     };
-    if (path.resolve(wt) === path.resolve(root))
-        return done(false, "adopt mode");
-    let lock;
-    try {
-        lock = await acquireDevLock({
-            cwd: root,
-            workflow,
-            fid,
-            deadlineS: MIRROR_DEV_LOCK_DEADLINE_S,
-            log: ctx.log,
-        });
-    }
-    catch (err) {
-        // A busy lock skips the mirror; it never fails the close.
-        return done(false, `dev lock busy: ${err.message}`);
-    }
-    try {
-        const prior = git(root, ["branch", "--show-current"]) ?? "";
-        if (!runGit(root, ["checkout", DEV]).ok ||
-            !runGit(root, ["pull", "--ff-only", "origin", DEV]).ok) {
-            if (prior)
-                runGit(root, ["checkout", prior]);
-            return done(false, "dev checkout / pull failed");
-        }
-        const onDev = appendFeature(root, { row: JSON.stringify(feat.row) }, ctx.log);
-        if (!onDev.appended)
-            ctx.log("roadmap row skipped on dev");
-        runGit(root, ["add", "--", ...ROADMAP_FILES]);
-        runGit(root, [
-            "commit",
-            "--allow-empty",
-            "-m",
-            `docs(${fid}): ${workflow} roadmap update bkit [skip ci]`,
-            "--",
-            ...ROADMAP_FILES,
-        ]);
-        const pushed = runGit(root, ["push", "origin", DEV]).ok;
-        if (!pushed)
-            ctx.log("dev push failed — feat-side row already written");
-        if (prior)
-            runGit(root, ["checkout", prior]);
-        return done(pushed, pushed ? null : "dev push failed");
-    }
-    finally {
-        releaseLock(lock.path, { workflow, fid, token: lock.token });
+    if (git(wt, ["branch", "--show-current"]) === DEV)
+        return done(false, "on dev");
+    // A build that commits nothing pushes origin/dev back to itself, which git
+    // reports as success — so a landing counts only when this attempt committed.
+    let committed = "";
+    const res = await pushToDev({
+        root,
+        dir: landDir(root, fid),
+        build: (dir) => {
+            committed = "";
+            if (!appendFeature(dir, { row: JSON.stringify(feat.row) }, ctx.log).appended) {
+                committed = "row not appended on dev";
+                return;
+            }
+            runGit(dir, ["add", "--", ...ROADMAP_FILES]);
+            const made = runGit(dir, [
+                "commit",
+                "-m",
+                `docs(${fid}): ${workflow} roadmap update bkit [skip ci]`,
+                "--",
+                ...ROADMAP_FILES,
+            ]);
+            if (!made.ok)
+                committed = `roadmap commit failed: ${made.stderr || made.stdout}`;
+        },
+        log: ctx.log,
+    });
+    switch (res.kind) {
+        case "landed":
+            return committed ? done(false, committed) : done(true, null);
+        case "refused":
+            return done(false, `dev push refused: ${res.stderr}`);
+        case "push-failed":
+            return done(false, `dev push failed: ${res.stderr}`);
+        case "exhausted":
+            return done(false, `dev moved before each of ${res.attempts} pushes`);
+        case "fetch-failed":
+            return done(false, `fetch of dev failed: ${res.stderr}`);
+        case "setup-failed":
+            return done(false, `throwaway checkout failed: ${res.stderr}`);
     }
 }
 function writeBoard(md, board) {
@@ -478,7 +471,7 @@ export const roadmapCommand = {
             run: (ctx) => feature(ctx),
         },
         mirror: {
-            summary: "Build / debug close: append the feature row in the worktree, then the same row on dev under the dev lock (fail-open).",
+            summary: "Build / debug close: append the feature row in the worktree, then land the same row on dev through a throwaway origin/dev checkout (fail-open).",
             flags: [
                 { name: "workflow", type: "string", required: true, help: "build | debug" },
                 { name: "fid", type: "string", required: true, help: "feature id (the row's key)" },
@@ -487,7 +480,7 @@ export const roadmapCommand = {
                 row: "the row appended (worktree and dev)",
                 appended: "false when the worktree ledger could not be written",
                 mirrored: "the row was committed and pushed on dev",
-                skipped: "why the dev side was skipped: adopt mode | dev lock busy | dev checkout / pull failed | dev push failed (null when mirrored)",
+                skipped: "why the dev side was skipped: on dev | row not appended on dev | dev push refused | dev moved before each push | fetch of dev failed | throwaway checkout failed (null when mirrored)",
             },
             run: (ctx) => mirror(ctx),
         },

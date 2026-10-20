@@ -1,8 +1,7 @@
 // shared/timeouts.ts — bkit-owned waits, poll intervals and stale ages.
 //
-// One table so no command hard-codes a wait of its own: when the workflows typed
-// the `.dev.lock` ages 900 / 600 by hand in seven places, nothing kept the copies
-// equal. Units are in the name (`_S` seconds).
+// One table so no command hard-codes a wait of its own. Units are in the name
+// (`_S` seconds).
 
 export const TIMEOUTS = {
   /** Wall-clock seconds to wait for a CI run to appear and complete after a head move. */
@@ -13,10 +12,12 @@ export const TIMEOUTS = {
   SHIP_PROBE_INTERVAL_S: 10,
   /** Re-validate presence probe: how many checks (6 x 10s = the 60s a push-triggered run needs). */
   SHIP_PROBE_ATTEMPTS: 6,
-  /** A `.dev.lock` older than this many seconds is stale and may be reclaimed. */
-  SHIP_DEV_LOCK_STALE_S: 900,
-  /** Seconds to contend for `.dev.lock` before giving up. */
-  SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S: 600,
+  /** Every dev landing: tries at the dev push (dev moved underneath); design / plan close: at the PR merge too. */
+  LAND_ATTEMPTS: 10,
+  /** Seconds before the first retry of a landing; doubles each retry up to LAND_BACKOFF_CAP_S. */
+  LAND_BACKOFF_START_S: 2,
+  /** Longest single wait between landing retries, in seconds. */
+  LAND_BACKOFF_CAP_S: 30,
   /** Seconds a registry answer for the newest published bkit is reused before asking again. */
   BKIT_LATEST_CACHE_S: 86400,
   /** Seconds a failed registry lookup is remembered, so an offline run does not wait on every call. */

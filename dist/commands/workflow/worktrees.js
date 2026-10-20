@@ -16,6 +16,7 @@ import { gitEnv } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
 import { CommandError, DEV, EXIT, git, isSharedBranch, repoRoot, runGit, } from "../lib.js";
+import { ensureDiskSpace } from "./disk.js";
 import { detect } from "./runtime.js";
 import { WORKFLOW_FLAG } from "./status.js";
 const WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
@@ -29,6 +30,7 @@ export const EXIT_WORKTREE_ADD = 8;
 export const EXIT_REBASE_NOT_STARTED = 9;
 export const EXIT_NOT_A_WORKTREE = 10;
 export const EXIT_REMOVE = 11;
+export const EXIT_DISK_FULL = 12;
 const FID_FLAG = { name: "fid", type: "string", required: true, help: "feature id" };
 function fidOf(value) {
     const fid = String(value);
@@ -302,8 +304,9 @@ export const worktreesCommand = {
                 [EXIT_WORKTREE_ADD]: "git worktree add failed",
                 [EXIT_REBASE_NOT_STARTED]: "resume rebase could not start (e.g. uncommitted changes)",
                 [EXIT_NOT_A_WORKTREE]: ".worktrees/{fid} exists but is not a registered git worktree",
+                [EXIT_DISK_FULL]: "free disk under bkit.disk.minFreeGb even after your max cleanup steps (`bkit disk prune`); nothing created",
             },
-            run: (ctx) => {
+            run: async (ctx) => {
                 const f = ctx.flags;
                 const workflow = String(f.workflow);
                 if (!WORKFLOWS.includes(workflow)) {
@@ -341,6 +344,13 @@ export const worktreesCommand = {
                 const wtDir = worktreeDir(root, fid);
                 let mode = "adopted";
                 if (mint) {
+                    const full = await ensureDiskSpace({
+                        cwd: root,
+                        minFreeGb: config.diskMinFreeGb,
+                        log: ctx.log,
+                    });
+                    if (full !== null)
+                        throw new CommandError(EXIT_DISK_FULL, full);
                     runGit(root, ["worktree", "prune"]);
                     if (fs.existsSync(wtDir)) {
                         // A plain directory there would resolve to the main checkout's repo,

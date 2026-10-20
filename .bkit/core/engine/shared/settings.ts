@@ -24,6 +24,8 @@ export interface BkitConfig {
   worktreeCopy: string[];
   /** Whether worktree setup installs dependencies in a created or resumed worktree. */
   worktreeInstall: boolean;
+  /** Free GB under which worktree setup and `bkit disk prune --auto` run the max cleanup steps. */
+  diskMinFreeGb: number;
   /** Which tracker issues live in: github, linear or none. */
   issueTracker: IssueTracker;
   /** The GitHub Projects v2 board settings; false = opted out, null = not configured. */
@@ -49,6 +51,7 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   capstoneJob: "bkit-tests-check",
   worktreeCopy: [".env", ".env.local"],
   worktreeInstall: true,
+  diskMinFreeGb: 40,
   issueTracker: DEFAULT_ISSUE_TRACKER,
   githubProject: null,
   shipGateRequiredLanes: [],
@@ -72,6 +75,7 @@ export function readBkitConfig(root: string): BkitConfig {
   const bkit = ((read.ok ? read.pkg.bkit : undefined) ?? {}) as Record<string, unknown>;
   const worktree = (bkit.worktree ?? {}) as Record<string, unknown>;
   const copy = worktree.copy;
+  const minFreeGb = ((bkit.disk ?? {}) as Record<string, unknown>).minFreeGb;
   const project = bkit.githubProject;
   const lanes = bkit.shipGateRequiredLanes;
   const provider = bkit.opencodeProvider;
@@ -85,6 +89,10 @@ export function readBkitConfig(root: string): BkitConfig {
         : [...CONFIG_DEFAULTS.worktreeCopy],
     worktreeInstall:
       typeof worktree.install === "boolean" ? worktree.install : CONFIG_DEFAULTS.worktreeInstall,
+    diskMinFreeGb:
+      typeof minFreeGb === "number" && Number.isFinite(minFreeGb) && minFreeGb >= 0
+        ? minFreeGb
+        : CONFIG_DEFAULTS.diskMinFreeGb,
     issueTracker: parseIssueTracker(bkit.issueTracker) ?? CONFIG_DEFAULTS.issueTracker,
     githubProject:
       project === false

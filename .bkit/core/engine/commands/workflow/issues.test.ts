@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runCommand } from "../lib";
 import {
   cutEarlier,
+  headingAnchor,
   isGenerated,
   issueText,
   issuesCommand,
@@ -148,19 +149,21 @@ describe("bkit issues text", () => {
 describe("bkit issues labels", () => {
   const labels = (cwd: string, ...args: string[]) => run(cwd, ["issues", "labels", ...args]);
 
-  it("a new phase drops the old phase and keeps additive and foreign labels", async () => {
+  it("a new phase drops the old phase, next:* and bkit:failed, keeps bkit:auto and foreign labels", async () => {
     const r = await labels(
       dir(),
       "--label=bug",
       "--label=bkit:design",
       "--label=bkit:auto",
       "--label=bkit:failed",
+      "--label=next:plan:lite",
+      "--label=nextjs",
       "--phase=plan",
     );
     expect(r.json).toEqual({
       add: ["bkit:plan"],
-      remove: ["bkit:design"],
-      labels: ["bug", "bkit:auto", "bkit:failed", "bkit:plan"],
+      remove: ["bkit:design", "next:plan:lite", "bkit:failed"],
+      labels: ["bug", "bkit:auto", "nextjs", "bkit:plan"],
       changed: true,
       autoRouteSuffix: " bkit [auto route]",
       linearState: "In Progress",
@@ -179,13 +182,22 @@ describe("bkit issues labels", () => {
     });
   });
 
-  it("bkit:debug is additive: debug on keeps the phase label", async () => {
-    const r = await labels(dir(), "--label=bkit:build", "--debug=on");
+  it("debug is a phase: it replaces the phase it debugs and clears bkit:failed", async () => {
+    const r = await labels(dir(), "--label=bkit:build", "--label=bkit:failed", "--phase=debug");
     expect(r.json).toMatchObject({
       add: ["bkit:debug"],
+      remove: ["bkit:build", "bkit:failed"],
+      labels: ["bkit:debug"],
+      linearState: "In Progress",
+    });
+    expect(transitionLabels(["bkit:debug"], { phase: "ship" }).labels).toEqual(["bkit:ship"]);
+  });
+
+  it("a Failure Path keeps the phase label and next:* is left alone without a phase", () => {
+    expect(transitionLabels(["bkit:build", "next:ship"], { failed: true })).toEqual({
+      add: ["bkit:failed"],
       remove: [],
-      labels: ["bkit:build", "bkit:debug"],
-      linearState: "In Review",
+      labels: ["bkit:build", "next:ship", "bkit:failed"],
     });
   });
 
@@ -215,6 +227,7 @@ describe("bkit issues labels", () => {
       linearState: "In Review",
     });
     expect((await labels(dir(), "--phase=merged", "--failed=on")).code).toBe(2);
+    expect((await labels(dir(), "--phase=build", "--failed=on")).code).toBe(2);
   });
 
   it("autoRouteSuffix follows an exact bkit:auto label, with or without a transition", async () => {
@@ -228,7 +241,7 @@ describe("bkit issues labels", () => {
   });
 
   it("refuses an unknown phase or on/off value", async () => {
-    expect((await labels(dir(), "--phase=debug")).code).toBe(2);
+    expect((await labels(dir(), "--phase=lite")).code).toBe(2);
     expect((await labels(dir(), "--failed=yes")).code).toBe(2);
     expect((await labels(dir(), "--board=done")).code).toBe(2);
   });
@@ -433,6 +446,34 @@ describe("bkit issues comment", () => {
     );
   });
 
+  it("artifact path#Heading links that section of the rendered doc", async () => {
+    const r = await comment(
+      dir(),
+      "--step-number=10",
+      "--step-title=Summary",
+      "--owner-repo=o/r",
+      "--ref=dev",
+      "--artifact=docs/plans/202610/641-x-design.md#Risks & Open Questions",
+    );
+    expect(r.body).toBe(
+      [
+        "###### bkit:generated",
+        "### Step 10 — Summary",
+        "[641-x-design.md § Risks & Open Questions](https://github.com/o/r/blob/dev/docs/plans/202610/641-x-design.md#risks--open-questions)",
+      ].join("\n"),
+    );
+  });
+
+  it.each([
+    ["Overview", "overview"],
+    ["Step 2 — Worktree Setup", "step-2--worktree-setup"],
+    ["`bkit issues comment` (v4.9)", "bkit-issues-comment-v49"],
+    ["snake_case and-hyphen", "snake_case-and-hyphen"],
+    ["Ünïcode Überschrift", "ünïcode-überschrift"],
+  ])("headingAnchor(%j) is GitHub's %j", (heading, anchor) => {
+    expect(headingAnchor(heading)).toBe(anchor);
+  });
+
   it("close: tree, PR and run links, then Artifacts and Telemetry sections", async () => {
     const cwd = dir();
     write(cwd, "a.md", "- a.md\n");
@@ -572,6 +613,23 @@ describe("bkit issues comment", () => {
     );
   });
 
+  it("audit: slug heading, header fields, and the summary", async () => {
+    const cwd = dir();
+    write(cwd, "a.md", "## Overview\n\nAll clear.\n");
+    const r = await comment(
+      cwd,
+      "--kind=audit",
+      "--audit-slug=security",
+      "--field=Status=COMPLETE",
+      "--field=Findings=CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2",
+      "--line=Report: docs/audits/202610/security.md",
+      "--body-file=a.md",
+    );
+    expect(r.body).toBe(
+      "###### bkit:generated\n### Audit Summary: security - Status: COMPLETE - Findings: CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2\nReport: docs/audits/202610/security.md\n## Overview\n\nAll clear.",
+    );
+  });
+
   it("defuses a whole-line cut marker copied in from an artifact", async () => {
     const cwd = dir();
     write(cwd, "s.md", "Above.\n###### bkit:ignore-earlier\nBelow.\n");
@@ -593,9 +651,12 @@ describe("bkit issues comment", () => {
     [["--kind=other"]],
     [["--step-number=1", "--step-title=X", "--tree=dev"]],
     [["--step-number=1", "--step-title=X", "--owner-repo=o/r", "--artifact=a.md"]],
+    [["--step-number=1", "--step-title=X", "--owner-repo=o/r", "--ref=dev", "--artifact=a.md#"]],
     [["--step-number=1", "--step-title=X", "--field=novalue"]],
     [["--step-number=1", "--step-title=X", "--sub-plan-count=2"]],
     [["--step-number=1", "--step-title=X", "--workflow-heading"]],
+    [["--kind=audit"]],
+    [["--kind=audit", "--audit-slug=Bad Slug"]],
   ])("refuses %j (exit 2)", async (args) => {
     expect((await comment(dir(), ...args)).code).toBe(2);
   });

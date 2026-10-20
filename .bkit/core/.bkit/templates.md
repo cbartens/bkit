@@ -37,6 +37,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Trivy | Fails CI on a known-vulnerable package in any language, a risky container or cluster setting, or a committed secret; a daily run catches advisories with no fix yet. | A vulnerable package or leaked key merges unnoticed; an advisory with no fixed release never shows up anywhere. |
 | Prettier tables | One edited cell = one changed row in the diff. | A one-word table edit diffs as the whole table. |
 | tmp/ prune | Each push deletes scratch files agents left in `tmp/` untouched for a week. | `tmp/` keeps growing; old logs and scratch files are never cleared. |
+| Disk prune | Your own cleanup steps (build caches, Docker, simulators) run on commit, on push, and before a worktree is made on a low disk. bkit deletes nothing itself. | Caches fill the disk until no worktree can be made; every workflow stops. |
 | Cursor editor + cloud agent | Format-on-save, recommended extensions, Cursor cloud-agent image. | Cursor edits miss project formatting; no Cursor cloud agent. |
 | Launchd GUI env | macOS apps opened from the Dock get the same tokens as the terminal. | Dock-launched editors start signed out. |
 
@@ -67,6 +68,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 | tmp/ prune | `.bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs` | `scripts/cleanup/` | that file |
+| Disk prune | `.bkit/templates/scripts/cleanup/bkit-disk-prune.mjs`, `bkit-disk-prune.machine.mjs` | `scripts/cleanup/bkit-disk-prune.mjs`, `~/.config/bkit/disk-prune.mjs` | `scripts/cleanup/bkit-disk-prune.mjs` only |
 | Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
 | Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file |
 
@@ -75,7 +77,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 <!-- prettier-ignore -->
 | Placeholder | In | Put | Typical value |
 | --- | --- | --- | --- |
-| `{{DEFAULT_BRANCH}}` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments), `bkit-trivy.yml` (`on.push` / `on.pull_request` branches) | your default branch | `origin/HEAD`, else `main` |
+| `{{DEFAULT_BRANCH}}` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments), `bkit-trivy.yml` (`on.push` / `on.pull_request` branches) | your production branch | `origin/HEAD` unless it is `dev`, else `main` |
 | `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
 | `{{SCRIPT_PATH}}` | `ai.bkit.launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/Users/<you>/.config/bkit/bkit-launchd-env.sh` |
@@ -196,7 +198,7 @@ Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; f
 
 ## Git hooks — Husky
 
-`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits), then `bkit check`, plus a CI-suppressing-token guard and the `tmp/` prune (§ tmp/ prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. Reference: https://typicode.github.io/husky/.
+`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits), then `bkit check`, plus a CI-suppressing-token guard and the `tmp/` prune (§ tmp/ prune). Each hook ends by starting the disk prune (§ Disk prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. One exception: the throwaway `.worktrees/_land-{FID}` checkout that lands bookkeeping on `dev` (docs, logs, ledgers, `[skip ci]`) runs no hooks and logs that it skipped them. Reference: https://typicode.github.io/husky/.
 
 ```bash
 pnpm add -D husky@^9.1.7   # plus "prepare": "husky" (§ Gate tool scripts)
@@ -226,6 +228,8 @@ Runs prettier over staged files. `bkit:gate:format` (the pre-commit hook) calls 
 pnpm add -D lint-staged@^17.0.0 prettier@^3.5.3
 ```
 
+- Staged `docs/plans/**/*.md` + `docs/audits/**/*.md` (design, plan, audit docs) run `scripts/prettier/bkit-insert-ignore.mjs` before prettier → committed tables carry `<!-- prettier-ignore -->` and `| --- |` separators. Needs § Prettier tables copied; without it, commits touching those files fail.
+- Globs must not overlap: lint-staged runs entries concurrently, so two entries writing one file race. Second entry negates the first.
 - Adapt: add per-glob commands (eslint `--fix`, etc.) — keep them seconds-fast.
 
 ## Vale — prose lint, with House styles
@@ -439,11 +443,11 @@ Issues are the first input every workflow reads. One form per way work starts; e
 | Form | Use when | Next step | Asks for |
 | --- | --- | --- | --- |
 | `bkit-idea.yml` | How it should work is still open | `/bkit-design #N` | problem, outcome, success criteria, constraints and non-goals, decisions already made, open questions |
-| `bkit-change.yml` | What to build and "done" are known | `/bkit-plan #N`, or `/bkit-build #N` / `lite:build` with no plan | the plan in short: narrative, success criteria, edge cases, test matrix, tasks with `Done when` + `Test first`, breaking changes and names, out of scope |
+| `bkit-change.yml` | What to build and "done" are known | `/bkit-plan #N`, or `/bkit-build #N` / `build:lite` with no plan | the plan in short: narrative, success criteria, edge cases, test matrix, tasks with `Done when` + `Test first`, breaking changes and names, out of scope |
 | `bkit-bug.yml` | Something does not work | a test or CI run already fails → `/bkit-debug #N`; nothing fails yet → `/bkit-debug #N [repro]` | failing test or CI run, what happened, what should, repro steps, how often, affected area, where and when, evidence |
 
 - Every form ends with References. The change form shows the lines workflows read: `**Parent design:**` and `**Audit reports:**` (plan), the blocked-by block (build). Other references are not fetched; write exact paths, ledger `key`s and `#N — title`.
-- A change issue is the plan's source when no design or audit report exists: its narrative, success criteria, edge cases, test rows and tasks carry over verbatim. `/bkit-build` with no plan builds those tasks and checks each `Test first` test failed before its code; `lite:build` checks nothing. Nothing ticks the boxes.
+- A change issue is the plan's source when no design or audit report exists: its narrative, success criteria, edge cases, test rows and tasks carry over verbatim. `/bkit-build` with no plan builds those tasks and checks each `Test first` test failed before its code; `build:lite` checks nothing. Nothing ticks the boxes.
 - Debug commits to the branch it runs on: start it on the branch the fix lands on.
 - Copy the folder, commit on the default branch; GitHub reads forms from there only. Blank issues stay enabled.
 - `labels:` applies `enhancement` / `bug` only when the repo has them; missing labels are skipped, never created. Never add `bkit:*` labels: workflows own them.
@@ -588,7 +592,7 @@ Prettier aligns markdown tables with no config toggle; one edited cell re-pads e
 | `node scripts/prettier/bkit-insert-ignore.mjs` | Rewrite `.agents/`, `docs/`, `README.md` (or the paths given). |
 | `node scripts/prettier/bkit-insert-ignore.mjs --check` | Write nothing; exit 1 if any file would change. Gate form. |
 
-- Walks skip `skills/` trees (vendored), `docs/audits/`, `docs/plans/` (records, kept as written). A file named on the command line is always processed.
+- Walks skip `skills/` trees (vendored), `docs/audits/`, `docs/plans/` (records, kept as written). A file named on the command line is always processed. New and edited records get it at commit: § lint-staged names each staged file.
 - Skips tables inside ``` / ~~~ fences and tables already wrapped.
 - A pipe inside an inline-code span is escaped to `\|` only when that restores the separator's column count; an existing `\|` stays literal.
 - Exit 1 on damage it cannot repair, with or without `--check`: `truncated-row` (more cells than the separator; GFM drops the overflow) and `unrendered-table` (header ≠ separator count; GFM renders raw text). A bare pipe in cell prose is indistinguishable from a delimiter → escape it as `\|` by hand.
@@ -608,3 +612,29 @@ cp .bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs scripts/cleanup/
 - Scope: `tmp/` at the top of the checkout the cwd sits in; each worktree prunes its own. `tmp/` itself stays.
 - Age = file mtime. Symlinks never followed: a symlinked `tmp/` is skipped; a symlink inside is removed by its own age, target untouched. A folder goes only when empty and either the sweep emptied it or its own mtime is past the cutoff → a folder another process just made stays.
 - Hand run: `node scripts/cleanup/bkit-tmp-prune.mjs`. Files to keep belong outside `tmp/`.
+
+## Disk prune — cleanup steps you own
+
+`bkit disk prune` runs only steps you list; bkit deletes nothing. No step file → nothing runs.
+
+```bash
+mkdir -p scripts/cleanup ~/.config/bkit
+cp .bkit/templates/scripts/cleanup/bkit-disk-prune.mjs scripts/cleanup/
+cp .bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs ~/.config/bkit/disk-prune.mjs
+```
+
+<!-- prettier-ignore -->
+| File | Steps for | Runs from | Committed |
+| --- | --- | --- | --- |
+| `scripts/cleanup/bkit-disk-prune.mjs` | this checkout: build caches, leftover agent worktrees | checkout top, first | yes |
+| `~/.config/bkit/disk-prune.mjs` (`$XDG_CONFIG_HOME/bkit/` when set) | shared tools: Docker, pnpm store, Xcode, Gradle, simulators | home folder | never |
+
+- Step list, default-exported: `{ name, mode, run, skip?, paths? }`. `min` = stale, cheap; `max` = all that comes back by itself + every `min` step. `run` / `skip`: shell command or `({ cwd, log, note })` function; `skip` exit 0 or returned reason → skipped. `paths`: what `--dry-run` sizes, the most the step can free.
+- Notes: `note(text)` = found, left for a person. Each sweep replaces its checkout's notes; `bkit tips` prints them first (from a worktree, the main checkout's too), so every workflow close surfaces them. No sweep for 7 days → dropped.
+- Example worktree step: removes a `.worktrees/*` only when nothing is lost — clean, every commit on a remote or at a merged pull request's head (`gh`; squash merges) — via `bkit worktrees remove`, or plain `git worktree remove` when no workflow made it. Branches stay. Keeps a locked one or one committed to in 2 days; notes the rest.
+- Adapt: keep a step only when what it deletes comes back by itself. Left out on purpose: named Docker volumes (local databases), runtimes and SDKs, whole pnpm store (`node_modules` hard-link into it).
+- Wiring: last block of each Husky template — `pre-commit` → `--mode=min --auto`; `pre-push` → `--mode=max --auto`, after every gate (workflow pushes too). Missing → paste at the end of yours.
+- `--auto`: detached, always exit 0. Each mode at most once a day per machine; `max` at most hourly while free disk < `bkit.disk.minFreeGb` (`package.json`, GB, default 40). Log: `~/.cache/bkit/disk-prune.log` (`$XDG_CACHE_HOME/bkit/` when set).
+- Worktrees: `bkit worktrees setup` create / resume under `bkit.disk.minFreeGb` → runs `max` steps, waits. Still under → exit 12, nothing created; stderr lists what `max` steps still cover. No step file → no check.
+- One sweep per machine at a time (`disk-prune.lock` beside the log). Failed step → logged, next runs. CI / cloud → nothing runs.
+- Hand run: `pnpm bkit disk prune --mode=max --dry-run` → each step + its `paths` size; without `--dry-run` → runs now. Exit 1 = a step failed or a step file did not load.

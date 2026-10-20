@@ -15,4 +15,8 @@ describe("TIMEOUTS", () => {
       60,
     );
   });
+
+  it("a close's retry wait starts below its cap", () => {
+    expect(TIMEOUTS.LAND_BACKOFF_START_S).toBeLessThan(TIMEOUTS.LAND_BACKOFF_CAP_S);
+  });
 });

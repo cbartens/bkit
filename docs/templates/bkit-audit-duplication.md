@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Duplication Audit
 
@@ -17,7 +17,7 @@
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
+> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
 > - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - Generated registers / graphs → verify-only mode or throwaway copy; never regenerate a tracked file.
 
@@ -146,7 +146,7 @@ Verify only when applicable.
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **Sites read:** every `DUPLICATE` cites `file:line` from an opened file, not a match.
-- [ ] **Tree clean:** `git status` clean; tracked registers / graphs unchanged.
+- [ ] **Tree clean:** no tracked file changed by this run (other writers' paths named); tracked registers / graphs unchanged.
 - [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
@@ -265,14 +265,14 @@ PENDING
 
 - **Permissions:** Read-only probes this audit uses, none blocked here: `git`, `rg`, `npx --yes -p @ast-grep/cli ast-grep`, `npx --yes jscpd`, `pnpm graph:check`, `pnpm dedupe --check`, `pnpm why`, `python3 -I`, `jq`, Serena MCP (TypeScript language server), WebFetch / WebSearch for anchor standards. No credentialed CLI or tracker read needed.
 - **Pre-Flight / Dependencies:**
-  - Text Search: source lives under the hidden `.bkit/`; from the repo root use `rg --hidden` (plain `rg` skips `.bkit/` and returns a false empty), or pass `.bkit/core/engine` / `.bkit/core/hooks` as explicit paths.
+  - Text Search: source roots `.bkit/core/engine` / `.bkit/core/hooks`.
   - Structural Search: `npx --yes -p @ast-grep/cli ast-grep scan --no-ignore hidden --rule <rule.yml> .bkit/core/engine --json=stream`. The bare `npx --yes @ast-grep/cli` form fails ("could not determine executable to run"); `--no-ignore hidden` is required for `.bkit/`.
   - Module Graph / Capability Register: `pnpm graph:check` only (rebuilds into a throwaway copy and compares with `docs/capabilities.md`); never `pnpm graph:update` / `pnpm graph:rollup`. Drift rules: `scripts/graphify/bkit-graph-drift-rules.json`. Duplicate-name check: read `docs/graphify-out/graph.json` with `python3 -I` (node keys `_callable`, `label`, `source_file`, `source_location`).
   - Change coupling: code-maat is not installed; use `git log --since=<window start> --no-merges --name-only`. History before 2026-10-10 lives under pre-`.bkit/core/engine` paths; reach it with `git log --follow` per file.
-  - Shell is zsh: an unquoted `$VAR` holding a command does not word-split and `PIPESTATUS` is empty — inline the command and take `$?` from a run redirected to a file.
+  - zsh `PIPESTATUS` is empty: take `$?` from a run redirected to a file.
 - **Step 2 — Detect:** Engine layout per `docs/architecture.md`, but `ls .bkit/core/engine/shared` rather than trusting its file list. Host hooks: shared engines `.bkit/core/hooks/*.js`, per-host templates `.bkit/core/{.claude,.cursor,.codex,.agents/plugins/bkit}/hooks/` and `.bkit/core/.opencode/plugin/`, combined by `.bkit/core/engine/render/parts.ts`. Template ↔ root copies (`.bkit/templates/scripts/**` ↔ `scripts/**`, root configs) are deliberate and guarded by `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`. Existing duplication gates: slop-scan `structure.duplicate-function-signatures` (`slop-scan.config.json`), `pnpm graph:check` (`.github/workflows/bkit-ci.yml`), cross-host verdict tables in `.bkit/core/engine/install/modules/index.integration.test.ts`.
 - **Step 3 — Rule Altitude:** Keep rules under `tmp/audit-duplication/rules/`. Shared homes to subtract from: `.bkit/core/engine/shared/*.ts`, `.bkit/core/engine/commands/lib.ts`, `.bkit/core/engine/install/modules/core.ts`, `.bkit/core/engine/ledgers/telemetry.ts`. For `package.json` `bkit` reads, exclude the writer sites (install / uninstall / `install/modules/cloud.ts`) from the inline set.
 - **Step 4 — Clones:** `npx --yes jscpd <pass flags> -a --min-tokens 50 --format typescript,javascript,python,bash --ignore '**/*.test.ts,**/*.test.mjs,**/dist/**,**/node_modules/**' --reporters json --output tmp/audit-duplication/<pass> --report-name <pass> --no-tips --silent .bkit/core/engine .bkit/core/hooks .bkit/core/.claude .bkit/core/.cursor .bkit/core/.codex .bkit/core/.agents .bkit/core/.opencode .bkit/templates/scripts scripts`. Pass flags: Type-1 `--mode strict`; Type-2 `--mode weak --ignore-identifiers --ignore-literals --kind renamed`; Type-3 `--mode weak --similarity 0.85 --kind ast`. `-a` (absolute paths) is needed to map clones to areas. Drop `.bkit/templates/scripts/**` ↔ `scripts/**` pairs before per-area %. Keep the root-level rendered hooks (`.claude/hooks`, `.agents/plugins/bkit/hooks`, …) out of the roots — they are install output.
-- **Step 5 — Capability Altitude:** Serena `find_referencing_symbols` covers `.ts` owners; hook engines (`.js`) and generated `.cjs` need `rg --hidden`.
+- **Step 5 — Capability Altitude:** Serena `find_referencing_symbols` covers `.ts` owners; hook engines (`.js`) and generated `.cjs` need text search.
 - **Step 7 — Libraries:** `pnpm dedupe --check` exits 1 when anything is dedupable; follow each multi-version package with `pnpm why <pkg>`.
 - **Step 10 — Coupling:** Prose-tie search: `rg -n -i 'keep (in|it in|them in) sync|kept in sync|must match|\bmirrors\b' .bkit/core/engine .bkit/core/hooks --glob '!*.test.ts'`, then drop the "IDE mirror" / rendered-mirror hits.

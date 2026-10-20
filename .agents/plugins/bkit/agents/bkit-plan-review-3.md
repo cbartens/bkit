@@ -11,7 +11,7 @@ tools:
   - write_to_file
   - replace_file_content
 ---
-<!-- bkit:managed v5.3.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
 **Scope:** As specified by input and Read / Update / Create section.

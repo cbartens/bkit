@@ -81,8 +81,9 @@ export function classify(env, root, log) {
 }
 /**
  * Default capabilities per runtime. CLOUD_CURSOR matches GITHUB_ACTION on
- * purpose (isolated VM, real git, mints and pushes its own branch); a claude.ai
- * session's proxy only lets it push the current branch, so it gets neither.
+ * purpose (isolated VM, real git, mints and pushes its own branch). A claude.ai
+ * session gets neither: whether it may push dev can't be tested without making
+ * that push, and a wrong guess strands the session on a dev checkout.
  */
 const capable = (runtime) => runtime === "LOCAL" || runtime === "GITHUB_ACTION" || runtime === "CLOUD_CURSOR";
 /** No human can reply into the session: a GitHub Actions run. */

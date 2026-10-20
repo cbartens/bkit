@@ -827,7 +827,9 @@ jobs:
 #   bkit-tests-scope:  runs-on: ubuntu-latest; timeout-minutes: 2; outputs: { plan: ${{ steps.scope.outputs.plan }} }
 #     steps:
 #       - name: Checkout Repository          # [M] fetch-depth: 0 (turbo diffs need the base commit)
-#       - name: Install Turbo                # [M] npm i -g turbo@<ver> (bare, ~10-15s; no pnpm install)
+#       - name: Install Turbo                # [M] bare global install, ~10-15s; no pnpm install. Version READ from
+#       #     package.json, which pins turbo EXACTLY — never typed here, or this lane drifts from every
+#       #     install-bearing lane: npm i -g "turbo@$(node -p "require('./package.json').devDependencies.turbo")"
 #       - name: Resolve Base Ref             # [M] push base = the branch's last green run; shipped:
 #       #     scripts/ci/lanes/resolve-push-base.mjs (falls back to github.event.before). deployments.md
 #       #     § One run per branch or pull request.
@@ -1090,7 +1092,10 @@ jobs:
 # block queues on {{DEFAULT_BRANCH}} too. Runs BEFORE the E2E / @live lanes: each of those needs: it and
 # refuses unless production serves this run's build (by deployment id). Promotes the EXACT deployment_id
 # bkit-tests-build-web published. Does not look the deployment up again by SHA. A 409 is success only when
-# the body says this id is already current production. A red job means the release did not happen; the
+# the body says this id is already current production. Before promoting it refuses, moving nothing, when
+# the id equals repo variable ROLLED_BACK_DEPLOYMENT_ID (set by the rollback) or when this commit is neither
+# production's commit nor a descendant of it (e.g. GitHub compare API status not ahead / identical), so a
+# re-run of an old run never moves production back. A red job means the release did not happen; the
 # previous deployment stays live. On a default-branch push the capstone needs: it, so a skipped or failed
 # deploy reds bkit-tests-check.
 # The host must not auto-build the default branch, and any "hold promotion until a check passes"

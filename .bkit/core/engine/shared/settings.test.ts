@@ -138,6 +138,15 @@ describe("readBkitConfig", () => {
     }
   });
 
+  it("reads disk.minFreeGb as a number 0 or more, else the default", () => {
+    const minFree = (disk: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { disk } }))).diskMinFreeGb;
+    expect(minFree({ minFreeGb: 80 })).toBe(80);
+    expect(minFree({ minFreeGb: 0 })).toBe(0);
+    for (const bad of [{ minFreeGb: -1 }, { minFreeGb: "80" }, { minFreeGb: null }, {}, 5, null])
+      expect(minFree(bad)).toBe(CONFIG_DEFAULTS.diskMinFreeGb);
+  });
+
   it("keeps githubProject false as an opt-out, apart from not configured", () => {
     expect(
       readBkitConfig(root(JSON.stringify({ bkit: { githubProject: false } }))).githubProject,

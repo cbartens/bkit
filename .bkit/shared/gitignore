@@ -47,8 +47,7 @@ docs/plans/*/logs/**/.lock
 docs/plans/*/logs/**/.deferred-blocked
 docs/plans/*/logs/**/.rebase-failed
 
-# Repo-global dev critical-section lock (cross-FID)
-.bkit/.dev.lock
+# Cursor background-agent runtime marker
 .bkit/.runtime-cursor
 
 .bkit/.roadmap-shortlist.json
