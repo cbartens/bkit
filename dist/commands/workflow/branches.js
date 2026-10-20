@@ -1139,7 +1139,7 @@ function anchorReadVerb(ctx) {
 // ---------------------------------------------------------------------------
 export const branchesCommand = {
     noun: "branches",
-    summary: "Sync, push, rebase and switch branches; stamp and read a doc's base-commit anchor.",
+    summary: "Sync, push, land and rebase branches; stamp and read a doc's base-commit anchor.",
     verbs: {
         sync: {
             summary: `Fetch ${UPSTREAM}; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ is behind; optionally merge it in.`,

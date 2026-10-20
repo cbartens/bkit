@@ -443,7 +443,10 @@ Usage:
                                  Upgrade everything installed (no module flags). Diffs old
                                  vs new templates; conflict list emitted to stderr. Use
                                  --auto-apply for CI (apply non-conflicting; exit non-zero
-                                 on any conflict).
+                                 on any conflict). Only a whole file you edited since bkit
+                                 wrote it conflicts; rendered files (agents, commands,
+                                 skills, .bkit/*.md) are always re-rendered — bkit check
+                                 flags an edit to one.
                                  --to=<version> / --latest atomically BUMP @cbartens/bkit
                                  (pnpm add), then re-render + re-pin in one step — so a
                                  version bump can never drift from its rendered mirrors.
@@ -512,7 +515,7 @@ Usage:
                                  (design|plan|build|debug|ship). Without it, prints the
                                  ledger-health line only. Read-only: exits 0.
   bkit analysis                 Cross-repo analysis — reports counts/rates/elapsed-time,
-                                 #183 size↔outcome regression, dispatch-size threshold,
+                                 change-size vs outcome regression, dispatch-size threshold,
                                  counterSource trust labelling, per-rule compliance
                                  rate over kind:"compliance" rows, and the
                                  unjustified-deferral rate per (subagent, model)
@@ -575,9 +578,10 @@ Dependency updaters (copy an example and own it):
 Cross-cutting / modifiers:
   --tracker=<name>      Wire issue tracker integration. Values: github, linear, none
                         (default). Records bkit.issueTracker in package.json and substitutes
-                        tracker snippets into command mirrors. Switching is free (re-run with
-                        a new value); a switch removes the old tracker's MCP entry unless you
-                        edited it. Does NOT own AGENTS.md (which is tracker-agnostic).
+                        tracker snippets into command mirrors. Re-renders every installed
+                        host, and works alone (bkit install --tracker=github). Switching is
+                        free; a switch removes the old linear MCP entry unless you edited it
+                        (github always stays). Does NOT own AGENTS.md (tracker-agnostic).
 
 Install flags:
   --auto-revert         On a Phase 3 blocker, automatically run uninstall and exit 1.
@@ -644,17 +648,18 @@ function commandsUsage() {
 }
 /**
  * Validate the verb/module-flag combination before any dispatch
- * work runs. `install` requires >=1 module flag (bare install errors);
- * `check` / `upgrade` take NO module flags — they
- * operate on everything already installed, so a stray flag is a hard error
- * pointing at the no-flag form. Returns the error message to print, or `null`
+ * work runs. `install` requires >=1 module flag or `--tracker=` (which re-renders
+ * every installed host); a bare install errors. `check` / `upgrade` take NO module
+ * flags — they operate on everything already installed, so a stray flag is a hard
+ * error pointing at the no-flag form. Returns the error message to print, or `null`
  * when the combination is valid.
  */
-export function validateModuleFlagsForVerb(verb, moduleFlags) {
-    if (verb === "install" && moduleFlags.size === 0) {
+export function validateModuleFlagsForVerb(verb, moduleFlags, tracker = null) {
+    if (verb === "install" && moduleFlags.size === 0 && tracker === null) {
         return ("[bkit] `bkit install` requires at least one module flag. Name what to install: " +
             "--claude, --cursor, --codex, --antigravity, --opencode=<provider> (plus opt-in " +
-            `--auto=<${CLOUD_VARIANTS.join("|")}>). Run \`bkit help\` for usage.`);
+            `--auto=<${CLOUD_VARIANTS.join("|")}>), or --tracker=<name> alone to switch the ` +
+            "tracker on what is installed. Run `bkit help` for usage.");
     }
     if ((verb === "check" || verb === "upgrade") && moduleFlags.size > 0) {
         return (`[bkit] \`bkit ${verb}\` takes no module flags — it operates on everything already ` +
@@ -714,8 +719,9 @@ export async function main() {
         await launchApp(verb, process.cwd());
         return;
     }
-    // install requires >=1 module flag; check/upgrade take NONE (validateModuleFlagsForVerb).
-    const moduleFlagsError = validateModuleFlagsForVerb(verb, moduleFlags);
+    // install requires >=1 module flag or --tracker=; check/upgrade take NONE
+    // (validateModuleFlagsForVerb).
+    const moduleFlagsError = validateModuleFlagsForVerb(verb, moduleFlags, tracker);
     if (moduleFlagsError) {
         console.error(moduleFlagsError);
         process.exit(1);

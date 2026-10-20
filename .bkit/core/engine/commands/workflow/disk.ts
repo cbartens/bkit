@@ -26,7 +26,7 @@ import { pathToFileURL } from "node:url";
 import { isCloudOrCi } from "../../checks/before/env.js";
 import { readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { CommandError, EXIT, git, repoRoot, type CommandSpec } from "../lib.js";
+import { CommandError, EXIT, git, type CommandSpec } from "../lib.js";
 import { tryCreate } from "./locks.js";
 
 export type Mode = "min" | "max";
@@ -145,14 +145,11 @@ async function loadStepFile(at: { scope: Scope; file: string; cwd: string }): Pr
 // Disk, sizes, stamps, lock
 // ---------------------------------------------------------------------------
 
-/** Bytes free to this user on the filesystem holding `dir`; null when unreadable. */
+/** Bytes free to this user on the filesystem holding `dir`; null when `dir` is gone. */
 export function freeBytes(dir: string): number | null {
-  try {
-    const s = fs.statfsSync(dir);
-    return s.bavail * s.bsize;
-  } catch {
-    return null;
-  }
+  if (!fs.existsSync(dir)) return null;
+  const s = fs.statfsSync(dir);
+  return s.bavail * s.bsize;
 }
 
 /** Total size of everything `patterns` match under `cwd`; null when `du` cannot answer. */
@@ -382,11 +379,9 @@ function saveNotes(top: string, notes: string[]): void {
 export function readNotes(cwd: string, now = Date.now()): string[] {
   const all = readNotesFile();
   const tops = new Set([checkoutTop(cwd)]);
-  try {
-    tops.add(repoRoot(cwd));
-  } catch {
-    // Not a git repository: only the folder itself.
-  }
+  // The main checkout is the folder holding the shared .git; outside git, none.
+  const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (common !== null) tops.add(path.dirname(common));
   const notes: string[] = [];
   for (const top of tops) {
     const entry = all[top];

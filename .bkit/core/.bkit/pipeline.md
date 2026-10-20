@@ -129,7 +129,8 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
   4. merge               (orchestrator-only guarded git op)
     ↳ on post-merge failure → /bkit-debug (diagnose + remediate)
   5. update-docs / summary (parallel)
-  6. prune skills + worktree cleanup + close  (orchestrator-only)
+  6. prune skills + update local dev + close  (orchestrator-only;
+                         close removes the worktree)
 ```
 
 <a id="ci-scaffold"></a>
@@ -265,7 +266,7 @@ Output: squash-merged PR, updated docs, pruned skills, torn-down worktree. Safet
 | `bkit-ship-update-docs` | Docs | Updates knowledge / decisions / completed docs. Parallel with summary. |
 | `bkit-ship-summary` | Summarise | Final tracker-facing summary. Parallel with docs. |
 
-Orchestrator-only ship steps: regression guard, merge, switch-to-dev with `--ff-only` pull + divergence re-assert, skill pruning, worktree cleanup, close. Guarded git / tracker ops orchestrator performs directly, not subagents.
+Orchestrator-only ship steps: regression guard, merge, skill pruning, update local dev (`bkit branches sync-dev`; never checks out `dev`), close (removes the worktree). Guarded git / tracker ops orchestrator performs directly, not subagents.
 
 ## Audits
 

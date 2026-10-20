@@ -10,7 +10,7 @@ Format: `## [version] — YYYY-MM-DD`
 
 ### Breaking Changes
 
-- **BREAKING — the dev lock, `bkit branches switch`, `--dev-pushes` and `--deadline` are gone.** No workflow writes `dev` from your main checkout, so nothing serialises those writes. Removed: the dev lock (`.bkit/.dev.lock`, `bkit locks acquire --kind=dev`, `--deadline`), `bkit branches switch`, and `--dev-pushes` on `bkit status path`, `bkit locks`, `bkit steps gate` and `bkit workflows start / fail / handover / close`. Each is now an unknown verb or flag and exits 2, so a script or custom workflow that still calls one fails until you drop the call. `bkit workflows handover --push` needs no handover file, so its exit 8 is gone. Ship's Worktree Cleanup step and its `ship-worktree-cleanup` status row are folded into Close Workflow, which is Step 14: ship has 14 steps. (#639)
+- **BREAKING — the dev lock, `bkit branches switch`, `--dev-pushes` and `--deadline` are gone.** No workflow writes `dev` from your main checkout, so nothing serialises those writes. Removed: the dev lock (`.bkit/.dev.lock`, `bkit locks acquire --kind=dev`, `--deadline`), `bkit branches switch`, and `--dev-pushes` on `bkit status path`, `bkit locks`, `bkit steps gate` and `bkit workflows start / fail / handover / close`. Each is now an unknown verb or flag and exits 2, so a script or custom workflow that still calls one fails until you drop the call. `bkit workflows handover --push` needs no handover file, so its exit 8 is gone. Ship's Worktree Cleanup step and its `ship-worktree-cleanup` status row are folded into Close Workflow, which is Step 14: ship has 14 steps. This ships in a minor release, so a `^5` range picks it up; pin `5.3.x` until those calls are gone. (#639)
 
 ### Added
 
@@ -49,6 +49,10 @@ Format: `## [version] — YYYY-MM-DD`
 - **The roadmap mirror reports a failed commit.** A build / debug mirror attempt that committed nothing (append or commit failed) is reported as not mirrored, never as landed. (#639)
 - **`gh` answering HTTP 403 hands the call to the GitHub MCP.** Like a missing `gh` or a failed login, so a cloud close needing the PR route switches tools instead of stopping. (#639)
 - **`bkit upgrade` deletes a leftover `.bkit/.dev.lock`.** Nothing reads it any more. Registered in `docs/migrations.md`. (#639)
+- **A tracker switch updates every installed host.** `bkit install --tracker=<name>` now works with no host flag, as `.bkit/install.md` says, and re-renders every installed host's commands, agents and MCP entries. Before, `bkit install --claude --tracker=github` left Cursor, Codex, Antigravity and opencode on the old tracker, and `bkit check` then failed.
+- **Claude Code runs Linear writes without asking.** The shipped `.claude/settings.json` allow list gains `mcp__linear__*`, the tools of the `linear` server in `.mcp.json` that workflows call (`save_issue`, `save_comment`). It held only `mcp__claude_ai_Linear__*`, so every Linear write stopped for permission.
+- **Docs and CI templates never name `dev` as the production branch.** `{{DEFAULT_BRANCH}}` reads `origin/HEAD`, but a remote whose default branch is `dev` now gets `main`, the same as a checkout with no `origin/HEAD`. Before, such a repo's `docs/testing.md` read "`dev`/`dev` push", and the bytes changed with whether `origin/HEAD` was set, so `bkit check` passed on one machine and failed on another.
+- **`bkit upgrade --help` says which files can conflict.** Only a whole file you edited since bkit wrote it; rendered agents, commands, skills and `.bkit/*.md` are always re-rendered, and `bkit check` flags an edit to one. `bkit branches --help` no longer offers the removed `switch`, and the tracker help says the `github` MCP entry stays on every switch.
 
 ## [5.3.0] — 2026-10-19
 

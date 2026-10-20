@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyTokens, resolveTokens } from "./placeholders";
 import { managedVersionMarker, readManagedVersion } from "./version-file";
 
@@ -33,18 +33,6 @@ describe("resolveTokens — DEFAULT_BRANCH", () => {
     // Non-git tmpdir → git symbolic-ref will fail → falls back to 'main'
     const tokens = await resolveTokens(tmpDir);
     expect(tokens.DEFAULT_BRANCH).toBe("main");
-  });
-
-  it("parses branch from refs/remotes/origin/HEAD when available", async () => {
-    // Test using a mock: we verify the parser logic rather than a real git
-    writeJson("package.json", { name: "proj" });
-    // Spy on execSync to simulate git output
-    const { execSync } = await import("node:child_process");
-    const spy = vi.spyOn({ execSync }, "execSync");
-    // Since we can't easily mock the module-level import, verify the default fallback works
-    const tokens = await resolveTokens(tmpDir);
-    expect(["main", "dev", "master"]).toContain(tokens.DEFAULT_BRANCH);
-    spy.mockRestore();
   });
 });
 

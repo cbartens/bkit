@@ -82,7 +82,7 @@ pnpm tsx .bkit/core/engine/cli.ts check                                # drift g
 vale sync                                                               # one-off; pulls lint:prose styles
 ```
 
-`install` requires ≥1 module flag, because bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.
+`install` requires ≥1 module flag or `--tracker=` (which re-renders every installed host), because bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.
 
 Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude --cursor` (not the dogfood call).
 

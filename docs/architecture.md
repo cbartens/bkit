@@ -124,12 +124,12 @@ pnpm bkit install [--module-flags] [--auto-revert]
 
 CLI verbs:
 
-- `pnpm bkit install` — all three phases. Requires ≥1 module flag; bare `bkit install` errors.
+- `pnpm bkit install` — all three phases. Requires ≥1 module flag or `--tracker=` (re-renders every installed host); bare `bkit install` errors.
 - `pnpm bkit check` — Phase 1 + Phase 3 read-only; exit 1 on Tier-1 / Tier-2 drift, no writes.
 - `pnpm bkit doctor` — Phase 1 + Phase 3 detection; never writes; always exit 0.
 - `pnpm bkit status` — read-only; installed host (claude / cursor / opencode) + configured provider.
 - `pnpm bkit uninstall` — surgical format-aware removal: fully-managed delete / markered-text strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--yes`. package.json scripts and devDeps are never removed (the `bkit` install-state block goes on a full uninstall).
-- `pnpm bkit upgrade` — diff engine vs `canonicalHashes`; non-conflicts auto-apply, conflicts stderr (`--auto-apply` non-zero on conflict). Module-scoped. Re-renders at **installed** version (offline). `--to=<version>` / `--latest` (#296) bump `@cbartens/bkit` (`pnpm add`) → re-exec fresh binary → re-render + re-pin atomically, so version bump cannot drift mirrors; bare `pnpm add` does not re-render.
+- `pnpm bkit upgrade` — diff engine vs `canonicalHashes`; non-conflicts auto-apply, conflicts stderr (`--auto-apply` non-zero on conflict). Conflicts come only from the payload walk's whole files; `renderManagedOutputs` outputs (agents, commands, skills, `.bkit/*.md`) always re-render, and `bkit check` flags an edit to one. Module-scoped. Re-renders at **installed** version (offline). `--to=<version>` / `--latest` (#296) bump `@cbartens/bkit` (`pnpm add`) → re-exec fresh binary → re-render + re-pin atomically, so version bump cannot drift mirrors; bare `pnpm add` does not re-render.
 - `pnpm bkit comply --phase <p>` (#234 WS-2) — grader over `git diff parentSha..HEAD`; advisory-only, fail-open.
 - `pnpm bkit harvest` (#234 WS-4, #343) — bkit-repo only; COPIES `stats.jsonl`, MOVES `friction.jsonl` (prunes consumer), count-only `docs/{deferrals,failures}.jsonl`. Never commits.
 - `pnpm bkit analysis` (#234 WS-4) — harvested store counts / rates; size↔outcome regression, per-rule compliance.

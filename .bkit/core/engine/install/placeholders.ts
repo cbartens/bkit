@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { readInstallingVersion } from "../shared/package-json.js";
 import { managedVersionMarker } from "./version-file.js";
 import { gitEnv, resolveRepoSlug } from "../ledgers/telemetry.js";
@@ -18,23 +18,19 @@ export interface TokenMap {
   BKIT_VERSION?: string;
 }
 
-// Resolve DEFAULT_BRANCH: git symbolic-ref refs/remotes/origin/HEAD → "main"
+// Resolve DEFAULT_BRANCH, the production branch: refs/remotes/origin/HEAD, else "main".
+// `dev` is bkit's integration branch, never production, so a remote whose default is `dev`
+// also gets "main" — and renders the same bytes as a checkout with no origin/HEAD.
 function resolveDefaultBranch(cwd: string): string {
-  try {
-    const raw = execSync("git symbolic-ref refs/remotes/origin/HEAD", {
-      cwd,
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-      env: gitEnv(),
-    }).trim();
-    // raw is like "refs/remotes/origin/main"
-    const parts = raw.split("/");
-    const branch = parts[parts.length - 1];
-    if (branch) return branch;
-  } catch {
-    // not a git repo or no remote HEAD configured — fall back
-  }
-  return "main";
+  const res = spawnSync("git", ["symbolic-ref", "refs/remotes/origin/HEAD"], {
+    cwd,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "ignore"],
+    env: gitEnv(),
+  });
+  // stdout is like "refs/remotes/origin/main"; empty when not a git repo or no remote HEAD.
+  const branch = res.status === 0 ? res.stdout.trim().replace(/^refs\/remotes\/origin\//, "") : "";
+  return branch === "" || branch === "dev" ? "main" : branch;
 }
 
 // Read and parse package.json from cwd. Throws if absent.

@@ -24,7 +24,7 @@ import { pathToFileURL } from "node:url";
 import { isCloudOrCi } from "../../checks/before/env.js";
 import { readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { CommandError, EXIT, git, repoRoot } from "../lib.js";
+import { CommandError, EXIT, git } from "../lib.js";
 import { tryCreate } from "./locks.js";
 const MODES = ["min", "max"];
 export const REPO_STEPS = "scripts/cleanup/bkit-disk-prune.mjs";
@@ -98,15 +98,12 @@ async function loadStepFile(at) {
 // ---------------------------------------------------------------------------
 // Disk, sizes, stamps, lock
 // ---------------------------------------------------------------------------
-/** Bytes free to this user on the filesystem holding `dir`; null when unreadable. */
+/** Bytes free to this user on the filesystem holding `dir`; null when `dir` is gone. */
 export function freeBytes(dir) {
-    try {
-        const s = fs.statfsSync(dir);
-        return s.bavail * s.bsize;
-    }
-    catch {
+    if (!fs.existsSync(dir))
         return null;
-    }
+    const s = fs.statfsSync(dir);
+    return s.bavail * s.bsize;
 }
 /** Total size of everything `patterns` match under `cwd`; null when `du` cannot answer. */
 function sizeOf(patterns, cwd) {
@@ -296,12 +293,10 @@ function saveNotes(top, notes) {
 export function readNotes(cwd, now = Date.now()) {
     const all = readNotesFile();
     const tops = new Set([checkoutTop(cwd)]);
-    try {
-        tops.add(repoRoot(cwd));
-    }
-    catch {
-        // Not a git repository: only the folder itself.
-    }
+    // The main checkout is the folder holding the shared .git; outside git, none.
+    const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    if (common !== null)
+        tops.add(path.dirname(common));
     const notes = [];
     for (const top of tops) {
         const entry = all[top];

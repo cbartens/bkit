@@ -32,12 +32,12 @@ const turboRunning = () => running("(^|/)turbo( |$)") && "turbo is running";
 const nextRunning = () =>
   running("(^|/)next( (dev|build|start)|-server)") && "a Next.js server or build is running";
 
-/** `text` as JSON; null when it is not. */
+/** `text` as JSON: `{ ok: true, value }`, or `{ ok: false, error }` saying why not. */
 function parseJson(text) {
   try {
-    return JSON.parse(text);
-  } catch {
-    return null;
+    return { ok: true, value: JSON.parse(text) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -59,8 +59,8 @@ function mergedPrAt(cwd, branch, sha) {
     ["pr", "list", "--head", branch, "--state", "merged", "--json", "headRefOid"],
     { cwd, encoding: "utf8" },
   );
-  const prs = r.status === 0 ? parseJson(r.stdout) : null;
-  return Array.isArray(prs) && prs.some((pr) => pr.headRefOid === sha);
+  const prs = r.status === 0 ? parseJson(r.stdout) : { ok: false };
+  return prs.ok && Array.isArray(prs.value) && prs.value.some((pr) => pr.headRefOid === sha);
 }
 
 /**
@@ -91,7 +91,9 @@ function removeWorktree(cwd, wt, fid) {
     cwd,
     encoding: "utf8",
   });
-  const out = parseJson(r.stdout);
+  const parsed = parseJson(r.stdout);
+  if (!parsed.ok) return `bkit worktrees remove failed (exit ${r.status}; output: ${parsed.error})`;
+  const out = parsed.value;
   if (out?.removed === true) return null;
   if (out?.reason !== "not-owned")
     return `bkit worktrees remove failed (${out?.reason ?? `exit ${r.status}`})`;
