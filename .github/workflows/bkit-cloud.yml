@@ -7,10 +7,11 @@ name: bkit-cloud
 # (via the opencode CLI `run` subcommand) — run the same `/bkit-auto <phase> <arg>`
 # orchestrator against the committed `.claude/` / `.opencode/` config respectively.
 #
-# RUNTIME GATING — secret-presence auto-detect (in the context job):
-#   - ANTHROPIC_API_KEY set  → claude job runs.
+# RUNTIME GATING — credential-presence auto-detect (in the context job):
+#   - ANTHROPIC_API_KEY secret set, OR both ANTHROPIC_FEDERATION_RULE_ID and
+#     ANTHROPIC_ORGANIZATION_ID repo variables set → claude job runs.
 #   - OPENCODE_PROVIDER_KEY set → opencode job runs.
-#   Both can run on one event (additive); a missing secret skips that job (zero
+#   Both can run on one event (additive); a missing credential skips that job (zero
 #   billable runner minutes).
 #
 # Trigger surfaces:
@@ -21,8 +22,13 @@ name: bkit-cloud
 #   - workflow_dispatch: pick ANY phase (ship|debug|design|plan|build) for an issue.
 #     design/plan/build have no tracker-event trigger; they run only via dispatch.
 #
-# Required secrets (claude job):  ANTHROPIC_API_KEY + Claude GitHub App (one-time
-#   `/install-github-app` — grants `id-token: write` OIDC for claude-code-action@v1).
+# Required credentials (claude job): Claude GitHub App (one-time `/install-github-app`;
+#   claude-code-action@v1 authenticates as the App via `id-token: write` OIDC) + ONE of:
+#   - ANTHROPIC_API_KEY repo secret, or
+#   - workload identity federation (keyless): ANTHROPIC_FEDERATION_RULE_ID +
+#     ANTHROPIC_ORGANIZATION_ID repo variables (+ optional ANTHROPIC_SERVICE_ACCOUNT_ID /
+#     ANTHROPIC_WORKSPACE_ID) from a Claude Console federation rule. A set
+#     ANTHROPIC_API_KEY secret wins over federation — delete it when switching.
 # Required secrets (opencode job): OPENCODE_PROVIDER_KEY (any provider key the
 #   committed .opencode/opencode.json references; fan-out maps it to known env var names).
 # Required tracker label on the issue: `bkit:auto` (opt-in) for the CI-driven path.
@@ -115,20 +121,28 @@ jobs:
       phase: ${{ steps.ctx.outputs.phase }}
       arg: ${{ steps.ctx.outputs.arg }}
     steps:
-      # A runner job whose secret is missing is a no-op; with neither secret set, nothing
-      # below runs (no counter row, no checkout).
-      - name: Check runner secrets
+      # A runner job whose credential is missing is a no-op; with neither job enabled,
+      # nothing below runs (no counter row, no checkout).
+      - name: Check runner credentials
         id: gate
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           OPENCODE_PROVIDER_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
         run: |
           claude=false
           opencode=false
           if [ -n "$ANTHROPIC_API_KEY" ]; then
             claude=true
+          elif [ -n "$ANTHROPIC_FEDERATION_RULE_ID" ] && [ -n "$ANTHROPIC_ORGANIZATION_ID" ]; then
+            claude=true
+          elif [ -n "$ANTHROPIC_FEDERATION_RULE_ID" ]; then
+            echo "::notice::ANTHROPIC_ORGANIZATION_ID repo variable not set — federation needs it alongside ANTHROPIC_FEDERATION_RULE_ID; claude job no-op."
+          elif [ -n "$ANTHROPIC_ORGANIZATION_ID" ]; then
+            echo "::notice::ANTHROPIC_FEDERATION_RULE_ID repo variable not set — federation needs it alongside ANTHROPIC_ORGANIZATION_ID; claude job no-op."
           else
-            echo "::notice::ANTHROPIC_API_KEY not set — claude job no-op."
+            echo "::notice::Neither the ANTHROPIC_API_KEY secret nor the ANTHROPIC_FEDERATION_RULE_ID + ANTHROPIC_ORGANIZATION_ID repo variables are set — claude job no-op."
           fi
           if [ -n "$OPENCODE_PROVIDER_KEY" ]; then
             opencode=true
@@ -440,8 +454,8 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
-  # claude job — dispatch via claude-code-action@v1 (ANTHROPIC_API_KEY required).
-  # Runs only when the context job found ANTHROPIC_API_KEY set and resolved a phase.
+  # claude job — dispatch via claude-code-action@v1 (ANTHROPIC_API_KEY or federation).
+  # Runs only when the context job found a claude credential and resolved a phase.
   # OIDC auth via Claude GitHub App (id-token: write); requires one-time
   # `/install-github-app` in the consumer repo.
   # ---------------------------------------------------------------------------
@@ -456,7 +470,7 @@ jobs:
       issues: write
       actions: read
       # id-token: write — required for claude-code-action@v1 to authenticate as the
-      # Claude GitHub App via OIDC (getOidcToken).
+      # Claude GitHub App via OIDC (getOidcToken), and for the federation token exchange.
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -501,6 +515,13 @@ jobs:
           # orchestrator. GitHub MCP surface is always available; this workflow is
           # GitHub-tracker only (cloud=claude requires tracker=github).
           claude_args: "--allowed-tools=Bash,Edit,Write,Read,Grep,Glob,WebFetch,Skill,mcp__github__*"
+          # Workload identity federation: the action exchanges this job's GitHub OIDC token
+          # for a short-lived Claude API token. Unset variables pass empty; a set
+          # ANTHROPIC_API_KEY secret takes precedence.
+          anthropic_federation_rule_id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          anthropic_service_account_id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          anthropic_workspace_id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN: ${{ github.token }}

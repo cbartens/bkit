@@ -81,7 +81,10 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
     expect(advisory).toBeDefined();
     expect(advisory!.action).toContain(".bkit/templates/.github/workflows/bkit-cloud.yml");
-    expect(advisory!.action).toMatch(/Add `ANTHROPIC_API_KEY`/);
+    expect(advisory!.action).toMatch(/`ANTHROPIC_API_KEY` repo secret/);
+    expect(advisory!.action).toMatch(
+      /`ANTHROPIC_FEDERATION_RULE_ID` \+ `ANTHROPIC_ORGANIZATION_ID` repo variables/,
+    );
     expect(advisory!.action).toMatch(/install-github-app/);
     // Bare `Auto` must NOT appear in advisory text (migrated to bkit:auto)
     expect(advisory!.action).not.toMatch(/\bAuto\b(?! route)/);

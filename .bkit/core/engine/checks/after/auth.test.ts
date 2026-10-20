@@ -128,21 +128,30 @@ describe("hasGithubMcpServer", () => {
 // detectGhSecret
 // ---------------------------------------------------------------------------
 
+/** Routes `gh secret list` / `gh variable list` to the given names; `null` → that call fails. */
+function mockGhNames(names: { secret: string[] | null; variable: string[] | null }): void {
+  spawnSync.mockImplementation((cmd: string, args: readonly string[]) => {
+    const kind = args[0];
+    const listed = cmd === "gh" && (kind === "secret" || kind === "variable") ? names[kind] : null;
+    return listed === null
+      ? { status: 1, stdout: "" }
+      : { status: 0, stdout: listed.map((n) => `${n}\n`).join("") };
+  });
+}
+
 describe("detectGhSecret", () => {
   it("returns 'present' when gh CLI reports the named secret exists", () => {
-    execSync.mockReturnValue("ANTHROPIC_API_KEY\n");
+    mockGhNames({ secret: ["ANTHROPIC_API_KEY"], variable: [] });
     expect(detectGhSecret("ANTHROPIC_API_KEY")).toBe("present");
   });
 
   it("returns 'missing' when gh CLI reports no such secret", () => {
-    execSync.mockReturnValue("OTHER_SECRET\n");
+    mockGhNames({ secret: ["OTHER_SECRET"], variable: [] });
     expect(detectGhSecret("ANTHROPIC_API_KEY")).toBe("missing");
   });
 
-  it("returns 'unknown' when gh CLI throws", () => {
-    execSync.mockImplementation(() => {
-      throw new Error("command not found: gh");
-    });
+  it("returns 'unknown' when gh CLI fails (absent / unauthenticated)", () => {
+    mockGhNames({ secret: null, variable: null });
     expect(detectGhSecret("ANTHROPIC_API_KEY")).toBe("unknown");
   });
 });
@@ -152,52 +161,78 @@ describe("detectGhSecret", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectCiRouterSecrets", () => {
+  const FEDERATION_VARIABLES = ["ANTHROPIC_FEDERATION_RULE_ID", "ANTHROPIC_ORGANIZATION_ID"];
+  const CURRENT_ROUTER =
+    "name: bkit-cloud\n          anthropic_federation_rule_id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}\n";
+
+  function writeRouter(content: string, issueTracker = "github"): void {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker } }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"), content);
+  }
+
   it("returns empty when bkit-cloud.yml is absent", () => {
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
   });
 
-  it("any tracker: emits ONLY ANTHROPIC_API_KEY (bkit-cloud.yml is GitHub-only, no LINEAR dependency)", () => {
-    // bkit-cloud.yml is cloud=claude / GitHub-tracker only — no BKIT_LINEAR_API_KEY.
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "linear" } }),
-    );
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-auto\n",
-    );
-    execSync.mockReturnValue(""); // gh secret list returns no secrets
-    const findings = detectCiRouterSecrets(tmpDir);
-    expect(findings.map((f) => f.id)).toEqual(["anthropic-api-key-secret-missing"]);
+  it.each(["linear", "github"])(
+    "%s tracker, no claude credential: ONE finding naming the key and the federation variables (no BKIT_LINEAR_API_KEY)",
+    (tracker) => {
+      writeRouter(CURRENT_ROUTER, tracker);
+      mockGhNames({ secret: [], variable: [] });
+      const findings = detectCiRouterSecrets(tmpDir);
+      expect(findings.map((f) => f.id)).toEqual(["anthropic-api-key-secret-missing"]);
+      expect(findings[0]!.action).toContain("gh secret set ANTHROPIC_API_KEY");
+      for (const v of FEDERATION_VARIABLES)
+        expect(findings[0]!.action).toContain(`gh variable set ${v}`);
+      expect(findings[0]!.action).not.toContain("BKIT_LINEAR_API_KEY");
+    },
+  );
+
+  it("returns empty when the ANTHROPIC_API_KEY secret is present", () => {
+    writeRouter(CURRENT_ROUTER);
+    mockGhNames({ secret: ["ANTHROPIC_API_KEY", "BKIT_LINEAR_API_KEY"], variable: [] });
+    expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
   });
 
-  it("github tracker: emits ONLY ANTHROPIC — no BKIT_LINEAR_API_KEY advisory (issue #138)", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "github" } }),
-    );
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-auto\n",
-    );
-    execSync.mockReturnValue(""); // gh secret list returns no secrets
-    const findings = detectCiRouterSecrets(tmpDir);
-    expect(findings.map((f) => f.id)).toEqual(["anthropic-api-key-secret-missing"]);
+  it("no finding when federation variables are set and the adopted copy passes them", () => {
+    writeRouter(CURRENT_ROUTER);
+    mockGhNames({ secret: [], variable: FEDERATION_VARIABLES });
+    expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
   });
 
-  it("Linear tracker: returns empty when the required secret is present", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "linear" } }),
-    );
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-auto\n",
-    );
-    execSync.mockReturnValue("ANTHROPIC_API_KEY\nBKIT_LINEAR_API_KEY\n");
+  it("one federation variable only: missing-credential finding", () => {
+    writeRouter(CURRENT_ROUTER);
+    mockGhNames({ secret: [], variable: ["ANTHROPIC_FEDERATION_RULE_ID"] });
+    expect(detectCiRouterSecrets(tmpDir).map((f) => f.id)).toEqual([
+      "anthropic-api-key-secret-missing",
+    ]);
+  });
+
+  it("federation variables set but the adopted copy predates the federation inputs: stale-copy finding", () => {
+    writeRouter("name: bkit-cloud\n");
+    mockGhNames({ secret: [], variable: FEDERATION_VARIABLES });
+    const findings = detectCiRouterSecrets(tmpDir);
+    expect(findings.map((f) => f.id)).toEqual(["anthropic-federation-template-stale"]);
+    expect(findings[0]!.action).toContain(".bkit/templates/.github/workflows/bkit-cloud.yml");
+  });
+
+  it("key secret AND federation variables: the key shadows federation — finding says to delete the secret", () => {
+    writeRouter(CURRENT_ROUTER);
+    mockGhNames({ secret: ["ANTHROPIC_API_KEY"], variable: FEDERATION_VARIABLES });
+    const findings = detectCiRouterSecrets(tmpDir);
+    expect(findings.map((f) => f.id)).toEqual(["anthropic-api-key-shadows-federation"]);
+    expect(findings[0]!.action).toContain("gh secret delete ANTHROPIC_API_KEY");
+  });
+
+  it("silent when gh cannot list secrets or variables", () => {
+    writeRouter(CURRENT_ROUTER);
+    mockGhNames({ secret: null, variable: null });
+    expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
+    mockGhNames({ secret: [], variable: null });
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
   });
 });

@@ -308,7 +308,7 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     const cloudSetup = buildCloudSetupAdvisory(cwd);
     if (cloudSetup)
         phase3.push(cloudSetup);
-    // bkit-cloud.yml needs the ANTHROPIC_API_KEY repo secret.
+    // bkit-cloud.yml's claude job needs the ANTHROPIC_API_KEY repo secret or federation variables.
     for (const f of detectCiRouterSecrets(cwd))
         phase3.push(f);
     // bkit-cloud.yml also needs repo Actions write permissions + PR-creation

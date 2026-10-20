@@ -28,7 +28,7 @@ Three cloud stacks — each agent pairs with one tracker. Pick row for agent you
 | **opencode** (GitHub runner) | **A)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick phase + issue) · **B)** GitHub CI pass/fail → `bkit-cloud.yml` opencode job (requires `OPENCODE_PROVIDER_KEY` secret) · **C)** reactive `/oc` comment handler (self-installed, not bkit — see § Reactive comment handlers) | **GitHub** | **Linear** |
 | **Cursor** (native agent) | **A)** Cursor's built-in cloud-agent launch · **B)** Cursor's GitHub integration on PR events (CI pass/fail) · **C)** Linear → Cursor integration | **Linear** (+ GitHub PR events) | **GitHub Projects / Issues** |
 
-**Unified file — additive coexistence:** Claude + opencode share one `bkit-cloud.yml`: a `context` job resolves the phase once, then two runner jobs, each runtime-gated on its secret (`ANTHROPIC_API_KEY` claude, `OPENCODE_PROVIDER_KEY` opencode). Both jobs can fire on same CI event — both secrets → both agents; one secret → one agent. Cursor separate (no GH Action; native triggers). **Cursor cloud ↔ Linear.**
+**Unified file — additive coexistence:** Claude + opencode share one `bkit-cloud.yml`: a `context` job resolves the phase once, then two runner jobs, each runtime-gated on its credential (claude: `ANTHROPIC_API_KEY` secret or federation variables; opencode: `OPENCODE_PROVIDER_KEY`). Both jobs can fire on same CI event — both credentials → both agents; one → one agent. Cursor separate (no GH Action; native triggers). **Cursor cloud ↔ Linear.**
 
 **Manual dispatch (Claude or opencode, path A):** GitHub → **Actions** → **bkit-cloud** → **Run workflow** → `phase` (`ship` / `debug` / `design` / `plan` / `build`) + `issue`. On-demand/smoke-test for `design` / `plan` / `build`; `ship` / `debug` normally CI-fired. Dispatched `design` runs headless (`runtimeHeadless` = true on a GitHub runner): Grill asks nothing and records each recommended answer as `Assumed, not confirmed`. Dispatched `/bkit-auto` orchestrator → matching phase skill → brief from GitHub issue (MCP).
 
@@ -398,7 +398,7 @@ Routing **logic** in single bkit-managed slash-command orchestrator (`.bkit/core
 <!-- prettier-ignore -->
 |  | Lives in the repo (bkit-managed) | Lives in the online dashboard / GitHub (manual, one-time) |
 | --- | --- | --- |
-| **Claude** | `.github/workflows/bkit-cloud.yml` — `claude` job (opt-in via `bkit install --auto=claude`; GitHub-tracker only). Two-tier gate: (1) free tier — job `if: contains(head_commit.message, 'bkit [auto route]')` (zero runner minutes for non-opted-in commits); (2) cheap tier — in-job `gh issue view {ISSUE} --json labels` re-checks `bkit:auto` (live kill switch); then dispatches `claude-code-action` as the Claude GitHub App (OIDC, `id-token: write`). | GitHub repo secret: `ANTHROPIC_API_KEY` (`.bkit/.env` holds the same value as `BKIT_ANTHROPIC_API_KEY`). Claude GitHub App required (`/install-github-app`). The linked **GitHub issue** must carry `bkit:auto`. |
+| **Claude** | `.github/workflows/bkit-cloud.yml` — `claude` job (opt-in via `bkit install --auto=claude`; GitHub-tracker only). Two-tier gate: (1) free tier — job `if: contains(head_commit.message, 'bkit [auto route]')` (zero runner minutes for non-opted-in commits); (2) cheap tier — in-job `gh issue view {ISSUE} --json labels` re-checks `bkit:auto` (live kill switch); then dispatches `claude-code-action` as the Claude GitHub App (OIDC, `id-token: write`). | Claude credential: GitHub repo secret `ANTHROPIC_API_KEY` (`.bkit/.env` holds the same value as `BKIT_ANTHROPIC_API_KEY`) **or** keyless federation repo variables (§ Claude — workload identity federation). Claude GitHub App required (`/install-github-app`). The linked **GitHub issue** must carry `bkit:auto`. |
 | **opencode** | Same `.github/workflows/bkit-cloud.yml` — `opencode` job (opt-in via `bkit install --auto=opencode`; GitHub-tracker only). Same two-tier gate (same file, separate job). Dispatches via `opencode run "/bkit-auto $PHASE $ARG"`. No `id-token: write` — no OIDC; uses `github.token` for repo ops. | GitHub repo secret: `OPENCODE_PROVIDER_KEY` (set to your provider API key). Provider model committed in `.opencode/opencode.json`. The linked **GitHub issue** must carry `bkit:auto`. |
 | **Cursor** | Nothing — Cursor cloud agents have native triggers. | Cursor → Cloud Agents dashboard → Triggers → + Add trigger. Event: CI workflow completion on `feat/**` branches. Prompt (paste **literally**, no edits): `/bkit-auto $CI_STATUS $PR_NUMBER`. Concurrency: latest-supersedes. |
 
@@ -419,15 +419,38 @@ Flip **both** org and repo before first router run — else `actions/checkout` 4
 
 `workflow_run`-triggered runs do **not** inherit parent CI workflow's `permissions:` block (only fork-PR tokens get narrowed) — parent CI at `contents: read` fine.
 
-## bkit-cloud.yml — required GitHub repo secrets
+## bkit-cloud.yml — required GitHub repo credentials
 
 <!-- prettier-ignore -->
-| Secret | Job | Why | Scope |
+| Secret / variable | Job | Why | Scope |
 | --- | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | `claude` | `claude-code-action` authenticates against Anthropic. | API key with Claude Code access. |
+| `ANTHROPIC_API_KEY` secret | `claude` | `claude-code-action` authenticates against Anthropic. | API key with Claude Code access. Omit when using federation. |
+| `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` variables | `claude` | Keyless alternative: the action trades the job's GitHub OIDC token for a short-lived Claude API token. | IDs, not secrets — repo **variables**. Optional `ANTHROPIC_SERVICE_ACCOUNT_ID` / `ANTHROPIC_WORKSPACE_ID`. § Claude — workload identity federation. |
 | `OPENCODE_PROVIDER_KEY` | `opencode` | Fanned out to every cloud provider's env var name (`BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`, `BKIT_OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider is installed. | Provider API key for whichever provider you configured. |
 
-A `context` job checks both secrets and resolves phase + arg once; each runner job needs it and runs only when its own secret is set. Only `ANTHROPIC_API_KEY` → claude job only. Only `OPENCODE_PROVIDER_KEY` → opencode only. Both → both jobs (additive coexistence). **No `BKIT_LINEAR_API_KEY`** — `bkit-cloud.yml` GitHub-tracker only for both jobs. Workflow grants `id-token: write` per-job for claude only (opencode no OIDC).
+A `context` job (`Check runner credentials` step) checks both credentials and resolves phase + arg once; each runner job needs it and runs only when its own credential is set. Claude credential = `ANTHROPIC_API_KEY`, or **both** federation variables (one alone → `::notice::` naming the missing one, claude no-op). Only claude credential → claude job only. Only `OPENCODE_PROVIDER_KEY` → opencode only. Both → both jobs (additive coexistence). **No `BKIT_LINEAR_API_KEY`** — `bkit-cloud.yml` GitHub-tracker only for both jobs. Workflow grants `id-token: write` per-job for claude only (Claude GitHub App + federation token exchange; opencode no OIDC).
+
+## Claude — workload identity federation
+
+Keyless claude job: no long-lived `ANTHROPIC_API_KEY` stored in GitHub. `claude-code-action` asks GitHub for the job's OIDC token (issuer `https://token.actions.githubusercontent.com`, audience `https://api.anthropic.com`), Anthropic checks it against a federation rule, returns a short-lived Claude API token. Action refreshes it in the background on long runs.
+
+**Setup (one-time):**
+
+1. Claude Console → **Settings → Workload identity → Connect workload → GitHub Actions**. Creates the federation issuer, a service account, and a federation rule.
+2. Scope the rule to this repo's default branch — `bkit-cloud.yml` runs from it (`workflow_run` + `workflow_dispatch`):
+   - subject: `repo:<owner>/<repo>:ref:refs/heads/<default-branch>`
+   - claims: `repository_owner` = `<owner>`, `workflow_ref` = `<owner>/<repo>/.github/workflows/bkit-cloud.yml@refs/heads/<default-branch>`
+3. Set repo **variables** (IDs, not secrets):
+   ```sh
+   gh variable set ANTHROPIC_FEDERATION_RULE_ID --body='fdrl_...'
+   gh variable set ANTHROPIC_ORGANIZATION_ID --body='<organization-uuid>'
+   # optional: ANTHROPIC_SERVICE_ACCOUNT_ID (svac_...), ANTHROPIC_WORKSPACE_ID
+   ```
+4. Delete the key if one is set: `gh secret delete ANTHROPIC_API_KEY`. **A set key wins over federation** — the action uses the key and federation never runs. `bkit check` flags both-set (`anthropic-api-key-shadows-federation`).
+
+**Adopted copy predates federation:** variables set but `.github/workflows/bkit-cloud.yml` lacks the `anthropic_federation_rule_id:` input → claude job sees no credential. `bkit check` flags it (`anthropic-federation-template-stale`); re-copy from `.bkit/templates/.github/workflows/bkit-cloud.yml`, re-apply local edits (`runs-on`).
+
+**401 from token exchange:** rule subject/claims don't match the run's OIDC token. Console → Workload identity → issuer → auth history shows the presented subject; widen or fix the rule. A job on a non-default branch or an `environment:` has a different subject (`...:ref:refs/heads/<branch>` / `...:environment:<name>`).
 
 Slash command body already in checked-out repo (mirrored to `.claude/commands/bkit-auto.md` and `.opencode/commands/bkit-auto.md` at dev time via `bkit install`). Repo git/gh ops use auto-provided `github.token` scoped by workflow `permissions:` block.
 

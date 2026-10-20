@@ -162,8 +162,8 @@ Phase 3 emits credential findings as advisory text. Finding ids = audit trail:
 | Finding | Source | Surface |
 | --- | --- | --- |
 | `detectShellGhMcpToken` | `checks/after/auth.ts` | `BKIT_GH_TOKEN` missing / empty in the shell — gated on a configured `github` MCP server |
-| `detectGhSecret` | `checks/after/auth.ts` | GitHub Actions repo secret presence |
-| `detectCiRouterSecrets` | `checks/after/auth.ts` | `bkit-cloud.yml` installed but its `ANTHROPIC_API_KEY` repo secret unset |
+| `detectGhSecret` | `checks/after/auth.ts` | GitHub Actions repo secret presence (`gh secret list`; `gh variable list` for repo variables via the same helper) |
+| `detectCiRouterSecrets` | `checks/after/auth.ts` | `bkit-cloud.yml` installed and: no claude credential (`anthropic-api-key-secret-missing`); key set alongside federation vars (`anthropic-api-key-shadows-federation`); federation vars set but adopted copy lacks the federation inputs (`anthropic-federation-template-stale`) |
 | `buildCloudDashboardsAdvisory` | `checks/after/auth.ts` | Cloud-dashboard secret checklist (GitHub Actions + Cursor + Claude) |
 
 ## Runtime capability row

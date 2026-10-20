@@ -19,7 +19,7 @@
 
 Action SHA-pinning + dependency-update pipeline (Renovate / Dependabot, Trivy scan, CVE handling) → `deployments.md` § Dependency updaters. Here: security invariants only.
 
-**Token isolation:** Renovate PRs get restricted `GITHUB_TOKEN`, no access to cloud lane model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`); `bkit-cloud.yml` does not dispatch on them. Compromised dependency PR cannot reach agent API credentials.
+**Token isolation:** Renovate PRs get restricted `GITHUB_TOKEN`, no access to cloud lane model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`) or federated Claude tokens (minted only by a `bkit-cloud.yml` job matching the federation rule); `bkit-cloud.yml` does not dispatch on them. Compromised dependency PR cannot reach agent API credentials.
 
 **Scanner isolation:** CI vulnerability scanner (e.g. `bkit-trivy.yml`): `contents: read`, `persist-credentials: false`, no secret; image or action pinned by digest, never a floating tag. Setup → `.bkit/templates.md` § Trivy.
 

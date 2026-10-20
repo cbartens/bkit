@@ -285,7 +285,7 @@ export function buildCloudSetupAdvisory(cwd) {
             id: "cloud-router",
             severity: "advisory",
             detect: "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present). The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done.",
-            action: `The workflow requires: the \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.\n\nbkit's agents comment as you, so every workflow those comments trigger notifies you, even ones that skip. To see only failures: GitHub → Settings → Notifications → System → Actions → "Only notify for failed workflows".`,
+            action: `The workflow requires: the \`ANTHROPIC_API_KEY\` repo secret OR the \`ANTHROPIC_FEDERATION_RULE_ID\` + \`ANTHROPIC_ORGANIZATION_ID\` repo variables (keyless workload identity federation), the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.\n\nbkit's agents comment as you, so every workflow those comments trigger notifies you, even ones that skip. To see only failures: GitHub → Settings → Notifications → System → Actions → "Only notify for failed workflows".`,
         };
     }
     // No router present — distinguish opt-out from undecided.
@@ -301,7 +301,7 @@ export function buildCloudSetupAdvisory(cwd) {
         severity: "advisory",
         detect: "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-cloud.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
         action: "Optional post-install decision. For a GitHub-tracker repo: `pnpm bkit install --auto=claude --tracker=github`. For a Linear-tracker repo: `pnpm bkit install --auto=cursor --tracker=linear`.\n\n" +
-            "Prerequisites for `--auto=claude`: `ANTHROPIC_API_KEY` repo secret + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
+            "Prerequisites for `--auto=claude`: `ANTHROPIC_API_KEY` repo secret (or the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables for keyless workload identity federation) + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
             'To opt out and silence this advisory, set `bkit.cloudAgents` to `"none"` in package.json.',
     };
 }

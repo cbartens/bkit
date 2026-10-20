@@ -2,7 +2,7 @@
 // the cloud router's), and the cloud-dashboard secrets checklist.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 /**
@@ -69,26 +69,32 @@ export function detectGhMcpToken(cwd) {
     return null;
 }
 /**
+ * Names of the consumer repo's GitHub Actions secrets or variables (repo level only).
+ * `null` if gh CLI unavailable, unauthenticated, or not a GitHub repo.
+ */
+function listGhNames(kind) {
+    const res = spawnSync("gh", [kind, "list", "--json", "name", "-q", ".[].name"], {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 5000,
+    });
+    if (res.status !== 0 || typeof res.stdout !== "string")
+        return null;
+    return res.stdout
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+}
+/**
  * Detect whether a named secret is set on the consumer's GitHub repo.
  * Returns "present" | "missing" | "unknown".
  * "unknown" if gh CLI unavailable, unauthenticated, or not a GitHub repo.
  */
 export function detectGhSecret(secretName) {
-    try {
-        const out = execSync(`gh secret list --json name -q '.[].name'`, {
-            encoding: "utf-8",
-            stdio: ["ignore", "pipe", "ignore"],
-            timeout: 5000,
-        });
-        const names = out
-            .split("\n")
-            .map((s) => s.trim())
-            .filter(Boolean);
-        return names.includes(secretName) ? "present" : "missing";
-    }
-    catch {
+    const names = listGhNames("secret");
+    if (names === null)
         return "unknown";
-    }
+    return names.includes(secretName) ? "present" : "missing";
 }
 /**
  * Build the consolidated "three locations to sync secrets" advisory. Fires when
@@ -105,7 +111,7 @@ export function buildCloudDashboardsAdvisory(cwd) {
     const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
     if (!hasRouter && !hasClaude && !hasCursor)
         return null;
-    // cloud=claude path (bkit-cloud.yml): GitHub-tracker only, ANTHROPIC_API_KEY only.
+    // cloud=claude path (bkit-cloud.yml): GitHub-tracker only, ANTHROPIC_API_KEY or federation.
     // cloud=cursor path (.cursor/): BKIT_LINEAR_API_KEY for Cursor dashboard.
     // Distinguish by recorded variant; fall back to presence-based detection.
     const recordedVariant = readBkitConfig(cwd).cloudAgents;
@@ -115,7 +121,8 @@ export function buildCloudDashboardsAdvisory(cwd) {
         ? "       gh secret set BKIT_LINEAR_API_KEY    --body='<value>'\n\n" +
             "       Verify: `gh secret list | grep -E 'BKIT_LINEAR_API_KEY'`\n\n"
         : "       gh secret set ANTHROPIC_API_KEY --body='<value>'\n\n" +
-            "       Verify: `gh secret list | grep -E 'ANTHROPIC_API_KEY'`\n\n";
+            "       Verify: `gh secret list | grep -E 'ANTHROPIC_API_KEY'`\n\n" +
+            "       Keyless alternative for bkit-cloud.yml (workload identity federation): leave the secret unset and set the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables (`gh variable set`) from a Claude Console federation rule.\n\n";
     const vendorNote = isCursorCloud
         ? "BKIT_LINEAR_API_KEY is read from the Linear dashboard (https://linear.app/settings/api)."
         : "ANTHROPIC_API_KEY is read from the Anthropic dashboard (https://console.anthropic.com/settings/keys); `.bkit/.env` holds the same value as BKIT_ANTHROPIC_API_KEY. The Claude GitHub App (`/install-github-app`) is also required for `cloud=claude`.";
@@ -133,35 +140,60 @@ export function buildCloudDashboardsAdvisory(cwd) {
             vendorNote,
     };
 }
+/** Repo variables that, both set, switch bkit-cloud.yml's claude job to workload identity federation. */
+const FEDERATION_VARIABLES = ["ANTHROPIC_FEDERATION_RULE_ID", "ANTHROPIC_ORGANIZATION_ID"];
 /**
- * Detect whether the GitHub Actions secrets `bkit-cloud.yml` needs are set.
- * Only fires when `.github/workflows/bkit-cloud.yml` exists. `ANTHROPIC_API_KEY` is
- * always required (claude-code-action) for the cloud=claude path. The workflow is
- * GitHub-tracker only — no `BKIT_LINEAR_API_KEY` dependency. Returns one finding per
- * missing secret.
+ * Detect whether `bkit-cloud.yml`'s claude job has a credential. Only fires when
+ * `.github/workflows/bkit-cloud.yml` exists. The claude job (claude-code-action) takes the
+ * `ANTHROPIC_API_KEY` repo secret OR workload identity federation (both
+ * `FEDERATION_VARIABLES` repo variables). The workflow is GitHub-tracker only — no
+ * `BKIT_LINEAR_API_KEY` dependency. Silent when gh cannot list secrets or variables.
  */
 export function detectCiRouterSecrets(cwd) {
-    const findings = [];
     const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
     if (!fs.existsSync(routerPath))
-        return findings;
-    // bkit-cloud.yml is cloud=claude / GitHub-tracker only — ANTHROPIC_API_KEY (GHA secret
-    // name claude-code-action reads). Local `.bkit/.env` stores the same value as
-    // BKIT_ANTHROPIC_API_KEY. No BKIT_LINEAR_API_KEY dependency.
-    const required = ["ANTHROPIC_API_KEY"];
-    for (const name of required) {
-        const status = detectGhSecret(name);
-        if (status === "missing") {
-            findings.push({
-                id: `${name.toLowerCase().replace(/_/g, "-")}-secret-missing`,
+        return [];
+    const key = detectGhSecret("ANTHROPIC_API_KEY");
+    const variables = listGhNames("variable");
+    if (key === "unknown" || variables === null)
+        return [];
+    const federated = FEDERATION_VARIABLES.every((v) => variables.includes(v));
+    if (key === "present" && federated) {
+        return [
+            {
+                id: "anthropic-api-key-shadows-federation",
                 severity: "advisory",
-                detect: `gh secret list confirms ${name} secret is NOT set on this GitHub repo.`,
-                action: `\`.github/workflows/bkit-cloud.yml\` requires ${name} to invoke its Claude Code action. Without it, the workflow exits no-op.\n\nSet the secret:\n\n` +
-                    `    gh secret set ${name} --body='<paste-value-here>'\n\n` +
-                    `Then verify: \`gh secret list | grep ${name}\`. The workflow itself does not need redeploying — secrets are read at run time.`,
-            });
-        }
-        // "unknown" → silent skip (CLI absent / unauthenticated).
+                detect: "The `ANTHROPIC_API_KEY` repo secret and the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables are all set. claude-code-action uses the key and skips workload identity federation.",
+                action: "To run keyless, delete the secret: `gh secret delete ANTHROPIC_API_KEY`. To stay on the key, delete the variables: `gh variable delete ANTHROPIC_FEDERATION_RULE_ID` and `gh variable delete ANTHROPIC_ORGANIZATION_ID`.",
+            },
+        ];
     }
-    return findings;
+    if (key === "present")
+        return [];
+    if (federated) {
+        if (fs.readFileSync(routerPath, "utf-8").includes("anthropic_federation_rule_id:"))
+            return [];
+        return [
+            {
+                id: "anthropic-federation-template-stale",
+                severity: "advisory",
+                detect: "The `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables are set, but `.github/workflows/bkit-cloud.yml` does not pass `anthropic_federation_rule_id` to claude-code-action — the claude job exits no-op.",
+                action: "Re-copy the template: `cp .bkit/templates/.github/workflows/bkit-cloud.yml .github/workflows/bkit-cloud.yml`, then re-apply your own edits (the `runs-on` runner at minimum).",
+            },
+        ];
+    }
+    return [
+        {
+            id: "anthropic-api-key-secret-missing",
+            severity: "advisory",
+            detect: "gh confirms neither the `ANTHROPIC_API_KEY` repo secret nor both `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables are set on this GitHub repo.",
+            action: "`.github/workflows/bkit-cloud.yml`'s claude job needs one claude credential; without it, the job exits no-op. Set ONE of:\n\n" +
+                "- API key:\n\n    gh secret set ANTHROPIC_API_KEY --body='<paste-value-here>'\n\n" +
+                "- Workload identity federation (keyless): Claude Console → Settings → Workload identity → Connect workload → GitHub Actions creates the issuer, service account and federation rule. Then:\n\n" +
+                "    gh variable set ANTHROPIC_FEDERATION_RULE_ID --body='fdrl_...'\n" +
+                "    gh variable set ANTHROPIC_ORGANIZATION_ID --body='<organization-uuid>'\n\n" +
+                "  Optional: `ANTHROPIC_SERVICE_ACCOUNT_ID` (`svac_...`) and `ANTHROPIC_WORKSPACE_ID` (`wrkspc_...`, needed when the rule covers more than one workspace).\n\n" +
+                "Then verify: `gh secret list` / `gh variable list`. The workflow itself does not need redeploying — both are read at run time.",
+        },
+    ];
 }

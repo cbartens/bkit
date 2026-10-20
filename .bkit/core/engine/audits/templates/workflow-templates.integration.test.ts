@@ -25,6 +25,18 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
     );
   });
 
+  it("claude step passes the four workload identity federation inputs from repo variables", () => {
+    const claudeStep = yml.slice(yml.indexOf("uses: anthropics/claude-code-action@"));
+    for (const [input, variable] of [
+      ["anthropic_federation_rule_id", "ANTHROPIC_FEDERATION_RULE_ID"],
+      ["anthropic_organization_id", "ANTHROPIC_ORGANIZATION_ID"],
+      ["anthropic_service_account_id", "ANTHROPIC_SERVICE_ACCOUNT_ID"],
+      ["anthropic_workspace_id", "ANTHROPIC_WORKSPACE_ID"],
+    ]) {
+      expect(claudeStep).toContain(`${input}: \${{ vars.${variable} }}`);
+    }
+  });
+
   it("every job's runs-on is the {{CLOUD_RUNNER}} placeholder the consumer fills in", () => {
     const runsOn = [...yml.matchAll(/^ {4}runs-on: (.+)$/gm)].map((m) => m[1]);
     expect(runsOn).toEqual(["{{CLOUD_RUNNER}}", "{{CLOUD_RUNNER}}", "{{CLOUD_RUNNER}}"]);
