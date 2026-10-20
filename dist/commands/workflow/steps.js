@@ -19,7 +19,7 @@ import { CommandError, EXIT, repoRoot, runGit, } from "../lib.js";
 import { FID_PATTERNS, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
 import { lockRoot, readHolder, resolveMonth, workflowLockPath } from "./locks.js";
-import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, statusFile, str, } from "./status.js";
+import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readRunsAt, statusFile, str, } from "./status.js";
 const VERDICT_END = "<!-- verdict:end -->";
 const DEFAULT_VERDICTS = ["PASS", "CONCERNS", "FAIL"];
 const STRATEGIES = ["STANDARD", "PIVOT", "FINAL"];
@@ -365,7 +365,8 @@ function gateChecks(cwd, o) {
     }
     if (o.file === undefined)
         return checks;
-    const rows = activeDoneSteps(readRuns(o.file), o.workflow, { step: o.step, subPlan: o.subPlan });
+    const runs = o.ref === undefined ? readRuns(o.file) : readRunsAt(o.file, o.ref);
+    const rows = activeDoneSteps(runs, o.workflow, { step: o.step, subPlan: o.subPlan });
     const row = rows.filter((r) => o.attempt === undefined || r.attempt === o.attempt).at(-1);
     const rowProblems = [];
     if (!row) {
@@ -981,6 +982,11 @@ export const stepsCommand = {
                     required: false,
                     help: "path to status.jsonl; without it the status row is not checked (Step 1)",
                 },
+                {
+                    name: "ref",
+                    type: "string",
+                    help: "read --file as committed on this ref (e.g. origin/dev), not from disk",
+                },
                 WORKFLOW_FLAG,
                 STEP_FLAG,
                 SUB_PLAN_FLAG,
@@ -1027,7 +1033,7 @@ export const stepsCommand = {
             ],
             output: { pass: "true when every check passed", checks: "[{check, ok, detail}] per check" },
             exitCodes: {
-                [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON",
+                [EXIT_NO_STATUS]: "status.jsonl missing (on disk, or on --ref), unreadable, or not valid NDJSON",
             },
             run: (ctx) => {
                 const f = ctx.flags;
@@ -1038,11 +1044,17 @@ export const stepsCommand = {
                     throw new CommandError(EXIT.USAGE, "give --attempt or --attempt-of, not both");
                 if (f.attemptOf !== undefined && file === undefined)
                     throw new CommandError(EXIT.USAGE, "--attempt-of needs --file");
+                const ref = str(f.ref);
+                if (ref !== undefined && file === undefined)
+                    throw new CommandError(EXIT.USAGE, "--ref needs --file");
+                if (ref !== undefined && f.attemptOf !== undefined)
+                    throw new CommandError(EXIT.USAGE, "--attempt-of reads the file on disk; give --attempt with --ref");
                 const attempt = f.attemptOf !== undefined
                     ? derivedCounter(file, workflow, String(f.attemptOf), subPlan, undefined)
                     : nonNegativeInt(f.attempt, "attempt");
                 const checks = gateChecks(ctx.cwd, {
                     file,
+                    ref,
                     workflow,
                     step: String(f.step),
                     subPlan,

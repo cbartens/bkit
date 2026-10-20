@@ -275,6 +275,24 @@ describe("bkit steps gate", () => {
     expect(r.err).toContain("no DONE build-plan-verify row");
   });
 
+  it("--ref reads the status file as committed on that ref, not from disk", async () => {
+    const cwd = repo();
+    await run(cwd, doneArgs("--attempt=next"));
+    fs.rmSync(path.join(cwd, "logs/status.jsonl"));
+    expect((await gate(cwd)).code).toBe(3);
+    const r = await gate(cwd, "--ref=HEAD");
+    expect(r.code).toBe(0);
+    expect(r.json.pass).toBe(true);
+  });
+
+  it("--ref exits 3 when the ref does not carry the status file", async () => {
+    const cwd = repo();
+    await run(cwd, doneArgs("--attempt=next"));
+    const r = await gate(cwd, "--ref=HEAD~1");
+    expect(r.code).toBe(3);
+    expect(r.err).toContain("HEAD~1:logs/status.jsonl");
+  });
+
   it("fails on a placeholder left in the artifact", async () => {
     const cwd = repo();
     await run(cwd, doneArgs());

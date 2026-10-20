@@ -567,15 +567,6 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 **Locks:** Step 1 takes {{lock}} with `bkit locks acquire --kind=workflow` (hold `token`); {{release}}. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
 ```
 
-### workflow-dev-lock
-
-- workflow: where-used
-- anchored: yes
-
-```text
-**Dev lock:** {{holders}} `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout).
-```
-
 ### workflow-status-branch
 
 - workflow: where-used

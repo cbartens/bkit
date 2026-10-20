@@ -2,9 +2,10 @@
 // bkit-plan.md against a real repo, remote and worktree. The `branches land`
 // line is extracted from the workflow's Close Workflow block and run as
 // written, with its placeholders filled — the test does not keep a second copy
-// of the squash / commit / cleanup logic. `bkit branches land` (dev lock,
-// squash, roadmap row, ledgers commit, dev push, worktree removal) runs from
-// the repo's built dist/, linked into the fixture at the path Step 1 resolves.
+// of the squash / commit / cleanup logic. `bkit branches land` (squash in a
+// throwaway origin/dev worktree, roadmap row, ledgers commit, dev push, local dev
+// fast-forward, worktree removal) runs from the repo's built dist/, linked into
+// the fixture at the path Step 1 resolves.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -131,19 +132,45 @@ function expectBranchKept(fx: Fixture): void {
 }
 
 describe.each(["design", "plan"] as const)("bkit-%s.md local close squash", (workflow) => {
-  it("keeps feat/{FID} and pushes nothing when git refuses the squash", () => {
+  it("lands past another session's uncommitted edit to a file the close changes, and keeps the edit", () => {
     const fx = initFixture(workflow);
-    // Another session's uncommitted edit to a file the squash also changes.
     write(path.join(fx.repo, "docs/roadmap.md"), "# Roadmap\n- edited by another session\n");
 
     const res = runClose(workflow, fx.repo);
 
-    expect(res.status).not.toBe(0);
-    expect(res.stderr).toContain(`squash of feat/${FID} into dev failed`);
-    expectBranchKept(fx);
+    expect(res.status, res.stderr).toBe(0);
+    expect(git(fx.repo, "rev-parse", `origin/dev:${fx.docPath}`)).not.toBe("");
+    // The fast-forward would overwrite the edit, so git refuses it and local dev stays put.
+    expect(res.stderr).toContain("local dev not fast-forwarded");
+    expect(git(fx.repo, "rev-parse", "dev")).toBe(fx.devBefore);
     expect(fs.readFileSync(path.join(fx.repo, "docs/roadmap.md"), "utf-8")).toContain(
       "another session",
     );
+  });
+
+  it("lands without pushing local dev's own commits, and leaves local dev where it was", () => {
+    const fx = initFixture(workflow);
+    write(path.join(fx.repo, "src/app.ts"), "export const local = 1;\n");
+    git(fx.repo, "commit", "-q", "-am", "local only");
+    const localDev = git(fx.repo, "rev-parse", "dev");
+
+    const res = runClose(workflow, fx.repo);
+
+    expect(res.status, res.stderr).toBe(0);
+    expect(git(fx.repo, "rev-parse", "dev")).toBe(localDev);
+    expect(git(fx.repo, "log", "--format=%s", "origin/dev")).not.toContain("local only");
+    expect(git(fx.repo, "rev-parse", `origin/dev:${fx.docPath}`)).not.toBe("");
+  });
+
+  it("leaves the main checkout on its branch and moves only the dev pointer", () => {
+    const fx = initFixture(workflow);
+    git(fx.repo, "checkout", "-q", "-b", "elsewhere");
+
+    const res = runClose(workflow, fx.repo);
+
+    expect(res.status, res.stderr).toBe(0);
+    expect(git(fx.repo, "branch", "--show-current")).toBe("elsewhere");
+    expect(git(fx.repo, "rev-parse", "dev")).toBe(remoteDev(fx.repo));
   });
 
   it("keeps feat/{FID} and pushes nothing when the squash does not carry this run's doc", () => {

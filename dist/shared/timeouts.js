@@ -16,6 +16,12 @@ export const TIMEOUTS = {
     SHIP_DEV_LOCK_STALE_S: 900,
     /** Seconds to contend for `.dev.lock` before giving up. */
     SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S: 600,
+    /** Design / plan close: tries at the dev push (dev moved underneath) and at the PR merge. */
+    LAND_ATTEMPTS: 10,
+    /** Seconds before the first retry of a close; doubles each retry up to LAND_BACKOFF_CAP_S. */
+    LAND_BACKOFF_START_S: 2,
+    /** Longest single wait between close retries, in seconds. */
+    LAND_BACKOFF_CAP_S: 30,
     /** Seconds a registry answer for the newest published bkit is reused before asking again. */
     BKIT_LATEST_CACHE_S: 86400,
     /** Seconds a failed registry lookup is remembered, so an offline run does not wait on every call. */

@@ -35,11 +35,18 @@ import { bkitVersionStatus, type BkitVersionStatus } from "../../shared/bkit-lat
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { commitBookkeeping } from "./ledgers.js";
 import { acquireDevLock, lockRoot, releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
-import { closeTransportRow, crossCheckFile, mergePr, openPrFor, probePr } from "./prs.js";
+import {
+  closeTransportRow,
+  crossCheckRows,
+  mergePr,
+  openPrFor,
+  probePr,
+  updateBranch,
+} from "./prs.js";
 import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
-import { readStatusRows } from "./status.js";
-import { removeWorktree } from "./worktrees.js";
+import { readStatusRows, readStatusRowsAt } from "./status.js";
+import { removeWorktree, worktreeDir } from "./worktrees.js";
 import {
   COULD_NOT_RUN_EXIT_CODES,
   LOCKFILE_REGENERATE,
@@ -915,122 +922,188 @@ interface Landed {
   shape: "local" | "pr";
   transport: "git" | "gh" | "mcp";
   sha: string;
-  canonicalRef: string;
   prNumber: number | null;
-  worktree: Record<string, unknown> | null;
+  /** Pushes the direct close took; 0 for a PR close. */
+  pushAttempts: number;
 }
 
 class Stop extends CommandError {}
 
+/** A dev push git rejected only because dev moved underneath: rebuild on the new dev, push again. */
+const NON_FAST_FORWARD = /\[rejected\][^\n]*\((?:fetch first|non-fast-forward)\)/;
+
 /**
- * The local close: under the dev lock, squash `feat/{fid}` into dev in the main
- * checkout, check the staged canonical docs are the branch's, commit the
- * bookkeeping plus what the squash brought, push dev, remove the worktree.
+ * Milliseconds to wait before retry `retry` (1-based) of a close: `startS`
+ * doubling per retry, capped at `capS`, then jittered down by up to half so two
+ * closes that collided once do not retry in step.
  */
-async function landLocal(
-  ctx: RunContext,
-  root: string,
-  o: { workflow: string; fid: string; month: string },
-): Promise<Landed> {
-  const feat = `feat/${o.fid}`;
-  const lock = await acquireDevLock({
-    cwd: root,
-    workflow: o.workflow,
-    fid: o.fid,
-    deadlineS: TIMEOUTS.SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S,
-    log: ctx.log,
-  });
-  try {
-    runGit(root, ["checkout", DEV]);
-    const on = currentBranch(root);
-    if (on !== DEV)
-      throw new Stop(EXIT_NOT_DEV, `not on dev after checkout (on '${on}') — aborting dev ops`);
-    const stray = (
-      git(root, ["status", "--porcelain", "-uall", "--", `docs/plans/${o.month}/logs/${o.fid}/`]) ??
-      ""
-    )
-      .split("\n")
-      .filter((l) => l.startsWith("??"));
-    if (stray.length) {
-      throw new Stop(
-        EXIT_LAND_STOPPED,
-        `${o.fid} artifacts written to the main checkout instead of the worktree:\n${stray.join("\n")}\nMove them under .worktrees/${o.fid}/ or delete them, then re-run.`,
-      );
-    }
-    if (!runGit(root, ["pull", "--ff-only", REMOTE, DEV]).ok)
-      throw new Stop(EXIT_PULL_FAILED, "dev fast-forward failed");
-    const squash = runGit(root, ["merge", "--squash", "-X", "ours", feat]);
-    if (!squash.ok) {
-      throw new Stop(
-        EXIT_LAND_STOPPED,
-        `squash of ${feat} into dev failed — nothing committed or pushed; ${feat} and its worktree kept. Clear what git names from the main checkout, then re-run: ${squash.stderr}`,
-      );
-    }
-    const staged = (git(root, ["diff", "--cached", "--name-only"]) ?? "")
-      .split("\n")
-      .filter((p) => p !== "" && !CLOSE_DOCS.test(p));
-    if (staged.length)
-      throw new Stop(
-        EXIT_LAND_STOPPED,
-        `${o.workflow} close staged non-doc files:\n${staged.join("\n")}`,
-      );
-    const docs = canonicalDocs(root, feat, o.workflow, o.month, o.fid);
-    const main = `docs/plans/${o.month}/${o.fid}-${o.workflow}.md`;
-    if (!docs.includes(main))
-      throw new Stop(
-        EXIT_LAND_STOPPED,
-        `${feat} carries no ${main} — nothing committed or pushed; ${feat} kept`,
-      );
-    const unlanded = docs.filter(
-      (d) =>
-        git(root, ["rev-parse", "-q", "--verify", `:${d}`]) !==
-        git(root, ["rev-parse", `${feat}:${d}`]),
+export function landBackoffMs(
+  retry: number,
+  random: () => number = Math.random,
+  startS: number = TIMEOUTS.LAND_BACKOFF_START_S,
+  capS: number = TIMEOUTS.LAND_BACKOFF_CAP_S,
+): number {
+  const s = Math.min(startS * 2 ** (retry - 1), capS);
+  return Math.round(s * 1000 * (0.5 + random() / 2));
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** The throwaway checkout a close is built in, beside the feature worktrees. */
+const landDir = (root: string, fid: string) => path.join(root, ".worktrees", `_land-${fid}`);
+
+function dropLandTree(root: string, dir: string): void {
+  if (fs.existsSync(dir)) runGit(root, ["worktree", "remove", "--force", dir]);
+  runGit(root, ["worktree", "prune"]);
+}
+
+/** This run's artifacts written untracked into the main checkout instead of the worktree stop the close. */
+function strayCheck(root: string, month: string, fid: string): void {
+  const stray = (
+    git(root, ["status", "--porcelain", "-uall", "--", `docs/plans/${month}/logs/${fid}/`]) ?? ""
+  )
+    .split("\n")
+    .filter((l) => l.startsWith("??"));
+  if (stray.length) {
+    throw new Stop(
+      EXIT_LAND_STOPPED,
+      `${fid} artifacts written to the main checkout instead of the worktree:\n${stray.join("\n")}\nMove them under .worktrees/${fid}/ or delete them, then re-run.`,
     );
-    if (unlanded.length) {
-      throw new Stop(
-        EXIT_LAND_STOPPED,
-        `squash did not stage the ${feat} copy of:\n${unlanded.join("\n")}\nnothing committed or pushed; ${feat} kept; the main checkout index still holds the squash`,
-      );
-    }
-    appendFeature(root, { workflow: o.workflow, fid: o.fid }, ctx.log);
-    commitBookkeeping(
-      {
-        root,
-        month: o.month,
-        fid: o.fid,
-        scope: "core",
-        mode: "commit-allow-empty",
-        squashOf: feat,
-        message: `docs(${o.fid}): ${o.workflow} DONE bkit [skip ci]`,
-      },
-      ctx.log,
-    );
-    if (!runGit(root, ["push", REMOTE, DEV]).ok)
-      throw new Stop(EXIT_PUSH_FAILED, "dev push failed");
-    const sha = git(root, ["rev-parse", "HEAD"]) ?? "";
-    let worktree: Record<string, unknown> | null = null;
-    try {
-      worktree = { ...removeWorktree(root, o.fid, feat, ctx.log) };
-    } catch (err) {
-      // The close landed; a leftover worktree is a human's to remove.
-      ctx.log(
-        `worktree removal failed — remove .worktrees/${o.fid} by hand: ${(err as Error).message}`,
-      );
-    }
-    return { shape: "local", transport: "git", sha, canonicalRef: DEV, prNumber: null, worktree };
-  } finally {
-    releaseLock(lock.path, { workflow: o.workflow, fid: o.fid, token: lock.token });
   }
 }
 
 /**
- * The PR close (a runtime that cannot push dev): commit the roadmap row on the
- * branch, push it, open or reuse the PR, squash-merge it with an empty body. gh
- * missing → EXIT.USE_MCP with what to create / merge; re-run with `--pr` (and
- * `--merged-sha` once merged).
+ * Build the close in `dir`, a detached origin/dev checkout: squash `branch` with
+ * -X ours, check only docs came and the canonical docs are the branch's copy, add
+ * the roadmap row, commit `{workflow} DONE`.
  */
-function landPr(
+function buildClose(
   ctx: RunContext,
+  dir: string,
+  o: { workflow: string; fid: string; month: string; branch: string },
+): void {
+  const squash = runGit(dir, ["merge", "--squash", "-X", "ours", o.branch]);
+  if (!squash.ok) {
+    throw new Stop(
+      EXIT_LAND_STOPPED,
+      `squash of ${o.branch} onto ${UPSTREAM} failed — nothing landed; ${o.branch} and its worktree kept: ${squash.stderr}`,
+    );
+  }
+  const staged = (git(dir, ["diff", "--cached", "--name-only"]) ?? "")
+    .split("\n")
+    .filter((p) => p !== "" && !CLOSE_DOCS.test(p));
+  if (staged.length)
+    throw new Stop(
+      EXIT_LAND_STOPPED,
+      `${o.workflow} close staged non-doc files:\n${staged.join("\n")}`,
+    );
+  const docs = canonicalDocs(dir, o.branch, o.workflow, o.month, o.fid);
+  const main = `docs/plans/${o.month}/${o.fid}-${o.workflow}.md`;
+  if (!docs.includes(main))
+    throw new Stop(
+      EXIT_LAND_STOPPED,
+      `${o.branch} carries no ${main} — nothing landed; ${o.branch} kept`,
+    );
+  const unlanded = docs.filter(
+    (d) =>
+      git(dir, ["rev-parse", "-q", "--verify", `:${d}`]) !==
+      git(dir, ["rev-parse", `${o.branch}:${d}`]),
+  );
+  if (unlanded.length) {
+    throw new Stop(
+      EXIT_LAND_STOPPED,
+      `squash did not stage the ${o.branch} copy of:\n${unlanded.join("\n")}\nnothing landed; ${o.branch} kept`,
+    );
+  }
+  appendFeature(dir, { workflow: o.workflow, fid: o.fid }, ctx.log);
+  commitBookkeeping(
+    {
+      root: dir,
+      month: o.month,
+      fid: o.fid,
+      scope: "core",
+      mode: "commit-allow-empty",
+      squashOf: o.branch,
+      message: `docs(${o.fid}): ${o.workflow} DONE bkit [skip ci]`,
+    },
+    ctx.log,
+  );
+}
+
+/**
+ * The direct close, every runtime: build it in `.worktrees/_land-{fid}` off a
+ * fresh origin/dev and push it as dev. The main checkout is never touched. dev
+ * moved underneath → rebuild on the new dev and push again, with backoff,
+ * LAND_ATTEMPTS pushes in all. Any other refusal → null: the PR close takes over.
+ */
+async function landDirect(
+  ctx: RunContext,
+  root: string,
+  o: { workflow: string; fid: string; month: string; branch: string },
+): Promise<Landed | null> {
+  const dir = landDir(root, o.fid);
+  for (let attempt = 1; ; attempt++) {
+    let wait = 0;
+    dropLandTree(root, dir);
+    try {
+      if (!runGit(root, ["fetch", REMOTE, DEV]).ok)
+        throw new Stop(
+          EXIT_FETCH_FAILED,
+          `git fetch ${REMOTE} ${DEV} failed — nothing landed; ${o.branch} kept`,
+        );
+      const added = runGit(root, ["worktree", "add", "--detach", dir, UPSTREAM]);
+      if (!added.ok)
+        throw new Stop(
+          EXIT_LAND_STOPPED,
+          `could not create ${dir} — nothing landed: ${added.stderr}`,
+        );
+      buildClose(ctx, dir, o);
+      const pushed = runGit(dir, ["push", REMOTE, `HEAD:${DEV}`]);
+      if (pushed.ok) {
+        const sha = git(dir, ["rev-parse", "HEAD"]) ?? "";
+        return { shape: "local", transport: "git", sha, prNumber: null, pushAttempts: attempt };
+      }
+      if (!NON_FAST_FORWARD.test(pushed.stderr)) {
+        ctx.log(`${REMOTE} refused the dev push — closing through a PR instead: ${pushed.stderr}`);
+        return null;
+      }
+      if (attempt >= TIMEOUTS.LAND_ATTEMPTS)
+        throw new Stop(
+          EXIT_PUSH_FAILED,
+          `dev moved before each of ${attempt} pushes — nothing landed; ${o.branch} and its worktree kept; re-run the land`,
+        );
+      wait = landBackoffMs(attempt);
+      ctx.log(
+        `dev moved before push ${attempt} of ${TIMEOUTS.LAND_ATTEMPTS} — rebuilding on the new dev in ${(wait / 1000).toFixed(1)}s`,
+      );
+    } finally {
+      dropLandTree(root, dir);
+    }
+    await sleep(wait);
+  }
+}
+
+/** The checkout that has `branch` checked out, or null. */
+function branchTree(root: string, branch: string): string | null {
+  for (const block of (git(root, ["worktree", "list", "--porcelain"]) ?? "").split("\n\n")) {
+    const lines = block.split("\n");
+    if (lines.includes(`branch refs/heads/${branch}`))
+      return lines.find((l) => l.startsWith("worktree "))?.slice("worktree ".length) ?? null;
+  }
+  return null;
+}
+
+/**
+ * The PR close (the dev push was refused): commit the roadmap row on the branch
+ * in the checkout holding it, push it, open or reuse the PR, squash-merge it with
+ * an empty body. A merge that does not land on an open PR → update its branch
+ * from dev and try again, with backoff, LAND_ATTEMPTS tries in all; then stop with
+ * the PR left open. gh missing → EXIT.USE_MCP with what to create / merge; re-run
+ * with `--pr` (and `--merged-sha` once merged).
+ */
+async function landPr(
+  ctx: RunContext,
+  root: string,
   o: {
     workflow: string;
     fid: string;
@@ -1040,10 +1113,15 @@ function landPr(
     pr?: string;
     mergedSha?: string;
   },
-): Landed | number {
-  const tree = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+): Promise<Landed | number> {
   let prNumber = o.pr;
   if (prNumber === undefined) {
+    const tree = branchTree(root, o.branch);
+    if (tree === null)
+      throw new Stop(
+        EXIT_LAND_STOPPED,
+        `no checkout has ${o.branch} checked out — the PR close commits the roadmap row on it; nothing landed`,
+      );
     runGit(tree, ["fetch", REMOTE, DEV, o.branch]);
     appendFeature(tree, { workflow: o.workflow, fid: o.fid }, ctx.log);
     commitBookkeeping(
@@ -1094,35 +1172,115 @@ function landPr(
   let sha = o.mergedSha ?? "";
   let transport: Landed["transport"] = o.mergedSha === undefined ? "gh" : "mcp";
   if (o.mergedSha === undefined) {
-    const merged = mergePr(tree, { number: prNumber, subject }, ctx.log);
-    if (merged.code === EXIT.USE_MCP) {
-      ctx.emit({ stage: "merge", prNumber: Number(prNumber), subject, body: "" });
-      return EXIT.USE_MCP;
-    }
-    if (!merged.out.merged)
-      throw new Stop(
-        EXIT_LAND_STOPPED,
-        `PR ${prNumber} did not reach MERGED (state=${merged.out.state ?? "unread"})`,
+    for (let attempt = 1; ; attempt++) {
+      const merged = mergePr(root, { number: prNumber, subject }, ctx.log);
+      if (merged.code === EXIT.USE_MCP) {
+        ctx.emit({ stage: "merge", prNumber: Number(prNumber), subject, body: "" });
+        return EXIT.USE_MCP;
+      }
+      if (merged.out.merged) {
+        sha = merged.out.mergeCommitOid ?? "";
+        break;
+      }
+      if (merged.out.state !== "OPEN")
+        throw new Stop(
+          EXIT_LAND_STOPPED,
+          `PR ${prNumber} did not reach MERGED (state=${merged.out.state ?? "unread"})`,
+        );
+      if (attempt >= TIMEOUTS.LAND_ATTEMPTS)
+        throw new Stop(
+          EXIT_LAND_STOPPED,
+          `PR ${prNumber} still not merged after ${attempt} tries — left open; merge it, then re-run with --pr=${prNumber} --merged-sha=<merge commit>`,
+        );
+      updateBranch(root, prNumber, ctx.log);
+      const wait = landBackoffMs(attempt);
+      ctx.log(
+        `PR ${prNumber} not merged on try ${attempt} of ${TIMEOUTS.LAND_ATTEMPTS} — branch updated from dev; trying again in ${(wait / 1000).toFixed(1)}s`,
       );
-    sha = merged.out.mergeCommitOid ?? "";
+      await sleep(wait);
+    }
     transport = "gh";
   } else {
-    const back = probePr(tree, { number: prNumber, state: "open" });
+    const back = probePr(root, { number: prNumber, state: "open" });
     if (back.kind === "ok" && back.pr && back.pr.state !== "MERGED")
       throw new Stop(EXIT_LAND_STOPPED, `PR ${prNumber} is ${back.pr.state}, not MERGED`);
   }
   if (sha === "")
     throw new Stop(EXIT_LAND_STOPPED, `could not resolve the landed SHA for PR ${prNumber}`);
-  if (!runGit(tree, ["fetch", REMOTE, DEV]).ok)
+  if (!runGit(root, ["fetch", REMOTE, DEV]).ok)
     throw new Stop(EXIT_LAND_STOPPED, "fetch of origin/dev after the merge failed");
-  return {
-    shape: "pr",
-    transport,
-    sha,
-    canonicalRef: UPSTREAM,
-    prNumber: Number(prNumber),
-    worktree: null,
-  };
+  return { shape: "pr", transport, sha, prNumber: Number(prNumber), pushAttempts: 0 };
+}
+
+/**
+ * Laptop only: bring local dev up to the landed commit when that is a pure
+ * fast-forward — `merge --ff-only` when the main checkout is on dev, else move
+ * the branch pointer alone. Local commits origin/dev lacks, or git refusing (an
+ * uncommitted edit the move would overwrite, dev checked out in another
+ * worktree), skip it with a log line: the close is on origin/dev either way.
+ */
+function fastForwardDev(
+  root: string,
+  sha: string,
+  log: (m: string) => void,
+): "fast-forwarded" | "current" | "skipped" | "none" {
+  const local = git(root, ["rev-parse", "-q", "--verify", `refs/heads/${DEV}`]);
+  if (local === null) return "none";
+  if (local === sha) return "current";
+  if (!runGit(root, ["merge-base", "--is-ancestor", local, sha]).ok) {
+    log(
+      `local dev has commits ${UPSTREAM} does not — not fast-forwarded; the close is on ${UPSTREAM}`,
+    );
+    return "skipped";
+  }
+  const moved =
+    currentBranch(root) === DEV
+      ? runGit(root, ["merge", "--ff-only", "-q", sha])
+      : runGit(root, ["fetch", "-q", ".", `${sha}:refs/heads/${DEV}`]);
+  if (!moved.ok) {
+    log(`local dev not fast-forwarded — git refused; the close is on ${UPSTREAM}: ${moved.stderr}`);
+    return "skipped";
+  }
+  return "fast-forwarded";
+}
+
+/**
+ * What `branch` changed that origin/dev does not hold, compared file by file
+ * against the branch's fork point: a file whose dev copy differs from the
+ * branch's, or (a `.jsonl` ledger, union-merged) a line the branch added that
+ * dev's copy lacks. `docs/roadmap.md` is re-rendered on every close, so it is
+ * not compared. The branch and its worktree are deleted only when this is empty.
+ */
+function notOnDev(root: string, branch: string): string[] {
+  const base = git(root, ["merge-base", UPSTREAM, branch]);
+  if (base === null) return [`${branch}: no common history with ${UPSTREAM}`];
+  const lines = (rev: string, p: string) =>
+    (git(root, ["show", `${rev}:${p}`]) ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l !== "");
+  return (git(root, ["diff", "--name-only", "--no-renames", "--diff-filter=d", base, branch]) ?? "")
+    .split("\n")
+    .filter((p) => p !== "" && p !== "docs/roadmap.md")
+    .filter((p) => {
+      if (!p.endsWith(".jsonl"))
+        return (
+          git(root, ["rev-parse", `${branch}:${p}`]) !==
+          git(root, ["rev-parse", "-q", "--verify", `${UPSTREAM}:${p}`])
+        );
+      const before = new Set(lines(base, p));
+      const onDev = new Set(lines(UPSTREAM, p));
+      return lines(branch, p).some((l) => !before.has(l) && !onDev.has(l));
+    });
+}
+
+/** Uncommitted or untracked files in the feature worktree; [] when there is no worktree. */
+function uncommitted(root: string, fid: string): string[] {
+  const wt = worktreeDir(root, fid);
+  if (!fs.existsSync(wt)) return [];
+  const status = runGit(wt, ["status", "--porcelain", "-uall"]);
+  if (!status.ok) return [`git status in ${wt} failed: ${status.stderr}`];
+  return status.stdout.split("\n").filter((l) => l !== "");
 }
 
 async function landVerb(ctx: RunContext): Promise<number> {
@@ -1132,7 +1290,7 @@ async function landVerb(ctx: RunContext): Promise<number> {
   const fid = String(ctx.flags.fid);
   const root = repoRoot(ctx.cwd);
   const month = resolveMonth(root, fid, str(ctx.flags.month));
-  // `bkit install` can leave core.bare=true on the main checkout, which breaks every checkout below.
+  // `bkit install` can leave core.bare=true on the main checkout, which breaks every worktree below.
   if (
     git(root, ["config", "--get", "core.bare"]) === "true" &&
     fs.statSync(path.join(root, ".git"), { throwIfNoEntry: false })?.isDirectory()
@@ -1150,34 +1308,48 @@ async function landVerb(ctx: RunContext): Promise<number> {
   );
   try {
     const devPushes = devPushesOf(root, worktreeStatus, ctx.log);
-    const landed = devPushes
-      ? await landLocal(ctx, root, { workflow, fid, month })
-      : landPr(ctx, {
-          workflow,
-          fid,
-          month,
-          issue: str(ctx.flags.issue) || undefined,
-          branch: String(ctx.flags.branch ?? currentBranch(ctx.cwd)),
-          pr: str(ctx.flags.pr),
-          mergedSha: str(ctx.flags.mergedSha),
-        });
+    const branch = str(ctx.flags.branch) || (devPushes ? `feat/${fid}` : currentBranch(ctx.cwd));
+    const pr = str(ctx.flags.pr);
+    if (devPushes && pr === undefined) strayCheck(root, month, fid);
+    const landed =
+      (pr === undefined ? await landDirect(ctx, root, { workflow, fid, month, branch }) : null) ??
+      (await landPr(ctx, root, {
+        workflow,
+        fid,
+        month,
+        issue: str(ctx.flags.issue) || undefined,
+        branch,
+        pr,
+        mergedSha: str(ctx.flags.mergedSha),
+      }));
     if (typeof landed === "number") return landed;
 
-    // The audit: canonical docs on dev, the landed body clean, the transport recorded.
+    runGit(root, ["fetch", REMOTE, DEV]);
+    const localDev = devPushes ? fastForwardDev(root, landed.sha, ctx.log) : null;
+
+    // The audit: canonical docs on origin/dev, the landed body clean, the transport recorded.
     const docs = canonicalDocs(root, landed.sha, workflow, month, fid);
     const main = `docs/plans/${month}/${fid}-${workflow}.md`;
     const missing = [main, ...docs].filter(
-      (d) => !runGit(root, ["cat-file", "-e", `${landed.canonicalRef}:${d}`]).ok,
+      (d) => !runGit(root, ["cat-file", "-e", `${UPSTREAM}:${d}`]).ok,
     );
-    const status = path.join(root, "docs", "plans", month, "logs", fid, "status.jsonl");
-    runGit(root, ["fetch", REMOTE, DEV]);
     const token = bodySkipToken(root, landed.sha);
     if (token === undefined)
       throw new Stop(EXIT_LANDED_UNVERIFIED, `post-close body scan errored on ${landed.sha}`);
     const scanResult = token ? "skip-token-found" : "clean";
-    if (!crossCheckFile(status, landed.transport, ctx.log).ok)
+    // The status file on disk is this run's only when the checkout holds the landed
+    // commit (laptop: dev fast-forwarded in place) or the branch (a PR runtime).
+    const status = path.join(root, "docs", "plans", month, "logs", fid, "status.jsonl");
+    const onDisk =
+      fs.existsSync(status) &&
+      (!devPushes ||
+        (currentBranch(root) === DEV && git(root, ["rev-parse", "HEAD"]) === landed.sha));
+    const rows = onDisk ? readStatusRows(status) : readStatusRowsAt(status, landed.sha);
+    const label = onDisk ? status : `${landed.sha}:${path.relative(root, status)}`;
+    if (!crossCheckRows(rows, label, landed.transport, ctx.log).ok)
       throw new Stop(EXIT_LANDED_UNVERIFIED, "close transport cross-check failed");
-    closeTransportRow(status, { shape: landed.shape, sha: landed.sha, scanResult });
+    if (onDisk) closeTransportRow(status, { shape: landed.shape, sha: landed.sha, scanResult });
+    else ctx.log(`close-transport row not written: this checkout does not hold ${label}`);
     if (token)
       throw new Stop(
         EXIT_LANDED_UNVERIFIED,
@@ -1186,9 +1358,32 @@ async function landVerb(ctx: RunContext): Promise<number> {
     if (missing.length)
       throw new Stop(
         EXIT_LANDED_UNVERIFIED,
-        `canonical ${workflow} missing on dev: ${missing.join(", ")}`,
+        `canonical ${workflow} missing on ${UPSTREAM}: ${missing.join(", ")}`,
+      );
+    const notLanded = notOnDev(root, branch);
+    if (notLanded.length)
+      throw new Stop(
+        EXIT_LANDED_UNVERIFIED,
+        `${branch} carries work ${UPSTREAM} does not — ${branch} and its worktree kept:\n${notLanded.join("\n")}`,
       );
 
+    let worktree: Record<string, unknown> | null = null;
+    const left = devPushes ? uncommitted(root, fid) : [];
+    if (left.length) {
+      ctx.log(
+        `.worktrees/${fid} holds work that was never committed, so it is not on ${UPSTREAM} — it and ${branch} kept; commit or move it, then remove them by hand:\n${left.join("\n")}`,
+      );
+      worktree = { removed: false, reason: "uncommitted", files: left };
+    } else if (devPushes) {
+      try {
+        worktree = { ...removeWorktree(root, fid, branch, ctx.log) };
+      } catch (err) {
+        // The close landed; a leftover worktree is a human's to remove.
+        ctx.log(
+          `worktree removal failed — remove .worktrees/${fid} by hand: ${(err as Error).message}`,
+        );
+      }
+    }
     const released = releaseLock(workflowLockPath(lockRoot(root, workflow, false), month, fid), {
       workflow,
       fid,
@@ -1200,9 +1395,11 @@ async function landVerb(ctx: RunContext): Promise<number> {
       transport: landed.transport,
       landedSha: landed.sha,
       prNumber: landed.prNumber,
-      canonicalRef: landed.canonicalRef,
+      canonicalRef: UPSTREAM,
       scanResult,
-      worktree: landed.worktree,
+      pushAttempts: landed.pushAttempts,
+      localDev,
+      worktree,
     });
     return EXIT.OK;
   } catch (err) {
@@ -1449,7 +1646,7 @@ export const branchesCommand: CommandSpec = {
     },
     land: {
       summary:
-        "Design / plan close: land feat/{fid} on dev — the local squash under the dev lock, or the PR squash-merge — then audit it and release the lock.",
+        "Design / plan close: squash the branch onto origin/dev in a throwaway worktree and push it as dev (retrying with backoff when dev moved), else the PR squash-merge; then audit it, fast-forward local dev on a laptop and release the lock.",
       flags: [
         { name: "workflow", type: "string", required: true, help: "design | plan" },
         { name: "fid", type: "string", required: true, help: "feature id" },
@@ -1463,7 +1660,7 @@ export const branchesCommand: CommandSpec = {
         {
           name: "branch",
           type: "string",
-          help: "PR close: the head branch (default: the current branch)",
+          help: "the branch to land (default: feat/{fid} where the runtime pushes dev, else the current branch)",
         },
         {
           name: "pr",
@@ -1481,18 +1678,21 @@ export const branchesCommand: CommandSpec = {
         transport: "git | gh | mcp",
         landedSha: "the commit that landed on dev",
         prNumber: "the PR (pr shape), else null",
-        canonicalRef: "dev (local) | origin/dev (pr) — where the canonical docs were verified",
+        canonicalRef: "origin/dev — where the canonical docs were verified",
         scanResult: "the landed commit body's scan: clean",
-        worktree: "the worktree removal result (local), else null",
+        pushAttempts: "dev pushes the direct close took (0 for a PR close)",
+        localDev:
+          "fast-forwarded | current | skipped (local commits, or git refused) | none (no local dev) | null (runtime does not push dev)",
+        worktree: "the worktree removal result (runtime pushes dev), else null",
         stage:
           "exit 80 only: open (create the PR via MCP with title / body / base / head) | merge (merge via MCP with subject, empty body)",
       },
       exitCodes: {
-        [EXIT_PUSH_FAILED]: "the dev or branch push failed",
-        [EXIT_NOT_DEV]: "the main checkout is not on dev after checkout",
-        [EXIT_PULL_FAILED]: "dev could not fast-forward",
+        [EXIT_PUSH_FAILED]:
+          "dev moved before every one of LAND_ATTEMPTS pushes, or the PR branch push failed (nothing landed)",
+        [EXIT_FETCH_FAILED]: `git fetch ${REMOTE} ${DEV} failed (nothing landed)`,
         [EXIT_LAND_STOPPED]:
-          "a guard stopped the land: stray files, failed squash, staged non-doc files, canonical blob mismatch, PR not opened / merged (nothing landed)",
+          "a guard stopped the land: stray files, failed squash, staged non-doc files, canonical blob mismatch, no checkout holds the branch, PR not opened / not merged after LAND_ATTEMPTS tries (nothing landed; the PR stays open)",
         [EXIT_LANDED_UNVERIFIED]:
           "landed, but the body scan, transport cross-check or canonical-on-dev check failed",
         [EXIT_LOCK_LEFT]: "landed and audited, but the workflow lock file survived removal",

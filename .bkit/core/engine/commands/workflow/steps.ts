@@ -46,6 +46,7 @@ import {
   nonNegativeInt,
   positiveInt,
   readRuns,
+  readRunsAt,
   statusFile,
   str,
 } from "./status.js";
@@ -422,6 +423,8 @@ export interface Check {
 
 interface GateOptions {
   file?: string;
+  /** Read `file` as committed on this ref instead of from disk. */
+  ref?: string;
   workflow: string;
   step: string;
   subPlan?: number;
@@ -513,7 +516,8 @@ function gateChecks(cwd: string, o: GateOptions): Check[] {
   }
 
   if (o.file === undefined) return checks;
-  const rows = activeDoneSteps(readRuns(o.file), o.workflow, { step: o.step, subPlan: o.subPlan });
+  const runs = o.ref === undefined ? readRuns(o.file) : readRunsAt(o.file, o.ref);
+  const rows = activeDoneSteps(runs, o.workflow, { step: o.step, subPlan: o.subPlan });
   const row = rows.filter((r) => o.attempt === undefined || r.attempt === o.attempt).at(-1);
   const rowProblems: string[] = [];
   if (!row) {
@@ -1187,6 +1191,11 @@ export const stepsCommand: CommandSpec = {
           required: false,
           help: "path to status.jsonl; without it the status row is not checked (Step 1)",
         },
+        {
+          name: "ref",
+          type: "string",
+          help: "read --file as committed on this ref (e.g. origin/dev), not from disk",
+        },
         WORKFLOW_FLAG,
         STEP_FLAG,
         SUB_PLAN_FLAG,
@@ -1233,7 +1242,8 @@ export const stepsCommand: CommandSpec = {
       ],
       output: { pass: "true when every check passed", checks: "[{check, ok, detail}] per check" },
       exitCodes: {
-        [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON",
+        [EXIT_NO_STATUS]:
+          "status.jsonl missing (on disk, or on --ref), unreadable, or not valid NDJSON",
       },
       run: (ctx) => {
         const f = ctx.flags;
@@ -1244,12 +1254,21 @@ export const stepsCommand: CommandSpec = {
           throw new CommandError(EXIT.USAGE, "give --attempt or --attempt-of, not both");
         if (f.attemptOf !== undefined && file === undefined)
           throw new CommandError(EXIT.USAGE, "--attempt-of needs --file");
+        const ref = str(f.ref);
+        if (ref !== undefined && file === undefined)
+          throw new CommandError(EXIT.USAGE, "--ref needs --file");
+        if (ref !== undefined && f.attemptOf !== undefined)
+          throw new CommandError(
+            EXIT.USAGE,
+            "--attempt-of reads the file on disk; give --attempt with --ref",
+          );
         const attempt =
           f.attemptOf !== undefined
             ? derivedCounter(file!, workflow, String(f.attemptOf), subPlan, undefined)
             : nonNegativeInt(f.attempt, "attempt");
         const checks = gateChecks(ctx.cwd, {
           file,
+          ref,
           workflow,
           step: String(f.step),
           subPlan,

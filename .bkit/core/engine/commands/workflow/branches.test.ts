@@ -8,13 +8,27 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { LOCKFILE_REGENERATE, PACKAGE_RUNNER } from "../../shared/package-manager";
-import { LEDGERS, branchesCommand, classifyConflict, readAnchor, stampAnchor } from "./branches";
+import {
+  LEDGERS,
+  branchesCommand,
+  classifyConflict,
+  landBackoffMs,
+  readAnchor,
+  stampAnchor,
+} from "./branches";
 
 // `branches switch` contends for the dev lock for SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S; a held
-// lock must answer at once here.
+// lock must answer at once here. `branches land` retries without waiting, three tries in all.
 vi.mock("../../shared/timeouts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../shared/timeouts")>();
-  return { TIMEOUTS: { ...actual.TIMEOUTS, SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S: 0 } };
+  return {
+    TIMEOUTS: {
+      ...actual.TIMEOUTS,
+      SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S: 0,
+      LAND_ATTEMPTS: 3,
+      LAND_BACKOFF_START_S: 0,
+    },
+  };
 });
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
@@ -1398,7 +1412,31 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(r.err).toContain("written to the main checkout instead of the worktree");
   });
 
-  it("local: squashes feat/{fid} into dev, commits `design DONE`, pushes, and audits the landed commit", async () => {
+  /** The bare remote refuses every push to dev, the way a protected branch does. */
+  const protectDev = (remote: string) =>
+    fs.writeFileSync(
+      path.join(remote, "hooks", "pre-receive"),
+      '#!/bin/sh\nwhile read o n ref; do [ "$ref" = refs/heads/dev ] && { echo "dev is protected" >&2; exit 1; }; done\nexit 0\n',
+      { mode: 0o755 },
+    );
+  /** A git that lands a foreign commit on the remote's dev right before each dev push (`once`: the first only). */
+  const racingGit = (remote: string, once: boolean) => {
+    const base = tmp("race");
+    return stubBin({
+      git: [
+        `case "$*" in *"push origin HEAD:dev"*)`,
+        once ? `  if [ ! -f "${base}/raced" ]; then` : `  if true; then`,
+        `    : > "${base}/raced"; d="${base}/c$$"`,
+        `    "${REAL_GIT}" clone -q "${remote}" "$d" && (cd "$d" && "${REAL_GIT}" -c user.email=t@t -c user.name=t commit -q --allow-empty -m foreign && "${REAL_GIT}" push -q origin HEAD:dev)`,
+        `  fi ;;`,
+        `esac`,
+        `exec "${REAL_GIT}" "$@"`,
+      ].join("\n"),
+    });
+  };
+  const DONE = `docs(${FID}): design DONE bkit [skip ci]`;
+
+  it("local: squashes feat/{fid} onto origin/dev, commits `design DONE`, pushes, fast-forwards dev, and audits", async () => {
     const { repo, remote } = fixture();
     git(repo, "checkout", "-q", "dev");
     const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
@@ -1406,16 +1444,75 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json).toMatchObject({
       shape: "local",
       transport: "git",
-      canonicalRef: "dev",
+      canonicalRef: "origin/dev",
       scanResult: "clean",
+      pushAttempts: 1,
+      localDev: "fast-forwarded",
     });
-    expect(git(remote, "log", "-1", "--format=%s", "dev").out).toBe(
-      `docs(${FID}): design DONE bkit [skip ci]`,
-    );
+    expect(git(remote, "log", "-1", "--format=%s", "dev").out).toBe(DONE);
     expect(git(remote, "show", `dev:docs/plans/${M}/${FID}-design.md`).out).toBe("# design");
+    expect(sha(repo, "dev")).toBe(sha(remote, "dev"));
     expect(read(repo, `docs/plans/${M}/logs/${FID}/status.jsonl`)).toContain(
       '"type":"close-transport"',
     );
+    expect(fs.existsSync(path.join(repo, ".worktrees", `_land-${FID}`))).toBe(false);
+    expect(git(repo, "rev-parse", "-q", "--verify", `refs/heads/feat/${FID}`).ok).toBe(false);
+  });
+
+  it("local: lands with files staged in the main checkout and leaves them staged", async () => {
+    const { repo, remote } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    write(repo, "notes.txt", "mine\n");
+    git(repo, "add", "notes.txt");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(git(remote, "log", "-1", "--format=%s", "dev").out).toBe(DONE);
+    expect(git(remote, "show", "dev:notes.txt").ok).toBe(false);
+    expect(git(repo, "diff", "--cached", "--name-only").out).toBe("notes.txt");
+  });
+
+  it("local: dev with commits of its own is left alone; only the close is pushed", async () => {
+    const { repo, remote } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    git(repo, "commit", "-q", "--allow-empty", "-m", "wip");
+    const wip = sha(repo, "dev");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ localDev: "skipped" });
+    expect(sha(repo, "dev")).toBe(wip);
+    expect(git(remote, "log", "--format=%s", "dev").out).not.toContain("wip");
+    expect(r.err).toContain("close-transport row not written");
+  });
+
+  it("local: the main checkout on another branch stays there; only the dev pointer moves", async () => {
+    const { repo, remote } = fixture();
+    git(repo, "checkout", "-q", "-b", "other", "dev");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ localDev: "fast-forwarded" });
+    expect(git(repo, "branch", "--show-current").out).toBe("other");
+    expect(sha(repo, "dev")).toBe(sha(remote, "dev"));
+  });
+
+  it("dev moved during the push: rebuilds on the new dev and pushes again", async () => {
+    const { repo, remote } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL", PATH: withBin(racingGit(remote, true)) });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ pushAttempts: 2 });
+    expect(git(remote, "log", "-2", "--format=%s", "dev").out).toBe(`${DONE}\nforeign`);
+    expect(r.err).toContain("dev moved before push 1 of 3");
+  });
+
+  it("dev moved before every push: stops (8) with nothing landed and the branch kept", async () => {
+    const { repo, remote } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL", PATH: withBin(racingGit(remote, false)) });
+    expect(r.code).toBe(8);
+    expect(r.err).toContain("dev moved before each of 3 pushes");
+    expect(git(remote, "log", "--format=%s", "dev").out).not.toContain(DONE);
+    expect(git(repo, "rev-parse", "-q", "--verify", `refs/heads/feat/${FID}`).ok).toBe(true);
+    expect(fs.existsSync(path.join(repo, ".worktrees", `_land-${FID}`))).toBe(false);
   });
 
   it("local: stops (17) when the squash would bring non-doc files to dev", async () => {
@@ -1429,8 +1526,9 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(r.err).toContain("close staged non-doc files");
   });
 
-  it("PR shape: pushes the roadmap commit, then hands PR creation to MCP (80, stage open) without gh", async () => {
+  it("PR shape: dev refuses the push → pushes the roadmap commit, then hands PR creation to MCP (80, stage open) without gh", async () => {
     const { repo, remote } = fixture();
+    protectDev(remote);
     const bin = stubBin({ gh: "exit 4" });
     const r = await land(
       repo,
@@ -1440,8 +1538,151 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     );
     expect(r.code).toBe(80);
     expect(r.json).toMatchObject({ stage: "open" });
+    expect(r.err).toContain("refused the dev push — closing through a PR instead");
     expect(git(remote, "log", "-1", "--format=%s", `feat/${FID}`).out).toBe(
       `docs(${FID}): design roadmap update bkit [skip ci]`,
     );
+  });
+
+  it("PR shape on a laptop: commits the roadmap row in the worktree holding the branch", async () => {
+    const { repo, remote } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    git(repo, "worktree", "add", "-q", `.worktrees/${FID}`, `feat/${FID}`);
+    protectDev(remote);
+    const r = await land(
+      repo,
+      { BKIT_RUNTIME: "LOCAL", PATH: withBin(stubBin({ gh: "exit 4" })) },
+      "--issue=12",
+    );
+    expect(r.code).toBe(80);
+    expect(r.json).toMatchObject({ stage: "open" });
+    expect(git(remote, "log", "-1", "--format=%s", `feat/${FID}`).out).toBe(
+      `docs(${FID}): design roadmap update bkit [skip ci]`,
+    );
+    expect(git(repo, "branch", "--show-current").out).toBe("dev");
+  });
+
+  /** gh for PR 5: the first merge refuses, the second lands `merged`; every update-branch is logged. */
+  const ghMergingOnRetry = (merged: string, state = "OPEN") => {
+    const base = tmp("gh");
+    return {
+      base,
+      bin: stubBin({
+        gh: [
+          `case "$1 $2" in`,
+          `  "pr merge") n=$(cat "${base}/n" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "${base}/n"`,
+          `    [ $n -ge 2 ] && { : > "${base}/merged"; exit 0; }; echo "not mergeable" >&2; exit 1 ;;`,
+          `  "pr update-branch") echo update >> "${base}/updates"; exit 0 ;;`,
+          `  "pr view") if [ -f "${base}/merged" ]; then echo '{"number":5,"state":"MERGED","mergeCommit":{"oid":"${merged}"}}'; else echo '{"number":5,"state":"${state}"}'; fi ;;`,
+          `esac`,
+        ].join("\n"),
+      }),
+    };
+  };
+  /** What GitHub's squash-merge of feat/{fid} would put on the remote's dev. */
+  const squashOnRemote = (repo: string) => {
+    git(repo, "checkout", "-q", "dev");
+    git(repo, "merge", "-q", "--squash", `feat/${FID}`);
+    git(repo, "commit", "-qm", `docs(${FID}): design DONE`);
+    git(repo, "push", "-q", "origin", "dev");
+    const merged = sha(repo, "dev");
+    git(repo, "checkout", "-q", `feat/${FID}`);
+    return merged;
+  };
+
+  it("PR merge refused: updates the PR branch from dev and merges on the next try", async () => {
+    const { repo } = fixture();
+    const merged = squashOnRemote(repo);
+    const gh = ghMergingOnRetry(merged);
+    const r = await land(
+      repo,
+      { BKIT_RUNTIME: "CLOUD_CLAUDE", PATH: withBin(gh.bin) },
+      "--pr=5",
+      `--branch=feat/${FID}`,
+    );
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      shape: "pr",
+      transport: "gh",
+      prNumber: 5,
+      landedSha: merged,
+      pushAttempts: 0,
+    });
+    expect(read(gh.base, "updates")).toBe("update\n");
+  });
+
+  /** `.worktrees/12-x` holding feat/12-x, owned by a workflow (so the close would remove it). */
+  const ownedWorktree = (repo: string) => {
+    git(repo, "worktree", "add", "-q", `.worktrees/${FID}`, `feat/${FID}`);
+    const common = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").out;
+    write(common, `bkit-outbox/${FID}/.worktree-owned`, "");
+    return path.join(repo, ".worktrees", FID);
+  };
+
+  it("local: uncommitted work in the feature worktree keeps the worktree and the branch", async () => {
+    const { repo } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    const wt = ownedWorktree(repo);
+    write(wt, `docs/plans/${M}/logs/${FID}/notes.md`, "never committed\n");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ worktree: { removed: false, reason: "uncommitted" } });
+    expect(r.err).toContain("holds work that was never committed");
+    expect(read(wt, `docs/plans/${M}/logs/${FID}/notes.md`)).toBe("never committed\n");
+    expect(git(repo, "rev-parse", "-q", "--verify", `refs/heads/feat/${FID}`).ok).toBe(true);
+  });
+
+  it("branch work missing from dev: stops (18) and keeps the branch and its worktree", async () => {
+    const { repo } = fixture();
+    const merged = squashOnRemote(repo);
+    write(repo, `docs/plans/${M}/logs/${FID}/late.md`, "committed after the merge\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-qm", "late");
+    git(repo, "checkout", "-q", "dev");
+    const wt = ownedWorktree(repo);
+    const gh = ghMergingOnRetry(merged);
+    const r = await land(
+      repo,
+      { BKIT_RUNTIME: "LOCAL", PATH: withBin(gh.bin) },
+      "--pr=5",
+      `--branch=feat/${FID}`,
+    );
+    expect(r.code).toBe(18);
+    expect(r.err).toContain("carries work origin/dev does not");
+    expect(r.err).toContain(`docs/plans/${M}/logs/${FID}/late.md`);
+    expect(read(wt, `docs/plans/${M}/logs/${FID}/late.md`)).toBe("committed after the merge\n");
+    expect(git(repo, "rev-parse", "-q", "--verify", `refs/heads/feat/${FID}`).ok).toBe(true);
+  });
+
+  it("PR not open (closed): stops (17) at once, no retry", async () => {
+    const { repo } = fixture();
+    const gh = ghMergingOnRetry(squashOnRemote(repo), "CLOSED");
+    const r = await land(
+      repo,
+      { BKIT_RUNTIME: "CLOUD_CLAUDE", PATH: withBin(gh.bin) },
+      "--pr=5",
+      `--branch=feat/${FID}`,
+    );
+    expect(r.code).toBe(17);
+    expect(r.err).toContain("did not reach MERGED (state=CLOSED)");
+    expect(fs.existsSync(path.join(gh.base, "updates"))).toBe(false);
+  });
+});
+
+describe("landBackoffMs", () => {
+  it("doubles from the start wait, caps it, and jitters down by at most half", () => {
+    const top = () => 1;
+    expect([1, 2, 3, 4, 5, 9].map((n) => landBackoffMs(n, top, 2, 30))).toEqual([
+      2000, 4000, 8000, 16000, 30000, 30000,
+    ]);
+    expect(landBackoffMs(1, () => 0, 2, 30)).toBe(1000);
+  });
+
+  it("ten tries wait at most three minutes in all", () => {
+    const total = [1, 2, 3, 4, 5, 6, 7, 8, 9].reduce(
+      (t, n) => t + landBackoffMs(n, () => 1, 2, 30),
+      0,
+    );
+    expect(total).toBe(180_000);
   });
 });

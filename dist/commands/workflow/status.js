@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { activeDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, nextStrategy, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
-import { CommandError, EXIT, parseJson, statusLocation, } from "../lib.js";
+import { CommandError, EXIT, git, parseJson, statusLocation, } from "../lib.js";
 // ---------------------------------------------------------------------------
 // Shared with counters / steps
 // ---------------------------------------------------------------------------
@@ -31,22 +31,46 @@ export const SUB_PLAN_FLAG = {
 };
 /** Exit code: status.jsonl missing, unreadable, or not valid NDJSON. */
 export const EXIT_NO_STATUS = 3;
-/** Parse every line of `status.jsonl`. Missing, unreadable or malformed is an error, never "no rows". */
 /** Every row of status.jsonl, whatever its type; exit 3 when the file is missing or a line is not JSON. */
 export function readStatusRows(file) {
     if (!fs.existsSync(file))
         throw new CommandError(EXIT_NO_STATUS, `${file} does not exist`);
-    return fs
-        .readFileSync(file, "utf-8")
+    return parseStatusRows(fs.readFileSync(file, "utf-8"), file);
+}
+/**
+ * The rows of status.jsonl as committed on `ref`, not as on disk: exit 3 when
+ * the ref does not carry the file. `file` need not exist; the repo is the one
+ * holding its nearest existing parent directory.
+ */
+export function readStatusRowsAt(file, ref) {
+    let dir = path.dirname(file);
+    while (!fs.existsSync(dir) && path.dirname(dir) !== dir)
+        dir = path.dirname(dir);
+    const top = git(dir, ["rev-parse", "--show-toplevel"]);
+    if (top === null)
+        throw new CommandError(EXIT_NO_STATUS, `${file} is not inside a git repo`);
+    const rel = path
+        .relative(fs.realpathSync(top), path.join(fs.realpathSync(dir), path.relative(dir, file)))
+        .split(path.sep)
+        .join("/");
+    const spec = `${ref}:${rel}`;
+    const text = git(top, ["show", spec]);
+    if (text === null)
+        throw new CommandError(EXIT_NO_STATUS, `${spec} does not exist`);
+    return parseStatusRows(text, spec);
+}
+/** Parse NDJSON status text; `label` names it in errors. Malformed is an error, never "no rows". */
+function parseStatusRows(text, label) {
+    return text
         .split("\n")
         .map((l) => l.trim())
         .filter((l) => l !== "")
         .map((l, i) => {
         const parsed = parseJson(l);
         if (!parsed.ok)
-            throw new CommandError(EXIT_NO_STATUS, `${file} line ${i + 1} is not JSON`);
+            throw new CommandError(EXIT_NO_STATUS, `${label} line ${i + 1} is not JSON`);
         if (typeof parsed.value !== "object" || parsed.value === null) {
-            throw new CommandError(EXIT_NO_STATUS, `${file} line ${i + 1} is not a JSON object`);
+            throw new CommandError(EXIT_NO_STATUS, `${label} line ${i + 1} is not a JSON object`);
         }
         return parsed.value;
     });
@@ -54,6 +78,8 @@ export function readStatusRows(file) {
 /** The rows as the fold reads them; the fold skips types it does not model. */
 export const readStatusEvents = (file) => readStatusRows(file);
 export const readRuns = (file) => fold(readStatusEvents(file));
+/** The runs as committed on `ref` (see readStatusRowsAt). */
+export const readRunsAt = (file, ref) => fold(readStatusRowsAt(file, ref));
 /** `--file`, resolved against the command's working directory. */
 export const statusFile = (ctx) => path.resolve(ctx.cwd, String(ctx.flags.file));
 /** `--field key=value`: value parsed as JSON when it parses, else kept as a string. */
