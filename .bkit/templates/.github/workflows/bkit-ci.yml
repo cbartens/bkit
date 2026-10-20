@@ -1092,7 +1092,10 @@ jobs:
 # block queues on {{DEFAULT_BRANCH}} too. Runs BEFORE the E2E / @live lanes: each of those needs: it and
 # refuses unless production serves this run's build (by deployment id). Promotes the EXACT deployment_id
 # bkit-tests-build-web published. Does not look the deployment up again by SHA. A 409 is success only when
-# the body says this id is already current production. A red job means the release did not happen; the
+# the body says this id is already current production. Before promoting it refuses, moving nothing, when
+# the id equals repo variable ROLLED_BACK_DEPLOYMENT_ID (set by the rollback) or when this commit is neither
+# production's commit nor a descendant of it (e.g. GitHub compare API status not ahead / identical), so a
+# re-run of an old run never moves production back. A red job means the release did not happen; the
 # previous deployment stays live. On a default-branch push the capstone needs: it, so a skipped or failed
 # deploy reds bkit-tests-check.
 # The host must not auto-build the default branch, and any "hold promotion until a check passes"

@@ -17,50 +17,50 @@
 
 ## Production rollback runbook
 
-> Bad commit on `main` (production) → unwind to prior known-good SHA. Steps 1-4 are host-agnostic; step 5 re-points the host (commands = Vercel example).
+> Bad release live → move production back to the last good deployment, then fix forward through `dev`. Production moves first; `main` keeps its history. Steps are host-agnostic; commands = Vercel example.
 
 ### Preconditions
 
-- Known-good SHA on `main`. Confirm: `gh run list --branch main --status success --limit 5` (target SHA green).
-- Local repo on `main`, clean tree, `gh auth status` green.
-- `jq` installed (`brew install jq` / system package manager).
+- Last good deployment id: the one production served before the bad release (`bkit-tests-deploy` logs it as the deployment it replaced), else the host's deployment for a commit green on `main` (`gh run list --branch main --status success --limit 5`).
+- `gh auth status` green.
 
 ### Playbook
 
-1. **Save current protection JSON** for verbatim restore. GET and PUT shapes differ; raw GET avoids hand-mapping fields.
-   ```bash
-   gh api repos/{OWNER}/{REPO}/branches/main/protection > /tmp/main-protection.json
-   ```
-2. **Disable protection** so force-reset is accepted.
-   ```bash
-   gh api -X DELETE repos/{OWNER}/{REPO}/branches/main/protection
-   ```
-3. **Force-reset the `main` ref** to the known-good SHA.
-   ```bash
-   gh api -X PATCH repos/{OWNER}/{REPO}/git/refs/heads/main -f sha=<green-sha> -F force=true
-   ```
-4. **Restore protection** from saved JSON. GET → PUT shape mismatch: `required-status-checks` → `required_status_checks`, contexts list, etc. Inspect saved JSON; PUT equivalent shape.
-   ```bash
-   gh api -X PUT repos/{OWNER}/{REPO}/branches/main/protection --input /tmp/main-protection.json
-   ```
-5. **Re-point production deployment** at the host. A host that aliases production to its latest build does not auto-rollback on git ref rewrites, so the alias stays on most-recent push until manually promoted. Look up prior good deployment by commit SHA and promote it. e.g. Vercel:
+1. **Move production back** to the last good deployment. No rebuild, no git change. Move every production host the release moved (site, webhook / background-job aliases), never the website alone. With `bkit-tests-deploy` adopted, run the switch from a `workflow_dispatch` rollback workflow in the deploy job's `concurrency:` group (`cancel-in-progress: false`), so a release and a rollback never switch production at once. e.g. Vercel:
    ```bash
    vercel ls --meta githubCommitSha=<green-sha>
    vercel promote <prior-deployment-url>
    ```
-   Without this step: git ref rolled back but production still serves bad build.
+2. **Mark the bad deployment** (`bkit-tests-deploy` adopted). `bkit-tests-deploy` refuses the deployment id in repo variable `ROLLED_BACK_DEPLOYMENT_ID` (§ Promote before the lanes), so a "Re-run all jobs" of the bad run cannot promote it again.
+   ```bash
+   gh variable set ROLLED_BACK_DEPLOYMENT_ID --body <bad-deployment-id>
+   ```
+3. **Verify** — § Post-rollback verification.
+4. **Fix forward through `dev`.** Revert the bad change on a `revert-*` branch off `dev` (or ship the fix), PR into `dev`, release `dev` → `main` as usual. Hold every other release PR into `main` until it carries the fix, because a release cut from `main`'s tip ships the bad commit again. The release descends from the commit production serves, so `bkit-tests-deploy` promotes it. Database: never rewound or re-seeded; ship a corrective migration (§ Applying migrations at deploy time). The rolled-back build must work on the newer schema (expand first, contract later).
+5. **Reset `main` — last resort**, only when `main` holds commits a `dev` release cannot undo (e.g. a squash that landed on `main` without going through `dev`), and only after step 1. Reset first and `bkit-tests-deploy` refuses every release, the run the reset starts included, until production moves: production's commit is no longer an ancestor of `main`. The reset is a push to `main`: with `bkit-tests-deploy` it starts a release run that builds and promotes a fresh deployment of `<green-sha>`. Needs `jq`, local repo on `main`, clean tree.
+   ```bash
+   # save protection verbatim (GET and PUT shapes differ; raw GET avoids hand-mapping)
+   gh api repos/{OWNER}/{REPO}/branches/main/protection > /tmp/main-protection.json
+   # disable protection so the force-reset is accepted
+   gh api -X DELETE repos/{OWNER}/{REPO}/branches/main/protection
+   # force-reset the ref
+   gh api -X PATCH repos/{OWNER}/{REPO}/git/refs/heads/main -f sha=<green-sha> -F force=true
+   # restore: inspect the saved JSON and PUT the equivalent shape (`required-status-checks` → `required_status_checks`, contexts list, etc.)
+   gh api -X PUT repos/{OWNER}/{REPO}/branches/main/protection --input /tmp/main-protection.json
+   ```
 
-### Why force-push on `main` alone is not enough
+### Revert, not reset
 
-- `git revert` on cross-branch squash (e.g. `feat/*` landed on `main` not `dev`) can delete files `main` code still references → tree fails CI despite "clean" history.
-- `feat/*`-onto-`main` is root cause of destructive recovery; production merges MUST come from `dev` (single-feature squash scope).
+- A reset rewrites the history every clone, open PR and release record points at, and runs with branch protection off; a revert keeps `main` equal to what was released.
+- `git revert` on a cross-branch squash (e.g. `feat/*` landed on `main`, not `dev`) can delete files `main` code still references → tree fails CI despite "clean" history. That squash is the step-5 case; production merges MUST come from `dev` (single-feature squash scope).
 - On `revert-*` branches pre-push drops only the **unit lane** (`bkit:gate:static` in place of `bkit:gate:static-unit`), so the static lane and the bkit drift gate still run → revert PR pushable when source state transitionally inconsistent.
 
 ### Post-rollback verification
 
-- `gh api repos/{OWNER}/{REPO}/git/refs/heads/main --jq .object.sha` must equal the green SHA.
-- `curl -sI https://{prod-alias}` headers report the rolled-back deployment id.
+- Every production host reports the last good deployment id (host API read-back, or `curl -sI https://{prod-alias}` headers).
 - Run the production smoke suite to confirm the rolled-back app behaves as expected.
+- `bkit-tests-deploy` adopted: `gh variable get ROLLED_BACK_DEPLOYMENT_ID` prints the bad deployment id.
+- After a step-5 reset: `gh api repos/{OWNER}/{REPO}/git/refs/heads/main --jq .object.sha` equals the green SHA.
 
 ## Dev rollback runbook
 
@@ -339,6 +339,8 @@ Latent until the first build-time DB read lands, so flag it in review when one i
 ## Promote before the lanes (`bkit-tests-deploy`)
 
 With `bkit-tests-deploy` adopted, the host does not auto-build the default branch. `bkit-tests-build-web` creates this SHA's deployment, polls it to ready, and publishes `deployment_url` + `deployment_id`; the production alias still serves the previous release. `bkit-tests-deploy` `needs: [bkit-tests-migration, bkit-tests-build-web]`, runs on a push to the default branch only, and is not a required check. It promotes the exact `deployment_id` the build lane published — it does not look the deployment up again by SHA — and a `409` is success only when the body says this id is already current production. On `main` it runs **before** the E2E / `@live` lanes: each of those `needs:` it and starts by proving production serves this run's build (by deployment id), so a re-run after a rollback refuses instead of testing the old build and going green. A red deploy job means the release did not happen; production still serves the previous deployment.
+
+Before it promotes, the job refuses, moving nothing, when the deployment id equals repo variable `ROLLED_BACK_DEPLOYMENT_ID` (§ Production rollback runbook step 2), or when this commit is neither the commit production serves nor a descendant of it (e.g. GitHub's compare API `<production-sha>...<this-sha>` status other than `ahead` / `identical`). A re-run of an old run then cannot move production back to an older release. Production unreadable, or its deployment recording no commit → refuse. Same commit → promote (idempotent re-run).
 
 Two guards keep a release honest: the deploy job carries its own `concurrency:` group (`cancel-in-progress: false`, so two releases never overlap), and the workflow-level block queues on `main` (§ One run per branch or pull request) so a newer push waits rather than cancelling a switch in flight. `bkit-tests-migration` waits for static / unit / integration / `build-web` before it touches production's database.
 
