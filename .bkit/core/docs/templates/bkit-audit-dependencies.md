@@ -17,7 +17,7 @@
 > - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
+> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
 > - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - NEVER push, merge, label, close, or comment on a PR. NEVER commit onto the integration branch. Throwaway worktree = evidence; remove before report finishes.
 > - never resolve a lockfile conflict as text, and never with `-X ours` / `-X theirs`. NEVER run a recursive update that rewrites ranges the PRs did not name.

@@ -1437,6 +1437,10 @@ cite docs inline where required.
 - audit: required
 
 ```text
+Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
+```
+
+```retired
 Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
 ```
 

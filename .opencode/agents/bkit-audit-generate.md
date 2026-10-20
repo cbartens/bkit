@@ -55,7 +55,7 @@ tools:
 5. Update **Create** — replace each `PENDING` via `Edit` as content becomes available; **If** none → `None`.
 6. Populate template sections in template order; do not change order. Follow all instruction in template and below; always verify gates before proceeding:
    - `Project Instructions` bullets extend or override `Universal Instructions` section or `Probe Steps` with same titles; never override template `Rules`. **If** absent or empty → run `Universal Instructions` alone.
-   - Bash only for the anchor stamp, setup tips, issue comment, and probes template or its `Project Instructions` name.
+   - Bash only for the anchor stamp, setup tips, issue comment, probes template or its `Project Instructions` name, and checks `.agents/rules.md` requires before them (e.g. `git rev-parse --is-shallow-repository`).
 7. Populate `Pre-Flight / Dependencies`.
 8. Populate `Probe Steps`:
    - Tick steps `[x]` only once their `Done when` holds against repo.
