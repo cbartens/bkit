@@ -827,7 +827,9 @@ jobs:
 #   bkit-tests-scope:  runs-on: ubuntu-latest; timeout-minutes: 2; outputs: { plan: ${{ steps.scope.outputs.plan }} }
 #     steps:
 #       - name: Checkout Repository          # [M] fetch-depth: 0 (turbo diffs need the base commit)
-#       - name: Install Turbo                # [M] npm i -g turbo@<ver> (bare, ~10-15s; no pnpm install)
+#       - name: Install Turbo                # [M] bare global install, ~10-15s; no pnpm install. Version READ from
+#       #     package.json, which pins turbo EXACTLY — never typed here, or this lane drifts from every
+#       #     install-bearing lane: npm i -g "turbo@$(node -p "require('./package.json').devDependencies.turbo")"
 #       - name: Resolve Base Ref             # [M] push base = the branch's last green run; shipped:
 #       #     scripts/ci/lanes/resolve-push-base.mjs (falls back to github.event.before). deployments.md
 #       #     § One run per branch or pull request.
