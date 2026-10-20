@@ -15,6 +15,7 @@ Format: `## [version] — YYYY-MM-DD`
 
 ### Changed
 
+- **CI reads each tool's version from one file.** The `bkit-ci.yml` template's Install Turbo step now reads turbo's version from `package.json`'s exact pin instead of having you type one in. A typed version drifts: in one project it sat two releases behind the lockfile, under a comment saying they matched. `docs/deployments.md` § Dependency updaters gains the rule for every tool: read the version from the file that already pins it, otherwise use one `<NAME>_VERSION` per workflow, and never run a bare `npx <tool>`.
 - **A workflow's `## bkit Tips` is shorter and says how to silence it.** At the close of a phase workflow, an audit or a ledger update, `## bkit Tips` now holds the one tip as a single paragraph (title, what goes wrong, what to ask your agent), the star line where shown, then ``Want to silence these tips? Ask your agent to "add `<id>` and `bkit-star` to `bkit.ignoreAdvisories` in package.json".``, naming what it showed. The `N more` / `Details for every tip` line is gone from it. Before, only `.bkit/advisories.md` said how to silence a tip. Bare `bkit tips` and `--all` are unchanged. The key that silences the star line is now `bkit-star`; `star` still works.
 
 ## [5.3.0] — 2026-10-19
