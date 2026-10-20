@@ -12,8 +12,17 @@ export const SETUP_TIPS_HEADING = "Setup tips";
 export const tipsIntro = (n) => n === 1 ? "Setup tip for a smoother next run:" : "Setup tips for a smoother next run:";
 /** Where the full tip list lives. */
 export const TIPS_DETAILS_POINTER = "Details for every tip: .bkit/advisories.md § Setup tips (refreshed by `bkit check`).";
+/** Last line of a workflow's `## bkit Tips`: how to silence what it shows, by id. */
+export function silenceLine(ids) {
+    const names = ids.map((id) => `\`${id}\``);
+    const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
+    const what = ids.length > 1 ? "these tips" : "this tip";
+    return `Want to silence ${what}? Ask your agent to "add ${list} to \`bkit.ignoreAdvisories\` in package.json".`;
+}
 /** `bkit.ignoreAdvisories` key that silences `STAR_TIP`. */
-export const STAR_TIP_ID = "star";
+export const STAR_TIP_ID = "bkit-star";
+/** Older key that also silences `STAR_TIP`, so repos that set it keep the line off. */
+export const STAR_TIP_OLD_ID = "star";
 /**
  * Last line of `bkit tips` output while not silenced, in bare `bkit tips` and the phase
  * workflows only — audits and the ledger / roadmap updaters often run back to back. Not a
@@ -46,7 +55,8 @@ export function collectTips(cwd, catalogue = SETUP_TIPS) {
         else
             tips.push(tip);
     }
-    return { tips, suppressed, star: !ignored.has(STAR_TIP_ID) };
+    const star = !ignored.has(STAR_TIP_ID) && !ignored.has(STAR_TIP_OLD_ID);
+    return { tips, suppressed, star };
 }
 /**
  * Drop advisory findings whose tip the root package.json silenced, so one
@@ -74,12 +84,10 @@ function tipTextLines(tip, n) {
         lines.push(`   Caution: ${tip.caution}`);
     return lines;
 }
-/** One tip as markdown paragraphs for a workflow's `## bkit Tips` section. */
-function tipMarkdownLines(tip) {
-    const lines = [`**${tip.title}.** ${tip.line}`, "", `Ask your agent: "${tip.ask}"`];
-    if (tip.caution)
-        lines.push("", `Caution: ${tip.caution}`);
-    return lines;
+/** One tip as one markdown paragraph for a workflow's `## bkit Tips` section. */
+function tipParagraph(tip) {
+    const caution = tip.caution ? ` Caution: ${tip.caution}` : "";
+    return `**${tip.title}.** ${tip.line} Ask your agent: "${tip.ask}"${caution}`;
 }
 /**
  * `tips` with the ones that matter in `workflow` first, each group in catalogue order.
@@ -94,40 +102,48 @@ export function starShownIn(workflow) {
     return !workflow || ALL_WORKFLOWS.includes(workflow);
 }
 /**
- * `bkit tips` output, then where the rest live, then `STAR_TIP` when `star` is set and
- * `starShownIn(workflow)`. `""` when no tip fires and no star line shows.
- *   - `workflow`: the `WORKFLOW_TIPS_CAP` tips that matter most in that workflow, as
- *     markdown paragraphs with no intro or numbers — the workflow appends them under its
- *     own `## bkit Tips` heading.
- *   - neither: the top `TIPS_CAP` tips as a numbered terminal list.
+ * `bkit tips` output. `""` when no tip fires and no star line shows.
+ *   - `workflow`: the `WORKFLOW_TIPS_CAP` tips that matter most in that workflow as
+ *     one markdown paragraph each, then `STAR_TIP` when shown, then `silenceLine` naming both — the
+ *     workflow appends them under its own `## bkit Tips` heading.
+ *   - neither: the top `TIPS_CAP` tips as a numbered terminal list, where the rest live,
+ *     then `STAR_TIP` when shown.
  *   - `all`: every tip as a numbered list (in the workflow's order when `workflow` is set).
+ * `STAR_TIP` shows when `opts.star` is set and `starShownIn(workflow)`.
  */
 export function formatTips(tips, opts = {}) {
+    const star = !!opts.star && starShownIn(opts.workflow);
+    if (opts.workflow && !opts.all)
+        return formatWorkflowTips(tips, opts.workflow, star);
     const body = formatSetupTips(tips, opts);
-    if (!opts.star || !starShownIn(opts.workflow))
+    if (!star)
         return body;
     return body ? `${body}\n\n${STAR_TIP}` : STAR_TIP;
 }
-/** `formatTips` without `STAR_TIP`. */
+/** `formatTips` for a workflow's `## bkit Tips`: tips, star line, how to silence both. */
+function formatWorkflowTips(tips, workflow, star) {
+    const shown = orderForWorkflow(tips, workflow).slice(0, WORKFLOW_TIPS_CAP);
+    const ids = shown.map((t) => t.id);
+    const parts = shown.map(tipParagraph);
+    if (star) {
+        parts.push(STAR_TIP);
+        ids.push(STAR_TIP_ID);
+    }
+    if (ids.length === 0)
+        return "";
+    return [...parts, silenceLine(ids)].join("\n\n");
+}
+/** `formatTips` as a terminal list, without `STAR_TIP`. */
 function formatSetupTips(tips, opts) {
     if (tips.length === 0)
         return "";
     const ordered = opts.workflow ? orderForWorkflow(tips, opts.workflow) : [...tips];
-    const cap = opts.workflow ? WORKFLOW_TIPS_CAP : TIPS_CAP;
-    const shown = opts.all ? ordered : ordered.slice(0, cap);
+    const shown = opts.all ? ordered : ordered.slice(0, TIPS_CAP);
     const rest = tips.length - shown.length;
-    const more = rest > 0 ? `${rest} more: \`bkit tips --all\`. ` : "";
-    if (opts.workflow && !opts.all) {
-        const lines = [];
-        for (const tip of shown)
-            lines.push(...tipMarkdownLines(tip), "");
-        lines.push(`${more}${TIPS_DETAILS_POINTER}`);
-        return lines.join("\n");
-    }
     const lines = [tipsIntro(shown.length), ""];
     shown.forEach((tip, i) => lines.push(...tipTextLines(tip, i + 1), ""));
-    if (more)
-        lines.push(more.trimEnd());
+    if (rest > 0)
+        lines.push(`${rest} more: \`bkit tips --all\`.`);
     lines.push(TIPS_DETAILS_POINTER);
     return lines.join("\n");
 }

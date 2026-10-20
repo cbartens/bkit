@@ -8,6 +8,7 @@ import type { SetupTip } from "./catalogue";
 import {
   STAR_TIP,
   STAR_TIP_ID,
+  STAR_TIP_OLD_ID,
   TIPS_CAP,
   TIPS_DETAILS_POINTER,
   collectTips,
@@ -18,6 +19,7 @@ import {
   orderForWorkflow,
   setupTipsChecklistLines,
   setupTipsMarkdownLines,
+  silenceLine,
   tipsIntro,
 } from "./index";
 
@@ -72,6 +74,11 @@ describe("collectTips", () => {
   it("keeps the star line until its id is ignored", () => {
     expect(collectTips(cwd, catalogue).star).toBe(true);
     ignore([STAR_TIP_ID]);
+    expect(collectTips(cwd, catalogue).star).toBe(false);
+  });
+
+  it("drops the star line for its older id too", () => {
+    ignore([STAR_TIP_OLD_ID]);
     expect(collectTips(cwd, catalogue).star).toBe(false);
   });
 
@@ -149,11 +156,9 @@ describe("formatTips", () => {
     const build = formatTips(tagged, { workflow: "build" });
     expect(build).toBe(
       [
-        "**Title quality.** Line quality.",
+        '**Title quality.** Line quality. Ask your agent: "Ask quality."',
         "",
-        'Ask your agent: "Ask quality."',
-        "",
-        `2 more: \`bkit tips --all\`. ${TIPS_DETAILS_POINTER}`,
+        'Want to silence this tip? Ask your agent to "add `quality` to `bkit.ignoreAdvisories` in package.json".',
       ].join("\n"),
     );
     expect(build).not.toContain(tipsIntro(1));
@@ -165,31 +170,45 @@ describe("formatTips", () => {
 describe("formatTips — star line", () => {
   const tips = [fake("a", true), fake("b", true)];
 
-  it("closes every mode, after the details pointer", () => {
-    for (const opts of [{}, { all: true }, { workflow: "build" as const }]) {
+  it("closes bare and --all output, after the details pointer", () => {
+    for (const opts of [{}, { all: true }]) {
       const out = formatTips(tips, { ...opts, star: true });
       expect(out.endsWith(`${TIPS_DETAILS_POINTER}\n\n${STAR_TIP}`)).toBe(true);
     }
   });
 
-  it("stands alone when no tip fires, and is absent when silenced", () => {
-    expect(formatTips([], { workflow: "ship", star: true })).toBe(STAR_TIP);
+  it("follows a workflow's tip, and the silence line names both", () => {
+    expect(formatTips(tips, { workflow: "build", star: true })).toBe(
+      [
+        '**Title a.** Line a. Ask your agent: "Ask a."',
+        "",
+        STAR_TIP,
+        "",
+        'Want to silence these tips? Ask your agent to "add `a` and `bkit-star` to `bkit.ignoreAdvisories` in package.json".',
+      ].join("\n"),
+    );
+    expect(formatTips([], { workflow: "ship", star: true })).toBe(
+      `${STAR_TIP}\n\n${silenceLine([STAR_TIP_ID])}`,
+    );
+  });
+
+  it("is absent when silenced", () => {
     expect(formatTips(tips, { star: false })).not.toContain(STAR_TIP);
     expect(formatTips([], { star: false })).toBe("");
+    expect(formatTips([], { workflow: "ship", star: false })).toBe("");
   });
 
   it("is left out of audit and utility output, which often run back to back", () => {
     for (const workflow of ["audit", "utility"] as const) {
       const out = formatTips(tips, { workflow, star: true });
       expect(out, workflow).not.toContain(STAR_TIP);
-      expect(out.endsWith(TIPS_DETAILS_POINTER), workflow).toBe(true);
+      expect(out.endsWith(silenceLine(["a"])), workflow).toBe(true);
       expect(formatTips([], { workflow, star: true }), workflow).toBe("");
     }
   });
 
-  it("never counts toward the cap or the 'more' line", () => {
+  it("never counts toward the cap", () => {
     const out = formatTips(tips, { workflow: "build", star: true });
-    expect(out).toContain("1 more: `bkit tips --all`.");
     expect(out).toContain("**Title a.**");
     expect(out).not.toContain("**Title b.**");
   });

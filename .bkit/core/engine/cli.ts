@@ -625,8 +625,8 @@ Usage:
                                  the tips that matter there first and prints one (each
                                  workflow runs this at its close; audit and utility do the
                                  same for audits and the ledger / roadmap updaters);
-                                 --all lists every one. Ends with a star line ("star" in
-                                 bkit.ignoreAdvisories silences it), except under
+                                 --all lists every one. Ends with a star line ("bkit-star"
+                                 in bkit.ignoreAdvisories silences it), except under
                                  --workflow=audit|utility. Local checks only. Exits 0.
   bkit status                   Read-only host/provider status. Reports current host+provider
                                  (sampled from .claude/, .cursor/, package.json, and the
