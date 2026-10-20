@@ -20,6 +20,8 @@
 // Where an advisory already detects the gap, `fires` calls that detector and `advisories`
 // names its ids, so the tip and the advisory can never disagree and one
 // `bkit.ignoreAdvisories` entry silences both.
+import * as fs from "node:fs";
+import { machineStepsPath, REPO_STEPS } from "../../commands/workflow/disk.js";
 import { detectContextFetchMissing } from "../before/context-fetch.js";
 import { detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, detectMissingDotenv, isCloudOrCi, } from "../before/env.js";
 import { detectGhMcpToken, hasGithubMcpServer } from "../after/auth.js";
@@ -311,6 +313,18 @@ export const SETUP_TIPS = [
         ask: "Copy .bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs to scripts/cleanup/, then copy the `tmp/ prune` block from .bkit/templates/.husky/pre-push into .husky/pre-push above the gates.",
         steps: "`.bkit/templates.md` § tmp/ prune.",
         fires: (cwd) => exists(cwd, ".husky/pre-push") && !exists(cwd, "scripts/cleanup/bkit-tmp-prune.mjs"),
+    },
+    {
+        id: "disk-prune",
+        workflows: ALL_WORKFLOWS,
+        title: "Keep enough disk free for new worktrees",
+        line: "Build caches, Docker images and simulators fill the disk until a workflow cannot make its worktree. Add your own clean-up steps, run after commits and pushes.",
+        why: "bkit deletes nothing on its own: you choose the steps, starting from examples that only delete what comes back by itself. Commits run the cheap steps, pushes run the rest, and a workflow runs them before making a worktree on a nearly full disk.",
+        ask: "Copy .bkit/templates/scripts/cleanup/bkit-disk-prune.mjs to scripts/cleanup/ and/or .bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs to ~/.config/bkit/disk-prune.mjs, edit the steps, then paste the `disk prune` block from the end of each .bkit/templates/.husky hook at the end of yours.",
+        steps: "`.bkit/templates.md` § Disk prune.",
+        fires: (cwd) => exists(cwd, ".husky/pre-push") &&
+            !exists(cwd, REPO_STEPS) &&
+            !fs.existsSync(machineStepsPath()),
     },
     // --- setup: only some setups -----------------------------------------------------------
     {

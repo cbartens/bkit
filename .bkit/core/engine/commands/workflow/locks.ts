@@ -127,7 +127,7 @@ export function readHolder(file: string): Holder | undefined {
 }
 
 /** Create `file` only if absent (`set -C`); false when someone else holds it. */
-function tryCreate(file: string, line: string): boolean {
+export function tryCreate(file: string, line: string): boolean {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const fd = openExclusive(file);
   if (fd === undefined) return false;

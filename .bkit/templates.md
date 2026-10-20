@@ -37,6 +37,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Trivy | Fails CI on a known-vulnerable package in any language, a risky container or cluster setting, or a committed secret; a daily run catches advisories with no fix yet. | A vulnerable package or leaked key merges unnoticed; an advisory with no fixed release never shows up anywhere. |
 | Prettier tables | One edited cell = one changed row in the diff. | A one-word table edit diffs as the whole table. |
 | tmp/ prune | Each push deletes scratch files agents left in `tmp/` untouched for a week. | `tmp/` keeps growing; old logs and scratch files are never cleared. |
+| Disk prune | Your own cleanup steps (build caches, Docker, simulators) run on commit, on push, and before a worktree is made on a low disk. bkit deletes nothing itself. | Caches fill the disk until no worktree can be made; every workflow stops. |
 | Cursor editor + cloud agent | Format-on-save, recommended extensions, Cursor cloud-agent image. | Cursor edits miss project formatting; no Cursor cloud agent. |
 | Launchd GUI env | macOS apps opened from the Dock get the same tokens as the terminal. | Dock-launched editors start signed out. |
 
@@ -67,6 +68,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 | tmp/ prune | `.bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs` | `scripts/cleanup/` | that file |
+| Disk prune | `.bkit/templates/scripts/cleanup/bkit-disk-prune.mjs`, `bkit-disk-prune.machine.mjs` | `scripts/cleanup/bkit-disk-prune.mjs`, `~/.config/bkit/disk-prune.mjs` | `scripts/cleanup/bkit-disk-prune.mjs` only |
 | Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
 | Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file |
 
@@ -196,7 +198,7 @@ Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; f
 
 ## Git hooks — Husky
 
-`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits), then `bkit check`, plus a CI-suppressing-token guard and the `tmp/` prune (§ tmp/ prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. Reference: https://typicode.github.io/husky/.
+`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits), then `bkit check`, plus a CI-suppressing-token guard and the `tmp/` prune (§ tmp/ prune). Each hook ends by starting the disk prune (§ Disk prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. Reference: https://typicode.github.io/husky/.
 
 ```bash
 pnpm add -D husky@^9.1.7   # plus "prepare": "husky" (§ Gate tool scripts)
@@ -608,3 +610,29 @@ cp .bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs scripts/cleanup/
 - Scope: `tmp/` at the top of the checkout the cwd sits in; each worktree prunes its own. `tmp/` itself stays.
 - Age = file mtime. Symlinks never followed: a symlinked `tmp/` is skipped; a symlink inside is removed by its own age, target untouched. A folder goes only when empty and either the sweep emptied it or its own mtime is past the cutoff → a folder another process just made stays.
 - Hand run: `node scripts/cleanup/bkit-tmp-prune.mjs`. Files to keep belong outside `tmp/`.
+
+## Disk prune — cleanup steps you own
+
+`bkit disk prune` runs only steps you list; bkit deletes nothing. No step file → nothing runs.
+
+```bash
+mkdir -p scripts/cleanup ~/.config/bkit
+cp .bkit/templates/scripts/cleanup/bkit-disk-prune.mjs scripts/cleanup/
+cp .bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs ~/.config/bkit/disk-prune.mjs
+```
+
+<!-- prettier-ignore -->
+| File | Steps for | Runs from | Committed |
+| --- | --- | --- | --- |
+| `scripts/cleanup/bkit-disk-prune.mjs` | this checkout: build caches, leftover agent worktrees | checkout top, first | yes |
+| `~/.config/bkit/disk-prune.mjs` (`$XDG_CONFIG_HOME/bkit/` when set) | shared tools: Docker, pnpm store, Xcode, Gradle, simulators | home folder | never |
+
+- Step list, default-exported: `{ name, mode, run, skip?, paths? }`. `min` = stale, cheap; `max` = all that comes back by itself + every `min` step. `run` / `skip`: shell command or `({ cwd, log, note })` function; `skip` exit 0 or returned reason → skipped. `paths`: what `--dry-run` sizes, the most the step can free.
+- Notes: `note(text)` = found, left for a person. Each sweep replaces its checkout's notes; `bkit tips` prints them first (from a worktree, the main checkout's too), so every workflow close surfaces them. No sweep for 7 days → dropped.
+- Example worktree step: removes a `.worktrees/*` only when nothing is lost — clean, every commit on a remote or at a merged pull request's head (`gh`; squash merges) — via `bkit worktrees remove`, or plain `git worktree remove` when no workflow made it. Branches stay. Keeps a locked one or one committed to in 2 days; notes the rest.
+- Adapt: keep a step only when what it deletes comes back by itself. Left out on purpose: named Docker volumes (local databases), runtimes and SDKs, whole pnpm store (`node_modules` hard-link into it).
+- Wiring: last block of each Husky template — `pre-commit` → `--mode=min --auto`; `pre-push` → `--mode=max --auto`, after every gate (workflow pushes too). Missing → paste at the end of yours.
+- `--auto`: detached, always exit 0. Each mode at most once a day per machine; `max` at most hourly while free disk < `bkit.disk.minFreeGb` (`package.json`, GB, default 40). Log: `~/.cache/bkit/disk-prune.log` (`$XDG_CACHE_HOME/bkit/` when set).
+- Worktrees: `bkit worktrees setup` create / resume under `bkit.disk.minFreeGb` → runs `max` steps, waits. Still under → exit 12, nothing created; stderr lists what `max` steps still cover. No step file → no check.
+- One sweep per machine at a time (`disk-prune.lock` beside the log). Failed step → logged, next runs. CI / cloud → nothing runs.
+- Hand run: `pnpm bkit disk prune --mode=max --dry-run` → each step + its `paths` size; without `--dry-run` → runs now. Exit 1 = a step failed or a step file did not load.

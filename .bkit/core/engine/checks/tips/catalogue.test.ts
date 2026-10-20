@@ -330,6 +330,28 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("tmp-prune").fires(cwd)).toBe(false);
   });
 
+  it("disk-prune fires only once a pre-push hook exists without either step file", () => {
+    expect(tip("disk-prune").fires(cwd)).toBe(false);
+    write(".husky/pre-push");
+    expect(tip("disk-prune").fires(cwd)).toBe(true);
+    write("scripts/cleanup/bkit-disk-prune.mjs");
+    expect(tip("disk-prune").fires(cwd)).toBe(false);
+  });
+
+  it("disk-prune stays quiet once the machine step file exists", () => {
+    write(".husky/pre-push");
+    const config = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-tip-config-"));
+    vi.stubEnv("XDG_CONFIG_HOME", config);
+    try {
+      fs.mkdirSync(path.join(config, "bkit"));
+      fs.writeFileSync(path.join(config, "bkit", "disk-prune.mjs"), "export default [];\n");
+      expect(tip("disk-prune").fires(cwd)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+      fs.rmSync(config, { recursive: true, force: true });
+    }
+  });
+
   it("mcp-scope fires on an unlocked URL", () => {
     write(
       ".mcp.json",

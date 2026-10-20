@@ -10,6 +10,7 @@ export const CONFIG_DEFAULTS = {
     capstoneJob: "bkit-tests-check",
     worktreeCopy: [".env", ".env.local"],
     worktreeInstall: true,
+    diskMinFreeGb: 40,
     issueTracker: DEFAULT_ISSUE_TRACKER,
     githubProject: null,
     shipGateRequiredLanes: [],
@@ -31,6 +32,7 @@ export function readBkitConfig(root) {
     const bkit = ((read.ok ? read.pkg.bkit : undefined) ?? {});
     const worktree = (bkit.worktree ?? {});
     const copy = worktree.copy;
+    const minFreeGb = (bkit.disk ?? {}).minFreeGb;
     const project = bkit.githubProject;
     const lanes = bkit.shipGateRequiredLanes;
     const provider = bkit.opencodeProvider;
@@ -42,6 +44,9 @@ export function readBkitConfig(root) {
             ? [...copy]
             : [...CONFIG_DEFAULTS.worktreeCopy],
         worktreeInstall: typeof worktree.install === "boolean" ? worktree.install : CONFIG_DEFAULTS.worktreeInstall,
+        diskMinFreeGb: typeof minFreeGb === "number" && Number.isFinite(minFreeGb) && minFreeGb >= 0
+            ? minFreeGb
+            : CONFIG_DEFAULTS.diskMinFreeGb,
         issueTracker: parseIssueTracker(bkit.issueTracker) ?? CONFIG_DEFAULTS.issueTracker,
         githubProject: project === false
             ? false

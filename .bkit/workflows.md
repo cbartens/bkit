@@ -193,7 +193,7 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) shares skeleton
 3. Execution Protocol caution block (header bullets — see below)
 4. Failure Path
 5. Step 1 — Start Workflow         (`bkit repo info --fetch`, FID, `bkit locks acquire`, tracker init, first-step comment post — status init deferred to Step 2; ZERO commits on `dev`)
-6. Step 2 — Worktree Setup         (`bkit worktrees setup`: create / resume / adopt, copy `bkit.worktree.copy` (default `.env`, `.env.local`), install unless `bkit.worktree.install` is false; `bkit workflows start` + `bkit runtime row`; save input; `start-workflow` + `worktree-setup` step entries committed on `feat/{FID}`)
+6. Step 2 — Worktree Setup         (`bkit worktrees setup`: create / resume / adopt; create / resume under `bkit.disk.minFreeGb` free → `max` disk-prune steps first, still under → exit 12 (`.bkit/templates.md` § Disk prune); copy `bkit.worktree.copy` (default `.env`, `.env.local`), install unless `bkit.worktree.install` is false; `bkit workflows start` + `bkit runtime row`; save input; `start-workflow` + `worktree-setup` step entries committed on `feat/{FID}`)
 7. Phase-specific steps            (subagent invocations, gates, per-step new comment post)
 8. Summary step                    (subagent → commit → push → verdict)
 9. Close Workflow                  (`bkit workflows close`, lock release, state → hand-off via `issue-update-review`; ship terminal `bkit:merged` + In Review via `issue-update-merged` (issue left OPEN — human reviews + closes); non-ship phases update state only, phase label unchanged; **final return** = verbatim `{phase}-summary.md` to user, then a plain-English offer, as the last actions)

@@ -11,6 +11,7 @@ import { setupCommand } from "./setup/setup.js";
 import { branchesCommand } from "./workflow/branches.js";
 import { contextCommand } from "./workflow/context.js";
 import { countersCommand } from "./workflow/counters.js";
+import { diskCommand } from "./workflow/disk.js";
 import { fidsCommand } from "./workflow/fids.js";
 import { issuesCommand } from "./workflow/issues.js";
 import { ledgersCommand } from "./workflow/ledgers.js";
@@ -39,6 +40,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   locksCommand,
   workflowsCommand,
   worktreesCommand,
+  diskCommand,
   branchesCommand,
   skillsCommand,
   prsCommand,

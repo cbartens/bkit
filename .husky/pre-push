@@ -147,3 +147,10 @@ if [ -f scripts/graphify/bkit-graphify.sh ] && [ -f "$CAP_DOC" ]; then
     fi
   fi
 fi
+
+# disk prune — keep this block last, so it runs only once every gate above passed. Starts
+# your max cleanup steps (`bkit disk prune`, .bkit/templates.md § Disk prune) in the
+# background, at most once a day, or hourly while free disk is under bkit.disk.minFreeGb;
+# with no step files it does nothing. Not a gate: a failure warns and the push goes on.
+pnpm -s bkit disk prune --mode=max --auto < /dev/null > /dev/null ||
+  echo "[pre-push] WARN: disk prune failed; push continues" >&2

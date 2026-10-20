@@ -80,7 +80,7 @@ export function readHolder(file) {
     return { line, at, workflow, fid, token };
 }
 /** Create `file` only if absent (`set -C`); false when someone else holds it. */
-function tryCreate(file, line) {
+export function tryCreate(file, line) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const fd = openExclusive(file);
     if (fd === undefined)

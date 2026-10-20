@@ -260,8 +260,8 @@ const ADOPTED: Record<string, Entry> = {
         kind: "bkit-only",
         what: "dist freshness on a staged .bkit/core/engine change",
         region: {
-          template: ["pnpm bkit:gate:format\n", null],
-          copy: ["pnpm bkit:gate:format\n", null],
+          template: ["pnpm bkit:gate:format\n", "\n# disk prune"],
+          copy: ["pnpm bkit:gate:format\n", "\n# disk prune"],
         },
       },
     ],
@@ -273,8 +273,8 @@ const ADOPTED: Record<string, Entry> = {
         kind: "bkit-only",
         what: "dist freshness and actionlint",
         region: {
-          template: ["pnpm bkit check < /dev/null\n", null],
-          copy: ["pnpm bkit check < /dev/null\n", null],
+          template: ["pnpm bkit check < /dev/null\n", "\n# disk prune"],
+          copy: ["pnpm bkit check < /dev/null\n", "\n# disk prune"],
         },
       },
     ],
@@ -534,6 +534,14 @@ const ADOPTED: Record<string, Entry> = {
     ],
   },
   "scripts/graphify/bkit-graphify-graphml.py": identical,
+  "scripts/cleanup/bkit-disk-prune.mjs": {
+    status: "not-adopted",
+    what: "the example steps clear app build caches and agent worktrees this repo does not keep",
+  },
+  "scripts/cleanup/bkit-disk-prune.machine.mjs": {
+    status: "not-adopted",
+    what: "a per-machine file copied to ~/.config/bkit/, never into a repo",
+  },
   "scripts/cleanup/bkit-tmp-prune.mjs": identical,
   "scripts/prettier/bkit-insert-ignore.mjs": identical,
   "scripts/secrets/bkit-secrets.mjs": identical,
