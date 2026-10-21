@@ -91,7 +91,7 @@ Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude -
 Single package — no turbo / affected-graph. Run scripts directly:
 
 ```bash
-pnpm bkit:gate:static-unit   # pre-push gates (docs/deployments.md § Pre-push checklist)
+pnpm bkit:gate:static-unit-integration   # pre-push gates (docs/deployments.md § Pre-push checklist)
 pnpm bkit check              # drift gate
 pnpm bkit:check:dist         # dist freshness (source-repo only)
 pnpm exec bkit doctor        # token + advisory sweep (rewrites .bkit/advisories.md only, never fails)

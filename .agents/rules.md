@@ -116,7 +116,7 @@
 - **Provider data:** Logs, errors, database → prefer enabled `.agents/context.md` context-fetch blocks or provider's CLI over MCP.
 - **Local tests first:** ALWAYS exhaust local test suite and targeted repro before remote CI. Deployed-boundary / `@live` that cannot reproduce locally → review existing evidence first.
 - **Existing evidence first:** ALWAYS search / read existing reports / logs / artifacts before requesting new remote CI runs; request new runs ONLY when existing evidence insufficient, stale, or absent.
-- **Local pre-push:** `pnpm bkit:gate:static-unit`, then `bkit check`. Gate scripts MUST not run tests needing a deployed boundary / backing service.
+- **Local pre-push:** `pnpm bkit:gate:static-unit-integration` when declared, else `pnpm bkit:gate:static-unit`, then `bkit check`. Gate scripts MUST not run tests needing a deployed boundary or remote service; local services (a database in Docker) are fine.
 - **CI on PR to `dev` / `main`:** Static, unit, integration (incl. service / DB-backed), E2E, ALWAYS-on migration lane in repos with migrations (replay when planned) — parallel lanes + `bkit-tests-check` capstone. E2E `needs:` migration when that lane owns remote migration apply. no `@live` tests.
 - **CI on push to `dev` / `main`:** PR lanes plus remote migration apply inside migration lane + `@live` canary (both wait on migration ≠ failure).
 - **Name the suites you ran:** NEVER report "all tests green" or a bare task count as evidence. State the tiers — `unit`, `integration`, `e2e`, `@live`.

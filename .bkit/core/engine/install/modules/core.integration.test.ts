@@ -275,6 +275,24 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
     );
   });
 
+  it("names a script the commit gate runs that the push gate runs again", () => {
+    writeScripts({
+      ...BKIT_GATE_SCRIPTS,
+      "bkit:gate:format": "pnpm lint-staged && pnpm run test:placeholders && pnpm lint:prose",
+      "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration",
+    });
+    const finding = detectGateAdvisories(tmpDir).find((f) => f.id === "gate-commit-repeats-push");
+    expect(finding?.detect).toContain("`lint:prose`");
+    expect(finding?.detect).toContain("`bkit:gate:static-unit-integration`");
+    expect(finding?.detect).not.toContain("`test:placeholders`");
+    expect(finding?.detect).not.toContain("`lint-staged`");
+  });
+
+  it("stays silent when the commit gate only formats staged files", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS });
+    expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain("gate-commit-repeats-push");
+  });
+
   it("advises declaring bkit:test:file until package.json has it, with the contract inline", () => {
     writeScripts({ ...BKIT_GATE_SCRIPTS });
     const finding = detectGateAdvisories(tmpDir).find((f) => f.id === "test-file-script-missing");

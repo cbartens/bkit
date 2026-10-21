@@ -230,7 +230,8 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
 // …-integration-e2e-live) are absent unless the consumer writes them. Each is one line
 // chaining its parent, e.g.
 //   "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration"
-// `/bkit-build` and `/bkit-debug` run the DEEPEST gate that exists and record its name.
+// `/bkit-build` and `/bkit-debug` run the DEEPEST gate that exists and record its name;
+// `.husky/pre-push` runs `…-integration` when it exists (BKIT_PUSH_GATES).
 export const BKIT_GATE_SCRIPTS: Readonly<Record<string, string>> = {
   // `.husky/pre-commit`: prettier --write over staged files, and nothing else —
   // seconds, not minutes. Prose is a whole-repo scan, so it gates at pre-push.
@@ -244,7 +245,9 @@ export const BKIT_GATE_SCRIPTS: Readonly<Record<string, string>> = {
   // path.
   "bkit:gate:static":
     "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
-  // The default local gate: `.husky/pre-push`, build Step 14, the remediates.
+  // The default local gate: `.husky/pre-push` (when no `…-integration` gate is declared),
+  // build Step 14, the remediates. `pnpm test` is the unit tier only: a test file the
+  // integration gate also runs must not match it.
   "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test",
   // Ship's conflict-resolve, the only caller whose dependency graph may have just
   // been hand-merged (lockfile conflict) and whose tree no one has ever compiled.
@@ -281,9 +284,20 @@ export const BKIT_DEBUG_GATES: readonly string[] = [
  * Build stops at integration; E2E and live are not in this list.
  *
  * Neither entry is seeded: declaring `bkit:gate:static-unit-integration` opts the build
- * loop into the integration tier.
+ * loop and the pre-push hook into the integration tier.
  */
 export const BKIT_BUILD_GATES: readonly string[] = [
+  "bkit:gate:static-unit-integration",
+  "bkit:gate:static-unit",
+];
+
+/**
+ * What `.husky/pre-push` runs on a full push, in DESCENDING order — first one declared wins.
+ *
+ * Integration runs on push, never on commit; E2E and live stay in CI. The template hook
+ * reads package.json for the first entry itself (it cannot import this list).
+ */
+export const BKIT_PUSH_GATES: readonly string[] = [
   "bkit:gate:static-unit-integration",
   "bkit:gate:static-unit",
 ];

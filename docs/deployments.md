@@ -53,7 +53,7 @@
 
 - A reset rewrites the history every clone, open PR and release record points at, and runs with branch protection off; a revert keeps `main` equal to what was released.
 - `git revert` on a cross-branch squash (e.g. `feat/*` landed on `main`, not `dev`) can delete files `main` code still references → tree fails CI despite "clean" history. That squash is the step-5 case; production merges MUST come from `dev` (single-feature squash scope).
-- On `revert-*` branches pre-push drops only the **unit lane** (`bkit:gate:static` in place of `bkit:gate:static-unit`), so the static lane and the bkit drift gate still run → revert PR pushable when source state transitionally inconsistent.
+- On `revert-*` branches pre-push drops only the **unit and integration lanes** (`bkit:gate:static` in place of the push gate), so the static lane and the bkit drift gate still run → revert PR pushable when source state transitionally inconsistent.
 
 ### Post-rollback verification
 
@@ -472,14 +472,14 @@ Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs immediately again
 
 ### Pre-push checklist
 
-Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces mechanically; `--no-verify` is a violation. Order matches `bkit-tests-static` (gates 1-2, 4-9) + `bkit-tests-unit` (gate 3):
+Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces mechanically; `--no-verify` is a violation. Order matches `bkit-tests-static` (gates 1-2, 4-9) + `bkit-tests-unit` and `bkit-tests-integration` (gate 3). The hook calls `bkit:gate:static-unit-integration`, which chains `bkit:gate:static-unit`:
 
 <!-- prettier-ignore -->
 | # | Gate | Command | Hook block | Failure mode |
 | --- | --- | --- | --- | --- |
 | 1 | Typecheck | `pnpm typecheck` | template, via `bkit:gate:static-unit` | TS error → fix source. In this repo `typecheck` also runs `bkit:typecheck:tests` (`tsconfig.test.json`: the engine's `*.test.ts` under Vitest's bundler resolution), so a test-file type error fails the gate and the CI static lane. |
 | 2 | Lint | `pnpm lint` | template, via `bkit:gate:static-unit` | Lint finding → fix source. Mirrors CI step "Run Lint"; `audits/templates/template-ci-yml.test.ts` fails when `bkit:gate:static` and the template's `bkit-tests-static` steps diverge. |
-| 3 | Unit and integration tests | `pnpm test` | template, via `bkit:gate:static-unit` | Test failure → fix code, never delete the test. |
+| 3 | Unit tests, then integration tests | `pnpm test:coverage:unit`, then `pnpm test:integration` | unit: template, via `bkit:gate:static-unit`; integration: template, via `bkit:gate:static-unit-integration` when declared | Test failure → fix code, never delete the test. Each tier runs once. The unit run carries the branch-coverage floor (`vitest.unit.config.ts`). Integration runs here because these tests need no network, database or deployed URL. |
 | 4 | Prettier format check | `pnpm format:check` | template, via `bkit:gate:static-unit` | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier"; without this gate, formatting failures only surface in CI after push. |
 | 5 | Prose lint | `pnpm lint:prose` | template, via `bkit:gate:static-unit` | Vale warning → fix the prose. `bkit ci prose` (what `pnpm lint:prose` runs) skips when vale is absent (install vale to enforce locally), restores a missing write-good from the main worktree else `vale sync`, and skips loudly when both fail; CI installs vale so it always enforces there. |
 | 6 | Slop delta | `pnpm slop:delta` | template, via `bkit:gate:static-unit` | A finding this push ADDS or WORSENS the repo on NET → fix it (the pre-existing baseline is never yours to fix on the way out). `bkit ci slop` (what `pnpm slop:delta [base-sha]` runs) materialises the base ref as a worktree and gates on slop-scan's **net** delta (`netFindingCount` / `netRepoScore`), NOT raw `--fail-on added`: a pure line-shift of an existing finding (slop-scan 0.3.0's position-keyed delta reports it as resolved+added at net zero) must NOT fail the gate. Note `lint:slop` (`slop-scan scan`) is report-only and is NOT a gate. |
@@ -503,7 +503,7 @@ Gate fails locally → fix + re-stage; do not `--no-verify` or amend over failed
 
 Source-repo only. Any `.bkit/core/engine/**/*.ts` change MUST include `pnpm build && git add dist/` in same commit.
 
-- Hooks run `typecheck` + `test`, NOT `pnpm build`. Source-repo pre-push runs `pnpm bkit:check:dist` (blocks stale `dist/`) but does not commit freshened `dist/`; run `pnpm build && git add dist/` manually.
+- Hooks run `typecheck` + the unit and integration tiers, NOT `pnpm build`. Source-repo pre-push runs `pnpm bkit:check:dist` (blocks stale `dist/`) but does not commit freshened `dist/`; run `pnpm build && git add dist/` manually.
 - CI `bkit-tests-static` "Assert Dist Freshness" (`pnpm bkit:check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) — `.github/workflows/bkit-ci.yml` only.
 - Consumer template `.bkit/templates/.github/workflows/bkit-ci.yml` omits freshness (tarball install, no recompile). Do not add there.
 

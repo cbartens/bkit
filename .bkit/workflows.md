@@ -1421,8 +1421,8 @@ Each gate is the previous gate plus its own tier, so the name and the value desc
 | `bkit:gate:format` | `pnpm lint-staged` | `.husky/pre-commit` |
 | `bkit:gate:min` | `pnpm format:check && pnpm lint:prose && pnpm slop:delta` | `.husky/pre-push` on a min push |
 | `bkit:gate:static` | `pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta` | `@bkit-build-plan-execute`, `.husky/pre-push` revert path |
-| `bkit:gate:static-unit` | `pnpm bkit:gate:static && pnpm test` | build Steps 7 + 14, `.husky/pre-push`, `@bkit-build-plan-gaps-remediate`, `@bkit-build-challenge-remediate`, `@bkit-build-challenge-tests`, `@bkit-build-plan-verify`, `@bkit-debug-failure-remediate` |
-| `bkit:gate:static-unit-integration` | not seeded — `pnpm bkit:gate:static-unit && pnpm test:integration` | build Steps 7 + 14 |
+| `bkit:gate:static-unit` | `pnpm bkit:gate:static && pnpm test` | build Steps 7 + 14, `.husky/pre-push` (no integration gate declared), `@bkit-build-plan-gaps-remediate`, `@bkit-build-challenge-remediate`, `@bkit-build-challenge-tests`, `@bkit-build-plan-verify`, `@bkit-debug-failure-remediate` |
+| `bkit:gate:static-unit-integration` | not seeded — `pnpm bkit:gate:static-unit && pnpm test:integration` | build Steps 7 + 14, `.husky/pre-push` |
 | `bkit:gate:static-unit-integration-e2e` | not seeded — chains the gate above | debug Step 3 |
 | `bkit:gate:static-unit-integration-e2e-live` | not seeded — chains the gate above | debug Step 3 |
 | `bkit:gate:install-static-unit-build` | `pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build` | `@bkit-ship-conflict-resolve` |

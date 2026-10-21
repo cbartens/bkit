@@ -212,6 +212,23 @@ describe(".husky/pre-push CI-suppressor guard", () => {
       expect(r.stderr).not.toContain("BLOCKED");
       expect(r.gates).toContain("bkit:gate:static-unit");
     });
+
+    it(`${hook}: no integration gate declared → the unit gate runs`, () => {
+      fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ scripts: {} }));
+      const gates = pushWithHead(hook, "feat(1): change").gates.split("\n");
+      expect(gates).toContain("bkit:gate:static-unit");
+      expect(gates).not.toContain("bkit:gate:static-unit-integration");
+    });
+
+    it(`${hook}: integration gate declared → it runs in place of the unit gate`, () => {
+      const scripts = {
+        "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration",
+      };
+      fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ scripts }, null, 2));
+      const gates = pushWithHead(hook, "feat(1): change").gates.split("\n");
+      expect(gates).toContain("bkit:gate:static-unit-integration");
+      expect(gates).not.toContain("bkit:gate:static-unit");
+    });
   }
 });
 
