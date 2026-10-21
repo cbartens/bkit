@@ -18,7 +18,7 @@
 
 Workflow and prompt sources carry wired tracker variants inline. Installer reads `bkit.issueTracker` from consumer manifest, resolves markers when mirroring `.bkit/core/workflows/bkit-*.md` to every host's commands / skills and `.bkit/core/prompts/bkit-*.md` to every host's agents (`.bkit/core/engine/render/trackers.ts`). Mirrors clean — no markers survive.
 
-Prompt frontmatter `tools:` lists: every marker must be a YAML comment (`  # <!-- bkit:tracker github start -->`) — a bare `<!--` line is invalid YAML; installer strips the `# ` with the marker. A pair inside the YAML list must end with a `false` block, and every block (incl. `false`) must hold at least one list item — the `none` stub and an empty block both break the YAML. `bkit-utility-update-roadmap` carries `- Bash`, `bkit-audit-generate` `- WebSearch`, in all three blocks for this.
+Prompt frontmatter `tools:` lists: every marker must be a YAML comment (`  # <!-- bkit:tracker github start -->`) — a bare `<!--` line is invalid YAML; installer strips the `# ` with the marker. A pair inside the YAML list must end with a `false` block, and every block (incl. `false`) must hold at least one list item — the `none` stub and an empty block both break the YAML. `bkit-utility-update-roadmap` and `bkit-utility-update-tracker` carry `- Bash`, `bkit-audit-generate` `- WebSearch`, in all three blocks for this.
 
 ### Per-tracker pair (`github` / `linear`)
 

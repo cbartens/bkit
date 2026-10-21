@@ -320,6 +320,31 @@ describe("real prompt sources", () => {
     expect(roadmapTools("none")).toEqual(base);
   });
 
+  it("tracker agent gets only the chosen tracker's read and field-write tools", () => {
+    const base = ["Read", "Grep", "Glob", "mcp__serena__*", "Bash"];
+    const trackerTools = (tracker: "github" | "linear" | "none") =>
+      promptTools("bkit-utility-update-tracker", tracker);
+    expect(trackerTools("github")).toEqual([
+      ...base,
+      "mcp__github__list_issues",
+      "mcp__github__issue_read",
+      "mcp__github__issue_write",
+      "mcp__github__sub_issue_write",
+      "mcp__github__projects_list",
+      "mcp__github__projects_write",
+    ]);
+    expect(trackerTools("linear")).toEqual([
+      ...base,
+      "mcp__linear__list_issues",
+      "mcp__linear__get_issue",
+      "mcp__linear__save_issue",
+      "mcp__linear__list_issue_labels",
+      "mcp__linear__list_issue_statuses",
+      "mcp__linear__list_milestones",
+    ]);
+    expect(trackerTools("none")).toEqual(base);
+  });
+
   it("audit agent gets only the chosen tracker's comment tool", () => {
     const auditTools = (tracker: "github" | "linear" | "none") =>
       promptTools("bkit-audit-generate", tracker);

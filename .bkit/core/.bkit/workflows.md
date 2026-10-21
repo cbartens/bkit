@@ -174,12 +174,12 @@ Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` a
 
 ## Two-Layer Separation Rules
 
-> **Agents never call tracker MCP tools.** Tracker MCP tools (`mcp__github__issue_*`, `mcp__linear__*_issue`, `*_comment`, `list_issues`, etc.) are exclusive to the workflow layer. Agent that calls a tracker is a protocol violation. Sole exception: `bkit-utility-update-roadmap` holds read-only grants (`list_issues`, `issue_read` / `get_issue`) and never writes.
+> **Agents never call tracker MCP tools.** Tracker MCP tools (`mcp__github__issue_*`, `mcp__linear__*_issue`, `*_comment`, `list_issues`, etc.) are exclusive to the workflow layer. Agent that calls a tracker is a protocol violation. Exceptions, both human-invoked utilities: `bkit-utility-update-roadmap` holds read-only grants (`list_issues`, `issue_read` / `get_issue`) and never writes; `bkit-utility-update-tracker` reads and writes issue fields (title, labels, board status, priority, size, milestone, parent, blocked-by) and never creates, closes or comments, never touches `bkit:*` labels.
 
 <!-- prettier-ignore -->
 | Capability | Workflow (`.bkit/core/workflows/`) | Agent (`.bkit/core/prompts/`) |
 | --- | --- | --- |
-| Invoke tracker MCP | ✅ | ❌ (read-only exception: `bkit-utility-update-roadmap`) |
+| Invoke tracker MCP | ✅ | ❌ (exceptions: `bkit-utility-update-roadmap` read-only, `bkit-utility-update-tracker` field writes) |
 | Read/write `docs/` | ✅ | ✅ |
 | Read/write source | via subagent delegation | ✅ (gated by tool surface) |
 | Run `git` | ✅ (`add`, `commit`, `push`, worktree ops) | read-only checks (`status`, `branch`, `log`) only |
@@ -1106,7 +1106,7 @@ new comment per workflow step via tracker MCP. Step 1 = first comment; later ste
 
 ### Issue blockers (`/bkit-build` Step 1)
 
-`/bkit-build` Step 1: tracker `issue-read` → parse blocker relations (Linear: `relations.blocked_by` via `get_issue({ includeRelations: true })`; GitHub: `###### bkit:blocked-by start` … `end` block in the body). Blocker not closed/done → Failure Path `Blocked by {BLOCKER_ID} (state: {BLOCKER_STATE})`. Workflows never write those edges. A human sets them.
+`/bkit-build` Step 1: tracker `issue-read` → parse blocker relations (Linear: `relations.blocked_by` via `get_issue({ includeRelations: true })`; GitHub: `###### bkit:blocked-by start` … `end` block in the body). Blocker not closed/done → Failure Path `Blocked by {BLOCKER_ID} (state: {BLOCKER_STATE})`. Workflows never write those edges. A human sets them, directly or by running `@bkit-utility-update-tracker`.
 
 ## GitHub Integration
 

@@ -290,6 +290,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 - **Every run lives on the tracker issue.** bkit reads the tracker issue (e.g. GitHub, Linear), posts progress as it goes, moves the issue along and links the pull request.
 - **Issues that start the right step.** Optional issue forms for a new idea, a well-defined change or a bug ask for what the agents read first, and each names the command to run next. A well-defined change can be the plan itself: what done looks like, the tests and the tasks.
 - **It tells you what to work on next.** `@bkit-utility-update-roadmap` reads your board and the open known bugs and postponed work from the ledgers, then writes a ranked shortlist into `docs/roadmap.md`.
+- **It keeps the tracker tidy.** `@bkit-utility-update-tracker` brings open issues in line with the tracker rules: short titles, the right labels, board status, priority, size, milestone, parent and blocked-by links. It takes priorities from the latest issue prioritisation audit and suggests new milestones and parent issues, but never creates or closes an issue.
 - **See it live:** [bkit's own board](https://github.com/users/cbartens/projects/1/views/1), and the shortlist bkit ranked from it in [`docs/roadmap.md`](docs/roadmap.md).
 
 ### You stay in control

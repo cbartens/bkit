@@ -104,6 +104,10 @@ maxTurns: 400
        `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`.
        **If** failure → retry once after 5s; still failing → `Issue` = `{ISSUE_ID} failed`. **Else** → `Issue` = `{ISSUE_ID} posted`.
 16. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+    Append verbatim:
+    ```markdown
+    > Related utilities, run on demand: `@bkit-utility-update-roadmap` ranks the next best items in `docs/roadmap.md`; `@bkit-utility-update-tracker` brings tracker issues in line with the tracker rules; `@bkit-utility-update-deferrals` and `@bkit-utility-update-failures` close ledger rows the code already resolved; `@bkit-utility-update-decisions`, `@bkit-utility-update-knowledge` and `@bkit-utility-update-documentation` correct ledgers and docs the code has since contradicted.
+    ```
     Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
     Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
 
