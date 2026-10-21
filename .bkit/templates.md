@@ -47,7 +47,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Tool | Copy from | To | Output you commit |
 | --- | --- | --- | --- |
 | CI workflow | `.bkit/templates/.github/workflows/bkit-ci.yml` | `.github/workflows/bkit-ci.yml` | that file |
-| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/resolve-push-base.mjs`; `check-accepted-divergences.mjs` + `accepted-divergences.json`; `check-dependency-audit.mjs` + `accepted-advisories.json`). `check-capstone.mjs` + `check-capstone.test.mjs` are required with `bkit-ci.yml`, not optional |
+| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/resolve-push-base.mjs`; `lanes/check-tree-cache.mjs` + `.test.mjs`, which `bkit-ci.yml`'s `Check Tree Cache` runs; `check-accepted-divergences.mjs` + `accepted-divergences.json`; `check-dependency-audit.mjs` + `accepted-advisories.json`). `check-capstone.mjs` + `check-capstone.test.mjs` are required with `bkit-ci.yml`, not optional |
 | Cloud-agent workflow | `.bkit/templates/.github/workflows/bkit-cloud.yml` | `.github/workflows/bkit-cloud.yml` | that file |
 | Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
 | Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |

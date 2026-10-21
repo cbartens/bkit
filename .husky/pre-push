@@ -19,34 +19,58 @@
 # never `[skip ci]`.
 set -e
 
-# bkit repo only: a push of tags alone, each on a commit a branch of the remote already holds
-# (as last fetched), carries no new code — the release tag on the merged release commit, whose
-# gates already passed. Gates are skipped. A tag on any other commit, or a tag pushed with a
-# branch, still gates; tag deletes count as tags. Git's ref list is saved to a file and put
-# back on stdin for the delete-only check below.
+# bkit repo only: a push that carries no untested code skips the gates. Two shapes qualify,
+# alone or together: a tag on a commit a branch of the remote already holds (the release tag
+# on the merged release commit), and a push to a branch other than dev / main whose files are
+# exactly those of the remote's dev or main tip (the release/X branch cut at the dev tip).
+# Those files passed the gates on their way to dev / main. A push to dev or main always gates,
+# and so does every other ref; deletes carry no code and count as nothing. The remote's refs
+# are as last fetched. Git's ref list is saved to a file and put back on stdin for the
+# delete-only check below.
 if [ ! -t 0 ]; then
   PUSH_REFS_FILE=$(mktemp)
   trap 'rm -f "$PUSH_REFS_FILE"' EXIT
   cat > "$PUSH_REFS_FILE"
-  TAG_PUSH_REMOTE="${1:-origin}"
-  TAG_PUSH_KNOWN=0
-  TAG_PUSH_ONLY=1
-  while read -r _tag_local_ref tag_local_sha tag_remote_ref _tag_remote_sha; do
-    [ -n "$tag_local_sha" ] || continue
-    case "$tag_remote_ref" in
-      refs/tags/*) ;;
-      *) TAG_PUSH_ONLY=0; break ;;
-    esac
-    case "$tag_local_sha" in *[!0]*) ;; *) continue ;; esac
-    tag_commit=$(git rev-parse --verify -q "$tag_local_sha^{commit}") || { TAG_PUSH_ONLY=0; break; }
-    if [ -z "$(git for-each-ref --count=1 --contains "$tag_commit" --format='%(refname)' "refs/remotes/$TAG_PUSH_REMOTE")" ]; then
-      TAG_PUSH_ONLY=0
-      break
+  TESTED_REMOTE="${1:-origin}"
+  TESTED_TREES=""
+  for tested_branch in dev main; do
+    if tested_tree=$(git rev-parse --verify -q "refs/remotes/$TESTED_REMOTE/$tested_branch^{tree}"); then
+      TESTED_TREES="$TESTED_TREES $tested_tree"
     fi
-    TAG_PUSH_KNOWN=1
+  done
+  TESTED_KNOWN=0
+  TESTED_ONLY=1
+  while read -r _tested_local_ref tested_local_sha tested_remote_ref _tested_remote_sha; do
+    [ -n "$tested_local_sha" ] || continue
+    case "$tested_local_sha" in *[!0]*) ;; *) continue ;; esac
+    case "$tested_remote_ref" in
+      refs/tags/*)
+        tested_commit=$(git rev-parse --verify -q "$tested_local_sha^{commit}") || { TESTED_ONLY=0; break; }
+        if [ -z "$(git for-each-ref --count=1 --contains "$tested_commit" --format='%(refname)' "refs/remotes/$TESTED_REMOTE")" ]; then
+          TESTED_ONLY=0
+          break
+        fi
+        ;;
+      refs/heads/dev | refs/heads/main)
+        TESTED_ONLY=0
+        break
+        ;;
+      refs/heads/*)
+        tested_tree=$(git rev-parse --verify -q "$tested_local_sha^{tree}") || { TESTED_ONLY=0; break; }
+        case "$TESTED_TREES " in
+          *" $tested_tree "*) ;;
+          *) TESTED_ONLY=0; break ;;
+        esac
+        ;;
+      *)
+        TESTED_ONLY=0
+        break
+        ;;
+    esac
+    TESTED_KNOWN=1
   done < "$PUSH_REFS_FILE"
-  if [ "$TAG_PUSH_KNOWN" = "1" ] && [ "$TAG_PUSH_ONLY" = "1" ]; then
-    echo "[pre-push] tags only, on commits $TAG_PUSH_REMOTE already has — gates skipped" >&2
+  if [ "$TESTED_KNOWN" = "1" ] && [ "$TESTED_ONLY" = "1" ]; then
+    echo "[pre-push] nothing new: tags on commits $TESTED_REMOTE holds, or branches with the files of $TESTED_REMOTE/dev or main — gates skipped" >&2
     exit 0
   fi
   exec < "$PUSH_REFS_FILE"

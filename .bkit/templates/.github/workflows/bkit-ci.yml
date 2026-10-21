@@ -83,41 +83,25 @@ jobs:
           echo "🔊 [verbose ci] marker active — escalating log detail"
           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
 
-      # [force build] / [force cache] run the suite even when this SHA already has a green run.
-      - name: Check SHA Cache
+      # Pull requests only: the suite skips when this PR's files already passed a push run
+      # (scripts/ci/lanes/check-tree-cache.mjs). A push or dispatch run always runs it, and so
+      # does [force build] / [force cache] in the PR title.
+      - name: Check Tree Cache
         id: cache
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          JOB: ${{ github.job }}
           # User-controlled text (PR title) arrives via env: (runtime expansion,
           # injection-safe) — never inlined into the run: body.
           PR_TITLE: ${{ github.event.pull_request.title }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            MSG="$PR_TITLE"
-          else
-            MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
-          fi
-          case "$MSG" in
-            *"[force build]"*|*"[force cache]"*)
-              echo "skip=false" >> "$GITHUB_OUTPUT"
-              echo "::notice::force marker present — ignoring SHA cache."
-              exit 0 ;;
-          esac
-          SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
-          PRIOR=$(gh run list \
-            --repo "$GITHUB_REPOSITORY" \
-            --workflow "$GITHUB_WORKFLOW" \
-            --status success \
-            --limit 50 \
-            --json headSha,createdAt \
-            --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
-            2>/dev/null || echo 0)
-          if [ "${PRIOR:-0}" -gt 0 ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
+          if [ -f scripts/ci/lanes/check-tree-cache.mjs ]; then
+            node scripts/ci/lanes/check-tree-cache.mjs >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::scripts/ci/lanes/check-tree-cache.mjs not copied — running the suite."
           fi
 
       - name: Detect Direct Push
@@ -330,7 +314,7 @@ jobs:
   # and remote db push move out of this job when you adopt the scaffold below.
   bkit-tests-unit:
     runs-on: ubuntu-latest
-    # bkit-tests-check reads both: cache_skip (a SHA-cache short-circuit asserts no count)
+    # bkit-tests-check reads both: cache_skip (a tree-cache short-circuit asserts no count)
     # and tests_ran (the executed-test count the Run Unit Tests step writes).
     outputs:
       cache_skip: ${{ steps.cache.outputs.skip }}
@@ -362,41 +346,25 @@ jobs:
           echo "🔊 [verbose ci] marker active — escalating log detail"
           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
 
-      # [force build] / [force cache] run the suite even when this SHA already has a green run.
-      - name: Check SHA Cache
+      # Pull requests only: the suite skips when this PR's files already passed a push run
+      # (scripts/ci/lanes/check-tree-cache.mjs). A push or dispatch run always runs it, and so
+      # does [force build] / [force cache] in the PR title.
+      - name: Check Tree Cache
         id: cache
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          JOB: ${{ github.job }}
           # User-controlled text (PR title) arrives via env: (runtime expansion,
           # injection-safe) — never inlined into the run: body.
           PR_TITLE: ${{ github.event.pull_request.title }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            MSG="$PR_TITLE"
-          else
-            MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
-          fi
-          case "$MSG" in
-            *"[force build]"*|*"[force cache]"*)
-              echo "skip=false" >> "$GITHUB_OUTPUT"
-              echo "::notice::force marker present — ignoring SHA cache."
-              exit 0 ;;
-          esac
-          SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
-          PRIOR=$(gh run list \
-            --repo "$GITHUB_REPOSITORY" \
-            --workflow "$GITHUB_WORKFLOW" \
-            --status success \
-            --limit 50 \
-            --json headSha,createdAt \
-            --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
-            2>/dev/null || echo 0)
-          if [ "${PRIOR:-0}" -gt 0 ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
+          if [ -f scripts/ci/lanes/check-tree-cache.mjs ]; then
+            node scripts/ci/lanes/check-tree-cache.mjs >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::scripts/ci/lanes/check-tree-cache.mjs not copied — running the suite."
           fi
 
       - name: Detect Direct Push
@@ -543,7 +511,7 @@ jobs:
       #               (a CLI flag on the integration run, same idiom as --exclude above) to scope it to the integration
       #               surface THEN set a floor, or ratchet from current — never a picked number. See docs/testing.md § Coverage on PRs.
       #   4. JOB-LEVEL permissions on bkit-tests-unit. Job-level REPLACES the workflow-level block (not additive), and the
-      #      Check SHA Cache step calls `gh run list`, so you MUST re-include actions: read or the cache step breaks:
+      #      Check Tree Cache step reads runs and jobs, so you MUST re-include actions: read or the cache step breaks:
       #        permissions:
       #          actions: read
       #          contents: read

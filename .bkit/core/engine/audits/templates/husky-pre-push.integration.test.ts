@@ -62,16 +62,18 @@ describe(".husky/pre-push delete-only push", () => {
 });
 
 // ---------------------------------------------------------------------------
-// .husky/pre-push tag-only skip — bkit's own hook only. A real repo holds commit A on
-// `refs/remotes/origin/main` and commit B on no remote branch; stub `pnpm` records each gate.
+// .husky/pre-push already-tested skip — bkit's own hook only. A real repo holds commit A on
+// `refs/remotes/origin/main` and `origin/dev`, commit B (same files as A) on no remote branch,
+// and commit C (one more file) on no remote branch; stub `pnpm` records each gate.
 // ---------------------------------------------------------------------------
 
-describe(".husky/pre-push tag-only push (bkit repo only)", () => {
+describe(".husky/pre-push already-tested push (bkit repo only)", () => {
   const ZERO = "0".repeat(40);
   const REPO = process.cwd();
   let tmp: string;
   let onOrigin: string;
   let localOnly: string;
+  let changed: string;
 
   const gitIn = (...args: string[]) =>
     spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
@@ -91,9 +93,14 @@ describe(".husky/pre-push tag-only push (bkit repo only)", () => {
     gitIn("commit", "-q", "--allow-empty", "-m", "a");
     onOrigin = gitIn("rev-parse", "HEAD");
     gitIn("update-ref", "refs/remotes/origin/main", onOrigin);
+    gitIn("update-ref", "refs/remotes/origin/dev", onOrigin);
     gitIn("tag", "-a", "v1.0.0", "-m", "release", onOrigin);
     gitIn("commit", "-q", "--allow-empty", "-m", "b");
     localOnly = gitIn("rev-parse", "HEAD");
+    fs.writeFileSync(path.join(tmp, "new.txt"), "new\n");
+    gitIn("add", "new.txt");
+    gitIn("commit", "-q", "-m", "c");
+    changed = gitIn("rev-parse", "HEAD");
   });
   afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
@@ -134,6 +141,54 @@ describe(".husky/pre-push tag-only push (bkit repo only)", () => {
     const r = runHook(".husky/pre-push", stdin);
     expect(r.gated).toBe(true);
     expect(r.status).not.toBe(0);
+  });
+
+  it("release branch with the files of origin/dev → exits 0 without running a gate", () => {
+    const stdin = `refs/heads/release/1.0.0 ${localOnly} refs/heads/release/1.0.0 ${ZERO}\n`;
+    expect(runHook(".husky/pre-push", stdin)).toEqual({ status: 0, gated: false });
+  });
+
+  it("release branch and a tag, both already tested → still skipped", () => {
+    const stdin =
+      `refs/heads/release/1.0.0 ${localOnly} refs/heads/release/1.0.0 ${ZERO}\n` +
+      `refs/tags/v1.0.0 ${tagObject()} refs/tags/v1.0.0 ${ZERO}\n`;
+    expect(runHook(".husky/pre-push", stdin)).toEqual({ status: 0, gated: false });
+  });
+
+  it("branch with files no origin dev / main tip has → gates run", () => {
+    const r = runHook(".husky/pre-push", `refs/heads/feat ${changed} refs/heads/feat ${ZERO}\n`);
+    expect(r.gated).toBe(true);
+    expect(r.status).not.toBe(0);
+  });
+
+  it("dev push with the files origin/dev already has → gates run", () => {
+    const r = runHook(
+      ".husky/pre-push",
+      `refs/heads/dev ${localOnly} refs/heads/dev ${onOrigin}\n`,
+    );
+    expect(r.gated).toBe(true);
+    expect(r.status).not.toBe(0);
+  });
+
+  it("main push with the files origin/main already has → gates run", () => {
+    const r = runHook(
+      ".husky/pre-push",
+      `refs/heads/main ${localOnly} refs/heads/main ${onOrigin}\n`,
+    );
+    expect(r.gated).toBe(true);
+    expect(r.status).not.toBe(0);
+  });
+
+  it("no origin dev / main ref fetched → a branch push gates", () => {
+    gitIn("update-ref", "-d", "refs/remotes/origin/dev");
+    gitIn("update-ref", "-d", "refs/remotes/origin/main");
+    const stdin = `refs/heads/release/1.0.0 ${localOnly} refs/heads/release/1.0.0 ${ZERO}\n`;
+    expect(runHook(".husky/pre-push", stdin).gated).toBe(true);
+  });
+
+  it(".bkit/templates/.husky/pre-push: the shipped hook gates a release branch push", () => {
+    const stdin = `refs/heads/release/1.0.0 ${localOnly} refs/heads/release/1.0.0 ${ZERO}\n`;
+    expect(runHook(".bkit/templates/.husky/pre-push", stdin).gated).toBe(true);
   });
 
   it(".bkit/templates/.husky/pre-push: the shipped hook gates a tag-only push", () => {
