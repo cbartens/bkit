@@ -248,7 +248,7 @@ export const fidsCommand = {
                     name: "issue",
                     type: "string",
                     required: true,
-                    help: "tracker issue id (github: 123 or #123; linear: ABC-123)",
+                    help: "tracker issue id (github: 123 or #123; linear / jira: ABC-123)",
                 },
             ],
             output: {

@@ -340,6 +340,70 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
     expect(result.outputs.arg).toBe("bar-123-auth");
   });
 
+  // Jira is local-only: a Jira key holding a digit (ab1-123-slug) matches neither cloud
+  // shape, so the dev arm no-ops on shape before any label check or counter write.
+  it("T16: a Jira-shaped commit scope with a digit in the key (ab1-123-slug) no-ops — no dispatch", () => {
+    const result = runCtxStep(fixture, {
+      EVENT: "workflow_run",
+      CONCLUSION: "failure",
+      BRANCH: "dev",
+      COMMIT_MSG: "feat(ab1-123-auth): add OAuth flow (#9) bkit [auto route]",
+      HEAD_SHA: "sha-jira",
+      STUB_LATEST_CI_SHA: "sha-jira",
+      STUB_ISSUE_LABELS: "bkit:auto",
+      STUB_API_PR_BODY: "",
+    });
+    expect(result.status).toBe(0);
+    expect(result.outputs.skip).toBe("true");
+    expect(result.outputs.phase).toBeUndefined();
+    expect(readStatusRows(fixture.workspaceDir, "ab1-123-auth")).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Tracker gate — bkit-cloud.yml serves the GitHub tracker only
+  // -------------------------------------------------------------------------
+  it.each(["linear", "jira"])(
+    "a %s tracker in package.json no-ops before FID recovery — no dispatch, no counter write",
+    (tracker) => {
+      fs.writeFileSync(
+        path.join(fixture.workspaceDir, "package.json"),
+        JSON.stringify({ name: "c", bkit: { issueTracker: tracker } }, null, 2),
+      );
+      const result = runCtxStep(fixture, {
+        EVENT: "workflow_run",
+        CONCLUSION: "failure",
+        BRANCH: "dev",
+        COMMIT_MSG: "feat(bar-123-auth): add OAuth flow (#9) bkit [auto route]",
+        HEAD_SHA: "sha-tracker",
+        STUB_LATEST_CI_SHA: "sha-tracker",
+        STUB_ISSUE_LABELS: "bkit:auto",
+      });
+      expect(result.status).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(result.stdout).toContain(`bkit.issueTracker is '${tracker}'`);
+      expect(readStatusRows(fixture.workspaceDir, "bar-123-auth")).toEqual([]);
+    },
+  );
+
+  it("a github tracker in package.json passes the tracker gate and dispatches", () => {
+    fs.writeFileSync(
+      path.join(fixture.workspaceDir, "package.json"),
+      JSON.stringify({ name: "c", bkit: { issueTracker: "github" } }, null, 2),
+    );
+    const result = runCtxStep(fixture, {
+      EVENT: "workflow_run",
+      CONCLUSION: "failure",
+      BRANCH: "dev",
+      COMMIT_MSG: "feat(363-auth): add OAuth flow (#9) bkit [auto route]",
+      HEAD_SHA: "sha-github",
+      STUB_LATEST_CI_SHA: "sha-github",
+      STUB_ISSUE_LABELS: "bkit:auto",
+    });
+    expect(result.outputs.skip).toBe("false");
+    expect(result.outputs.arg).toBe("363-auth");
+  });
+
   // -------------------------------------------------------------------------
   // T5 — MAX_DEV_DISPATCH_ATTEMPTS cap (distinct headSha count, not row count)
   // -------------------------------------------------------------------------

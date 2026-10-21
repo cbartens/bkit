@@ -450,53 +450,60 @@ describe("MCP config — install and upgrade own only bkit's tracker entry", () 
     );
   }
 
-  it("present, unmodified .mcp.json + .cursor/mcp.json → same-version upgrade leaves them byte-identical", () => {
-    setup();
-    expect(runCli(["install", "--claude", "--cursor", "--tracker=github"]).status).toBe(0);
-    const mcpBefore = fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8");
-    const cursorMcpBefore = fs.readFileSync(path.join(tmpDir, ".cursor", "mcp.json"), "utf-8");
+  it.each(["github", "linear", "jira"])(
+    "present, unmodified .mcp.json + .cursor/mcp.json (%s) → same-version upgrade leaves them byte-identical",
+    (tracker) => {
+      setup();
+      expect(runCli(["install", "--claude", "--cursor", `--tracker=${tracker}`]).status).toBe(0);
+      const mcpBefore = fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8");
+      const cursorMcpBefore = fs.readFileSync(path.join(tmpDir, ".cursor", "mcp.json"), "utf-8");
 
-    const upgrade = runCli(["upgrade", "--auto-apply"]);
-    expect(upgrade.status).toBe(0);
-    expect(fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8")).toBe(mcpBefore);
-    expect(fs.readFileSync(path.join(tmpDir, ".cursor", "mcp.json"), "utf-8")).toBe(
-      cursorMcpBefore,
-    );
-  });
+      const upgrade = runCli(["upgrade", "--auto-apply"]);
+      expect(upgrade.status).toBe(0);
+      expect(fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8")).toBe(mcpBefore);
+      expect(fs.readFileSync(path.join(tmpDir, ".cursor", "mcp.json"), "utf-8")).toBe(
+        cursorMcpBefore,
+      );
+    },
+  );
 
-  it("upgrade restores bkit's edited entry, keeps a consumer server, and check is then clean", () => {
-    setup();
-    expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
-    const mcpPath = path.join(tmpDir, ".mcp.json");
-    const installed = JSON.parse(fs.readFileSync(mcpPath, "utf-8")) as {
-      mcpServers: Record<string, unknown>;
-    };
-    const bkitEntry = installed.mcpServers.github;
-    const mine = { type: "stdio", command: "my-mcp" };
-    fs.writeFileSync(
-      mcpPath,
-      JSON.stringify(
-        { mcpServers: { mine, github: { type: "http", url: "https://edited.example/" } } },
-        null,
-        2,
-      ) + "\n",
-      "utf-8",
-    );
+  it.each(["github", "linear", "jira"])(
+    "upgrade restores bkit's edited %s entry, keeps a consumer server, and check is then clean",
+    (tracker) => {
+      setup();
+      expect(runCli(["install", "--claude", `--tracker=${tracker}`]).status).toBe(0);
+      const mcpPath = path.join(tmpDir, ".mcp.json");
+      const installed = JSON.parse(fs.readFileSync(mcpPath, "utf-8")) as {
+        mcpServers: Record<string, unknown>;
+      };
+      const bkitEntry = installed.mcpServers[tracker];
+      expect(bkitEntry).toBeDefined();
+      const mine = { type: "stdio", command: "my-mcp" };
+      fs.writeFileSync(
+        mcpPath,
+        JSON.stringify(
+          { mcpServers: { mine, [tracker]: { type: "http", url: "https://edited.example/" } } },
+          null,
+          2,
+        ) + "\n",
+        "utf-8",
+      );
 
-    expect(runCli(["check"]).status).toBe(1); // bkit's entry differs → a write is pending
+      expect(runCli(["check"]).status).toBe(1); // bkit's entry differs → a write is pending
 
-    const upgrade = runCli(["upgrade", "--auto-apply"]);
-    expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
-    const after = JSON.parse(fs.readFileSync(mcpPath, "utf-8")) as {
-      mcpServers: Record<string, unknown>;
-    };
-    expect(after.mcpServers).toEqual({ mine, github: bkitEntry });
-    expect(Object.keys(after.mcpServers)).toEqual(["mine", "github"]); // order kept
+      const upgrade = runCli(["upgrade", "--auto-apply"]);
+      expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
+      const after = JSON.parse(fs.readFileSync(mcpPath, "utf-8")) as {
+        mcpServers: Record<string, unknown>;
+      };
+      expect(after.mcpServers).toEqual({ mine, [tracker]: bkitEntry });
+      expect(Object.keys(after.mcpServers)).toEqual(["mine", tracker]); // order kept
 
-    const check = runCli(["check"]);
-    expect(check.status).toBe(0);
-    expect(check.stdout).toContain("0 write(s) would occur");
-  });
+      const check = runCli(["check"]);
+      expect(check.status).toBe(0);
+      expect(check.stdout).toContain("0 write(s) would occur");
+    },
+  );
 
   it("malformed .mcp.json fails install instead of being overwritten", () => {
     setup();
@@ -1554,39 +1561,57 @@ describe("upgrade-render", () => {
       expect(promptsAfter).toContain(OVERRIDE_ROW);
     }, 180_000);
 
-    it("upgrade renders opencode.json with provider/tracker sentinels resolved (no raw @@…@@ leak, #245)", () => {
-      // Install the opencode host (openrouter) — opencode.json is templated with @@OPENCODE_*@@
-      // sentinels that renderOpencodeJson resolves on install.
-      const install = runBkit(["install", "--opencode=openrouter"]);
-      expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+    it.each(["github", "linear", "jira"])(
+      "upgrade renders opencode.json with provider/tracker sentinels resolved for %s (no raw @@…@@ leak, #245)",
+      (tracker) => {
+        // Record the tracker the render reads.
+        const pkgPath = path.join(tmpDir, "package.json");
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+          bkit: Record<string, unknown>;
+        };
+        pkg.bkit.issueTracker = tracker;
+        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), "utf-8");
 
-      const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
-      expect(fs.existsSync(opencodeJsonPath)).toBe(true);
-      // Install resolves every sentinel.
-      expect(fs.readFileSync(opencodeJsonPath, "utf-8")).not.toContain("@@");
+        // Install the opencode host (openrouter) — opencode.json is templated with @@OPENCODE_*@@
+        // sentinels that renderOpencodeJson resolves on install.
+        const install = runBkit(["install", "--opencode=openrouter"]);
+        expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
 
-      // Add a consumer-owned key so we also confirm the Tier-2 deep-merge still preserves it.
-      const tampered = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as Record<
-        string,
-        unknown
-      >;
-      tampered.theme = "consumer-custom-theme";
-      fs.writeFileSync(opencodeJsonPath, JSON.stringify(tampered, null, 2) + "\n", "utf-8");
+        const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+        expect(fs.existsSync(opencodeJsonPath)).toBe(true);
+        // Install resolves every sentinel.
+        expect(fs.readFileSync(opencodeJsonPath, "utf-8")).not.toContain("@@");
 
-      // Upgrade renders opencode.json the SAME way install does (contentOverride): no literal
-      // @@OPENCODE_*@@ sentinel keys.
-      const upgrade = runBkit(["upgrade", "--auto-apply"]);
-      expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\]/);
+        // Add a consumer-owned key so we also confirm the Tier-2 deep-merge still preserves it.
+        const tampered = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as Record<
+          string,
+          unknown
+        >;
+        tampered.theme = "consumer-custom-theme";
+        fs.writeFileSync(opencodeJsonPath, JSON.stringify(tampered, null, 2) + "\n", "utf-8");
 
-      const after = fs.readFileSync(opencodeJsonPath, "utf-8");
-      expect(after, "upgrade must not leak raw @@…@@ sentinels into opencode.json").not.toContain(
-        "@@",
-      );
-      const parsed = JSON.parse(after) as { provider?: Record<string, unknown>; theme?: string };
-      // Provider block intact (openrouter), consumer key preserved by the deep-merge.
-      expect(parsed.provider?.openrouter).toBeDefined();
-      expect(parsed.theme).toBe("consumer-custom-theme");
-    }, 180_000);
+        // Upgrade renders opencode.json the SAME way install does (contentOverride): no literal
+        // @@OPENCODE_*@@ sentinel keys.
+        const upgrade = runBkit(["upgrade", "--auto-apply"]);
+        expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\]/);
+
+        const after = fs.readFileSync(opencodeJsonPath, "utf-8");
+        expect(after, "upgrade must not leak raw @@…@@ sentinels into opencode.json").not.toContain(
+          "@@",
+        );
+        const parsed = JSON.parse(after) as {
+          provider?: Record<string, unknown>;
+          mcp: Record<string, unknown>;
+          theme?: string;
+        };
+        // Provider block intact (openrouter), consumer key preserved by the deep-merge.
+        expect(parsed.provider?.openrouter).toBeDefined();
+        expect(parsed.theme).toBe("consumer-custom-theme");
+        // The tracker sentinel resolved to the recorded tracker's own server.
+        expect(Object.keys(parsed.mcp)).toEqual([tracker]);
+      },
+      180_000,
+    );
 
     it("opencode-go gateway: install records the manifest provider; upgrade re-renders the opencode-go block (no ollama fallback)", () => {
       type OpencodeDoc = {

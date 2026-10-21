@@ -287,6 +287,7 @@ export function detectGithubProjectFieldIdFormat(cwd: string): PreflightFinding 
  * opt-out):
  *   - `.github/workflows/bkit-cloud.yml` present → `cloud-router` (informational; active)
  *   - `bkit.cloudAgents === "none"`                  → null (opt-out — stay quiet)
+ *   - `bkit.issueTracker === "jira"`                 → null (Jira runs locally only)
  *   - otherwise (undecided)                          → `cloud-router-none` (nudge to choose)
  *
  * Only fires when there is a `.github/workflows/` dir (the router wakes on a CI
@@ -323,10 +324,11 @@ export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
   }
 
   // No router present — distinguish opt-out from undecided.
-  const { cloudAgents, cloudAgentsExplicit } = readBkitConfig(cwd);
+  const { cloudAgents, cloudAgentsExplicit, issueTracker } = readBkitConfig(cwd);
   if (cloudAgents === "none" && cloudAgentsExplicit) {
     return null; // consumer explicitly chose `none` — stay quiet
   }
+  if (issueTracker === "jira") return null; // no cloud setup exists for a Jira tracker
 
   // Only nudge if there's a workflows dir for the router to wake on.
   if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;

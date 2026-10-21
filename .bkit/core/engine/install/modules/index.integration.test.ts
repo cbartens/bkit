@@ -16,7 +16,7 @@ import { getBkitDocsRoot, getTemplatesRoot } from "../../shared/package-roots";
 import { runCoreModule } from "./core";
 import { renderOpencodeJson } from "./opencode";
 import { dispatchModules, type ModuleContext } from "./index";
-import { BKIT_GATE_SCRIPTS } from "../manifest";
+import { BKIT_GATE_SCRIPTS, ISSUE_TRACKERS } from "../manifest";
 import { readBkitVersion, writeBkitVersion } from "../version-file";
 import { writeCursorCliPermissionsArtifact } from "../cloud-env";
 import {
@@ -1259,5 +1259,14 @@ describe("permissions-parity", () => {
         fs.rmSync(cwd, { recursive: true, force: true });
       }
     });
+
+    // bkit's own tracker server needs no context.md entry: the shipped Claude settings
+    // pre-approve it for every tracker alike.
+    it.each(ISSUE_TRACKERS.filter((t) => t !== "none"))(
+      "the shipped Claude settings pre-approve every %s tracker MCP tool",
+      (tracker) => {
+        expect(claudePermissions().allow).toContain(`mcp__${tracker}__*`);
+      },
+    );
   });
 });

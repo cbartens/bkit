@@ -620,6 +620,15 @@ describe("migrateLinearTeamKey (via seedCorePackageJsonScripts)", () => {
     expect(bkitKey()).toEqual({});
   });
 
+  it("leaves a jira config alone: no write, bkit.jira untouched", () => {
+    const jira = { site: "https://acme.atlassian.net", project: "ENG", review: "Code Review" };
+    seed({ issueTracker: "jira", jira });
+    const before = read();
+    expect(touched(run())).toBe(false);
+    expect(read()).toBe(before);
+    expect(bkitKey()).toEqual({ issueTracker: "jira", jira });
+  });
+
   it("under dry-run records the same write and leaves the file", () => {
     seed({ linearTeam: "ENG" });
     const before = read();

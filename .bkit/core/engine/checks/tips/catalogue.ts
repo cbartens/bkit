@@ -88,7 +88,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     id: "tracker",
     workflows: EVERY_CONTEXT,
     title: "Connect an issue tracker",
-    line: "bkit isn't connected to an issue tracker, so it can't read the task it's working on or record what it did. Connect GitHub or Linear, or switch this tip off if you don't want one.",
+    line: "bkit isn't connected to an issue tracker, so it can't read the task it's working on or record what it did. Connect GitHub, Linear or Jira, or switch this tip off if you don't want one.",
     why: "Every workflow starts by reading the issue it's working on and reports progress back to it as it goes. Without a tracker, you have to paste in what the agent should look at each time, and nothing records what changed or why.",
     ask: 'Connect bkit to GitHub Issues: re-run `bkit install` with the tool flags I use plus `--tracker=github` (it records `bkit.issueTracker` in package.json and adds the tracker server to .mcp.json). If I don\'t want a tracker, set `"issueTracker": "none"` under `bkit` in package.json instead.',
     steps:

@@ -176,48 +176,88 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
 describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
   const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
   const template = path.resolve(scriptsDir, "..", "..", "..", "..", "shared", ".mcp.json");
-  const githubEntry = (
+  const templateServers = (
     JSON.parse(fs.readFileSync(template, "utf-8")) as { mcpServers: Record<string, unknown> }
-  ).mcpServers.github;
+  ).mcpServers;
+  const githubEntry = templateServers.github;
+  const TRACKERS = ["github", "linear", "jira"] as const;
   const write = (doc: unknown) =>
     fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify(doc, null, 2) + "\n");
   const read = () => JSON.parse(fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8"));
 
-  it("absent file → writes the tracker-filtered render", () => {
+  it.each(TRACKERS)("%s: absent file → writes the tracker-filtered render", (tracker) => {
     const ws = makeWriteSet();
-    reconcileMcpJson(template, ".mcp.json", "github", false, ws);
-    expect(read()).toEqual({ mcpServers: { github: githubEntry } });
+    reconcileMcpJson(template, ".mcp.json", tracker, false, ws);
+    expect(read()).toEqual({ mcpServers: { [tracker]: templateServers[tracker] } });
     expect(ws.writes).toEqual([{ path: ".mcp.json", action: "write" }]);
   });
 
-  it("keeps a consumer server and other keys, updates bkit's entry, keeps key order", () => {
-    const mine = { type: "stdio", command: "my-mcp" };
-    write({ theme: "x", mcpServers: { mine, github: { url: "https://edited" } } });
+  it.each(TRACKERS)(
+    "%s: keeps a consumer server and other keys, updates bkit's entry, keeps key order",
+    (tracker) => {
+      const mine = { type: "stdio", command: "my-mcp" };
+      write({ theme: "x", mcpServers: { mine, [tracker]: { url: "https://edited" } } });
+      const ws = makeWriteSet();
+      reconcileMcpJson(template, ".mcp.json", tracker, false, ws);
+      const after = read();
+      expect(after).toEqual({
+        theme: "x",
+        mcpServers: { mine, [tracker]: templateServers[tracker] },
+      });
+      expect(Object.keys(after.mcpServers)).toEqual(["mine", tracker]);
+      expect(ws.writes).toEqual([{ path: ".mcp.json", action: "update" }]);
+    },
+  );
+
+  it.each(TRACKERS)(
+    "%s: in sync → no write; dry-run reports the same write as live without touching disk",
+    (tracker) => {
+      write({ mcpServers: { [tracker]: templateServers[tracker], mine: {} } });
+      const inSync = makeWriteSet();
+      reconcileMcpJson(template, ".mcp.json", tracker, false, inSync);
+      expect(inSync.writes).toEqual([]);
+
+      write({ mcpServers: { [tracker]: { url: "https://edited" } } });
+      const before = fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8");
+      const dry = makeWriteSet();
+      reconcileMcpJson(template, ".mcp.json", tracker, true, dry);
+      expect(fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8")).toBe(before);
+      const live = makeWriteSet();
+      reconcileMcpJson(template, ".mcp.json", tracker, false, live);
+      expect(live.writes).toEqual(dry.writes);
+    },
+  );
+
+  it.each(TRACKERS)(
+    "%s: a consumer key and header in bkit's entry are in sync → no write (#613)",
+    (tracker) => {
+      const entry = templateServers[tracker] as { headers?: Record<string, string> };
+      const extended = { ...entry, timeout: 30, headers: { ...entry.headers, "X-Mine": "1" } };
+      write({ mcpServers: { [tracker]: extended } });
+      const ws = makeWriteSet();
+      reconcileMcpJson(template, ".mcp.json", tracker, false, ws);
+      expect(ws.writes).toEqual([]);
+      expect(read()).toEqual({ mcpServers: { [tracker]: extended } });
+    },
+  );
+
+  it("jira: an edited Authorization header is reset; the consumer's own header stays", () => {
+    const entry = templateServers.jira as { headers: Record<string, string> };
+    write({
+      mcpServers: {
+        jira: { ...entry, headers: { Authorization: "Bearer hardcoded", "X-Mine": "1" } },
+      },
+    });
     const ws = makeWriteSet();
-    reconcileMcpJson(template, ".mcp.json", "github", false, ws);
-    const after = read();
-    expect(after).toEqual({ theme: "x", mcpServers: { mine, github: githubEntry } });
-    expect(Object.keys(after.mcpServers)).toEqual(["mine", "github"]);
+    reconcileMcpJson(template, ".mcp.json", "jira", false, ws);
+    expect(read().mcpServers.jira.headers).toEqual({
+      Authorization: "Bearer ${BKIT_JIRA_API_TOKEN}",
+      "X-Mine": "1",
+    });
     expect(ws.writes).toEqual([{ path: ".mcp.json", action: "update" }]);
   });
 
-  it("in sync → no write; dry-run reports the same write as live without touching disk", () => {
-    write({ mcpServers: { github: githubEntry, mine: {} } });
-    const inSync = makeWriteSet();
-    reconcileMcpJson(template, ".mcp.json", "github", false, inSync);
-    expect(inSync.writes).toEqual([]);
-
-    write({ mcpServers: { github: { url: "https://edited" } } });
-    const before = fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8");
-    const dry = makeWriteSet();
-    reconcileMcpJson(template, ".mcp.json", "github", true, dry);
-    expect(fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8")).toBe(before);
-    const live = makeWriteSet();
-    reconcileMcpJson(template, ".mcp.json", "github", false, live);
-    expect(live.writes).toEqual(dry.writes);
-  });
-
-  it("consumer extras in bkit's entry (toolset, header, key) are in sync → no write (#613)", () => {
+  it("github: an extra toolset in bkit's entry is in sync → no write (#613)", () => {
     const entry = githubEntry as { headers: Record<string, string> };
     const extended = {
       ...entry,
@@ -235,7 +275,7 @@ describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
     expect(read()).toEqual({ mcpServers: { github: extended } });
   });
 
-  it("missing template toolset is appended after the consumer's; edited url is reset (#613)", () => {
+  it("github: a missing template toolset is appended after the consumer's; edited url is reset (#613)", () => {
     const entry = githubEntry as { headers: Record<string, string> };
     write({
       mcpServers: {
@@ -264,7 +304,7 @@ describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
     expect(read()).toEqual({ mcpServers: { linear: { url: "https://mine" } } });
   });
 
-  it.each(["github", "linear", "none"] as const)(
+  it.each([...TRACKERS, "none"] as const)(
     "%s: the render satisfies the preflight MCP detectors (no missing / extra advisory)",
     (tracker) => {
       reconcileMcpJson(template, ".mcp.json", tracker, false, makeWriteSet());
@@ -393,6 +433,7 @@ describe("Scenario: .bkit/.env.example (owned) and .envrc (template)", () => {
     const content = fs.readFileSync(envExamplePath, "utf-8");
     expect(content).toContain("BKIT_GH_TOKEN=");
     expect(content).toContain("BKIT_LINEAR_API_KEY=");
+    expect(content).toContain("BKIT_JIRA_API_TOKEN=");
   });
 
   it("install never writes .envrc (a template the consumer copies)", () => {

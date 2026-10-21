@@ -13,6 +13,10 @@ function pair(gh: string, ln: string): string {
   ].join("\n");
 }
 
+function group(gh: string, ln: string, ji: string): string {
+  return `${pair(gh, ln)}\n<!-- bkit:tracker jira start -->\n${ji}\n<!-- bkit:tracker jira end -->`;
+}
+
 // ---------------------------------------------------------------------------
 // github/linear pairs
 // ---------------------------------------------------------------------------
@@ -110,6 +114,13 @@ no tracker
     expect(r.pairs).toBe(0);
     expect(r.orphans).toContain("github");
   });
+
+  it("flags a lone jira block (no github, linear) as an orphan", () => {
+    const wf = `<!-- bkit:tracker jira start -->\nbody\n<!-- bkit:tracker jira end -->\n`;
+    const r = substituteWorkflow(wf, "jira");
+    expect(r.pairs).toBe(0);
+    expect(r.orphans).toContain("jira");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -117,40 +128,46 @@ no tracker
 // ---------------------------------------------------------------------------
 
 describe("substituteWorkflow — true/false conditionals", () => {
-  it("`true` keeps content when wired, removes it entirely under none (no stub)", () => {
-    const wf = `3. Step.
+  it.each(["github", "linear", "jira"] as const)(
+    "`true` keeps content when wired (%s), removes it entirely under none (no stub)",
+    (tracker) => {
+      const wf = `3. Step.
    <!-- bkit:tracker true start -->
    \`{BODY}\` = fenced block below:
    kept line
    <!-- bkit:tracker true end -->
 4. Next.
 `;
-    const gh = substituteWorkflow(wf, "github");
-    expect(gh.conditionals).toBe(1);
-    expect(gh.orphans).toEqual([]);
-    expect(gh.output).toContain(
-      "3. Step.\n   `{BODY}` = fenced block below:\n   kept line\n4. Next.",
-    );
+      const wired = substituteWorkflow(wf, tracker);
+      expect(wired.conditionals).toBe(1);
+      expect(wired.orphans).toEqual([]);
+      expect(wired.output).toContain(
+        "3. Step.\n   `{BODY}` = fenced block below:\n   kept line\n4. Next.",
+      );
 
-    const no = substituteWorkflow(wf, "none");
-    // removed entirely — no stub, no blank gap
-    expect(no.output).toContain("3. Step.\n4. Next.");
-    expect(no.output).not.toContain("kept line");
-    expect(no.output).not.toContain("bkit:tracker");
-  });
+      const no = substituteWorkflow(wf, "none");
+      // removed entirely — no stub, no blank gap
+      expect(no.output).toContain("3. Step.\n4. Next.");
+      expect(no.output).not.toContain("kept line");
+      expect(no.output).not.toContain("bkit:tracker");
+    },
+  );
 
-  it("`false` keeps content only under none, removes it when wired", () => {
-    const wf = `x
+  it.each(["github", "linear", "jira"] as const)(
+    "`false` keeps content only under none, removes it when wired (%s)",
+    (tracker) => {
+      const wf = `x
    <!-- bkit:tracker false start -->
    none-only note
    <!-- bkit:tracker false end -->
 y
 `;
-    expect(substituteWorkflow(wf, "none").output).toContain("none-only note");
-    const gh = substituteWorkflow(wf, "github");
-    expect(gh.output).not.toContain("none-only note");
-    expect(gh.output).toContain("x\ny");
-  });
+      expect(substituteWorkflow(wf, "none").output).toContain("none-only note");
+      const wired = substituteWorkflow(wf, tracker);
+      expect(wired.output).not.toContain("none-only note");
+      expect(wired.output).toContain("x\ny");
+    },
+  );
 
   it("resolves a pair nested inside a `true` block", () => {
     const wf = `   <!-- bkit:tracker true start -->
@@ -170,6 +187,23 @@ y
     expect(no.output).not.toContain("Failure Path");
     expect(no.output).not.toContain("GH");
     expect(no.output).not.toContain("bkit:tracker");
+  });
+
+  it("resolves a three-tracker group nested inside a `true` block under jira", () => {
+    const wf = `   <!-- bkit:tracker true start -->
+   ${group("GH", "LN", "JI")}
+   Set VAR. If empty -> Failure Path.
+   <!-- bkit:tracker true end -->
+`;
+    const ji = substituteWorkflow(wf, "jira");
+    expect(ji.pairs).toBe(1);
+    expect(ji.conditionals).toBe(1);
+    expect(ji.orphans).toEqual([]);
+    expect(ji.output).toContain("JI");
+    expect(ji.output).not.toContain("GH");
+    expect(ji.output).not.toContain("LN");
+    expect(ji.output).toContain("Set VAR. If empty -> Failure Path.");
+    expect(ji.output).not.toContain("bkit:tracker");
   });
 
   it("flags an unbalanced true marker as an orphan", () => {
@@ -436,6 +470,7 @@ describe("real prompt sources", () => {
     expect(linear).toContain("→ `ISSUE_ID` = `{identifier}`, `Parent` = `{identifier} found`");
     const jira = substituteWorkflow(src, "jira").output;
     expect(jira).toContain("mcp__jira__searchJiraIssuesUsingJql({");
+    expect(jira).toContain("No such hit → `Parent` = `missing`");
     expect(jira).toContain("→ `ISSUE_ID` = `{key}`, `Parent` = `{key} found`");
     for (const out of [github, linear, jira]) {
       expect(out).toContain("audit-{slug}/parent-comment.md");
@@ -443,6 +478,7 @@ describe("real prompt sources", () => {
     const none = substituteWorkflow(src, "none").output;
     expect(none).not.toContain("search_issues");
     expect(none).not.toContain("list_issues");
+    expect(none).not.toContain("searchJiraIssuesUsingJql");
     expect(none).not.toContain("No such hit → `Parent` = `missing`");
     expect(none).not.toContain("audit-{slug}/parent-comment.md");
   });
@@ -453,9 +489,16 @@ describe("real prompt sources", () => {
     expect(github).toContain("issues comment --kind=audit");
     expect(github).toContain("mcp__github__add_issue_comment({");
     expect(github).not.toContain("mcp__linear__");
+    expect(github).not.toContain("mcp__jira__");
     const linear = substituteWorkflow(src, "linear").output;
     expect(linear).toContain("mcp__linear__save_comment({");
     expect(linear).not.toContain("mcp__github__");
+    expect(linear).not.toContain("mcp__jira__");
+    const jira = substituteWorkflow(src, "jira").output;
+    expect(jira).toContain("issues comment --kind=audit");
+    expect(jira).toContain("mcp__jira__addOrEditJiraIssueComment({");
+    expect(jira).not.toContain("mcp__github__");
+    expect(jira).not.toContain("mcp__linear__");
     const none = substituteWorkflow(src, "none").output;
     expect(none).not.toContain("issues comment");
     expect(none).toMatch(/^15\. _No tracker connected, skip step\._$/m);
@@ -489,10 +532,18 @@ describe("issue-scan call sites (#135)", () => {
       expect(out).toContain("mcp__linear__list_comments");
     });
 
+    it(`${wf} wires the jira scan with per-hit comment read`, () => {
+      const out = substituteWorkflow(read(wf), "jira").output;
+      expect(out).toContain("mcp__jira__searchJiraIssuesUsingJql");
+      expect(out).toContain("Read comments (**Tracker** comment reads)");
+      expect(out).toContain('name: "listJiraIssueComments"');
+    });
+
     it(`${wf} omits the scan entirely under none (no tracker call)`, () => {
       const out = substituteWorkflow(read(wf), "none").output;
       expect(out).not.toContain("mcp__github__search_issues");
       expect(out).not.toContain("mcp__linear__list_issues");
+      expect(out).not.toContain("mcp__jira__searchJiraIssuesUsingJql");
     });
   }
 });

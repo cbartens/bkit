@@ -110,10 +110,10 @@ describe("hasGithubMcpServer", () => {
     expect(hasGithubMcpServer(tmpDir)).toBe(false);
   });
 
-  it("false when mcp config has no github server", () => {
+  it.each(["linear", "jira"])("false when mcp config has only the %s server", (tracker) => {
     fs.writeFileSync(
       path.join(tmpDir, ".mcp.json"),
-      JSON.stringify({ mcpServers: { linear: { type: "http" } } }),
+      JSON.stringify({ mcpServers: { [tracker]: { type: "http" } } }),
     );
     expect(hasGithubMcpServer(tmpDir)).toBe(false);
   });
@@ -178,8 +178,8 @@ describe("detectCiRouterSecrets", () => {
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
   });
 
-  it.each(["linear", "github"])(
-    "%s tracker, no claude credential: ONE finding naming the key and the federation variables (no BKIT_LINEAR_API_KEY)",
+  it.each(["linear", "github", "jira"])(
+    "%s tracker, no claude credential: ONE finding naming the key and the federation variables (no tracker token)",
     (tracker) => {
       writeRouter(CURRENT_ROUTER, tracker);
       mockGhNames({ secret: [], variable: [] });
@@ -189,6 +189,7 @@ describe("detectCiRouterSecrets", () => {
       for (const v of FEDERATION_VARIABLES)
         expect(findings[0]!.action).toContain(`gh variable set ${v}`);
       expect(findings[0]!.action).not.toContain("BKIT_LINEAR_API_KEY");
+      expect(findings[0]!.action).not.toContain("BKIT_JIRA_API_TOKEN");
     },
   );
 
@@ -311,6 +312,20 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result!.action).toContain("BKIT_ANTHROPIC_API_KEY");
   });
 
+  it("jira tracker: the checklist names no tracker token (Jira runs locally only)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "jira" } }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    const result = buildCloudDashboardsAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.detect).not.toContain("BKIT_JIRA_API_TOKEN");
+    expect(result!.action).not.toContain("BKIT_JIRA_API_TOKEN");
+    expect(result!.action).not.toContain("BKIT_LINEAR_API_KEY");
+    expect(result!.action).toContain("BKIT_ANTHROPIC_API_KEY");
+  });
+
   it("lists cloud context-fetch creds (VERCEL_TOKEN etc.) for /bkit-debug in the cloud", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     const result = buildCloudDashboardsAdvisory(tmpDir);
@@ -320,6 +335,31 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result!.action).toContain("SUPABASE_ACCESS_TOKEN");
     // Non-interactive guidance is the load-bearing bit for headless cloud agents.
     expect(result!.action).toContain("vercel login");
+  });
+
+  it.each(["github", "jira"])(
+    "%s tracker, .cursor/ only: the checklist names no Linear key",
+    (tracker) => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: tracker } }),
+      );
+      fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+      const result = buildCloudDashboardsAdvisory(tmpDir);
+      expect(result).not.toBeNull();
+      expect(result!.detect).not.toContain("BKIT_LINEAR_API_KEY");
+      expect(result!.action).not.toContain("BKIT_LINEAR_API_KEY");
+    },
+  );
+
+  it("linear tracker, .cursor/ only: falls back to the cursor checklist", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "linear" } }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+    const result = buildCloudDashboardsAdvisory(tmpDir);
+    expect(result!.action).toContain("BKIT_LINEAR_API_KEY");
   });
 
   it("cloud=cursor variant: BKIT_LINEAR_API_KEY appears in the checklist (cursor path)", () => {

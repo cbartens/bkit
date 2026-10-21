@@ -77,6 +77,7 @@ describe("auto-fid-guard", () => {
         for (const evil of MALICIOUS_FIDS) {
           expect(fromMarker(`<!-- bkit:issue=#341 bkit:fid=${evil} -->`, "github")).toBeNull();
           expect(fromMarker(`<!-- bkit:issue=ABC-1 bkit:fid=${evil} -->`, "linear")).toBeNull();
+          expect(fromMarker(`<!-- bkit:issue=AB1-1 bkit:fid=${evil} -->`, "jira")).toBeNull();
           expect(fromMarker(`<!-- bkit:fid=${evil} -->`, "none")).toBeNull();
           expect(fromBranch(`feat/${evil}`, "none").ok).toBe(false);
         }
@@ -88,13 +89,18 @@ describe("auto-fid-guard", () => {
       it("linear accepts a well-formed alpha-prefixed FID", () => {
         expect(FID_PATTERNS.linear.test("bar-341-three-runtimes")).toBe(true);
       });
+      it("jira accepts a well-formed project-key FID, digits in the key included", () => {
+        expect(FID_PATTERNS.jira.test("bar-341-three-runtimes")).toBe(true);
+        expect(FID_PATTERNS.jira.test("ab1-341-three-runtimes")).toBe(true);
+      });
       it("none accepts a well-formed branch-derived FID", () => {
         expect(FID_PATTERNS.none.test("341-three-runtimes")).toBe(true);
         expect(FID_PATTERNS.none.test("my-feature-branch")).toBe(true);
       });
-      it("any (CI_DEV) accepts both tracker shapes", () => {
+      it("any (CI_DEV) accepts every tracker shape", () => {
         expect(FID_PATTERNS.any.test("341-three-runtimes")).toBe(true);
         expect(FID_PATTERNS.any.test("bar-341-three-runtimes")).toBe(true);
+        expect(FID_PATTERNS.any.test("ab1-341-three-runtimes")).toBe(true);
       });
     });
   });

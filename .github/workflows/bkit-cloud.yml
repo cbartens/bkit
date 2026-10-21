@@ -190,6 +190,13 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
+          # Cloud runs serve the GitHub tracker only: Linear cloud runs start from Cursor's
+          # Linear integration, and Jira runs locally only. Unset tracker → continue.
+          TRACKER=$(sed -n 's/.*"issueTracker"[[:space:]]*:[[:space:]]*"\([a-z]*\)".*/\1/p' package.json 2>/dev/null | head -1 || true)
+          if [ -n "$TRACKER" ] && [ "$TRACKER" != "github" ]; then
+            echo "::notice::bkit.issueTracker is '$TRACKER' — bkit-cloud.yml serves the GitHub tracker only; no-op exit."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           if [ "$EVENT" = "workflow_dispatch" ]; then
             # Dispatched: phase + issue come straight from inputs.
             PHASE="$IN_PHASE"

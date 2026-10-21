@@ -66,6 +66,8 @@ describe("unlockedMcpServers", () => {
       supabase: "https://mcp.supabase.com/mcp?read_only=true",
       vercel: "https://mcp.vercel.com",
       github: "https://api.githubcopilot.com/mcp/",
+      linear: "https://mcp.linear.app/mcp",
+      jira: "https://mcp.atlassian.com/v2/mcp",
     });
     expect(unlockedMcpServers(cwd).map((s) => s.name)).toEqual(["sentry", "supabase", "vercel"]);
   });

@@ -45,6 +45,7 @@ beforeAll(() => {
     `docs/plans/${OTHER_MONTH}/logs/680-longer-issue`,
     `docs/plans/${OTHER_MONTH}/logs/70-some-other-feature`,
     `docs/plans/${MONTH}/logs/abc-12-linear-feature`,
+    `docs/plans/${MONTH}/logs/ab1-12-jira-feature`,
   ]);
   fs.writeFileSync(
     path.join(issueRoot, `docs/plans/${OTHER_MONTH}/logs/70-some-other-feature/.lock`),
@@ -125,6 +126,10 @@ describe("Resolve FID — issue lookup reuses only that issue's feature", () => 
 
   it.each(issueLookups)("$file: matches a Linear-style issue ID case-insensitively", (lookup) => {
     expect(runLookup(lookup, "ABC-12", issueRoot).json?.fid).toBe("abc-12-linear-feature");
+  });
+
+  it.each(issueLookups)("$file: matches a Jira-style issue key case-insensitively", (lookup) => {
+    expect(runLookup(lookup, "AB1-12", issueRoot).json?.fid).toBe("ab1-12-jira-feature");
   });
 
   it.each(issueLookups)("$file: lists both features when one issue has two (exit 4)", (lookup) => {

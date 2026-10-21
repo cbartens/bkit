@@ -344,15 +344,17 @@ describe("bkit workflows fail", () => {
     expect(again.json.add).toEqual([]);
   });
 
-  it("a failed Jira issue moves to the configured review status", async () => {
+  it.each([
+    [{ issueTracker: "linear" }, "In Review"],
+    [{ issueTracker: "linear", linear: { review: "Code Review" } }, "Code Review"],
+    [{ issueTracker: "jira" }, "In Review"],
+    [{ issueTracker: "jira", jira: { review: "QA" } }, "QA"],
+    [{ issueTracker: "github" }, null],
+  ])("a failed issue under %j moves to review status %j", async (bkit, state) => {
     const cwd = repo();
-    write(
-      cwd,
-      "package.json",
-      JSON.stringify({ bkit: { issueTracker: "jira", jira: { review: "QA" } } }),
-    );
+    write(cwd, "package.json", JSON.stringify({ bkit }));
     const r = await run(cwd, wf("fail", "build", "--label=bkit:build"));
-    expect(r.json.trackerState).toBe("QA");
+    expect(r.json.trackerState).toBe(state);
   });
 
   it("prints the failure comment from --error-file, naming a lock it could not remove", async () => {

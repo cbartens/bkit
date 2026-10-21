@@ -248,7 +248,7 @@ Dashboard label-based routing.
 ### Body
 
 - Subagent invocation phrasing — § Subagent invocation transform above.
-- Else (Linear MCP, `git`, `gh`, `pnpm`, steps, `Failure Path`, gates, status.jsonl/lock) identical.
+- Else (tracker MCP, `git`, `gh`, `pnpm`, steps, `Failure Path`, gates, status.jsonl/lock) identical.
 
 ### Slash-command activation
 
@@ -646,7 +646,7 @@ Cloud OpenAI-compatible cells tool-call-smoked (`tools:` round-trip `tool_calls`
 | Cursor | `AGENTS.md` (root, AGENTS.md spec) + `.cursor/rules/*.mdc` (MDC: markdown + optional YAML frontmatter with `description`, `globs`, `alwaysApply`) | Plain markdown / MDC |
 | Both (de-facto cross-host convention) | `AGENTS.md` increasingly read by all hosts incl. Claude Code, Codex, Cursor | Plain markdown |
 
-**Current setup:** `CLAUDE.md` + `.cursor/rules/bkit-rules.mdc` redirect to `.agents/rules.md`. `AGENTS.md` = cross-host dispatch spine (workflow router: Linear-issue → label command dispatch), read by every host. **Host-scoped ownership:** `CLAUDE.md` ships `--claude` (Claude analog of `.cursor/rules/bkit-rules.mdc`, `--cursor`); `AGENTS.md` core (always). Each host brings redirect — no rule all three coexist. `--cursor`-only: no `CLAUDE.md`; `--claude`-only: no `.cursor/rules/`.
+**Current setup:** `CLAUDE.md` + `.cursor/rules/bkit-rules.mdc` redirect to `.agents/rules.md`. `AGENTS.md` = cross-host dispatch spine (workflow router: tracker issue → label command dispatch), read by every host. **Host-scoped ownership:** `CLAUDE.md` ships `--claude` (Claude analog of `.cursor/rules/bkit-rules.mdc`, `--cursor`); `AGENTS.md` core (always). Each host brings redirect — no rule all three coexist. `--cursor`-only: no `CLAUDE.md`; `--claude`-only: no `.cursor/rules/`.
 
 **Transform:** managed-block markers (`<!-- bkit:start -->` … `<!-- bkit:end -->`). Inside regenerated; outside preserved.
 

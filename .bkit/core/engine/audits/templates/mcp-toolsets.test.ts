@@ -5,7 +5,7 @@
 // both the live `.mcp.json` and the shipped `.bkit/shared/.mcp.json`, and that the
 // two agree through the real render path (`buildMcpJson`): bkit owns only the tracker
 // entry of `.mcp.json`, rendered tracker-filtered, so the live copy omits the `linear`
-// block the raw template carries.
+// and `jira` blocks the raw template carries.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -52,9 +52,30 @@ describe("bkit-mcp-toolsets — actions toolset (#341 C1)", () => {
   });
 });
 
+const CURSOR_TEMPLATE_MCP_JSON = path.join(pkgRoot, ".bkit", "shared", ".cursor", "mcp.json");
+
+describe("tracker-filtered render", () => {
+  it.each(["github", "linear", "jira"] as const)(
+    "%s writes only its own server, for Claude and Cursor",
+    (tracker) => {
+      for (const template of [TEMPLATE_MCP_JSON, CURSOR_TEMPLATE_MCP_JSON]) {
+        const rendered = JSON.parse(buildMcpJson(template, tracker)) as {
+          mcpServers: Record<string, unknown>;
+        };
+        expect(Object.keys(rendered.mcpServers), template).toEqual([tracker]);
+      }
+    },
+  );
+
+  it("none writes no server", () => {
+    for (const template of [TEMPLATE_MCP_JSON, CURSOR_TEMPLATE_MCP_JSON]) {
+      expect(JSON.parse(buildMcpJson(template, "none"))).toEqual({ mcpServers: {} });
+    }
+  });
+});
+
 describe("jira tracker render", () => {
   it("writes only the jira server, Bearer-authenticated, identically for Claude and Cursor", () => {
-    const cursor = path.join(pkgRoot, ".bkit", "shared", ".cursor", "mcp.json");
     const expected = {
       mcpServers: {
         jira: {
@@ -65,6 +86,6 @@ describe("jira tracker render", () => {
       },
     };
     expect(JSON.parse(buildMcpJson(TEMPLATE_MCP_JSON, "jira"))).toEqual(expected);
-    expect(JSON.parse(buildMcpJson(cursor, "jira"))).toEqual(expected);
+    expect(JSON.parse(buildMcpJson(CURSOR_TEMPLATE_MCP_JSON, "jira"))).toEqual(expected);
   });
 });

@@ -546,30 +546,36 @@ describe("runUninstall — MCP config keeps the consumer's servers", () => {
       }
     ).mcpServers[tracker];
 
-  it("removes bkit's entry and keeps a consumer server and top-level key", async () => {
-    const rel = ".mcp.json";
-    const consumer = { type: "stdio", command: "my-mcp" };
-    writeFile(
-      rel,
-      JSON.stringify(
-        { mcpServers: { github: trackerEntry(rel, "github"), mine: consumer }, extra: true },
-        null,
-        2,
-      ) + "\n",
-    );
-    await runUninstall(["claude"], makeCtx());
-    expect(JSON.parse(readFile(rel))).toEqual({ mcpServers: { mine: consumer }, extra: true });
-  });
+  it.each(["github", "linear", "jira"])(
+    "removes bkit's %s entry and keeps a consumer server and top-level key",
+    async (tracker) => {
+      const rel = ".mcp.json";
+      const consumer = { type: "stdio", command: "my-mcp" };
+      writeFile(
+        rel,
+        JSON.stringify(
+          { mcpServers: { [tracker]: trackerEntry(rel, tracker), mine: consumer }, extra: true },
+          null,
+          2,
+        ) + "\n",
+      );
+      await runUninstall(["claude"], makeCtx());
+      expect(JSON.parse(readFile(rel))).toEqual({ mcpServers: { mine: consumer }, extra: true });
+    },
+  );
 
-  it("deletes the file when bkit's entry was all it held", async () => {
-    const rel = path.join(".cursor", "mcp.json");
-    writeFile(
-      rel,
-      JSON.stringify({ mcpServers: { linear: trackerEntry(rel, "linear") } }, null, 2) + "\n",
-    );
-    await runUninstall(["cursor"], makeCtx());
-    expect(fileExists(rel)).toBe(false);
-  });
+  it.each(["github", "linear", "jira"])(
+    "deletes the file when bkit's %s entry was all it held",
+    async (tracker) => {
+      const rel = path.join(".cursor", "mcp.json");
+      writeFile(
+        rel,
+        JSON.stringify({ mcpServers: { [tracker]: trackerEntry(rel, tracker) } }, null, 2) + "\n",
+      );
+      await runUninstall(["cursor"], makeCtx());
+      expect(fileExists(rel)).toBe(false);
+    },
+  );
 });
 
 describe("removeUnusedTrackerMcpEntries — tracker switch", () => {
@@ -582,46 +588,59 @@ describe("removeUnusedTrackerMcpEntries — tracker switch", () => {
     ).mcpServers;
   const cursorRel = path.join(".cursor", "mcp.json");
   const opencodeRel = path.join(".opencode", "opencode.json");
-  const opencodeLinearDoc = (): Record<string, unknown> => {
+  const opencodeDoc = (tracker: "linear" | "jira"): Record<string, unknown> => {
     const templatePath = findTemplateSource(opencodeRel);
     if (templatePath === null) throw new Error("opencode.json template missing");
-    return JSON.parse(renderOpencodeJson(templatePath, "linear", "openrouter", tmpDir)) as Record<
+    return JSON.parse(renderOpencodeJson(templatePath, tracker, "openrouter", tmpDir)) as Record<
       string,
       unknown
     >;
   };
 
-  it("removes an unedited linear entry from all three files and keeps github and a consumer server", () => {
-    const servers = templateServers(".mcp.json");
-    const consumer = { type: "stdio", command: "my-mcp" };
+  // github is never removed: the workflows' gh MCP fallback calls it under every tracker.
+  it.each([
+    ["linear", "github"],
+    ["jira", "github"],
+    ["linear", "jira"],
+    ["jira", "linear"],
+  ] as const)(
+    "removes an unedited %s entry from all three files on a switch to %s and keeps github and a consumer server",
+    (from, to) => {
+      const servers = templateServers(".mcp.json");
+      const consumer = { type: "stdio", command: "my-mcp" };
+      writeFile(
+        ".mcp.json",
+        JSON.stringify({ mcpServers: { [from]: servers[from], github: servers.github } }, null, 2),
+      );
+      writeFile(
+        cursorRel,
+        JSON.stringify({
+          mcpServers: { [from]: templateServers(cursorRel)[from], mine: consumer },
+        }),
+      );
+      writeFile(opencodeRel, JSON.stringify(opencodeDoc(from), null, 2));
+
+      const ws: WriteSet = { writes: [] };
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      const written = removeUnusedTrackerMcpEntries(tmpDir, to, false, ws, "[t]");
+      const logs = log.mock.calls.map((c) => String(c[0]));
+      log.mockRestore();
+
+      expect(written).toHaveLength(3);
+      expect(ws.writes.map((w) => w.path)).toEqual(written);
+      expect(logs.some((l) => l.includes(`removed .mcp.json mcpServers.${from}`))).toBe(true);
+      expect(JSON.parse(readFile(".mcp.json"))).toEqual({ mcpServers: { github: servers.github } });
+      expect(JSON.parse(readFile(cursorRel))).toEqual({ mcpServers: { mine: consumer } });
+      const opencode = JSON.parse(readFile(opencodeRel)) as Record<string, unknown>;
+      expect(opencode).not.toHaveProperty("mcp");
+      expect(opencode).toHaveProperty("permission");
+    },
+  );
+
+  it.each(["linear", "jira"])("keeps an emptied mcpServers map in .mcp.json (%s)", (from) => {
     writeFile(
       ".mcp.json",
-      JSON.stringify({ mcpServers: { linear: servers.linear, github: servers.github } }, null, 2),
-    );
-    writeFile(
-      cursorRel,
-      JSON.stringify({ mcpServers: { linear: templateServers(cursorRel).linear, mine: consumer } }),
-    );
-    writeFile(opencodeRel, JSON.stringify(opencodeLinearDoc(), null, 2));
-
-    const ws: WriteSet = { writes: [] };
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    const written = removeUnusedTrackerMcpEntries(tmpDir, "github", false, ws, "[t]");
-    log.mockRestore();
-
-    expect(written).toHaveLength(3);
-    expect(ws.writes.map((w) => w.path)).toEqual(written);
-    expect(JSON.parse(readFile(".mcp.json"))).toEqual({ mcpServers: { github: servers.github } });
-    expect(JSON.parse(readFile(cursorRel))).toEqual({ mcpServers: { mine: consumer } });
-    const opencode = JSON.parse(readFile(opencodeRel)) as Record<string, unknown>;
-    expect(opencode).not.toHaveProperty("mcp");
-    expect(opencode).toHaveProperty("permission");
-  });
-
-  it("keeps an emptied mcpServers map in .mcp.json", () => {
-    writeFile(
-      ".mcp.json",
-      JSON.stringify({ mcpServers: { linear: templateServers(".mcp.json").linear } }),
+      JSON.stringify({ mcpServers: { [from]: templateServers(".mcp.json")[from] } }),
     );
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     removeUnusedTrackerMcpEntries(tmpDir, "none", false, { writes: [] }, "[t]");
@@ -629,9 +648,9 @@ describe("removeUnusedTrackerMcpEntries — tracker switch", () => {
     expect(JSON.parse(readFile(".mcp.json"))).toEqual({ mcpServers: {} });
   });
 
-  it("keeps a consumer-edited linear entry and warns about it", () => {
-    const edited = { type: "http", url: "https://mcp.linear.app/mcp", headers: { X: "1" } };
-    const before = JSON.stringify({ mcpServers: { linear: edited } }, null, 2);
+  it.each(["linear", "jira"])("keeps a consumer-edited %s entry and warns about it", (from) => {
+    const edited = { ...(templateServers(".mcp.json")[from] as object), headers: { X: "1" } };
+    const before = JSON.stringify({ mcpServers: { [from]: edited } }, null, 2);
     writeFile(".mcp.json", before);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const written = removeUnusedTrackerMcpEntries(tmpDir, "github", false, { writes: [] }, "[t]");
@@ -640,7 +659,7 @@ describe("removeUnusedTrackerMcpEntries — tracker switch", () => {
 
     expect(written).toEqual([]);
     expect(readFile(".mcp.json")).toBe(before);
-    expect(warnings.some((w) => w.includes(".mcp.json mcpServers.linear: edited"))).toBe(true);
+    expect(warnings.some((w) => w.includes(`.mcp.json mcpServers.${from}: edited`))).toBe(true);
   });
 
   it("dry-run reports the write but leaves the file untouched", () => {
@@ -654,13 +673,11 @@ describe("removeUnusedTrackerMcpEntries — tracker switch", () => {
     expect(readFile(".mcp.json")).toBe(before);
   });
 
-  it("switching to linear removes nothing", () => {
+  it.each(["linear", "jira"] as const)("switching to %s removes nothing", (to) => {
     const servers = templateServers(".mcp.json");
-    const before = JSON.stringify({ mcpServers: { github: servers.github } });
+    const before = JSON.stringify({ mcpServers: { github: servers.github, [to]: servers[to] } });
     writeFile(".mcp.json", before);
-    expect(removeUnusedTrackerMcpEntries(tmpDir, "linear", false, { writes: [] }, "[t]")).toEqual(
-      [],
-    );
+    expect(removeUnusedTrackerMcpEntries(tmpDir, to, false, { writes: [] }, "[t]")).toEqual([]);
     expect(readFile(".mcp.json")).toBe(before);
   });
 });
@@ -724,17 +741,22 @@ describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
     });
   });
 
-  // What three installs (`--opencode=openrouter`, `ollama`, `opencode-zen`) across two trackers
-  // (`linear`, then `github`) leave: install keeps every earlier provider block and tracker entry.
+  // What three installs (`--opencode=openrouter`, `ollama`, `opencode-zen`) across three trackers
+  // (`linear`, `jira`, then `github`) leave: install keeps every earlier provider block and
+  // tracker entry.
   function multiInstallOpencodeJson(): Record<string, Record<string, unknown>> {
     const tpl = findTemplateSource(".opencode/opencode.json")!;
-    const render = (tracker: "github" | "linear" | "none", provider: string) =>
+    const render = (tracker: "github" | "linear" | "jira" | "none", provider: string) =>
       JSON.parse(renderOpencodeJson(tpl, tracker, provider, tmpDir)) as Record<
         string,
         Record<string, unknown>
       >;
     const doc = render("github", "openrouter");
-    doc.mcp = { ...doc.mcp, ...render("linear", "openrouter").mcp };
+    doc.mcp = {
+      ...doc.mcp,
+      ...render("linear", "openrouter").mcp,
+      ...render("jira", "openrouter").mcp,
+    };
     doc.provider = {
       ...doc.provider,
       ...render("none", "ollama").provider,
@@ -747,27 +769,30 @@ describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
     const rel = ".opencode/opencode.json";
     const doc = multiInstallOpencodeJson();
     expect(Object.keys(doc.provider)).toEqual(["openrouter", "ollama", "opencode"]);
-    expect(Object.keys(doc.mcp)).toEqual(["github", "linear"]);
+    expect(Object.keys(doc.mcp)).toEqual(["github", "linear", "jira"]);
     writeFile(rel, JSON.stringify(doc, null, 2) + "\n");
     await runUninstall(["opencode"], makeCtx());
     expect(fileExists(rel)).toBe(false);
   });
 
-  it("keeps a provider block and tracker entry the consumer edited, whole, and their own entries", async () => {
-    const rel = ".opencode/opencode.json";
-    const doc = multiInstallOpencodeJson();
-    const ollama = doc.provider.ollama as { options: { baseURL: string } };
-    ollama.options.baseURL = "http://localhost:11434/v1";
-    (doc.mcp.linear as { url: string }).url = "https://mcp.example.com/linear";
-    doc.mcp.sentry = { type: "remote", url: "https://mcp.sentry.dev/mcp" };
-    doc.provider.mine = { options: { apiKey: "{env:MINE}" } };
-    writeFile(rel, JSON.stringify(doc, null, 2) + "\n");
-    await runUninstall(["opencode"], makeCtx());
-    const after = JSON.parse(readFile(rel)) as Record<string, Record<string, unknown>>;
-    expect(Object.keys(after).sort()).toEqual(["mcp", "provider"]);
-    expect(after.provider).toEqual({ ollama: doc.provider.ollama, mine: doc.provider.mine });
-    expect(after.mcp).toEqual({ linear: doc.mcp.linear, sentry: doc.mcp.sentry });
-  });
+  it.each(["github", "linear", "jira"])(
+    "keeps a provider block and a %s tracker entry the consumer edited, whole, and their own entries",
+    async (tracker) => {
+      const rel = ".opencode/opencode.json";
+      const doc = multiInstallOpencodeJson();
+      const ollama = doc.provider.ollama as { options: { baseURL: string } };
+      ollama.options.baseURL = "http://localhost:11434/v1";
+      (doc.mcp[tracker] as { url: string }).url = `https://mcp.example.com/${tracker}`;
+      doc.mcp.sentry = { type: "remote", url: "https://mcp.sentry.dev/mcp" };
+      doc.provider.mine = { options: { apiKey: "{env:MINE}" } };
+      writeFile(rel, JSON.stringify(doc, null, 2) + "\n");
+      await runUninstall(["opencode"], makeCtx());
+      const after = JSON.parse(readFile(rel)) as Record<string, Record<string, unknown>>;
+      expect(Object.keys(after).sort()).toEqual(["mcp", "provider"]);
+      expect(after.provider).toEqual({ ollama: doc.provider.ollama, mine: doc.provider.mine });
+      expect(after.mcp).toEqual({ [tracker]: doc.mcp[tracker], sentry: doc.mcp.sentry });
+    },
+  );
 
   it("preserves opencode.json when the consumer added their own key", () => {
     const rel = ".opencode/opencode.json";
@@ -892,43 +917,57 @@ describe("runUninstall — .bkit/version install-state (4.6.3)", () => {
     expect(fileExists(owned)).toBe(true);
   });
 
-  it("strips package.json bkit install-state block on full/core uninstall", async () => {
-    const pkgPath = path.join(tmpDir, "package.json");
-    fs.writeFileSync(
-      pkgPath,
-      JSON.stringify(
-        {
-          name: "consumer",
-          bkit: {
-            issueTracker: "github",
-            opencodeProvider: "opencode-zen",
-            opencodeProviders: ["opencode-zen"],
-            depUpdater: "renovate",
-          },
-        },
-        null,
-        2,
-      ) + "\n",
-      "utf-8",
-    );
-    await runUninstall(["core"], makeCtx());
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-    expect(pkg.bkit).toBeUndefined();
-  });
+  // The bkit block a consumer holds for each tracker, its tracker config included.
+  const TRACKER_BKIT_BLOCKS = [
+    ["github", { issueTracker: "github" }],
+    ["linear", { issueTracker: "linear", linear: { team: "ENG", review: "In Review" } }],
+    [
+      "jira",
+      { issueTracker: "jira", jira: { site: "https://acme.atlassian.net", project: "PROJ" } },
+    ],
+  ] as const;
 
-  it("keeps package.json bkit block on targeted (non-core) uninstall", async () => {
-    const pkgPath = path.join(tmpDir, "package.json");
-    fs.writeFileSync(
-      pkgPath,
-      JSON.stringify({ name: "consumer", bkit: { issueTracker: "github" } }, null, 2) + "\n",
-      "utf-8",
-    );
-    await runUninstall(["claude"], makeCtx());
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
-      bkit?: { issueTracker?: string };
-    };
-    expect(pkg.bkit?.issueTracker).toBe("github");
-  });
+  it.each(TRACKER_BKIT_BLOCKS)(
+    "strips package.json bkit install-state block on full/core uninstall (%s)",
+    async (_tracker, trackerBlock) => {
+      const pkgPath = path.join(tmpDir, "package.json");
+      fs.writeFileSync(
+        pkgPath,
+        JSON.stringify(
+          {
+            name: "consumer",
+            bkit: {
+              ...trackerBlock,
+              opencodeProvider: "opencode-zen",
+              opencodeProviders: ["opencode-zen"],
+              depUpdater: "renovate",
+            },
+          },
+          null,
+          2,
+        ) + "\n",
+        "utf-8",
+      );
+      await runUninstall(["core"], makeCtx());
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+      expect(pkg.bkit).toBeUndefined();
+    },
+  );
+
+  it.each(TRACKER_BKIT_BLOCKS)(
+    "keeps package.json bkit block on targeted (non-core) uninstall (%s)",
+    async (_tracker, trackerBlock) => {
+      const pkgPath = path.join(tmpDir, "package.json");
+      fs.writeFileSync(
+        pkgPath,
+        JSON.stringify({ name: "consumer", bkit: trackerBlock }, null, 2) + "\n",
+        "utf-8",
+      );
+      await runUninstall(["claude"], makeCtx());
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as { bkit?: unknown };
+      expect(pkg.bkit).toEqual(trackerBlock);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------

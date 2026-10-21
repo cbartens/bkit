@@ -170,13 +170,21 @@ describe("bkit prs open", () => {
     );
   });
 
-  it("writes the linear and no-tracker marker shapes, taking the tracker from package.json", async () => {
-    const lin = repo("feat/abc-1-x", { issueTracker: "linear" });
-    gh.view(pr());
-    const r = await run(lin, ["prs", "open", "--fid=abc-1-x", "--issue=ABC-1", "--title=t"]);
-    expect(r.json.body).toBe("<!-- bkit:issue=ABC-1 bkit:fid=abc-1-x -->\n");
+  it.each([
+    ["linear", "abc-1-x", "ABC-1"],
+    ["jira", "ab2-7-x", "AB2-7"],
+  ])(
+    "writes the %s marker shape, taking the tracker from package.json",
+    async (tracker, fid, issue) => {
+      const cwd = repo(`feat/${fid}`, { issueTracker: tracker });
+      gh.view(pr());
+      const r = await run(cwd, ["prs", "open", `--fid=${fid}`, `--issue=${issue}`, "--title=t"]);
+      expect(r.json.body).toBe(`<!-- bkit:issue=${issue} bkit:fid=${fid} -->\n`);
+    },
+  );
+
+  it("writes the no-tracker marker shape", () => {
     expect(prMarker("none", "x-y", undefined)).toBe("<!-- bkit:fid=x-y -->");
-    expect(prMarker("jira", "ab2-7-x", "AB2-7")).toBe("<!-- bkit:issue=AB2-7 bkit:fid=ab2-7-x -->");
   });
 
   it.each([
@@ -184,8 +192,11 @@ describe("bkit prs open", () => {
     ["github", "12-x", undefined],
     ["github", "12-x", "abc"],
     ["linear", "12-x", "ABC-1"],
+    ["linear", "abc-1-x", undefined],
+    ["linear", "ab2-1-x", "AB2-1"],
     ["jira", "mba-7-x", "mba-7"],
     ["jira", "12-x", "MBA-7"],
+    ["jira", "mba-7-x", undefined],
     ["none", "-x", undefined],
   ])("refuses a %s marker with fid %j issue %j (exit 2)", async (tracker, fid, issue) => {
     const cwd = repo("feat/12-x", { issueTracker: tracker });

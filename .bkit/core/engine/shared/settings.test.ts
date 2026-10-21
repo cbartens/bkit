@@ -59,6 +59,17 @@ describe("readBkitConfig", () => {
     });
   });
 
+  it.each(["github", "linear", "jira", "none"])("reads issueTracker %s", (tracker) => {
+    const cfg = readBkitConfig(root(JSON.stringify({ bkit: { issueTracker: tracker } })));
+    expect(cfg.issueTracker).toBe(tracker);
+    expect(cfg.issueTrackerExplicit).toBe(true);
+  });
+
+  it("reads an unsupported issueTracker as the default", () => {
+    const cfg = readBkitConfig(root(JSON.stringify({ bkit: { issueTracker: "asana" } })));
+    expect(cfg.issueTracker).toBe(CONFIG_DEFAULTS.issueTracker);
+  });
+
   it("reads the per-moment tracker states, defaulting each missing or blank one", () => {
     const cfg = readBkitConfig(
       root(

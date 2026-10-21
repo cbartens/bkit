@@ -703,64 +703,83 @@ describe("MCP config — fresh install and a consumer's own file", () => {
     expect(Object.keys({ ...cursorMcp.mcpServers })).toHaveLength(0);
   });
 
-  it("bkit install --tracker=github seeds .mcp.json with only the github entry", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "scratch-consumer", version: "0.0.0", devDependencies: {} }),
-    );
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+  // The tracker's first agent read tool, per tracker.
+  const AGENT_READ_TOOL = {
+    github: "mcp__github__list_issues",
+    linear: "mcp__linear__list_issues",
+    jira: "mcp__jira__searchJiraIssuesUsingJql",
+  } as const;
 
-    const bkitInstallPath = path.resolve(
-      path.dirname(new URL(import.meta.url).pathname),
-      "../../cli.ts",
-    );
-
-    const result = spawnSync(
-      requireTsx(),
-      [bkitInstallPath, "install", "--claude", "--cursor", "--tracker=github"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 60_000,
-      },
-    );
-
-    const combined = combinedOutput(result);
-    expect(result.status, `install crashed:\n${combined}`).toBe(0);
-
-    // --tracker=github → only the github entry present in .mcp.json
-    const mcpJson = JSON.parse(fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8")) as {
-      mcpServers?: Record<string, unknown>;
-    };
-    expect(mcpJson.mcpServers!["github"], ".mcp.json must have github server").toBeDefined();
-    expect(mcpJson.mcpServers!["linear"], ".mcp.json must NOT have linear server").toBeUndefined();
-
-    // bkit.issueTracker persisted to package.json
-    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-      bkit?: { issueTracker?: string };
-    };
-    expect(pkg.bkit?.issueTracker).toBe("github");
-
-    // workflow mirror must have no remaining bkit:tracker OR bkit:when-tracker markers
-    const claudeCmd = path.join(tmpDir, ".claude", "commands", "bkit-build.md");
-    const content = fs.readFileSync(claudeCmd, "utf-8");
-    expect(content).not.toMatch(/<!--\s*bkit:tracker\s+\S+\s+(?:start|end)\s*-->/);
-    expect(content).not.toMatch(/<!--\s*bkit:when-tracker\s+(?:start|end)\b[^>]*-->/);
-    expect(content).toContain("mcp__github__");
-
-    // agent mirrors resolve tracker blocks too: github read tools only, no markers
-    for (const host of [".claude", ".cursor"]) {
-      const agent = fs.readFileSync(
-        path.join(tmpDir, host, "agents", "bkit-utility-update-roadmap.md"),
-        "utf-8",
+  it.each(["github", "linear", "jira"] as const)(
+    "bkit install --tracker=%s seeds .mcp.json with only that tracker's entry",
+    (tracker) => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "scratch-consumer", version: "0.0.0", devDependencies: {} }),
       );
-      expect(agent, `${host} agent markers`).not.toMatch(/<!--\s*bkit:tracker\b/);
-      expect(agent, `${host} agent github tools`).toContain("  - mcp__github__list_issues\n");
-      expect(agent, `${host} agent linear tools`).not.toContain("mcp__linear__");
-      expect(agent.match(/^ {2}- Bash$/gm), `${host} agent Bash once`).toHaveLength(1);
-    }
-  });
+      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+      const bkitInstallPath = path.resolve(
+        path.dirname(new URL(import.meta.url).pathname),
+        "../../cli.ts",
+      );
+
+      const result = spawnSync(
+        requireTsx(),
+        [bkitInstallPath, "install", "--claude", "--cursor", `--tracker=${tracker}`],
+        {
+          cwd: tmpDir,
+          encoding: "utf-8",
+          env: { ...process.env, NODE_NO_WARNINGS: "1" },
+          timeout: 60_000,
+        },
+      );
+
+      const combined = combinedOutput(result);
+      expect(result.status, `install crashed:\n${combined}`).toBe(0);
+
+      // Only the tracker's own entry in .mcp.json and .cursor/mcp.json
+      for (const rel of [".mcp.json", path.join(".cursor", "mcp.json")]) {
+        const mcpJson = JSON.parse(fs.readFileSync(path.join(tmpDir, rel), "utf-8")) as {
+          mcpServers: Record<string, unknown>;
+        };
+        expect(Object.keys(mcpJson.mcpServers), rel).toEqual([tracker]);
+      }
+
+      // bkit.issueTracker persisted to package.json
+      const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+        bkit?: { issueTracker?: string };
+      };
+      expect(pkg.bkit?.issueTracker).toBe(tracker);
+
+      // workflow mirror must have no remaining bkit:tracker OR bkit:when-tracker markers,
+      // and call only the tracker's own MCP server
+      const claudeCmd = path.join(tmpDir, ".claude", "commands", "bkit-build.md");
+      const content = fs.readFileSync(claudeCmd, "utf-8");
+      expect(content).not.toMatch(/<!--\s*bkit:tracker\s+\S+\s+(?:start|end)\s*-->/);
+      expect(content).not.toMatch(/<!--\s*bkit:when-tracker\s+(?:start|end)\b[^>]*-->/);
+      const called = ["github", "linear", "jira"].filter((name) =>
+        content.includes(`mcp__${name}__`),
+      );
+      expect(called).toEqual([tracker]);
+
+      // agent mirrors resolve tracker blocks too: the tracker's read tools only, no markers
+      for (const host of [".claude", ".cursor"]) {
+        const agent = fs.readFileSync(
+          path.join(tmpDir, host, "agents", "bkit-utility-update-roadmap.md"),
+          "utf-8",
+        );
+        expect(agent, `${host} agent markers`).not.toMatch(/<!--\s*bkit:tracker\b/);
+        expect(agent, `${host} agent ${tracker} tools`).toContain(
+          `  - ${AGENT_READ_TOOL[tracker]}\n`,
+        );
+        for (const other of ["github", "linear", "jira"].filter((t) => t !== tracker)) {
+          expect(agent, `${host} agent ${other} tools`).not.toContain(`mcp__${other}__`);
+        }
+        expect(agent.match(/^ {2}- Bash$/gm), `${host} agent Bash once`).toHaveLength(1);
+      }
+    },
+  );
 
   it("re-install with no tracker (bkit owns no entry) leaves a consumer .mcp.json byte-for-byte unchanged", () => {
     fs.writeFileSync(
@@ -816,68 +835,87 @@ describe("MCP config — fresh install and a consumer's own file", () => {
 // Invariant:
 //   (a) `bkit install --tracker=github --auto=cursor` exits non-zero.
 //   (b) package.json is NOT mutated (issueTracker NOT written on mismatch).
+// Jira is local-only, so every cloud lane refuses `--tracker=jira` the same way.
 // ---------------------------------------------------------------------------
 
 describe("Challenge Finding 3 — cloud/tracker constraint-before-write regression", () => {
   const getInstallPath = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
-  it("--tracker=github --auto=cursor exits non-zero (constraint mismatch)", () => {
-    // Finding 3 (a): the mismatch must be a hard error — exit 1 every time.
+  // [tracker, cloud lane, the tracker that lane requires]
+  const MISMATCHES = [
+    ["github", "cursor", "linear"],
+    ["jira", "claude", "github"],
+    ["jira", "cursor", "linear"],
+    ["jira", "opencode", "github"],
+  ] as const;
 
-    const initialPkg = { name: "constraint-test", version: "0.0.0" };
-    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify(initialPkg), "utf-8");
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+  it.each(MISMATCHES)(
+    "--tracker=%s --auto=%s exits non-zero (constraint mismatch)",
+    (tracker, cloud, required) => {
+      // Finding 3 (a): the mismatch must be a hard error — exit 1 every time.
 
-    const result = spawnSync(
-      requireTsx(),
-      [getInstallPath(), "install", "--tracker=github", "--auto=cursor"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 30_000,
-      },
-    );
+      const initialPkg = { name: "constraint-test", version: "0.0.0" };
+      fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify(initialPkg), "utf-8");
+      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
 
-    // Must exit non-zero (the constraint hard-error path).
-    expect(
-      result.status,
-      `Expected non-zero exit for tracker/cloud mismatch.\n` +
-        `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
-    ).not.toBe(0);
+      const result = spawnSync(
+        requireTsx(),
+        [getInstallPath(), "install", `--tracker=${tracker}`, `--auto=${cloud}`],
+        {
+          cwd: tmpDir,
+          encoding: "utf-8",
+          env: { ...process.env, NODE_NO_WARNINGS: "1" },
+          timeout: 30_000,
+        },
+      );
 
-    // Error output must mention the mismatch.
-    const combined = combinedOutput(result);
-    expect(combined).toMatch(/cloud=cursor.*tracker.*linear|cursor.*requires.*linear/i);
-  });
+      // Must exit non-zero (the constraint hard-error path).
+      expect(
+        result.status,
+        `Expected non-zero exit for tracker/cloud mismatch.\n` +
+          `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
+      ).not.toBe(0);
 
-  it("--tracker=github --auto=cursor does NOT write bkit.issueTracker to package.json (no partial write)", () => {
-    // Finding 3 (b): the "no state written on hard error" invariant.
-    // The pre-remediation code wrote issueTracker BEFORE the constraint check,
-    // meaning package.json was mutated even on a failed install.
+      // Error output must mention the mismatch.
+      const combined = combinedOutput(result);
+      expect(combined).toContain(`--auto=${cloud} requires tracker=${required}`);
+    },
+  );
 
-    const initialPkg = { name: "constraint-test", version: "0.0.0" };
-    const initialPkgJson = JSON.stringify(initialPkg);
-    fs.writeFileSync(path.join(tmpDir, "package.json"), initialPkgJson, "utf-8");
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+  it.each(MISMATCHES)(
+    "--tracker=%s --auto=%s does NOT write bkit.issueTracker to package.json (no partial write)",
+    (tracker, cloud) => {
+      // Finding 3 (b): the "no state written on hard error" invariant.
+      // The pre-remediation code wrote issueTracker BEFORE the constraint check,
+      // meaning package.json was mutated even on a failed install.
 
-    spawnSync(requireTsx(), [getInstallPath(), "install", "--tracker=github", "--auto=cursor"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 30_000,
-    });
+      const initialPkg = { name: "constraint-test", version: "0.0.0" };
+      const initialPkgJson = JSON.stringify(initialPkg);
+      fs.writeFileSync(path.join(tmpDir, "package.json"), initialPkgJson, "utf-8");
+      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
 
-    // package.json must NOT have bkit.issueTracker set (no partial write).
-    const afterPkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-      bkit?: { issueTracker?: string };
-    };
+      spawnSync(
+        requireTsx(),
+        [getInstallPath(), "install", `--tracker=${tracker}`, `--auto=${cloud}`],
+        {
+          cwd: tmpDir,
+          encoding: "utf-8",
+          env: { ...process.env, NODE_NO_WARNINGS: "1" },
+          timeout: 30_000,
+        },
+      );
 
-    expect(
-      afterPkg.bkit?.issueTracker,
-      "bkit.issueTracker must NOT be written when the install exits due to a cloud/tracker constraint mismatch",
-    ).toBeUndefined();
-  });
+      // package.json must NOT have bkit.issueTracker set (no partial write).
+      const afterPkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+        bkit?: { issueTracker?: string };
+      };
+
+      expect(
+        afterPkg.bkit?.issueTracker,
+        "bkit.issueTracker must NOT be written when the install exits due to a cloud/tracker constraint mismatch",
+      ).toBeUndefined();
+    },
+  );
 
   it("--tracker=linear --auto=cursor exits 0 and writes bkit.issueTracker=linear (matching pair)", () => {
     // Complementary positive case: the matching pair must succeed and persist state.
@@ -1024,16 +1062,21 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
     expect(r.status, `check should be clean:\n${r.stdout}\n${r.stderr}`).toBe(0);
   });
 
-  it("`bkit install --tracker=github` alone switches the tracker on every installed host", () => {
-    expect(run(["install", "--claude", "--cursor"]).status).toBe(0);
-    const r = run(["install", "--tracker=github"]);
-    expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
-    const pkg = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8"));
-    expect(pkg.bkit.issueTracker).toBe("github");
-    expect(fs.readFileSync(path.join(tmp, ".cursor", "mcp.json"), "utf-8")).toContain('"github"');
-    const check = run(["check"]);
-    expect(check.status, `check should be clean:\n${check.stdout}\n${check.stderr}`).toBe(0);
-  });
+  it.each(["github", "linear", "jira"])(
+    "`bkit install --tracker=%s` alone switches the tracker on every installed host",
+    (tracker) => {
+      expect(run(["install", "--claude", "--cursor"]).status).toBe(0);
+      const r = run(["install", `--tracker=${tracker}`]);
+      expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
+      const pkg = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8"));
+      expect(pkg.bkit.issueTracker).toBe(tracker);
+      expect(fs.readFileSync(path.join(tmp, ".cursor", "mcp.json"), "utf-8")).toContain(
+        `"${tracker}"`,
+      );
+      const check = run(["check"]);
+      expect(check.status, `check should be clean:\n${check.stdout}\n${check.stderr}`).toBe(0);
+    },
+  );
 
   it("`bkit install --claude --tracker=github` also re-renders the installed cursor host", () => {
     expect(run(["install", "--claude", "--cursor"]).status).toBe(0);
@@ -1357,36 +1400,49 @@ describe("Scenario — tracker switch and active opencode provider removal leave
       .map((f) => /^model:\s*(\S+)/m.exec(fs.readFileSync(path.join(dir, f), "utf-8"))?.[1] ?? "");
   };
 
-  it("--tracker=linear then --tracker=github removes the linear MCP entry everywhere", () => {
-    seedConsumer();
-    const hosts = ["--claude", "--cursor", "--opencode=openrouter"];
-    runOk(["install", ...hosts, "--tracker=linear"]);
-    expect(readJson(".mcp.json").mcpServers).toHaveProperty("linear");
-    expect(readJson(".opencode/opencode.json").mcp).toHaveProperty("linear");
+  it.each([
+    ["linear", "github"],
+    ["jira", "github"],
+    ["linear", "jira"],
+    ["jira", "linear"],
+  ])(
+    "--tracker=%s then --tracker=%s removes the first MCP entry everywhere",
+    (from, to) => {
+      seedConsumer();
+      const hosts = ["--claude", "--cursor", "--opencode=openrouter"];
+      runOk(["install", ...hosts, `--tracker=${from}`]);
+      expect(readJson(".mcp.json").mcpServers).toHaveProperty(from);
+      expect(readJson(".opencode/opencode.json").mcp).toHaveProperty(from);
 
-    const out = runOk(["install", ...hosts, "--tracker=github"]);
-    expect(out).toContain("removed .mcp.json mcpServers.linear");
-    for (const rel of [".mcp.json", ".cursor/mcp.json"]) {
-      expect(readJson(rel).mcpServers, rel).not.toHaveProperty("linear");
-      expect(readJson(rel).mcpServers, rel).toHaveProperty("github");
-    }
-    expect(readJson(".opencode/opencode.json").mcp).not.toHaveProperty("linear");
-    expect(readJson(".opencode/opencode.json").mcp).toHaveProperty("github");
-    runOk(["check"]);
-  }, 240_000);
+      const out = runOk(["install", ...hosts, `--tracker=${to}`]);
+      expect(out).toContain(`removed .mcp.json mcpServers.${from}`);
+      for (const rel of [".mcp.json", ".cursor/mcp.json"]) {
+        expect(readJson(rel).mcpServers, rel).not.toHaveProperty(from);
+        expect(readJson(rel).mcpServers, rel).toHaveProperty(to);
+      }
+      expect(readJson(".opencode/opencode.json").mcp).not.toHaveProperty(from);
+      expect(readJson(".opencode/opencode.json").mcp).toHaveProperty(to);
+      runOk(["check"]);
+    },
+    240_000,
+  );
 
-  it("a linear entry the consumer edited survives the switch, with a warning", () => {
-    seedConsumer();
-    runOk(["install", "--claude", "--tracker=linear"]);
-    const mcp = readJson(".mcp.json");
-    const edited = { type: "http", url: "https://mcp.linear.app/mcp", headers: { X: "1" } };
-    mcp.mcpServers!.linear = edited;
-    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify(mcp, null, 2) + "\n");
+  it.each(["linear", "jira"])(
+    "a %s entry the consumer edited survives the switch, with a warning",
+    (from) => {
+      seedConsumer();
+      runOk(["install", "--claude", `--tracker=${from}`]);
+      const mcp = readJson(".mcp.json");
+      const edited = { ...(mcp.mcpServers![from] as object), headers: { X: "1" } };
+      mcp.mcpServers![from] = edited;
+      fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify(mcp, null, 2) + "\n");
 
-    const out = runOk(["install", "--claude", "--tracker=github"]);
-    expect(out).toContain("kept .mcp.json mcpServers.linear: edited since bkit wrote it");
-    expect(readJson(".mcp.json").mcpServers!.linear).toEqual(edited);
-  }, 240_000);
+      const out = runOk(["install", "--claude", "--tracker=github"]);
+      expect(out).toContain(`kept .mcp.json mcpServers.${from}: edited since bkit wrote it`);
+      expect(readJson(".mcp.json").mcpServers![from]).toEqual(edited);
+    },
+    240_000,
+  );
 
   it("uninstall --opencode=<active> re-renders the agents to the remaining provider", () => {
     seedConsumer();

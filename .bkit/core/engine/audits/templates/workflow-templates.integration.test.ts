@@ -18,6 +18,8 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
     expect(yml).toContain("id-token: write");
     expect(yml).not.toContain("BKIT_LINEAR_API_KEY");
     expect(yml).not.toContain("mcp__linear__*");
+    expect(yml).not.toContain("BKIT_JIRA_API_TOKEN");
+    expect(yml).not.toContain("mcp__jira__*");
     expect(yml).toContain("mcp__github__*");
     expect(yml).not.toMatch(/@@CLOUD_TRACKER/);
     expect(yml).toMatch(

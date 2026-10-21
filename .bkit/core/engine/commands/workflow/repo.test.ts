@@ -252,7 +252,11 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
   });
 
   it("prints nulls under github, and for keys left unset", async () => {
-    pkg({ issueTracker: "github", linear: { team: "ENG" } });
+    pkg({
+      issueTracker: "github",
+      linear: { team: "ENG" },
+      jira: { site: "https://a.atlassian.net", project: "MBA" },
+    });
     expect((await run([])).json).toMatchObject({
       trackerTeam: null,
       trackerProject: null,
@@ -260,6 +264,8 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
     });
     pkg({ issueTracker: "linear" });
     expect((await run([])).json).toMatchObject({ trackerTeam: null, trackerProject: null });
+    pkg({ issueTracker: "jira" });
+    expect((await run([])).json).toMatchObject({ trackerProject: null, trackerSite: null });
   });
 });
 

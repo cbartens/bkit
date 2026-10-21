@@ -140,7 +140,7 @@ describe("every comment-fetch site normalises order the same way", () => {
       .split("\n")
       .filter((line) => CALL_SITE_RE.test(line) && !PROSE_LINE_RE.test(line));
 
-  it(`carries the ${SORT_STEP} step at all 16 call sites, on both trackers`, () => {
+  it(`carries the ${SORT_STEP} step at all 16 github and linear call sites`, () => {
     const total = WORKFLOW_FILES.reduce(
       (sum, rel) => sum + callSites(rel).filter((line) => line.includes(SORT_STEP)).length,
       0,
@@ -153,6 +153,24 @@ describe("every comment-fetch site normalises order the same way", () => {
       for (const line of callSites(rel)) {
         expect(line, `no sort step on: ${line.trim().slice(0, 80)}…`).toContain(SORT_STEP);
       }
+    });
+  }
+
+  // Jira call sites defer to the **Tracker** rule's comment-read recipe, which
+  // pages `listJiraIssueComments` oldest first, so they carry no sort step.
+  const JIRA_SITE = "read comments (**Tracker** comment reads)";
+  const JIRA_RECIPE =
+    'executeRead({ name: "listJiraIssueComments", inputs: { issueIdOrKey, maxResults: 100, startAt } })`, oldest first';
+  const jiraSites = (rel: string) =>
+    read(rel).toLowerCase().split(JIRA_SITE.toLowerCase()).length - 1;
+
+  it("carries a Tracker-rule comment read at all 8 jira call sites", () => {
+    expect(WORKFLOW_FILES.reduce((sum, rel) => sum + jiraSites(rel), 0)).toBe(8);
+  });
+
+  for (const rel of WORKFLOW_FILES.filter((file) => jiraSites(file) > 0)) {
+    it(`${rel}: a jira comment read uses the oldest-first recipe`, () => {
+      expect(read(rel)).toContain(JIRA_RECIPE);
     });
   }
 

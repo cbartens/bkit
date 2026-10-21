@@ -44,6 +44,12 @@ afterEach(() => {
   process.env = originalEnv;
 });
 
+/** Each tracker that needs its own `.bkit/.env` token beside BKIT_GH_TOKEN, with that token. */
+const TRACKER_KEYS = [
+  ["linear", "BKIT_LINEAR_API_KEY"],
+  ["jira", "BKIT_JIRA_API_TOKEN"],
+] as const;
+
 // ---------------------------------------------------------------------------
 // [mcp-env] detectors — BAR-260
 // ---------------------------------------------------------------------------
@@ -91,19 +97,24 @@ describe("detectBlankDotenvKeys", () => {
     expect(detectBlankDotenvKeys(tmpDir)).toEqual([]);
   });
 
-  it("returns two advisories when .bkit/.env has all required keys blank", () => {
+  it("defaults to the linear tracker's keys", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=\nBKIT_LINEAR_API_KEY=\n",
-      "utf-8",
-    );
-    const findings = detectBlankDotenvKeys(tmpDir);
-    expect(findings).toHaveLength(2);
-    const ids = findings.map((f) => f.id);
-    expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
-    expect(ids).toContain("mcp-env-blank-key-bkit_linear_api_key");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "BKIT_GH_TOKEN=\n", "utf-8");
+    expect(detectBlankDotenvKeys(tmpDir)).toEqual(detectBlankDotenvKeys(tmpDir, "linear"));
   });
+
+  it.each(TRACKER_KEYS)(
+    "%s tracker: returns two advisories when .bkit/.env has all required keys blank",
+    (tracker, key) => {
+      fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), `BKIT_GH_TOKEN=\n${key}=\n`, "utf-8");
+      const findings = detectBlankDotenvKeys(tmpDir, tracker);
+      expect(findings).toHaveLength(2);
+      const ids = findings.map((f) => f.id);
+      expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
+      expect(ids).toContain(`mcp-env-blank-key-${key.toLowerCase()}`);
+    },
+  );
 
   it("github tracker: does NOT flag blank BKIT_LINEAR_API_KEY (issue #138)", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
@@ -127,36 +138,54 @@ describe("detectBlankDotenvKeys", () => {
     const findings = detectBlankDotenvKeys(tmpDir, "jira");
     expect(findings.map((f) => f.id)).toEqual(["mcp-env-blank-key-bkit_jira_api_token"]);
     expect(findings[0]!.action).toContain("Atlassian MCP V2");
+    // Jira has no preflight hook; only the Linear token feeds one.
+    expect(findings[0]!.action).not.toContain("preflight hook");
   });
 
-  it("returns one advisory for the blank key only", () => {
-    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=ghp_test\nBKIT_LINEAR_API_KEY=\n",
-      "utf-8",
-    );
-    const findings = detectBlankDotenvKeys(tmpDir);
-    expect(findings).toHaveLength(1);
-    expect(findings[0]!.id).toBe("mcp-env-blank-key-bkit_linear_api_key");
-  });
+  it.each(TRACKER_KEYS)(
+    "%s tracker: returns one advisory for the blank key only",
+    (tracker, key) => {
+      fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".bkit", ".env"),
+        `BKIT_GH_TOKEN=ghp_test\n${key}=\n`,
+        "utf-8",
+      );
+      const findings = detectBlankDotenvKeys(tmpDir, tracker);
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.id).toBe(`mcp-env-blank-key-${key.toLowerCase()}`);
+    },
+  );
 
-  it("returns empty array when both keys are set and non-empty", () => {
-    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=ghp_test\nBKIT_LINEAR_API_KEY=lin_key\n",
-      "utf-8",
-    );
-    expect(detectBlankDotenvKeys(tmpDir)).toEqual([]);
-  });
+  it.each(TRACKER_KEYS)(
+    "%s tracker: returns empty array when both keys are set and non-empty",
+    (tracker, key) => {
+      fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".bkit", ".env"),
+        `BKIT_GH_TOKEN=ghp_test\n${key}=tracker_key\n`,
+        "utf-8",
+      );
+      expect(detectBlankDotenvKeys(tmpDir, tracker)).toEqual([]);
+    },
+  );
 
-  it("returns advisory for absent key (key not in file at all)", () => {
+  it.each(TRACKER_KEYS)(
+    "%s tracker: returns advisory for absent key (key not in file at all)",
+    (tracker, key) => {
+      fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "BKIT_GH_TOKEN=ghp_test\n", "utf-8");
+      const findings = detectBlankDotenvKeys(tmpDir, tracker);
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.id).toBe(`mcp-env-blank-key-${key.toLowerCase()}`);
+      expect(findings[0]!.detect).toContain(`${key} is absent`);
+    },
+  );
+
+  it("github tracker: BKIT_GH_TOKEN alone is enough", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "BKIT_GH_TOKEN=ghp_test\n", "utf-8");
-    const findings = detectBlankDotenvKeys(tmpDir);
-    expect(findings).toHaveLength(1);
-    expect(findings[0]!.id).toBe("mcp-env-blank-key-bkit_linear_api_key");
+    expect(detectBlankDotenvKeys(tmpDir, "github")).toEqual([]);
   });
 
   it("advisory action text contains [mcp-env] prefix and no BAR-XXX references", () => {
@@ -222,6 +251,26 @@ describe("detectDirenvMissing", () => {
       expect(f?.severity).toBe("advisory");
       expect(f?.action).toContain("[mcp-env]");
       expect(f?.action).not.toMatch(/BAR-\d+/);
+    } finally {
+      process.env.PATH = savedPath;
+    }
+  });
+
+  it.each([
+    ["github", "BKIT_GH_TOKEN", ["BKIT_LINEAR_API_KEY", "BKIT_JIRA_API_TOKEN"]],
+    ["linear", "BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY", ["BKIT_JIRA_API_TOKEN"]],
+    ["jira", "BKIT_GH_TOKEN, BKIT_JIRA_API_TOKEN", ["BKIT_LINEAR_API_KEY"]],
+  ] as const)("%s tracker: setup steps name only its own tokens", (tracker, keys, absent) => {
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .bkit/.env\n", "utf-8");
+    delete process.env.CI;
+    delete process.env.CLAUDE_CODE_REMOTE;
+    delete process.env.CURSOR_REMOTE_AGENT;
+    const savedPath = process.env.PATH;
+    process.env.PATH = "/nonexistent-path-for-testing";
+    try {
+      const action = detectDirenvMissing(tmpDir, tracker)!.action;
+      expect(action).toContain(`# edit .bkit/.env: set ${keys}\n`);
+      for (const key of absent) expect(action).not.toContain(key);
     } finally {
       process.env.PATH = savedPath;
     }

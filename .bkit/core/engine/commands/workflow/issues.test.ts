@@ -327,6 +327,7 @@ describe("bkit issues labels", () => {
       "option-id-missing",
     ],
     [{ issueTracker: "linear", githubProject: project }, "tracker-linear"],
+    [{ issueTracker: "jira", githubProject: project }, "tracker-jira"],
     [{}, "tracker-none"],
   ])("board is null with a reason for %j", async (bkit, reason) => {
     const r = await labels(dir(bkit), "--board=progress", "--issue=12", "--owner-repo=acme/app");
@@ -338,6 +339,7 @@ describe("bkit issues labels", () => {
     [{ issueTracker: "linear" }, "started", "In Review"],
     [{ issueTracker: "linear", linear: { review: "Code Review" } }, "started", "Code Review"],
     [{ issueTracker: "jira" }, "In Progress", "In Review"],
+    [{ issueTracker: "jira", jira: { review: "Code Review" } }, "In Progress", "Code Review"],
     [{ issueTracker: "jira", jira: { progress: "Doing", review: "QA" } }, "Doing", "QA"],
     [{ issueTracker: "github" }, null, null],
     [{}, null, null],

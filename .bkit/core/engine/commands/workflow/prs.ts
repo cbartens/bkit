@@ -789,7 +789,7 @@ export const prsCommand: CommandSpec = {
         {
           name: "issue",
           type: "string",
-          help: "issue id for the marker (github: 123 or #123; linear: ABC-123)",
+          help: "issue id for the marker (github: 123 or #123; linear / jira: ABC-123)",
         },
         BASE_FLAG,
         HEAD_FLAG,

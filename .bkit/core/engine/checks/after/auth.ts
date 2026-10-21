@@ -123,10 +123,12 @@ export function buildCloudDashboardsAdvisory(cwd: string): PreflightFinding | nu
   if (!hasRouter && !hasClaude && !hasCursor) return null;
 
   // cloud=claude path (bkit-cloud.yml): GitHub-tracker only, ANTHROPIC_API_KEY or federation.
-  // cloud=cursor path (.cursor/): BKIT_LINEAR_API_KEY for Cursor dashboard.
-  // Distinguish by recorded variant; fall back to presence-based detection.
-  const recordedVariant = readBkitConfig(cwd).cloudAgents;
-  const isCursorCloud = recordedVariant === "cursor" || (!hasRouter && hasCursor);
+  // cloud=cursor path (.cursor/): BKIT_LINEAR_API_KEY for Cursor dashboard; Linear-tracker only.
+  // Distinguish by recorded variant; fall back to presence-based detection under linear.
+  const config = readBkitConfig(cwd);
+  const isCursorCloud =
+    config.cloudAgents === "cursor" ||
+    (!hasRouter && hasCursor && config.issueTracker === "linear");
 
   const secretList = isCursorCloud ? "`BKIT_LINEAR_API_KEY`" : "`ANTHROPIC_API_KEY`";
   const ghSetLines = isCursorCloud
