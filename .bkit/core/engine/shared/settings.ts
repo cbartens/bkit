@@ -181,3 +181,23 @@ export function readBkitConfig(root: string): BkitConfig {
     cloudAgentsExplicit: bkit.cloudAgents !== undefined,
   };
 }
+
+/** Where the wired tracker's issues live, for the workflows' tracker calls. */
+export interface TrackerScope {
+  /** Linear team key; null under any other tracker or when unset. */
+  trackerTeam: string | null;
+  /** Linear project name or Jira project key; null under github / none or when unset. */
+  trackerProject: string | null;
+  /** Jira site URL (the MCP `cloudId`); null under any other tracker or when unset. */
+  trackerSite: string | null;
+}
+
+export function trackerScope(
+  cfg: Pick<BkitConfig, "issueTracker" | "linear" | "jira">,
+): TrackerScope {
+  if (cfg.issueTracker === "linear")
+    return { trackerTeam: cfg.linear.team, trackerProject: cfg.linear.project, trackerSite: null };
+  if (cfg.issueTracker === "jira")
+    return { trackerTeam: null, trackerProject: cfg.jira.project, trackerSite: cfg.jira.site };
+  return { trackerTeam: null, trackerProject: null, trackerSite: null };
+}

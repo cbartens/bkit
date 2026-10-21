@@ -194,7 +194,7 @@ describe("real workflow sources", () => {
   ];
 
   for (const wf of workflows) {
-    for (const tracker of ["github", "linear", "none"] as const) {
+    for (const tracker of ["github", "linear", "jira", "none"] as const) {
       it(`${wf} resolves cleanly for ${tracker}`, () => {
         const src = fs.readFileSync(
           path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`),
@@ -210,7 +210,7 @@ describe("real workflow sources", () => {
     }
   }
 
-  it("every github block has a matching linear block; no legacy none markers remain", () => {
+  it("every github block has a matching linear and jira block; no legacy none markers remain", () => {
     for (const wf of workflows) {
       const src = fs.readFileSync(
         path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`),
@@ -219,9 +219,11 @@ describe("real workflow sources", () => {
       const count = (re: RegExp) => [...src.matchAll(re)].length;
       const gh = count(/<!--\s*bkit:tracker\s+github\s+start\s*-->/g);
       const ln = count(/<!--\s*bkit:tracker\s+linear\s+start\s*-->/g);
+      const jr = count(/<!--\s*bkit:tracker\s+jira\s+start\s*-->/g);
       // No-tracker content uses `false`, never a `none` marker.
       const legacyNone = count(/<!--\s*bkit:tracker\s+none\s+(?:start|end)\s*-->/g);
       expect(gh, `${wf} unbalanced github/linear`).toBe(ln);
+      expect(gh, `${wf} unbalanced github/jira`).toBe(jr);
       expect(legacyNone, `${wf} has retired bkit:tracker none markers`).toBe(0);
     }
   });
@@ -234,6 +236,7 @@ describe("real workflow sources", () => {
   const TRACKER_ONLY_TOKENS = [
     "mcp__github__", // any GitHub tracker tool call
     "mcp__linear__", // any Linear tracker tool call
+    "mcp__jira__", // any Jira tracker tool call
     "TARGET_ISSUE_ID",
     "WORKSTREAM_ISSUE_ID",
     "SUB_ISSUE_NUMBER",
@@ -242,7 +245,9 @@ describe("real workflow sources", () => {
     "CURRENT_BODY",
     "NEW_BODY",
     "ITEM_ID",
-    "LINEAR_TEAM",
+    "TRACKER_TEAM",
+    "TRACKER_PROJECT",
+    "TRACKER_SITE",
     "githubProject", // Projects v2 board config (bkit.githubProject.*)
     "progressOptionId",
   ];
@@ -296,7 +301,7 @@ describe("real prompt sources", () => {
   const frontmatterOf = (file: string): string =>
     fs.readFileSync(file, "utf-8").split(/^---$/m)[1] ?? "";
 
-  for (const tracker of ["github", "linear", "none"] as const) {
+  for (const tracker of ["github", "linear", "jira", "none"] as const) {
     it(`every prompt resolves cleanly for ${tracker}`, () => {
       for (const f of prompts) {
         const r = substituteWorkflow(fs.readFileSync(path.join(PROMPTS_DIR, f), "utf-8"), tracker);
@@ -315,7 +320,10 @@ describe("real prompt sources", () => {
     }
   });
 
-  const promptTools = (prompt: string, tracker: "github" | "linear" | "none"): string[] => {
+  const promptTools = (
+    prompt: string,
+    tracker: "github" | "linear" | "jira" | "none",
+  ): string[] => {
     const src = fs.readFileSync(path.join(PROMPTS_DIR, `${prompt}.md`), "utf-8");
     const fm = substituteWorkflow(src, tracker).output.split(/^---$/m)[1];
     const block = fm.match(/^tools:\n((?:.*\n)*?)(?=^\S)/m)?.[1] ?? "";
@@ -330,7 +338,7 @@ describe("real prompt sources", () => {
 
   it("roadmap agent gets only the chosen tracker's read tools", () => {
     const base = ["Read", "Grep", "Glob", "mcp__serena__*", "Write", "Edit", "Bash"];
-    const roadmapTools = (tracker: "github" | "linear" | "none") =>
+    const roadmapTools = (tracker: "github" | "linear" | "jira" | "none") =>
       promptTools("bkit-utility-update-roadmap", tracker);
     expect(roadmapTools("github")).toEqual([
       ...base,
@@ -342,12 +350,17 @@ describe("real prompt sources", () => {
       "mcp__linear__list_issues",
       "mcp__linear__get_issue",
     ]);
+    expect(roadmapTools("jira")).toEqual([
+      ...base,
+      "mcp__jira__searchJiraIssuesUsingJql",
+      "mcp__jira__getJiraIssue",
+    ]);
     expect(roadmapTools("none")).toEqual(base);
   });
 
   it("tracker agent gets only the chosen tracker's read and field-write tools", () => {
     const base = ["Read", "Grep", "Glob", "mcp__serena__*", "Bash"];
-    const trackerTools = (tracker: "github" | "linear" | "none") =>
+    const trackerTools = (tracker: "github" | "linear" | "jira" | "none") =>
       promptTools("bkit-utility-update-tracker", tracker);
     expect(trackerTools("github")).toEqual([
       ...base,
@@ -367,11 +380,20 @@ describe("real prompt sources", () => {
       "mcp__linear__list_issue_statuses",
       "mcp__linear__list_milestones",
     ]);
+    expect(trackerTools("jira")).toEqual([
+      ...base,
+      "mcp__jira__searchJiraIssuesUsingJql",
+      "mcp__jira__getJiraIssue",
+      "mcp__jira__editJiraIssue",
+      "mcp__jira__transitionJiraIssue",
+      "mcp__jira__executeRead",
+      "mcp__jira__executeWrite",
+    ]);
     expect(trackerTools("none")).toEqual(base);
   });
 
   it("audit agent gets only the chosen tracker's comment and search tools", () => {
-    const auditTools = (tracker: "github" | "linear" | "none") =>
+    const auditTools = (tracker: "github" | "linear" | "jira" | "none") =>
       promptTools("bkit-audit-generate", tracker);
     const base = [
       "Read",
@@ -394,6 +416,11 @@ describe("real prompt sources", () => {
       "mcp__linear__save_comment",
       "mcp__linear__list_issues",
     ]);
+    expect(auditTools("jira")).toEqual([
+      ...base,
+      "mcp__jira__addOrEditJiraIssueComment",
+      "mcp__jira__searchJiraIssuesUsingJql",
+    ]);
     expect(auditTools("none")).toEqual(base);
   });
 
@@ -407,7 +434,10 @@ describe("real prompt sources", () => {
     expect(linear).toContain("mcp__linear__list_issues({");
     expect(linear).toContain("No such hit → `Parent` = `missing`");
     expect(linear).toContain("→ `ISSUE_ID` = `{identifier}`, `Parent` = `{identifier} found`");
-    for (const out of [github, linear]) {
+    const jira = substituteWorkflow(src, "jira").output;
+    expect(jira).toContain("mcp__jira__searchJiraIssuesUsingJql({");
+    expect(jira).toContain("→ `ISSUE_ID` = `{key}`, `Parent` = `{key} found`");
+    for (const out of [github, linear, jira]) {
       expect(out).toContain("audit-{slug}/parent-comment.md");
     }
     const none = substituteWorkflow(src, "none").output;

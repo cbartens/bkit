@@ -324,7 +324,8 @@ describe("design and plan close", () => {
     "%s skips a related issue whose comments do not parse, and names it",
     (name) => {
       const text = workflow(name);
-      expect(text.split("Skipped: comments did not parse.").length - 1, name).toBe(2);
+      // One per tracker: github, linear, jira.
+      expect(text.split("Skipped: comments did not parse.").length - 1, name).toBe(3);
     },
   );
 });

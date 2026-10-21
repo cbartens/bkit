@@ -83,7 +83,7 @@ Choose by the state of the work. Procedure stays in the command file and in § P
 
 `.bkit/core/workflows/bkit-*.md` carry wired tracker variants inline (`github`, `linear`) — full per-tracker behaviour (MCP shapes, labels, states) visible at call site. No substitution from `.bkit/trackers.md`; resolver selects/strips inline blocks. Markers:
 
-**Per-tracker pair.** Every tracker call site: consecutive `github` → `linear` pair (no authored `none` — no-tracker rendering = single generic message):
+**Per-tracker group.** Every tracker call site: consecutive `github` → `linear` → `jira` group (no authored `none` — no-tracker rendering = single generic message):
 
 ```text
 <!-- bkit:tracker github start -->
@@ -92,9 +92,12 @@ mcp__github__… call
 <!-- bkit:tracker linear start -->
 mcp__linear__… call
 <!-- bkit:tracker linear end -->
+<!-- bkit:tracker jira start -->
+mcp__jira__… call
+<!-- bkit:tracker jira end -->
 ```
 
-At `bkit install`: read `bkit.issueTracker` from consumer manifest → keep matching block, drop other when mirroring to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md`. Under `none` → whole pair collapses to **`_No tracker connected, skip step._`**. List-number prefix (`3. `) preserved on kept block / stub. Sites needing no-tracker function (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`) add trailing `<!-- bkit:tracker false start/end -->` after pair — used under `none` instead of generic message.
+At `bkit install`: read `bkit.issueTracker` from consumer manifest → keep matching block, drop the others when mirroring to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md`. Under `none` → whole group collapses to **`_No tracker connected, skip step._`**. List-number prefix (`3. `) preserved on kept block / stub. Sites needing no-tracker function (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`) add trailing `<!-- bkit:tracker false start/end -->` after group — used under `none` instead of generic message.
 
 **Conditional blocks (`bkit:tracker true` / `bkit:tracker false`).** Boolean tracker-presence gates for tracker-agnostic content: `true` kept when wired, **removed entirely under `none`** (shared comment `{BODY}` fences, identical github/linear); `false` kept only under `none`. Removed block consumes leading newline — no blank gap.
 

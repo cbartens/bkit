@@ -26,6 +26,15 @@ tools:
   - mcp__linear__list_issue_statuses
   - mcp__linear__list_milestones
   # <!-- bkit:tracker linear end -->
+  # <!-- bkit:tracker jira start -->
+  - Bash
+  - mcp__jira__searchJiraIssuesUsingJql
+  - mcp__jira__getJiraIssue
+  - mcp__jira__editJiraIssue
+  - mcp__jira__transitionJiraIssue
+  - mcp__jira__executeRead
+  - mcp__jira__executeWrite
+  # <!-- bkit:tracker jira end -->
   # <!-- bkit:tracker false start -->
   - Bash
   # <!-- bkit:tracker false end -->
@@ -63,7 +72,7 @@ maxTurns: 400
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
    ```
-   Hold `owner` as `{OWNER}`, `repo` as `{REPO}`. Read `package.json` keys `bkit.githubProject` → `{BOARD}` (`owner` as `{BOARD_OWNER}`, `number` as `{BOARD_NUMBER}`), `bkit.linear.team` → `{LINEAR_TEAM}`. **If** absent → empty.
+   Hold `owner` as `{OWNER}`, `repo` as `{REPO}`, `trackerTeam` as `{TRACKER_TEAM}`, `trackerProject` as `{TRACKER_PROJECT}`, `trackerSite` as `{TRACKER_SITE}`. Read `package.json` keys `bkit.githubProject` → `{BOARD}` (`owner` as `{BOARD_OWNER}`, `number` as `{BOARD_NUMBER}`), `bkit.jira.progress` → `{PROGRESS_STATE}`, `bkit.jira.review` → `{REVIEW_STATE}`. **If** absent → empty; `{PROGRESS_STATE}` / `{REVIEW_STATE}` absent → `In Progress` / `In Review`.
    <!-- bkit:tracker true end --><!-- bkit:tracker false start --> _No tracker connected → every Output format section `None`; skip to setup tips._<!-- bkit:tracker false end -->
 4. Read `docs/templates/bkit-audit-issues.md` § `Ranking Rules` and § `Size Scale`. **If** missing → priority and size from the issues report only.
 5. Read newest issues report under `docs/audits/` (`issues.md` or `issues-{TIMESTAMP}.md`, by commit date) → hold `Proposal`, `Triage`, and `Links` as `{REPORT}`. **If** absent → `{REPORT}` empty. Audit due when newest report is older than its template `**Cadence:**`, or never run, or an open issue filed 7+ days ago has no priority or size.
@@ -73,12 +82,15 @@ maxTurns: 400
    `mcp__github__list_issues({ owner: "{OWNER}", repo: "{REPO}", state: "OPEN" })` → per issue `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {N} })` for title, labels, body, milestone; `method: "get_sub_issues"` for children. Repo labels → `gh label list --json name --limit 500`; open milestones → `gh api "repos/{OWNER}/{REPO}/milestones?state=open"`. **If** `{BOARD}` non-empty → board items `mcp__github__projects_list({ method: "list_project_items", owner: "{BOARD_OWNER}", project_number: {BOARD_NUMBER} })`; fields `mcp__github__projects_list({ method: "list_project_fields", owner: "{BOARD_OWNER}", project_number: {BOARD_NUMBER} })` → numeric field id and option ids of the `Status`, priority, and size single-select fields, by name; option names match `Urgent|High|Medium|Low` and `XS|S|M|L|XL` case-insensitive; `Critical` = `Urgent`; `P0`-`P3` = `Urgent`-`Low`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__list_issues({ team: "{LINEAR_TEAM}" })`, passing `cursor` while `hasNextPage` → keep issues whose `statusType` is not `completed|canceled|duplicate` → per issue `mcp__linear__get_issue({ id, includeRelations: true })` for title, labels, status, priority, estimate, project, `projectMilestone`, `parentId`, relations. Team labels → `mcp__linear__list_issue_labels({ team: "{LINEAR_TEAM}" })`; team states → `mcp__linear__list_issue_statuses({ team: "{LINEAR_TEAM}" })`; per project in use → `mcp__linear__list_milestones({ project })`.
+   `mcp__linear__list_issues({ team: "{TRACKER_TEAM}" })`, passing `cursor` while `hasNextPage` → keep issues whose `statusType` is not `completed|canceled|duplicate` → per issue `mcp__linear__get_issue({ id, includeRelations: true })` for title, labels, status, priority, estimate, project, `projectMilestone`, `parentId`, relations. Team labels → `mcp__linear__list_issue_labels({ team: "{TRACKER_TEAM}" })`; team states → `mcp__linear__list_issue_statuses({ team: "{TRACKER_TEAM}" })`; per project in use → `mcp__linear__list_milestones({ project })`.
    <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker jira start -->
+   `mcp__jira__searchJiraIssuesUsingJql({ cloudId: "{TRACKER_SITE}", jql: "project = {TRACKER_PROJECT} AND statusCategory != Done ORDER BY key", maxResults: 100, fields: ["summary"] })` (drop `project = {TRACKER_PROJECT} AND` when null), pass `nextPageToken` while `isLast` is false → per issue `mcp__jira__getJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{key}", view: "evidence" })` → summary, labels, status, priority, issue type, parent, `issuelinks`. No label list to check: Jira creates labels on first use.
+   <!-- bkit:tracker jira end -->
 8. Per issue → build target values from sources in this order; first source holding a value wins:
    - **Title:** **If** over 70 characters → shorten to 70 or fewer; keep the subject, the change, and every identifier; drop filler.
    - **Labels:** **If** workflow label (`bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship`) present → remove every `next:*`. **Else** → exactly one `next:*`: `{REPORT}` label correction; roadmap item's recommended command; issue shape per `.bkit/trackers.md` § `Issue shapes`; `:lite` per `.bkit/lite.md` § `When to use`. Shape to label: idea → `next:design`; change → `next:plan`; change with `Tasks` → `next:build`; bug → `next:debug`. Existing single `next:*` stands unless `{REPORT}` corrects it. **If** type label (`enhancement|bug`) missing → add per shape; `{REPORT}` label corrections apply. **If** label not in repo or team labels → `Unapplied`.
-   - **Status:** <!-- bkit:tracker github start -->workflow label → `{BOARD}` `progressOptionId`; `bkit:merged` → `{BOARD}` `reviewOptionId`; neither, status empty → option named `Backlog` or `Todo`. NEVER `{BOARD}` `doneOptionId`. **If** `{BOARD}` empty → `Unapplied` once.<!-- bkit:tracker github end --><!-- bkit:tracker linear start -->workflow label → `In Progress`; `bkit:merged` → `In Review`. **If** target state not in team states → `Unapplied`. NEVER a state of type `completed|canceled|duplicate`.<!-- bkit:tracker linear end --> **If** issue in progress or review with no workflow label → `Proposed`, not written.
+   - **Status:** <!-- bkit:tracker github start -->workflow label → `{BOARD}` `progressOptionId`; `bkit:merged` → `{BOARD}` `reviewOptionId`; neither, status empty → option named `Backlog` or `Todo`. NEVER `{BOARD}` `doneOptionId`. **If** `{BOARD}` empty → `Unapplied` once.<!-- bkit:tracker github end --><!-- bkit:tracker linear start -->workflow label → `In Progress`; `bkit:merged` → `In Review`. **If** target state not in team states → `Unapplied`. NEVER a state of type `completed|canceled|duplicate`.<!-- bkit:tracker linear end --><!-- bkit:tracker jira start -->workflow label → `{PROGRESS_STATE}`; `bkit:merged` → `{REVIEW_STATE}`. **If** no offered transition reaches it → `Unapplied`. NEVER a status of category `done`.<!-- bkit:tracker jira end --> **If** issue in progress or review with no workflow label → `Proposed`, not written.
    - **Priority / size:** `{REPORT}` `Proposal`; then `Ranking Rules` and `Size Scale` applied to body, labels, links, and in-flight neighbours. **If** set value differs from a `{REPORT}` value → overwrite. **If** set value differs from own judgement only → `Proposed`, not written.
    - **Milestone:** `{REPORT}`; then parent's milestone when child has none; then milestone named in body or title. **If** milestone not open → `Unapplied`. **If** Linear milestone outside the issue's project, or issue with no project → `Unapplied`.
    - **Parent:** `{REPORT}`; then parent named in body or child listed in parent body with no link.
@@ -93,6 +105,13 @@ maxTurns: 400
    <!-- bkit:tracker linear start -->
    - One `mcp__linear__save_issue({ id: "{ISSUE_ID}", ... })` carrying only changed fields: `title`; `addLabels` and `removeLabels`, NEVER `labels`, which replaces the set; `state` (state name); `priority` (`Urgent|High|Medium|Low` = 1-4); `estimate` (`XS|S|M|L|XL` = 1, 2, 3, 5, 8); `milestone` (name in the issue's project); `parentId`; `blockedBy`.
    <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker jira start -->
+   - Title, labels → `mcp__jira__editJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{key}", fields: { summary, labels: [full set] } })` only changed fields; `labels` replaces the set → re-read set plus this run's changes. Skip type labels: issue type carries the type.
+   - Priority, parent, milestone → one `mcp__jira__editJiraIssue` per field (one rejected field rejects the whole call): `priority: { name }` (`Urgent|High|Medium|Low` = `Highest|High|Medium|Low`); `parent: { key }`; `fixVersions: [{ name }]` (a version in the issue's project). Rejected → `Unapplied`.
+   - Status → `mcp__jira__executeRead({ cloudId: "{TRACKER_SITE}", name: "listJiraIssueTransitions", inputs: { issueIdOrKey: "{key}" } })` → transition whose `to.name` = target → `mcp__jira__transitionJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{key}", transitionId })`.
+   - Blocked-by → `mcp__jira__executeWrite({ cloudId: "{TRACKER_SITE}", name: "createJiraIssueLink", inputs: { linkType: "Blocks", inwardIssue: "{blocker key}", outwardIssue: "{key}" } })`; `inwardIssue` is the blocker.
+   - Size → `Unapplied`: Jira has no standard size field.
+   <!-- bkit:tracker jira end -->
    **If** write fails → retry once after 5s; still failing → `Unapplied`. **Else** → re-read issue; value not as written → `Unapplied`.
 10. Group open issues with no shared parent or milestone into `Suggested Containers`: 3+ issues sharing scope, roadmap `Groupings`, or roadmap `Next Containers` missing on the tracker. Roadmap `Next Items` with no issue → `Suggested Issues`, shape per `.bkit/trackers.md` § `Issue shapes`. NEVER create either. `{REPORT}` stale and duplicate closes → `Proposed`.
 11. Pick follow-ups: **If** issues audit due → `@bkit-audit-generate` with `docs/templates/bkit-audit-issues.md`. **If** this run changed priority, size, milestone, parent, or blocked-by → `@bkit-utility-update-roadmap`.

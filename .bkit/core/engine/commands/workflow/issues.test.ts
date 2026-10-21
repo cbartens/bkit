@@ -129,6 +129,24 @@ describe("bkit issues text", () => {
       JSON.stringify({ comments: [{ body: "one", createdAt: "2026-10-01T00:00:00Z" }] }),
     );
     expect((await run(cwd, ["issues", "text", "--comments-file=lin.json"])).json.text).toBe("one");
+
+    // Jira's listJiraIssueComments: a `data` envelope, `created` with a +hhmm offset.
+    write(
+      cwd,
+      "jira.json",
+      JSON.stringify({
+        data: {
+          appliedContentFormat: "markdown",
+          comments: [
+            { body: "new", created: "2026-10-21T15:06:23.863+1000" },
+            { body: "old", created: "2026-10-21T15:06:23.398+1000" },
+          ],
+        },
+      }),
+    );
+    expect((await run(cwd, ["issues", "text", "--comments-file=jira.json"])).json.text).toBe(
+      "old\n\nnew",
+    );
   });
 
   it("exits 3 on a missing or malformed file and 2 with no input at all", async () => {

@@ -96,3 +96,10 @@ export function readBkitConfig(root) {
         cloudAgentsExplicit: bkit.cloudAgents !== undefined,
     };
 }
+export function trackerScope(cfg) {
+    if (cfg.issueTracker === "linear")
+        return { trackerTeam: cfg.linear.team, trackerProject: cfg.linear.project, trackerSite: null };
+    if (cfg.issueTracker === "jira")
+        return { trackerTeam: null, trackerProject: cfg.jira.project, trackerSite: cfg.jira.site };
+    return { trackerTeam: null, trackerProject: null, trackerSite: null };
+}

@@ -13,6 +13,7 @@ import * as path from "node:path";
 import { parseRemoteUrlToSlug } from "../../ledgers/telemetry.js";
 import { DEV, EXIT, git, repoRoot, runGit, runTool, type CommandSpec } from "../lib.js";
 import { bkitVersionStatus } from "../../shared/bkit-latest.js";
+import { readBkitConfig, trackerScope } from "../../shared/settings.js";
 
 /** Exit code: neither gh nor the origin remote named an owner/repo. */
 export const EXIT_NO_REPO = 3;
@@ -130,6 +131,10 @@ export const repoCommand: CommandSpec = {
         bkitOutdated:
           "true when bkitVersion is older than bkitLatest (null when either is unknown)",
         bkitAdvisory: "one line to show the user when bkitOutdated, else null",
+        trackerTeam: "package.json bkit.linear.team under linear, else null",
+        trackerProject:
+          "package.json bkit.linear.project under linear, bkit.jira.project under jira, else null",
+        trackerSite: "package.json bkit.jira.site under jira (the MCP cloudId), else null",
       },
       exitCodes: {
         [EXIT_NO_REPO]: "neither gh nor the origin remote named an owner/repo",
@@ -179,6 +184,7 @@ export const repoCommand: CommandSpec = {
           bkitLatest: latest.latest,
           bkitOutdated: latest.outdated,
           bkitAdvisory: latest.advisory,
+          ...trackerScope(readBkitConfig(root)),
         });
         if (branch === null && ctx.flags.allowDetached !== true) {
           ctx.log("HEAD is detached — no current branch");

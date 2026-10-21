@@ -22,6 +22,11 @@ tools:
   - mcp__linear__save_comment
   - mcp__linear__list_issues
   # <!-- bkit:tracker linear end -->
+  # <!-- bkit:tracker jira start -->
+  - WebSearch
+  - mcp__jira__addOrEditJiraIssueComment
+  - mcp__jira__searchJiraIssuesUsingJql
+  # <!-- bkit:tracker jira end -->
   # <!-- bkit:tracker false start -->
   - WebSearch
   # <!-- bkit:tracker false end -->
@@ -103,11 +108,14 @@ maxTurns: 400
     <!-- bkit:tracker linear start -->
     `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`.
     <!-- bkit:tracker linear end -->
+    <!-- bkit:tracker jira start -->
+    `<id>{ID}</id>`, `<jira_issue>{ID}</jira_issue>`, `Jira issue: {ID}`, `ISSUE-{ID}`, a `/browse/{ID}` link, or `[A-Z][A-Z0-9]+-\d+` → first match → `ISSUE_ID`.
+    <!-- bkit:tracker jira end -->
     1. Read repo facts; **If** non-zero → `Issue` = `{ISSUE_ID} failed` (no `ISSUE_ID` → `None`), `Parent` = `unchecked`; skip step:
        ```bash
        "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
        ```
-       Hold `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as `{BRANCH}`, `outboxRoot` as `{OUTBOX_ROOT}`.
+       Hold `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as `{BRANCH}`, `outboxRoot` as `{OUTBOX_ROOT}`, `trackerProject` as `{TRACKER_PROJECT}`, `trackerSite` as `{TRACKER_SITE}`.
     2. **If** `ISSUE_ID` → `Parent` = `{ISSUE_ID} named`, `{PARENT_REF}` = `{ISSUE_ID}`. **Else** → find the template's audit parent = one open standing issue every run of this template reports to; never create tracker issues. `{TPL}` = `docs/templates/bkit-audit-{slug}.md`; take first hit in rank order that is open and whose body contains `{TPL}`:
        <!-- bkit:tracker github start -->
        `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "standing audit parent issue that runs {TPL}", perPage: 10, fields: ["number", "title", "state", "body", "html_url"] })` → `ISSUE_ID` = `{number}`, `Parent` = `#{number} found`, `{PARENT_REF}` = `#{number} — {title}` + `html_url`.
@@ -115,6 +123,9 @@ maxTurns: 400
        <!-- bkit:tracker linear start -->
        `mcp__linear__list_issues({ query: "{TPL}", limit: 10 })` (open = not completed / canceled; body = `description`) → `ISSUE_ID` = `{identifier}`, `Parent` = `{identifier} found`, `{PARENT_REF}` = `{identifier} — {title}` + `url`.
        <!-- bkit:tracker linear end -->
+       <!-- bkit:tracker jira start -->
+       `mcp__jira__searchJiraIssuesUsingJql({ cloudId: "{TRACKER_SITE}", jql: "project = {TRACKER_PROJECT} AND statusCategory != Done AND text ~ 'bkit-audit-{slug}'", maxResults: 10, fields: ["summary", "status", "description"] })` (drop `project = {TRACKER_PROJECT} AND` when null; body = `fields.description`) → `ISSUE_ID` = `{key}`, `Parent` = `{key} found`, `{PARENT_REF}` = `{key} — {fields.summary}` + `{TRACKER_SITE}/browse/{key}`.
+       <!-- bkit:tracker jira end -->
        No such hit → `Parent` = `missing`; call fails twice, 5s apart → `Parent` = `unchecked`. Either → `Issue` = `None`; run sub-steps 3–4, write `{BODY}` to `{OUTBOX_ROOT}/audit-{slug}/parent-comment.md` as `{PARENT_COMMENT}`; skip sub-step 5.
     3. Write Output format content from `## Stopped` through `## Recommended Next Step` to `{OUTBOX_ROOT}/audit-{slug}/comment.md`; `Embedded Directives` names sources only, never directive text; `Parent` = `missing` → omit the audit-parent block.
     4. Build body; **If** non-zero → `Issue` = `{ISSUE_ID} failed` (no `ISSUE_ID` → `None`, `{PARENT_COMMENT}` empty); skip step:
@@ -128,8 +139,11 @@ maxTurns: 400
        `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`.
        <!-- bkit:tracker github end -->
        <!-- bkit:tracker linear start -->
-       `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id` — creates new comment).
+       `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`).
        <!-- bkit:tracker linear end -->
+       <!-- bkit:tracker jira start -->
+       `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`); over 32,767 characters → consecutive comments split at line breaks, in order.
+       <!-- bkit:tracker jira end -->
        **If** failure → retry once after 5s; still failing → `Issue` = `{ISSUE_ID} failed`. **Else** → `Issue` = `{ISSUE_ID} posted`.
     <!-- bkit:tracker true end --><!-- bkit:tracker false start --> _No tracker connected, skip step._<!-- bkit:tracker false end -->
 16. Final return: Display output format verbatim as final message to user; do not summarise or trim.

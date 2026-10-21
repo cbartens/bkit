@@ -220,6 +220,49 @@ describe("bkit repo info — where bkit, the repo root and the outbox live", () 
   });
 });
 
+describe("bkit repo info — where the wired tracker's issues live", () => {
+  const pkg = (bkit: Record<string, unknown>) =>
+    fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ name: "x", bkit }));
+  beforeEach(() => git(cwd, "remote", "add", "origin", "https://github.com/o/r.git"));
+
+  it("prints the Linear team and project under linear", async () => {
+    pkg({
+      issueTracker: "linear",
+      linear: { team: "ENG", project: "Mobile" },
+      jira: { site: "x" },
+    });
+    expect((await run([])).json).toMatchObject({
+      trackerTeam: "ENG",
+      trackerProject: "Mobile",
+      trackerSite: null,
+    });
+  });
+
+  it("prints the Jira site and project under jira", async () => {
+    pkg({
+      issueTracker: "jira",
+      linear: { team: "ENG" },
+      jira: { site: "https://a.atlassian.net/", project: "MBA" },
+    });
+    expect((await run([])).json).toMatchObject({
+      trackerTeam: null,
+      trackerProject: "MBA",
+      trackerSite: "https://a.atlassian.net",
+    });
+  });
+
+  it("prints nulls under github, and for keys left unset", async () => {
+    pkg({ issueTracker: "github", linear: { team: "ENG" } });
+    expect((await run([])).json).toMatchObject({
+      trackerTeam: null,
+      trackerProject: null,
+      trackerSite: null,
+    });
+    pkg({ issueTracker: "linear" });
+    expect((await run([])).json).toMatchObject({ trackerTeam: null, trackerProject: null });
+  });
+});
+
 describe("bkit repo info — whether this repo's bkit is behind the newest release", () => {
   beforeEach(() => vi.stubEnv("BKIT_NO_UPDATE_CHECK", ""));
   const pin = (version: string) => {

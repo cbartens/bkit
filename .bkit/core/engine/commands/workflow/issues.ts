@@ -68,10 +68,17 @@ export function cutEarlier(text: string): { text: string; cut: boolean } {
 
 /**
  * Comments as an MCP read returns them: a bare array, or one wrapped under
- * `comments` / `nodes`; each a string or an object with `body` and an optional
- * `created_at` (GitHub) / `createdAt` (Linear).
+ * `comments` / `nodes` (Jira's adds a `data` envelope); each a string or an object
+ * with `body` and an optional `created_at` (GitHub) / `createdAt` (Linear) /
+ * `created` (Jira).
  */
 export function parseComments(raw: unknown): IssueComment[] | null {
+  const outer = raw as { data?: unknown } | null;
+  const inner =
+    outer !== null && typeof outer === "object" && !Array.isArray(outer) && "data" in outer
+      ? outer.data
+      : raw;
+  if (inner !== raw) return parseComments(inner);
   const wrapped = raw as { comments?: unknown; nodes?: unknown } | null;
   const list = Array.isArray(raw)
     ? raw
@@ -89,7 +96,7 @@ export function parseComments(raw: unknown): IssueComment[] | null {
     }
     const obj = (item ?? {}) as Record<string, unknown>;
     if (typeof obj.body !== "string") return null;
-    const at = obj.created_at ?? obj.createdAt;
+    const at = obj.created_at ?? obj.createdAt ?? obj.created;
     out.push({ body: obj.body, createdAt: typeof at === "string" ? at : undefined });
   }
   return out;
