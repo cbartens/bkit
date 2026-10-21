@@ -401,6 +401,17 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(parsed.mcp?.linear?.type).toBe("remote");
   });
 
+  it("jira MCP: type 'remote', {env:} Bearer header, OAuth off", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "jira", "openrouter"));
+    expect(Object.keys(parsed.mcp)).toEqual(["jira"]);
+    expect(parsed.mcp.jira).toEqual({
+      type: "remote",
+      url: "https://mcp.atlassian.com/v2/mcp",
+      oauth: false,
+      headers: { Authorization: "Bearer {env:BKIT_JIRA_API_TOKEN}" },
+    });
+  });
+
   it("uses the 'plugin' key (singular), not 'plugins' (opencode schema)", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
     expect(parsed.plugin).toContain("./plugin/bkit-gateguard.js");

@@ -432,4 +432,22 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
     expect(result).not.toBeNull();
     expect(result!.id).toBe("tracker-setup-github");
   });
+
+  it("jira: names the admin switch, the token and the package.json keys", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { issueTracker: "jira" } }),
+    );
+    const result = buildTrackerSetupAdvisory(tmpDir)!;
+    expect(result.id).toBe("tracker-setup-jira");
+    for (const s of [
+      "Allow API token authentication",
+      "Atlassian MCP V2",
+      "BKIT_JIRA_API_TOKEN",
+      "bkit.jira.site",
+      "bkit.jira.project",
+    ]) {
+      expect(result.action).toContain(s);
+    }
+  });
 });

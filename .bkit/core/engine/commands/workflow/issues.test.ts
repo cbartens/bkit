@@ -166,7 +166,7 @@ describe("bkit issues labels", () => {
       labels: ["bug", "bkit:auto", "nextjs", "bkit:plan"],
       changed: true,
       autoRouteSuffix: " bkit [auto route]",
-      linearState: "started",
+      trackerState: null,
       board: null,
       boardSkipped: null,
     });
@@ -188,7 +188,7 @@ describe("bkit issues labels", () => {
       add: ["bkit:debug"],
       remove: ["bkit:build", "bkit:failed"],
       labels: ["bkit:debug"],
-      linearState: "started",
+      trackerState: null,
     });
     expect(transitionLabels(["bkit:debug"], { phase: "ship" }).labels).toEqual(["bkit:ship"]);
   });
@@ -224,7 +224,7 @@ describe("bkit issues labels", () => {
       add: ["bkit:merged"],
       remove: ["bkit:ship", "bkit:failed"],
       labels: ["bkit:auto", "bkit:merged"],
-      linearState: "In Review",
+      trackerState: null,
     });
     expect((await labels(dir(), "--phase=merged", "--failed=on")).code).toBe(2);
     expect((await labels(dir(), "--phase=build", "--failed=on")).code).toBe(2);
@@ -294,7 +294,7 @@ describe("bkit issues labels", () => {
     });
     const review = await labels(cwd, "--board=review", "--issue=12", "--owner-repo=acme/app");
     expect(review.json.board.updateItem.updated_field.value).toBe("98236657");
-    expect(review.json.linearState).toBe("In Review");
+    expect(review.json.trackerState).toBeNull();
   });
 
   it.each([
@@ -314,6 +314,23 @@ describe("bkit issues labels", () => {
     const r = await labels(dir(bkit), "--board=progress", "--issue=12", "--owner-repo=acme/app");
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ board: null, boardSkipped: reason });
+  });
+
+  it.each([
+    [{ issueTracker: "linear" }, "started", "In Review"],
+    [{ issueTracker: "linear", linear: { review: "Code Review" } }, "started", "Code Review"],
+    [{ issueTracker: "jira" }, "In Progress", "In Review"],
+    [{ issueTracker: "jira", jira: { progress: "Doing", review: "QA" } }, "Doing", "QA"],
+    [{ issueTracker: "github" }, null, null],
+    [{}, null, null],
+  ])("trackerState for %j: phase start %j, hand-off %j", async (bkit, progress, review) => {
+    const cwd = dir(bkit);
+    expect((await labels(cwd, "--phase=build")).json.trackerState).toBe(progress);
+    expect((await labels(cwd, "--board=progress")).json.trackerState).toBe(progress);
+    expect((await labels(cwd, "--phase=merged")).json.trackerState).toBe(review);
+    expect((await labels(cwd, "--failed=on")).json.trackerState).toBe(review);
+    expect((await labels(cwd, "--board=review")).json.trackerState).toBe(review);
+    expect((await labels(cwd, "--failed=off")).json.trackerState).toBeNull();
   });
 
   it("accepts a digits-only string statusFieldId", async () => {

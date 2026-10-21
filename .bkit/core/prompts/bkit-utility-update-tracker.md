@@ -63,7 +63,7 @@ maxTurns: 400
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
    ```
-   Hold `owner` as `{OWNER}`, `repo` as `{REPO}`. Read `package.json` keys `bkit.githubProject` → `{BOARD}` (`owner` as `{BOARD_OWNER}`, `number` as `{BOARD_NUMBER}`), `bkit.linearTeam` → `{LINEAR_TEAM}`. **If** absent → empty.
+   Hold `owner` as `{OWNER}`, `repo` as `{REPO}`. Read `package.json` keys `bkit.githubProject` → `{BOARD}` (`owner` as `{BOARD_OWNER}`, `number` as `{BOARD_NUMBER}`), `bkit.linear.team` → `{LINEAR_TEAM}`. **If** absent → empty.
    <!-- bkit:tracker true end --><!-- bkit:tracker false start --> _No tracker connected → every Output format section `None`; skip to setup tips._<!-- bkit:tracker false end -->
 4. Read `docs/templates/bkit-audit-issues.md` § `Ranking Rules` and § `Size Scale`. **If** missing → priority and size from the issues report only.
 5. Read newest issues report under `docs/audits/` (`issues.md` or `issues-{TIMESTAMP}.md`, by commit date) → hold `Proposal`, `Triage`, and `Links` as `{REPORT}`. **If** absent → `{REPORT}` empty. Audit due when newest report is older than its template `**Cadence:**`, or never run, or an open issue filed 7+ days ago has no priority or size.

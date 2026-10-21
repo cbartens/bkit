@@ -167,6 +167,7 @@ describe("detectMissingMcpServers", () => {
 
   it.each([
     ["linear", { linear: { type: "http", url: "https://mcp.linear.app/mcp" } }],
+    ["jira", { jira: { type: "http", url: "https://mcp.atlassian.com/v2/mcp" } }],
     ["none", {}],
   ] as const)(
     "runPreflight: a fresh %s install's MCP files raise no mcp advisory",
@@ -365,12 +366,13 @@ describe("detectExtraMcpServers", () => {
 });
 
 describe("unusedTrackerMcpServers", () => {
-  it("github and none trackers have no use for linear; github is never unused", () => {
-    expect(unusedTrackerMcpServers("github")).toEqual(["linear"]);
-    expect(unusedTrackerMcpServers("none")).toEqual(["linear"]);
+  it("github and none trackers have no use for linear or jira; github is never unused", () => {
+    expect(unusedTrackerMcpServers("github")).toEqual(["linear", "jira"]);
+    expect(unusedTrackerMcpServers("none")).toEqual(["linear", "jira"]);
   });
 
-  it("the linear tracker leaves nothing unused (github stays for the workflow fallback)", () => {
-    expect(unusedTrackerMcpServers("linear")).toEqual([]);
+  it("linear and jira each leave only the other unused (github stays for the workflow fallback)", () => {
+    expect(unusedTrackerMcpServers("linear")).toEqual(["jira"]);
+    expect(unusedTrackerMcpServers("jira")).toEqual(["linear"]);
   });
 });

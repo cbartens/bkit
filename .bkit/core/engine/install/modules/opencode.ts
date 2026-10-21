@@ -263,6 +263,11 @@ export function renderOpencodeJson(
       '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "oauth": false, "headers": { "Authorization": "Bearer {env:BKIT_GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects,actions" } }';
   } else if (tracker === "linear") {
     mcpEntry = '"linear": { "type": "remote", "url": "https://mcp.linear.app/mcp" }';
+  } else if (tracker === "jira") {
+    // Same "oauth": false reason as github: the API token in the header is the only auth
+    // bkit wires, so a bad one fails as a 401, not as an OAuth sign-in prompt.
+    mcpEntry =
+      '"jira": { "type": "remote", "url": "https://mcp.atlassian.com/v2/mcp", "oauth": false, "headers": { "Authorization": "Bearer {env:BKIT_JIRA_API_TOKEN}" } }';
   } else {
     mcpEntry = "";
   }

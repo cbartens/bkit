@@ -59,6 +59,39 @@ describe("readBkitConfig", () => {
     });
   });
 
+  it("reads the per-moment tracker states, defaulting each missing or blank one", () => {
+    const cfg = readBkitConfig(
+      root(
+        JSON.stringify({
+          bkit: {
+            linear: { team: " ENG ", project: "Mobile app", review: "Code Review" },
+            jira: {
+              site: "https://acme.atlassian.net/",
+              project: "MBA",
+              progress: " Doing ",
+              review: "",
+            },
+          },
+        }),
+      ),
+    );
+    expect(cfg.linear).toEqual({
+      team: "ENG",
+      project: "Mobile app",
+      progress: "started",
+      review: "Code Review",
+    });
+    expect(cfg.jira).toEqual({
+      site: "https://acme.atlassian.net",
+      project: "MBA",
+      progress: "Doing",
+      review: "In Review",
+    });
+    const wrong = readBkitConfig(root(JSON.stringify({ bkit: { linear: "x", jira: [1] } })));
+    expect(wrong.linear).toEqual(CONFIG_DEFAULTS.linear);
+    expect(wrong.jira).toEqual(CONFIG_DEFAULTS.jira);
+  });
+
   it("reads the opencode provider, the installed providers and the cloud variant", () => {
     const cfg = readBkitConfig(
       root(

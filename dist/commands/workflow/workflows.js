@@ -22,11 +22,12 @@ import * as path from "node:path";
 import { appendLine, fold, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { appendLine as telemetryLine, foldFrom, resolveRepoSlug, validate, workflowTelemetry, } from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { gradeCompliance } from "../comply.js";
 import { landDir, pushToDev } from "../land.js";
 import { CommandError, DEV, EXIT, git, isSharedBranch, parseJson, repoRoot, runGh, runGit, statusLocation, statusRelPath, } from "../lib.js";
 import { anchorBkitStatus, pushBranch, readAnchor, stampAnchor } from "./branches.js";
-import { AUTO_LABEL, AUTO_ROUTE_SUFFIX, buildComment, linearState, transitionLabels, } from "./issues.js";
+import { AUTO_LABEL, AUTO_ROUTE_SUFFIX, buildComment, trackerState, transitionLabels, } from "./issues.js";
 import { EXIT_EMPTY, commitBookkeeping, unionLedgers } from "./ledgers.js";
 import { EXIT_REMOVE_FAILED, EXIT_SPLIT_BUCKET, acquireWorkflowLock, owns, readHolder, releaseLock, resolveMonth, workflowLockPath, } from "./locks.js";
 import { mergePr, probePr } from "./prs.js";
@@ -201,7 +202,7 @@ function failVerb(ctx) {
             (ctx.flags.maxExceeded === true || state.sentinels.length > 0 || state.soak),
         add,
         labels,
-        linearState: linearState(transition, undefined),
+        trackerState: trackerState(transition, undefined, readBkitConfig(repoRoot(ctx.cwd))),
         prState,
         comment,
     });
@@ -1228,7 +1229,7 @@ export const workflowsCommand = {
                 handoverNeeded: "--max-exceeded, a sentinel existed, or a debug run in SOAK mode: write the abort handover",
                 add: "labels in the set that the issue does not carry yet",
                 labels: "the label set to write: the current labels plus bkit:failed (and bkit:merged for a merged ship PR)",
-                linearState: "the Linear state for the failed issue",
+                trackerState: "the Linear or Jira state for the failed issue (null under github, none)",
                 prState: "the --pr PR's state, or null",
                 comment: "the failure comment body (with --step-number), else null",
             },

@@ -53,13 +53,13 @@ description: "Design Feature — Autonomous design phase"
    "{BKIT}" workflows fail --workflow=design --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} {LABEL_FLAGS} --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}"
    ```
    Route:
-   - **If** exit 0 **or** 5 → hold `labels` as `{LABELS}`, `linearState` as `{LINEAR_STATE}` → step 2.
+   - **If** exit 0 **or** 5 → hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}` → step 2.
    - **Else** → step 4.
 2. <!-- bkit:tracker github start -->
    Add `bkit:failed` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   Add `bkit:failed` (prior phase label persists, additive) → `mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{LINEAR_STATE}" })`.
+   Add `bkit:failed` (prior phase label persists, additive) → `mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
    Post `comment` (when non-null).
@@ -131,7 +131,7 @@ description: "Design Feature — Autonomous design phase"
    Set phase `bkit:design` → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   Set phase `bkit:design` → `mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{LINEAR_STATE}" })`.
+   Set phase `bkit:design` → `mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker github start -->
    **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
@@ -140,7 +140,7 @@ description: "Design Feature — Autonomous design phase"
    No-op (log `Board status carried by issue state — no separate update.`).
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
-   `{LABELS}` = `labels`, `{LINEAR_STATE}` = `linearState`, `{BOARD}` = `board`, `boardSkipped` of the block below; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
+   `{LABELS}` = `labels`, `{TRACKER_STATE}` = `trackerState`, `{BOARD}` = `board`, `boardSkipped` of the block below; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    "{BKIT}" issues labels --phase=design --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}
    ```
@@ -518,10 +518,10 @@ description: "Design Feature — Autonomous design phase"
    No label changes. **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   Update state only; do not change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{LINEAR_STATE}" })`.
+   Update state only; do not change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
-   `{LINEAR_STATE}` = `linearState`, `{BOARD}` = `board`, `boardSkipped` of the block below:
+   `{TRACKER_STATE}` = `trackerState`, `{BOARD}` = `board`, `boardSkipped` of the block below:
    ```bash
    "{BKIT}" issues labels --board=review --issue={ISSUE_ID} --owner-repo={OWNER_REPO}
    ```

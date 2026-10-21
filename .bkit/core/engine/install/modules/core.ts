@@ -17,7 +17,7 @@ import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
-import { readJsonFile } from "../../shared/json.js";
+import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import {
   getCoreRoot,
@@ -393,7 +393,45 @@ export function seedCorePackageJsonScripts(
     written.push("package.json");
     console.log(`${logPrefix} ${tag}core: package.json scripts added [${gates.added.join(", ")}]`);
   }
+  if (migrateLinearTeamKey(dryRun, ws, logPrefix) && !written.includes("package.json")) {
+    written.push("package.json");
+  }
   return written;
+}
+
+// Migration (up to 5.4.x installs, `docs/migrations.md`): the Linear team lived at
+// `bkit.linearTeam`; it is `bkit.linear.team`, beside the project and state names. An
+// existing `bkit.linear.team` wins over the old key. Returns true when package.json changed.
+export function migrateLinearTeamKey(dryRun: boolean, ws: WriteSet, logPrefix: string): boolean {
+  const pkgPath = "package.json";
+  if (!fs.existsSync(pkgPath)) return false;
+  const raw = fs.readFileSync(pkgPath, "utf-8");
+  const parsed = parseJson(raw);
+  if (!parsed.ok) return false;
+  const pkg = parsed.value as Record<string, unknown>;
+  const bkit = pkg.bkit;
+  if (bkit === null || typeof bkit !== "object" || Array.isArray(bkit)) return false;
+  const cfg = bkit as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(cfg, "linearTeam")) return false;
+  const old = cfg.linearTeam;
+  const linear =
+    cfg.linear !== null && typeof cfg.linear === "object" && !Array.isArray(cfg.linear)
+      ? (cfg.linear as Record<string, unknown>)
+      : {};
+  if (linear.team === undefined && typeof old === "string" && old.trim() !== "") linear.team = old;
+  delete cfg.linearTeam;
+  if (Object.keys(linear).length > 0) cfg.linear = linear;
+  ws.writes.push({ path: pkgPath, action: "update" });
+  if (!dryRun) {
+    const indentMatch = raw.match(/\n([ \t]+)"/);
+    const indent = indentMatch ? indentMatch[1] : "  ";
+    const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+  }
+  console.log(
+    `${logPrefix} ${dryRun ? "[dry-run] " : ""}core: moved bkit.linearTeam to bkit.linear.team in package.json`,
+  );
+  return true;
 }
 
 // Tokens that follow `pnpm` in a gate value but are not package.json scripts: the

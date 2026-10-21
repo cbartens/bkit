@@ -38,6 +38,7 @@ import {
   type CoverageStats,
 } from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { gradeCompliance } from "../comply.js";
 import { landDir, pushToDev, type DevPush } from "../land.js";
 import {
@@ -62,7 +63,7 @@ import {
   AUTO_LABEL,
   AUTO_ROUTE_SUFFIX,
   buildComment,
-  linearState,
+  trackerState,
   transitionLabels,
 } from "./issues.js";
 import { EXIT_EMPTY, commitBookkeeping, unionLedgers } from "./ledgers.js";
@@ -289,7 +290,7 @@ function failVerb(ctx: RunContext): number {
       (ctx.flags.maxExceeded === true || state.sentinels.length > 0 || state.soak),
     add,
     labels,
-    linearState: linearState(transition, undefined),
+    trackerState: trackerState(transition, undefined, readBkitConfig(repoRoot(ctx.cwd))),
     prState,
     comment,
   });
@@ -1466,7 +1467,7 @@ export const workflowsCommand: CommandSpec = {
         add: "labels in the set that the issue does not carry yet",
         labels:
           "the label set to write: the current labels plus bkit:failed (and bkit:merged for a merged ship PR)",
-        linearState: "the Linear state for the failed issue",
+        trackerState: "the Linear or Jira state for the failed issue (null under github, none)",
         prState: "the --pr PR's state, or null",
         comment: "the failure comment body (with --step-number), else null",
       },

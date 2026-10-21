@@ -70,7 +70,8 @@ export function detectActionsWritePermissions(): TokenPresence {
  *
  * - `github`  → GitHub tracker: the GitHub MCP server authenticates with `BKIT_GH_TOKEN`; `gh` uses `gh auth login`.
  * - `linear`  → existing Linear setup message (BKIT_LINEAR_API_KEY + LINEAR_ISSUE_ID).
- * - `none`    → prompt to run `bkit install --tracker=github` or `--tracker=linear`.
+ * - `jira`    → admin switch, BKIT_JIRA_API_TOKEN and `bkit.jira` in package.json.
+ * - `none`    → prompt to run `bkit install --tracker=github`, `--tracker=linear` or `--tracker=jira`.
  *
  * Only fires when bkit workflows are installed (.claude/ or .cursor/ present).
  */
@@ -102,6 +103,16 @@ export function buildTrackerSetupAdvisory(cwd: string): PreflightFinding | null 
     };
   }
 
+  if (tracker === "jira") {
+    return {
+      id: "tracker-setup-jira",
+      severity: "advisory",
+      detect: "bkit tracker is configured as `jira`. Jira Cloud is the active tracker.",
+      action:
+        'Jira tracker: (1) an org admin turns on API-token sign-in for the Rovo MCP server (admin.atlassian.com → Rovo → Rovo MCP server → Authentication → "Allow API token authentication"); (2) create an API token with scopes for the app "Atlassian MCP V2" at https://id.atlassian.com/manage-profile/security/api-tokens and set it as `BKIT_JIRA_API_TOKEN` in `.bkit/.env`, then `direnv allow`; (3) set `bkit.jira.site` (e.g. `https://acme.atlassian.net`) and `bkit.jira.project` (the project key) in package.json. Full steps: `.bkit/trackers.md` § jira.',
+    };
+  }
+
   // tracker === "none". Distinguish opt-out (explicit `bkit.issueTracker: "none"`)
   // from undecided (field absent). An explicit `none` silences the nudge, as with the
   // dep-updater advisory.
@@ -113,7 +124,7 @@ export function buildTrackerSetupAdvisory(cwd: string): PreflightFinding | null 
     detect:
       "bkit tracker is not configured (`bkit.issueTracker` absent). Workflows run but every tracker call is a no-op.",
     action:
-      'Optional post-install decision. Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker requires `BKIT_GH_TOKEN` in `.bkit/.env` (fine-grained PAT for one owner, classic PAT across owners). Linear tracker requires `BKIT_LINEAR_API_KEY` in `.bkit/.env`. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
+      'Optional post-install decision. Run `bkit install --tracker=github` (recommended), `--tracker=linear` or `--tracker=jira` to enable tracker integration. GitHub tracker requires `BKIT_GH_TOKEN` in `.bkit/.env` (fine-grained PAT for one owner, classic PAT across owners). Linear tracker requires `BKIT_LINEAR_API_KEY` in `.bkit/.env`. Jira tracker requires `BKIT_JIRA_API_TOKEN` in `.bkit/.env` and `bkit.jira` in package.json. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
   };
 }
 

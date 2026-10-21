@@ -995,11 +995,11 @@ Acquire concurrency lock:
 - workflow: repeatable
 
 ```text
-`mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{LINEAR_STATE}" })`
+`mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`
 ```
 
 ```retired
-`mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{LINEAR_STATE}", labels: [{LABELS}] })`
+`mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}", labels: [{LABELS}] })`
 ```
 
 ### workflow-state-write-linear
@@ -1007,11 +1007,11 @@ Acquire concurrency lock:
 - workflow: where-used
 
 ```text
-Update state only; do not change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{LINEAR_STATE}" })`.
+Update state only; do not change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
 ```
 
 ```retired
-Update state ONLY; do NOT change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{LINEAR_STATE}" })`.
+Update state ONLY; do NOT change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
 ```
 
 ### workflow-board-skipped

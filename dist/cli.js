@@ -230,7 +230,7 @@ export function parseArgs(argv) {
         }
         if (arg.startsWith("--")) {
             const flag = arg.slice(2);
-            // Value-bearing flag: --tracker=<github|linear|none>
+            // Value-bearing flag: --tracker=<github|linear|jira|none>
             if (flag.startsWith("tracker=")) {
                 const value = flag.slice("tracker=".length);
                 const parsed = parseIssueTracker(value);
@@ -578,12 +578,12 @@ Dependency updaters (copy an example and own it):
                   uninstall only.
 
 Cross-cutting / modifiers:
-  --tracker=<name>      Wire issue tracker integration. Values: github, linear, none
+  --tracker=<name>      Wire issue tracker integration. Values: github, linear, jira, none
                         (default). Records bkit.issueTracker in package.json and substitutes
                         tracker snippets into command mirrors. Re-renders every installed
                         host, and works alone (bkit install --tracker=github). Switching is
-                        free; a switch removes the old linear MCP entry unless you edited it
-                        (github always stays). Does NOT own AGENTS.md (tracker-agnostic).
+                        free; a switch removes the old linear or jira MCP entry unless you
+                        edited it (github always stays). Does NOT own AGENTS.md (tracker-agnostic).
 
 Install flags:
   --auto-revert         On a Phase 3 blocker, automatically run uninstall and exit 1.

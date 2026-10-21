@@ -15,6 +15,7 @@ import {
   detectNoopGates,
   isNoopScript,
   runBkitDocs,
+  migrateLinearTeamKey,
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
 import { readInstallingVersion } from "../../shared/package-json";
@@ -589,6 +590,50 @@ describe.each([
 // ---------------------------------------------------------------------------
 // Migration: .agents/shortcuts.md (5.1.0 – 5.2.4) → .bkit/lite.md
 // ---------------------------------------------------------------------------
+
+describe("migrateLinearTeamKey (via seedCorePackageJsonScripts)", () => {
+  const seed = (bkit: Record<string, unknown>): void =>
+    fs.writeFileSync("package.json", JSON.stringify({ name: "x", bkit }, null, 4) + "\n", "utf-8");
+  const read = (): string => fs.readFileSync("package.json", "utf-8");
+  const bkitKey = (): Record<string, unknown> => JSON.parse(read()).bkit;
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    migrateLinearTeamKey(ctx.dryRun, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const touched = (ctx: ModuleContext): boolean =>
+    ctx.ws.writes.some((w) => w.path === "package.json");
+
+  it("moves a 5.4.x bkit.linearTeam to bkit.linear.team, keeping the file's indent", () => {
+    seed({ issueTracker: "linear", linearTeam: "ENG" });
+    expect(touched(run())).toBe(true);
+    expect(bkitKey()).toEqual({ issueTracker: "linear", linear: { team: "ENG" } });
+    expect(read()).toMatch(/\n {4}"bkit"/);
+  });
+
+  it("keeps an existing bkit.linear.team and the other linear keys, and drops a blank old key", () => {
+    seed({ linearTeam: "OLD", linear: { team: "NEW", review: "Code Review" } });
+    run();
+    expect(bkitKey()).toEqual({ linear: { team: "NEW", review: "Code Review" } });
+    seed({ linearTeam: "  " });
+    run();
+    expect(bkitKey()).toEqual({});
+  });
+
+  it("under dry-run records the same write and leaves the file", () => {
+    seed({ linearTeam: "ENG" });
+    const before = read();
+    expect(touched(run(true))).toBe(true);
+    expect(read()).toBe(before);
+  });
+
+  it("is idempotent, and runs on every install through the core module", () => {
+    seed({ linearTeam: "ENG" });
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    expect(bkitKey().linear).toEqual({ team: "ENG" });
+    expect(touched(run())).toBe(false);
+  });
+});
 
 describe("migrateRetiredDevLock (via runBkitDocs)", () => {
   const LOCK = path.join(".bkit", ".dev.lock");

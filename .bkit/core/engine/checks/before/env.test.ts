@@ -80,6 +80,9 @@ describe("detectMissingDotenv", () => {
     expect(gh.action).toContain("BKIT_GH_TOKEN");
     const linear = detectMissingDotenv(tmpDir, "linear")!;
     expect(linear.action).toContain("BKIT_LINEAR_API_KEY");
+    const jira = detectMissingDotenv(tmpDir, "jira")!;
+    expect(jira.action).toContain("BKIT_GH_TOKEN, BKIT_JIRA_API_TOKEN");
+    expect(jira.action).not.toContain("BKIT_LINEAR_API_KEY");
   });
 });
 
@@ -112,6 +115,18 @@ describe("detectBlankDotenvKeys", () => {
     const ids = detectBlankDotenvKeys(tmpDir, "github").map((f) => f.id);
     expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
     expect(ids).not.toContain("mcp-env-blank-key-bkit_linear_api_key");
+  });
+
+  it("jira tracker: flags a blank BKIT_JIRA_API_TOKEN, not BKIT_LINEAR_API_KEY", () => {
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".bkit", ".env"),
+      "BKIT_GH_TOKEN=ghp_test\nBKIT_LINEAR_API_KEY=\nBKIT_JIRA_API_TOKEN=\n",
+      "utf-8",
+    );
+    const findings = detectBlankDotenvKeys(tmpDir, "jira");
+    expect(findings.map((f) => f.id)).toEqual(["mcp-env-blank-key-bkit_jira_api_token"]);
+    expect(findings[0]!.action).toContain("Atlassian MCP V2");
   });
 
   it("returns one advisory for the blank key only", () => {

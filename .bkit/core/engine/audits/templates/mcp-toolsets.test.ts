@@ -51,3 +51,20 @@ describe("bkit-mcp-toolsets — actions toolset (#341 C1)", () => {
     }
   });
 });
+
+describe("jira tracker render", () => {
+  it("writes only the jira server, Bearer-authenticated, identically for Claude and Cursor", () => {
+    const cursor = path.join(pkgRoot, ".bkit", "shared", ".cursor", "mcp.json");
+    const expected = {
+      mcpServers: {
+        jira: {
+          type: "http",
+          url: "https://mcp.atlassian.com/v2/mcp",
+          headers: { Authorization: "Bearer ${BKIT_JIRA_API_TOKEN}" },
+        },
+      },
+    };
+    expect(JSON.parse(buildMcpJson(TEMPLATE_MCP_JSON, "jira"))).toEqual(expected);
+    expect(JSON.parse(buildMcpJson(cursor, "jira"))).toEqual(expected);
+  });
+});
