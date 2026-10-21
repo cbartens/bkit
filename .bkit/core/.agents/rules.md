@@ -126,6 +126,7 @@
 - **Slop gate:** When the gate runs `slop:delta`: ONLY fix net-new findings, NEVER the baseline. NEVER delete /move / merge files or rewire callers to clear structural findings.
 - **Check secrets first:** ALWAYS probe direnv for presence first `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'` before asking for secrets / tokens / env vars. ONLY ask when `unset` (`Secrets in output`: report names, NEVER values).
 - **New worktree:** `git worktree add` does NOT carry direnv trust → run `direnv allow` BEFORE first test / verify / build command. Hand-made worktrees also lack gitignored inputs (env files, installed dependencies, build outputs, tool assets) → bring in BEFORE first build: copy `package.json` `bkit.worktreeCopy` entries, link read-only inputs, copy or reinstall written ones; red from missing input = setup, not change under test. Remove links before `git worktree remove`; NEVER `--force` a worktree holding real work.
+- **Shared local stack:** worktrees share every local service with fixed names / ports (Docker database, emulator) → start / reset / stop / test against them ONLY through the repo's locked scripts (`.bkit/templates.md` § Local stack lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`); a fix hint printing a raw command = bug.
 
 #### Security & Data
 

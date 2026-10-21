@@ -331,6 +331,10 @@ const ADOPTED: Record<string, Entry> = {
     status: "not-adopted",
     what: "ships with the opt-in guard",
   },
+  "scripts/ci/bkit-local-stack-lock.sh": {
+    status: "not-adopted",
+    what: "this repo starts no local service that its worktrees share",
+  },
   "scripts/ci/check-capstone.mjs": identical,
   "scripts/ci/check-capstone.test.mjs": identical,
   "scripts/ci/check-dependency-audit.mjs": identical,
