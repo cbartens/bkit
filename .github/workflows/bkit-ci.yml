@@ -373,27 +373,6 @@ jobs:
           echo "🔊 [verbose ci] marker active — escalating log detail"
           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
 
-      # Pull requests only: the suite skips when this PR's files already passed a push run
-      # (scripts/ci/lanes/check-tree-cache.mjs). A push or dispatch run always runs it, and so
-      # does [force build] / [force cache] in the PR title.
-      - name: Check Tree Cache
-        id: cache
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          EVENT_NAME: ${{ github.event_name }}
-          JOB: ${{ github.job }}
-          # User-controlled text (PR title) arrives via env: (runtime expansion,
-          # injection-safe) — never inlined into the run: body.
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          if [ -f scripts/ci/lanes/check-tree-cache.mjs ]; then
-            node scripts/ci/lanes/check-tree-cache.mjs >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::scripts/ci/lanes/check-tree-cache.mjs not copied — running the suite."
-          fi
-
       # Promotion-lag reminder (non-blocking). Renovate reads its config
       # ONLY from the default branch, and scheduled / default-branch-triggered Actions run the
       # default branch's copy of each workflow — so a renovate.json5 or .github/workflows/ edit
@@ -437,7 +416,6 @@ jobs:
           echo "::warning::$DEFAULT_BRANCH is $BEHIND commit(s) behind dev and consumed-from-$DEFAULT_BRANCH surfaces (Renovate config / workflows) differ — they run STALE until you promote dev -> $DEFAULT_BRANCH. See the run summary."
 
       - name: Install Dependencies
-        if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
       # Static checks first — they read the source tree and must scan it CLEAN.
@@ -446,22 +424,18 @@ jobs:
       # Keep this group (typecheck → lint → prettier → vale → slop → bkit check) ahead of
       # the test/build group if you reorder.
       - name: Run Typecheck
-        if: steps.cache.outputs.skip != 'true'
         run: pnpm typecheck
 
       - name: Run Lint
-        if: steps.cache.outputs.skip != 'true'
         run: pnpm lint
 
       - name: Run Prettier
-        if: steps.cache.outputs.skip != 'true'
         run: pnpm format:check
 
       # vale is not on the runner and .vale/styles/ is gitignored, so without this step
       # `pnpm lint:prose` guard-skips (write-good missing) and the prose gate is silently
       # dead. Pinned tarball + `vale sync` (else E100: write-good missing).
       - name: Install Vale
-        if: steps.cache.outputs.skip != 'true'
         env:
           # renovate: datasource=github-releases depName=errata-ai/vale
           VALE_VERSION: "3.9.1"
@@ -481,11 +455,9 @@ jobs:
           done
 
       - name: Run Vale Prose Lint
-        if: steps.cache.outputs.skip != 'true'
         run: pnpm lint:prose
 
       - name: Run Slop Scan
-        if: steps.cache.outputs.skip != 'true'
         run: pnpm lint:slop
 
       # The ENFORCING slop gate (lint:slop above is an advisory full-scan that never fails).
@@ -493,7 +465,6 @@ jobs:
       # green run — and fails on findings this change ADDS or WORSENS vs base. Needs
       # fetch-depth: 0 (set on checkout) so the base SHA is present to materialise as a worktree.
       - name: Run Slop Delta
-        if: steps.cache.outputs.skip != 'true'
         env:
           BASE_SHA: ${{ fromJSON(needs.bkit-tests-scope.outputs.plan).base }}
         run: |
@@ -507,7 +478,6 @@ jobs:
       # (${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
       # workflows that are valid YAML but invalid GHA; actionlint catches that class.
       - name: Run actionlint
-        if: steps.cache.outputs.skip != 'true'
         run: |
           # Script pinned to the v1.7.12 commit SHA (the git tag is mutable/forgeable); the binary version
           # is pinned separately via the 1.7.12 arg passed to the script below.
@@ -522,7 +492,6 @@ jobs:
           "$RUNNER_TEMP/actionlint" -color
 
       - name: Run bkit Check
-        if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
 
       # Dependency-audit gate: fails on a high or critical advisory in the lockfile that
@@ -530,17 +499,15 @@ jobs:
       # Self-skips when the guard is absent — a repo that did not adopt
       # scripts/ci/check-dependency-audit.mjs is a no-op. deployments.md § Dependency updaters.
       - name: Check Dependency Audit
-        if: steps.cache.outputs.skip != 'true' && hashFiles('scripts/ci/check-dependency-audit.mjs') != ''
+        if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''
         run: node scripts/ci/check-dependency-audit.mjs
 
       # bkit repo only: dist/ is committed; rebuild it and fail when it differs.
       - name: Assert Dist Freshness
-        if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit:check:dist
 
       # bkit repo only: status-hole detector, advisory (exits 0 when it finds holes).
       - name: Check Status Holes
-        if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit:audit:status || true
 
       # Capability-register freshness gate: rebuild the graph with graphify and fail when
@@ -551,13 +518,13 @@ jobs:
       # Push events only — a pull_request checkout is the MERGE ref, whose tree (base + head)
       # can differ from the head the register was built against: a false red no author can clear.
       - name: Setup uv
-        if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
+        if: github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.13.0"
 
       - name: Check Capability Register
-        if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
+        if: github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
         # graphify release pinned once: GRAPHIFY_SPEC in bkit-graphify.sh. Same release here,
         # in the pre-push gate and by hand.
         run: |
@@ -573,13 +540,11 @@ jobs:
     if: fromJSON(needs.bkit-tests-scope.outputs.plan).run_level != 'none'
     runs-on: ubuntu-latest
     # Job-level permissions replace the workflow-level block: pull-requests: write posts
-    # the coverage comment; actions: read keeps the tree cache's run and job lookups working.
+    # the coverage comment.
     permissions:
-      actions: read
       contents: read
       pull-requests: write
     outputs:
-      cache_skip: ${{ steps.cache.outputs.skip }}
       tests_ran: ${{ steps.vitest.outputs.ran }}
     # Env vars duplicated from bkit-tests-static's job-level `env:`.
     # See the comment above that `env:` in bkit-tests-static — NODE_OPTIONS is a
@@ -605,40 +570,16 @@ jobs:
           echo "🔊 [verbose ci] marker active — escalating log detail"
           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
 
-      # Pull requests only: the suite skips when this PR's files already passed a push run
-      # (scripts/ci/lanes/check-tree-cache.mjs). A push or dispatch run always runs it, and so
-      # does [force build] / [force cache] in the PR title.
-      - name: Check Tree Cache
-        id: cache
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          EVENT_NAME: ${{ github.event_name }}
-          JOB: ${{ github.job }}
-          # User-controlled text (PR title) arrives via env: (runtime expansion,
-          # injection-safe) — never inlined into the run: body.
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          if [ -f scripts/ci/lanes/check-tree-cache.mjs ]; then
-            node scripts/ci/lanes/check-tree-cache.mjs >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::scripts/ci/lanes/check-tree-cache.mjs not copied — running the suite."
-          fi
-
       - name: Install Dependencies
-        if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
       # Workflow-fence syntax tests run each shell block under zsh, and the template test lints
       # the shipped bkit-ci.yml with actionlint. Each skips itself when its tool is absent, and the
       # runner image has neither on PATH, so without these steps they skip on every run.
       - name: Install zsh
-        if: steps.cache.outputs.skip != 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
 
       - name: Install actionlint
-        if: steps.cache.outputs.skip != 'true'
         run: |
           # Script pinned to the v1.7.12 commit SHA (the git tag is mutable/forgeable); the binary version
           # is pinned separately via the 1.7.12 arg passed to the script below.
@@ -656,7 +597,6 @@ jobs:
       # script. The JSON reporter feeds the executed-count bkit-tests-check asserts.
       - name: Run Unit Tests
         id: vitest
-        if: steps.cache.outputs.skip != 'true'
         run: |
           pnpm test:coverage:unit \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/unit-result.json"
@@ -666,7 +606,6 @@ jobs:
 
       # bkit repo only: bats over the shipped hook scripts and the gh stub harness.
       - name: Run Shell Tests (bats)
-        if: steps.cache.outputs.skip != 'true'
         run: pnpm exec bats tests/*.bats
 
       # A distinct name: keys each sticky comment so the two do not collide.
@@ -674,7 +613,7 @@ jobs:
       # writes the coverage table with the floor as its target to the job summary; comments on
       # same-repo PRs only. vite-config-path is the file the floor lives in.
       - name: Report Unit Coverage
-        if: ${{ !cancelled() && steps.cache.outputs.skip != 'true' && hashFiles('coverage/unit/coverage-summary.json') != '' }}
+        if: ${{ !cancelled() && hashFiles('coverage/unit/coverage-summary.json') != '' }}
         uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
         with:
           name: unit
@@ -695,11 +634,9 @@ jobs:
     runs-on: ubuntu-latest
     # Same job-level permissions as bkit-tests-unit.
     permissions:
-      actions: read
       contents: read
       pull-requests: write
     outputs:
-      cache_skip: ${{ steps.cache.outputs.skip }}
       tests_ran: ${{ steps.vitest.outputs.ran }}
     # Env vars duplicated from bkit-tests-static's job-level `env:`.
     env:
@@ -721,42 +658,18 @@ jobs:
           echo "🔊 [verbose ci] marker active — escalating log detail"
           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
 
-      # Pull requests only: the suite skips when this PR's files already passed a push run
-      # (scripts/ci/lanes/check-tree-cache.mjs). A push or dispatch run always runs it, and so
-      # does [force build] / [force cache] in the PR title.
-      - name: Check Tree Cache
-        id: cache
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          EVENT_NAME: ${{ github.event_name }}
-          JOB: ${{ github.job }}
-          # User-controlled text (PR title) arrives via env: (runtime expansion,
-          # injection-safe) — never inlined into the run: body.
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          if [ -f scripts/ci/lanes/check-tree-cache.mjs ]; then
-            node scripts/ci/lanes/check-tree-cache.mjs >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::scripts/ci/lanes/check-tree-cache.mjs not copied — running the suite."
-          fi
-
       - name: Install Dependencies
-        if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
       # The workflow snippet tests re-run the plan-close and lock blocks under zsh. They skip
       # themselves when zsh is absent and the runner image has none, so without this step they
       # skip on every run.
       - name: Install zsh
-        if: steps.cache.outputs.skip != 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
 
       # Integration coverage, scoped via --coverage.include to the engine surface.
       - name: Run Integration Tests
         id: vitest
-        if: steps.cache.outputs.skip != 'true'
         run: |
           pnpm exec vitest run --coverage --coverage.reportsDirectory=coverage/integration \
             integration.test \
@@ -768,7 +681,7 @@ jobs:
 
       - name: Report Integration Coverage on PR
         # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
-        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
         uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
         with:
           name: integration
@@ -825,9 +738,9 @@ jobs:
       - name: Assert Test Plan Followed
         # The verdict is scripts/ci/check-capstone.mjs, tested by check-capstone.test.mjs.
         # scope must succeed; with run_level != none every lane must succeed, and unit and
-        # integration (the lanes with a *_RAN variable) must have run more than 0 tests unless
-        # cache_skip=true; with run_level=none every lane must be skipped; a plan that does
-        # not parse reds. docs/testing.md § Validated means executed.
+        # integration (the lanes with a *_RAN variable) must have run more than 0 tests; with
+        # run_level=none every lane must be skipped; a plan that does not parse reds.
+        # docs/testing.md § Validated means executed.
         env:
           LANES: static,unit,integration
           PLAN: ${{ needs.bkit-tests-scope.outputs.plan }}
@@ -835,8 +748,6 @@ jobs:
           STATIC_RESULT: ${{ needs.bkit-tests-static.result }}
           UNIT_RESULT: ${{ needs.bkit-tests-unit.result }}
           UNIT_RAN: ${{ needs.bkit-tests-unit.outputs.tests_ran }}
-          UNIT_CACHE_SKIP: ${{ needs.bkit-tests-unit.outputs.cache_skip }}
           INTEGRATION_RESULT: ${{ needs.bkit-tests-integration.result }}
           INTEGRATION_RAN: ${{ needs.bkit-tests-integration.outputs.tests_ran }}
-          INTEGRATION_CACHE_SKIP: ${{ needs.bkit-tests-integration.outputs.cache_skip }}
         run: node scripts/ci/check-capstone.mjs

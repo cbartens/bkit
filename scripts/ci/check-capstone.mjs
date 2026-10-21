@@ -12,8 +12,7 @@
  *   - the plan does not parse (not JSON, not an object, or no `run_level`),
  *   - the planner job (`SCOPE_RESULT`) did not succeed,
  *   - no lane is named, or a lane's result was never wired in.
- * It asserts nothing for a lane that `<LANE>_CACHE_SKIP=true` marks as proven on a cached
- * SHA, and nothing about a skipped lane when `run_level` is `none`.
+ * It asserts nothing about a skipped lane when `run_level` is `none`.
  *
  * Environment:
  *   LANES                 comma-separated lane names, e.g. `static,unit`. The job named
@@ -23,7 +22,6 @@
  *   <LANE>_RAN            `needs.<job>.outputs.tests_ran`. Setting the variable (even empty)
  *                         makes the lane counted: it must report a number above 0. A lane
  *                         with no such variable is not count-checked.
- *   <LANE>_CACHE_SKIP     `needs.<job>.outputs.cache_skip`; `true` skips the count check.
  *   PLAN                  optional planner JSON (`needs.bkit-tests-scope.outputs.plan`). Unset
  *                         means every listed lane is expected to run. Set, it must parse and
  *                         carry a `run_level`; `none` expects every lane to be skipped.
@@ -128,7 +126,7 @@ export function checkCapstone(env) {
 
     const ranKey = `${prefix}_RAN`;
     const counted = Object.hasOwn(env, ranKey);
-    if (!counted || env[`${prefix}_CACHE_SKIP`] === "true") {
+    if (!counted) {
       parts.push(`${lane}=${result}`);
       continue;
     }

@@ -39,7 +39,6 @@ const base = (extra = {}) => ({
   STATIC_RESULT: "success",
   UNIT_RESULT: "success",
   UNIT_RAN: "12",
-  UNIT_CACHE_SKIP: "",
   ...extra,
 });
 
@@ -51,10 +50,8 @@ const planned = (extra = {}) => ({
   STATIC_RESULT: "success",
   UNIT_RESULT: "success",
   UNIT_RAN: "12",
-  UNIT_CACHE_SKIP: "false",
   INTEGRATION_RESULT: "success",
   INTEGRATION_RAN: "4",
-  INTEGRATION_CACHE_SKIP: "false",
   ...extra,
 });
 
@@ -64,10 +61,8 @@ const skipPlan = (extra = {}) =>
     STATIC_RESULT: "skipped",
     UNIT_RESULT: "skipped",
     UNIT_RAN: "",
-    UNIT_CACHE_SKIP: "",
     INTEGRATION_RESULT: "skipped",
     INTEGRATION_RAN: "",
-    INTEGRATION_CACHE_SKIP: "",
     ...extra,
   });
 
@@ -215,19 +210,9 @@ test("an unparseable plan never lets a skipped lane pass as 'nothing planned'", 
 
 // ── the exemptions ──────────────────────────────────────────────────────────
 
-test("cache_skip=true asserts no count", () => {
-  greens(base({ UNIT_CACHE_SKIP: "true", UNIT_RAN: "" }));
-  greens(base({ UNIT_CACHE_SKIP: "true", UNIT_RAN: "0" }));
-  greens(planned({ INTEGRATION_CACHE_SKIP: "true", INTEGRATION_RAN: "0" }));
-});
-
-test("cache_skip=true does not excuse a failed lane", () => {
-  reds(base({ UNIT_RESULT: "failure", UNIT_CACHE_SKIP: "true" }), "result=failure");
-});
-
-test("only the exact string 'true' is a cache skip", () => {
-  reds(base({ UNIT_CACHE_SKIP: "yes", UNIT_RAN: "0" }), "0 tests");
-  reds(base({ UNIT_CACHE_SKIP: "TRUE", UNIT_RAN: "0" }), "0 tests");
+test("a <LANE>_CACHE_SKIP variable excuses no count", () => {
+  reds(base({ UNIT_CACHE_SKIP: "true", UNIT_RAN: "0" }), "0 tests");
+  reds(planned({ INTEGRATION_CACHE_SKIP: "true", INTEGRATION_RAN: "0" }), "0 tests");
 });
 
 test("EMPTY_COUNT=warn turns an unreported count into a warning, not a failure", () => {
@@ -262,12 +247,8 @@ test("a hyphenated lane reads <LANE>_ variables with underscores", () => {
     LANES: "e2e-web",
     E2E_WEB_RESULT: "success",
     E2E_WEB_RAN: "3",
-    E2E_WEB_CACHE_SKIP: "",
   });
-  reds(
-    { LANES: "e2e-web", E2E_WEB_RESULT: "success", E2E_WEB_RAN: "0", E2E_WEB_CACHE_SKIP: "" },
-    "bkit-tests-e2e-web",
-  );
+  reds({ LANES: "e2e-web", E2E_WEB_RESULT: "success", E2E_WEB_RAN: "0" }, "bkit-tests-e2e-web");
 });
 
 test("lane names tolerate spaces around the commas", () => {
