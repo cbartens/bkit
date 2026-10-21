@@ -59,6 +59,50 @@ describe("readBkitConfig", () => {
     });
   });
 
+  it.each(["github", "linear", "jira", "none"])("reads issueTracker %s", (tracker) => {
+    const cfg = readBkitConfig(root(JSON.stringify({ bkit: { issueTracker: tracker } })));
+    expect(cfg.issueTracker).toBe(tracker);
+    expect(cfg.issueTrackerExplicit).toBe(true);
+  });
+
+  it("reads an unsupported issueTracker as the default", () => {
+    const cfg = readBkitConfig(root(JSON.stringify({ bkit: { issueTracker: "asana" } })));
+    expect(cfg.issueTracker).toBe(CONFIG_DEFAULTS.issueTracker);
+  });
+
+  it("reads the per-moment tracker states, defaulting each missing or blank one", () => {
+    const cfg = readBkitConfig(
+      root(
+        JSON.stringify({
+          bkit: {
+            linear: { team: " ENG ", project: "Mobile app", review: "Code Review" },
+            jira: {
+              site: "https://acme.atlassian.net/",
+              project: "MBA",
+              progress: " Doing ",
+              review: "",
+            },
+          },
+        }),
+      ),
+    );
+    expect(cfg.linear).toEqual({
+      team: "ENG",
+      project: "Mobile app",
+      progress: "started",
+      review: "Code Review",
+    });
+    expect(cfg.jira).toEqual({
+      site: "https://acme.atlassian.net",
+      project: "MBA",
+      progress: "Doing",
+      review: "In Review",
+    });
+    const wrong = readBkitConfig(root(JSON.stringify({ bkit: { linear: "x", jira: [1] } })));
+    expect(wrong.linear).toEqual(CONFIG_DEFAULTS.linear);
+    expect(wrong.jira).toEqual(CONFIG_DEFAULTS.jira);
+  });
+
   it("reads the opencode provider, the installed providers and the cloud variant", () => {
     const cfg = readBkitConfig(
       root(
@@ -170,6 +214,16 @@ describe("readBkitConfig", () => {
         .shipGateRequiredLanes;
     expect(lanes(["bkit-tests-unit", 42, null])).toEqual(["bkit-tests-unit"]);
     expect(lanes("bkit-tests-unit")).toEqual([]);
+  });
+
+  it("reads minPushPaths as non-empty strings, keeps an explicit [], else the default", () => {
+    const book = (v: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { minPushPaths: v } }))).minPushPaths;
+    expect(book(["docs/plans/**", "", 3])).toEqual(["docs/plans/**"]);
+    expect(book([])).toEqual([]);
+    for (const bad of ["docs/plans/**", null, { 0: "docs/**" }])
+      expect(book(bad)).toEqual(CONFIG_DEFAULTS.minPushPaths);
+    expect(CONFIG_DEFAULTS.minPushPaths.some((p) => /^docs\/\*\*/.test(p))).toBe(false);
   });
 });
 

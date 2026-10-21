@@ -14,7 +14,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 200
 ---
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -36,7 +36,7 @@ maxTurns: 200
 - **Mandate:** Apply gap fixes (edit / create source files); only identified gaps, no new scope; do not just analyse.
 - **Blockers:** Append `BLOCKED` log lines per blocked tasks / gates (log is the record). never append to `docs/deferrals.jsonl`; blocked plan tasks are unfinished in-scope work, not deferrals.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
-- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git stash clear`, `git push --force` (any flavour).
 
 **Process:**
 

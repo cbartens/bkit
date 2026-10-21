@@ -30,6 +30,16 @@ function makeModules(...flags: string[]): Set<import("../../cli").ModuleFlag> {
   return new Set(flags) as Set<import("../../cli").ModuleFlag>;
 }
 
+/** Each tracker's MCP server URL, as install writes it under the tracker's key. */
+const TRACKER_URLS = {
+  github: "https://api.githubcopilot.com/mcp/",
+  linear: "https://mcp.linear.app/mcp",
+  jira: "https://mcp.atlassian.com/v2/mcp",
+} as const;
+
+/** The tracker-only servers (never `github`, which every tracker keeps). */
+const TRACKER_ONLY_SERVERS = ["linear", "jira"] as const;
+
 // ---------------------------------------------------------------------------
 // process.env snapshot and restore around each test
 // ---------------------------------------------------------------------------
@@ -72,42 +82,56 @@ describe("detectMissingMcpServers", () => {
     expect(findings[0]!.action).toContain("[mcp]");
     expect(findings[0]!.action).toContain(".mcp.json");
     expect(findings[0]!.action).toContain("github");
+    expect(findings[0]!.action).toContain(`"url": "${TRACKER_URLS.github}"`);
     // Must not reference Linear ticket IDs
     expect(findings[0]!.action).not.toMatch(/BAR-\d+/);
   });
 
-  it("returns advisory when .mcp.json exists but is missing the linear server", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".mcp.json"),
-      JSON.stringify({ mcpServers: { github: { url: "https://api.githubcopilot.com/mcp/" } } }),
-      "utf-8",
-    );
-    const findings = detectMissingMcpServers(tmpDir, ".mcp.json", "linear");
-    expect(findings).toHaveLength(1);
-    expect(findings[0]!.id).toContain("linear");
-    expect(findings[0]!.action).toContain("linear");
-  });
+  it.each(TRACKER_ONLY_SERVERS)(
+    "returns advisory when .mcp.json exists but is missing the %s server",
+    (tracker) => {
+      fs.writeFileSync(
+        path.join(tmpDir, ".mcp.json"),
+        JSON.stringify({ mcpServers: { github: { url: TRACKER_URLS.github } } }),
+        "utf-8",
+      );
+      const findings = detectMissingMcpServers(tmpDir, ".mcp.json", tracker);
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.id).toContain(tracker);
+      expect(findings[0]!.action).toContain(tracker);
+      expect(findings[0]!.action).toContain(`"url": "${TRACKER_URLS[tracker]}"`);
+    },
+  );
 
-  it("linear tracker: requires only the linear server — empty mcpServers → one advisory", () => {
-    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify({ mcpServers: {} }), "utf-8");
-    const findings = detectMissingMcpServers(tmpDir, ".mcp.json", "linear");
-    expect(findings.map((f) => f.id)).toEqual(["mcp-missing-server-linear--mcp-json"]);
-  });
+  it.each(["github", ...TRACKER_ONLY_SERVERS] as const)(
+    "%s tracker: requires only its own server — empty mcpServers → one advisory",
+    (tracker) => {
+      fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify({ mcpServers: {} }), "utf-8");
+      const findings = detectMissingMcpServers(tmpDir, ".mcp.json", tracker);
+      expect(findings.map((f) => f.id)).toEqual([`mcp-missing-server-${tracker}--mcp-json`]);
+    },
+  );
 
-  it("linear tracker: mcpServers key absent → one advisory", () => {
-    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify({ otherKey: {} }), "utf-8");
-    const findings = detectMissingMcpServers(tmpDir, ".mcp.json", "linear");
-    expect(findings.map((f) => f.id)).toEqual(["mcp-missing-server-linear--mcp-json"]);
-  });
+  it.each(["github", ...TRACKER_ONLY_SERVERS] as const)(
+    "%s tracker: mcpServers key absent → one advisory",
+    (tracker) => {
+      fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify({ otherKey: {} }), "utf-8");
+      const findings = detectMissingMcpServers(tmpDir, ".mcp.json", tracker);
+      expect(findings.map((f) => f.id)).toEqual([`mcp-missing-server-${tracker}--mcp-json`]);
+    },
+  );
 
-  it("linear tracker: a linear-only file (what install writes) → no advisory", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".mcp.json"),
-      JSON.stringify({ mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } } }),
-      "utf-8",
-    );
-    expect(detectMissingMcpServers(tmpDir, ".mcp.json", "linear")).toEqual([]);
-  });
+  it.each(["github", ...TRACKER_ONLY_SERVERS] as const)(
+    "%s tracker: a file holding only its server (what install writes) → no advisory",
+    (tracker) => {
+      fs.writeFileSync(
+        path.join(tmpDir, ".mcp.json"),
+        JSON.stringify({ mcpServers: { [tracker]: { url: TRACKER_URLS[tracker] } } }),
+        "utf-8",
+      );
+      expect(detectMissingMcpServers(tmpDir, ".mcp.json", tracker)).toEqual([]);
+    },
+  );
 
   it("none tracker: requires no server — an empty mcpServers (what install writes) → no advisory", () => {
     fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify({ mcpServers: {} }), "utf-8");
@@ -149,24 +173,32 @@ describe("detectMissingMcpServers", () => {
     }
   });
 
-  it("runPreflight includes mcp-missing-server advisories when .mcp.json is missing github", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "test", bkit: { issueTracker: "github" } }),
-      "utf-8",
-    );
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".mcp.json"),
-      JSON.stringify({ mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } } }),
-      "utf-8",
-    );
-    const { advisories } = runPreflight(makeModules("core"), tmpDir);
-    expect(advisories.some((f) => f.id.includes("mcp-missing-server-github"))).toBe(true);
-  });
+  it.each([
+    ["github", "linear"],
+    ["linear", "github"],
+    ["jira", "github"],
+  ] as const)(
+    "runPreflight includes mcp-missing-server advisories when a %s tracker's .mcp.json holds only %s",
+    (tracker, other) => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "test", bkit: { issueTracker: tracker } }),
+        "utf-8",
+      );
+      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".mcp.json"),
+        JSON.stringify({ mcpServers: { [other]: { url: TRACKER_URLS[other] } } }),
+        "utf-8",
+      );
+      const { advisories } = runPreflight(makeModules("core"), tmpDir);
+      expect(advisories.some((f) => f.id.includes(`mcp-missing-server-${tracker}`))).toBe(true);
+    },
+  );
 
   it.each([
     ["linear", { linear: { type: "http", url: "https://mcp.linear.app/mcp" } }],
+    ["jira", { jira: { type: "http", url: "https://mcp.atlassian.com/v2/mcp" } }],
     ["none", {}],
   ] as const)(
     "runPreflight: a fresh %s install's MCP files raise no mcp advisory",
@@ -208,45 +240,69 @@ describe("detectExtraMcpServers", () => {
     expect(detectExtraMcpServers(tmpDir, ".mcp.json", "github")).toEqual([]);
   });
 
-  it("github tracker: flags a stale linear server with a remove advisory", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".mcp.json"),
-      JSON.stringify({
-        mcpServers: {
-          linear: { url: "https://mcp.linear.app/mcp" },
-          github: { url: "https://api.githubcopilot.com/mcp/" },
-        },
-      }),
-      "utf-8",
-    );
-    const findings = detectExtraMcpServers(tmpDir, ".mcp.json", "github");
-    expect(findings).toHaveLength(1);
-    expect(findings[0]!.severity).toBe("advisory");
-    expect(findings[0]!.id).toContain("mcp-extra-server-linear");
-    expect(findings[0]!.action).toContain("[mcp]");
-    expect(findings[0]!.action).toContain("Remove");
-    expect(findings[0]!.action).toContain("linear");
-    expect(findings[0]!.action).not.toMatch(/BAR-\d+/);
-  });
+  it.each(TRACKER_ONLY_SERVERS)(
+    "github tracker: flags a stale %s server with a remove advisory",
+    (stale) => {
+      fs.writeFileSync(
+        path.join(tmpDir, ".mcp.json"),
+        JSON.stringify({
+          mcpServers: {
+            [stale]: { url: TRACKER_URLS[stale] },
+            github: { url: TRACKER_URLS.github },
+          },
+        }),
+        "utf-8",
+      );
+      const findings = detectExtraMcpServers(tmpDir, ".mcp.json", "github");
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.severity).toBe("advisory");
+      expect(findings[0]!.id).toContain(`mcp-extra-server-${stale}`);
+      expect(findings[0]!.action).toContain("[mcp]");
+      expect(findings[0]!.action).toContain("Remove");
+      expect(findings[0]!.action).toContain(stale);
+      expect(findings[0]!.action).not.toMatch(/BAR-\d+/);
+    },
+  );
 
-  it("none tracker: flags a stale linear server", () => {
+  it.each(TRACKER_ONLY_SERVERS)("none tracker: flags a stale %s server", (stale) => {
     fs.writeFileSync(
       path.join(tmpDir, ".mcp.json"),
       JSON.stringify({
         mcpServers: {
-          linear: { url: "https://mcp.linear.app/mcp" },
-          github: { url: "https://api.githubcopilot.com/mcp/" },
+          [stale]: { url: TRACKER_URLS[stale] },
+          github: { url: TRACKER_URLS.github },
         },
       }),
       "utf-8",
     );
     const findings = detectExtraMcpServers(tmpDir, ".mcp.json", "none");
     expect(findings).toHaveLength(1);
-    expect(findings[0]!.id).toContain("mcp-extra-server-linear");
+    expect(findings[0]!.id).toContain(`mcp-extra-server-${stale}`);
+  });
+
+  it.each([
+    ["linear", "jira"],
+    ["jira", "linear"],
+  ] as const)("%s tracker: flags the other tracker's stale %s server", (tracker, stale) => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          [tracker]: { url: TRACKER_URLS[tracker] },
+          [stale]: { url: TRACKER_URLS[stale] },
+          github: { url: TRACKER_URLS.github },
+        },
+      }),
+      "utf-8",
+    );
+    const findings = detectExtraMcpServers(tmpDir, ".mcp.json", tracker);
+    expect(findings.map((f) => f.id)).toEqual([`mcp-extra-server-${stale}--mcp-json`]);
+    expect(findings[0]!.detect).toContain(`the ${tracker} tracker does not use it`);
   });
 
   it.each([
     ["linear", { linear: { url: "https://mcp.linear.app/mcp" } }],
+    ["jira", { jira: { url: "https://mcp.atlassian.com/v2/mcp" } }],
     ["none", {}],
   ] as const)(
     "%s tracker: never flags github — the gh MCP fallback calls it under every tracker",
@@ -265,22 +321,27 @@ describe("detectExtraMcpServers", () => {
     },
   );
 
-  it(".opencode/opencode.json: flags a stale linear entry under its mcp key", () => {
-    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".opencode", "opencode.json"),
-      JSON.stringify({
-        mcp: {
-          linear: { type: "remote", url: "https://mcp.linear.app/mcp" },
-          github: { type: "remote", url: "https://api.githubcopilot.com/mcp/" },
-        },
-      }),
-      "utf-8",
-    );
-    const findings = detectExtraMcpServers(tmpDir, ".opencode/opencode.json", "github", "mcp");
-    expect(findings.map((f) => f.id)).toEqual(["mcp-extra-server-linear--opencode-opencode-json"]);
-    expect(findings[0]!.action).toContain('Remove the "linear" entry from mcp.');
-  });
+  it.each(TRACKER_ONLY_SERVERS)(
+    ".opencode/opencode.json: flags a stale %s entry under its mcp key",
+    (stale) => {
+      fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".opencode", "opencode.json"),
+        JSON.stringify({
+          mcp: {
+            [stale]: { type: "remote", url: TRACKER_URLS[stale] },
+            github: { type: "remote", url: TRACKER_URLS.github },
+          },
+        }),
+        "utf-8",
+      );
+      const findings = detectExtraMcpServers(tmpDir, ".opencode/opencode.json", "github", "mcp");
+      expect(findings.map((f) => f.id)).toEqual([
+        `mcp-extra-server-${stale}--opencode-opencode-json`,
+      ]);
+      expect(findings[0]!.action).toContain(`Remove the "${stale}" entry from mcp.`);
+    },
+  );
 
   it(".opencode/opencode.json: reads only the mcp key, not mcpServers", () => {
     fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
@@ -323,54 +384,66 @@ describe("detectExtraMcpServers", () => {
     expect(findings[0]!.action).toContain(".cursor/mcp.json");
   });
 
-  it("runPreflight emits mcp-extra-server advisory for stale linear under github tracker", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "test", bkit: { issueTracker: "github" } }),
-      "utf-8",
-    );
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".mcp.json"),
-      JSON.stringify({
-        mcpServers: {
-          linear: { url: "https://mcp.linear.app/mcp" },
-          github: { url: "https://api.githubcopilot.com/mcp/" },
-        },
-      }),
-      "utf-8",
-    );
-    const { advisories } = runPreflight(makeModules("core"), tmpDir);
-    expect(advisories.some((f) => f.id.includes("mcp-extra-server-linear"))).toBe(true);
-  });
+  it.each([
+    ["github", "linear"],
+    ["github", "jira"],
+    ["linear", "jira"],
+    ["jira", "linear"],
+  ] as const)(
+    "runPreflight emits mcp-extra-server advisory under the %s tracker for a stale %s server",
+    (tracker, stale) => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "test", bkit: { issueTracker: tracker } }),
+        "utf-8",
+      );
+      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".mcp.json"),
+        JSON.stringify({
+          mcpServers: {
+            [tracker]: { url: TRACKER_URLS[tracker] },
+            [stale]: { url: TRACKER_URLS[stale] },
+          },
+        }),
+        "utf-8",
+      );
+      const { advisories } = runPreflight(makeModules("core"), tmpDir);
+      expect(advisories.some((f) => f.id.includes(`mcp-extra-server-${stale}`))).toBe(true);
+    },
+  );
 
-  it("runPreflight emits mcp-extra-server advisory for a stale linear entry in .opencode/opencode.json", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "test", bkit: { issueTracker: "github" } }),
-      "utf-8",
-    );
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".opencode", "opencode.json"),
-      JSON.stringify({ mcp: { linear: { type: "remote", url: "https://mcp.linear.app/mcp" } } }),
-      "utf-8",
-    );
-    const { advisories } = runPreflight(makeModules("core"), tmpDir);
-    expect(advisories.map((f) => f.id)).toContain(
-      "mcp-extra-server-linear--opencode-opencode-json",
-    );
-  });
+  it.each(TRACKER_ONLY_SERVERS)(
+    "runPreflight emits mcp-extra-server advisory for a stale %s entry in .opencode/opencode.json",
+    (stale) => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "test", bkit: { issueTracker: "github" } }),
+        "utf-8",
+      );
+      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+      fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".opencode", "opencode.json"),
+        JSON.stringify({ mcp: { [stale]: { type: "remote", url: TRACKER_URLS[stale] } } }),
+        "utf-8",
+      );
+      const { advisories } = runPreflight(makeModules("core"), tmpDir);
+      expect(advisories.map((f) => f.id)).toContain(
+        `mcp-extra-server-${stale}--opencode-opencode-json`,
+      );
+    },
+  );
 });
 
 describe("unusedTrackerMcpServers", () => {
-  it("github and none trackers have no use for linear; github is never unused", () => {
-    expect(unusedTrackerMcpServers("github")).toEqual(["linear"]);
-    expect(unusedTrackerMcpServers("none")).toEqual(["linear"]);
+  it("github and none trackers have no use for linear or jira; github is never unused", () => {
+    expect(unusedTrackerMcpServers("github")).toEqual(["linear", "jira"]);
+    expect(unusedTrackerMcpServers("none")).toEqual(["linear", "jira"]);
   });
 
-  it("the linear tracker leaves nothing unused (github stays for the workflow fallback)", () => {
-    expect(unusedTrackerMcpServers("linear")).toEqual([]);
+  it("linear and jira each leave only the other unused (github stays for the workflow fallback)", () => {
+    expect(unusedTrackerMcpServers("linear")).toEqual(["jira"]);
+    expect(unusedTrackerMcpServers("jira")).toEqual(["linear"]);
   });
 });

@@ -169,11 +169,13 @@ function refFlag(value: FlagValue, flag: string): string {
 const FID_FORMAT: Record<IssueTracker, RegExp> = {
   github: /^[0-9]+-[a-z0-9-]+$/,
   linear: /^[a-z]+-[0-9]+-[a-z0-9-]+$/,
+  jira: /^[a-z][a-z0-9]+-[0-9]+-[a-z0-9-]+$/,
   none: /^[a-z0-9][a-z0-9-]*$/,
 };
 const ISSUE_FORMAT: Record<Exclude<IssueTracker, "none">, RegExp> = {
   github: /^[0-9]+$/,
   linear: /^[A-Z]+-[0-9]+$/,
+  jira: /^[A-Z][A-Z0-9]+-[0-9]+$/,
 };
 
 /** The PR-body marker line for this tracker (`.bkit/trackers.md` `pr-body-marker`). */
@@ -787,7 +789,7 @@ export const prsCommand: CommandSpec = {
         {
           name: "issue",
           type: "string",
-          help: "issue id for the marker (github: 123 or #123; linear: ABC-123)",
+          help: "issue id for the marker (github: 123 or #123; linear / jira: ABC-123)",
         },
         BASE_FLAG,
         HEAD_FLAG,

@@ -15,6 +15,12 @@ const bkitInstallPath = path.resolve(__dirname, "../../cli.ts");
 let tmpDir: string;
 let originalCwd: string;
 
+/** The URL install writes for each tracker-only MCP server. */
+const TRACKER_URLS = {
+  linear: "https://mcp.linear.app/mcp",
+  jira: "https://mcp.atlassian.com/v2/mcp",
+} as const;
+
 beforeEach(() => {
   originalCwd = process.cwd();
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-tracker-order-"));
@@ -26,23 +32,23 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-/** A consumer already recorded on `linear`, carrying only the linear MCP server. */
-function seedLinearConsumer(dir: string): void {
+/** A consumer already recorded on `tracker`, carrying only that tracker's MCP server. */
+function seedConsumer(dir: string, tracker: keyof typeof TRACKER_URLS): void {
   fs.writeFileSync(
     path.join(dir, "package.json"),
-    JSON.stringify({ name: "test-consumer", bkit: { issueTracker: "linear" } }),
+    JSON.stringify({ name: "test-consumer", bkit: { issueTracker: tracker } }),
     "utf-8",
   );
   fs.writeFileSync(
     path.join(dir, ".mcp.json"),
-    JSON.stringify({ mcpServers: { linear: { type: "http", url: "https://mcp.linear.app/mcp" } } }),
+    JSON.stringify({ mcpServers: { [tracker]: { type: "http", url: TRACKER_URLS[tracker] } } }),
     "utf-8",
   );
   fs.mkdirSync(path.join(dir, ".git"), { recursive: true });
 }
 
-function runCheckWithTrackerSwitch(dir: string): string {
-  const result = spawnSync(requireTsx(), [bkitInstallPath, "check", "--tracker=github"], {
+function runCheckWithTrackerSwitch(dir: string, tracker: string): string {
+  const result = spawnSync(requireTsx(), [bkitInstallPath, "check", `--tracker=${tracker}`], {
     cwd: dir,
     encoding: "utf-8",
     timeout: 60_000,
@@ -51,25 +57,30 @@ function runCheckWithTrackerSwitch(dir: string): string {
   return `${result.stdout ?? ""}${result.stderr ?? ""}`;
 }
 
-describe("preflight tracker resolution order — integration", () => {
-  it("grades --tracker=github, not the linear value still on disk", () => {
-    seedLinearConsumer(tmpDir);
-    const output = runCheckWithTrackerSwitch(tmpDir);
+describe.each([
+  ["linear", "github"],
+  ["linear", "jira"],
+  ["jira", "github"],
+  ["jira", "linear"],
+] as const)("preflight tracker resolution order (%s -> %s) — integration", (onDisk, installed) => {
+  it(`grades --tracker=${installed}, not the ${onDisk} value still on disk`, () => {
+    seedConsumer(tmpDir, onDisk);
+    const output = runCheckWithTrackerSwitch(tmpDir, installed);
 
-    // Graded against the installed "github", not the on-disk "linear".
+    // Graded against the installed tracker, not the on-disk one.
     expect(
       output,
       `extra-server advisory missing — preflight graded the stale on-disk tracker:\n${output}`,
-    ).toContain("mcp-extra-server-linear--mcp-json");
+    ).toContain(`mcp-extra-server-${onDisk}--mcp-json`);
   });
 
   it("names the tracker being installed in the advisory text", () => {
-    seedLinearConsumer(tmpDir);
-    const output = runCheckWithTrackerSwitch(tmpDir);
+    seedConsumer(tmpDir, onDisk);
+    const output = runCheckWithTrackerSwitch(tmpDir, installed);
 
     // Guards the sibling symptom: the advisory rendered but named the pre-install tracker.
-    expect(output).toContain("the github tracker does not use it");
-    expect(output).not.toContain("the linear tracker does not use it");
+    expect(output).toContain(`the ${installed} tracker does not use it`);
+    expect(output).not.toContain(`the ${onDisk} tracker does not use it`);
     expect(output).not.toContain("the none tracker does not use it");
   });
 });

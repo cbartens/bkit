@@ -72,16 +72,15 @@
 - **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. All rows MUST carry `reason` from closed enum; no valid justification = not valid deferral → finish work.
 - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 - **Flaky tests:** Any tests passing ONLY on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
-- **Tracker MCPs:** Issue reads / updates via configured MCP ONLY; use CLI / HTTP shell-outs as backup / fallback ONLY.
-- **Tracker comments:** NEVER mention @claude or @cursor in comment body.
-- **Tracker context cut:** Use `###### bkit:ignore-earlier` on its own line in issue bodies or comments to drop all earlier content from workflow inputs; ALWAYS requires human confirmation; NEVER include unprompted in any output.
 - **Tracker issue creation:** NEVER create issues yourself; ONLY suggest; create ONLY after explicit human confirmation; body per `.bkit/trackers.md` § Issue shapes.
+- **Tracker issue settings:** Title MAX 70 characters or two lines on mobile; ALWAYS set labels, project, project status, priority, size, milestone, parent, and every open blocking issue as blocked-by; priority and size per `docs/templates/bkit-audit-issues.md` § Ranking Rules and § Size Scale, NEVER by label alone; blocked-by in machine-read form per `.bkit/trackers.md` § Issue shapes, NEVER prose only; check similar issues if unclear.
+- **Tracker next labels:** Issue without workflow label → ALWAYS exactly one `next:design` / `next:plan` / `next:build` / `next:debug` / `next:ship`; append `:lite` for lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. NEVER alongside workflow label.
 - **Tracker workflow labels:** Add `bkit:design` / `bkit:plan` / `bkit:build` / `bkit:debug` / `bkit:ship` ONLY when issue starts that workflow (full or lite); mutually exclusive — next workflow start drops previous; `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. NEVER add by hand to signal intent; use `next:*`.
 - **Tracker failure label:** Any workflow Failure Path → add `bkit:failed` alongside workflow label.
-- **Tracker next labels:** Issue without workflow label → ALWAYS exactly one `next:design` / `next:plan` / `next:build` / `next:debug` / `next:ship`; append `:lite` for lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. NEVER alongside workflow label.
-- **Tracker issue settings:** Title MAX 70 characters or two lines on mobile; ALWAYS set labels, project, priority, size, and milestone; check similar issues if unclear.
 - **Tracker issue mentions:** NEVER mention issue IDs on their own; ALWAYS mention issue IDs together with their title and URL.
-- **Tracker work comments:** ANY issues worked on outside `/bkit-*` workflows → post ONE comment per landed unit (commit / PR / blocked stop) with outcome / links only; NEVER paste diffs / restate code.
+- **Tracker work comments:** ANY issue worked on outside `/bkit-*` workflows → ALWAYS post ONE comment per related issue at end of every major turn (files changed / commit / PR / finding / blocked stop) with work done, outcome, links; SKIP turns with no work (Q&A, clarifying questions). NEVER paste diffs / restate code. NEVER mention @claude or @cursor in comment body.
+- **Tracker context cut:** Use `###### bkit:ignore-earlier` on its own line in issue bodies or comments to drop all earlier content from workflow inputs; ALWAYS requires human confirmation; NEVER include unprompted in any output.
+- **Tracker MCPs:** Issue reads / updates via configured MCP ONLY; use CLI / HTTP shell-outs as backup / fallback ONLY.
 
 #### Git, CI & Merges
 
@@ -93,7 +92,7 @@
 - **Code commits:** Ensure code commit is HEAD so CI runs.
 - **Secrets:** NEVER stage `.env*`, credentials, tokens, API keys. `git status` review before every commit.
 - **Pushes:** ALWAYS ask before every push; one approval covers one push, NEVER later ones. Before asking, show `git log origin/{branch}..HEAD`. Exception: `/bkit-*` workflow steps mandating push (see Orchestrator Rules).
-- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour). In-progress rebase resolution (`git checkout --theirs|--ours {conflicted}`, `git rebase --continue` / `--abort`) is not covered.
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git stash clear`, `git push --force` (any flavour). In-progress rebase resolution (`git checkout --theirs|--ours {conflicted}`, `git rebase --continue` / `--abort`) is not covered.
 - **Other parallel agents:** Unexpected changes in `git status` belong to other agent, not you; NEVER revert, reformat, stash, or "clean up" them; NEVER `git stash`, switch branches, or `git checkout` / `git restore` files you did not touch.
 - **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
 - **Force push:** PROHIBITED on shared branches (`dev` / `main`). Personal branches ONLY with `--force-with-lease` — the sole exception to `Destructive git PROHIBITED`.
@@ -117,7 +116,7 @@
 - **Provider data:** Logs, errors, database → prefer enabled `.agents/context.md` context-fetch blocks or provider's CLI over MCP.
 - **Local tests first:** ALWAYS exhaust local test suite and targeted repro before remote CI. Deployed-boundary / `@live` that cannot reproduce locally → review existing evidence first.
 - **Existing evidence first:** ALWAYS search / read existing reports / logs / artifacts before requesting new remote CI runs; request new runs ONLY when existing evidence insufficient, stale, or absent.
-- **Local pre-push:** `pnpm bkit:gate:static-unit`, then `bkit check`. Gate scripts MUST not run tests needing a deployed boundary / backing service.
+- **Local pre-push:** `pnpm bkit:gate:static-unit-integration` when declared, else `pnpm bkit:gate:static-unit`, then `bkit check`. Gate scripts MUST not run tests needing a deployed boundary or remote service; local services (a database in Docker) are fine.
 - **CI on PR to `dev` / `main`:** Static, unit, integration (incl. service / DB-backed), E2E, ALWAYS-on migration lane in repos with migrations (replay when planned) — parallel lanes + `bkit-tests-check` capstone. E2E `needs:` migration when that lane owns remote migration apply. no `@live` tests.
 - **CI on push to `dev` / `main`:** PR lanes plus remote migration apply inside migration lane + `@live` canary (both wait on migration ≠ failure).
 - **Name the suites you ran:** NEVER report "all tests green" or a bare task count as evidence. State the tiers — `unit`, `integration`, `e2e`, `@live`.

@@ -169,8 +169,8 @@ describe("buildGithubProjectAdvisory", () => {
     expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
   });
 
-  it("returns null when tracker is not github", () => {
-    pkg({ issueTracker: "linear", githubProject: validProject });
+  it.each(["linear", "jira"])("returns null when tracker is %s", (tracker) => {
+    pkg({ issueTracker: tracker, githubProject: validProject });
     expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
   });
 
@@ -293,8 +293,8 @@ describe("detectGithubProjectFieldIdFormat", () => {
     expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
   });
 
-  it("returns null when tracker is not github", () => {
-    pkg({ issueTracker: "linear", githubProject: gp({ statusFieldId: "PVTSSF_x" }) });
+  it.each(["linear", "jira"])("returns null when tracker is %s", (tracker) => {
+    pkg({ issueTracker: tracker, githubProject: gp({ statusFieldId: "PVTSSF_x" }) });
     expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
   });
 
@@ -381,6 +381,15 @@ describe("buildCloudSetupAdvisory", () => {
     expect(result!.id).toBe("cloud-router-none");
   });
 
+  it("jira tracker: no nudge (Jira runs locally only)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { issueTracker: "jira" } }),
+    );
+    expect(buildCloudSetupAdvisory(tmpDir)).toBeNull();
+  });
+
   it("router presence wins over a stale bkit.cloudAgents=none field", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
@@ -413,6 +422,9 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
     const result = buildTrackerSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("tracker-setup-none");
+    for (const tracker of ["github", "linear", "jira"]) {
+      expect(result!.action).toContain(`--tracker=${tracker}`);
+    }
   });
 
   it("stays quiet when bkit.issueTracker is explicitly 'none' (deliberate opt-out)", () => {
@@ -423,13 +435,53 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
     expect(buildTrackerSetupAdvisory(tmpDir)).toBeNull();
   });
 
-  it("informational when tracker is github", () => {
+  it.each([
+    ["github", "BKIT_GH_TOKEN"],
+    ["linear", "BKIT_LINEAR_API_KEY"],
+    ["jira", "BKIT_JIRA_API_TOKEN"],
+  ] as const)("informational when tracker is %s, naming %s", (tracker, token) => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { issueTracker: "github" } }),
+      JSON.stringify({ name: "x", bkit: { issueTracker: tracker } }),
     );
     const result = buildTrackerSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.id).toBe("tracker-setup-github");
+    expect(result!.id).toBe(`tracker-setup-${tracker}`);
+    expect(result!.action).toContain(token);
+  });
+
+  it.each(["github", "linear", "jira"])(
+    "%s: fires with only .cursor/ installed, stays quiet with no host installed",
+    (tracker) => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "x", bkit: { issueTracker: tracker } }),
+      );
+      fs.rmSync(path.join(tmpDir, ".claude"), { recursive: true, force: true });
+      expect(buildTrackerSetupAdvisory(tmpDir)).toBeNull();
+      fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+      expect(buildTrackerSetupAdvisory(tmpDir)?.id).toBe(`tracker-setup-${tracker}`);
+    },
+  );
+
+  it("jira: names the admin switch, the token and the package.json keys", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { issueTracker: "jira" } }),
+    );
+    const result = buildTrackerSetupAdvisory(tmpDir)!;
+    expect(result.id).toBe("tracker-setup-jira");
+    for (const s of [
+      "Allow API token authentication",
+      "Atlassian MCP V2",
+      "BKIT_JIRA_API_TOKEN",
+      "bkit.jira.site",
+      "bkit.jira.project",
+    ]) {
+      expect(result.action).toContain(s);
+    }
+    // No Linear-style per-session issue injection and no preflight hook under jira.
+    expect(result.action).not.toContain("LINEAR_ISSUE_ID");
+    expect(result.action).not.toContain("preflight hook");
   });
 });

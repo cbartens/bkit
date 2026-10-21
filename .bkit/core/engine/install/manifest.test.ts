@@ -10,8 +10,10 @@ import {
   CLOUD_MANIFEST_CLAUDE,
   CLOUD_MANIFEST_CURSOR,
   CLOUD_MANIFEST_OPENCODE,
+  ISSUE_TRACKERS,
   OPENCODE_MANIFEST,
   parseCloudAgents,
+  parseIssueTracker,
   type ModuleName,
 } from "./manifest";
 import { getBkitDocsRoot, getTemplatesRoot, templateRelPath } from "../shared/package-roots";
@@ -111,10 +113,35 @@ describe("parseCloudAgents — value space and back-compat", () => {
     expect(parseCloudAgents("enabled")).toBeNull();
     expect(parseCloudAgents("linear")).toBeNull();
     expect(parseCloudAgents("github")).toBeNull();
+    expect(parseCloudAgents("jira")).toBeNull();
     expect(parseCloudAgents("")).toBeNull();
     expect(parseCloudAgents(null)).toBeNull();
     expect(parseCloudAgents(undefined)).toBeNull();
     expect(parseCloudAgents(42)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseIssueTracker — value space
+// ---------------------------------------------------------------------------
+
+describe("parseIssueTracker — value space", () => {
+  it("the tracker set is github, linear, jira and the 'none' sentinel", () => {
+    expect(ISSUE_TRACKERS).toEqual(["github", "linear", "jira", "none"]);
+  });
+
+  it.each(ISSUE_TRACKERS)("parses '%s' → '%s'", (tracker) => {
+    expect(parseIssueTracker(tracker)).toBe(tracker);
+  });
+
+  it("returns null for unknown values", () => {
+    expect(parseIssueTracker("Jira")).toBeNull();
+    expect(parseIssueTracker("atlassian")).toBeNull();
+    expect(parseIssueTracker("claude")).toBeNull();
+    expect(parseIssueTracker("")).toBeNull();
+    expect(parseIssueTracker(null)).toBeNull();
+    expect(parseIssueTracker(undefined)).toBeNull();
+    expect(parseIssueTracker(42)).toBeNull();
   });
 });
 

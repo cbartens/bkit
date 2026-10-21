@@ -62,6 +62,87 @@ describe(".husky/pre-push delete-only push", () => {
 });
 
 // ---------------------------------------------------------------------------
+// .husky/pre-push tag-only skip — bkit's own hook only. A real repo holds commit A on
+// `refs/remotes/origin/main` and commit B on no remote branch; stub `pnpm` records each gate.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push tag-only push (bkit repo only)", () => {
+  const ZERO = "0".repeat(40);
+  const REPO = process.cwd();
+  let tmp: string;
+  let onOrigin: string;
+  let localOnly: string;
+
+  const gitIn = (...args: string[]) =>
+    spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+      cwd: tmp,
+      encoding: "utf-8",
+    }).stdout.trim();
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-tag-")));
+    fs.mkdirSync(path.join(tmp, "bin"));
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/pnpm.log"\nexit 1\n`,
+      { mode: 0o755 },
+    );
+    gitIn("init", "-q", "-b", "dev");
+    gitIn("commit", "-q", "--allow-empty", "-m", "a");
+    onOrigin = gitIn("rev-parse", "HEAD");
+    gitIn("update-ref", "refs/remotes/origin/main", onOrigin);
+    gitIn("tag", "-a", "v1.0.0", "-m", "release", onOrigin);
+    gitIn("commit", "-q", "--allow-empty", "-m", "b");
+    localOnly = gitIn("rev-parse", "HEAD");
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  const runHook = (hook: string, stdin: string) => {
+    const result = spawnSync("sh", [path.join(REPO, hook), "origin", "git@example:o/r.git"], {
+      cwd: tmp,
+      input: stdin,
+      encoding: "utf-8",
+      timeout: 10_000,
+      env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
+    });
+    return { status: result.status, gated: fs.existsSync(path.join(tmp, "pnpm.log")) };
+  };
+  const tagObject = () => gitIn("rev-parse", "refs/tags/v1.0.0");
+
+  it("annotated tag on a commit origin holds → exits 0 without running a gate", () => {
+    const stdin = `refs/tags/v1.0.0 ${tagObject()} refs/tags/v1.0.0 ${ZERO}\n`;
+    expect(runHook(".husky/pre-push", stdin)).toEqual({ status: 0, gated: false });
+  });
+
+  it("tag delete alongside that tag → still skipped", () => {
+    const stdin =
+      `refs/tags/v1.0.0 ${tagObject()} refs/tags/v1.0.0 ${ZERO}\n` +
+      `(delete) ${ZERO} refs/tags/old ${onOrigin}\n`;
+    expect(runHook(".husky/pre-push", stdin)).toEqual({ status: 0, gated: false });
+  });
+
+  it("tag on a commit no origin branch holds → gates run", () => {
+    const r = runHook(".husky/pre-push", `refs/tags/v2 ${localOnly} refs/tags/v2 ${ZERO}\n`);
+    expect(r.gated).toBe(true);
+    expect(r.status).not.toBe(0);
+  });
+
+  it("tag pushed with a branch → gates run", () => {
+    const stdin =
+      `refs/tags/v1.0.0 ${tagObject()} refs/tags/v1.0.0 ${ZERO}\n` +
+      `refs/heads/dev ${localOnly} refs/heads/dev ${onOrigin}\n`;
+    const r = runHook(".husky/pre-push", stdin);
+    expect(r.gated).toBe(true);
+    expect(r.status).not.toBe(0);
+  });
+
+  it(".bkit/templates/.husky/pre-push: the shipped hook gates a tag-only push", () => {
+    const stdin = `refs/tags/v1.0.0 ${tagObject()} refs/tags/v1.0.0 ${ZERO}\n`;
+    expect(runHook(".bkit/templates/.husky/pre-push", stdin).gated).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // .husky/pre-push CI-suppressor guard — the skip-CI token comes from `bkit ci
 // skip-token` (the built CLI), not a regex in the hook. Stub `pnpm` routes that one
 // call to dist/cli.js and records every other call; stub `gh` reports PR #7 open.
@@ -89,6 +170,7 @@ describe(".husky/pre-push CI-suppressor guard", () => {
         'if [ "$*" = "-s bkit ci skip-token" ]; then',
         `  exec node ${JSON.stringify(path.join(REPO, "dist", "cli.js"))} ci skip-token`,
         "fi",
+        'case "$*" in *"ci min-push"*) exit 1 ;; esac',
         `echo "$*" >> "${tmp}/pnpm.log"`,
         "exit 0",
         "",
@@ -130,6 +212,23 @@ describe(".husky/pre-push CI-suppressor guard", () => {
       expect(r.stderr).not.toContain("BLOCKED");
       expect(r.gates).toContain("bkit:gate:static-unit");
     });
+
+    it(`${hook}: no integration gate declared → the unit gate runs`, () => {
+      fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ scripts: {} }));
+      const gates = pushWithHead(hook, "feat(1): change").gates.split("\n");
+      expect(gates).toContain("bkit:gate:static-unit");
+      expect(gates).not.toContain("bkit:gate:static-unit-integration");
+    });
+
+    it(`${hook}: integration gate declared → it runs in place of the unit gate`, () => {
+      const scripts = {
+        "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration",
+      };
+      fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ scripts }, null, 2));
+      const gates = pushWithHead(hook, "feat(1): change").gates.split("\n");
+      expect(gates).toContain("bkit:gate:static-unit-integration");
+      expect(gates).not.toContain("bkit:gate:static-unit");
+    });
   }
 });
 
@@ -149,7 +248,7 @@ describe(".husky/pre-push tmp/ prune", () => {
     fs.mkdirSync(path.join(tmp, "bin"));
     fs.writeFileSync(
       path.join(tmp, "bin", "pnpm"),
-      `#!/bin/sh\necho "$*" >> "${tmp}/pnpm.log"\nexit 0\n`,
+      `#!/bin/sh\ncase "$*" in *skip-token*|*"ci min-push"*) exit 1 ;; esac\necho "$*" >> "${tmp}/pnpm.log"\nexit 0\n`,
       { mode: 0o755 },
     );
   });
@@ -239,7 +338,7 @@ describe(".husky/pre-push disk prune", () => {
   const runHook = (hook: string, fail: string) => {
     fs.writeFileSync(
       path.join(tmp, "bin", "pnpm"),
-      `#!/bin/sh\necho "$*" >> "${tmp}/pnpm.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
+      `#!/bin/sh\ncase "$*" in *"ci min-push"*) exit 1 ;; esac\necho "$*" >> "${tmp}/pnpm.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
       { mode: 0o755 },
     );
     const result = spawnSync("sh", [path.join(REPO, hook)], {
@@ -380,7 +479,7 @@ describe("graphify register pre-push gate", () => {
   const runRepoHook = (stdin: string) => {
     fs.writeFileSync(
       path.join(tmp, "bin", "pnpm"),
-      `#!/bin/sh\ncase "$*" in *skip-token*) exit 1 ;; esac\nexit 0\n`,
+      `#!/bin/sh\ncase "$*" in *skip-token*|*"ci min-push"*) exit 1 ;; esac\nexit 0\n`,
       { mode: 0o755 },
     );
     return spawnSync("sh", [path.join(REPO, ".husky/pre-push")], {
@@ -406,5 +505,128 @@ describe("graphify register pre-push gate", () => {
     const r = runRepoHook(`refs/heads/x ${SHA} refs/heads/feature ${"0".repeat(40)}\n`);
     expect(r.status).toBe(0);
     expect(fs.existsSync(path.join(tmp, "graph.log"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// .husky/pre-push min push — a real repo whose first commit is `origin/dev`. Stub
+// `pnpm` routes `-s bkit ci …` to the built CLI and records every other call; stub `gh`
+// reports no open PR.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push min push", () => {
+  const REPO = process.cwd();
+  const ZERO = "0".repeat(40);
+  let tmp: string;
+
+  const gitIn = (...args: string[]) =>
+    spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+      cwd: tmp,
+      encoding: "utf-8",
+    }).stdout.trim();
+
+  /** Write `files`, commit them with `message`, return the commit. */
+  const commitFiles = (files: Record<string, string>, message: string) => {
+    for (const [rel, body] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(tmp, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmp, rel), body);
+    }
+    gitIn("add", "-A");
+    gitIn("commit", "-q", "--allow-empty", "-m", message);
+    return gitIn("rev-parse", "HEAD");
+  };
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-book-")));
+    const bin = path.join(tmp, "bin");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(
+      path.join(bin, "pnpm"),
+      [
+        "#!/bin/sh",
+        'if [ "$1" = "-s" ] && [ "$2" = "bkit" ] && [ "$3" = "ci" ]; then',
+        "  shift 2",
+        `  exec node ${JSON.stringify(path.join(REPO, "dist", "cli.js"))} "$@"`,
+        "fi",
+        `echo "$*" >> "${tmp}/pnpm.log"`,
+        "exit 0",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(path.join(bin, "gh"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    gitIn("init", "-q", "-b", "feat/1-x");
+    gitIn("update-ref", "refs/remotes/origin/dev", commitFiles({ "src/a.ts": "a\n" }, "base"));
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  const push = (hook: string, sha: string, remoteRef = "refs/heads/feat/1-x") => {
+    const result = spawnSync("sh", [path.join(REPO, hook)], {
+      cwd: tmp,
+      input: `refs/heads/feat/1-x ${sha} ${remoteRef} ${ZERO}\n`,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
+    });
+    const log = path.join(tmp, "pnpm.log");
+    const calls = fs.existsSync(log) ? fs.readFileSync(log, "utf-8").trim().split("\n") : [];
+    return { status: result.status, stderr: result.stderr, calls };
+  };
+
+  const PLAN = {
+    "docs/plans/202610/logs/1-x/status.jsonl": "{}\n",
+    "docs/decisions.jsonl": "{}\n",
+  };
+
+  for (const hook of [".bkit/templates/.husky/pre-push", ".husky/pre-push"]) {
+    it(`${hook}: plan logs and ledgers only → bkit:gate:min, not the full gate`, () => {
+      const r = push(hook, commitFiles(PLAN, "docs(1): plan bkit [skip ci]"));
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain("min push");
+      expect(r.calls).toContain("bkit:gate:min");
+      expect(r.calls).not.toContain("bkit:gate:static-unit");
+      expect(r.calls).toContain("bkit check");
+    });
+
+    it(`${hook}: a code file in the push → the full gate`, () => {
+      commitFiles({ "src/a.ts": "b\n" }, "feat(1): a");
+      const r = push(hook, commitFiles(PLAN, "docs(1): status bkit [skip ci]"));
+      expect(r.status).toBe(0);
+      expect(r.calls).toContain("bkit:gate:static-unit");
+      expect(r.calls).not.toContain("bkit:gate:min");
+    });
+
+    it(`${hook}: code to dev under a [skip ci] head → blocked before any gate`, () => {
+      commitFiles({ "src/a.ts": "b\n" }, "feat(1): a");
+      const head = commitFiles(PLAN, "docs(1): status bkit [skip ci]");
+      const r = push(hook, head, "refs/heads/dev");
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(`BLOCKED: ${head} carries a CI-suppressing token`);
+      expect(r.calls).toEqual([]);
+    });
+
+    it(`${hook}: min push to dev under a [skip ci] head → allowed, light gate`, () => {
+      const r = push(hook, commitFiles(PLAN, "docs(1): plan bkit [skip ci]"), "refs/heads/dev");
+      expect(r.status).toBe(0);
+      expect(r.calls).toContain("bkit:gate:min");
+    });
+
+    it(`${hook}: code to dev with a clean head → not blocked, full gate`, () => {
+      const r = push(hook, commitFiles({ "src/a.ts": "b\n" }, "feat(1): a"), "refs/heads/dev");
+      expect(r.status).toBe(0);
+      expect(r.calls).toContain("bkit:gate:static-unit");
+    });
+  }
+
+  it(".husky/pre-push: a min push skips bkit's dist and actionlint checks", () => {
+    const r = push(".husky/pre-push", commitFiles(PLAN, "docs(1): plan bkit [skip ci]"));
+    expect(r.calls).not.toContain("bkit:check:dist");
+    expect(r.calls).not.toContain("bkit:lint:workflows");
+  });
+
+  it(".husky/pre-push: a code push still runs them", () => {
+    const r = push(".husky/pre-push", commitFiles({ "src/a.ts": "b\n" }, "feat(1): a"));
+    expect(r.calls).toContain("bkit:check:dist");
+    expect(r.calls).toContain("bkit:lint:workflows");
   });
 });

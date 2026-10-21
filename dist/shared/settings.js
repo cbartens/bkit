@@ -12,8 +12,14 @@ export const CONFIG_DEFAULTS = {
     worktreeInstall: true,
     diskMinFreeGb: 40,
     issueTracker: DEFAULT_ISSUE_TRACKER,
+    // `started` is a state type every Linear team has; In Review is a name a default team lacks.
+    linear: { team: null, project: null, progress: "started", review: "In Review" },
+    jira: { site: null, project: null, progress: "In Progress", review: "In Review" },
     githubProject: null,
     shipGateRequiredLanes: [],
+    // What bkit's workflows write: plan / design / build logs and the ledgers. Never
+    // `docs/**`: a project doc can be a test's input, so a docs edit can red a test.
+    minPushPaths: ["docs/plans/**", "docs/*.jsonl", ".bkit/*.jsonl"],
     opencodeProvider: null,
     opencodeProviders: [],
     cloudAgents: DEFAULT_CLOUD_AGENTS,
@@ -22,6 +28,15 @@ export const CONFIG_DEFAULTS = {
     cloudAgentsExplicit: false,
 };
 const nonEmptyString = (v) => typeof v === "string" && v.trim() !== "";
+const record = (v) => v !== null && typeof v === "object" && !Array.isArray(v) ? v : {};
+const optionalString = (v) => (nonEmptyString(v) ? v.trim() : null);
+/** Each moment's state from `raw`, else the default for that moment. */
+function trackerStates(raw, defaults) {
+    return {
+        progress: nonEmptyString(raw.progress) ? raw.progress.trim() : defaults.progress,
+        review: nonEmptyString(raw.review) ? raw.review.trim() : defaults.review,
+    };
+}
 /**
  * Read `package.json` `bkit` from `root` (the main checkout). A missing file,
  * missing key, or wrongly typed value falls back to the default for that key.
@@ -35,8 +50,11 @@ export function readBkitConfig(root) {
     const minFreeGb = (bkit.disk ?? {}).minFreeGb;
     const project = bkit.githubProject;
     const lanes = bkit.shipGateRequiredLanes;
+    const book = bkit.minPushPaths;
     const provider = bkit.opencodeProvider;
     const providers = bkit.opencodeProviders;
+    const linear = record(bkit.linear);
+    const jira = record(bkit.jira);
     return {
         ciWorkflow: nonEmptyString(bkit.ciWorkflow) ? bkit.ciWorkflow : CONFIG_DEFAULTS.ciWorkflow,
         capstoneJob: nonEmptyString(bkit.capstoneJob) ? bkit.capstoneJob : CONFIG_DEFAULTS.capstoneJob,
@@ -48,12 +66,26 @@ export function readBkitConfig(root) {
             ? minFreeGb
             : CONFIG_DEFAULTS.diskMinFreeGb,
         issueTracker: parseIssueTracker(bkit.issueTracker) ?? CONFIG_DEFAULTS.issueTracker,
+        linear: {
+            team: optionalString(linear.team),
+            project: optionalString(linear.project),
+            ...trackerStates(linear, CONFIG_DEFAULTS.linear),
+        },
+        jira: {
+            site: nonEmptyString(jira.site) ? jira.site.trim().replace(/\/+$/, "") : null,
+            project: optionalString(jira.project),
+            ...trackerStates(jira, CONFIG_DEFAULTS.jira),
+        },
         githubProject: project === false
             ? false
             : project !== null && typeof project === "object" && !Array.isArray(project)
                 ? project
                 : null,
         shipGateRequiredLanes: Array.isArray(lanes) ? lanes.filter(nonEmptyString) : [],
+        // An explicit [] is kept: it switches the min push off.
+        minPushPaths: Array.isArray(book)
+            ? book.filter(nonEmptyString)
+            : [...CONFIG_DEFAULTS.minPushPaths],
         opencodeProvider: typeof provider === "string" && isOpencodeProvider(provider) ? provider : null,
         opencodeProviders: Array.isArray(providers)
             ? providers.filter((v) => typeof v === "string" && isOpencodeProvider(v))
@@ -63,4 +95,11 @@ export function readBkitConfig(root) {
         issueTrackerExplicit: bkit.issueTracker !== undefined,
         cloudAgentsExplicit: bkit.cloudAgents !== undefined,
     };
+}
+export function trackerScope(cfg) {
+    if (cfg.issueTracker === "linear")
+        return { trackerTeam: cfg.linear.team, trackerProject: cfg.linear.project, trackerSite: null };
+    if (cfg.issueTracker === "jira")
+        return { trackerTeam: null, trackerProject: cfg.jira.project, trackerSite: cfg.jira.site };
+    return { trackerTeam: null, trackerProject: null, trackerSite: null };
 }

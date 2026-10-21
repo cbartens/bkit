@@ -7,7 +7,7 @@ import type { IssueTracker } from "../../install/manifest.js";
 import type { PreflightFinding } from "./index.js";
 
 /** Every MCP server key bkit writes; `requiredMcpServersForTracker` picks the required subset. */
-const BKIT_MCP_SERVERS: readonly string[] = ["linear", "github"];
+const BKIT_MCP_SERVERS: readonly string[] = ["linear", "github", "jira"];
 
 /**
  * bkit-written servers a workflow step calls under every tracker, so never flagged as extra:
@@ -78,7 +78,9 @@ export function detectMissingMcpServers(
         ? `"url": "https://mcp.linear.app/mcp"`
         : key === "github"
           ? `"url": "https://api.githubcopilot.com/mcp/"`
-          : `"url": "<server-url>"`;
+          : key === "jira"
+            ? `"url": "https://mcp.atlassian.com/v2/mcp"`
+            : `"url": "<server-url>"`;
     findings.push({
       id: `mcp-missing-server-${key}-${advisoryPathSlug(relPath)}`,
       severity: "advisory",

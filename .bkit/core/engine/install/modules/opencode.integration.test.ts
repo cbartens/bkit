@@ -385,20 +385,44 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(JSON.stringify(block)).not.toContain("${");
   });
 
-  it("github MCP: type 'remote' (not 'http') + {env:} header — opencode schema valid", () => {
-    // type "http" is valid for Claude/Cursor but NOT in opencode's enum (["local","remote"]);
-    // its presence makes opencode reject the whole config.
+  it.each(["github", "linear", "jira"] as const)(
+    "%s MCP: the only mcp entry, type 'remote' (not 'http'), no shell ${} — opencode schema valid",
+    (tracker) => {
+      // type "http" is valid for Claude/Cursor but NOT in opencode's enum (["local","remote"]);
+      // its presence makes opencode reject the whole config.
+      const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, tracker, "openrouter"));
+      expect(Object.keys(parsed.mcp)).toEqual([tracker]);
+      expect(parsed.mcp[tracker].type).toBe("remote");
+      expect(JSON.stringify(parsed.mcp)).not.toContain('"http"');
+      expect(JSON.stringify(parsed.mcp)).not.toContain("${");
+    },
+  );
+
+  it("github MCP: {env:} Bearer header, OAuth off", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
-    const gh = parsed.mcp?.github;
-    expect(gh.type).toBe("remote");
+    const gh = parsed.mcp.github;
+    expect(gh.oauth).toBe(false);
     expect(gh.headers.Authorization).toBe("Bearer {env:BKIT_GH_TOKEN}");
-    expect(JSON.stringify(parsed.mcp)).not.toContain('"http"');
-    expect(JSON.stringify(parsed.mcp)).not.toContain("${");
   });
 
-  it("linear MCP: type 'remote' (not 'http')", () => {
+  it("linear MCP: url only, no auth header and no oauth key", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "linear", "openrouter"));
-    expect(parsed.mcp?.linear?.type).toBe("remote");
+    expect(parsed.mcp.linear).toEqual({ type: "remote", url: "https://mcp.linear.app/mcp" });
+  });
+
+  it("jira MCP: {env:} Bearer header, OAuth off", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "jira", "openrouter"));
+    expect(parsed.mcp.jira).toEqual({
+      type: "remote",
+      url: "https://mcp.atlassian.com/v2/mcp",
+      oauth: false,
+      headers: { Authorization: "Bearer {env:BKIT_JIRA_API_TOKEN}" },
+    });
+  });
+
+  it("tracker none: no mcp key at all", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "none", "openrouter"));
+    expect(parsed.mcp).toBeUndefined();
   });
 
   it("uses the 'plugin' key (singular), not 'plugins' (opencode schema)", () => {
@@ -442,6 +466,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
       "git checkout -- .*",
       "git restore .*",
       "git stash drop*",
+      "git stash clear*",
       "git rebase -i*",
       "gh repo delete*",
       "gh pr close*",
@@ -481,6 +506,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
       "git checkout -- .",
       "git restore .",
       "git stash drop",
+      "git stash clear",
       "git rebase -i",
       "gh repo delete",
       "gh pr close",
@@ -618,7 +644,52 @@ describe("reconcileOpencodeJson — tracker mcp entry keeps consumer extras (#61
   const readGithub = (): { url: string; headers: Record<string, string> } =>
     JSON.parse(fs.readFileSync(DST, "utf-8")).mcp.github;
 
-  it("an extra toolset is in sync → no write", () => {
+  it.each(["github", "linear", "jira"] as const)(
+    "%s: a consumer key and header in bkit's entry are in sync → no write",
+    (tracker) => {
+      const render = renderOpencodeJson(TEMPLATE, tracker, "opencode-go");
+      reconcileOpencodeJson(render, DST, false, makeWriteSet());
+      const doc = JSON.parse(fs.readFileSync(DST, "utf-8"));
+      const entry = doc.mcp[tracker];
+      entry.timeout = 30;
+      entry.headers = { ...entry.headers, "X-Mine": "1" };
+      fs.writeFileSync(DST, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+      const ws = makeWriteSet();
+      reconcileOpencodeJson(render, DST, false, ws);
+      expect(ws.writes).toEqual([]);
+      expect(JSON.parse(fs.readFileSync(DST, "utf-8")).mcp[tracker]).toEqual(entry);
+    },
+  );
+
+  it("jira: an edited Authorization header and url are reset; the consumer's own header stays", () => {
+    const render = renderOpencodeJson(TEMPLATE, "jira", "opencode-go");
+    const tmpl = JSON.parse(render).mcp.jira;
+    fs.mkdirSync(".opencode", { recursive: true });
+    fs.writeFileSync(
+      DST,
+      JSON.stringify({
+        mcp: {
+          jira: {
+            ...tmpl,
+            url: "https://edited",
+            headers: { Authorization: "Bearer hardcoded", "X-Mine": "1" },
+          },
+        },
+      }),
+      "utf-8",
+    );
+    const ws = makeWriteSet();
+    reconcileOpencodeJson(render, DST, false, ws);
+    const jira = JSON.parse(fs.readFileSync(DST, "utf-8")).mcp.jira;
+    expect(jira.url).toBe(tmpl.url);
+    expect(jira.headers).toEqual({
+      Authorization: "Bearer {env:BKIT_JIRA_API_TOKEN}",
+      "X-Mine": "1",
+    });
+    expect(ws.writes).toEqual([{ path: DST, action: "update" }]);
+  });
+
+  it("github: an extra toolset is in sync → no write", () => {
     reconcileOpencodeJson(rendered(), DST, false, makeWriteSet());
     const doc = JSON.parse(fs.readFileSync(DST, "utf-8"));
     const sets = doc.mcp.github.headers["X-MCP-Toolsets"];
@@ -630,7 +701,7 @@ describe("reconcileOpencodeJson — tracker mcp entry keeps consumer extras (#61
     expect(readGithub().headers["X-MCP-Toolsets"]).toBe(`${sets},gists`);
   });
 
-  it("a missing template toolset is appended; an edited url is reset", () => {
+  it("github: a missing template toolset is appended; an edited url is reset", () => {
     const tmpl = templateGithub();
     fs.mkdirSync(".opencode", { recursive: true });
     fs.writeFileSync(

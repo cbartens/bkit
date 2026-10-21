@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { MARKERS, project, roadmapCommand } from "./roadmap";
+import { MARKERS, project, RELATED_UTILITIES, roadmapCommand } from "./roadmap";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -719,5 +719,18 @@ describe("bkit roadmap mirror", () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ appended: true, mirrored: false });
     expect(r.json.skipped).toContain("fetch of dev failed");
+  });
+});
+
+describe("related utilities line", () => {
+  it("roadmap header and audit-generate final message use the same words", async () => {
+    const r = root();
+    expect(await fold(r)).toMatchObject({ code: 0 });
+    expect(board(r)).toContain(RELATED_UTILITIES);
+    const prompt = fs.readFileSync(
+      path.resolve(__dirname, "../../../prompts/bkit-audit-generate.md"),
+      "utf-8",
+    );
+    expect(prompt).toContain(RELATED_UTILITIES);
   });
 });

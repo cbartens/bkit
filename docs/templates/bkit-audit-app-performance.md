@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # App Performance Audit
 
@@ -96,7 +96,7 @@ Verify only when applicable.
 - [ ] **Platform Settings:** Hosted platform → Steps 3, 10 — preview overlays, region, CDN cache hit ratio, e.g. Vercel, Netlify, Cloudflare dashboard / API. Fallback: response headers only; settings `Not Checked`.
 - [ ] **DB Statistics:** Hosted DB → Step 13 — e.g. `pg_stat_statements`, platform performance advisor. Fallback: monitoring spans only.
 - [ ] **Job Runner:** Background jobs → Steps 12, 13 — run timings and queue lag, e.g. Inngest, Temporal, Sidekiq. Fallback: monitoring spans only.
-- [ ] **Tracker:** Follow-ups from previous reports → Step 16 — e.g. `gh`, Linear MCP. Fallback: `Closed Follow-Ups` `Not Checked`.
+- [ ] **Tracker:** Follow-ups from previous reports → Step 16 — via tracker MCP, e.g. GitHub MCP, Linear MCP, Jira MCP; `gh` only as fallback. Fallback: `Closed Follow-Ups` `Not Checked`.
 
 ### 🔒 Gate 1: Prerequisites Check
 

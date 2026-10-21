@@ -650,3 +650,104 @@ describe("bkit ci skip-token", () => {
     expect(r.err).toContain("cannot read commit 'no-such-ref'");
   });
 });
+
+// ---------------------------------------------------------------------------
+// bkit ci min-push
+// ---------------------------------------------------------------------------
+
+describe("bkit ci min-push", () => {
+  /** A repo whose first commit is `origin/dev`, then a branch commit writing `files`. */
+  function pushed(files: Record<string, string>, pkg?: unknown) {
+    const cwd = mkdir("bkit-ci-book-");
+    git(cwd, "init", "-q", "-b", "feat/1-x");
+    write(cwd, "src/a.ts", "export {};\n");
+    if (pkg !== undefined) write(cwd, "package.json", JSON.stringify(pkg));
+    const base = commit(cwd, "base");
+    git(cwd, "update-ref", "refs/remotes/origin/dev", base);
+    for (const [rel, body] of Object.entries(files)) write(cwd, rel, body);
+    const head = commit(cwd, "docs(1): plan bkit [skip ci]");
+    return { cwd, base, head };
+  }
+
+  it("exits 0 when every changed file is a plan log or a ledger", async () => {
+    const { cwd, head } = pushed({
+      "docs/plans/202610/logs/1-x/status.jsonl": "{}\n",
+      "docs/plans/202610/1-x-plan.md": "# Plan\n",
+      "docs/decisions.jsonl": "{}\n",
+      ".bkit/friction.jsonl": "{}\n",
+    });
+    const r = await run(cwd, [`--ref=${head}`], "min-push");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ minPush: true, reason: null, changed: 4, outside: [] });
+  });
+
+  it("exits 1 naming the files outside, whatever the commit message says", async () => {
+    const { cwd, head } = pushed({
+      "docs/plans/202610/logs/1-x/status.jsonl": "{}\n",
+      "docs/design.md": "# Design\n",
+      "src/a.ts": "export const a = 1;\n",
+    });
+    const r = await run(cwd, [`--ref=${head}`], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({
+      minPush: false,
+      reason: "outside",
+      changed: 3,
+      outside: ["docs/design.md", "src/a.ts"],
+    });
+  });
+
+  it("checks every --ref: one code ref among min-push refs fails the push", async () => {
+    const { cwd, head } = pushed({ "docs/knowledge.jsonl": "{}\n" });
+    git(cwd, "checkout", "-q", "-b", "feat/2-y", "origin/dev");
+    write(cwd, "src/b.ts", "export {};\n");
+    const code = commit(cwd, "feat(2): b");
+    expect((await run(cwd, [`--ref=${head}`], "min-push")).code).toBe(0);
+    const r = await run(cwd, [`--ref=${head}`, `--ref=${code}`], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.outside).toEqual(["src/b.ts"]);
+  });
+
+  it("measures from the merge-base, so earlier code commits on the branch count", async () => {
+    const { cwd } = pushed({ "src/c.ts": "export {};\n" });
+    write(cwd, "docs/plans/202610/logs/1-x/status.jsonl", "{}\n");
+    const head = commit(cwd, "docs(1): status bkit [skip ci]");
+    const r = await run(cwd, [`--ref=${head}`], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.outside).toEqual(["src/c.ts"]);
+  });
+
+  it("reads bkit.minPushPaths from package.json; an explicit [] turns it off", async () => {
+    const custom = pushed({ "notes/today.md": "x\n" }, { bkit: { minPushPaths: ["notes/**"] } });
+    expect((await run(custom.cwd, [`--ref=${custom.head}`], "min-push")).code).toBe(0);
+    const off = pushed({ "docs/decisions.jsonl": "{}\n" }, { bkit: { minPushPaths: [] } });
+    const r = await run(off.cwd, [`--ref=${off.head}`], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.reason).toBe("no-paths");
+  });
+
+  it("a top-level glob does not reach into folders", async () => {
+    const { cwd, head } = pushed({ "docs/sub/notes.jsonl": "{}\n" });
+    const r = await run(cwd, [`--ref=${head}`], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.outside).toEqual(["docs/sub/notes.jsonl"]);
+  });
+
+  it("a push that changes no files is not proven a min push", async () => {
+    const { cwd, base } = pushed({});
+    const r = await run(cwd, [`--ref=${base}`], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.reason).toBe("no-changes");
+  });
+
+  it("exits 7 when a commit or its base cannot be read", async () => {
+    const { cwd } = pushed({ "docs/decisions.jsonl": "{}\n" });
+    const unknown = await run(cwd, ["--ref=no-such-ref"], "min-push");
+    expect(unknown.code).toBe(7);
+    expect(unknown.json).toMatchObject({ minPush: false, reason: "unknown" });
+    git(cwd, "update-ref", "-d", "refs/remotes/origin/dev");
+    const noBase = await run(cwd, [], "min-push");
+    expect(noBase.code).toBe(7);
+    expect(noBase.err).toContain("neither origin/dev nor origin/main");
+  });
+});

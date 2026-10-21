@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
@@ -64,7 +64,7 @@ brew install direnv
 echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc   # zsh; bash: ~/.bashrc
 
 # One-time per repo clone
-cp .bkit/.env.example .bkit/.env   # fill BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY (+ optional BKIT_ANTHROPIC_API_KEY / BKIT_CURSOR_API_KEY)
+cp .bkit/.env.example .bkit/.env   # fill BKIT_GH_TOKEN + your tracker's token (BKIT_LINEAR_API_KEY / BKIT_JIRA_API_TOKEN) (+ optional BKIT_ANTHROPIC_API_KEY / BKIT_CURSOR_API_KEY)
 direnv allow                            # trust .envrc; auto-loads on subsequent cd
 
 # Verify
@@ -91,7 +91,7 @@ Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude -
 Single package — no turbo / affected-graph. Run scripts directly:
 
 ```bash
-pnpm bkit:gate:static-unit   # pre-push gates (docs/deployments.md § Pre-push checklist)
+pnpm bkit:gate:static-unit-integration   # pre-push gates (docs/deployments.md § Pre-push checklist)
 pnpm bkit check              # drift gate
 pnpm bkit:check:dist         # dist freshness (source-repo only)
 pnpm exec bkit doctor        # token + advisory sweep (rewrites .bkit/advisories.md only, never fails)

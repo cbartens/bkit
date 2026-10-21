@@ -41,7 +41,7 @@ Add **each** line below as a secret (Name = the key, Value = the value). Set the
 
 @@CLOUD_ENV_NOTES@@
 
-- `LINEAR_ISSUE_ID` (Linear tracker) / `GITHUB_ISSUE_ID` (GitHub tracker) are injected
+- `GITHUB_ISSUE_ID` (GitHub tracker) / `LINEAR_ISSUE_ID` (Linear tracker) are injected
   **per session** by the Cursor integration — do **not** add them here.
 - `BKIT_GH_TOKEN` PAT permissions (fine-grained for one owner, classic across owners) are documented in `.bkit/cloud.md`
   § `BKIT_GH_TOKEN` — token permissions (identical scope to the Claude side).
@@ -79,6 +79,6 @@ Your `/bkit-*` commands and bkit subagents load automatically from the committed
 
 ---
 
-Tracker dispatch (Linear `@cursor` mention / GitHub PR-label automation), the
+Tracker dispatch (GitHub PR-label automation / Linear `@cursor` mention), the
 `BKIT_GH_TOKEN` PAT permission table, and the one-environment-per-repo rationale all
 live in `.bkit/cloud.md` § Cursor Cloud Agents.

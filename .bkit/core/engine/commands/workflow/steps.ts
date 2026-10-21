@@ -33,7 +33,7 @@ import {
   type FlagValue,
   type RunContext,
 } from "../lib.js";
-import { FID_PATTERNS, readIssueTracker } from "./fids.js";
+import { FID_PATTERNS, normaliseFid, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
 import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import {
@@ -456,7 +456,7 @@ function gateChecks(cwd: string, o: GateOptions): Check[] {
 
   if (o.fid !== undefined) {
     const tracker = readIssueTracker(cwd);
-    const fid = tracker === "linear" ? o.fid.toLowerCase() : o.fid;
+    const fid = normaliseFid(o.fid, tracker);
     add(
       `fid ${fid}`,
       FID_PATTERNS[tracker].test(fid)

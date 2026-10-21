@@ -47,6 +47,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 
 /bkit-design ───── output: detailed design ───────────────────────────────────
   1. grill              (human interview, one decision frontier per round;
+                         last round confirms a DRAFT acceptance scenario;
                          skipped headless: recommended answers recorded as assumed)
   2. fetch related       (semantic tracker search, rank order → related-issues.md)
   3. brainstorm × 3 (parallel, distinct lenses, no sibling reads)
@@ -275,7 +276,7 @@ No command and no phase label. One subagent, one template per run.
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
-| `bkit-audit-generate` | One template | Runs `docs/templates/bkit-audit-*.md`. Writes `docs/audits/{YYYYMM}/{slug}.md` (`{slug}` = basename without `bkit-audit-`; same slug already in that month → `{slug}-{TIMESTAMP}.md`). Report is the template through `bkit:end`. Refines that template's `Project Instructions` below `bkit:end`. Issue named in the invocation + tracker wired → posts the final summary there as one comment. |
+| `bkit-audit-generate` | One template | Runs `docs/templates/bkit-audit-*.md`. Writes `docs/audits/{YYYYMM}/{slug}.md` (`{slug}` = basename without `bkit-audit-`; same slug already in that month → `{slug}-{TIMESTAMP}.md`). Report is the template through `bkit:end`. Refines that template's `Project Instructions` below `bkit:end`. Issue named in the invocation + tracker wired → posts the final summary there as one comment. No issue named + tracker wired → searches for the template's audit parent and posts there; none open → suggests one, with the summary saved for its first comment. |
 
 `/bkit-plan` reads a design doc, one or more reports, or both. The invocation names which findings are in scope. The rest of each report stays context. With neither, the issue is the plan's source: a well-defined change issue carries its narrative, success criteria, edge cases, tests and tasks into the plan.
 
@@ -332,6 +333,7 @@ No command and no phase label. Run on demand, one subagent per run.
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
 | `bkit-utility-update-roadmap` | Roadmap | Ranks the next items to work on from the board, the ledgers and due audits. Rewrites only the `roadmap-analysis` block. |
+| `bkit-utility-update-tracker` | Tracker hygiene | Brings open issues in line with the tracker rules: short titles, labels, board status, priority, size, milestone, parent and blocked-by, from the latest issues audit and the roadmap. Suggests new milestones and parent issues; never creates or closes issues. |
 | `bkit-utility-update-documentation` | Docs drift | Syncs every doc listed in `.agents/docs.md` with the current system — drift cleanup across several plans. |
 | `bkit-utility-update-decisions` | Decisions ledger | Checks each active `docs/decisions.jsonl` entry against the docs and the code; appends a corrected or superseded row where it no longer holds. |
 | `bkit-utility-update-knowledge` | Gotchas ledger | Same over `docs/knowledge.jsonl`. Never retracts an entry about upstream behaviour for lack of local evidence. |

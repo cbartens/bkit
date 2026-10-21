@@ -1351,7 +1351,7 @@ function context(t) {
       rows: [
         [
           "Issue tracker",
-          "GitHub Issues or Linear — progress, status, links",
+          "GitHub Issues, Linear or Jira — progress, status, links",
           ["rw", "rw", "rw", "rw", "rw"],
         ],
         ["Related issues", "your backlog, searched by meaning", ["r", "r", "", "r", ""]],
@@ -1451,7 +1451,7 @@ function context(t) {
     W,
     footH(H - 49),
     b + footer(t, W, H - 49),
-    "What it knows: right context, right step, written back as it learns. In your repo, bkit reads project docs at every step and updates them at ship; reads and writes lessons, decisions, postponed work and known bugs; writes designs and plans that later steps read; reads audit reports at plan and a code map at every step; keeps run state and stats at every step; adds skills at build and removes them at ship. Outside your repo, it reads and updates the GitHub or Linear issue at every step, searches related issues at design, plan and debug, searches the web at design and debug, reads CI runs and test reports at debug and ship, reads runtime platforms such as Sentry, Vercel, Supabase and Stripe at debug, and opens, fixes and merges the pull request.",
+    "What it knows: right context, right step, written back as it learns. In your repo, bkit reads project docs at every step and updates them at ship; reads and writes lessons, decisions, postponed work and known bugs; writes designs and plans that later steps read; reads audit reports at plan and a code map at every step; keeps run state and stats at every step; adds skills at build and removes them at ship. Outside your repo, it reads and updates the GitHub, Linear or Jira issue at every step, searches related issues at design, plan and debug, searches the web at design and debug, reads CI runs and test reports at debug and ship, reads runtime platforms such as Sentry, Vercel, Supabase and Stripe at debug, and opens, fixes and merges the pull request.",
   );
 }
 

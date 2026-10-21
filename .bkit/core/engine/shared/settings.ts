@@ -15,6 +15,28 @@ import { isOpencodeProvider } from "../render/models.js";
 import type { OpencodeProvider } from "./egress.js";
 import { readPackageJson } from "./package-json.js";
 
+/** The issue state a tracker sets when work starts (`progress`) and when it hands off to a human (`review`). */
+export interface TrackerStates {
+  progress: string;
+  review: string;
+}
+
+/** `bkit.linear`: the team and project issues live in, and the state each moment moves to. */
+export interface LinearConfig extends TrackerStates {
+  /** Team key, e.g. `ENG`. null = not configured. */
+  team: string | null;
+  /** Project name; new issues go into it and related-issue searches stay inside it. null = none. */
+  project: string | null;
+}
+
+/** `bkit.jira`: the site and project issues live in, and the status names each moment moves to. */
+export interface JiraConfig extends TrackerStates {
+  /** Site URL, e.g. `https://acme.atlassian.net`; the MCP server's `cloudId`. null = not configured. */
+  site: string | null;
+  /** Project key, e.g. `MBA`. null = not configured. */
+  project: string | null;
+}
+
 export interface BkitConfig {
   /** CI workflow file under `.github/workflows/`. */
   ciWorkflow: string;
@@ -26,12 +48,21 @@ export interface BkitConfig {
   worktreeInstall: boolean;
   /** Free GB under which worktree setup and `bkit disk prune --auto` run the max cleanup steps. */
   diskMinFreeGb: number;
-  /** Which tracker issues live in: github, linear or none. */
+  /** Which tracker issues live in: github, linear, jira or none. */
   issueTracker: IssueTracker;
+  /** `bkit.linear`; each moment's state is a state name, or a state type such as `started`. */
+  linear: LinearConfig;
+  /** `bkit.jira`. */
+  jira: JiraConfig;
   /** The GitHub Projects v2 board settings; false = opted out, null = not configured. */
   githubProject: Record<string, unknown> | false | null;
   /** CI lanes whose `skipped` conclusion refuses a ship merge; empty = the capstone's green decides. */
   shipGateRequiredLanes: string[];
+  /**
+   * Globs (`:(glob)` git pathspecs) for paths a push may carry and still run only
+   * `bkit:gate:min` in `.husky/pre-push`; empty = every push runs the full hook.
+   */
+  minPushPaths: string[];
   /** The opencode provider recorded on install; null = absent or not a supported provider. */
   opencodeProvider: OpencodeProvider | null;
   /** Every installed opencode provider, supported ones only; empty = none recorded. */
@@ -53,8 +84,14 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   worktreeInstall: true,
   diskMinFreeGb: 40,
   issueTracker: DEFAULT_ISSUE_TRACKER,
+  // `started` is a state type every Linear team has; In Review is a name a default team lacks.
+  linear: { team: null, project: null, progress: "started", review: "In Review" },
+  jira: { site: null, project: null, progress: "In Progress", review: "In Review" },
   githubProject: null,
   shipGateRequiredLanes: [],
+  // What bkit's workflows write: plan / design / build logs and the ledgers. Never
+  // `docs/**`: a project doc can be a test's input, so a docs edit can red a test.
+  minPushPaths: ["docs/plans/**", "docs/*.jsonl", ".bkit/*.jsonl"],
   opencodeProvider: null,
   opencodeProviders: [],
   cloudAgents: DEFAULT_CLOUD_AGENTS,
@@ -64,6 +101,19 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
 };
 
 const nonEmptyString = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
+
+const record = (v: unknown): Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+
+const optionalString = (v: unknown): string | null => (nonEmptyString(v) ? v.trim() : null);
+
+/** Each moment's state from `raw`, else the default for that moment. */
+function trackerStates(raw: Record<string, unknown>, defaults: TrackerStates): TrackerStates {
+  return {
+    progress: nonEmptyString(raw.progress) ? raw.progress.trim() : defaults.progress,
+    review: nonEmptyString(raw.review) ? raw.review.trim() : defaults.review,
+  };
+}
 
 /**
  * Read `package.json` `bkit` from `root` (the main checkout). A missing file,
@@ -78,8 +128,11 @@ export function readBkitConfig(root: string): BkitConfig {
   const minFreeGb = ((bkit.disk ?? {}) as Record<string, unknown>).minFreeGb;
   const project = bkit.githubProject;
   const lanes = bkit.shipGateRequiredLanes;
+  const book = bkit.minPushPaths;
   const provider = bkit.opencodeProvider;
   const providers = bkit.opencodeProviders;
+  const linear = record(bkit.linear);
+  const jira = record(bkit.jira);
   return {
     ciWorkflow: nonEmptyString(bkit.ciWorkflow) ? bkit.ciWorkflow : CONFIG_DEFAULTS.ciWorkflow,
     capstoneJob: nonEmptyString(bkit.capstoneJob) ? bkit.capstoneJob : CONFIG_DEFAULTS.capstoneJob,
@@ -94,6 +147,16 @@ export function readBkitConfig(root: string): BkitConfig {
         ? minFreeGb
         : CONFIG_DEFAULTS.diskMinFreeGb,
     issueTracker: parseIssueTracker(bkit.issueTracker) ?? CONFIG_DEFAULTS.issueTracker,
+    linear: {
+      team: optionalString(linear.team),
+      project: optionalString(linear.project),
+      ...trackerStates(linear, CONFIG_DEFAULTS.linear),
+    },
+    jira: {
+      site: nonEmptyString(jira.site) ? jira.site.trim().replace(/\/+$/, "") : null,
+      project: optionalString(jira.project),
+      ...trackerStates(jira, CONFIG_DEFAULTS.jira),
+    },
     githubProject:
       project === false
         ? false
@@ -101,6 +164,10 @@ export function readBkitConfig(root: string): BkitConfig {
           ? (project as Record<string, unknown>)
           : null,
     shipGateRequiredLanes: Array.isArray(lanes) ? lanes.filter(nonEmptyString) : [],
+    // An explicit [] is kept: it switches the min push off.
+    minPushPaths: Array.isArray(book)
+      ? book.filter(nonEmptyString)
+      : [...CONFIG_DEFAULTS.minPushPaths],
     opencodeProvider:
       typeof provider === "string" && isOpencodeProvider(provider) ? provider : null,
     opencodeProviders: Array.isArray(providers)
@@ -113,4 +180,24 @@ export function readBkitConfig(root: string): BkitConfig {
     issueTrackerExplicit: bkit.issueTracker !== undefined,
     cloudAgentsExplicit: bkit.cloudAgents !== undefined,
   };
+}
+
+/** Where the wired tracker's issues live, for the workflows' tracker calls. */
+export interface TrackerScope {
+  /** Linear team key; null under any other tracker or when unset. */
+  trackerTeam: string | null;
+  /** Linear project name or Jira project key; null under github / none or when unset. */
+  trackerProject: string | null;
+  /** Jira site URL (the MCP `cloudId`); null under any other tracker or when unset. */
+  trackerSite: string | null;
+}
+
+export function trackerScope(
+  cfg: Pick<BkitConfig, "issueTracker" | "linear" | "jira">,
+): TrackerScope {
+  if (cfg.issueTracker === "linear")
+    return { trackerTeam: cfg.linear.team, trackerProject: cfg.linear.project, trackerSite: null };
+  if (cfg.issueTracker === "jira")
+    return { trackerTeam: null, trackerProject: cfg.jira.project, trackerSite: cfg.jira.site };
+  return { trackerTeam: null, trackerProject: null, trackerSite: null };
 }

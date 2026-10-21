@@ -329,13 +329,32 @@ describe("bkit workflows fail", () => {
     );
   });
 
-  it("computes the bkit:failed label set and its Linear state", async () => {
+  it("computes the bkit:failed label set; trackerState is null without a Linear or Jira tracker", async () => {
     const r = await run(repo(), wf("fail", "build", "--label=bkit:build", "--label=bkit:auto"));
     expect(r.json.labels).toEqual(
       expect.arrayContaining(["bkit:build", "bkit:auto", "bkit:failed"]),
     );
+    expect(r.json.add).toEqual(["bkit:failed"]);
     expect(r.json.prState).toBeNull();
-    expect(typeof r.json.linearState).toBe("string");
+    expect(r.json.trackerState).toBeNull();
+    const again = await run(
+      repo(),
+      wf("fail", "build", "--label=bkit:build", "--label=bkit:failed"),
+    );
+    expect(again.json.add).toEqual([]);
+  });
+
+  it.each([
+    [{ issueTracker: "linear" }, "In Review"],
+    [{ issueTracker: "linear", linear: { review: "Code Review" } }, "Code Review"],
+    [{ issueTracker: "jira" }, "In Review"],
+    [{ issueTracker: "jira", jira: { review: "QA" } }, "QA"],
+    [{ issueTracker: "github" }, null],
+  ])("a failed issue under %j moves to review status %j", async (bkit, state) => {
+    const cwd = repo();
+    write(cwd, "package.json", JSON.stringify({ bkit }));
+    const r = await run(cwd, wf("fail", "build", "--label=bkit:build"));
+    expect(r.json.trackerState).toBe(state);
   });
 
   it("prints the failure comment from --error-file, naming a lock it could not remove", async () => {

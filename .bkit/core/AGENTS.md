@@ -25,7 +25,7 @@
 **Else** scan entire session prompt for issue ID — try patterns in order, first match wins:
 
 1. `#\d+` → GitHub issue number (e.g. `#123`); strip `#`, set `ISSUE_ID` = `123`
-2. `[A-Z]+-\d+` → prefixed issue ID (e.g. `LIN-123`, `ISSUE-123`, or team-specific prefix)
+2. `[A-Z][A-Z0-9]*-\d+` → prefixed issue ID (e.g. Linear `LIN-123`, Jira `PROJ-123`, `ISSUE-123`)
 3. bare `\d+` → numeric fallback (GitHub provider only; ambiguous — prefer `#\d+`)
 
 Set `LABELS`, `DESCRIPTION`, `COMMENTS` = empty.
@@ -42,7 +42,7 @@ Scan `LABELS` for commands (Ship, Debug, Build, Plan, Design) → first match �
 
 ### Step 4 — MCP fallback (labels only)
 
-Only if Steps 2–3 yield no `COMMAND`: read current issue labels via the configured tracker MCP (GitHub: `mcp__github__issue_read({ method: "get_labels", ... })`; Linear: `mcp__linear__get_issue({ id: "{ISSUE_ID}" })`) → scan returned labels → first match → `COMMAND`. Update `LABELS`, `DESCRIPTION`.
+Only if Steps 2–3 yield no `COMMAND`: read current issue labels via the configured tracker MCP (GitHub: `mcp__github__issue_read({ method: "get_labels", ... })`; Linear: `mcp__linear__get_issue({ id: "{ISSUE_ID}" })`; Jira: `mcp__jira__getJiraIssue({ cloudId: "<package.json bkit.jira.site>", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → `fields.labels`) → scan returned labels → first match → `COMMAND`. Update `LABELS`, `DESCRIPTION`.
 
 ### Step 5 — No match
 

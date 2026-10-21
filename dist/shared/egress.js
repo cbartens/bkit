@@ -110,6 +110,12 @@ export const BKIT_EGRESS_SOURCES = [
         bases: ["linear.app"],
     },
     {
+        id: "mcp-jira",
+        kind: "tracker-mcp",
+        hosts: ["mcp.atlassian.com"],
+        bases: ["atlassian.com"],
+    },
+    {
         id: "agent-claude",
         kind: "agent-host",
         hosts: ["console.anthropic.com"],

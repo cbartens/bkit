@@ -13,6 +13,7 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BKIT_SHIPPED_NETWORK_DOMAINS, BKIT_SHIPPED_NETWORK_HOSTS } from "./cloud-env";
+import { BKIT_EGRESS_SOURCES } from "../shared/egress";
 import { requireTsx } from "../../../../vitest.tsx-bin";
 
 let tmpDir: string;
@@ -34,72 +35,90 @@ const bkitInstallPath = path.resolve(here, "../cli.ts");
 const read = (rel: string) => fs.readFileSync(path.join(tmpDir, rel), "utf-8");
 
 describe("T4 — the derived egress set reaches all five surfaces", () => {
-  it("cloud paste, hook allowlist, claude WebFetch and opencode bash globs all name it", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "fanout", version: "1.0.0", packageManager: "pnpm@10.34.3" }, null, 2),
-    );
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+  it.each(["github", "linear", "jira"] as const)(
+    "--tracker=%s: cloud paste, hook allowlist, claude WebFetch and opencode bash globs all name it",
+    (tracker) => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify(
+          { name: "fanout", version: "1.0.0", packageManager: "pnpm@10.34.3" },
+          null,
+          2,
+        ),
+      );
+      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
 
-    const result = spawnSync(
-      requireTsx(),
-      [
-        bkitInstallPath,
-        "install",
-        "--claude",
-        "--cursor",
-        "--opencode=openrouter",
-        "--tracker=github",
-      ],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 120_000,
-      },
-    );
-    expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+      const result = spawnSync(
+        requireTsx(),
+        [
+          bkitInstallPath,
+          "install",
+          "--claude",
+          "--cursor",
+          "--opencode=openrouter",
+          `--tracker=${tracker}`,
+        ],
+        {
+          cwd: tmpDir,
+          encoding: "utf-8",
+          env: { ...process.env, NODE_NO_WARNINGS: "1" },
+          timeout: 120_000,
+        },
+      );
+      expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
 
-    // A base only the registry derives.
-    const probe = "models.dev";
-    expect(BKIT_SHIPPED_NETWORK_DOMAINS).toContain(probe);
+      // A base only the registry derives, plus the installed tracker's MCP bases.
+      const trackerBases = BKIT_EGRESS_SOURCES.find((r) => r.id === `mcp-${tracker}`)!.bases;
+      const probes = ["models.dev", ...trackerBases];
+      for (const probe of probes) expect(BKIT_SHIPPED_NETWORK_DOMAINS).toContain(probe);
 
-    // 1 — Claude cloud paste fence (apex + wildcard)
-    const claudeCloud = read(path.join(".claude", "bkit-cloud.md"));
-    expect(claudeCloud).toContain(`\n${probe}\n`);
-    expect(claudeCloud).toContain(`\n*.${probe}\n`);
+      const claudeCloud = read(path.join(".claude", "bkit-cloud.md"));
+      const cursorCloud = read(path.join(".cursor", "bkit-cloud.md"));
+      const allowlist = JSON.parse(read(path.join(".bkit", "allowlist.json"))) as {
+        domains: string[];
+      };
+      const settings = JSON.parse(read(path.join(".claude", "settings.json"))) as {
+        permissions: { allow: string[] };
+      };
+      const opencode = read(path.join(".opencode", "opencode.json"));
+      for (const probe of probes) {
+        // 1 — Claude cloud paste fence (apex + wildcard)
+        expect(claudeCloud).toContain(`\n${probe}\n`);
+        expect(claudeCloud).toContain(`\n*.${probe}\n`);
 
-    // 2 — Cursor cloud paste fence (exact hosts, no wildcard)
-    const cursorCloud = read(path.join(".cursor", "bkit-cloud.md"));
-    expect(cursorCloud).toContain(probe);
-    expect(cursorCloud).not.toContain(`*.${probe}`);
+        // 2 — Cursor cloud paste fence (exact hosts, no wildcard)
+        expect(cursorCloud).toContain(probe);
+        expect(cursorCloud).not.toContain(`*.${probe}`);
 
-    // 3 — .bkit/allowlist.json domains (every host's guardrails hook)
-    const allowlist = JSON.parse(read(path.join(".bkit", "allowlist.json"))) as {
-      domains: string[];
-    };
-    expect(allowlist.domains).toContain(probe);
+        // 3 — .bkit/allowlist.json domains (every host's guardrails hook)
+        expect(allowlist.domains).toContain(probe);
 
-    // 4 — .claude/settings.json WebFetch grants
-    const settings = JSON.parse(read(path.join(".claude", "settings.json"))) as {
-      permissions: { allow: string[] };
-    };
-    expect(settings.permissions.allow).toContain(`WebFetch(domain:${probe})`);
+        // 4 — .claude/settings.json WebFetch grants
+        expect(settings.permissions.allow).toContain(`WebFetch(domain:${probe})`);
 
-    // 5 — .opencode/opencode.json permission.bash curl globs
-    const opencode = read(path.join(".opencode", "opencode.json"));
-    expect(opencode).toContain(probe);
+        // 5 — .opencode/opencode.json permission.bash curl globs
+        expect(opencode).toContain(probe);
+      }
 
-    // Absence leg: the installed hook carries no domain array of its own (same as the
-    // template assertion).
-    const hook = read(path.join(".cursor", "hooks", "bkit-guardrails.cjs"));
-    expect(hook).not.toContain("SHIPPED_NETWORK_BASES");
+      // The installed tracker's server is the one bkit entry in every MCP config.
+      const mcpKeys = (rel: string, key: "mcpServers" | "mcp") =>
+        Object.keys((JSON.parse(read(rel)) as Record<string, object>)[key]);
+      expect(mcpKeys(".mcp.json", "mcpServers")).toEqual([tracker]);
+      expect(mcpKeys(path.join(".cursor", "mcp.json"), "mcpServers")).toEqual([tracker]);
+      expect(mcpKeys(path.join(".opencode", "opencode.json"), "mcp")).toEqual([tracker]);
 
-    // Every shipped HOST reaches the Cursor surfaces, not just the one probe.
-    for (const host of BKIT_SHIPPED_NETWORK_HOSTS) {
-      expect(cursorCloud, `${host} missing from .cursor/bkit-cloud.md`).toContain(host);
-    }
-  }, 180_000);
+      // Absence leg: the installed hook carries no domain array of its own (same as the
+      // template assertion).
+      const hook = read(path.join(".cursor", "hooks", "bkit-guardrails.cjs"));
+      expect(hook).not.toContain("SHIPPED_NETWORK_BASES");
+
+      // Every shipped HOST reaches the Cursor surfaces, not just the probes.
+      for (const host of BKIT_SHIPPED_NETWORK_HOSTS) {
+        expect(cursorCloud, `${host} missing from .cursor/bkit-cloud.md`).toContain(host);
+      }
+    },
+    180_000,
+  );
 });
 
 // Provenance leg — claudeAllowDerived creates no drift: the check write-set is IDENTICAL

@@ -65,6 +65,7 @@ No `/bkit-audit` command and no phase label. More than 30 procedures ship as `do
 | Report | `docs/audits/{YYYYMM}/{slug}.md`. `{slug}` = template basename without `bkit-audit-`. Same slug already in that month → `{slug}-{TIMESTAMP}.md` (`date -u +%Y%m%dT%H%M%SZ`). Never overwrite. |
 | Writes | The report (template through `bkit:end`) and that template's `Project Instructions` below `bkit:end`. Product code, config, and other docs stay untouched. Fixing findings starts at `/bkit-plan`. |
 | Issue comment | Invocation names an issue (`#123`, `ABC-123`) and a tracker is wired → the final summary lands on it as one comment, stopped runs included. Never files, edits, or relabels issues. |
+| Audit parent | One standing issue per template; every run of that template reports to it and its filed issues become its sub-issues (`.bkit/trackers.md` § Issue shapes). No issue named + tracker wired → the agent searches for it and posts the summary there; none open → the final message suggests one, ready to file, plus the saved summary to post as its first comment. |
 | Plan input | `/bkit-plan` takes a design doc, one or more reports, or both. The issue names a report with an `**Audit reports:**` line; the session prompt or issue names which findings to plan (for example only `CRITICAL` and `HIGH`). The rest of each report stays context. |
 
 Each template's `Purpose` is its scope. Main ones: security, privacy, accessibility, architecture, performance, reliability, testing, database, LLM, cost. Full catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
@@ -125,6 +126,16 @@ BKIT_ANTHROPIC_API_KEY=""
 BKIT_GH_TOKEN=""
 ```
 
+**Jira tracker (`bkit install --tracker=jira`, local runs only):**
+
+```env
+# ==========================================
+# BKIT: JIRA GITHUB INTEGRATION
+# ==========================================
+BKIT_JIRA_API_TOKEN=""
+BKIT_GH_TOKEN=""
+```
+
 <!-- prettier-ignore -->
 | Variable | Tracker | Where read | Purpose |
 | --- | --- | --- | --- |
@@ -134,9 +145,10 @@ BKIT_GH_TOKEN=""
 | `BKIT_ANTHROPIC_API_KEY` | all | Claude Code (headless / CI) | Required when Claude invoked outside interactive session (cloud automation, CI). |
 | `BKIT_CURSOR_API_KEY` | all | Cursor Cloud Agent dashboard / programmatic invocation | Required for non-interactive Cursor sessions. |
 | `BKIT_LINEAR_API_KEY` | linear | Preflight hooks (`.{claude,cursor}/hooks/bkit-preflight.sh`); workflow Linear MCP via OAuth fallback | Query issue state + labels for `Auto` gate; fail-fast if absent. |
+| `BKIT_JIRA_API_TOKEN` | jira | Jira MCP server (`Authorization: Bearer`) | Atlassian MCP V2 scoped API token; site admin enables API-token sign-in for the Rovo MCP server first. Setup: `.bkit/trackers.md` § jira. |
 | `LINEAR_WEBHOOK_SECRET` | linear | Linear → Cursor integration backend | Verifies webhook signatures on `@cursor` mentions. Set in Linear ↔ Cursor integration config. |
 
-`LINEAR_ISSUE_ID` (Linear) and `GITHUB_ISSUE_ID` (GitHub) set automatically by workflow context — do not set manually.
+`GITHUB_ISSUE_ID` (GitHub) and `LINEAR_ISSUE_ID` (Linear) set automatically by workflow context — do not set manually.
 
 ### Tracker workspace setup
 
@@ -269,7 +281,7 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `.bkit/.env.example` | claude | `.bkit/shared/.bkit/.env.example` | Tier 1 (fully managed). Real values go in `.bkit/.env`. |
 | `.cursor/commands/bkit-*.md` | cursor | `.bkit/core/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
 | `.cursor/agents/bkit-*.md` | cursor | `.bkit/core/prompts/` (T3 transforms) | Host pass — always overwrite |
-| `package.json#scripts.bkit:gate:format` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` | core | hardcoded defaults | Seeded (add-if-missing; install and upgrade). What hooks, workflows and prompts run; the name states which tiers. The tool scripts the defaults chain (`typecheck`, `lint`, `format:check`, `lint:prose`, `slop:delta`) and their devDeps are templates: `.bkit/templates.md`. |
+| `package.json#scripts.bkit:gate:format` / `bkit:gate:min` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` | core | hardcoded defaults | Seeded (add-if-missing; install and upgrade). What hooks, workflows and prompts run; the name states which tiers. The tool scripts the defaults chain (`typecheck`, `lint`, `format:check`, `lint:prose`, `slop:delta`) and their devDeps are templates: `.bkit/templates.md`. |
 | `package.json#scripts.bkit:deps:outdated` / `bkit:deps:audit` | core | hardcoded defaults | Seeded (add-if-missing; install and upgrade). Read-only dependency inspection the remediate / diagnose agents call. |
 | `.cursor/hooks.json` | cursor | `.bkit/shared/.cursor/hooks.json` | Tier 1 (fully managed) |
 | `.cursor/mcp.json` | cursor | `.bkit/shared/.cursor/mcp.json` | Shared JSON: bkit owns `mcpServers.<tracker>` only |
@@ -290,7 +302,7 @@ The cloud workflow and the Cursor Background Agent files are templates the `--au
 
 ### Optional post-install decisions (tracker + cloud agents)
 
-Two capabilities **opt-in**, excluded from default install: **issue tracker** (`--tracker=github|linear`), **cloud agents** (`--auto=claude|cursor|opencode`: records the choice and points at the copy-and-own templates — `bkit-cloud.yml`, `.claude/hooks/bkit-cloud-bootstrap.sh`, and the Cursor `Dockerfile`/`environment.json`; default install ships zero cloud footprint). Default wires neither; post-install advisory emits `tracker-setup-none` / `cloud-router-none`. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.cloudAgents`); `"none"` silences the nudge. Cloud router split: each job inert without model-auth repo secret (`ANTHROPIC_API_KEY` claude, `OPENCODE_PROVIDER_KEY` opencode) + GHA write permissions + (Cursor) dashboard trigger; depends on opt-in GitHub tracker.
+Two capabilities **opt-in**, excluded from default install: **issue tracker** (`--tracker=github|linear|jira`), **cloud agents** (`--auto=claude|cursor|opencode`: records the choice and points at the copy-and-own templates — `bkit-cloud.yml`, `.claude/hooks/bkit-cloud-bootstrap.sh`, and the Cursor `Dockerfile`/`environment.json`; default install ships zero cloud footprint). Default wires neither; post-install advisory emits `tracker-setup-none` / `cloud-router-none`. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.cloudAgents`); `"none"` silences the nudge. Cloud router split: each job inert without model-auth repo secret (`ANTHROPIC_API_KEY` claude, `OPENCODE_PROVIDER_KEY` opencode) + GHA write permissions + (Cursor) dashboard trigger; depends on opt-in GitHub tracker.
 
 **Dependency updaters.** Copy one example and own it: `.bkit/templates/.github/renovate.json5`, `.bkit/templates/.github/workflows/bkit-renovate.yml` (self-hosted runner only), or `.bkit/templates/.github/dependabot.yml`. `bkit.depUpdater: "none"` skips the install-time absence advisory. `bkit check` emits `dep-updater-absent` and `dep-updater-both`. See `docs/deployments.md` § Dependency updaters.
 
@@ -348,7 +360,7 @@ Slash commands at repo root:
 
 Claude reads issue, comments, plan files via tracker MCP.
 
-**Requirements:** `BKIT_GH_TOKEN`, active Claude Code session (subscription or `BKIT_ANTHROPIC_API_KEY`). `BKIT_LINEAR_API_KEY` when `bkit.issueTracker = "linear"`. Session model = orchestrator pin in `.bkit/prompts.md` § Orchestrators (`Claude` column) — set via `/model` before invoking; not duplicated here.
+**Requirements:** `BKIT_GH_TOKEN`, active Claude Code session (subscription or `BKIT_ANTHROPIC_API_KEY`). `BKIT_LINEAR_API_KEY` when `bkit.issueTracker = "linear"`; `BKIT_JIRA_API_TOKEN` when `"jira"`. Session model = orchestrator pin in `.bkit/prompts.md` § Orchestrators (`Claude` column) — set via `/model` before invoking; not duplicated here.
 
 ### From Cursor (interactive — local)
 
@@ -360,7 +372,7 @@ Cursor 2.4+ honours `.cursor/commands/bkit-*.md` and `.cursor/agents/bkit-*.md`:
 
 Orchestrator reads `.cursor/commands/` workflow. Subagents via `Task`, `model:` from frontmatter (no host override).
 
-**Requirements:** `BKIT_GH_TOKEN` (GitHub, default) or `BKIT_LINEAR_API_KEY` (Linear). Cursor account in good standing.
+**Requirements:** `BKIT_GH_TOKEN` (GitHub, default) or `BKIT_LINEAR_API_KEY` (Linear) or `BKIT_JIRA_API_TOKEN` (Jira). Cursor account in good standing.
 
 ---
 

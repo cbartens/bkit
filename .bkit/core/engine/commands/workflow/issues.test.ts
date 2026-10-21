@@ -129,6 +129,24 @@ describe("bkit issues text", () => {
       JSON.stringify({ comments: [{ body: "one", createdAt: "2026-10-01T00:00:00Z" }] }),
     );
     expect((await run(cwd, ["issues", "text", "--comments-file=lin.json"])).json.text).toBe("one");
+
+    // Jira's listJiraIssueComments: a `data` envelope, `created` with a +hhmm offset.
+    write(
+      cwd,
+      "jira.json",
+      JSON.stringify({
+        data: {
+          appliedContentFormat: "markdown",
+          comments: [
+            { body: "new", created: "2026-10-21T15:06:23.863+1000" },
+            { body: "old", created: "2026-10-21T15:06:23.398+1000" },
+          ],
+        },
+      }),
+    );
+    expect((await run(cwd, ["issues", "text", "--comments-file=jira.json"])).json.text).toBe(
+      "old\n\nnew",
+    );
   });
 
   it("exits 3 on a missing or malformed file and 2 with no input at all", async () => {
@@ -166,7 +184,7 @@ describe("bkit issues labels", () => {
       labels: ["bug", "bkit:auto", "nextjs", "bkit:plan"],
       changed: true,
       autoRouteSuffix: " bkit [auto route]",
-      linearState: "In Progress",
+      trackerState: null,
       board: null,
       boardSkipped: null,
     });
@@ -188,7 +206,7 @@ describe("bkit issues labels", () => {
       add: ["bkit:debug"],
       remove: ["bkit:build", "bkit:failed"],
       labels: ["bkit:debug"],
-      linearState: "In Progress",
+      trackerState: null,
     });
     expect(transitionLabels(["bkit:debug"], { phase: "ship" }).labels).toEqual(["bkit:ship"]);
   });
@@ -224,7 +242,7 @@ describe("bkit issues labels", () => {
       add: ["bkit:merged"],
       remove: ["bkit:ship", "bkit:failed"],
       labels: ["bkit:auto", "bkit:merged"],
-      linearState: "In Review",
+      trackerState: null,
     });
     expect((await labels(dir(), "--phase=merged", "--failed=on")).code).toBe(2);
     expect((await labels(dir(), "--phase=build", "--failed=on")).code).toBe(2);
@@ -294,7 +312,7 @@ describe("bkit issues labels", () => {
     });
     const review = await labels(cwd, "--board=review", "--issue=12", "--owner-repo=acme/app");
     expect(review.json.board.updateItem.updated_field.value).toBe("98236657");
-    expect(review.json.linearState).toBe("In Review");
+    expect(review.json.trackerState).toBeNull();
   });
 
   it.each([
@@ -309,11 +327,30 @@ describe("bkit issues labels", () => {
       "option-id-missing",
     ],
     [{ issueTracker: "linear", githubProject: project }, "tracker-linear"],
+    [{ issueTracker: "jira", githubProject: project }, "tracker-jira"],
     [{}, "tracker-none"],
   ])("board is null with a reason for %j", async (bkit, reason) => {
     const r = await labels(dir(bkit), "--board=progress", "--issue=12", "--owner-repo=acme/app");
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ board: null, boardSkipped: reason });
+  });
+
+  it.each([
+    [{ issueTracker: "linear" }, "started", "In Review"],
+    [{ issueTracker: "linear", linear: { review: "Code Review" } }, "started", "Code Review"],
+    [{ issueTracker: "jira" }, "In Progress", "In Review"],
+    [{ issueTracker: "jira", jira: { review: "Code Review" } }, "In Progress", "Code Review"],
+    [{ issueTracker: "jira", jira: { progress: "Doing", review: "QA" } }, "Doing", "QA"],
+    [{ issueTracker: "github" }, null, null],
+    [{}, null, null],
+  ])("trackerState for %j: phase start %j, hand-off %j", async (bkit, progress, review) => {
+    const cwd = dir(bkit);
+    expect((await labels(cwd, "--phase=build")).json.trackerState).toBe(progress);
+    expect((await labels(cwd, "--board=progress")).json.trackerState).toBe(progress);
+    expect((await labels(cwd, "--phase=merged")).json.trackerState).toBe(review);
+    expect((await labels(cwd, "--failed=on")).json.trackerState).toBe(review);
+    expect((await labels(cwd, "--board=review")).json.trackerState).toBe(review);
+    expect((await labels(cwd, "--failed=off")).json.trackerState).toBeNull();
   });
 
   it("accepts a digits-only string statusFieldId", async () => {

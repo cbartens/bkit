@@ -69,16 +69,29 @@ afterEach(() => {
 describe("#255 #8 — bkit check gates opencode drift (no false positives)", () => {
   // A clean install must check GREEN for every provider/tracker shape — proving the
   // render-input fallback uses the INSTALLED provider, not the ollama default.
-  it("clean install (openrouter + github) → check exits 0, zero would-write drift", () => {
-    const install = runBkit(["install", "--claude", "--opencode=openrouter", "--tracker=github"]);
-    expect(install.status).toBe(0);
-    expect(fs.existsSync(opencodeJsonPath())).toBe(true);
+  it.each(["github", "linear", "jira"])(
+    "clean install (openrouter + %s) → check exits 0, zero would-write drift",
+    (tracker) => {
+      const install = runBkit([
+        "install",
+        "--claude",
+        "--opencode=openrouter",
+        `--tracker=${tracker}`,
+      ]);
+      expect(install.status).toBe(0);
+      expect(fs.existsSync(opencodeJsonPath())).toBe(true);
+      // The opencode mcp block holds the tracker's own server only.
+      const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath(), "utf-8")) as {
+        mcp: Record<string, unknown>;
+      };
+      expect(Object.keys(cfg.mcp)).toEqual([tracker]);
 
-    const check = runBkit(["check"]);
-    expect(check.status).toBe(0);
-    expect(check.stdout).toContain("0 write(s) would occur");
-    expect(`${check.stdout}${check.stderr}`).not.toContain("DRIFT DETECTED");
-  });
+      const check = runBkit(["check"]);
+      expect(check.status).toBe(0);
+      expect(check.stdout).toContain("0 write(s) would occur");
+      expect(`${check.stdout}${check.stderr}`).not.toContain("DRIFT DETECTED");
+    },
+  );
 
   // opencode renders an `opencode`-keyed provider block, read through package.json, not the
   // opencode.json provider-block key.

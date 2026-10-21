@@ -109,16 +109,18 @@ describe("validateCloudTrackerMatch — FINAL SCOPE decision 3/4 symmetric cloud
     expect(validateCloudTrackerMatch("cursor", true, "linear")).toBeNull();
   });
 
-  it("errors when cloud=claude but tracker is not github", () => {
-    const err = validateCloudTrackerMatch("claude", true, "linear");
+  // Jira is local-only: every cloud lane refuses it.
+  it.each([
+    ["claude", "linear", "github"],
+    ["claude", "jira", "github"],
+    ["opencode", "linear", "github"],
+    ["opencode", "jira", "github"],
+    ["cursor", "github", "linear"],
+    ["cursor", "jira", "linear"],
+  ] as const)("errors when cloud=%s and tracker=%s (requires %s)", (cloud, tracker, required) => {
+    const err = validateCloudTrackerMatch(cloud, true, tracker);
     expect(err).not.toBeNull();
-    expect(err).toContain("--auto=claude requires tracker=github");
-  });
-
-  it("errors when cloud=cursor but tracker is not linear", () => {
-    const err = validateCloudTrackerMatch("cursor", true, "github");
-    expect(err).not.toBeNull();
-    expect(err).toContain("--auto=cursor requires tracker=linear");
+    expect(err).toContain(`--auto=${cloud} requires tracker=${required}`);
   });
 
   it("suggests setting the tracker (not switching) when the tracker is still 'none' (default)", () => {
@@ -126,10 +128,13 @@ describe("validateCloudTrackerMatch — FINAL SCOPE decision 3/4 symmetric cloud
     expect(err).toContain("Set the tracker first");
   });
 
-  it("suggests re-running with the matching tracker when a different tracker is already set", () => {
-    const err = validateCloudTrackerMatch("claude", true, "linear" as IssueTracker);
-    expect(err).toContain("tracker switching is free");
-  });
+  it.each(["linear", "jira"] as const)(
+    "suggests re-running with the matching tracker when %s is already set",
+    (tracker) => {
+      const err = validateCloudTrackerMatch("claude", true, tracker);
+      expect(err).toContain("tracker switching is free");
+    },
+  );
 });
 
 describe("detectOpencodeProvider — provider resolution (manifest-first)", () => {

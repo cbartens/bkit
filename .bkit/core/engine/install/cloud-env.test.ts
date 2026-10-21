@@ -613,17 +613,18 @@ describe("cloudAutoModeEnvironment / renderCloudUserSettings", () => {
 });
 
 describe("cursorCloudPolicy", () => {
-  it("linear tracker: prepends BKIT_LINEAR_API_KEY, keeps GH baseline", () => {
-    const p = cursorCloudPolicy("linear");
-    expect(p.baseline.map(([n]) => n)).toEqual(["BKIT_LINEAR_API_KEY", "BKIT_GH_TOKEN"]);
+  // Jira is local-only (no cloud dispatch), so it gets the GH baseline and no tracker secret.
+  it.each([
+    ["linear", ["BKIT_LINEAR_API_KEY", "BKIT_GH_TOKEN"]],
+    ["github", ["BKIT_GH_TOKEN"]],
+    ["jira", ["BKIT_GH_TOKEN"]],
+    ["none", ["BKIT_GH_TOKEN"]],
+  ] as const)("%s tracker: baseline is %j", (tracker, names) => {
+    const p = cursorCloudPolicy(tracker);
+    expect(p.baseline.map(([n]) => n)).toEqual(names);
   });
 
-  it("github tracker: GH baseline only (no BKIT_LINEAR_API_KEY)", () => {
-    const p = cursorCloudPolicy("github");
-    expect(p.baseline.map(([n]) => n)).toEqual(["BKIT_GH_TOKEN"]);
-  });
-
-  it("renders a BKIT_LINEAR_API_KEY placeholder for linear but not for github", () => {
+  it("renders a BKIT_LINEAR_API_KEY placeholder for linear but not for github or jira", () => {
     write(".envrc", "dotenv_if_exists .bkit/.env");
     write(".bkit/.env", "BKIT_GH_TOKEN=real");
 
@@ -632,9 +633,13 @@ describe("cursorCloudPolicy", () => {
     expect(linearBlock).toContain("BKIT_GH_TOKEN=real");
     expect(linearBlock).toMatch(/^BKIT_LINEAR_API_KEY=/m);
 
-    const github = cursorCloudPolicy("github");
-    const githubBlock = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir, github), github);
-    expect(githubBlock).not.toContain("BKIT_LINEAR_API_KEY");
+    for (const tracker of ["github", "jira"] as const) {
+      const policy = cursorCloudPolicy(tracker);
+      const block = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir, policy), policy);
+      expect(block, tracker).toContain("BKIT_GH_TOKEN=real");
+      expect(block, tracker).not.toContain("BKIT_LINEAR_API_KEY");
+      expect(block, tracker).not.toContain("BKIT_JIRA_API_TOKEN");
+    }
   });
 });
 
@@ -736,7 +741,7 @@ describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
     expect(fs.statSync(dst).mode & 0o777).toBe(0o600);
   });
 
-  it("linear tracker emits BKIT_LINEAR_API_KEY; github tracker does not", () => {
+  it("linear tracker emits BKIT_LINEAR_API_KEY; github and jira trackers do not", () => {
     write(".envrc", "dotenv_if_exists .bkit/.env");
     write(".bkit/.env", "BKIT_GH_TOKEN=real");
 
@@ -744,11 +749,14 @@ describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
     const linearOut = fs.readFileSync(path.join(tmpDir, ".cursor", "bkit-cloud.md"), "utf-8");
     expect(linearOut).toContain("BKIT_LINEAR_API_KEY=");
 
-    writeCursorCloudDoc(tmpDir, TOKENS, "github");
-    const githubOut = fs.readFileSync(path.join(tmpDir, ".cursor", "bkit-cloud.md"), "utf-8");
-    // The env-var paste block must not carry BKIT_LINEAR_API_KEY on the GitHub tracker. (The
-    // prose still mentions LINEAR_ISSUE_ID as an injected var — assert on the block line.)
-    expect(githubOut).not.toMatch(/^BKIT_LINEAR_API_KEY=/m);
+    // The env-var paste block must not carry a tracker secret on the GitHub or Jira tracker.
+    // (The prose still mentions LINEAR_ISSUE_ID as an injected var — assert on the block line.)
+    for (const tracker of ["github", "jira"] as const) {
+      writeCursorCloudDoc(tmpDir, TOKENS, tracker);
+      const out = fs.readFileSync(path.join(tmpDir, ".cursor", "bkit-cloud.md"), "utf-8");
+      expect(out, tracker).not.toMatch(/^BKIT_LINEAR_API_KEY=/m);
+      expect(out, tracker).not.toMatch(/^BKIT_JIRA_API_TOKEN=/m);
+    }
   });
 
   it("returns false when the template is absent (no getTemplatesRoot match)", () => {

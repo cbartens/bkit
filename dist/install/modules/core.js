@@ -9,10 +9,10 @@ import { extractManagedBlock, stripManagedBlock } from "../managed-block.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
-import { readJsonFile } from "../../shared/json.js";
+import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
-import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
+import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_PUSH_GATES, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
 export function listMdFiles(dir, prefix) {
     if (!fs.existsSync(dir))
         return [];
@@ -315,7 +315,47 @@ export function seedCorePackageJsonScripts(ctx) {
         written.push("package.json");
         console.log(`${logPrefix} ${tag}core: package.json scripts added [${gates.added.join(", ")}]`);
     }
+    if (migrateLinearTeamKey(dryRun, ws, logPrefix) && !written.includes("package.json")) {
+        written.push("package.json");
+    }
     return written;
+}
+// Migration (up to 5.4.x installs, `docs/migrations.md`): the Linear team lived at
+// `bkit.linearTeam`; it is `bkit.linear.team`, beside the project and state names. An
+// existing `bkit.linear.team` wins over the old key. Returns true when package.json changed.
+export function migrateLinearTeamKey(dryRun, ws, logPrefix) {
+    const pkgPath = "package.json";
+    if (!fs.existsSync(pkgPath))
+        return false;
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    const parsed = parseJson(raw);
+    if (!parsed.ok)
+        return false;
+    const pkg = parsed.value;
+    const bkit = pkg.bkit;
+    if (bkit === null || typeof bkit !== "object" || Array.isArray(bkit))
+        return false;
+    const cfg = bkit;
+    if (!Object.prototype.hasOwnProperty.call(cfg, "linearTeam"))
+        return false;
+    const old = cfg.linearTeam;
+    const linear = cfg.linear !== null && typeof cfg.linear === "object" && !Array.isArray(cfg.linear)
+        ? cfg.linear
+        : {};
+    if (linear.team === undefined && typeof old === "string" && old.trim() !== "")
+        linear.team = old;
+    delete cfg.linearTeam;
+    if (Object.keys(linear).length > 0)
+        cfg.linear = linear;
+    ws.writes.push({ path: pkgPath, action: "update" });
+    if (!dryRun) {
+        const indentMatch = raw.match(/\n([ \t]+)"/);
+        const indent = indentMatch ? indentMatch[1] : "  ";
+        const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+    }
+    console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: moved bkit.linearTeam to bkit.linear.team in package.json`);
+    return true;
 }
 // Tokens that follow `pnpm` in a gate value but are not package.json scripts: the
 // package manager's own subcommands (`install` in bkit:gate:install-static-unit-build,
@@ -331,9 +371,31 @@ const PNPM_NOT_A_SCRIPT = new Set([
     "lint-staged",
 ]);
 /**
+ * The scripts a gate ends up running: each `pnpm <script>` / `pnpm run <script>` it calls,
+ * with every `bkit:gate:*` it chains expanded in place. pnpm's own subcommands and
+ * binaries are left out.
+ */
+export function gateLeafScripts(gate, declared, seen = new Set()) {
+    const value = declared[gate];
+    if (typeof value !== "string" || seen.has(gate))
+        return [];
+    seen.add(gate);
+    const leaves = [];
+    for (const [, called] of value.matchAll(/\bpnpm (?:run )?([\w:-]+)/g)) {
+        if (PNPM_NOT_A_SCRIPT.has(called))
+            continue;
+        if (called.startsWith("bkit:gate:"))
+            leaves.push(...gateLeafScripts(called, declared, seen));
+        else
+            leaves.push(called);
+    }
+    return leaves;
+}
+/**
  * Advisories for the `bkit:gate:*` scripts: the scripts a still-default gate
  * chains that package.json does not declare, the deeper test tiers the repo has
- * but no gate runs, and a missing `bkit:test:file`. Judges the scripts as install
+ * but no gate runs, a commit gate that repeats the push gate, and a missing
+ * `bkit:test:file`. Judges the scripts as install
  * leaves them (missing gate names at their seeded defaults), so install, `bkit check`
  * and `bkit upgrade` report the same set. Read-only; an absent or unparseable
  * package.json yields none.
@@ -384,10 +446,25 @@ export function detectGateAdvisories(cwd) {
         findings.push({
             id: "gate-tier-not-wired",
             severity: "advisory",
-            detect: "package.json declares deeper test tiers than any `bkit:gate*` script runs, so `/bkit-build` and `/bkit-debug` gate at `bkit:gate:static-unit` and never execute them.",
-            action: "Each workflow runs the DEEPEST gate you declare; an undeclared one is skipped, never guessed. Add the gates you want the agent loop to run:\n\n" +
+            detect: "package.json declares deeper test tiers than any `bkit:gate*` script runs, so `/bkit-build`, `/bkit-debug` and the pre-push hook gate at `bkit:gate:static-unit` and never execute them.",
+            action: "Each workflow runs the DEEPEST gate you declare, and `.husky/pre-push` runs `bkit:gate:static-unit-integration` when it is declared; an undeclared one is skipped, never guessed. Add the gates you want the agent loop to run:\n\n" +
                 unwired.join("\n") +
                 "\n\nOrder matters — each chains the one above it. Omit a level deliberately to keep it CI-only (E2E in the build loop costs a production build on every remediation attempt). `.bkit/templates.md` lists the tool scripts the gates chain.",
+        });
+    }
+    // The commit gate is the fast one: a script it shares with the push gate runs on every
+    // commit and again on the push that carries it.
+    const pushGate = BKIT_PUSH_GATES.find((g) => g in declared);
+    const commitCalls = pushGate === undefined ? [] : gateLeafScripts("bkit:gate:format", declared);
+    const pushCalls = new Set(pushGate === undefined ? [] : gateLeafScripts(pushGate, declared));
+    const repeated = [...new Set(commitCalls.filter((s) => pushCalls.has(s)))].sort();
+    if (repeated.length > 0) {
+        const names = repeated.map((n) => `\`${n}\``).join(", ");
+        findings.push({
+            id: "gate-commit-repeats-push",
+            severity: "advisory",
+            detect: `\`bkit:gate:format\` (pre-commit) runs ${names}, which \`${pushGate}\` (pre-push) runs again.`,
+            action: `Drop ${names} from \`bkit:gate:format\`. The commit gate formats staged files and nothing else; every whole-repo check runs once, at pre-push.`,
         });
     }
     // /bkit-build records each task's red through this script; without it test-first is

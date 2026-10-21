@@ -15,14 +15,16 @@ export const OPTIN_MODULES = new Set(["cloud", "opencode", "codex", "antigravity
 // ---------------------------------------------------------------------------
 /**
  * Issue-tracker providers supported by `bkit install --tracker=<name>`.
- * - `github` — GitHub Issues + Projects v2 (default).
- * - `linear` — Linear (opt-in).
- * - `none` — no tracker wired; workflows skip tracker calls with one-line log.
+ * - `github` — GitHub Issues + Projects v2.
+ * - `linear` — Linear.
+ * - `jira` — Jira Cloud through the Atlassian Rovo MCP server.
+ * - `none` — no tracker wired; workflows skip tracker calls with one-line log (default).
  *
- * Add a new value here when adding a provider section to `.bkit/trackers.md`.
- * See `.bkit/trackers.md` § "Adding a tracker (Jira, etc.)" in the Rules block.
+ * A new value needs its block in every tracker group of the workflow and prompt
+ * sources (`.bkit/trackers.md` § Marker contract) and a branch in
+ * `render/trackers.ts`.
  */
-export const ISSUE_TRACKERS = ["github", "linear", "none"];
+export const ISSUE_TRACKERS = ["github", "linear", "jira", "none"];
 /** Default tracker when consumer manifest has no `bkit.issueTracker` field. */
 export const DEFAULT_ISSUE_TRACKER = "none";
 /**
@@ -154,7 +156,9 @@ const CLAUDE_MANIFEST = [
 // ONE CHAIN. Each gate is the previous gate plus its own tier; the NAME and the
 // VALUE describe the same sequence. Tier vocabulary is the `bkit-ci.yml` job ids
 // (bkit-tests-static / -unit / -integration / -e2e / -live). Where a step is not a
-// tier (`format`, the ship gate) the name spells out the actual steps.
+// tier (`format`, the ship gate) the name spells out the actual steps. One exception:
+// `min` sits off the chain: the least a push runs, on a push that changes no code
+// (`bkit.minPushPaths`); its steps are whatever that push can still break.
 //
 // The consumer owns every value: a turbo monorepo writes `turbo run … --filter`,
 // a Python repo writes `ruff check && pytest`. bkit never reads a value — only
@@ -178,17 +182,23 @@ const CLAUDE_MANIFEST = [
 // …-integration-e2e-live) are absent unless the consumer writes them. Each is one line
 // chaining its parent, e.g.
 //   "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration"
-// `/bkit-build` and `/bkit-debug` run the DEEPEST gate that exists and record its name.
+// `/bkit-build` and `/bkit-debug` run the DEEPEST gate that exists and record its name;
+// `.husky/pre-push` runs `…-integration` when it exists (BKIT_PUSH_GATES).
 export const BKIT_GATE_SCRIPTS = {
     // `.husky/pre-commit`: prettier --write over staged files, and nothing else —
     // seconds, not minutes. Prose is a whole-repo scan, so it gates at pre-push.
     "bkit:gate:format": "pnpm lint-staged",
+    // `.husky/pre-push` on a min push (every file matches `bkit.minPushPaths`): no code, so
+    // no typecheck, lint or tests. Off the chain. Add any test that reads a min-push file.
+    "bkit:gate:min": "pnpm format:check && pnpm lint:prose && pnpm slop:delta",
     // Everything that needs no test runner. Every part has a matching step in the
     // bkit-tests-static CI job; audits/templates/template-ci-yml.test.ts fails when one is missing.
     // Callers: build's plan-execute loop between tasks, and the `.husky/pre-push` revert
     // path.
     "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
-    // The default local gate: `.husky/pre-push`, build Step 14, the remediates.
+    // The default local gate: `.husky/pre-push` (when no `…-integration` gate is declared),
+    // build Step 14, the remediates. `pnpm test` is the unit tier only: a test file the
+    // integration gate also runs must not match it.
     "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test",
     // Ship's conflict-resolve, the only caller whose dependency graph may have just
     // been hand-merged (lockfile conflict) and whose tree no one has ever compiled.
@@ -222,9 +232,19 @@ export const BKIT_DEBUG_GATES = [
  * Build stops at integration; E2E and live are not in this list.
  *
  * Neither entry is seeded: declaring `bkit:gate:static-unit-integration` opts the build
- * loop into the integration tier.
+ * loop and the pre-push hook into the integration tier.
  */
 export const BKIT_BUILD_GATES = [
+    "bkit:gate:static-unit-integration",
+    "bkit:gate:static-unit",
+];
+/**
+ * What `.husky/pre-push` runs on a full push, in DESCENDING order — first one declared wins.
+ *
+ * Integration runs on push, never on commit; E2E and live stay in CI. The template hook
+ * reads package.json for the first entry itself (it cannot import this list).
+ */
+export const BKIT_PUSH_GATES = [
     "bkit:gate:static-unit-integration",
     "bkit:gate:static-unit",
 ];

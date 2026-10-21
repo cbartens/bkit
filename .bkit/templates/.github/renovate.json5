@@ -118,7 +118,7 @@
   // directly above the pin tells Renovate what to look up. Forms matched:
   //   ARG NODE_VERSION=24.11.0 · GH_VERSION="2.83.0"      (Dockerfile / shell)
   //   VALE_VERSION: "3.9.1" · renovate-version: "44.x.y"  (workflow env / `with:` input)
-  //   GRAPHIFY_SPEC="graphifyy[sql]==0.9.50"              (pip spec in bkit-graphify.sh: value after `==`)
+  //   GRAPHIFY_SPEC="graphifyy[sql]==0.9.70"              (pip spec in bkit-graphify.sh: value after `==`)
   //   npm install -g @opencode/cli@2.0.26                 (npm global install)
   //   bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 (installer-script version argument)
   // Pins paired with a checksum (Vale, gh, jq, Node, actionlint) get the new VERSION

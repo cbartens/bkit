@@ -43,6 +43,8 @@ const ANALYSIS_PLACEHOLDER = "_(no analysis yet; run @bkit-utility-update-roadma
 const NOTES_PRE_PLACEHOLDER = "## Notes\n\n_(above the bkit list — yours, never overwritten)_";
 const NOTES_POST_PLACEHOLDER = "## Notes\n\n_(end of the board — yours, never overwritten)_";
 const BANNER = "> Generated tables — do not hand-edit the `bkit` tables; append to `.bkit/issues.jsonl` instead (an `ABANDONED` row hides a FID from every section). `## Notes` blocks are yours and are never overwritten. Everything above the first marker is also yours. notes-post is last. Analysis list length: `package.json` key `bkit.roadmapNext` (positive integer; absent or invalid → 25).";
+/** Fixed related-utilities line; `@bkit-audit-generate` ends every run with the same text. */
+export const RELATED_UTILITIES = "> Related utilities, run on demand: `@bkit-utility-update-roadmap` ranks the next best items in `docs/roadmap.md`; `@bkit-utility-update-tracker` brings tracker issues in line with the tracker rules; `@bkit-utility-update-deferrals` and `@bkit-utility-update-failures` close ledger rows the code already resolved; `@bkit-utility-update-decisions`, `@bkit-utility-update-knowledge` and `@bkit-utility-update-documentation` correct ledgers and docs the code has since contradicted.";
 /** Newest SHIPPED rows on the board; older ones stay in the ledger. */
 export const SHIPPED_ON_BOARD = 10;
 const SECTIONS = [
@@ -100,7 +102,7 @@ function table(rows) {
     ];
 }
 export function statusBlock(p, now) {
-    const out = [BANNER, "", "## bkit", "", `_(refreshed ${now})_`];
+    const out = [BANNER, "", RELATED_UTILITIES, "", "## bkit", "", `_(refreshed ${now})_`];
     for (const [bucket, , heading] of SECTIONS)
         out.push("", heading, "", ...table(p[bucket]));
     return out.join("\n");

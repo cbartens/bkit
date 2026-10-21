@@ -48,10 +48,17 @@ export function cutEarlier(text) {
 }
 /**
  * Comments as an MCP read returns them: a bare array, or one wrapped under
- * `comments` / `nodes`; each a string or an object with `body` and an optional
- * `created_at` (GitHub) / `createdAt` (Linear).
+ * `comments` / `nodes` (Jira's adds a `data` envelope); each a string or an object
+ * with `body` and an optional `created_at` (GitHub) / `createdAt` (Linear) /
+ * `created` (Jira).
  */
 export function parseComments(raw) {
+    const outer = raw;
+    const inner = outer !== null && typeof outer === "object" && !Array.isArray(outer) && "data" in outer
+        ? outer.data
+        : raw;
+    if (inner !== raw)
+        return parseComments(inner);
     const wrapped = raw;
     const list = Array.isArray(raw)
         ? raw
@@ -71,7 +78,7 @@ export function parseComments(raw) {
         const obj = (item ?? {});
         if (typeof obj.body !== "string")
             return null;
-        const at = obj.created_at ?? obj.createdAt;
+        const at = obj.created_at ?? obj.createdAt ?? obj.created;
         out.push({ body: obj.body, createdAt: typeof at === "string" ? at : undefined });
     }
     return out;
@@ -170,19 +177,25 @@ export function transitionLabels(current, t) {
     };
 }
 /**
- * Linear's issue state for the same transition, as the workflows set it: a
- * shipped or failed issue waits on a human ("In Review"); a phase
- * starting is "In Progress". Null when the transition sets no state.
+ * The issue state the workflows set for the same transition, on a tracker whose
+ * board status is the issue state: `bkit.linear` or `bkit.jira`. A shipped
+ * or failed issue waits on a human (`review`); a phase starting is `progress`.
+ * The workflows write it alone, so a name the team or project lacks leaves the
+ * labels landed. Null under github (the Projects v2 board moves instead) and
+ * none, or when the transition sets no state.
  */
-export function linearState(t, board) {
+export function trackerState(t, board, cfg) {
+    const states = cfg.issueTracker === "linear" ? cfg.linear : cfg.issueTracker === "jira" ? cfg.jira : null;
+    if (states === null)
+        return null;
     if (t.phase === "merged" || t.failed === true)
-        return "In Review";
+        return states.review;
     if (t.phase !== undefined)
-        return "In Progress";
+        return states.progress;
     if (board === "review")
-        return "In Review";
+        return states.review;
     if (board === "progress")
-        return "In Progress";
+        return states.progress;
     return null;
 }
 const ON_OFF = { on: true, off: false };
@@ -208,7 +221,7 @@ function boardPayload(ctx, status) {
     const root = repoRoot(ctx.cwd);
     const tracker = readBkitConfig(root).issueTracker;
     if (tracker !== "github") {
-        if (tracker === "linear")
+        if (tracker === "linear" || tracker === "jira")
             ctx.log("Board status carried by issue state — no separate update.");
         return { board: null, boardSkipped: `tracker-${tracker}` };
     }
@@ -283,7 +296,7 @@ function labelsVerb(ctx) {
         labels,
         changed: add.length + remove.length > 0,
         autoRouteSuffix: labels.includes(AUTO_LABEL) ? AUTO_ROUTE_SUFFIX : "",
-        linearState: linearState(t, board),
+        trackerState: trackerState(t, board, readBkitConfig(repoRoot(ctx.cwd))),
         board: payload,
         boardSkipped,
     });
@@ -520,7 +533,7 @@ export const issuesCommand = {
             run: textVerb,
         },
         labels: {
-            summary: "Label arithmetic for a transition, the Linear state, and the board payload.",
+            summary: "Label arithmetic for a transition, the tracker state, and the board payload.",
             flags: [
                 { name: "label", type: "string", repeatable: true, help: "a label the issue carries now" },
                 {
@@ -543,7 +556,7 @@ export const issuesCommand = {
                 labels: "the full label set to write",
                 changed: "whether add or remove is non-empty",
                 autoRouteSuffix: `"${AUTO_ROUTE_SUFFIX}" when the label set carries ${AUTO_LABEL}, else ""`,
-                linearState: "Linear issue state for this transition, or null",
+                trackerState: "Linear or Jira issue state for this transition, from package.json; null under github, none, or no state move",
                 board: "projects payloads {addItem, listItems, updateItem}, or null",
                 boardSkipped: "why board is null with --board: opted-out | not-configured | tracker-<name> | …",
             },

@@ -16,7 +16,7 @@ import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { getPromptsRoot } from "../../shared/package-roots.js";
 import { CommandError, EXIT, repoRoot, runGit, } from "../lib.js";
-import { FID_PATTERNS, readIssueTracker } from "./fids.js";
+import { FID_PATTERNS, normaliseFid, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
 import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readRunsAt, statusFile, str, } from "./status.js";
@@ -324,7 +324,7 @@ function gateChecks(cwd, o) {
     }
     if (o.fid !== undefined) {
         const tracker = readIssueTracker(cwd);
-        const fid = tracker === "linear" ? o.fid.toLowerCase() : o.fid;
+        const fid = normaliseFid(o.fid, tracker);
         add(`fid ${fid}`, FID_PATTERNS[tracker].test(fid)
             ? undefined
             : `does not match the ${tracker} shape ${FID_PATTERNS[tracker].source}`, `${tracker} shape`);

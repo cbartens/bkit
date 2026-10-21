@@ -14,8 +14,8 @@ import { tierTimeouts } from "./vitest.timeout-budget.ts";
 // Strip inherited git environment variables so no test can accidentally operate
 // on the real bkit repo.
 //
-// WHY: when the suite is invoked from inside a git hook (the `.husky/pre-push`
-// hook runs `pnpm test`), git exports GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE /
+// WHY: when the suite is invoked from inside a git hook (`.husky/pre-push` runs
+// both vitest tiers through `bkit:gate:static-unit-integration`), git exports GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE /
 // GIT_COMMON_DIR / GIT_OBJECT_DIRECTORY / … into the environment for the hook and
 // every child process. Integration tests that run `git` in an `os.tmpdir()`
 // scratch repo via child_process inherit these, and they OVERRIDE the child's
@@ -57,8 +57,8 @@ process.env.XDG_CACHE_HOME = path.join(xdg, "cache");
 // the run (a parallel agent session, a build), and a file that starts late runs
 // several times slower against a number read minutes earlier. That reads as a flaky
 // product but is only ever a starved subprocess: `Error: Test timed out in 5000ms`
-// on a DIFFERENT test each run, all green in isolation. `pnpm test` is a pre-push
-// gate (.husky/pre-push -> bkit:gate:static-unit), so that starvation blocks pushes
+// on a DIFFERENT test each run, all green in isolation. Both tiers are pre-push gates
+// (.husky/pre-push -> bkit:gate:static-unit-integration), so that starvation blocks pushes
 // on a green tree, and `--no-verify` is prohibited (.agents/rules.md). See
 // docs/failures.jsonl `subprocess-integration-tests-time-out-at-5000ms-under-high-load`.
 //

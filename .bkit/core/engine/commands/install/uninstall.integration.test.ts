@@ -647,3 +647,45 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
 // uninstall integration test above. Task 19 landed: both settings files are
 // format: "json" in install/manifest.ts.
 // ---------------------------------------------------------------------------
+
+describe("targeted uninstall drops the module's bkit.* keys", () => {
+  function seed(bkit: Record<string, unknown>): void {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "t", bkit }, null, 2) + "\n",
+      "utf-8",
+    );
+  }
+  function readBkit(): Record<string, unknown> {
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit: Record<string, unknown>;
+    };
+    return pkg.bkit;
+  }
+
+  it("--auto removes bkit.cloudAgents and keeps every other key", async () => {
+    seed({ issueTracker: "github", cloudAgents: "claude", opencodeProvider: "ollama" });
+    const result = await runUninstall(["cloud"], makeCtx());
+    expect(readBkit()).toEqual({ issueTracker: "github", opencodeProvider: "ollama" });
+    expect(result.stripped).toContain("package.json#bkit.cloudAgents");
+  });
+
+  it("--opencode removes bkit.opencodeProvider and bkit.opencodeProviders", async () => {
+    seed({
+      issueTracker: "jira",
+      cloudAgents: "none",
+      opencodeProvider: "ollama",
+      opencodeProviders: ["ollama", "openrouter"],
+    });
+    await runUninstall(["opencode"], makeCtx());
+    expect(readBkit()).toEqual({ issueTracker: "jira", cloudAgents: "none" });
+  });
+
+  it("a dry run lists the keys and writes nothing", async () => {
+    seed({ cloudAgents: "cursor" });
+    const before = fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8");
+    const result = await runUninstall(["cloud"], makeCtx({ dryRun: true }));
+    expect(result.stripped).toContain("package.json#bkit.cloudAgents");
+    expect(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")).toBe(before);
+  });
+});

@@ -38,10 +38,13 @@ async function run(cwd: string, argv: string[]) {
 }
 
 describe("readIssueTracker", () => {
-  it("reads bkit.issueTracker; missing, invalid or unparseable falls back to none", () => {
-    expect(readIssueTracker(project("linear"))).toBe("linear");
+  it.each(["github", "linear", "jira"])("reads bkit.issueTracker %s", (tracker) => {
+    expect(readIssueTracker(project(tracker))).toBe(tracker);
+  });
+
+  it("missing, invalid or unparseable falls back to none", () => {
     expect(readIssueTracker(project())).toBe("none");
-    expect(readIssueTracker(project("jira"))).toBe("none");
+    expect(readIssueTracker(project("asana"))).toBe("none");
     expect(readIssueTracker(project(undefined, "{oops"))).toBe("none");
   });
 
@@ -69,6 +72,13 @@ describe("bkit fids check", () => {
     ["linear", "ABC-123-slug", true, "ABC-123"], // the issue id is lowercased first
     ["linear", "341-slug", false, null],
     ["linear", "abc-x", false, null],
+    ["linear", "ab2-1-x", false, null], // Linear team keys are letters only
+    ["jira", "mba-7-slug", true, "MBA-7"],
+    ["jira", "MBA-7-slug", true, "MBA-7"], // the issue key is lowercased first
+    ["jira", "ab2-7-slug", true, "AB2-7"], // a Jira project key may carry digits after its first letter
+    ["jira", "m-7-slug", false, null], // project keys are at least two characters
+    ["jira", "2ab-7-slug", false, null],
+    ["jira", "341-slug", false, null],
     ["none", "my-feature", true, null],
     ["none", "-leading-dash", false, null],
     ["none", "has/slash", false, null],
@@ -77,6 +87,7 @@ describe("bkit fids check", () => {
     ["none", "x_y", false, null],
     ["any", "341-x", true, "341"],
     ["any", "abc-123-x", true, "ABC-123"],
+    ["any", "ab2-7-x", true, "AB2-7"],
     ["any", "plain-slug", false, null],
   ];
 
@@ -99,8 +110,8 @@ describe("bkit fids check", () => {
     },
   );
 
-  it("lowercases a linear FID in its output", async () => {
-    const r = await run(project(), ["check", "--fid=ABC-123-slug", "--tracker=linear"]);
+  it.each(["linear", "jira"])("lowercases a %s FID in its output", async (tracker) => {
+    const r = await run(project(), ["check", "--fid=ABC-123-slug", `--tracker=${tracker}`]);
     expect(r.json.fid).toBe("abc-123-slug");
   });
 
@@ -111,8 +122,17 @@ describe("bkit fids check", () => {
     expect((await run(project(), ["check", "--fid=abc-123-slug"])).json.tracker).toBe("none");
   });
 
+  it.each([
+    ["linear", "ABC-123-slug", "ABC-123"],
+    ["jira", "AB2-7-slug", "AB2-7"],
+  ])("takes %s from package.json, lowercasing the key", async (tracker, fid, issueId) => {
+    const r = await run(project(tracker), ["check", `--fid=${fid}`]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ tracker, fid: fid.toLowerCase(), valid: true, issueId });
+  });
+
   it("an unknown --tracker is a usage error", async () => {
-    expect((await run(project(), ["check", "--fid=1-x", "--tracker=jira"])).code).toBe(2);
+    expect((await run(project(), ["check", "--fid=1-x", "--tracker=asana"])).code).toBe(2);
   });
 });
 
@@ -148,23 +168,48 @@ describe("bkit fids parse", () => {
     });
   });
 
+  it("jira: marker issue key and lowercased FID", async () => {
+    const r = await run(project("jira"), [
+      "parse",
+      "--marker=<!-- bkit:issue=AB2-7 bkit:fid=AB2-7-slug -->",
+    ]);
+    expect(r.json).toEqual({
+      fid: "ab2-7-slug",
+      issueId: "AB2-7",
+      source: "marker",
+      tracker: "jira",
+    });
+  });
+
   it("none: the fid-only marker", async () => {
     const r = await run(project(), ["parse", "--marker=<!-- bkit:fid=my-feature -->"]);
     expect(r.json).toEqual({ fid: "my-feature", issueId: null, source: "marker", tracker: "none" });
   });
 
-  it("a malformed marker falls through to the branch", async () => {
-    const r = await run(project("github"), [
-      "parse",
-      "--marker=<!-- bkit:issue=#341 bkit:fid=Not_A_Slug -->",
-      "--branch=feat/341-three-runtimes",
-    ]);
-    expect(r.json).toMatchObject({ fid: "341-three-runtimes", issueId: "341", source: "branch" });
-    expect(r.err).toContain("trying the branch");
-  });
+  it.each([
+    ["github", "#341", "feat/341-three-runtimes", "341-three-runtimes", "341"],
+    ["linear", "ABC-12", "feat/abc-12-slug", "abc-12-slug", "ABC-12"],
+    ["jira", "AB2-7", "feat/ab2-7-slug", "ab2-7-slug", "AB2-7"],
+  ])(
+    "%s: a malformed marker falls through to the branch",
+    async (tracker, issue, branch, fid, issueId) => {
+      const r = await run(project(tracker), [
+        "parse",
+        `--marker=<!-- bkit:issue=${issue} bkit:fid=Not_A_Slug -->`,
+        `--branch=${branch}`,
+      ]);
+      expect(r.json).toMatchObject({ fid, issueId, source: "branch" });
+      expect(r.err).toContain("trying the branch");
+    },
+  );
 
-  it("a marker for another tracker is not this tracker's marker", async () => {
-    const r = await run(project("none"), ["parse", `--marker=${GH_BODY}`]);
+  it.each([
+    ["none", GH_BODY],
+    ["jira", GH_BODY],
+    ["github", "<!-- bkit:issue=AB2-7 bkit:fid=ab2-7-slug -->"],
+    ["linear", "<!-- bkit:issue=AB2-7 bkit:fid=ab2-7-slug -->"],
+  ])("%s: a marker for another tracker is not this tracker's marker", async (tracker, body) => {
+    const r = await run(project(tracker), ["parse", `--marker=${body}`]);
     expect(r.code).toBe(3);
   });
 
@@ -172,6 +217,8 @@ describe("bkit fids parse", () => {
     ["github", "feat/341-three-runtimes", "341-three-runtimes", "341"],
     ["github", "feat/341", "341", "341"],
     ["linear", "feat/abc-123-slug", "abc-123-slug", "ABC-123"],
+    ["jira", "feat/mba-7-slug", "mba-7-slug", "MBA-7"],
+    ["jira", "feat/ab2-7-slug", "ab2-7-slug", "AB2-7"],
     ["none", "feat/anything-goes", "anything-goes", null],
   ])("%s branch %s -> FID %s, issueId %j", async (tracker, branch, fid, issueId) => {
     const r = await run(project(tracker), ["parse", `--branch=${branch}`]);
@@ -185,6 +232,9 @@ describe("bkit fids parse", () => {
     ["github", "feat/Upper-case", "is not a slug"],
     ["github", "feat/abc-x", "embeds no github issue id"],
     ["linear", "feat/341-x", "embeds no linear issue id"],
+    ["linear", "feat/ab2-7-x", "embeds no linear issue id"],
+    ["jira", "feat/341-x", "embeds no jira issue id"],
+    ["jira", "feat/m-7-x", "embeds no jira issue id"],
   ])("%s branch %j -> exit 3 (%s)", async (tracker, branch, why) => {
     const r = await run(project(tracker), ["parse", `--branch=${branch}`]);
     expect(r.code).toBe(3);
@@ -205,6 +255,7 @@ describe("issueIdOf", () => {
   it("matches auto's CI_DEV derivation (first numeric or team-number prefix, uppercased)", () => {
     expect(issueIdOf("12-34-x", "any")).toBe("12");
     expect(issueIdOf("abc-123-x", "any")).toBe("ABC-123");
+    expect(issueIdOf("ab2-7-x", "any")).toBe("AB2-7");
     expect(FID_PATTERNS.any.test("12-34-x")).toBe(true);
   });
 });
@@ -227,9 +278,12 @@ describe("bkit fids find", () => {
     expect((await run(d, ["find", "--issue=#68"])).json.fid).toBe("68-agent-mvp");
   });
 
-  it("matches a Linear issue case-insensitively", async () => {
-    const d = logged("202605/logs/abc-12-thing");
-    expect((await run(d, ["find", "--issue=ABC-12"])).json.fid).toBe("abc-12-thing");
+  it.each([
+    ["Linear", "ABC-12", "abc-12-thing"],
+    ["Jira", "AB2-12", "ab2-12-thing"],
+  ])("matches a %s issue case-insensitively", async (_tracker, issue, fid) => {
+    const d = logged(`202605/logs/${fid}`);
+    expect((await run(d, ["find", `--issue=${issue}`])).json.fid).toBe(fid);
   });
 
   it("lists every feature when several are logged (exit 4)", async () => {

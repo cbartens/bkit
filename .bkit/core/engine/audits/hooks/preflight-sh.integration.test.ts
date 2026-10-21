@@ -10,6 +10,8 @@
 //   - Missing BKIT_LINEAR_API_KEY / LINEAR_ISSUE_ID hard-stop, in each host's own
 //     output shape.
 //   - Neither hook calls bkit: both run with no node_modules at all.
+//   - Jira has no preflight guard: a Jira session passes through, and neither hook
+//     reads the Jira token or calls Atlassian.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -70,6 +72,23 @@ describe("BAR-186 — Claude SessionStart preflight.sh runtime behaviour", () =>
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("BKIT_LINEAR_API_KEY not set");
     expect(JSON.parse(result.stdout).hookSpecificOutput.additionalContext).toContain("HARD STOP");
+  });
+});
+
+describe("Claude SessionStart preflight.sh — no Jira guard", () => {
+  it("a Jira session (token set, no LINEAR_ISSUE_ID) exits 0 silently", () => {
+    const result = runPreflight(CLAUDE_HOOK, { BKIT_JIRA_API_TOKEN: "t" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+  });
+
+  it("neither generated hook reads the Jira token or calls Atlassian", () => {
+    for (const hook of [CLAUDE_HOOK, CURSOR_HOOK]) {
+      const text = fs.readFileSync(hook, "utf-8");
+      expect(text, hook).not.toContain("BKIT_JIRA_API_TOKEN");
+      expect(text, hook).not.toMatch(/atlassian/i);
+    }
   });
 });
 

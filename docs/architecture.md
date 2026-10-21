@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Architecture
 
@@ -58,7 +58,7 @@ cbartens/bkit (this repo)
 │   ├── render/                  # workflow and prompt sources → host agent and command copies
 │   │   ├── hosts.ts             # Host transforms (T1/T2/T3, frontmatter, agent/command/skill renders); the four subagent renderers open with `requireSubagentModel` (name required, model lookup, exit 1)
 │   │   ├── models.ts            # Model lookup, overrides, effort map and the gateway columns
-│   │   └── trackers.ts          # Tracker-provider substitution engine (github / linear / none)
+│   │   └── trackers.ts          # Tracker-provider substitution engine (github / linear / jira / none)
 │   ├── checks/                  # detection before and after writes
 │   │   ├── before/              # Phase 1 — index.ts runs one file per group of findings (repo, version,
 │   │   │                        #   context-fetch, mcp, env, files)

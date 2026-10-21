@@ -53,7 +53,7 @@
 
 - A reset rewrites the history every clone, open PR and release record points at, and runs with branch protection off; a revert keeps `main` equal to what was released.
 - `git revert` on a cross-branch squash (e.g. `feat/*` landed on `main`, not `dev`) can delete files `main` code still references → tree fails CI despite "clean" history. That squash is the step-5 case; production merges MUST come from `dev` (single-feature squash scope).
-- On `revert-*` branches pre-push drops only the **unit lane** (`bkit:gate:static` in place of `bkit:gate:static-unit`), so the static lane and the bkit drift gate still run → revert PR pushable when source state transitionally inconsistent.
+- On `revert-*` branches pre-push drops only the **unit and integration lanes** (`bkit:gate:static` in place of the push gate), so the static lane and the bkit drift gate still run → revert PR pushable when source state transitionally inconsistent.
 
 ### Post-rollback verification
 

@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "5.4.0",
+  "version": "5.5.0",
   "private": false,
   "description": "From vibe coding to production code. A senior engineering team's process, ready-made: AI agents design, plan, build, review, fix and ship your features on Claude Code, Cursor, Codex, Google Antigravity and opencode.",
   "keywords": [
@@ -54,8 +54,10 @@
   "license": "MIT",
   "scripts": {
     "bkit:gate:format": "pnpm lint-staged",
+    "bkit:gate:min": "pnpm format:check && pnpm format:tables:check && pnpm lint:prose && pnpm slop:delta && vitest run .bkit/core/engine/audits/repo/ledger-integrity.test.ts",
     "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm format:tables:check && pnpm lint:prose && pnpm slop:delta",
-    "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test && pnpm test:coverage:unit && pnpm bkit:test:bats",
+    "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test:coverage:unit && pnpm bkit:test:bats",
+    "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration",
     "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build",
     "bkit:deps:outdated": "pnpm outdated",
     "bkit:deps:audit": "pnpm audit",
@@ -73,6 +75,7 @@
     "slop:delta": "bkit ci slop",
     "bkit:lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
     "test": "vitest run",
+    "test:integration": "vitest run integration.test",
     "test:coverage:unit": "vitest run -c vitest.unit.config.ts --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/core/engine/{cli,commands/analysis,install/cloud-env,commands/comply,commands/harvest,commands/install/install,commands/launch,install/manifest,install/managed-block,shared/package-roots,shared/protected-paths,checks/after/index,checks/after/auth,checks/after/ci-yml,checks/after/github,checks/after/managed,checks/after/tools,checks/after/suppression,checks/before/index,checks/before/context-fetch,checks/before/env,checks/before/files,checks/before/mcp,checks/before/repo,checks/before/version,ledgers/status,ledgers/telemetry,install/write,install/placeholders,install/template-copies,render/trackers,render/hosts,render/models,commands/install/uninstall,commands/install/upgrade,install/version-file,tools/wording}.ts' --coverage.include='.bkit/core/engine/commands/**/*.ts' --coverage.include='.bkit/core/engine/shared/{settings,package-json,package-manager,timeouts}.ts'",
     "bkit:test:bats": "pnpm exec bats tests/*.bats",
     "build": "tsc && chmod +x dist/cli.js",

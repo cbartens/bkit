@@ -14,7 +14,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 400
 ---
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior editor correcting gotchas the docs or codebase have since contradicted.
 **Scope:** As specified by input or session prompt.
@@ -56,8 +56,10 @@ maxTurns: 400
    ```
    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
 10. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+    Append a `## Suggested Replies` heading.
     Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
-    Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
+    Append a `## bkit Tips` heading, unless `{BKIT_TIPS}` is empty.
+    Append `{BKIT_TIPS}`, unless empty.
 
 **Output format:**
 

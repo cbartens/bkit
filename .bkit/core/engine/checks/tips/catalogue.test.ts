@@ -176,8 +176,16 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("tracker").fires(cwd)).toBe(false);
   });
 
+  it.each(["github", "linear", "jira"])("tracker stays quiet once %s is chosen", (tracker) => {
+    pkg({ issueTracker: tracker });
+    expect(buildTrackerSetupAdvisory(cwd)?.id).toBe(`tracker-setup-${tracker}`);
+    expect(tip("tracker").fires(cwd)).toBe(false);
+  });
+
   it("gh-mcp fires only for the GitHub tracker", () => {
     pkg({ issueTracker: "linear" });
+    expect(tip("gh-mcp").fires(cwd)).toBe(false);
+    pkg({ issueTracker: "jira" });
     expect(tip("gh-mcp").fires(cwd)).toBe(false);
     pkg({ issueTracker: "github" });
     expect(tip("gh-mcp").fires(cwd)).toBe(true); // no github server entry
@@ -187,8 +195,29 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("gh-mcp").fires(cwd)).toBe(false);
   });
 
+  it.each([
+    ["github", ["BKIT_GH_TOKEN=x"]],
+    ["linear", ["BKIT_GH_TOKEN=x", "BKIT_LINEAR_API_KEY=y"]],
+    ["jira", ["BKIT_GH_TOKEN=x", "BKIT_JIRA_API_TOKEN=y"]],
+  ] as const)("bkit-env fires until every token the %s tracker needs is set", (tracker, lines) => {
+    vi.stubEnv("CI", "");
+    vi.stubEnv("CLAUDE_CODE_REMOTE", "");
+    vi.stubEnv("CURSOR_REMOTE_AGENT", "");
+    pkg({ issueTracker: tracker });
+    write(".bkit/.env.example", "BKIT_GH_TOKEN=\n");
+    expect(tip("bkit-env").fires(cwd)).toBe(true); // no .bkit/.env
+    for (let i = 1; i < lines.length; i++) {
+      write(".bkit/.env", `${lines.slice(0, i).join("\n")}\n`);
+      expect(tip("bkit-env").fires(cwd), lines[i]).toBe(true);
+    }
+    write(".bkit/.env", `${lines.join("\n")}\n`);
+    expect(tip("bkit-env").fires(cwd)).toBe(false);
+  });
+
   it("issue-forms fires only for the GitHub tracker with no issue template folder", () => {
     pkg({ issueTracker: "linear" });
+    expect(tip("issue-forms").fires(cwd)).toBe(false);
+    pkg({ issueTracker: "jira" });
     expect(tip("issue-forms").fires(cwd)).toBe(false);
     pkg({ issueTracker: "github" });
     expect(tip("issue-forms").fires(cwd)).toBe(true);
@@ -328,6 +357,14 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("tmp-prune").fires(cwd)).toBe(true);
     write("scripts/cleanup/bkit-tmp-prune.mjs");
     expect(tip("tmp-prune").fires(cwd)).toBe(false);
+  });
+
+  it("min-push fires only once a pre-push hook exists without the min-push check", () => {
+    expect(tip("min-push").fires(cwd)).toBe(false);
+    write(".husky/pre-push", "pnpm bkit:gate:static-unit\n");
+    expect(tip("min-push").fires(cwd)).toBe(true);
+    write(".husky/pre-push", "pnpm -s bkit ci min-push $REFS\n");
+    expect(tip("min-push").fires(cwd)).toBe(false);
   });
 
   it("disk-prune fires only once a pre-push hook exists without either step file", () => {

@@ -11,7 +11,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect generating unified design doc from parallel exploration brainstorms.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -44,6 +44,7 @@ tools:
    - `Settled` → follow. **If** brainstorm shows answer fails (breaks named contract, rests on disproven assumption, carries cost question did not surface) → depart; add `Decisions` row naming departed `Q{n}` and why, and `Risks & Open Questions` item asking human to confirm departure.
    - `Assumed, not confirmed` → default; override only with reason stated in `Decisions`.
    - `Open` → one `Risks & Open Questions` item each.
+   - `Draft Acceptance Scenario` (labelled `DRAFT only`) → starting point for `Acceptance Scenario`; keep each part the brainstorms and input support; change any part they show wrong or incomplete; each change → `Decisions` row naming the changed part and why. **If** absent → write `Acceptance Scenario` from input and brainstorms.
 7. Each conflict → pick stronger, justify.
 8. Preserve strongest approaches. Consolidate Decisions.
 9. Prior-art sweep per capability — repo, dependency built-ins, ecosystem practice. Default `EXTEND` + named artifact; `NEW` only when nothing covers capability or extending breaks named contract / callers. Every net-new `Architecture` component traces to a `NEW` verdict.
@@ -60,7 +61,7 @@ tools:
 
 ## Acceptance Scenario
 
-[Initial draft only (expanded later); no Test Matrix (added later); initially set to `PENDING`.]
+[Initial draft only (expanded later), from input's `Draft Acceptance Scenario` when present; no Test Matrix (added later); initially set to `PENDING`.]
 
 ### Narrative
 

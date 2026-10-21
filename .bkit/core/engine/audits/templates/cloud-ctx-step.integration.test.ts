@@ -1,12 +1,13 @@
-// audits/templates/cloud-ctx-step.integration.test.ts — bkit-cloud.yml's "Resolve phase + brief
-// context" (ctx) step: FID recovery, the cross-session loop-bound cap, the stale-run
-// guard, and marker-based gating for post-merge dev CI.
+// audits/templates/cloud-ctx-step.integration.test.ts — bkit-cloud.yml's `context` job steps:
+// the "Check runner credentials" (gate) step's per-job enablement, and the "Resolve phase +
+// brief context" (ctx) step's FID recovery, cross-session loop-bound cap, stale-run guard,
+// and marker-based gating for post-merge dev CI.
 //
-// Spawns the REAL extracted ctx-step bash (dedented straight out of the rendered YAML)
-// against a real git fixture + a stubbed `gh`.
+// Spawns the REAL extracted step bash (dedented straight out of the rendered YAML); the ctx
+// step runs against a real git fixture + a stubbed `gh`.
 //
-// Extraction is text-based (indentation-driven), not a YAML parse: the ctx step is a
-// single `run: |` block scalar.
+// Extraction is text-based (indentation-driven), not a YAML parse: each step is a single
+// `run: |` block scalar.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -42,24 +43,16 @@ const hasTools =
   hasGnuSed;
 
 // ---------------------------------------------------------------------------
-// Extraction — pull the "Resolve phase + brief context" `run: |` block out of
-// the raw template. The step lives once, in the shared `context` job.
+// Extraction — pull a named step's `run: |` block out of the raw template. Both
+// extracted steps live once, in the shared `context` job.
 // ---------------------------------------------------------------------------
-function extractCtxStepScript(yaml: string, occurrence: number): string {
-  const marker = "- name: Resolve phase + brief context";
-  let searchFrom = 0;
-  let nameIdx = -1;
-  for (let i = 0; i <= occurrence; i++) {
-    nameIdx = yaml.indexOf(marker, searchFrom);
-    if (nameIdx === -1) {
-      throw new Error(`ctx step occurrence ${i} not found`);
-    }
-    searchFrom = nameIdx + marker.length;
-  }
+function extractStepScript(yaml: string, stepName: string): string {
+  const nameIdx = yaml.indexOf(`- name: ${stepName}`);
+  if (nameIdx === -1) throw new Error(`step "${stepName}" not found`);
   const afterName = yaml.slice(nameIdx);
   const runToken = "run: |";
   const runIdx = afterName.indexOf(runToken);
-  if (runIdx === -1) throw new Error("run: | not found after ctx step name");
+  if (runIdx === -1) throw new Error(`run: | not found after step "${stepName}"`);
   const runLineStart = afterName.lastIndexOf("\n", runIdx) + 1;
   const runIndent = runIdx - runLineStart;
   const afterRun = afterName.slice(runIdx + runToken.length);
@@ -80,7 +73,9 @@ function extractCtxStepScript(yaml: string, occurrence: number): string {
 }
 
 const rawTemplate = fs.readFileSync(TEMPLATE_PATH, "utf-8");
-const CTX_SCRIPT = hasTools ? extractCtxStepScript(rawTemplate, 0) : "";
+const CTX_SCRIPT = hasTools ? extractStepScript(rawTemplate, "Resolve phase + brief context") : "";
+const GATE_SCRIPT = extractStepScript(rawTemplate, "Check runner credentials");
+const hasBash = spawnSync("bash", ["--version"]).status === 0;
 
 // ---------------------------------------------------------------------------
 // gh stub — a single script whose behaviour is driven entirely by env vars,
@@ -343,6 +338,70 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
     });
     expect(result.outputs.skip).toBe("false");
     expect(result.outputs.arg).toBe("bar-123-auth");
+  });
+
+  // Jira is local-only: a Jira key holding a digit (ab1-123-slug) matches neither cloud
+  // shape, so the dev arm no-ops on shape before any label check or counter write.
+  it("T16: a Jira-shaped commit scope with a digit in the key (ab1-123-slug) no-ops — no dispatch", () => {
+    const result = runCtxStep(fixture, {
+      EVENT: "workflow_run",
+      CONCLUSION: "failure",
+      BRANCH: "dev",
+      COMMIT_MSG: "feat(ab1-123-auth): add OAuth flow (#9) bkit [auto route]",
+      HEAD_SHA: "sha-jira",
+      STUB_LATEST_CI_SHA: "sha-jira",
+      STUB_ISSUE_LABELS: "bkit:auto",
+      STUB_API_PR_BODY: "",
+    });
+    expect(result.status).toBe(0);
+    expect(result.outputs.skip).toBe("true");
+    expect(result.outputs.phase).toBeUndefined();
+    expect(readStatusRows(fixture.workspaceDir, "ab1-123-auth")).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Tracker gate — bkit-cloud.yml serves the GitHub tracker only
+  // -------------------------------------------------------------------------
+  it.each(["linear", "jira"])(
+    "a %s tracker in package.json no-ops before FID recovery — no dispatch, no counter write",
+    (tracker) => {
+      fs.writeFileSync(
+        path.join(fixture.workspaceDir, "package.json"),
+        JSON.stringify({ name: "c", bkit: { issueTracker: tracker } }, null, 2),
+      );
+      const result = runCtxStep(fixture, {
+        EVENT: "workflow_run",
+        CONCLUSION: "failure",
+        BRANCH: "dev",
+        COMMIT_MSG: "feat(bar-123-auth): add OAuth flow (#9) bkit [auto route]",
+        HEAD_SHA: "sha-tracker",
+        STUB_LATEST_CI_SHA: "sha-tracker",
+        STUB_ISSUE_LABELS: "bkit:auto",
+      });
+      expect(result.status).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(result.stdout).toContain(`bkit.issueTracker is '${tracker}'`);
+      expect(readStatusRows(fixture.workspaceDir, "bar-123-auth")).toEqual([]);
+    },
+  );
+
+  it("a github tracker in package.json passes the tracker gate and dispatches", () => {
+    fs.writeFileSync(
+      path.join(fixture.workspaceDir, "package.json"),
+      JSON.stringify({ name: "c", bkit: { issueTracker: "github" } }, null, 2),
+    );
+    const result = runCtxStep(fixture, {
+      EVENT: "workflow_run",
+      CONCLUSION: "failure",
+      BRANCH: "dev",
+      COMMIT_MSG: "feat(363-auth): add OAuth flow (#9) bkit [auto route]",
+      HEAD_SHA: "sha-github",
+      STUB_LATEST_CI_SHA: "sha-github",
+      STUB_ISSUE_LABELS: "bkit:auto",
+    });
+    expect(result.outputs.skip).toBe("false");
+    expect(result.outputs.arg).toBe("363-auth");
   });
 
   // -------------------------------------------------------------------------
@@ -726,5 +785,75 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
     expect(result.outputs.skip).toBe("true");
     expect(result.stdout).toContain("Cannot derive FID");
     expect(outputArg(result)).not.toContain("999-unrelated-feature");
+  });
+});
+
+describe.skipIf(!hasBash)("bkit-cloud.yml gate step — per-job credential detection", () => {
+  const CREDENTIAL_VARS = [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_FEDERATION_RULE_ID",
+    "ANTHROPIC_ORGANIZATION_ID",
+    "OPENCODE_PROVIDER_KEY",
+  ];
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-cloud-gate-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function runGate(env: Record<string, string>): {
+    stdout: string;
+    outputs: Record<string, string>;
+  } {
+    const outputFile = path.join(tmp, "github-output");
+    fs.writeFileSync(outputFile, "");
+    const base = Object.fromEntries(
+      Object.entries(process.env).filter(([k]) => !CREDENTIAL_VARS.includes(k)),
+    );
+    const res = spawnSync("bash", ["-c", GATE_SCRIPT], {
+      encoding: "utf8",
+      env: { ...base, GITHUB_OUTPUT: outputFile, ...env },
+    });
+    expect(res.status).toBe(0);
+    const outputs: Record<string, string> = {};
+    for (const line of fs.readFileSync(outputFile, "utf8").split("\n")) {
+      const eq = line.indexOf("=");
+      if (eq !== -1) outputs[line.slice(0, eq)] = line.slice(eq + 1);
+    }
+    return { stdout: res.stdout ?? "", outputs };
+  }
+
+  it("ANTHROPIC_API_KEY alone enables the claude job", () => {
+    const { outputs } = runGate({ ANTHROPIC_API_KEY: "k" });
+    expect(outputs).toMatchObject({ claude: "true", opencode: "false", enabled: "true" });
+  });
+
+  it("both federation variables, no key, enable the claude job", () => {
+    const { outputs, stdout } = runGate({
+      ANTHROPIC_FEDERATION_RULE_ID: "fdrl_x",
+      ANTHROPIC_ORGANIZATION_ID: "00000000-0000-0000-0000-000000000000",
+    });
+    expect(outputs).toMatchObject({ claude: "true", enabled: "true" });
+    expect(stdout).not.toContain("claude job no-op");
+  });
+
+  it.each([
+    ["ANTHROPIC_FEDERATION_RULE_ID", "ANTHROPIC_ORGANIZATION_ID"],
+    ["ANTHROPIC_ORGANIZATION_ID", "ANTHROPIC_FEDERATION_RULE_ID"],
+  ])("only %s set: claude job no-ops with a notice naming %s", (set, missing) => {
+    const { outputs, stdout } = runGate({ [set]: "x" });
+    expect(outputs).toMatchObject({ claude: "false", enabled: "false" });
+    expect(stdout).toMatch(new RegExp(`::notice::${missing} repo variable not set`));
+  });
+
+  it("no claude credential: notice names both the secret and the federation variables", () => {
+    const { outputs, stdout } = runGate({ OPENCODE_PROVIDER_KEY: "k" });
+    expect(outputs).toMatchObject({ claude: "false", opencode: "true", enabled: "true" });
+    expect(stdout).toContain("ANTHROPIC_API_KEY");
+    expect(stdout).toContain("ANTHROPIC_FEDERATION_RULE_ID");
   });
 });

@@ -70,7 +70,8 @@ export function detectActionsWritePermissions(): TokenPresence {
  *
  * - `github`  → GitHub tracker: the GitHub MCP server authenticates with `BKIT_GH_TOKEN`; `gh` uses `gh auth login`.
  * - `linear`  → existing Linear setup message (BKIT_LINEAR_API_KEY + LINEAR_ISSUE_ID).
- * - `none`    → prompt to run `bkit install --tracker=github` or `--tracker=linear`.
+ * - `jira`    → admin switch, BKIT_JIRA_API_TOKEN and `bkit.jira` in package.json.
+ * - `none`    → prompt to run `bkit install --tracker=github`, `--tracker=linear` or `--tracker=jira`.
  *
  * Only fires when bkit workflows are installed (.claude/ or .cursor/ present).
  */
@@ -102,6 +103,16 @@ export function buildTrackerSetupAdvisory(cwd: string): PreflightFinding | null 
     };
   }
 
+  if (tracker === "jira") {
+    return {
+      id: "tracker-setup-jira",
+      severity: "advisory",
+      detect: "bkit tracker is configured as `jira`. Jira Cloud is the active tracker.",
+      action:
+        'Jira tracker: (1) an org admin turns on API-token sign-in for the Rovo MCP server (admin.atlassian.com → Rovo → Rovo MCP server → Authentication → "Allow API token authentication"); (2) create an API token with scopes for the app "Atlassian MCP V2" at https://id.atlassian.com/manage-profile/security/api-tokens and set it as `BKIT_JIRA_API_TOKEN` in `.bkit/.env`, then `direnv allow`; (3) set `bkit.jira.site` (e.g. `https://acme.atlassian.net`) and `bkit.jira.project` (the project key) in package.json. Full steps: `.bkit/trackers.md` § jira.',
+    };
+  }
+
   // tracker === "none". Distinguish opt-out (explicit `bkit.issueTracker: "none"`)
   // from undecided (field absent). An explicit `none` silences the nudge, as with the
   // dep-updater advisory.
@@ -113,7 +124,7 @@ export function buildTrackerSetupAdvisory(cwd: string): PreflightFinding | null 
     detect:
       "bkit tracker is not configured (`bkit.issueTracker` absent). Workflows run but every tracker call is a no-op.",
     action:
-      'Optional post-install decision. Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker requires `BKIT_GH_TOKEN` in `.bkit/.env` (fine-grained PAT for one owner, classic PAT across owners). Linear tracker requires `BKIT_LINEAR_API_KEY` in `.bkit/.env`. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
+      'Optional post-install decision. Run `bkit install --tracker=github` (recommended), `--tracker=linear` or `--tracker=jira` to enable tracker integration. GitHub tracker requires `BKIT_GH_TOKEN` in `.bkit/.env` (fine-grained PAT for one owner, classic PAT across owners). Linear tracker requires `BKIT_LINEAR_API_KEY` in `.bkit/.env`. Jira tracker requires `BKIT_JIRA_API_TOKEN` in `.bkit/.env` and `bkit.jira` in package.json. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
   };
 }
 
@@ -276,6 +287,7 @@ export function detectGithubProjectFieldIdFormat(cwd: string): PreflightFinding 
  * opt-out):
  *   - `.github/workflows/bkit-cloud.yml` present → `cloud-router` (informational; active)
  *   - `bkit.cloudAgents === "none"`                  → null (opt-out — stay quiet)
+ *   - `bkit.issueTracker === "jira"`                 → null (Jira runs locally only)
  *   - otherwise (undecided)                          → `cloud-router-none` (nudge to choose)
  *
  * Only fires when there is a `.github/workflows/` dir (the router wakes on a CI
@@ -307,15 +319,16 @@ export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
       severity: "advisory",
       detect:
         "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present). The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done.",
-      action: `The workflow requires: the \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.\n\nbkit's agents comment as you, so every workflow those comments trigger notifies you, even ones that skip. To see only failures: GitHub → Settings → Notifications → System → Actions → "Only notify for failed workflows".`,
+      action: `The workflow requires: the \`ANTHROPIC_API_KEY\` repo secret OR the \`ANTHROPIC_FEDERATION_RULE_ID\` + \`ANTHROPIC_ORGANIZATION_ID\` repo variables (keyless workload identity federation), the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.\n\nbkit's agents comment as you, so every workflow those comments trigger notifies you, even ones that skip. To see only failures: GitHub → Settings → Notifications → System → Actions → "Only notify for failed workflows".`,
     };
   }
 
   // No router present — distinguish opt-out from undecided.
-  const { cloudAgents, cloudAgentsExplicit } = readBkitConfig(cwd);
+  const { cloudAgents, cloudAgentsExplicit, issueTracker } = readBkitConfig(cwd);
   if (cloudAgents === "none" && cloudAgentsExplicit) {
     return null; // consumer explicitly chose `none` — stay quiet
   }
+  if (issueTracker === "jira") return null; // no cloud setup exists for a Jira tracker
 
   // Only nudge if there's a workflows dir for the router to wake on.
   if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;
@@ -327,7 +340,7 @@ export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
       "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-cloud.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
     action:
       "Optional post-install decision. For a GitHub-tracker repo: `pnpm bkit install --auto=claude --tracker=github`. For a Linear-tracker repo: `pnpm bkit install --auto=cursor --tracker=linear`.\n\n" +
-      "Prerequisites for `--auto=claude`: `ANTHROPIC_API_KEY` repo secret + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
+      "Prerequisites for `--auto=claude`: `ANTHROPIC_API_KEY` repo secret (or the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables for keyless workload identity federation) + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
       'To opt out and silence this advisory, set `bkit.cloudAgents` to `"none"` in package.json.',
   };
 }

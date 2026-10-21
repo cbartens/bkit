@@ -1,9 +1,9 @@
 # Cloud agent environments — Claude Code on the web + Cursor Cloud Agents + opencode
 
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
-> **Purpose:** Canonical reference for Claude Code on the web (mobile / web), Cursor Cloud Agents, and opencode cloud runners. Claude + opencode → **GitHub** tracker (unified `bkit-cloud.yml`); Cursor → **Linear**. Not interchangeable per repo — pick agent matching your tracker (see § Cloud-agent support matrix).
+> **Purpose:** Canonical reference for Claude Code on the web (mobile / web), Cursor Cloud Agents, and opencode cloud runners. Claude + opencode → **GitHub** tracker (unified `bkit-cloud.yml`); Cursor → **Linear**; **Jira** → local runs only (no Jira-side cloud trigger). Not interchangeable per repo — pick agent matching your tracker (see § Cloud-agent support matrix).
 >
 > **Rules:**
 >
@@ -28,9 +28,9 @@ Three cloud stacks — each agent pairs with one tracker. Pick row for agent you
 | **opencode** (GitHub runner) | **A)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick phase + issue) · **B)** GitHub CI pass/fail → `bkit-cloud.yml` opencode job (requires `OPENCODE_PROVIDER_KEY` secret) · **C)** reactive `/oc` comment handler (self-installed, not bkit — see § Reactive comment handlers) | **GitHub** | **Linear** |
 | **Cursor** (native agent) | **A)** Cursor's built-in cloud-agent launch · **B)** Cursor's GitHub integration on PR events (CI pass/fail) · **C)** Linear → Cursor integration | **Linear** (+ GitHub PR events) | **GitHub Projects / Issues** |
 
-**Unified file — additive coexistence:** Claude + opencode share one `bkit-cloud.yml`: a `context` job resolves the phase once, then two runner jobs, each runtime-gated on its secret (`ANTHROPIC_API_KEY` claude, `OPENCODE_PROVIDER_KEY` opencode). Both jobs can fire on same CI event — both secrets → both agents; one secret → one agent. Cursor separate (no GH Action; native triggers). **Cursor cloud ↔ Linear.**
+**Unified file — additive coexistence:** Claude + opencode share one `bkit-cloud.yml`: a `context` job resolves the phase once, then two runner jobs, each runtime-gated on its credential (claude: `ANTHROPIC_API_KEY` secret or federation variables; opencode: `OPENCODE_PROVIDER_KEY`). Both jobs can fire on same CI event — both credentials → both agents; one → one agent. Cursor separate (no GH Action; native triggers). **Cursor cloud ↔ Linear.**
 
-**Manual dispatch (Claude or opencode, path A):** GitHub → **Actions** → **bkit-cloud** → **Run workflow** → `phase` (`ship` / `debug` / `design` / `plan` / `build`) + `issue`. On-demand/smoke-test for `design` / `plan` / `build`; `ship` / `debug` normally CI-fired. Dispatched `design` runs headless (`runtimeHeadless` = true on a GitHub runner): Grill asks nothing and records each recommended answer as `Assumed, not confirmed`. Dispatched `/bkit-auto` orchestrator → matching phase skill → brief from GitHub issue (MCP).
+**Manual dispatch (Claude or opencode, path A):** GitHub → **Actions** → **bkit-cloud** → **Run workflow** → `phase` (`ship` / `debug` / `design` / `plan` / `build`) + `issue`. On-demand/smoke-test for `design` / `plan` / `build`; `ship` / `debug` normally CI-fired. Dispatched `design` runs headless (`runtimeHeadless` = true on a GitHub runner): Grill asks nothing, records each recommended answer as `Assumed, not confirmed`, and records the draft acceptance scenario as not reviewed by a human. Dispatched `/bkit-auto` orchestrator → matching phase skill → brief from GitHub issue (MCP).
 
 ### Reactive comment handlers (`claude.yml` + `opencode.yml`) — separately managed, not bkit
 
@@ -218,34 +218,41 @@ Token management by session type:
 
 ## MCP issue-tracker integration
 
-bkit wires two MCP servers into `.mcp.json` at repo root (project-shared, read by Claude Code `/mcp` UI). Cursor reads same shape from `.cursor/mcp.json`. Both **remote HTTP MCPs** — no docker. Linear: OAuth on first use — Claude Code launches browser auth on first server touch, stores token in own secret store. GitHub: `BKIT_GH_TOKEN` PAT in the `Authorization` header — no OAuth.
+bkit wires the chosen tracker's MCP server (`bkit.issueTracker`) into `.mcp.json` at repo root (project-shared, read by Claude Code `/mcp` UI). Cursor reads same shape from `.cursor/mcp.json`. All **remote HTTP MCPs** — no docker. GitHub: `BKIT_GH_TOKEN` PAT in the `Authorization` header — no OAuth. Linear: OAuth on first use — Claude Code launches browser auth on first server touch, stores token in own secret store. Jira: `BKIT_JIRA_API_TOKEN` scoped token in the `Authorization` header — no OAuth.
 
 > Note: `mcpServers` in `.claude/settings.json` silently ignored by Claude Code — definitions only from `.mcp.json` (project) or `claude mcp add` (user scope). `mcp__<name>__*` in `.claude/settings.json` `permissions.allow` are tool-permission allowlists — different concern, remain there.
 
 ```json
 "mcpServers": {
-  "linear": { "type": "http", "url": "https://mcp.linear.app/mcp" },
   "github": {
     "type": "http",
     "url": "https://api.githubcopilot.com/mcp/",
     "headers": { "Authorization": "Bearer ${BKIT_GH_TOKEN}" }
+  },
+  "linear": { "type": "http", "url": "https://mcp.linear.app/mcp" },
+  "jira": {
+    "type": "http",
+    "url": "https://mcp.atlassian.com/v2/mcp",
+    "headers": { "Authorization": "Bearer ${BKIT_JIRA_API_TOKEN}" }
   }
 }
 ```
 
 `"type": "http"` required — without it Claude Code defaults to stdio transport and rejects entry for missing `command`.
 
-- **Linear** — full Linear workspace surface (`get_issue`, `save_issue`, `save_comment`, `list_*`). Used when `bkit.issueTracker` = `linear`. OAuth (Dynamic Client Registration) — browser flow on first use, no env var.
 - **GitHub** — official GitHub MCP at `api.githubcopilot.com` (not gated by Copilot subscription). Surface: `issue_write`, `add_issue_comment`, `label_write`, `projects_write`, etc. Used under GitHub provider. Endpoint does **not** support OAuth DCR → auth via `Authorization: Bearer ${BKIT_GH_TOKEN}` (MCP-only env var — see § Environment variables and KN-CORE-8).
+- **Linear** — full Linear workspace surface (`get_issue`, `save_issue`, `save_comment`, `list_*`). Used when `bkit.issueTracker` = `linear`. OAuth (Dynamic Client Registration) — browser flow on first use, no env var.
+- **Jira** — Atlassian Rovo MCP at `mcp.atlassian.com/v2/mcp`. Surface: `getJiraIssue`, `editJiraIssue`, `transitionJiraIssue`, `addOrEditJiraIssueComment`, `searchJiraIssuesUsingJql`, `executeRead` / `executeWrite`. Used when `bkit.issueTracker` = `jira`. Auth via `Authorization: Bearer ${BKIT_JIRA_API_TOKEN}` — a scoped **Atlassian MCP V2** token; org admin must allow API-token sign-in (`.bkit/trackers.md` § jira — setup and notes).
 
 **Auth flow per server:**
 
-- **Linear:** Claude Code prompts browser authorize on first use; token in Claude's secret store. No further action.
 - **GitHub:** Claude Code substitutes `${BKIT_GH_TOKEN}` from environment at session start. Unset → server fails. Set in shell (`export BKIT_GH_TOKEN=...`) or cloud dashboard.
+- **Linear:** Claude Code prompts browser authorize on first use; token in Claude's secret store. No further action.
+- **Jira:** Claude Code substitutes `${BKIT_JIRA_API_TOKEN}` from environment at session start. Unset or classic token → every Jira call fails.
 
 **`gh auth login` required for gh CLI surface** (PR creation, branch ops, git push). Locally, keyring — do not export `GH_TOKEN` from `.bkit/.env`. Cloud/headless: `bkit-cloud-bootstrap.sh` runs `printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token` at SessionStart (guarded by the `bkit runtime detect` gh probe, no-ops on Actions runner where `GITHUB_TOKEN` auths) — no manual step. Same PAT value fine; different env-var name keeps local `gh` on keyring.
 
-**Cloud sessions** (Claude on the web, Cursor Cloud Agents): Linear MCP OAuth on first touch, same as local. GitHub MCP reads `BKIT_GH_TOKEN` from dashboard — set alongside `BKIT_LINEAR_API_KEY`.
+**Cloud sessions** (Claude on the web, Cursor Cloud Agents): GitHub MCP reads `BKIT_GH_TOKEN` from dashboard — set alongside `BKIT_LINEAR_API_KEY` under Linear. Linear MCP OAuth on first touch, same as local. Jira: no cloud sessions (local runs only).
 
 ## After saving the Claude env
 
@@ -398,7 +405,7 @@ Routing **logic** in single bkit-managed slash-command orchestrator (`.bkit/core
 <!-- prettier-ignore -->
 |  | Lives in the repo (bkit-managed) | Lives in the online dashboard / GitHub (manual, one-time) |
 | --- | --- | --- |
-| **Claude** | `.github/workflows/bkit-cloud.yml` — `claude` job (opt-in via `bkit install --auto=claude`; GitHub-tracker only). Two-tier gate: (1) free tier — job `if: contains(head_commit.message, 'bkit [auto route]')` (zero runner minutes for non-opted-in commits); (2) cheap tier — in-job `gh issue view {ISSUE} --json labels` re-checks `bkit:auto` (live kill switch); then dispatches `claude-code-action` as the Claude GitHub App (OIDC, `id-token: write`). | GitHub repo secret: `ANTHROPIC_API_KEY` (`.bkit/.env` holds the same value as `BKIT_ANTHROPIC_API_KEY`). Claude GitHub App required (`/install-github-app`). The linked **GitHub issue** must carry `bkit:auto`. |
+| **Claude** | `.github/workflows/bkit-cloud.yml` — `claude` job (opt-in via `bkit install --auto=claude`; GitHub-tracker only). Two-tier gate: (1) free tier — job `if: contains(head_commit.message, 'bkit [auto route]')` (zero runner minutes for non-opted-in commits); (2) cheap tier — in-job `gh issue view {ISSUE} --json labels` re-checks `bkit:auto` (live kill switch); then dispatches `claude-code-action` as the Claude GitHub App (OIDC, `id-token: write`). | Claude credential: GitHub repo secret `ANTHROPIC_API_KEY` (`.bkit/.env` holds the same value as `BKIT_ANTHROPIC_API_KEY`) **or** keyless federation repo variables (§ Claude — workload identity federation). Claude GitHub App required (`/install-github-app`). The linked **GitHub issue** must carry `bkit:auto`. |
 | **opencode** | Same `.github/workflows/bkit-cloud.yml` — `opencode` job (opt-in via `bkit install --auto=opencode`; GitHub-tracker only). Same two-tier gate (same file, separate job). Dispatches via `opencode run "/bkit-auto $PHASE $ARG"`. No `id-token: write` — no OIDC; uses `github.token` for repo ops. | GitHub repo secret: `OPENCODE_PROVIDER_KEY` (set to your provider API key). Provider model committed in `.opencode/opencode.json`. The linked **GitHub issue** must carry `bkit:auto`. |
 | **Cursor** | Nothing — Cursor cloud agents have native triggers. | Cursor → Cloud Agents dashboard → Triggers → + Add trigger. Event: CI workflow completion on `feat/**` branches. Prompt (paste **literally**, no edits): `/bkit-auto $CI_STATUS $PR_NUMBER`. Concurrency: latest-supersedes. |
 
@@ -419,15 +426,39 @@ Flip **both** org and repo before first router run — else `actions/checkout` 4
 
 `workflow_run`-triggered runs do **not** inherit parent CI workflow's `permissions:` block (only fork-PR tokens get narrowed) — parent CI at `contents: read` fine.
 
-## bkit-cloud.yml — required GitHub repo secrets
+## bkit-cloud.yml — required GitHub repo credentials
 
 <!-- prettier-ignore -->
-| Secret | Job | Why | Scope |
+| Secret / variable | Job | Why | Scope |
 | --- | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | `claude` | `claude-code-action` authenticates against Anthropic. | API key with Claude Code access. |
+| `ANTHROPIC_API_KEY` secret | `claude` | `claude-code-action` authenticates against Anthropic. | API key with Claude Code access. Omit when using federation. |
+| `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` variables | `claude` | Keyless alternative: the action trades the job's GitHub OIDC token for a short-lived Claude API token. | IDs, not secrets — repo **variables**. Optional `ANTHROPIC_SERVICE_ACCOUNT_ID` / `ANTHROPIC_WORKSPACE_ID`. § Claude — workload identity federation. |
 | `OPENCODE_PROVIDER_KEY` | `opencode` | Fanned out to every cloud provider's env var name (`BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`, `BKIT_OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider is installed. | Provider API key for whichever provider you configured. |
 
-A `context` job checks both secrets and resolves phase + arg once; each runner job needs it and runs only when its own secret is set. Only `ANTHROPIC_API_KEY` → claude job only. Only `OPENCODE_PROVIDER_KEY` → opencode only. Both → both jobs (additive coexistence). **No `BKIT_LINEAR_API_KEY`** — `bkit-cloud.yml` GitHub-tracker only for both jobs. Workflow grants `id-token: write` per-job for claude only (opencode no OIDC).
+A `context` job (`Check runner credentials` step) checks both credentials and resolves phase + arg once, no-op unless `package.json` `bkit.issueTracker` is `github` or unset (Linear cloud runs start from Cursor's Linear integration; Jira runs locally only); each runner job needs it and runs only when its own credential is set. Claude credential = `ANTHROPIC_API_KEY`, or **both** federation variables (one alone → `::notice::` naming the missing one, claude no-op). Only claude credential → claude job only. Only `OPENCODE_PROVIDER_KEY` → opencode only. Both → both jobs (additive coexistence). **No `BKIT_LINEAR_API_KEY`** — `bkit-cloud.yml` GitHub-tracker only for both jobs. Workflow grants `id-token: write` per-job for claude only (Claude GitHub App + federation token exchange; opencode no OIDC).
+
+## Claude — workload identity federation
+
+Keyless claude job: no long-lived `ANTHROPIC_API_KEY` stored in GitHub. `claude-code-action` asks GitHub for the job's OIDC token (issuer `https://token.actions.githubusercontent.com`, audience `https://api.anthropic.com`), Anthropic checks it against a federation rule, returns a short-lived Claude API token. Action refreshes it in the background on long runs.
+
+**Setup (one-time):**
+
+1. Claude Console → **Settings → Workload identity → Connect workload → GitHub Actions**. Creates the federation issuer, a service account, and a federation rule.
+2. Scope the rule to this repo's default branch — `bkit-cloud.yml` runs from it (`workflow_run` + `workflow_dispatch`):
+   - `subject_prefix`: `repo:<owner>/<repo>:ref:refs/heads/<default-branch>`
+   - claims: `repository_owner` = `<owner>`, `ref` = `refs/heads/<default-branch>`
+   - to limit the rule to `bkit-cloud.yml`, add claim `workflow_ref` = `<owner>/<repo>/.github/workflows/bkit-cloud.yml@refs/heads/<default-branch>`. GitHub's token carries it; Anthropic's docs do not list it as matchable. Without it, every workflow on the default branch matches the rule.
+3. Set repo **variables** (IDs, not secrets):
+   ```sh
+   gh variable set ANTHROPIC_FEDERATION_RULE_ID --body='fdrl_...'
+   gh variable set ANTHROPIC_ORGANIZATION_ID --body='<organization-uuid>'
+   # optional: ANTHROPIC_SERVICE_ACCOUNT_ID (svac_...), ANTHROPIC_WORKSPACE_ID
+   ```
+4. Delete the key if one is set: `gh secret delete ANTHROPIC_API_KEY`. **A set key wins over federation** — the action uses the key and federation never runs. `bkit check` flags both-set (`anthropic-api-key-shadows-federation`).
+
+**Adopted copy predates federation:** variables set but `.github/workflows/bkit-cloud.yml` lacks the `anthropic_federation_rule_id:` input → claude job sees no credential. `bkit check` flags it (`anthropic-federation-template-stale`); re-copy from `.bkit/templates/.github/workflows/bkit-cloud.yml`, re-apply local edits (`runs-on`).
+
+**401 from token exchange:** Anthropic returns `401 Authentication failed` whichever check failed. Console → Workload identity → authentication history shows the deny reason per attempt; `match_subject_prefix` = the run's `sub` doesn't match the rule's `subject_prefix` — fix or widen the rule. A job on a non-default branch or an `environment:` has a different subject (`...:ref:refs/heads/<branch>` / `...:environment:<name>`).
 
 Slash command body already in checked-out repo (mirrored to `.claude/commands/bkit-auto.md` and `.opencode/commands/bkit-auto.md` at dev time via `bkit install`). Repo git/gh ops use auto-provided `github.token` scoped by workflow `permissions:` block.
 

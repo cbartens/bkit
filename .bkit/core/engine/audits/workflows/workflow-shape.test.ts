@@ -324,7 +324,8 @@ describe("design and plan close", () => {
     "%s skips a related issue whose comments do not parse, and names it",
     (name) => {
       const text = workflow(name);
-      expect(text.split("Skipped: comments did not parse.").length - 1, name).toBe(2);
+      // One per tracker: github, linear, jira.
+      expect(text.split("Skipped: comments did not parse.").length - 1, name).toBe(3);
     },
   );
 });
@@ -357,7 +358,11 @@ describe("setup tips at the close", () => {
       expect.stringContaining(`"{BKIT}" tips --workflow=${name}`),
     ]);
     expect(collect).toContain("`{BKIT_TIPS}`");
-    const final = lines.slice(finalIdx, finalIdx + 8).join("\n");
+    // The whole Final return step: its indented lines, up to the next unindented line.
+    const final = lines
+      .slice(finalIdx)
+      .join("\n")
+      .split(/\n(?=\S)/)[0];
     expect(final).toContain("Append `{BKIT_TIPS}`");
   });
 });

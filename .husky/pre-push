@@ -2,17 +2,55 @@
 # bkit pre-push. Example. Copy into the repo and own it.
 # bkit install does not write this file and does not overwrite a copy.
 #
-# FAST deterministic gates only: the `bkit:gate` script (typecheck + unit tests +
-# format:check + prose + the enforcing slop gate) plus the bkit drift gate (no
-# Docker/network) — the full deterministic mirror of CI. Heavier tiers run in CI, NOT
-# here: integration + E2E -> bkit-tests (gated on web_affected / run_e2e); @live ->
-# bkit-tests-live; "did the planned tiers run?" -> bkit-tests-check. See bkit-ci.yml § FULL
-# CI SCAFFOLD REFERENCE — keep slow/network/deploy checks OUT. Turbo monorepos: scope
-# tests inside the `bkit:gate*` scripts with
-# `--filter="...[origin/<default>]"`; never add integration/E2E/@live.
+# Deterministic gates: `bkit:gate:static-unit-integration` when package.json declares it,
+# else `bkit:gate:static-unit` (typecheck + lint + format:check + prose + the enforcing slop
+# gate + unit tests, then the integration tier), plus the bkit drift gate. Integration runs
+# here, never on commit: it may start local services (a database in Docker), never reach a
+# deployed one. E2E -> bkit-tests (gated on web_affected / run_e2e); @live -> bkit-tests-live;
+# "did the planned tiers run?" -> bkit-tests-check. See bkit-ci.yml § FULL CI SCAFFOLD
+# REFERENCE — keep deployed-URL/network/deploy checks OUT. Turbo monorepos: scope tests inside
+# the `bkit:gate*` scripts with `--filter="...[origin/<default>]"`; never add E2E/@live.
 #
-# Revert-branch bypass: on a revert branch the suite is skipped; lint + typecheck still run.
+# Revert-branch bypass: on a revert branch the unit and integration tiers are skipped; lint +
+# typecheck still run.
+#
+# Min push: every changed file matches `bkit.minPushPaths` (package.json; default plan logs,
+# ledgers) → `bkit:gate:min` replaces the full gate; MIN_PUSH=1 for repo extras. Files decide,
+# never `[skip ci]`.
 set -e
+
+# bkit repo only: a push of tags alone, each on a commit a branch of the remote already holds
+# (as last fetched), carries no new code — the release tag on the merged release commit, whose
+# gates already passed. Gates are skipped. A tag on any other commit, or a tag pushed with a
+# branch, still gates; tag deletes count as tags. Git's ref list is saved to a file and put
+# back on stdin for the delete-only check below.
+if [ ! -t 0 ]; then
+  PUSH_REFS_FILE=$(mktemp)
+  trap 'rm -f "$PUSH_REFS_FILE"' EXIT
+  cat > "$PUSH_REFS_FILE"
+  TAG_PUSH_REMOTE="${1:-origin}"
+  TAG_PUSH_KNOWN=0
+  TAG_PUSH_ONLY=1
+  while read -r _tag_local_ref tag_local_sha tag_remote_ref _tag_remote_sha; do
+    [ -n "$tag_local_sha" ] || continue
+    case "$tag_remote_ref" in
+      refs/tags/*) ;;
+      *) TAG_PUSH_ONLY=0; break ;;
+    esac
+    case "$tag_local_sha" in *[!0]*) ;; *) continue ;; esac
+    tag_commit=$(git rev-parse --verify -q "$tag_local_sha^{commit}") || { TAG_PUSH_ONLY=0; break; }
+    if [ -z "$(git for-each-ref --count=1 --contains "$tag_commit" --format='%(refname)' "refs/remotes/$TAG_PUSH_REMOTE")" ]; then
+      TAG_PUSH_ONLY=0
+      break
+    fi
+    TAG_PUSH_KNOWN=1
+  done < "$PUSH_REFS_FILE"
+  if [ "$TAG_PUSH_KNOWN" = "1" ] && [ "$TAG_PUSH_ONLY" = "1" ]; then
+    echo "[pre-push] tags only, on commits $TAG_PUSH_REMOTE already has — gates skipped" >&2
+    exit 0
+  fi
+  exec < "$PUSH_REFS_FILE"
+fi
 
 # ── delete-only push: nothing leaves this machine, so there is nothing to gate ──
 # `git push origin --delete <branch>` runs this hook too. Git feeds one line per ref on
@@ -21,10 +59,13 @@ set -e
 # mixing a delete with a real update still gates, and so does an empty ref list. Reading
 # stdin here is safe: every later command redirects from /dev/null. `[ -t 0 ]` keeps a
 # hand-run hook from hanging. The loop also sets PUSH_DEV_SHA (commit pushed to dev) for
-# repo extras that gate only dev pushes (e.g. scripts/graphify/bkit-graph-pre-push.sh).
+# repo extras that gate only dev pushes (e.g. scripts/graphify/bkit-graph-pre-push.sh),
+# PUSH_SHAS (every pushed commit) and PUSH_SHARED_SHAS (those pushed to dev / main).
 PUSH_SAW_REF=0
 PUSH_HAS_COMMITS=0
 PUSH_DEV_SHA=""
+PUSH_SHAS=""
+PUSH_SHARED_SHAS=""
 if [ ! -t 0 ]; then
   while read -r _push_local_ref push_local_sha push_remote_ref _push_remote_sha; do
     [ -n "$push_local_sha" ] || continue
@@ -32,7 +73,11 @@ if [ ! -t 0 ]; then
     case "$push_local_sha" in
       *[!0]*)
         PUSH_HAS_COMMITS=1
+        PUSH_SHAS="$PUSH_SHAS $push_local_sha"
         [ "$push_remote_ref" = "refs/heads/dev" ] && PUSH_DEV_SHA="$push_local_sha"
+        case "$push_remote_ref" in
+          refs/heads/dev|refs/heads/main) PUSH_SHARED_SHAS="$PUSH_SHARED_SHAS $push_local_sha" ;;
+        esac
         ;;
     esac
   done
@@ -78,6 +123,34 @@ case "$BRANCH" in
     ;;
 esac
 
+# Min push: `bkit ci min-push` exits 0 only when every file changed since each pushed
+# commit left origin/dev (else origin/main) matches `bkit.minPushPaths`. Anything else
+# (code, no files, unreadable range, no refs) → MIN_PUSH=0, full gate: a skip on no
+# evidence reads as a pass.
+MIN_PUSH=0
+if [ -n "$PUSH_SHAS" ]; then
+  MIN_PUSH_REFS=""
+  for push_sha in $PUSH_SHAS; do MIN_PUSH_REFS="$MIN_PUSH_REFS --ref=$push_sha"; done
+  # shellcheck disable=SC2086 # hex SHAs only: word-splitting is the point
+  if pnpm -s bkit ci min-push $MIN_PUSH_REFS < /dev/null > /dev/null; then
+    MIN_PUSH=1
+  fi
+fi
+
+# CI-suppressor guard on dev / main: a skip-CI token on a push's LAST commit skips CI for the
+# whole push, so code would land untested. Blocked unless a min push. Feature branches keep
+# the open-PR guard above (workflows push `[skip ci]` code heads mid-run).
+for push_sha in $PUSH_SHARED_SHAS; do
+  if pnpm -s bkit ci skip-token --ref="$push_sha" < /dev/null > /dev/null; then
+    if [ "$MIN_PUSH" != "1" ] &&
+      ! pnpm -s bkit ci min-push --ref="$push_sha" < /dev/null > /dev/null; then
+      echo "[pre-push] BLOCKED: $push_sha carries a CI-suppressing token and changes files outside bkit.minPushPaths — that code would land on dev / main with no CI run." >&2
+      echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
+      exit 1
+    fi
+  fi
+done
+
 # tmp/ prune — deletes files under tmp/ untouched for 7+ days. Not a gate: a failed
 # prune warns and the push goes on. Skipped until scripts/cleanup/ holds the script.
 if [ -f scripts/cleanup/bkit-tmp-prune.mjs ]; then
@@ -88,10 +161,16 @@ fi
 # WHAT each gate runs lives in package.json, not here — the same `bkit:gate*` scripts
 # the bkit agent workflows and prompts dispatch through. Edit the scripts, not this
 # hook. Repo-specific extras go BELOW this block.
-# Revert path drops the suite only: prose and slop:delta still run.
-if [ "$IS_REVERT" = "1" ]; then
+# Min push: `bkit:gate:min` only. Revert path drops the suite only: prose
+# and slop:delta still run. Otherwise the deepest push gate package.json declares.
+if [ "$MIN_PUSH" = "1" ]; then
+  echo "[pre-push] min push — bkit:gate:min instead of the full gate" >&2
+  pnpm bkit:gate:min < /dev/null
+elif [ "$IS_REVERT" = "1" ]; then
   echo "[pre-push] revert branch/commit detected — skipping the test suite"
   pnpm bkit:gate:static < /dev/null
+elif grep -q '"bkit:gate:static-unit-integration"[[:space:]]*:' package.json 2>/dev/null; then
+  pnpm bkit:gate:static-unit-integration < /dev/null
 else
   pnpm bkit:gate:static-unit < /dev/null
 fi
@@ -102,11 +181,13 @@ fi
 # Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
 pnpm bkit check < /dev/null
 
-# bkit repo only: committed `dist/` must equal the `tsc` output of committed source.
-pnpm bkit:check:dist < /dev/null
-
-# bkit repo only: actionlint over `.github/workflows/*`; skips when actionlint is absent.
-pnpm bkit:lint:workflows < /dev/null
+# bkit repo only: committed `dist/` must equal the `tsc` output of committed source, and
+# actionlint over `.github/workflows/*` (skips when actionlint is absent). A min push
+# skips both: it changes no code.
+if [ "$MIN_PUSH" != "1" ]; then
+  pnpm bkit:check:dist < /dev/null
+  pnpm bkit:lint:workflows < /dev/null
+fi
 
 # bkit repo only: the graphify register gate (pasted from
 # scripts/graphify/bkit-graph-pre-push.sh, below the bkit lines).

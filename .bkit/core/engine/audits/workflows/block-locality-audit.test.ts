@@ -77,6 +77,7 @@ const ENV = new Set([
   "GH_TOKEN",
   "GITHUB_TOKEN",
   "BKIT_LINEAR_API_KEY",
+  "BKIT_JIRA_API_TOKEN",
   "BKIT_GH_TOKEN",
   "CI",
   "GITHUB_REPOSITORY",

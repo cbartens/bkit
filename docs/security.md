@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Security
 
@@ -19,7 +19,7 @@
 
 Action SHA-pinning + dependency-update pipeline (Renovate / Dependabot, Trivy scan, CVE handling) → `deployments.md` § Dependency updaters. Here: security invariants only.
 
-**Token isolation:** Renovate PRs get restricted `GITHUB_TOKEN`, no access to cloud lane model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`); `bkit-cloud.yml` does not dispatch on them. Compromised dependency PR cannot reach agent API credentials.
+**Token isolation:** Renovate PRs get restricted `GITHUB_TOKEN`, no access to cloud lane model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`) or federated Claude tokens (minted only by a `bkit-cloud.yml` job matching the federation rule); `bkit-cloud.yml` does not dispatch on them. Compromised dependency PR cannot reach agent API credentials.
 
 **Scanner isolation:** CI vulnerability scanner (e.g. `bkit-trivy.yml`): `contents: read`, `persist-credentials: false`, no secret; image or action pinned by digest, never a floating tag. Setup → `.bkit/templates.md` § Trivy.
 
@@ -51,7 +51,7 @@ No database, server, or user-auth surface. Security concerns: secrets management
 
 ### `.bkit/.env` scope
 
-`.bkit/.env` (gitignored, auto-loaded via `.envrc` / direnv) holds **bkit and agent-tooling secrets ONLY**: tracker / cloud-agent tokens (`BKIT_GH_TOKEN`, `BKIT_LINEAR_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `BKIT_CURSOR_API_KEY`) and opencode provider keys (`BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`).
+`.bkit/.env` (gitignored, auto-loaded via `.envrc` / direnv) holds **bkit and agent-tooling secrets ONLY**: tracker / cloud-agent tokens (`BKIT_GH_TOKEN`, `BKIT_LINEAR_API_KEY`, `BKIT_JIRA_API_TOKEN`, `BKIT_ANTHROPIC_API_KEY`, `BKIT_CURSOR_API_KEY`) and opencode provider keys (`BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`).
 
 App / stack credentials do not belong here — runtime keys and `/bkit-debug` observability tokens (deploy-host, DB log-read, etc.) live in app env files (e.g. `apps/web/.env.local`, sourced by `.envrc`). Never re-add stack creds to `.bkit/.env`. Runtime-log source config → `.agents/context.md` (see `docs/observability.md`).
 
@@ -65,7 +65,7 @@ App / stack credentials do not belong here — runtime keys and `/bkit-debug` ob
 | `BKIT_GH_TOKEN` | GitHub MCP server; self-hosted Renovate platform auth | Write PAT. Fine-grained (one owner) when bkit touches a single repo/owner; classic when one token must span owners. Always set an expiry (max 30 days); re-mint before it lapses and update local `.bkit/.env` + the repo Actions secret together (only repo secret). Classic scopes: `repo`, `workflow`, `project`, `read:org`, `notifications`, `gist`, `write:discussion`, `write:packages`, `audit_log`; Renovate minimum → `docs/deployments.md` § Dependency updaters. |
 | npm publish | `.github/workflows/release.yml` | No npm token anywhere. OIDC trusted publishing only; package publishing access = "Require two-factor authentication and disallow tokens". |
 | opencode provider keys | opencode host model access | Referenced as `{env:KEY}` in `.opencode/opencode.json` — never inlined. In CI the single `OPENCODE_PROVIDER_KEY` secret fans out to the configured provider's env-var name. |
-| `BKIT_ANTHROPIC_API_KEY` / `BKIT_CURSOR_API_KEY` / `BKIT_LINEAR_API_KEY` | Cloud agents and tracker | Optional; opt-in surfaces only. |
+| `BKIT_ANTHROPIC_API_KEY` / `BKIT_CURSOR_API_KEY` / `BKIT_LINEAR_API_KEY` / `BKIT_JIRA_API_TOKEN` | Cloud agents and tracker | Optional; opt-in surfaces only. |
 
 ### `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` — generated, hold live secrets
 
@@ -83,7 +83,7 @@ Disclosure policy (supported versions, reporting channel, response targets) → 
 
 ### Release path
 
-`v*` tag push → `.github/workflows/release.yml` → tagged commit on `origin/main` check → typecheck / test / format / prose / slop / `dist/` freshness → `npm publish --provenance` (OIDC) → GitHub Release → sliding `v{N}` tag re-pointed → consumers `pnpm add -D @cbartens/bkit` + `pnpm exec bkit install`.
+`v*` tag push → `.github/workflows/release.yml` → tagged commit on `origin/main` check → `dist/` freshness → `npm publish --provenance` (OIDC) → GitHub Release → sliding `v{N}` tag re-pointed → consumers `pnpm add -D @cbartens/bkit` + `pnpm exec bkit install`.
 
 <!-- prettier-ignore -->
 | Gate | State |

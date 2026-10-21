@@ -16,7 +16,7 @@ import { getBkitDocsRoot, getTemplatesRoot } from "../../shared/package-roots";
 import { runCoreModule } from "./core";
 import { renderOpencodeJson } from "./opencode";
 import { dispatchModules, type ModuleContext } from "./index";
-import { BKIT_GATE_SCRIPTS } from "../manifest";
+import { BKIT_GATE_SCRIPTS, ISSUE_TRACKERS } from "../manifest";
 import { readBkitVersion, writeBkitVersion } from "../version-file";
 import { writeCursorCliPermissionsArtifact } from "../cloud-env";
 import {
@@ -533,12 +533,18 @@ describe("permissions-parity", () => {
     { cmd: "npm publish", expect: "ask", why: "package publish" },
     { cmd: "bun publish", expect: "ask", why: "package publish" },
     { cmd: "git reset --hard HEAD~1", expect: "ask", why: "discards working tree" },
+    {
+      cmd: "git -C . reset --hard HEAD~1",
+      expect: "ask",
+      why: "discards working tree, global option first",
+    },
     { cmd: "git clean -fd", expect: "ask", why: "deletes untracked files" },
     { cmd: "git clean -fdx", expect: "ask", why: "deletes untracked and ignored files" },
     { cmd: "git filter-branch --tree-filter x", expect: "ask", why: "rewrites history" },
     { cmd: "git checkout -- .", expect: "ask", why: "discards all unstaged changes" },
     { cmd: "git restore .", expect: "ask", why: "discards all unstaged changes" },
     { cmd: "git stash drop", expect: "ask", why: "destroys stashed work" },
+    { cmd: "git stash clear", expect: "ask", why: "destroys every stash" },
     { cmd: "git rebase -i HEAD~3", expect: "ask", why: "interactive history rewrite" },
     { cmd: "gh repo delete o/r", expect: "ask", why: "destroys a repository" },
     { cmd: "gh pr close 1", expect: "ask", why: "closes someone's PR" },
@@ -1259,5 +1265,14 @@ describe("permissions-parity", () => {
         fs.rmSync(cwd, { recursive: true, force: true });
       }
     });
+
+    // bkit's own tracker server needs no context.md entry: the shipped Claude settings
+    // pre-approve it for every tracker alike.
+    it.each(ISSUE_TRACKERS.filter((t) => t !== "none"))(
+      "the shipped Claude settings pre-approve every %s tracker MCP tool",
+      (tracker) => {
+        expect(claudePermissions().allow).toContain(`mcp__${tracker}__*`);
+      },
+    );
   });
 });

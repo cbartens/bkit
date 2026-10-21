@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Issue Prioritisation
 
@@ -61,7 +61,8 @@ Board with no stated rule = filing order. Search feature and authorisation bypas
 | Ranking the next items to work into `docs/roadmap.md` | Roadmap utility | `@bkit-utility-update-roadmap` |
 | Whether a maintenance check should become a gate | Gate sweep | `bkit-audit-gates` |
 | Ordering one migration programme's own queue | Project migration map | Project Instructions |
-| Writing size, priority, labels, or links; closing, merging, or opening issues | Audit reports only | Plan from this report |
+| Writing size, priority, labels, or links | Tracker writes | `@bkit-utility-update-tracker` |
+| Closing, merging, or opening issues | Owner decision | Plan from this report |
 | Assignees, start / target dates, numeric estimate | Rules do not read them | Project Instructions |
 
 ### Ranking Rules
@@ -110,6 +111,21 @@ Two guards:
 
 Finding `CRITICAL`–`LOW` in another audit does not set priority. Two rules do. Severity orders inside `High` only (Step 8).
 
+### Size Scale
+
+Size work, not body. Long evidence write-up can be one-file fix.
+
+<!-- prettier-ignore -->
+| Size | Work |
+| --- | --- |
+| `XS` | One file, one change, plus test |
+| `S` | One surface, a day or less |
+| `M` | Few files in one package, or one full pattern sweep |
+| `L` | Several packages, more than one client, or roughly a week |
+| `XL` | Milestone, full-product inventory, or subsystem not yet built |
+
+Multi-client change never sized as one. Standing/umbrella sized for one run, not series. Milestone sized for contents.
+
 ### Pre-Flight / Dependencies
 
 **Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
@@ -121,9 +137,9 @@ Finding `CRITICAL`–`LOW` in another audit does not set priority. Two rules do.
 Always verify.
 
 - [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
-- [ ] **Tracker Read:** Steps 2, 5, 10 — every board item with lane, size, and priority, e.g. `gh project item-list`, Linear issues. Fallback: none; unread items `Not Checked`, proposal does not cover them.
-- [ ] **Open-Issue List:** Steps 2, 10 — every open issue, every repo / team board draws from, read separately from board, e.g. `gh issue list --state open`, Linear team issues. Fallback: none; membership `Not Checked`, proposal covers board items only.
-- [ ] **Issue Bodies:** Steps 3, 4, 6, 8 — title, labels, body, parent, milestone, blocked-by, e.g. `gh issue view`, Linear issue API. Fallback: titles only; each such rank low-confidence in `Judgement Calls`, links from structured fields only.
+- [ ] **Tracker Read:** Steps 2, 5, 10 — every board item with lane, size, and priority, via tracker MCP, e.g. GitHub MCP `projects_list` (project items), Linear MCP `list_issues`, Jira MCP `searchJiraIssuesUsingJql`; `gh` only as fallback. Fallback: none; unread items `Not Checked`, proposal does not cover them.
+- [ ] **Open-Issue List:** Steps 2, 10 — every open issue, every repo / team board draws from, read separately from board, e.g. GitHub MCP `list_issues`, Linear MCP `list_issues` per team, Jira MCP JQL per project. Fallback: none; membership `Not Checked`, proposal covers board items only.
+- [ ] **Issue Bodies:** Steps 3, 4, 6, 8 — title, labels, body, parent, milestone, blocked-by, e.g. GitHub MCP `issue_read`, Linear MCP `get_issue`, Jira MCP `getJiraIssue`. Fallback: titles only; each such rank low-confidence in `Judgement Calls`, links from structured fields only.
 - [ ] **Web:** Step 11 — fetch anchor standards. Fallback: versions recorded as unread.
 
 #### Conditional
@@ -131,7 +147,7 @@ Always verify.
 Verify only when applicable.
 
 - [ ] **Ship Ledger:** Ship outcomes recorded → Step 9 — e.g. `.bkit/stats.jsonl` `outcome` rows. Fallback: size table unchecked against what shipped; say so.
-- [ ] **Link API:** Tracker exposes structured blocked-by or parent links → Step 4 — e.g. GitHub dependencies / sub-issues APIs, Linear `relations` / `parent`. Fallback: body text only; say so.
+- [ ] **Link API:** Tracker exposes structured blocked-by or parent links → Step 4 — e.g. GitHub MCP `issue_read` sub-issues / parent, Linear `relations` / `parent`, Jira issue links / `parent`. Fallback: body text only; say so.
 
 ### 🔒 Gate 1: Prerequisites Check
 
@@ -148,7 +164,7 @@ Verify only when applicable.
 - [ ] **Step 4 — Links:** Per open issue record parent, milestone, blocked-by. Blocked-by: read all three — structured links (`Link API`), body block build gates on (e.g. GitHub `###### bkit:blocked-by start` / `end`), body prose ("blocked by #N", "after #N"). Flag: (1) Parent — child listed in parent body, no link (or reverse); open child, closed parent; open non-standing parent, all children closed → `Judgement Calls`. (2) Milestone — closed / past-due milestone with open issues; child with no or later milestone than parent; body / title names milestone, field empty; open milestone, no open issues. (3) Blocked-by — prose only; structured link vs body block disagree; closed blocker still listed; blocked issue in ready or later lane, blocker open; blocker off-board; cycle. Edges → Step 5 blocker rule, Step 6 parent / child moves. **Done when:** `Links` holds per-kind counts (with / without parent, milestone, blocker) and every flag, or `none`.
 - [ ] **Step 5 — In Flight:** Three sources: lanes in progress/review; open PRs; issues closed recently (shipped cluster still warm — next issue in cluster cheap). Record launch/milestone target and where written. None → say so; launch-gating keeps Rule 1 band. Count in-progress/in-review; age and last activity (commit, PR, comment). Flag older than service level expectation: 85th-percentile cycle time of issues closed last 90 days, start of work to close. Record how start taken. <20 closed → two weeks, say so. Stuck item lifts parent/children/siblings; list each lift as judgement call. Apply blocker rule to every Step 4 edge. **Done when:** `In Flight` holds counts, ages, target, blocker moves, stuck lifts.
 - [ ] **Step 6 — Rank:** Apply `Ranking Rules` to every in-scope issue. Record every Rule 1 override (label vs body) and label correction. Record every Rule 2 move with signal and launch target read. Band change since previous report without body/labels/in-flight change → one pass misapplied rule — say which. Maintenance check belonging as gate → `bkit-audit-gates`, not band here. Mini-pass → this step on unsized/unprioritised subset only. Monthly clock → eight-week launch moves and stuck lifts only. **Done when:** `Ranking` lists every override, move, band change.
-- [ ] **Step 7 — Size:** Size work, not body. Long evidence write-up can be one-file fix. XS = one file, one change, plus test. S = one surface, a day or less. M = few files one package, or one full pattern sweep. L = several packages, more than one client, or roughly a week. XL = milestone, full-product inventory, or subsystem not yet built. Multi-client change never sized as one. Standing/umbrella sized for one run, not series. Milestone sized for contents. **Done when:** `Sizes` row per in-scope issue.
+- [ ] **Step 7 — Size:** Apply `Size Scale` to every in-scope issue. **Done when:** `Sizes` row per in-scope issue.
 
 - [ ] **Step 8 — Order:** Four bands tie issues. Order each ready-lane band; report top ten. Proposal does not invent order field. (1) Inside `High`: blockers of `Urgent` first, then severity. Defect with ledger/audit `CRITICAL` before `HIGH`, both before rest. Severity orders in band; never moves band. (2) Cost of delay ÷ size (WSJF). Score 1–3: user/business value, time-criticality, risk reduced/work unblocked. Sum ÷ size: XS 1, S 2, M 3, L 5, XL 8. Tie → older issue. Simplified WSJF; standard uses modified Fibonacci per part and job size. (3) Demand when any: error-tracker volume, store reviews, analytics, support, previous-product users → raise value score; name source. Empty → say so; do not guess. **Done when:** `Order` holds top ten with scores.
 - [ ] **Step 9 — Shipped:** Issues closed since previous report → join ship outcome via closing PR (lines changed, duration). Compare with size given. Sizes overlapping heavily in lines/time → size table no longer means what it says; propose change in `Process Improvements`. **Done when:** `Shipped` holds comparison, or no outcomes and say so.

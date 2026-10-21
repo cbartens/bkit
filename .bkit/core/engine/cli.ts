@@ -346,7 +346,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     if (arg.startsWith("--")) {
       const flag = arg.slice(2);
 
-      // Value-bearing flag: --tracker=<github|linear|none>
+      // Value-bearing flag: --tracker=<github|linear|jira|none>
       if (flag.startsWith("tracker=")) {
         const value = flag.slice("tracker=".length);
         const parsed = parseIssueTracker(value);
@@ -727,18 +727,20 @@ Dependency updaters (copy an example and own it):
 
   --auto=<claude|cursor|opencode>
                   Cloud-agent (auto-dispatch) integration (opt-in). --auto=claude needs
-                  tracker=github + the ANTHROPIC_API_KEY repo secret + the Claude GitHub App; --auto=cursor
+                  tracker=github + the ANTHROPIC_API_KEY repo secret (or the
+                  ANTHROPIC_FEDERATION_RULE_ID + ANTHROPIC_ORGANIZATION_ID repo variables
+                  for keyless federation) + the Claude GitHub App; --auto=cursor
                   needs tracker=linear; --auto=opencode needs tracker=github + a remote
                   opencode provider (OPENCODE_PROVIDER_KEY). Bare --auto is accepted on
                   uninstall only.
 
 Cross-cutting / modifiers:
-  --tracker=<name>      Wire issue tracker integration. Values: github, linear, none
+  --tracker=<name>      Wire issue tracker integration. Values: github, linear, jira, none
                         (default). Records bkit.issueTracker in package.json and substitutes
                         tracker snippets into command mirrors. Re-renders every installed
                         host, and works alone (bkit install --tracker=github). Switching is
-                        free; a switch removes the old linear MCP entry unless you edited it
-                        (github always stays). Does NOT own AGENTS.md (tracker-agnostic).
+                        free; a switch removes the old linear or jira MCP entry unless you
+                        edited it (github always stays). Does NOT own AGENTS.md (tracker-agnostic).
 
 Install flags:
   --auto-revert         On a Phase 3 blocker, automatically run uninstall and exit 1.

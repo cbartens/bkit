@@ -124,7 +124,7 @@ function gitAskRule(g) {
         : null;
     }
     case "stash":
-      return g.args[0] === "drop" ? "git stash drop" : null;
+      return g.args[0] === "drop" || g.args[0] === "clear" ? `git stash ${g.args[0]}` : null;
     case "rebase":
       return g.short.has("i") || g.long.has("--interactive") ? "git rebase -i" : null;
     case "filter-branch":

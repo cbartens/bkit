@@ -22,6 +22,7 @@
 // `bkit.ignoreAdvisories` entry silences both.
 
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { machineStepsPath, REPO_STEPS } from "../../commands/workflow/disk.js";
 import { detectContextFetchMissing } from "../before/context-fetch.js";
@@ -87,7 +88,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     id: "tracker",
     workflows: EVERY_CONTEXT,
     title: "Connect an issue tracker",
-    line: "bkit isn't connected to an issue tracker, so it can't read the task it's working on or record what it did. Connect GitHub or Linear, or switch this tip off if you don't want one.",
+    line: "bkit isn't connected to an issue tracker, so it can't read the task it's working on or record what it did. Connect GitHub, Linear or Jira, or switch this tip off if you don't want one.",
     why: "Every workflow starts by reading the issue it's working on and reports progress back to it as it goes. Without a tracker, you have to paste in what the agent should look at each time, and nothing records what changed or why.",
     ask: 'Connect bkit to GitHub Issues: re-run `bkit install` with the tool flags I use plus `--tracker=github` (it records `bkit.issueTracker` in package.json and adds the tracker server to .mcp.json). If I don\'t want a tracker, set `"issueTracker": "none"` under `bkit` in package.json instead.',
     steps:
@@ -235,7 +236,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     title: "Finish cloud setup",
     line: "You've turned on cloud agents, but setup isn't finished, so cloud runs will stop partway. Finish the remaining steps.",
     why: "With cloud agents, bkit runs on its own: a change that passes its checks gets shipped and one that fails gets investigated, with nobody at the keyboard. That only works once every piece is in place.",
-    ask: "Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml and .bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh to .claude/hooks/ (for Cursor: .bkit/templates/.cursor/environment.json and .bkit/templates/.cursor/Dockerfile to .cursor/), run `gh secret set ANTHROPIC_API_KEY`, then tell me which dashboard settings are left.",
+    ask: "Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml and .bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh to .claude/hooks/ (for Cursor: .bkit/templates/.cursor/environment.json and .bkit/templates/.cursor/Dockerfile to .cursor/), run `gh secret set ANTHROPIC_API_KEY` (or, keyless, `gh variable set` ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID from a Claude Console federation rule), then tell me which dashboard settings are left.",
     steps: "`.bkit/cloud.md`; `.bkit/templates.md` § Cloud-agent workflow and § Cursor.",
     fires: (cwd) => {
       const cloud = readBkitConfig(cwd).cloudAgents;
@@ -377,6 +378,18 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     steps: "`.bkit/templates.md` § tmp/ prune.",
     fires: (cwd) =>
       exists(cwd, ".husky/pre-push") && !exists(cwd, "scripts/cleanup/bkit-tmp-prune.mjs"),
+  },
+  {
+    id: "min-push",
+    workflows: ["plan", "ship"],
+    title: "Quick pushes for logs and records",
+    line: "Pushing only plan logs and records still runs every test. Add the quick path for those pushes.",
+    why: "A workflow's last push is often just its logs and records. The quick path checks only formatting and wording on such a push, so it takes seconds and never waits on anything another session is using. Any other file still runs everything.",
+    ask: 'Copy the min-push parts of .bkit/templates/.husky/pre-push into .husky/pre-push: PUSH_SHAS / PUSH_SHARED_SHAS in the stdin loop, the `Min push` and `CI-suppressor guard on dev / main` blocks, and the `bkit:gate:min` branch. Wrap slow checks below the gates in `if [ "$MIN_PUSH" != "1" ]`.',
+    steps: "`.bkit/templates.md` § Git hooks.",
+    fires: (cwd) =>
+      exists(cwd, ".husky/pre-push") &&
+      !fs.readFileSync(path.join(cwd, ".husky/pre-push"), "utf-8").includes("bkit ci min-push"),
   },
   {
     id: "disk-prune",

@@ -41,7 +41,7 @@ maxTurns: 200
 - **One step:** Per pass, either instrument or fix — never both, never broad-both.
 - **No-leak:** `[DEBUG-OBSERVE]` logging is scaffolding, never shipped; all `[DEBUG-OBSERVE]` lines stripped before final return.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
-- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git stash clear`, `git push --force` (any flavour).
 
 **Process:**
 

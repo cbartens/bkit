@@ -295,44 +295,36 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     expect(findings.some((a) => a.id === "mcp-env-missing-dotenv")).toBe(true);
   });
 
-  it("mcp-env-blank-key advisories surface when .bkit/.env has blank values (Linear tracker → both required keys)", () => {
-    // Linear tracker so BKIT_LINEAR_API_KEY is a required key.
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { issueTracker: "linear" } }),
-      "utf-8",
-    );
-    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=\nBKIT_LINEAR_API_KEY=\n",
-      "utf-8",
-    );
+  // Each tracker requires BKIT_GH_TOKEN plus its own token; another tracker's token is
+  // never flagged (issue #138).
+  it.each([
+    ["github", []],
+    ["linear", ["BKIT_LINEAR_API_KEY"]],
+    ["jira", ["BKIT_JIRA_API_TOKEN"]],
+  ] as const)(
+    "%s tracker: mcp-env-blank-key flags BKIT_GH_TOKEN and only that tracker's own token",
+    (tracker, ownKeys) => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "x", bkit: { issueTracker: tracker } }),
+        "utf-8",
+      );
+      fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".bkit", ".env"),
+        "BKIT_GH_TOKEN=\nBKIT_LINEAR_API_KEY=\nBKIT_JIRA_API_TOKEN=\n",
+        "utf-8",
+      );
 
-    const findings = runPostInstallCheck([], tmpDir);
-    const ids = findings.map((a) => a.id);
-    expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
-    expect(ids).toContain("mcp-env-blank-key-bkit_linear_api_key");
-  });
-
-  it("github tracker: mcp-env-blank-key does NOT flag BKIT_LINEAR_API_KEY (issue #138)", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { issueTracker: "github" } }),
-      "utf-8",
-    );
-    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=\nBKIT_LINEAR_API_KEY=\n",
-      "utf-8",
-    );
-
-    const findings = runPostInstallCheck([], tmpDir);
-    const ids = findings.map((a) => a.id);
-    expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
-    expect(ids).not.toContain("mcp-env-blank-key-bkit_linear_api_key");
-  });
+      const findings = runPostInstallCheck([], tmpDir);
+      const ids = findings.map((a) => a.id);
+      expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
+      const flagged = ["BKIT_LINEAR_API_KEY", "BKIT_JIRA_API_TOKEN"].filter((key) =>
+        ids.includes(`mcp-env-blank-key-${key.toLowerCase()}`),
+      );
+      expect(flagged).toEqual(ownKeys);
+    },
+  );
 
   it("no mcp-env advisories when .bkit/.env has all keys populated and no .envrc", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");

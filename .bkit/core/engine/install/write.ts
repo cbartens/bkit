@@ -319,6 +319,27 @@ export function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
 }
 
+/**
+ * Give an existing `dstPath` the executable bits `srcPath` carries. Hosts run some hooks
+ * directly (Cursor's `bkit-preflight.sh`), so a lost bit is drift: recorded in `ws` (a dry
+ * run included, so `bkit check` fails) and restored on a real run. No-op on Windows.
+ */
+export function restoreExecBits(
+  srcPath: string,
+  dstPath: string,
+  dryRun: boolean,
+  ws: WriteSet,
+): void {
+  if (process.platform === "win32" || !fs.existsSync(dstPath)) return;
+  const execBits = fs.statSync(srcPath).mode & 0o111;
+  const dstMode = fs.statSync(dstPath).mode;
+  if ((dstMode & execBits) === execBits) return;
+  if (!dryRun) fs.chmodSync(dstPath, (dstMode | execBits) & 0o7777);
+  if (!ws.writes.some((w) => w.path === dstPath)) {
+    ws.writes.push({ path: dstPath, action: "update" });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // fully-managed format — idempotent rewrite of whole file after token substitution
 //
@@ -338,7 +359,10 @@ export function writeTier1(
 
   if (fs.existsSync(dstPath)) {
     const existing = fs.readFileSync(dstPath, "utf-8");
-    if (existing === srcContent) return; // identical — no-op
+    if (existing === srcContent) {
+      restoreExecBits(srcPath, dstPath, dryRun, ws);
+      return;
+    }
   }
 
   ensureDir(path.dirname(dstPath));
@@ -412,6 +436,18 @@ function hasRetiredDriver(dstPath: string, content: string, markerStyle: MarkerS
 }
 
 export function writeTier2(
+  srcPath: string,
+  dstPath: string,
+  tokens: TokenMap,
+  markerStyle: MarkerStyle,
+  dryRun: boolean,
+  ws: WriteSet,
+): void {
+  writeTier2Content(srcPath, dstPath, tokens, markerStyle, dryRun, ws);
+  restoreExecBits(srcPath, dstPath, dryRun, ws);
+}
+
+function writeTier2Content(
   srcPath: string,
   dstPath: string,
   tokens: TokenMap,

@@ -15,6 +15,7 @@ import {
   detectNoopGates,
   isNoopScript,
   runBkitDocs,
+  migrateLinearTeamKey,
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
 import { readInstallingVersion } from "../../shared/package-json";
@@ -273,6 +274,24 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
     expect(finding?.action).toContain(
       '"bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration"',
     );
+  });
+
+  it("names a script the commit gate runs that the push gate runs again", () => {
+    writeScripts({
+      ...BKIT_GATE_SCRIPTS,
+      "bkit:gate:format": "pnpm lint-staged && pnpm run test:placeholders && pnpm lint:prose",
+      "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration",
+    });
+    const finding = detectGateAdvisories(tmpDir).find((f) => f.id === "gate-commit-repeats-push");
+    expect(finding?.detect).toContain("`lint:prose`");
+    expect(finding?.detect).toContain("`bkit:gate:static-unit-integration`");
+    expect(finding?.detect).not.toContain("`test:placeholders`");
+    expect(finding?.detect).not.toContain("`lint-staged`");
+  });
+
+  it("stays silent when the commit gate only formats staged files", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS });
+    expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain("gate-commit-repeats-push");
   });
 
   it("advises declaring bkit:test:file until package.json has it, with the contract inline", () => {
@@ -571,6 +590,59 @@ describe.each([
 // ---------------------------------------------------------------------------
 // Migration: .agents/shortcuts.md (5.1.0 – 5.2.4) → .bkit/lite.md
 // ---------------------------------------------------------------------------
+
+describe("migrateLinearTeamKey (via seedCorePackageJsonScripts)", () => {
+  const seed = (bkit: Record<string, unknown>): void =>
+    fs.writeFileSync("package.json", JSON.stringify({ name: "x", bkit }, null, 4) + "\n", "utf-8");
+  const read = (): string => fs.readFileSync("package.json", "utf-8");
+  const bkitKey = (): Record<string, unknown> => JSON.parse(read()).bkit;
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    migrateLinearTeamKey(ctx.dryRun, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const touched = (ctx: ModuleContext): boolean =>
+    ctx.ws.writes.some((w) => w.path === "package.json");
+
+  it("moves a 5.4.x bkit.linearTeam to bkit.linear.team, keeping the file's indent", () => {
+    seed({ issueTracker: "linear", linearTeam: "ENG" });
+    expect(touched(run())).toBe(true);
+    expect(bkitKey()).toEqual({ issueTracker: "linear", linear: { team: "ENG" } });
+    expect(read()).toMatch(/\n {4}"bkit"/);
+  });
+
+  it("keeps an existing bkit.linear.team and the other linear keys, and drops a blank old key", () => {
+    seed({ linearTeam: "OLD", linear: { team: "NEW", review: "Code Review" } });
+    run();
+    expect(bkitKey()).toEqual({ linear: { team: "NEW", review: "Code Review" } });
+    seed({ linearTeam: "  " });
+    run();
+    expect(bkitKey()).toEqual({});
+  });
+
+  it("leaves a jira config alone: no write, bkit.jira untouched", () => {
+    const jira = { site: "https://acme.atlassian.net", project: "ENG", review: "Code Review" };
+    seed({ issueTracker: "jira", jira });
+    const before = read();
+    expect(touched(run())).toBe(false);
+    expect(read()).toBe(before);
+    expect(bkitKey()).toEqual({ issueTracker: "jira", jira });
+  });
+
+  it("under dry-run records the same write and leaves the file", () => {
+    seed({ linearTeam: "ENG" });
+    const before = read();
+    expect(touched(run(true))).toBe(true);
+    expect(read()).toBe(before);
+  });
+
+  it("is idempotent, and runs on every install through the core module", () => {
+    seed({ linearTeam: "ENG" });
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    expect(bkitKey().linear).toEqual({ team: "ENG" });
+    expect(touched(run())).toBe(false);
+  });
+});
 
 describe("migrateRetiredDevLock (via runBkitDocs)", () => {
   const LOCK = path.join(".bkit", ".dev.lock");

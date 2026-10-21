@@ -6,14 +6,29 @@ import { spawnSync } from "node:child_process";
 // ---------------------------------------------------------------------------
 // [mcp-env] advisories — direnv + .bkit/.env setup (BAR-260)
 // ---------------------------------------------------------------------------
+/** The token a tracker's MCP server reads from `.bkit/.env`, beside `BKIT_GH_TOKEN`. */
+const TRACKER_TOKENS = {
+    linear: {
+        key: "BKIT_LINEAR_API_KEY",
+        description: "Linear personal API key for the Linear MCP server and the Linear preflight hook (generate at https://linear.app/settings/api)",
+    },
+    jira: {
+        key: "BKIT_JIRA_API_TOKEN",
+        description: 'Atlassian API token with scopes for the app "Atlassian MCP V2", sent as Bearer to the Jira MCP server (create at https://id.atlassian.com/manage-profile/security/api-tokens; see .bkit/trackers.md § jira)',
+    },
+};
+/** The token names `tracker` needs, `BKIT_GH_TOKEN` first. */
+function tokenKeys(tracker) {
+    const own = TRACKER_TOKENS[tracker];
+    return own ? ["BKIT_GH_TOKEN", own.key] : ["BKIT_GH_TOKEN"];
+}
 /**
  * Advisory: .bkit/.env.example exists but .bkit/.env does not.
  * Consumer ran `bkit install` (which seeds .env.example) but has not yet
  * copied it to .bkit/.env and filled in their tokens.
  */
-// `tracker` controls whether `BKIT_LINEAR_API_KEY` appears in the token prose (Linear
-// tracker only). Defaults to `linear` (the superset: every token); the real Phase-3
-// caller passes the consumer's resolved `bkit.issueTracker`.
+// `tracker` adds its own token to the token prose (`TRACKER_TOKENS`). Defaults to
+// `linear`; the real Phase-3 caller passes the consumer's resolved `bkit.issueTracker`.
 export function detectMissingDotenv(cwd, tracker = "linear") {
     const examplePath = path.join(cwd, ".bkit", ".env.example");
     const envPath = path.join(cwd, ".bkit", ".env");
@@ -21,7 +36,7 @@ export function detectMissingDotenv(cwd, tracker = "linear") {
         return null;
     if (fs.existsSync(envPath))
         return null;
-    const tokens = tracker === "linear" ? "BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY" : "BKIT_GH_TOKEN";
+    const tokens = tokenKeys(tracker).join(", ");
     return {
         id: "mcp-env-missing-dotenv",
         severity: "advisory",
@@ -57,15 +72,8 @@ export function detectBlankDotenvKeys(cwd, tracker = "linear") {
             key: "BKIT_GH_TOKEN",
             description: "fine-grained PAT for the GitHub MCP server (Contents, Pull requests, Issues, Actions, Workflows, Metadata — read/write), or a classic PAT when one token must span owners",
         },
-        // BKIT_LINEAR_API_KEY is required only under the Linear tracker.
-        ...(tracker === "linear"
-            ? [
-                {
-                    key: "BKIT_LINEAR_API_KEY",
-                    description: "Linear personal API key for the Linear MCP server and the Linear preflight hook (generate at https://linear.app/settings/api)",
-                },
-            ]
-            : []),
+        // A tracker token is required only under its tracker.
+        ...(TRACKER_TOKENS[tracker] ? [TRACKER_TOKENS[tracker]] : []),
     ];
     const findings = [];
     for (const { key, description } of REQUIRED_KEYS) {
@@ -105,9 +113,8 @@ export function detectDirenvMissing(cwd, tracker = "linear") {
     const result = spawnSync("which", ["direnv"], { encoding: "utf-8" });
     if (result.status === 0 && result.stdout.trim())
         return null;
-    // BKIT_LINEAR_API_KEY is required only under the Linear tracker.
-    const editKeys = tracker === "linear" ? "BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY" : "BKIT_GH_TOKEN";
-    const exportKeys = tracker === "linear" ? "BKIT_GH_TOKEN / BKIT_LINEAR_API_KEY" : "BKIT_GH_TOKEN";
+    const editKeys = tokenKeys(tracker).join(", ");
+    const exportKeys = tokenKeys(tracker).join(" / ");
     return {
         id: "mcp-env-direnv-missing",
         severity: "advisory",
@@ -156,7 +163,7 @@ export function detectDirenvNotAllowed(cwd, tracker = "linear") {
             id: "mcp-env-direnv-not-allowed",
             severity: "advisory",
             detect: "direnv is installed but the .envrc in this repo is blocked. .bkit/.env is not being auto-loaded.",
-            action: `[mcp-env] Run \`direnv allow\` in this repo to trust the .envrc and enable auto-load of .bkit/.env. direnv will then export ${tracker === "linear" ? "BKIT_GH_TOKEN and BKIT_LINEAR_API_KEY" : "BKIT_GH_TOKEN"} into your shell whenever you cd into the repo.`,
+            action: `[mcp-env] Run \`direnv allow\` in this repo to trust the .envrc and enable auto-load of .bkit/.env. direnv will then export ${tokenKeys(tracker).join(" and ")} into your shell whenever you cd into the repo.`,
         };
     }
     return null;
