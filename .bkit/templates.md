@@ -14,7 +14,7 @@
 
 ## What each template is for
 
-Adoption order = `bkit tips` order. Sections below: install steps and traps.
+Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a repo shows a stack every worktree shares) → adopt it once a second worktree touches that stack. Sections below: install steps and traps.
 
 <!-- prettier-ignore -->
 | Template | What it's for | Skip it and |
