@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Added
+
+- **`bkit-cloud.yml`'s claude job runs without a stored API key.** Set the `ANTHROPIC_FEDERATION_RULE_ID` and `ANTHROPIC_ORGANIZATION_ID` repo variables from a Claude Console federation rule and leave the `ANTHROPIC_API_KEY` secret unset: `claude-code-action` trades the job's GitHub OIDC token for a Claude API token that lasts minutes. A set key still wins over federation. The template's gate step is now `Check runner credentials` and the claude step passes the federation inputs; re-copy your adopted `.github/workflows/bkit-cloud.yml` to use them. `bkit check` stops asking for the key once federation is set up, and flags a key that shadows federation (`anthropic-api-key-shadows-federation`) and an adopted copy too old to pass the inputs (`anthropic-federation-template-stale`). Setup: `.bkit/cloud.md` § Claude — workload identity federation. (#644)
+
 ### Changed
 
 - **The `/bkit-design` interview ends by confirming a draft acceptance scenario.** The last round shows a draft Narrative, Success Criteria, Key Edge Cases and Process Sketch, built from the prompt, the issue and its comments, and every answer so far. It asks you to confirm or refine the parts it had to guess, and counts toward the 10-round cap. The draft is saved under a `DRAFT only` label. The design starts its Acceptance Scenario from it and records each change as a Decisions row. Headless runs save the draft marked as not reviewed by a human; `grill=false` writes no draft.

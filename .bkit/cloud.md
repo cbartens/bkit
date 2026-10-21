@@ -438,8 +438,9 @@ Keyless claude job: no long-lived `ANTHROPIC_API_KEY` stored in GitHub. `claude-
 
 1. Claude Console → **Settings → Workload identity → Connect workload → GitHub Actions**. Creates the federation issuer, a service account, and a federation rule.
 2. Scope the rule to this repo's default branch — `bkit-cloud.yml` runs from it (`workflow_run` + `workflow_dispatch`):
-   - subject: `repo:<owner>/<repo>:ref:refs/heads/<default-branch>`
-   - claims: `repository_owner` = `<owner>`, `workflow_ref` = `<owner>/<repo>/.github/workflows/bkit-cloud.yml@refs/heads/<default-branch>`
+   - `subject_prefix`: `repo:<owner>/<repo>:ref:refs/heads/<default-branch>`
+   - claims: `repository_owner` = `<owner>`, `ref` = `refs/heads/<default-branch>`
+   - to limit the rule to `bkit-cloud.yml`, add claim `workflow_ref` = `<owner>/<repo>/.github/workflows/bkit-cloud.yml@refs/heads/<default-branch>`. GitHub's token carries it; Anthropic's docs do not list it as matchable. Without it, every workflow on the default branch matches the rule.
 3. Set repo **variables** (IDs, not secrets):
    ```sh
    gh variable set ANTHROPIC_FEDERATION_RULE_ID --body='fdrl_...'
@@ -450,7 +451,7 @@ Keyless claude job: no long-lived `ANTHROPIC_API_KEY` stored in GitHub. `claude-
 
 **Adopted copy predates federation:** variables set but `.github/workflows/bkit-cloud.yml` lacks the `anthropic_federation_rule_id:` input → claude job sees no credential. `bkit check` flags it (`anthropic-federation-template-stale`); re-copy from `.bkit/templates/.github/workflows/bkit-cloud.yml`, re-apply local edits (`runs-on`).
 
-**401 from token exchange:** rule subject/claims don't match the run's OIDC token. Console → Workload identity → issuer → auth history shows the presented subject; widen or fix the rule. A job on a non-default branch or an `environment:` has a different subject (`...:ref:refs/heads/<branch>` / `...:environment:<name>`).
+**401 from token exchange:** Anthropic returns `401 Authentication failed` whichever check failed. Console → Workload identity → authentication history shows the deny reason per attempt; `match_subject_prefix` = the run's `sub` doesn't match the rule's `subject_prefix` — fix or widen the rule. A job on a non-default branch or an `environment:` has a different subject (`...:ref:refs/heads/<branch>` / `...:environment:<name>`).
 
 Slash command body already in checked-out repo (mirrored to `.claude/commands/bkit-auto.md` and `.opencode/commands/bkit-auto.md` at dev time via `bkit install`). Repo git/gh ops use auto-provided `github.token` scoped by workflow `permissions:` block.
 
