@@ -47,6 +47,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 
 /bkit-design ───── output: detailed design ───────────────────────────────────
   1. grill              (human interview, one decision frontier per round;
+                         last round confirms a DRAFT acceptance scenario;
                          skipped headless: recommended answers recorded as assumed)
   2. fetch related       (semantic tracker search, rank order → related-issues.md)
   3. brainstorm × 3 (parallel, distinct lenses, no sibling reads)

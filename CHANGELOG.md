@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Changed
+
+- **The `/bkit-design` interview ends by confirming a draft acceptance scenario.** The last round shows a draft Narrative, Success Criteria, Key Edge Cases and Process Sketch, built from the prompt, the issue and its comments, and every answer so far. It asks you to confirm or refine the parts it had to guess, and counts toward the 10-round cap. The draft is saved under a `DRAFT only` label. The design starts its Acceptance Scenario from it and records each change as a Decisions row. Headless runs save the draft marked as not reviewed by a human; `grill=false` writes no draft.
+
 ## [5.4.0] — 2026-10-20
 
 ### Breaking Changes

@@ -30,7 +30,7 @@ Three cloud stacks — each agent pairs with one tracker. Pick row for agent you
 
 **Unified file — additive coexistence:** Claude + opencode share one `bkit-cloud.yml`: a `context` job resolves the phase once, then two runner jobs, each runtime-gated on its credential (claude: `ANTHROPIC_API_KEY` secret or federation variables; opencode: `OPENCODE_PROVIDER_KEY`). Both jobs can fire on same CI event — both credentials → both agents; one → one agent. Cursor separate (no GH Action; native triggers). **Cursor cloud ↔ Linear.**
 
-**Manual dispatch (Claude or opencode, path A):** GitHub → **Actions** → **bkit-cloud** → **Run workflow** → `phase` (`ship` / `debug` / `design` / `plan` / `build`) + `issue`. On-demand/smoke-test for `design` / `plan` / `build`; `ship` / `debug` normally CI-fired. Dispatched `design` runs headless (`runtimeHeadless` = true on a GitHub runner): Grill asks nothing and records each recommended answer as `Assumed, not confirmed`. Dispatched `/bkit-auto` orchestrator → matching phase skill → brief from GitHub issue (MCP).
+**Manual dispatch (Claude or opencode, path A):** GitHub → **Actions** → **bkit-cloud** → **Run workflow** → `phase` (`ship` / `debug` / `design` / `plan` / `build`) + `issue`. On-demand/smoke-test for `design` / `plan` / `build`; `ship` / `debug` normally CI-fired. Dispatched `design` runs headless (`runtimeHeadless` = true on a GitHub runner): Grill asks nothing, records each recommended answer as `Assumed, not confirmed`, and records the draft acceptance scenario as not reviewed by a human. Dispatched `/bkit-auto` orchestrator → matching phase skill → brief from GitHub issue (MCP).
 
 ### Reactive comment handlers (`claude.yml` + `opencode.yml`) — separately managed, not bkit
 

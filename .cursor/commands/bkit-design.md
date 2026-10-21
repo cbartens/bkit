@@ -172,23 +172,39 @@ Design Feature — Autonomous design phase
    ```
    Hold `runtimeHeadless` as `{RUNTIME_HEADLESS}`, `runtime` as `{RUNTIME}`.
    Route:
-   - **If** session prompt contains `grill=false` → create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions` heading plus `Skipped (grill=false).` → step 5.
-   - **If** `RUNTIME_HEADLESS` = true → no human to ask: map the tree and frontier per step 2 without asking or ending the turn, taking each recommended answer as given to open the next frontier, until it is empty or 10 rounds → step 4; every question counts as unanswered at stop.
+   - **If** session prompt contains `grill=false` → create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions` heading plus `Skipped (grill=false).` → step 6.
+   - **If** `RUNTIME_HEADLESS` = true → no human to ask: map the tree and frontier per step 2 without asking or ending the turn, taking each recommended answer as given to open the next frontier, until it is empty or 9 rounds; then write the draft scenario per step 4 without asking → step 5; every question counts as unanswered at stop.
    - **Else** → step 2.
 2. Interview the human in this session; NEVER hand the interview to a subagent because subagents cannot reach the human:
-   - Read `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** an earlier run left a `docs/plans/{YYYYMM}/logs/{FID}/design-grill-*.md` → the newest one's `Settled` entries stay settled; ask only what they leave open or what `ISSUE_TEXT` changed since.
+   - Read `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** an earlier run left a `docs/plans/{YYYYMM}/logs/{FID}/design-grill-*.md` → the newest one's `Settled` entries stay settled and its `Draft Acceptance Scenario` is the starting draft for step 4; ask only what they leave open or what `ISSUE_TEXT` changed since.
    - Map open decisions as a tree: each decision branches into the decisions that depend on it. Frontier = every unsettled decision whose prerequisites are settled.
    - One round = the whole frontier in one message. A question that depends on another question in the same round waits for a later round.
    - Per question: `❓ **Q{n} — {title}:** {question, options}`, then `➡️ {recommended answer}` on its own line. Number `Q1`, `Q2`, … across all rounds; word each so "yes" accepts the recommended answer; plain text only; do not use a host question tool.
    - Look up facts (repo, docs, tools; read-only subagents allowed); never ask the human for a fact that can be looked up. A pending lookup holds back only the questions that depend on it.
    - Put decisions to the human only; never answer on the human's behalf. Narrate `Grill round {k}/10` → end turn → wait for answers.
 3. Recompute the frontier from the answers. Route:
-   - **If** frontier empty **and** the human confirms shared understanding → step 4.
-   - **If** the human says stop **or** 10 rounds asked → step 4.
+   - **If** the human says stop → write the draft scenario per step 4 without asking → step 5.
+   - **If** frontier empty **or** 9 rounds asked → step 4.
    - **Else** → step 2, next round.
-4. Create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions` heading; the line `Settled = the human's answer; the design follows it and flags any departure for the human to confirm. Assumed = unconfirmed default; override only with a stated reason. Open = unknown; the design states how it resolves each.`; then `### Settled`, `### Assumed, not confirmed`, `### Open` headings, one `- Q{n} {title}: {answer}` line per question. Unanswered at stop → `Assumed, not confirmed` with the recommended answer; "don't know" → `Open`; empty section → `None.` **If** `RUNTIME_HEADLESS` = true → add the line `Headless run ({RUNTIME}): no human interviewed this run.` under the heading.
-5. Append `design-grill-{RUN}.md` verbatim to `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** `design-input-{RUN}.md` already holds a `Grill decisions` section → replace it.
-6. Finish:
+4. Draft scenario round — always the last round asked; counts toward the 10-round cap:
+   - Draft the acceptance scenario from the whole context: session prompt, `ISSUE_TEXT` (description and comments), every answer so far, and facts looked up. Four parts, in this order:
+     - `Narrative` — 2-3 sentences, user POV, not system POV.
+     - `Success Criteria` — <=5 measurable outcomes; no tests, no implementation steps.
+     - `Key Edge Cases` — design-shaping only (concurrency, conflicts, failure modes, cross-feature interactions).
+     - `Process Sketch` — 3-7 `WHEN X → THEN Y` lines with the same examples; outcomes, not implementation steps.
+   - Show the whole draft, then one question per item the draft inferred rather than took from the context or an answer, per step 2 format with the recommended answer = as drafted; last question: `❓ **Q{n} — Draft acceptance scenario:** accept the draft with the answers above as the design's starting point?` with `➡️ Yes`. Narrate `Grill round {k}/10 — draft acceptance scenario` → end turn → wait for answers.
+   - Fold the answers into the draft. Route:
+     - **If** an answer opens new decisions **and** fewer than 9 rounds asked → step 2, next round; the draft round repeats after.
+     - **Else** → step 5; new decisions left unasked → `Open`.
+5. Create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions` heading; the line `Settled = the human's answer; the design follows it and flags any departure for the human to confirm. Assumed = unconfirmed default; override only with a stated reason. Open = unknown; the design states how it resolves each.`; then `### Settled`, `### Assumed, not confirmed`, `### Open` headings, one `- Q{n} {title}: {answer}` line per question; then `### Draft Acceptance Scenario` heading with the draft's four parts as `####` sub-headings. Unanswered at stop → `Assumed, not confirmed` with the recommended answer; "don't know" → `Open`; empty section → `None.` **If** `RUNTIME_HEADLESS` = true → add the line `Headless run ({RUNTIME}): no human interviewed this run.` under the heading.
+   Decide `DRAFT_REVIEW`:
+   - **If** the human accepted the draft (its last question `Settled`) → `reviewed in the design interview`.
+   - **Else** → `not reviewed by a human; built from the issue and the recommended answers`.
+
+   First line under `### Draft Acceptance Scenario` = `> **DRAFT only:** {DRAFT_REVIEW}. Starting point for the design's Acceptance Scenario, not a fixed contract: the design may change any part, and records each change as a Decisions row.`
+
+6. Append `design-grill-{RUN}.md` verbatim to `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** `design-input-{RUN}.md` already holds a `Grill decisions` section → replace it.
+7. Finish:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-grill --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md --message="chore({FID}): grill" --number=3 --title=Grill --link-ref=dev --comment-body
    ```
@@ -197,6 +213,7 @@ Design Feature — Autonomous design phase
 
 - [ ] Interview held in this session, assumed headless, or skipped (no subagent put a question to the human; rounds <= 10; no question asked and no turn ended when `RUNTIME_HEADLESS` = true; skip only on `grill=false`)
 - [ ] Grill decisions appended to input (one `Grill decisions` section in `design-input-{RUN}.md`)
+- [ ] Draft acceptance scenario recorded (`### Draft Acceptance Scenario` with its four parts under a `DRAFT only` first line; absent only on `grill=false`)
 - [ ] Mechanical checks passed (`steps finish` exit 0: `design-grill-{RUN}.md`, `design-input-{RUN}.md`, step `design-grill` recorded)
 
 ---
