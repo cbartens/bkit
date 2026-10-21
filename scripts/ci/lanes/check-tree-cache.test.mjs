@@ -164,6 +164,14 @@ test("unparseable gh output exits 0 with skip=false", () => {
   assert(r.status === 0 && r.stdout === "skip=false", JSON.stringify(r));
 });
 
+test("a failed job lookup does not count the run: skip=false", () => {
+  const r = runWithFakes({
+    gh: `case "$2" in *jobs*) echo boom >&2; exit 1 ;; *) ${RUNS} ;; esac`,
+    git: `echo ${TREE}`,
+  });
+  assert(r.status === 0 && r.stdout === "skip=false", JSON.stringify(r));
+});
+
 test("a git failure exits 0 with skip=false", () => {
   const r = runWithFakes({ gh: GH_OK, git: "exit 128" });
   assert(r.status === 0 && r.stdout === "skip=false", JSON.stringify(r));

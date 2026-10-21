@@ -64,15 +64,16 @@ export function decideTreeSkip({ eventName, title, headTree, runs, jobConclusion
   };
 }
 
+/** Runs `gh`; never throws. `ok` false carries the reason (spawn error or first stderr line). */
 function gh(args) {
   const { status, stdout, stderr, error } = spawnSync("gh", args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (error || status !== 0) {
-    throw new Error(error ? error.message : String(stderr).split("\n")[0]);
+    return { ok: false, out: "", reason: error ? error.message : String(stderr).split("\n")[0] };
   }
-  return stdout;
+  return { ok: true, out: stdout, reason: "" };
 }
 
 function greenPushRuns(repo, now = new Date()) {
@@ -80,29 +81,31 @@ function greenPushRuns(repo, now = new Date()) {
   const path =
     `repos/${repo}/actions/workflows/${WORKFLOW_FILE}/runs` +
     `?event=push&status=success&created=${encodeURIComponent(`>=${since}`)}&per_page=100`;
-  const out = gh([
+  const res = gh([
     "api",
     path,
     "--jq",
     "[.workflow_runs[] | {id, run_number, tree: .head_commit.tree_id}]",
   ]);
-  return JSON.parse(out || "[]");
+  // No run list is not fatal: main() turns this into skip=false, which runs the suite.
+  if (!res.ok) throw new Error(`could not list ${WORKFLOW_FILE} runs (${res.reason})`);
+  return JSON.parse(res.out || "[]");
 }
 
 function jobConclusionIn(repo, job) {
   return (runId) => {
-    try {
-      const out = gh([
-        "api",
-        `repos/${repo}/actions/runs/${runId}/jobs?per_page=100`,
-        "--jq",
-        `[.jobs[] | select(.name == ${JSON.stringify(job)}) | .conclusion] | first // ""`,
-      ]);
-      return out.trim();
-    } catch (err) {
-      console.error(`[check-tree-cache] could not read jobs of run ${runId} (${err.message})`);
+    const res = gh([
+      "api",
+      `repos/${repo}/actions/runs/${runId}/jobs?per_page=100`,
+      "--jq",
+      `[.jobs[] | select(.name == ${JSON.stringify(job)}) | .conclusion] | first // ""`,
+    ]);
+    // An unreadable job list proves nothing about this lane, so the run does not count.
+    if (!res.ok) {
+      console.error(`[check-tree-cache] could not read jobs of run ${runId} (${res.reason})`);
       return "";
     }
+    return res.out.trim();
   };
 }
 
