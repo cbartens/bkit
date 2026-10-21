@@ -21,9 +21,9 @@ Auto — Phase-routed dispatch of any bkit phase
 > - **External tools:** `gh` reads the PR and its CI run; **If** `gh` is missing or unauthenticated (exit 80) → **Failure Path**. Tracker calls always stay on MCP; never invent `gh` read-paths for trackers.
 
 
-> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`. Assert `{ISSUE_ID}` non-empty before tool calls; all writes best-effort; never gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new; a phase start also drops every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path).
-> - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking not required.
+> - **Tracker:** GitHub Issues via MCP server `github` (`.mcp.json` `mcpServers.github`). Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`. Assert `{ISSUE_ID}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path).
+> - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
@@ -49,6 +49,7 @@ Auto — Phase-routed dispatch of any bkit phase
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
    ```
    → hold `bkit` as `{BKIT}`, `outboxRoot` as `{OUTBOX_ROOT}`.
+   Hold `trackerTeam` as `{TRACKER_TEAM}`, `trackerProject` as `{TRACKER_PROJECT}`, `trackerSite` as `{TRACKER_SITE}`.
 3. Resolve the phase, its mode, and everything the dispatch needs — `BRIEF` (design / plan / build): `ARG` is the issue; `CI` (ship / debug, numeric `ARG`): the open PR, the CI run at its head, and `FID` / `ISSUE_ID` from the PR-body `<!-- bkit:` marker, else the `feat/{FID}` branch; `CI_DEV` (ship / debug, slug `ARG`): `ARG` is the `FID`, checked against the slug allowlist before any path uses it, on `dev` at `origin/dev`:
    ```bash
    "{BKIT}" runs context --phase="{PHASE}" --arg="{ARG}"

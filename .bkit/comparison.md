@@ -50,7 +50,7 @@ Kind: **Framework** runs a fixed multi-phase process · **Spec toolkit** writes 
 | **Sign-offs**<br>stops for human approval | ✅ design, plan, merge | ✅ design, plan, merge | ✅ design, plan, merge | ◐ interactive only | ✅ roadmap, acceptance, ship | ◐ risky plans, done, epic | ✅ spec, plan | ◐ by convention | ✅ requirements, design, PR | ✅ plan, commit | ◐ per action |
 | **Checked**<br>"done" proved by code, not the agent's word | ✅ tests seen failing before code | ✅ task's test must pass | ✅ test evidence tied to files | ◐ | ✅ goes stale on file change | ◐ (✅ with loop) | ◐ | ◐ spec structure only | ✅ property-based tests | ◐ | ✅ merge waits for CI |
 | **CI**<br>a test pipeline for your project | ✅ fails on skipped lane / zero tests | — | ◐ basic `test.yml` | — | — | — | — | — | ◐ example | — | ◐ AI PR review only |
-| **Tracker** | GitHub, Linear | — | ◐ GitHub | GitHub, Linear, Jira | — by design | GitHub, Jira, Linear, Notion, Trello | ◐ tasks → GitHub issues | ? | ◐ GitHub, GitLab | GitHub, Jira | GitHub, GitLab, Jira, Linear |
+| **Tracker** | GitHub, Linear, Jira | — | ◐ GitHub | GitHub, Linear, Jira | — by design | GitHub, Jira, Linear, Notion, Trello | ◐ tasks → GitHub issues | ? | ◐ GitHub, GitLab | GitHub, Jira | GitHub, GitLab, Jira, Linear |
 | **Memory**<br>lessons and decisions later runs read | ✅ | — | ✅ outside repo | ✅ `docs/solutions/` | ✅ | ◐ | ◐ constitution | ◐ living specs | ◐ | ✅ | ◐ opt-in |
 | **Docs**<br>project docs kept current | ✅ | — | ✅ | ◐ | ◐ | ◐ | ◐ | ◐ specs | ◐ | ◐ | ◐ AGENTS.md |
 | **Parallel**<br>several features at once, isolated | ✅ | ◐ | ◐ via Conductor | ◐ | ✅ | ◐ | ◐ via extensions | ◐ | ✅ 10 cloud sandboxes | ◐ | ✅ containers |
@@ -74,7 +74,7 @@ Where others are ahead of bkit:
 
 Where bkit stands apart, per the table:
 
-- **Only one with all of:** blind bug + security reviewers, sign-off after design / plan / before merge, mechanical "done" checks, a CI pipeline for your project, GitHub / Linear tracker, and file-based memory.
+- **Only one with all of:** blind bug + security reviewers, sign-off after design / plan / before merge, mechanical "done" checks, a CI pipeline for your project, GitHub / Linear / Jira tracker, and file-based memory.
 - **CI pipeline for your project:** none of the 10 ships a multi-lane test pipeline with a final gate. Closest: gstack's basic `test.yml`, OpenHands' AI PR-review workflow, Kiro's example. How agents use CI: [Agents and CI](#agents-and-ci).
 - **Merge discipline:** merges into `dev` only after the capstone check, never `main`. OpenHands merges with no human; most stop at a PR.
 - **Debug with outside evidence:** connectors pull CI logs, runtime errors and web results into diagnosis; soak mode for runtime-only bugs; handover when unfixable.

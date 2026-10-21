@@ -90,7 +90,7 @@ tools:
        ```bash
        "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
        ```
-       Hold `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as `{BRANCH}`, `outboxRoot` as `{OUTBOX_ROOT}`.
+       Hold `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as `{BRANCH}`, `outboxRoot` as `{OUTBOX_ROOT}`, `trackerProject` as `{TRACKER_PROJECT}`, `trackerSite` as `{TRACKER_SITE}`.
     2. **If** `ISSUE_ID` → `Parent` = `{ISSUE_ID} named`, `{PARENT_REF}` = `{ISSUE_ID}`. **Else** → find the template's audit parent = one open standing issue every run of this template reports to; never create tracker issues. `{TPL}` = `docs/templates/bkit-audit-{slug}.md`; take first hit in rank order that is open and whose body contains `{TPL}`:
        `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "standing audit parent issue that runs {TPL}", perPage: 10, fields: ["number", "title", "state", "body", "html_url"] })` → `ISSUE_ID` = `{number}`, `Parent` = `#{number} found`, `{PARENT_REF}` = `#{number} — {title}` + `html_url`.
        No such hit → `Parent` = `missing`; call fails twice, 5s apart → `Parent` = `unchecked`. Either → `Issue` = `None`; run sub-steps 3–4, write `{BODY}` to `{OUTBOX_ROOT}/audit-{slug}/parent-comment.md` as `{PARENT_COMMENT}`; skip sub-step 5.

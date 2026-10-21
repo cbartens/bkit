@@ -32,7 +32,7 @@
 
 AI coding agents are fast, but on their own they skip what makes software safe to ship: a design someone challenged, a plan someone checked, a second pair of eyes on every change, tests that actually ran. **Vibe coding gets you a demo. Production takes a process.**
 
-**bkit is that process, ready-made.** Describe a feature in a GitHub or Linear issue and type one command:
+**bkit is that process, ready-made.** Describe a feature in a GitHub, Linear or Jira issue and type one command:
 
 ```text
 /bkit-design ISSUE-123
@@ -207,7 +207,7 @@ How the lanes join into the one final check, and what happens on green or red: [
 
 - **Docs that keep themselves current.** Install sets up the docs a professional project keeps: architecture, data schema, deployments, testing, security, monitoring, design system, tech stack and local setup. Agents fill them in as they work, `/bkit-ship` updates them after every feature, and [an index](.agents/docs.md) tells each agent which docs to read at each step. They stay current because the agents depend on them.
 - **Project memory agents actually read.** Four ledgers record lessons from every fix (`docs/knowledge.jsonl`), decisions and their reasons (`docs/decisions.jsonl`), work consciously postponed (`docs/deferrals.jsonl`) and known bugs (`docs/failures.jsonl`). Plan reviewers see the past bugs and postponed work closest to the new feature, debug reads the lessons first, and `/bkit-ship` checks nothing postponed was quietly dropped. Four utility agents keep them honest: they correct lessons and decisions the code has since contradicted, and close postponed work and known bugs that have already been fixed.
-- **Tracker issues are memory too.** Every step reads the whole tracker issue (e.g. GitHub, Linear), comments included, and adds what it did as a new comment without editing earlier ones, so the issue becomes the feature's running record. bkit skips its own comments when it reads, so agents act on what people wrote. Design, plan and debug also search your other tracker issues, closed ones included, for earlier designs, duplicate work and past incidents.
+- **Tracker issues are memory too.** Every step reads the whole tracker issue (e.g. GitHub, Linear, Jira), comments included, and adds what it did as a new comment without editing earlier ones, so the issue becomes the feature's running record. bkit skips its own comments when it reads, so agents act on what people wrote. Design, plan and debug also search your other tracker issues, closed ones included, for earlier designs, duplicate work and past incidents.
 - **Outside evidence, when it's needed.** Design searches the web for feasibility. Debug pulls failed CI logs, the diff since the last green run, end-to-end reports and runtime errors. 10+ ready-made connectors cover GitHub, Sentry, Vercel, Supabase, Stripe, Expo, Playwright, Maestro, Inngest, Resend, Cloud Run, Tavily web search and Serena, each easy to customise, extend or leave out. A connector that isn't set up is reported as such, never read as "all clear".
 - **Progress lives in your repo, not a chat window.** Run state is saved after every step, so a crashed run resumes where it stopped, on any tool.
 
@@ -287,7 +287,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 
 ### Your tracker is the control panel
 
-- **Every run lives on the tracker issue.** bkit reads the tracker issue (e.g. GitHub, Linear), posts progress as it goes, moves the issue along and links the pull request.
+- **Every run lives on the tracker issue.** bkit reads the tracker issue (e.g. GitHub, Linear, Jira), posts progress as it goes, moves the issue along and links the pull request.
 - **Issues that start the right step.** Optional issue forms for a new idea, a well-defined change or a bug ask for what the agents read first, and each names the command to run next. A well-defined change can be the plan itself: what done looks like, the tests and the tasks.
 - **It tells you what to work on next.** `@bkit-utility-update-roadmap` reads your board and the open known bugs and postponed work from the ledgers, then writes a ranked shortlist into `docs/roadmap.md`.
 - **It keeps the tracker tidy.** `@bkit-utility-update-tracker` brings open issues in line with the tracker rules: short titles, the right labels, board status, priority, size, milestone, parent and blocked-by links. It takes priorities from the latest issue prioritisation audit and suggests new milestones and parent issues, but never creates or closes an issue.
@@ -373,7 +373,7 @@ No full run, from design to merge, has taken longer than a day. Each run posts i
 **Not without your sign-off.** In the full workflows, work happens in a separate copy of the repo, goes through a pull request, must pass every test, and merges into `dev`, never `main`. Lite workflows skip the pull request and CI, which is why they're only for small, clearly safe changes.
 
 **Which issue tracker, and which code host?**
-GitHub Issues or Linear for the tracker. The code has to live on GitHub: pull requests, CI and cloud mode run there.
+GitHub Issues, Linear or Jira for the tracker. The code has to live on GitHub: pull requests, CI and cloud mode run there.
 
 **Is this the bkit Vibecoding Kit?**
 No. [bkit Vibecoding Kit](https://github.com/popup-studio-ai/bkit-claude-code) is a separate project that shares the name. This bkit is `@cbartens/bkit` on npm, at [github.com/cbartens/bkit](https://github.com/cbartens/bkit).

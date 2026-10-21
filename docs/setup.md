@@ -64,7 +64,7 @@ brew install direnv
 echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc   # zsh; bash: ~/.bashrc
 
 # One-time per repo clone
-cp .bkit/.env.example .bkit/.env   # fill BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY (+ optional BKIT_ANTHROPIC_API_KEY / BKIT_CURSOR_API_KEY)
+cp .bkit/.env.example .bkit/.env   # fill BKIT_GH_TOKEN + your tracker's token (BKIT_LINEAR_API_KEY / BKIT_JIRA_API_TOKEN) (+ optional BKIT_ANTHROPIC_API_KEY / BKIT_CURSOR_API_KEY)
 direnv allow                            # trust .envrc; auto-loads on subsequent cd
 
 # Verify

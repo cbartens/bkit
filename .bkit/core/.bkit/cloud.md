@@ -3,7 +3,7 @@
 {{BKIT_MANAGED_MARKER}}
 
 > [!CAUTION]
-> **Purpose:** Canonical reference for Claude Code on the web (mobile / web), Cursor Cloud Agents, and opencode cloud runners. Claude + opencode → **GitHub** tracker (unified `bkit-cloud.yml`); Cursor → **Linear**. Not interchangeable per repo — pick agent matching your tracker (see § Cloud-agent support matrix).
+> **Purpose:** Canonical reference for Claude Code on the web (mobile / web), Cursor Cloud Agents, and opencode cloud runners. Claude + opencode → **GitHub** tracker (unified `bkit-cloud.yml`); Cursor → **Linear**; **Jira** → local runs only (no Jira-side cloud trigger). Not interchangeable per repo — pick agent matching your tracker (see § Cloud-agent support matrix).
 >
 > **Rules:**
 >
@@ -218,34 +218,41 @@ Token management by session type:
 
 ## MCP issue-tracker integration
 
-bkit wires two MCP servers into `.mcp.json` at repo root (project-shared, read by Claude Code `/mcp` UI). Cursor reads same shape from `.cursor/mcp.json`. Both **remote HTTP MCPs** — no docker. Linear: OAuth on first use — Claude Code launches browser auth on first server touch, stores token in own secret store. GitHub: `BKIT_GH_TOKEN` PAT in the `Authorization` header — no OAuth.
+bkit wires the chosen tracker's MCP server (`bkit.issueTracker`) into `.mcp.json` at repo root (project-shared, read by Claude Code `/mcp` UI). Cursor reads same shape from `.cursor/mcp.json`. All **remote HTTP MCPs** — no docker. GitHub: `BKIT_GH_TOKEN` PAT in the `Authorization` header — no OAuth. Linear: OAuth on first use — Claude Code launches browser auth on first server touch, stores token in own secret store. Jira: `BKIT_JIRA_API_TOKEN` scoped token in the `Authorization` header — no OAuth.
 
 > Note: `mcpServers` in `.claude/settings.json` silently ignored by Claude Code — definitions only from `.mcp.json` (project) or `claude mcp add` (user scope). `mcp__<name>__*` in `.claude/settings.json` `permissions.allow` are tool-permission allowlists — different concern, remain there.
 
 ```json
 "mcpServers": {
-  "linear": { "type": "http", "url": "https://mcp.linear.app/mcp" },
   "github": {
     "type": "http",
     "url": "https://api.githubcopilot.com/mcp/",
     "headers": { "Authorization": "Bearer ${BKIT_GH_TOKEN}" }
+  },
+  "linear": { "type": "http", "url": "https://mcp.linear.app/mcp" },
+  "jira": {
+    "type": "http",
+    "url": "https://mcp.atlassian.com/v2/mcp",
+    "headers": { "Authorization": "Bearer ${BKIT_JIRA_API_TOKEN}" }
   }
 }
 ```
 
 `"type": "http"` required — without it Claude Code defaults to stdio transport and rejects entry for missing `command`.
 
-- **Linear** — full Linear workspace surface (`get_issue`, `save_issue`, `save_comment`, `list_*`). Used when `bkit.issueTracker` = `linear`. OAuth (Dynamic Client Registration) — browser flow on first use, no env var.
 - **GitHub** — official GitHub MCP at `api.githubcopilot.com` (not gated by Copilot subscription). Surface: `issue_write`, `add_issue_comment`, `label_write`, `projects_write`, etc. Used under GitHub provider. Endpoint does **not** support OAuth DCR → auth via `Authorization: Bearer ${BKIT_GH_TOKEN}` (MCP-only env var — see § Environment variables and KN-CORE-8).
+- **Linear** — full Linear workspace surface (`get_issue`, `save_issue`, `save_comment`, `list_*`). Used when `bkit.issueTracker` = `linear`. OAuth (Dynamic Client Registration) — browser flow on first use, no env var.
+- **Jira** — Atlassian Rovo MCP at `mcp.atlassian.com/v2/mcp`. Surface: `getJiraIssue`, `editJiraIssue`, `transitionJiraIssue`, `addOrEditJiraIssueComment`, `searchJiraIssuesUsingJql`, `executeRead` / `executeWrite`. Used when `bkit.issueTracker` = `jira`. Auth via `Authorization: Bearer ${BKIT_JIRA_API_TOKEN}` — a scoped **Atlassian MCP V2** token; org admin must allow API-token sign-in (`.bkit/trackers.md` § jira — setup and notes).
 
 **Auth flow per server:**
 
-- **Linear:** Claude Code prompts browser authorize on first use; token in Claude's secret store. No further action.
 - **GitHub:** Claude Code substitutes `${BKIT_GH_TOKEN}` from environment at session start. Unset → server fails. Set in shell (`export BKIT_GH_TOKEN=...`) or cloud dashboard.
+- **Linear:** Claude Code prompts browser authorize on first use; token in Claude's secret store. No further action.
+- **Jira:** Claude Code substitutes `${BKIT_JIRA_API_TOKEN}` from environment at session start. Unset or classic token → every Jira call fails.
 
 **`gh auth login` required for gh CLI surface** (PR creation, branch ops, git push). Locally, keyring — do not export `GH_TOKEN` from `.bkit/.env`. Cloud/headless: `bkit-cloud-bootstrap.sh` runs `printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token` at SessionStart (guarded by the `bkit runtime detect` gh probe, no-ops on Actions runner where `GITHUB_TOKEN` auths) — no manual step. Same PAT value fine; different env-var name keeps local `gh` on keyring.
 
-**Cloud sessions** (Claude on the web, Cursor Cloud Agents): Linear MCP OAuth on first touch, same as local. GitHub MCP reads `BKIT_GH_TOKEN` from dashboard — set alongside `BKIT_LINEAR_API_KEY`.
+**Cloud sessions** (Claude on the web, Cursor Cloud Agents): GitHub MCP reads `BKIT_GH_TOKEN` from dashboard — set alongside `BKIT_LINEAR_API_KEY` under Linear. Linear MCP OAuth on first touch, same as local. Jira: no cloud sessions (local runs only).
 
 ## After saving the Claude env
 

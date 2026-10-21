@@ -443,7 +443,7 @@ PyPI name `serena-agent`, CLI `serena`. PyPI `serena` is an unrelated package.
 
 ## Issue forms — `.github/ISSUE_TEMPLATE/`
 
-Issues are the first input every workflow reads. One form per way work starts; each form's intro names its next command. Section names, syntax and machine-read lines: `.bkit/trackers.md` § Issue shapes. GitHub tracker ONLY (Linear has its own templates). Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
+Issues are the first input every workflow reads. One form per way work starts; each form's intro names its next command. Section names, syntax and machine-read lines: `.bkit/trackers.md` § Issue shapes. GitHub tracker ONLY (Linear and Jira have their own templates). Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
 
 <!-- prettier-ignore -->
 | Form | Use when | Next step | Asks for |

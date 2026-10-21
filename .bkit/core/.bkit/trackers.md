@@ -75,10 +75,10 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | `fid-format` | FID slug regex assertion | `^[0-9]+-[a-z0-9-]+$` | `^[a-z]+-[0-9]+-[a-z0-9-]+$` | `^[a-z][a-z0-9]+-[0-9]+-[a-z0-9-]+$` | no strict assert |
 | `issue-read` | Read state + labels + body + comments | `issue_read` `get` / `get_comments` | `get_issue` / `list_comments` | `getJiraIssue` `view: "evidence"` / `executeRead` `listJiraIssueComments` | skip (vars empty) |
 | `issue-scan` | Bounded related-issue scan at design/plan/debug entry — writes each hit's body + comments under a `## #{number} — {title} ({state})` heading to a file (advisory, top 10, never gates); broad keyword search in title+body, all states | `search_issues` for ranking only + per-hit `issue_read` `get` / `get_comments` | `list_issues` + per-hit `list_comments` | `searchJiraIssuesUsingJql` (`text ~` per keyword, inside `bkit.jira.project`) + per-hit `listJiraIssueComments` | skip stub (no scan) |
-| `issue-update-phase` | Step 1: set phase label (`bkit:debug` included; drops `next:*`, `bkit:failed`) + active state | `issue_write` labels | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `started` | `editJiraIssue` full label set, then transition to `bkit.jira.progress` | skip |
-| `issue-update-review` | phase Close hand-off (non-terminal) | no-op (label carries) | `save_issue` state In Review | transition to `bkit.jira.review` | skip |
-| `issue-update-failed` | Failure Path additive `bkit:failed` | `issue_write` labels | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state In Review | `editJiraIssue` full label set, then transition to `bkit.jira.review` | skip |
-| `issue-update-merged` | Ship terminal — `bkit:merged` + In Review (issue left open; human closes) | `issue_write` `bkit:merged` (no close) | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state In Review | `editJiraIssue` full label set, then transition to `bkit.jira.review` | skip |
+| `issue-update-phase` | Step 1: set phase label (`bkit:debug` included; drops `next:*`, `bkit:failed`) + active state | `issue_write` labels | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `bkit.linear.progress` | `editJiraIssue` full label set, then transition to `bkit.jira.progress` | skip |
+| `issue-update-review` | phase Close hand-off (non-terminal) | no-op (label carries) | `save_issue` state `bkit.linear.review` | transition to `bkit.jira.review` | skip |
+| `issue-update-failed` | Failure Path additive `bkit:failed` | `issue_write` labels | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `bkit.linear.review` | `editJiraIssue` full label set, then transition to `bkit.jira.review` | skip |
+| `issue-update-merged` | Ship terminal — `bkit:merged` + In Review (issue left open; human closes) | `issue_write` `bkit:merged` (no close) | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `bkit.linear.review` | `editJiraIssue` full label set, then transition to `bkit.jira.review` | skip |
 | `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add/update item | no-op (state carries) | no-op (status carries) | skip |
 | `comment-post-step` | new comment per workflow step | `add_issue_comment` | `save_comment` | `addOrEditJiraIssueComment` | skip |
 | `issue-blockers-check` | Gate on open blockers | parse body marker → read states | `get_issue` relations | JQL `linkedIssues(KEY, "is blocked by") AND statusCategory != Done` | skip |
@@ -119,11 +119,11 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 | --- | --- | --- |
 | `**Parent design:** [{FID}-design.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/{FID}-design.md)` | plan Step 1 | sets `PARENT_FID` → design = spec source; absent → the design made on the same issue (`bkit fids design`) |
 | `**Audit reports:** docs/audits/{YYYYMM}/{slug}.md (findings {ids})` | plan Step 1 | each path → `AUDIT_PATHS`; path not a file → Failure Path |
-| `###### bkit:blocked-by start` · `- #{N}` per line · `###### bkit:blocked-by end` | build `issue-blockers-check` (github; linear → native relations) | any listed issue open → build stops |
+| `###### bkit:blocked-by start` · `- #{N}` per line · `###### bkit:blocked-by end` | build `issue-blockers-check` (github; linear / jira → native relations) | any listed issue open → build stops |
 | `###### bkit:ignore-earlier` | `bkit issues text` | drops all earlier content; human-placed only |
 | `###### bkit:generated` (comment first line) | `bkit issues text` | comment dropped from input |
 
-**References** — exact strings agents can search: issue `#N — {title}` (linear `TEAM-N — {title}`); doc `{path} § {section}`; ledger row `docs/{ledger}.jsonl` key `` `{key}` ``. Labels: type label (github `enhancement` / `bug`; linear the team's own, default `Improvement` / `Feature` / `Bug`) + one `next:*` (`.agents/rules.md` § Tracker next labels); never phase or `bkit:*` labels — workflows set them (`.bkit/workflows.md` § Tracker Integration).
+**References** — exact strings agents can search: issue `#N — {title}` (linear / jira `KEY-N — {title}`); doc `{path} § {section}`; ledger row `docs/{ledger}.jsonl` key `` `{key}` ``. Labels: type label (github `enhancement` / `bug`; linear the team's own, default `Improvement` / `Feature` / `Bug`; jira none — issue type carries type) + one `next:*` (`.agents/rules.md` § Tracker next labels); never phase or `bkit:*` labels — workflows set them (`.bkit/workflows.md` § Tracker Integration).
 
 **Drafting from bkit output** (suggest only; file after human confirmation):
 
@@ -131,8 +131,8 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 | Source | Shape | Carry |
 | --- | --- | --- |
 | audit run, tracker wired, no open audit parent for its template (`Parent: missing`) | audit parent (below) | template path line |
-| audit `Suggested Issues` row | by `Next Step`: `/bkit-design` → idea; `/bkit-plan`, `/bkit-build`, `build:lite` → change; `/bkit-debug`, `debug:lite` → bug; `manual` → plain task | `**Audit reports:**` line with row's finding IDs; sub-issue of the template's audit parent (linear → `parentId`) |
-| design `Suggested Workstreams` (2+; design summary asks) | title = workstream name; body = its scope, spec left to design; filed in `Requires` order | `**Parent design:**` line; blocked-by block = issues filed for its `Requires` (linear → `blockedBy` relation) |
+| audit `Suggested Issues` row | by `Next Step`: `/bkit-design` → idea; `/bkit-plan`, `/bkit-build`, `build:lite` → change; `/bkit-debug`, `debug:lite` → bug; `manual` → plain task | `**Audit reports:**` line with row's finding IDs; sub-issue of the template's audit parent (linear → `parentId`; jira → `parent`) |
+| design `Suggested Workstreams` (2+; design summary asks) | title = workstream name; body = its scope, spec left to design; filed in `Requires` order | `**Parent design:**` line; blocked-by block = issues filed for its `Requires` (linear → `blockedBy` relation; jira → `Blocks` link, `inwardIssue` = blocker) |
 | roadmap item with no issue (ledger row, audit candidate) | by recommended command, as audit row | ledger `key` / report path in References |
 
 **Audit parent** — one standing issue per audit template, shared by every run of that template; never one per run, never one across templates.
@@ -141,11 +141,11 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 | Field | Value |
 | --- | --- |
 | Title | template H1 (`Security Audit`) |
-| Body | names `docs/templates/bkit-audit-{slug}.md` verbatim (`@bkit-audit-generate` finds the parent by this path); run line `@bkit-audit-generate docs/templates/bkit-audit-{slug}.md #{N}` (linear `TEAM-N`); report path `docs/audits/{YYYYMM}/{slug}.md` |
+| Body | names `docs/templates/bkit-audit-{slug}.md` verbatim (`@bkit-audit-generate` finds the parent by this path); run line `@bkit-audit-generate docs/templates/bkit-audit-{slug}.md #{N}` (linear / jira `KEY-N`); report path `docs/audits/{YYYYMM}/{slug}.md` |
 | Labels | project's own (e.g. `maintenance`); no workflow, `next:*` or `bkit:*` label — it runs no workflow |
 | Milestone | one milestone holding every audit parent, when the project keeps one |
 | State | stays open; runs never close it; filed issues reference it as `#N — {title}`, never `Closes #N` |
-| Children | every issue filed from its runs' `Suggested Issues`, always (github sub-issues; linear `parentId`) |
+| Children | every issue filed from its runs' `Suggested Issues`, always (github sub-issues; linear `parentId`; jira `parent`) |
 | Comments | one `### Audit Summary: {slug}` comment per run — posted by the run when named or found; a newly filed parent gets the run's saved `parent-comment.md` as its first comment |
 
 ## github — Projects v2 board (optional)
@@ -154,6 +154,42 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 
 ## linear — notes
 
-Linear `ISSUE_ID`s carry team prefix (e.g. `TEAM-123`) — FID inherits (`team-123-slug`). GitHub FIDs numeric-only (`123-slug`). Cross-provider scripts must tolerate both shapes. `LINEAR_TEAM` = `bkit.linear.team` from package.json. No separate project board — issue state carries status → `issue-update-status` no-op.
+Linear `ISSUE_ID`s carry team prefix (e.g. `TEAM-123`) — FID inherits (`team-123-slug`). GitHub FIDs numeric-only (`123-slug`). Cross-provider scripts must tolerate both shapes. `bkit repo info` prints `trackerTeam` / `trackerProject` from `package.json` `bkit.linear.team` / `bkit.linear.project` (null → related search unscoped). No separate project board — issue state carries status → `issue-update-status` no-op.
 
-Linear `save_issue` is all-or-nothing: one state or label name the team lacks rejects the whole call, valid fields included, and Linear never creates the missing name. A default team has states Backlog / Todo / In Progress / Done / Canceled / Duplicate and labels Improvement / Feature / Bug. Workflows therefore write labels and state in separate calls, labels first. Each label the transition adds (`add` from `bkit issues labels` / `bkit workflows fail`) is created first with `save_issue_label({ name })`, a workspace label; `already exists` = done. Phase start sets state `started`, a state type every team has. Hand-off, Failure Path and ship terminal set state `In Review`; on a team without it the state call fails alone, is logged `Unapplied`, and the issue keeps its started state while `bkit:merged` / `bkit:failed` carry the hand-off. Label names resolve case-insensitively.
+Linear `save_issue` is all-or-nothing: one state or label name the team lacks rejects the whole call, valid fields included, and Linear never creates the missing name. A default team has states Backlog / Todo / In Progress / Done / Canceled / Duplicate and labels Improvement / Feature / Bug. Workflows therefore write labels and state in separate calls, labels first. Each label the transition adds (`add` from `bkit issues labels` / `bkit workflows fail`) is created first with `save_issue_label({ name })`, a workspace label; `already exists` = done. Phase start sets state `bkit.linear.progress` (default `started`, a state type every team has). Hand-off, Failure Path and ship terminal set state `bkit.linear.review` (default `In Review`); on a team without it the state call fails alone, is logged `Unapplied`, and the issue keeps its started state while `bkit:merged` / `bkit:failed` carry the hand-off. Label names resolve case-insensitively.
+
+## jira — setup and notes
+
+Jira Cloud only. `ISSUE_ID` = issue key (`PROJ-123`) → FID `proj-123-slug`. MCP server `jira` = Atlassian Rovo MCP `https://mcp.atlassian.com/v2/mcp`, header `Authorization: Bearer ${BKIT_JIRA_API_TOKEN}`. Workflows run locally; no Jira-side trigger starts cloud runs.
+
+<!-- prettier-ignore -->
+| `package.json` `bkit.jira` key | Value |
+| --- | --- |
+| `site` | `https://<site>.atlassian.net` — every call's `cloudId`; bare `<site>` rejected |
+| `project` | project key (`PROJ`); scopes related search + `bkit-utility-update-tracker`; absent → unscoped |
+| `progress` | status phase start moves to; default `In Progress` |
+| `review` | status hand-off, Failure Path and ship terminal move to; default `In Review` |
+
+**Setup** (once):
+
+1. Org admin: https://admin.atlassian.com → org owning `<site>.atlassian.net` → **Rovo** → **Rovo MCP server** (or admin search `mcp`) → **Authentication** → **Allow API token authentication** on; **Permissions**: **Read**, **Write**, **Search** allowed (no **Delete** / **Manage** needed). **Connectors** is the wrong page; **Domains** applies to OAuth only.
+2. Each person: https://id.atlassian.com/manage-profile/security/api-tokens → **Create API token with scopes** (not classic) → app **Atlassian MCP V2** (not **Jira**, not **Atlassian MCP**) → Jira read / write / search scopes (`read:jira:agent-interface`, `write:jira:agent-interface`, `search:jira:agent-interface`) → copy token (shown once) → `BKIT_JIRA_API_TOKEN` in `.bkit/.env` → `direnv allow`. Token works on MCP only; Jira REST API answers 401.
+3. `bkit install --tracker=jira`; set `bkit.jira.site` + `bkit.jira.project`. Claude Code: approve project `.mcp.json` once in an interactive `claude` session (`claude mcp list` shows "Pending approval" until then).
+
+**Behaviour workflows rely on:**
+
+- Status changes only by transition: workflows list the issue's transitions (`executeRead` `listJiraIssueTransitions`) and fire the one whose `to.name` = target status; none → `Unapplied`, labels still land. Basic team-managed boards may lack `In Review` → set `bkit.jira.review` to a status the board has.
+- Labels: `getJiraIssue` returns them only with `view: "evidence"` (or `"full"`); `editJiraIssue` replaces the whole set; Jira creates a label on first use; storage case-sensitive, JQL search not.
+- Comments: posted as markdown, stored as Atlassian Document Format, read back as markdown with same meaning, not same bytes (`-` bullets → `*`, `*em*` → `_em_`, extra blank lines; checkboxes and `> [!NOTE]` alerts come back escaped). One comment Jira cannot express in markdown (mention, image, panel) turns its whole page HTML (`appliedContentFormat: "html"`) → workflows re-read that page one comment per call. Max 32,767 characters → workflows split at line breaks.
+- Blockers: native `Blocks` link; `createJiraIssueLink` reads backwards — `inwardIssue` = blocker, `outwardIssue` = blocked.
+- No type labels: the issue type (Bug / Task / Story) carries type.
+
+<!-- prettier-ignore -->
+| Symptom | Fix |
+| --- | --- |
+| Only 4 tools listed (`getTeamworkGraphContext` …), no Jira tools | URL `/v2/mcp`, not `/v1/mcp` |
+| Every call: `Cloud id: … isn't explicitly granted by the user` | Scoped **Atlassian MCP V2** token sent as `Bearer`, not classic token or `Basic` |
+| `missing the scope claim` | Classic token → create token with scopes |
+| `Failed to fetch cloud ID for: <site>` | `bkit.jira.site` = full `https://<site>.atlassian.net` |
+| `Request must be an initialize request if no session ID is provided` (scripted call) | `initialize` first, then send `Mcp-Session-Id` |
+| HTTP 403 Cloudflare 1010 (scripted call) | Send a non-default `User-Agent` |
