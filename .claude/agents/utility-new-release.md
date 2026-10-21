@@ -42,7 +42,7 @@ maxTurns: 400
    - `git rev-parse --abbrev-ref HEAD` == `dev` — NEVER a worktree or feature branch.
    - `git status --porcelain` empty.
    - `git rev-list --count origin/dev..dev` == 0.
-   - `pnpm test && pnpm typecheck && pnpm format:check && pnpm bkit:check:dist && pnpm bkit check` all green. **If** a script reports `Command not found` → read its name from `package.json#scripts`; repo-only scripts carry the `bkit:` prefix (`bkit:check:dist`, `bkit:test:bats`, `bkit:audit:status`, `bkit:lint:workflows`).
+   - Gates green at `HEAD` — `gh run list --workflow bkit-ci --branch dev --event push --commit $(git rev-parse HEAD) --json databaseId,status,conclusion`. `completed` AND `success` → record run id. **If** `in_progress` / `queued` → `gh run watch {id} --exit-status`, then re-check. **Else** (no run for `HEAD`, or any other conclusion) → STOP, ask. NEVER re-run the suite locally — the `dev` push run is the gate (`docs/deployments.md` § Release test runs).
    - `package.json` version, `.bkit/version` `pinnedVersion`, `CHANGELOG.md` top entry all == `{VERSION}`, AND `## [{VERSION}]` block has >= 1 content line (reject bare bump).
    - no tag `v{VERSION}` (`git ls-remote --tags origin v{VERSION}`).
 6. Backmerge — **If** `git rev-list --count origin/dev..origin/main` == 0 → skip. **Else** `git fetch origin main dev` → confirm `git log origin/dev..origin/main --oneline` lists ONLY prior `chore(release):` squash commit(s) (dev strictly ahead; main carries nothing dev lacks) — **If** anything else → STOP, ask → `git merge origin/main -s ours -m "chore: backmerge main into dev pre-release"` → `git push origin dev`. Use `-s ours`, NEVER `-X ours`. **If** merge reports conflicts → STOP, surface, ask.

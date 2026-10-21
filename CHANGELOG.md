@@ -6,6 +6,12 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **The `bkit-ci.yml` template's cache skips pull requests only, and matches files instead of commit IDs.** `Check SHA Cache` is now `Check Tree Cache`, backed by the new template `scripts/ci/lanes/check-tree-cache.mjs` (copy it with its `.test.mjs`). A pull request lane skips when the PR's files are exactly the files of a push run whose same lane passed in the last 7 days. The old step compared commit IDs, and a pull request run tests a merge commit no earlier run ever had, so it never skipped a pull request. It could skip a push run, though; a push run now always runs the suite. `[force build]` / `[force cache]` in the PR title still run it. Re-copy the step into each lane of your adopted `.github/workflows/bkit-ci.yml`; without the script the step runs the suite. Details: `docs/deployments.md` § Pull request tree cache.
+
 ## [5.5.0] — 2026-10-21
 
 ### Breaking Changes

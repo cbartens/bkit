@@ -45,7 +45,7 @@ const CI_UNIT_HEADER_TEMPLATE = `  # Unit lane. Parallel sibling of bkit-tests-s
   # and remote db push move out of this job when you adopt the scaffold below.
   bkit-tests-unit:
     runs-on: ubuntu-latest
-    # bkit-tests-check reads both: cache_skip (a SHA-cache short-circuit asserts no count)
+    # bkit-tests-check reads both: cache_skip (a tree-cache short-circuit asserts no count)
     # and tests_ran (the executed-test count the Run Unit Tests step writes).
     outputs:
       cache_skip: \${{ steps.cache.outputs.skip }}
@@ -58,7 +58,7 @@ const CI_UNIT_HEADER_COPY = `  # Unit lane. Parallel sibling of bkit-tests-stati
     if: fromJSON(needs.bkit-tests-scope.outputs.plan).run_level != 'none'
     runs-on: ubuntu-latest
     # Job-level permissions replace the workflow-level block: pull-requests: write posts
-    # the coverage comment; actions: read keeps the SHA cache's \`gh run list\` working.
+    # the coverage comment; actions: read keeps the tree cache's run and job lookups working.
     permissions:
       actions: read
       contents: read
@@ -271,7 +271,7 @@ const ADOPTED: Record<string, Entry> = {
     edits: [
       {
         kind: "bkit-only",
-        what: "tag-only push of commits the remote already holds skips the gates",
+        what: "a push of only already-tested tags and release branches skips the gates",
         region: {
           template: ["set -e\n", "\n# ── delete-only push"],
           copy: ["set -e\n", "\n# ── delete-only push"],
@@ -317,6 +317,8 @@ const ADOPTED: Record<string, Entry> = {
   },
   "scripts/ci/lanes/resolve-push-base.mjs": identical,
   "scripts/ci/lanes/resolve-push-base.test.mjs": identical,
+  "scripts/ci/lanes/check-tree-cache.mjs": identical,
+  "scripts/ci/lanes/check-tree-cache.test.mjs": identical,
   "scripts/ci/check-accepted-divergences.mjs": {
     status: "not-adopted",
     what: "the accepted-divergence guard is a consumer opt-in; bkit does not wire it into its own CI",
