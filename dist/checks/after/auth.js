@@ -147,17 +147,18 @@ const FEDERATION_VARIABLES = ["ANTHROPIC_FEDERATION_RULE_ID", "ANTHROPIC_ORGANIZ
  * `.github/workflows/bkit-cloud.yml` exists. The claude job (claude-code-action) takes the
  * `ANTHROPIC_API_KEY` repo secret OR workload identity federation (both
  * `FEDERATION_VARIABLES` repo variables). The workflow is GitHub-tracker only — no
- * `BKIT_LINEAR_API_KEY` dependency. Silent when gh cannot list secrets or variables.
+ * `BKIT_LINEAR_API_KEY` dependency. Silent when gh cannot list secrets; when only the
+ * variables are unlistable, a missing key still raises the missing-credential finding.
  */
 export function detectCiRouterSecrets(cwd) {
     const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
     if (!fs.existsSync(routerPath))
         return [];
     const key = detectGhSecret("ANTHROPIC_API_KEY");
-    const variables = listGhNames("variable");
-    if (key === "unknown" || variables === null)
+    if (key === "unknown")
         return [];
-    const federated = FEDERATION_VARIABLES.every((v) => variables.includes(v));
+    const variables = listGhNames("variable");
+    const federated = variables !== null && FEDERATION_VARIABLES.every((v) => variables.includes(v));
     if (key === "present" && federated) {
         return [
             {
@@ -186,7 +187,9 @@ export function detectCiRouterSecrets(cwd) {
         {
             id: "anthropic-api-key-secret-missing",
             severity: "advisory",
-            detect: "gh confirms neither the `ANTHROPIC_API_KEY` repo secret nor both `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables are set on this GitHub repo.",
+            detect: variables === null
+                ? "gh confirms the `ANTHROPIC_API_KEY` repo secret is not set on this GitHub repo, and could not list repo variables to check for the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` federation variables."
+                : "gh confirms neither the `ANTHROPIC_API_KEY` repo secret nor both `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables are set on this GitHub repo.",
             action: "`.github/workflows/bkit-cloud.yml`'s claude job needs one claude credential; without it, the job exits no-op. Set ONE of:\n\n" +
                 "- API key:\n\n    gh secret set ANTHROPIC_API_KEY --body='<paste-value-here>'\n\n" +
                 "- Workload identity federation (keyless): Claude Console → Settings → Workload identity → Connect workload → GitHub Actions creates the issuer, service account and federation rule. Then:\n\n" +

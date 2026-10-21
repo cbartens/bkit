@@ -228,12 +228,28 @@ describe("detectCiRouterSecrets", () => {
     expect(findings[0]!.action).toContain("gh secret delete ANTHROPIC_API_KEY");
   });
 
-  it("silent when gh cannot list secrets or variables", () => {
+  it("silent when gh cannot list secrets", () => {
     writeRouter(CURRENT_ROUTER);
     mockGhNames({ secret: null, variable: null });
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
-    mockGhNames({ secret: [], variable: null });
+    mockGhNames({ secret: null, variable: FEDERATION_VARIABLES });
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
+  });
+
+  it("key secret present, variables unlistable: no finding (the key works)", () => {
+    writeRouter(CURRENT_ROUTER);
+    mockGhNames({ secret: ["ANTHROPIC_API_KEY"], variable: null });
+    expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
+  });
+
+  it("key secret missing, variables unlistable: missing-credential finding says the variables went unchecked", () => {
+    writeRouter(CURRENT_ROUTER);
+    mockGhNames({ secret: [], variable: null });
+    const findings = detectCiRouterSecrets(tmpDir);
+    expect(findings.map((f) => f.id)).toEqual(["anthropic-api-key-secret-missing"]);
+    expect(findings[0]!.detect).toContain("could not list repo variables");
+    expect(findings[0]!.detect).not.toContain("gh confirms neither");
+    expect(findings[0]!.action).toContain("gh secret set ANTHROPIC_API_KEY");
   });
 });
 
