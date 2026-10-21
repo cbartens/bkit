@@ -322,7 +322,7 @@ Tracker and cloud agents reverse by re-running install with the other flag. Upda
 
 ## Setup tips
 
-`bkit tips` prints what the repo has not set up yet — tracker, tokens, templates, cost settings — most useful first, each with a plain-English line and a sentence to ask your agent. Each workflow runs it with its own name at its close and appends what it prints under `## bkit Tips`; `@bkit-audit-generate` does the same with `audit`, and the roadmap and `.jsonl` ledger updaters with `utility`. `@bkit-utility-update-documentation` has no Bash, so prints no tip.
+`bkit tips` prints what the repo has not set up yet — tracker, tokens, templates, cost settings — most useful first, each with a plain-English line and a sentence to ask your agent. Each workflow runs it with its own name at its close and appends what it prints under `## bkit Tips`; `@bkit-audit-generate` does the same with `audit`, and every `@bkit-utility-update-*` agent with `utility`.
 
 ```bash
 bkit tips                    # top three

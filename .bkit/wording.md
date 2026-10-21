@@ -9,6 +9,7 @@
 > - Change a shared sentence HERE, never in a prompt, workflow, or audit template: edit the `text` block, move the old wording into the clause's `retired` block, run `pnpm wording:sync`.
 > - Add a clause ONLY for a sentence shared by 5+ prompts, 3+ workflows, or 5+ audit templates; rarer sentences stay local. Each surface counts alone; files count by basename. Sentences end at `.` or `;`; headings, HTML comments, and table rows are not sentences. The test fails on any such sentence missing here, near-copies included.
 > - One clause covers a sentence across its whole surface; a shared line carrying per-file detail is a `{{slot}}` template.
+> - A heading the agent shows the user is its own clause, one line; the text under it is a separate clause, never part of the heading's line.
 > - Clause text is matched as a substring of one line, after front matter and fenced blocks are dropped; rules and audit templates: inside the `bkit:start` / `bkit:end` block only. List markers, step numbers, and checkboxes stay outside the text.
 
 ## Format
@@ -1230,6 +1231,15 @@ Final return: Display `{{summary}}` content verbatim as final message to user; d
 Final return: Display `{{summary}}` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
 ```
 
+### suggested-replies-heading
+
+- prompt: where-used
+- workflow: where-used
+
+```text
+Append a `## Suggested Replies` heading.
+```
+
 ### plain-english-append
 
 - prompt: where-used
@@ -1269,12 +1279,25 @@ Collect setup tips:
 Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
 ```
 
+### workflow-setup-tips-heading
+
+- prompt: where-used
+- workflow: where-used
+
+```text
+Append a `## bkit Tips` heading, unless `{BKIT_TIPS}` is empty.
+```
+
 ### workflow-setup-tips-append
 
 - prompt: where-used
 - workflow: where-used
 
 ```text
+Append `{BKIT_TIPS}`, unless empty.
+```
+
+```retired
 Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
 ```
 
