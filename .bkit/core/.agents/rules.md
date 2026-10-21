@@ -78,7 +78,7 @@
 - **Tracker workflow labels:** Add `bkit:design` / `bkit:plan` / `bkit:build` / `bkit:debug` / `bkit:ship` ONLY when issue starts that workflow (full or lite); mutually exclusive — next workflow start drops previous; `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. NEVER add by hand to signal intent; use `next:*`.
 - **Tracker failure label:** Any workflow Failure Path → add `bkit:failed` alongside workflow label.
 - **Tracker issue mentions:** NEVER mention issue IDs on their own; ALWAYS mention issue IDs together with their title and URL.
-- **Tracker work comments:** ANY issues worked on outside `/bkit-*` workflows → post ONE comment per landed unit (commit / PR / blocked stop) with outcome / links only; NEVER paste diffs / restate code. NEVER mention @claude or @cursor in comment body.
+- **Tracker work comments:** ANY issue worked on outside `/bkit-*` workflows → ALWAYS post ONE comment per related issue at end of every major turn (files changed / commit / PR / finding / blocked stop) with work done, outcome, links; SKIP turns with no work (Q&A, clarifying questions). NEVER paste diffs / restate code. NEVER mention @claude or @cursor in comment body.
 - **Tracker context cut:** Use `###### bkit:ignore-earlier` on its own line in issue bodies or comments to drop all earlier content from workflow inputs; ALWAYS requires human confirmation; NEVER include unprompted in any output.
 - **Tracker MCPs:** Issue reads / updates via configured MCP ONLY; use CLI / HTTP shell-outs as backup / fallback ONLY.
 
