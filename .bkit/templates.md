@@ -38,6 +38,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Prettier tables | One edited cell = one changed row in the diff. | A one-word table edit diffs as the whole table. |
 | tmp/ prune | Each push deletes scratch files agents left in `tmp/` untouched for a week. | `tmp/` keeps growing; old logs and scratch files are never cleared. |
 | Disk prune | Your own cleanup steps (build caches, Docker, simulators) run on commit, on push, and before a worktree is made on a low disk. bkit deletes nothing itself. | Caches fill the disk until no worktree can be made; every workflow stops. |
+| Local stack lock | One run at a time on local services every worktree shares (Docker database, emulator); a second run waits and names the run holding them. | A reset or stop from one worktree wipes the stack under another worktree's test run; the failures look like real bugs. |
 | Cursor editor + cloud agent | Format-on-save, recommended extensions, Cursor cloud-agent image. | Cursor edits miss project formatting; no Cursor cloud agent. |
 | Launchd GUI env | macOS apps opened from the Dock get the same tokens as the terminal. | Dock-launched editors start signed out. |
 
@@ -69,6 +70,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 | tmp/ prune | `.bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs` | `scripts/cleanup/` | that file |
 | Disk prune | `.bkit/templates/scripts/cleanup/bkit-disk-prune.mjs`, `bkit-disk-prune.machine.mjs` | `scripts/cleanup/bkit-disk-prune.mjs`, `~/.config/bkit/disk-prune.mjs` | `scripts/cleanup/bkit-disk-prune.mjs` only |
+| Local stack lock | `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` | `scripts/ci/` | that file |
 | Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
 | Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file |
 
@@ -86,7 +88,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
 - **What changed on upgrade.** `bkit upgrade` lists changed / added / removed template paths. For each one you adopted: `diff .bkit/templates/<path> <path>`, merge what you want (placeholder lines differ by design). `git diff .bkit/templates` in the upgrade commit = the package change.
 - Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) → ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini`, `slop-scan.config.json` and `.oxlintrc.json` templates already do; check your adopted copy does too.
-- Templates are written in Node unless the tool they wrap already needs another runtime (graphify and Serena: Python + shell launchers; git hooks: POSIX `sh`).
+- Templates are written in Node unless the tool they wrap already needs another runtime (graphify and Serena: Python + shell launchers; git hooks: POSIX `sh`; local stack lock: bash + perl, as shell runners source it).
 - `bkit.depUpdater: "none"` → skips install-time absence advisory for updaters.
 - No manifest key for any template. `docs/templates/bkit-audit-adoption.md` lists every template each run: adopted and wired, or not adopted and why.
 
@@ -644,3 +646,25 @@ cp .bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs ~/.config/bkit/di
 - Worktrees: `bkit worktrees setup` create / resume under `bkit.disk.minFreeGb` → runs `max` steps, waits. Still under → exit 12, nothing created; stderr lists what `max` steps still cover. No step file → no check.
 - One sweep per machine at a time (`disk-prune.lock` beside the log). Failed step → logged, next runs. CI / cloud → nothing runs.
 - Hand run: `pnpm bkit disk prune --mode=max --dry-run` → each step + its `paths` size; without `--dry-run` → runs now. Exit 1 = a step failed or a step file did not load.
+
+## Local stack lock — one run at a time on a shared stack
+
+Every worktree of a repo uses the same local services when their names and ports come from the repo's config (a Docker database, an emulator). A run that starts, resets or stops the stack, or tests against it, takes a machine-wide lock first; a second run waits and prints who holds it. bash + `/usr/bin/perl`, no dependencies.
+
+```bash
+mkdir -p scripts/ci
+cp .bkit/templates/scripts/ci/bkit-local-stack-lock.sh scripts/ci/
+```
+
+<!-- prettier-ignore -->
+| Wire into | How | Holds the lock |
+| --- | --- | --- |
+| `package.json` scripts that start / reset / stop the stack | `"db:reset": "bash scripts/ci/bkit-local-stack-lock.sh run db:reset -- <reset command>"` | for the command; its exit status passes on |
+| local runners that test against the stack | `. scripts/ci/bkit-local-stack-lock.sh`, then `take_local_stack_lock "<who>"` before the first stack command; non-zero → exit | until the runner exits or calls `release_local_stack_lock` |
+
+- Functions: `take_local_stack_lock` waits; `try_local_stack_lock` returns 1 at once while another run holds it; `release_local_stack_lock` frees it early; `local_stack_lock_holder` prints the holder. Safe under `set -e`.
+- Name: `BKIT_LOCAL_STACK` when set, else the main checkout's folder name (`git rev-parse --git-common-dir`) → every worktree finds the same lock. A throwaway stack with its own names and ports sets its own `BKIT_LOCAL_STACK` and never waits on the shared one. Outside a git checkout with no `BKIT_LOCAL_STACK` → refuses, exit 1.
+- Lock file: `~/.cache/bkit/local-stack-lock/<name>.lock` (`$XDG_CACHE_HOME/bkit/` when set), outside every checkout.
+- Never stale: a small perl process holds the lock (flock) and exits within a second of its caller, however the caller ends.
+- Wait: `LOCAL_STACK_LOCK_WAIT_S` seconds (default 3600), a note naming the holder once a minute, then exit 1 naming it. A runner started by the holder (`LOCAL_STACK_LOCK_OWNER`) does not wait. `CI=true` / `CI=1` → no-op.
+- Fix hints and docs name the locked scripts, never the raw command (`supabase db reset`, `docker compose down`): the raw command skips the lock. `.agents/rules.md` § Shared local stack.

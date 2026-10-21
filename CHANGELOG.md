@@ -6,6 +6,12 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **A local stack lock keeps worktrees off each other's local services.** Every worktree of a repo shares each local service whose names and ports come from the repo's config (a Docker database, an emulator), so a reset from one worktree wiped the data under another worktree's test run. Copy the new template `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` to `scripts/ci/`, wrap the `package.json` scripts that start, reset or stop the stack in its `run` mode, and source it in local runners that test against the stack. A second run waits and names the run holding the stack; the lock frees itself within a second of its run ending, however the run ends; CI skips it. The new `.agents/rules.md` rule `Shared local stack` tells agents to use those scripts, never the raw command. Setup: `.bkit/templates.md` § Local stack lock.
+
 ## [5.5.0] — 2026-10-21
 
 ### Breaking Changes
