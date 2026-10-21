@@ -149,6 +149,7 @@ bkit seeds only the `bkit:gate:*` / `bkit:deps:*` names (add-if-missing). The to
 | Gate (default) | Chains | Needs |
 | --- | --- | --- |
 | `bkit:gate:format` | `pnpm lint-staged` | lint-staged devDep + `.lintstagedrc.json` + prettier |
+| `bkit:gate:min` | `format:check`, `lint:prose`, `slop:delta` | the scripts below + any test reading a min-push file |
 | `bkit:gate:static` | `typecheck`, `lint`, `format:check`, `lint:prose`, `slop:delta` | the scripts below |
 | `bkit:gate:static-unit` | `bkit:gate:static` + `test` | a `test` script |
 | `bkit:gate:install-static-unit-build` | `pnpm install --frozen-lockfile` + `bkit:gate:static-unit` + `build` | a `build` script |
@@ -198,7 +199,7 @@ Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; f
 
 ## Git hooks — Husky
 
-`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits), then `bkit check`, plus a CI-suppressing-token guard and the `tmp/` prune (§ tmp/ prune). Each hook ends by starting the disk prune (§ Disk prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. One exception: the throwaway `.worktrees/_land-{FID}` checkout that lands bookkeeping on `dev` (docs, logs, ledgers, `[skip ci]`) runs no hooks and logs that it skipped them. Reference: https://typicode.github.io/husky/.
+`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits; `bkit:gate:min` on a min push), then `bkit check`, plus the CI-suppressing-token guards and the `tmp/` prune (§ tmp/ prune). Each hook ends by starting the disk prune (§ Disk prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. One exception: the throwaway `.worktrees/_land-{FID}` checkout that lands bookkeeping on `dev` (docs, logs, ledgers, `[skip ci]`) runs no hooks and logs that it skipped them. Reference: https://typicode.github.io/husky/.
 
 ```bash
 pnpm add -D husky@^9.1.7   # plus "prepare": "husky" (§ Gate tool scripts)
@@ -208,6 +209,10 @@ chmod +x .husky/pre-commit .husky/pre-push
 - `.gitignore`: `.husky/_` (bkit's `.gitignore` block already lists it).
 - Adapt: repo-only checks go below the bkit lines in each hook. What a gate runs belongs in the `bkit:gate:*` script, not the hook.
 - Traps: hooks run on every workflow commit; keep them to seconds (pre-commit) and deterministic, offline checks (pre-push). Integration, E2E and `@live` belong in CI.
+- Min push: every file changed since each pushed commit left `origin/dev` (else `origin/main`) matches `bkit.minPushPaths` (`package.json` globs: `*` one folder, `**` any depth; default `docs/plans/**`, `docs/*.jsonl`, `.bkit/*.jsonl`; `[]` = off) → `bkit:gate:min` replaces the full gate; `MIN_PUSH=1`. `bkit ci min-push` decides from files, never `[skip ci]` (a typed label; GitHub reads the last commit only). No files / unreadable range / no ref list → full gate.
+- Min-push paths: files no code, build or test reads. Never `docs/**` (a doc can be test input). A test reading a ledger → into `bkit:gate:min`.
+- `[skip ci]` guards: feature branch → blocked only while a PR is open (workflows push `[skip ci]` code heads mid-run). `dev` / `main` → blocked unless a min push: GitHub skips CI for the whole push.
+- Slow repo extras (Docker, database, build) → wrap in `if [ "$MIN_PUSH" != "1" ]; then … fi`.
 
 ## Prettier — `.prettierignore` first
 

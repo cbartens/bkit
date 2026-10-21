@@ -95,8 +95,10 @@ developer_instructions = """
     ```markdown
     > Related utilities, run on demand: `@bkit-utility-update-roadmap` ranks the next best items in `docs/roadmap.md`; `@bkit-utility-update-tracker` brings tracker issues in line with the tracker rules; `@bkit-utility-update-deferrals` and `@bkit-utility-update-failures` close ledger rows the code already resolved; `@bkit-utility-update-decisions`, `@bkit-utility-update-knowledge` and `@bkit-utility-update-documentation` correct ledgers and docs the code has since contradicted.
     ```
+    Append a `## Suggested Replies` heading.
     Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
-    Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
+    Append a `## bkit Tips` heading, unless `{BKIT_TIPS}` is empty.
+    Append `{BKIT_TIPS}`, unless empty.
 
 **Report format:**
 

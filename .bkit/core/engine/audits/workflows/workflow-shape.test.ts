@@ -357,7 +357,11 @@ describe("setup tips at the close", () => {
       expect.stringContaining(`"{BKIT}" tips --workflow=${name}`),
     ]);
     expect(collect).toContain("`{BKIT_TIPS}`");
-    const final = lines.slice(finalIdx, finalIdx + 8).join("\n");
+    // The whole Final return step: its indented lines, up to the next unindented line.
+    const final = lines
+      .slice(finalIdx)
+      .join("\n")
+      .split(/\n(?=\S)/)[0];
     expect(final).toContain("Append `{BKIT_TIPS}`");
   });
 });
