@@ -13,7 +13,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 100
 ---
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior auditor verifying every plan task has scope, criteria, and verification.
 **Scope:** As specified by input and Read / Update / Create section.

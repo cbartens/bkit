@@ -16,7 +16,7 @@ tools:
   - mcp__github__projects_list
   - mcp__github__projects_write
 ---
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior PM bringing open tracker issues in line with tracker rules.
 **Scope:** As specified by input or session prompt.

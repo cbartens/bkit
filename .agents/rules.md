@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Agent Rules
 
@@ -92,7 +92,7 @@
 - **Code commits:** Ensure code commit is HEAD so CI runs.
 - **Secrets:** NEVER stage `.env*`, credentials, tokens, API keys. `git status` review before every commit.
 - **Pushes:** ALWAYS ask before every push; one approval covers one push, NEVER later ones. Before asking, show `git log origin/{branch}..HEAD`. Exception: `/bkit-*` workflow steps mandating push (see Orchestrator Rules).
-- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour). In-progress rebase resolution (`git checkout --theirs|--ours {conflicted}`, `git rebase --continue` / `--abort`) is not covered.
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git stash clear`, `git push --force` (any flavour). In-progress rebase resolution (`git checkout --theirs|--ours {conflicted}`, `git rebase --continue` / `--abort`) is not covered.
 - **Other parallel agents:** Unexpected changes in `git status` belong to other agent, not you; NEVER revert, reformat, stash, or "clean up" them; NEVER `git stash`, switch branches, or `git checkout` / `git restore` files you did not touch.
 - **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
 - **Force push:** PROHIBITED on shared branches (`dev` / `main`). Personal branches ONLY with `--force-with-lease` — the sole exception to `Destructive git PROHIBITED`.

@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-utility-update-deferrals"
 description = "Senior editor closing deferrals the codebase has already resolved."
 model = "gpt-6-astra"

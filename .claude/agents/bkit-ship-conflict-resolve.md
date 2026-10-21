@@ -14,7 +14,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 200
 ---
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer resolving mechanical rebase conflicts before handover.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -35,7 +35,7 @@ maxTurns: 200
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Resolve mechanical conflicts; do not just analyse; on any ambiguity → abort cleanly, emit `FAIL`.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
-- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git stash clear`, `git push --force` (any flavour).
 
 **Process:**
 

@@ -1,6 +1,6 @@
 # Templates — copy and own
 
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Every template bkit ships and never installs — what each does, where to copy it, how to install the tool behind it.
@@ -179,7 +179,7 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 
 ## CI workflow — `bkit-ci.yml`
 
-Parallel lanes `bkit-tests-static` (typecheck, lint, prettier, Vale, slop, actionlint, `bkit check`) and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone, plus the commented full CI scaffold reference for the other tiers. Workflows care: `/bkit-ship` waits on its runs and merges only when the `bkit.capstoneJob` job (default `bkit-tests-check`) is present and green at the head; `bkit setup protect-main` makes that job the required check; `bkit-cloud.yml` triggers on a workflow named `bkit-ci`. `bkit install` reads your copy for advisories (`ci-yml-missing-token-env`, `bkit-stub-*`, `ci-yml-missing-actionlint`, `ci-yml-capstone-contract-drift`). Reference: https://docs.github.com/en/actions.
+Parallel lanes `bkit-tests-static` (typecheck, lint, prettier, Vale, slop, actionlint, `bkit check`) and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone, plus the commented full CI scaffold reference for the other tiers. Workflows care: `/bkit-ship` waits on its runs and merges only when the `bkit.capstoneJob` job (default `bkit-tests-check`) is present and green at the head; `bkit setup protect-main` makes that job the required check; `bkit-cloud.yml` triggers on a workflow named `bkit-ci`. `bkit install` reads your copy for advisories (`bkit-stub-*`, `ci-yml-missing-actionlint`, `ci-yml-capstone-contract-drift`). Reference: https://docs.github.com/en/actions.
 
 - Install: nothing beyond the gate tool scripts above, a `test` script, and `packageManager` in `package.json` (`pnpm/action-setup` reads it; do not add `with: version:`).
 - Adapt: `main`, `{{NODE_VERSION}}`. Non-Node repo → replace the Node / pnpm setup, install and check steps with your stack's.

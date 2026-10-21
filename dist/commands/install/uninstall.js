@@ -669,6 +669,11 @@ export async function runUninstall(modules, ctx) {
             }
         }
     }
+    // Targeted uninstall: drop the `bkit.*` keys the removed module records, so its advisories
+    // stop firing. Core keeps every other key.
+    if (!moduleList.includes("core")) {
+        stripModuleBkitKeys(moduleList, ctx, result);
+    }
     // Clean up .agents/ bkit-prefix mirror files
     // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, .opencode/agents/bkit-*.md, etc.)
     // A dry run lists the same paths in result.deleted and removes nothing.
@@ -857,6 +862,43 @@ export async function runUninstall(modules, ctx) {
         }
     }
     return result;
+}
+/** `package.json` `bkit.*` keys each module records on install. */
+const MODULE_BKIT_KEYS = {
+    cloud: ["cloudAgents"],
+    opencode: ["opencodeProvider", "opencodeProviders"],
+};
+/**
+ * Remove the `bkit.*` keys recorded by the modules in `moduleList` from the consumer's
+ * package.json, keeping its indent. Lists each removed key in `result.stripped`; a dry run
+ * lists without writing.
+ */
+function stripModuleBkitKeys(moduleList, ctx, result) {
+    const keys = moduleList.flatMap((m) => MODULE_BKIT_KEYS[m] ?? []);
+    if (keys.length === 0)
+        return;
+    const pkgPath = path.join(ctx.cwd, "package.json");
+    if (!fs.existsSync(pkgPath))
+        return;
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    const parsed = parseJson(raw);
+    const pkg = parsed.ok ? parsed.value : null;
+    if (pkg === null || !isJsonObject(pkg.bkit))
+        return;
+    const bkit = pkg.bkit;
+    const present = keys.filter((k) => k in bkit);
+    if (present.length === 0)
+        return;
+    for (const k of present) {
+        delete bkit[k];
+        result.stripped.push(`package.json#bkit.${k}`);
+    }
+    console.log(`${ctx.logPrefix}${ctx.dryRun ? " [dry-run]" : ""} package.json: removed bkit.${present.join(", bkit.")}`);
+    if (ctx.dryRun)
+        return;
+    const indentMatch = raw.match(/\n([ \t]+)"/);
+    const indent = indentMatch ? indentMatch[1] : "  ";
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + "\n", "utf-8");
 }
 // ---------------------------------------------------------------------------
 // runSurgicalOpencodeUninstall — remove exactly ONE provider block

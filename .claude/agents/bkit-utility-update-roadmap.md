@@ -16,7 +16,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 400
 ---
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior PM ranking next best items to work on from board and ledgers.
 **Scope:** As specified by input or session prompt.

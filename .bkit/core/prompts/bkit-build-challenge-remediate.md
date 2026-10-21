@@ -35,7 +35,7 @@ maxTurns: 200
 - **Mandate:** Apply challenge fixes (edit / create source files); only identified findings, no new scope; do not just analyse.
 - **Blockers:** Append `BLOCKED` log line per blocked finding; no out-of-scope deferral.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
-- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git stash clear`, `git push --force` (any flavour).
 
 **Process:**
 

@@ -30,7 +30,7 @@ maxTurns: 400
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Land `{VERSION}` on `main`, tag `v{VERSION}`, confirm Release workflow published.
-- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git stash clear`, `git push --force` (any flavour).
 
 **Process:**
 

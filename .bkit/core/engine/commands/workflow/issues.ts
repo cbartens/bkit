@@ -634,7 +634,7 @@ export const issuesCommand: CommandSpec = {
       run: textVerb,
     },
     labels: {
-      summary: "Label arithmetic for a transition, the Linear state, and the board payload.",
+      summary: "Label arithmetic for a transition, the tracker state, and the board payload.",
       flags: [
         { name: "label", type: "string", repeatable: true, help: "a label the issue carries now" },
         {

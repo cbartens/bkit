@@ -890,3 +890,53 @@ describe("writeTier2 — markdown dest holding an older unmarked copy", () => {
     expect(ws.writes).toEqual([{ path: dst, action: "append" }]);
   });
 });
+
+describe.skipIf(process.platform === "win32")("executable bit drift", () => {
+  const SH = "#!/bin/sh\n# <!-- bkit:start -->\n\necho hi\n\n# <!-- bkit:end -->\n";
+
+  function seed(name: string): { src: string; dst: string } {
+    const src = path.join(tmpDir, `${name}.src.sh`);
+    const dst = path.join(tmpDir, `${name}.sh`);
+    fs.writeFileSync(src, SH, "utf-8");
+    fs.chmodSync(src, 0o755);
+    writeTier2(src, dst, TOKENS, "html-comment", false, makeWriteSet());
+    fs.chmodSync(dst, 0o644);
+    return { src, dst };
+  }
+
+  it("writeTier2 dry run records a hook that lost its bit and leaves the mode alone", () => {
+    const { src, dst } = seed("dry");
+    const ws = makeWriteSet();
+    writeTier2(src, dst, TOKENS, "html-comment", true, ws);
+    expect(ws.writes).toEqual([{ path: dst, action: "update" }]);
+    expect(fs.statSync(dst).mode & 0o111).toBe(0);
+  });
+
+  it("writeTier2 restores the bit once, recorded once", () => {
+    const { src, dst } = seed("real");
+    const ws = makeWriteSet();
+    writeTier2(src, dst, TOKENS, "html-comment", false, ws);
+    expect(fs.statSync(dst).mode & 0o777).toBe(0o755);
+    expect(ws.writes).toHaveLength(1);
+    const again = makeWriteSet();
+    writeTier2(src, dst, TOKENS, "html-comment", false, again);
+    expect(again.writes).toEqual([]);
+  });
+
+  it("writeTier1 restores the bit on byte-identical content", () => {
+    const { src, dst } = seed("tier1");
+    const ws = makeWriteSet();
+    fs.writeFileSync(dst, SH, "utf-8");
+    writeTier1(src, dst, TOKENS, false, ws);
+    expect(fs.statSync(dst).mode & 0o777).toBe(0o755);
+    expect(ws.writes).toEqual([{ path: dst, action: "update" }]);
+  });
+
+  it("a non-executable source leaves the destination mode alone", () => {
+    const { src, dst } = seed("plain");
+    fs.chmodSync(src, 0o644);
+    const ws = makeWriteSet();
+    writeTier2(src, dst, TOKENS, "html-comment", true, ws);
+    expect(ws.writes).toEqual([]);
+  });
+});

@@ -172,7 +172,7 @@ require_graph() {
 # and in CI (installs `$(bash scripts/graphify/bkit-graphify.sh spec)`). Another release draws
 # different edges → drift no one else can reproduce. PyPI `graphifyy`, CLI `graphify`.
 # renovate: datasource=pypi depName=graphifyy
-GRAPHIFY_SPEC="graphifyy[sql]==0.9.50"
+GRAPHIFY_SPEC="graphifyy[sql]==0.9.70"
 if [ "${1:-}" = "spec" ]; then
   printf '%s\n' "$GRAPHIFY_SPEC"
   exit 0

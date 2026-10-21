@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.4.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Agent Prompts Index
 
@@ -144,10 +144,10 @@ Pinning `model:` locks agent model regardless of orchestrator session. Without p
 | --- | --- | --- |
 | Pure summarizer | `Read, Write, Edit` | `bkit-build-summary`, `bkit-debug-summary`, `bkit-design-summary`, `bkit-plan-summary`, `bkit-ship-summary`, `bkit-debug-abort-handover` |
 | Read-only reviewer | `Read, Grep, Glob, Write` | `bkit-design-brainstorm-ideate-*`, `bkit-plan-complexity-check` |
-| Stub-replace reviewer | `Read, Grep, Glob, Write, Edit` | `bkit-plan-review-*`, `bkit-plan-scope-check-*`, `bkit-plan-complexity-split`, `bkit-design-generate`, `bkit-plan-generate`, `bkit-utility-compress-markdown`, `bkit-utility-update-documentation` |
+| Stub-replace reviewer | `Read, Grep, Glob, Write, Edit` | `bkit-plan-review-*`, `bkit-plan-scope-check-*`, `bkit-plan-complexity-split`, `bkit-design-generate`, `bkit-plan-generate`, `bkit-utility-compress-markdown` |
 | Stub-replace + log-append reviewer | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-build-challenge-1`, `bkit-build-challenge-2`, `bkit-build-plan-verify`, `bkit-build-plan-current`, `bkit-ship-deferred-sweep` |
 | Doc rewriter (cp + Edit) | `Read, Grep, Glob, Edit, Bash` | `bkit-design-update`, `bkit-plan-update`, `bkit-build-challenge-reconcile` |
-| Doc writer (with shell) | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-design-organise`, `bkit-ship-update-docs` |
+| Doc writer (with shell) | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-design-organise`, `bkit-ship-update-docs`, `bkit-utility-update-documentation` |
 | Source modifier (with test gate) | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-challenge-remediate`, `bkit-build-challenge-tests`, `bkit-debug-failure-reproduce`, `bkit-debug-failure-remediate`, `bkit-ship-conflict-resolve` |
 | Skill-installer / Bash-only utility | `Read, Grep, Glob, Bash` | `bkit-build-install-skills` |
 | Tracker reader (read-only MCP) | `Read, Grep, Glob, Write, Edit, Bash` + per tracker: github `mcp__github__list_issues, mcp__github__issue_read`; linear `mcp__linear__list_issues, mcp__linear__get_issue`; jira `mcp__jira__searchJiraIssuesUsingJql, mcp__jira__getJiraIssue`; none — | `bkit-utility-update-roadmap` |

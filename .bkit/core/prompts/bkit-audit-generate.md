@@ -56,7 +56,7 @@ maxTurns: 400
 - **Tracker:** Comment-only; NEVER create, close, or relabel issues; recommend and let caller act.
 - **Completeness:** report carries every template section; no `PENDING` left.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
-- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git stash clear`, `git push --force` (any flavour).
 
 **Process:**
 
