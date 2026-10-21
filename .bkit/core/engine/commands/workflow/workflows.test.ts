@@ -334,8 +334,14 @@ describe("bkit workflows fail", () => {
     expect(r.json.labels).toEqual(
       expect.arrayContaining(["bkit:build", "bkit:auto", "bkit:failed"]),
     );
+    expect(r.json.add).toEqual(["bkit:failed"]);
     expect(r.json.prState).toBeNull();
-    expect(typeof r.json.linearState).toBe("string");
+    expect(r.json.linearState).toBe("In Review");
+    const again = await run(
+      repo(),
+      wf("fail", "build", "--label=bkit:build", "--label=bkit:failed"),
+    );
+    expect(again.json.add).toEqual([]);
   });
 
   it("prints the failure comment from --error-file, naming a lock it could not remove", async () => {

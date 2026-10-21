@@ -257,8 +257,10 @@ function failVerb(ctx: RunContext): number {
   }
   const merged = prState === "MERGED";
   const transition = merged ? { phase: "merged" } : { failed: true };
-  const labels = transitionLabels(list(ctx.flags.label), transition).labels;
+  const current = list(ctx.flags.label);
+  const labels = transitionLabels(current, transition).labels;
   if (merged && !labels.includes("bkit:failed")) labels.push("bkit:failed");
+  const add = labels.filter((l) => !current.includes(l));
 
   // The failure comment, when the step is named.
   let comment: string | null = null;
@@ -285,6 +287,7 @@ function failVerb(ctx: RunContext): number {
     handoverNeeded:
       token !== undefined &&
       (ctx.flags.maxExceeded === true || state.sentinels.length > 0 || state.soak),
+    add,
     labels,
     linearState: linearState(transition, undefined),
     prState,
@@ -1460,6 +1463,7 @@ export const workflowsCommand: CommandSpec = {
         sentinels: "[{name, path}] sentinels that existed before this call removed them",
         handoverNeeded:
           "--max-exceeded, a sentinel existed, or a debug run in SOAK mode: write the abort handover",
+        add: "labels in the set that the issue does not carry yet",
         labels:
           "the label set to write: the current labels plus bkit:failed (and bkit:merged for a merged ship PR)",
         linearState: "the Linear state for the failed issue",

@@ -72,10 +72,10 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | `fid-format` | FID slug regex assertion | `^[0-9]+-[a-z0-9-]+$` | `^[a-z]+-[0-9]+-[a-z0-9-]+$` | no strict assert |
 | `issue-read` | Read state + labels + body + comments | `issue_read` `get` / `get_comments` | `get_issue` / `list_comments` | skip (vars empty) |
 | `issue-scan` | Bounded related-issue scan at design/plan/debug entry — writes each hit's body + comments under a `## #{number} — {title} ({state})` heading to a file (advisory, top 10, never gates); broad keyword search in title+body, all states | `search_issues` for ranking only + per-hit `issue_read` `get` / `get_comments` | `list_issues` + per-hit `list_comments` | skip stub (no scan) |
-| `issue-update-phase` | Step 1: set phase label (`bkit:debug` included; drops `next:*`, `bkit:failed`) + active state | `issue_write` labels | `save_issue` state+labels | skip |
-| `issue-update-review` | phase Close hand-off (non-terminal) | no-op (label carries) | `save_issue` In Review | skip |
-| `issue-update-failed` | Failure Path additive `bkit:failed` | `issue_write` labels | `save_issue` In Review | skip |
-| `issue-update-merged` | Ship terminal — `bkit:merged` + In Review (issue left open; human closes) | `issue_write` `bkit:merged` (no close) | `save_issue` In Review | skip |
+| `issue-update-phase` | Step 1: set phase label (`bkit:debug` included; drops `next:*`, `bkit:failed`) + active state | `issue_write` labels | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `started` | skip |
+| `issue-update-review` | phase Close hand-off (non-terminal) | no-op (label carries) | `save_issue` state In Review | skip |
+| `issue-update-failed` | Failure Path additive `bkit:failed` | `issue_write` labels | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state In Review | skip |
+| `issue-update-merged` | Ship terminal — `bkit:merged` + In Review (issue left open; human closes) | `issue_write` `bkit:merged` (no close) | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state In Review | skip |
 | `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add/update item | no-op (state carries) | skip |
 | `comment-post-step` | new comment per workflow step | `add_issue_comment` | `save_comment` | skip |
 | `issue-blockers-check` | Gate on open blockers | parse body marker → read states | `get_issue` relations | skip |
@@ -120,7 +120,7 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 | `###### bkit:ignore-earlier` | `bkit issues text` | drops all earlier content; human-placed only |
 | `###### bkit:generated` (comment first line) | `bkit issues text` | comment dropped from input |
 
-**References** — exact strings agents can search: issue `#N — {title}` (linear `TEAM-N — {title}`); doc `{path} § {section}`; ledger row `docs/{ledger}.jsonl` key `` `{key}` ``. Labels: type label (`enhancement` / `bug`) + one `next:*` (`.agents/rules.md` § Tracker next labels); never phase or `bkit:*` labels — workflows set them (`.bkit/workflows.md` § Tracker Integration).
+**References** — exact strings agents can search: issue `#N — {title}` (linear `TEAM-N — {title}`); doc `{path} § {section}`; ledger row `docs/{ledger}.jsonl` key `` `{key}` ``. Labels: type label (github `enhancement` / `bug`; linear the team's own, default `Improvement` / `Feature` / `Bug`) + one `next:*` (`.agents/rules.md` § Tracker next labels); never phase or `bkit:*` labels — workflows set them (`.bkit/workflows.md` § Tracker Integration).
 
 **Drafting from bkit output** (suggest only; file after human confirmation):
 
@@ -137,4 +137,6 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 
 ## linear — notes
 
-Linear `ISSUE_ID`s carry team prefix (e.g. `TEAM-123`) — FID inherits (`team-123-slug`). GitHub FIDs numeric-only (`123-slug`). Cross-provider scripts must tolerate both shapes. `LINEAR_TEAM` = `bkit.linearTeam` from manifest. No separate project board — issue state (`In Progress` / `In Review` / `Done`) carries status → `issue-update-status` no-op.
+Linear `ISSUE_ID`s carry team prefix (e.g. `TEAM-123`) — FID inherits (`team-123-slug`). GitHub FIDs numeric-only (`123-slug`). Cross-provider scripts must tolerate both shapes. `LINEAR_TEAM` = `bkit.linearTeam` from manifest. No separate project board — issue state carries status → `issue-update-status` no-op.
+
+Linear `save_issue` is all-or-nothing: one state or label name the team lacks rejects the whole call, valid fields included, and Linear never creates the missing name. A default team has states Backlog / Todo / In Progress / Done / Canceled / Duplicate and labels Improvement / Feature / Bug. So workflows write labels and state in separate calls, labels first. Each label the transition adds (`add` from `bkit issues labels` / `bkit workflows fail`) is created first with `save_issue_label({ name })`, a workspace label; `already exists` = done. Phase start sets state `started`, a state type every team has. Hand-off, Failure Path and ship terminal set state `In Review`; on a team without it the state call fails alone, is logged `Unapplied`, and the issue keeps its started state while `bkit:merged` / `bkit:failed` carry the hand-off. Label names resolve case-insensitively.

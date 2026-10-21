@@ -200,16 +200,21 @@ export function transitionLabels(current: string[], t: LabelTransition) {
   };
 }
 
+/** Linear state a phase start sets: a state type, which every team has whatever its states are named. */
+export const LINEAR_STARTED_STATE = "started";
+/** Linear state a hand-off sets: a state name, absent on a default team, so the workflows write it alone. */
+export const LINEAR_REVIEW_STATE = "In Review";
+
 /**
  * Linear's issue state for the same transition, as the workflows set it: a
- * shipped or failed issue waits on a human ("In Review"); a phase
- * starting is "In Progress". Null when the transition sets no state.
+ * shipped or failed issue waits on a human (`LINEAR_REVIEW_STATE`); a phase
+ * starting is `LINEAR_STARTED_STATE`. Null when the transition sets no state.
  */
 export function linearState(t: LabelTransition, board: string | undefined): string | null {
-  if (t.phase === "merged" || t.failed === true) return "In Review";
-  if (t.phase !== undefined) return "In Progress";
-  if (board === "review") return "In Review";
-  if (board === "progress") return "In Progress";
+  if (t.phase === "merged" || t.failed === true) return LINEAR_REVIEW_STATE;
+  if (t.phase !== undefined) return LINEAR_STARTED_STATE;
+  if (board === "review") return LINEAR_REVIEW_STATE;
+  if (board === "progress") return LINEAR_STARTED_STATE;
   return null;
 }
 

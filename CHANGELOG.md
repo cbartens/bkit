@@ -21,6 +21,10 @@ Format: `## [version] — YYYY-MM-DD`
 - **The `/bkit-design` interview ends by confirming a draft acceptance scenario.** The last round shows a draft Narrative, Success Criteria, Key Edge Cases and Process Sketch, built from the prompt, the issue and its comments, and every answer so far. It asks you to confirm or refine the parts it had to guess, and counts toward the 10-round cap. The draft is saved under a `DRAFT only` label. The design starts its Acceptance Scenario from it and records each change as a Decisions row. Headless runs save the draft marked as not reviewed by a human; `grill=false` writes no draft.
 - **Tracker rules cover status, links, priority and size.** `.agents/rules.md` `Tracker issue settings` now also requires project status, parent and blocked-by links. Priority and size follow the issues audit's `Ranking Rules` and new `Size Scale` section, and blocked-by uses the machine-read form. The tracker rules are reordered: issue creation and settings first, then labels, comments, and tool use. (#647)
 
+### Fixed
+
+- **Linear workflow updates work on a default Linear team.** Linear rejects an entire `save_issue` call when one state or label name doesn't exist on the team, valid fields included, and a default team has no `In Review` state and no `bkit:*` labels. So every phase change failed until someone created them by hand, and a Failure Path never added `bkit:failed`. Now the workflows create each label they add with `save_issue_label` before using it, then write labels and state in separate calls. A phase start sets the state type `started`, which every team has. A team without `In Review` keeps the issue in its started state and logs the skipped state as `Unapplied`, while `bkit:merged` / `bkit:failed` carry the hand-off. `bkit workflows fail` now prints `add`, like `bkit issues labels`. `/bkit-ship` takes its Linear states from those commands instead of naming them itself. (#646)
+
 ## [5.4.0] — 2026-10-20
 
 ### Breaking Changes

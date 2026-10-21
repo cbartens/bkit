@@ -48,7 +48,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" workflows fail --workflow=ship --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --max-exceeded --pr={PR_NUMBER} {LABEL_FLAGS} --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}"
    ```
-   → hold `handoverNeeded` as `{HANDOVER_NEEDED}`, `labels` as `{LABELS}`. **If** exit non-zero → log `Lock removal failed` with the printed `lock` to stderr, continue.
+   → hold `handoverNeeded` as `{HANDOVER_NEEDED}`, `labels` as `{LABELS}`, `linearState` as `{LINEAR_STATE}`. **If** exit non-zero → log `Lock removal failed` with the printed `lock` to stderr, continue.
 2. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    Post `comment` (when non-null).
 3. **If** `HANDOVER_NEEDED` = true → step 4. **Else** → step 5.
@@ -128,7 +128,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" issues labels --phase=ship --board=progress --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
    ```
-   → hold `labels` as `{LABELS}`, `board` as `{BOARD}`, `boardSkipped`.
+   → hold `labels` as `{LABELS}`, `linearState` as `{LINEAR_STATE}`, `board` as `{BOARD}`, `boardSkipped`.
    `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
 10. Create the outbox (`{OUTBOX}` = `{OUTBOX_ROOT}/{FID}`) and run the repo preflight:
@@ -551,7 +551,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" issues labels --phase=merged --board=review --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
    ```
-   → hold `labels` as `{LABELS}`, `board` as `{BOARD}`, `boardSkipped`.
+   → hold `labels` as `{LABELS}`, `linearState` as `{LINEAR_STATE}`, `board` as `{BOARD}`, `boardSkipped`.
    `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do not close the issue.
    **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
 4. Collect setup tips:

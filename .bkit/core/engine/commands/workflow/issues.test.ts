@@ -166,7 +166,7 @@ describe("bkit issues labels", () => {
       labels: ["bug", "bkit:auto", "nextjs", "bkit:plan"],
       changed: true,
       autoRouteSuffix: " bkit [auto route]",
-      linearState: "In Progress",
+      linearState: "started",
       board: null,
       boardSkipped: null,
     });
@@ -188,7 +188,7 @@ describe("bkit issues labels", () => {
       add: ["bkit:debug"],
       remove: ["bkit:build", "bkit:failed"],
       labels: ["bkit:debug"],
-      linearState: "In Progress",
+      linearState: "started",
     });
     expect(transitionLabels(["bkit:debug"], { phase: "ship" }).labels).toEqual(["bkit:ship"]);
   });
