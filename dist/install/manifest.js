@@ -15,14 +15,16 @@ export const OPTIN_MODULES = new Set(["cloud", "opencode", "codex", "antigravity
 // ---------------------------------------------------------------------------
 /**
  * Issue-tracker providers supported by `bkit install --tracker=<name>`.
- * - `github` — GitHub Issues + Projects v2 (default).
- * - `linear` — Linear (opt-in).
- * - `none` — no tracker wired; workflows skip tracker calls with one-line log.
+ * - `github` — GitHub Issues + Projects v2.
+ * - `linear` — Linear.
+ * - `jira` — Jira Cloud through the Atlassian Rovo MCP server.
+ * - `none` — no tracker wired; workflows skip tracker calls with one-line log (default).
  *
- * Add a new value here when adding a provider section to `.bkit/trackers.md`.
- * See `.bkit/trackers.md` § "Adding a tracker (Jira, etc.)" in the Rules block.
+ * A new value needs its block in every tracker group of the workflow and prompt
+ * sources (`.bkit/trackers.md` § Marker contract) and a branch in
+ * `render/trackers.ts`.
  */
-export const ISSUE_TRACKERS = ["github", "linear", "none"];
+export const ISSUE_TRACKERS = ["github", "linear", "jira", "none"];
 /** Default tracker when consumer manifest has no `bkit.issueTracker` field. */
 export const DEFAULT_ISSUE_TRACKER = "none";
 /**

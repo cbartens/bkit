@@ -17,7 +17,7 @@ function pair(gh: string, ln: string): string {
 // github/linear pairs
 // ---------------------------------------------------------------------------
 
-describe("substituteWorkflow — github/linear pairs", () => {
+describe("substituteWorkflow — tracker groups", () => {
   it("keeps the chosen tracker's block; none collapses to the generic skip message", () => {
     const wf = `Step.\n${pair("GH BODY", "LN BODY")}\nTail.\n`;
 
@@ -77,6 +77,31 @@ ISSUE_ID="" — derive FID from branch.
 
     const no = substituteWorkflow(wf, "none").output;
     expect(no).toContain("_No tracker connected, skip step._\n   → trailing derived line.");
+  });
+
+  it("keeps the jira block of a three-tracker group under jira", () => {
+    const wf = `1. ${pair("gh", "ln")}
+<!-- bkit:tracker jira start -->
+jira call
+<!-- bkit:tracker jira end -->
+<!-- bkit:tracker false start -->
+no tracker
+<!-- bkit:tracker false end -->
+2. Next.
+`;
+    const ji = substituteWorkflow(wf, "jira");
+    expect(ji.pairs).toBe(1);
+    expect(ji.orphans).toEqual([]);
+    expect(ji.output).toBe("1. jira call\n2. Next.\n");
+    expect(substituteWorkflow(wf, "github").output).toBe("1. gh\n2. Next.\n");
+    expect(substituteWorkflow(wf, "linear").output).toBe("1. ln\n2. Next.\n");
+    expect(substituteWorkflow(wf, "none").output).toBe("1. no tracker\n2. Next.\n");
+  });
+
+  it("leaves a group without a jira block whole under jira, so its markers are orphans", () => {
+    const r = substituteWorkflow(`1. ${pair("gh", "ln")}\n`, "jira");
+    expect(r.pairs).toBe(0);
+    expect(r.orphans).toEqual(["github", "github", "linear", "linear"]);
   });
 
   it("flags a lone github block (no linear) as an orphan", () => {

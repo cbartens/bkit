@@ -6,8 +6,9 @@
 // it is checked before first use. Its shape follows the tracker that minted it:
 //   github  {N}-{slug}           ^[0-9]+-[a-z0-9-]+$
 //   linear  {team}-{N}-{slug}    ^[a-z]+-[0-9]+-[a-z0-9-]+$  (issue id lowercased first)
+//   jira    {project}-{N}-{slug} ^[a-z][a-z0-9]+-[0-9]+-[a-z0-9-]+$  (issue key lowercased first)
 //   none    any slug             ^[a-z0-9][a-z0-9-]*$        (no tracker shape; still path-safe)
-//   any     github or linear     ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$  (auto's CI_DEV allowlist)
+//   any     any tracker's shape  ^([0-9]+|[a-z][a-z0-9]*-[0-9]+)-[a-z0-9-]+$  (auto's CI_DEV allowlist)
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -22,9 +23,15 @@ export type FidTracker = IssueTracker | "any";
 export const FID_PATTERNS: Readonly<Record<FidTracker, RegExp>> = {
   github: /^[0-9]+-[a-z0-9-]+$/,
   linear: /^[a-z]+-[0-9]+-[a-z0-9-]+$/,
+  jira: /^[a-z][a-z0-9]+-[0-9]+-[a-z0-9-]+$/,
   none: /^[a-z0-9][a-z0-9-]*$/,
-  any: /^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$/,
+  any: /^([0-9]+|[a-z][a-z0-9]*-[0-9]+)-[a-z0-9-]+$/,
 };
+
+/** Trackers whose issue id is a `{KEY}-{N}` key, carried lowercased in the FID. */
+const KEYED: ReadonlySet<FidTracker> = new Set(["linear", "jira"]);
+/** The uppercase issue key each keyed tracker mints. */
+const ISSUE_KEY = { linear: /^[A-Z]+-[0-9]+$/, jira: /^[A-Z][A-Z0-9]+-[0-9]+$/ } as const;
 
 /** The slug every recovered FID must pass before it touches a path (auto's branch fallback). */
 const SLUG = FID_PATTERNS.none;
@@ -36,7 +43,7 @@ export const EXIT_SEVERAL = 4;
 
 /**
  * Features already logged for an issue: every `docs/plans/{YYYYMM}/logs/{issue}-*`
- * folder, the issue id lowercased (a Linear FID carries it lowercased). Sorted, unique.
+ * folder, the issue id lowercased (a Linear or Jira FID carries it lowercased). Sorted, unique.
  */
 export function logged(root: string, issue: string): string[] {
   const key = `${issue.replace(/^#/, "").toLowerCase()}-`;
@@ -87,29 +94,29 @@ function trackerFlag(value: string | undefined, cwd: string, allowAny: boolean):
   if (!t) {
     throw new CommandError(
       EXIT.USAGE,
-      `--tracker must be github, linear, none${allowAny ? ", any" : ""}; got "${value}"`,
+      `--tracker must be github, linear, jira, none${allowAny ? ", any" : ""}; got "${value}"`,
     );
   }
   return t;
 }
 
-/** Linear issue ids arrive uppercase (`ABC-123`); the FID carries them lowercased. */
+/** Linear and Jira issue ids arrive uppercase (`ABC-123`); the FID carries them lowercased. */
 export const normaliseFid = (fid: string, tracker: FidTracker) =>
-  tracker === "linear" ? fid.toLowerCase() : fid;
+  KEYED.has(tracker) ? fid.toLowerCase() : fid;
 
 /**
  * The tracker issue id a FID embeds, or null when it embeds none:
- * github the leading numeric segment, linear the first two segments uppercased.
+ * github the leading numeric segment, linear and jira the first two segments uppercased.
  */
 export function issueIdOf(fid: string, tracker: FidTracker): string | null {
   const [first = "", second = ""] = fid.split("-");
   if (tracker === "github") return /^[0-9]+$/.test(first) ? first : null;
-  if (tracker === "linear") {
+  if (KEYED.has(tracker)) {
     const id = `${first}-${second}`.toUpperCase();
-    return /^[A-Z]+-[0-9]+$/.test(id) ? id : null;
+    return ISSUE_KEY[tracker as "linear" | "jira"].test(id) ? id : null;
   }
   if (tracker === "any") {
-    const m = /^([0-9]+|[a-z]+-[0-9]+)(?=-)/.exec(fid);
+    const m = /^([0-9]+|[a-z][a-z0-9]*-[0-9]+)(?=-)/.exec(fid);
     return m ? m[1]!.toUpperCase() : null;
   }
   return null;
@@ -119,6 +126,7 @@ export function issueIdOf(fid: string, tracker: FidTracker): string | null {
 const MARKERS: Readonly<Record<IssueTracker, RegExp>> = {
   github: /<!-- bkit:issue=#([0-9]+) bkit:fid=(\S+) -->/,
   linear: /<!-- bkit:issue=([A-Za-z]+-[0-9]+) bkit:fid=(\S+) -->/,
+  jira: /<!-- bkit:issue=([A-Za-z][A-Za-z0-9]+-[0-9]+) bkit:fid=(\S+) -->/,
   none: /<!-- bkit:fid=(\S+) -->/,
 };
 
@@ -134,7 +142,7 @@ export function fromMarker(text: string, tracker: IssueTracker): ParsedFid | nul
   if (!m) return null;
   const fid = normaliseFid(m[m.length - 1]!, tracker);
   if (!FID_PATTERNS[tracker].test(fid)) return null;
-  const issueId = tracker === "none" ? null : tracker === "linear" ? m[1]!.toUpperCase() : m[1]!;
+  const issueId = tracker === "none" ? null : KEYED.has(tracker) ? m[1]!.toUpperCase() : m[1]!;
   return { fid, issueId, source: "marker" };
 }
 
@@ -157,7 +165,7 @@ export function fromBranch(
 const TRACKER_FLAG: FlagSpec = {
   name: "tracker",
   type: "string",
-  help: "github | linear | none (default: package.json bkit.issueTracker, else none)",
+  help: "github | linear | jira | none (default: package.json bkit.issueTracker, else none)",
 };
 
 export const fidsCommand: CommandSpec = {
@@ -168,10 +176,10 @@ export const fidsCommand: CommandSpec = {
       summary: "Validate a FID for the tracker: exit 0 valid, exit 1 not.",
       flags: [
         { name: "fid", type: "string", required: true, help: "feature id to check" },
-        { ...TRACKER_FLAG, help: `${TRACKER_FLAG.help}; any = github or linear shape (CI_DEV)` },
+        { ...TRACKER_FLAG, help: `${TRACKER_FLAG.help}; any = any tracker's shape (CI_DEV)` },
       ],
       output: {
-        fid: "the FID as checked (linear: lowercased)",
+        fid: "the FID as checked (linear, jira: lowercased)",
         tracker: "tracker the shape came from",
         valid: "true when the FID matches",
         pattern: "the regex checked",

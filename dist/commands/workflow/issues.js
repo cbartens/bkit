@@ -212,7 +212,7 @@ function boardPayload(ctx, status) {
     const root = repoRoot(ctx.cwd);
     const tracker = readBkitConfig(root).issueTracker;
     if (tracker !== "github") {
-        if (tracker === "linear")
+        if (tracker === "linear" || tracker === "jira")
             ctx.log("Board status carried by issue state — no separate update.");
         return { board: null, boardSkipped: `tracker-${tracker}` };
     }

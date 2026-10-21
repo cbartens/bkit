@@ -176,6 +176,7 @@ describe("bkit prs open", () => {
     const r = await run(lin, ["prs", "open", "--fid=abc-1-x", "--issue=ABC-1", "--title=t"]);
     expect(r.json.body).toBe("<!-- bkit:issue=ABC-1 bkit:fid=abc-1-x -->\n");
     expect(prMarker("none", "x-y", undefined)).toBe("<!-- bkit:fid=x-y -->");
+    expect(prMarker("jira", "ab2-7-x", "AB2-7")).toBe("<!-- bkit:issue=AB2-7 bkit:fid=ab2-7-x -->");
   });
 
   it.each([
@@ -183,6 +184,8 @@ describe("bkit prs open", () => {
     ["github", "12-x", undefined],
     ["github", "12-x", "abc"],
     ["linear", "12-x", "ABC-1"],
+    ["jira", "mba-7-x", "mba-7"],
+    ["jira", "12-x", "MBA-7"],
     ["none", "-x", undefined],
   ])("refuses a %s marker with fid %j issue %j (exit 2)", async (tracker, fid, issue) => {
     const cwd = repo("feat/12-x", { issueTracker: tracker });
