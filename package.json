@@ -125,6 +125,12 @@
       "opencode-go",
       "openrouter"
     ],
+    "minPushPaths": [
+      "docs/**",
+      ".bkit/*.jsonl",
+      "CHANGELOG.md",
+      "README.md"
+    ],
     "capstoneJob": "bkit-tests-check",
     "ciWorkflow": "bkit-ci.yml",
     "roadmapNext": 25

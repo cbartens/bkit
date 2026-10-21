@@ -504,7 +504,7 @@ Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces
 
 **Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → run `pnpm bkit:gate:static` instead of `pnpm bkit:gate:static-unit`, dropping the unit lane only. Gates 5-9 still run — prose unaffected; slop:delta reports removals as `resolved`. Rollback trees intentionally inconsistent; surviving tests may reference deleted files. Non-revert: all applicable gates.
 
-**Min push:** every changed file matches `bkit.minPushPaths` (default plan logs, ledgers) → `pnpm bkit:gate:min` only (format, tables, prose, slop:delta, ledger-integrity); `bkit:check:dist` + actionlint skipped. Files decide (`bkit ci min-push`), never `[skip ci]`. Push to `dev` / `main` whose skip-CI-token commit changes any other file → blocked.
+**Min push:** every changed file matches `bkit.minPushPaths` (default plan logs, ledgers; bkit's own `package.json` sets `docs/**`, `.bkit/*.jsonl`, `CHANGELOG.md`, `README.md`) → `pnpm bkit:gate:min` only (format, tables, prose, slop:delta, ledger-integrity); `bkit:check:dist` + actionlint skipped. Files decide (`bkit ci min-push`), never `[skip ci]`. Push to `dev` / `main` whose skip-CI-token commit changes any other file → blocked.
 
 Pre-commit: `pnpm bkit:gate:format` — prettier over staged files, seconds. Prose is NOT here: `lint:prose` scans a fixed whole-repo file set, so it gates at pre-push inside `bkit:gate:static`. Enforcing slop gate: pre-push `pnpm slop:delta` via the same gate (Gate 6); `pnpm lint:slop` is report-only and sits in no lane. CI re-runs prose + slop:delta in `bkit-tests-static`.
 
