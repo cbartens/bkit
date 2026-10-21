@@ -276,7 +276,7 @@ No command and no phase label. One subagent, one template per run.
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
-| `bkit-audit-generate` | One template | Runs `docs/templates/bkit-audit-*.md`. Writes `docs/audits/{YYYYMM}/{slug}.md` (`{slug}` = basename without `bkit-audit-`; same slug already in that month → `{slug}-{TIMESTAMP}.md`). Report is the template through `bkit:end`. Refines that template's `Project Instructions` below `bkit:end`. Issue named in the invocation + tracker wired → posts the final summary there as one comment. |
+| `bkit-audit-generate` | One template | Runs `docs/templates/bkit-audit-*.md`. Writes `docs/audits/{YYYYMM}/{slug}.md` (`{slug}` = basename without `bkit-audit-`; same slug already in that month → `{slug}-{TIMESTAMP}.md`). Report is the template through `bkit:end`. Refines that template's `Project Instructions` below `bkit:end`. Issue named in the invocation + tracker wired → posts the final summary there as one comment. No issue named + tracker wired → searches for the template's audit parent and posts there; none open → suggests one, with the summary saved for its first comment. |
 
 `/bkit-plan` reads a design doc, one or more reports, or both. The invocation names which findings are in scope. The rest of each report stays context. With neither, the issue is the plan's source: a well-defined change issue carries its narrative, success criteria, edge cases, tests and tasks into the plan.
 

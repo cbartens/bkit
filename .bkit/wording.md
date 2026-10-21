@@ -250,6 +250,7 @@ do NOT just analyse
 ### tracker-read-only
 
 - prompt: where-used
+- except: bkit-audit-generate
 
 ```text
 **Tracker:** Read-only; never create, close, or relabel issues; recommend and let caller act.

@@ -127,9 +127,23 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 <!-- prettier-ignore -->
 | Source | Shape | Carry |
 | --- | --- | --- |
-| audit `Suggested Issues` row | by `Next Step`: `/bkit-design` → idea; `/bkit-plan`, `/bkit-build`, `build:lite` → change; `/bkit-debug`, `debug:lite` → bug; `manual` → plain task | `**Audit reports:**` line with row's finding IDs |
+| audit run, tracker wired, no open audit parent for its template (`Parent: missing`) | audit parent (below) | template path line |
+| audit `Suggested Issues` row | by `Next Step`: `/bkit-design` → idea; `/bkit-plan`, `/bkit-build`, `build:lite` → change; `/bkit-debug`, `debug:lite` → bug; `manual` → plain task | `**Audit reports:**` line with row's finding IDs; sub-issue of the template's audit parent (linear → `parentId`) |
 | design `Suggested Workstreams` (2+; design summary asks) | title = workstream name; body = its scope, spec left to design; filed in `Requires` order | `**Parent design:**` line; blocked-by block = issues filed for its `Requires` (linear → `blockedBy` relation) |
 | roadmap item with no issue (ledger row, audit candidate) | by recommended command, as audit row | ledger `key` / report path in References |
+
+**Audit parent** — one standing issue per audit template, shared by every run of that template; never one per run, never one across templates.
+
+<!-- prettier-ignore -->
+| Field | Value |
+| --- | --- |
+| Title | template H1 (`Security Audit`) |
+| Body | names `docs/templates/bkit-audit-{slug}.md` verbatim (`@bkit-audit-generate` finds the parent by this path); run line `@bkit-audit-generate docs/templates/bkit-audit-{slug}.md #{N}` (linear `TEAM-N`); report path `docs/audits/{YYYYMM}/{slug}.md` |
+| Labels | project's own (e.g. `maintenance`); no workflow, `next:*` or `bkit:*` label — it runs no workflow |
+| Milestone | one milestone holding every audit parent, when the project keeps one |
+| State | stays open; runs never close it; filed issues reference it as `#N — {title}`, never `Closes #N` |
+| Children | every issue filed from its runs' `Suggested Issues`, always (github sub-issues; linear `parentId`) |
+| Comments | one `### Audit Summary: {slug}` comment per run — posted by the run when named or found; a newly filed parent gets the run's saved `parent-comment.md` as its first comment |
 
 ## github — Projects v2 board (optional)
 

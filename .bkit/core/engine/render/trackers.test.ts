@@ -345,7 +345,7 @@ describe("real prompt sources", () => {
     expect(trackerTools("none")).toEqual(base);
   });
 
-  it("audit agent gets only the chosen tracker's comment tool", () => {
+  it("audit agent gets only the chosen tracker's comment and search tools", () => {
     const auditTools = (tracker: "github" | "linear" | "none") =>
       promptTools("bkit-audit-generate", tracker);
     const base = [
@@ -359,9 +359,37 @@ describe("real prompt sources", () => {
       "WebFetch",
       "WebSearch",
     ];
-    expect(auditTools("github")).toEqual([...base, "mcp__github__add_issue_comment"]);
-    expect(auditTools("linear")).toEqual([...base, "mcp__linear__save_comment"]);
+    expect(auditTools("github")).toEqual([
+      ...base,
+      "mcp__github__add_issue_comment",
+      "mcp__github__search_issues",
+    ]);
+    expect(auditTools("linear")).toEqual([
+      ...base,
+      "mcp__linear__save_comment",
+      "mcp__linear__list_issues",
+    ]);
     expect(auditTools("none")).toEqual(base);
+  });
+
+  it("audit agent searches for the template's audit parent only when a tracker is wired", () => {
+    const src = fs.readFileSync(path.join(PROMPTS_DIR, "bkit-audit-generate.md"), "utf-8");
+    const github = substituteWorkflow(src, "github").output;
+    expect(github).toContain("mcp__github__search_issues({");
+    expect(github).toContain("No such hit → `Parent` = `missing`");
+    expect(github).toContain("→ `ISSUE_ID` = `{number}`, `Parent` = `#{number} found`");
+    const linear = substituteWorkflow(src, "linear").output;
+    expect(linear).toContain("mcp__linear__list_issues({");
+    expect(linear).toContain("No such hit → `Parent` = `missing`");
+    expect(linear).toContain("→ `ISSUE_ID` = `{identifier}`, `Parent` = `{identifier} found`");
+    for (const out of [github, linear]) {
+      expect(out).toContain("audit-{slug}/parent-comment.md");
+    }
+    const none = substituteWorkflow(src, "none").output;
+    expect(none).not.toContain("search_issues");
+    expect(none).not.toContain("list_issues");
+    expect(none).not.toContain("No such hit → `Parent` = `missing`");
+    expect(none).not.toContain("audit-{slug}/parent-comment.md");
   });
 
   it("audit agent posts its summary only when a tracker is wired", () => {
