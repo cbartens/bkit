@@ -425,23 +425,38 @@ export function checkOnlyBookkeeping(root, o) {
     if (gitRaw(root, ["merge-base", "--is-ancestor", o.from, o.to]).status !== 0) {
         return { kind: "not-ancestor" };
     }
-    const changed = (specs) => gitRaw(root, [
+    const diff = changedOutside(root, o.from, o.to, bookPathspecs(o.month, o.fid, "pr"));
+    if (!diff.ok)
+        return { kind: "diff-failed", stderr: diff.stderr };
+    return diff.outside.length ? { kind: "outside", outside: diff.outside } : { kind: "ok" };
+}
+/**
+ * Every path changed in `from..to`, and the ones no pathspec in `specs` matches, both
+ * sorted. Git does the matching, so `specs` take pathspec magic (`:(glob)`). Renames
+ * count as a delete plus an add, so both paths must match.
+ */
+export function changedOutside(root, from, to, specs) {
+    const diff = (only) => gitRaw(root, [
         "diff",
         "--name-only",
         "-z",
         "--no-renames",
-        o.from,
-        o.to,
-        ...(specs.length ? ["--", ...specs] : []),
+        from,
+        to,
+        ...(only.length ? ["--", ...only] : []),
     ]);
-    const all = changed([]);
-    const book = changed(bookPathspecs(o.month, o.fid, "pr"));
-    if (all.status !== 0 || book.status !== 0) {
-        return { kind: "diff-failed", stderr: all.status !== 0 ? all.stderr : book.stderr };
-    }
+    const all = diff([]);
+    if (all.status !== 0)
+        return { ok: false, stderr: all.stderr };
+    const changed = [...new Set(nulList(all.stdout))].sort();
+    // No specs = nothing allowed: `git diff` with no pathspec would match every path.
+    if (specs.length === 0)
+        return { ok: true, changed, outside: changed };
+    const book = diff(specs);
+    if (book.status !== 0)
+        return { ok: false, stderr: book.stderr };
     const allowed = new Set(nulList(book.stdout));
-    const outside = [...new Set(nulList(all.stdout).filter((p) => !allowed.has(p)))].sort();
-    return outside.length ? { kind: "outside", outside } : { kind: "ok" };
+    return { ok: true, changed, outside: changed.filter((p) => !allowed.has(p)) };
 }
 function onlyBookkeeping(ctx) {
     const month = required(ctx, "month");

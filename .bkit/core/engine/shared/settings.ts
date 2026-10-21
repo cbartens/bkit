@@ -32,6 +32,11 @@ export interface BkitConfig {
   githubProject: Record<string, unknown> | false | null;
   /** CI lanes whose `skipped` conclusion refuses a ship merge; empty = the capstone's green decides. */
   shipGateRequiredLanes: string[];
+  /**
+   * Globs (`:(glob)` git pathspecs) for paths a push may carry and still run only
+   * `bkit:gate:min` in `.husky/pre-push`; empty = every push runs the full hook.
+   */
+  minPushPaths: string[];
   /** The opencode provider recorded on install; null = absent or not a supported provider. */
   opencodeProvider: OpencodeProvider | null;
   /** Every installed opencode provider, supported ones only; empty = none recorded. */
@@ -55,6 +60,9 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   issueTracker: DEFAULT_ISSUE_TRACKER,
   githubProject: null,
   shipGateRequiredLanes: [],
+  // What bkit's workflows write: plan / design / build logs and the ledgers. Never
+  // `docs/**`: a project doc can be a test's input, so a docs edit can red a test.
+  minPushPaths: ["docs/plans/**", "docs/*.jsonl", ".bkit/*.jsonl"],
   opencodeProvider: null,
   opencodeProviders: [],
   cloudAgents: DEFAULT_CLOUD_AGENTS,
@@ -78,6 +86,7 @@ export function readBkitConfig(root: string): BkitConfig {
   const minFreeGb = ((bkit.disk ?? {}) as Record<string, unknown>).minFreeGb;
   const project = bkit.githubProject;
   const lanes = bkit.shipGateRequiredLanes;
+  const book = bkit.minPushPaths;
   const provider = bkit.opencodeProvider;
   const providers = bkit.opencodeProviders;
   return {
@@ -101,6 +110,10 @@ export function readBkitConfig(root: string): BkitConfig {
           ? (project as Record<string, unknown>)
           : null,
     shipGateRequiredLanes: Array.isArray(lanes) ? lanes.filter(nonEmptyString) : [],
+    // An explicit [] is kept: it switches the min push off.
+    minPushPaths: Array.isArray(book)
+      ? book.filter(nonEmptyString)
+      : [...CONFIG_DEFAULTS.minPushPaths],
     opencodeProvider:
       typeof provider === "string" && isOpencodeProvider(provider) ? provider : null,
     opencodeProviders: Array.isArray(providers)

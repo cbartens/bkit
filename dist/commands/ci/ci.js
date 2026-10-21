@@ -14,11 +14,17 @@
 //
 // `skip-token` — whether a commit message carries a GitHub skip-CI token
 // (`SKIP_CI_TOKEN`), for the `.husky/pre-push` CI-suppressor guard.
+//
+// `min-push` — whether every file a push changes matches `bkit.minPushPaths`, so
+// `.husky/pre-push` runs `bkit:gate:min`. Files decide, never `[skip ci]` (a typed label
+// GitHub reads off the last commit only).
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { readBkitConfig } from "../../shared/settings.js";
 import { CommandError, commitMessage, EXIT, git, parseJson, runGit, SKIP_CI_TOKEN, } from "../lib.js";
+import { changedOutside } from "../workflow/ledgers.js";
 /** Exit code: slop-scan could not be started (not installed, not executable). */
 export const EXIT_SLOP_UNAVAILABLE = 3;
 /** Exit code: slop-scan ran but failed, or its JSON lacks the fields the gate reads. */
@@ -27,6 +33,8 @@ export const EXIT_SLOP_FAILED = 4;
 export const EXIT_NO_WORKTREE = 5;
 /** Exit code: vale could not run, or ended with a runtime error (its exit 2). */
 export const EXIT_VALE_FAILED = 6;
+/** Exit code: a pushed commit, its base, or its `git diff` could not be read. */
+export const EXIT_RANGE_UNKNOWN = 7;
 /** Branches whose merge-base with HEAD is the default base, in order. */
 const BASE_CANDIDATES = ["origin/dev", "origin/main"];
 /** A net score at or below this is float noise, not worsening. */
@@ -372,6 +380,75 @@ function skipToken(ctx) {
     ctx.emit({ ref, sha, token });
     return token === null ? EXIT.NO : EXIT.OK;
 }
+// ---------------------------------------------------------------------------
+// min-push
+// ---------------------------------------------------------------------------
+/** `bkit.minPushPaths` as git pathspecs: `:(glob)` unless an entry carries its own magic. */
+export const minPushPathspecs = (paths) => paths.map((p) => (p.startsWith(":") ? p : `:(glob)${p}`));
+/** Where a pushed commit's range starts: its merge-base with origin/dev, else origin/main. */
+export function pushBase(cwd, sha) {
+    for (const cand of BASE_CANDIDATES) {
+        if (!runGit(cwd, ["rev-parse", "--verify", "--quiet", cand]).ok)
+            continue;
+        const mb = runGit(cwd, ["merge-base", sha, cand]);
+        if (mb.ok && mb.stdout)
+            return mb.stdout;
+    }
+    return null;
+}
+function minPush(ctx) {
+    const top = runGit(ctx.cwd, ["rev-parse", "--show-toplevel"]);
+    if (!top.ok)
+        throw new CommandError(EXIT.USAGE, `not inside a git repository: ${ctx.cwd}`);
+    const given = ctx.flags.ref;
+    const refs = Array.isArray(given) && given.length > 0 ? given.map(String) : ["HEAD"];
+    const baseFlag = typeof ctx.flags.base === "string" && ctx.flags.base ? ctx.flags.base : null;
+    const paths = readBkitConfig(top.stdout).minPushPaths;
+    const specs = minPushPathspecs(paths);
+    const changed = new Set();
+    const outside = new Set();
+    for (const ref of refs) {
+        const sha = git(ctx.cwd, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+        const base = sha ? (baseFlag ?? pushBase(ctx.cwd, sha)) : null;
+        const diff = sha && base ? changedOutside(top.stdout, base, sha, specs) : null;
+        if (!diff?.ok) {
+            const why = !sha
+                ? `cannot read commit '${ref}'`
+                : !base
+                    ? `no base for ${ref} (neither origin/dev nor origin/main resolves)`
+                    : `'git diff' failed for ${base}..${ref}: ${diff && !diff.ok ? diff.stderr : ""}`;
+            ctx.log(`${why} — not proven a min push`);
+            ctx.emit({ minPush: false, reason: "unknown", changed: 0, outside: [], paths });
+            return EXIT_RANGE_UNKNOWN;
+        }
+        for (const p of diff.changed)
+            changed.add(p);
+        for (const p of diff.outside)
+            outside.add(p);
+    }
+    const result = (reason, code, message) => {
+        ctx.log(message);
+        ctx.emit({
+            minPush: reason === null,
+            reason,
+            changed: changed.size,
+            outside: [...outside].sort(),
+            paths,
+        });
+        return code;
+    };
+    if (paths.length === 0) {
+        return result("no-paths", EXIT.NO, "bkit.minPushPaths is empty — not a min push");
+    }
+    if (changed.size === 0) {
+        return result("no-changes", EXIT.NO, "the push changes no files — not proven a min push");
+    }
+    if (outside.size > 0) {
+        const first = [...outside].sort()[0];
+        return result("outside", EXIT.NO, `${outside.size} of ${changed.size} changed files match no min-push path (first: ${first})`);
+    }
+    return result(null, EXIT.OK, `all ${changed.size} changed files match min-push paths`);
+}
 export const ciCommand = {
     noun: "ci",
     summary: "Gates CI and the git hooks run.",
@@ -433,6 +510,29 @@ export const ciCommand = {
                 token: "the first skip-CI token in the message, else null",
             },
             run: skipToken,
+        },
+        "min-push": {
+            summary: "Exit 0 when every file a push changes matches bkit.minPushPaths (the pre-push light gate).",
+            flags: [
+                {
+                    name: "ref",
+                    type: "string",
+                    repeatable: true,
+                    help: "a pushed commit (default HEAD); its range starts at its merge-base with origin/dev, else origin/main",
+                },
+                { name: "base", type: "string", help: "start every range here instead" },
+            ],
+            output: {
+                minPush: "true when every changed file matches bkit.minPushPaths",
+                reason: "null when a min push; else no-paths | no-changes | outside | unknown",
+                changed: "files the push changes, across every ref",
+                outside: "the changed files no min-push path matches",
+                paths: "bkit.minPushPaths as read",
+            },
+            exitCodes: {
+                [EXIT_RANGE_UNKNOWN]: "a pushed commit, its base, or its git diff could not be read",
+            },
+            run: minPush,
         },
     },
 };

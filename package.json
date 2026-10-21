@@ -54,6 +54,7 @@
   "license": "MIT",
   "scripts": {
     "bkit:gate:format": "pnpm lint-staged",
+    "bkit:gate:min": "pnpm format:check && pnpm format:tables:check && pnpm lint:prose && pnpm slop:delta && vitest run .bkit/core/engine/audits/repo/ledger-integrity.test.ts",
     "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm format:tables:check && pnpm lint:prose && pnpm slop:delta",
     "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test && pnpm test:coverage:unit && pnpm bkit:test:bats",
     "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build",

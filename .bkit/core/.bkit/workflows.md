@@ -1350,7 +1350,7 @@ and holds its `bkit` key as `{BKIT}` (plus `repoRoot` as `{REPO_ROOT}`, `outboxR
 | `roadmap` | `fold`, `feature`, `mirror` | `docs/roadmap.md` re-render; append a phase's `kind:"feature"` row then re-render (`--strict`: exit 1 when it did not land); build / debug close: the row in the worktree, then on dev through the throwaway landing |
 | `workstreams` | `parse`, `comment` | design Step 11 advisory comment |
 | `skills` | `prune` | ship Step 7 skill prune |
-| `ci` | `slop`, `prose`, `skip-token` | `slop:delta` gate (CI and `.husky/pre-push`; takes the base sha as `--base=` or its one bare argument), `lint:prose` gate (Vale over `--glob=` files), `.husky/pre-push` skip-CI token check |
+| `ci` | `slop`, `prose`, `skip-token`, `min-push` | `slop:delta` gate (CI and `.husky/pre-push`; takes the base sha as `--base=` or its one bare argument), `lint:prose` gate (Vale over `--glob=` files), `.husky/pre-push` skip-CI token check, `.husky/pre-push` min-push check (every file the pushed `--ref=`s change matches `bkit.minPushPaths`; exit 0 yes, 1 no, 7 range unreadable) |
 | `setup` | `protect-main` | `main` branch protection requiring `bkit.capstoneJob` |
 
 CI check names come from `package.json` `bkit.capstoneJob` (default `bkit-tests-check`) and `bkit.ciWorkflow` (default `bkit-ci.yml`) — no command hard-codes a check, workflow file, or app folder.
@@ -1419,6 +1419,7 @@ Each gate is the previous gate plus its own tier, so the name and the value desc
 | Gate | Seeded default | Called by |
 | --- | --- | --- |
 | `bkit:gate:format` | `pnpm lint-staged` | `.husky/pre-commit` |
+| `bkit:gate:min` | `pnpm format:check && pnpm lint:prose && pnpm slop:delta` | `.husky/pre-push` on a min push |
 | `bkit:gate:static` | `pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta` | `@bkit-build-plan-execute`, `.husky/pre-push` revert path |
 | `bkit:gate:static-unit` | `pnpm bkit:gate:static && pnpm test` | build Steps 7 + 14, `.husky/pre-push`, `@bkit-build-plan-gaps-remediate`, `@bkit-build-challenge-remediate`, `@bkit-build-challenge-tests`, `@bkit-build-plan-verify`, `@bkit-debug-failure-remediate` |
 | `bkit:gate:static-unit-integration` | not seeded — `pnpm bkit:gate:static-unit && pnpm test:integration` | build Steps 7 + 14 |

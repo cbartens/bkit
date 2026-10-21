@@ -103,6 +103,7 @@ const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
   [".bkit/templates/.husky/pre-commit", "pnpm bkit:gate:format"],
   [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:static-unit"],
   [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:static"],
+  [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:min"],
   [".bkit/core/prompts/bkit-build-plan-execute.md", "pnpm bkit:gate:static"],
   [".bkit/core/prompts/bkit-build-plan-gaps-remediate.md", "pnpm bkit:gate:static-unit"],
   [".bkit/core/prompts/bkit-build-challenge-remediate.md", "pnpm bkit:gate:static-unit"],

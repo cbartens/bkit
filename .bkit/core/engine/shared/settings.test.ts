@@ -171,6 +171,16 @@ describe("readBkitConfig", () => {
     expect(lanes(["bkit-tests-unit", 42, null])).toEqual(["bkit-tests-unit"]);
     expect(lanes("bkit-tests-unit")).toEqual([]);
   });
+
+  it("reads minPushPaths as non-empty strings, keeps an explicit [], else the default", () => {
+    const book = (v: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { minPushPaths: v } }))).minPushPaths;
+    expect(book(["docs/plans/**", "", 3])).toEqual(["docs/plans/**"]);
+    expect(book([])).toEqual([]);
+    for (const bad of ["docs/plans/**", null, { 0: "docs/**" }])
+      expect(book(bad)).toEqual(CONFIG_DEFAULTS.minPushPaths);
+    expect(CONFIG_DEFAULTS.minPushPaths.some((p) => /^docs\/\*\*/.test(p))).toBe(false);
+  });
 });
 
 describe("package manager", () => {

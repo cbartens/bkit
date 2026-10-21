@@ -14,6 +14,9 @@ export const CONFIG_DEFAULTS = {
     issueTracker: DEFAULT_ISSUE_TRACKER,
     githubProject: null,
     shipGateRequiredLanes: [],
+    // What bkit's workflows write: plan / design / build logs and the ledgers. Never
+    // `docs/**`: a project doc can be a test's input, so a docs edit can red a test.
+    minPushPaths: ["docs/plans/**", "docs/*.jsonl", ".bkit/*.jsonl"],
     opencodeProvider: null,
     opencodeProviders: [],
     cloudAgents: DEFAULT_CLOUD_AGENTS,
@@ -35,6 +38,7 @@ export function readBkitConfig(root) {
     const minFreeGb = (bkit.disk ?? {}).minFreeGb;
     const project = bkit.githubProject;
     const lanes = bkit.shipGateRequiredLanes;
+    const book = bkit.minPushPaths;
     const provider = bkit.opencodeProvider;
     const providers = bkit.opencodeProviders;
     return {
@@ -54,6 +58,10 @@ export function readBkitConfig(root) {
                 ? project
                 : null,
         shipGateRequiredLanes: Array.isArray(lanes) ? lanes.filter(nonEmptyString) : [],
+        // An explicit [] is kept: it switches the min push off.
+        minPushPaths: Array.isArray(book)
+            ? book.filter(nonEmptyString)
+            : [...CONFIG_DEFAULTS.minPushPaths],
         opencodeProvider: typeof provider === "string" && isOpencodeProvider(provider) ? provider : null,
         opencodeProviders: Array.isArray(providers)
             ? providers.filter((v) => typeof v === "string" && isOpencodeProvider(v))

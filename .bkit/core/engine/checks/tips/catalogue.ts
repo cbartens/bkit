@@ -22,6 +22,7 @@
 // `bkit.ignoreAdvisories` entry silences both.
 
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { machineStepsPath, REPO_STEPS } from "../../commands/workflow/disk.js";
 import { detectContextFetchMissing } from "../before/context-fetch.js";
@@ -377,6 +378,18 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     steps: "`.bkit/templates.md` § tmp/ prune.",
     fires: (cwd) =>
       exists(cwd, ".husky/pre-push") && !exists(cwd, "scripts/cleanup/bkit-tmp-prune.mjs"),
+  },
+  {
+    id: "min-push",
+    workflows: ["plan", "ship"],
+    title: "Quick pushes for logs and records",
+    line: "Pushing only plan logs and records still runs every test. Add the quick path for those pushes.",
+    why: "A workflow's last push is often just its logs and records. The quick path checks only formatting and wording on such a push, so it takes seconds and never waits on anything another session is using. Any other file still runs everything.",
+    ask: 'Copy the min-push parts of .bkit/templates/.husky/pre-push into .husky/pre-push: PUSH_SHAS / PUSH_SHARED_SHAS in the stdin loop, the `Min push` and `CI-suppressor guard on dev / main` blocks, and the `bkit:gate:min` branch. Wrap slow checks below the gates in `if [ "$MIN_PUSH" != "1" ]`.',
+    steps: "`.bkit/templates.md` § Git hooks.",
+    fires: (cwd) =>
+      exists(cwd, ".husky/pre-push") &&
+      !fs.readFileSync(path.join(cwd, ".husky/pre-push"), "utf-8").includes("bkit ci min-push"),
   },
   {
     id: "disk-prune",
