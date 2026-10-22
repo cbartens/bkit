@@ -959,6 +959,6 @@ describe("bkit steps done — a run in place on dev that shares its checkout", (
     expect(r.err).toContain("blocked");
     expect(staged(cwd)).toBe("src/staged.txt");
     expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
-    expect(readRecord(cwd, FID)?.commits ?? []).toEqual([]);
+    expect(readRecord(cwd, FID)).toMatchObject({ commits: [] });
   });
 });

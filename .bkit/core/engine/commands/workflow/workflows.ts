@@ -66,7 +66,15 @@ import {
   trackerState,
   transitionLabels,
 } from "./issues.js";
-import { EXIT_EMPTY, commitBookkeeping, unionLedgers } from "./ledgers.js";
+import {
+  EXIT_EMPTY,
+  activeRecord,
+  commitBookkeeping,
+  ownPathCommit,
+  removeRecord,
+  runRows,
+  unionLedgers,
+} from "./ledgers.js";
 import {
   EXIT_REMOVE_FAILED,
   EXIT_SPLIT_BUCKET,
@@ -368,12 +376,9 @@ function carryOwnBook(
 ): Carried {
   const rel = logDirRel(o.month, o.fid);
   const carried: Carried = { files: carryLogs(src, dst, rel), lines: new Map() };
-  const uncommitted = (file: string) => {
-    const head = new Set(textLines(git(src, ["show", `HEAD:${file}`]) ?? "").map((l) => l.trim()));
-    return textLines(fs.readFileSync(path.join(src, file), "utf-8")).filter(
-      (l) => !head.has(l.trim()),
-    );
-  };
+  // Rows the run appended; on a shared checkout, recorded foreign rows are never carried.
+  const rec = activeRecord(src, o.fid);
+  const uncommitted = (file: string) => runRows(src, file, rec);
   const add = (file: string, lines: string[]) => {
     const to = path.join(dst, file);
     const existing = fs.existsSync(to) ? fs.readFileSync(to, "utf-8") : "";
@@ -412,14 +417,23 @@ function carryOwnBook(
  * log identical to the landed copy is removed when untracked, or returns to HEAD
  * when tracked. A carried ledger loses exactly the carried lines; it returns to
  * HEAD when that leaves it equal, and an untracked one left empty is removed.
- * Anything staged, or a log changed since it landed, stays and is named.
+ * Anything staged, or a log changed since it landed, stays and is named. A path
+ * the shared-checkout record lists is never reset or removed.
  */
-function handBack(tree: string, sha: string, carried: Carried, log: (line: string) => void): void {
+function handBack(
+  tree: string,
+  sha: string,
+  carried: Carried,
+  log: (line: string) => void,
+  recorded: ReadonlySet<string> = new Set(),
+): void {
   const back: string[] = [];
   const kept: string[] = [];
   const staged = (rel: string) => !runGit(tree, ["diff", "--cached", "--quiet", "--", rel]).ok;
   const tracked = (rel: string) => runGit(tree, ["ls-files", "--error-unmatch", "--", rel]).ok;
   for (const rel of carried.files) {
+    // A path that was dirty before the run started is not the run's to reset.
+    if (recorded.has(rel)) continue;
     const abs = path.join(tree, rel);
     const landed = runGit(tree, ["show", `${sha}:${rel}`]);
     const same =
@@ -590,6 +604,7 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
   // A dev / main / detached checkout is shared: only the run's own record leaves it.
   const shared = branch === "" || isSharedBranch(branch);
   let handed: { sha: string; carried: Carried } | undefined;
+  const rec = shared && (push || flush) ? activeRecord(tree, fid) : null;
   if (push && shared) {
     const r = await landFailedRecord(ctx, { workflow, fid, month, book: tree, shared });
     if (r.sha !== undefined && r.carried !== undefined) handed = { sha: r.sha, carried: r.carried };
@@ -631,7 +646,11 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
         bodyFile: artifact,
       })
     : null;
-  if (handed !== undefined) handBack(tree, handed.sha, handed.carried, ctx.log);
+  if (handed !== undefined) {
+    handBack(tree, handed.sha, handed.carried, ctx.log, new Set(rec?.paths.map((p) => p.path)));
+  }
+  // The run is over once its record is handed back: the next run starts a fresh one.
+  if (rec !== null) removeRecord(tree, fid);
   ctx.emit({
     handover: present ? artifact : null,
     pushed,
@@ -851,7 +870,8 @@ export interface CloseInput {
  * Grade compliance, append the workflow-done row (and, with `recordStep`, the
  * close step's row first), the counter and outcome telemetry rows, and build the
  * report and artifact links; with `outbox`, write them for the close comment; with
- * `message`, commit everything (`git add -A`) in the tree.
+ * `message`, commit everything (`git add -A`) in the tree, or, in an in-place run
+ * on a shared branch, only the run's own paths.
  */
 export function closeWorkflow(
   cwd: string,
@@ -988,10 +1008,17 @@ export function closeWorkflow(
     )
       message += " bkit [verbose ci]";
     if ((o.labels ?? []).includes(AUTO_LABEL)) message += AUTO_ROUTE_SUFFIX;
-    const add = runGit(where.tree, ["add", "-A"]);
-    const made = add.ok ? runGit(where.tree, ["commit", "--allow-empty", "-m", message]) : add;
-    if (!made.ok)
-      throw new CommandError(EXIT.NO, `close commit failed: ${made.stderr || made.stdout}`);
+    // An in-place run on a shared branch commits its own paths only.
+    const rec = activeRecord(where.tree, o.fid);
+    if (rec !== null) {
+      const made = ownPathCommit(where.tree, rec, message, { allowEmpty: true });
+      if (!made.ok) throw new CommandError(EXIT.NO, `close commit failed: ${made.error}`);
+    } else {
+      const add = runGit(where.tree, ["add", "-A"]);
+      const made = add.ok ? runGit(where.tree, ["commit", "--allow-empty", "-m", message]) : add;
+      if (!made.ok)
+        throw new CommandError(EXIT.NO, `close commit failed: ${made.stderr || made.stdout}`);
+    }
     commit = headSha(where.tree);
   }
 

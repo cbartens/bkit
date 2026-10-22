@@ -239,6 +239,17 @@ describe("bkit worktrees setup — debug in place on dev shares the checkout", (
       `--token=${lock.json.token}`,
     );
     expect(start.code).toBe(0);
+    // A run counts as live once it has stepped (locks.ts liveReason), as it has by Step 2's end.
+    const stepped = await bkit(
+      cwd,
+      "steps",
+      "done",
+      `--file=docs/plans/${MONTH}/logs/${fid}/status.jsonl`,
+      "--workflow=debug",
+      "--step=debug-start-workflow",
+      "--commit=none",
+    );
+    expect(stepped.code).toBe(0);
   }
 
   /** dev with a bare origin, one local commit beyond it, and foreign work in flight. */

@@ -17,6 +17,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { lastRun } from "../../ledgers/status.js";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
@@ -32,8 +33,10 @@ import {
   type CommandSpec,
 } from "../lib.js";
 import { ensureDiskSpace } from "./disk.js";
+import { listRecords, newRecord, readRecord, removeRecord, writeRecord } from "./ledgers.js";
+import { workflowLockLive } from "./locks.js";
 import { detect } from "./runtime.js";
-import { WORKFLOW_FLAG } from "./status.js";
+import { WORKFLOW_FLAG, readRuns } from "./status.js";
 
 const WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
 const ORIGIN_DEV = `origin/${DEV}`;
@@ -48,6 +51,7 @@ export const EXIT_REBASE_NOT_STARTED = 9;
 export const EXIT_NOT_A_WORKTREE = 10;
 export const EXIT_REMOVE = 11;
 export const EXIT_DISK_FULL = 12;
+export const EXIT_SHARED_BUSY = 13;
 
 const FID_FLAG = { name: "fid", type: "string", required: true, help: "feature id" } as const;
 
@@ -110,6 +114,33 @@ function fetchBranch(cwd: string, branch: string): void {
   if (!res.ok) {
     throw new CommandError(EXIT_FETCH, `could not fetch origin ${branch}: ${res.stderr}`);
   }
+}
+
+/**
+ * The shared-checkout record for an in-place run on `dev`. Another feature's
+ * record with a live workflow lock means that run owns the checkout; one
+ * without is left over and removed. The same feature with an open run in
+ * `{logDir}/status.jsonl` is a resume and keeps its record; a new run rewrites it.
+ */
+function openSharedRecord(root: string, fid: string, workflow: string, logDir: string) {
+  for (const other of listRecords(root)) {
+    if (other.fid === fid) continue;
+    if (workflowLockLive(root, other.fid)) {
+      throw new CommandError(
+        EXIT_SHARED_BUSY,
+        `${other.fid} is running in this checkout (workflow lock held) — wait for it to finish, then re-run`,
+      );
+    }
+    removeRecord(root, other.fid);
+  }
+  const existing = readRecord(root, fid);
+  const statusFile = path.join(logDir, "status.jsonl");
+  const open =
+    fs.existsSync(statusFile) && lastRun(readRuns(statusFile), workflow)?.status === "IN_PROGRESS";
+  if (existing !== null && existing.branch === DEV && open) return existing;
+  const fresh = newRecord(root, fid, DEV);
+  writeRecord(root, fresh);
+  return fresh;
 }
 
 /** Ship's branch: the one the prompt names, else `feat/{fid}` when it exists, else the session's. */
@@ -404,6 +435,10 @@ export const worktreesCommand: CommandSpec = {
         direnvAllowed:
           "direnv allow ran on the worktree's .envrc (present and identical to the main checkout's)",
         installed: "dependencies were installed",
+        startSha:
+          "in place on dev (debug): HEAD when the run started, recorded in the shared-checkout record; absent otherwise",
+        aheadAtStart:
+          "in place on dev (debug): commits local dev held beyond origin/dev when the run started; absent otherwise",
       },
       exitCodes: {
         [EXIT_REBASE_CONFLICT]:
@@ -416,6 +451,8 @@ export const worktreesCommand: CommandSpec = {
         [EXIT_WORKTREE_ADD]: "git worktree add failed",
         [EXIT_REBASE_NOT_STARTED]: "resume rebase could not start (e.g. uncommitted changes)",
         [EXIT_NOT_A_WORKTREE]: ".worktrees/{fid} exists but is not a registered git worktree",
+        [EXIT_SHARED_BUSY]:
+          "in place on dev: another feature's run holds this checkout (its shared-checkout record has a live workflow lock); nothing written",
         [EXIT_DISK_FULL]:
           "free disk under bkit.disk.minFreeGb even after your max cleanup steps (`bkit disk prune`); nothing created",
       },
@@ -521,6 +558,13 @@ export const worktreesCommand: CommandSpec = {
           }
         }
 
+        // An in-place run on a shared branch records what was dirty before it, so its
+        // commits and push take only its own work.
+        const shared =
+          mode === "adopted" && isSharedBranch(git(root, ["branch", "--show-current"]) ?? "")
+            ? openSharedRecord(root, fid, workflow, logDir)
+            : undefined;
+
         let rebaseConflict = false;
         let sentinel: string | null = null;
         const sentinelPath = path.join(logDir, ".rebase-failed");
@@ -591,6 +635,9 @@ export const worktreesCommand: CommandSpec = {
           copyMissing,
           direnvAllowed,
           installed: wantInstall && installStatus === 0,
+          ...(shared === undefined
+            ? {}
+            : { startSha: shared.startSha, aheadAtStart: shared.aheadAtStart }),
         });
         if (sentinel !== null)
           return rebaseConflict ? EXIT_REBASE_CONFLICT : EXIT_REBASE_NOT_STARTED;

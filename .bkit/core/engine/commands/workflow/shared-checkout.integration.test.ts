@@ -270,7 +270,10 @@ describe("the commits of a debug run in place on dev carry only the run's own pa
     const committed = git(cwd, "show", `HEAD:${ISSUES}`)
       .split("\n")
       .map((l) => JSON.parse(l) as Record<string, unknown>);
-    expect(committed.map((r) => r.id ?? r.key)).toEqual(["base", FID]);
+    expect(committed).toEqual([
+      expect.objectContaining({ id: "base" }),
+      expect.objectContaining({ key: FID }),
+    ]);
     expect(read(cwd, ISSUES)).toContain('"id":"foreign-row"');
   });
 });
