@@ -13,6 +13,7 @@
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Local project rules / overrides → `Project Rules` below bkit-managed block; universal rules stay in-block.
+> - Where project services live (repo, boards, service org / project ids) → `Project Settings`, last section; facts only — NEVER rules, NEVER change workflows, gates or permissions.
 
 ## bkit Rules
 
@@ -189,3 +190,14 @@
 - **Advisories self-contained:** `PreflightFinding.action` text in `.bkit/core/engine/checks/before/index.ts` MUST inline the load-bearing fix (command, key params, and decisive context); NEVER link out to `docs/*.md`.
 - **Consumer names:** NEVER name bkit consumers (repo, org, product, domain, checkout path, abbreviation) in tracked files, commit / tag messages, release notes, or tracker text; write `a consumer`.
 - **Verify before complete:** Done = both full suite (`pnpm vitest run`, NEVER scoped) and real dogfood (`pnpm build` → `node dist/cli.js <verb> <flags>` on a fresh scratch consumer; inspect on-disk footprint). Green tests ≠ proof.
+
+## Project Settings
+
+Non-secret identifiers agents pass to MCP servers and CLIs; tokens stay in env files. One row per value; delete unused rows.
+
+<!-- prettier-ignore -->
+| Service | Setting | Value |
+| --- | --- | --- |
+| GitHub | Repository | `cbartens/bkit` |
+| GitHub | Project board | https://github.com/users/cbartens/projects/1 |
+| npm | Package | `@cbartens/bkit` |

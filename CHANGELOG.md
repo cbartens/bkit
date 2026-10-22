@@ -11,6 +11,7 @@ Format: `## [version] — YYYY-MM-DD`
 ### Added
 
 - **A local stack lock keeps worktrees off each other's local services.** Every worktree of a repo shares each local service whose names and ports come from the repo's config (a Docker database, an emulator), so a reset from one worktree wiped the data under another worktree's test run. Copy the new template `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` to `scripts/ci/`, wrap the `package.json` scripts that start, reset or stop the stack in its `run` mode, and source it in local runners that test against the stack. A second run waits and names the run holding the stack; the lock frees itself within a second of its run ending, however the run ends; CI skips it. The new `.agents/rules.md` rule `Shared local stack` tells agents to use those scripts, never the raw command. Setup: `.bkit/templates.md` § Local stack lock.
+- **`.agents/rules.md` gets a `Project Settings` section for where your services live.** A table at the end of the file holds the identifiers agents pass to MCP servers and CLIs: the GitHub repo and project board, Sentry org and project, Supabase project refs, Vercel team and project. Agents read the file every session, so they no longer have to guess or ask. It is reference only and changes no workflow, gate or permission. New installs get the section with commented example rows; in an existing install, add `## Project Settings` after your `Project Rules` and fill in a `Service | Setting | Value` table. Put non-secret identifiers only; tokens stay in env files.
 
 ### Changed
 

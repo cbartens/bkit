@@ -13,6 +13,7 @@
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Local project rules / overrides → `Project Rules` below bkit-managed block; universal rules stay in-block.
+> - Where project services live (repo, boards, service org / project ids) → `Project Settings`, last section; facts only — NEVER rules, NEVER change workflows, gates or permissions.
 
 ## bkit Rules
 
@@ -166,3 +167,17 @@
 ### Universal Rules
 
 ### Orchestrator Rules
+
+## Project Settings
+
+Non-secret identifiers agents pass to MCP servers and CLIs; tokens stay in env files. One row per value; delete unused rows.
+
+<!-- Examples:
+| Service | Setting | Value |
+| --- | --- | --- |
+| GitHub | Repository | `acme/web` |
+| GitHub | Project board | https://github.com/orgs/acme/projects/1 |
+| Sentry | Org / project | `acme` / `web` |
+| Supabase | Project ref (preview / production) | `abcdefghijklmnopqrst` / `tsrqponmlkjihgfedcba` |
+| Vercel | Team / project | `acme` / `web` |
+-->
