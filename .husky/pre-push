@@ -175,9 +175,10 @@ for push_sha in $PUSH_SHARED_SHAS; do
   fi
 done
 
-# Fast blocking checks run BEFORE the gates: each reads only git and the tree (the register
-# check ~30s, the rest a few seconds), so a failure stops the push in seconds instead of
-# after the full gate.
+# Fast blocking checks run BEFORE the gates: each reads only git and the tree, so a failure
+# stops the push in seconds instead of after the full gate. Paste fast repo extras that can
+# block (seconds to ~30s, needing nothing the gates build) here too. Slow extras go below
+# the gates.
 #
 # bkit mirror-drift gate — fails if `.agents/*` was edited without `bkit install`
 # regenerating the `.claude/*`/`.cursor/*` mirrors (same check CI runs).
