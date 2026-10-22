@@ -16,7 +16,7 @@ description: "Plan Feature — Autonomous plan generation"
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 > - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does not replace **Failure Path**.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{PARENT_FID}`, `{PARENT_YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty — never a **Failure Path** trigger). **Else** → **Failure Path**.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{PARENT_FID}`, `{PARENT_YYYYMM}`, etc non-empty if required before making tool calls<!-- bkit:tracker true start --> (`{ISSUE_ID}` may be empty — never a **Failure Path** trigger)<!-- bkit:tracker true end -->. **Else** → **Failure Path**.
 > - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 > - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
@@ -86,7 +86,7 @@ description: "Plan Feature — Autonomous plan generation"
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
    - **Else** → post `comment` (when non-null; skipped when `ISSUE_ID` empty) → step 4.
-4. **STOP**, no further downstream steps. Line 1 of the final message = the no-issue warning, when one was emitted.
+4. **STOP**, no further downstream steps.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end -->
 
 ---
 
@@ -142,7 +142,7 @@ description: "Plan Feature — Autonomous plan generation"
    One `FID` for all artifacts once set. Check its format for the wired tracker:
 
    ```bash
-   "{BKIT}" fids check --fid="{FID}" --issue="{ISSUE_ID}"
+   "{BKIT}" fids check --fid="{FID}"<!-- bkit:tracker true start --> --issue="{ISSUE_ID}"<!-- bkit:tracker true end -->
    ```
 
    → hold `fid` as `{FID}`.
@@ -198,7 +198,7 @@ description: "Plan Feature — Autonomous plan generation"
 ### 🔒 Gate 1 — Start Workflow
 
 ```bash
-"{BKIT}" steps gate --workflow=plan --step=plan-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
+"{BKIT}" steps gate --workflow=plan --step=plan-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN}<!-- bkit:tracker true start --> --issue="{ISSUE_ID}"<!-- bkit:tracker true end --> --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
@@ -241,13 +241,11 @@ description: "Plan Feature — Autonomous plan generation"
    "{BKIT}" runtime assert --file="{LOG_DIR}/status.jsonl" --workflow=plan >/dev/null
    ```
    Hold `file` as `{STATUS}`, `run` as `{RUN}`.
-4. <!-- bkit:tracker true start -->
-   **Skip if** `ISSUE_ID` empty (`ISSUE_TEXT` empty). Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` (JSON array as the tracker read returned it, `[]` when none) to `{OUTBOX}/issue-comments.json` → derive `ISSUE_TEXT`:
+4. <!-- bkit:tracker true start -->**Skip if** `ISSUE_ID` empty (`ISSUE_TEXT` empty).<!-- bkit:tracker true end --> Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` (JSON array as the tracker read returned it, `[]` when none) to `{OUTBOX}/issue-comments.json` → derive `ISSUE_TEXT`:
    ```bash
    "{BKIT}" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
    ```
    Hold `text` as `ISSUE_TEXT`.
-   <!-- bkit:tracker true end -->
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md` = session prompt + `ISSUE_TEXT`. **If** `PARENT_FID` empty → do not append a design. **Else** → append `docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md`; missing file → **Failure Path**. **If** `AUDIT_PATHS` empty → do not append reports. **Else** → append each path in order; a missing file → **Failure Path**.
 5. Finish:
    ```bash
@@ -485,7 +483,7 @@ description: "Plan Feature — Autonomous plan generation"
    Hold `verdict` as `SUMMARY_VERDICT`.
 4. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 12.
-   - **If** `SUMMARY_VERDICT` = FAIL → display `plan-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
+   - **If** `SUMMARY_VERDICT` = FAIL → display `plan-summary.md` content verbatim as final message to user<!-- bkit:tracker true start -->. Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end --> → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 11 — Summary
@@ -552,7 +550,7 @@ description: "Plan Feature — Autonomous plan generation"
    "{BKIT}" tips --workflow=plan
    ```
    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-6. Final return: Display `plan-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. Line 1 of the final message = the no-issue warning, when one was emitted. **HARD STOP** — do not invoke `/bkit-build`.
+6. Final return: Display `plan-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end --> **HARD STOP** — do not invoke `/bkit-build`.
    <!-- bkit:tracker true start -->
    Append the issue link [{ISSUE_ID} {TITLE}]({URL}) unless `ISSUE_ID` is empty
    <!-- bkit:tracker true end -->

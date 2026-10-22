@@ -16,7 +16,7 @@ description: "Build Feature — Autonomous implementation"
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 > - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does not replace **Failure Path**.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty — never a **Failure Path** trigger). **Else** → **Failure Path**.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls<!-- bkit:tracker true start --> (`{ISSUE_ID}` may be empty — never a **Failure Path** trigger)<!-- bkit:tracker true end -->. **Else** → **Failure Path**.
 > - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 > - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt (`--attempt-of`; `<attempt>` in a path or message becomes it), checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields, `attempt` as its attempt.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
@@ -94,7 +94,7 @@ description: "Build Feature — Autonomous implementation"
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
    - **Else** → post `comment` (when non-null; skipped when `ISSUE_ID` empty) → step 6.
-6. **STOP**, no further downstream steps. Line 1 of the final message = the no-issue warning, when one was emitted.
+6. **STOP**, no further downstream steps.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end -->
 
 ---
 
@@ -151,12 +151,13 @@ description: "Build Feature — Autonomous implementation"
       - **If** exit 0 → that `fid`.
       - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
       - **Else** → next.
-   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**. Format `{ISSUE_ID}-{slug}`; `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
+   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**. Format `{ISSUE_ID}-{slug}`.
+      `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
 
    One `FID` for all artifacts once set. Check its format for the wired tracker:
 
    ```bash
-   "{BKIT}" fids check --fid="{FID}" --issue="{ISSUE_ID}"
+   "{BKIT}" fids check --fid="{FID}"<!-- bkit:tracker true start --> --issue="{ISSUE_ID}"<!-- bkit:tracker true end -->
    ```
 
    → hold `fid` as `{FID}`.
@@ -202,7 +203,7 @@ description: "Build Feature — Autonomous implementation"
 ### 🔒 Gate 1 — Start Workflow
 
 ```bash
-"{BKIT}" steps gate --workflow=build --step=build-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
+"{BKIT}" steps gate --workflow=build --step=build-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN}<!-- bkit:tracker true start --> --issue="{ISSUE_ID}"<!-- bkit:tracker true end --> --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
@@ -706,7 +707,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```
 4. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 18.
-   - **If** `SUMMARY_VERDICT` = FAIL → display `build-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
+   - **If** `SUMMARY_VERDICT` = FAIL → display `build-summary.md` content verbatim as final message to user<!-- bkit:tracker true start -->. Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end --> → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 17 — Summary
@@ -754,7 +755,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Hold the close's `comment` as `{CLOSE_COMMENT}`.
 4. Create PR. `docs/plans/{YYYYMM}/{FID}-plan.md` (if present):
    ```bash
-   "{BKIT}" prs open --fid={FID} --title="feat({FID}): {summary}" --issue="{ISSUE_ID}" --plan=docs/plans/{YYYYMM}/{FID}-plan.md
+   "{BKIT}" prs open --fid={FID} --title="feat({FID}): {summary}"<!-- bkit:tracker true start --> --issue="{ISSUE_ID}"<!-- bkit:tracker true end --><!-- bkit:tracker false start --> --issue={ISSUE_ID}<!-- bkit:tracker false end --> --plan=docs/plans/{YYYYMM}/{FID}-plan.md
    ```
    Route:
    - **If** exit 0 → hold `url` as `{PR_URL}`, `number` as `{PR_NUMBER}`.
@@ -824,7 +825,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     "{BKIT}" tips --workflow=build
     ```
     Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-12. Final return: Display `build-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. Line 1 of the final message = the no-issue warning, when one was emitted. Append `CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug.`
+12. Final return: Display `build-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end --> Append `CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug.`
     <!-- bkit:tracker true start -->
     Append the issue link [{ISSUE_ID} {TITLE}]({URL}) unless `ISSUE_ID` is empty
     <!-- bkit:tracker true end -->

@@ -16,7 +16,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 > - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does not replace **Failure Path**.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty — never a **Failure Path** trigger). **Else** → **Failure Path**.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls<!-- bkit:tracker true start --> (`{ISSUE_ID}` may be empty — never a **Failure Path** trigger)<!-- bkit:tracker true end -->. **Else** → **Failure Path**.
 > - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 > - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt (`--attempt-of`; `<attempt>` in a path or message becomes it), checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields, `attempt` as its attempt.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
@@ -96,7 +96,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
    - **Else** → post `comment` (when non-null; skipped when `ISSUE_ID` empty) → step 6.
-6. **STOP**, no further downstream steps. Line 1 of the final message = the no-issue warning, when one was emitted.
+6. **STOP**, no further downstream steps.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end -->
 
 ---
 
@@ -147,7 +147,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
       - **If** exit 0 → that `fid`.
       - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
       - **Else** → next.
-   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**. `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
+   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**.
+      `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
       <!-- bkit:tracker github start -->
       Format `{ISSUE_ID}-{slug}`.
       <!-- bkit:tracker github end -->
@@ -157,15 +158,14 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
       <!-- bkit:tracker jira start -->
       Lowercase `{ISSUE_ID}`. Format `{issue_id}-{slug}`.
       <!-- bkit:tracker jira end -->
-
+      <!-- bkit:tracker false start -->
+      Format `{branch-suffix}-{slug}`.
+      <!-- bkit:tracker false end -->
    One `FID` for all artifacts once set. Check its format for the wired tracker:
-
    ```bash
-   "{BKIT}" fids check --fid="{FID}" --issue="{ISSUE_ID}"
+   "{BKIT}" fids check --fid="{FID}"<!-- bkit:tracker true start --> --issue="{ISSUE_ID}"<!-- bkit:tracker true end -->
    ```
-
    → hold `fid` as `{FID}`.
-
 5. Acquire concurrency lock:
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=debug --fid={FID}
@@ -232,7 +232,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ### 🔒 Gate 1 — Start Workflow
 
 ```bash
-"{BKIT}" steps gate --workflow=debug --step=debug-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
+"{BKIT}" steps gate --workflow=debug --step=debug-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN}<!-- bkit:tracker true start --> --issue="{ISSUE_ID}"<!-- bkit:tracker true end --> --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
@@ -587,7 +587,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Hold `verdict` as `SUMMARY_VERDICT`.
 3. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
-   - **If** `SUMMARY_VERDICT` = FAIL → display `debug-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
+   - **If** `SUMMARY_VERDICT` = FAIL → display `debug-summary.md` content verbatim as final message to user<!-- bkit:tracker true start -->. Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end --> → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 10 — Summary
@@ -663,7 +663,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** exit 0 → hold `number` as `{PR_NUMBER}`, `url` as `{PR_URL}` (created, or the adopted PR).
    - **If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → its number as `{PR_NUMBER}`, URL as `{PR_URL}`.
    - **Else** → **Failure Path**.
-6. **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head:
+6. **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head<!-- bkit:tracker false start --> (`{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry)<!-- bkit:tracker false end -->:
    <!-- bkit:tracker true start -->
    **Skip if** `ISSUE_ID` empty (`{AUTO_ROUTE_SUFFIX}` empty). `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry:
    ```bash
@@ -672,7 +672,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Hold the printed suffix as `{AUTO_ROUTE_SUFFIX}`.
    <!-- bkit:tracker true end -->
    ```bash
+   <!-- bkit:tracker true start -->
    AUTO_ROUTE_SUFFIX="{AUTO_ROUTE_SUFFIX}"
+   <!-- bkit:tracker true end -->
+   <!-- bkit:tracker false start -->
+   AUTO_ROUTE_SUFFIX=$("{BKIT}" issues labels {LABEL_FLAGS} | jq -er .autoRouteSuffix) || exit 2
+   <!-- bkit:tracker false end -->
    git add -A && git commit --allow-empty -m "chore({FID}): create-pr bkit [verbose ci]${AUTO_ROUTE_SUFFIX}" || exit 1
    "{BKIT}" branches push --mode=feature --require-ci
    ```
@@ -757,7 +762,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
     "{BKIT}" tips --workflow=debug
     ```
     Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-12. Final return: Display `debug-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. Line 1 of the final message = the no-issue warning, when one was emitted.
+12. Final return: Display `debug-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end -->
     <!-- bkit:tracker true start -->
     Append the issue link [{ISSUE_ID} {TITLE}]({URL}) unless `ISSUE_ID` is empty
     <!-- bkit:tracker true end -->

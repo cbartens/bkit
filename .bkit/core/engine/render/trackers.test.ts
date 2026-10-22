@@ -359,6 +359,29 @@ describe("issue-less runs render only under a wired tracker", () => {
 });
 
 // ---------------------------------------------------------------------------
+// none render — the issue-less machinery leaves the no-tracker workflows byte-identical
+// ---------------------------------------------------------------------------
+
+describe("none render baselines", () => {
+  const BASELINES = path.join(__dirname, "__snapshots__");
+  const source = (wf: string) =>
+    fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`), "utf-8");
+
+  // The issue-less machinery (warning, recovery, skips, `--issue`) sits in tracker blocks, so
+  // a none render differs from the render before issue-less runs only where the prose is
+  // tracker-independent: the shared wording clauses of `.bkit/wording.md` (FID mint, empty-FID
+  // rule, gate item, Failure Path comment), the gate-log copy (build), the ship refusal / naming
+  // warning / merge base assert (ship), and the debug-on-`dev` prose (debug). A change that
+  // shows up here is a change to the none render: review it, then `vitest -u`.
+  for (const wf of ["bkit-design", "bkit-plan", "bkit-build", "bkit-debug", "bkit-ship"]) {
+    it(`${wf}: the none render matches its baseline byte for byte`, async () => {
+      const out = substituteWorkflow(source(wf), "none").output;
+      await expect(out).toMatchFileSnapshot(path.join(BASELINES, `${wf}.none.txt`));
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // real prompt sources — agents get the same resolution as workflows
 // ---------------------------------------------------------------------------
 

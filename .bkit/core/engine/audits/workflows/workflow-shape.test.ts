@@ -6,6 +6,8 @@ import * as path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { substituteWorkflow } from "../../render/trackers";
+
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const PHASES = ["design", "plan", "build", "debug", "ship"] as const;
 const ALL = ["auto", ...PHASES] as const;
@@ -406,17 +408,19 @@ interface TrackerBlock {
   end: number;
 }
 
-/** Every tracker block (nested ones too) as a line range, markers included. */
+/** Every tracker block (nested and inline ones too) as a line range, markers included. */
 function trackerBlocks(lines: string[]): TrackerBlock[] {
   const stack: { kind: string; start: number }[] = [];
   const out: TrackerBlock[] = [];
   lines.forEach((line, i) => {
-    const m = /<!-- bkit:tracker (github|linear|jira|true|false) (start|end) -->/.exec(line);
-    if (!m) return;
-    if (m[2] === "start") stack.push({ kind: m[1]!, start: i });
-    else {
-      const open = stack.pop();
-      if (open) out.push({ ...open, end: i });
+    for (const m of line.matchAll(
+      /<!-- bkit:tracker (github|linear|jira|true|false) (start|end) -->/g,
+    )) {
+      if (m[2] === "start") stack.push({ kind: m[1]!, start: i });
+      else {
+        const open = stack.pop();
+        if (open) out.push({ ...open, end: i });
+      }
     }
   });
   return out;
@@ -447,14 +451,25 @@ function itemRange(lines: string[], at: number): [number, number] {
   return [at, next === -1 ? lines.length : next];
 }
 
-/** Issue-tied call lines from `from` on that no `Skip if ISSUE_ID empty` line guards inside their block. */
+/**
+ * Issue-tied call lines from `from` on that no `Skip if ISSUE_ID empty` line guards. The line sits
+ * in a tracker block: the guard is in that block. A `false` block renders only with no tracker
+ * wired, so it holds no issue-tied call. The line sits in no block (a call that also runs under
+ * `none`): the guard is in its numbered item.
+ */
 function unguardedIssueCalls(lines: string[], from: number): string[] {
   const blocks = trackerBlocks(lines);
   return lines.flatMap((line, i) => {
     if (i < from || !ISSUE_TIED.some((re) => re.test(line))) return [];
     const block = innermostBlock(blocks, i);
+    if (block?.kind === "false") return [];
+    const guardFrom =
+      block?.start ??
+      lines
+        .map((l, n) => (n <= i && /^\d+\. /.test(l) ? n : -1))
+        .reduce((a, b) => Math.max(a, b), -1);
     const guarded =
-      block !== undefined && lines.slice(block.start, i + 1).some((l) => l.includes(SKIP_NO_ISSUE));
+      guardFrom >= 0 && lines.slice(guardFrom, i + 1).some((l) => l.includes(SKIP_NO_ISSUE));
     return guarded ? [] : [`${i + 1}: ${line.trim().slice(0, 100)}`];
   });
 }
@@ -538,7 +553,8 @@ describe("issue-less runs", () => {
   });
 
   it.each(PHASES)("%s: fids check and steps gate carry --issue in every workflow", (name) => {
-    const text = workflow(name);
+    // The flag sits in a tracker block (a `none` run has no issue), so read the wired render.
+    const text = substituteWorkflow(workflow(name), "github").output;
     const step1 = section(text, /Step 1 — Start Workflow/);
     expect(commandLines(step1, "fids check"), name).toEqual([
       expect.stringContaining('--fid="{FID}" --issue="{ISSUE_ID}"'),

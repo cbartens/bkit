@@ -95,7 +95,8 @@ description: "Build Feature — Autonomous implementation"
       - **If** exit 0 → that `fid`.
       - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
       - **Else** → next.
-   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**. Format `{ISSUE_ID}-{slug}`; `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
+   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**. Format `{ISSUE_ID}-{slug}`.
+      `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
 
    One `FID` for all artifacts once set. Check its format for the wired tracker:
 

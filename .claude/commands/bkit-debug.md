@@ -96,17 +96,14 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
       - **If** exit 0 → that `fid`.
       - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
       - **Else** → next.
-   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**. `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
+   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**.
+      `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
       Format `{ISSUE_ID}-{slug}`.
-
    One `FID` for all artifacts once set. Check its format for the wired tracker:
-
    ```bash
    "{BKIT}" fids check --fid="{FID}" --issue="{ISSUE_ID}"
    ```
-
    → hold `fid` as `{FID}`.
-
 5. Acquire concurrency lock:
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=debug --fid={FID}
