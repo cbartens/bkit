@@ -12,6 +12,7 @@ import {
   gateScope,
   judgeGreen,
   judgeRed,
+  onlyAddsLines,
   parseJunit,
   readTestFirst,
   resolveGate,
@@ -342,6 +343,45 @@ describe("readTestFirst", () => {
       { task: 2, kind: "malformed" },
     ]);
   });
+
+  it("reads a task's Test-order exception line apart from its Test first tests, with its plan lines", () => {
+    const plan = [
+      "# Plan",
+      "- [ ] **Task 1:** X. **Done when:** x. **Test first:** `a.test.ts` `clamps low` fails on a low value passing through; `a.test.ts` `clamps high` fails on a high value passing through.",
+      "  **Test-order exception:** `a.test.ts` `clamps high` — code landed before its test; approved by the owner 2026-10-22.",
+      "- [ ] **Task 2:** Y. **Done when:** y. **Test first:** `b.test.ts` `ok` fails on the stub result.",
+    ].join("\n");
+    expect(readTestFirst(plan)).toEqual([
+      {
+        task: 1,
+        kind: "test",
+        tests: [
+          { test: "a.test.ts", name: "clamps low" },
+          { test: "a.test.ts", name: "clamps high" },
+        ],
+        exception: { tests: [{ test: "a.test.ts", name: "clamps high" }], lines: [3] },
+      },
+      { task: 2, kind: "test", tests: [{ test: "b.test.ts", name: "ok" }] },
+    ]);
+  });
+});
+
+describe("onlyAddsLines", () => {
+  const before = "import { a } from 'a';\n\nit('x', () => {\n  expect(a()).toBe(1);\n});\n";
+
+  it("passes added lines and whitespace-only changes", () => {
+    expect(onlyAddsLines(before, before)).toBe(true);
+    expect(onlyAddsLines(before, `${before}\nit('y', () => {\n  expect(a()).toBe(2);\n});\n`)).toBe(
+      true,
+    );
+    expect(onlyAddsLines(before, before.replace("  expect", "\t\texpect"))).toBe(true);
+  });
+
+  it("fails an edited or a removed line", () => {
+    expect(onlyAddsLines(before, before.replace("{ a }", "{ a, b }"))).toBe(false);
+    expect(onlyAddsLines(before, before.replace("toBe(1)", "toBe(2)"))).toBe(false);
+    expect(onlyAddsLines(before, before.replace("  expect(a()).toBe(1);\n", ""))).toBe(false);
+  });
 });
 
 describe("bkit tests red / green", () => {
@@ -568,6 +608,8 @@ describe("bkit tests red / green", () => {
       "3:no-test-first",
       "4:test-first-malformed",
     ]);
+    expect(r.json.testOrderOnly).toBe(false);
+    expect(report()).toContain("Test order only: false");
     expect(report()).toContain("-expect(clamp(5, 1, 10)).toBe(5);");
     expect(report()).toContain("+expect(true).toBe(true);");
     expect(report()).toContain("## Runner output");
@@ -641,5 +683,142 @@ describe("bkit tests red / green", () => {
     ]);
     expect(report()).toContain('`src/clamp.test.ts` "clamps nan"');
     expect(rows().map((row) => row.testName)).toEqual(["clamps low", "clamps high"]);
+  });
+
+  describe("test order", () => {
+    const GIT_ENV = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@t",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@t",
+    };
+    const head = () =>
+      spawnSync("git", ["-C", cwd, "rev-parse", "HEAD"], { encoding: "utf-8" }).stdout.trim();
+    const commit = (message: string, paths: string[] = ["-A"]) => {
+      spawnSync("git", ["-C", cwd, "add", ...paths], { env: GIT_ENV });
+      spawnSync("git", ["-C", cwd, "commit", "-q", "-m", message], { env: GIT_ENV });
+      return head();
+    };
+    const statusRow = (row: Record<string, unknown>) => {
+      fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+      fs.appendFileSync(
+        path.join(cwd, STATUS),
+        `${JSON.stringify({ type: "step-done", workflow: "build", status: "DONE", at: "2026-10-22T05:00:00Z", parentSha: head(), ...row })}\n`,
+      );
+    };
+    /** What `steps finish` does for plan-execute: log, row, then one commit of everything. */
+    const finishExecute = (log: string) => {
+      statusRow({
+        step: "build-plan-execute",
+        artifacts: ["logs/build-plan-execute-1-log.md"],
+        subPlan: 1,
+        attempt: 1,
+      });
+      fs.writeFileSync(path.join(cwd, "logs/build-plan-execute-1-log.md"), log);
+      return commit("chore(1-x): plan-execute sub-plan 1");
+    };
+    const kinds = (r: { json: Record<string, unknown> }) =>
+      (r.json.gaps as Array<{ kind: string }>).map((g) => g.kind);
+    const EXCEPTION = `  **Test-order exception:** \`${TEST}\` \`${NAME}\` — code landed before its test; approved by the owner.`;
+
+    it("a red recorded on or after the commit that first holds the task's code is a late-red", async () => {
+      writePlan(TASK_1);
+      commit("plan");
+      const code = finishExecute("DONE — Task 1: Clamp — implemented\n");
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+      expect((await red()).code).toBe(0);
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      const r = await green();
+      expect(r.code).toBe(1);
+      expect(kinds(r)).toEqual(["late-red"]);
+      const [gap] = r.json.gaps as Array<{ detail: string }>;
+      expect(gap!.detail).toContain(code.slice(0, 7));
+      expect(gap!.detail).toContain("plan-execute log records Task 1 DONE");
+      expect(r.json.testOrderOnly).toBe(true);
+      expect(report()).toContain("Test order only: true");
+    });
+
+    it("a red recorded before the task's code commit stands, across a resumed execute", async () => {
+      writePlan(TASK_1);
+      commit("plan");
+      finishExecute("BLOCKED — Task 1: Clamp — turn cap\n");
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+      expect((await red()).code).toBe(0);
+      finishExecute("DONE — Task 1: Clamp — implemented\n");
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      const r = await green();
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ gaps: [], testOrderOnly: false, lateRedUnchecked: [] });
+      expect(report()).not.toContain("## Late-red check");
+    });
+
+    it("a task with a red but no plan-execute commit recording it DONE is reported as late-red not checked", async () => {
+      writePlan(TASK_1);
+      commit("plan");
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+      expect((await red()).code).toBe(0);
+      finishExecute("- DONE — Task 1: Clamp — implemented\n");
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      const r = await green();
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ gaps: [], lateRedUnchecked: [1] });
+      expect(report()).toContain("## Late-red check");
+      expect(report()).toContain(
+        "- Task 1 — not checked: no plan-execute step commit's log records",
+      );
+    });
+
+    it("a test file that only gained lines since its red is no gap; the diff stays in the report", async () => {
+      writePlan(TASK_1);
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+      expect((await red()).code).toBe(0);
+      fs.appendFileSync(path.join(cwd, TEST), "\nexpect(clamp(0, 1, 10)).toBe(1);\n");
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      const r = await green();
+      expect(r.code).toBe(0);
+      expect(r.json.gaps).toEqual([]);
+      expect(report()).toContain("| added lines only |");
+      expect(report()).toContain("+expect(clamp(0, 1, 10)).toBe(1);");
+    });
+
+    it("an exception clears its tests' test-order gaps only from a human-made commit, never not-green", async () => {
+      writePlan(TASK_1, EXCEPTION);
+      statusRow({ step: "build-worktree-setup", artifacts: [] });
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      let r = await green();
+      expect(kinds(r)).toEqual(["no-red"]);
+      expect(report()).toContain("not honoured");
+      expect(report()).toContain("not committed");
+
+      statusRow({ step: "build-plan-verify", artifacts: [] });
+      const stepCommit = commit("chore(1-x): plan-verify sub-plan 1 attempt 1");
+      r = await green();
+      expect(kinds(r)).toEqual(["no-red"]);
+      expect(report()).toContain(stepCommit.slice(0, 7));
+      expect(report()).toContain("workflow step commit");
+
+      writePlan(TASK_1, EXCEPTION.replace("the owner.", "the owner 2026-10-22."));
+      commit("docs(1-x): accept test order for Task 1", ["plan.md"]);
+      r = await green();
+      expect(r.code).toBe(0);
+      expect(r.json.gaps).toEqual([]);
+      expect(report()).not.toContain("not honoured");
+      expect(report()).toMatch(/Task 1 — honoured; cleared .*no-red/);
+
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+      r = await green();
+      expect(kinds(r)).toEqual(["not-green"]);
+    });
   });
 });

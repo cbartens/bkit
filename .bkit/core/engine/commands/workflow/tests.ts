@@ -19,7 +19,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { BKIT_TEST_FILE_SCRIPT } from "../../install/manifest.js";
-import { CommandError, EXIT, git, type CommandSpec } from "../lib.js";
+import { CommandError, EXIT, git, runGit, type CommandSpec } from "../lib.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
 import {
@@ -215,13 +215,28 @@ export interface PlannedTest {
   name: string;
 }
 
+/** A human-recorded acceptance of a task's test-order gaps: the tests it covers, its 1-based plan lines. */
+export interface TestOrderException {
+  tests: PlannedTest[];
+  lines: number[];
+}
+
 export type TestFirst =
-  | { task: number; kind: "test"; tests: PlannedTest[] }
+  | { task: number; kind: "test"; tests: PlannedTest[]; exception?: TestOrderException }
   | { task: number; kind: "na"; reason: string }
   | { task: number; kind: "missing" | "malformed" };
 
 const TASK_LINE = /^\s*- \[[ xX]\] \*\*Task (\d+):\*\*/;
 const TEST_FIRST = "**Test first:**";
+const TEST_ORDER_EXCEPTION = "**Test-order exception:**";
+
+/** Per `;`-separated entry, the backticked spans; an entry with two or more names a test. */
+const entrySpans = (text: string) =>
+  splitEntries(text).map((e) => [...e.matchAll(/`([^`]+)`/g)].map((m) => m[1]!.trim()));
+const plannedTests = (entries: string[][]): PlannedTest[] =>
+  entries
+    .filter((spans) => spans.length >= 2)
+    .map((spans) => ({ test: path.posix.normalize(spans[0]!), name: spans[1]! }));
 
 /** `text` split on `;` outside backticks. */
 function splitEntries(text: string): string[] {
@@ -242,7 +257,8 @@ function splitEntries(text: string): string[] {
  * Each runbook task's `Test first:` line: one or more tests separated by `;` (per entry,
  * first backticked span = file, second = test name), `n/a — {reason}`, missing, or
  * malformed (an entry with one span, or no test at all). A task's text runs from its
- * bullet to the next bullet or heading.
+ * bullet to the next bullet or heading. A `Test-order exception:` line inside it ends
+ * the `Test first` text and names, in the same entry form, the tests it covers.
  */
 export function readTestFirst(plan: string): TestFirst[] {
   const out: TestFirst[] = [];
@@ -250,33 +266,54 @@ export function readTestFirst(plan: string): TestFirst[] {
   for (let i = 0; i < lines.length; i++) {
     const head = TASK_LINE.exec(lines[i]!);
     if (!head) continue;
-    let text = lines[i]!;
-    for (let j = i + 1; j < lines.length && !/^\s*(- |#)/.test(lines[j]!); j++)
-      text += ` ${lines[j]}`;
+    let end = i + 1;
+    while (end < lines.length && !/^\s*(- |#)/.test(lines[end]!)) end++;
+    const own = lines.slice(i, end);
+    const text = own.join(" ");
     const task = Number(head[1]);
     const at = text.indexOf(TEST_FIRST);
     if (at < 0) {
       out.push({ task, kind: "missing" });
       continue;
     }
-    const rest = text.slice(at + TEST_FIRST.length).trim();
+    const cut = text.indexOf(TEST_ORDER_EXCEPTION, at);
+    const rest = text.slice(at + TEST_FIRST.length, cut < 0 ? undefined : cut).trim();
     if (/^n\/a\b/i.test(rest)) {
       out.push({ task, kind: "na", reason: rest.replace(/^n\/a\s*[—–-]?\s*/i, "") });
       continue;
     }
-    const entries = splitEntries(rest).map((e) =>
-      [...e.matchAll(/`([^`]+)`/g)].map((m) => m[1]!.trim()),
-    );
-    const tests = entries
-      .filter((spans) => spans.length >= 2)
-      .map((spans) => ({ test: path.posix.normalize(spans[0]!), name: spans[1]! }));
-    out.push(
-      tests.length > 0 && !entries.some((spans) => spans.length === 1)
-        ? { task, kind: "test", tests }
-        : { task, kind: "malformed" },
-    );
+    const entries = entrySpans(rest);
+    const tests = plannedTests(entries);
+    if (tests.length === 0 || entries.some((spans) => spans.length === 1)) {
+      out.push({ task, kind: "malformed" });
+      continue;
+    }
+    const first = own.findIndex((l) => l.includes(TEST_ORDER_EXCEPTION));
+    const excepted =
+      cut < 0 ? [] : plannedTests(entrySpans(text.slice(cut + TEST_ORDER_EXCEPTION.length)));
+    if (first < 0 || excepted.length === 0) {
+      out.push({ task, kind: "test", tests });
+      continue;
+    }
+    let last = own.length - 1;
+    while (last > first && own[last]!.trim() === "") last--;
+    const span = Array.from({ length: last - first + 1 }, (_, k) => i + first + k + 1);
+    out.push({ task, kind: "test", tests, exception: { tests: excepted, lines: span } });
   }
   return out;
+}
+
+/** True when `after` keeps every non-blank line of `before`, in order, ignoring whitespace: lines were only added. */
+export function onlyAddsLines(before: string, after: string): boolean {
+  const norm = (text: string) =>
+    text
+      .split("\n")
+      .map((l) => l.replace(/\s+/g, ""))
+      .filter(Boolean);
+  const want = norm(before);
+  let kept = 0;
+  for (const line of norm(after)) if (kept < want.length && line === want[kept]) kept++;
+  return kept === want.length;
 }
 
 /** `test` as a repo-relative path inside `top`; usage error when absolute, outside, or absent. */
@@ -323,6 +360,84 @@ interface Gap {
   detail: string;
 }
 
+/** Gaps about when a test was seen failing; no edit made after the task's code can close one. */
+export const TEST_ORDER_GAPS: ReadonlySet<string> = new Set([
+  "no-red",
+  "late-red",
+  "red-mismatch",
+  "red-evidence-missing",
+  "test-changed",
+]);
+
+/** The status row step plan-execute's finish writes; its commit carries the code of each task its log records DONE. */
+export const PLAN_EXECUTE_STEP = "build-plan-execute";
+
+const repoRel = (top: string, cwd: string, p: string) =>
+  path.relative(top, path.resolve(cwd, p)).split(path.sep).join("/");
+
+/**
+ * Per task, the first plan-execute step commit whose log records the task `DONE` — the
+ * commit that first holds the task's code. `steps finish` writes the row then commits
+ * everything, so a row's commit is the first commit after its `parentSha` touching the status file.
+ */
+function taskCodeCommits(
+  top: string,
+  cwd: string,
+  file: string,
+  workflow: string,
+  subPlan: number | undefined,
+): Map<number, string> {
+  const statusRel = repoRel(top, cwd, file);
+  const commits = new Map<number, string>();
+  for (const r of readStatusRows(file) as Array<Record<string, unknown>>) {
+    if (r.type !== "step-done" || r.workflow !== workflow || r.step !== PLAN_EXECUTE_STEP) continue;
+    if (subPlan !== undefined && r.subPlan !== subPlan) continue;
+    const log = Array.isArray(r.artifacts) ? r.artifacts.map(String)[0] : undefined;
+    if (typeof r.parentSha !== "string" || log === undefined) continue;
+    const range = `${r.parentSha}..HEAD`;
+    const commit = git(top, ["rev-list", "--reverse", "--ancestry-path", range, "--", statusRel])
+      ?.split("\n")
+      .find(Boolean);
+    const text =
+      commit === undefined ? null : git(top, ["show", `${commit}:${repoRel(top, cwd, log)}`]);
+    if (commit === undefined || text === null) continue;
+    for (const m of text.matchAll(/^DONE\s*[—–-]+\s*Task\s+(\d+)\b/gm))
+      if (!commits.has(Number(m[1]))) commits.set(Number(m[1]), commit);
+  }
+  return commits;
+}
+
+/**
+ * Why a task's `Test-order exception:` lines do not count, or null when they do: every
+ * line committed, and last changed by a commit that does not write the status file.
+ * Every workflow step commit writes it, so a line riding one is refused; agents are
+ * barred from committing, so the remaining commits are human-made.
+ */
+function exceptionRefusal(
+  top: string,
+  plan: string,
+  lines: number[],
+  statusRel: string,
+): string | null {
+  const blame = git(top, ["blame", "--porcelain", "-L", `${lines[0]},${lines.at(-1)}`, "--", plan]);
+  if (blame === null) return "the plan file is not committed";
+  const shas = new Set([...blame.matchAll(/^([0-9a-f]{40}) \d+ \d+/gm)].map((m) => m[1]!));
+  if ([...shas].some((s) => /^0+$/.test(s)))
+    return "the line is not committed — a human commits it before the build re-runs";
+  for (const sha of shas) {
+    const files = git(top, ["show", "--name-only", "--format=", sha])?.split("\n") ?? [];
+    if (files.includes(statusRel))
+      return `last changed by ${sha.slice(0, 7)}, a workflow step commit (it also writes \`${statusRel}\`) — commit the line in a commit that does not touch it`;
+  }
+  return null;
+}
+
+interface ExceptionResult {
+  task: number;
+  refusal: string | null;
+  cleared: string[];
+}
+
 interface AuditRow {
   task: number;
   test: string;
@@ -352,11 +467,21 @@ function writeAuditReport(
     plan?: string;
     rows: AuditRow[];
     gaps: Gap[];
+    testOrderOnly: boolean;
+    exceptions: ExceptionResult[];
+    lateUnchecked: number[];
     diffs: Array<{ task: number; test: string; diff: string }>;
     outputs: Array<{ test: string; tail: string }>;
   },
 ): void {
-  const out = [`Enforced: ${o.enforced}`, `Gaps: ${o.gaps.length}`, "", "<!-- verdict:end -->", ""];
+  const out = [
+    `Enforced: ${o.enforced}`,
+    `Gaps: ${o.gaps.length}`,
+    `Test order only: ${o.testOrderOnly}`,
+    "",
+    "<!-- verdict:end -->",
+    "",
+  ];
   out.push("# Test-First Audit", "");
   if (o.plan) out.push(`Plan: \`${o.plan}\``, "");
   if (!o.enforced) out.push(`Not enforced: ${o.reason}.`, "");
@@ -372,6 +497,18 @@ function writeAuditReport(
   out.push("## Gaps", "");
   if (o.gaps.length === 0) out.push("None.");
   for (const g of o.gaps) out.push(`- Task ${g.task} \`${g.kind}\` — ${g.detail}`);
+  if (o.exceptions.length > 0) out.push("", "## Test-order exceptions", "");
+  for (const e of o.exceptions)
+    out.push(
+      e.refusal === null
+        ? `- Task ${e.task} — honoured; cleared ${e.cleared.length > 0 ? e.cleared.join(", ") : "nothing"}`
+        : `- Task ${e.task} — not honoured: ${e.refusal}`,
+    );
+  if (o.lateUnchecked.length > 0) out.push("", "## Late-red check", "");
+  for (const task of o.lateUnchecked)
+    out.push(
+      `- Task ${task} — not checked: no plan-execute step commit's log records \`DONE — Task ${task}\`, so when its code landed is unknown`,
+    );
   for (const d of o.diffs) {
     const fence = fenceFor(d.diff);
     out.push(
@@ -602,7 +739,7 @@ export const testsCommand: CommandSpec = {
     },
     green: {
       summary:
-        "Audit a sub-plan's test-first evidence (a red per planned test, the test unchanged since, the named test passing now); exit 0 no gaps, 1 gaps.",
+        "Audit a sub-plan's test-first evidence (a red per planned test recorded before the task's code commit, the test only added to since, the named test passing now); exit 0 no gaps, 1 gaps.",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
@@ -630,7 +767,11 @@ export const testsCommand: CommandSpec = {
         enforced: "false when there is nothing to audit (reason says why)",
         reason: "why test-first is not enforced",
         plan: "the plan file audited (the brief when no plan file exists and it carries Test first lines)",
-        gaps: "[{task, kind, detail}]: no-test-first | test-first-malformed | no-red | red-mismatch | red-evidence-missing | test-changed | not-green",
+        gaps: "[{task, kind, detail}]: no-test-first | test-first-malformed | no-red | late-red | red-mismatch | red-evidence-missing | test-changed | not-green",
+        testOrderOnly:
+          "true when there are gaps and every one is a test-order gap (no-red | late-red | red-mismatch | red-evidence-missing | test-changed)",
+        lateRedUnchecked:
+          "tasks with a red but no plan-execute step commit whose log records `DONE — Task N`: the late-red check could not run for them",
         log: "where the report was written (as given)",
       },
       exitCodes: {
@@ -664,15 +805,35 @@ export const testsCommand: CommandSpec = {
               : resolveGate(top, [BKIT_TEST_FILE_SCRIPT]) === null
                 ? `\`${BKIT_TEST_FILE_SCRIPT}\` is not declared in package.json`
                 : undefined;
-        const empty = { rows: [], gaps: [], diffs: [], outputs: [] };
+        const empty = {
+          rows: [],
+          gaps: [],
+          testOrderOnly: false,
+          exceptions: [],
+          lateUnchecked: [],
+          diffs: [],
+          outputs: [],
+        };
         if (reason !== undefined) {
           writeAuditReport(log, { enforced: false, reason, plan, ...empty });
-          ctx.emit({ enforced: false, reason, plan: plan ?? null, gaps: [], log: logArg });
+          ctx.emit({
+            enforced: false,
+            reason,
+            plan: plan ?? null,
+            gaps: [],
+            testOrderOnly: false,
+            lateRedUnchecked: [],
+            log: logArg,
+          });
           ctx.log(`test-first not enforced: ${reason}`);
           return EXIT.OK;
         }
 
         const reds = redRows(statusFile(ctx), workflow, subPlan);
+        const statusRel = repoRel(top, ctx.cwd, statusFile(ctx));
+        const codeCommits = taskCodeCommits(top, ctx.cwd, statusFile(ctx), workflow, subPlan);
+        const exceptions: ExceptionResult[] = [];
+        const lateUnchecked = new Set<number>();
         const gaps: Gap[] = [];
         const rows: AuditRow[] = [];
         const diffs: Array<{ task: number; test: string; diff: string }> = [];
@@ -708,6 +869,21 @@ export const testsCommand: CommandSpec = {
             });
             continue;
           }
+          const excepted = s.exception;
+          const exception: ExceptionResult | undefined =
+            excepted === undefined
+              ? undefined
+              : {
+                  task: s.task,
+                  refusal: exceptionRefusal(
+                    top,
+                    repoRel(top, ctx.cwd, plan!),
+                    excepted.lines,
+                    statusRel,
+                  ),
+                  cleared: [],
+                };
+          if (exception !== undefined) exceptions.push(exception);
           const taskReds = reds.filter((r) => r.task === s.task);
           const planned = (r: Record<string, unknown>) =>
             s.tests.some((t) => t.test === r.test && t.name === r.testName);
@@ -720,6 +896,16 @@ export const testsCommand: CommandSpec = {
               green: "—",
             };
             rows.push(row);
+            const clearing =
+              exception?.refusal === null &&
+              excepted!.tests.some((e) => e.test === t.test && e.name === t.name)
+                ? exception
+                : undefined;
+            const gap = (kind: string, detail: string) => {
+              if (clearing !== undefined && TEST_ORDER_GAPS.has(kind))
+                clearing.cleared.push(`\`${kind}\` for \`${t.test}\` "${t.name}"`);
+              else gaps.push({ task: s.task, kind, detail });
+            };
             const red = [...taskReds]
               .reverse()
               .find((r) => r.test === t.test && r.testName === t.name);
@@ -738,19 +924,27 @@ export const testsCommand: CommandSpec = {
                 }
                 recorded.push(`\`${rTest}\` "${rName}" (${now})`);
               }
-              gaps.push({
-                task: s.task,
-                kind: "red-mismatch",
-                detail: `no red for \`${t.test}\` "${t.name}"; reds recorded for ${recorded.join(", ")}`,
-              });
+              gap(
+                "red-mismatch",
+                `no red for \`${t.test}\` "${t.name}"; reds recorded for ${recorded.join(", ")}`,
+              );
             } else if (red === undefined) {
-              gaps.push({
-                task: s.task,
-                kind: "no-red",
-                detail: `no red recorded for "${t.name}" — the test was never seen failing before the code`,
-              });
+              gap(
+                "no-red",
+                `no red recorded for "${t.name}" — the test was never seen failing before the code`,
+              );
             } else {
               row.red = `recorded ${String(red.at)}`;
+              const code = codeCommits.get(s.task);
+              const on = typeof red.parentSha === "string" ? red.parentSha : undefined;
+              if (code === undefined || on === undefined) lateUnchecked.add(s.task);
+              else if (runGit(top, ["merge-base", "--is-ancestor", code, on]).ok) {
+                row.red = `late — ${row.red}`;
+                gap(
+                  "late-red",
+                  `the red for "${t.name}" was recorded on ${on.slice(0, 7)}, on or after ${code.slice(0, 7)}, the first commit whose plan-execute log records Task ${s.task} DONE — the task's code already existed`,
+                );
+              }
               const snap = (Array.isArray(red.artifacts) ? red.artifacts : [])
                 .map(String)
                 .find((a) => a.endsWith(".snapshot"));
@@ -758,25 +952,24 @@ export const testsCommand: CommandSpec = {
               const testAbs = path.join(top, t.test);
               if (snapAbs === undefined || !fs.existsSync(snapAbs)) {
                 row.changed = "unknown";
-                gaps.push({
-                  task: s.task,
-                  kind: "red-evidence-missing",
-                  detail: `the red's test snapshot ${snap ?? "(none recorded)"} is missing`,
-                });
+                gap(
+                  "red-evidence-missing",
+                  `the red's test snapshot ${snap ?? "(none recorded)"} is missing`,
+                );
               } else if (!fs.existsSync(testAbs)) {
                 row.changed = "deleted";
-                gaps.push({
-                  task: s.task,
-                  kind: "test-changed",
-                  detail: `\`${t.test}\` no longer exists`,
-                });
+                gap("test-changed", `\`${t.test}\` no longer exists`);
               } else if (!fs.readFileSync(snapAbs).equals(fs.readFileSync(testAbs))) {
-                row.changed = "yes";
-                gaps.push({
-                  task: s.task,
-                  kind: "test-changed",
-                  detail: `\`${t.test}\` differs from its red snapshot for "${t.name}" (diff below)`,
-                });
+                const added = onlyAddsLines(
+                  fs.readFileSync(snapAbs, "utf-8"),
+                  fs.readFileSync(testAbs, "utf-8"),
+                );
+                row.changed = added ? "added lines only" : "yes";
+                if (!added)
+                  gap(
+                    "test-changed",
+                    `\`${t.test}\` differs from its red snapshot for "${t.name}" (diff below)`,
+                  );
                 const diff = spawnSync(
                   "git",
                   ["diff", "--no-index", "--no-color", "--", path.relative(top, snapAbs), t.test],
@@ -788,11 +981,7 @@ export const testsCommand: CommandSpec = {
 
             if (!fs.existsSync(path.join(top, t.test))) {
               row.green = "file missing";
-              gaps.push({
-                task: s.task,
-                kind: "not-green",
-                detail: `\`${t.test}\` does not exist`,
-              });
+              gap("not-green", `\`${t.test}\` does not exist`);
               continue;
             }
             const green = greenRun(t.test);
@@ -800,14 +989,32 @@ export const testsCommand: CommandSpec = {
             const why = judgeGreen(green.cases, t.name);
             row.green = why === null ? "passed" : "not passed";
             if (why !== null) {
-              gaps.push({ task: s.task, kind: "not-green", detail: why });
+              gap("not-green", why);
               if (!outputs.some((o) => o.test === t.test))
                 outputs.push({ test: t.test, tail: green.tail });
             }
           }
         }
-        writeAuditReport(log, { enforced: true, plan, rows, gaps, diffs, outputs });
-        ctx.emit({ enforced: true, plan, gaps, log: logArg });
+        const testOrderOnly = gaps.length > 0 && gaps.every((g) => TEST_ORDER_GAPS.has(g.kind));
+        writeAuditReport(log, {
+          enforced: true,
+          plan,
+          rows,
+          gaps,
+          testOrderOnly,
+          exceptions,
+          lateUnchecked: [...lateUnchecked].sort((a, b) => a - b),
+          diffs,
+          outputs,
+        });
+        ctx.emit({
+          enforced: true,
+          plan,
+          gaps,
+          testOrderOnly,
+          lateRedUnchecked: [...lateUnchecked].sort((a, b) => a - b),
+          log: logArg,
+        });
         ctx.log(`test-first audit: ${gaps.length} gap(s) — report in ${logArg}`);
         return gaps.length === 0 ? EXIT.OK : EXIT.NO;
       },

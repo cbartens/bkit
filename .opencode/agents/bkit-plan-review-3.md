@@ -52,6 +52,7 @@ tools:
    - Migration ordering: Multi-step migrations — intermediate states must work. Missing intermediate-state guard → `CRITICAL`.
    - Test-coverage gaps: Surfaces touched but not exercised by `Derived Test Matrix` rows → `CRITICAL`.
    - Mock-only coverage: Tasks crossing external boundary (DB / API / model / network / migration) whose `Done when` lack non-mock boundary tests (reach real boundaries / assert ground-truth signals); `@live` for external / deployed → `CRITICAL`.
+   - Unpassable checks: `Test first` / `Done when` checks current code cannot pass (value always emitted, shape never returned) and no task changes → `CRITICAL`; cite the ruling `file:line`.
 7. Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced) → all design sections identifying touched surfaces need plan tasks with regression-test coverage or out-of-scope notes; declared non-goal excluded. Touched surfaces parked out of scope / missing → `CRITICAL`. Respect declared sub-plan coverage scopes if produced.
 8. Knowledge cross-reference: Fold `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → search only winning rows where `status` is `ACTIVE` or absent; never search any other rows → search rows and `related-failures.md` for past regressions / known failures in touched surfaces. Plan tasks re-entering known-broken patterns, or touching surfaces with unacknowledged known failures / without acknowledging prior fixes → `CRITICAL`.
 9. Sort findings into standard three categories (`CRITICAL` / OPTIONAL / OUT OF SCOPE).

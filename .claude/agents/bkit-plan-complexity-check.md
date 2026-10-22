@@ -37,10 +37,10 @@ maxTurns: 100
 
 1. Re-read all supplied inputs once at session start; do not trust session memory.
 2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-3. Count tasks via `grep -cE '^- \[ \] **Task'` or equivalent task markers. Count gates and domain areas (API, DB, web UI, mobile, infra).
+3. Count tasks via `grep -cE '^- \[ \] **Task'` or equivalent task markers. Count gates and domain areas (API, DB, web UI, mobile, infra). Count `Test first` tests per task (`;`-separated entries).
 4. `Verdict` mapping:
-   - `SINGLE` = task count <= 12.
-   - `SPLIT` = task count > 12.
+   - `SINGLE` = task count <= 12 **and** every task names <= 5 `Test first` tests.
+   - `SPLIT` = task count > 12 **or** any task names > 5 `Test first` tests.
 5. Produce **Create** output.
 
 **Output format:**
@@ -54,15 +54,15 @@ Verdict: SINGLE | SPLIT
 
 ## Counts
 
-[Tasks, gates, domain areas covered]
+[Tasks, gates, domain areas covered, `Test first` tests per task over 5]
 
 ## Session Fit Estimate
 
-[Task count vs 12 threshold; gates and domain areas]
+[Task count vs 12 threshold; tests per task vs 5 cap; gates and domain areas]
 
 ## Rationale
 
-[**If** `Verdict` = `SINGLE` → why it fits one session. **Else** → proposed domain groupings, each sub-plan must fit one session]
+[**If** `Verdict` = `SINGLE` → why it fits one session. **Else** → over-cap tasks to split, then proposed domain groupings, each sub-plan must fit one session]
 ```
 
 > ⛔ **STOP after assessing complexity and producing output. Do not split or code.**

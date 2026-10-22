@@ -34,7 +34,7 @@ function repo() {
   write(
     cwd,
     "logs/verify-1.md",
-    "Verdict: FAIL\nFailures: 2\n\n<!-- verdict:end -->\n\n# Verify\n\nTwo gaps.\n",
+    "Verdict: FAIL\nFailures: 2\nGaps: OTHER\n\n<!-- verdict:end -->\n\n# Verify\n\nTwo gaps.\n",
   );
   return cwd;
 }
@@ -189,7 +189,10 @@ describe("bkit steps verdict", () => {
       "--field=Failures",
     ]);
     expect(r.code).toBe(0);
-    expect(r.json).toEqual({ verdict: "FAIL", fields: { Verdict: "FAIL", Failures: "2" } });
+    expect(r.json).toEqual({
+      verdict: "FAIL",
+      fields: { Verdict: "FAIL", Failures: "2", Gaps: "OTHER" },
+    });
   });
 
   it("a missing artifact exits 4", async () => {
