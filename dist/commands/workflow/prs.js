@@ -10,7 +10,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { readBkitConfig } from "../../shared/settings.js";
 import { appendLine, statusTimestamp } from "../../ledgers/status.js";
-import { bodySkipToken, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
+import { bodySkipToken, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, MAIN, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
+import { fidProblem } from "./fids.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { EXIT_NO_STATUS, FILE_FLAG, readStatusRows, statusFile, str } from "./status.js";
 // ---------------------------------------------------------------------------
@@ -111,29 +112,19 @@ function refFlag(value, flag) {
 // ---------------------------------------------------------------------------
 // open
 // ---------------------------------------------------------------------------
-/** FID allowlists per tracker — the same ones `/bkit-auto` asserts when it reads the marker back. */
-const FID_FORMAT = {
-    github: /^[0-9]+-[a-z0-9-]+$/,
-    linear: /^[a-z]+-[0-9]+-[a-z0-9-]+$/,
-    jira: /^[a-z][a-z0-9]+-[0-9]+-[a-z0-9-]+$/,
-    none: /^[a-z0-9][a-z0-9-]*$/,
-};
-const ISSUE_FORMAT = {
-    github: /^[0-9]+$/,
-    linear: /^[A-Z]+-[0-9]+$/,
-    jira: /^[A-Z][A-Z0-9]+-[0-9]+$/,
-};
-/** The PR-body marker line for this tracker (`.bkit/trackers.md` `pr-body-marker`). */
+/**
+ * The PR-body marker line for this tracker (`.bkit/trackers.md` `pr-body-marker`). With
+ * no issue the marker is FID-only (`<!-- bkit:fid={FID} -->`, the `none` shape), and the
+ * FID must be an issue-less FID so it never reads as an issue id.
+ */
 export function prMarker(tracker, fid, issue) {
-    if (!FID_FORMAT[tracker].test(fid)) {
-        throw new CommandError(EXIT.USAGE, `--fid "${fid}" is not a ${tracker} FID slug`);
-    }
-    if (tracker === "none")
-        return `<!-- bkit:fid=${fid} -->`;
     const id = (issue ?? "").replace(/^#/, "");
-    if (!ISSUE_FORMAT[tracker].test(id)) {
-        throw new CommandError(EXIT.USAGE, `--issue "${issue ?? ""}" is not a ${tracker} issue id`);
+    const problem = fidProblem(fid, tracker, id);
+    if (problem !== undefined) {
+        throw new CommandError(EXIT.USAGE, `--fid "${fid}" / --issue "${issue ?? ""}": ${problem}`);
     }
+    if (tracker === "none" || id === "")
+        return `<!-- bkit:fid=${fid} -->`;
     return tracker === "github"
         ? `<!-- bkit:issue=#${id} bkit:fid=${fid} -->`
         : `<!-- bkit:issue=${id} bkit:fid=${fid} -->`;
@@ -149,6 +140,8 @@ export const EXIT_PR_EXISTS = 3;
 export const EXIT_SKIP_CI_TITLE = 4;
 export const EXIT_GH_FAILED = 5;
 export const EXIT_WRONG_BASE = 6;
+/** Exit code (open): `--base=main` — bkit never opens a PR into `main`. */
+export const EXIT_BASE_MAIN = 7;
 /** Open (or, with `existing: "reuse"`, reuse) the PR for `head`; `code` is the verb's exit code. */
 export function openPrFor(cwd, o, log) {
     const tracker = readBkitConfig(repoRoot(cwd)).issueTracker;
@@ -164,6 +157,10 @@ export function openPrFor(cwd, o, log) {
         return { code: EXIT_SKIP_CI_TITLE, out: null };
     }
     const base = refFlag(o.base ?? DEV, "base");
+    if (base === MAIN) {
+        log(`refusing to open a PR into ${MAIN}: bkit opens PRs into ${DEV} only, releases stay manual`);
+        return { code: EXIT_BASE_MAIN, out: null };
+    }
     const head = o.head === undefined ? currentBranch(cwd) : refFlag(o.head, "head");
     if (head === base || isSharedBranch(head)) {
         throw new CommandError(EXIT.USAGE, `refusing to open a PR from "${head}" into "${base}"`);
@@ -272,9 +269,13 @@ function openPr(ctx) {
 // ---------------------------------------------------------------------------
 /** Exit code (merge --expect-merged): the PR did not reach MERGED. */
 export const EXIT_NOT_MERGED = 7;
+/** Exit code (merge): the PR's base is not `dev`, or could not be read — nothing merged. */
+export const EXIT_BASE_NOT_DEV = 8;
 /**
  * Squash-merge a PR with an explicit empty body (never the default concatenated
- * subjects), unless it is already MERGED, then read the state back. gh missing →
+ * subjects), unless it is already MERGED, then read the state back. A PR whose base
+ * (read by the same `pr view` that reads its state) is not `dev`, or is unreadable, is
+ * never merged (EXIT_BASE_NOT_DEV). gh missing →
  * EXIT.USE_MCP (merge through `merge_pull_request` with `subject`).
  */
 export function mergePr(cwd, o, log) {
@@ -305,6 +306,10 @@ export function mergePr(cwd, o, log) {
     }
     if (before.pr?.state === "MERGED")
         return result(EXIT.OK, before.pr, true);
+    if (before.pr?.baseRefName !== DEV) {
+        log(`refusing to merge PR ${o.number}: its base is ${before.pr?.baseRefName ?? "unknown"}, not ${DEV} — bkit merges into ${DEV} only, releases stay manual`);
+        return result(EXIT_BASE_NOT_DEV, before.pr, false);
+    }
     const args = ["pr", "merge", o.number, "--squash", "--subject", o.subject, "--body", ""];
     if (o.deleteBranch === true)
         args.push("--delete-branch");
@@ -631,6 +636,7 @@ export const prsCommand = {
                 [EXIT_SKIP_CI_TITLE]: "the title carries a CI-suppressing token",
                 [EXIT_GH_FAILED]: "gh errored (probe, create after one retry, or read-back)",
                 [EXIT_WRONG_BASE]: "the created PR's base is not --base",
+                [EXIT_BASE_MAIN]: `--base is ${MAIN}: bkit opens PRs into ${DEV} only (no gh call made)`,
             },
             run: (ctx) => {
                 const existing = str(ctx.flags.existing);
@@ -716,6 +722,7 @@ export const prsCommand = {
             exitCodes: {
                 [EXIT_GH_FAILED]: "gh could not read the PR",
                 [EXIT_NOT_MERGED]: "--expect-merged and the PR did not reach MERGED",
+                [EXIT_BASE_NOT_DEV]: `the PR's base is not ${DEV}, or could not be read — nothing merged`,
             },
             run: (ctx) => {
                 const number = String(ctx.flags.number);

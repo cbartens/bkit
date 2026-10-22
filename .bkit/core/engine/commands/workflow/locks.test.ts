@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
+import { newRecord, readRecord, writeRecord } from "./ledgers";
 import { WORKFLOW_LOCK_IDLE_S, locksCommand, monthBuckets } from "./locks";
 
 // Real git repos and worktrees per test; a busy machine needs more than the default 5s.
@@ -283,6 +284,25 @@ describe("bkit locks release", () => {
     const file = writeLock(cwd, "202610", "2026-10-01T00:00:00Z design");
     expect((await run(cwd, rel("workflow", "design"))).json.released).toBe(true);
     expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it("locks release removes the FID shared-checkout record", async () => {
+    const cwd = repo();
+    writeRecord(cwd, newRecord(cwd, FID, "dev"));
+    writeRecord(cwd, newRecord(cwd, "9-other", "dev"));
+    await run(cwd, acquire("--month=202610"));
+    const r = await run(cwd, rel("workflow", "build"));
+    expect(r.code).toBe(0);
+    expect(readRecord(cwd, FID)).toBeNull();
+    expect(readRecord(cwd, "9-other")).not.toBeNull();
+  });
+
+  it("another owner's lock left in place keeps the record", async () => {
+    const cwd = repo();
+    writeRecord(cwd, newRecord(cwd, FID, "dev"));
+    await run(cwd, acquire("--month=202610"));
+    expect((await run(cwd, rel("workflow", "design"))).code).toBe(4);
+    expect(readRecord(cwd, FID)).not.toBeNull();
   });
 
   it("a missing lock is already released", async () => {

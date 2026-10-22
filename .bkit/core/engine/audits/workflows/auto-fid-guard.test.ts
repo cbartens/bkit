@@ -4,7 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { FID_PATTERNS, fromBranch, fromMarker } from "../../commands/workflow/fids";
+import { FID_PATTERNS, ISSUE_LESS_FID, fromBranch, fromMarker } from "../../commands/workflow/fids";
 import { getWorkflowsRoot } from "../../shared/package-roots";
 
 // ---------------------------------------------------------------------------
@@ -80,6 +80,33 @@ describe("auto-fid-guard", () => {
           expect(fromMarker(`<!-- bkit:issue=AB1-1 bkit:fid=${evil} -->`, "jira")).toBeNull();
           expect(fromMarker(`<!-- bkit:fid=${evil} -->`, "none")).toBeNull();
           expect(fromBranch(`feat/${evil}`, "none").ok).toBe(false);
+        }
+      });
+
+      it("a traversal FID through the issue-less fallbacks is refused under every wired tracker", () => {
+        for (const evil of MALICIOUS_FIDS) {
+          expect(ISSUE_LESS_FID.test(evil)).toBe(false);
+          for (const tracker of ["github", "linear", "jira"] as const) {
+            expect(fromMarker(`<!-- bkit:fid=${evil} -->`, tracker)).toBeNull();
+            expect(fromBranch(`feat/${evil}`, tracker).ok).toBe(false);
+          }
+        }
+      });
+
+      it("an issue-less FID resolves no issue, so /bkit-auto has nothing to dispatch on", () => {
+        for (const tracker of ["github", "linear", "jira"] as const) {
+          expect(fromMarker("<!-- bkit:fid=dev-ci-failures -->", tracker)?.issueId).toBeNull();
+          const viaBranch = fromBranch("feat/dev-ci-failures", tracker);
+          expect(viaBranch).toMatchObject({ ok: true, parsed: { issueId: null } });
+        }
+      });
+
+      it("no FID allowlist (CI_DEV included) admits an issue-less FID", () => {
+        for (const fid of ["dev-ci-failures", "fix-the-build"]) {
+          expect(FID_PATTERNS.any.test(fid)).toBe(false);
+          expect(FID_PATTERNS.github.test(fid)).toBe(false);
+          expect(FID_PATTERNS.linear.test(fid)).toBe(false);
+          expect(FID_PATTERNS.jira.test(fid)).toBe(false);
         }
       });
 

@@ -9,6 +9,8 @@
 //   jira    {project}-{N}-{slug} ^[a-z][a-z0-9]+-[0-9]+-[a-z0-9-]+$  (issue key lowercased first)
 //   none    any slug             ^[a-z0-9][a-z0-9-]*$        (no tracker shape; still path-safe)
 //   any     any tracker's shape  ^([0-9]+|[a-z][a-z0-9]*-[0-9]+)-[a-z0-9-]+$  (auto's CI_DEV allowlist)
+// A run with no issue carries an issue-less FID under every tracker: a slug with no
+// all-digit word (`dev-ci-failures`), so it can never parse as an issue id.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseIssueTracker } from "../../install/manifest.js";
@@ -28,6 +30,39 @@ const KEYED = new Set(["linear", "jira"]);
 const ISSUE_KEY = { linear: /^[A-Z]+-[0-9]+$/, jira: /^[A-Z][A-Z0-9]+-[0-9]+$/ };
 /** The slug every recovered FID must pass before it touches a path (auto's branch fallback). */
 const SLUG = FID_PATTERNS.none;
+/** An issue-less FID: a slug with no all-digit `-`-separated word, so it never parses as an issue id. */
+export const ISSUE_LESS_FID = /^(?!.*(?:^|-)[0-9]+(?:-|$))[a-z0-9][a-z0-9-]*$/;
+/** The issue id each wired tracker mints (`#` stripped; linear and jira keys are uppercase). */
+export const ISSUE_ID_PATTERNS = {
+    github: /^[0-9]+$/,
+    linear: /^[A-Z]+-[0-9]+$/,
+    jira: /^[A-Z][A-Z0-9]+-[0-9]+$/,
+};
+/**
+ * The problem with a FID for the tracker and the run's issue, or undefined when it is valid.
+ * `issue` absent: the tracker's FID shape alone. A non-empty `issue`: the issue id and the
+ * FID both match the tracker. An empty `issue` (a run with no issue): the FID is an
+ * issue-less FID, so it can never be misread as an issue id. The `none` tracker has no
+ * issue-id shape, so `issue` is ignored.
+ */
+export function fidProblem(fid, tracker, issue) {
+    const shape = FID_PATTERNS[tracker];
+    const shapeProblem = shape.test(fid)
+        ? undefined
+        : `FID "${fid}" does not match the ${tracker} shape ${shape.source}`;
+    if (issue === undefined || tracker === "none")
+        return shapeProblem;
+    if (issue === "") {
+        return ISSUE_LESS_FID.test(fid)
+            ? undefined
+            : `FID "${fid}" is not an issue-less FID (${ISSUE_LESS_FID.source}): a run with no issue needs a lowercase slug with no all-digit word`;
+    }
+    const idShapes = tracker === "any" ? Object.values(ISSUE_ID_PATTERNS) : [ISSUE_ID_PATTERNS[tracker]];
+    if (!idShapes.some((re) => re.test(issue))) {
+        return `issue "${issue}" is not a ${tracker} issue id`;
+    }
+    return shapeProblem;
+}
 /** Exit code: no FID could be recovered from the marker or the branch. */
 export const EXIT_NO_FID = 3;
 /** Exit code (find): more than one feature is logged for the issue. */
@@ -113,18 +148,32 @@ const MARKERS = {
     jira: /<!-- bkit:issue=([A-Za-z][A-Za-z0-9]+-[0-9]+) bkit:fid=(\S+) -->/,
     none: /<!-- bkit:fid=(\S+) -->/,
 };
-/** FID from the marker, when present and well-formed for the tracker. */
+/**
+ * FID from the marker, when present and well-formed for the tracker. A wired tracker also
+ * accepts the FID-only marker of an issue-less run: its FID must be issue-less, and it
+ * resolves to `issueId: null`.
+ */
 export function fromMarker(text, tracker) {
     const m = MARKERS[tracker].exec(text);
-    if (!m)
-        return null;
+    if (!m) {
+        if (tracker === "none")
+            return null;
+        const bare = MARKERS.none.exec(text);
+        const fid = bare?.[1];
+        return fid !== undefined && ISSUE_LESS_FID.test(fid)
+            ? { fid, issueId: null, source: "marker" }
+            : null;
+    }
     const fid = normaliseFid(m[m.length - 1], tracker);
     if (!FID_PATTERNS[tracker].test(fid))
         return null;
     const issueId = tracker === "none" ? null : KEYED.has(tracker) ? m[1].toUpperCase() : m[1];
     return { fid, issueId, source: "marker" };
 }
-/** FID from `feat/{FID}`; the slug check, then the issue id the tracker needs. */
+/**
+ * FID from `feat/{FID}`; the slug check, then the issue id the tracker needs. A wired
+ * tracker also accepts an issue-less FID (no issue id embedded, no all-digit word) as `issueId: null`.
+ */
 export function fromBranch(branch, tracker) {
     if (!branch.startsWith("feat/"))
         return { ok: false, why: `branch "${branch}" is not feat/{FID}` };
@@ -132,7 +181,7 @@ export function fromBranch(branch, tracker) {
     if (!SLUG.test(fid))
         return { ok: false, why: `"${fid}" is not a slug (${SLUG.source})` };
     const issueId = issueIdOf(fid, tracker);
-    if (tracker !== "none" && issueId === null) {
+    if (tracker !== "none" && issueId === null && !ISSUE_LESS_FID.test(fid)) {
         return { ok: false, why: `"${fid}" embeds no ${tracker} issue id` };
     }
     return { ok: true, parsed: { fid, issueId, source: "branch" } };
@@ -151,21 +200,28 @@ export const fidsCommand = {
             flags: [
                 { name: "fid", type: "string", required: true, help: "feature id to check" },
                 { ...TRACKER_FLAG, help: `${TRACKER_FLAG.help}; any = any tracker's shape (CI_DEV)` },
+                {
+                    name: "issue",
+                    type: "string",
+                    help: 'the run\'s issue id, or "" for a run with no issue (then the FID must be issue-less); absent = the tracker shape alone',
+                },
             ],
             output: {
                 fid: "the FID as checked (linear, jira: lowercased)",
                 tracker: "tracker the shape came from",
                 valid: "true when the FID matches",
-                pattern: "the regex checked",
+                pattern: "the regex checked (the issue-less rule when --issue is empty)",
                 issueId: "issue id the FID embeds (null under none, or when invalid)",
             },
             run: (ctx) => {
                 const tracker = trackerFlag(str(ctx.flags.tracker), ctx.cwd, true);
                 const fid = normaliseFid(String(ctx.flags.fid), tracker);
-                const pattern = FID_PATTERNS[tracker];
-                const valid = pattern.test(fid);
+                const issue = str(ctx.flags.issue);
+                const pattern = issue === "" && tracker !== "none" ? ISSUE_LESS_FID : FID_PATTERNS[tracker];
+                const problem = fidProblem(fid, tracker, issue);
+                const valid = problem === undefined;
                 if (!valid)
-                    ctx.log(`FID "${fid}" does not match the ${tracker} shape ${pattern.source}`);
+                    ctx.log(problem);
                 ctx.emit({
                     fid,
                     tracker,

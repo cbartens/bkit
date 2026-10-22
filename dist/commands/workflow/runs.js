@@ -27,7 +27,8 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } from "./fids.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
-import { checkOnlyBookkeeping } from "./ledgers.js";
+import { pushBranch } from "./branches.js";
+import { checkOnlyBookkeeping, recordOnBranch, retriggerCommit } from "./ledgers.js";
 import { closeTransportRow, crossCheckFile, prRepoSlug, probePr } from "./prs.js";
 import { resolveOwnerRepo, splitSlug } from "./repo.js";
 import { extraField, str } from "./status.js";
@@ -197,7 +198,20 @@ export async function ciDispatchGate(o, deps) {
     const root = checkoutRoot(o.cwd);
     const { capstoneJob } = readBkitConfig(root);
     const declared = ciDeclared(root);
-    const head = () => git(o.cwd, ["rev-parse", "HEAD"]) ?? "";
+    const branch = git(o.cwd, ["branch", "--show-current"]) ?? "";
+    const shared = branch !== "" && isSharedBranch(branch);
+    // A run in place on a shared branch has no PR: CI is the push-event run at the pushed sha.
+    const byRun = o.pr === null && shared;
+    // The sha an own-commit push landed; null while the head is local HEAD.
+    let landed = byRun ? (o.sha ?? null) : null;
+    const head = () => landed ?? git(o.cwd, ["rev-parse", "HEAD"]) ?? "";
+    /** The landed copy lives on the remote only; the scan and the suppressor check read it locally. */
+    const fetchLanded = () => {
+        if (landed === null || runGit(o.cwd, ["cat-file", "-e", `${landed}^{commit}`]).ok)
+            return;
+        runGit(o.cwd, ["fetch", "origin", branch]);
+    };
+    fetchLanded();
     const res = {
         phase: "done",
         handoff: 0,
@@ -206,13 +220,22 @@ export async function ciDispatchGate(o, deps) {
         attempts: 0,
         retrigger: o.retriggered,
         ciWorkflow: declared.ciWorkflow,
+        runBranch: byRun ? branch : null,
     };
-    const target = {
-        kind: "pr-present",
-        pr: o.pr ?? undefined,
-        ciWorkflow: declared.ciWorkflow,
-        namespace: checkNamespace(capstoneJob),
-    };
+    const target = byRun
+        ? {
+            kind: "run-present",
+            head: res.head,
+            branch,
+            ciWorkflow: declared.ciWorkflow,
+            namespace: checkNamespace(capstoneJob),
+        }
+        : {
+            kind: "pr-present",
+            pr: o.pr ?? undefined,
+            ciWorkflow: declared.ciWorkflow,
+            namespace: checkNamespace(capstoneJob),
+        };
     const poll = async (phase) => {
         // A supplied result answers only the poll that was handed off; later polls run fresh.
         if (o.supplied && (phase === "repoll") === o.retriggered) {
@@ -220,9 +243,13 @@ export async function ciDispatchGate(o, deps) {
             return o.supplied;
         }
         // No PR to read is the shell's empty-PR poll: zero attempts, all errored.
-        if (o.pr === null)
+        if (o.pr === null && !byRun)
             return { pollResult: "err", attempts: 0, allErrored: true };
-        deps.log(`polling for a ${target.namespace} check on PR #${o.pr} (budget ${o.budgetS}s, interval ${o.intervalS}s)`);
+        if (byRun)
+            target.head = head();
+        deps.log(byRun
+            ? `polling for a ${target.ciWorkflow} run on ${branch} at ${target.head} (budget ${o.budgetS}s, interval ${o.intervalS}s)`
+            : `polling for a ${target.namespace} check on PR #${o.pr} (budget ${o.budgetS}s, interval ${o.intervalS}s)`);
         const w = await waitLoop({ budgetS: o.budgetS, intervalS: o.intervalS, once: false }, () => pollOnce(target, deps.gh), deps.sleep, deps.log);
         if (w.blocked || w.ghMissing) {
             res.phase = phase;
@@ -258,13 +285,26 @@ export async function ciDispatchGate(o, deps) {
             deps.log("unresolved(timeout-dirty): no run and the pushed head carries a CI suppressor — not re-triggering a dirty head");
             return verdict("unresolved", "timeout-dirty");
         }
-        const committed = runGit(o.cwd, [
-            "commit",
-            "--allow-empty",
-            "-m",
-            `chore(${o.fid}): re-trigger${o.autoRouteSuffix}`,
-        ]).ok;
-        if (!committed || !pushCurrentBranch(o.cwd)) {
+        const message = `chore(${o.fid}): re-trigger${o.autoRouteSuffix}`;
+        // A run in place on a shared branch commits and pushes only its own work.
+        const rec = shared ? recordOnBranch(o.cwd, branch) : null;
+        let pushed;
+        if (rec === null) {
+            landed = null;
+            pushed =
+                runGit(o.cwd, ["commit", "--allow-empty", "-m", message]).ok && pushCurrentBranch(o.cwd);
+        }
+        else {
+            const made = retriggerCommit(o.cwd, rec, message);
+            if (!made.ok)
+                deps.log(`re-trigger commit failed: ${made.error}`);
+            const out = made.ok ? await pushBranch(o.cwd, { mode: "feature" }, deps.log) : null;
+            landed = out?.out.pushed === true ? out.out.sha : landed;
+            pushed = out?.out.pushed === true && out.out.sha !== null;
+            if (pushed)
+                fetchLanded();
+        }
+        if (!pushed) {
             deps.log("re-trigger commit or push failed — no verdict; route to the Failure Path");
             res.phase = "repoll";
             res.handoff = EXIT_RETRIGGER_FAILED;
@@ -874,6 +914,14 @@ async function runDispatch(ctx) {
         }
         pr = found.pr;
     }
+    const sha = str(f.sha);
+    if (sha !== undefined && !/^[0-9a-f]{7,40}$/i.test(sha)) {
+        throw new CommandError(EXIT.USAGE, "--sha must be a commit sha (7 to 40 hex digits)");
+    }
+    const onShared = isSharedBranch(git(ctx.cwd, ["branch", "--show-current"]) ?? "");
+    if (sha !== undefined && (pr !== null || !onShared)) {
+        throw new CommandError(EXIT.USAGE, "--sha goes with a run in place on a shared branch that has no PR");
+    }
     const pollResult = str(f.pollResult);
     if (pollResult !== undefined && !["found", "none", "err"].includes(pollResult)) {
         throw new CommandError(EXIT.USAGE, "--poll-result must be found, none, or err");
@@ -898,6 +946,7 @@ async function runDispatch(ctx) {
                 allErrored: f.allErrored === true,
             },
         retriggered: f.retriggered === true,
+        sha,
     }, d);
     const scanResult = r.ciDispatch && r.ciDispatch.outcome !== "unresolved" ? scanBody(ctx.cwd, r.head) : null;
     // With --file / --step: the verdict lands on the step's row, and a passed one is
@@ -965,7 +1014,10 @@ async function runDispatch(ctx) {
 function dispatchCode(r, pr, scanResult, log) {
     if (r.handoff === EXIT.AGENT_WAIT || r.handoff === EXIT.USE_MCP) {
         const again = r.phase === "repoll" ? " --retriggered" : "";
-        log(`${r.handoff === EXIT.USE_MCP ? GH_MISSING : "this runtime cannot wait"}: resolve the ${r.phase} each turn with \`bkit runs wait --pr=${pr ?? "<n>"} --once\`, then re-run with --poll-result=<found|none|err> --attempts=<total>${again}`);
+        const [wait, keep] = r.runBranch === null
+            ? [`--pr=${pr ?? "<n>"}`, ""]
+            : [`--head=${r.head} --branch=${r.runBranch} --until=present`, ` --sha=${r.head}`];
+        log(`${r.handoff === EXIT.USE_MCP ? GH_MISSING : "this runtime cannot wait"}: resolve the ${r.phase} each turn with \`bkit runs wait ${wait} --once\`, then re-run with --poll-result=<found|none|err> --attempts=<total>${again}${keep}`);
         return r.handoff;
     }
     if (r.handoff !== 0)
@@ -1389,6 +1441,11 @@ async function runContext(ctx) {
         ctx.emit(out);
         return EXIT_NO_FID;
     }
+    if (parsed.issueId === null && tracker !== "none") {
+        ctx.log(`no issue in the PR-body marker or branch FID (${parsed.fid}); /bkit-auto runs issue-only`);
+        ctx.emit(out);
+        return EXIT_NO_FID;
+    }
     ctx.emit({ ...out, fid: parsed.fid, issueId: parsed.issueId });
     return EXIT.OK;
 }
@@ -1469,12 +1526,17 @@ export const runsCommand = {
             run: runWait,
         },
         dispatch: {
-            summary: "CI-Dispatch Gate after the last push: poll, one clean re-trigger, the ciDispatch verdict, and the body scan.",
+            summary: "CI-Dispatch Gate after the last push: poll, one clean re-trigger, the ciDispatch verdict, and the body scan. A run in place on dev has no PR: it polls the push-event run at the pushed sha, and its re-trigger commits and pushes only the run's own work.",
             flags: [
                 {
                     name: "pr",
                     type: "string",
-                    help: "PR number (default: the open PR from this branch into dev)",
+                    help: "PR number (default: the open PR from this branch into dev; none on dev itself: the push-event run at --sha is read instead)",
+                },
+                {
+                    name: "sha",
+                    type: "string",
+                    help: "a run in place on dev (no PR): the sha its push landed, which the CI run is looked up at (default: HEAD); an own-commit push lands copies, so pass the push's `sha`",
                 },
                 {
                     name: "fid",
@@ -1529,8 +1591,8 @@ export const runsCommand = {
             output: {
                 ciDispatch: "{outcome, head, attempts, retrigger, reason?} — record with `bkit steps done --field ciDispatch=…` (local only, never pushed); null on a hand-off",
                 phase: "done | poll | repoll (which poll was handed to the agent)",
-                pr: "PR number polled (null when none was found)",
-                head: "the pushed head (the re-trigger commit after a re-trigger)",
+                pr: "PR number polled (null when none was found, or a run in place on dev, whose run is read at head)",
+                head: "the pushed head (the re-trigger commit after a re-trigger; on dev with a record, the sha its own-commit push landed)",
                 attempts: "poll attempts so far",
                 retrigger: "a re-trigger commit was pushed",
                 scanResult: "clean | skip-token-found | error — the pushed head's BODY scan; null when unresolved",
@@ -1751,7 +1813,7 @@ export const runsCommand = {
                 [EXIT_UNKNOWN_PHASE]: "the phase word is not one bkit dispatches",
                 [EXIT_PR_NOT_OPEN]: "the PR is not OPEN",
                 [EXIT_NO_RUN_ID]: "no CI run at the PR head",
-                [EXIT_NO_FID]: "no valid FID (CI_DEV slug off the allowlist, or no marker / feat/{FID} branch)",
+                [EXIT_NO_FID]: "no valid FID or no issue (CI_DEV slug off the allowlist, no marker / feat/{FID} branch, or an issue-less FID: /bkit-auto runs issue-only)",
             },
             run: runContext,
         },

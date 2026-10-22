@@ -1,0 +1,480 @@
+import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { runCommand } from "../lib";
+import {
+  FID_PATTERNS,
+  fidProblem,
+  fidsCommand,
+  ISSUE_ID_PATTERNS,
+  ISSUE_LESS_FID,
+  issueIdOf,
+  readIssueTracker,
+} from "./fids";
+
+const dirs: string[] = [];
+
+afterEach(() => {
+  for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+});
+
+/** A directory whose package.json declares `bkit.issueTracker` (or no package.json at all). */
+function project(tracker?: string, raw?: string) {
+  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-fids-")));
+  dirs.push(d);
+  if (raw !== undefined) fs.writeFileSync(path.join(d, "package.json"), raw);
+  else if (tracker !== undefined) {
+    fs.writeFileSync(
+      path.join(d, "package.json"),
+      JSON.stringify({ bkit: { issueTracker: tracker } }),
+    );
+  }
+  return d;
+}
+
+async function run(cwd: string, argv: string[]) {
+  const out: string[] = [];
+  const err: string[] = [];
+  const code = await runCommand(["fids", ...argv], [fidsCommand], {
+    classicVerbs: new Set(),
+    cwd,
+    io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
+  });
+  return { code, json: out.length ? JSON.parse(out.join("")) : undefined, err: err.join("") };
+}
+
+describe("readIssueTracker", () => {
+  it.each(["github", "linear", "jira"])("reads bkit.issueTracker %s", (tracker) => {
+    expect(readIssueTracker(project(tracker))).toBe(tracker);
+  });
+
+  it("missing, invalid or unparseable falls back to none", () => {
+    expect(readIssueTracker(project())).toBe("none");
+    expect(readIssueTracker(project("asana"))).toBe("none");
+    expect(readIssueTracker(project(undefined, "{oops"))).toBe("none");
+  });
+
+  it("reads the main checkout's package.json from inside a linked worktree", () => {
+    const root = project("github");
+    const g = (...a: string[]) =>
+      spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: root });
+    g("init", "-q");
+    g("commit", "-q", "--allow-empty", "-m", "i");
+    g("worktree", "add", "-q", "-b", "feat/1-x", ".worktrees/1-x");
+    fs.writeFileSync(path.join(root, ".worktrees/1-x/package.json"), "{}");
+    expect(readIssueTracker(path.join(root, ".worktrees/1-x"))).toBe("github");
+  });
+});
+
+describe("bkit fids check", () => {
+  const FID_CASES: [tracker: string, fid: string, valid: boolean, issueId: string | null][] = [
+    ["github", "341-three-runtimes", true, "341"],
+    ["github", "341", false, null],
+    ["github", "abc-1-x", false, null],
+    ["github", "341-Upper", false, null],
+    ["github", "12-34-x", true, "12"],
+    ["github", "x_y", false, null],
+    ["linear", "abc-123-slug", true, "ABC-123"],
+    ["linear", "ABC-123-slug", true, "ABC-123"], // the issue id is lowercased first
+    ["linear", "341-slug", false, null],
+    ["linear", "abc-x", false, null],
+    ["linear", "ab2-1-x", false, null], // Linear team keys are letters only
+    ["jira", "mba-7-slug", true, "MBA-7"],
+    ["jira", "MBA-7-slug", true, "MBA-7"], // the issue key is lowercased first
+    ["jira", "ab2-7-slug", true, "AB2-7"], // a Jira project key may carry digits after its first letter
+    ["jira", "m-7-slug", false, null], // project keys are at least two characters
+    ["jira", "2ab-7-slug", false, null],
+    ["jira", "341-slug", false, null],
+    ["none", "my-feature", true, null],
+    ["none", "-leading-dash", false, null],
+    ["none", "has/slash", false, null],
+    ["none", "a", true, null],
+    ["none", "341", true, null],
+    ["none", "x_y", false, null],
+    ["any", "341-x", true, "341"],
+    ["any", "abc-123-x", true, "ABC-123"],
+    ["any", "ab2-7-x", true, "AB2-7"],
+    ["any", "plain-slug", false, null],
+  ];
+
+  it.each(FID_CASES.filter(([, , valid]) => valid))(
+    "tracker %s, FID %j -> valid %s, issueId %j",
+    async (tracker, fid, valid, issueId) => {
+      const r = await run(project(), ["check", `--fid=${fid}`, `--tracker=${tracker}`]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ tracker, valid, issueId });
+    },
+  );
+
+  it.each(FID_CASES.filter(([, , valid]) => !valid))(
+    "tracker %s, FID %j -> valid %s, issueId %j",
+    async (tracker, fid, valid, issueId) => {
+      const r = await run(project(), ["check", `--fid=${fid}`, `--tracker=${tracker}`]);
+      expect(r.code).toBe(1);
+      expect(r.json).toMatchObject({ tracker, valid, issueId });
+      expect(r.err).toContain("does not match");
+    },
+  );
+
+  it.each(["linear", "jira"])("lowercases a %s FID in its output", async (tracker) => {
+    const r = await run(project(), ["check", "--fid=ABC-123-slug", `--tracker=${tracker}`]);
+    expect(r.json.fid).toBe("abc-123-slug");
+  });
+
+  it("takes the tracker from package.json when --tracker is absent", async () => {
+    const r = await run(project("github"), ["check", "--fid=abc-123-slug"]);
+    expect(r.code).toBe(1);
+    expect(r.json.tracker).toBe("github");
+    expect((await run(project(), ["check", "--fid=abc-123-slug"])).json.tracker).toBe("none");
+  });
+
+  it.each([
+    ["linear", "ABC-123-slug", "ABC-123"],
+    ["jira", "AB2-7-slug", "AB2-7"],
+  ])("takes %s from package.json, lowercasing the key", async (tracker, fid, issueId) => {
+    const r = await run(project(tracker), ["check", `--fid=${fid}`]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ tracker, fid: fid.toLowerCase(), valid: true, issueId });
+  });
+
+  it("an unknown --tracker is a usage error", async () => {
+    expect((await run(project(), ["check", "--fid=1-x", "--tracker=asana"])).code).toBe(2);
+  });
+});
+
+describe("bkit fids check --issue", () => {
+  const WIRED = ["github", "linear", "jira"] as const;
+
+  it('check --issue="" accepts dev-ci-failures under github', async () => {
+    const r = await run(project(), [
+      "check",
+      "--fid=dev-ci-failures",
+      "--tracker=github",
+      "--issue=",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ valid: true, issueId: null });
+  });
+
+  it.each(["linear", "jira"])(
+    'check --issue="" accepts dev-ci-failures under %s',
+    async (tracker) => {
+      const r = await run(project(), [
+        "check",
+        "--fid=dev-ci-failures",
+        `--tracker=${tracker}`,
+        "--issue=",
+      ]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ valid: true, issueId: null });
+    },
+  );
+
+  it('check --issue="" rejects a FID with an all-digit word under every wired tracker', async () => {
+    for (const tracker of WIRED) {
+      for (const fid of ["123-fix", "fix-2-retry", "dev-123-x"]) {
+        const r = await run(project(), [
+          "check",
+          `--fid=${fid}`,
+          `--tracker=${tracker}`,
+          "--issue=",
+        ]);
+        expect(r.code, `${tracker} ${fid}`).toBe(1);
+        expect(r.json).toMatchObject({ valid: false, issueId: null });
+        expect(r.err).toContain("issue-less");
+      }
+    }
+  });
+
+  it('check --tracker=any --issue="" applies the issue-less rule', async () => {
+    const ok = await run(project(), [
+      "check",
+      "--fid=dev-ci-failures",
+      "--tracker=any",
+      "--issue=",
+    ]);
+    expect(ok.code).toBe(0);
+    const bad = await run(project(), ["check", "--fid=123-fix", "--tracker=any", "--issue="]);
+    expect(bad.code).toBe(1);
+    expect(bad.err).toContain("issue-less");
+  });
+
+  it("check --issue=650 requires the github shape and a github issue id", async () => {
+    expect(
+      (await run(project(), ["check", "--fid=650-x", "--tracker=github", "--issue=650"])).code,
+    ).toBe(0);
+    expect(
+      (await run(project(), ["check", "--fid=dev-ci", "--tracker=github", "--issue=650"])).code,
+    ).toBe(1);
+    expect(
+      (await run(project(), ["check", "--fid=650-x", "--tracker=github", "--issue=ABC-1"])).code,
+    ).toBe(1);
+    expect(
+      (await run(project(), ["check", "--fid=abc-1-x", "--tracker=linear", "--issue=ABC-1"])).code,
+    ).toBe(0);
+    expect(
+      (await run(project(), ["check", "--fid=mba-7-x", "--tracker=jira", "--issue=MBA-7"])).code,
+    ).toBe(0);
+    expect(
+      (await run(project(), ["check", "--fid=650-x", "--tracker=any", "--issue=650"])).code,
+    ).toBe(0);
+    expect(
+      (await run(project(), ["check", "--fid=dev-ci", "--tracker=any", "--issue=650"])).code,
+    ).toBe(1);
+  });
+
+  it("check under none ignores --issue", async () => {
+    for (const issue of ["--issue=", "--issue=650"]) {
+      expect((await run(project(), ["check", "--fid=123-fix", "--tracker=none", issue])).code).toBe(
+        0,
+      );
+    }
+  });
+
+  it('check takes the tracker from package.json with --issue=""', async () => {
+    expect(
+      (await run(project("github"), ["check", "--fid=dev-ci-failures", "--issue="])).code,
+    ).toBe(0);
+    expect((await run(project("github"), ["check", "--fid=123-fix", "--issue="])).code).toBe(1);
+  });
+
+  it("fidProblem with --issue absent matches today", () => {
+    expect(fidProblem("341-x", "github")).toBeUndefined();
+    expect(fidProblem("dev-ci", "github")).toContain("does not match the github shape");
+    expect(fidProblem("123-fix", "none")).toBeUndefined();
+    expect(fidProblem("x_y", "none")).toContain("does not match the none shape");
+  });
+
+  it("fidProblem names the issue-less rule", () => {
+    expect(fidProblem("dev-ci-failures", "linear", "")).toBeUndefined();
+    expect(fidProblem("fix-2-retry", "linear", "")).toContain("issue-less");
+    expect(fidProblem("Dev", "github", "")).toContain("issue-less");
+  });
+
+  it("ISSUE_LESS_FID is a slug with no all-digit word", () => {
+    for (const ok of ["dev-ci-failures", "a1-b", "x", "dev-v2"])
+      expect(ISSUE_LESS_FID.test(ok)).toBe(true);
+    for (const bad of ["123", "123-fix", "fix-2", "fix-2-retry", "dev-123-x", "-x", "x_y", "A-b"])
+      expect(ISSUE_LESS_FID.test(bad)).toBe(false);
+  });
+
+  it("ISSUE_ID_PATTERNS match each tracker's issue id", () => {
+    expect(ISSUE_ID_PATTERNS.github.test("650")).toBe(true);
+    expect(ISSUE_ID_PATTERNS.github.test("ABC-1")).toBe(false);
+    expect(ISSUE_ID_PATTERNS.linear.test("ABC-12")).toBe(true);
+    expect(ISSUE_ID_PATTERNS.linear.test("AB2-12")).toBe(false);
+    expect(ISSUE_ID_PATTERNS.jira.test("AB2-12")).toBe(true);
+    expect(ISSUE_ID_PATTERNS.jira.test("A-1")).toBe(false);
+  });
+});
+
+describe("bkit fids parse", () => {
+  const GH_BODY =
+    "intro\n<!-- bkit:issue=#341 bkit:fid=341-three-runtimes -->\n<!-- bkit:start -->";
+
+  it("github: the marker wins over the branch", async () => {
+    const r = await run(project("github"), [
+      "parse",
+      `--marker=${GH_BODY}`,
+      "--branch=feat/9-other",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      fid: "341-three-runtimes",
+      issueId: "341",
+      source: "marker",
+      tracker: "github",
+    });
+  });
+
+  it("linear: marker issue id and lowercased FID", async () => {
+    const r = await run(project("linear"), [
+      "parse",
+      "--marker=<!-- bkit:issue=ABC-12 bkit:fid=ABC-12-slug -->",
+    ]);
+    expect(r.json).toEqual({
+      fid: "abc-12-slug",
+      issueId: "ABC-12",
+      source: "marker",
+      tracker: "linear",
+    });
+  });
+
+  it("jira: marker issue key and lowercased FID", async () => {
+    const r = await run(project("jira"), [
+      "parse",
+      "--marker=<!-- bkit:issue=AB2-7 bkit:fid=AB2-7-slug -->",
+    ]);
+    expect(r.json).toEqual({
+      fid: "ab2-7-slug",
+      issueId: "AB2-7",
+      source: "marker",
+      tracker: "jira",
+    });
+  });
+
+  it("none: the fid-only marker", async () => {
+    const r = await run(project(), ["parse", "--marker=<!-- bkit:fid=my-feature -->"]);
+    expect(r.json).toEqual({ fid: "my-feature", issueId: null, source: "marker", tracker: "none" });
+  });
+
+  it.each([
+    ["github", "#341", "feat/341-three-runtimes", "341-three-runtimes", "341"],
+    ["linear", "ABC-12", "feat/abc-12-slug", "abc-12-slug", "ABC-12"],
+    ["jira", "AB2-7", "feat/ab2-7-slug", "ab2-7-slug", "AB2-7"],
+  ])(
+    "%s: a malformed marker falls through to the branch",
+    async (tracker, issue, branch, fid, issueId) => {
+      const r = await run(project(tracker), [
+        "parse",
+        `--marker=<!-- bkit:issue=${issue} bkit:fid=Not_A_Slug -->`,
+        `--branch=${branch}`,
+      ]);
+      expect(r.json).toMatchObject({ fid, issueId, source: "branch" });
+      expect(r.err).toContain("trying the branch");
+    },
+  );
+
+  it.each([
+    ["none", GH_BODY],
+    ["jira", GH_BODY],
+    ["github", "<!-- bkit:issue=AB2-7 bkit:fid=ab2-7-slug -->"],
+    ["linear", "<!-- bkit:issue=AB2-7 bkit:fid=ab2-7-slug -->"],
+  ])("%s: a marker for another tracker is not this tracker's marker", async (tracker, body) => {
+    const r = await run(project(tracker), ["parse", `--marker=${body}`]);
+    expect(r.code).toBe(3);
+  });
+
+  it.each([
+    ["github", "feat/341-three-runtimes", "341-three-runtimes", "341"],
+    ["github", "feat/341", "341", "341"],
+    ["linear", "feat/abc-123-slug", "abc-123-slug", "ABC-123"],
+    ["jira", "feat/mba-7-slug", "mba-7-slug", "MBA-7"],
+    ["jira", "feat/ab2-7-slug", "ab2-7-slug", "AB2-7"],
+    ["none", "feat/anything-goes", "anything-goes", null],
+  ])("%s branch %s -> FID %s, issueId %j", async (tracker, branch, fid, issueId) => {
+    const r = await run(project(tracker), ["parse", `--branch=${branch}`]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ fid, issueId, source: "branch", tracker });
+  });
+
+  it.each([
+    ["github", "dev", "is not feat/{FID}"],
+    ["github", "feat/", "is not a slug"],
+    ["github", "feat/Upper-case", "is not a slug"],
+    ["github", "feat/abc-x", "embeds no github issue id"],
+    ["linear", "feat/341-x", "embeds no linear issue id"],
+    ["linear", "feat/ab2-7-x", "embeds no linear issue id"],
+    ["jira", "feat/341-x", "embeds no jira issue id"],
+    ["jira", "feat/m-7-x", "embeds no jira issue id"],
+  ])("%s branch %j -> exit 3 (%s)", async (tracker, branch, why) => {
+    const r = await run(project(tracker), ["parse", `--branch=${branch}`]);
+    expect(r.code).toBe(3);
+    expect(r.json).toBeUndefined();
+    expect(r.err).toContain(why);
+  });
+
+  it("needs --marker or --branch", async () => {
+    expect((await run(project(), ["parse"])).code).toBe(2);
+  });
+
+  it("marker absent and no branch -> exit 3", async () => {
+    expect((await run(project("github"), ["parse", "--marker=no marker here"])).code).toBe(3);
+  });
+});
+
+describe("issueIdOf", () => {
+  it("matches auto's CI_DEV derivation (first numeric or team-number prefix, uppercased)", () => {
+    expect(issueIdOf("12-34-x", "any")).toBe("12");
+    expect(issueIdOf("abc-123-x", "any")).toBe("ABC-123");
+    expect(issueIdOf("ab2-7-x", "any")).toBe("AB2-7");
+    expect(FID_PATTERNS.any.test("12-34-x")).toBe(true);
+  });
+});
+
+describe("bkit fids find", () => {
+  /** A git repo with the given `docs/plans/<month>/logs/<fid>` folders. */
+  function logged(...rels: string[]) {
+    const d = project();
+    spawnSync("git", ["init", "-q"], { cwd: d });
+    for (const rel of rels) fs.mkdirSync(path.join(d, "docs", "plans", rel), { recursive: true });
+    return d;
+  }
+
+  it("names the one feature logged for the issue (exit 0), never a longer issue number", async () => {
+    const d = logged("202605/logs/68-agent-mvp", "202608/logs/680-longer", "202608/logs/70-other");
+    expect(await run(d, ["find", "--issue=68"])).toMatchObject({
+      code: 0,
+      json: { fid: "68-agent-mvp", fids: ["68-agent-mvp"] },
+    });
+    expect((await run(d, ["find", "--issue=#68"])).json.fid).toBe("68-agent-mvp");
+  });
+
+  it.each([
+    ["Linear", "ABC-12", "abc-12-thing"],
+    ["Jira", "AB2-12", "ab2-12-thing"],
+  ])("matches a %s issue case-insensitively", async (_tracker, issue, fid) => {
+    const d = logged(`202605/logs/${fid}`);
+    expect((await run(d, ["find", `--issue=${issue}`])).json.fid).toBe(fid);
+  });
+
+  it("lists every feature when several are logged (exit 4)", async () => {
+    const d = logged("202605/logs/68-first", "202606/logs/68-second");
+    const r = await run(d, ["find", "--issue=68"]);
+    expect(r.code).toBe(4);
+    expect(r.json).toEqual({ fid: null, fids: ["68-first", "68-second"] });
+  });
+
+  it("exits 1 when nothing is logged, or docs/plans does not exist", async () => {
+    expect((await run(logged("202605/logs/12-x"), ["find", "--issue=99"])).code).toBe(1);
+    expect((await run(logged(), ["find", "--issue=99"])).code).toBe(1);
+  });
+
+  it("ignores a non-month folder and a file named like a feature", async () => {
+    const d = logged("archive/logs/68-old");
+    fs.mkdirSync(path.join(d, "docs/plans/202605/logs"), { recursive: true });
+    fs.writeFileSync(path.join(d, "docs/plans/202605/logs/68-file"), "");
+    expect((await run(d, ["find", "--issue=68"])).code).toBe(1);
+  });
+});
+
+describe("bkit fids design", () => {
+  function plans(...files: string[]) {
+    const d = project();
+    spawnSync("git", ["init", "-q"], { cwd: d });
+    for (const rel of files) {
+      fs.mkdirSync(path.dirname(path.join(d, "docs", "plans", rel)), { recursive: true });
+      fs.writeFileSync(path.join(d, "docs", "plans", rel), "# Design\n");
+    }
+    return d;
+  }
+
+  it("finds the feature's design doc in the given bucket (exit 0)", async () => {
+    const d = plans("202609/50-sync-design.md", "202610/50-sync-design.md");
+    expect(await run(d, ["design", "--fid=50-sync", "--month=202609"])).toMatchObject({
+      code: 0,
+      json: { fid: "50-sync", month: "202609", path: "docs/plans/202609/50-sync-design.md" },
+    });
+  });
+
+  it("falls back to the newest bucket holding it when the given bucket has none", async () => {
+    const d = plans("202608/50-sync-design.md", "202609/50-sync-design.md");
+    expect((await run(d, ["design", "--fid=50-sync", "--month=202610"])).json.month).toBe("202609");
+    expect((await run(d, ["design", "--fid=50-sync"])).json.month).toBe("202609");
+  });
+
+  it("exits 1 for no design doc, another feature's doc, a plan only, or no docs/plans", async () => {
+    const d = plans(
+      "202610/51-other-design.md",
+      "202610/50-sync-plan.md",
+      "archive/50-sync-design.md",
+    );
+    expect(await run(d, ["design", "--fid=50-sync", "--month=202610"])).toMatchObject({
+      code: 1,
+      json: { fid: null, month: null, path: null },
+    });
+    expect((await run(plans(), ["design", "--fid=50-sync"])).code).toBe(1);
+  });
+});

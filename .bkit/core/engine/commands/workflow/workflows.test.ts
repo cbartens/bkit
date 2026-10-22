@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { validate } from "../../ledgers/telemetry";
 import { runCommand } from "../lib";
+import { newRecord, readRecord, writeRecord } from "./ledgers";
 import { locksCommand } from "./locks";
 import { workflowsCommand } from "./workflows";
 
@@ -725,6 +726,48 @@ describe("bkit workflows close — commit, outbox, comment", () => {
     expect(r.json.comment).toContain("#### Telemetry");
   });
 
+  describe("in place on dev with a shared-checkout record", () => {
+    /** `started()` plus foreign work in flight when the record is taken. */
+    function recorded() {
+      const cwd = started("debug");
+      write(cwd, "notes.md", "foreign notes\n");
+      write(cwd, "a.txt", "base\nforeign edit\n");
+      write(cwd, "staged.txt", "foreign staged\n");
+      git(cwd, "add", "staged.txt");
+      writeRecord(cwd, newRecord(cwd, FID, "dev"));
+      return cwd;
+    }
+
+    it("close with a shared-checkout record never commits a recorded path", async () => {
+      const cwd = recorded();
+      const r = await run(cwd, wf("close", "debug", "--message=chore(12-export-csv): close"));
+      expect(r.code).toBe(0);
+      const committed = git(cwd, "show", "--name-only", "--format=", "HEAD").split("\n");
+      expect(committed).toContain(`${REL}/status.jsonl`);
+      expect(committed).not.toContain("notes.md");
+      expect(committed).not.toContain("a.txt");
+      expect(committed).not.toContain("staged.txt");
+      expect(git(cwd, "status", "--porcelain")).toBe("M a.txt\nA  staged.txt\n?? notes.md");
+      expect(readRecord(cwd, FID)?.commits).toEqual([git(cwd, "rev-parse", "HEAD")]);
+    });
+
+    it("record is present after workflows close and before the push", async () => {
+      const cwd = recorded();
+      await run(cwd, wf("close", "debug", "--message=chore(12-export-csv): close"));
+      expect(readRecord(cwd, FID)).not.toBeNull();
+    });
+
+    it("close refuses with exit 10 when a recorded path changed", async () => {
+      const cwd = recorded();
+      write(cwd, "notes.md", "foreign notes\nand more\n");
+      const before = git(cwd, "rev-parse", "HEAD");
+      const r = await run(cwd, wf("close", "debug", "--message=m"));
+      expect(r.code).toBe(10);
+      expect(r.err).toContain("notes.md");
+      expect(git(cwd, "rev-parse", "HEAD")).toBe(before);
+    });
+  });
+
   it("--number without --outbox is a usage error", async () => {
     expect((await run(started(), wf("close", "build", "--number=18", "--title=t"))).code).toBe(2);
   });
@@ -881,6 +924,22 @@ describe("bkit workflows handover", () => {
     expect(git(cwd, "status", "--porcelain")).toContain("src.ts");
     expect(r.json).toMatchObject({ pushed: true, ref: "dev" });
     expect(r.json.comment).toContain(`https://github.com/o/r/blob/dev/${REL}/debug-handover.md`);
+  });
+
+  it("failed handover from dev removes the record and keeps recorded paths", async () => {
+    const { cwd } = withDevRemote();
+    write(cwd, "src.ts", "foreign half-done fix\n");
+    write(cwd, `${REL}/debug-handover.md`, "# Handover\n");
+    writeRecord(cwd, newRecord(cwd, FID, "dev"));
+    expect(readRecord(cwd, FID)).not.toBeNull();
+    const start = Date.now() - 1000;
+    write(cwd, `${REL}/status.jsonl`, startedThenFailed("debug", start));
+    const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+    expect(r.code).toBe(0);
+    expect(readRecord(cwd, FID)).toBeNull();
+    expect(fs.readFileSync(path.join(cwd, "src.ts"), "utf-8")).toBe("foreign half-done fix\n");
+    // The recorded handover log was dirty before the run: the hand-back leaves it.
+    expect(fs.existsSync(path.join(cwd, REL, "debug-handover.md"))).toBe(true);
   });
 
   it("--push on dev hands the landed record back, so local dev fast-forwards onto it", async () => {
@@ -1095,6 +1154,67 @@ describe("bkit workflows close --flush (ship)", () => {
     const r = await run(wt, [...close, `--token=${lock.json.token}`]);
     expect(r.code).toBe(0);
     expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(false);
+  });
+
+  describe("close PR (dev refused the push)", () => {
+    /** A bare remote that refuses every push to dev, and a gh on PATH that records its calls. */
+    function refusedDev(base: "dev" | "none") {
+      const s = shipping(true);
+      fs.writeFileSync(
+        path.join(s.remote, "hooks", "pre-receive"),
+        '#!/bin/sh\nwhile read o n ref; do [ "$ref" = refs/heads/dev ] && { echo "dev is protected" >&2; exit 1; }; done\nexit 0\n',
+        { mode: 0o755 },
+      );
+      const bin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-gh-")));
+      dirs.push(bin);
+      const baseField = base === "dev" ? ',"baseRefName":"dev"' : "";
+      fs.writeFileSync(
+        path.join(bin, "gh"),
+        [
+          "#!/bin/sh",
+          `echo "$*" >> "${bin}/calls"`,
+          'case "$1 $2" in',
+          '  "pr create") exit 0 ;;',
+          `  "pr list") echo '[{"number":9,"url":"https://github.com/o/r/pull/9","state":"OPEN"${baseField},"headRefName":"ship-close/${FID}"}]' ;;`,
+          `  "pr view") if [ -f "${bin}/merged" ]; then echo '{"number":9,"state":"MERGED","baseRefName":"dev","mergeCommit":{"oid":"abc"}}'; else echo '{"number":9,"state":"OPEN"${baseField}}'; fi ;;`,
+          `  "pr merge") : > "${bin}/merged"; exit 0 ;;`,
+          "esac",
+          "",
+        ].join("\n"),
+        { mode: 0o755 },
+      );
+      const calls = () =>
+        fs.existsSync(path.join(bin, "calls"))
+          ? fs.readFileSync(path.join(bin, "calls"), "utf-8").trim().split("\n")
+          : [];
+      return { ...s, bin, calls };
+    }
+    const withGh = async <T>(bin: string, fn: () => Promise<T>) => {
+      const saved = process.env.PATH;
+      process.env.PATH = `${bin}${path.delimiter}${saved ?? ""}`;
+      try {
+        return await fn();
+      } finally {
+        process.env.PATH = saved;
+      }
+    };
+
+    it("closePr with base dev still merges", async () => {
+      const { wt, close, bin, calls } = refusedDev("dev");
+      const r = await withGh(bin, () => run(wt, close));
+      expect(r.code).toBe(0);
+      expect(r.json.landed).toEqual({ ref: `ship-close/${FID}`, via: "close-pr" });
+      expect(calls().some((c) => c.startsWith("pr merge"))).toBe(true);
+    });
+
+    it("closePr refuses when the PR base is unknown", async () => {
+      const { wt, close, bin, calls } = refusedDev("none");
+      const r = await withGh(bin, () => run(wt, close));
+      expect(r.code).toBe(0);
+      expect(r.json.landed).toEqual({ ref: `ship-close/${FID}`, via: "close-pr-open" });
+      expect(r.err).toContain("not merged");
+      expect(calls().filter((c) => c.startsWith("pr merge"))).toEqual([]);
+    });
   });
 
   it("leaves a worktree no workflow created, and its branch, in place", async () => {

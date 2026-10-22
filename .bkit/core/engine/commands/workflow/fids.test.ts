@@ -4,7 +4,17 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCommand } from "../lib";
-import { FID_PATTERNS, fidsCommand, issueIdOf, readIssueTracker } from "./fids";
+import {
+  FID_PATTERNS,
+  fidProblem,
+  fidsCommand,
+  fromBranch,
+  fromMarker,
+  ISSUE_ID_PATTERNS,
+  ISSUE_LESS_FID,
+  issueIdOf,
+  readIssueTracker,
+} from "./fids";
 
 const dirs: string[] = [];
 
@@ -136,6 +146,132 @@ describe("bkit fids check", () => {
   });
 });
 
+describe("bkit fids check --issue", () => {
+  const WIRED = ["github", "linear", "jira"] as const;
+
+  it('check --issue="" accepts dev-ci-failures under github', async () => {
+    const r = await run(project(), [
+      "check",
+      "--fid=dev-ci-failures",
+      "--tracker=github",
+      "--issue=",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ valid: true, issueId: null });
+  });
+
+  it.each(["linear", "jira"])(
+    'check --issue="" accepts dev-ci-failures under %s',
+    async (tracker) => {
+      const r = await run(project(), [
+        "check",
+        "--fid=dev-ci-failures",
+        `--tracker=${tracker}`,
+        "--issue=",
+      ]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ valid: true, issueId: null });
+    },
+  );
+
+  it('check --issue="" rejects a FID with an all-digit word under every wired tracker', async () => {
+    for (const tracker of WIRED) {
+      for (const fid of ["123-fix", "fix-2-retry", "dev-123-x"]) {
+        const r = await run(project(), [
+          "check",
+          `--fid=${fid}`,
+          `--tracker=${tracker}`,
+          "--issue=",
+        ]);
+        expect(r.code, `${tracker} ${fid}`).toBe(1);
+        expect(r.json).toMatchObject({ valid: false, issueId: null });
+        expect(r.err).toContain("issue-less");
+      }
+    }
+  });
+
+  it('check --tracker=any --issue="" applies the issue-less rule', async () => {
+    const ok = await run(project(), [
+      "check",
+      "--fid=dev-ci-failures",
+      "--tracker=any",
+      "--issue=",
+    ]);
+    expect(ok.code).toBe(0);
+    const bad = await run(project(), ["check", "--fid=123-fix", "--tracker=any", "--issue="]);
+    expect(bad.code).toBe(1);
+    expect(bad.err).toContain("issue-less");
+  });
+
+  it("check --issue=650 requires the github shape and a github issue id", async () => {
+    expect(
+      (await run(project(), ["check", "--fid=650-x", "--tracker=github", "--issue=650"])).code,
+    ).toBe(0);
+    expect(
+      (await run(project(), ["check", "--fid=dev-ci", "--tracker=github", "--issue=650"])).code,
+    ).toBe(1);
+    expect(
+      (await run(project(), ["check", "--fid=650-x", "--tracker=github", "--issue=ABC-1"])).code,
+    ).toBe(1);
+    expect(
+      (await run(project(), ["check", "--fid=abc-1-x", "--tracker=linear", "--issue=ABC-1"])).code,
+    ).toBe(0);
+    expect(
+      (await run(project(), ["check", "--fid=mba-7-x", "--tracker=jira", "--issue=MBA-7"])).code,
+    ).toBe(0);
+    expect(
+      (await run(project(), ["check", "--fid=650-x", "--tracker=any", "--issue=650"])).code,
+    ).toBe(0);
+    expect(
+      (await run(project(), ["check", "--fid=dev-ci", "--tracker=any", "--issue=650"])).code,
+    ).toBe(1);
+  });
+
+  it("check under none ignores --issue", async () => {
+    for (const issue of ["--issue=", "--issue=650"]) {
+      expect((await run(project(), ["check", "--fid=123-fix", "--tracker=none", issue])).code).toBe(
+        0,
+      );
+    }
+  });
+
+  it('check takes the tracker from package.json with --issue=""', async () => {
+    expect(
+      (await run(project("github"), ["check", "--fid=dev-ci-failures", "--issue="])).code,
+    ).toBe(0);
+    expect((await run(project("github"), ["check", "--fid=123-fix", "--issue="])).code).toBe(1);
+  });
+
+  it("fidProblem with --issue absent matches today", () => {
+    expect(fidProblem("341-x", "github")).toBeUndefined();
+    expect(fidProblem("dev-ci", "github")).toContain("does not match the github shape");
+    expect(fidProblem("123-fix", "none")).toBeUndefined();
+    expect(fidProblem("x_y", "none")).toContain("does not match the none shape");
+  });
+
+  it("fidProblem names the issue-less rule", () => {
+    expect(fidProblem("dev-ci-failures", "linear", "")).toBeUndefined();
+    expect(fidProblem("fix-2-retry", "linear", "")).toContain("issue-less");
+    expect(fidProblem("Dev", "github", "")).toContain("issue-less");
+  });
+
+  it("ISSUE_LESS_FID is a slug with no all-digit word", () => {
+    for (const ok of ["dev-ci-failures", "a1-b", "x", "dev-v2"])
+      expect(ISSUE_LESS_FID.test(ok)).toBe(true);
+    for (const bad of ["123", "123-fix", "fix-2", "fix-2-retry", "dev-123-x", "-x", "x_y", "A-b"])
+      expect(ISSUE_LESS_FID.test(bad)).toBe(false);
+  });
+
+  it("ISSUE_ID_PATTERNS match each tracker's issue id", () => {
+    expect(ISSUE_ID_PATTERNS.github.test("650")).toBe(true);
+    expect(ISSUE_ID_PATTERNS.github.test("ABC-1")).toBe(false);
+    expect(ISSUE_ID_PATTERNS.linear.test("ABC-12")).toBe(true);
+    expect(ISSUE_ID_PATTERNS.linear.test("AB2-12")).toBe(false);
+    expect(ISSUE_ID_PATTERNS.jira.test("AB2-12")).toBe(true);
+    expect(ISSUE_ID_PATTERNS.jira.test("A-1")).toBe(false);
+  });
+});
+
 describe("bkit fids parse", () => {
   const GH_BODY =
     "intro\n<!-- bkit:issue=#341 bkit:fid=341-three-runtimes -->\n<!-- bkit:start -->";
@@ -220,6 +356,10 @@ describe("bkit fids parse", () => {
     ["jira", "feat/mba-7-slug", "mba-7-slug", "MBA-7"],
     ["jira", "feat/ab2-7-slug", "ab2-7-slug", "AB2-7"],
     ["none", "feat/anything-goes", "anything-goes", null],
+    ["github", "feat/abc-x", "abc-x", null],
+    ["github", "feat/dev-ci-failures", "dev-ci-failures", null],
+    ["linear", "feat/dev-ci-failures", "dev-ci-failures", null],
+    ["jira", "feat/dev-ci-failures", "dev-ci-failures", null],
   ])("%s branch %s -> FID %s, issueId %j", async (tracker, branch, fid, issueId) => {
     const r = await run(project(tracker), ["parse", `--branch=${branch}`]);
     expect(r.code).toBe(0);
@@ -230,7 +370,6 @@ describe("bkit fids parse", () => {
     ["github", "dev", "is not feat/{FID}"],
     ["github", "feat/", "is not a slug"],
     ["github", "feat/Upper-case", "is not a slug"],
-    ["github", "feat/abc-x", "embeds no github issue id"],
     ["linear", "feat/341-x", "embeds no linear issue id"],
     ["linear", "feat/ab2-7-x", "embeds no linear issue id"],
     ["jira", "feat/341-x", "embeds no jira issue id"],
@@ -248,6 +387,84 @@ describe("bkit fids parse", () => {
 
   it("marker absent and no branch -> exit 3", async () => {
     expect((await run(project("github"), ["parse", "--marker=no marker here"])).code).toBe(3);
+  });
+});
+
+describe("issue-less FID recovery", () => {
+  const FID_ONLY = "<!-- bkit:fid=dev-ci-failures -->";
+
+  it("fromMarker returns issueId null for a FID-only marker under github", () => {
+    expect(fromMarker(FID_ONLY, "github")).toEqual({
+      fid: "dev-ci-failures",
+      issueId: null,
+      source: "marker",
+    });
+  });
+
+  it.each(["linear", "jira", "none"] as const)(
+    "fromMarker returns issueId null for a FID-only marker under %s",
+    (tracker) => {
+      expect(fromMarker(FID_ONLY, tracker)).toMatchObject({
+        fid: "dev-ci-failures",
+        issueId: null,
+      });
+    },
+  );
+
+  it("fromBranch returns issueId null for feat/dev-ci-failures under linear", () => {
+    expect(fromBranch("feat/dev-ci-failures", "linear")).toEqual({
+      ok: true,
+      parsed: { fid: "dev-ci-failures", issueId: null, source: "branch" },
+    });
+  });
+
+  it.each(["github", "jira"] as const)(
+    "fromBranch returns issueId null for feat/dev-ci-failures under %s",
+    (tracker) => {
+      expect(fromBranch("feat/dev-ci-failures", tracker)).toMatchObject({
+        ok: true,
+        parsed: { issueId: null },
+      });
+    },
+  );
+
+  it("a tracker-shaped marker or branch still parses as its issue", () => {
+    expect(fromMarker("<!-- bkit:issue=#341 bkit:fid=341-x -->", "github")).toMatchObject({
+      issueId: "341",
+    });
+    expect(fromBranch("feat/341-x", "github")).toMatchObject({
+      ok: true,
+      parsed: { issueId: "341" },
+    });
+  });
+
+  it("a FID-only marker holding an all-digit word is not issue-less", () => {
+    for (const fid of ["341-x", "123", "dev-123-x", "fix-2-retry"]) {
+      expect(fromMarker(`<!-- bkit:fid=${fid} -->`, "github")).toBeNull();
+      expect(fromMarker(`<!-- bkit:fid=${fid} -->`, "linear")).toBeNull();
+    }
+    expect(fromMarker("<!-- bkit:fid=341-x -->", "none")).toMatchObject({ issueId: null });
+  });
+
+  it("a malformed tracker marker does not fall back to the FID-only shape", () => {
+    expect(fromMarker("<!-- bkit:issue=#341 bkit:fid=Not_A_Slug -->", "github")).toBeNull();
+  });
+
+  it("fids parse recovers an issue-less FID from the marker and from the branch", async () => {
+    const m = await run(project("github"), ["parse", `--marker=${FID_ONLY}`]);
+    expect(m.json).toEqual({
+      fid: "dev-ci-failures",
+      issueId: null,
+      source: "marker",
+      tracker: "github",
+    });
+    const b = await run(project("jira"), ["parse", "--branch=feat/dev-ci-failures"]);
+    expect(b.json).toEqual({
+      fid: "dev-ci-failures",
+      issueId: null,
+      source: "branch",
+      tracker: "jira",
+    });
   });
 });
 

@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { prBody, prMarker, prsCommand } from "./prs";
+import { EXIT_BASE_MAIN, EXIT_BASE_NOT_DEV, prBody, prMarker, prsCommand } from "./prs";
 
 const dirs: string[] = [];
 const ORIGINAL_PATH = process.env.PATH;
@@ -183,6 +183,27 @@ describe("bkit prs open", () => {
     },
   );
 
+  it("prMarker writes a FID-only marker with github wired and no issue", async () => {
+    expect(prMarker("github", "dev-ci-failures", undefined)).toBe(
+      "<!-- bkit:fid=dev-ci-failures -->",
+    );
+    expect(prMarker("linear", "dev-ci-failures", "")).toBe("<!-- bkit:fid=dev-ci-failures -->");
+    expect(prMarker("jira", "dev-ci-failures", "")).toBe("<!-- bkit:fid=dev-ci-failures -->");
+    const cwd = repo("feat/dev-ci-failures", GH);
+    gh.view(pr({ headRefName: "feat/dev-ci-failures" }));
+    const r = await run(cwd, ["prs", "open", "--fid=dev-ci-failures", "--title=t"]);
+    expect(r.code).toBe(0);
+    expect(r.json.body).toBe("<!-- bkit:fid=dev-ci-failures -->\n");
+    expect(gh.sent("body")).toBe("<!-- bkit:fid=dev-ci-failures -->\n");
+  });
+
+  it("a FID-only marker for a tracker-shaped FID is refused (the FID would read as an issue)", () => {
+    for (const fid of ["12-x", "fix-2-retry", "dev-123-x"]) {
+      expect(() => prMarker("github", fid, undefined)).toThrow();
+      expect(() => prMarker("linear", fid, "")).toThrow();
+    }
+  });
+
   it("writes the no-tracker marker shape", () => {
     expect(prMarker("none", "x-y", undefined)).toBe("<!-- bkit:fid=x-y -->");
   });
@@ -280,6 +301,23 @@ describe("bkit prs open", () => {
     const missing = await open(cwd, "--issue=12", "--head=feat/12-x");
     expect(missing.code).toBe(80);
     expect(missing.json.useMcp).toBe(true);
+  });
+
+  it("prs open refuses --base=main", async () => {
+    const cwd = repo("feat/12-x", GH);
+    gh.view(pr({ baseRefName: "main" }));
+    const r = await open(cwd, "--issue=12", "--base=main");
+    expect(r.code).toBe(EXIT_BASE_MAIN);
+    expect(r.err).toContain("main");
+    expect(gh.calls()).toEqual([]);
+    expect(r.out).toBe("");
+  });
+
+  it("prs open still opens against any other base", async () => {
+    const cwd = repo("feat/12-x", GH);
+    gh.view(pr({ baseRefName: "release" }));
+    const r = await open(cwd, "--issue=12", "--base=release");
+    expect(r.code).toBe(0);
   });
 
   it("exits 6 when the created PR's base is not --base", async () => {
@@ -642,6 +680,31 @@ describe("bkit prs merge", () => {
     expect(r.json).toMatchObject({ merged: false, state: "OPEN", verdict: "FAIL", failures: 1 });
     gh.view(pr());
     expect((await merge("--expect-merged")).code).toBe(7);
+  });
+
+  it("prs merge refuses a PR whose base is main", async () => {
+    gh.view(pr({ baseRefName: "main" }));
+    gh.viewAfterMerge(pr({ baseRefName: "main", state: "MERGED" }));
+    const r = await merge();
+    expect(r.code).toBe(EXIT_BASE_NOT_DEV);
+    expect(r.err).toContain("main");
+    expect(r.json).toMatchObject({ merged: false, verdict: "FAIL" });
+    expect(mergeCall()).toBe("");
+  });
+
+  it("prs merge refuses when the PR base is unknown", async () => {
+    gh.view(pr({ baseRefName: undefined }));
+    gh.viewAfterMerge(pr({ state: "MERGED" }));
+    const r = await merge();
+    expect(r.code).toBe(EXIT_BASE_NOT_DEV);
+    expect(mergeCall()).toBe("");
+  });
+
+  it("prs merge reads the base from the one pr view it already makes", async () => {
+    gh.view(pr());
+    gh.viewAfterMerge(pr({ state: "MERGED" }));
+    await merge("--subject=s");
+    expect(gh.calls().filter((c) => c.startsWith("pr view"))).toHaveLength(2);
   });
 
   it("exits 80 when gh needs auth, and 2 on a bad --number", async () => {

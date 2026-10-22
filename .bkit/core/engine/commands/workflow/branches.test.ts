@@ -8,7 +8,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { LOCKFILE_REGENERATE, PACKAGE_RUNNER } from "../../shared/package-manager";
-import { LEDGERS, branchesCommand, classifyConflict, readAnchor, stampAnchor } from "./branches";
+import {
+  LEDGERS,
+  branchesCommand,
+  classifyConflict,
+  readAnchor,
+  replayBuild,
+  stampAnchor,
+} from "./branches";
+import { appendRecordCommit, newRecord, writeRecord } from "./ledgers";
 
 // `branches land` retries without waiting, three tries in all.
 vi.mock("../../shared/timeouts", async (importOriginal) => {
@@ -941,6 +949,7 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
       forced: true,
       skipped: null,
       prNumber: null,
+      replayed: false,
     });
     expect(remoteSha(origin, "feat/1-x")).toBe(sha(clone));
     // A rebased (rewritten) branch still pushes: that is what the lease is for.
@@ -1038,6 +1047,7 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
       forced: false,
       skipped: "open-pr",
       prNumber: 12,
+      replayed: false,
     });
     expect(fs.readFileSync(log, "utf-8")).toContain(
       "pr list --head feat/1-x --state open --json number,state",
@@ -1109,6 +1119,157 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
     expect((await run(clone, ["push", "--mode=sideways"])).code).toBe(2);
   });
 });
+
+describe(
+  "branches push — in place on dev with a shared-checkout record",
+  { timeout: GIT_TIMEOUT },
+  () => {
+    const FID = "650-own-push";
+    const remoteLog = (origin: string) => git(origin, "log", "--format=%s", "dev").out.split("\n");
+
+    /** A clone on dev with one foreign commit already ahead; the run starts after it. */
+    function started(name: string) {
+      const { origin, clone } = withOrigin(name);
+      commit(clone, { "foreign-before.txt": "f\n" }, "foreign: made before the run");
+      writeRecord(clone, newRecord(clone, FID, "dev"));
+      return { origin, clone };
+    }
+    /** A commit the run made: recorded the way the engine records it. */
+    function runCommit(clone: string, files: Record<string, string>, message: string) {
+      commit(clone, files, message);
+      appendRecordCommit(clone, FID, sha(clone));
+      return sha(clone);
+    }
+
+    it("push after a replay reports the pushToDev sha not HEAD", async () => {
+      const { origin, clone } = started("replay-sha");
+      runCommit(clone, { "run.txt": "r\n" }, "fix: the run's commit");
+      const r = await run(clone, ["push", "--mode=dev"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ pushed: true, ref: "dev", forced: false, replayed: true });
+      expect(r.json?.sha).toBe(sha(origin, "dev"));
+      expect(r.json?.sha).not.toBe(sha(clone));
+      expect(remoteLog(origin)).toContain("fix: the run's commit");
+      expect(remoteLog(origin)).not.toContain("foreign: made before the run");
+      expect(r.err).toContain("git pull --rebase origin dev");
+    });
+
+    it("replay build callback cherry-picks exactly the recorded SHAs", () => {
+      const { origin, clone } = started("replay-build");
+      const first = runCommit(clone, { "one.txt": "1\n" }, "run one");
+      commit(clone, { "foreign-mid.txt": "m\n" }, "foreign: mid-run");
+      const second = runCommit(clone, { "two.txt": "2\n" }, "run two");
+      git(clone, "fetch", "-q", "origin", "dev");
+      const dir = path.join(tmp("replay-dir"), "wt");
+      git(clone, "worktree", "add", "--detach", dir, "origin/dev");
+      replayBuild([first, second])(dir);
+      expect(git(dir, "log", "--format=%s", "origin/dev..HEAD").out).toBe("run two\nrun one");
+      expect(fs.existsSync(path.join(dir, "foreign-mid.txt"))).toBe(false);
+      expect(fs.existsSync(path.join(dir, "two.txt"))).toBe(true);
+      expect(sha(origin, "dev")).toBe(sha(dir, "origin/dev"));
+    });
+
+    it("replay conflict exits non-zero naming the paths and removes the throwaway checkout", async () => {
+      const { origin, clone } = withOrigin("replay-conflict");
+      commit(clone, { "src.txt": "foreign line\n" }, "foreign: touches src.txt");
+      writeRecord(clone, newRecord(clone, FID, "dev"));
+      // The run's commit rewrites the foreign line, so it cannot apply without it.
+      fs.writeFileSync(path.join(clone, "src.txt"), "code v0\nrun rewrote it\n");
+      git(clone, "add", "-A");
+      git(clone, "commit", "-q", "-m", "fix: depends on the foreign commit");
+      appendRecordCommit(clone, FID, sha(clone));
+      const before = sha(origin, "dev");
+      const r = await run(clone, ["push", "--mode=dev"]);
+      expect(r.code).toBe(11);
+      expect(r.err).toContain("src.txt");
+      expect(sha(origin, "dev")).toBe(before);
+      expect(fs.existsSync(path.join(clone, ".worktrees", `_land-${FID}`))).toBe(false);
+      expect(git(clone, "worktree", "list", "--porcelain").out).not.toContain("_land-");
+    });
+
+    it("a server-refused pushToDev exits EXIT_PUSH_FAILED naming the refusal", async () => {
+      const { origin, clone } = started("replay-refused");
+      runCommit(clone, { "run.txt": "r\n" }, "fix: refused");
+      fs.writeFileSync(
+        path.join(origin, "hooks", "pre-receive"),
+        '#!/bin/sh\necho "dev is protected" >&2\nexit 1\n',
+        { mode: 0o755 },
+      );
+      const calls = path.join(tmp("calls"), "git");
+      const bin = stubBin({
+        git: `[ "$1" = push ] && echo "$*" >> "${calls}"\nexec "${REAL_GIT}" "$@"`,
+      });
+      const r = await run(clone, ["push", "--mode=dev"], { PATH: withBin(bin) });
+      expect(r.code).toBe(8);
+      expect(r.err).toContain("dev is protected");
+      // The one push went out of the throwaway checkout as HEAD:dev, not from the main checkout.
+      expect(fs.readFileSync(calls, "utf-8")).toBe("push origin HEAD:dev\n");
+      expect(r.json).toMatchObject({ pushed: false, ref: null, sha: null });
+      expect(fs.existsSync(path.join(clone, ".worktrees", `_land-${FID}`))).toBe(false);
+    });
+
+    it("skip-ci HEAD on the replay is refused", async () => {
+      const { origin, clone } = started("replay-skipci");
+      runCommit(clone, { "run.txt": "r\n" }, "chore(650): close bkit [skip ci]");
+      commit(clone, { "foreign-top.txt": "t\n" }, "foreign: top commit, no token");
+      const refused = await run(clone, ["push", "--mode=dev", "--require-ci"]);
+      expect(refused.code).toBe(6);
+      expect(refused.json).toMatchObject({ pushed: false, skipped: "skip-ci" });
+      expect(remoteLog(origin)).not.toContain("chore(650): close bkit [skip ci]");
+    });
+
+    it("a skip-ci foreign HEAD does not block a replay whose last run commit is clean", async () => {
+      const { origin, clone } = started("replay-skipci-foreign");
+      runCommit(clone, { "run.txt": "r\n" }, "fix: the run's last commit");
+      commit(clone, { "foreign-top.txt": "t\n" }, "foreign: wip [skip ci]");
+      const r = await run(clone, ["push", "--mode=dev", "--require-ci"]);
+      expect(r.code).toBe(0);
+      expect(remoteLog(origin)).toContain("fix: the run's last commit");
+    });
+
+    it("abort mode on dev with a record pushes only recorded SHAs", async () => {
+      const { origin, clone } = started("replay-abort");
+      runCommit(clone, { "run.txt": "r\n" }, "fix: recorded");
+      commit(clone, { "foreign-mid.txt": "m\n" }, "foreign: mid-run");
+      const calls = path.join(tmp("calls"), "git");
+      const bin = stubBin({
+        git: `[ "$1" = push ] && echo "$*" >> "${calls}"\nexec "${REAL_GIT}" "$@"`,
+      });
+      const r = await run(clone, ["push", "--mode=abort"], { PATH: withBin(bin) });
+      expect(r.code).toBe(0);
+      expect(remoteLog(origin)).toContain("fix: recorded");
+      expect(remoteLog(origin)).not.toContain("foreign: mid-run");
+      expect(fs.readFileSync(calls, "utf-8")).not.toContain("push origin dev");
+    });
+
+    it("a level local dev is a plain push, recording nothing extra", async () => {
+      const { origin, clone } = withOrigin("replay-level");
+      writeRecord(clone, newRecord(clone, FID, "dev"));
+      runCommit(clone, { "run.txt": "r\n" }, "fix: only the run");
+      const r = await run(clone, ["push", "--mode=dev"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ pushed: true, replayed: false, sha: sha(clone) });
+      expect(sha(origin, "dev")).toBe(sha(clone));
+    });
+
+    it("a record with no commits pushes nothing", async () => {
+      const { origin, clone } = started("replay-empty");
+      const before = sha(origin, "dev");
+      const r = await run(clone, ["push", "--mode=dev"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ pushed: false, skipped: "no-run-commits" });
+      expect(sha(origin, "dev")).toBe(before);
+    });
+
+    it("without a record the dev push is unchanged and replayed is false", async () => {
+      const { origin, clone } = withOrigin("replay-none");
+      commit(clone, { "a.txt": "a\n" }, "docs: x");
+      const r = await run(clone, ["push", "--mode=dev"]);
+      expect(r.json).toMatchObject({ pushed: true, replayed: false, sha: sha(clone) });
+      expect(sha(origin, "dev")).toBe(sha(clone));
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // sync
@@ -1503,7 +1664,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
   });
 
   /** gh for PR 5: the first merge refuses, the second lands `merged`; every update-branch is logged. */
-  const ghMergingOnRetry = (merged: string, state = "OPEN") => {
+  const ghMergingOnRetry = (merged: string, state = "OPEN", prBase = "dev") => {
     const base = tmp("gh");
     return {
       base,
@@ -1513,7 +1674,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
           `  "pr merge") n=$(cat "${base}/n" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "${base}/n"`,
           `    [ $n -ge 2 ] && { : > "${base}/merged"; exit 0; }; echo "not mergeable" >&2; exit 1 ;;`,
           `  "pr update-branch") echo update >> "${base}/updates"; exit 0 ;;`,
-          `  "pr view") if [ -f "${base}/merged" ]; then echo '{"number":5,"state":"MERGED","mergeCommit":{"oid":"${merged}"}}'; elif [ "${state}" = UNREAD ] && [ ! -f "${base}/read" ]; then : > "${base}/read"; echo "HTTP 502" >&2; exit 1; elif [ "${state}" = UNREAD ]; then echo '{"number":5,"state":"OPEN"}'; else echo '{"number":5,"state":"${state}"}'; fi ;;`,
+          `  "pr view") if [ -f "${base}/merged" ]; then echo '{"number":5,"state":"MERGED","baseRefName":"dev","mergeCommit":{"oid":"${merged}"}}'; elif [ "${state}" = UNREAD ] && [ ! -f "${base}/read" ]; then : > "${base}/read"; echo "HTTP 502" >&2; exit 1; elif [ "${state}" = UNREAD ]; then echo '{"number":5,"state":"OPEN","baseRefName":"${prBase}"}'; else echo '{"number":5,"state":"${state}","baseRefName":"${prBase}"}'; fi ;;`,
           `esac`,
         ].join("\n"),
       }),
@@ -1618,7 +1779,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
         `case "$1 $2" in`,
         `  "pr merge") echo "not mergeable" >&2; exit 1 ;;`,
         `  "pr update-branch") echo update >> "${base}/updates"; exit 0 ;;`,
-        `  "pr view") echo '{"number":5,"state":"OPEN"}' ;;`,
+        `  "pr view") echo '{"number":5,"state":"OPEN","baseRefName":"dev"}' ;;`,
         `esac`,
       ].join("\n"),
     });
@@ -1669,6 +1830,55 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(r.code).toBe(0);
     expect(git(remote, "log", "-1", "--format=%s", "dev").out).toBe(DONE);
     expect(fs.existsSync(left)).toBe(false);
+  });
+
+  /** gh for PR 5 that logs every call; `pr view` prints `view` (JSON), `pr merge` always succeeds. */
+  const ghLogging = (view: string) => {
+    const base = tmp("gh-log");
+    return {
+      base,
+      bin: stubBin({
+        gh: [
+          `echo "$*" >> "${base}/calls"`,
+          `case "$1 $2" in`,
+          `  "pr merge") : > "${base}/merged"; exit 0 ;;`,
+          `  "pr update-branch") exit 0 ;;`,
+          `  "pr view") echo '${view}' ;;`,
+          `esac`,
+        ].join("\n"),
+      }),
+    };
+  };
+  const callsOf = (base: string) =>
+    fs.existsSync(path.join(base, "calls")) ? read(base, "calls").trim().split("\n") : [];
+
+  it("landPr refuses a main-based PR without retrying", async () => {
+    const { repo } = fixture();
+    const gh = ghLogging('{"number":5,"state":"OPEN","baseRefName":"main"}');
+    const r = await land(
+      repo,
+      { BKIT_RUNTIME: "CLOUD_CLAUDE", PATH: withBin(gh.bin) },
+      "--pr=5",
+      `--branch=feat/${FID}`,
+    );
+    expect(r.code).toBe(17);
+    expect(r.err).toContain("releases stay manual");
+    expect(callsOf(gh.base).filter((c) => c.startsWith("pr merge"))).toEqual([]);
+    expect(callsOf(gh.base).filter((c) => c.startsWith("pr update-branch"))).toEqual([]);
+  });
+
+  it("landPr refuses when the PR base is unknown", async () => {
+    const { repo } = fixture();
+    const gh = ghLogging('{"number":5,"state":"OPEN"}');
+    const r = await land(
+      repo,
+      { BKIT_RUNTIME: "CLOUD_CLAUDE", PATH: withBin(gh.bin) },
+      "--pr=5",
+      `--branch=feat/${FID}`,
+    );
+    expect(r.code).toBe(17);
+    expect(callsOf(gh.base).filter((c) => c.startsWith("pr merge"))).toEqual([]);
+    expect(callsOf(gh.base).filter((c) => c.startsWith("pr update-branch"))).toEqual([]);
   });
 
   it("PR not open (closed): stops (17) at once, no retry", async () => {

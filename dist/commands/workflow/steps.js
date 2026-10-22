@@ -16,8 +16,9 @@ import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { getPromptsRoot } from "../../shared/package-roots.js";
 import { CommandError, EXIT, repoRoot, runGit, } from "../lib.js";
-import { FID_PATTERNS, normaliseFid, readIssueTracker } from "./fids.js";
+import { fidProblem, normaliseFid, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
+import { EXIT_FOREIGN_PATH, activeRecord, ownPathCommit } from "./ledgers.js";
 import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readRunsAt, statusFile, str, } from "./status.js";
 const VERDICT_END = "<!-- verdict:end -->";
@@ -271,6 +272,13 @@ const CORE_ROW_KEYS = new Set([
     "failures",
     "strategy",
 ]);
+// ---------------------------------------------------------------------------
+// Writing the row
+// ---------------------------------------------------------------------------
+/** The FID a `docs/plans/{month}/logs/{fid}/status.jsonl` path belongs to; undefined for any other file. */
+function fidOfStatusFile(file) {
+    return /(?:^|\/)docs\/plans\/[0-9]{6}\/logs\/([^/]+)\/status\.jsonl$/.exec(file.split(path.sep).join("/"))?.[1];
+}
 /**
  * Append one `step-done` row, then commit (parentSha first, the row, then the
  * commit — the order the fold's de-dup relies on). Returns the row and the new
@@ -304,6 +312,26 @@ export function writeStepRow(cwd, r, log) {
     fs.appendFileSync(r.file, appendLine(row));
     if (r.commit === "none")
         return { row, commit: null, code: EXIT.OK };
+    // An in-place run on a shared branch commits its own paths only.
+    const fid = fidOfStatusFile(r.file);
+    const rec = fid === undefined ? null : activeRecord(cwd, fid);
+    if (rec !== null) {
+        let own;
+        try {
+            own = ownPathCommit(cwd, rec, r.message, { allowEmpty: true });
+        }
+        catch (err) {
+            if (!(err instanceof CommandError) || err.code !== EXIT_FOREIGN_PATH)
+                throw err;
+            log(`row written to ${r.file} but the commit was refused: ${err.message}`);
+            return { row, commit: null, code: EXIT_FOREIGN_PATH };
+        }
+        if (!own.ok) {
+            log(`row written to ${r.file} but the commit failed: ${own.error}`);
+            return { row, commit: null, code: EXIT_COMMIT };
+        }
+        return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
+    }
     const add = runGit(cwd, ["add", "-A"]);
     const made = add.ok ? runGit(cwd, ["commit", "--allow-empty", "-m", r.message]) : add;
     if (!made.ok) {
@@ -325,9 +353,7 @@ function gateChecks(cwd, o) {
     if (o.fid !== undefined) {
         const tracker = readIssueTracker(cwd);
         const fid = normaliseFid(o.fid, tracker);
-        add(`fid ${fid}`, FID_PATTERNS[tracker].test(fid)
-            ? undefined
-            : `does not match the ${tracker} shape ${FID_PATTERNS[tracker].source}`, `${tracker} shape`);
+        add(`fid ${fid}`, fidProblem(fid, tracker, o.issue), o.issue === "" && tracker !== "none" ? "issue-less shape" : `${tracker} shape`);
         if (o.token !== undefined) {
             const root = repoRoot(cwd);
             const lock = workflowLockPath(root, resolveMonth(root, o.fid, o.month), o.fid);
@@ -341,6 +367,9 @@ function gateChecks(cwd, o) {
     }
     else if (o.token !== undefined) {
         throw new CommandError(EXIT.USAGE, "--token needs --fid");
+    }
+    else if (o.issue !== undefined) {
+        throw new CommandError(EXIT.USAGE, "--issue needs --fid");
     }
     for (const a of o.artifacts) {
         if (isUrl(a))
@@ -753,6 +782,7 @@ export const stepsCommand = {
                 [EXIT_NO_STATUS]: "--attempt=next could not read status.jsonl",
                 [EXIT_ARTIFACT]: "an --artifact is missing, empty, or outside the working directory",
                 [EXIT_COMMIT]: "the row was written but the commit failed",
+                [EXIT_FOREIGN_PATH]: "the row was written but no commit was made: a path that was dirty before an in-place run changed during it",
             },
             run: (ctx) => {
                 const f = ctx.flags;
@@ -943,6 +973,7 @@ export const stepsCommand = {
                 [EXIT_INVALID]: "an --agent's header is invalid (no verdict:end, a value outside its set, Failures disagreeing with Verdict) — re-ask it (nothing written)",
                 [EXIT_ARTIFACT]: "an --artifact is missing, empty, or outside the working directory (nothing written)",
                 [EXIT_COMMIT]: "the row was written but the commit failed",
+                [EXIT_FOREIGN_PATH]: "the row was written but no commit was made: a path that was dirty before an in-place run changed during it",
                 [EXIT_OUTSIDE_DOCS]: "--docs-only and the step staged a file outside the artifact tree (nothing written)",
             },
             run: finish,
@@ -1020,6 +1051,11 @@ export const stepsCommand = {
                     help: "NAME=value — the held placeholder must be non-empty",
                 },
                 { name: "fid", type: "string", help: "the FID must match the wired tracker's shape" },
+                {
+                    name: "issue",
+                    type: "string",
+                    help: 'the run\'s issue id, or "" for a run with no issue (then the FID must be issue-less); needs --fid',
+                },
                 { name: "month", type: "string", help: "month bucket of the lock (with --token)" },
                 {
                     name: "token",
@@ -1059,6 +1095,7 @@ export const stepsCommand = {
                     verdictRequired: f.verdictRequired === true,
                     allowed: allowedVerdicts(f),
                     fid: str(f.fid),
+                    issue: str(f.issue),
                     month: str(f.month),
                     token: str(f.token),
                     placeholders: list(f.placeholder),
