@@ -12,3 +12,7 @@
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","at":"2026-10-22T01:45:04Z","parentSha":"3ce9a0a1f0cf8faafad151f01ca19d961c1e38ae","artifacts":["docs/plans/202610/logs/651-sops-env-backup/plan-summary.md"],"verdict":"CONCERNS","attempt":1}
 {"type":"step-done","workflow":"plan","step":"plan-close-workflow","status":"DONE","at":"2026-10-22T01:47:16Z","parentSha":"df9115334aa371a3463e18092839669e03acc482","artifacts":[]}
 {"type":"workflow-done","workflow":"plan","at":"2026-10-22T01:47:16Z"}
+{"type":"workflow-started","workflow":"build","at":"2026-10-22T03:22:34Z","parentSha":"56760f89f20693837d2390cebe7ef17e5776f88d"}
+{"type":"runtime-resolved","workflow":"build","at":"2026-10-22T03:22:34Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-10-22T03:23:21Z","parentSha":"56760f89f20693837d2390cebe7ef17e5776f88d","artifacts":[]}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-10-22T03:23:21Z","parentSha":"56760f89f20693837d2390cebe7ef17e5776f88d","artifacts":["docs/plans/202610/logs/651-sops-env-backup/build-input-1.md"]}
