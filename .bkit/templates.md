@@ -612,25 +612,26 @@ Needs Node >= 20, git, `sops` >= 3.11.0 and `age`. Every gitignored `.env` / `.e
 <!-- prettier-ignore -->
 | Command (`node scripts/env-backup/bkit-env-backup.mjs …`) | Does |
 | --- | --- |
-| `encrypt [--dry-run]` | Pre-commit hook. Creates or updates the `.enc` beside each env file, verifies it decrypts to the same variables, stages it. `--dry-run` prints `would create` / `would update` and writes nothing. |
-| `restore` | Writes every missing env file back from its `.enc` (mode 0600, never overwrites; a target git would not ignore is refused). |
-| `rekey` | Moves every `.enc` to the key now in `.sops.yaml` and stages them. |
+| `encrypt [--dry-run]` | Pre-commit hook. Creates or updates the `.enc` beside each env file, verifies it decrypts to the same variables, stages it (a copy that exists but was never added is staged too). `--dry-run` prints `would create` / `would update` and writes nothing. |
+| `restore` | Writes every missing env file back from its `.enc` (mode 0600, never overwrites; a target git would not ignore is refused; a copy this key does not open is listed and the rest are still restored). |
+| `rekey` | Moves every `.enc` to the key now in `.sops.yaml` and stages them; stops before changing any copy when this key does not open one of them. |
 | `restage` | Post-commit hook. Stages a `.enc` that a path-limited commit (`git commit -- file`) put in HEAD but left unstaged. |
 
 - Output is paths, variable names and counts; no value is ever printed.
 - Skip list: `skip` in `bkit-env-backup.config.mjs`. `*` / `?` stay in one folder, `**` crosses folders, a pattern with no leading `/` matches at any depth, a leading `/` anchors to the repo top. Defaults: `.vercel/**`, `supabase/.temp/**`, `.worktrees/**`, `.claude/worktrees/**`, `node_modules/**`, `tmp/**`. `.env.example`, tracked env files, symlinks and nested repos are never backed up.
-- No age key on the machine (a cloud agent, CI, a teammate without the key): warns and writes nothing, and the commit goes on, even past a `.gitignore` gap or a malformed line.
+- No age key on the machine (a cloud agent, CI, a teammate without the key): warns and writes nothing, and the commit goes on, even past a `.gitignore` gap or a malformed line. The machine counts as keyed when any tracked `.enc` opens or a fixed test line round-trips under `.sops.yaml`; a copy encrypted to another key is skipped with a warning naming it, and the other copies are still refreshed.
 - A key but no usable `sops` (missing, or older than 3.11.0): the commit stops; install or upgrade sops.
 - Setup errors stop the commit: `.sops.yaml` missing or still holding the placeholder, an unknown key in the config, a `.gitignore` gap, a failed write (the original `.enc` bytes are put back).
-- A line without `=` or a duplicate key: a warning with file and line (never the text); that file's `.enc` stays as it is until it is fixed.
+- A file named like a copy (`.env.local.enc`) that is not SOPS output stops the commit when it is staged (key or no key), and when it sits beside an env file `encrypt` would back up: rename or remove it. Without this a plain env file copied to an `.enc` name would be committed.
+- Accepted lines: `NAME=value` (NAME = letters, digits, `_`, `.`, `-`, not starting with a digit), `#` comments and blank or whitespace-only lines (CRLF files included). A line that is not (including a bare token whose padding supplies the `=`, as in `abc==`), a duplicate key, or a file that is not UTF-8: a warning with file and line (never the text); that file's `.enc` stays as it is until it is fixed. SOPS keeps variable names readable in the `.enc`, so a secret on its own line would be published as a name; a bare token that happens to look like `NAME=` cannot be told apart from a variable. A new `.enc` holds the variables only: comments are not copied.
 - Incoming change: another key holder's change to a `.enc` (by pull or merge) while your plain file still holds the old value → a warning naming the copy and the commit, and that file is skipped. Keep theirs: delete the plain file and run `restore`. Keep yours: `touch` the plain file and commit again. A change whose author clock ran behind your last edit is missed.
 - Merge conflict in a `.enc`: the commit stops; take one side whole (`git checkout --ours|--theirs -- {file}`), then rerun `encrypt`.
 - Clean merge commits: `pre-merge-commit` does not run the block; the next ordinary commit refreshes the `.enc`.
 - Rebase and cherry-pick: `post-commit` runs `restage` after each pick, so no `.enc` stays staged.
 - Linked worktrees: a commit there notes that only the main checkout keeps the `.enc` copies and writes nothing.
-- Restore on a new machine: `git clone`, put the key in place, run `restore`. Variables and values come back equal; line order and comments follow SOPS, not the original file.
+- Restore on a new machine: `git clone`, put the key in place, run `restore`. Variables and values come back equal; line order follows SOPS, comments are not restored.
 - Key rotation: put the new public key in `.sops.yaml`, make both private keys available (`SOPS_AGE_KEY_FILE` for the old, `SOPS_AGE_KEY` for the new), run `rekey`, commit the staged copies. Every line changes once (a new data key) and the old key no longer opens them. A leaked key means rotating every secret at its provider: earlier commits keep copies the old key opens.
-- What a `.enc` shows without the key: variable names, roughly how long each value is, the public key and the change time. SOPS encrypts comment lines too. In a public repo these are public.
+- What a `.enc` shows without the key: variable names, roughly how long each value is, the public key and the change time. In a public repo these are public.
 - Setup tip: `bkit tips` lists "Back up your env files" until `scripts/env-backup/` exists; silence it with `env-backup` in `bkit.ignoreAdvisories`.
 
 ## Prettier tables — keep table diffs to the changed row

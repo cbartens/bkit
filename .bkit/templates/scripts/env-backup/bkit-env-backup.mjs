@@ -26,6 +26,8 @@ const CONFIG_KEYS = new Set(["skip"]);
 const DOTENV = ["--input-type", "dotenv", "--output-type", "dotenv"];
 const ENV_NAME = /^\.env(\..+)?$/;
 const ENC_NAME = /^\.env(\..+)?\.enc$/;
+const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
+const SOPS_VALUE = /^ENC\[AES256_GCM,/;
 const USAGE = `Usage:
   node scripts/env-backup/bkit-env-backup.mjs encrypt [--dry-run]
   node scripts/env-backup/bkit-env-backup.mjs restore
@@ -60,7 +62,8 @@ function git(top, args, { input, soft = false } = {}) {
 
 function parseArgs(argv) {
   const [verb, ...flags] = argv;
-  const allowed = { encrypt: ["--dry-run"], restore: [], rekey: [], restage: [] }[verb];
+  const verbs = { encrypt: ["--dry-run"], restore: [], rekey: [], restage: [] };
+  const allowed = Object.hasOwn(verbs, verb) ? verbs[verb] : undefined;
   if (verb === undefined || verb === "help" || verb === "--help" || verb === "-h")
     return { verb: "help" };
   if (allowed === undefined) throw new Stop(`unknown verb "${verb}"\n${USAGE}`, 2);
@@ -128,11 +131,24 @@ function defaultKeyFile() {
   return path.join(os.homedir(), ".config", rel);
 }
 
+// Errors that mean "no usable key file here": missing, not a folder, no permission, symlink loop.
+const NO_FILE_CODES = new Set(["ENOENT", "ENOTDIR", "EACCES", "EPERM", "ELOOP", "ENAMETOOLONG"]);
+
+// A readable regular file; any other error is rethrown.
+function readableFile(file) {
+  try {
+    fs.accessSync(file, fs.constants.R_OK);
+    return fs.statSync(file).isFile();
+  } catch (e) {
+    if (NO_FILE_CODES.has(e.code)) return false;
+    throw e;
+  }
+}
+
 // An age key source on this machine, found without running sops.
 function ageKeySourcePresent() {
   if (process.env.SOPS_AGE_KEY || process.env.SOPS_AGE_KEY_CMD) return true;
-  const files = [process.env.SOPS_AGE_KEY_FILE, defaultKeyFile()].filter(Boolean);
-  return files.some((f) => fs.statSync(f, { throwIfNoEntry: false })?.isFile());
+  return [process.env.SOPS_AGE_KEY_FILE, defaultKeyFile()].filter(Boolean).some(readableFile);
 }
 
 const SOPS_TOO_OLD = `sops is missing or older than ${MIN_SOPS.join(".")}`;
@@ -157,14 +173,30 @@ function globToRegExp(glob) {
   return new RegExp(`^${anchored ? "" : "(?:.*/)?"}${re}$`);
 }
 
-// Gitignored files git lists, with folders git collapsed (`dir/`) that are not themselves ignored
-// listed again file by file. A folder git ignores whole is never entered.
+// Git pathspecs for env file names at any depth under `base` ("" = the repo top, else "dir/"),
+// glob characters in `base` escaped.
+const envPathspecs = (base) => {
+  const prefix = base.replace(/[\\*?[]/g, "\\$&");
+  return [`:(glob)${prefix}**/.env`, `:(glob)${prefix}**/.env.*`];
+};
+
+// Gitignored env files git lists, with folders git collapsed (`dir/`) that are not themselves
+// ignored listed again, env file names only. A folder git ignores whole is never entered.
 function listIgnoredFiles(top) {
-  const listing = (extra, paths = []) =>
-    git(top, ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", ...extra, ...paths])
+  const listing = (extra, paths) =>
+    git(top, [
+      "ls-files",
+      "-z",
+      "--others",
+      "--ignored",
+      "--exclude-standard",
+      ...extra,
+      "--",
+      ...paths,
+    ])
       .split("\0")
       .filter(Boolean);
-  const entries = listing(["--directory"]);
+  const entries = listing(["--directory"], envPathspecs(""));
   const files = new Set(entries.filter((e) => !e.endsWith("/")));
   const dirs = entries.filter((e) => e.endsWith("/"));
   if (dirs.length > 0) {
@@ -175,7 +207,7 @@ function listIgnoredFiles(top) {
     );
     const open = dirs.filter((d) => !ignored.has(d));
     if (open.length > 0)
-      for (const f of listing([], ["--", ...open])) if (!f.endsWith("/")) files.add(f);
+      for (const f of listing([], open.flatMap(envPathspecs))) if (!f.endsWith("/")) files.add(f);
   }
   return [...files];
 }
@@ -228,23 +260,33 @@ function conflictedEnc(top) {
 const conflictFix = (file) =>
   `resolve ${file}: take one side whole (git checkout --ours|--theirs -- ${file}), then rerun encrypt`;
 
+// The commit's own content: every staged .enc must be SOPS output, so a plain env file copied to an
+// .enc name never gets committed. Needs no key.
+function checkStagedEnc(top, conflicted) {
+  const staged = git(top, ["diff", "--cached", "--name-only", "-z", "--diff-filter=ACM"])
+    .split("\0")
+    .filter((f) => ENC_NAME.test(path.posix.basename(f)) && !conflicted.has(f));
+  for (const f of staged) requireSopsOutput(f, git(top, ["show", `:${f}`]));
+}
+
 // ── Env text ─────────────────────────────────────────────────────────────────
 
 // Splits on "\n" only, so a trailing "\r" stays in the value. Returns the key -> raw value map and
-// the invalid lines (no "=", empty key, repeated key); a comment starts with "#", a blank line is "".
+// the invalid lines; a comment starts with "#", a blank line holds only whitespace. A line is invalid
+// unless it is NAME=value with NAME matching ENV_KEY and a value that is not only "=" signs (the
+// tail of a bare padded base64 token). SOPS keeps variable names in the clear, so an invalid line
+// reports its number only, never its text; a repeated key reports the key.
 function parseEnv(text) {
   const map = new Map();
   const problems = [];
   text.split("\n").forEach((line, i) => {
-    if (line === "" || line.startsWith("#")) return;
+    if (/^\s*$/.test(line) || line.startsWith("#")) return;
     const eq = line.indexOf("=");
-    if (eq <= 0) {
-      problems.push({ line: i + 1 });
-      return;
-    }
     const key = line.slice(0, eq);
-    if (map.has(key)) problems.push({ line: i + 1, key });
-    else map.set(key, line.slice(eq + 1));
+    const value = line.slice(eq + 1);
+    if (eq <= 0 || !ENV_KEY.test(key) || /^=+\r?$/.test(value)) problems.push({ line: i + 1 });
+    else if (map.has(key)) problems.push({ line: i + 1, key });
+    else map.set(key, value);
   });
   return { map, problems };
 }
@@ -265,9 +307,36 @@ function sopsFailure(r, file) {
   return `sops failed (exit ${r.status}) on ${file}`;
 }
 
+// SOPS dotenv output: the sops_mac and sops_version lines are present and every other line is a
+// sops_ metadata line, an encrypted value or comment, or an empty value (SOPS leaves those clear).
+function isSopsOutput(text) {
+  let mac = false;
+  let version = false;
+  for (const line of text.split("\n")) {
+    if (line === "") continue;
+    if (line.startsWith("sops_")) {
+      mac ||= line.startsWith("sops_mac=ENC[");
+      version ||= line.startsWith("sops_version=");
+      continue;
+    }
+    const value = line.startsWith("#") ? line.slice(1) : line.slice(line.indexOf("=") + 1);
+    if (value !== "" && !SOPS_VALUE.test(value)) return false;
+  }
+  return mac && version;
+}
+
+// Stops, naming the file only, unless `text` is SOPS output. A file holding merge conflict markers
+// gets the conflict fix.
+function requireSopsOutput(label, text) {
+  if (isSopsOutput(text)) return;
+  if (/^<{7}( |$)/m.test(text)) throw new Stop(conflictFix(label));
+  throw new Stop(`${label} is not a SOPS-encrypted file — rename or remove it`);
+}
+
 // Decrypts one .enc into memory. { text } on success, { noKey: true } when no age key opens it.
 // `label` names the file in messages when `file` is a temp path.
 function decryptEnc(top, file, label = file) {
+  requireSopsOutput(label, fs.readFileSync(path.resolve(top, file), "utf8"));
   const r = run("sops", ["decrypt", ...DOTENV, file], { cwd: top });
   if (r.error) throw new Stop(`sops: ${r.error.message}`);
   if (r.status === 0) return { text: r.stdout };
@@ -304,11 +373,21 @@ function probeFixedLine(top) {
   }
 }
 
-// Does this machine hold the key? Decrypts the first tracked .enc git did not leave conflicted,
-// else round-trips a fixed line.
-function probeKey(top, conflicted) {
-  const first = presentEnc(top).find((f) => !conflicted.has(f));
-  return first === undefined ? probeFixedLine(top) : decryptEnc(top, first);
+// Does this key open the file? Any sops failure counts as "no": the probe never stops the run.
+function opens(top, file) {
+  const r = run("sops", ["decrypt", ...DOTENV, file], { cwd: top });
+  if (r.error) throw new Stop(`sops: ${r.error.message}`);
+  return r.status === 0;
+}
+
+// Does this machine hold the key? Yes when any tracked .enc git did not leave conflicted opens
+// (those beside a candidate first), else when a fixed line round-trips under .sops.yaml.
+function probeKey(top, conflicted, candidates) {
+  const wanted = new Set(candidates.map((c) => `${c}.enc`));
+  const encs = presentEnc(top)
+    .filter((f) => !conflicted.has(f))
+    .sort((a, b) => Number(wanted.has(b)) - Number(wanted.has(a)));
+  return encs.some((f) => opens(top, f)) ? {} : probeFixedLine(top);
 }
 
 // Every candidate's .enc must be trackable: stop with the ignoring line and the exception to add.
@@ -351,13 +430,19 @@ function incomingCommit(top, rel, enc) {
 }
 
 // What `encrypt` does for each candidate: { rel, enc, kind: "create" | "update" | "same", map, old }.
-// Reads and decrypts only. A file with an invalid line, an unreadable .enc or an incoming change is
-// warned about and left out; an unresolved merge conflict stops the run.
+// Reads and decrypts only. A file that is not UTF-8, has an invalid line, an unreadable .enc or an
+// incoming change is warned about and left out; an unresolved merge conflict stops the run.
 function planEncrypt(top, candidates, conflicted) {
   const jobs = [];
   for (const rel of candidates) {
     const enc = `${rel}.enc`;
-    const { map, problems } = parseEnv(fs.readFileSync(path.join(top, rel), "utf8"));
+    const raw = fs.readFileSync(path.join(top, rel));
+    const text = raw.toString("utf8");
+    if (!Buffer.from(text, "utf8").equals(raw)) {
+      warn(`${rel}: not UTF-8 — ${enc} left as it is`);
+      continue;
+    }
+    const { map, problems } = parseEnv(text);
     for (const p of problems)
       warn(
         p.key
@@ -432,15 +517,26 @@ function updateEnc(top, { enc, map, old }) {
   });
 }
 
-// First encrypt: into a temp file beside the target, verified, then renamed into place.
+// First encrypt: the parsed variables, one `KEY=value` line each, go to sops on stdin (the env file
+// itself never does) into a temp file beside the target; verified, then renamed into place.
 function createEnc(top, { rel, enc, map }) {
-  const plain = path.join(top, rel);
-  const tmp = path.join(path.dirname(plain), `.env-backup-tmp-${process.pid}`);
+  const tmp = path.join(path.dirname(path.join(top, rel)), `.env-backup-tmp-${process.pid}`);
+  const text = [...map].map(([k, v]) => `${k}=${v}\n`).join("");
   try {
     sopsRun(
       top,
-      ["--config", path.join(top, ".sops.yaml"), "encrypt", ...DOTENV, "--output", tmp, plain],
+      [
+        "--config",
+        path.join(top, ".sops.yaml"),
+        "encrypt",
+        ...DOTENV,
+        "--filename-override",
+        rel,
+        "--output",
+        tmp,
+      ],
       enc,
+      text,
     );
     verifyEnc(top, tmp, enc, map);
     fs.renameSync(tmp, path.join(top, enc));
@@ -449,11 +545,16 @@ function createEnc(top, { rel, enc, map }) {
   }
 }
 
-// Every job's .enc whose worktree copy is new or differs from the index goes into the commit.
+// Every job's .enc that is not in the index yet, or whose worktree copy differs from it, goes into
+// the commit.
 function stageEnc(top, jobs) {
+  const untracked = (enc) =>
+    git(top, ["ls-files", "--error-unmatch", "--", enc], { soft: true }).status !== 0;
   const changed = jobs.filter(
     (j) =>
-      j.kind !== "same" || git(top, ["diff", "--quiet", "--", j.enc], { soft: true }).status === 1,
+      j.kind !== "same" ||
+      untracked(j.enc) ||
+      git(top, ["diff", "--quiet", "--", j.enc], { soft: true }).status === 1,
   );
   if (changed.length > 0) git(top, ["add", "--", ...changed.map((j) => j.enc)]);
 }
@@ -462,6 +563,8 @@ function stageEnc(top, jobs) {
 
 async function encrypt({ dryRun }) {
   const top = repoTop();
+  const conflicted = conflictedEnc(top);
+  checkStagedEnc(top, conflicted);
   if (isLinkedWorktree(top)) {
     warn("linked worktree — the main checkout keeps the .enc copies");
     return;
@@ -478,8 +581,7 @@ async function encrypt({ dryRun }) {
   }
   const candidates = discover(top, skip);
   if (candidates.length === 0) return;
-  const conflicted = conflictedEnc(top);
-  if (probeKey(top, conflicted).noKey) {
+  if (probeKey(top, conflicted, candidates).noKey) {
     warn("no age key on this machine — .enc copies not updated");
     return;
   }
@@ -504,6 +606,8 @@ async function restore() {
   if (!sopsUsable())
     throw new Stop(`${SOPS_TOO_OLD} — install or upgrade sops (brew install sops)`);
   const refused = [];
+  const unopened = [];
+  let restored = 0;
   for (const enc of presentEnc(top)) {
     const rel = enc.slice(0, -".enc".length);
     const target = path.join(top, rel);
@@ -513,19 +617,33 @@ async function restore() {
       refused.push(rel);
     } else {
       const dec = decryptEnc(top, enc);
-      if (dec.noKey) throw new Stop("no age key on this machine — nothing restored");
+      if (dec.noKey) {
+        unopened.push(enc);
+        continue;
+      }
       fs.writeFileSync(target, dec.text, { flag: "wx", mode: 0o600 });
       console.log(`restored ${rel}`);
+      restored++;
     }
   }
-  if (refused.length > 0)
-    throw new Stop(
-      [
-        "git would not ignore these restore targets, so they were not written:",
-        ...refused.map((f) => `  ${f}`),
-        "add them to .gitignore (the env file lines), then rerun restore",
-      ].join("\n"),
-    );
+  if (unopened.length > 0 && restored === 0 && refused.length === 0)
+    throw new Stop("no age key on this machine — nothing restored");
+  const problems = [
+    ...(unopened.length > 0
+      ? [
+          "this machine's key does not open these copies, so they were not restored:",
+          ...unopened.map((f) => `  ${f}`),
+        ]
+      : []),
+    ...(refused.length > 0
+      ? [
+          "git would not ignore these restore targets, so they were not written:",
+          ...refused.map((f) => `  ${f}`),
+          "add them to .gitignore (the env file lines), then rerun restore",
+        ]
+      : []),
+  ];
+  if (problems.length > 0) throw new Stop(problems.join("\n"));
 }
 
 // Moves every tracked .enc to the key now in .sops.yaml: a new data key (`rotate`), then the new
@@ -538,10 +656,19 @@ async function rekey() {
   const conflicted = conflictedEnc(top);
   const encs = presentEnc(top);
   for (const enc of encs) if (conflicted.has(enc)) throw new Stop(conflictFix(enc));
+  const opened = encs.map((enc) => ({ enc, before: decryptEnc(top, enc) }));
+  const unopened = opened.filter(({ before }) => before.noKey).map(({ enc }) => enc);
+  if (unopened.length === encs.length && encs.length > 0)
+    throw new Stop("no age key on this machine — nothing rekeyed");
+  if (unopened.length > 0)
+    throw new Stop(
+      [
+        "this machine's key does not open these copies — nothing rekeyed:",
+        ...unopened.map((f) => `  ${f}`),
+      ].join("\n"),
+    );
   const done = [];
-  for (const enc of encs) {
-    const before = decryptEnc(top, enc);
-    if (before.noKey) throw new Stop("no age key on this machine — nothing rekeyed");
+  for (const { enc, before } of opened) {
     restoringOnError(path.join(top, enc), () => {
       sopsRun(top, ["rotate", "--in-place", ...DOTENV, enc], enc);
       sopsRun(

@@ -977,6 +977,7 @@ describe.skipIf(!haveSopsTools)("env backup: encrypt", () => {
     const fx = makeFx();
     const plain = [
       "CR=carriage\r",
+      "\r",
       'Q="quoted"',
       "EQ=a=b=c",
       "HASH=x # not a comment",
@@ -1166,7 +1167,7 @@ function modeOf(fx: Fx, rel: string): number {
 describe.skipIf(!haveSopsTools)("env backup: restore", () => {
   it("restore rebuilds every env file on a fresh clone and keeps existing ones", () => {
     const fx = makeFx();
-    const preview = "# preview\nALPHA=alpha-sentinel\r\n\nEQ=a=b # c\nEMPTY=\n";
+    const preview = "# preview\nALPHA=alpha-sentinel\r\n\r\nEQ=a=b # c\nEMPTY=\n";
     const local = 'TOKEN="token sentinel"\nSP= padded \n';
     const kept = "KEPT=kept-sentinel\n";
     bootstrap(fx, { [PREVIEW]: preview, "apps/api/.env.local": local, ".bkit/.env": kept });
@@ -1457,6 +1458,282 @@ describe.skipIf(!haveSopsTools)("env backup: hooks and restage", () => {
 
     for (const r of outputs) expect(r.stdout + r.stderr).not.toMatch(/sentinel/);
     expect(outputs.map((r) => r.status)).toContain(0);
+  });
+});
+
+// ── Review hardening: line grammar, staging, key probe, SOPS-file check, listing, arguments ──
+
+/** Commits `rel` as an enc copy encrypted to a second age key that the fixture's key does not open. */
+function addForeignEnc(fx: Fx, rel: string, name = "other-key.txt"): void {
+  const other = genKey(fx.root, name);
+  const dir = fs.mkdtempSync(path.join(fx.root, "foreign-"));
+  fs.writeFileSync(path.join(dir, ".sops.yaml"), sopsYaml(other.pub));
+  fs.writeFileSync(path.join(dir, ".env"), "FOREIGN=foreign-sentinel\n");
+  fs.mkdirSync(path.dirname(path.join(fx.dir, rel)), { recursive: true });
+  const r = run(
+    "sops",
+    [
+      "--config",
+      path.join(dir, ".sops.yaml"),
+      "encrypt",
+      ...DOTENV,
+      "--output",
+      path.join(fx.dir, rel),
+      path.join(dir, ".env"),
+    ],
+    { cwd: dir, env: cleanEnv({ SOPS_AGE_KEY_FILE: other.file }) },
+  );
+  expect(r.status).toBe(0);
+  gitOk(fx, ["add", rel]);
+  gitOk(fx, ["commit", "-q", "-m", `foreign ${rel}`]);
+}
+
+describe.skipIf(!haveSopsTools)("env backup: line grammar", () => {
+  it("a CRLF file with blank and whitespace-only lines is backed up", () => {
+    const fx = makeFx();
+    const plain = "ALPHA=alpha-sentinel\r\n\r\n   \r\n\t\r\nBRAVO=bravo-sentinel\r\n";
+    put(fx, PREVIEW, plain);
+    const r = script(fx, ["encrypt"]);
+    expect(r.status).toBe(0);
+    expect(r.stderr).not.toContain("not a KEY=value");
+    expect(r.stdout).toContain(`created ${PREVIEW_ENC}`);
+    expect(decryptedMap(fx, PREVIEW_ENC)).toEqual(envMap(plain));
+    commit(fx, "enc");
+
+    untilNextSecond();
+    put(fx, PREVIEW, plain.replace("alpha-sentinel", "alpha-CHANGED"));
+    expect(script(fx, ["encrypt"]).stdout).toContain(`updated ${PREVIEW_ENC}`);
+    expect(decryptedMap(fx, PREVIEW_ENC).get("ALPHA")).toBe("alpha-CHANGED\r");
+  });
+
+  it("a line whose text before the first = is not a variable name never reaches sops", () => {
+    const fx = makeFx();
+    const bad = [
+      "https://hooks.example.test/x?token=webhook-sentinel",
+      "ZmFrZXNlY3JldHZhbHVl==",
+      "export EXPORTED=exported-sentinel",
+      "two words=spaced-sentinel",
+    ];
+    put(fx, PREVIEW, `ALPHA=alpha-sentinel\n${bad.join("\n")}\n`);
+    const created = script(fx, ["encrypt"]);
+    expect(created.status).toBe(0);
+    for (const n of [2, 3, 4, 5]) expect(created.stderr).toContain(`${PREVIEW}:${n}`);
+    expect(created.stdout + created.stderr).not.toMatch(/sentinel|ZmFrZXNl|hooks\.example/);
+    expect(encFiles(fx)).toEqual([]);
+    expect(stagedFiles(fx)).toEqual([]);
+
+    put(fx, PREVIEW, THREE);
+    expect(script(fx, ["encrypt"]).status).toBe(0);
+    commit(fx, "enc");
+    const before = fs.readFileSync(path.join(fx.dir, PREVIEW_ENC));
+    untilNextSecond();
+    put(fx, PREVIEW, `${THREE}${bad.join("\n")}\n`);
+    const updated = script(fx, ["encrypt"]);
+    expect(updated.status).toBe(0);
+    expect(updated.stderr).toContain(`${PREVIEW}:4`);
+    expect(updated.stdout + updated.stderr).not.toMatch(/sentinel|ZmFrZXNl|hooks\.example/);
+    expect(fs.readFileSync(path.join(fx.dir, PREVIEW_ENC)).equals(before)).toBe(true);
+    expect(fs.readFileSync(path.join(fx.dir, PREVIEW_ENC), "utf8")).not.toContain("hooks");
+    expect(stagedFiles(fx)).toEqual([]);
+  });
+
+  it("a file that is not UTF-8 is warned about and left alone", () => {
+    const fx = makeFx();
+    fs.mkdirSync(path.join(fx.dir, "apps", "web"), { recursive: true });
+    fs.writeFileSync(
+      path.join(fx.dir, PREVIEW),
+      Buffer.concat([Buffer.from("LATIN="), Buffer.from([0xe4]), Buffer.from("-sentinel\n")]),
+    );
+    const r = script(fx, ["encrypt"]);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain(`${PREVIEW}: not UTF-8`);
+    expect(r.stdout + r.stderr).not.toContain("sentinel");
+    expect(encFiles(fx)).toEqual([]);
+  });
+});
+
+describe.skipIf(!haveSopsTools)("env backup: staging and key probe", () => {
+  it("an enc created by a path-limited commit that then aborts is staged by the next commit", () => {
+    const fx = makeFx();
+    put(fx, "notes.txt", "one\n");
+    gitOk(fx, ["add", "notes.txt"]);
+    commit(fx, "notes");
+    const env = installHooks(fx);
+    const msgHook = path.join(fx.root, "hooks", "commit-msg");
+    fs.writeFileSync(msgHook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    put(fx, PREVIEW, THREE);
+    put(fx, "notes.txt", "two\n");
+
+    expect(git(fx, ["commit", "-q", "-m", "aborted", "--", "notes.txt"], { env }).status).not.toBe(
+      0,
+    );
+    expect(fs.existsSync(path.join(fx.dir, PREVIEW_ENC))).toBe(true);
+
+    fs.rmSync(msgHook);
+    expect(git(fx, ["commit", "-q", "-m", "retry", "--", "notes.txt"], { env }).status).toBe(0);
+    expect(committedFiles(fx)).toEqual([PREVIEW_ENC, "notes.txt"]);
+    expect(gitOk(fx, ["status", "--porcelain"])).toBe("");
+  });
+
+  it("a tracked enc this key does not open neither silences the other copies nor stops the commit", () => {
+    const fx = makeFx();
+    bootstrap(fx, { [PREVIEW]: THREE });
+    addForeignEnc(fx, "a/.env.enc");
+    untilNextSecond();
+    put(fx, PREVIEW, "ALPHA=alpha-CHANGED\nBRAVO=bravo-sentinel\nCHARLIE=charlie-sentinel\n");
+    const r = script(fx, ["encrypt"]);
+    expect(r.status).toBe(0);
+    expect(r.stderr).not.toContain("no age key on this machine");
+    expect(r.stdout).toContain(`updated ${PREVIEW_ENC}`);
+    expect(decryptedMap(fx, PREVIEW_ENC).get("ALPHA")).toBe("alpha-CHANGED");
+
+    commit(fx, "preview");
+    put(fx, "a/.env", "FOREIGN=local-sentinel\n");
+    untilNextSecond();
+    put(fx, PREVIEW, THREE);
+    const both = script(fx, ["encrypt"]);
+    expect(both.status).toBe(0);
+    expect(both.stderr).toContain("a/.env.enc: this machine's key does not open it");
+    expect(both.stderr).not.toContain("no age key on this machine");
+    expect(both.stdout).toContain(`updated ${PREVIEW_ENC}`);
+    expect(both.stdout + both.stderr).not.toContain("sentinel");
+  });
+
+  it("restore writes the copies this key opens and lists the ones it does not", () => {
+    const fx = makeFx();
+    bootstrap(fx, { [PREVIEW]: THREE });
+    addForeignEnc(fx, "a/.env.enc");
+    const clone = freshClone(fx);
+    const r = script(clone, ["restore"]);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain(`restored ${PREVIEW}`);
+    expect(r.stderr).toContain("a/.env.enc");
+    expect(r.stderr).not.toContain("nothing restored");
+    expect(fs.existsSync(path.join(clone.dir, "a/.env"))).toBe(false);
+    expect(r.stdout + r.stderr).not.toContain("sentinel");
+  });
+
+  it("rekey checks every copy opens before it changes one", () => {
+    const fx = makeFx();
+    bootstrap(fx, { [PREVIEW]: THREE });
+    addForeignEnc(fx, "zz/.env.enc");
+    const originals = [PREVIEW_ENC, "zz/.env.enc"].map((f) =>
+      fs.readFileSync(path.join(fx.dir, f)),
+    );
+    const { both } = switchKey(fx);
+    const r = script(fx, ["rekey"], { env: both });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("zz/.env.enc");
+    expect(r.stdout).not.toContain("rekeyed");
+    [PREVIEW_ENC, "zz/.env.enc"].forEach((f, i) =>
+      expect(fs.readFileSync(path.join(fx.dir, f)).equals(originals[i])).toBe(true),
+    );
+    expect(stagedFiles(fx)).toEqual([]);
+  });
+});
+
+describe.skipIf(!haveSopsTools)("env backup: files named like an enc copy", () => {
+  it("a staged plain-text enc copy stops the commit, with or without a key", () => {
+    const fx = makeFx();
+    put(fx, ".env.local", "TOKEN=leak-sentinel\n");
+    fs.copyFileSync(path.join(fx.dir, ".env.local"), path.join(fx.dir, ".env.local.enc"));
+    gitOk(fx, ["add", ".env.local.enc"]);
+    for (const env of [fx.env, noKeyEnv(fx)]) {
+      const r = script(fx, ["encrypt"], { env });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(".env.local.enc");
+      expect(r.stderr).toContain("not a SOPS-encrypted file");
+      expect(r.stdout + r.stderr).not.toContain("leak-sentinel");
+    }
+  });
+
+  it("a tracked foreign-format enc beside a candidate stops naming the file", () => {
+    const fx = makeFx();
+    put(fx, ".env.old", "TOKEN=old-sentinel\n");
+    put(fx, ".env.old.enc", "U2FsdGVkX1-not-a-sops-file\n");
+    gitOk(fx, ["add", ".env.old.enc"]);
+    commit(fx, "foreign format");
+    const r = script(fx, ["encrypt"]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain(".env.old.enc is not a SOPS-encrypted file");
+    expect(encFiles(fx)).toEqual([".env.old.enc"]);
+  });
+
+  it("a tracked foreign-format enc with no env file beside it does not stop other copies", () => {
+    const fx = makeFx();
+    put(fx, "a/.env.old.enc", "U2FsdGVkX1-not-a-sops-file\n");
+    gitOk(fx, ["add", "a/.env.old.enc"]);
+    commit(fx, "foreign format");
+    put(fx, PREVIEW, THREE);
+    const r = script(fx, ["encrypt"], { env: noKeyEnv(fx) });
+    expect(r.status).toBe(0);
+    const keyed = script(fx, ["encrypt"]);
+    expect(keyed.status).toBe(0);
+    expect(keyed.stdout).toContain(`created ${PREVIEW_ENC}`);
+  });
+});
+
+const IS_ROOT = process.getuid?.() === 0;
+
+describe.skipIf(!haveSopsTools)("env backup: listing and arguments", () => {
+  it("lists only env-file names under a folder whose files are ignored one by one", () => {
+    const fx = makeFx({ gitignore: `${GITIGNORE}*.log\n` });
+    for (let i = 0; i < 30; i++) put(fx, `logs/sub/file-${i}.log`, "x\n");
+    put(fx, PREVIEW, THREE);
+    const bin = fs.mkdtempSync(path.join(fx.root, "lsfiles-"));
+    const log = path.join(fx.root, "ls-files.log");
+    const real = run("sh", ["-c", "command -v git"]).stdout.trim();
+    fs.writeFileSync(
+      path.join(bin, "git"),
+      `#!/bin/sh\ncase "$1" in ls-files) out=$(mktemp); "${real}" "$@" > "$out"; st=$?; cat "$out" >> "${log}"; cat "$out"; rm -f "$out"; exit $st ;; esac\nexec "${real}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    const env = withEnv(fx, { PATH: `${bin}${path.delimiter}${process.env.PATH}` });
+    const r = script(fx, ["encrypt", "--dry-run"], { env });
+    expect(r.status).toBe(0);
+    expect(planned(r)).toEqual([`would create ${PREVIEW_ENC}`]);
+    expect(fs.readFileSync(log, "utf8")).not.toContain("file-0.log");
+  });
+
+  it("a verb that is an inherited object property is an unknown verb", () => {
+    const fx = makeFx();
+    for (const verb of ["toString", "constructor", "__proto__", "hasOwnProperty"]) {
+      const r = script(fx, [verb]);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain("Usage");
+      expect(script(fx, [verb, "--dry-run"]).status).toBe(2);
+    }
+  });
+
+  const NO_SOPS_WARNING = "sops is missing or older than 3.11.0";
+
+  it("an age key file behind a regular file is not a key source", () => {
+    const fx = makeFx();
+    put(fx, PREVIEW, THREE);
+    const blocker = path.join(fx.root, "not-a-folder");
+    fs.writeFileSync(blocker, "x");
+    const r = script(fx, ["encrypt"], {
+      env: withEnv(fx, {
+        PATH: binDir(fx, "none"),
+        SOPS_AGE_KEY_FILE: path.join(blocker, "key.txt"),
+      }),
+    });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain(NO_SOPS_WARNING);
+  });
+
+  it.skipIf(IS_ROOT)("an unreadable age key file is not a key source", () => {
+    const fx = makeFx();
+    put(fx, PREVIEW, THREE);
+    const locked = path.join(fx.root, "locked-key.txt");
+    fs.copyFileSync(fx.key.file, locked);
+    fs.chmodSync(locked, 0o000);
+    const r = script(fx, ["encrypt"], {
+      env: withEnv(fx, { PATH: binDir(fx, "none"), SOPS_AGE_KEY_FILE: locked }),
+    });
+    fs.chmodSync(locked, 0o600);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain(NO_SOPS_WARNING);
   });
 });
 
