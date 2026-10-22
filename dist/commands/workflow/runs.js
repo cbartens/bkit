@@ -1441,11 +1441,6 @@ async function runContext(ctx) {
         ctx.emit(out);
         return EXIT_NO_FID;
     }
-    if (parsed.issueId === null && tracker !== "none") {
-        ctx.log(`no issue in the PR-body marker or branch FID (${parsed.fid}); /bkit-auto runs issue-only`);
-        ctx.emit(out);
-        return EXIT_NO_FID;
-    }
     ctx.emit({ ...out, fid: parsed.fid, issueId: parsed.issueId });
     return EXIT.OK;
 }
@@ -1813,7 +1808,7 @@ export const runsCommand = {
                 [EXIT_UNKNOWN_PHASE]: "the phase word is not one bkit dispatches",
                 [EXIT_PR_NOT_OPEN]: "the PR is not OPEN",
                 [EXIT_NO_RUN_ID]: "no CI run at the PR head",
-                [EXIT_NO_FID]: "no valid FID or no issue (CI_DEV slug off the allowlist, no marker / feat/{FID} branch, or an issue-less FID: /bkit-auto runs issue-only)",
+                [EXIT_NO_FID]: "no valid FID (CI_DEV slug off the allowlist, or no marker / feat/{FID} branch)",
             },
             run: runContext,
         },

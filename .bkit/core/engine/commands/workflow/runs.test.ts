@@ -1998,34 +1998,6 @@ describe("bkit runs context", () => {
     expect((await context(cwd, "ship", "42")).code).toBe(8);
   });
 
-  it("runs context refuses an issue-less marker and branch naming the missing issue", async () => {
-    const cwd = autoRepo();
-    const runs = JSON.stringify([{ databaseId: 5, headSha: "sha-il" }]);
-    fakeGhBin({
-      "pr-view": prJson({
-        headRefName: "feat/dev-ci-failures",
-        headRefOid: "sha-il",
-        body: "<!-- bkit:fid=dev-ci-failures -->\n",
-      }),
-      "run-list": runs,
-    });
-    const viaMarker = await context(cwd, "ship", "42");
-    expect(viaMarker.code).toBe(9);
-    expect(viaMarker.err).toContain("no issue in the PR-body marker or branch FID");
-    expect(viaMarker.json.fid).toBeNull();
-    fakeGhBin({
-      "pr-view": prJson({
-        headRefName: "feat/dev-ci-failures",
-        headRefOid: "sha-il",
-        body: "",
-      }),
-      "run-list": runs,
-    });
-    const viaBranch = await context(cwd, "ship", "42");
-    expect(viaBranch.code).toBe(9);
-    expect(viaBranch.err).toContain("no issue in the PR-body marker or branch FID");
-  });
-
   it("an unknown phase exits 3; gh needing auth exits 80", async () => {
     const cwd = autoRepo();
     expect((await context(cwd, "deploy", "1")).code).toBe(3);

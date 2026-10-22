@@ -10,7 +10,6 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
-import { readRecord, writeRecord, type SharedCheckoutRecord } from "./ledgers";
 import { ownershipMarker, worktreeDir, worktreesCommand } from "./worktrees";
 
 const FID = "42-thing";
@@ -195,128 +194,6 @@ describe("bkit worktrees setup — debug", () => {
     const r = await setup(cwd, "debug", "--worktrees");
     expect(r.json).toMatchObject({ mode: "adopted", worktreePath: cwd });
     expect(fs.existsSync(path.join(cwd, ".worktrees"))).toBe(false);
-  });
-});
-
-describe("bkit worktrees setup — debug in place on dev (shared-checkout record)", () => {
-  const OTHER = "7-other";
-  const record = (
-    fid: string,
-    extra: Partial<SharedCheckoutRecord> = {},
-  ): SharedCheckoutRecord => ({
-    fid,
-    branch: "dev",
-    startSha: "a".repeat(40),
-    originSha: null,
-    aheadAtStart: 0,
-    paths: [],
-    commits: ["b".repeat(40)],
-    ...extra,
-  });
-  const statusRows = (cwd: string, fid: string, rows: object[]) => {
-    const dir = path.join(cwd, "docs/plans", MONTH, "logs", fid);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(
-      path.join(dir, "status.jsonl"),
-      rows.map((r) => `${JSON.stringify(r)}\n`).join(""),
-    );
-    return dir;
-  };
-  const now = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-  const running = (cwd: string, fid: string) => {
-    const dir = statusRows(cwd, fid, [
-      { type: "workflow-started", workflow: "debug", at: now() },
-      {
-        type: "step-done",
-        workflow: "debug",
-        step: "debug-start",
-        status: "DONE",
-        at: now(),
-        parentSha: "c".repeat(40),
-        artifacts: [],
-      },
-    ]);
-    fs.writeFileSync(path.join(dir, ".lock"), `${now()} debug ${fid} tok\n`);
-  };
-
-  it("in-place debug on dev writes the shared-checkout record", async () => {
-    const cwd = repo("dev");
-    fs.writeFileSync(path.join(cwd, "mine.txt"), "pre-existing\n");
-    const r = await setup(cwd, "debug");
-    expect(r.code).toBe(0);
-    const rec = readRecord(cwd, FID);
-    expect(rec).toMatchObject({
-      fid: FID,
-      branch: "dev",
-      startSha: git(cwd, "rev-parse", "HEAD"),
-      aheadAtStart: 0,
-      commits: [],
-    });
-    expect(rec?.paths.map((p) => p.path)).toContain("mine.txt");
-    expect(rec?.paths.find((p) => p.path === "mine.txt")?.hash).toBe(
-      git(cwd, "hash-object", "mine.txt"),
-    );
-  });
-
-  it("in-place debug on dev returns startSha and aheadAtStart", async () => {
-    const cwd = repo("dev");
-    const r = await setup(cwd, "debug");
-    expect(r.json).toMatchObject({ startSha: git(cwd, "rev-parse", "HEAD"), aheadAtStart: 0 });
-  });
-
-  it("counts the commits local dev holds beyond origin/dev as aheadAtStart", async () => {
-    const cwd = repo("dev");
-    git(cwd, "update-ref", "refs/remotes/origin/dev", "HEAD");
-    git(cwd, "commit", "-q", "--allow-empty", "-m", "local one");
-    git(cwd, "commit", "-q", "--allow-empty", "-m", "local two");
-    const r = await setup(cwd, "debug");
-    expect(r.json.aheadAtStart).toBe(2);
-    expect(readRecord(cwd, FID)?.aheadAtStart).toBe(2);
-  });
-
-  it("a feature branch run writes no record and no start fields", async () => {
-    const cwd = repo(`feat/${FID}`);
-    const r = await setup(cwd, "debug");
-    expect(r.json).not.toHaveProperty("startSha");
-    expect(readRecord(cwd, FID)).toBeNull();
-  });
-
-  it("a new run of the same FID rewrites startSha", async () => {
-    const cwd = repo("dev");
-    writeRecord(cwd, record(FID));
-    await setup(cwd, "debug");
-    const rec = readRecord(cwd, FID);
-    expect(rec?.startSha).toBe(git(cwd, "rev-parse", "HEAD"));
-    expect(rec?.commits).toEqual([]);
-  });
-
-  it("a resume of the same FID reuses the record", async () => {
-    const cwd = repo("dev");
-    writeRecord(cwd, record(FID));
-    statusRows(cwd, FID, [{ type: "workflow-started", workflow: "debug", at: now() }]);
-    const r = await setup(cwd, "debug");
-    expect(r.json.startSha).toBe("a".repeat(40));
-    expect(readRecord(cwd, FID)?.commits).toEqual(["b".repeat(40)]);
-  });
-
-  it("setup refuses with EXIT_SHARED_BUSY when another FID has a record and a live lock", async () => {
-    const cwd = repo("dev");
-    writeRecord(cwd, record(OTHER));
-    running(cwd, OTHER);
-    const r = await setup(cwd, "debug");
-    expect(r.code).toBe(13);
-    expect(r.err).toContain(OTHER);
-    expect(readRecord(cwd, FID)).toBeNull();
-    expect(readRecord(cwd, OTHER)).not.toBeNull();
-  });
-
-  it("a stale record without a lock is replaced", async () => {
-    const cwd = repo("dev");
-    writeRecord(cwd, record(OTHER));
-    const r = await setup(cwd, "debug");
-    expect(r.code).toBe(0);
-    expect(readRecord(cwd, OTHER)).toBeNull();
-    expect(readRecord(cwd, FID)).not.toBeNull();
   });
 });
 

@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
-import { newRecord, readRecord, writeRecord } from "./ledgers";
 import { ROW_FIELDS, placeholderLines, promptHeader, promptVerdicts, readHeader } from "./steps";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
@@ -878,89 +877,5 @@ describe("bkit steps gate — placeholders, FID, derived attempt", () => {
       (await run(cwd, ["steps", "gate", "--workflow=build", "--step=x", "--attempt-of=x:next"]))
         .code,
     ).toBe(2);
-  });
-});
-
-describe("bkit steps done — in-place run with a shared-checkout record", () => {
-  const FID = "650-shared";
-  const LOGS = `docs/plans/202610/logs/${FID}`;
-
-  /** A clone on `dev` with foreign work in flight: a modified file, an untracked one, a staged one. */
-  function sharedRepo() {
-    const cwd = repo();
-    git(cwd, "switch", "-q", "-C", "dev");
-    fs.mkdirSync(path.join(cwd, "src"), { recursive: true });
-    write(cwd, "src/a.txt", "a\n");
-    write(cwd, "src/staged.txt", "s\n");
-    git(cwd, "add", "-A");
-    git(cwd, "commit", "-q", "-m", "base");
-    write(cwd, "src/a.txt", "a\nforeign edit\n");
-    write(cwd, "notes.md", "foreign notes\n");
-    write(cwd, "src/staged.txt", "s\nforeign staged\n");
-    git(cwd, "add", "src/staged.txt");
-    writeRecord(cwd, newRecord(cwd, FID, "dev"));
-    fs.mkdirSync(path.join(cwd, LOGS), { recursive: true });
-    write(cwd, `${LOGS}/verify-1.md`, "Verdict: PASS\nFailures: 0\n\n<!-- verdict:end -->\n");
-    return cwd;
-  }
-  const args = (...extra: string[]) => [
-    "steps",
-    "done",
-    `--file=${LOGS}/status.jsonl`,
-    "--workflow=debug",
-    "--step=debug-verify",
-    "--verdict=PASS",
-    "--failures=0",
-    `--artifact=${LOGS}/verify-1.md`,
-    "--message=chore(650-shared): verify",
-    ...extra,
-  ];
-
-  it("writeStepRow with a shared-checkout record never commits a recorded path", async () => {
-    const cwd = sharedRepo();
-    const r = await run(cwd, args());
-    expect(r.code).toBe(0);
-    const committed = git(cwd, "show", "--name-only", "--format=", "HEAD").split("\n").sort();
-    expect(committed).toEqual([`${LOGS}/status.jsonl`, `${LOGS}/verify-1.md`]);
-    expect(git(cwd, "status", "--porcelain")).toBe("M src/a.txt\nM  src/staged.txt\n?? notes.md");
-  });
-
-  it("writeStepRow refuses when a recorded path changed", async () => {
-    const cwd = sharedRepo();
-    write(cwd, "src/a.txt", "a\nforeign edit\nchanged again\n");
-    const before = git(cwd, "rev-parse", "HEAD");
-    const r = await run(cwd, args());
-    expect(r.code).toBe(10);
-    expect(r.err).toContain("src/a.txt");
-    expect(git(cwd, "rev-parse", "HEAD")).toBe(before);
-    expect(fs.existsSync(path.join(cwd, LOGS, "status.jsonl"))).toBe(true);
-  });
-
-  it("writeStepRow appends its commit sha to the record", async () => {
-    const cwd = sharedRepo();
-    const r = await run(cwd, args());
-    expect(r.json.commit).toBe(git(cwd, "rev-parse", "HEAD"));
-    expect(readRecord(cwd, FID)?.commits).toEqual([r.json.commit]);
-  });
-
-  it("a hook-refused own-path commit exits without staging a recorded path", async () => {
-    const cwd = sharedRepo();
-    const hook = path.join(cwd, ".git", "hooks", "pre-commit");
-    fs.writeFileSync(hook, "#!/bin/sh\necho refused >&2\nexit 1\n", { mode: 0o755 });
-    const before = git(cwd, "rev-parse", "HEAD");
-    const r = await run(cwd, args());
-    expect(r.code).toBe(8);
-    expect(git(cwd, "rev-parse", "HEAD")).toBe(before);
-    // Only the pre-existing staged file is in the index; the foreign edit stays unstaged.
-    expect(git(cwd, "diff", "--cached", "--name-only")).not.toContain("src/a.txt");
-    expect(readRecord(cwd, FID)?.commits).toEqual([]);
-  });
-
-  it("without a record the commit is the whole tree, as before", async () => {
-    const cwd = repo();
-    write(cwd, "stray.txt", "x\n");
-    const r = await run(cwd, doneArgs());
-    expect(r.code).toBe(0);
-    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain("stray.txt");
   });
 });

@@ -31,7 +31,6 @@ import {
   type FlagSpec,
   type RunContext,
 } from "../lib.js";
-import { removeRecord } from "./ledgers.js";
 import { str } from "./status.js";
 
 /** A workflow lock whose holder shows no sign of life for this long is stale. */
@@ -191,14 +190,6 @@ function readRunsLenient(file: string): WorkflowRun[] {
   return fold(events);
 }
 
-/** Whether `fid` holds a workflow lock whose holder is still stepping (not reclaimable). */
-export function workflowLockLive(root: string, fid: string): boolean {
-  return monthBuckets(root, fid).some((month) => {
-    const holder = readHolder(workflowLockPath(root, month, fid));
-    return holder !== undefined && "live" in liveReason(root, month, fid, holder, Date.now());
-  });
-}
-
 export function acquireWorkflowLock(opts: {
   cwd: string;
   workflow: string;
@@ -319,8 +310,7 @@ export const locksCommand: CommandSpec = {
       },
     },
     release: {
-      summary:
-        "Remove a lock this caller owns (and the feature's shared-checkout record); another owner's lock is left in place.",
+      summary: "Remove a lock this caller owns; another owner's lock is left in place.",
       flags: [
         KIND_FLAG,
         LOCK_WORKFLOW_FLAG,
@@ -358,8 +348,6 @@ export const locksCommand: CommandSpec = {
           who.fid,
         );
         const { removeFailed, ...result } = releaseLock(file, who);
-        // The run is over once its lock is released: so is its shared-checkout record.
-        if (!removeFailed && result.heldBy === null) removeRecord(root, who.fid);
         ctx.emit({ kind, ...result });
         if (removeFailed) {
           ctx.log(`lock removal failed: ${file}`);

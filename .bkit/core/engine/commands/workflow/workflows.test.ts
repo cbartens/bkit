@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { validate } from "../../ledgers/telemetry";
 import { runCommand } from "../lib";
-import { newRecord, readRecord, writeRecord } from "./ledgers";
 import { locksCommand } from "./locks";
 import { workflowsCommand } from "./workflows";
 
@@ -726,48 +725,6 @@ describe("bkit workflows close — commit, outbox, comment", () => {
     expect(r.json.comment).toContain("#### Telemetry");
   });
 
-  describe("in place on dev with a shared-checkout record", () => {
-    /** `started()` plus foreign work in flight when the record is taken. */
-    function recorded() {
-      const cwd = started("debug");
-      write(cwd, "notes.md", "foreign notes\n");
-      write(cwd, "a.txt", "base\nforeign edit\n");
-      write(cwd, "staged.txt", "foreign staged\n");
-      git(cwd, "add", "staged.txt");
-      writeRecord(cwd, newRecord(cwd, FID, "dev"));
-      return cwd;
-    }
-
-    it("close with a shared-checkout record never commits a recorded path", async () => {
-      const cwd = recorded();
-      const r = await run(cwd, wf("close", "debug", "--message=chore(12-export-csv): close"));
-      expect(r.code).toBe(0);
-      const committed = git(cwd, "show", "--name-only", "--format=", "HEAD").split("\n");
-      expect(committed).toContain(`${REL}/status.jsonl`);
-      expect(committed).not.toContain("notes.md");
-      expect(committed).not.toContain("a.txt");
-      expect(committed).not.toContain("staged.txt");
-      expect(git(cwd, "status", "--porcelain")).toBe("M a.txt\nA  staged.txt\n?? notes.md");
-      expect(readRecord(cwd, FID)?.commits).toEqual([git(cwd, "rev-parse", "HEAD")]);
-    });
-
-    it("record is present after workflows close and before the push", async () => {
-      const cwd = recorded();
-      await run(cwd, wf("close", "debug", "--message=chore(12-export-csv): close"));
-      expect(readRecord(cwd, FID)).not.toBeNull();
-    });
-
-    it("close refuses with exit 10 when a recorded path changed", async () => {
-      const cwd = recorded();
-      write(cwd, "notes.md", "foreign notes\nand more\n");
-      const before = git(cwd, "rev-parse", "HEAD");
-      const r = await run(cwd, wf("close", "debug", "--message=m"));
-      expect(r.code).toBe(10);
-      expect(r.err).toContain("notes.md");
-      expect(git(cwd, "rev-parse", "HEAD")).toBe(before);
-    });
-  });
-
   it("--number without --outbox is a usage error", async () => {
     expect((await run(started(), wf("close", "build", "--number=18", "--title=t"))).code).toBe(2);
   });
@@ -924,22 +881,6 @@ describe("bkit workflows handover", () => {
     expect(git(cwd, "status", "--porcelain")).toContain("src.ts");
     expect(r.json).toMatchObject({ pushed: true, ref: "dev" });
     expect(r.json.comment).toContain(`https://github.com/o/r/blob/dev/${REL}/debug-handover.md`);
-  });
-
-  it("failed handover from dev removes the record and keeps recorded paths", async () => {
-    const { cwd } = withDevRemote();
-    write(cwd, "src.ts", "foreign half-done fix\n");
-    write(cwd, `${REL}/debug-handover.md`, "# Handover\n");
-    writeRecord(cwd, newRecord(cwd, FID, "dev"));
-    expect(readRecord(cwd, FID)).not.toBeNull();
-    const start = Date.now() - 1000;
-    write(cwd, `${REL}/status.jsonl`, startedThenFailed("debug", start));
-    const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
-    expect(r.code).toBe(0);
-    expect(readRecord(cwd, FID)).toBeNull();
-    expect(fs.readFileSync(path.join(cwd, "src.ts"), "utf-8")).toBe("foreign half-done fix\n");
-    // The recorded handover log was dirty before the run: the hand-back leaves it.
-    expect(fs.existsSync(path.join(cwd, REL, "debug-handover.md"))).toBe(true);
   });
 
   it("--push on dev hands the landed record back, so local dev fast-forwards onto it", async () => {

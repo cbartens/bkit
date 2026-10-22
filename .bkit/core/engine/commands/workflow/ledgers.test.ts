@@ -6,14 +6,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import {
-  bookPathspecs,
-  ledgersCommand,
-  newRecord,
-  readRecord,
-  rowsHeadLacks,
-  writeRecord,
-} from "./ledgers";
+import { bookPathspecs, ledgersCommand } from "./ledgers";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -720,73 +713,5 @@ describe("bookPathspecs — frozen bookkeeping allow-list", () => {
     expect(unreached).toEqual([]);
     expect(pr).toContain("docs/plans/202610/logs/1-x/*");
     expect(pr).toContain("docs/*.jsonl"); // .bkit/issues.jsonl's route is the .bkit/*.jsonl glob
-  });
-});
-
-describe("bkit ledgers commit — in-place run with a shared-checkout record", () => {
-  const FID = "650-shared";
-  const month = "202608";
-  const logs = `docs/plans/${month}/logs/${FID}`;
-
-  /** A clone on `main` with one commit; the record is taken after `dirty` ran. */
-  function started(dirty: (root: string) => void = () => undefined) {
-    const r = repo();
-    put(r, "src/a.txt", "a\n");
-    put(r, "src/b.txt", "b\n");
-    put(r, ".bkit/stats.jsonl", '{"row":"r1"}\n');
-    commitAll(r);
-    dirty(r);
-    writeRecord(r, newRecord(r, FID, "main"));
-    return r;
-  }
-  const commitFlags = (r: string, mode: string, ...extra: string[]) =>
-    commitArgs(r, `--month=${month}`, `--fid=${FID}`, "--scope=core", `--mode=${mode}`, ...extra);
-
-  it("stageTrackedUpdates skips recorded paths", async () => {
-    const r = started((root) => add(root, "src/a.txt", "foreign edit\n"));
-    add(r, "src/b.txt", "own edit\n");
-    const res = await run(r, commitFlags(r, "stage", "--stage-tracked-updates"));
-    expect(res.code).toBe(0);
-    expect(staged(r)).toBe("src/b.txt");
-  });
-
-  it("a recorded ledger commits only the rows the run appended", async () => {
-    const r = started((root) => add(root, ".bkit/stats.jsonl", '{"row":"foreign"}\n'));
-    add(r, ".bkit/stats.jsonl", '{"row":"own"}\n');
-    const before = head(r);
-    const res = await run(r, commitFlags(r, "commit", "--message=own rows"));
-    expect(res.code).toBe(0);
-    expect(head(r)).not.toBe(before);
-    expect(git(r, "show", "HEAD:.bkit/stats.jsonl")).toBe('{"row":"r1"}\n{"row":"own"}');
-    // The working file keeps both rows; nothing is left staged for the foreign one.
-    expect(fs.readFileSync(path.join(r, ".bkit/stats.jsonl"), "utf-8")).toBe(
-      '{"row":"r1"}\n{"row":"foreign"}\n{"row":"own"}\n',
-    );
-    expect(staged(r)).toBe("");
-    expect(readRecord(r, FID)?.commits).toEqual([head(r)]);
-  });
-
-  it("commitBookkeeping refuses when a recorded path changed", async () => {
-    const r = started((root) => put(root, `${logs}/notes.md`, "before\n"));
-    add(r, `${logs}/notes.md`, "changed during the run\n");
-    put(r, `${logs}/status.jsonl`, '{"type":"step-done"}\n');
-    const before = head(r);
-    const res = await run(r, commitFlags(r, "commit", "--message=nope"));
-    expect(res.code).toBe(10);
-    expect(res.err).toContain(`${logs}/notes.md`);
-    expect(head(r)).toBe(before);
-  });
-
-  it("a commit appends its sha to the record; without a record nothing is recorded", async () => {
-    const r = started();
-    put(r, `${logs}/status.jsonl`, '{"type":"step-done"}\n');
-    await run(r, commitFlags(r, "commit", "--message=own"));
-    expect(readRecord(r, FID)?.commits).toEqual([head(r)]);
-  });
-
-  it("rowsHeadLacks lists the working-copy rows HEAD does not have", () => {
-    const r = started();
-    add(r, ".bkit/stats.jsonl", '{"row":"new"}\n');
-    expect(rowsHeadLacks(r, ".bkit/stats.jsonl")).toEqual(['{"row":"new"}']);
   });
 });
