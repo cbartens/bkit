@@ -175,31 +175,11 @@ for push_sha in $PUSH_SHARED_SHAS; do
   fi
 done
 
-# tmp/ prune — deletes files under tmp/ untouched for 7+ days. Not a gate: a failed
-# prune warns and the push goes on. Skipped until scripts/cleanup/ holds the script.
-if [ -f scripts/cleanup/bkit-tmp-prune.mjs ]; then
-  node scripts/cleanup/bkit-tmp-prune.mjs --days=7 < /dev/null ||
-    echo "[pre-push] WARN: tmp/ prune failed; push continues" >&2
-fi
-
-# WHAT each gate runs lives in package.json, not here — the same `bkit:gate*` scripts
-# the bkit agent workflows and prompts dispatch through. Edit the scripts, not this
-# hook. Repo-specific extras go BELOW this block.
-# Min push: `bkit:gate:min` only. Revert path drops the suite only: prose
-# and slop:delta still run. Otherwise the deepest push gate package.json declares.
-if [ "$MIN_PUSH" = "1" ]; then
-  echo "[pre-push] min push — bkit:gate:min instead of the full gate" >&2
-  pnpm bkit:gate:min < /dev/null
-elif [ "$IS_REVERT" = "1" ]; then
-  echo "[pre-push] revert branch/commit detected — skipping the test suite"
-  pnpm bkit:gate:static < /dev/null
-elif grep -q '"bkit:gate:static-unit-integration"[[:space:]]*:' package.json 2>/dev/null; then
-  pnpm bkit:gate:static-unit-integration < /dev/null
-else
-  pnpm bkit:gate:static-unit < /dev/null
-fi
-
-# bkit mirror-drift gate — fails fast if `.agents/*` was edited without `bkit install`
+# Fast blocking checks run BEFORE the gates: each reads only git and the tree (the register
+# check ~30s, the rest a few seconds), so a failure stops the push in seconds instead of
+# after the full gate.
+#
+# bkit mirror-drift gate — fails if `.agents/*` was edited without `bkit install`
 # regenerating the `.claude/*`/`.cursor/*` mirrors (same check CI runs).
 # Outside the gate scripts: it validates the bkit install, not your source.
 # Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
@@ -214,7 +194,7 @@ if [ "$MIN_PUSH" != "1" ]; then
 fi
 
 # bkit repo only: the graphify register gate (pasted from
-# scripts/graphify/bkit-graph-pre-push.sh, below the bkit lines).
+# scripts/graphify/bkit-graph-pre-push.sh, above the gates).
 # Capability register current on dev. BLOCKS a push to dev when docs/capabilities.md is not
 # what the pushed commit builds. Reads PUSH_DEV_SHA (commit pushed to dev), set by the bkit
 # pre-push template while reading git's ref list on stdin; stdin is consumed by now.
@@ -251,6 +231,30 @@ if [ -f scripts/graphify/bkit-graphify.sh ] && [ -f "$CAP_DOC" ]; then
       fi
     fi
   fi
+fi
+
+# tmp/ prune — deletes files under tmp/ untouched for 7+ days. Not a gate: a failed
+# prune warns and the push goes on. Skipped until scripts/cleanup/ holds the script.
+if [ -f scripts/cleanup/bkit-tmp-prune.mjs ]; then
+  node scripts/cleanup/bkit-tmp-prune.mjs --days=7 < /dev/null ||
+    echo "[pre-push] WARN: tmp/ prune failed; push continues" >&2
+fi
+
+# WHAT each gate runs lives in package.json, not here — the same `bkit:gate*` scripts
+# the bkit agent workflows and prompts dispatch through. Edit the scripts, not this
+# hook. Fast repo extras go ABOVE, with `bkit check`; slow ones BELOW.
+# Min push: `bkit:gate:min` only. Revert path drops the suite only: prose
+# and slop:delta still run. Otherwise the deepest push gate package.json declares.
+if [ "$MIN_PUSH" = "1" ]; then
+  echo "[pre-push] min push — bkit:gate:min instead of the full gate" >&2
+  pnpm bkit:gate:min < /dev/null
+elif [ "$IS_REVERT" = "1" ]; then
+  echo "[pre-push] revert branch/commit detected — skipping the test suite"
+  pnpm bkit:gate:static < /dev/null
+elif grep -q '"bkit:gate:static-unit-integration"[[:space:]]*:' package.json 2>/dev/null; then
+  pnpm bkit:gate:static-unit-integration < /dev/null
+else
+  pnpm bkit:gate:static-unit < /dev/null
 fi
 
 # disk prune — keep this block last, so it runs only once every gate above passed. Starts

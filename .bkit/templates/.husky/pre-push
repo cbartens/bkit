@@ -118,6 +118,25 @@ for push_sha in $PUSH_SHARED_SHAS; do
   fi
 done
 
+# Fast blocking checks run BEFORE the gates: each reads only git and the tree, so a failure
+# stops the push in seconds instead of after the full gate. Paste fast repo extras that can
+# block (seconds to ~30s, needing nothing the gates build) here too. Slow extras go below
+# the gates.
+#
+# bkit mirror-drift gate — fails if `.agents/*` was edited without `bkit install`
+# regenerating the `.claude/*`/`.cursor/*` mirrors (same check CI runs).
+# Outside the gate scripts: it validates the bkit install, not your source.
+# Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
+pnpm bkit check < /dev/null
+
+# Capability register (graphify, .bkit/templates.md § graphify) — blocks a push to dev when
+# docs/capabilities.md is not what the pushed commit builds (~30s); warn-only on other
+# branches. Skipped until scripts/graphify/ holds the script, and on a min push: it changes
+# no source the register is built from.
+if [ "$MIN_PUSH" != "1" ] && [ -f scripts/graphify/bkit-graph-pre-push.sh ]; then
+  PUSH_DEV_SHA="$PUSH_DEV_SHA" IS_REVERT="$IS_REVERT" bash scripts/graphify/bkit-graph-pre-push.sh < /dev/null
+fi
+
 # tmp/ prune — deletes files under tmp/ untouched for 7+ days. Not a gate: a failed
 # prune warns and the push goes on. Skipped until scripts/cleanup/ holds the script.
 if [ -f scripts/cleanup/bkit-tmp-prune.mjs ]; then
@@ -127,7 +146,7 @@ fi
 
 # WHAT each gate runs lives in package.json, not here — the same `bkit:gate*` scripts
 # the bkit agent workflows and prompts dispatch through. Edit the scripts, not this
-# hook. Repo-specific extras go BELOW this block.
+# hook. Fast repo extras go ABOVE, with `bkit check`; slow ones BELOW.
 # Min push: `bkit:gate:min` only. Revert path drops the suite only: prose
 # and slop:delta still run. Otherwise the deepest push gate package.json declares.
 if [ "$MIN_PUSH" = "1" ]; then
@@ -142,14 +161,8 @@ else
   pnpm bkit:gate:static-unit < /dev/null
 fi
 
-# bkit mirror-drift gate — fails fast if `.agents/*` was edited without `bkit install`
-# regenerating the `.claude/*`/`.cursor/*` mirrors (same check CI runs).
-# Outside the gate scripts: it validates the bkit install, not your source.
-# Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
-pnpm bkit check < /dev/null
-
-# Repo extras go here, above the disk prune. Slow ones (Docker, database, build) skip a
-# min push:
+# Slow repo extras go here, above the disk prune. Ones that need Docker, a database or a
+# build skip a min push:
 #   if [ "$MIN_PUSH" != "1" ]; then pnpm <slow-script> < /dev/null; fi
 
 # disk prune — keep this block last, so it runs only once every gate above passed. Starts

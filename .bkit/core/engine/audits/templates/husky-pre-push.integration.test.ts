@@ -431,6 +431,81 @@ describe(".husky/pre-push disk prune", () => {
 });
 
 // ---------------------------------------------------------------------------
+// .husky/pre-push template fast checks — `bkit check` and the capability register run BEFORE
+// the gates, so a stale register or drifted install stops the push in seconds. Stub
+// `scripts/graphify/bkit-graph-pre-push.sh` logs its env and exits as asked.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push template fast checks", () => {
+  const REPO = process.cwd();
+  const HOOK = ".bkit/templates/.husky/pre-push";
+  const SHA = "c".repeat(40);
+  const UPDATE = `refs/heads/dev ${SHA} refs/heads/dev ${"0".repeat(40)}\n`;
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-fast-")));
+    fs.mkdirSync(path.join(tmp, "bin"));
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  /** Run the template; `register` = the stub register script's exit, or null for no script. */
+  const runHook = (register: number | null, fail = "*skip-token*") => {
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      `#!/bin/sh\ncase "$*" in *"ci min-push"*) exit 1 ;; esac\necho "$*" >> "${tmp}/calls.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    if (register !== null) {
+      fs.mkdirSync(path.join(tmp, "scripts", "graphify"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, "scripts", "graphify", "bkit-graph-pre-push.sh"),
+        `echo "register $PUSH_DEV_SHA $IS_REVERT" >> "${tmp}/calls.log"\nexit ${register}\n`,
+      );
+    }
+    const result = spawnSync("sh", [path.join(REPO, HOOK)], {
+      cwd: tmp,
+      input: UPDATE,
+      encoding: "utf-8",
+      timeout: 20_000,
+      env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
+    });
+    const log = path.join(tmp, "calls.log");
+    const calls = fs.existsSync(log) ? fs.readFileSync(log, "utf-8").trim().split("\n") : [];
+    return { status: result.status, calls };
+  };
+  const gateAt = (calls: string[]) => calls.findIndex((c) => c.startsWith("bkit:gate"));
+
+  it("the register runs before any gate, with the pushed dev commit", () => {
+    const r = runHook(0);
+    expect(r.status).toBe(0);
+    const at = r.calls.indexOf(`register ${SHA} 0`);
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(gateAt(r.calls)).toBeGreaterThan(at);
+  });
+
+  it("a stale register stops the push before any gate runs", () => {
+    const r = runHook(1);
+    expect(r.status).not.toBe(0);
+    expect(r.calls).toContain(`register ${SHA} 0`);
+    expect(gateAt(r.calls)).toBe(-1);
+  });
+
+  it("bkit check fails → the push stops before any gate runs", () => {
+    const r = runHook(0, '*skip-token*|"bkit check"');
+    expect(r.status).not.toBe(0);
+    expect(gateAt(r.calls)).toBe(-1);
+  });
+
+  it("no register script → skipped, the gates still run", () => {
+    const r = runHook(null);
+    expect(r.status).toBe(0);
+    expect(r.calls.some((c) => c.startsWith("register"))).toBe(false);
+    expect(gateAt(r.calls)).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // graphify register gate — shipped snippet run for real. Stub
 // `scripts/graphify/bkit-graphify.sh` logs its args and fails `check-at` on request; stub
 // `graphify` on PATH = installed. PATH cut to system dirs so a real graphify cannot answer.
