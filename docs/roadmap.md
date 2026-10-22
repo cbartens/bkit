@@ -13,7 +13,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-22T01:38:34Z)_
+_(refreshed 2026-10-22T01:47:22Z)_
 
 ### Design
 
@@ -29,6 +29,7 @@ _(refreshed 2026-10-22T01:38:34Z)_
 | --- | --- | --- |
 | 504-example-project | 504-example-project | 1791870640742 |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792633114622 |
+| 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 
 ### Build
 
