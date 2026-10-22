@@ -168,7 +168,7 @@ A newer run cancels the older one on every event **except the default branch, wh
 
 A push diffs against the head of the last successful CI run on that branch, not `github.event.before`. Fall back to `github.event.before` only when there is no such run or it is no longer an ancestor. A `workflow_dispatch` has no base commit: short-circuit the affected step to fully affected. `HEAD~1` is only for the delta gates on a dispatch. Markers are inert on dispatch; steer with inputs (§ Commit-message force tags). The planner parses markers once; every lane reads `plan.markers_present`. The only re-read of the commit or PR text is the workflow-level task-runner cache bust (e.g. `TURBO_FORCE`). Plan JSON: validate with `has()` / `!= null`. jq `//` treats `false` as absent and drops a real `run_live: false`.
 
-Migration-immutability and slop-delta run on every event against that same base. The starter's copies of those steps are still `pull_request`-only; that `if:` is the pre-planner shape. Point them at the planner base once `bkit-tests-scope` exists.
+Migration-immutability and slop-delta run on every event against that same base. The starter's copies of those steps are still `pull_request`-only; that `if:` is the pre-planner shape. Point them at the planner base once `bkit-tests-scope` exists. Pre-push on a `dev` push resolves the same base (`resolve-push-base.mjs --local`, `.bkit/templates.md` § Git hooks) and exports it as `SLOP_BASE_REF`; a repo-owned migration-immutability pre-push check reads that variable too.
 
 Composition guidance:
 

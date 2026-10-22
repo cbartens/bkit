@@ -48,7 +48,7 @@ Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a re
 | Tool | Copy from | To | Output you commit |
 | --- | --- | --- | --- |
 | CI workflow | `.bkit/templates/.github/workflows/bkit-ci.yml` | `.github/workflows/bkit-ci.yml` | that file |
-| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/resolve-push-base.mjs`; `check-accepted-divergences.mjs` + `accepted-divergences.json`; `check-dependency-audit.mjs` + `accepted-advisories.json`). `check-capstone.mjs` + `check-capstone.test.mjs` are required with `bkit-ci.yml`, not optional |
+| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/resolve-push-base.mjs` + `.test.mjs`, CI's push base, also run by pre-push; `check-accepted-divergences.mjs` + `accepted-divergences.json`; `check-dependency-audit.mjs` + `accepted-advisories.json`). `check-capstone.mjs` + `check-capstone.test.mjs` are required with `bkit-ci.yml`, not optional |
 | Cloud-agent workflow | `.bkit/templates/.github/workflows/bkit-cloud.yml` | `.github/workflows/bkit-cloud.yml` | that file |
 | Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
 | Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |
@@ -213,6 +213,7 @@ chmod +x .husky/pre-commit .husky/pre-push
 - Min push: every file changed since each pushed commit left `origin/dev` (else `origin/main`) matches `bkit.minPushPaths` (`package.json` globs: `*` one folder, `**` any depth; default `docs/plans/**`, `docs/*.jsonl`, `.bkit/*.jsonl`; `[]` = off) → `bkit:gate:min` replaces the full gate; `MIN_PUSH=1`. `bkit ci min-push` decides from files, never `[skip ci]` (a typed label; GitHub reads the last commit only). No files / unreadable range / no ref list → full gate.
 - Min-push paths: files no code, build or test reads. Never `docs/**` (a doc can be test input). A test reading a ledger → into `bkit:gate:min`.
 - `[skip ci]` guards: feature branch → blocked only while a PR is open (workflows push `[skip ci]` code heads mid-run). `dev` / `main` → blocked unless a min push: GitHub skips CI for the whole push.
+- Slop base: `dev` push + `scripts/ci/lanes/resolve-push-base.mjs` copied → the hook runs it with `--local --branch=dev --head=<pushed sha>` and exports `SLOP_BASE_REF` = CI's push base (head of the last green CI push run on `dev`, else `origin/dev`), printing the base and its source. Pre-push and CI slop then share a base, so a finding an earlier red push landed fails locally too. Run lookup fails (`gh` missing, logged out) → loud `WARNING`, base `origin/dev`, push goes on. Other branches, or no copy → `bkit ci slop` merge-base default. A repo-owned pre-push check that diffs against CI's base (migration immutability) reads `SLOP_BASE_REF` when set.
 - Slow repo extras (Docker, database, build) → wrap in `if [ "$MIN_PUSH" != "1" ]; then … fi`.
 - Traps: hooks run on every workflow commit; keep them to seconds (pre-commit) and deterministic checks that reach no deployed service (pre-push). Integration runs at pre-push once `bkit:gate:static-unit-integration` is declared (a local database in Docker is fine); E2E and `@live` belong in CI.
 - Run each check once: nothing in `bkit:gate:format` that the push gate runs again (`gate-commit-repeats-push` advisory), and `pnpm test` (the unit tier) matches no `*.integration.test.*` file — a unit config with no integration exclude runs those tests in the unit gate and again in the integration gate.
@@ -257,7 +258,7 @@ vale sync
 
 ## slop-scan — `slop-scan.config.json`
 
-`lint:slop` reports; `slop:delta` (`bkit ci slop`, in `bkit:gate:static`) fails on net-new findings against the base. Reference: https://github.com/benvinegar/slop-scan.
+`lint:slop` reports; `slop:delta` (`bkit ci slop`, in `bkit:gate:static`) fails on net-new findings against the base: `--base` / bare argument, else `$SLOP_BASE_REF`, else the merge-base with `origin/dev` (else `origin/main`). CI passes its planner base; pre-push on a `dev` push exports the same base as `SLOP_BASE_REF` (§ Git hooks), so both compare against the last green CI push run. Reference: https://github.com/benvinegar/slop-scan.
 
 ```bash
 pnpm add -D slop-scan@^0.3.0

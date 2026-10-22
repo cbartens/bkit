@@ -186,6 +186,32 @@ done
 # Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
 pnpm bkit check < /dev/null
 
+# Slop base on a dev push — the commit CI's slop scan compares against: the head of the last
+# green CI push run on dev, else origin/dev (scripts/ci/lanes/resolve-push-base.mjs, the
+# script CI's planner runs, in local mode). Exported as SLOP_BASE_REF, which `bkit ci slop`
+# reads, so a finding a red push already landed on dev fails here as it does in CI. Other
+# branches keep the merge-base default. Skipped until scripts/ci/lanes/ holds the script.
+if [ -n "$PUSH_DEV_SHA" ] && [ -f scripts/ci/lanes/resolve-push-base.mjs ]; then
+  PUSH_BASE_SOURCE_FILE=$(mktemp)
+  CI_PUSH_BASE=$(SOURCE_FILE="$PUSH_BASE_SOURCE_FILE" node scripts/ci/lanes/resolve-push-base.mjs \
+    --local --branch=dev --head="$PUSH_DEV_SHA" < /dev/null || echo "")
+  CI_PUSH_BASE_SOURCE=$(cat "$PUSH_BASE_SOURCE_FILE" 2>/dev/null || echo "unknown")
+  rm -f "$PUSH_BASE_SOURCE_FILE"
+  case "$CI_PUSH_BASE_SOURCE" in
+    *failed*)
+      echo "[pre-push] WARNING: could not read CI's last green run on dev (reason above)." >&2
+      echo "[pre-push]    Slop compares against origin/dev, not CI's base: a finding an earlier red" >&2
+      echo "[pre-push]    push landed passes here and still reds CI. Fix gh (gh auth status), push again." >&2
+      ;;
+  esac
+  if [ -n "$CI_PUSH_BASE" ]; then
+    export SLOP_BASE_REF="$CI_PUSH_BASE"
+    echo "[pre-push] slop base: $CI_PUSH_BASE ($CI_PUSH_BASE_SOURCE) — the base CI uses" >&2
+  else
+    echo "[pre-push] WARNING: no slop base resolved ($CI_PUSH_BASE_SOURCE) — slop uses its merge-base default" >&2
+  fi
+fi
+
 # bkit repo only: committed `dist/` must equal the `tsc` output of committed source, and
 # actionlint over `.github/workflows/*` (skips when actionlint is absent). A min push
 # skips both: it changes no code.

@@ -13,18 +13,26 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { choosePushBase, newestRunSha } from "./resolve-push-base.mjs";
+import {
+  choosePushBase,
+  newestRunSha,
+  parseArgs,
+  repoFromRemoteUrl,
+} from "./resolve-push-base.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./resolve-push-base.mjs", import.meta.url));
 
-/** Run the script with fake `gh` / `git` binaries first on PATH. */
-function runWithFakes({ gh, git }) {
+/** Run the script with fake `gh` / `git` binaries first on PATH; `gh` calls land in gh.log. */
+function runWithFakes({ gh, git, args = [], env = {} }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "push-base-"));
   try {
-    fs.writeFileSync(path.join(dir, "gh"), `#!/bin/sh\n${gh}\n`, { mode: 0o755 });
+    const ghLog = path.join(dir, "gh.log");
+    fs.writeFileSync(path.join(dir, "gh"), `#!/bin/sh\necho "$*" >> "${ghLog}"\n${gh}\n`, {
+      mode: 0o755,
+    });
     fs.writeFileSync(path.join(dir, "git"), `#!/bin/sh\n${git}\n`, { mode: 0o755 });
     const sourceFile = path.join(dir, "source");
-    const r = spawnSync(process.execPath, [SCRIPT], {
+    const r = spawnSync(process.execPath, [SCRIPT, ...args], {
       encoding: "utf8",
       env: {
         ...process.env,
@@ -33,10 +41,12 @@ function runWithFakes({ gh, git }) {
         BRANCH: "dev",
         BEFORE_SHA: "b".repeat(40),
         SOURCE_FILE: sourceFile,
+        ...env,
       },
     });
     const source = fs.existsSync(sourceFile) ? fs.readFileSync(sourceFile, "utf8").trim() : "";
-    return { status: r.status, stdout: r.stdout.trim(), source };
+    const ghCalls = fs.existsSync(ghLog) ? fs.readFileSync(ghLog, "utf8") : "";
+    return { status: r.status, stdout: r.stdout.trim(), stderr: r.stderr, source, ghCalls };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -134,6 +144,93 @@ test("a green ancestor run reports last-green-run as the source", () => {
   const r = runWithFakes({ gh: RUNS, git: "exit 0" });
   assert(r.status === 0 && r.stdout === "a".repeat(40), JSON.stringify(r));
   assert(r.source === "last-green-run", r.source);
+});
+
+test("a run list that could not be read is named in the source", () => {
+  const r = choosePushBase({
+    lastGreenSha: "",
+    beforeSha: BEFORE,
+    isAncestor: ancestors(),
+    lookupFailed: true,
+  });
+  assert(r.base === BEFORE, r.base);
+  assert(r.source === "event-before (run lookup failed)", r.source);
+});
+
+test("local mode names origin/<branch> as the fallback", () => {
+  const r = choosePushBase({
+    lastGreenSha: GREEN,
+    beforeSha: BEFORE,
+    isAncestor: ancestors(BEFORE),
+    fallback: "origin/dev",
+  });
+  assert(r.source === "origin/dev (last green run is not an ancestor)", r.source);
+});
+
+test("owner/repo comes out of https, ssh and scp-style remote URLs", () => {
+  assert(repoFromRemoteUrl("https://github.com/o/r.git") === "o/r", "https .git");
+  assert(repoFromRemoteUrl("https://github.com/o/r") === "o/r", "https");
+  assert(repoFromRemoteUrl("git@github.com:o/r.git\n") === "o/r", "scp");
+  assert(repoFromRemoteUrl("ssh://git@github.com/o/r.git") === "o/r", "ssh");
+  assert(repoFromRemoteUrl("") === "", "empty");
+  assert(repoFromRemoteUrl(undefined) === "", "missing");
+});
+
+test("--local, --branch and --head are read from argv", () => {
+  const a = parseArgs(["--local", "--branch=main", `--head=${GREEN}`]);
+  assert(a.local && a.branch === "main" && a.head === GREEN, JSON.stringify(a));
+  const ci = parseArgs([]);
+  assert(!ci.local && ci.branch === "" && ci.head === "", JSON.stringify(ci));
+});
+
+test("CI mode: an unreadable run list falls back to event.before and says so", () => {
+  const r = runWithFakes({ gh: "echo 'HTTP 401' >&2; exit 1", git: "exit 0" });
+  assert(r.status === 0 && r.stdout === "b".repeat(40), JSON.stringify(r));
+  assert(r.source === "event-before (run lookup failed)", r.source);
+});
+
+// Local mode: origin's URL gives the repo, origin/dev the before-sha; ancestry is tested
+// against the pushed commit only ($4 of `git merge-base --is-ancestor <sha> <head>`).
+const ORIGIN = "d".repeat(40);
+const PUSHED = "e".repeat(40);
+const LOCAL_GIT = `case "$1" in
+  remote) echo "git@github.com:me/app.git" ;;
+  rev-parse) echo "${ORIGIN}" ;;
+  merge-base) [ "$4" = "${PUSHED}" ] && exit 0; exit 1 ;;
+  *) exit 2 ;;
+esac`;
+const LOCAL_ARGS = ["--local", "--branch=dev", `--head=${PUSHED}`];
+const NO_CI_ENV = { REPO: "ci/repo", BEFORE_SHA: "f".repeat(40) };
+
+test("local mode: last green run is an ancestor of --head → that run's head", () => {
+  const r = runWithFakes({ gh: RUNS, git: LOCAL_GIT, args: LOCAL_ARGS, env: NO_CI_ENV });
+  assert(r.status === 0 && r.stdout === "a".repeat(40), JSON.stringify(r));
+  assert(r.source === "last-green-run", r.source);
+  assert(r.ghCalls.includes("repos/me/app/actions/workflows/"), r.ghCalls);
+  assert(r.ghCalls.includes("branch=dev&event=push&status=success"), r.ghCalls);
+});
+
+test("local mode: ancestry is tested against --head, not HEAD", () => {
+  const r = runWithFakes({
+    gh: RUNS,
+    git: LOCAL_GIT,
+    args: ["--local", "--branch=dev", `--head=${"9".repeat(40)}`],
+  });
+  assert(r.stdout === ORIGIN, r.stdout);
+  assert(r.source === "origin/dev (last green run is not an ancestor)", r.source);
+});
+
+test("local mode: gh fails → origin/dev, the reason on stderr, env REPO / BEFORE_SHA unused", () => {
+  const r = runWithFakes({
+    gh: "echo 'gh: not logged in' >&2; exit 4",
+    git: LOCAL_GIT,
+    args: LOCAL_ARGS,
+    env: NO_CI_ENV,
+  });
+  assert(r.status === 0 && r.stdout === ORIGIN, JSON.stringify(r));
+  assert(r.source === "origin/dev (run lookup failed)", r.source);
+  assert(r.stderr.includes("gh: not logged in"), r.stderr);
+  assert(r.ghCalls.includes("repos/me/app/"), r.ghCalls);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
