@@ -9,7 +9,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatchModules, type ModuleContext } from "./modules/index";
-import { formatTemplateChanges, syncTemplateCopies } from "./template-copies";
+import { EXECUTABLE_TEMPLATES, formatTemplateChanges, syncTemplateCopies } from "./template-copies";
 import { listFilesRecursive } from "./template-copies";
 import { getPkgRoot, getTemplatesRoot } from "../shared/package-roots";
 import { readBkitVersion } from "./version-file";
@@ -155,6 +155,37 @@ describe("install copies the template set into .bkit/templates/", () => {
       fs.readFileSync(envrc).equals(fs.readFileSync(path.join(getTemplatesRoot(), ".envrc"))),
     ).toBe(true);
     expect(fs.existsSync(path.dirname(stray))).toBe(false);
+  });
+
+  it("EXECUTABLE_TEMPLATES lists exactly the templates the repo tracks executable", () => {
+    const root = getTemplatesRoot();
+    const tracked = shippedTemplates()
+      .filter((rel) => (fs.statSync(path.join(root, rel)).mode & 0o111) !== 0)
+      .map((rel) => rel.split(path.sep).join("/"));
+    expect([...EXECUTABLE_TEMPLATES].sort()).toEqual(tracked);
+  });
+
+  it("restores the exec bit a packed tarball drops, on a fresh copy and on a same-bytes copy", () => {
+    runCore();
+    const modeOf = (rel: string) => fs.statSync(path.join(tmpDir, COPIES, rel)).mode & 0o111;
+    const strip = () => {
+      for (const rel of EXECUTABLE_TEMPLATES) fs.chmodSync(path.join(tmpDir, COPIES, rel), 0o644);
+    };
+    for (const rel of EXECUTABLE_TEMPLATES) expect(modeOf(rel), rel).not.toBe(0);
+
+    strip();
+    const ws: WriteSet = { writes: [] };
+    const dry = syncTemplateCopies(tmpDir, { dryRun: true, ws });
+    expect(dry.changed.map((p) => p.split(path.sep).join("/")).sort()).toEqual(
+      [...EXECUTABLE_TEMPLATES].sort(),
+    );
+    for (const rel of EXECUTABLE_TEMPLATES) expect(modeOf(rel), rel).toBe(0);
+
+    syncTemplateCopies(tmpDir, { dryRun: false, ws: { writes: [] } });
+    for (const rel of EXECUTABLE_TEMPLATES) expect(modeOf(rel), rel).not.toBe(0);
+    for (const rel of ["scripts/ci/check-capstone.mjs", ".envrc"]) {
+      expect(modeOf(rel), rel).toBe(0);
+    }
   });
 
   it("does nothing in dogfood, where .bkit/templates/ is the package source", () => {

@@ -34,6 +34,7 @@ Format: `## [version] — YYYY-MM-DD`
 
 - **The `bkit-insert-ignore.mjs` template leaves tables inside multi-line `<!-- -->` comments alone.** It treated a commented-out table as a real one and offered to insert `<!-- prettier-ignore -->` inside the comment, which would close the comment early and show the rest of it on the page; `--check` failed on such a table and blocked the push. The `Project Settings` example rows that new installs get in `.agents/rules.md` are such a table. Tables in a comment are now skipped like tables in a code fence. Re-copy `scripts/prettier/bkit-insert-ignore.mjs` from `.bkit/templates/scripts/prettier/`.
 - **`.agents/rules.md` `New worktree` names the real setting.** It said `bkit.worktreeCopy`; the `package.json` key is `bkit.worktree.copy`. The rule also says `bkit worktrees setup` does the copy, the install and `direnv allow` itself.
+- **Hook and script templates arrive executable in a consumer repo.** The npm package stores every file without its exec bit, so `.husky/pre-commit`, `.husky/pre-push`, `.husky/post-commit`, `bkit-secrets.mjs`, `bkit-env-backup.mjs` and the other shell and hook templates were copied into `.bkit/templates/` as plain files. `bkit install` and `bkit upgrade` now set the exec bit on each of them, and `bkit upgrade` repairs copies that lost it.
 
 ---
 

@@ -33,6 +33,32 @@ export function remapTemplateDest(rel: string): string {
   return dir === "." ? mapped : path.join(dir, mapped);
 }
 
+// Templates installed executable. The npm tarball stores every file 0644, so the source
+// mode cannot carry the exec bit to a consumer; this list does. A test pins it to the
+// templates the repo tracks as executable.
+export const EXECUTABLE_TEMPLATES: readonly string[] = [
+  ".claude/hooks/bkit-cloud-bootstrap.sh",
+  ".husky/post-commit",
+  ".husky/pre-commit",
+  ".husky/pre-push",
+  "scripts/ci/bkit-local-stack-lock.sh",
+  "scripts/env-backup/bkit-env-backup.mjs",
+  "scripts/graphify/bkit-graph-pre-push.sh",
+  "scripts/graphify/bkit-graphify.sh",
+  "scripts/launchd/bkit-launchd-env.sh",
+  "scripts/prettier/bkit-insert-ignore.mjs",
+  "scripts/secrets/bkit-secrets.mjs",
+  "scripts/serena/bkit-serena-mcp.sh",
+];
+
+const EXEC_BITS = 0o111;
+
+/** The mode a template copy gets: the source mode, plus the exec bits for an executable template. */
+function copyMode(rel: string, srcMode: number): number {
+  const normalized = rel.split(path.sep).join("/");
+  return EXECUTABLE_TEMPLATES.includes(normalized) ? srcMode | EXEC_BITS : srcMode;
+}
+
 /** Template paths (relative to `.bkit/templates/`) a sync changed, added or removed. */
 export interface TemplateCopyChanges {
   changed: string[];
@@ -43,8 +69,8 @@ export interface TemplateCopyChanges {
 // Copy the whole templates root from the package into the consumer's
 // `.bkit/templates/`, raw: no token substitution, so the copy is the package bytes and
 // `git diff .bkit/templates` on an upgrade commit is the template changelog. Byte-compares
-// first, keeps the source mode (hooks and scripts are executable), and prunes copies that
-// left the set. Every change pushes a ws write in dry-run and live alike, so `bkit check`
+// first, keeps the source mode and gives the EXECUTABLE_TEMPLATES their exec bits (a
+// same-bytes copy that lost them is a change), and prunes copies that left the set. Every change pushes a ws write in dry-run and live alike, so `bkit check`
 // flags a stale copy. No-op in dogfood: there the folder IS the package's template source.
 export function syncTemplateCopies(
   cwd: string,
@@ -61,12 +87,14 @@ export function syncTemplateCopies(
     shipped.add(rel);
     const dstPath = path.join(dstRoot, rel);
     const exists = fs.existsSync(dstPath);
-    if (exists && fs.readFileSync(srcPath).equals(fs.readFileSync(dstPath))) continue;
+    const mode = copyMode(rel, fs.statSync(srcPath).mode);
+    const modeOk = !exists || (fs.statSync(dstPath).mode & mode & EXEC_BITS) === (mode & EXEC_BITS);
+    if (exists && modeOk && fs.readFileSync(srcPath).equals(fs.readFileSync(dstPath))) continue;
     (exists ? changes.changed : changes.added).push(rel);
     if (!opts.dryRun) {
       fs.mkdirSync(path.dirname(dstPath), { recursive: true });
       fs.copyFileSync(srcPath, dstPath);
-      fs.chmodSync(dstPath, fs.statSync(srcPath).mode);
+      fs.chmodSync(dstPath, mode);
     }
     opts.ws.writes.push({
       path: path.join(TEMPLATE_COPIES_DIR, rel),
