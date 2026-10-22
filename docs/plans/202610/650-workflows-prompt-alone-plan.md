@@ -54,7 +54,7 @@ None.
 
 Carried forward unchanged, not split defects:
 
-- The `Narrative` is still `⚠️ MISSING` (Gate 1 blocker, human action), copied into both sub-plans.
+- The `Narrative` is owner-supplied on #650, the same text in both sub-plans.
 - The upstream plan-check verdict was `CONCERNS`.
 
 No embedded directives found in the inputs.
@@ -127,13 +127,9 @@ Replaces `Agent Execution Runbook`. Run in order; Sub-Plan 2 requires Sub-Plan 1
 
 ### Narrative
 
-`⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds`
+I run any bkit workflow from a prompt alone, for example `/bkit-debug ci failures on dev` while on `dev` with no issue, and get a warning that no issue is named, then the finished work: here, a fix pushed to `dev` with its `dev` CI run waited on, while my own uncommitted files and unpushed commits stay where they were. `/bkit-ship` still never opens or merges anything into `main`.
 
-Issue #650 has no `Narrative` section (no design, no audit). Closest issue text, verbatim from `### Outcome`, for the human to adopt or replace:
-
-> Every workflow runs on the prompt alone. A missing issue, design or plan prints a warning and the run continues. `/bkit-debug` runs on any branch except `main`, `dev` included. `/bkit-ship` keeps refusing `dev` and `main` and never opens or merges a PR from `dev` into `main`; releases stay manual.
-
-**Gate 1 blocker (human action):** fill the Narrative in each sub-plan (same text), then tick `Acceptance Scenario confirmed` there. Same template gap as OPEN deferral `442-plan-template-design-missing-fallback-amendment`.
+Source: owner-supplied on #650 (no design, issue `Narrative` or audit carries one). Same text in the Parent Plan and both sub-plans.
 
 ### Success Criteria
 
@@ -153,7 +149,8 @@ Issue #650 `### Success criteria`, verbatim (6 bullets; verbatim rule wins over 
 - **WHEN** the run returns **→ THEN** line 1 of the final message is the no-issue warning.
 - **IF** the prompt names no issue but the branch is `feat/650-foo` or the prompt names a FID carrying one **→ THEN** that issue is read, labelled and commented on as if named (Q2).
 - **IF** a minted slug carries an all-digit word (`dev-123-ci-failures`) **→ THEN** it is dropped (`dev-ci-failures`); a tracker-shaped FID with `--issue=""` (`123-fix`, `fix-2-retry`) is rejected (Q3).
-- **IF** debug must change a file already dirty before the run, or local `dev` holds commits the run did not make **→ THEN** it stops and asks / replays only its own recorded commits onto `origin/dev` (Q1).
+- **IF** debug must commit a file that was already modified before the run and changed again during it **→ THEN** it refuses the commit (`EXIT_FOREIGN_PATH`), names the files and stops to ask; for append-only `*.jsonl` ledgers it commits only the rows the run appended (Q1, Open Question 4).
+- **IF** local `dev` holds commits the run did not make **→ THEN** the run does not stop: it replays only its own recorded commits onto `origin/dev`, leaves the others on local `dev` and prints the resync command (Q1, Open Questions 2–3).
 - **IF** `/bkit-ship` runs on `dev` / `main`, or a PR's base is `main` at open or merge **→ THEN** refused; releases stay manual (Q4).
 
 ### Concrete Example
@@ -194,7 +191,7 @@ Full table split by owning sub-plan (engine rows → Sub-Plan 1, prose rows → 
 Answered on #650 (carried, not reopened): Q1 in place on `dev`; Q2 recover issue from FID; Q3 drop all-digit words + engine backstop; Q4 guard merge and open; Q5 keep related-issues search, drop Jira `key !=`; Q6 leave `preflight-linear.sh`; Q7 no continuity change, document it.
 
 <!-- prettier-ignore -->
-| Open Question | Topic | Default | Sub-plan |
+| Open Question | Topic | Answer (owner, #650) | Sub-plan |
 | --- | --- | --- | --- |
 | 1 | `dev` CI red on the pushed commit | A — Failure Path naming the red run | Sub-Plan 2 (T14) |
 | 2 | Replay runs in `pushToDev`'s throwaway checkout with hooks off | A — accept | Sub-Plan 1 (T12) |
@@ -238,7 +235,7 @@ Assumptions: carried verbatim into the sub-plan(s) whose tasks rely on them; eac
 | Relax `.bkit/core/hooks/preflight-linear.sh` L13–18 for Linear cloud agents with no `LINEAR_ISSUE_ID` | Not required by any Success Criterion; Linear cloud launches always come from an issue | #650 "Open questions: answered" Q6 (scope-declared) — deferral `650-preflight-linear-issue-less` |
 | Issue-less `/bkit-auto` and `bkit-cloud.yml` dispatch | Non-goal: "`/bkit-auto` stays issue-only" (#650 Constraints); T2 only pins fail-closed | #650 § Constraints and non-goals (scope-declared) — deferral `650-bkit-auto-issue-less` |
 | Automatic FID continuity across reworded issue-less re-runs | Q7 "No change"; doc line in § Best-effort runs is in scope (T16) | #650 "Open questions: answered" Q7 (scope-declared) — deferral `650-issue-less-fid-continuity` |
-| Live round-trip on real GitHub Actions: own-commit push (replay) → dispatch → wait → gate on the landed `dev` SHA | Hard-blocked: needs a GitHub repo with Actions and a `dev` the build agent may push to, which it cannot create or push without human confirmation. The SHA hand-off is pinned at Unit (T12 / T14); Manual Verification Step 6 is the owner-run check | Deferral `650-debug-dev-ci-live-round-trip` (`hard-blocked`, same form as `341-live-run-verification-mode-1-and-mode-3`) |
+| Live round-trip on real GitHub Actions: own-commit push (replay) → dispatch → wait → gate on the landed `dev` SHA | Owner decision on #650: no live check before merge. The build merges on the stub-`gh` Unit rows that pin the SHA hand-off (T12 / T14); the first real `/bkit-debug` on bkit's own `dev` after merge is the live check (Manual Verification Step 6). Hard-blocked for the build agent either way: it may not create a repo with Actions or push a real `dev` without human confirmation | Deferral `650-debug-dev-ci-live-round-trip` (`hard-blocked`, same form as `341-live-run-verification-mode-1-and-mode-3`) |
 
 Deferral `jq` record (never re-run) and its verification (Task 17) → [650-workflows-prompt-alone-plan-2.md](650-workflows-prompt-alone-plan-2.md).
 
@@ -254,7 +251,7 @@ Deferral `jq` record (never re-run) and its verification (Task 17) → [650-work
 | `per-workflow-rollback-path-for-shipped-bkit-workflow-changes` | `docs/deferrals.jsonl` | Rollback of five-workflow prose change | Keep deferred |
 | `steps-placeholder-gate-false-positive-on-derived-issue-dump` | `docs/failures.jsonl` | `steps gate --placeholder` with an empty `ISSUE_ID` (T3 / T8) | Needs design decision — T8 adds no `--placeholder=ISSUE_ID` (none of the five workflows passes one); the dump false positive is separate |
 | `363-dev-dispatch-cap-self-resettable-by-controlled-principal` — `MAX_DEV_DISPATCH_ATTEMPTS` cap lives in a file the dispatched session can rewrite | `docs/deferrals.jsonl` | Open Question 1 option A (bounded retry owner after a red `dev` run) | Keep deferred; cited in OQ1's trade-off |
-| `442-plan-template-design-missing-fallback-amendment` — plan template fallback when no design and no issue `Narrative` exist | `docs/deferrals.jsonl` | This plan's `Narrative` `⚠️ MISSING` (Gate 1 blocker) | Needs design decision |
+| `442-plan-template-design-missing-fallback-amendment` — plan template fallback when no design and no issue `Narrative` exist | `docs/deferrals.jsonl` | This plan's `Narrative` (no design or issue source; owner-supplied on #650) | Needs design decision |
 | #639 open item: stale `RUNTIME_DEVPUSHES` reason at `.bkit/core/engine/commands/workflow/runtime.ts:110` | #639 (`related-issues.md`, "Still open") | Debug-on-`dev` push per runtime (Assumption) | Keep deferred |
 
 > [!CAUTION]

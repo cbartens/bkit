@@ -101,13 +101,9 @@ bkitLatest: 5.5.0
 
 > Inherited from design, else the issue; do not rewrite.
 
-`⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds`
+I run any bkit workflow from a prompt alone, for example `/bkit-debug ci failures on dev` while on `dev` with no issue, and get a warning that no issue is named, then the finished work: here, a fix pushed to `dev` with its `dev` CI run waited on, while my own uncommitted files and unpushed commits stay where they were. `/bkit-ship` still never opens or merges anything into `main`.
 
-Issue #650 has no `Narrative` section (no design, no audit). Closest issue text, verbatim from `### Outcome`, for the human to adopt or replace:
-
-> Every workflow runs on the prompt alone. A missing issue, design or plan prints a warning and the run continues. `/bkit-debug` runs on any branch except `main`, `dev` included. `/bkit-ship` keeps refusing `dev` and `main` and never opens or merges a PR from `dev` into `main`; releases stay manual.
-
-**Gate 1 blocker (human action):** replace the `⚠️ MISSING` line above with the quoted `### Outcome` text verbatim, or a 1–2 sentence user-POV Narrative of your own, then tick `Acceptance Scenario confirmed`. Agents never fill it. Same template gap as OPEN deferral `442-plan-template-design-missing-fallback-amendment` (`Suggested Scope Expansion`). Same Narrative applies to the Parent Plan and Sub-Plan 1.
+Source: owner-supplied on #650 (no design, issue `Narrative` or audit carries one). Same text in the Parent Plan and both sub-plans.
 
 ### Success Criteria
 
@@ -131,7 +127,8 @@ Issue #650 `### Success criteria`, verbatim (6 bullets; verbatim rule wins over 
 - **WHEN** the run returns **→ THEN** line 1 of the final message is the no-issue warning.
 - **IF** the prompt names no issue but the branch is `feat/650-foo` or the prompt names a FID carrying one **→ THEN** that issue is read, labelled and commented on as if named (Q2).
 - **IF** a minted slug carries an all-digit word (`dev-123-ci-failures`) **→ THEN** it is dropped (`dev-ci-failures`); a tracker-shaped FID with `--issue=""` (`123-fix`, `fix-2-retry`) is rejected (Q3).
-- **IF** debug must change a file already dirty before the run, or local `dev` holds commits the run did not make **→ THEN** it stops and asks / replays only its own recorded commits onto `origin/dev` (Q1).
+- **IF** debug must commit a file that was already modified before the run and changed again during it **→ THEN** it refuses the commit (`EXIT_FOREIGN_PATH`), names the files and stops to ask; for append-only `*.jsonl` ledgers it commits only the rows the run appended (Q1, Open Question 4).
+- **IF** local `dev` holds commits the run did not make **→ THEN** the run does not stop: it replays only its own recorded commits onto `origin/dev`, leaves the others on local `dev` and prints the resync command (Q1, Open Questions 2–3).
 - **IF** `/bkit-ship` runs on `dev` / `main`, or a PR's base is `main` at open or merge **→ THEN** refused; releases stay manual (Q4).
 
 ### Concrete Example
@@ -230,7 +227,7 @@ Static gates (`pnpm bkit:gate:static-unit-integration`, `pnpm bkit check`, `pnpm
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 > [!CAUTION]
 > **Agent:** Do not pass Gate 1 until this checkbox is `[x]`.
@@ -260,7 +257,7 @@ Static gates (`pnpm bkit:gate:static-unit-integration`, `pnpm bkit check`, `pnpm
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
+- [x] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
 
 > [!CAUTION]
 > **Agent:** Do not pass Gate 1 until this checkbox is `[x]`.
@@ -283,10 +280,12 @@ Open Question numbering kept from the Parent Plan; Open Questions 2–4 (replay 
   - **Options:** A — Failure Path naming the red run URL; run closes FAILED; the `dev` CI router's `MAX_DEV_DISPATCH_ATTEMPTS` loop (`docs/deployments.md` L265) or a human re-run continues; that cap can be reset by the session it bounds (OPEN deferral `363-dev-dispatch-cap-self-resettable-by-controlled-principal`) · B — new attempt inside the same run (back to diagnosis under `MAX_DEBUG_ATTEMPT`); fully autonomous but a long session holding the checkout · C — close DONE with a warning; green-looking close on red CI.
   - **Recommended:** A — a red result is never reported as done, and retry already has a bounded owner.
   - **Default if unanswered:** A.
+  - **Answered:** A (owner, #650).
 - **Open Question 5:** A clean path first edited mid-run by someone other than the run is indistinguishable from debug's own edit (the record is a start snapshot, Q1.1). → owner.
   - **Options:** A — accept and document (§ Branch eligibility line): a mid-run edit by someone else is committed as the run's own; the workflow lock and `EXIT_SHARED_BUSY` stop parallel bkit runs, not humans · B — restrict the own set to paths the run's remediate step reports plus `docs/plans/**/logs/{FID}/` and engine-written ledgers; needs a new path-report contract from the debug subagents · C — refuse when a path outside the record and outside `docs/plans/**/logs/{FID}/` changed and no run subagent reported it; same new contract, stops instead of filtering.
   - **Recommended:** A — matches Q1.1's start-snapshot design; B / C add a subagent-to-engine path-report contract the source did not ask for.
   - **Default if unanswered:** A.
+  - **Answered:** A (owner, #650).
 - **Assumption:** No-all-digit-word rule is stricter than "not the tracker shape" and is tracker-independent → if a consumer wants digit words in issue-less slugs (`node-22-upgrade` → `node-upgrade`), the slug loses information; FID still valid.
 - **Assumption:** The `none` tracker renders and behaves byte-identically (all new prose sits in `bkit:tracker true` blocks or `--issue` is absent) → if wrong, `render/trackers.test.ts` reds and `none` consumers see changed workflows.
 - **Assumption:** No bkit path merges or opens into `main` except via `bkit prs merge` / `prs open` or the ship Step 10 MCP fallback → if another path exists (e.g. `branches land` MCP fallback), it stays unguarded (see `Suggested Scope Expansion`).
@@ -298,7 +297,7 @@ Open Question numbering kept from the Parent Plan; Open Questions 2–4 (replay 
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
+- [x] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
 
 > [!CAUTION]
 > **Agent:** Do not pass Gate 1 until this checkbox is `[x]`.
@@ -331,7 +330,7 @@ Open Question numbering kept from the Parent Plan; Open Questions 2–4 (replay 
 | Relax `.bkit/core/hooks/preflight-linear.sh` L13–18 for Linear cloud agents with no `LINEAR_ISSUE_ID` | Not required by any Success Criterion; Linear cloud launches always come from an issue | #650 "Open questions: answered" Q6 (scope-declared) — deferral `650-preflight-linear-issue-less` |
 | Issue-less `/bkit-auto` and `bkit-cloud.yml` dispatch | Non-goal: "`/bkit-auto` stays issue-only" (#650 Constraints); T2 only pins fail-closed | #650 § Constraints and non-goals (scope-declared) — deferral `650-bkit-auto-issue-less` |
 | Automatic FID continuity across reworded issue-less re-runs | Q7 "No change"; doc line in § Best-effort runs is in scope (T16) | #650 "Open questions: answered" Q7 (scope-declared) — deferral `650-issue-less-fid-continuity` |
-| Live round-trip on real GitHub Actions: own-commit push (replay) → dispatch → wait → gate on the landed `dev` SHA | Hard-blocked: needs a GitHub repo with Actions and a `dev` the build agent may push to, which it cannot create or push without human confirmation. The SHA hand-off is pinned at Unit (T12 / T14); Manual Verification Step 6 is the owner-run check | Deferral `650-debug-dev-ci-live-round-trip` (`hard-blocked`, same form as `341-live-run-verification-mode-1-and-mode-3`) |
+| Live round-trip on real GitHub Actions: own-commit push (replay) → dispatch → wait → gate on the landed `dev` SHA | Owner decision on #650: no live check before merge. The build merges on the stub-`gh` Unit rows that pin the SHA hand-off (T12 / T14); the first real `/bkit-debug` on bkit's own `dev` after merge is the live check (Manual Verification Step 6). Hard-blocked for the build agent either way: it may not create a repo with Actions or push a real `dev` without human confirmation | Deferral `650-debug-dev-ci-live-round-trip` (`hard-blocked`, same form as `341-live-run-verification-mode-1-and-mode-3`) |
 
 **Deferral rows (mirror of the table).** First three: already appended to `docs/deferrals.jsonl` (L261–263) by the plan orchestrator on behalf of `@bkit-plan-generate` — do NOT re-run the block below (it would duplicate rows); kept as the record of what was written. Fourth (`650-debug-dev-ci-live-round-trip`): appended by `@bkit-plan-update` with a `jq`-minted `ts`. T17 verifies all four.
 
@@ -355,7 +354,7 @@ jq -nc '{ts:(now*1000|floor),kind:"deferral",repo:"cbartens/bkit",bkitVersion:"5
 | `per-workflow-rollback-path-for-shipped-bkit-workflow-changes` | `docs/deferrals.jsonl` | Rollback of five-workflow prose change | Keep deferred |
 | `steps-placeholder-gate-false-positive-on-derived-issue-dump` | `docs/failures.jsonl` | `steps gate --placeholder` with an empty `ISSUE_ID` (T3 / T8) | Needs design decision — T8 adds no `--placeholder=ISSUE_ID` (none of the five workflows passes one); the dump false positive is separate |
 | `363-dev-dispatch-cap-self-resettable-by-controlled-principal` — `MAX_DEV_DISPATCH_ATTEMPTS` cap lives in a file the dispatched session can rewrite | `docs/deferrals.jsonl` | Open Question 1 option A (bounded retry owner after a red `dev` run) | Keep deferred; cited in OQ1's trade-off |
-| `442-plan-template-design-missing-fallback-amendment` — plan template fallback when no design and no issue `Narrative` exist | `docs/deferrals.jsonl` | This plan's `Narrative` `⚠️ MISSING` (Gate 1 blocker) | Needs design decision |
+| `442-plan-template-design-missing-fallback-amendment` — plan template fallback when no design and no issue `Narrative` exist | `docs/deferrals.jsonl` | This plan's `Narrative` (no design or issue source; owner-supplied on #650) | Needs design decision |
 | #639 open item: stale `RUNTIME_DEVPUSHES` reason at `.bkit/core/engine/commands/workflow/runtime.ts:110` | #639 (`related-issues.md`, "Still open") | Debug-on-`dev` push per runtime (Assumption) | Keep deferred |
 
 > [!CAUTION]
@@ -596,7 +595,7 @@ _Code-only — `git revert` sufficient._ Reverting only this sub-plan leaves Sub
 - [ ] **Task 16:** Docs. **Done when:** every `Documentation Updates` row except the two ledgers is done — `.bkit/core/.bkit/workflows.md` (rows not already landed with T8 / T9 / T14 / T15, L137 and L744 included), `.bkit/core/.bkit/trackers.md`, `.bkit/core/.bkit/lite.md`, `docs/testing.md` (L587 / L606 rewritten; `shared-checkout.integration.test.ts` row), `CHANGELOG.md` `[Unreleased]` (the `prs merge` refusal under Changed); `grep -rn "No issue ID provided\|No issue ID in the session prompt" .bkit/core` hits only `retired` blocks; `git grep -n "lands bookkeeping only" -- .bkit/core` empty and `.bkit/core/.bkit/workflows.md` L137 names the debug-on-`dev` replay as a `pushToDev` use; prose is current-state only. **Test first:** n/a — docs.
 - [ ] **Task 17:** Ledger rows present. **Done when:** `jq -c 'select(.key|startswith("650-"))' docs/decisions.jsonl docs/deferrals.jsonl` prints the 3 decision + 3 deferral rows from this plan with numeric `ts` (appended by the plan phase), plus the `650-debug-on-dev-in-place-own-files-own-commits` correction row (the key's highest-`ts` row references `failure-path-record-own-branch-dev-fallback` and `ship-dev-writes-through-throwaway-origin-dev-checkout`) and the `650-debug-dev-ci-live-round-trip` deferral (`reason: "hard-blocked"`); `pnpm bkit check` ledger lint passes. If absent, STOP and report — the build orchestrator is not a listed writer for either kind (`.bkit/jsonl.md` L40 / L43). **Test first:** n/a — ledger data.
 - [ ] **Task 18:** Mirrors and `dist/`. **Done when:** `pnpm build` → `pnpm bkit upgrade` → `git config core.bare false` run; `.bkit/workflows.md`, `.bkit/trackers.md`, `.bkit/lite.md`, `AGENTS.md`, `.claude/`, `.cursor/`, `.opencode/`, `.codex/` and Codex workflow skills `.agents/skills/bkit-{design,plan,build,debug,ship}/SKILL.md` mirrors regenerated (no hand edits); `pnpm bkit check` and `pnpm bkit:check:dist` exit 0. **Test first:** n/a — generated mirrors.
-- [ ] **Task 19:** Full verification + dogfood. **Done when:** `pnpm bkit:gate:static-unit-integration` exits 0 (full `pnpm vitest run`, not scoped; `tsc`); `pnpm bkit check` exits 0; `pnpm bkit:check:dist` exits 0; packed-tarball dogfood in a fresh scratch consumer under `/private/tmp` with the github tracker (`Manual Verification` steps 1–5) shows: rendered workflows for every host (`.claude/`, `.cursor/`, `.opencode/`, Codex `.agents/skills/` via `bkit install --codex`) with no Step 1 STOP on a missing issue; `fids check` / `steps gate` issue-less pass and digit-word fail; `prs open` with `gh` off `PATH` exits 80 with `<!-- bkit:fid=dev-ci-failures -->` in the printed body; `prs open --base=main` refused; `bkit install` and `bkit upgrade` both exercised. **Test first:** n/a — verification of earlier tasks.
+- [ ] **Task 19:** Full verification + dogfood. **Done when:** `pnpm bkit:gate:static-unit-integration` exits 0 (full `pnpm vitest run`, not scoped; `tsc`); `pnpm bkit check` exits 0; `pnpm bkit:check:dist` exits 0; packed-tarball dogfood in a fresh scratch consumer under `/private/tmp` (outside the repo on purpose: under repo `tmp/` the consumer resolves packages from bkit's own `node_modules` and hides a missing runtime dependency, so `.agents/rules.md` § Tmp files does not apply) with the github tracker (`Manual Verification` steps 1–5) shows: rendered workflows for every host (`.claude/`, `.cursor/`, `.opencode/`, Codex `.agents/skills/` via `bkit install --codex`) with no Step 1 STOP on a missing issue; `fids check` / `steps gate` issue-less pass and digit-word fail; `prs open` with `gh` off `PATH` exits 80 with `<!-- bkit:fid=dev-ci-failures -->` in the printed body; `prs open --base=main` refused; `bkit install` and `bkit upgrade` both exercised. **Test first:** n/a — verification of earlier tasks.
 
 ### 🔒 Gate 2: Code Implementation Check
 
@@ -664,11 +663,11 @@ Applied here: workflow / wording / router prose at Unit (Vitest shape tests over
 > [!WARNING]
 > **Dashboard Ban:** Proactively use local CLIs (e.g. `gh`, `vercel`, `npx supabase`) to verify CI/CD pipelines instead of asking users to check dashboards.
 
-- [ ] **Step 1:** `pnpm build` → `pnpm pack` → fresh dir under `/private/tmp` → `git init`, set the github tracker → install the tarball → `npx bkit install`; render the five workflows and confirm no wired-tracker Step 1 block STOPs on a missing issue and each carries the `**No issue:**` bullet. Repeat via `npx bkit upgrade` from the previous published version in a second scratch dir.
+- [ ] **Step 1:** `pnpm build` → `pnpm pack` → fresh dir under `/private/tmp` (outside the repo, see Task 19) → `git init`, set the github tracker → install the tarball → `npx bkit install`; render the five workflows and confirm no wired-tracker Step 1 block STOPs on a missing issue and each carries the `**No issue:**` bullet. Repeat via `npx bkit upgrade` from the previous published version in a second scratch dir.
 - [ ] **Step 2:** In the scratch consumer: `npx bkit fids check --fid=dev-ci-failures --issue=""` → exit 0; `--fid=123-fix --issue=""` → exit 1; `npx bkit fids parse` on `feat/dev-ci-failures` → `issueId: null`; `npx bkit steps gate … --fid=dev-ci-failures --issue=""` → FID check `ok: true`.
 - [ ] **Step 3:** With `gh` off `PATH`, `npx bkit prs open … --fid=dev-ci-failures` (no `--issue`) → exit 80, printed body contains `<!-- bkit:fid=dev-ci-failures -->`; `npx bkit prs open … --base=main` → refused before any `gh` call.
 - [ ] **Step 4:** Scratch repo + local bare remote on `dev`: modified `notes.md`, one unpushed commit; run `worktrees setup` (debug, in place) → `steps finish` → a second foreign commit by hand → `workflows close` → `branches push --mode=dev`; `git log origin/dev` shows only the run commits (close included), `git status` still shows `notes.md` modified, both foreign commits remain local, output has `replayed: true` and a `sha` equal to `git rev-parse origin/dev`; the record file still exists until `locks release`.
 - [ ] **Step 5:** `npx bkit worktrees setup` for ship on `dev` → the releases-stay-manual refusal text.
-- [ ] **Step 6:** Live session in a tracker-wired consumer on `dev` with red CI: `/bkit-debug ci failures on dev` → warning printed at Step 1 and as line 1 of the final message; no `bkit issues *` call in the transcript; fix lands on `origin/dev`; `gh run list --branch dev --commit {SHA}` shows the waited-on run. Closes deferral `650-debug-dev-ci-live-round-trip` when run.
+- [ ] **Step 6:** Live session in a tracker-wired consumer on `dev` with red CI: `/bkit-debug ci failures on dev` → warning printed at Step 1 and as line 1 of the final message; no `bkit issues *` call in the transcript; fix lands on `origin/dev`; `gh run list --branch dev --commit {SHA}` shows the waited-on run. Owner decision on #650: run as the first real `/bkit-debug` on bkit's own `dev` after merge, not before. Closes deferral `650-debug-dev-ci-live-round-trip` when run.
 
 <!-- bkit:end -->
