@@ -1,8 +1,16 @@
-// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details, audit map, token use), light + dark,
+// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details, audit map, token use, models and effort), light + dark,
 // plus the repo's social preview card, into .github/assets/ as both .svg and .png. Edit the copy
 // below, then: node scripts/readme/readme-art.mjs
 // Text is not auto-wrapped: keep tile lines short and eyeball the output at ~880px.
-import { writeFileSync, mkdirSync, existsSync, mkdtempSync, rmSync, readdirSync } from "node:fs";
+import {
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  readdirSync,
+  readFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -1726,6 +1734,273 @@ function features(t) {
   );
 }
 
+// ---------- Models and effort ----------
+// Claude model x effort matrix for every bkit agent and orchestrator. Pins, efforts and counts come
+// from the § Models and § Orchestrators tables in .bkit/core/.bkit/prompts.md, the Fable pin from
+// its "Fable, by hand" row; no prices or dates, so the image stays true until the pins move.
+const EFFORTS = [
+  ["low", "Low"],
+  ["medium", "Medium"],
+  ["high", "High"],
+  ["xhigh", "Extra"],
+  ["max", "Max"],
+];
+const FAMILIES = {
+  fable: { role: "by hand, never pinned", empty: {} },
+  opus: { role: "judgement", empty: { low: "use Haiku", max: "never" } },
+  sonnet: { role: "execution", empty: { low: "use Haiku", xhigh: "use Opus", max: "use Opus" } },
+  haiku: { role: "summaries", empty: {} },
+};
+const FABLE_USES = {
+  high: ["Refine an idea", "before /bkit-design"],
+  xhigh: ["A bug /bkit-debug", "is stuck on"],
+};
+
+function modelMatrix() {
+  const src = readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "..",
+      ".bkit",
+      "core",
+      ".bkit",
+      "prompts.md",
+    ),
+    "utf8",
+  );
+  const slice = (from, to) => src.slice(src.indexOf(from), src.indexOf(to, src.indexOf(from)));
+  const rows = (s, first) =>
+    s
+      .split("\n")
+      .filter((l) => l.startsWith(`| \`${first}`))
+      .map((l) =>
+        l
+          .split("|")
+          .slice(1, -1)
+          .map((c) => c.trim().replace(/^`|`$/g, "")),
+      );
+  const family = (pin) => {
+    const f = pin.match(/^claude-([a-z]+)-/)?.[1];
+    if (!FAMILIES[f]) throw new Error(`no matrix row for Claude model ${pin}`);
+    return f;
+  };
+  const cells = {};
+  const cell = (pin, effort) => {
+    if (!EFFORTS.some(([e]) => e === effort))
+      throw new Error(`no matrix column for effort ${effort}`);
+    const k = `${family(pin)}:${effort}`;
+    return (cells[k] ??= { agents: [], orchestrators: [] });
+  };
+  const pins = {};
+  for (const [name, pin, , , , , , , , effort] of rows(
+    slice("\n## Models", "\n### Live model-ID verification"),
+    "bkit-",
+  )) {
+    pins[family(pin)] = pin;
+    cell(pin, effort).agents.push(
+      name.match(/^bkit-(design|plan|build|debug|ship)-/)?.[1] ?? "other",
+    );
+  }
+  const launch = {};
+  for (const [cmd, pin] of rows(slice("\n### Orchestrators", "\n## Design Phase"), "/")) {
+    pins[family(pin)] = pin;
+    cell(pin, "medium").orchestrators.push(`/bkit-${cmd.slice(1)}`);
+    (launch[pin] ??= []).push(`/bkit-${cmd.slice(1)}`);
+  }
+  const fable = src.match(/Fable, by hand \| `claude --model (claude-fable-[\w-]+)`/)?.[1];
+  if (!fable) throw new Error("no `Fable, by hand` row in § Orchestrators");
+  pins.fable = fable;
+  const total = Object.values(cells).reduce((n, c) => n + c.agents.length, 0);
+  return { cells, pins, launch, total };
+}
+
+function models(t) {
+  const { cells, pins, launch, total } = modelMatrix();
+  const orchestrators = Object.values(launch).flat().length;
+  const W = 1200,
+    X0 = 60,
+    LW = 200,
+    CW = (W - 2 * X0 - LW) / EFFORTS.length,
+    HY = 264,
+    RY = 336,
+    RH = 128;
+  const name = (pin) =>
+    pin
+      .replace(/^claude-/, "")
+      .replace(
+        /^([a-z]+)-(\d+)-(\d+)$/,
+        (_, f, a, b) => `${f[0].toUpperCase()}${f.slice(1)} ${a}.${b}`,
+      );
+  const col = (p) => (p === "other" ? t.muted : t[p]);
+  const order = Object.keys(FAMILIES).filter((f) => pins[f]);
+  const top = RY + order.length * RH + 62,
+    PH = 150,
+    H = top + PH;
+  let b = `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(H) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
+  b += text(X0, 64, "CLAUDE CODE  ·  MODEL AND EFFORT", {
+    size: 14,
+    weight: 700,
+    fill: t.plan,
+    ls: 2.4,
+  });
+  b += text(X0 - 2, 128, "Change the model,", { size: 56, weight: 800, fill: t.text, ls: -1.5 });
+  b += text(X0 - 2, 190, "not the effort.", { size: 56, weight: 800, fill: t.muted, ls: -1.5 });
+  b += text(
+    X0,
+    234,
+    `The Claude model and effort behind each of bkit's ${total} agents and ${orchestrators} orchestrators.`,
+    { size: 18, fill: t.muted },
+  );
+
+  // Column heads: slider label over API value; Medium carries the 5.5 default tag.
+  EFFORTS.forEach(([api, label], i) => {
+    const x = X0 + LW + i * CW + 14;
+    b += text(x, HY + 30, label, { size: 20, weight: 700, fill: t.text });
+    b += text(x, HY + 52, api, { size: 14, fill: t.muted, font: MONO });
+    if (api === "medium")
+      b +=
+        `<rect x="${x + 82}" y="${HY + 13}" width="68" height="20" rx="4" fill="${t.plan}"/>` +
+        text(x + 116, HY + 28, "DEFAULT", {
+          size: 11,
+          weight: 700,
+          fill: t.bg,
+          anchor: "middle",
+          ls: 1,
+        });
+  });
+  b += `<line x1="${X0}" y1="${RY - 6}" x2="${W - X0}" y2="${RY - 6}" stroke="${t.text}" stroke-width="1.5"/>`;
+
+  order.forEach((f, r) => {
+    const y = RY + r * RH;
+    b += text(X0, y + 42, name(pins[f]), { size: 24, weight: 700, fill: t.text });
+    b += text(X0, y + 66, pins[f], { size: 13, fill: t.muted, font: MONO });
+    b += text(X0, y + 90, FAMILIES[f].role, { size: 15, fill: t.muted });
+    EFFORTS.forEach(([api], i) => {
+      const x = X0 + LW + i * CW,
+        c = cells[`${f}:${api}`],
+        uses = f === "fable" && FABLE_USES[api];
+      if (!c && !uses) {
+        const note = FAMILIES[f].empty[api];
+        if (note) b += text(x + 14, y + 42, note, { size: 14, fill: t.muted });
+        return;
+      }
+      b += `<rect x="${x + 4}" y="${y + 8}" width="${CW - 8}" height="${RH - 16}" rx="10" fill="${t.surface}" stroke="${t.border}"/>`;
+      let ly = y + 36;
+      if (uses) {
+        b += text(x + 16, ly, "You, by hand:", { size: 13, weight: 700, fill: t.design });
+        uses.forEach(
+          (u, k) => (b += text(x + 16, ly + 22 + k * 20, u, { size: 14, fill: t.text })),
+        );
+        return;
+      }
+      for (const o of c.orchestrators) {
+        b += text(x + 16, ly, o, { size: 14, weight: 600, fill: t[o.slice(6)], font: MONO });
+        ly += 19;
+      }
+      if (c.agents.length) {
+        if (c.orchestrators.length) ly += 4;
+        const n = c.agents.length;
+        b += text(x + 16, ly, `${n} agent${n === 1 ? "" : "s"}`, {
+          size: 14,
+          weight: 700,
+          fill: t.text,
+        });
+        const sorted = ["design", "plan", "build", "debug", "ship", "other"].flatMap((p) =>
+          c.agents.filter((a) => a === p),
+        );
+        sorted.forEach((p, k) => {
+          const cx = x + 21 + (k % 11) * 13,
+            cy = ly + 16 + Math.floor(k / 11) * 13;
+          b += `<circle cx="${cx}" cy="${cy}" r="5" fill="${col(p)}"/>`;
+        });
+      }
+    });
+    b += `<line x1="${X0}" y1="${y + RH}" x2="${W - X0}" y2="${y + RH}" stroke="${t.border}"/>`;
+  });
+
+  // Dot legend: one dot per agent, coloured by the phase that runs it.
+  let lx = X0;
+  const ly = RY + order.length * RH + 30;
+  b += text(lx, ly, "One dot per agent:", { size: 14, fill: t.muted });
+  lx += 136;
+  for (const [p, label, w] of [
+    ["design", "design", 46],
+    ["plan", "plan", 30],
+    ["build", "build", 36],
+    ["debug", "debug", 42],
+    ["ship", "ship", 30],
+    ["other", "audits + upkeep", 104],
+  ]) {
+    b += `<circle cx="${lx + 5}" cy="${ly - 5}" r="5" fill="${col(p)}"/>`;
+    b += text(lx + 16, ly, label, { size: 14, fill: t.muted });
+    lx += 16 + w + 22;
+  }
+
+  const panels = [
+    [
+      "Pick the model at launch",
+      Object.entries(launch).flatMap(([pin, cmds]) => [
+        [`claude --model ${pin}`, MONO, t.text],
+        [`→ ${cmds.join("  ")}`, MONO, t.muted],
+      ]),
+    ],
+    [
+      "Leave the effort alone",
+      [
+        ["Medium is the default on the 5.5 models.", SANS, t.text],
+        ["Every agent sets its own effort, whatever", SANS, t.text],
+        ["your session runs. Never set", SANS, t.text],
+        ["CLAUDE_CODE_EFFORT_LEVEL", MONO, t.debug],
+      ],
+    ],
+    [
+      "Past High, move up a model",
+      [
+        ["Extra costs more than the next model up", SANS, t.text],
+        ["at High, and that model is stronger.", SANS, t.text],
+        ["Max: one hard problem, never routine.", SANS, t.text],
+        ["Ultracode: a setting, not a level.", SANS, t.text],
+      ],
+    ],
+  ];
+  const PW = (W - 2 * X0 - 2 * 24) / 3;
+  panels.forEach(([title, lines], i) => {
+    const x = X0 + i * (PW + 24);
+    b += `<line x1="${x}" y1="${top}" x2="${x + PW}" y2="${top}" stroke="${t.text}" stroke-width="1.5"/>`;
+    b += text(x, top + 32, title, { size: 19, weight: 700, fill: t.text });
+    lines.forEach(([s, font, fill], k) => {
+      b += text(x, top + 62 + k * 23, s, { size: font === MONO ? 14 : 15, fill, font });
+    });
+  });
+
+  const cellsAlt = order
+    .flatMap((f) =>
+      EFFORTS.map(([api, label]) => {
+        const c = cells[`${f}:${api}`];
+        if (!c) return null;
+        const who = [...c.orchestrators, c.agents.length ? `${c.agents.length} agents` : ""].filter(
+          Boolean,
+        );
+        return `${name(pins[f])} at ${label}: ${who.join(", ")}`;
+      }),
+    )
+    .filter(Boolean)
+    .join("; ");
+  return svg(
+    W,
+    footH(H),
+    b + footer(t, W, H),
+    `Change the model, not the effort. The Claude model and effort behind each of bkit's ${total} agents and ${orchestrators} orchestrators. ${cellsAlt}. ${name(pins.fable)} is never pinned: use it by hand to refine an idea before /bkit-design, and at Extra for a bug /bkit-debug is stuck on. Pick the model at launch: ${Object.entries(
+      launch,
+    )
+      .map(([pin, cmds]) => `${pin} for ${cmds.join(", ")}`)
+      .join(
+        "; ",
+      )}. Leave the effort alone: medium is the default on the 5.5 models, every agent sets its own, and never set CLAUDE_CODE_EFFORT_LEVEL. Past High, move up a model: Extra costs more than the next model up at High. Max is for one hard problem, never routine; ultracode is a setting, not a level.`,
+  );
+}
+
 // Write every image as SVG, then rasterise the same markup to a matching PNG, so the two never
 // drift apart.
 const browser = findBrowser();
@@ -1745,6 +2020,7 @@ for (const [name, t] of Object.entries(THEMES)) {
   images.push([`bkit-fences-details-${name}`, fenceDetails(t)]);
   images.push([`bkit-audits-${name}`, audits(t)]);
   images.push([`bkit-tokens-${name}`, tokens(t)]);
+  images.push([`bkit-models-${name}`, models(t)]);
 }
 // One social image: link previews have no light/dark switch, and dark reads on both.
 images.push(["bkit-social", social(THEMES.dark)]);

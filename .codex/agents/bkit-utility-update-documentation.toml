@@ -2,7 +2,7 @@
 name = "bkit-utility-update-documentation"
 description = "Senior tech writer syncing project docs with system state after multiple plans."
 model = "gpt-5.6-terra"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 developer_instructions = """
 **Role:** Senior tech writer syncing project docs with system state after multiple plans.
 **Scope:** As specified by input or session prompt.

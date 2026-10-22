@@ -2,7 +2,7 @@
 name: bkit-utility-update-documentation
 description: Senior tech writer syncing project docs with system state after multiple plans.
 model: gemini-3.8-pro
-effort: medium
+effort: high
 tools:
   - view_file
   - grep_search
