@@ -6,6 +6,26 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Workflows run from the prompt alone, with no issue, design or plan.** A missing issue no longer stops design, plan, build, debug or ship. Step 1 recovers the issue from a `FID` the prompt names or a `feat/{FID}` branch (`bkit fids parse`); with none, the run warns once (line 1 of its final message) and continues, skipping every tracker read, label, comment, board call and kill-switch check. Workflows still never create an issue. A run with no issue mints its `FID` as `{branch-suffix}-{slug}` with every all-digit word dropped, so no tracker can read it as an issue id. #650
+- **`bkit fids check --issue` and `bkit steps gate --issue`.** Passing the run's issue id (or an empty value for a run with no issue) checks the `FID` against it: with an issue the `FID` must embed it, with none it must be issue-less. `bkit prs open --issue` puts only `<!-- bkit:fid={FID} -->` in the PR body when there is no issue. #650
+- **`/bkit-debug` on `dev` works in place, on its own paths and its own commits.** Steps 9 and 10 push nothing. Step 11 pushes only the run's commits with `bkit branches push --mode=dev`, then waits for the `dev` CI run at the pushed commit (`bkit runs dispatch --sha`, `bkit runs wait --until=completed`, `bkit runs gate --capstone-only`) before it releases the lock. A red run, a refused push or a replay conflict goes to the Failure Path naming the run; a file someone else changed during the run stops the workflow and asks you. #650
+
+### Changed
+
+- **`bkit prs merge` refuses a PR whose base is not `dev`.** It exits 8 and merges nothing, and `bkit prs open --base=main` is refused too: bkit opens and merges into `dev` only, and releases stay manual. A consumer script that merges a PR into another base through `bkit prs merge` breaks. #650
+- **`/bkit-ship` of `dev` or `main` prints the engine's refusal and stops.** It releases its lock first. `bkit worktrees setup` also refuses `main` in place for design, plan and build. #650
+
+### Fixed
+
+- **The ship naming warning fires on a run with no issue.** A branch not named for the `FID` now warns when `ISSUE_ID` is empty; an empty id used to match every branch name. #650
+- **Build Step 18.9 and debug Step 11.9 kill-switch checks skip when `ISSUE_ID` is empty,** and ship Step 14.3's label calls skip on a merged run with no issue. #650
+
+---
+
 ## [5.5.1] — 2026-10-22
 
 ### Breaking Changes

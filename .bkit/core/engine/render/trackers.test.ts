@@ -324,6 +324,41 @@ describe("real workflow sources", () => {
 });
 
 // ---------------------------------------------------------------------------
+// issue-less runs — the machinery lives in tracker blocks, so `none` never sees it
+// ---------------------------------------------------------------------------
+
+describe("issue-less runs render only under a wired tracker", () => {
+  const phases = ["bkit-design", "bkit-plan", "bkit-build", "bkit-debug", "bkit-ship"];
+  const source = (wf: string) =>
+    fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`), "utf-8");
+  // Text that only a wired tracker run can need: the warning, the recovery, the skips.
+  const WIRED_ONLY = [
+    "**No issue:**",
+    "WARNING: no issue named",
+    "**Skip if** `ISSUE_ID` empty",
+    "fids parse --branch",
+  ];
+
+  for (const wf of phases) {
+    it(`${wf}: the none render carries none of the issue-less machinery`, () => {
+      const out = substituteWorkflow(source(wf), "none").output;
+      const found = WIRED_ONLY.filter((t) => out.includes(t));
+      expect(found, `${wf} none render leaks: ${found.join(", ")}`).toEqual([]);
+    });
+
+    it.each(["github", "linear", "jira"] as const)(
+      `${wf}: the %s render keeps the warning bullet once and the recovery in Step 1`,
+      (tracker) => {
+        const out = substituteWorkflow(source(wf), tracker).output;
+        expect(out.split("> - **No issue:**").length - 1).toBe(1);
+        expect(out.split('fids parse --branch="feat/{FID}"').length - 1).toBe(1);
+        expect(out).toContain("**Skip if** `ISSUE_ID` empty");
+      },
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
 // real prompt sources — agents get the same resolution as workflows
 // ---------------------------------------------------------------------------
 

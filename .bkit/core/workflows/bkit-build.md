@@ -16,7 +16,7 @@ description: "Build Feature — Autonomous implementation"
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 > - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does not replace **Failure Path**.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty — never a **Failure Path** trigger). **Else** → **Failure Path**.
 > - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 > - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt (`--attempt-of`; `<attempt>` in a path or message becomes it), checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields, `attempt` as its attempt.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
@@ -47,6 +47,11 @@ description: "Build Feature — Autonomous implementation"
 > - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`) before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Body over 32,767 characters → post as consecutive comments split at line breaks, in order.
 
 <!-- bkit:tracker jira end -->
+<!-- bkit:tracker true start -->
+
+> - **No issue:** An empty `ISSUE_ID` runs issue-less: every issue-tied tracker read, label, comment and board call carries a **Skip if** line. Once Step 1 sub-step 4 holds `FID`, emit: WARNING: no issue named — running issue-less as {FID}; no tracker reads, labels or comments. Name {FID} in the next prompt to continue this run.
+
+<!-- bkit:tracker true end -->
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 > - **Limits:** `MAX_VERIFY_ATTEMPT`, `MAX_TEST_ATTEMPT` and `MAX_CHALLENGE_REMEDIATE_ATTEMPT` resolved by name via `bkit counters route --limit=` in fenced routing blocks below.
@@ -66,16 +71,16 @@ description: "Build Feature — Autonomous implementation"
    - **If** exit 0 **or** 5 → hold `handoverNeeded` as `{HANDOVER_NEEDED}`, `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}` → step 2.
    - **Else** → step 6.
 2. <!-- bkit:tracker github start -->
-   `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+   **Skip if** `ISSUE_ID` empty. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
+   **Skip if** `ISSUE_ID` empty. `mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker jira start -->
-   `mcp__jira__editJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", fields: { labels: [{LABELS}] } })` → move status to `{TRACKER_STATE}` (**Tracker** status change).
+   **Skip if** `ISSUE_ID` empty. `mcp__jira__editJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", fields: { labels: [{LABELS}] } })` → move status to `{TRACKER_STATE}` (**Tracker** status change).
    <!-- bkit:tracker jira end -->
    <!-- bkit:tracker true start -->
-   Post `comment` (when non-null).
+   **Skip if** `ISSUE_ID` empty. Post `comment` (when non-null).
    <!-- bkit:tracker true end -->
 3. **If** `HANDOVER_NEEDED` = true → step 4. **Else** → step 5.
 4. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Agent` tool:
@@ -88,8 +93,8 @@ description: "Build Feature — Autonomous implementation"
    ```
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
-   - **Else** → post `comment` (when non-null) → step 6.
-6. **STOP**, no further downstream steps.
+   - **Else** → post `comment` (when non-null; skipped when `ISSUE_ID` empty) → step 6.
+6. **STOP**, no further downstream steps. Line 1 of the final message = the no-issue warning, when one was emitted.
 
 ---
 
@@ -105,35 +110,35 @@ description: "Build Feature — Autonomous implementation"
    <!-- bkit:tracker true end -->
 2. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
    <!-- bkit:tracker github start -->
-   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → log `No issue ID in the session prompt.` never create a tracker issue. → **STOP**, no further downstream steps.
+   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → with a `FID` named in the session prompt or `BRANCH` = `feat/{FID}`, run `"{BKIT}" fids parse --branch="feat/{FID}"` → hold a non-null `issueId` as `ISSUE_ID`. **Else** → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   Extract from session prompt: `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or `[A-Z]+-\d+` → first match → `ISSUE_ID`. **If** no `ID` found → log `No issue ID in the session prompt.` never create a tracker issue. → **STOP**, no further downstream steps.
+   Extract from session prompt: `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or `[A-Z]+-\d+` → first match → `ISSUE_ID`. **If** no `ID` found → with a `FID` named in the session prompt or `BRANCH` = `feat/{FID}`, run `"{BKIT}" fids parse --branch="feat/{FID}"` → hold a non-null `issueId` as `ISSUE_ID`. **Else** → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker jira start -->
-   Extract from session prompt: `<id>{ID}</id>`, `<jira_issue>{ID}</jira_issue>`, `Jira issue: {ID}`, `ISSUE-{ID}`, a `/browse/{ID}` link, or `[A-Z][A-Z0-9]+-\d+` → first match → `ISSUE_ID`. **If** no `ID` found → log `No issue ID in the session prompt.` never create a tracker issue. → **STOP**, no further downstream steps.
+   Extract from session prompt: `<id>{ID}</id>`, `<jira_issue>{ID}</jira_issue>`, `Jira issue: {ID}`, `ISSUE-{ID}`, a `/browse/{ID}` link, or `[A-Z][A-Z0-9]+-\d+` → first match → `ISSUE_ID`. **If** no `ID` found → with a `FID` named in the session prompt or `BRANCH` = `feat/{FID}`, run `"{BKIT}" fids parse --branch="feat/{FID}"` → hold a non-null `issueId` as `ISSUE_ID`. **Else** → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
    <!-- bkit:tracker jira end -->
    <!-- bkit:tracker false start -->
    Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""`, log `Tracker not wired — proceeding without issue ID.`, continue with FID derived from branch name.
    <!-- bkit:tracker false end -->
 3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
    <!-- bkit:tracker github start -->
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`; `labels` → `LABELS`; `body` → `DESCRIPTION`; `title` → `TITLE`; `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
+   **Skip if** `ISSUE_ID` empty. No issue named → `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; input artifact built from session prompt alone. **Else** `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`; `labels` → `LABELS`; `body` → `DESCRIPTION`; `title` → `TITLE`; `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`; `labels[].name` → `LABELS`; `description` → `DESCRIPTION`; `title` → `TITLE`; `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `COMMENTS`.
+   **Skip if** `ISSUE_ID` empty. No issue named → `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; input artifact built from session prompt alone. **Else** `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`; `labels[].name` → `LABELS`; `description` → `DESCRIPTION`; `title` → `TITLE`; `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `COMMENTS`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker jira start -->
-   `mcp__jira__getJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → extract `fields.status.name` → `STATE`; `fields.labels` → `LABELS`; `fields.description` → `DESCRIPTION`; `fields.summary` → `TITLE`; `{TRACKER_SITE}/browse/{ISSUE_ID}` → `URL`. Then read comments (**Tracker** comment reads) → `COMMENTS`.
+   **Skip if** `ISSUE_ID` empty. No issue named → `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; input artifact built from session prompt alone. **Else** `mcp__jira__getJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → extract `fields.status.name` → `STATE`; `fields.labels` → `LABELS`; `fields.description` → `DESCRIPTION`; `fields.summary` → `TITLE`; `{TRACKER_SITE}/browse/{ISSUE_ID}` → `URL`. Then read comments (**Tracker** comment reads) → `COMMENTS`.
    <!-- bkit:tracker jira end -->
 4. <!-- bkit:tracker github start -->
-   Parse `{DESCRIPTION}` (already populated by the `issue_read` above) for a `###### bkit:blocked-by start` ... `###### bkit:blocked-by end` block. **If** block absent → no blockers, proceed. **Else** → extract each `- #N` line into `{BLOCKER_ISSUES}` array. For each `N` in `{BLOCKER_ISSUES}` → `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: N })` → extract `state`. **If** any blocker `state` != `"closed"` → **Failure Path**.
+   **Skip if** `ISSUE_ID` empty. Parse `{DESCRIPTION}` (already populated by the `issue_read` above) for a `###### bkit:blocked-by start` ... `###### bkit:blocked-by end` block. **If** block absent → no blockers, proceed. **Else** → extract each `- #N` line into `{BLOCKER_ISSUES}` array. For each `N` in `{BLOCKER_ISSUES}` → `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: N })` → extract `state`. **If** any blocker `state` != `"closed"` → **Failure Path**.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}", includeRelations: true })` → extract `relations` where `type` = `"blocked_by"` → for each entry extract `state.name` as `{BLOCKER_STATE}`. **If** any `{BLOCKER_STATE}` not IN `Done | Cancelled` → **Failure Path**.
+   **Skip if** `ISSUE_ID` empty. `mcp__linear__get_issue({ id: "{ISSUE_ID}", includeRelations: true })` → extract `relations` where `type` = `"blocked_by"` → for each entry extract `state.name` as `{BLOCKER_STATE}`. **If** any `{BLOCKER_STATE}` not IN `Done | Cancelled` → **Failure Path**.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker jira start -->
-   `mcp__jira__searchJiraIssuesUsingJql({ cloudId: "{TRACKER_SITE}", jql: "issue in linkedIssues('{ISSUE_ID}', 'is blocked by') AND statusCategory != Done", fields: ["summary", "status"] })` → open blockers. **If** any issue returned → **Failure Path**.
+   **Skip if** `ISSUE_ID` empty. `mcp__jira__searchJiraIssuesUsingJql({ cloudId: "{TRACKER_SITE}", jql: "issue in linkedIssues('{ISSUE_ID}', 'is blocked by') AND statusCategory != Done", fields: ["summary", "status"] })` → open blockers. **If** any issue returned → **Failure Path**.
    <!-- bkit:tracker jira end -->
 5. Resolve `FID` — first match wins; never borrow another feature's `FID` from a leftover lock or the newest bucket:
    1. Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path under `docs/plans/{YYYYMM}/` (`{FID}-design.md`, `{FID}-plan.md`, `logs/{FID}/`).
@@ -146,15 +151,16 @@ description: "Build Feature — Autonomous implementation"
       - **If** exit 0 → that `fid`.
       - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
       - **Else** → next.
-   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`.
-      <!-- bkit:tracker false start -->
-      `ISSUE_ID` unset → `{branch-suffix}-{slug}`.
-      <!-- bkit:tracker false end -->
+   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**. Format `{ISSUE_ID}-{slug}`; `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
+
    One `FID` for all artifacts once set. Check its format for the wired tracker:
+
    ```bash
-   "{BKIT}" fids check --fid="{FID}"
+   "{BKIT}" fids check --fid="{FID}" --issue="{ISSUE_ID}"
    ```
+
    → hold `fid` as `{FID}`.
+
 6. Acquire concurrency lock:
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=build --fid={FID}
@@ -162,23 +168,23 @@ description: "Build Feature — Autonomous implementation"
    Hold `month` as `{YYYYMM}`, `token` as `{LOCK_TOKEN}`.
 7. Emit long-branch advisory `[bkit-build] feature branch is {BEHIND_DEV} commits behind dev / {DIVERGED_AGO} since divergence`.
 8. <!-- bkit:tracker true start -->
-   Add `Build` phase and drop old phase — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
+   **Skip if** `ISSUE_ID` empty. Add `Build` phase and drop old phase — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    "{BKIT}" issues labels --phase=build --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}
    ```
    Hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}`, `board` as `{BOARD}`.
    <!-- bkit:tracker true end -->
    <!-- bkit:tracker github start -->
-   `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+   **Skip if** `ISSUE_ID` empty. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
+   **Skip if** `ISSUE_ID` empty. `mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker jira start -->
-   `mcp__jira__editJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", fields: { labels: [{LABELS}] } })` → move status to `{TRACKER_STATE}` (**Tracker** status change).
+   **Skip if** `ISSUE_ID` empty. `mcp__jira__editJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", fields: { labels: [{LABELS}] } })` → move status to `{TRACKER_STATE}` (**Tracker** status change).
    <!-- bkit:tracker jira end -->
    <!-- bkit:tracker github start -->
-   **If** `BOARD` = null → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
+   **Skip if** `ISSUE_ID` empty. **If** `BOARD` = null → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
    No-op (log `Board status carried by issue state — no separate update.`).
@@ -187,7 +193,7 @@ description: "Build Feature — Autonomous implementation"
    No-op (log `Board status carried by issue state — no separate update.`).
    <!-- bkit:tracker jira end -->
 9. <!-- bkit:tracker true start -->
-   Comment:
+   **Skip if** `ISSUE_ID` empty. Comment:
    ```bash
    "{BKIT}" issues comment --workflow=build --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo={OWNER_REPO} --tree={BRANCH}
    ```
@@ -196,17 +202,17 @@ description: "Build Feature — Autonomous implementation"
 ### 🔒 Gate 1 — Start Workflow
 
 ```bash
-"{BKIT}" steps gate --workflow=build --step=build-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
+"{BKIT}" steps gate --workflow=build --step=build-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
+- [ ] Issue resolved (`ISSUE_ID` non-empty, or the no-issue warning emitted)
 - [ ] Long-branch advisory emitted
 
 <!-- bkit:tracker true start -->
 
-- [ ] Blocker check attempted (not blocked by any related issues)
-- [ ] Issue update attempted (phase label `bkit:build`, status / state `In Progress`)
+- [ ] Blocker check attempted (not blocked by any related issues) — skipped when `ISSUE_ID` empty
+- [ ] Issue update attempted (phase label `bkit:build`, status / state `In Progress`) — skipped when `ISSUE_ID` empty
 
 <!-- bkit:tracker true end -->
 
@@ -245,7 +251,7 @@ description: "Build Feature — Autonomous implementation"
    ```
    Hold the count as `{SUB_COUNT}`, `SINGLE_PLAN` = false. **If** 0 → `SUB_COUNT` = 1, `SINGLE_PLAN` = true.
 5. <!-- bkit:tracker true start -->
-   Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` (JSON as read) to `{OUTBOX}/issue-comments.json` → join into `ISSUE_TEXT`:
+   **Skip if** `ISSUE_ID` empty. Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` (JSON as read) to `{OUTBOX}/issue-comments.json` → join into `ISSUE_TEXT`:
    ```bash
    "{BKIT}" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
    ```
@@ -700,7 +706,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```
 4. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 18.
-   - **If** `SUMMARY_VERDICT` = FAIL → display `build-summary.md` content verbatim as final message to user → **Failure Path**.
+   - **If** `SUMMARY_VERDICT` = FAIL → display `build-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 17 — Summary
@@ -731,13 +737,13 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```
 3. Re-read labels, then mirror the roadmap row to `dev`, close the run (telemetry, report, artifact links) and commit it — the subject carries ` bkit [auto route]` when the re-read labels hold `bkit:auto` — push with the HEAD-Subject Assertion, release the lock; `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired:
    <!-- bkit:tracker github start -->
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`.
+   **Skip if** `ISSUE_ID` empty. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`.
+   **Skip if** `ISSUE_ID` empty. `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker jira start -->
-   `mcp__jira__getJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → extract `fields.status.name` → `STATE`, `fields.labels` → `LABELS`, `fields.description` → `DESCRIPTION`.
+   **Skip if** `ISSUE_ID` empty. `mcp__jira__getJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → extract `fields.status.name` → `STATE`, `fields.labels` → `LABELS`, `fields.description` → `DESCRIPTION`.
    <!-- bkit:tracker jira end -->
    ```bash
    "{BKIT}" roadmap mirror --workflow=build --fid={FID} >/dev/null || exit 1
@@ -748,7 +754,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Hold the close's `comment` as `{CLOSE_COMMENT}`.
 4. Create PR. `docs/plans/{YYYYMM}/{FID}-plan.md` (if present):
    ```bash
-   "{BKIT}" prs open --fid={FID} --title="feat({FID}): {summary}" --issue={ISSUE_ID} --plan=docs/plans/{YYYYMM}/{FID}-plan.md
+   "{BKIT}" prs open --fid={FID} --title="feat({FID}): {summary}" --issue="{ISSUE_ID}" --plan=docs/plans/{YYYYMM}/{FID}-plan.md
    ```
    Route:
    - **If** exit 0 → hold `url` as `{PR_URL}`, `number` as `{PR_NUMBER}`.
@@ -767,12 +773,13 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    - **If** exit 0 → sub-step 7.
    - **Else** → **Failure Path**.
 7. <!-- bkit:tracker true start -->
-   Comment:
+   **Skip if** `ISSUE_ID` empty. Comment:
    ```bash
    "{BKIT}" issues comment --step-number=18 --step-title="Create PR" --owner-repo={OWNER_REPO} --pr-number={PR_NUMBER} --pr-url={PR_URL}
    ```
    <!-- bkit:tracker true end -->
 8. <!-- bkit:tracker true start -->
+   **Skip if** `ISSUE_ID` empty.
    ```bash
    "{BKIT}" issues labels --board=review --issue={ISSUE_ID} --owner-repo={OWNER_REPO}
    ```
@@ -782,13 +789,13 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    No issue changes.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   Update state only; do not change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
+   **Skip if** `ISSUE_ID` empty. Update state only; do not change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker jira start -->
-   Update status only; do not change labels → move status to `{TRACKER_STATE}` (**Tracker** status change).
+   **Skip if** `ISSUE_ID` empty. Update status only; do not change labels → move status to `{TRACKER_STATE}` (**Tracker** status change).
    <!-- bkit:tracker jira end -->
    <!-- bkit:tracker github start -->
-   **If** `BOARD` = null → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
+   **Skip if** `ISSUE_ID` empty. **If** `BOARD` = null → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
    No-op (log `Board status carried by issue state — no separate update.`).
@@ -798,28 +805,28 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    <!-- bkit:tracker jira end -->
 9. Re-read issue labels post-push:
    <!-- bkit:tracker github start -->
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`.
+   **Skip if** `ISSUE_ID` empty. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`.
+   **Skip if** `ISSUE_ID` empty. `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker jira start -->
-   `mcp__jira__getJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → extract `fields.status.name` → `STATE`, `fields.labels` → `LABELS`, `fields.description` → `DESCRIPTION`.
+   **Skip if** `ISSUE_ID` empty. `mcp__jira__getJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → extract `fields.status.name` → `STATE`, `fields.labels` → `LABELS`, `fields.description` → `DESCRIPTION`.
    <!-- bkit:tracker jira end -->
    <!-- bkit:tracker true start -->
-   After reading issue (`issue-read`): **If** `bkit:auto` not in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation).
+   **Skip if** `ISSUE_ID` empty. After reading issue (`issue-read`): **If** `bkit:auto` not in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation).
    <!-- bkit:tracker true end -->
 10. <!-- bkit:tracker true start -->
-    Post `{CLOSE_COMMENT}` as the close comment.
+    **Skip if** `ISSUE_ID` empty. Post `{CLOSE_COMMENT}` as the close comment.
     <!-- bkit:tracker true end -->
 11. Collect setup tips:
     ```bash
     "{BKIT}" tips --workflow=build
     ```
     Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-12. Final return: Display `build-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. Append `CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug.`
+12. Final return: Display `build-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. Line 1 of the final message = the no-issue warning, when one was emitted. Append `CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug.`
     <!-- bkit:tracker true start -->
-    Append issue link [{ISSUE_ID} {TITLE}]({URL})
+    Append the issue link [{ISSUE_ID} {TITLE}]({URL}) unless `ISSUE_ID` is empty
     <!-- bkit:tracker true end -->
     Append a `## Suggested Replies` heading.
     Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
@@ -838,7 +845,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 <!-- bkit:tracker true start -->
 
-- [ ] Auto-label presence re-read before close-workflow commit (`bkit:auto` pre-commit label read for marker sourcing)
+- [ ] Auto-label presence re-read before close-workflow commit (`bkit:auto` pre-commit label read for marker sourcing) — skipped when `ISSUE_ID` empty
 
 <!-- bkit:tracker true end -->
 
@@ -851,9 +858,9 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 <!-- bkit:tracker true start -->
 
-- [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
-- [ ] Issue update attempted (status / state `In Review`, phase label `bkit:build` unchanged)
-- [ ] Kill-switch propagation checked (post-push re-read of `bkit:auto` label on issue)
-- [ ] Artifact link list and telemetry report embedded in `Step 18` comment
+- [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time) — skipped when `ISSUE_ID` empty
+- [ ] Issue update attempted (status / state `In Review`, phase label `bkit:build` unchanged) — skipped when `ISSUE_ID` empty
+- [ ] Kill-switch propagation checked (post-push re-read of `bkit:auto` label on issue) — skipped when `ISSUE_ID` empty
+- [ ] Artifact link list and telemetry report embedded in `Step 18` comment — skipped when `ISSUE_ID` empty
 
 <!-- bkit:tracker true end -->

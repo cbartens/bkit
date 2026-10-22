@@ -71,9 +71,9 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | Interaction | Purpose | github | linear | jira | none |
 | --- | --- | --- | --- | --- | --- |
 | `rule-block` | CAUTION-block tracker/labels/comments rules | rules prose | rules prose | rules prose | "not configured" stub |
-| `issue-id-extraction` | Step 1 `ISSUE_ID` resolution. No match → stop. Never creates an issue | session prompt scan; no match → stop | session prompt scan; no match → stop | session prompt scan (incl. `/browse/{KEY}` links); no match → stop | scan session prompt; else `ISSUE_ID=""` |
-| `fid-format` | FID slug regex assertion | `^[0-9]+-[a-z0-9-]+$` | `^[a-z]+-[0-9]+-[a-z0-9-]+$` | `^[a-z][a-z0-9]+-[0-9]+-[a-z0-9-]+$` | no strict assert |
-| `issue-read` | Read state + labels + body + comments | `issue_read` `get` / `get_comments` | `get_issue` / `list_comments` | `getJiraIssue` `view: "evidence"` / `executeRead` `listJiraIssueComments` | skip (vars empty) |
+| `issue-id-extraction` | Step 1 `ISSUE_ID` resolution. No match → recover it from a named `FID` or a `feat/{FID}` branch (`bkit fids parse`), else `ISSUE_ID=""` and the no-issue warning; the run continues, issue-tied calls skipped. Never creates an issue | session prompt scan, then FID / branch recovery | session prompt scan, then FID / branch recovery | session prompt scan (incl. `/browse/{KEY}` links), then FID / branch recovery | scan session prompt; else `ISSUE_ID=""` |
+| `fid-format` | FID slug regex assertion. A run with no issue (`ISSUE_ID` empty, any tracker) takes the issue-less rule instead: a lowercase slug with no all-digit word, so no tracker can read the FID as an issue id | `^[0-9]+-[a-z0-9-]+$` | `^[a-z]+-[0-9]+-[a-z0-9-]+$` | `^[a-z][a-z0-9]+-[0-9]+-[a-z0-9-]+$` | no strict assert |
+| `issue-read` | Read state + labels + body + comments; skipped when `ISSUE_ID` is empty | `issue_read` `get` / `get_comments` | `get_issue` / `list_comments` | `getJiraIssue` `view: "evidence"` / `executeRead` `listJiraIssueComments` | skip (vars empty) |
 | `issue-scan` | Bounded related-issue scan at design/plan/debug entry — writes each hit's body + comments under a `## #{number} — {title} ({state})` heading to a file (advisory, top 10, never gates); broad keyword search in title+body, all states | `search_issues` for ranking only + per-hit `issue_read` `get` / `get_comments` | `list_issues` + per-hit `list_comments` | `searchJiraIssuesUsingJql` (`text ~` per keyword, inside `bkit.jira.project`) + per-hit `listJiraIssueComments` | skip stub (no scan) |
 | `issue-update-phase` | Step 1: set phase label (`bkit:debug` included; drops `next:*`, `bkit:failed`) + active state | `issue_write` labels | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `bkit.linear.progress` | `editJiraIssue` full label set, then transition to `bkit.jira.progress` | skip |
 | `issue-update-review` | phase Close hand-off (non-terminal) | no-op (label carries) | `save_issue` state `bkit.linear.review` | transition to `bkit.jira.review` | skip |
@@ -82,9 +82,9 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add/update item | no-op (state carries) | no-op (status carries) | skip |
 | `comment-post-step` | new comment per workflow step | `add_issue_comment` | `save_comment` | `addOrEditJiraIssueComment` | skip |
 | `issue-blockers-check` | Gate on open blockers | parse body marker → read states | `get_issue` relations | JQL `linkedIssues(KEY, "is blocked by") AND statusCategory != Done` | skip |
-| `kill-switch-check` | Terminate if `bkit:auto` absent | label check | label check | label check | inactive |
+| `kill-switch-check` | Terminate if `bkit:auto` absent; skipped when `ISSUE_ID` is empty | label check | label check | label check | inactive |
 | `pr-body-metadata` | Parse PR-body issue/FID marker | `pull_request_read` + parse | same (GitHub PR) | same (GitHub PR) | FID-only, no fail-closed |
-| `pr-body-marker` | Literal PR-body marker line | `<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:fid={FID} -->` |
+| `pr-body-marker` | Literal PR-body marker line; `<!-- bkit:fid={FID} -->` alone when the run has no issue | `<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:fid={FID} -->` |
 
 Phase-label set + additive-label semantics: `.bkit/workflows.md` § Tracker Integration.
 

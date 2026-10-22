@@ -740,7 +740,7 @@ Body over 32,767 characters → post as consecutive comments split at line break
 - workflow: where-used
 
 ```text
-**Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
+**Large Diff Guard:** When a Read line passes `git diff {{base}}..HEAD` to a subagent, compute `DIFF_LINES=$(git diff {{base}}..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 ```
 
 ### workflow-error-file
@@ -814,6 +814,10 @@ Record the failure, abort any rebase, release the lock
 - anchored: yes
 
 ```text
+**Else** → post `comment` (when non-null; skipped when `ISSUE_ID` empty) → step {{step}}.
+```
+
+```retired
 **Else** → post `comment` (when non-null) → step {{step}}.
 ```
 
@@ -874,10 +878,11 @@ Extract from session prompt: `<id>{ID}</id>`, `<jira_issue>{ID}</jira_issue>`, `
 - workflow: repeatable
 
 ```text
-**If** no `ID` found → log `No issue ID in the session prompt.` never create a tracker issue.
+**If** no `ID` found → with a `FID` named in the session prompt or `BRANCH` = `feat/{FID}`, run `"{BKIT}" fids parse --branch="feat/{FID}"` → hold a non-null `issueId` as `ISSUE_ID`. **Else** → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
 ```
 
 ```retired
+**If** no `ID` found → log `No issue ID in the session prompt.` never create a tracker issue.
 **If** no `ID` found → log `No issue ID in the session prompt.` NEVER create a tracker issue.
 ```
 
@@ -927,10 +932,10 @@ Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISS
 
 ### workflow-issue-read-none
 
-- workflow: where-used
+- workflow: repeatable
 
 ```text
-No tracker wired → `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; input artifact built from session prompt alone.
+{{reason}} → `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; input artifact built from session prompt alone.
 ```
 
 ```retired
@@ -1020,6 +1025,10 @@ Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path unde
 - workflow: where-used
 
 ```text
+Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**.
+```
+
+```retired
 Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase.
 ```
 
@@ -1028,6 +1037,10 @@ Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lo
 - workflow: where-used
 
 ```text
+`ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
+```
+
+```retired
 `ISSUE_ID` unset → `{branch-suffix}-{slug}`.
 ```
 
@@ -1137,6 +1150,10 @@ No-op (log `Board status carried by issue state — no separate update.`).
 - workflow: where-used
 
 ```text
+Issue resolved (`ISSUE_ID` non-empty, or the no-issue warning emitted)
+```
+
+```retired
 Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
 ```
 
@@ -1405,7 +1422,47 @@ Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
 - workflow: where-used
 
 ```text
+Append the issue link [{ISSUE_ID} {TITLE}]({URL}) unless `ISSUE_ID` is empty
+```
+
+```retired
 Append issue link [{ISSUE_ID} {TITLE}]({URL})
+```
+
+### workflow-no-issue-warning
+
+- workflow: required
+- except: bkit-auto
+
+```text
+WARNING: no issue named — running issue-less as {FID}; no tracker reads, labels or comments. Name {FID} in the next prompt to continue this run.
+```
+
+### workflow-no-issue-rule
+
+- workflow: required
+- except: bkit-auto
+
+```text
+**No issue:** An empty `ISSUE_ID` runs issue-less: every issue-tied tracker read, label, comment and board call carries a **Skip if** line.
+```
+
+### workflow-final-first-line
+
+- workflow: repeatable
+- except: bkit-auto
+
+```text
+Line 1 of the final message = the no-issue warning, when one was emitted.
+```
+
+### workflow-skip-no-issue
+
+- workflow: repeatable
+- except: bkit-auto
+
+```text
+**Skip if** `ISSUE_ID` empty{{rest?}}.
 ```
 
 ### workflow-related-search-github
@@ -1439,6 +1496,10 @@ NEVER a keyword list → `mcp__linear__list_issues({ query: "{QUERY_NL}", team: 
 - workflow: where-used
 
 ```text
+one `text ~` clause per term → `mcp__jira__searchJiraIssuesUsingJql({ cloudId: "{TRACKER_SITE}", jql: "project = {TRACKER_PROJECT} AND (text ~ '<term 1>' OR text ~ '<term 2>' …) AND key != {ISSUE_ID} ORDER BY updated DESC", maxResults: 10, fields: ["summary", "status", "description"] })` (drop `project = {TRACKER_PROJECT} AND` when `{TRACKER_PROJECT}` null; drop `AND key != {ISSUE_ID}` when `ISSUE_ID` empty) → set `RELATED_ISSUES` empty → per hit:
+```
+
+```retired
 one `text ~` clause per term → `mcp__jira__searchJiraIssuesUsingJql({ cloudId: "{TRACKER_SITE}", jql: "project = {TRACKER_PROJECT} AND (text ~ '<term 1>' OR text ~ '<term 2>' …) AND key != {ISSUE_ID} ORDER BY updated DESC", maxResults: 10, fields: ["summary", "status", "description"] })` (drop `project = {TRACKER_PROJECT} AND` when `{TRACKER_PROJECT}` null) → set `RELATED_ISSUES` empty → per hit:
 ```
 

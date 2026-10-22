@@ -37,8 +37,11 @@ function fences(content: string): string[] {
   );
 }
 
-const dispatchFences = (md: string) =>
+const allDispatchFences = (md: string) =>
   fences(md).filter((f) => /"\{BKIT\}" runs dispatch\b/.test(f));
+/** The PR-mode gate; debug's `--sha` gate for a run in place on `dev` is `devDispatchFences`. */
+const dispatchFences = (md: string) => allDispatchFences(md).filter((f) => !/--sha[= ]/.test(f));
+const devDispatchFences = (md: string) => allDispatchFences(md).filter((f) => /--sha[= ]/.test(f));
 
 // ---------------------------------------------------------------------------
 // 1. Build and debug run the gate, once each, and record its verdict locally
@@ -47,8 +50,9 @@ describe.each([
   ["bkit-build.md", buildMd],
   ["bkit-debug.md", debugMd],
 ] as const)("%s — CI-Dispatch gate wiring", (name, md) => {
-  it("runs bkit runs dispatch in exactly one block", () => {
-    // Debug's PR-mode close and its created-PR path share one block.
+  it("runs bkit runs dispatch in exactly one PR-mode block", () => {
+    // Debug's PR-mode close and its created-PR path share one block; its run in place
+    // on dev has its own `--sha` block, pinned in the dev section below.
     expect(dispatchFences(md)).toHaveLength(1);
   });
 
@@ -232,5 +236,77 @@ describe("bkit-debug.md — close decides from live PR state", () => {
 
   it("runs the CI-Dispatch gate on every feature-branch close", () => {
     expect(debugMd).toMatch(/\*\*Run only if\*\* `\{PR_OPEN\}` = 1 \*\*or\*\* `TRIGGER_PR` = 1/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. Debug Step 11 on `dev`: a run in place pushes its own commits, then dispatches,
+//    waits for and gates the dev CI run at the pushed sha before it releases the lock.
+//
+// The commands behind each call are covered in commands/workflow/runs.test.ts and
+// branches.test.ts; here: the close wires them in the order the record depends on.
+// ---------------------------------------------------------------------------
+describe("bkit-debug.md — Step 11 on dev", () => {
+  const start = debugMd.indexOf("## 🤖 Step 11 — Close Workflow");
+  const step11 = debugMd.slice(start, debugMd.indexOf("### 🔒 Gate 11", start));
+  const step11Fences = fences(step11);
+  const at = (re: RegExp) => step11Fences.findIndex((f) => re.test(f));
+  const releaseFences = step11Fences.flatMap((f, i) =>
+    /"\{BKIT\}" locks release\b/.test(f) ? [i] : [],
+  );
+  const refusalRoute = step11
+    .split("\n")
+    .find((l) => l.includes("exit 8") && l.includes("exit 11"));
+
+  it("debug Step 11 on dev waits for and gates the dev CI run", () => {
+    const wait = at(/"\{BKIT\}" runs wait --head="?\{DEV_SHA\}"? --branch=dev --until=completed/);
+    const gate = at(/"\{BKIT\}" runs gate --head="?\{DEV_SHA\}"?[^\n]*--capstone-only/);
+    expect(wait, "no runs wait --head --until=completed block").toBeGreaterThan(-1);
+    expect(gate, "no runs gate --capstone-only block").toBeGreaterThan(wait);
+  });
+
+  it("debug Step 11 on dev dispatches by pushed sha", () => {
+    const dev = devDispatchFences(step11);
+    expect(dev, "no runs dispatch --sha block").toHaveLength(1);
+    expect(dev[0]!).toMatch(/"\{BKIT\}" runs dispatch [^\n]*--sha="?\{DEV_SHA\}"?/);
+    expect(dev[0]!).not.toMatch(/--pr[= ]/);
+    // The sha is the push's own `sha`, never a local HEAD (an own-commit push lands copies).
+    expect(step11).toContain("hold `sha` as `{DEV_SHA}`");
+    expect(step11).not.toContain("git rev-parse HEAD");
+    expect(at(/"\{BKIT\}" branches push --mode=dev\b/)).toBeGreaterThan(-1);
+  });
+
+  it("debug Step 11 on dev releases the lock after the CI wait", () => {
+    const push = at(/"\{BKIT\}" branches push --mode=dev\b/);
+    const wait = at(/"\{BKIT\}" runs wait --head=/);
+    expect(push).toBeGreaterThan(-1);
+    expect(wait).toBeGreaterThan(push);
+    // The dev push block holds no release; one release follows the wait.
+    expect(step11Fences[push]!).not.toContain("locks release");
+    expect(
+      releaseFences.some((i) => i > wait),
+      "no locks release after runs wait",
+    ).toBe(true);
+  });
+
+  it("debug Step 11 on dev records the close against the pushed sha", () => {
+    expect(step11).toMatch(/`BRANCH` = `dev` → `\{CLOSE_PARENT\}` = `\{DEV_SHA\}`/);
+    const record = at(/"\{BKIT\}" steps done [^\n]*--parent-sha=\{CLOSE_PARENT\}/);
+    const audit = at(/"\{BKIT\}" prs transport-row [^\n]*--sha=\{CLOSE_PARENT\}/);
+    expect(record).toBeGreaterThan(-1);
+    expect(audit).toBeGreaterThan(-1);
+  });
+
+  it("debug Step 11 on dev routes a red run to the Failure Path naming the run", () => {
+    const after = step11.slice(step11.indexOf('"{BKIT}" runs wait --head='));
+    const route = after.split("\n").find((l) => l.includes("`conclusion` != `success`"));
+    expect(route, "no red-conclusion route after runs wait").toBeDefined();
+    expect(route).toContain("**Failure Path**");
+    expect(route).toContain("naming the run");
+  });
+
+  it("debug Step 11 on dev sends a refused push or a replay conflict to the Failure Path", () => {
+    expect(refusalRoute, "no push-refusal route").toBeDefined();
+    expect(refusalRoute).toContain("**Failure Path**");
   });
 });

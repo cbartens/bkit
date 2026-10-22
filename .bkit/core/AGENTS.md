@@ -30,7 +30,7 @@
 
 Set `LABELS`, `DESCRIPTION`, `COMMENTS` = empty.
 
-**If** no `ISSUE_ID` → **STOP** with `No issue ID provided.`
+**If** no `ISSUE_ID` → keep it empty and route on: the workflow's Step 1 recovers it from a named `FID` / `feat/{FID}` branch, else emits the no-issue warning and runs issue-less.
 
 ### Step 2 — Route from user message
 
@@ -42,11 +42,11 @@ Scan `LABELS` for commands (Ship, Debug, Build, Plan, Design) → first match �
 
 ### Step 4 — MCP fallback (labels only)
 
-Only if Steps 2–3 yield no `COMMAND`: read current issue labels via the configured tracker MCP (GitHub: `mcp__github__issue_read({ method: "get_labels", ... })`; Linear: `mcp__linear__get_issue({ id: "{ISSUE_ID}" })`; Jira: `mcp__jira__getJiraIssue({ cloudId: "<package.json bkit.jira.site>", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → `fields.labels`) → scan returned labels → first match → `COMMAND`. Update `LABELS`, `DESCRIPTION`.
+Only if Steps 2–3 yield no `COMMAND` **and** `ISSUE_ID` is non-empty: read current issue labels via the configured tracker MCP (GitHub: `mcp__github__issue_read({ method: "get_labels", ... })`; Linear: `mcp__linear__get_issue({ id: "{ISSUE_ID}" })`; Jira: `mcp__jira__getJiraIssue({ cloudId: "<package.json bkit.jira.site>", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → `fields.labels`) → scan returned labels → first match → `COMMAND`. Update `LABELS`, `DESCRIPTION`.
 
 ### Step 5 — No match
 
-Emit: `Workflow not found for issue {ISSUE_ID}. Valid commands: Design / Plan / Build / Debug / Ship.` → **STOP**. (Do not post a tracker comment — the router does not know which tracker MCP to call at this point.)
+Emit: `Workflow not found for issue {ISSUE_ID}. Valid commands: Design / Plan / Build / Debug / Ship.` (drop `for issue {ISSUE_ID}` when `ISSUE_ID` empty) → **STOP**. (Do not post a tracker comment — the router does not know which tracker MCP to call at this point.)
 
 ### Step 6 — Execute command
 

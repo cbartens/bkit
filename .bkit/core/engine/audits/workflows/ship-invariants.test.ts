@@ -569,6 +569,8 @@ describe("bkit-ship.md — #363: the auto-route marker comes from labels re-read
     expect(reread).toBeLessThan(merge);
     expect(step).toMatch(/"\{BKIT\}" prs merge [^\n]*\{LABEL_FLAGS\}/);
     expect(step).toContain("never carried forward from Step 1's `{LABELS}`");
+    // With no issue there is nothing to re-read: no tracker call, `{LABEL_FLAGS}` empty.
+    expect(step).toContain("**Skip if** `ISSUE_ID` empty");
   });
 });
 
@@ -636,5 +638,79 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
     // Guarded with `|| { ...; exit 1; }`, or the fence's last command, whose
     // exit is the block's.
     expect(unguardedLedgerCalls(readShip())).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue-less runs and the main guard
+// ---------------------------------------------------------------------------
+//
+// A ship with no issue warns and continues: no tracker read, label or board call
+// runs. Ship never opens or merges into `main`: the engine refuses (`worktrees
+// setup` on `dev` / `main`, `prs open --base=main`, `prs merge` of a non-dev PR),
+// and the MCP merge fallback asserts the base itself.
+describe("bkit-ship.md — issue-less runs and the main guard", () => {
+  const SKIP = "**Skip if** `ISSUE_ID` empty";
+  /** Index of the first line after `start` matching `re`. */
+  const nextAfter = (lines: string[], start: number, re: RegExp) =>
+    lines.findIndex((l, i) => i > start && re.test(l));
+  const step10 = () =>
+    section(readShip(), /^## .*Step \d+ — Merge Gate \+ Merge PR/, /^### .*Gate/);
+
+  /** The tracker blocks (`github`, `linear`, `jira`, `true`) of a text, each as its own string. */
+  const blocks = (text: string) =>
+    [
+      ...text.matchAll(
+        /<!-- bkit:tracker (github|linear|jira|true) start -->([\s\S]*?)<!-- bkit:tracker \1 end -->/g,
+      ),
+    ].map((m) => ({ kind: m[1]!, text: m[0] }));
+
+  it("Step 10 label re-read skips when ISSUE_ID is empty", () => {
+    const wired = blocks(step10()).filter((b) => b.kind !== "true");
+    expect(wired).toHaveLength(3);
+    for (const b of wired) expect(b.text, b.kind).toContain(SKIP);
+    expect(step10()).toContain("empty when no tracker is wired or `ISSUE_ID` is empty");
+  });
+
+  it("naming warning fires issue-less when the branch is not feat/FID", () => {
+    const step2 = section(readShip(), /^## .*Step 2 — Verify PR/, /^### /);
+    const line = step2.split("\n").find((l) => l.startsWith("2. **If** `BRANCH`"));
+    expect(line, "no naming-warning line").toBeDefined();
+    // An empty ISSUE_ID is contained in every branch name, so it cannot be the only test.
+    expect(line).toContain("`ISSUE_ID` empty **or**");
+    expect(line).toContain("does not contain `{FID}`");
+  });
+
+  it("Step 10 MCP merge asserts base dev", () => {
+    const step = step10();
+    const exit80 = step.indexOf("**If** exit 80");
+    const merge = step.indexOf("merge_pull_request");
+    expect(exit80, "no exit 80 route on the merge").toBeGreaterThan(-1);
+    expect(merge).toBeGreaterThan(exit80);
+    const between = step.slice(exit80, merge);
+    expect(between).toContain("`base.ref` = `dev`");
+    expect(between).toContain("**Failure Path**");
+  });
+
+  it("Step 14.3 labels skip when ISSUE_ID is empty", () => {
+    const lines = section(readShip(), /^## .*Step 14 — Close Workflow/, /^### .*Gate/).split("\n");
+    const start = lines.findIndex((l) => /^3\. /.test(l));
+    const end = nextAfter(lines, start, /^4\. /);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const item = lines.slice(start, end).join("\n");
+    const all = blocks(item);
+    expect(all.length, "no tracker blocks in sub-step 3").toBe(4);
+    for (const b of all) expect(b.text, b.kind).toContain(SKIP);
+  });
+
+  it("a ship on dev or main prints the engine refusal and stops", () => {
+    const ship = readShip();
+    const at = ship.indexOf('"{BKIT}" worktrees setup --workflow=ship');
+    expect(at).toBeGreaterThan(-1);
+    const route = ship.slice(at, ship.indexOf("8. Enter the worktree", at));
+    expect(route).toContain("**If** exit 7");
+    expect(route).toContain("releases stay manual");
+    expect(route).toContain("**STOP**");
+    expect(route).toContain('"{BKIT}" locks release --kind=workflow --workflow=ship');
   });
 });
