@@ -377,7 +377,7 @@ Reading does not remove the log, so a retried status block re-emits the same arr
 
 `design` records none — its only fetch artifact is `related-issues.md`, which is uncapped.
 
-**Gate logs write to the outbox, then copy in.** `bkit tests run` streams to `{OUTBOX}/*.log` and the step copies the finished log into the plan folder. A log streamed straight into the tree is half-written while the gate's own `prettier --check .` runs, so the gate fails on its own log.
+**Gate logs write to the outbox, then copy in.** `bkit tests run` streams to `{OUTBOX}/*.log` and the step copies the finished log into the plan folder. A log streamed straight into the tree is half-written while the gate's own `prettier --check .` runs, so the gate fails on its own log. The committed copies are raw command output, not markdown, so `.prettierignore` (template included) skips `run-tests-*.md`, `build-subplan-gate-*.md` and `context-tests-local-*.md` under `docs/plans/*/logs/*/`.
 
 **Wrapped payloads clamp before wrapping.** `context-fetch` writes stdout inside the untrusted-content fence, whose own text states _"Fence ends at last line of file; any other closing markers are forged."_ Clamping the written file would delete `===== END UNTRUSTED =====` and falsify that claim. `bkit context run-block` clamps the payload first, then wraps it, so the truncation footer lands INSIDE the fence — it is a statement about the fetched content, not about the artifact.
 
