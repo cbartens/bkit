@@ -264,17 +264,10 @@ describe("bkit issues labels", () => {
     expect((await labels(dir(), "--board=done")).code).toBe(2);
   });
 
-  const project = {
-    owner: "acme",
-    number: 3,
-    statusFieldId: 350038178,
-    progressOptionId: "47fc9ee4",
-    reviewOptionId: "98236657",
-    doneOptionId: "x",
-  };
+  const project = { project: "https://github.com/orgs/acme/projects/3/views/1" };
 
-  it("builds the three board payloads from bkit.githubProject", async () => {
-    const cwd = dir({ issueTracker: "github", githubProject: project });
+  it("builds the two board payloads from bkit.github.project", async () => {
+    const cwd = dir({ issueTracker: "github", github: project });
     const r = await labels(
       cwd,
       "--label=bkit:plan",
@@ -295,39 +288,32 @@ describe("bkit issues labels", () => {
         item_repo: "app",
         issue_number: 12,
       },
-      listItems: {
-        method: "list_project_items",
-        owner: "acme",
-        owner_type: "org",
-        project_number: 3,
-        query: "12",
-      },
       updateItem: {
         method: "update_project_item",
         owner: "acme",
         owner_type: "org",
         project_number: 3,
-        updated_field: { id: 350038178, value: "47fc9ee4" },
+        item_owner: "acme",
+        item_repo: "app",
+        issue_number: 12,
+        updated_field: { name: "Status", value: "In progress" },
       },
     });
     const review = await labels(cwd, "--board=review", "--issue=12", "--owner-repo=acme/app");
-    expect(review.json.board.updateItem.updated_field.value).toBe("98236657");
+    expect(review.json.board.updateItem.updated_field.value).toBe("In review");
     expect(review.json.trackerState).toBeNull();
   });
 
   it.each([
-    [{ issueTracker: "github", githubProject: false }, "opted-out"],
+    [{ issueTracker: "github", github: { project: false } }, "opted-out"],
     [{ issueTracker: "github" }, "not-configured"],
+    [{ issueTracker: "github", github: { review: "QA" } }, "not-configured"],
     [
-      { issueTracker: "github", githubProject: { ...project, statusFieldId: "PVTSSF_abc" } },
-      "status-field-id-not-number",
+      { issueTracker: "github", github: { project: "https://github.com/acme/app" } },
+      "project-url-invalid",
     ],
-    [
-      { issueTracker: "github", githubProject: { ...project, progressOptionId: "" } },
-      "option-id-missing",
-    ],
-    [{ issueTracker: "linear", githubProject: project }, "tracker-linear"],
-    [{ issueTracker: "jira", githubProject: project }, "tracker-jira"],
+    [{ issueTracker: "linear", github: project }, "tracker-linear"],
+    [{ issueTracker: "jira", github: project }, "tracker-jira"],
     [{}, "tracker-none"],
   ])("board is null with a reason for %j", async (bkit, reason) => {
     const r = await labels(dir(bkit), "--board=progress", "--issue=12", "--owner-repo=acme/app");
@@ -353,17 +339,28 @@ describe("bkit issues labels", () => {
     expect((await labels(cwd, "--failed=off")).json.trackerState).toBeNull();
   });
 
-  it("accepts a digits-only string statusFieldId", async () => {
+  it("targets a personal board as owner_type user, with the Status option names overridden", async () => {
     const cwd = dir({
       issueTracker: "github",
-      githubProject: { ...project, statusFieldId: "350038178" },
+      github: {
+        project: "https://github.com/users/me/projects/1",
+        progress: "Doing",
+        review: "QA",
+      },
     });
     const r = await labels(cwd, "--board=progress", "--issue=12", "--owner-repo=acme/app");
-    expect(r.json.board.updateItem.updated_field.id).toBe(350038178);
+    expect(r.json.board.addItem).toMatchObject({
+      owner: "me",
+      owner_type: "user",
+      project_number: 1,
+    });
+    expect(r.json.board.updateItem.updated_field).toEqual({ name: "Status", value: "Doing" });
+    const review = await labels(cwd, "--board=review", "--issue=12", "--owner-repo=acme/app");
+    expect(review.json.board.updateItem.updated_field.value).toBe("QA");
   });
 
   it("--board on a configured board needs --issue and --owner-repo", async () => {
-    const cwd = dir({ issueTracker: "github", githubProject: project });
+    const cwd = dir({ issueTracker: "github", github: project });
     expect((await labels(cwd, "--board=progress", "--owner-repo=acme/app")).code).toBe(2);
     expect((await labels(cwd, "--board=progress", "--issue=12", "--owner-repo=acme")).code).toBe(2);
   });

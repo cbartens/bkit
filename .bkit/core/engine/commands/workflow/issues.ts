@@ -239,49 +239,31 @@ function onOff(v: unknown, flag: string): boolean | undefined {
   return b;
 }
 
-const BOARD_OPTION: Record<string, string> = {
-  progress: "progressOptionId",
-  review: "reviewOptionId",
-};
+const BOARD_STATES = new Set(["progress", "review"]);
 
 /**
- * The three `projects_write` / `projects_list` payloads that move an issue on the
- * Projects v2 board, from `bkit.githubProject`. Payload keys are the MCP tools'
- * own argument names. The workflow fills `item_id` on `updateItem` from the
- * `listItems` entry whose issue number matches.
+ * The two `projects_write` payloads that move an issue on the Projects v2 board,
+ * from `bkit.github`. Payload keys are the MCP tool's own argument names: the
+ * board item is found by its issue, and Status is set by option name.
  */
 function boardPayload(
   ctx: RunContext,
-  status: string,
+  status: "progress" | "review",
 ): { board: Record<string, unknown> | null; boardSkipped: string | null } {
-  const root = repoRoot(ctx.cwd);
-  const tracker = readBkitConfig(root).issueTracker;
+  const { issueTracker: tracker, github } = readBkitConfig(repoRoot(ctx.cwd));
   if (tracker !== "github") {
     if (tracker === "linear" || tracker === "jira")
       ctx.log("Board status carried by issue state — no separate update.");
     return { board: null, boardSkipped: `tracker-${tracker}` };
   }
-  const gp = readBkitConfig(root).githubProject;
-  if (gp === false) return { board: null, boardSkipped: "opted-out" };
-  const cfg = gp ?? {};
-  const owner = cfg.owner;
-  const number = Number(cfg.number);
-  if (typeof owner !== "string" || owner === "" || !Number.isInteger(number) || number <= 0) {
-    ctx.log("GitHub project not configured in package.json");
-    return { board: null, boardSkipped: "not-configured" };
-  }
-  // projects_write rejects anything but the numeric field id (a `PVTSSF_…` node id
-  // included), so a wrong value is a skip with a reason, not a silent no-op.
-  const raw = cfg.statusFieldId;
-  const fieldId = typeof raw === "number" ? raw : /^[0-9]+$/.test(String(raw)) ? Number(raw) : NaN;
-  if (!Number.isInteger(fieldId)) {
-    ctx.log(`bkit.githubProject.statusFieldId "${String(raw)}" is not the numeric Status field id`);
-    return { board: null, boardSkipped: "status-field-id-not-number" };
-  }
-  const option = cfg[BOARD_OPTION[status]!];
-  if (typeof option !== "string" || option === "") {
-    ctx.log(`bkit.githubProject.${BOARD_OPTION[status]!} is not set`);
-    return { board: null, boardSkipped: "option-id-missing" };
+  if (github.project === false) return { board: null, boardSkipped: "opted-out" };
+  if (github.project === null) {
+    if (github.projectUrl === null) {
+      ctx.log("GitHub project not configured in package.json");
+      return { board: null, boardSkipped: "not-configured" };
+    }
+    ctx.log(`bkit.github.project "${github.projectUrl}" is not a GitHub Projects board URL`);
+    return { board: null, boardSkipped: "project-url-invalid" };
   }
   const issue = String(ctx.flags.issue ?? "").replace(/^#/, "");
   const ownerRepo = String(ctx.flags.ownerRepo ?? "");
@@ -292,22 +274,17 @@ function boardPayload(
       "--board needs --issue=<number> and --owner-repo=<owner>/<repo>",
     );
   }
-  const project = { owner, owner_type: "org", project_number: number };
+  const { owner, ownerType, number } = github.project;
+  const project = { owner, owner_type: ownerType, project_number: number };
+  const item = { item_owner: itemOwner, item_repo: itemRepo, issue_number: Number(issue) };
   return {
     board: {
-      addItem: {
-        method: "add_project_item",
-        ...project,
-        item_type: "issue",
-        item_owner: itemOwner,
-        item_repo: itemRepo,
-        issue_number: Number(issue),
-      },
-      listItems: { method: "list_project_items", ...project, query: issue },
+      addItem: { method: "add_project_item", ...project, item_type: "issue", ...item },
       updateItem: {
         method: "update_project_item",
         ...project,
-        updated_field: { id: fieldId, value: option },
+        ...item,
+        updated_field: { name: "Status", value: github[status] },
       },
     },
     boardSkipped: null,
@@ -326,7 +303,7 @@ function labelsVerb(ctx: RunContext): number {
   if (phase !== undefined && failed === true)
     throw new CommandError(EXIT.USAGE, "--phase clears bkit:failed; drop --failed=on");
   const board = str(ctx.flags.board);
-  if (board !== undefined && BOARD_OPTION[board] === undefined) {
+  if (board !== undefined && !BOARD_STATES.has(board)) {
     throw new CommandError(EXIT.USAGE, "--board must be progress or review");
   }
   const t: LabelTransition = { phase, failed };
@@ -335,7 +312,9 @@ function labelsVerb(ctx: RunContext): number {
     t,
   );
   const { board: payload, boardSkipped } =
-    board === undefined ? { board: null, boardSkipped: null } : boardPayload(ctx, board);
+    board === undefined
+      ? { board: null, boardSkipped: null }
+      : boardPayload(ctx, board as "progress" | "review");
   ctx.emit({
     add,
     remove,
@@ -659,9 +638,9 @@ export const issuesCommand: CommandSpec = {
         autoRouteSuffix: `"${AUTO_ROUTE_SUFFIX}" when the label set carries ${AUTO_LABEL}, else ""`,
         trackerState:
           "Linear or Jira issue state for this transition, from package.json; null under github, none, or no state move",
-        board: "projects payloads {addItem, listItems, updateItem}, or null",
+        board: "projects_write payloads {addItem, updateItem}, or null",
         boardSkipped:
-          "why board is null with --board: opted-out | not-configured | tracker-<name> | …",
+          "why board is null with --board: opted-out | not-configured | project-url-invalid | tracker-<name>",
       },
       run: labelsVerb,
     },

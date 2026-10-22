@@ -21,7 +21,6 @@ import {
   buildGithubProjectAdvisory,
   buildTrackerSetupAdvisory,
   detectActionsWritePermissions,
-  detectGithubProjectFieldIdFormat,
   detectMainBranchProtection,
 } from "./github.js";
 import {
@@ -395,10 +394,6 @@ export function runPostInstallCheck(
   // absent any prerequisite, sync silently no-ops.
   const githubProjectSetup = buildGithubProjectAdvisory(cwd);
   if (githubProjectSetup) phase3.push(githubProjectSetup);
-  // A configured board can still silently no-op if statusFieldId holds the GraphQL
-  // node id instead of the numeric field id projects_write requires.
-  const githubProjectFieldId = detectGithubProjectFieldIdFormat(cwd);
-  if (githubProjectFieldId) phase3.push(githubProjectFieldId);
   const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
   if (depUpdaterSetup) phase3.push(depUpdaterSetup);
   const cloudSetup = buildCloudSetupAdvisory(cwd);

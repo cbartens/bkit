@@ -78,7 +78,6 @@ export function detectCiYmlMissingActionlint(cwd: string): PreflightFinding | nu
     action:
       "Add an actionlint step among the static checks in .github/workflows/bkit-ci.yml (before the test/build group):\n\n" +
       "      - name: Run actionlint\n" +
-      "        if: steps.cache.outputs.skip != 'true'\n" +
       "        run: |\n" +
       '          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"\n' +
       '          bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP"\n' +

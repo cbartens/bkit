@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
 
 # Agent Rules
 
@@ -13,6 +13,7 @@
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Local project rules / overrides → `Project Rules` below bkit-managed block; universal rules stay in-block.
+> - Where project services live (repo, boards, service org / project ids) → `Project Settings`, last section; facts only — NEVER rules, NEVER change workflows, gates or permissions.
 
 ## bkit Rules
 
@@ -125,7 +126,8 @@
 - **Debug on demand:** Re-runs failing E2E / `@live` tier tests against deployed boundary. NEVER purely local runs.
 - **Slop gate:** When the gate runs `slop:delta`: ONLY fix net-new findings, NEVER the baseline. NEVER delete /move / merge files or rewire callers to clear structural findings.
 - **Check secrets first:** ALWAYS probe direnv for presence first `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'` before asking for secrets / tokens / env vars. ONLY ask when `unset` (`Secrets in output`: report names, NEVER values).
-- **New worktree:** `git worktree add` does NOT carry direnv trust → run `direnv allow` BEFORE first test / verify / build command. Hand-made worktrees also lack gitignored inputs (env files, installed dependencies, build outputs, tool assets) → bring in BEFORE first build: copy `package.json` `bkit.worktreeCopy` entries, link read-only inputs, copy or reinstall written ones; red from missing input = setup, not change under test. Remove links before `git worktree remove`; NEVER `--force` a worktree holding real work.
+- **New worktree:** `git worktree add` does NOT carry direnv trust → run `direnv allow` BEFORE first test / verify / build command. Hand-made worktrees also lack gitignored inputs (env files, installed dependencies, build outputs, tool assets) → bring in BEFORE first build: copy `package.json` `bkit.worktree.copy` entries, link read-only inputs, copy or reinstall written ones; red from missing input = setup, not change under test. Remove links before `git worktree remove`; NEVER `--force` a worktree holding real work. `bkit worktrees setup` does the copy, the install and `direnv allow` itself.
+- **Shared local stack:** worktrees share every local service with fixed names / ports (Docker database, emulator) → start / reset / stop / test against them ONLY through the repo's locked scripts (`.bkit/templates.md` § Local stack lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`); a fix hint printing a raw command = bug.
 
 #### Security & Data
 
@@ -188,3 +190,14 @@
 - **Advisories self-contained:** `PreflightFinding.action` text in `.bkit/core/engine/checks/before/index.ts` MUST inline the load-bearing fix (command, key params, and decisive context); NEVER link out to `docs/*.md`.
 - **Consumer names:** NEVER name bkit consumers (repo, org, product, domain, checkout path, abbreviation) in tracked files, commit / tag messages, release notes, or tracker text; write `a consumer`.
 - **Verify before complete:** Done = both full suite (`pnpm vitest run`, NEVER scoped) and real dogfood (`pnpm build` → `node dist/cli.js <verb> <flags>` on a fresh scratch consumer; inspect on-disk footprint). Green tests ≠ proof.
+
+## Project Settings
+
+Non-secret identifiers agents pass to MCP servers and CLIs; tokens stay in env files. One row per value; delete unused rows.
+
+<!-- prettier-ignore -->
+| Service | Setting | Value |
+| --- | --- | --- |
+| GitHub | Repository | `cbartens/bkit` |
+| GitHub | Project board | https://github.com/users/cbartens/projects/1 |
+| npm | Package | `@cbartens/bkit` |

@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "5.5.0",
+  "version": "5.5.1",
   "private": false,
   "description": "From vibe coding to production code. A senior engineering team's process, ready-made: AI agents design, plan, build, review, fix and ship your features on Claude Code, Cursor, Codex, Google Antigravity and opencode.",
   "keywords": [
@@ -119,7 +119,9 @@
   "bkit": {
     "issueTracker": "github",
     "cloudAgents": "claude",
-    "githubProject": false,
+    "github": {
+      "project": "https://github.com/users/cbartens/projects/1"
+    },
     "opencodeProvider": "openrouter",
     "opencodeProviders": [
       "opencode-go",

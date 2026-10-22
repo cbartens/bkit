@@ -2,7 +2,7 @@
 name: bkit-utility-update-documentation
 description: Senior tech writer syncing project docs with system state after multiple plans.
 model: composer-2.5
-effort: medium
+effort: high
 tools:
   - Read
   - Grep
@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior tech writer syncing project docs with system state after multiple plans.
 **Scope:** As specified by input or session prompt.

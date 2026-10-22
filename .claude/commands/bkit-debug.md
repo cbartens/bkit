@@ -1,7 +1,7 @@
 ---
 description: "Debug Feature — Autonomous diagnosis and remediation"
 ---
-<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
 
 # Debug Feature (Workflow 4/5)
 
@@ -28,7 +28,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls always stay on MCP; never invent `gh` read-paths for trackers.
 
 
-> - **Tracker:** GitHub Issues via MCP server `github` (`.mcp.json` `mcpServers.github`). Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
+> - **Tracker:** GitHub Issues via MCP server `github` (`.mcp.json` `mcpServers.github`). Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
 > - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 
@@ -140,7 +140,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** `[repro]` in session prompt → true.
    - **Else** → false.
 
-9. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })` → **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_list({BOARD}.listItems)` → numeric `id` of entry whose content issue number == `{ISSUE_ID}` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
+9. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })` → **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
    `{LABELS}` = entries of `labels`, `{TRACKER_STATE}` = `trackerState`, `{BOARD}` = `board`, printed by (`{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry; sets phase `bkit:debug`, drops prior phase label, `next:*`, `bkit:failed`):
    ```bash
    "{BKIT}" issues labels --phase=debug --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}
@@ -551,7 +551,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** exit 0 → sub-step 8.
    - **If** exit 81 or 80 → **CI wait turn-loop** → re-run this block with `{CI_REENTRY}`.
    - **Else** (1 unresolved verdict, 4 skip token in the pushed body, 5 / 6 / other) → **Failure Path**.
-8. No issue label changes. **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_list({BOARD}.listItems)` → numeric `id` of entry whose content issue number == `{ISSUE_ID}` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
+8. No issue label changes. **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
    `{TRACKER_STATE}` = `trackerState`, `{BOARD}` = `board`, printed by:
    ```bash
    "{BKIT}" issues labels --board=review --issue={ISSUE_ID} --owner-repo={OWNER_REPO}

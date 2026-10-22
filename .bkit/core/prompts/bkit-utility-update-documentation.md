@@ -1,7 +1,7 @@
 ---
 name: bkit-utility-update-documentation
 description: Senior tech writer syncing project docs with system state after multiple plans.
-effort: medium
+effort: high
 model: claude-sonnet-5-5
 tools:
   - Read

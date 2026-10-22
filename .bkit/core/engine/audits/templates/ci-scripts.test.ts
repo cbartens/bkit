@@ -296,8 +296,8 @@ function declaredLanes(env: Record<string, string>): string[] {
 }
 
 /**
- * Per-lane `<LANE>_RESULT` wiring (required) plus the optional `<LANE>_RAN` /
- * `<LANE>_CACHE_SKIP` wiring (checked only when the step sets them), as `key: expected, got` lines.
+ * Per-lane `<LANE>_RESULT` wiring (required) plus the optional `<LANE>_RAN` wiring (checked
+ * only when the step sets it), as `key: expected, got` lines.
  */
 function laneEnvMismatches(lanes: string[], env: Record<string, string>): string[] {
   const out: string[] = [];
@@ -306,7 +306,6 @@ function laneEnvMismatches(lanes: string[], env: Record<string, string>): string
     const wanted: Array<[string, string]> = [
       [`${prefix}_RESULT`, `\${{ needs.bkit-tests-${lane}.result }}`],
       [`${prefix}_RAN`, `\${{ needs.bkit-tests-${lane}.outputs.tests_ran }}`],
-      [`${prefix}_CACHE_SKIP`, `\${{ needs.bkit-tests-${lane}.outputs.cache_skip }}`],
     ];
     for (const [key, expected] of wanted) {
       const required = key.endsWith("_RESULT");
@@ -399,7 +398,6 @@ describe("check-capstone", () => {
       STATIC_RESULT: "success",
       UNIT_RESULT: "success",
       UNIT_RAN: "7",
-      UNIT_CACHE_SKIP: "",
     };
 
     function run(withScript: boolean, env: Record<string, string>) {

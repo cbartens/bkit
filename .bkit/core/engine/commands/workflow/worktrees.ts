@@ -8,7 +8,10 @@
 // reports it. `remove` is the close / cleanup half: it removes only a worktree a
 // workflow created, marked in the git common dir's outbox so the marker outlives
 // the worktree it describes, and with `--branch` deletes the feature branch
-// unless another worktree still holds it.
+// unless another worktree still holds it. A new branch, and a resume rebase,
+// use local `dev` when it is a fast-forward of `origin/dev`: dev pushes wait for
+// a human, so local dev is routinely ahead, and a worktree without those commits
+// builds against superseded work.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -117,11 +120,41 @@ function shipBranch(root: string, fid: string, named: string | undefined, sessio
 }
 
 /**
- * `git worktree add` for `branch`: the local branch, else a tracking branch off
- * `origin`, else (when `mayCreate`) a new branch off a freshly fetched
- * `origin/dev`. Returns false when there was nothing to add and `mayCreate` is off.
+ * The ref a feature branch starts from and rebases onto: local `dev` when it is
+ * strictly ahead of `origin/dev` (a fast-forward of it), else `origin/dev`. With
+ * `log`, says why when the two differ. Fetch first for a current answer.
  */
-function addWorktree(root: string, wt: string, branch: string, mayCreate: boolean): boolean {
+export function devBase(cwd: string, log?: (m: string) => void): string {
+  const local = git(cwd, ["rev-parse", "-q", "--verify", `refs/heads/${DEV}`]);
+  const remote = git(cwd, ["rev-parse", "-q", "--verify", `refs/remotes/${ORIGIN_DEV}`]);
+  if (local === null || remote === null || local === remote) return ORIGIN_DEV;
+  const count = (range: string) => git(cwd, ["rev-list", "--count", range]) ?? "?";
+  if (runGit(cwd, ["merge-base", "--is-ancestor", remote, local]).ok) {
+    log?.(
+      `local ${DEV} is ${count(`${remote}..${local}`)} commit(s) ahead of ${ORIGIN_DEV} — basing on local ${DEV}; push ${DEV} before the feature PR`,
+    );
+    return DEV;
+  }
+  if (!runGit(cwd, ["merge-base", "--is-ancestor", local, remote]).ok) {
+    log?.(
+      `local ${DEV} and ${ORIGIN_DEV} have diverged — basing on ${ORIGIN_DEV}; local ${DEV}'s ${count(`${remote}..${local}`)} commit(s) are not in this worktree`,
+    );
+  }
+  return ORIGIN_DEV;
+}
+
+/**
+ * `git worktree add` for `branch`: the local branch, else a tracking branch off
+ * `origin`, else (when `mayCreate`) a new branch off `devBase` after a fresh
+ * fetch. Returns false when there was nothing to add and `mayCreate` is off.
+ */
+function addWorktree(
+  root: string,
+  wt: string,
+  branch: string,
+  mayCreate: boolean,
+  log: (m: string) => void,
+): boolean {
   let args: string[];
   if (hasLocal(root, branch)) {
     args = [wt, branch];
@@ -135,7 +168,7 @@ function addWorktree(root: string, wt: string, branch: string, mayCreate: boolea
       args = [wt, "--track", "-b", branch, `origin/${branch}`];
     } else if (mayCreate) {
       fetchBranch(root, DEV);
-      args = [wt, "-b", branch, ORIGIN_DEV];
+      args = [wt, "-b", branch, devBase(root, log)];
     } else {
       return false;
     }
@@ -178,6 +211,34 @@ function copyListed(root: string, wt: string, entries: string[], log: (m: string
     copied.push(rel);
   }
   return { copied, copyMissing };
+}
+
+/**
+ * `direnv allow` the worktree's `.envrc` when it matches the main checkout's
+ * byte for byte, so the worktree inherits the trust given there and nothing
+ * more; a differing file is left for a human to read. No `.envrc`, direnv
+ * missing or failing → false, narrated, never fatal.
+ */
+function allowDirenv(root: string, wt: string, log: (m: string) => void): boolean {
+  const envrc = path.join(wt, ".envrc");
+  if (!fs.existsSync(envrc)) return false;
+  const main = path.join(root, ".envrc");
+  if (!fs.existsSync(main) || !fs.readFileSync(main).equals(fs.readFileSync(envrc))) {
+    log(
+      `direnv: ${envrc} differs from the main checkout's — not allowed; read it, then run direnv allow`,
+    );
+    return false;
+  }
+  const res = spawnSync("direnv", ["allow", wt], { cwd: wt, encoding: "utf-8" });
+  if (res.error || res.status === 127) {
+    log("direnv: not installed — run direnv allow in the worktree once it is");
+    return false;
+  }
+  if (res.status !== 0) {
+    log(`direnv allow failed (exit ${res.status}): ${(res.stderr ?? "").trim()}`);
+    return false;
+  }
+  return true;
 }
 
 /** Run the frozen install in `wt`; the exit status, with a spawn failure read as "could not run". */
@@ -331,12 +392,16 @@ export const worktreesCommand: CommandSpec = {
         mode: "created | resumed | adopted",
         owned: "the .worktree-owned marker is present (a workflow created this worktree)",
         rebaseConflict:
-          "a resume rebase onto origin/dev stopped on a conflict and is left in progress",
+          "a resume rebase onto baseRef stopped on a conflict and is left in progress",
         sentinel: "the .rebase-failed sentinel written on a failed rebase, else null",
         logDir: "docs/plans/{month}/logs/{fid} under worktreePath (created)",
-        baseSha: "git merge-base origin/dev HEAD at worktreePath, or null",
+        baseRef:
+          "dev when local dev is a fast-forward of origin/dev (unpushed commits), else origin/dev",
+        baseSha: "git merge-base baseRef HEAD at worktreePath, or null",
         copied: "worktree copy entries copied from the main checkout",
         copyMissing: "worktree copy entries absent from the main checkout",
+        direnvAllowed:
+          "direnv allow ran on the worktree's .envrc (present and identical to the main checkout's)",
         installed: "dependencies were installed",
       },
       exitCodes: {
@@ -415,7 +480,7 @@ export const worktreesCommand: CommandSpec = {
             mode = "resumed";
           } else if (workflow !== "debug" || session !== target) {
             // Debug adopts an existing feat/{fid}; it never mints a branch of its own.
-            if (addWorktree(root, wtDir, target, workflow !== "debug")) mode = "created";
+            if (addWorktree(root, wtDir, target, workflow !== "debug", ctx.log)) mode = "created";
           }
         }
         const wt = mode === "adopted" ? root : wtDir;
@@ -451,16 +516,22 @@ export const worktreesCommand: CommandSpec = {
           // Cleared before every attempt: a sentinel left by an earlier run would
           // send this one to the Failure Path after a clean rebase.
           fs.rmSync(sentinelPath, { force: true });
-          let failure: { conflict: boolean; detail: string } | undefined;
+          let failure: { conflict: boolean; detail: string; onto: string } | undefined;
           if (rebaseInProgress(wt)) {
-            failure = { conflict: true, detail: "a rebase is already in progress" };
+            failure = {
+              conflict: true,
+              detail: "a rebase is already in progress",
+              onto: devBase(wt),
+            };
           } else {
             fetchBranch(wt, DEV);
-            const rb = runGit(wt, ["rebase", "--rebase-merges", ORIGIN_DEV]);
+            const onto = devBase(wt, ctx.log);
+            const rb = runGit(wt, ["rebase", "--rebase-merges", onto]);
             if (!rb.ok) {
               failure = {
                 conflict: rebaseInProgress(wt),
                 detail: [rb.stdout, rb.stderr].filter(Boolean).join("\n"),
+                onto,
               };
             }
           }
@@ -468,10 +539,12 @@ export const worktreesCommand: CommandSpec = {
             fs.mkdirSync(logDir, { recursive: true });
             fs.appendFileSync(
               path.join(logDir, "rebase-resolve-log.md"),
-              `[bkit-worktrees] ${new Date().toISOString()} rebase onto ${ORIGIN_DEV} stopped\n${failure.detail}\n`,
+              `[bkit-worktrees] ${new Date().toISOString()} rebase onto ${failure.onto} stopped\n${failure.detail}\n`,
             );
             fs.writeFileSync(sentinelPath, "");
-            ctx.log(`rebase onto ${ORIGIN_DEV} failed in ${wt}: ${failure.detail.split("\n")[0]}`);
+            ctx.log(
+              `rebase onto ${failure.onto} failed in ${wt}: ${failure.detail.split("\n")[0]}`,
+            );
             rebaseConflict = failure.conflict;
             sentinel = sentinelPath;
           }
@@ -486,9 +559,11 @@ export const worktreesCommand: CommandSpec = {
         const { copied, copyMissing } = done
           ? copyListed(root, wt, config.worktreeCopy, ctx.log)
           : { copied: [], copyMissing: [] };
+        const direnvAllowed = done && allowDirenv(root, wt, ctx.log);
         const wantInstall = done && config.worktreeInstall;
         const installStatus = wantInstall ? install(wt, ctx.log) : 0;
 
+        const baseRef = devBase(wt);
         ctx.emit({
           worktreePath: wt,
           repoRoot: root,
@@ -498,9 +573,11 @@ export const worktreesCommand: CommandSpec = {
           rebaseConflict,
           sentinel,
           logDir,
-          baseSha: git(wt, ["merge-base", ORIGIN_DEV, "HEAD"]),
+          baseRef,
+          baseSha: git(wt, ["merge-base", baseRef, "HEAD"]),
           copied,
           copyMissing,
+          direnvAllowed,
           installed: wantInstall && installStatus === 0,
         });
         if (sentinel !== null)

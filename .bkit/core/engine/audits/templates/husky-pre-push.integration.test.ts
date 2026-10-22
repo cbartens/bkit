@@ -431,6 +431,185 @@ describe(".husky/pre-push disk prune", () => {
 });
 
 // ---------------------------------------------------------------------------
+// .husky/pre-push template fast checks — `bkit check` and the capability register run BEFORE
+// the gates, so a stale register or drifted install stops the push in seconds. Stub
+// `scripts/graphify/bkit-graph-pre-push.sh` logs its env and exits as asked.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push template fast checks", () => {
+  const REPO = process.cwd();
+  const HOOK = ".bkit/templates/.husky/pre-push";
+  const SHA = "c".repeat(40);
+  const UPDATE = `refs/heads/dev ${SHA} refs/heads/dev ${"0".repeat(40)}\n`;
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-fast-")));
+    fs.mkdirSync(path.join(tmp, "bin"));
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  /** Run the template; `register` = the stub register script's exit, or null for no script. */
+  const runHook = (register: number | null, fail = "*skip-token*") => {
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      `#!/bin/sh\ncase "$*" in *"ci min-push"*) exit 1 ;; esac\necho "$*" >> "${tmp}/calls.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    if (register !== null) {
+      fs.mkdirSync(path.join(tmp, "scripts", "graphify"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, "scripts", "graphify", "bkit-graph-pre-push.sh"),
+        `echo "register $PUSH_DEV_SHA $IS_REVERT" >> "${tmp}/calls.log"\nexit ${register}\n`,
+      );
+    }
+    const result = spawnSync("sh", [path.join(REPO, HOOK)], {
+      cwd: tmp,
+      input: UPDATE,
+      encoding: "utf-8",
+      timeout: 20_000,
+      env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
+    });
+    const log = path.join(tmp, "calls.log");
+    const calls = fs.existsSync(log) ? fs.readFileSync(log, "utf-8").trim().split("\n") : [];
+    return { status: result.status, calls };
+  };
+  const gateAt = (calls: string[]) => calls.findIndex((c) => c.startsWith("bkit:gate"));
+
+  it("the register runs before any gate, with the pushed dev commit", () => {
+    const r = runHook(0);
+    expect(r.status).toBe(0);
+    const at = r.calls.indexOf(`register ${SHA} 0`);
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(gateAt(r.calls)).toBeGreaterThan(at);
+  });
+
+  it("a stale register stops the push before any gate runs", () => {
+    const r = runHook(1);
+    expect(r.status).not.toBe(0);
+    expect(r.calls).toContain(`register ${SHA} 0`);
+    expect(gateAt(r.calls)).toBe(-1);
+  });
+
+  it("bkit check fails → the push stops before any gate runs", () => {
+    const r = runHook(0, '*skip-token*|"bkit check"');
+    expect(r.status).not.toBe(0);
+    expect(gateAt(r.calls)).toBe(-1);
+  });
+
+  it("no register script → skipped, the gates still run", () => {
+    const r = runHook(null);
+    expect(r.status).toBe(0);
+    expect(r.calls.some((c) => c.startsWith("register"))).toBe(false);
+    expect(gateAt(r.calls)).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// .husky/pre-push slop base — on a dev push the hook asks scripts/ci/lanes/
+// resolve-push-base.mjs (local mode) for CI's base and hands it to the gates as
+// SLOP_BASE_REF. Stub resolver logs its argv and answers a fixed base + source; stub `pnpm`
+// logs each gate with the SLOP_BASE_REF it sees.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push slop base", () => {
+  const REPO = process.cwd();
+  const SHA = "c".repeat(40);
+  const BASE = "a".repeat(40);
+  const ORIGIN = "d".repeat(40);
+  const devPush = `refs/heads/dev ${SHA} refs/heads/dev ${"0".repeat(40)}\n`;
+  const featurePush = `refs/heads/feat/1-x ${SHA} refs/heads/feat/1-x ${"0".repeat(40)}\n`;
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-slopbase-")));
+    fs.mkdirSync(path.join(tmp, "bin"));
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      [
+        "#!/bin/sh",
+        'case "$*" in *"ci min-push"*|*"ci skip-token"*) exit 1 ;; esac',
+        `echo "$* SLOP_BASE_REF=\${SLOP_BASE_REF:-}" >> "${tmp}/calls.log"`,
+        "exit 0",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: tmp });
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  const adoptResolver = (base: string, source: string) => {
+    fs.mkdirSync(path.join(tmp, "scripts", "ci", "lanes"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, "scripts", "ci", "lanes", "resolve-push-base.mjs"),
+      [
+        'import fs from "node:fs";',
+        `fs.appendFileSync(${JSON.stringify(`${tmp}/calls.log`)}, \`resolver \${process.argv.slice(2).join(" ")}\\n\`);`,
+        `if (process.env.SOURCE_FILE) fs.writeFileSync(process.env.SOURCE_FILE, ${JSON.stringify(`${source}\n`)});`,
+        `process.stdout.write(${JSON.stringify(`${base}\n`)});`,
+        "",
+      ].join("\n"),
+    );
+  };
+
+  const runHook = (hook: string, stdin: string) => {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PATH: `${path.join(tmp, "bin")}:${process.env.PATH}`,
+    };
+    delete env.SLOP_BASE_REF;
+    const result = spawnSync("sh", [path.join(REPO, hook)], {
+      cwd: tmp,
+      input: stdin,
+      encoding: "utf-8",
+      timeout: 20_000,
+      env,
+    });
+    const log = path.join(tmp, "calls.log");
+    const calls = fs.existsSync(log) ? fs.readFileSync(log, "utf-8").trim().split("\n") : [];
+    const gate = calls.find((c) => c.startsWith("bkit:gate")) ?? "";
+    return { status: result.status, stderr: result.stderr, calls, gate };
+  };
+
+  for (const hook of [".bkit/templates/.husky/pre-push", ".husky/pre-push"]) {
+    it(`${hook}: dev push → resolver in local mode on the pushed commit; the gate gets its base`, () => {
+      adoptResolver(BASE, "last-green-run");
+      const r = runHook(hook, devPush);
+      expect(r.status).toBe(0);
+      const at = r.calls.indexOf(`resolver --local --branch=dev --head=${SHA}`);
+      expect(at).toBeGreaterThanOrEqual(0);
+      expect(r.calls.findIndex((c) => c.startsWith("bkit:gate"))).toBeGreaterThan(at);
+      expect(r.gate).toMatch(/^bkit:gate:static-unit /);
+      expect(r.gate).toContain(`SLOP_BASE_REF=${BASE}`);
+      expect(r.stderr).toContain(`slop base: ${BASE} (last-green-run)`);
+    });
+
+    it(`${hook}: non-dev push → no resolver call, the gate keeps the default base`, () => {
+      adoptResolver(BASE, "last-green-run");
+      const r = runHook(hook, featurePush);
+      expect(r.status).toBe(0);
+      expect(r.calls.some((c) => c.startsWith("resolver"))).toBe(false);
+      expect(r.gate).toMatch(/SLOP_BASE_REF=$/);
+    });
+
+    it(`${hook}: failed run lookup → loud warning, origin/dev as the base, push goes on`, () => {
+      adoptResolver(ORIGIN, "origin/dev (run lookup failed)");
+      const r = runHook(hook, devPush);
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain("WARNING: could not read CI's last green run on dev");
+      expect(r.gate).toContain(`SLOP_BASE_REF=${ORIGIN}`);
+    });
+
+    it(`${hook}: no resolver adopted → the gate keeps the default base`, () => {
+      const r = runHook(hook, devPush);
+      expect(r.status).toBe(0);
+      expect(r.gate).toMatch(/^bkit:gate:static-unit .*SLOP_BASE_REF=$/);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // graphify register gate — shipped snippet run for real. Stub
 // `scripts/graphify/bkit-graphify.sh` logs its args and fails `check-at` on request; stub
 // `graphify` on PATH = installed. PATH cut to system dirs so a real graphify cannot answer.

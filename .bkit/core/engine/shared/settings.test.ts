@@ -40,7 +40,7 @@ describe("readBkitConfig", () => {
             capstoneJob: "decide",
             worktree: { copy: [".env", "apps/web/.env.preview"], install: false },
             issueTracker: "linear",
-            githubProject: { number: 1 },
+            github: { project: "https://github.com/users/me/projects/1/views/2", review: "QA" },
             shipGateRequiredLanes: ["bkit-tests-e2e", ""],
           },
         }),
@@ -54,7 +54,12 @@ describe("readBkitConfig", () => {
       worktreeInstall: false,
       issueTracker: "linear",
       issueTrackerExplicit: true,
-      githubProject: { number: 1 },
+      github: {
+        project: { ownerType: "user", owner: "me", number: 1 },
+        projectUrl: "https://github.com/users/me/projects/1/views/2",
+        progress: "In progress",
+        review: "QA",
+      },
       shipGateRequiredLanes: ["bkit-tests-e2e"],
     });
   });
@@ -191,10 +196,23 @@ describe("readBkitConfig", () => {
       expect(minFree(bad)).toBe(CONFIG_DEFAULTS.diskMinFreeGb);
   });
 
-  it("keeps githubProject false as an opt-out, apart from not configured", () => {
-    expect(
-      readBkitConfig(root(JSON.stringify({ bkit: { githubProject: false } }))).githubProject,
-    ).toBe(false);
+  it("reads github.project as a board, false as an opt-out, anything else as not configured", () => {
+    const project = (value: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { github: { project: value } } }))).github;
+    expect(project("https://github.com/orgs/acme/projects/7").project).toEqual({
+      ownerType: "org",
+      owner: "acme",
+      number: 7,
+    });
+    expect(project(false)).toMatchObject({ project: false, projectUrl: null });
+    for (const bad of [
+      "https://github.com/acme/web",
+      "https://github.com/orgs/acme/projects/0",
+      "http://github.com/orgs/acme/projects/7",
+    ])
+      expect(project(bad)).toMatchObject({ project: null, projectUrl: bad });
+    for (const unset of [undefined, "", 7, true, { owner: "acme", number: 7 }])
+      expect(project(unset)).toMatchObject({ project: null, projectUrl: null });
   });
 
   it("falls back per key on a wrongly typed value", () => {

@@ -45,10 +45,8 @@ const CI_UNIT_HEADER_TEMPLATE = `  # Unit lane. Parallel sibling of bkit-tests-s
   # and remote db push move out of this job when you adopt the scaffold below.
   bkit-tests-unit:
     runs-on: ubuntu-latest
-    # bkit-tests-check reads both: cache_skip (a tree-cache short-circuit asserts no count)
-    # and tests_ran (the executed-test count the Run Unit Tests step writes).
+    # bkit-tests-check reads tests_ran (the executed-test count the Run Unit Tests step writes).
     outputs:
-      cache_skip: \${{ steps.cache.outputs.skip }}
       tests_ran: \${{ steps.unit.outputs.ran }}
 `;
 
@@ -58,13 +56,11 @@ const CI_UNIT_HEADER_COPY = `  # Unit lane. Parallel sibling of bkit-tests-stati
     if: fromJSON(needs.bkit-tests-scope.outputs.plan).run_level != 'none'
     runs-on: ubuntu-latest
     # Job-level permissions replace the workflow-level block: pull-requests: write posts
-    # the coverage comment; actions: read keeps the tree cache's run and job lookups working.
+    # the coverage comment.
     permissions:
-      actions: read
       contents: read
       pull-requests: write
     outputs:
-      cache_skip: \${{ steps.cache.outputs.skip }}
       tests_ran: \${{ steps.vitest.outputs.ran }}
 `;
 
@@ -178,7 +174,7 @@ const ADOPTED: Record<string, Entry> = {
           "      # PR-only: materialises the PR base as a worktree and fails on findings this PR ADDS or\n" +
           "      # WORSENS vs base. Needs fetch-depth: 0 (set on checkout) so the base SHA is present.\n" +
           "      - name: Run Slop Delta\n" +
-          "        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request'\n" +
+          "        if: github.event_name == 'pull_request'\n" +
           "        env:\n" +
           "          BASE_SHA: ${{ github.event.pull_request.base.sha }}\n" +
           '        run: pnpm slop:delta "$BASE_SHA"\n',
@@ -188,7 +184,6 @@ const ADOPTED: Record<string, Entry> = {
           "      # green run — and fails on findings this change ADDS or WORSENS vs base. Needs\n" +
           "      # fetch-depth: 0 (set on checkout) so the base SHA is present to materialise as a worktree.\n" +
           "      - name: Run Slop Delta\n" +
-          "        if: steps.cache.outputs.skip != 'true'\n" +
           "        env:\n" +
           "          BASE_SHA: ${{ fromJSON(needs.bkit-tests-scope.outputs.plan).base }}\n" +
           "        run: |\n" +
@@ -317,8 +312,6 @@ const ADOPTED: Record<string, Entry> = {
   },
   "scripts/ci/lanes/resolve-push-base.mjs": identical,
   "scripts/ci/lanes/resolve-push-base.test.mjs": identical,
-  "scripts/ci/lanes/check-tree-cache.mjs": identical,
-  "scripts/ci/lanes/check-tree-cache.test.mjs": identical,
   "scripts/ci/check-accepted-divergences.mjs": {
     status: "not-adopted",
     what: "the accepted-divergence guard is a consumer opt-in; bkit does not wire it into its own CI",
@@ -330,6 +323,10 @@ const ADOPTED: Record<string, Entry> = {
   "scripts/ci/accepted-divergences.json": {
     status: "not-adopted",
     what: "ships with the opt-in guard",
+  },
+  "scripts/ci/bkit-local-stack-lock.sh": {
+    status: "not-adopted",
+    what: "this repo starts no local service that its worktrees share",
   },
   "scripts/ci/check-capstone.mjs": identical,
   "scripts/ci/check-capstone.test.mjs": identical,

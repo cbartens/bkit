@@ -106,6 +106,13 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 
 **Claude sets the bar, and every other tool gets the model that comes closest to it.** On every other tool, each agent runs on the model that does the same job about as well as Claude, for the least money. You don't pick: install sets each agent's model.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-models-dark.svg">
+    <img alt="Change the model, not the effort. The Claude model and effort behind each of bkit's 50 agents and 5 orchestrators. Opus 5.5 at Medium: /bkit-design, /bkit-plan, /bkit-debug, 2 agents; Opus 5.5 at High: 20 agents; Opus 5.5 at Extra: 8 agents; Sonnet 5.5 at Medium: /bkit-build, /bkit-ship, 7 agents; Sonnet 5.5 at High: 8 agents; Haiku 5.5 at High: 5 agents. Fable 5.1 is never pinned: use it by hand to refine an idea before /bkit-design, and at Extra for a bug /bkit-debug is stuck on. Pick the model at launch: claude-opus-5-5 for /bkit-design, /bkit-plan, /bkit-debug; claude-sonnet-5-5 for /bkit-build, /bkit-ship. Leave the effort alone: medium is the default on the 5.5 models, every agent sets its own, and never set CLAUDE_CODE_EFFORT_LEVEL. Past High, move up a model: Extra costs more than the next model up at High. Max is for one hard problem, never routine; ultracode is a setting, not a level." src=".github/assets/bkit-models-light.svg" width="100%">
+  </picture>
+</p>
+
 **How the picks are made.** Each kind of job has a bar: Claude's score on [LiveBench Agentic Coding](https://livebench.ai/#/?cats=Agentic+Coding), a public test where models fix real code in JavaScript, TypeScript and Python. For each tool, bkit takes the **cheapest model that reaches the bar**. Where nothing reaches it, the tool's best model gets the job. One model can fill two columns: on opencode, DeepSeek V4.1 Flash clears the bar for the hardest jobs, so it does the everyday jobs too, for a fraction of Claude's cost. Claude is never used on opencode, because opencode is where work goes when your Claude allowance runs out.
 
 <!-- prettier-ignore -->
@@ -128,6 +135,8 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 - **"Not measured" means LiveBench hasn't scored that model.** Those Codex, Antigravity and Cursor picks follow each vendor's own description of the model. Check them before you rely on them.
 - **Ollama needs a paid plan for every column.** The free models are far below the bar or not scored.
 - **Want a different model for one agent?** On Cursor and opencode, add a row to [Model Overrides](.bkit/prompts.md#model-overrides) and run `bkit install` again. Every agent with its model and thinking depth: [`.bkit/prompts.md` § Models](.bkit/prompts.md#models).
+
+**On Claude Code, each agent also sets its own effort**, so the effort you leave your session on never changes theirs. Start each `/bkit-*` command on the model the picture above shows and leave effort at the default. Session setup in full: [`.bkit/prompts.md` § Orchestrators](.bkit/prompts.md#orchestrators-slash-commands).
 
 <a id="why-its-different"></a>
 

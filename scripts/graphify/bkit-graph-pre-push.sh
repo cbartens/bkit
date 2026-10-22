@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Example. Paste at the end of your .husky/pre-push, below the bkit lines, and own it.
+# Example. Copy to scripts/graphify/ and own it. The bkit .husky/pre-push template runs it
+# above the gates, so a stale register blocks in ~30s, not after the full gate; an older hook
+# copy lacks that call → re-copy the "Capability register" block from the template.
 # bkit install does not write this file and does not overwrite a copy.
 #
 # Capability register current on dev. BLOCKS a push to dev when docs/capabilities.md is not

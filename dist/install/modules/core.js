@@ -11,6 +11,7 @@ import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
+import { CONFIG_DEFAULTS } from "../../shared/settings.js";
 import { getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
 import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_PUSH_GATES, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
 export function listMdFiles(dir, prefix) {
@@ -318,7 +319,85 @@ export function seedCorePackageJsonScripts(ctx) {
     if (migrateLinearTeamKey(dryRun, ws, logPrefix) && !written.includes("package.json")) {
         written.push("package.json");
     }
+    if (migrateGithubProjectKey(dryRun, ws, logPrefix) && !written.includes("package.json")) {
+        written.push("package.json");
+    }
     return written;
+}
+/** Rewrite package.json with `pkg`, keeping the file's indent and trailing newline. */
+function writePackageJsonLike(raw, pkg) {
+    const indentMatch = raw.match(/\n([ \t]+)"/);
+    const indent = indentMatch ? indentMatch[1] : "  ";
+    const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+    fs.writeFileSync("package.json", JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+}
+// Status option ids of GitHub's Kanban and Team planning board templates; every board
+// made from one carries the same ids.
+const TEMPLATE_STATUS_OPTIONS = {
+    "47fc9ee4": "In progress",
+    df73e18b: "In review",
+};
+// Migration (up to 5.4.x installs, `docs/migrations.md`): the board lived at
+// `bkit.githubProject` as `{owner, number, statusFieldId, *OptionId}`, org boards only; it
+// is `bkit.github.project`, the board URL, with Status set by option name from
+// `bkit.github.progress` / `review`. An existing `bkit.github.project` wins over the old
+// key. Returns true when package.json changed.
+export function migrateGithubProjectKey(dryRun, ws, logPrefix) {
+    const pkgPath = "package.json";
+    if (!fs.existsSync(pkgPath))
+        return false;
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    const parsed = parseJson(raw);
+    if (!parsed.ok)
+        return false;
+    const pkg = parsed.value;
+    const bkit = pkg.bkit;
+    if (bkit === null || typeof bkit !== "object" || Array.isArray(bkit))
+        return false;
+    const cfg = bkit;
+    if (!Object.prototype.hasOwnProperty.call(cfg, "githubProject"))
+        return false;
+    const old = cfg.githubProject;
+    const github = cfg.github !== null && typeof cfg.github === "object" && !Array.isArray(cfg.github)
+        ? cfg.github
+        : {};
+    const unnamed = [];
+    if (github.project === undefined) {
+        if (old === false)
+            github.project = false;
+        else if (old !== null && typeof old === "object" && !Array.isArray(old)) {
+            const board = old;
+            const owner = typeof board.owner === "string" ? board.owner.trim() : "";
+            const number = Number(board.number);
+            if (owner !== "" && Number.isInteger(number) && number > 0) {
+                github.project = `https://github.com/orgs/${owner}/projects/${number}`;
+                for (const [moment, key] of [
+                    ["progress", "progressOptionId"],
+                    ["review", "reviewOptionId"],
+                ]) {
+                    const id = board[key];
+                    if (typeof id !== "string" || id.trim() === "")
+                        continue;
+                    const name = TEMPLATE_STATUS_OPTIONS[id.trim()];
+                    if (name === undefined)
+                        unnamed.push(moment);
+                    else if (github[moment] === undefined && name !== CONFIG_DEFAULTS.github[moment])
+                        github[moment] = name;
+                }
+            }
+        }
+    }
+    delete cfg.githubProject;
+    if (Object.keys(github).length > 0)
+        cfg.github = github;
+    ws.writes.push({ path: pkgPath, action: "update" });
+    if (!dryRun)
+        writePackageJsonLike(raw, pkg);
+    const tag = dryRun ? "[dry-run] " : "";
+    console.log(`${logPrefix} ${tag}core: moved bkit.githubProject to bkit.github in package.json`);
+    for (const moment of unnamed)
+        console.log(`${logPrefix} ${tag}core: bkit.githubProject named its ${moment} Status option by id; set bkit.github.${moment} to that option's name (default "${CONFIG_DEFAULTS.github[moment]}")`);
+    return true;
 }
 // Migration (up to 5.4.x installs, `docs/migrations.md`): the Linear team lived at
 // `bkit.linearTeam`; it is `bkit.linear.team`, beside the project and state names. An
@@ -348,12 +427,8 @@ export function migrateLinearTeamKey(dryRun, ws, logPrefix) {
     if (Object.keys(linear).length > 0)
         cfg.linear = linear;
     ws.writes.push({ path: pkgPath, action: "update" });
-    if (!dryRun) {
-        const indentMatch = raw.match(/\n([ \t]+)"/);
-        const indent = indentMatch ? indentMatch[1] : "  ";
-        const trailingNewline = raw.endsWith("\n") ? "\n" : "";
-        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
-    }
+    if (!dryRun)
+        writePackageJsonLike(raw, pkg);
     console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: moved bkit.linearTeam to bkit.linear.team in package.json`);
     return true;
 }

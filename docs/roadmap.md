@@ -9,9 +9,11 @@ _(above the bkit list — yours, never overwritten)_
 <!-- bkit:roadmap-status start -->
 > Generated tables — do not hand-edit the `bkit` tables; append to `.bkit/issues.jsonl` instead (an `ABANDONED` row hides a FID from every section). `## Notes` blocks are yours and are never overwritten. Everything above the first marker is also yours. notes-post is last. Analysis list length: `package.json` key `bkit.roadmapNext` (positive integer; absent or invalid → 25).
 
+> Related utilities, run on demand: `@bkit-utility-update-roadmap` ranks the next best items in `docs/roadmap.md`; `@bkit-utility-update-tracker` brings tracker issues in line with the tracker rules; `@bkit-utility-update-deferrals` and `@bkit-utility-update-failures` close ledger rows the code already resolved; `@bkit-utility-update-decisions`, `@bkit-utility-update-knowledge` and `@bkit-utility-update-documentation` correct ledgers and docs the code has since contradicted.
+
 ## bkit
 
-_(refreshed 2026-10-14T03:52:45Z)_
+_(refreshed 2026-10-22T01:47:22Z)_
 
 ### Design
 
@@ -26,6 +28,8 @@ _(refreshed 2026-10-14T03:52:45Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 504-example-project | 504-example-project | 1791870640742 |
+| 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792633114622 |
+| 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 
 ### Build
 

@@ -106,9 +106,11 @@ describe("bkit worktrees setup — adopt in place", () => {
       rebaseConflict: false,
       sentinel: null,
       logDir: path.join(cwd, "docs/plans", MONTH, "logs", FID),
+      baseRef: "origin/dev",
       baseSha: null,
       copied: [],
       copyMissing: [],
+      direnvAllowed: false,
       installed: false,
     });
     expect(fs.existsSync(path.join(cwd, ".worktrees"))).toBe(false);

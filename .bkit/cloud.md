@@ -1,6 +1,6 @@
 # Cloud agent environments — Claude Code on the web + Cursor Cloud Agents + opencode
 
-<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Canonical reference for Claude Code on the web (mobile / web), Cursor Cloud Agents, and opencode cloud runners. Claude + opencode → **GitHub** tracker (unified `bkit-cloud.yml`); Cursor → **Linear**; **Jira** → local runs only (no Jira-side cloud trigger). Not interchangeable per repo — pick agent matching your tracker (see § Cloud-agent support matrix).
@@ -177,12 +177,12 @@ SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/da
 | Issues | Read & write | `gh issue` |
 | Actions | Read & write | `gh run view` logs, `gh workflow run` |
 | Workflows | Read & write | `gh workflow` (edit `.github/workflows/*`) |
-| Projects (org) | Read & write | GitHub Projects v2 board status sync (`bkit.githubProject`) — org-owned boards only; see note |
+| Projects (org) | Read & write | GitHub Projects v2 board status sync (`bkit.github.project`) — org-owned boards only; see note |
 | Metadata | Read | mandatory, auto-included |
 
 `gh` does **not** read `BKIT_GH_TOKEN` — pipe once after session start: `printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token` (e.g. in `.claude/hooks/bkit-cloud-bootstrap.sh`). Locally, `gh auth login` and leave `GH_TOKEN` unset so keyring not overridden.
 
-> **Projects v2 board sync (`bkit.githubProject`):** **Projects** permission is **Organization** permission (table row above) — appears only when token **resource owner is the org**, _not_ personal account; org may require token **approved**. Under token UI **Organizations** tab, not Repository permissions; governs `…/orgs/{org}/projectsV2/…`. User-owned (personal-account) boards unreachable by fine-grained PATs — see below.
+> **Projects v2 board sync (`bkit.github.project`):** **Projects** permission is **Organization** permission (table row above) — appears only when token **resource owner is the org**, _not_ personal account; org may require token **approved**. Under token UI **Organizations** tab, not Repository permissions; governs `…/orgs/{org}/projectsV2/…`. User-owned (personal-account) boards unreachable by fine-grained PATs — see below.
 
 #### When classic is still required
 

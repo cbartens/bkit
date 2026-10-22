@@ -12,9 +12,12 @@
 //
 // Default paths: `.agents`, `docs`, `README.md`. A directory walk skips `skills/` trees (vendored)
 // and `docs/audits/` + `docs/plans/` (records, kept as written); a file named explicitly is always
-// processed. Tables inside fenced code blocks (``` / ~~~) and tables already wrapped are skipped.
+// processed. Tables inside fenced code blocks (``` / ~~~), inside `<!-- -->` comment blocks, and
+// already wrapped are skipped.
 // `--check` writes nothing and exits 1 if any file would change — use it as a gate.
-// Exit 1 also on table damage escaping cannot repair (see auditText), with or without --check.
+// Exit 1 also on table damage escaping cannot repair (see auditText), with or without --check —
+// except in the record trees, where the damage is printed as a warning: a record holds text quoted
+// from elsewhere (issue comments, CI logs), so nobody can fix it there.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -28,6 +31,8 @@ const INLINE_CODE = /`[^`\n]*`/g;
 const DEFAULT_ROOTS = [".agents", "docs", "README.md"];
 // Record trees: written once, never reformatted.
 const RECORD_DIRS = ["docs/audits", "docs/plans"];
+const relTo = (root, p) => path.relative(root, path.resolve(root, p)).split(path.sep).join("/");
+const isRecord = (r) => RECORD_DIRS.some((d) => r === d || r.startsWith(`${d}/`));
 
 const stripNl = (line) => line.replace(/\n$/, "");
 const leadingSpaces = (line) => /^ */.exec(line)[0];
@@ -85,25 +90,32 @@ function normalizeSeparator(line) {
   return `${leadingSpaces(line)}| ${cells.join(" | ")} |${nl}`;
 }
 
-// ``` / ~~~ fences across a line walk. Shared by processText and auditText so they never disagree:
-// a table inside a fence is illustrative text, neither rewritten nor reported.
-class FenceTracker {
-  inFence = false;
+// ``` / ~~~ fences and `<!-- -->` comment blocks across a line walk. Shared by processText and
+// auditText so they never disagree: a table inside either is illustrative or hidden text, neither
+// rewritten nor reported. A comment block follows CommonMark's HTML-block rule: it opens on a line
+// starting with `<!--` and runs to the first line containing `-->`, so a one-line comment such as
+// `<!-- prettier-ignore -->` hides nothing below it. Inserting that one-liner inside an open
+// comment would close the comment early and expose everything after it.
+class OpaqueBlockTracker {
   marker = "";
 
-  // True when `line` opens, sits inside, or closes a fence.
+  // True when `line` opens, sits inside, or closes a fence or a comment block.
   feed(line) {
     const s = line.trimStart();
-    if (!this.inFence) {
-      if (s.startsWith("```") || s.startsWith("~~~")) {
-        this.inFence = true;
-        this.marker = s.startsWith("```") ? "```" : "~~~";
-        return true;
-      }
-      return false;
+    if (this.marker) {
+      const closes = this.marker === "-->" ? line.includes("-->") : s.startsWith(this.marker);
+      if (closes) this.marker = "";
+      return true;
     }
-    if (s.startsWith(this.marker)) this.inFence = false;
-    return true;
+    if (s.startsWith("```") || s.startsWith("~~~")) {
+      this.marker = s.slice(0, 3);
+      return true;
+    }
+    if (s.startsWith("<!--")) {
+      if (!s.slice(4).includes("-->")) this.marker = "-->";
+      return true;
+    }
+    return false;
   }
 }
 
@@ -112,7 +124,7 @@ const linesWithEnds = (src) => src.match(/[^\n]*\n|[^\n]+$/g) ?? [];
 export function processText(src) {
   const lines = linesWithEnds(src);
   const out = [];
-  const fence = new FenceTracker();
+  const fence = new OpaqueBlockTracker();
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
@@ -158,7 +170,7 @@ export function processText(src) {
 // Run on the POST-format text, so nothing escaping already fixed is reported twice.
 export function auditText(src) {
   const lines = src.split("\n");
-  const fence = new FenceTracker();
+  const fence = new OpaqueBlockTracker();
   const problems = [];
   let i = 0;
   while (i < lines.length) {
@@ -202,13 +214,9 @@ export function auditText(src) {
 // Markdown files under the given roots. Walks skip `skills/` trees (third-party content: any file
 // whose PARENT dirs include `skills`, so a file merely named skills.md is kept) and the record trees.
 export function collectTargets(args, root = process.cwd()) {
-  const rel = (p) => path.relative(root, path.resolve(root, p)).split(path.sep).join("/");
   const walked = (p) => {
-    const r = rel(p);
-    return (
-      !path.dirname(r).split("/").includes("skills") &&
-      !RECORD_DIRS.some((d) => r === d || r.startsWith(`${d}/`))
-    );
+    const r = relTo(root, p);
+    return !path.dirname(r).split("/").includes("skills") && !isRecord(r);
   };
   const files = [];
   for (const arg of args.length ? args : DEFAULT_ROOTS) {
@@ -237,6 +245,7 @@ export function main(argv, { root = process.cwd(), log = console.log } = {}) {
   let changed = 0;
   const unformatted = [];
   const problems = [];
+  const warnings = [];
   for (const file of targets) {
     const abs = path.resolve(root, file);
     const src = fs.readFileSync(abs, "utf8");
@@ -249,7 +258,8 @@ export function main(argv, { root = process.cwd(), log = console.log } = {}) {
         log(`updated: ${file}`);
       }
     }
-    for (const p of auditText(next)) problems.push([file, ...p]);
+    const found = isRecord(relTo(root, file)) ? warnings : problems;
+    for (const p of auditText(next)) found.push([file, ...p]);
   }
   if (checkOnly) {
     for (const file of unformatted) log(`needs formatting: ${file}`);
@@ -257,15 +267,25 @@ export function main(argv, { root = process.cwd(), log = console.log } = {}) {
   } else {
     log(`\n${changed}/${targets.length} files updated`);
   }
+  const report = (list) => {
+    for (const [file, lineNo, kind, detail] of list) {
+      log(`  ${file}:${lineNo}  [${kind}]`);
+      log(`      ${detail}`);
+    }
+  };
   if (problems.length) {
     log(
       `\n${problems.length} table defect(s) escaping cannot repair — a pipe in plain cell\n` +
         "prose is indistinguishable from a column delimiter, so these need a human:\n",
     );
-    for (const [file, lineNo, kind, detail] of problems) {
-      log(`  ${file}:${lineNo}  [${kind}]`);
-      log(`      ${detail}`);
-    }
+    report(problems);
+  }
+  if (warnings.length) {
+    log(
+      `\nWARN: ${warnings.length} table defect(s) in records (${RECORD_DIRS.join(", ")}) — kept as\n` +
+        "written, not a failure:\n",
+    );
+    report(warnings);
   }
   return problems.length || unformatted.length ? 1 : 0;
 }

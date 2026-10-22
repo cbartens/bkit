@@ -28,7 +28,7 @@ description: "Design Feature — Autonomous design phase"
 
 <!-- bkit:tracker github start -->
 
-> - **Tracker:** GitHub Issues via MCP server `github` (`.mcp.json` `mcpServers.github`). Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
+> - **Tracker:** GitHub Issues via MCP server `github` (`.mcp.json` `mcpServers.github`). Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
 > - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 
@@ -156,7 +156,7 @@ description: "Design Feature — Autonomous design phase"
    Set phase `bkit:design` → `mcp__jira__editJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", fields: { labels: [{LABELS}] } })` → move status to `{TRACKER_STATE}` (**Tracker** status change).
    <!-- bkit:tracker jira end -->
    <!-- bkit:tracker github start -->
-   **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_list({BOARD}.listItems)` → numeric `id` of entry whose content issue number == `{ISSUE_ID}` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
+   **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
    No-op (log `Board status carried by issue state — no separate update.`).
@@ -548,7 +548,7 @@ description: "Design Feature — Autonomous design phase"
    - **If** exit 80 at `stage` = merge → `merge_pull_request` with the printed `subject`, empty body → re-run with `--pr={prNumber} --merged-sha=<merge commit>`.
    - **Else** → **Failure Path**.
 3. <!-- bkit:tracker github start -->
-   No label changes. **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_list({BOARD}.listItems)` → numeric `id` of entry whose content issue number == `{ISSUE_ID}` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
+   No label changes. **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
    Update state only; do not change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.

@@ -192,7 +192,9 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     const step = content.slice(content.indexOf("# - name: Report Unit Coverage\n"));
     const block = step.slice(0, step.indexOf("# - name: Report Integration Coverage on PR"));
     expect(block).toContain("#     vite-config-path: vitest.unit.config.ts");
-    expect(block).toContain("#   if: ${{ !cancelled() && steps.cache.outputs.skip != 'true'");
+    expect(block).toContain(
+      "#   if: ${{ !cancelled() && hashFiles('coverage/unit/coverage-summary.json')",
+    );
     expect(block).toContain(
       "#     comment-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) && 'pr' || 'none' }}",
     );

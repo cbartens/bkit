@@ -1,7 +1,7 @@
 ---
 name: bkit-ship-update-docs
 description: Senior tech writer syncing project docs with state shipped this cycle.
-model: cursor-grok-4.5-high
+model: composer-2.5
 effort: high
 tools:
   - Read
@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior tech writer syncing project docs with state shipped this cycle.
 **Scope:** As specified by input and Read / Update / Create section.

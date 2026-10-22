@@ -1,6 +1,6 @@
 # bkit — Agent Workflow System
 
-<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **bkit** wires Claude Code, Cursor, Codex, Google Antigravity and opencode into five-phase tracker-integrated cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts additive, one flag each: `--claude`, `--cursor`, `--codex`, `--antigravity`, `--opencode=<provider>` — opencode providers: `openrouter`, `ollama`, `opencode-zen` + `opencode-go` (opencode-native gateways; auth via `BKIT_OPENCODE_API_KEY`). Same harness on every host; state lives in the repo, so a feature moves between hosts mid-run (see `.bkit/providers.md` § Hosts + Providers).
 
@@ -15,7 +15,7 @@ Typical cycle for `ISSUE-123` "Add feature X":
 1. **Tracker issue** with **`bkit:auto`** label + non-terminal state (`Backlog`, `In Progress`).
 2. **Trigger** — tracker comment (`@cursor /bkit-plan ISSUE-123`) or slash command (`/bkit-plan ISSUE-123`).
 3. **Workflow Step 1** — preflight checks `bkit:auto`, acquires `.lock`, sets `bkit:plan` + `In Progress`, creates workflow comment.
-4. **Step 2 — worktree** — git worktree at `.worktrees/issue-123-add-feature/` on `feat/issue-123-add-feature`. Copies each `bkit.worktree.copy` path from the main checkout (a `package.json` setting; default `.env`, `.env.local`; exact paths, folders copy recursively; a missing one is logged, never fatal), then `pnpm install --frozen-lockfile` unless `bkit.worktree.install: false`.
+4. **Step 2 — worktree** — git worktree at `.worktrees/issue-123-add-feature/` on `feat/issue-123-add-feature`, cut from `origin/dev` (local `dev` when it holds unpushed commits on top). Copies each `bkit.worktree.copy` path from the main checkout (a `package.json` setting; default `.env`, `.env.local`; exact paths, folders copy recursively; a missing one is logged, never fatal), runs `direnv allow` when the worktree's `.envrc` matches the main checkout's, then `pnpm install --frozen-lockfile` unless `bkit.worktree.install: false`.
 5. **Phase steps** — dispatches subagents (`@bkit-plan-generate`, then `@bkit-plan-review-1` ‖ `-2` ‖ `-3` parallel triplet, etc.). Each writes `docs/plans/{YYYYMM}/logs/{FID}/` (`{YYYYMM}` = canonical month bucket at design start), appends fenced section to tracker comment.
 6. **Phase summary** — verdict (`PASS` / `CONCERNS` / `FAIL`); commit `chore(issue-123-…): summary bkit [skip ci]` (design/plan) or `chore(issue-123-…): summary` (build/debug/ship) → push.
 7. **Close Workflow** — tracker `In Review`; phase label persists. `/bkit-design` / `/bkit-plan`: prune worktree, delete `feat/issue-123-…` (merged into `dev`). `/bkit-build` / `/bkit-debug`: worktree persists.

@@ -14,7 +14,7 @@
 
 ## What each template is for
 
-Adoption order = `bkit tips` order. Sections below: install steps and traps.
+Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a repo shows a stack every worktree shares) → adopt it once a second worktree touches that stack. Sections below: install steps and traps.
 
 <!-- prettier-ignore -->
 | Template | What it's for | Skip it and |
@@ -38,6 +38,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Prettier tables | One edited cell = one changed row in the diff. | A one-word table edit diffs as the whole table. |
 | tmp/ prune | Each push deletes scratch files agents left in `tmp/` untouched for a week. | `tmp/` keeps growing; old logs and scratch files are never cleared. |
 | Disk prune | Your own cleanup steps (build caches, Docker, simulators) run on commit, on push, and before a worktree is made on a low disk. bkit deletes nothing itself. | Caches fill the disk until no worktree can be made; every workflow stops. |
+| Local stack lock | One run at a time on local services every worktree shares (Docker database, emulator); a second run waits and names the run holding them. | A reset or stop from one worktree wipes the stack under another worktree's test run; the failures look like real bugs. |
 | Cursor editor + cloud agent | Format-on-save, recommended extensions, Cursor cloud-agent image. | Cursor edits miss project formatting; no Cursor cloud agent. |
 | Launchd GUI env | macOS apps opened from the Dock get the same tokens as the terminal. | Dock-launched editors start signed out. |
 
@@ -47,7 +48,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Tool | Copy from | To | Output you commit |
 | --- | --- | --- | --- |
 | CI workflow | `.bkit/templates/.github/workflows/bkit-ci.yml` | `.github/workflows/bkit-ci.yml` | that file |
-| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/resolve-push-base.mjs`; `lanes/check-tree-cache.mjs` + `.test.mjs`, which `bkit-ci.yml`'s `Check Tree Cache` runs; `check-accepted-divergences.mjs` + `accepted-divergences.json`; `check-dependency-audit.mjs` + `accepted-advisories.json`). `check-capstone.mjs` + `check-capstone.test.mjs` are required with `bkit-ci.yml`, not optional |
+| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/resolve-push-base.mjs` + `.test.mjs`, CI's push base, also run by pre-push; `check-accepted-divergences.mjs` + `accepted-divergences.json`; `check-dependency-audit.mjs` + `accepted-advisories.json`). `check-capstone.mjs` + `check-capstone.test.mjs` are required with `bkit-ci.yml`, not optional |
 | Cloud-agent workflow | `.bkit/templates/.github/workflows/bkit-cloud.yml` | `.github/workflows/bkit-cloud.yml` | that file |
 | Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
 | Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |
@@ -69,6 +70,7 @@ Adoption order = `bkit tips` order. Sections below: install steps and traps.
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 | tmp/ prune | `.bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs` | `scripts/cleanup/` | that file |
 | Disk prune | `.bkit/templates/scripts/cleanup/bkit-disk-prune.mjs`, `bkit-disk-prune.machine.mjs` | `scripts/cleanup/bkit-disk-prune.mjs`, `~/.config/bkit/disk-prune.mjs` | `scripts/cleanup/bkit-disk-prune.mjs` only |
+| Local stack lock | `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` | `scripts/ci/` | that file |
 | Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
 | Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file |
 
@@ -86,7 +88,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
 - **What changed on upgrade.** `bkit upgrade` lists changed / added / removed template paths. For each one you adopted: `diff .bkit/templates/<path> <path>`, merge what you want (placeholder lines differ by design). `git diff .bkit/templates` in the upgrade commit = the package change.
 - Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) → ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini`, `slop-scan.config.json` and `.oxlintrc.json` templates already do; check your adopted copy does too.
-- Templates are written in Node unless the tool they wrap already needs another runtime (graphify and Serena: Python + shell launchers; git hooks: POSIX `sh`).
+- Templates are written in Node unless the tool they wrap already needs another runtime (graphify and Serena: Python + shell launchers; git hooks: POSIX `sh`; local stack lock: bash + perl, as shell runners source it).
 - `bkit.depUpdater: "none"` → skips install-time absence advisory for updaters.
 - No manifest key for any template. `docs/templates/bkit-audit-adoption.md` lists every template each run: adopted and wired, or not adopted and why.
 
@@ -183,7 +185,7 @@ Parallel lanes `bkit-tests-static` (typecheck, lint, prettier, Vale, slop, actio
 
 - Install: nothing beyond the gate tool scripts above, a `test` script, and `packageManager` in `package.json` (`pnpm/action-setup` reads it; do not add `with: version:`).
 - Adapt: `{{DEFAULT_BRANCH}}`, `{{NODE_VERSION}}`. Non-Node repo → replace the Node / pnpm setup, install and check steps with your stack's.
-- Capstone: `bkit-tests-check` `needs:` every lane and runs on `!cancelled()`, never `always()`. Each lane you adopt from the reference goes into its `needs:` and its assert, or that lane's failure cannot red the merge. Its assert is `scripts/ci/check-capstone.mjs` (copy it and `check-capstone.test.mjs` from `.bkit/templates/scripts/ci/` with the workflow; REQUIRED — the step reds with a copy-the-script message when the file is missing, and never skips). The script reds on a lane that did not succeed, a lane that ran when the plan said skip, a lane that succeeded with 0 tests or a non-numeric count, and a plan that does not parse. It reads each lane's executed-test count once the lane writes one (the `Run Unit Tests` step comment shows the vitest form); `EMPTY_COUNT: warn` makes an unreported count a warning, a count of 0 a failure. Each lane you adopt goes into `LANES` and its `<LANE>_RESULT` / `<LANE>_RAN` / `<LANE>_CACHE_SKIP` variables. Renaming the job → set `bkit.capstoneJob`.
+- Capstone: `bkit-tests-check` `needs:` every lane and runs on `!cancelled()`, never `always()`. Each lane you adopt from the reference goes into its `needs:` and its assert, or that lane's failure cannot red the merge. Its assert is `scripts/ci/check-capstone.mjs` (copy it and `check-capstone.test.mjs` from `.bkit/templates/scripts/ci/` with the workflow; REQUIRED — the step reds with a copy-the-script message when the file is missing, and never skips). The script reds on a lane that did not succeed, a lane that ran when the plan said skip, a lane that succeeded with 0 tests or a non-numeric count, and a plan that does not parse. It reads each lane's executed-test count once the lane writes one (the `Run Unit Tests` step comment shows the vitest form); `EMPTY_COUNT: warn` makes an unreported count a warning, a count of 0 a failure. Each lane you adopt goes into `LANES` and its `<LANE>_RESULT` / `<LANE>_RAN` variables. Renaming the job → set `bkit.capstoneJob`.
 - Adopt a scaffold lane only when its tier exists (`docs/testing.md`). Each `# bkit-stub:<id> —` header raises an install advisory until you enable or delete that stub.
 - Keep the `name: bkit-ci` line, or rename `workflows: [bkit-ci]` in `bkit-cloud.yml` and set `bkit.ciWorkflow` to the new file name.
 - Keep `fetch-depth: 0` on the static lane: `slop:delta` checks the PR base out as a worktree.
@@ -199,7 +201,7 @@ Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; f
 
 ## Git hooks — Husky
 
-`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit:gate:static-unit-integration` when package.json declares it, else `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits; `bkit:gate:min` on a min push), then `bkit check`, plus the CI-suppressing-token guards and the `tmp/` prune (§ tmp/ prune). Each hook ends by starting the disk prune (§ Disk prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. One exception: the throwaway `.worktrees/_land-{FID}` checkout that lands bookkeeping on `dev` (docs, logs, ledgers, `[skip ci]`) runs no hooks and logs that it skipped them. Reference: https://typicode.github.io/husky/.
+`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit check` first, so a drifted install fails in seconds, then `bkit:gate:static-unit-integration` when package.json declares it, else `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits; `bkit:gate:min` on a min push), plus the CI-suppressing-token guards and the `tmp/` prune (§ tmp/ prune). Each hook ends by starting the disk prune (§ Disk prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. One exception: the throwaway `.worktrees/_land-{FID}` checkout that lands bookkeeping on `dev` (docs, logs, ledgers, `[skip ci]`) runs no hooks and logs that it skipped them. Reference: https://typicode.github.io/husky/.
 
 ```bash
 pnpm add -D husky@^9.1.7   # plus "prepare": "husky" (§ Gate tool scripts)
@@ -211,6 +213,7 @@ chmod +x .husky/pre-commit .husky/pre-push
 - Min push: every file changed since each pushed commit left `origin/dev` (else `origin/main`) matches `bkit.minPushPaths` (`package.json` globs: `*` one folder, `**` any depth; default `docs/plans/**`, `docs/*.jsonl`, `.bkit/*.jsonl`; `[]` = off) → `bkit:gate:min` replaces the full gate; `MIN_PUSH=1`. `bkit ci min-push` decides from files, never `[skip ci]` (a typed label; GitHub reads the last commit only). No files / unreadable range / no ref list → full gate.
 - Min-push paths: files no code, build or test reads. Never `docs/**` (a doc can be test input). A test reading a ledger → into `bkit:gate:min`.
 - `[skip ci]` guards: feature branch → blocked only while a PR is open (workflows push `[skip ci]` code heads mid-run). `dev` / `main` → blocked unless a min push: GitHub skips CI for the whole push.
+- Slop base: `dev` push + `scripts/ci/lanes/resolve-push-base.mjs` copied → the hook runs it with `--local --branch=dev --head=<pushed sha>` and exports `SLOP_BASE_REF` = CI's push base (head of the last green CI push run on `dev`, else `origin/dev`), printing the base and its source. Pre-push and CI slop then share a base, so a finding an earlier red push landed fails locally too. Run lookup fails (`gh` missing, logged out) → loud `WARNING`, base `origin/dev`, push goes on. Other branches, or no copy → `bkit ci slop` merge-base default. A repo-owned pre-push check that diffs against CI's base (migration immutability) reads `SLOP_BASE_REF` when set.
 - Slow repo extras (Docker, database, build) → wrap in `if [ "$MIN_PUSH" != "1" ]; then … fi`.
 - Traps: hooks run on every workflow commit; keep them to seconds (pre-commit) and deterministic checks that reach no deployed service (pre-push). Integration runs at pre-push once `bkit:gate:static-unit-integration` is declared (a local database in Docker is fine); E2E and `@live` belong in CI.
 - Run each check once: nothing in `bkit:gate:format` that the push gate runs again (`gate-commit-repeats-push` advisory), and `pnpm test` (the unit tier) matches no `*.integration.test.*` file — a unit config with no integration exclude runs those tests in the unit gate and again in the integration gate.
@@ -255,7 +258,7 @@ vale sync
 
 ## slop-scan — `slop-scan.config.json`
 
-`lint:slop` reports; `slop:delta` (`bkit ci slop`, in `bkit:gate:static`) fails on net-new findings against the base. Reference: https://github.com/benvinegar/slop-scan.
+`lint:slop` reports; `slop:delta` (`bkit ci slop`, in `bkit:gate:static`) fails on net-new findings against the base: `--base` / bare argument, else `$SLOP_BASE_REF`, else the merge-base with `origin/dev` (else `origin/main`). CI passes its planner base; pre-push on a `dev` push exports the same base as `SLOP_BASE_REF` (§ Git hooks), so both compare against the last green CI push run. Reference: https://github.com/benvinegar/slop-scan.
 
 ```bash
 pnpm add -D slop-scan@^0.3.0
@@ -497,7 +500,7 @@ export GRAPHIFY_OUT=docs/graphify-out
 graphify-out/
 ```
 
-- Paste `scripts/graphify/bkit-graph-pre-push.sh` at the end of your `.husky/pre-push`, below the bkit lines. Push to dev → `check-at` on the pushed commit in a throwaway checkout → blocked on mismatch; uncommitted edits (a concurrent session's included) cannot change the answer. graphify not installed → loud "NOT checked" warning, push goes on (CI still checks). Other branches → warn-only staleness note. Reads `PUSH_DEV_SHA` from the bkit pre-push template's stdin loop; older hook copy → re-copy that loop from `.bkit/templates/.husky/pre-push`.
+- Copy `scripts/graphify/bkit-graph-pre-push.sh`; the `.husky/pre-push` template runs it above the gates (skipped while the script is absent and on a min push), so a stale register blocks in ~30s, not after the full gate. Your hook lacks the `Capability register` block → paste it from the template, above the gates. Push to dev → `check-at` on the pushed commit in a throwaway checkout → blocked on mismatch; uncommitted edits (a concurrent session's included) cannot change the answer. graphify not installed → loud "NOT checked" warning, push goes on (CI still checks). Other branches → warn-only staleness note. Reads `PUSH_DEV_SHA` from the bkit pre-push template's stdin loop; older hook copy → re-copy that loop from `.bkit/templates/.husky/pre-push`.
 - `.github/workflows/bkit-ci.yml` ships `Check Capability Register` (push events): installs the `spec` release, runs `pnpm graph:check` → stale register fails CI. Self-skips without `scripts/graphify/bkit-graphify.sh`.
 - graphify's MCP server is opt-in: install `graphifyy[mcp]` (`mcp` + `starlette`; HTTP transport also needs `uvicorn`) and pass the graph path explicitly — `graphify-mcp` defaults to `graphify-out/graph.json`, not the pinned `docs/graphify-out/graph.json`. Snapshot-dated answers suit audit/orientation, never build or debug.
 - `.graphifyignore` merges `.gitignore`.
@@ -599,9 +602,9 @@ Prettier aligns markdown tables with no config toggle; one edited cell re-pads e
 | `node scripts/prettier/bkit-insert-ignore.mjs --check` | Write nothing; exit 1 if any file would change. Gate form. |
 
 - Walks skip `skills/` trees (vendored), `docs/audits/`, `docs/plans/` (records, kept as written). A file named on the command line is always processed. New and edited records get it at commit: § lint-staged names each staged file.
-- Skips tables inside ``` / ~~~ fences and tables already wrapped.
+- Skips tables inside ``` / ~~~ fences, inside multi-line `<!-- -->` comments, and tables already wrapped. A comment opens on a line starting with `<!--` and runs to the first line holding `-->`; a one-line comment hides nothing.
 - A pipe inside an inline-code span is escaped to `\|` only when that restores the separator's column count; an existing `\|` stays literal.
-- Exit 1 on damage it cannot repair, with or without `--check`: `truncated-row` (more cells than the separator; GFM drops the overflow) and `unrendered-table` (header ≠ separator count; GFM renders raw text). A bare pipe in cell prose is indistinguishable from a delimiter → escape it as `\|` by hand.
+- Exit 1 on damage it cannot repair, with or without `--check`: `truncated-row` (more cells than the separator; GFM drops the overflow) and `unrendered-table` (header ≠ separator count; GFM renders raw text). A bare pipe in cell prose is indistinguishable from a delimiter → escape it as `\|` by hand. Under `docs/audits/` and `docs/plans/` the same damage prints as a `WARN` and exits 0: records hold text quoted from elsewhere (issue comments, CI logs) that nobody can fix in place.
 
 ## tmp/ prune — old scratch files
 
@@ -644,3 +647,25 @@ cp .bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs ~/.config/bkit/di
 - Worktrees: `bkit worktrees setup` create / resume under `bkit.disk.minFreeGb` → runs `max` steps, waits. Still under → exit 12, nothing created; stderr lists what `max` steps still cover. No step file → no check.
 - One sweep per machine at a time (`disk-prune.lock` beside the log). Failed step → logged, next runs. CI / cloud → nothing runs.
 - Hand run: `pnpm bkit disk prune --mode=max --dry-run` → each step + its `paths` size; without `--dry-run` → runs now. Exit 1 = a step failed or a step file did not load.
+
+## Local stack lock — one run at a time on a shared stack
+
+Every worktree of a repo uses the same local services when their names and ports come from the repo's config (a Docker database, an emulator). A run that starts, resets or stops the stack, or tests against it, takes a machine-wide lock first; a second run waits and prints who holds it. bash + `/usr/bin/perl`, no dependencies.
+
+```bash
+mkdir -p scripts/ci
+cp .bkit/templates/scripts/ci/bkit-local-stack-lock.sh scripts/ci/
+```
+
+<!-- prettier-ignore -->
+| Wire into | How | Holds the lock |
+| --- | --- | --- |
+| `package.json` scripts that start / reset / stop the stack | `"db:reset": "bash scripts/ci/bkit-local-stack-lock.sh run db:reset -- <reset command>"` | for the command; its exit status passes on |
+| local runners that test against the stack | `. scripts/ci/bkit-local-stack-lock.sh`, then `take_local_stack_lock "<who>"` before the first stack command; non-zero → exit | until the runner exits or calls `release_local_stack_lock` |
+
+- Functions: `take_local_stack_lock` waits; `try_local_stack_lock` returns 1 at once while another run holds it; `release_local_stack_lock` frees it early; `local_stack_lock_holder` prints the holder. Safe under `set -e`.
+- Name: `BKIT_LOCAL_STACK` when set, else the main checkout's folder name (`git rev-parse --git-common-dir`) → every worktree finds the same lock. A throwaway stack with its own names and ports sets its own `BKIT_LOCAL_STACK` and never waits on the shared one. Outside a git checkout with no `BKIT_LOCAL_STACK` → refuses, exit 1.
+- Lock file: `~/.cache/bkit/local-stack-lock/<name>.lock` (`$XDG_CACHE_HOME/bkit/` when set), outside every checkout.
+- Never stale: a small perl process holds the lock (flock) and exits within a second of its caller, however the caller ends.
+- Wait: `LOCAL_STACK_LOCK_WAIT_S` seconds (default 3600), a note naming the holder once a minute, then exit 1 naming it. A runner started by the holder (`LOCAL_STACK_LOCK_OWNER`) does not wait. `CI=true` / `CI=1` → no-op.
+- Fix hints and docs name the locked scripts, never the raw command (`supabase db reset`, `docker compose down`): the raw command skips the lock. `.agents/rules.md` § Shared local stack.

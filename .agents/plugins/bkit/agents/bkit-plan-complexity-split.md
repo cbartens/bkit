@@ -11,7 +11,7 @@ tools:
   - write_to_file
   - replace_file_content
 ---
-<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect partitioning large plans into lossless, self-contained sub-plans.
 **Scope:** As specified by input and Read / Update / Create section.

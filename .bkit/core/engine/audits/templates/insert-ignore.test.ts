@@ -56,6 +56,19 @@ describe("bkit-insert-ignore.mjs", () => {
     expect(mod.processText(src)).toBe(src);
   });
 
+  it("leaves tables inside a multi-line HTML comment alone; a one-line comment hides nothing", () => {
+    const hidden = "<!-- Examples:\n| A | B |\n| --- | --- |\n| 1 | 2 |\n-->\n";
+    expect(mod.processText(hidden)).toBe(hidden);
+    const oneLine = "<!-- note -->\n| A | B |\n| --- | --- |\n";
+    expect(mod.processText(oneLine)).toBe(
+      "<!-- note -->\n\n<!-- prettier-ignore -->\n| A | B |\n| --- | --- |\n",
+    );
+  });
+
+  it("does not report damage in a table inside an HTML comment", () => {
+    expect(mod.auditText("<!--\n| A | B |\n| --- |\n-->\n")).toEqual([]);
+  });
+
   it("reports damage escaping cannot repair: truncated rows and unrendered tables", () => {
     const problems = mod.auditText(
       "| A | B |\n| --- | --- |\n| 1 | 2 | 3 |\n\n| A |\n| --- | --- |\n",
@@ -64,6 +77,34 @@ describe("bkit-insert-ignore.mjs", () => {
       "3:truncated-row",
       "5:unrendered-table",
     ]);
+  });
+
+  it("table damage fails outside the record trees and only warns inside them", () => {
+    const broken = "<!-- prettier-ignore -->\n| A | B |\n| --- | --- |\n| 1 | 2 | 3 |\n";
+    write("docs/live.md", broken);
+    write("docs/plans/202610/logs/x/context-related-1.md", broken);
+    write("docs/audits/202610/config.md", broken);
+
+    const live = run("docs/live.md");
+    expect(live.status).toBe(1);
+    expect(live.out).toContain("need a human");
+    expect(live.out).toContain("docs/live.md:4  [truncated-row]");
+
+    for (const f of [
+      "docs/plans/202610/logs/x/context-related-1.md",
+      "docs/audits/202610/config.md",
+    ]) {
+      const record = run(f);
+      expect(record.status).toBe(0);
+      expect(record.out).toContain("WARN: 1 table defect(s) in records");
+      expect(record.out).toContain(`${f}:4  [truncated-row]`);
+      expect(record.out).not.toContain("need a human");
+      expect(run("--check", f).status).toBe(0);
+    }
+
+    const mixed = run("docs/live.md", "docs/plans/202610/logs/x/context-related-1.md");
+    expect(mixed.status).toBe(1);
+    expect(mixed.out).toContain("WARN: 1 table defect(s) in records");
   });
 
   it("--check writes nothing and exits 1 when a file would change", () => {

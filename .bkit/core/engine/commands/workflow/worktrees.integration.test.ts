@@ -17,9 +17,13 @@ const FID = "42-thing";
 const MONTH = "202610";
 const dirs: string[] = [];
 let stubLog = "";
+let direnvLog = "";
 const savedPath = process.env.PATH;
 
-/** The package manager, stubbed: records "<cwd> <args>" and exits with $STUB_EXIT. */
+/**
+ * The package manager and direnv, stubbed: each records "<cwd> <args>" and exits
+ * with $STUB_EXIT / $DIRENV_EXIT, so no test touches the real direnv allow list.
+ */
 beforeEach(() => {
   const stub = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-wt-stub-")));
   dirs.push(stub);
@@ -27,12 +31,21 @@ beforeEach(() => {
   const bin = path.join(stub, PACKAGE_RUNNER);
   fs.writeFileSync(bin, `#!/bin/sh\necho "$PWD $*" >> "${stubLog}"\nexit \${STUB_EXIT:-0}\n`);
   fs.chmodSync(bin, 0o755);
+  direnvLog = path.join(stub, "direnv.log");
+  const direnv = path.join(stub, "direnv");
+  fs.writeFileSync(
+    direnv,
+    `#!/bin/sh\necho "$PWD $*" >> "${direnvLog}"\nexit \${DIRENV_EXIT:-0}\n`,
+  );
+  fs.chmodSync(direnv, 0o755);
   process.env.PATH = `${stub}${path.delimiter}${savedPath}`;
   delete process.env.STUB_EXIT;
+  delete process.env.DIRENV_EXIT;
 });
 afterEach(() => {
   process.env.PATH = savedPath;
   delete process.env.STUB_EXIT;
+  delete process.env.DIRENV_EXIT;
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
@@ -43,6 +56,8 @@ const g = (cwd: string, ...args: string[]) =>
   });
 const git = (cwd: string, ...args: string[]) => g(cwd, ...args).stdout.trim();
 const installCalls = () => (fs.existsSync(stubLog) ? fs.readFileSync(stubLog, "utf-8").trim() : "");
+const direnvCalls = () =>
+  fs.existsSync(direnvLog) ? fs.readFileSync(direnvLog, "utf-8").trim() : "";
 
 interface Fixture {
   origin: string;
@@ -139,6 +154,66 @@ describe("bkit worktrees setup — mint (create)", () => {
     // The marker lives in the git common dir, never inside the worktree.
     expect(marker(f).startsWith(path.join(f.repo, ".git"))).toBe(true);
     expect(installCalls()).toBe(`${wtOf(f)} install --frozen-lockfile`);
+  });
+
+  it("cuts feat/{fid} off local dev when it is ahead of origin/dev, and says so", async () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.repo, "held.txt"), "unpushed\n");
+    git(f.repo, "add", "held.txt");
+    git(f.repo, "commit", "-q", "-m", "held on local dev");
+    const local = git(f.repo, "rev-parse", "dev");
+
+    const r = await setup(f.repo, "plan", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ mode: "created", baseRef: "dev", baseSha: local });
+    expect(git(wtOf(f), "rev-parse", "HEAD")).toBe(local);
+    expect(r.err).toContain("local dev is 1 commit(s) ahead of origin/dev");
+  });
+
+  it("stays on origin/dev when local dev has diverged from it, and says so", async () => {
+    const f = fixture();
+    git(f.repo, "commit", "-q", "--allow-empty", "-m", "local only");
+    const tip = advanceDev(f, "b.txt", "new\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ baseRef: "origin/dev", baseSha: tip });
+    expect(r.err).toContain("have diverged");
+  });
+
+  it("runs direnv allow on a .envrc identical to the main checkout's", async () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.seed, ".envrc"), "dotenv_if_exists .bkit/.env\n");
+    git(f.seed, "add", ".envrc");
+    git(f.seed, "commit", "-q", "-m", "envrc");
+    git(f.seed, "push", "-q", "origin", "HEAD:dev");
+    git(f.repo, "pull", "-q", "origin", "dev");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.json.direnvAllowed).toBe(true);
+    expect(direnvCalls()).toBe(`${wtOf(f)} allow ${wtOf(f)}`);
+  });
+
+  it("leaves a .envrc that differs from the main checkout's unallowed, and narrates direnv failures", async () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.seed, ".envrc"), "export A=1\n");
+    git(f.seed, "add", ".envrc");
+    git(f.seed, "commit", "-q", "-m", "envrc");
+    git(f.seed, "push", "-q", "origin", "HEAD:dev");
+    // The main checkout's dev is behind, so it has no .envrc at all.
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json.direnvAllowed).toBe(false);
+    expect(r.err).toContain("differs from the main checkout's");
+    expect(direnvCalls()).toBe("");
+
+    fs.writeFileSync(path.join(f.repo, ".envrc"), "export A=1\n");
+    process.env.DIRENV_EXIT = "1";
+    git(wtOf(f), "commit", "-q", "--allow-empty", "-m", "feature");
+    const again = await setup(f.repo, "build", "--worktrees");
+    expect(again.code).toBe(0);
+    expect(again.json).toMatchObject({ mode: "resumed", direnvAllowed: false });
+    expect(again.err).toContain("direnv allow failed (exit 1)");
   });
 
   it("copies the configured list, narrates each missing entry, and nothing outside it", async () => {
@@ -295,6 +370,18 @@ describe("bkit worktrees setup — mint (resume)", () => {
       expect(fs.existsSync(path.join(logDir, ".rebase-failed"))).toBe(false);
     },
   );
+
+  it("rebases onto local dev while it is ahead of origin/dev, without rewriting its commits", async () => {
+    const f = await minted();
+    git(wtOf(f), "commit", "-q", "--allow-empty", "-m", "feature");
+    git(f.repo, "commit", "-q", "--allow-empty", "-m", "held on local dev");
+    const local = git(f.repo, "rev-parse", "dev");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ mode: "resumed", baseRef: "dev", baseSha: local });
+    expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(local);
+  });
 
   it("a rebase that cannot start (dirty tree) writes the sentinel with its own exit code", async () => {
     const f = await minted();

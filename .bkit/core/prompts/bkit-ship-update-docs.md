@@ -2,7 +2,7 @@
 name: bkit-ship-update-docs
 description: Senior tech writer syncing project docs with state shipped this cycle.
 effort: high
-model: claude-opus-5-5
+model: claude-sonnet-5-5
 tools:
   - Read
   - Grep
