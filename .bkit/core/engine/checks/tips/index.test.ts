@@ -8,6 +8,7 @@ import type { SetupTip } from "./catalogue";
 import {
   STAR_TIP,
   STAR_TIP_ID,
+  STAR_TIP_PARAGRAPH,
   STAR_TIP_OLD_ID,
   TIPS_CAP,
   TIPS_DETAILS_POINTER,
@@ -158,7 +159,7 @@ describe("formatTips", () => {
       [
         '**Title quality.** Line quality. Ask your agent: "Ask quality."',
         "",
-        'Want to silence this tip? Ask your agent to "add `quality` to `bkit.ignoreAdvisories` in package.json".',
+        '**Want to silence this tip?** Ask your agent to "add `quality` to `bkit.ignoreAdvisories` in package.json".',
       ].join("\n"),
     );
     expect(build).not.toContain(tipsIntro(1));
@@ -182,13 +183,13 @@ describe("formatTips — star line", () => {
       [
         '**Title a.** Line a. Ask your agent: "Ask a."',
         "",
-        STAR_TIP,
+        "**Do you like bkit?** Then give it a star at [https://github.com/cbartens/bkit](https://github.com/cbartens/bkit)!",
         "",
-        'Want to silence these tips? Ask your agent to "add `a` and `bkit-star` to `bkit.ignoreAdvisories` in package.json".',
+        '**Want to silence these tips?** Ask your agent to "add `a` and `bkit-star` to `bkit.ignoreAdvisories` in package.json".',
       ].join("\n"),
     );
     expect(formatTips([], { workflow: "ship", star: true })).toBe(
-      `${STAR_TIP}\n\n${silenceLine([STAR_TIP_ID])}`,
+      `${STAR_TIP_PARAGRAPH}\n\n${silenceLine([STAR_TIP_ID])}`,
     );
   });
 
@@ -201,7 +202,7 @@ describe("formatTips — star line", () => {
   it("is left out of audit and utility output, which often run back to back", () => {
     for (const workflow of ["audit", "utility"] as const) {
       const out = formatTips(tips, { workflow, star: true });
-      expect(out, workflow).not.toContain(STAR_TIP);
+      expect(out, workflow).not.toContain("Do you like bkit?");
       expect(out.endsWith(silenceLine(["a"])), workflow).toBe(true);
       expect(formatTips([], { workflow, star: true }), workflow).toBe("");
     }

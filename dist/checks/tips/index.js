@@ -17,7 +17,7 @@ export function silenceLine(ids) {
     const names = ids.map((id) => `\`${id}\``);
     const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
     const what = ids.length > 1 ? "these tips" : "this tip";
-    return `Want to silence ${what}? Ask your agent to "add ${list} to \`bkit.ignoreAdvisories\` in package.json".`;
+    return `**Want to silence ${what}?** Ask your agent to "add ${list} to \`bkit.ignoreAdvisories\` in package.json".`;
 }
 /** `bkit.ignoreAdvisories` key that silences `STAR_TIP`. */
 export const STAR_TIP_ID = "bkit-star";
@@ -29,6 +29,8 @@ export const STAR_TIP_OLD_ID = "star";
  * gap, so never in the checklist.
  */
 export const STAR_TIP = "Do you like bkit? Then give it a star at [https://github.com/cbartens/bkit](https://github.com/cbartens/bkit)!";
+/** `STAR_TIP` for a workflow's `## bkit Tips`, its question bold like each tip's title. */
+export const STAR_TIP_PARAGRAPH = STAR_TIP.replace("Do you like bkit?", "**Do you like bkit?**");
 /** Intro of the Setup tips section: who reads which field, and how to silence a tip. */
 export const TIPS_SECTION_INTRO = "Things not set up yet, most useful first. For the person: each tip says what goes wrong today and a sentence to ask your agent. For an AI agent: follow each tip's Agent steps unless the person declines it. Silence a tip by adding its id to `bkit.ignoreAdvisories` in package.json. Full template catalogue: .bkit/templates.md.";
 /** True when advisory `id` matches catalogue pattern `pattern` (trailing `*` = prefix). */
@@ -126,7 +128,7 @@ function formatWorkflowTips(tips, workflow, star) {
     const ids = shown.map((t) => t.id);
     const parts = shown.map(tipParagraph);
     if (star) {
-        parts.push(STAR_TIP);
+        parts.push(STAR_TIP_PARAGRAPH);
         ids.push(STAR_TIP_ID);
     }
     if (ids.length === 0)
