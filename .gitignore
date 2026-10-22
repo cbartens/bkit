@@ -18,10 +18,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Env / secrets (force-allow .env.example)
+# Env / secrets (force-allow .env.example and the encrypted .enc copies)
 .env
 .env.*
 !.env.example
+!.env.enc
+!.env.*.enc
 *.pem
 *.key
 

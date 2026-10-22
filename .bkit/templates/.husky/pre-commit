@@ -15,6 +15,12 @@
 set -e
 pnpm bkit:gate:format
 
+# env backup — an encrypted .enc copy beside each env file (.bkit/templates.md § Env backup).
+# No key on this machine: warns, the commit goes on. A setup error, or a key without sops, stops it.
+if [ -f scripts/env-backup/bkit-env-backup.mjs ]; then
+  node scripts/env-backup/bkit-env-backup.mjs encrypt < /dev/null
+fi
+
 # disk prune — keep this block last. Starts your min cleanup steps (`bkit disk prune`,
 # .bkit/templates.md § Disk prune) in the background, at most once a day; with no step
 # files it does nothing. Not a gate: a failure warns and the commit goes on.

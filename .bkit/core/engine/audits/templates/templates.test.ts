@@ -353,6 +353,24 @@ describe("husky templates — no bkit markers in template content", () => {
     expect(countMatches(content, /^# bkit:end$/m)).toBe(0);
   });
 
+  it(".husky/post-commit contains NO bkit:start/bkit:end markers", () => {
+    const content = readTemplate(".husky/post-commit");
+    expect(countMatches(content, /^# bkit:start$/m)).toBe(0);
+    expect(countMatches(content, /^# bkit:end$/m)).toBe(0);
+  });
+
+  it("pre-commit env-backup block sits after bkit:gate:format and before disk prune", () => {
+    const content = readTemplate(".husky/pre-commit");
+    const format = content.indexOf("pnpm bkit:gate:format");
+    const block = content.indexOf(
+      "node scripts/env-backup/bkit-env-backup.mjs encrypt < /dev/null",
+    );
+    const prune = content.indexOf("# disk prune");
+    expect(format).toBeGreaterThan(-1);
+    expect(block).toBeGreaterThan(format);
+    expect(prune).toBeGreaterThan(block);
+  });
+
   it(".husky/pre-push template still invokes pnpm at the script level", () => {
     const content = readTemplate(".husky/pre-push");
     expect(content).toContain("pnpm");

@@ -234,6 +234,20 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("direnv").fires(cwd)).toBe(true); // no .envrc
   });
 
+  it("env-backup fires with a bkit env file and no env-backup script, not on cloud or CI", () => {
+    vi.stubEnv("CI", "");
+    vi.stubEnv("CLAUDE_CODE_REMOTE", "");
+    vi.stubEnv("CURSOR_REMOTE_AGENT", "");
+    expect(tip("env-backup").fires(cwd)).toBe(false); // no .bkit/.env
+    write(".bkit/.env", "BKIT_GH_TOKEN=x\n");
+    expect(tip("env-backup").fires(cwd)).toBe(true);
+    vi.stubEnv("CI", "true");
+    expect(tip("env-backup").fires(cwd)).toBe(false);
+    vi.stubEnv("CI", "");
+    write("scripts/env-backup/bkit-env-backup.mjs");
+    expect(tip("env-backup").fires(cwd)).toBe(false);
+  });
+
   it("context-fetch fires exactly when context-fetch-missing does", () => {
     write(".agents/context.md", "<!-- bkit:start -->\n<!-- bkit:end -->\n");
     expect(detectContextFetchMissing(cwd)).not.toBeNull();

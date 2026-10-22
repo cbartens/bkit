@@ -70,6 +70,7 @@ OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `
 | `@vitest/coverage-v8` | `5.x` | Per-tier coverage; branch-threshold gate on the unit run (`test:coverage:unit`) |
 | `yaml` | `2.x` | Test-only YAML parsing (template workflows parsed in-process; no python / ruby) |
 | bats | `1.x` (devDependency; `pnpm exec bats`) | Shell tier — `tests/*.bats`, for logic that lives in shell (the bkit-cloud-bootstrap hook's `gh` preflight, the `gh` stub harness) |
+| `sops` + `age` | `>=3.11.0` + latest (CI pins `3.13.3` + `1.3.2`) | Env backup integration tests (`env-backup.integration.test.ts`) run the real binaries; `hasTool(bin)` in `vitest.tsx-bin.ts` self-skips locally and throws under `CI` |
 | Real-filesystem fixtures | `os.tmpdir()` scratch dirs | Integration tests spawn `bkit` against temporary consumer directories — no mock `fs` |
 
 See `docs/testing.md` for tier boundaries, CI execution order, and spawning patterns.
@@ -90,7 +91,9 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 <!-- prettier-ignore -->
 | Technology | Config | Usage |
 | --- | --- | --- |
-| husky | `9.x`, `.husky/` | Pre-commit and pre-push hooks |
+| husky | `9.x`, `.husky/` | Pre-commit, post-commit and pre-push hooks |
+| Pre-commit hook | `.husky/pre-commit` | Runs `pnpm bkit:gate:format`, then `scripts/env-backup/bkit-env-backup.mjs encrypt` (warns and goes on when this machine has no age key), then the disk prune. |
+| Post-commit hook | `.husky/post-commit` | Runs `bkit-env-backup.mjs restage`: stages a `.enc` copy that a path-limited commit left behind. A failure warns. |
 | Pre-push hook | `.husky/pre-push` | Runs `pnpm bkit:gate:static-unit-integration` (or `bkit:gate:static` on `revert-*`) + `pnpm bkit check` before push — the SAME gate scripts the agent workflows dispatch through, so a human push and an agent run enforce one set. Both copies call `bkit:gate:static-unit-integration` when package.json declares it, else `bkit:gate:static-unit`. Source-repo copy additionally runs `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; consumer template does not. Neither copy runs `pnpm build`. |
 
 ## CI/CD

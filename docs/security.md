@@ -57,6 +57,16 @@ App / stack credentials do not belong here — runtime keys and `/bkit-debug` ob
 
 `LINEAR_ISSUE_ID` — per-session cloud injection; never in `.bkit/.env`.
 
+### Env file backup — SOPS
+
+`scripts/env-backup/bkit-env-backup.mjs` (template `.bkit/templates/scripts/env-backup/`, `.bkit/templates.md` § Env backup) keeps an encrypted `{file}.enc` beside each gitignored env file, tracked in git, so a lost machine does not lose the secrets. SOPS encrypts each value to an age public key in `.sops.yaml`; the private key stays outside the repo (password manager, `SOPS_AGE_KEY_FILE`).
+
+- Plain env files stay gitignored. Only `*.enc` is allowed through `.gitignore` (`!.env.enc`, `!.env.*.enc`) and through the `Secrets` rule in `.agents/rules.md`. The script never stages a plain file.
+- Without the key a `.enc` shows variable names, roughly how long each value is, the public key and the change time. SOPS encrypts comment lines too. In a public repo the names and sizes are public.
+- The script prints paths, variable names and counts. It never prints a value. A plain value reaches disk only through `restore`, which writes the env file with mode 0600 and never over an existing one; the temporary files it makes hold encrypted data or a fixed non-secret probe line.
+- Rotation: `rekey` moves every copy to the new key. Earlier commits keep copies the old key opens, so a leaked key means rotating each secret at its provider.
+- Secret scanning: Trivy's secret scanner finds no secret in a `.enc` (checked with the pinned Trivy image, exit 0; the same values in plain text give CRITICAL findings).
+
 ### Credential surfaces
 
 <!-- prettier-ignore -->
@@ -124,7 +134,7 @@ Run `npm audit signatures` in a directory with the package installed (`node_modu
 
 Everything committed is public, including history. NEVER commit:
 
-- Secrets: `.bkit/.env`, `.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md`, any token or key (§ Secrets Management).
+- Secrets: `.bkit/.env`, `.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md`, any token or key (§ Secrets Management). The one exception is the age-encrypted `*.enc` copy the env backup script writes (`.bkit/.env.enc` included; its variable names and sizes are public, § Env file backup — SOPS).
 - Consumer names or consumer data (`harvest/`).
 - Details of an exploitable, unfixed vulnerability in a published version: triage and fix inside a draft GitHub Security Advisory (private fork), not an issue, PR or commit.
 

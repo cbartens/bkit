@@ -405,13 +405,99 @@ describe("bkit-secrets.mjs", () => {
     ).toEqual(["preview=postgres://dev", "production=postgres://prod"]);
   });
 
-  it("check flags a required example key and lists every copy, including hand-set ones", async () => {
+  it("check warns on a required example key and lists every copy, including hand-set ones", async () => {
     write("app/.env.example", "DEPLOY_ID=\nMISSING_KEY=\nOPTIONAL_KEY=\n");
     const r = await cli("check");
-    expect(r.status).toBe(2);
+    expect(r.status).toBe(0);
     expect(r.out).toMatch(/MISSING_KEY — missing/);
-    expect(r.out).not.toMatch(/OPTIONAL_KEY/);
+    expect(r.out).not.toMatch(/OPTIONAL_KEY — missing/);
     expect(r.out).toMatch(/STRIPE_WEBHOOK → vercel · by hand: Stripe Dashboard → Webhooks/);
+  });
+
+  it("check warns both ways and on a missing example without failing", async () => {
+    write("app/.env.example", "DEPLOY_ID=\nMISSING_KEY=\nEMPTY_ONE=\nAPP_URL=\n");
+    fs.appendFileSync(path.join(root, "app/.env.preview"), "EMPTY_ONE=\n");
+    const r = await cli("check");
+    expect(r.status).toBe(0);
+    expect(r.out).toMatch(/app\/\.env\.preview vs app\/\.env\.example/);
+    expect(r.out).toMatch(/⚠️ {2}MISSING_KEY — missing/);
+    expect(r.out).toMatch(/⚠️ {2}EMPTY_ONE — empty/);
+    expect(r.out).toMatch(/⚠️ {2}VERCEL_ORG_ID — not in app\/\.env\.example/);
+    expect(r.out).toMatch(/app\/\.env\.production vs app\/\.env\.example/);
+    expect(r.out).not.toMatch(/❌/);
+
+    fs.rmSync(path.join(root, "app/.env.example"));
+    const none = await cli("check");
+    expect(none.status).toBe(0);
+    expect(none.out).toMatch(/⚠️ {2}no app\/\.env\.example — env files not compared/);
+  });
+
+  it("sync and sync dry run print the example warnings and still write", async () => {
+    write("app/.env.example", "DEPLOY_ID=\nMISSING_KEY=\n");
+    const dry = await cli("sync", "--dry-run");
+    expect(dry.status).toBe(0);
+    expect(dry.out).toMatch(/MISSING_KEY — missing/);
+    expect(dry.out).toMatch(/OLD_NAME — would delete/);
+    expect(dry.out.indexOf("MISSING_KEY — missing")).toBeLessThan(dry.out.indexOf("would delete"));
+    expect(fs.existsSync(ghFile("API_KEY"))).toBe(false);
+
+    const real = await cli("sync");
+    expect(real.status).toBe(0);
+    expect(real.out).toMatch(/MISSING_KEY — missing/);
+    expect(fs.readFileSync(ghFile("API_KEY"), "utf-8")).toBe(SECRET);
+  });
+
+  it("allow-missing is an unknown option", async () => {
+    const r = await cli("check", "--allow-missing");
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/unknown option --allow-missing/);
+    const help = await cli("help");
+    expect(help.out).not.toMatch(/allow-missing/);
+  });
+
+  it("protected keys are exempt both ways and optional keys only from example to env", async () => {
+    write("app/.env.example", "DEPLOY_ID=\nHAND_SET=\nOPTIONAL_KEY=\n");
+    const fromExample = await cli("check");
+    expect(fromExample.out).not.toMatch(/HAND_SET/);
+    expect(fromExample.out).not.toMatch(/OPTIONAL_KEY/);
+
+    write("app/.env.example", "DEPLOY_ID=\n");
+    fs.appendFileSync(path.join(root, "app/.env.preview"), "HAND_SET=x\nOPTIONAL_KEY=y\n");
+    const toExample = await cli("check");
+    expect(toExample.out).not.toMatch(/HAND_SET/);
+    expect(toExample.out).toMatch(/OPTIONAL_KEY — not in app\/\.env\.example/);
+  });
+
+  it("check on a missing named file exits 2 with or without an example", async () => {
+    write("app/.env.example", "DEPLOY_ID=\n");
+    const withExample = await cli("check", "app/.env.nothere");
+    expect(withExample.status).toBe(2);
+    expect(withExample.out).toMatch(/app\/\.env\.nothere not found/);
+
+    fs.rmSync(path.join(root, "app/.env.example"));
+    const without = await cli("check", "app/.env.nothere");
+    expect(without.status).toBe(2);
+    expect(without.out).toMatch(/app\/\.env\.nothere not found/);
+  });
+
+  it("check on an existing named file compares only that file both ways", async () => {
+    write("app/.env.example", "DEPLOY_ID=\nMISSING_KEY=\n");
+    write("extra/.env.local", "DEPLOY_ID=\nONLY_HERE=x\n");
+    const r = await cli("check", "extra/.env.local");
+    expect(r.status).toBe(0);
+    expect(r.out).toMatch(/extra\/\.env\.local vs app\/\.env\.example/);
+    expect(r.out).toMatch(/⚠️ {2}DEPLOY_ID — empty/);
+    expect(r.out).toMatch(/⚠️ {2}MISSING_KEY — missing/);
+    expect(r.out).toMatch(/⚠️ {2}ONLY_HERE — not in app\/\.env\.example/);
+    expect(r.out).not.toMatch(/app\/\.env\.preview vs/);
+  });
+
+  it("list and drift print no example warnings", async () => {
+    write("app/.env.example", "DEPLOY_ID=\nMISSING_KEY=\n");
+    const list = await cli("list");
+    expect(list.out).not.toMatch(/MISSING_KEY|not in app|not compared/);
+    const drift = await cli("drift");
+    expect(drift.out).not.toMatch(/MISSING_KEY — missing|not in app|not compared/);
   });
 
   it("list names what each store receives, without env files or store access", async () => {

@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+# bkit post-commit. Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
+#
+# env backup restage (.bkit/templates.md § Env backup). A path-limited commit
+# (`git commit -- file`) takes its files from a temporary index, so the .enc copy the
+# pre-commit hook updated lands in the commit but the real index keeps the old one.
+# This puts the real index back in line. Not a gate: a failure warns.
+if [ -f scripts/env-backup/bkit-env-backup.mjs ]; then
+  node scripts/env-backup/bkit-env-backup.mjs restage < /dev/null ||
+    echo "[post-commit] WARN: env backup restage failed" >&2
+fi

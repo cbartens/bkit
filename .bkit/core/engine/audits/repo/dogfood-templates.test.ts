@@ -255,12 +255,19 @@ const ADOPTED: Record<string, Entry> = {
         kind: "bkit-only",
         what: "dist freshness on a staged .bkit/core/engine change",
         region: {
-          template: ["pnpm bkit:gate:format\n", "\n# disk prune"],
-          copy: ["pnpm bkit:gate:format\n", "\n# disk prune"],
+          template: [
+            "node scripts/env-backup/bkit-env-backup.mjs encrypt < /dev/null\nfi\n",
+            "\n# disk prune",
+          ],
+          copy: [
+            "node scripts/env-backup/bkit-env-backup.mjs encrypt < /dev/null\nfi\n",
+            "\n# disk prune",
+          ],
         },
       },
     ],
   },
+  ".husky/post-commit": identical,
   ".husky/pre-push": {
     status: "adopted",
     edits: [
@@ -293,6 +300,17 @@ const ADOPTED: Record<string, Entry> = {
     ],
   },
   ".lintstagedrc.json": identical,
+  ".sops.yaml": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "placeholder",
+        what: "age public key",
+        fill: "{{AGE_PUBLIC_KEY}}",
+        with: "age1s7ee03f9jnl9amzr0qs5edzne4zqtn9c82dqcq544wgyhauhxa8see2qj4",
+      },
+    ],
+  },
   ".oxlintrc.json": {
     status: "adopted",
     edits: [
@@ -550,6 +568,8 @@ const ADOPTED: Record<string, Entry> = {
     what: "a per-machine file copied to ~/.config/bkit/, never into a repo",
   },
   "scripts/cleanup/bkit-tmp-prune.mjs": identical,
+  "scripts/env-backup/bkit-env-backup.mjs": identical,
+  "scripts/env-backup/bkit-env-backup.config.mjs": identical,
   "scripts/prettier/bkit-insert-ignore.mjs": identical,
   "scripts/secrets/bkit-secrets.mjs": identical,
   "scripts/secrets/bkit-secrets.config.mjs": {

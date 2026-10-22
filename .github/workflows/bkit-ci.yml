@@ -667,6 +667,29 @@ jobs:
       - name: Install zsh
         run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
 
+      # The env backup tests (env-backup.integration.test.ts) run the real sops and age-keygen
+      # binaries and fail on this lane when either is missing. Pinned releases, sha256-verified
+      # before install so a swapped download fails closed.
+      - name: Install sops and age
+        env:
+          # renovate: datasource=github-releases depName=getsops/sops
+          SOPS_VERSION: "3.13.3"
+          # sha256 of sops-v${SOPS_VERSION}.linux.amd64 (from the release's checksums.txt).
+          SOPS_SHA256: "e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b"
+          # renovate: datasource=github-releases depName=FiloSottile/age
+          AGE_VERSION: "1.3.2"
+          # sha256 of age-v${AGE_VERSION}-linux-amd64.tar.gz (the release publishes no checksums file; hashed from the downloaded asset).
+          AGE_SHA256: "cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10"
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL --retry 3 --retry-all-errors "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64" -o "$RUNNER_TEMP/bin/sops"
+          echo "${SOPS_SHA256}  $RUNNER_TEMP/bin/sops" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/bin/sops"
+          curl -fsSL --retry 3 --retry-all-errors "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-amd64.tar.gz" -o "$RUNNER_TEMP/age.tar.gz"
+          echo "${AGE_SHA256}  $RUNNER_TEMP/age.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/age.tar.gz" -C "$RUNNER_TEMP/bin" --strip-components=1 age/age age/age-keygen
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
       # Integration coverage, scoped via --coverage.include to the engine surface.
       - name: Run Integration Tests
         id: vitest

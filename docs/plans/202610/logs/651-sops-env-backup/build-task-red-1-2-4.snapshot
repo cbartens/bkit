@@ -1,0 +1,792 @@
+/**
+ * audits/templates/env-backup.integration.test.ts — the copy-and-own env backup template
+ * (`.bkit/templates/scripts/env-backup/bkit-env-backup.mjs`).
+ *
+ * Boundary: the real `sops`, `age-keygen` and `git` binaries in `mkdtemp` repos. Fault
+ * injection is a PATH wrapper that delegates to the real `sops`; a stub `pnpm` stands in for
+ * the format gate only. Values are generated sentinels, never real secrets.
+ *
+ * The `sops contract` describe characterises the external `sops` binary the script calls; the
+ * facts it pins (SOPS 3.13.3, age 1.3.2) fix the script's call shapes:
+ *
+ * - `--config <file>` is a GLOBAL flag, placed before the subcommand
+ *   (`sops --config .sops.yaml encrypt ...`); `sops encrypt --config` is rejected.
+ * - A `*.enc` file needs `--input-type dotenv --output-type dotenv`; SOPS reads the type from
+ *   the file name otherwise.
+ * - `set --value-stdin` takes the JSON-encoded value on stdin (needs sops >= 3.11.0, so
+ *   `MIN_SOPS = 3.11.0`); `unset` exists since 3.9.0. Both edit the file in place.
+ * - `decrypt` with no usable age key exits 128; with no matching creation rule `encrypt`
+ *   exits 1.
+ * - dotenv comments are encrypted too (`#ENC[...]`), an empty value stays empty in the clear,
+ *   and every other value keeps its raw text on decrypt (CRLF, quotes, `=`, `#`, spaces,
+ *   a literal backslash-n).
+ * - `rekey` order: `rotate` first (old key), then `updatekeys --yes` (old key, creation rules
+ *   from `--config`); after `updatekeys` only the new key decrypts, so both private keys must
+ *   be available while a rekey runs.
+ * - Age key sources SOPS reads: `SOPS_AGE_KEY`, `SOPS_AGE_KEY_CMD`, `SOPS_AGE_KEY_FILE`, then
+ *   the default key file: `$XDG_CONFIG_HOME/sops/age/keys.txt` when `XDG_CONFIG_HOME` is set,
+ *   else `~/Library/Application Support/sops/age/keys.txt` (macOS) or
+ *   `~/.config/sops/age/keys.txt` (Linux).
+ */
+
+import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { hasTool } from "../../../../../vitest.tsx-bin";
+
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
+const TEMPLATE_DIR = path.join(REPO_ROOT, ".bkit", "templates", "scripts", "env-backup");
+
+const haveSopsTools = hasTool("sops") && hasTool("age-keygen");
+
+type Run = { status: number | null; stdout: string; stderr: string };
+
+/** A child env with every inherited `SOPS_*` and `GIT_*` variable dropped. */
+function cleanEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (!k.startsWith("SOPS_") && !k.startsWith("GIT_")) env[k] = v;
+  }
+  return { ...env, ...extra };
+}
+
+function run(
+  cmd: string,
+  args: string[],
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; input?: string } = {},
+): Run {
+  const r = spawnSync(cmd, args, {
+    cwd: opts.cwd,
+    env: opts.env ?? cleanEnv(),
+    input: opts.input,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (r.error) throw r.error;
+  return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+}
+
+/** Generate an age key pair in `dir`; returns the private key file and the public key. */
+function genKey(dir: string, name = "key.txt"): { file: string; pub: string } {
+  const file = path.join(dir, name);
+  const r = run("age-keygen", ["-o", file]);
+  const pub = /age1[a-z0-9]+/.exec(r.stderr + r.stdout)?.[0];
+  if (r.status !== 0 || !pub) throw new Error("age-keygen failed");
+  return { file, pub };
+}
+
+function sopsYaml(pub: string): string {
+  return `creation_rules:\n  - path_regex: (^|/)\\.env(\\.[^/]+)?$\n    age: "${pub}"\n`;
+}
+
+const DOTENV = ["--input-type", "dotenv", "--output-type", "dotenv"];
+
+/** Where SOPS looks for the age key file when `XDG_CONFIG_HOME` is unset. */
+function osDefaultKeyDir(home: string): string {
+  return process.platform === "darwin"
+    ? path.join(home, "Library", "Application Support", "sops", "age")
+    : path.join(home, ".config", "sops", "age");
+}
+
+/** `sops_lastmodified` has one-second resolution: sleep past the second boundary so it moves. */
+function untilNextSecond(): void {
+  const wait = 1000 - (Date.now() % 1000) + 5;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait);
+}
+
+/** Lines that left / entered `before` → `after` (multiset difference). */
+function lineDiff(before: string, after: string): { removed: string[]; added: string[] } {
+  const count = (lines: string[]) => {
+    const m = new Map<string, number>();
+    for (const l of lines) m.set(l, (m.get(l) ?? 0) + 1);
+    return m;
+  };
+  const b = before.split("\n");
+  const a = after.split("\n");
+  const bc = count(b);
+  const ac = count(a);
+  const removed: string[] = [];
+  const added: string[] = [];
+  for (const [l, n] of bc) for (let i = 0; i < n - (ac.get(l) ?? 0); i++) removed.push(l);
+  for (const [l, n] of ac) for (let i = 0; i < n - (bc.get(l) ?? 0); i++) added.push(l);
+  return { removed, added };
+}
+
+describe.skipIf(!haveSopsTools)("sops contract", () => {
+  let dir = "";
+  let key: { file: string; pub: string };
+  let env: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-sops-contract-"));
+    key = genKey(dir);
+    fs.writeFileSync(path.join(dir, ".sops.yaml"), sopsYaml(key.pub));
+    env = cleanEnv({ SOPS_AGE_KEY_FILE: key.file });
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const sops = (args: string[], input?: string, e: NodeJS.ProcessEnv = env): Run =>
+    run("sops", args, { cwd: dir, env: e, input });
+
+  const NO_KEY = (): NodeJS.ProcessEnv =>
+    cleanEnv({ SOPS_AGE_KEY_FILE: path.join(dir, "missing.txt"), HOME: dir, XDG_CONFIG_HOME: dir });
+
+  function encrypt(plain: string): string {
+    fs.writeFileSync(path.join(dir, ".env"), plain);
+    const r = sops([
+      "--config",
+      ".sops.yaml",
+      "encrypt",
+      ...DOTENV,
+      "--output",
+      ".env.enc",
+      ".env",
+    ]);
+    expect(r.status).toBe(0);
+    return fs.readFileSync(path.join(dir, ".env.enc"), "utf8");
+  }
+
+  const decrypt = (file = ".env.enc", e: NodeJS.ProcessEnv = env): Run =>
+    sops(["decrypt", ...DOTENV, file], undefined, e);
+
+  const BASE = "A=alpha-sentinel\nB=bravo-sentinel\nC=charlie-sentinel\n";
+
+  it("reports a plain version with the network check off and supports set --value-stdin", () => {
+    const v = sops(["--version", "--disable-version-check"]);
+    expect(v.status).toBe(0);
+    expect(v.stdout.trim()).toMatch(/^sops \d+\.\d+\.\d+$/);
+    expect(sops(["set", "--help"]).stderr + sops(["set", "--help"]).stdout).toContain(
+      "--value-stdin",
+    );
+  });
+
+  it("takes --config as a global flag before the subcommand", () => {
+    fs.writeFileSync(path.join(dir, ".env"), BASE);
+    const after = sops(["encrypt", "--config", ".sops.yaml", ...DOTENV, ".env"]);
+    expect(after.status).not.toBe(0);
+    const before = sops(["--config", ".sops.yaml", "encrypt", ...DOTENV, ".env"]);
+    expect(before.status).toBe(0);
+  });
+
+  it("needs the dotenv type flags on a *.enc file", () => {
+    encrypt(BASE);
+    expect(sops(["decrypt", ".env.enc"]).status).not.toBe(0);
+    expect(decrypt().stdout).toBe(BASE);
+  });
+
+  it("set --value-stdin changes only that variable's line plus sops_lastmodified and sops_mac", () => {
+    const before = encrypt(BASE);
+    untilNextSecond();
+    const r = sops(
+      ["set", ...DOTENV, "--value-stdin", ".env.enc", '["B"]'],
+      JSON.stringify("bravo-NEW"),
+    );
+    expect(r.status).toBe(0);
+    const after = fs.readFileSync(path.join(dir, ".env.enc"), "utf8");
+    const { removed, added } = lineDiff(before, after);
+    expect(removed.map((l) => l.split("=")[0]).sort()).toEqual([
+      "B",
+      "sops_lastmodified",
+      "sops_mac",
+    ]);
+    expect(added.map((l) => l.split("=")[0]).sort()).toEqual([
+      "B",
+      "sops_lastmodified",
+      "sops_mac",
+    ]);
+    expect(decrypt().stdout).toBe("A=alpha-sentinel\nB=bravo-NEW\nC=charlie-sentinel\n");
+  });
+
+  it("set of a new variable adds one line plus the two bookkeeping lines; unset removes one", () => {
+    const before = encrypt(BASE);
+    untilNextSecond();
+    expect(
+      sops(
+        ["set", ...DOTENV, "--value-stdin", ".env.enc", '["D"]'],
+        JSON.stringify("delta-sentinel"),
+      ).status,
+    ).toBe(0);
+    const withD = fs.readFileSync(path.join(dir, ".env.enc"), "utf8");
+    const add = lineDiff(before, withD);
+    expect(add.removed.map((l) => l.split("=")[0]).sort()).toEqual([
+      "sops_lastmodified",
+      "sops_mac",
+    ]);
+    expect(add.added.map((l) => l.split("=")[0]).sort()).toEqual([
+      "D",
+      "sops_lastmodified",
+      "sops_mac",
+    ]);
+    expect(decrypt().stdout).toBe(`${BASE}D=delta-sentinel\n`);
+
+    untilNextSecond();
+    expect(sops(["unset", ...DOTENV, ".env.enc", '["D"]']).status).toBe(0);
+    const withoutD = fs.readFileSync(path.join(dir, ".env.enc"), "utf8");
+    const rem = lineDiff(withD, withoutD);
+    expect(rem.removed.map((l) => l.split("=")[0]).sort()).toEqual([
+      "D",
+      "sops_lastmodified",
+      "sops_mac",
+    ]);
+    expect(rem.added.map((l) => l.split("=")[0]).sort()).toEqual(["sops_lastmodified", "sops_mac"]);
+    expect(decrypt().stdout).toBe(BASE);
+  });
+
+  it("a whole-file re-encrypt rewrites every variable line", () => {
+    const before = encrypt(BASE);
+    const again = encrypt(BASE);
+    const { removed } = lineDiff(before, again);
+    const names = removed.map((l) => l.split("=")[0]);
+    expect(names).toEqual(expect.arrayContaining(["A", "B", "C"]));
+  });
+
+  it("round-trips CRLF, quotes, equals, hash, spaces, a literal backslash-n and empty values", () => {
+    const plain = [
+      "CR=carriage\r",
+      'Q="quoted"',
+      "EQ=a=b=c",
+      "HASH=x # not a comment",
+      "SP= lead and trail ",
+      "NL=one\\ntwo",
+      "EMPTY=",
+      "",
+    ].join("\n");
+    encrypt(plain);
+    expect(decrypt().stdout).toBe(plain);
+    const set = sops(
+      ["set", ...DOTENV, "--value-stdin", ".env.enc", '["NL"]'],
+      JSON.stringify("one\\nthree"),
+    );
+    expect(set.status).toBe(0);
+    expect(decrypt().stdout).toContain("NL=one\\nthree\n");
+  });
+
+  it("encrypts comments and keeps an empty value in the clear", () => {
+    const enc = encrypt("# secret note\nK=value-sentinel\nEMPTY=\n");
+    expect(enc).not.toContain("secret note");
+    expect(enc).toMatch(/^#ENC\[AES256_GCM,/m);
+    expect(enc).toMatch(/^EMPTY=$/m);
+    expect(enc).not.toContain("value-sentinel");
+    expect(decrypt().stdout).toBe("# secret note\nK=value-sentinel\nEMPTY=\n");
+  });
+
+  it("decrypt with no age key exits 128", () => {
+    encrypt(BASE);
+    const r = decrypt(".env.enc", NO_KEY());
+    expect(r.status).toBe(128);
+  });
+
+  it("a conflicted or tampered file fails to decrypt", () => {
+    const enc = encrypt(BASE);
+    fs.writeFileSync(
+      path.join(dir, ".env.enc"),
+      `<<<<<<< HEAD\n${enc}=======\n${enc}>>>>>>> other\n`,
+    );
+    expect(decrypt().status).not.toBe(0);
+    fs.writeFileSync(
+      path.join(dir, ".env.enc"),
+      enc.replace(/^(B=ENC\[AES256_GCM,data:)[^,]*/m, "$1AAAA"),
+    );
+    const r = decrypt();
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/message authentication failed|MAC/);
+  });
+
+  it("key probe: a fixed line round-trips from a temp dir outside the repo under --config", () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-sops-probe-"));
+    try {
+      fs.writeFileSync(path.join(outside, ".env"), "BKIT_ENV_BACKUP_PROBE=1\n");
+      const enc = sops([
+        "--config",
+        path.join(dir, ".sops.yaml"),
+        "encrypt",
+        ...DOTENV,
+        "--output",
+        path.join(outside, ".env.enc"),
+        path.join(outside, ".env"),
+      ]);
+      expect(enc.status).toBe(0);
+      expect(decrypt(path.join(outside, ".env.enc")).stdout).toBe("BKIT_ENV_BACKUP_PROBE=1\n");
+      expect(decrypt(path.join(outside, ".env.enc"), NO_KEY()).status).toBe(128);
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("encrypt of a file no creation rule matches exits 1", () => {
+    fs.writeFileSync(path.join(dir, "notes.txt"), "X=1\n");
+    const r = sops(["--config", ".sops.yaml", "encrypt", ...DOTENV, "notes.txt"]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("no matching creation rules");
+  });
+
+  it("rekey: rotate then updatekeys --yes moves the file to the new key", () => {
+    encrypt(BASE);
+    const next = genKey(dir, "key2.txt");
+    fs.writeFileSync(path.join(dir, ".sops-new.yaml"), sopsYaml(next.pub));
+    const both = cleanEnv({
+      SOPS_AGE_KEY_FILE: `${key.file}`,
+      SOPS_AGE_KEY: fs.readFileSync(next.file, "utf8"),
+    });
+    const before = fs.readFileSync(path.join(dir, ".env.enc"), "utf8");
+
+    const rotate = sops(["rotate", "--in-place", ...DOTENV, ".env.enc"], undefined, both);
+    expect(rotate.status).toBe(0);
+    const keys = sops(
+      ["--config", ".sops-new.yaml", "updatekeys", "--yes", "--input-type", "dotenv", ".env.enc"],
+      undefined,
+      both,
+    );
+    expect(keys.status).toBe(0);
+
+    const after = fs.readFileSync(path.join(dir, ".env.enc"), "utf8");
+    const names = lineDiff(before, after).added.map((l) => l.split("=")[0]);
+    expect(names).toEqual(expect.arrayContaining(["A", "B", "C", "sops_mac"]));
+    const newOnly = cleanEnv({ SOPS_AGE_KEY_FILE: next.file });
+    expect(decrypt(".env.enc", newOnly).stdout).toBe(BASE);
+    expect(decrypt(".env.enc", env).status).toBe(128);
+  });
+
+  it("reads the age key from SOPS_AGE_KEY, SOPS_AGE_KEY_CMD and the default key file", () => {
+    encrypt(BASE);
+    const secret = fs.readFileSync(key.file, "utf8");
+    const home = path.join(dir, "home");
+    fs.mkdirSync(home);
+
+    const viaKey = cleanEnv({ HOME: home, SOPS_AGE_KEY: secret });
+    delete viaKey.XDG_CONFIG_HOME;
+    expect(decrypt(".env.enc", viaKey).stdout).toBe(BASE);
+
+    const viaCmd = cleanEnv({ HOME: home, SOPS_AGE_KEY_CMD: `cat ${key.file}` });
+    delete viaCmd.XDG_CONFIG_HOME;
+    expect(decrypt(".env.enc", viaCmd).stdout).toBe(BASE);
+
+    const xdg = path.join(dir, "xdg");
+    fs.mkdirSync(path.join(xdg, "sops", "age"), { recursive: true });
+    fs.copyFileSync(key.file, path.join(xdg, "sops", "age", "keys.txt"));
+    expect(decrypt(".env.enc", cleanEnv({ HOME: home, XDG_CONFIG_HOME: xdg })).stdout).toBe(BASE);
+
+    const osDefault = osDefaultKeyDir(home);
+    fs.mkdirSync(osDefault, { recursive: true });
+    fs.copyFileSync(key.file, path.join(osDefault, "keys.txt"));
+    const viaDefault = cleanEnv({ HOME: home });
+    delete viaDefault.XDG_CONFIG_HOME;
+    expect(decrypt(".env.enc", viaDefault).stdout).toBe(BASE);
+  });
+});
+
+// ── Fixture: a temp git repo that adopted the template ───────────────────────
+
+const GITIGNORE = [
+  ".env",
+  ".env.*",
+  "!.env.example",
+  "!.env.enc",
+  "!.env.*.enc",
+  "build/",
+  ".env-backup-tmp-*",
+  "",
+].join("\n");
+
+const DEFAULT_CONFIG = fs.readFileSync(
+  path.join(TEMPLATE_DIR, "bkit-env-backup.config.mjs"),
+  "utf8",
+);
+
+type Fx = {
+  root: string;
+  dir: string;
+  home: string;
+  key: { file: string; pub: string };
+  env: NodeJS.ProcessEnv;
+};
+
+const fixtures: Fx[] = [];
+
+function makeFx(
+  opts: {
+    gitignore?: string;
+    config?: string;
+    sopsYaml?: string | null;
+    withHome?: boolean;
+  } = {},
+): Fx {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-env-backup-")));
+  const dir = path.join(root, "repo");
+  const home = path.join(root, "home");
+  fs.mkdirSync(dir);
+  fs.mkdirSync(home);
+  const key = genKey(root);
+  const env = cleanEnv({
+    HOME: home,
+    XDG_CONFIG_HOME: path.join(home, ".config"),
+    SOPS_AGE_KEY_FILE: key.file,
+    GIT_CONFIG_GLOBAL: os.devNull,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_AUTHOR_NAME: "Test",
+    GIT_AUTHOR_EMAIL: "test@example.com",
+    GIT_COMMITTER_NAME: "Test",
+    GIT_COMMITTER_EMAIL: "test@example.com",
+  });
+  const fx: Fx = { root, dir, home, key, env };
+  fixtures.push(fx);
+  gitOk(fx, ["init", "-q", "-b", "main"]);
+  gitOk(fx, ["config", "commit.gpgsign", "false"]);
+  put(fx, ".gitignore", opts.gitignore ?? GITIGNORE);
+  if (opts.sopsYaml !== null) put(fx, ".sops.yaml", opts.sopsYaml ?? sopsYaml(key.pub));
+  fs.mkdirSync(path.join(dir, "scripts", "env-backup"), { recursive: true });
+  fs.copyFileSync(
+    path.join(TEMPLATE_DIR, "bkit-env-backup.mjs"),
+    path.join(dir, "scripts", "env-backup", "bkit-env-backup.mjs"),
+  );
+  put(fx, "scripts/env-backup/bkit-env-backup.config.mjs", opts.config ?? DEFAULT_CONFIG);
+  gitOk(fx, ["add", "-A"]);
+  gitOk(fx, ["commit", "-q", "-m", "init"]);
+  return fx;
+}
+
+function put(fx: Fx, rel: string, content: string, base = fx.dir): void {
+  const file = path.join(base, rel);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, content);
+}
+
+function git(fx: Fx, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Run {
+  return run("git", args, { cwd: opts.cwd ?? fx.dir, env: opts.env ?? fx.env });
+}
+
+function gitOk(fx: Fx, args: string[], cwd?: string): string {
+  const r = git(fx, args, { cwd });
+  if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${r.stderr}`);
+  return r.stdout;
+}
+
+/** Run the template script from the repo (or another checkout of it). */
+function script(fx: Fx, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Run {
+  const cwd = opts.cwd ?? fx.dir;
+  return run(
+    process.execPath,
+    [path.join(cwd, "scripts", "env-backup", "bkit-env-backup.mjs"), ...args],
+    {
+      cwd,
+      env: opts.env ?? fx.env,
+      input: "",
+    },
+  );
+}
+
+function withEnv(fx: Fx, extra: Record<string, string>): NodeJS.ProcessEnv {
+  return { ...fx.env, ...extra };
+}
+
+/** The same env with no age key reachable: a missing key file and an empty home. */
+function noKeyEnv(fx: Fx): NodeJS.ProcessEnv {
+  return withEnv(fx, { SOPS_AGE_KEY_FILE: path.join(fx.root, "missing-key.txt") });
+}
+
+/** `.enc` files on disk, repo-relative, sorted. */
+function encFiles(fx: Fx): string[] {
+  const out: string[] = [];
+  const walk = (rel: string): void => {
+    for (const e of fs.readdirSync(path.join(fx.dir, rel), { withFileTypes: true })) {
+      const r = path.posix.join(rel, e.name);
+      if (e.name === ".git" || e.name === "node_modules") continue;
+      if (e.isDirectory()) walk(r);
+      else if (e.name.endsWith(".enc")) out.push(r);
+    }
+  };
+  walk("");
+  return out.sort();
+}
+
+/** Paths a `--dry-run` reports, as `verb path`. */
+function planned(r: Run): string[] {
+  return r.stdout
+    .split("\n")
+    .filter((l) => /^would (create|update) /.test(l))
+    .sort();
+}
+
+function stagedFiles(fx: Fx): string[] {
+  return gitOk(fx, ["diff", "--cached", "--name-only"]).split("\n").filter(Boolean);
+}
+
+/** A bin dir holding only `git` (and `sops` when `sops` is given), for a PATH without the real sops. */
+function binDir(fx: Fx, sops: "none" | { version: string }): string {
+  const bin = path.join(fx.root, "bin");
+  fs.mkdirSync(bin, { recursive: true });
+  const which = (tool: string) => run("sh", ["-c", `command -v ${tool}`]).stdout.trim();
+  fs.symlinkSync(which("git"), path.join(bin, "git"));
+  if (sops !== "none") {
+    fs.writeFileSync(
+      path.join(bin, "sops"),
+      `#!/bin/sh\ncase "$1" in --version) echo "sops ${sops.version}"; exit 0 ;; esac\nexec "${which("sops")}" "$@"\n`,
+      { mode: 0o755 },
+    );
+  }
+  return bin;
+}
+
+afterEach(() => {
+  for (const fx of fixtures.splice(0)) fs.rmSync(fx.root, { recursive: true, force: true });
+});
+
+// ── Task 2: preconditions, discovery, key probe, .gitignore gate ─────────────
+
+describe.skipIf(!haveSopsTools)("env backup: discovery", () => {
+  it("discovery picks up an env file in a new untracked folder and leaves out skipped, ignored-folder, symlinked and tracked files", () => {
+    const fx = makeFx();
+    for (const rel of [
+      ".bkit/.env",
+      "apps/web/.env.preview",
+      "brand/new/nested/.env.local",
+      // never candidates
+      "node_modules/pkg/.env",
+      ".worktrees/x/.env",
+      ".claude/worktrees/x/.env",
+      ".vercel/.env",
+      "supabase/.temp/.env",
+      "tmp/.env",
+      "build/deep/.env",
+      "tracked/.env",
+      "envrc/.envrc",
+      "leftover/.env-backup-tmp-4242",
+    ])
+      put(fx, rel, "K=sentinel-value\n");
+    put(fx, "real/.env.target", "K=sentinel-value\n");
+    fs.symlinkSync(
+      path.join(fx.dir, "real", ".env.target"),
+      path.join(fx.dir, "real", ".env.link"),
+    );
+    put(fx, "legacy/.gitignore", "*.enc\n");
+    put(fx, "legacy/.env.old.enc", "ignored-ciphertext\n");
+    put(fx, "apps/web/.env.example", "K=\n");
+    gitOk(fx, ["add", "-f", "tracked/.env", "apps/web/.env.example"]);
+    gitOk(fx, ["commit", "-q", "-m", "track"]);
+
+    const r = script(fx, ["encrypt", "--dry-run"]);
+    expect(r.status).toBe(0);
+    expect(planned(r)).toEqual([
+      "would create .bkit/.env.enc",
+      "would create apps/web/.env.preview.enc",
+      "would create brand/new/nested/.env.local.enc",
+      "would create real/.env.target.enc",
+    ]);
+  });
+
+  it("skip-list globs: * stays in one folder, ** crosses folders, patterns match at any depth, a leading slash anchors", () => {
+    const config = `export default { skip: ["a/*/.env", "deep/**", "vendor/**", "/root-only/**", "**/gen/.env.local", "x?/.env"] };\n`;
+    const fx = makeFx({ config });
+    for (const rel of [
+      "a/one/.env",
+      "a/one/two/.env",
+      "deep/x/y/z/.env",
+      "apps/vendor/pkg/.env",
+      "root-only/.env",
+      "apps/root-only/.env",
+      "pkg/gen/.env.local",
+      "xy/.env",
+      "xyz/.env",
+    ])
+      put(fx, rel, "K=sentinel-value\n");
+    const r = script(fx, ["encrypt", "--dry-run"]);
+    expect(r.status).toBe(0);
+    expect(planned(r)).toEqual([
+      "would create a/one/two/.env.enc",
+      "would create apps/root-only/.env.enc",
+      "would create xyz/.env.enc",
+    ]);
+  });
+
+  it("nested repo and submodule env files are never candidates", () => {
+    const fx = makeFx();
+    put(fx, "top/.env", "K=sentinel-value\n");
+    put(fx, "newdir/.env.local", "K=sentinel-value\n");
+    // an untracked nested repo whose own .gitignore hides its .env
+    const nested = path.join(fx.dir, "newdir", "inner");
+    fs.mkdirSync(nested, { recursive: true });
+    gitOk(fx, ["init", "-q", "-b", "main"], nested);
+    put(fx, ".gitignore", ".env\n", nested);
+    put(fx, ".env", "K=sentinel-value\n", nested);
+    // a submodule whose own .gitignore hides its .env
+    const lib = path.join(fx.root, "lib");
+    fs.mkdirSync(lib);
+    gitOk(fx, ["init", "-q", "-b", "main"], lib);
+    put(fx, ".gitignore", ".env\n", lib);
+    gitOk(fx, ["add", "-A"], lib);
+    gitOk(fx, ["-c", "user.name=T", "-c", "user.email=t@e.x", "commit", "-q", "-m", "lib"], lib);
+    gitOk(fx, ["-c", "protocol.file.allow=always", "submodule", "add", "-q", lib, "vendored/lib"]);
+    put(fx, ".env", "K=sentinel-value\n", path.join(fx.dir, "vendored", "lib"));
+    gitOk(fx, ["commit", "-q", "-m", "submodule"]);
+
+    const r = script(fx, ["encrypt", "--dry-run"]);
+    expect(r.status).toBe(0);
+    expect(planned(r)).toEqual(["would create newdir/.env.local.enc", "would create top/.env.enc"]);
+  });
+});
+
+describe.skipIf(!haveSopsTools)("env backup: .gitignore gate", () => {
+  it("stops when gitignore hides an enc copy and names the line to add", () => {
+    const fx = makeFx({ gitignore: ".env\n.env.*\n!.env.example\n" });
+    put(fx, ".bkit/.env", "K=sentinel-value\n");
+    put(fx, "apps/web/.env.preview", "K=sentinel-value\n");
+    const r = script(fx, ["encrypt"]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain(".gitignore:2:.env.*");
+    expect(r.stderr).toContain("!.env.enc");
+    expect(r.stderr).toContain("!.env.*.enc");
+    expect(r.stderr).toContain(".bkit/.env.enc");
+    expect(encFiles(fx)).toEqual([]);
+  });
+
+  it("a negated pattern counts as not ignored, and only the missing exception is named", () => {
+    const fx = makeFx({ gitignore: ".env\n.env.*\n!.env.example\n!.env.*.enc\n" });
+    put(fx, ".bkit/.env", "K=sentinel-value\n");
+    put(fx, "apps/web/.env.preview", "K=sentinel-value\n");
+    const r = script(fx, ["encrypt"]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("!.env.enc");
+    expect(r.stderr).not.toContain("apps/web/.env.preview.enc");
+  });
+});
+
+describe.skipIf(!haveSopsTools)("env backup: key probe and tool preconditions", () => {
+  it("no age key warns and writes nothing", () => {
+    const fx = makeFx();
+    put(fx, "apps/web/.env.preview", "K=sentinel-value\n");
+    const tmp = path.join(fx.root, "script-tmp");
+    fs.mkdirSync(tmp);
+    const none = script(fx, ["encrypt"], { env: withEnv(fx, { ...noKeyEnv(fx), TMPDIR: tmp }) });
+    expect(none.status).toBe(0);
+    expect(none.stderr).toContain("no age key on this machine");
+    expect(encFiles(fx)).toEqual([]);
+    expect(fs.readdirSync(tmp)).toEqual([]);
+
+    // a tracked .enc exists: the decrypt probe finds no key; the .enc stays byte-identical
+    const enc = path.join(fx.dir, "apps", "web", ".env.preview.enc");
+    expect(
+      run(
+        "sops",
+        ["--config", ".sops.yaml", "encrypt", ...DOTENV, "--output", enc, "apps/web/.env.preview"],
+        { cwd: fx.dir, env: fx.env },
+      ).status,
+    ).toBe(0);
+    gitOk(fx, ["add", "apps/web/.env.preview.enc"]);
+    gitOk(fx, ["commit", "-q", "-m", "enc"]);
+    const before = fs.readFileSync(enc);
+    put(fx, "apps/web/.env.preview", "K=changed-sentinel\n");
+    const tracked = script(fx, ["encrypt"], { env: noKeyEnv(fx) });
+    expect(tracked.status).toBe(0);
+    expect(tracked.stderr).toContain("no age key on this machine");
+    expect(fs.readFileSync(enc).equals(before)).toBe(true);
+    expect(stagedFiles(fx)).toEqual([]);
+  });
+
+  it("no age key with a gitignore gap warns and exits 0", () => {
+    const fx = makeFx({ gitignore: ".env\n.env.*\n!.env.example\n" });
+    put(fx, "apps/web/.env.preview", "K=sentinel-value\n");
+    const r = script(fx, ["encrypt"], { env: noKeyEnv(fx) });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain("no age key on this machine");
+    expect(r.stderr).not.toContain("!.env.enc");
+    expect(encFiles(fx)).toEqual([]);
+  });
+
+  it("no sops on PATH warns and exits 0", () => {
+    const fx = makeFx();
+    put(fx, "apps/web/.env.preview", "K=sentinel-value\n");
+    const env = withEnv(fx, { ...noKeyEnv(fx), PATH: binDir(fx, "none") });
+    const r = script(fx, ["encrypt"], { env });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain("sops is missing or older than 3.11.0");
+    expect(encFiles(fx)).toEqual([]);
+  });
+
+  it("sops below the minimum version warns and exits 0", () => {
+    const fx = makeFx();
+    put(fx, "apps/web/.env.preview", "K=sentinel-value\n");
+    const env = withEnv(fx, {
+      ...noKeyEnv(fx),
+      PATH: `${binDir(fx, { version: "3.8.0" })}${path.delimiter}${process.env.PATH}`,
+    });
+    const r = script(fx, ["encrypt"], { env });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain("sops is missing or older than 3.11.0");
+    expect(encFiles(fx)).toEqual([]);
+  });
+
+  it("no sops on PATH with an age key file present stops and names the install", () => {
+    const fx = makeFx();
+    put(fx, "apps/web/.env.preview", "K=sentinel-value\n");
+    const env = withEnv(fx, { PATH: binDir(fx, "none") });
+    const r = script(fx, ["encrypt"], { env });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("install or upgrade sops");
+    expect(encFiles(fx)).toEqual([]);
+
+    const old = withEnv(fx, {
+      PATH: `${binDir(fx, { version: "3.8.0" })}${path.delimiter}${process.env.PATH}`,
+    });
+    const r2 = script(fx, ["encrypt"], { env: old });
+    expect(r2.status).toBe(1);
+    expect(r2.stderr).toContain("install or upgrade sops");
+  });
+
+  it("stops on a missing or unfilled sops config", () => {
+    const missing = makeFx({ sopsYaml: null });
+    put(missing, "apps/web/.env.preview", "K=sentinel-value\n");
+    const r1 = script(missing, ["encrypt"]);
+    expect(r1.status).toBe(1);
+    expect(r1.stderr).toContain(".sops.yaml");
+
+    const unfilled = makeFx({ sopsYaml: sopsYaml("{{AGE_PUBLIC_KEY}}") });
+    put(unfilled, "apps/web/.env.preview", "K=sentinel-value\n");
+    const r2 = script(unfilled, ["encrypt"]);
+    expect(r2.status).toBe(1);
+    expect(r2.stderr).toContain("AGE_PUBLIC_KEY");
+    expect(encFiles(unfilled)).toEqual([]);
+  });
+
+  it("rejects an unknown config key and an unknown flag", () => {
+    const fx = makeFx({ config: "export default { skip: [], skipp: [] };\n" });
+    const bad = script(fx, ["encrypt"]);
+    expect(bad.status).toBe(1);
+    expect(bad.stderr).toContain("skipp");
+
+    const ok = makeFx();
+    const flag = script(ok, ["encrypt", "--bogus"]);
+    expect(flag.status).toBe(2);
+    expect(flag.stderr).toContain("Usage");
+    expect(script(ok, ["unknown-verb"]).status).toBe(2);
+    expect(script(ok, ["restore", "--dry-run"]).status).toBe(2);
+  });
+
+  it("linked worktree notes and writes nothing", () => {
+    const fx = makeFx();
+    const wt = path.join(fx.root, "wt");
+    gitOk(fx, ["worktree", "add", "-q", "-b", "side", wt]);
+    put(fx, "apps/web/.env.preview", "K=sentinel-value\n", wt);
+    const r = script(fx, ["encrypt"], { cwd: wt });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain("linked worktree");
+    expect(fs.existsSync(path.join(wt, "apps", "web", ".env.preview.enc"))).toBe(false);
+  });
+
+  it("dry run writes and stages nothing", () => {
+    const fx = makeFx();
+    put(fx, "apps/web/.env.preview", "K=sentinel-value\n");
+    const before = gitOk(fx, ["status", "--porcelain", "--ignored"]);
+    const r = script(fx, ["encrypt", "--dry-run"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("would create apps/web/.env.preview.enc");
+    expect(encFiles(fx)).toEqual([]);
+    expect(stagedFiles(fx)).toEqual([]);
+    expect(gitOk(fx, ["status", "--porcelain", "--ignored"])).toBe(before);
+  });
+});

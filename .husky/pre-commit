@@ -15,6 +15,12 @@
 set -e
 pnpm bkit:gate:format
 
+# env backup — an encrypted .enc copy beside each env file (.bkit/templates.md § Env backup).
+# No key on this machine: warns, the commit goes on. A setup error, or a key without sops, stops it.
+if [ -f scripts/env-backup/bkit-env-backup.mjs ]; then
+  node scripts/env-backup/bkit-env-backup.mjs encrypt < /dev/null
+fi
+
 # bkit repo only: a staged non-test `.bkit/core/engine/**/*.ts` runs the dist freshness check.
 if git diff --cached --name-only --diff-filter=ACM |
   grep -v '\.test\.ts$' |

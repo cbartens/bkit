@@ -31,6 +31,7 @@ Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a re
 | Cloud-agent workflow + SessionStart hook | CI result starts a cloud agent: ship on green, debug on red; hook installs the cloud toolchain. | Every next step needs a local session. |
 | Context-fetch blocks | `/bkit-debug` reads real CI logs, runtime errors and web results. | Debug guesses from code; real errors stay hidden. |
 | Secrets sync | One local file → every secret store; proves copies match without printing values. | Hand-copied secrets drift: "works for me, broken in production". |
+| Env backup | An encrypted `.enc` copy beside each gitignored env file, refreshed on each commit; one command rebuilds the env files on a new machine. | Env files exist on one machine only; a lost laptop loses every password and key. |
 | Issue forms | Three forms (idea, well-defined change, bug) asking for what design, plan / build and debug read first. | Issues arrive as a title and a line; agents guess at scope, "done" and repro steps. |
 | graphify | Code map (`docs/capabilities.md`) agents check before building something again. | Agents rediscover structure each run; ripple effects missed. |
 | Dependabot / Renovate | Small grouped update PRs; pinned Actions; security fixes skip the queue. | Updates pile into one large risky upgrade. |
@@ -67,6 +68,7 @@ Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a re
 | Issue forms | `.bkit/templates/.github/ISSUE_TEMPLATE/` | `.github/ISSUE_TEMPLATE/` | the forms you use |
 | graphify | `.bkit/templates/scripts/graphify/`, `.bkit/templates/.graphifyignore`, `.bkit/templates/docs/capabilities.md` | same paths at the repo root | `docs/capabilities.md` |
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
+| Env backup | `.bkit/templates/scripts/env-backup/`, `.bkit/templates/.sops.yaml`, `.bkit/templates/.husky/post-commit` | `scripts/env-backup/`, `.sops.yaml`, `.husky/post-commit` | all three; never a plain env file |
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 | tmp/ prune | `.bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs` | `scripts/cleanup/` | that file |
 | Disk prune | `.bkit/templates/scripts/cleanup/bkit-disk-prune.mjs`, `bkit-disk-prune.machine.mjs` | `scripts/cleanup/bkit-disk-prune.mjs`, `~/.config/bkit/disk-prune.mjs` | `scripts/cleanup/bkit-disk-prune.mjs` only |
@@ -84,6 +86,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
 | `{{SCRIPT_PATH}}` | `ai.bkit.launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/Users/<you>/.config/bkit/bkit-launchd-env.sh` |
 | `{{ENV_FILE}}` | `ai.bkit.launchd.plist` (`ProgramArguments`, `WatchPaths`) | absolute path to your env file | `/Users/<you>/.config/bkit/launchd.env` |
+| `{{AGE_PUBLIC_KEY}}` | `.sops.yaml` (`creation_rules` → `age`) | your age public key (`age1…`, safe to commit) | the `Public key:` line `age-keygen` prints |
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
 - **What changed on upgrade.** `bkit upgrade` lists changed / added / removed template paths. For each one you adopted: `diff .bkit/templates/<path> <path>`, merge what you want (placeholder lines differ by design). `git diff .bkit/templates` in the upgrade commit = the package change.
@@ -201,7 +204,7 @@ Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; f
 
 ## Git hooks — Husky
 
-`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit check` first, so a drifted install fails in seconds, then `bkit:gate:static-unit-integration` when package.json declares it, else `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits; `bkit:gate:min` on a min push), plus the CI-suppressing-token guards and the `tmp/` prune (§ tmp/ prune). Each hook ends by starting the disk prune (§ Disk prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. One exception: the throwaway `.worktrees/_land-{FID}` checkout that lands bookkeeping on `dev` (docs, logs, ledgers, `[skip ci]`) runs no hooks and logs that it skipped them. Reference: https://typicode.github.io/husky/.
+`pre-commit` runs `bkit:gate:format`, then the env backup (§ Env backup); `post-commit` re-stages env backup copies a path-limited commit left behind; `pre-push` runs `bkit check` first, so a drifted install fails in seconds, then `bkit:gate:static-unit-integration` when package.json declares it, else `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits; `bkit:gate:min` on a min push), plus the CI-suppressing-token guards and the `tmp/` prune (§ tmp/ prune). `pre-commit` and `pre-push` each end by starting the disk prune (§ Disk prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. One exception: the throwaway `.worktrees/_land-{FID}` checkout that lands bookkeeping on `dev` (docs, logs, ledgers, `[skip ci]`) runs no hooks and logs that it skipped them. Reference: https://typicode.github.io/husky/.
 
 ```bash
 pnpm add -D husky@^9.1.7   # plus "prepare": "husky" (§ Gate tool scripts)
@@ -209,6 +212,7 @@ chmod +x .husky/pre-commit .husky/pre-push
 ```
 
 - `.gitignore`: `.husky/_` (bkit's `.gitignore` block already lists it).
+- `post-commit` belongs to § Env backup: copy it with the env backup script and `chmod +x .husky/post-commit`. Husky 9 runs it the same way as the other hooks.
 - Adapt: repo-only checks go below the bkit lines in each hook. What a gate runs belongs in the `bkit:gate:*` script, not the hook.
 - Min push: every file changed since each pushed commit left `origin/dev` (else `origin/main`) matches `bkit.minPushPaths` (`package.json` globs: `*` one folder, `**` any depth; default `docs/plans/**`, `docs/*.jsonl`, `.bkit/*.jsonl`; `[]` = off) → `bkit:gate:min` replaces the full gate; `MIN_PUSH=1`. `bkit ci min-push` decides from files, never `[skip ci]` (a typed label; GitHub reads the last commit only). No files / unreadable range / no ref list → full gate.
 - Min-push paths: files no code, build or test reads. Never `docs/**` (a doc can be test input). A test reading a ledger → into `bkit:gate:min`.
@@ -562,6 +566,7 @@ Local gitignored env files = source of truth; `bkit-secrets.mjs sync` makes ever
 - Cursor store: option `environment` (name) or `environmentId` picks the Cloud Agents environment (ids from `GET /v1/environments`); token `CURSOR_API_KEY` (or `BKIT_CURSOR_API_KEY`). Secrets are write-only; `NAME: "cursor:environment_variable"` writes a non-secret env var instead of a Runtime Secret. `build_secret` names exist only in the dashboard — never written or deleted.
 - Cursor rows: list only the names the cloud workflow needs — minimal set `BKIT_GH_TOKEN`, plus `BKIT_LINEAR_API_KEY` on Linear setups, optional `VERCEL_TOKEN` / `SUPABASE_ACCESS_TOKEN` when the workflow reaches those stores. A first sync against a populated environment deletes every live name not listed (start with `--dry-run`). API errors surface with their code: `feature_unavailable` (environments API not enabled for the key), `key_not_supported` (`grok_` keys), `secret_name_ambiguous` (one name, several repo-scoped versions — pre-checked; remove the extra versions in the dashboard). Team-scope 403s (`team_admin_required`) are N/A — the adapter uses environment scope only.
 - Custom store: no upstream change → `type: "custom"` + `module` loads a repo-local adapter (see below).
+- Example check: `check`, `sync` and `sync --dry-run` compare the preview and production files with the example (`sources.example`, else `.env.example` beside the preview file) both ways: an example key missing or empty in the env file, an env key the example does not list, no example at all. Warnings only; they never change the exit code. `protected` names are exempt both ways, `optional` names only from example to env file. `check <file>` compares only that file. `drift` and `list` print none.
 
 <!-- prettier-ignore -->
 | Command (`node scripts/secrets/bkit-secrets.mjs …`) | Does |
@@ -569,7 +574,7 @@ Local gitignored env files = source of truth; `bkit-secrets.mjs sync` makes ever
 | `sync --dry-run` | Writes and deletes it would make; no value printed. |
 | `sync` | Writes values that differ or cannot be proven equal; deletes names not listed for a store, or empty in source. |
 | `drift` | Read-only. Per store and environment: `missing`, `extra`, `differs`, `not-pushed`, `changed-elsewhere`. Exit 2 on drift. |
-| `check [file]` | Local only: sources, env file vs example (exit 2 on a missing required key), every copy of every secret. |
+| `check [file]` | Local only: sources, env files vs the example both ways (warnings), every copy of every secret. Exit 2 only when a named `file` does not exist. |
 | `--store <name>` | Narrow `sync` / `drift` / `list` to one store. Every run covers both environments; no per-environment option. |
 
 `sync` deletes every live name not listed for that store → `--dry-run` before every sync. No listed key resolving to a value skips deletes for that store.
@@ -590,6 +595,43 @@ How `drift` proves a value without printing it:
 - Vercel: branch-scoped preview vars left alone; an entry shared across environments is split before a write.
 
 New store type → entry in `STORES` of the template's `bkit-secrets.mjs` (`open` → `list` / `write` / `remove`; contract above it), never in a copy only. A repo-local store needs no upstream change: `type: "custom"` + `module: "./stores/x.mjs"` (resolved against `scripts/secrets/`) loads a module whose default export carries `label` + `open` (optional `perEnv`, `protects`, `setOptions`); the engine validates the adapter at load and its `open()` handle at run.
+
+## Env backup — an encrypted copy of every env file
+
+Env files hold the passwords and keys a project runs on, and git ignores them on purpose, so each one lives in one place only. This keeps an encrypted copy of every one in git, refreshed on each commit, that only your private key opens. Keep that key in a password manager and one command rebuilds every env file on a new machine.
+
+Needs Node >= 20, git, `sops` >= 3.11.0 and `age`. Every gitignored `.env` / `.env.*` gets an encrypted `{file}.enc` beside it, tracked in git. The pre-commit hook refreshes each copy one variable at a time, so a diff shows which variable changed. Only the main checkout writes copies.
+
+- Install: `brew install sops age`, or the release binaries of each.
+- Key: `age-keygen -o <key file>`; it prints the public key (`age1…`). Keep the private key in a password manager, never in the repo. SOPS reads it from `SOPS_AGE_KEY`, `SOPS_AGE_KEY_CMD`, `SOPS_AGE_KEY_FILE`, then the default key file: `$XDG_CONFIG_HOME/sops/age/keys.txt` when set, else `~/Library/Application Support/sops/age/keys.txt` (macOS) or `~/.config/sops/age/keys.txt` (Linux).
+- Copy `.bkit/templates/scripts/env-backup/` → `scripts/env-backup/` (edit only `bkit-env-backup.config.mjs`; `bkit-env-backup.mjs` stays byte-identical across repos), `.bkit/templates/.sops.yaml` → `.sops.yaml` with your public key in place of `{{AGE_PUBLIC_KEY}}`, and `.bkit/templates/.husky/post-commit` → `.husky/post-commit` (`chmod +x`).
+- Add the env backup block from `.bkit/templates/.husky/pre-commit` to your `.husky/pre-commit`, after `pnpm bkit:gate:format` and before the disk prune block.
+- `.gitignore`: after the line that ignores env files add `!.env.enc` and `!.env.*.enc`. A folder ignored whole is never backed up. A copy git would ignore stops the commit and prints the line to add.
+- First run: `node scripts/env-backup/bkit-env-backup.mjs encrypt --dry-run` lists what it would create; then commit. Delete hand-made copies such as `.env.local.backup` first: they match `.env.*` and get their own `.enc`.
+
+<!-- prettier-ignore -->
+| Command (`node scripts/env-backup/bkit-env-backup.mjs …`) | Does |
+| --- | --- |
+| `encrypt [--dry-run]` | Pre-commit hook. Creates or updates the `.enc` beside each env file, verifies it decrypts to the same variables, stages it. `--dry-run` prints `would create` / `would update` and writes nothing. |
+| `restore` | Writes every missing env file back from its `.enc` (mode 0600, never overwrites; a target git would not ignore is refused). |
+| `rekey` | Moves every `.enc` to the key now in `.sops.yaml` and stages them. |
+| `restage` | Post-commit hook. Stages a `.enc` that a path-limited commit (`git commit -- file`) put in HEAD but left unstaged. |
+
+- Output is paths, variable names and counts; no value is ever printed.
+- Skip list: `skip` in `bkit-env-backup.config.mjs`. `*` / `?` stay in one folder, `**` crosses folders, a pattern with no leading `/` matches at any depth, a leading `/` anchors to the repo top. Defaults: `.vercel/**`, `supabase/.temp/**`, `.worktrees/**`, `.claude/worktrees/**`, `node_modules/**`, `tmp/**`. `.env.example`, tracked env files, symlinks and nested repos are never backed up.
+- No age key on the machine (a cloud agent, CI, a teammate without the key): warns and writes nothing, and the commit goes on, even past a `.gitignore` gap or a malformed line.
+- A key but no usable `sops` (missing, or older than 3.11.0): the commit stops; install or upgrade sops.
+- Setup errors stop the commit: `.sops.yaml` missing or still holding the placeholder, an unknown key in the config, a `.gitignore` gap, a failed write (the original `.enc` bytes are put back).
+- A line without `=` or a duplicate key: a warning with file and line (never the text); that file's `.enc` stays as it is until it is fixed.
+- Incoming change: another key holder's change to a `.enc` (by pull or merge) while your plain file still holds the old value → a warning naming the copy and the commit, and that file is skipped. Keep theirs: delete the plain file and run `restore`. Keep yours: `touch` the plain file and commit again. A change whose author clock ran behind your last edit is missed.
+- Merge conflict in a `.enc`: the commit stops; take one side whole (`git checkout --ours|--theirs -- {file}`), then rerun `encrypt`.
+- Clean merge commits: `pre-merge-commit` does not run the block; the next ordinary commit refreshes the `.enc`.
+- Rebase and cherry-pick: `post-commit` runs `restage` after each pick, so no `.enc` stays staged.
+- Linked worktrees: a commit there notes that only the main checkout keeps the `.enc` copies and writes nothing.
+- Restore on a new machine: `git clone`, put the key in place, run `restore`. Variables and values come back equal; line order and comments follow SOPS, not the original file.
+- Key rotation: put the new public key in `.sops.yaml`, make both private keys available (`SOPS_AGE_KEY_FILE` for the old, `SOPS_AGE_KEY` for the new), run `rekey`, commit the staged copies. Every line changes once (a new data key) and the old key no longer opens them. A leaked key means rotating every secret at its provider: earlier commits keep copies the old key opens.
+- What a `.enc` shows without the key: variable names, roughly how long each value is, the public key and the change time. SOPS encrypts comment lines too. In a public repo these are public.
+- Setup tip: `bkit tips` lists "Back up your env files" until `scripts/env-backup/` exists; silence it with `env-backup` in `bkit.ignoreAdvisories`.
 
 ## Prettier tables — keep table diffs to the changed row
 

@@ -1,0 +1,8 @@
+# Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
+# .sops.yaml — tells SOPS which age key encrypts the env backup copies. See .bkit/templates.md § Env backup.
+# Replace the placeholder below with your age public key (age1…). The public key is safe to commit;
+# the private key never enters the repo.
+creation_rules:
+  - path_regex: (^|/)\.env(\.[^/]+)?$
+    age: "age1s7ee03f9jnl9amzr0qs5edzne4zqtn9c82dqcq544wgyhauhxa8see2qj4"

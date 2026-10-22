@@ -218,6 +218,15 @@ export const SETUP_TIPS = [
         steps: "`.bkit/templates.md` § Secrets sync.",
         fires: (cwd) => !exists(cwd, "scripts/secrets"),
     },
+    {
+        id: "env-backup",
+        title: "Back up your env files",
+        line: "Your env files (the private settings files git never stores) exist only on this computer. Add an encrypted copy beside each one, kept in git, so a lost laptop doesn't lose them.",
+        why: "Env files hold the passwords and keys your project runs on, and git ignores them on purpose, so each one lives in exactly one place. This keeps an encrypted copy of every one in git, refreshed on each commit, that only your private key opens. Keep that key in a password manager and one command rebuilds every env file on a new machine.",
+        ask: "Install `sops` and `age` (`brew install sops age`), run `age-keygen` and keep the private key in a password manager. Then copy .bkit/templates/scripts/env-backup/ to scripts/env-backup/, copy .bkit/templates/.sops.yaml to .sops.yaml and put your public key (the `age1…` line) in it, add the env backup block from .bkit/templates/.husky/pre-commit to .husky/pre-commit, copy .bkit/templates/.husky/post-commit to .husky/post-commit and run `chmod +x .husky/post-commit`, and add `!.env.enc` and `!.env.*.enc` to .gitignore after its `.env.*` line. Finish with `node scripts/env-backup/bkit-env-backup.mjs encrypt --dry-run`.",
+        steps: "`.bkit/templates.md` § Env backup.",
+        fires: (cwd) => !isCloudOrCi() && exists(cwd, ".bkit/.env") && !exists(cwd, "scripts/env-backup"),
+    },
     // --- cost: running cost ---------------------------------------------------------------
     {
         id: "compaction-window",

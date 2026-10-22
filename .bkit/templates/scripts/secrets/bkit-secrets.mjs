@@ -6,15 +6,14 @@
 //   node scripts/secrets/bkit-secrets.mjs sync --dry-run   what would change, nothing written
 //   node scripts/secrets/bkit-secrets.mjs sync             write changed values, delete names not listed
 //   node scripts/secrets/bkit-secrets.mjs drift            read-only: does every store hold the source value?
-//   node scripts/secrets/bkit-secrets.mjs check [file]     local only: env files vs example, copy inventory
-//     --allow-missing                                       a missing key warns; only an empty one fails (subset files, CI)
+//   node scripts/secrets/bkit-secrets.mjs check [file]     local only: env files vs example both ways (warnings), copy inventory
 //   node scripts/secrets/bkit-secrets.mjs list [--store s] names each store receives, for repo tooling
 //   --store <name>                                         narrow sync / drift / list to one store; always both environments
 //
 // Identical in every repo: bkit-secrets.config.mjs beside it holds the repo's scope.
 // Needs Node >= 20 plus the CLI of each store it uses (gh, eas, gcloud); Vercel and Supabase use their REST APIs.
 // Values are compared as SHA-256 fingerprints and never printed.
-// Exit: 0 clean · 1 a store failed or could not be read · 2 drift, or `check` found a missing key.
+// Exit: 0 clean (example findings only warn) · 1 a store failed or could not be read · 2 drift, or `check <file>` names a file that does not exist.
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -719,7 +718,41 @@ async function runTarget({ mode, store, env, cfg, src, state, root, log }) {
   return "ok";
 }
 
-function check({ cfg, src, root, file, allowMissing, log }) {
+// Env files vs the example, both ways, as warnings only: an example key missing or empty in the env
+// file, and an env key the example does not list. `protected` keys are exempt both ways, `optional`
+// keys only from example to env file. Targets: the configured preview / production files, or `file`.
+function compareExample({ cfg, root, file, log }) {
+  const exampleRel =
+    cfg.sources.example ?? path.join(path.dirname(cfg.sources.preview), ".env.example");
+  const example = readEnvFile(root, exampleRel);
+  if (!example) {
+    log(`\n  ⚠️  no ${exampleRel} — env files not compared`);
+    return;
+  }
+  const targets = file
+    ? [file]
+    : [...new Set([cfg.sources.preview, cfg.sources.production].filter(Boolean))];
+  for (const rel of targets) {
+    const env = readEnvFile(root, rel);
+    if (!env || rel === exampleRel) continue;
+    log(`\n── ${rel} vs ${exampleRel} ──`);
+    let flagged = 0;
+    const warn = (message) => {
+      log(`  ⚠️  ${message}`);
+      flagged++;
+    };
+    for (const k of example.keys()) {
+      if (cfg.optional.has(k) || cfg.protected.has(k)) continue;
+      if (!env.has(k)) warn(`${k} — missing`);
+      else if (!env.get(k)) warn(`${k} — empty`);
+    }
+    for (const k of env.keys())
+      if (!example.has(k) && !cfg.protected.has(k)) warn(`${k} — not in ${exampleRel}`);
+    log(flagged ? `  ${flagged} warning(s)` : "  ✅ matches the example");
+  }
+}
+
+function check({ cfg, src, root, file, log }) {
   let problems = 0;
   log("── Sources ──");
   for (const [label, rel] of [
@@ -731,36 +764,11 @@ function check({ cfg, src, root, file, allowMissing, log }) {
     log(env ? `  ✅ ${label}: ${rel} (${env.size} keys)` : `  ⚠️  ${label}: ${rel} not found`);
   }
 
-  const exampleRel =
-    cfg.sources.example ?? path.join(path.dirname(cfg.sources.preview), ".env.example");
-  const example = readEnvFile(root, exampleRel);
-  const targets = file
-    ? [file]
-    : [...new Set([cfg.sources.preview, cfg.sources.production].filter(Boolean))];
-  if (example) {
-    for (const rel of targets) {
-      const env = readEnvFile(root, rel);
-      if (!env && file) {
-        log(`\n  ❌ ${rel} not found`);
-        problems++;
-      }
-      if (!env || rel === exampleRel) continue;
-      log(`\n── ${rel} vs ${exampleRel} ──`);
-      let flagged = 0;
-      for (const k of example.keys()) {
-        if (cfg.optional.has(k) || cfg.protected.has(k)) continue;
-        if (!env.has(k)) {
-          // --allow-missing: a file holding a subset by design (e.g. CI's pulled env) fails on empty only.
-          log(`  ${allowMissing ? "⚠️ " : "❌"} ${k} — missing`);
-          if (allowMissing) continue;
-        } else if (!env.get(k)) log(`  ❌ ${k} — empty`);
-        else continue;
-        flagged++;
-      }
-      log(flagged ? `  ${flagged} key(s) need a value` : "  ✅ every required key set");
-      problems += flagged;
-    }
+  if (file && !readEnvFile(root, file)) {
+    log(`\n  ❌ ${file} not found`);
+    problems++;
   }
+  compareExample({ cfg, root, file, log });
 
   log("\n── Copies of each secret ──");
   for (const s of cfg.secrets) {
@@ -791,12 +799,9 @@ export async function main(
   };
   const onlyStore = take("--store");
   const dry = args.includes("--dry-run");
-  const allowMissing = args.includes("--allow-missing");
-  const [cmd = "help", file] = args.filter((a) => a !== "--dry-run" && a !== "--allow-missing");
+  const [cmd = "help", file] = args.filter((a) => a !== "--dry-run");
   // An ignored flag reads as obeyed: `--env preview` would sync both environments silently.
-  const unknown = args.filter(
-    (a) => a.startsWith("--") && a !== "--dry-run" && a !== "--allow-missing",
-  );
+  const unknown = args.filter((a) => a.startsWith("--") && a !== "--dry-run");
   if (unknown.length) {
     log(
       `❌ unknown option ${unknown.join(" ")} — every run covers both environments; narrow with --store only`,
@@ -808,7 +813,7 @@ export async function main(
       fs
         .readFileSync(fileURLToPath(import.meta.url), "utf8")
         .split("\n")
-        .slice(3, 12)
+        .slice(3, 11)
         .map((l) => l.replace(/^\/\/ ?/, ""))
         .join("\n"),
     );
@@ -819,7 +824,7 @@ export async function main(
   const dir = path.join(root, "scripts", "secrets");
   const cfg = await loadConfig(dir);
   const src = sourcesFor(root, cfg);
-  if (cmd === "check") return check({ cfg, src, root, file, allowMissing, log });
+  if (cmd === "check") return check({ cfg, src, root, file, log });
   if (cmd === "list") {
     if (onlyStore && !cfg.stores.some((s) => s.name === onlyStore)) {
       log(
@@ -855,6 +860,10 @@ export async function main(
       ? "🔎 Drift: every store vs source (read-only)\n"
       : `🔄 Sync${mode === "dry-run" ? " — DRY RUN, nothing written" : ""}\n`,
   );
+  if (cmd === "sync") {
+    compareExample({ cfg, root, log });
+    log("");
+  }
 
   const results = [];
   for (const store of cfg.stores.filter((s) => !onlyStore || s.name === onlyStore)) {

@@ -52,6 +52,7 @@ Mostly relevant to the `opencode` host — `claude` / `cursor` / `codex` ship th
 | `git` | `>=2.5` | Worktree operations. |
 | `gh` | latest, authenticated (`gh auth login`) | PR create / view / merge, CI run log fetch. |
 | `jq` | latest | Reads the JSON that `bkit` commands print, inside workflows. |
+| `sops` and `age` | `sops` `>=3.11.0`, `age` latest (`brew install sops age`) | Env backup (`scripts/env-backup/`): encrypts each env file to a tracked `.enc` copy. Needed on a machine that holds the age key; the integration tests for it also need both binaries (CI installs pinned releases). |
 | `vale` | `3.9.1` | Prose lint (`pnpm lint:prose`). Tarball from `errata-ai/vale` releases; cloud agents install via setup script / Dockerfile. |
 
 ## Local environment variables
