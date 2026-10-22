@@ -2004,6 +2004,22 @@ describe("bkit runs context", () => {
     fakeGhBin({ "pr-view": "EXIT:4" });
     expect((await context(cwd, "ship", "42")).code).toBe(80);
   });
+
+  it("runs context refuses an issue-less marker and branch naming the missing issue", async () => {
+    const cwd = autoRepo();
+    const runs = JSON.stringify([{ databaseId: 5, headSha: "sha12" }]);
+    const cases = [
+      { headRefName: "feat/other", body: "<!-- bkit:fid=dev-ci-failures -->\n" },
+      { headRefName: "feat/dev-ci-failures", body: "" },
+    ];
+    for (const pr of cases) {
+      fakeGhBin({ "pr-view": prJson(pr), "run-list": runs });
+      const r = await context(cwd, "ship", "42");
+      expect(r.err).toContain("dev-ci-failures names no issue");
+      expect(r.code).toBe(9);
+      expect(r.json.fid).toBeNull();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

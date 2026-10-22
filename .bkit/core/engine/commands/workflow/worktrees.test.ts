@@ -10,6 +10,8 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
+import { COMMANDS } from "../registry";
+import { newRecord, writeRecord } from "./ledgers";
 import { ownershipMarker, worktreeDir, worktreesCommand } from "./worktrees";
 
 const FID = "42-thing";
@@ -194,6 +196,139 @@ describe("bkit worktrees setup — debug", () => {
     const r = await setup(cwd, "debug", "--worktrees");
     expect(r.json).toMatchObject({ mode: "adopted", worktreePath: cwd });
     expect(fs.existsSync(path.join(cwd, ".worktrees"))).toBe(false);
+  });
+});
+
+describe("bkit worktrees setup — debug in place on dev shares the checkout", () => {
+  const OTHER = "43-other";
+  const recordFile = (cwd: string, fid = FID) =>
+    path.resolve(cwd, git(cwd, "rev-parse", "--git-path", `bkit/shared-checkout/${fid}.json`));
+  const record = (cwd: string, fid = FID) =>
+    JSON.parse(fs.readFileSync(recordFile(cwd, fid), "utf-8")) as Record<string, unknown>;
+  const hashOf = (cwd: string, rel: string) => git(cwd, "hash-object", "--", rel);
+
+  async function bkit(cwd: string, ...argv: string[]) {
+    const out: string[] = [];
+    const code = await runCommand(argv, COMMANDS, {
+      classicVerbs: new Set(),
+      cwd,
+      io: { stdout: (t) => out.push(t), stderr: () => {} },
+    });
+    return { code, json: out.length ? JSON.parse(out.join("")) : undefined };
+  }
+  /** Take `fid`'s workflow lock and open its run, so the lock is live. */
+  async function liveRun(cwd: string, fid: string) {
+    const lock = await bkit(
+      cwd,
+      "locks",
+      "acquire",
+      "--kind=workflow",
+      "--workflow=debug",
+      `--fid=${fid}`,
+      `--month=${MONTH}`,
+    );
+    expect(lock.code).toBe(0);
+    const start = await bkit(
+      cwd,
+      "workflows",
+      "start",
+      "--workflow=debug",
+      `--fid=${fid}`,
+      `--month=${MONTH}`,
+      "--lock-held",
+      `--token=${lock.json.token}`,
+    );
+    expect(start.code).toBe(0);
+  }
+
+  /** dev with a bare origin, one local commit beyond it, and foreign work in flight. */
+  function shared() {
+    const cwd = repo("dev");
+    const origin = `${cwd}-origin.git`;
+    dirs.push(origin);
+    git(cwd, "init", "-q", "--bare", "-b", "dev", origin);
+    fs.mkdirSync(path.join(cwd, "src"));
+    fs.mkdirSync(path.join(cwd, ".bkit"));
+    fs.writeFileSync(path.join(cwd, "src/a.txt"), "a\n");
+    fs.writeFileSync(path.join(cwd, ".bkit/issues.jsonl"), '{"id":"base"}\n');
+    git(cwd, "add", "src", ".bkit");
+    git(cwd, "commit", "-q", "-m", "base");
+    git(cwd, "remote", "add", "origin", origin);
+    git(cwd, "push", "-q", "-u", "origin", "dev");
+    git(cwd, "commit", "-q", "--allow-empty", "-m", "foreign local commit");
+    fs.writeFileSync(path.join(cwd, "src/a.txt"), "a\nforeign\n");
+    fs.writeFileSync(path.join(cwd, "notes.md"), "foreign notes\n");
+    fs.appendFileSync(path.join(cwd, ".bkit/issues.jsonl"), '{"id":"foreign"}\n');
+    return cwd;
+  }
+
+  it("in-place debug on dev writes the shared-checkout record", async () => {
+    const cwd = shared();
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(0);
+    expect(fs.existsSync(recordFile(cwd))).toBe(true);
+    const rec = record(cwd);
+    expect(rec).toMatchObject({
+      fid: FID,
+      branch: "dev",
+      startSha: git(cwd, "rev-parse", "HEAD"),
+      aheadAtStart: 1,
+      commits: [],
+    });
+    expect(rec.paths).toEqual(
+      expect.arrayContaining([
+        { path: "src/a.txt", hash: hashOf(cwd, "src/a.txt") },
+        { path: "notes.md", hash: hashOf(cwd, "notes.md") },
+        { path: ".bkit/issues.jsonl", hash: hashOf(cwd, ".bkit/issues.jsonl"), lines: 2 },
+      ]),
+    );
+  });
+
+  it("in-place debug on dev returns startSha and aheadAtStart", async () => {
+    const cwd = shared();
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ startSha: git(cwd, "rev-parse", "HEAD"), aheadAtStart: 1 });
+  });
+
+  it("a new run of the same FID rewrites startSha", async () => {
+    const cwd = shared();
+    await setup(cwd, "debug");
+    git(cwd, "commit", "-q", "--allow-empty", "-m", "another foreign commit");
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(0);
+    expect(record(cwd).startSha).toBe(git(cwd, "rev-parse", "HEAD"));
+    expect(r.json.aheadAtStart).toBe(2);
+  });
+
+  it("a resume of the same FID reuses the record", async () => {
+    const cwd = shared();
+    await setup(cwd, "debug");
+    const first = fs.readFileSync(recordFile(cwd), "utf-8");
+    await liveRun(cwd, FID);
+    git(cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(0);
+    expect(fs.readFileSync(recordFile(cwd), "utf-8")).toBe(first);
+  });
+
+  it("setup refuses with EXIT_SHARED_BUSY when another FID has a record and a live lock", async () => {
+    const cwd = shared();
+    writeRecord(cwd, newRecord(cwd, OTHER, "dev"));
+    await liveRun(cwd, OTHER);
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(13);
+    expect(r.err).toContain(OTHER);
+    expect(fs.existsSync(recordFile(cwd))).toBe(false);
+  });
+
+  it("a stale record without a lock is replaced", async () => {
+    const cwd = shared();
+    writeRecord(cwd, newRecord(cwd, OTHER, "dev"));
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(0);
+    expect(fs.existsSync(recordFile(cwd))).toBe(true);
+    expect(fs.existsSync(recordFile(cwd, OTHER))).toBe(false);
   });
 });
 

@@ -290,4 +290,31 @@ describe("bkit locks release", () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ existed: false, released: false, heldBy: null });
   });
+
+  it("locks release removes the FID shared-checkout record", async () => {
+    const cwd = repo();
+    const recordAt = (fid: string) =>
+      path.resolve(cwd, git(cwd, "rev-parse", "--git-path", `bkit/shared-checkout/${fid}.json`));
+    for (const fid of [FID, "69-other"]) {
+      fs.mkdirSync(path.dirname(recordAt(fid)), { recursive: true });
+      fs.writeFileSync(
+        recordAt(fid),
+        JSON.stringify({
+          fid,
+          branch: "dev",
+          startSha: git(cwd, "rev-parse", "HEAD"),
+          originSha: null,
+          aheadAtStart: 0,
+          paths: [],
+          commits: [],
+        }),
+      );
+    }
+    const a = await run(cwd, acquire("--month=202610"));
+    const r = await run(cwd, rel("workflow", "build", `--token=${a.json.token}`));
+    expect(r.code).toBe(0);
+    expect(r.json.released).toBe(true);
+    expect(fs.existsSync(recordAt(FID))).toBe(false);
+    expect(fs.existsSync(recordAt("69-other"))).toBe(true);
+  });
 });

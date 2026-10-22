@@ -178,9 +178,9 @@ export interface SharedCheckoutRecord {
 
 export type OwnCommit = { ok: true; sha: string | null } | { ok: false; error: string };
 
-/** A fresh record for `fid` on `branch`: not kept yet, so it refuses. */
-export function newRecord(_cwd: string, _fid: string, _branch: string): SharedCheckoutRecord {
-  throw new Error("no shared-checkout record is kept");
+/** A fresh record for `fid` on `branch`: nothing is captured yet. */
+export function newRecord(_cwd: string, fid: string, branch: string): SharedCheckoutRecord {
+  return { fid, branch, startSha: "", originSha: null, aheadAtStart: 0, paths: [], commits: [] };
 }
 
 /** The record of `fid`: always null, no shared-checkout record is kept. */

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { validate } from "../../ledgers/telemetry";
 import { runCommand } from "../lib";
+import { newRecord, writeRecord } from "./ledgers";
 import { locksCommand } from "./locks";
 import { workflowsCommand } from "./workflows";
 
@@ -1317,5 +1318,105 @@ describe("bkit workflows links", () => {
       `https://github.com/o/r/blob/dev/docs/plans/${M}/${FID}-design.md`,
     );
     expect(r.json.comment).toBeNull();
+  });
+});
+
+describe("bkit workflows close / handover — a debug run in place on dev that shares its checkout", () => {
+  const recordAt = (cwd: string) =>
+    path.resolve(cwd, git(cwd, "rev-parse", "--git-path", `bkit/shared-checkout/${FID}.json`));
+  const committed = (cwd: string) =>
+    git(cwd, "show", "--name-only", "--format=", "HEAD").split("\n");
+
+  /** dev with an open debug run, foreign work in flight, the run's record, and the run's own log. */
+  function shared() {
+    const cwd = repo();
+    write(
+      cwd,
+      `${REL}/status.jsonl`,
+      jsonl([{ type: "workflow-started", workflow: "debug", at: new Date().toISOString() }]),
+    );
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-qm", "start");
+    write(cwd, "a.txt", "base\nforeign\n");
+    write(cwd, "notes.md", "foreign notes\n");
+    writeRecord(cwd, newRecord(cwd, FID, "dev"));
+    write(cwd, `${REL}/verify-1.md`, "Verdict: PASS\n");
+    return cwd;
+  }
+  const close = (cwd: string) =>
+    run(cwd, wf("close", "debug", "--message=chore(12-export-csv): close-workflow"));
+
+  it("close with a shared-checkout record never commits a recorded path", async () => {
+    const cwd = shared();
+    const r = await close(cwd);
+    expect(r.code).toBe(0);
+    expect(committed(cwd)).toContain(`${REL}/verify-1.md`);
+    expect(committed(cwd)).not.toContain("a.txt");
+    expect(committed(cwd)).not.toContain("notes.md");
+    expect(fs.readFileSync(path.join(cwd, "a.txt"), "utf-8")).toBe("base\nforeign\n");
+    expect(git(cwd, "status", "--porcelain", "--", "a.txt", "notes.md").split("\n")).toHaveLength(
+      2,
+    );
+  });
+
+  it("record is present after workflows close and before the push", async () => {
+    const cwd = shared();
+    expect((await close(cwd)).code).toBe(0);
+    expect(fs.existsSync(recordAt(cwd))).toBe(true);
+    const rec = JSON.parse(fs.readFileSync(recordAt(cwd), "utf-8")) as { commits: string[] };
+    expect(rec.commits.at(-1)).toBe(git(cwd, "rev-parse", "HEAD"));
+  });
+
+  it("failed handover from dev removes the record and keeps recorded paths", async () => {
+    const cwd = repo();
+    const remote = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-remote-")),
+    );
+    dirs.push(remote);
+    git(remote, "init", "-q", "--bare");
+    git(cwd, "remote", "set-url", "origin", remote);
+    write(cwd, "docs/decisions.jsonl", jsonl([{ key: "a" }]));
+    git(cwd, "add", "docs/decisions.jsonl");
+    git(cwd, "commit", "-qm", "ledger");
+    git(cwd, "push", "-q", "origin", "dev");
+    const start = Date.now() - 1000;
+    // A foreign row that looks like the run's own: same workflow, inside the run's window.
+    fs.appendFileSync(
+      path.join(cwd, "docs/decisions.jsonl"),
+      jsonl([{ key: "foreign", workflow: "debug", ts: start + 1 }]),
+    );
+    fs.mkdirSync(path.dirname(recordAt(cwd)), { recursive: true });
+    fs.writeFileSync(
+      recordAt(cwd),
+      JSON.stringify({
+        fid: FID,
+        branch: "dev",
+        startSha: git(cwd, "rev-parse", "HEAD"),
+        originSha: git(cwd, "rev-parse", "HEAD"),
+        aheadAtStart: 0,
+        paths: [
+          {
+            path: "docs/decisions.jsonl",
+            hash: git(cwd, "hash-object", "--", "docs/decisions.jsonl"),
+            lines: 2,
+          },
+        ],
+        commits: [],
+      }),
+    );
+    fs.appendFileSync(
+      path.join(cwd, "docs/decisions.jsonl"),
+      jsonl([{ key: "mine", workflow: "debug", ts: start + 2 }]),
+    );
+    write(cwd, `${REL}/status.jsonl`, startedThenFailed("debug", start));
+    const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+    expect(r.code).toBe(0);
+    expect(fs.existsSync(recordAt(cwd))).toBe(false);
+    const left = fs.readFileSync(path.join(cwd, "docs/decisions.jsonl"), "utf-8");
+    expect(left).toContain('"foreign"');
+    expect(left).not.toContain('"mine"');
+    const onDev = git(remote, "show", "dev:docs/decisions.jsonl");
+    expect(onDev).toContain('"mine"');
+    expect(onDev).not.toContain('"foreign"');
   });
 });

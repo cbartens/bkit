@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
+import { newRecord, readRecord, writeRecord } from "./ledgers";
 import { ROW_FIELDS, placeholderLines, promptHeader, promptVerdicts, readHeader } from "./steps";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
@@ -877,5 +878,87 @@ describe("bkit steps gate — placeholders, FID, derived attempt", () => {
       (await run(cwd, ["steps", "gate", "--workflow=build", "--step=x", "--attempt-of=x:next"]))
         .code,
     ).toBe(2);
+  });
+});
+
+describe("bkit steps done — a run in place on dev that shares its checkout", () => {
+  const FID = "650-shared";
+  const LOGS = `docs/plans/202610/logs/${FID}`;
+
+  /** A repo on dev holding foreign work (modified, untracked, staged) and the run's record. */
+  function shared() {
+    const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-steps-shared-")));
+    dirs.push(cwd);
+    git(cwd, "init", "-q", "-b", "dev");
+    git(cwd, "config", "user.email", "t@t");
+    git(cwd, "config", "user.name", "t");
+    fs.mkdirSync(path.join(cwd, "src"));
+    write(cwd, "src/a.txt", "a\n");
+    write(cwd, "src/staged.txt", "s\n");
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-q", "-m", "base");
+    write(cwd, "src/a.txt", "a\nforeign\n");
+    write(cwd, "notes.md", "foreign notes\n");
+    write(cwd, "src/staged.txt", "s\nforeign\n");
+    git(cwd, "add", "src/staged.txt");
+    writeRecord(cwd, newRecord(cwd, FID, "dev"));
+    fs.mkdirSync(path.join(cwd, LOGS), { recursive: true });
+    write(cwd, `${LOGS}/verify-1.md`, "Verdict: PASS\nFailures: 0\n\n<!-- verdict:end -->\n");
+    return cwd;
+  }
+  const step = (cwd: string) =>
+    run(cwd, [
+      "steps",
+      "done",
+      `--file=${LOGS}/status.jsonl`,
+      "--workflow=debug",
+      "--step=debug-verify",
+      "--verdict=PASS",
+      "--failures=0",
+      `--artifact=${LOGS}/verify-1.md`,
+      `--message=chore(${FID}): verify`,
+    ]);
+  const committed = (cwd: string) =>
+    git(cwd, "show", "--name-only", "--format=", "HEAD").split("\n").sort();
+  const staged = (cwd: string) => git(cwd, "diff", "--cached", "--name-only");
+
+  it("writeStepRow with a shared-checkout record never commits a recorded path", async () => {
+    const cwd = shared();
+    const r = await step(cwd);
+    expect(r.code).toBe(0);
+    expect(committed(cwd)).toEqual([`${LOGS}/status.jsonl`, `${LOGS}/verify-1.md`]);
+    expect(staged(cwd)).toBe("src/staged.txt");
+    expect(fs.readFileSync(path.join(cwd, "src/a.txt"), "utf-8")).toBe("a\nforeign\n");
+  });
+
+  it("writeStepRow refuses when a recorded path changed", async () => {
+    const cwd = shared();
+    const head = git(cwd, "rev-parse", "HEAD");
+    write(cwd, "src/a.txt", "a\nforeign\nedited mid-run\n");
+    const r = await step(cwd);
+    expect(r.code).toBe(10);
+    expect(r.err).toContain("src/a.txt");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("writeStepRow appends its commit sha to the record", async () => {
+    const cwd = shared();
+    const r = await step(cwd);
+    expect(r.code).toBe(0);
+    expect(readRecord(cwd, FID)?.commits).toEqual([git(cwd, "rev-parse", "HEAD")]);
+  });
+
+  it("a hook-refused own-path commit exits without staging a recorded path", async () => {
+    const cwd = shared();
+    const head = git(cwd, "rev-parse", "HEAD");
+    fs.mkdirSync(path.join(cwd, ".git/hooks"), { recursive: true });
+    write(cwd, ".git/hooks/pre-commit", "#!/bin/sh\necho blocked >&2\nexit 1\n");
+    fs.chmodSync(path.join(cwd, ".git/hooks/pre-commit"), 0o755);
+    const r = await step(cwd);
+    expect(r.code).toBe(8);
+    expect(r.err).toContain("blocked");
+    expect(staged(cwd)).toBe("src/staged.txt");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(readRecord(cwd, FID)?.commits ?? []).toEqual([]);
   });
 });

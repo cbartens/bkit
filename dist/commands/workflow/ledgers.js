@@ -115,9 +115,9 @@ function dirtyTracked(root) {
         .stdout.split("\n")
         .filter((l) => l !== "" && !l.startsWith("??"));
 }
-/** A fresh record for `fid` on `branch`: not kept yet, so it refuses. */
-export function newRecord(_cwd, _fid, _branch) {
-    throw new Error("no shared-checkout record is kept");
+/** A fresh record for `fid` on `branch`: nothing is captured yet. */
+export function newRecord(_cwd, fid, branch) {
+    return { fid, branch, startSha: "", originSha: null, aheadAtStart: 0, paths: [], commits: [] };
 }
 /** The record of `fid`: always null, no shared-checkout record is kept. */
 export function readRecord(_cwd, _fid) {

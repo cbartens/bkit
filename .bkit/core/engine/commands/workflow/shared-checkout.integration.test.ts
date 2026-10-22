@@ -214,3 +214,63 @@ describe("the push of a debug run in place on dev sends only the run's commits",
     expect(git(origin, "rev-parse", "dev")).toBe(git(cwd, "rev-parse", "HEAD"));
   });
 });
+
+describe("the commits of a debug run in place on dev carry only the run's own paths", () => {
+  /** Paths in the tree of `rev`. */
+  const tree = (cwd: string, rev: string) =>
+    git(cwd, "ls-tree", "-r", "--name-only", rev).split("\n");
+  /** Paths `rev` changed against its parent. */
+  const changed = (cwd: string, rev: string) =>
+    git(cwd, "diff-tree", "--no-commit-id", "--name-only", "-r", rev).split("\n");
+  const close = (cwd: string) =>
+    bkit(
+      cwd,
+      "workflows",
+      "close",
+      "--workflow=debug",
+      `--fid=${FID}`,
+      `--month=${MONTH}`,
+      `--message=chore(${FID}): close`,
+    );
+
+  it("foreign staged and untracked files survive a run commit", async () => {
+    const { cwd, foreign } = fixture();
+    await startRun(cwd);
+    const done = await step(cwd);
+    expect(done.code).toBe(0);
+    expect(git(cwd, "log", "-1", "--format=%s")).toBe(`chore(${FID}): verify`);
+    expect(tree(cwd, "HEAD")).not.toContain("notes.md");
+    for (const p of changed(cwd, "HEAD")) expect(p.startsWith(`${LOGS}/`)).toBe(true);
+    untouched(cwd, foreign);
+  });
+
+  it("close commit tree excludes foreign files", async () => {
+    const { cwd, foreign } = fixture();
+    await startRun(cwd);
+    await step(cwd);
+    const closed = await close(cwd);
+    expect(closed.code).toBe(0);
+    expect(git(cwd, "log", "-1", "--format=%s")).toBe(`chore(${FID}): close`);
+    expect(tree(cwd, "HEAD")).not.toContain("notes.md");
+    expect(changed(cwd, "HEAD")).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/^(src\/|notes\.md$)/)]),
+    );
+    expect(git(cwd, "show", "HEAD:src/staged.txt")).toBe("s");
+    untouched(cwd, foreign);
+  });
+
+  it("debug-on-dev roadmap mirror row lands while the foreign issues.jsonl row does not", async () => {
+    const { cwd } = fixture();
+    await startRun(cwd);
+    await step(cwd);
+    const mirrored = await bkit(cwd, "roadmap", "mirror", "--workflow=debug", `--fid=${FID}`);
+    expect(mirrored.code).toBe(0);
+    expect(mirrored.json).toMatchObject({ appended: true, skipped: "on dev" });
+    expect((await close(cwd)).code).toBe(0);
+    const committed = git(cwd, "show", `HEAD:${ISSUES}`)
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(committed.map((r) => r.id ?? r.key)).toEqual(["base", FID]);
+    expect(read(cwd, ISSUES)).toContain('"id":"foreign-row"');
+  });
+});
