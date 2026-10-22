@@ -364,7 +364,15 @@ A tier that needs a stateful backing service (database, cache, queue, search ind
 
 bkit's `bkit-tests-migration` lane (`bkit-stub:bkit-tests-migration`) is the ready-made home: **always-on** (no job-level `if:` because e2e / live `needs:` it for remote-push ordering; a skip cascades). Replay + seed assert stay plan- / path-gated per-step. On every push to `dev`/`main` the same lane owns remote apply of new migrations (e.g. `supabase db push --linked --include-all`) (un-gated by `run_migration` so it self-heals; after replay so from-empty failure never reaches remote). Capstone asserts `result == success` whenever scope succeeded. Fold into `bkit-tests-check`'s `needs:`.
 
-**Local integration freshness.** If your local stack reuses a warm data volume (e.g. Docker + `supabase start`), a bare start can leave migrations unapplied (stale-volume footgun). Prefer a reset-by-default runner over a bare integration run (e.g. `turbo run test:integration`) — mirror local E2E: reset unless `--no-reset`. Shape: `pnpm test:integration:local` → script that starts local stack, hides remote env file (e.g. `.env.local`), resets from empty (e.g. `supabase db reset --local`), then runs integration (CI passthrough, because CI boots its own hermetic stack).
+**Local integration freshness.** If your local stack reuses a warm data volume (e.g. Docker + `supabase start`), a bare start can leave migrations unapplied (stale-volume footgun). Prefer a reset-by-default runner over a bare integration run (e.g. `turbo run test:integration`) — mirror local E2E: reset unless `--no-reset`. Shape: `pnpm test:integration:local` → script that starts local stack, exports its URL + keys, resets from empty (e.g. `supabase db reset --local`), then runs integration (CI passthrough, because CI boots its own hermetic stack).
+
+**Local runners never touch env files** (e.g. `.env.local`, `.env.production`; may be the only copy of live credentials):
+
+- Target local stack by exporting its values before config loads; loaders (Next, dotenv `override: false`) never override a set key.
+- Blank a hosted key with `export KEY=""`, never `unset` (loader refills unset keys from the file).
+- Never delete, move or hide-and-restore the file (a killed run loses it).
+- Never `vercel env pull` onto it (replaces it with the host's keys only); pull to a scratch file, copy keys across.
+- Guard test fails any tracked script that deletes, moves or overwrites an env file.
 
 **"Fresh" means replay-from-empty, not a reused volume.** A bare "start the local stack" command often **reuses an existing data volume** and applies only what's missing, so a "fresh" start can silently run a months-old schema while reporting success. Only a reset / replay from an **empty** store is a freshness proof. And a green replay is not a green **seed**: assert the seed actually loaded (a known row exists), because the reset can exit 0 while a conditional insert no-ops or the seed aborts mid-file (§ Migration-replay + seed carries the full seed-determinism rules).
 
