@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-utility-update-knowledge"
 description = "Senior editor correcting gotchas the docs or codebase have since contradicted."
 model = "gpt-6-astra"

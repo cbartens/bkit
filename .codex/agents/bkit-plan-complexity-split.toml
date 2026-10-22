@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-plan-complexity-split"
 description = "Senior architect partitioning large plans into lossless, self-contained sub-plans."
 model = "gpt-6-astra"

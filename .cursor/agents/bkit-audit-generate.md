@@ -16,7 +16,7 @@ tools:
   - mcp__github__add_issue_comment
   - mcp__github__search_issues
 ---
-<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior auditor running one audit template into a report.
 **Scope:** As specified by input and Read / Update / Create section.

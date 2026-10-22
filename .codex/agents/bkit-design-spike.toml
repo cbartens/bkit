@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-design-spike"
 description = "Senior engineer settling a design's load-bearing unknowns with throwaway probe code."
 model = "gpt-6-astra"

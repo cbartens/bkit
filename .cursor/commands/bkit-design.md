@@ -2,7 +2,7 @@ Design Feature — Autonomous design phase
 
 # Design Feature (Workflow 1/5)
 
-<!-- bkit:managed v5.5.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Create design in `docs/plans/{YYYYMM}/` (canonical month bucket, set at start) — no plans, no code, no execution.
