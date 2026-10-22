@@ -13,3 +13,7 @@
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","at":"2026-10-22T01:36:35Z","parentSha":"b3ce85d31710d42fb8b6e09c16b0f9ba3adbf761","artifacts":["docs/plans/202610/logs/650-workflows-prompt-alone/plan-summary.md"],"verdict":"CONCERNS","attempt":1}
 {"type":"step-done","workflow":"plan","step":"plan-close-workflow","status":"DONE","at":"2026-10-22T01:38:28Z","parentSha":"abb4e1d350323d58f3b4e27edef99b3103e5f247","artifacts":[]}
 {"type":"workflow-done","workflow":"plan","at":"2026-10-22T01:38:28Z"}
+{"type":"workflow-started","workflow":"build","at":"2026-10-22T02:47:37Z","parentSha":"54f5b17848708264eef7ecea204f175ec6b32834"}
+{"type":"runtime-resolved","workflow":"build","at":"2026-10-22T02:47:37Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-10-22T02:47:51Z","parentSha":"54f5b17848708264eef7ecea204f175ec6b32834","artifacts":[]}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-10-22T02:47:51Z","parentSha":"54f5b17848708264eef7ecea204f175ec6b32834","artifacts":["docs/plans/202610/logs/650-workflows-prompt-alone/build-input-1.md"]}
