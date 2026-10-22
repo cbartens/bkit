@@ -5,6 +5,14 @@
 import { DEFAULT_CLOUD_AGENTS, DEFAULT_ISSUE_TRACKER, parseCloudAgents, parseIssueTracker, } from "../install/manifest.js";
 import { isOpencodeProvider } from "../render/models.js";
 import { readPackageJson } from "./package-json.js";
+const BOARD_URL = /^https:\/\/github\.com\/(orgs|users)\/([^/?#\s]+)\/projects\/([1-9][0-9]*)(?:[/?#].*)?$/;
+/** The board a `https://github.com/{orgs|users}/<login>/projects/<n>[/views/…]` URL names; null otherwise. */
+export function parseGithubBoardUrl(url) {
+    const m = BOARD_URL.exec(url.trim());
+    if (!m)
+        return null;
+    return { ownerType: m[1] === "orgs" ? "org" : "user", owner: m[2], number: Number(m[3]) };
+}
 export const CONFIG_DEFAULTS = {
     ciWorkflow: "bkit-ci.yml",
     capstoneJob: "bkit-tests-check",
@@ -12,10 +20,11 @@ export const CONFIG_DEFAULTS = {
     worktreeInstall: true,
     diskMinFreeGb: 40,
     issueTracker: DEFAULT_ISSUE_TRACKER,
+    // The Status options of GitHub's Kanban and Team planning board templates.
+    github: { project: null, projectUrl: null, progress: "In progress", review: "In review" },
     // `started` is a state type every Linear team has; In Review is a name a default team lacks.
     linear: { team: null, project: null, progress: "started", review: "In Review" },
     jira: { site: null, project: null, progress: "In Progress", review: "In Review" },
-    githubProject: null,
     shipGateRequiredLanes: [],
     // What bkit's workflows write: plan / design / build logs and the ledgers. Never
     // `docs/**`: a project doc can be a test's input, so a docs edit can red a test.
@@ -48,13 +57,14 @@ export function readBkitConfig(root) {
     const worktree = (bkit.worktree ?? {});
     const copy = worktree.copy;
     const minFreeGb = (bkit.disk ?? {}).minFreeGb;
-    const project = bkit.githubProject;
     const lanes = bkit.shipGateRequiredLanes;
     const book = bkit.minPushPaths;
     const provider = bkit.opencodeProvider;
     const providers = bkit.opencodeProviders;
+    const github = record(bkit.github);
     const linear = record(bkit.linear);
     const jira = record(bkit.jira);
+    const projectUrl = optionalString(github.project);
     return {
         ciWorkflow: nonEmptyString(bkit.ciWorkflow) ? bkit.ciWorkflow : CONFIG_DEFAULTS.ciWorkflow,
         capstoneJob: nonEmptyString(bkit.capstoneJob) ? bkit.capstoneJob : CONFIG_DEFAULTS.capstoneJob,
@@ -66,6 +76,11 @@ export function readBkitConfig(root) {
             ? minFreeGb
             : CONFIG_DEFAULTS.diskMinFreeGb,
         issueTracker: parseIssueTracker(bkit.issueTracker) ?? CONFIG_DEFAULTS.issueTracker,
+        github: {
+            project: github.project === false ? false : projectUrl ? parseGithubBoardUrl(projectUrl) : null,
+            projectUrl,
+            ...trackerStates(github, CONFIG_DEFAULTS.github),
+        },
         linear: {
             team: optionalString(linear.team),
             project: optionalString(linear.project),
@@ -76,11 +91,6 @@ export function readBkitConfig(root) {
             project: optionalString(jira.project),
             ...trackerStates(jira, CONFIG_DEFAULTS.jira),
         },
-        githubProject: project === false
-            ? false
-            : project !== null && typeof project === "object" && !Array.isArray(project)
-                ? project
-                : null,
         shipGateRequiredLanes: Array.isArray(lanes) ? lanes.filter(nonEmptyString) : [],
         // An explicit [] is kept: it switches the min push off.
         minPushPaths: Array.isArray(book)
@@ -97,9 +107,12 @@ export function readBkitConfig(root) {
     };
 }
 export function trackerScope(cfg) {
+    const none = { trackerTeam: null, trackerProject: null, trackerSite: null, trackerBoard: null };
+    if (cfg.issueTracker === "github")
+        return { ...none, trackerBoard: cfg.github.project || null };
     if (cfg.issueTracker === "linear")
-        return { trackerTeam: cfg.linear.team, trackerProject: cfg.linear.project, trackerSite: null };
+        return { ...none, trackerTeam: cfg.linear.team, trackerProject: cfg.linear.project };
     if (cfg.issueTracker === "jira")
-        return { trackerTeam: null, trackerProject: cfg.jira.project, trackerSite: cfg.jira.site };
-    return { trackerTeam: null, trackerProject: null, trackerSite: null };
+        return { ...none, trackerProject: cfg.jira.project, trackerSite: cfg.jira.site };
+    return none;
 }

@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **BREAKING — the GitHub board setting is `bkit.github.project`, the board's URL.** It sits under `bkit.github` beside `progress` and `review`, the same shape as `bkit.linear` and `bkit.jira`. Paste the board URL from the browser: `"github": { "project": "https://github.com/orgs/<org>/projects/<number>" }`, or `/users/<login>/…` for a personal board; a trailing `/views/<n>` is fine. Status is set by option name, `In progress` and `In review` by default (the names GitHub's board templates use); set `bkit.github.progress` / `review` if your board names them differently. You no longer look up a Status field id or option ids. Personal boards now work: the old setting always asked for an organization's board, so a personal board failed with a 404. `bkit upgrade` moves an old `bkit.githubProject` for you; if it logs that an option id has no name, set that name by hand. The `github-project-status-field-id-format` advisory is gone with the field id. `bkit issues labels --board` prints two payloads, `addItem` and `updateItem`; `listItems` is gone, and `boardSkipped` can be `project-url-invalid`. `bkit repo info` prints `trackerBoard`.
+
 ### Added
 
 - **A local stack lock keeps worktrees off each other's local services.** Every worktree of a repo shares each local service whose names and ports come from the repo's config (a Docker database, an emulator), so a reset from one worktree wiped the data under another worktree's test run. Copy the new template `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` to `scripts/ci/`, wrap the `package.json` scripts that start, reset or stop the stack in its `run` mode, and source it in local runners that test against the stack. A second run waits and names the run holding the stack; the lock frees itself within a second of its run ending, however the run ends; CI skips it. The new `.agents/rules.md` rule `Shared local stack` tells agents to use those scripts, never the raw command. Setup: `.bkit/templates.md` § Local stack lock.

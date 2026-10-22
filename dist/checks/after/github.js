@@ -112,18 +112,19 @@ export function buildTrackerSetupAdvisory(cwd) {
     };
 }
 /**
- * Classify the `bkit.githubProject` board-sync config in package.json:
- *   - "configured" → object with at least `owner` + `number` (the lookup keys)
+ * Classify the `bkit.github.project` board-sync config in package.json:
+ *   - "configured" → a Projects v2 board URL
  *   - "opted-out"  → set to `false` ("no board sync" — stay quiet)
+ *   - "invalid"    → a string that is not a board URL
  *   - "absent"     → missing, malformed, or unreadable
  */
 function readGithubProjectConfig(cwd) {
-    const gp = readBkitConfig(cwd).githubProject;
-    if (gp === false)
+    const { project, projectUrl } = readBkitConfig(cwd).github;
+    if (project === false)
         return "opted-out";
-    if (gp !== null && gp.owner !== undefined && gp.number !== undefined)
+    if (project !== null)
         return "configured";
-    return "absent";
+    return projectUrl === null ? "absent" : "invalid";
 }
 /**
  * Inspect the root `.mcp.json` github server's `X-MCP-Toolsets` header for the
@@ -153,13 +154,13 @@ export function detectProjectsToolset(cwd) {
 /**
  * GitHub Projects v2 board-sync prerequisite advisory. Board status sync needs
  * THREE things, none of which install seeds or verifies end-to-end:
- * `bkit.githubProject` config, the `projects` MCP toolset, and an org-scoped
- * Projects R/W PAT. Absent any of the first two (the detectable ones), board
- * sync silently no-ops — `bkit.githubProject` alone is useless if the toolset
- * lacks `projects`, and vice versa. Emits one advisory naming what's missing.
+ * `bkit.github.project` (the board URL), the `projects` MCP toolset, and a PAT
+ * with Projects R/W. Absent any of the first two (the detectable ones), board
+ * sync silently no-ops — the URL alone is useless if the toolset lacks
+ * `projects`, and vice versa. Emits one advisory naming what's missing.
  *
  * Gates: workflows installed (.claude/ or .cursor/) AND tracker === "github".
- * Stays quiet on explicit opt-out (`bkit.githubProject: false`) or when both
+ * Stays quiet on explicit opt-out (`bkit.github.project: false`) or when both
  * detectable prerequisites are satisfied (PAT scope can't be checked locally).
  */
 export function buildGithubProjectAdvisory(cwd) {
@@ -178,8 +179,10 @@ export function buildGithubProjectAdvisory(cwd) {
     if (configOk && toolsetOk)
         return null;
     const missing = [];
-    if (!configOk)
-        missing.push("`bkit.githubProject` is absent from package.json");
+    if (configState === "absent")
+        missing.push("`bkit.github.project` is absent from package.json");
+    if (configState === "invalid")
+        missing.push("`bkit.github.project` is not a GitHub Projects board URL");
     if (toolset === "missing")
         missing.push("the `projects` toolset is missing from `.mcp.json` `X-MCP-Toolsets`");
     const missingPhrase = missing.length > 0 ? `: ${missing.join("; ")}` : "";
@@ -189,68 +192,18 @@ export function buildGithubProjectAdvisory(cwd) {
         detect: `GitHub tracker is active but Projects v2 board status sync is not fully configured${missingPhrase}. ` +
             "Board sync silently no-ops — workflows never reflect phase on the project board.",
         action: "Board status sync is optional (workflows never gate on it) but invisible when half-configured. All three prerequisites are required:\n\n" +
-            "1. Add `bkit.githubProject` to package.json (org-owned board only — fine-grained PATs cannot reach user-owned projects, nor span orgs; use a classic PAT with `project` to cover more than one owner):\n\n" +
+            "1. Add the board's URL to package.json, as the browser shows it on the board (`/orgs/<org>/…` for an organization board, `/users/<login>/…` for a personal one; a trailing `/views/<n>` is fine):\n\n" +
             '       "bkit": {\n' +
-            '         "githubProject": {\n' +
-            '           "owner": "<org>", "number": <project-number>,\n' +
-            '           "statusFieldId": <numeric-field-id>, "progressOptionId": "<option-id>",\n' +
-            '           "reviewOptionId": "<option-id>", "doneOptionId": "<option-id>"\n' +
-            "         }\n" +
+            '         "github": { "project": "https://github.com/orgs/<org>/projects/<number>" }\n' +
             "       }\n\n" +
-            "   Discover the ids: `gh api /orgs/<org>/projectsV2/<number>/fields --jq '.[] | select(.name==\"Status\")'` → the Status field's " +
-            "numeric `id` → `statusFieldId` (a JSON number, NOT quoted); each `options[].id` (e.g. `47fc9ee4`) → " +
-            "the option ids (quoted strings). `gh project field-list`'s `id` is the GraphQL node id (`PVTSSF_…`) " +
-            "and must NOT be used for `statusFieldId` — `projects_write` rejects it with " +
-            "`updated_field.id: value must be a number`.\n\n" +
+            "   Workflows set the board's Status field by option name: `In progress` when a phase starts, `In review` at hand-off. " +
+            'A board whose Status options are named differently sets `"progress"` and `"review"` beside `"project"` to its own names.\n\n' +
             "2. Ensure the root `.mcp.json` github server enables the `projects` toolset:\n\n" +
             '       "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects,actions"\n\n' +
-            "3. The `BKIT_GH_TOKEN` PAT needs organization-scoped Projects read & write (repo scope is not enough).\n\n" +
-            "To opt out and silence this advisory, set `bkit.githubProject` to `false` in package.json.",
-    };
-}
-/**
- * Static-validate the `statusFieldId` shape on an otherwise-configured board.
- * Projects v2 board sync feeds `statusFieldId` straight into `projects_write`
- * `updated_field.id`, which requires the NUMERIC field id; a GraphQL node id
- * (`PVTSSF_…` — what `gh project field-list` returns) or any non-number value is
- * rejected with `updated_field.id: value must be a number`, and best-effort sync then
- * no-ops silently. Checked at install/check time, no network needed.
- *
- * Gates: workflows installed AND tracker === "github" AND `bkit.githubProject` is
- * an object carrying `owner` + `number` (an otherwise-usable board) AND
- * `statusFieldId` is present but not a JSON number. An absent `statusFieldId` is
- * the setup advisory's job; opt-out (`false`) and absent config never reach here.
- */
-export function detectGithubProjectFieldIdFormat(cwd) {
-    const hasClaude = fs.existsSync(path.join(cwd, ".claude"));
-    const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
-    if (!hasClaude && !hasCursor)
-        return null;
-    const { issueTracker, githubProject: gp } = readBkitConfig(cwd);
-    if (issueTracker !== "github")
-        return null;
-    // Only judge a board that is otherwise configured (owner + number present) and
-    // has a statusFieldId set — absent statusFieldId is handled by the setup advisory.
-    if (!gp || gp.owner === undefined || gp.number === undefined)
-        return null;
-    const sfid = gp.statusFieldId;
-    if (sfid === undefined || typeof sfid === "number")
-        return null; // absent or already correct
-    const looksLikeNodeId = typeof sfid === "string" && /^PVT/.test(sfid);
-    const shape = looksLikeNodeId
-        ? "a GraphQL node id (`PVTSSF_…`)"
-        : `a ${typeof sfid} (\`${String(sfid)}\`)`;
-    return {
-        id: "github-project-status-field-id-format",
-        severity: "advisory",
-        detect: `\`bkit.githubProject.statusFieldId\` is ${shape}, but Projects v2 board sync feeds it to ` +
-            "`projects_write` `updated_field.id`, which requires the numeric field id and rejects anything " +
-            "else (`updated_field.id: value must be a number`). Board sync silently no-ops — the board never reflects phase.",
-        action: "Re-derive the numeric Status field id and store it unquoted:\n\n" +
-            "       gh api /orgs/<org>/projectsV2/<number>/fields --jq '.[] | select(.name==\"Status\")'\n\n" +
-            "The Status field's numeric `id` (e.g. `350038178`) → `statusFieldId` (a JSON number, NOT quoted); " +
-            "each `options[].id` (e.g. `47fc9ee4`) → the option ids (quoted strings). `gh project field-list`'s " +
-            "`id` is the GraphQL node id (`PVTSSF_…`) and must NOT be used for `statusFieldId`.",
+            "3. The `BKIT_GH_TOKEN` PAT needs Projects read & write (repo scope is not enough): a fine-grained PAT gets it as an " +
+            "organization permission, so it reaches organization boards only; a classic PAT with the `project` scope reaches " +
+            "organization and personal boards.\n\n" +
+            "To opt out and silence this advisory, set `bkit.github.project` to `false` in package.json.",
     };
 }
 /**

@@ -8,7 +8,6 @@ import {
   detectActionsWritePermissions,
   detectProjectsToolset,
   buildGithubProjectAdvisory,
-  detectGithubProjectFieldIdFormat,
   detectMainBranchProtection,
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
@@ -144,14 +143,7 @@ describe("detectActionsWritePermissions", () => {
 describe("buildGithubProjectAdvisory", () => {
   const pkg = (bkit: Record<string, unknown>) =>
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x", bkit }));
-  const validProject = {
-    owner: "acme",
-    number: 7,
-    statusFieldId: 350038178, // numeric field id (what projects_write updated_field.id requires)
-    progressOptionId: "p",
-    reviewOptionId: "r",
-    doneOptionId: "d",
-  };
+  const board = { project: "https://github.com/orgs/acme/projects/7" };
   const writeToolset = (toolsets: string) =>
     fs.writeFileSync(
       path.join(tmpDir, ".mcp.json"),
@@ -170,7 +162,7 @@ describe("buildGithubProjectAdvisory", () => {
   });
 
   it.each(["linear", "jira"])("returns null when tracker is %s", (tracker) => {
-    pkg({ issueTracker: tracker, githubProject: validProject });
+    pkg({ issueTracker: tracker, github: board });
     expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
   });
 
@@ -180,128 +172,74 @@ describe("buildGithubProjectAdvisory", () => {
     const result = buildGithubProjectAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("github-project-board-sync-unconfigured");
-    expect(result!.detect).toContain("`bkit.githubProject` is absent");
+    expect(result!.detect).toContain("`bkit.github.project` is absent");
     expect(result!.detect).toContain("`projects` toolset is missing");
   });
 
   it("flags only the toolset when config is present but projects toolset missing", () => {
-    pkg({ issueTracker: "github", githubProject: validProject });
+    pkg({ issueTracker: "github", github: board });
     writeToolset("context,issues,pull_requests");
     const result = buildGithubProjectAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.detect).toContain("`projects` toolset is missing");
-    expect(result!.detect).not.toContain("`bkit.githubProject` is absent");
+    expect(result!.detect).not.toContain("`bkit.github.project`");
   });
 
-  it("flags only the config when toolset present but githubProject absent", () => {
-    pkg({ issueTracker: "github" });
+  it("flags only the config when toolset present but bkit.github.project absent", () => {
+    pkg({ issueTracker: "github", github: { progress: "Doing" } });
     writeToolset("context,issues,projects");
     const result = buildGithubProjectAdvisory(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.detect).toContain("`bkit.githubProject` is absent");
+    expect(result!.detect).toContain("`bkit.github.project` is absent");
     expect(result!.detect).not.toContain("`projects` toolset is missing");
   });
 
   it("returns null when both prerequisites are satisfied", () => {
-    pkg({ issueTracker: "github", githubProject: validProject });
+    pkg({ issueTracker: "github", github: board });
     writeToolset("context,issues,projects");
     expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
   });
 
-  it("stays quiet on explicit opt-out (bkit.githubProject: false), even with toolset missing", () => {
-    pkg({ issueTracker: "github", githubProject: false });
+  it("accepts a personal board URL with a trailing view", () => {
+    pkg({
+      issueTracker: "github",
+      github: { project: "https://github.com/users/me/projects/1/views/1" },
+    });
+    writeToolset("context,issues,projects");
+    expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("stays quiet on explicit opt-out (bkit.github.project: false), even with toolset missing", () => {
+    pkg({ issueTracker: "github", github: { project: false } });
     writeToolset("context,issues,pull_requests");
     expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
   });
 
-  it("treats an object lacking owner/number as absent (config not usable)", () => {
-    pkg({ issueTracker: "github", githubProject: { statusFieldId: "F" } });
+  it.each([
+    "https://github.com/acme/web",
+    "https://github.com/orgs/acme/projects/0",
+    "github.com/orgs/acme/projects/7",
+  ])("flags a project that is not a board URL (%s)", (project) => {
+    pkg({ issueTracker: "github", github: { project } });
     writeToolset("context,issues,projects");
     const result = buildGithubProjectAdvisory(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.detect).toContain("`bkit.githubProject` is absent");
+    expect(result!.detect).toContain("`bkit.github.project` is not a GitHub Projects board URL");
   });
 
-  it("steers discovery to `gh api …/projectsV2/…/fields`, not `gh project field-list`", () => {
+  it("shows the URL form for both owner kinds and the token each reaches", () => {
     pkg({ issueTracker: "github" });
     writeToolset("context,issues,pull_requests"); // force the advisory to fire
     const action = buildGithubProjectAdvisory(tmpDir)!.action;
-    // The fix: field-list returns the GraphQL node id, not the numeric field id —
-    // so it must NOT be the discovery command, only a warning against its misuse.
-    expect(action).not.toContain(
-      "Discover the field + single-select option IDs: `gh project field-list",
+    expect(action).toContain(
+      '"github": { "project": "https://github.com/orgs/<org>/projects/<number>" }',
     );
-    expect(action).toContain("gh api /orgs/<org>/projectsV2/<number>/fields");
-    expect(action).toContain("must NOT be used for `statusFieldId`");
-    // Template must store statusFieldId as an UNQUOTED number, not a quoted string.
-    expect(action).toContain('"statusFieldId": <numeric-field-id>');
-    expect(action).not.toContain('"statusFieldId": "<id>"');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectGithubProjectFieldIdFormat
-// ---------------------------------------------------------------------------
-
-describe("detectGithubProjectFieldIdFormat", () => {
-  const pkg = (bkit: Record<string, unknown>) =>
-    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x", bkit }));
-  const gp = (extra: Record<string, unknown>) => ({ owner: "acme", number: 7, ...extra });
-
-  beforeEach(() => {
-    // Mirrors the board-sync advisory gating: only fires with workflows installed.
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-  });
-
-  it("returns null when statusFieldId is a numeric field id (correct shape)", () => {
-    pkg({ issueTracker: "github", githubProject: gp({ statusFieldId: 350038178 }) });
-    expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
-  });
-
-  it("flags a GraphQL node id (PVTSSF_…) — the live silent-no-op failure", () => {
-    pkg({
-      issueTracker: "github",
-      githubProject: gp({ statusFieldId: "PVTSSF_lADOD_iMUM4BYWt1zhTdKKI" }),
-    });
-    const result = detectGithubProjectFieldIdFormat(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("github-project-status-field-id-format");
-    expect(result!.detect).toContain("GraphQL node id");
-    expect(result!.detect).toContain("value must be a number");
-    expect(result!.action).toContain("gh api /orgs/<org>/projectsV2/<number>/fields");
-  });
-
-  it("flags a quoted numeric string (projects_write still rejects a string)", () => {
-    pkg({ issueTracker: "github", githubProject: gp({ statusFieldId: "350038178" }) });
-    const result = detectGithubProjectFieldIdFormat(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("github-project-status-field-id-format");
-  });
-
-  it("returns null when statusFieldId is absent (the setup advisory's job)", () => {
-    pkg({ issueTracker: "github", githubProject: gp({}) });
-    expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
-  });
-
-  it("returns null without owner/number (not an otherwise-configured board)", () => {
-    pkg({ issueTracker: "github", githubProject: { statusFieldId: "PVTSSF_x" } });
-    expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
-  });
-
-  it("returns null on explicit opt-out (bkit.githubProject: false)", () => {
-    pkg({ issueTracker: "github", githubProject: false });
-    expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
-  });
-
-  it.each(["linear", "jira"])("returns null when tracker is %s", (tracker) => {
-    pkg({ issueTracker: tracker, githubProject: gp({ statusFieldId: "PVTSSF_x" }) });
-    expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
-  });
-
-  it("returns null when workflows are not installed", () => {
-    fs.rmSync(path.join(tmpDir, ".claude"), { recursive: true, force: true });
-    pkg({ issueTracker: "github", githubProject: gp({ statusFieldId: "PVTSSF_x" }) });
-    expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
+    expect(action).toContain("`/users/<login>/…`");
+    expect(action).toContain(
+      "classic PAT with the `project` scope reaches organization and personal boards",
+    );
+    expect(action).not.toContain("OptionId");
+    expect(action).not.toContain("statusFieldId");
   });
 });
 

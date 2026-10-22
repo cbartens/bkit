@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WriteSet } from "../write";
 import { extractManagedBlock } from "../managed-block";
 import type { PreflightFinding } from "../../checks/before/index";
@@ -16,6 +16,7 @@ import {
   isNoopScript,
   runBkitDocs,
   migrateLinearTeamKey,
+  migrateGithubProjectKey,
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
 import { readInstallingVersion } from "../../shared/package-json";
@@ -640,6 +641,94 @@ describe("migrateLinearTeamKey (via seedCorePackageJsonScripts)", () => {
     seed({ linearTeam: "ENG" });
     dispatchModules(new Set(["core"]), makeCtx({}));
     expect(bkitKey().linear).toEqual({ team: "ENG" });
+    expect(touched(run())).toBe(false);
+  });
+});
+
+describe("migrateGithubProjectKey (via seedCorePackageJsonScripts)", () => {
+  const seed = (bkit: Record<string, unknown>): void =>
+    fs.writeFileSync("package.json", JSON.stringify({ name: "x", bkit }, null, 4) + "\n", "utf-8");
+  const read = (): string => fs.readFileSync("package.json", "utf-8");
+  const bkitKey = (): Record<string, unknown> => JSON.parse(read()).bkit;
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    migrateGithubProjectKey(ctx.dryRun, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const touched = (ctx: ModuleContext): boolean =>
+    ctx.ws.writes.some((w) => w.path === "package.json");
+  const templateBoard = {
+    owner: "acme",
+    number: 1,
+    statusFieldId: 350038178,
+    progressOptionId: "47fc9ee4",
+    reviewOptionId: "df73e18b",
+    doneOptionId: "98236657",
+  };
+
+  it("moves a 5.5.x template board to bkit.github.project, keeping the file's indent", () => {
+    seed({ issueTracker: "github", githubProject: templateBoard });
+    expect(touched(run())).toBe(true);
+    expect(bkitKey()).toEqual({
+      issueTracker: "github",
+      github: { project: "https://github.com/orgs/acme/projects/1" },
+    });
+    expect(read()).toMatch(/\n {4}"bkit"/);
+  });
+
+  it("keeps the opt-out as bkit.github.project false", () => {
+    seed({ githubProject: false });
+    run();
+    expect(bkitKey()).toEqual({ github: { project: false } });
+  });
+
+  it("leaves the defaults for option ids it cannot name, and says which to set", () => {
+    seed({ githubProject: { ...templateBoard, reviewOptionId: "0a1b2c3d" } });
+    const lines: string[] = [];
+    const spy = vi
+      .spyOn(console, "log")
+      .mockImplementation((line: string) => void lines.push(line));
+    run();
+    spy.mockRestore();
+    expect(bkitKey()).toEqual({ github: { project: "https://github.com/orgs/acme/projects/1" } });
+    expect(lines.join("\n")).toContain("set bkit.github.review to that option's name");
+    expect(lines.join("\n")).not.toContain("bkit.github.progress");
+  });
+
+  it("keeps an existing bkit.github.project and drops a malformed old key", () => {
+    seed({
+      githubProject: templateBoard,
+      github: { project: "https://github.com/users/me/projects/2", review: "QA" },
+    });
+    run();
+    expect(bkitKey()).toEqual({
+      github: { project: "https://github.com/users/me/projects/2", review: "QA" },
+    });
+    for (const bad of [{ number: 1 }, { owner: "acme", number: "x" }, "acme", null]) {
+      seed({ githubProject: bad });
+      run();
+      expect(bkitKey()).toEqual({});
+    }
+  });
+
+  it("leaves a config without the old key alone", () => {
+    seed({ issueTracker: "github", github: { project: false } });
+    const before = read();
+    expect(touched(run())).toBe(false);
+    expect(read()).toBe(before);
+  });
+
+  it("under dry-run records the same write and leaves the file", () => {
+    seed({ githubProject: templateBoard });
+    const before = read();
+    expect(touched(run(true))).toBe(true);
+    expect(read()).toBe(before);
+  });
+
+  it("is idempotent, and runs on every install through the core module", () => {
+    seed({ githubProject: templateBoard });
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    expect(bkitKey().github).toEqual({ project: "https://github.com/orgs/acme/projects/1" });
     expect(touched(run())).toBe(false);
   });
 });

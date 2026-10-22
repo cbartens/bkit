@@ -116,6 +116,7 @@ export const repoCommand = {
                 trackerTeam: "package.json bkit.linear.team under linear, else null",
                 trackerProject: "package.json bkit.linear.project under linear, bkit.jira.project under jira, else null",
                 trackerSite: "package.json bkit.jira.site under jira (the MCP cloudId), else null",
+                trackerBoard: "{ownerType, owner, number} read from package.json bkit.github.project under github, else null",
             },
             exitCodes: {
                 [EXIT_NO_REPO]: "neither gh nor the origin remote named an owner/repo",

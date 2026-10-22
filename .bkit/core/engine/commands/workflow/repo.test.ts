@@ -251,7 +251,17 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
     });
   });
 
-  it("prints nulls under github, and for keys left unset", async () => {
+  it("prints the board under github", async () => {
+    pkg({ issueTracker: "github", github: { project: "https://github.com/users/me/projects/1" } });
+    expect((await run([])).json).toMatchObject({
+      trackerTeam: null,
+      trackerProject: null,
+      trackerSite: null,
+      trackerBoard: { ownerType: "user", owner: "me", number: 1 },
+    });
+  });
+
+  it("prints nulls under github without a board, and for keys left unset", async () => {
     pkg({
       issueTracker: "github",
       linear: { team: "ENG" },
@@ -261,7 +271,10 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
       trackerTeam: null,
       trackerProject: null,
       trackerSite: null,
+      trackerBoard: null,
     });
+    pkg({ issueTracker: "linear", github: { project: "https://github.com/orgs/a/projects/1" } });
+    expect((await run([])).json).toMatchObject({ trackerBoard: null });
     pkg({ issueTracker: "linear" });
     expect((await run([])).json).toMatchObject({ trackerTeam: null, trackerProject: null });
     pkg({ issueTracker: "jira" });

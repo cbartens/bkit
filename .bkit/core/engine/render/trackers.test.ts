@@ -282,8 +282,8 @@ describe("real workflow sources", () => {
     "TRACKER_TEAM",
     "TRACKER_PROJECT",
     "TRACKER_SITE",
-    "githubProject", // Projects v2 board config (bkit.githubProject.*)
-    "progressOptionId",
+    "bkit.github.project", // Projects v2 board config
+    "projects_write",
   ];
 
   for (const wf of workflows) {

@@ -150,7 +150,16 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 
 ## github — Projects v2 board (optional)
 
-`issue-update-status` reads `package.json` `bkit.githubProject` = `{ owner (org login), number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` (non-secret, committed). Absent → board sync skipped (best-effort, never gates). Discover ids once: `gh api /orgs/{owner}/projectsV2/{number}/fields --jq '.[] | select(.name=="Status")'` (Status field numeric `id` → `statusFieldId`; each option raw `id` → option id, e.g. `47fc9ee4`; `PVTSSF_…` node id from `gh project field-list` is not field id — `projects_write` rejects it). Requires `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `BKIT_GH_TOKEN` org Projects R/W. Org-owned boards only — fine-grained PATs cannot reach user-owned projects, nor span orgs; use a classic PAT with `project` when the token must cover more than one owner. `value` = single-select **option id**, not option name. Failure → retry once after 5s, then continue. `doneOptionId` is **reserved and never written** — ship terminal sets `reviewOptionId`, and a human moves the item to Done on acceptance (§ `issue-update-merged` in `.bkit/workflows.md`).
+`issue-update-status` reads `package.json` `bkit.github` = `{ project, progress, review }` (non-secret, committed), same shape as `bkit.linear` / `bkit.jira`:
+
+<!-- prettier-ignore -->
+| Key | Value | Default |
+| --- | --- | --- |
+| `project` | Board URL as the browser shows it: `https://github.com/orgs/<org>/projects/<n>` or `https://github.com/users/<login>/projects/<n>`; a trailing `/views/<n>` is fine. `false` = board sync off (silences `github-project-board-sync-unconfigured`). | absent → board sync skipped |
+| `progress` | Status option **name** set when a phase starts | `In progress` |
+| `review` | Status option **name** set on hand-off | `In review` |
+
+Defaults match GitHub's Kanban and Team planning board templates. `/orgs/` → MCP `owner_type: "org"`, `/users/` → `"user"`. Requires `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `BKIT_GH_TOKEN` that reaches the board: fine-grained PAT with org Projects R/W for an org board; classic PAT with `project` for a personal board or a token spanning owners. `update_project_item` finds the item by `item_owner` / `item_repo` / `issue_number` and sets Status by option name. Best-effort, never gates; failure → retry once after 5s, then continue. `Done` is **never written** — ship terminal sets `review`, and a human moves the item to Done on acceptance (§ `issue-update-merged` in `.bkit/workflows.md`).
 
 ## linear — notes
 
