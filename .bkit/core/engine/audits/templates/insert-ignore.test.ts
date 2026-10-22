@@ -56,6 +56,19 @@ describe("bkit-insert-ignore.mjs", () => {
     expect(mod.processText(src)).toBe(src);
   });
 
+  it("leaves tables inside a multi-line HTML comment alone; a one-line comment hides nothing", () => {
+    const hidden = "<!-- Examples:\n| A | B |\n| --- | --- |\n| 1 | 2 |\n-->\n";
+    expect(mod.processText(hidden)).toBe(hidden);
+    const oneLine = "<!-- note -->\n| A | B |\n| --- | --- |\n";
+    expect(mod.processText(oneLine)).toBe(
+      "<!-- note -->\n\n<!-- prettier-ignore -->\n| A | B |\n| --- | --- |\n",
+    );
+  });
+
+  it("does not report damage in a table inside an HTML comment", () => {
+    expect(mod.auditText("<!--\n| A | B |\n| --- |\n-->\n")).toEqual([]);
+  });
+
   it("reports damage escaping cannot repair: truncated rows and unrendered tables", () => {
     const problems = mod.auditText(
       "| A | B |\n| --- | --- |\n| 1 | 2 | 3 |\n\n| A |\n| --- | --- |\n",
