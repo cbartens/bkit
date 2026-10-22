@@ -603,7 +603,7 @@ Prettier aligns markdown tables with no config toggle; one edited cell re-pads e
 - Walks skip `skills/` trees (vendored), `docs/audits/`, `docs/plans/` (records, kept as written). A file named on the command line is always processed. New and edited records get it at commit: § lint-staged names each staged file.
 - Skips tables inside ``` / ~~~ fences and tables already wrapped.
 - A pipe inside an inline-code span is escaped to `\|` only when that restores the separator's column count; an existing `\|` stays literal.
-- Exit 1 on damage it cannot repair, with or without `--check`: `truncated-row` (more cells than the separator; GFM drops the overflow) and `unrendered-table` (header ≠ separator count; GFM renders raw text). A bare pipe in cell prose is indistinguishable from a delimiter → escape it as `\|` by hand.
+- Exit 1 on damage it cannot repair, with or without `--check`: `truncated-row` (more cells than the separator; GFM drops the overflow) and `unrendered-table` (header ≠ separator count; GFM renders raw text). A bare pipe in cell prose is indistinguishable from a delimiter → escape it as `\|` by hand. Under `docs/audits/` and `docs/plans/` the same damage prints as a `WARN` and exits 0: records hold text quoted from elsewhere (issue comments, CI logs) that nobody can fix in place.
 
 ## tmp/ prune — old scratch files
 
