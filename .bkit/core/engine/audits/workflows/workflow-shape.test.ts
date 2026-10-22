@@ -51,6 +51,30 @@ describe("bkit lookup", () => {
   });
 });
 
+describe("gate logs", () => {
+  it.each(ALL)(
+    "%s writes every gate log to the outbox, outside the tree the gate's format check reads",
+    (name) => {
+      for (const line of commandLines(workflow(name), "tests run")) {
+        expect(line, line).toMatch(/--log="\{OUTBOX\}\//);
+      }
+    },
+  );
+
+  it("build copies the boundary gate log beside the run's artifacts before clamping it", () => {
+    expect(workflow("build")).toContain(
+      'cp "{OUTBOX}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.log" "docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md" || exit 2',
+    );
+  });
+
+  it("debug copies the test log beside the run's artifacts before clamping it", () => {
+    const step3 = section(workflow("debug"), /Step 3 — Run Tests/);
+    expect(step3).toContain(
+      'cp "{OUTBOX}/context-tests-local-{DEBUG_ATTEMPT}.log" "$TEST_LOG" || exit 2',
+    );
+  });
+});
+
 describe("Step 1 FID check", () => {
   it.each(PHASES)("%s checks the resolved FID at Step 1, outside every tracker block", (name) => {
     const step1 = section(workflow(name), /Step 1 — Start Workflow/);

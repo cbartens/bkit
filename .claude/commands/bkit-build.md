@@ -311,13 +311,14 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    - **Else** → `BOUNDARY_VERDICT` = SKIPPED → sub-step 12.
 10. Run the boundary gate:
     ```bash
-    "{BKIT}" tests run --gate=bkit:gate:static-unit-integration --gate=bkit:gate:static-unit --log="docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md"
+    "{BKIT}" tests run --gate=bkit:gate:static-unit-integration --gate=bkit:gate:static-unit --log="{OUTBOX}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.log"
     ```
     Route:
     - **If** exit 0 **or** 1 → hold `verdict` as `{BOUNDARY_VERDICT}`, `scope` as `{TEST_SCOPE}` → sub-step 11.
     - **Else** → **Failure Path**.
-11. Clamp the gate log, then finish:
+11. Copy the gate log, clamped, next to the run's other artifacts, then finish:
     ```bash
+    cp "{OUTBOX}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.log" "docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md" || exit 2
     "{BKIT}" context clamp-log --reset --fid={FID} --step=build-subplan-gate-{SUB_PLAN} --attempt={VERIFY_ATTEMPT} >/dev/null || exit 2
     "{BKIT}" context clamp --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md" --profile=debug-evidence --fid={FID} --step=build-subplan-gate-{SUB_PLAN} --attempt={VERIFY_ATTEMPT} >/dev/null || exit 2
     "{BKIT}" steps finish --workflow=build --step=build-subplan-gate --file="{STATUS}" --verdict={BOUNDARY_VERDICT} --scope="{TEST_SCOPE}" --attempt-of=build-plan-verify:current --sub-plan={SUB_PLAN} --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-<attempt>.md" --clamp-log="build-subplan-gate-{SUB_PLAN}:<attempt>" --message="chore({FID}): subplan-gate sub-plan {SUB_PLAN} attempt <attempt>" --number=7 --title="Boundary Gate" --sub-plan-count={SUB_COUNT}

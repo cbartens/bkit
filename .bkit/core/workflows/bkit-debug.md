@@ -290,14 +290,15 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ## 🤖 Step 3 — Run Tests
 
-1. Run verbatim:
+1. Run verbatim, then copy the log, clamped, next to the run's other artifacts:
    ```bash
    TEST_LOG="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md"
    set -- --gate=bkit:gate:static-unit-integration-e2e-live --gate=bkit:gate:static-unit-integration-e2e --gate=bkit:gate:static-unit
    grep -q '\[live=off\]' "docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md" 2>/dev/null && shift
-   "{BKIT}" tests run "$@" --log="$TEST_LOG"
+   "{BKIT}" tests run "$@" --log="{OUTBOX}/context-tests-local-{DEBUG_ATTEMPT}.log"
    TEST_EXIT=$?
    [ "$TEST_EXIT" -le 1 ] || exit "$TEST_EXIT"
+   cp "{OUTBOX}/context-tests-local-{DEBUG_ATTEMPT}.log" "$TEST_LOG" || exit 2
    "{BKIT}" context clamp-log --reset --fid={FID} --step=debug-run-tests --attempt={DEBUG_ATTEMPT} >/dev/null || exit 2
    "{BKIT}" context clamp --artifact="$TEST_LOG" --profile=debug-evidence --fid={FID} --step=debug-run-tests --attempt={DEBUG_ATTEMPT} >/dev/null || exit 2
    exit "$TEST_EXIT"
