@@ -1,4 +1,4 @@
-Verdict: FAIL
+Verdict: PASS
 
 <!-- verdict:end -->
 
@@ -17,3 +17,7 @@ DONE — Task 11: shared-checkout record for debug in place on dev — worktrees
 DONE — Task 13: runs dispatch on dev — with no PR on a shared branch the gate polls the push-event run at the pushed sha (new --sha flag, default HEAD; fetches a sha only origin has); the re-trigger with a record is an empty commit made from a temp index (ledgers.ts retriggerCommit, record SHA appended) pushed through pushBranch's own-commit push, and the gate follows the landed sha; without a record and on feature branches the re-trigger is unchanged (pinned); 3 reds recorded then green (.bkit/core/engine/commands/workflow/runs.ts, ledgers.ts, runs.test.ts)
 DONE — Task 6 (build half): pnpm build exits 0; dist/ is byte-identical to a fresh rebuild (12 files changed against the index: land.js, lib.js, workflow/{branches,fids,prs,runs,steps,ledgers,...}.js, shared/branches.js)
 BLOCKED — Task 6 (check half): pnpm bkit:check:dist exits 1 — it runs 'git diff --exit-code dist/', which compares dist/ with the git index, and the rebuilt dist/ is not staged (git add is forbidden to this agent); the diff is the Wave 1 engine change itself. Stage dist/ (git add dist/) and re-run pnpm bkit:check:dist, expected exit 0
+DONE — Task 11: shared-checkout record redone test-first — 20 reds recorded before the code (build-task-red-1-11-redo-1..20, commit 188dd8e0), code brought back in d186268e; ledgers.ts is the only non-test file naming bkit/shared-checkout; workflow dir tests 1207 pass (unit + integration, 22 files); supersedes the earlier BLOCKED line (.bkit/core/engine/commands/workflow/ledgers.ts, worktrees.ts, steps.ts, workflows.ts, locks.ts)
+DONE — Task 2: runs context issueId===null guard (EXIT_NO_FID 9) redone test-first — red build-task-red-1-2-redo-21 recorded before the code, fix in d186268e (.bkit/core/engine/commands/workflow/runs.ts, runs.test.ts)
+DONE — Task 6 (re-run): pnpm build exits 0 and pnpm bkit:check:dist reports no dist/ diff against the committed tree (dist/ already holds the Task 11 and Task 2 changes from d186268e); supersedes the earlier BLOCKED check half
+DONE — pnpm bkit:gate:static exits 0 (typecheck, lint, format:check, prose 0 errors / 4 pre-existing warnings, slop:delta net 0). Note: first full run of .bkit/core/engine/commands/workflow tests had 4 timeouts at the 5s default under load (one in runs.test.ts 'runs revalidate'); the immediate rerun passed 1207/1207
