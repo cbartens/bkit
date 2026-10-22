@@ -88,7 +88,6 @@ _No tracker connected, skip step._
       - **Else** → next.
    4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**.
       `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
-      Format `{branch-suffix}-{slug}`.
    One `FID` for all artifacts once set. Check its format for the wired tracker:
    ```bash
    "{BKIT}" fids check --fid="{FID}"
@@ -145,7 +144,7 @@ _No tracker connected, skip step._
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue resolved (`ISSUE_ID` non-empty, or the no-issue warning emitted)
+- [ ] Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
 - [ ] Push mode decided and valid (`PUSH_MODE` in `PR|LOCAL`; `PR_NUMBER` held when PR)
 - [ ] Debug attempt derived (cross-run; `1` if first)
 - [ ] Debug mode decided and valid (`DEBUG_MODE` in `NORMAL|SOAK`, `SOAK_ENTRY` set)

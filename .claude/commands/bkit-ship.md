@@ -168,7 +168,7 @@ description: "Ship Feature — Autonomous merge and archive"
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue resolved (`ISSUE_ID` non-empty, or the no-issue warning emitted)
+- [ ] Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
 - [ ] On `SHIP_BRANCH` (not `dev|main`), worktree created / resumed or adopted (no rebase — Path A) before any tracker write; run opened in the worktree (`workflow-started`, `ship-start-workflow`, `runtime-resolved`)
 - [ ] Outbox created (`{OUTBOX}`)
 

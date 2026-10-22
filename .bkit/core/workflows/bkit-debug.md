@@ -149,6 +149,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
       - **Else** → next.
    4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**.
       `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
+      <!-- bkit:tracker true start -->
       <!-- bkit:tracker github start -->
       Format `{ISSUE_ID}-{slug}`.
       <!-- bkit:tracker github end -->
@@ -158,9 +159,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
       <!-- bkit:tracker jira start -->
       Lowercase `{ISSUE_ID}`. Format `{issue_id}-{slug}`.
       <!-- bkit:tracker jira end -->
-      <!-- bkit:tracker false start -->
-      Format `{branch-suffix}-{slug}`.
-      <!-- bkit:tracker false end -->
+      <!-- bkit:tracker true end -->
    One `FID` for all artifacts once set. Check its format for the wired tracker:
    ```bash
    "{BKIT}" fids check --fid="{FID}"<!-- bkit:tracker true start --> --issue="{ISSUE_ID}"<!-- bkit:tracker true end -->
@@ -236,7 +235,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue resolved (`ISSUE_ID` non-empty, or the no-issue warning emitted)
+- [ ] Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
 - [ ] Push mode decided and valid (`PUSH_MODE` in `PR|LOCAL`; `PR_NUMBER` held when PR)
 - [ ] Debug attempt derived (cross-run; `1` if first)
 - [ ] Debug mode decided and valid (`DEBUG_MODE` in `NORMAL|SOAK`, `SOAK_ENTRY` set)

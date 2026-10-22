@@ -207,7 +207,7 @@ description: "Build Feature — Autonomous implementation"
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue resolved (`ISSUE_ID` non-empty, or the no-issue warning emitted)
+- [ ] Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
 - [ ] Long-branch advisory emitted
 
 <!-- bkit:tracker true start -->

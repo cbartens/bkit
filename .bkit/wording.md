@@ -1150,11 +1150,12 @@ No-op (log `Board status carried by issue state — no separate update.`).
 - workflow: where-used
 
 ```text
-Issue resolved (`ISSUE_ID` non-empty, or the no-issue warning emitted)
+Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
 ```
 
 ```retired
 Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
+Issue resolved (`ISSUE_ID` non-empty, or the no-issue warning emitted)
 ```
 
 ### workflow-gate-steps-gate
