@@ -746,6 +746,10 @@ Body over 32,767 characters → post as consecutive comments split at line break
 - workflow: where-used
 
 ```text
+**Large Diff Guard:** When a Read line passes `git diff origin/dev...HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev...HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
+```
+
+```retired
 **Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 ```
 

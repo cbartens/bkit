@@ -20,10 +20,21 @@ const tmp = (prefix: string) => {
 
 // A `gh` stand-in driven by files in $FAKE_GH_DIR: list.json / view.json are
 // printed for `pr list` / `pr view`; `<verb>-exit` makes that verb exit with the
-// code inside; `create-fails` counts down failed creates. Every call is logged.
+// code inside; `create-fails` counts down failed creates. `api` reads dev's
+// rulesets from dev-rules.json (none when absent) and its classic protection
+// from the dev-protected marker; `api-exit` fails every api call. Every call is logged.
 const FAKE_GH = `#!/bin/sh
 d="$FAKE_GH_DIR"
 printf '%s\\n' "$*" >> "$d/calls"
+if [ "$1" = "api" ]; then
+  if [ -f "$d/api-exit" ]; then echo "gh api failed" >&2; exit "$(cat "$d/api-exit")"; fi
+  case "$2" in
+    */rules/branches/dev) cat "$d/dev-rules.json" 2>/dev/null || echo '[]' ;;
+    */protection/required_status_checks) [ -f "$d/dev-protected" ] || { echo "Branch not protected" >&2; exit 1; } ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
 verb="$2"
 if [ -f "$d/$verb-exit" ]; then echo "gh $verb failed" >&2; exit "$(cat "$d/$verb-exit")"; fi
 case "$verb" in
@@ -682,6 +693,71 @@ describe("bkit prs update-branch", () => {
 
   it("exits 2 on a bad --number", async () => {
     expect((await run(repo(), ["prs", "update-branch", "--number=x"])).code).toBe(2);
+  });
+
+  it("never reads dev's required checks without --only-if-required", async () => {
+    await update();
+    expect(gh.calls().some((c) => c.startsWith("api "))).toBe(false);
+  });
+});
+
+describe("bkit prs update-branch --only-if-required", () => {
+  const onGithub = () => {
+    const cwd = repo();
+    git(cwd, "remote", "add", "origin", "https://github.com/o/r.git");
+    return cwd;
+  };
+  const update = () =>
+    run(onGithub(), ["prs", "update-branch", "--number=7", "--only-if-required"]);
+  const updated = () => gh.calls().some((c) => c.startsWith("pr update-branch"));
+
+  it("skips the update when dev requires no status checks", async () => {
+    const r = await update();
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ number: "7", updated: false });
+    expect(updated()).toBe(false);
+    expect(gh.calls()).toContain("api repos/o/r/rules/branches/dev");
+    expect(r.err).toContain("dev push run tests the merged result");
+  });
+
+  it("updates when a dev ruleset requires status checks", async () => {
+    fs.writeFileSync(
+      path.join(fake, "dev-rules.json"),
+      JSON.stringify([{ type: "deletion" }, { type: "required_status_checks" }]),
+    );
+    const r = await update();
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ number: "7", updated: true });
+    expect(updated()).toBe(true);
+  });
+
+  it("updates when dev's branch protection requires status checks", async () => {
+    fs.writeFileSync(path.join(fake, "dev-protected"), "");
+    const r = await update();
+    expect(r.json).toEqual({ number: "7", updated: true });
+    expect(updated()).toBe(true);
+  });
+
+  it("ignores dev rulesets that require no checks", async () => {
+    fs.writeFileSync(path.join(fake, "dev-rules.json"), JSON.stringify([{ type: "deletion" }]));
+    const r = await update();
+    expect(r.json).toEqual({ number: "7", updated: false });
+    expect(updated()).toBe(false);
+  });
+
+  it("updates when the repo cannot be resolved", async () => {
+    const r = await run(repo(), ["prs", "update-branch", "--number=7", "--only-if-required"]);
+    expect(r.json).toEqual({ number: "7", updated: true });
+    expect(updated()).toBe(true);
+    expect(r.err).toContain("cannot resolve the repo");
+  });
+
+  it("exits 80 without updating when gh cannot read dev's required checks", async () => {
+    gh.exit("api", 4);
+    const r = await update();
+    expect(r.code).toBe(80);
+    expect(r.err).toContain("update_pull_request_branch");
+    expect(updated()).toBe(false);
   });
 });
 

@@ -33,6 +33,7 @@ import {
   type RunContext,
 } from "../lib.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
+import { resolveOwnerRepo } from "./repo.js";
 import { EXIT_NO_STATUS, FILE_FLAG, readStatusRows, statusFile, str } from "./status.js";
 
 // ---------------------------------------------------------------------------
@@ -451,17 +452,60 @@ export interface UpdateBranchResult {
   out: { number: string; updated: boolean } | null;
 }
 
+/** Whether dev demands status checks (ruleset or branch protection): CI must then pass at the PR head. */
+export function devRequiresChecks(gh: (args: string[]) => GhResult, repo: string): boolean {
+  const rules = gh(["api", `repos/${repo}/rules/branches/dev`]);
+  const read = rules.ok ? parseJson(rules.stdout) : { ok: false as const };
+  const list: unknown[] = read.ok && Array.isArray(read.value) ? read.value : [];
+  const hasCheckRule = list.some(
+    (r) =>
+      r !== null &&
+      typeof r === "object" &&
+      (r as { type?: unknown }).type === "required_status_checks",
+  );
+  if (hasCheckRule) return true;
+  return gh(["api", `repos/${repo}/branches/dev/protection/required_status_checks`]).ok;
+}
+
 /**
  * Request a server-side base-into-head refresh (ship Step 4 B1). GitHub authors
  * the merge commit, so bkit cannot set its message and there is no local head to
  * read back — ship's Step 9 poll observes the new head. gh missing →
  * EXIT.USE_MCP (route through `update_pull_request_branch`).
+ *
+ * `onlyIfRequired`: refresh only when dev requires status checks. Otherwise the
+ * PR merges at the head CI already passed at, and the dev push run tests the
+ * merged result — a refresh would only re-run CI on the same feature change.
  */
 export function updateBranch(
   cwd: string,
   number: string,
   log: (m: string) => void,
+  o: { onlyIfRequired?: boolean } = {},
 ): UpdateBranchResult {
+  if (o.onlyIfRequired === true) {
+    const repo = resolveOwnerRepo(cwd)?.ownerRepo;
+    let ghMissing = false;
+    const gh = (args: string[]) => {
+      const res = runGh(cwd, args);
+      if (ghUnavailable(res)) ghMissing = true;
+      return res;
+    };
+    const required = repo === undefined || devRequiresChecks(gh, repo);
+    if (ghMissing) {
+      log(
+        "gh unavailable to read dev's required checks — update the branch through update_pull_request_branch",
+      );
+      return { code: EXIT.USE_MCP, out: null };
+    }
+    if (!required) {
+      log(
+        `dev requires no status checks — PR ${number} merges at the head CI passed at; the dev push run tests the merged result`,
+      );
+      return { code: EXIT.OK, out: { number, updated: false } };
+    }
+    if (repo === undefined) log("cannot resolve the repo to read dev's required checks — updating");
+  }
   const res = runGh(cwd, ["pr", "update-branch", number]);
   if (ghUnavailable(res)) {
     log(
@@ -946,10 +990,18 @@ export const prsCommand: CommandSpec = {
     "update-branch": {
       summary:
         "Refresh a PR's head from its base server-side (exit 80: use update_pull_request_branch).",
-      flags: [{ name: "number", type: "string", required: true, help: "the PR number" }],
+      flags: [
+        { name: "number", type: "string", required: true, help: "the PR number" },
+        {
+          name: "only-if-required",
+          type: "boolean",
+          help: "skip the update (updated: false) when dev requires no status checks",
+        },
+      ],
       output: {
         number: "the PR number",
-        updated: "the update request succeeded (true even when already up to date)",
+        updated:
+          "the update request succeeded (true even when already up to date); false when --only-if-required skipped it",
       },
       exitCodes: {
         [EXIT_GH_FAILED]: "gh could not update the branch (403 = actions:write scope)",
@@ -958,7 +1010,9 @@ export const prsCommand: CommandSpec = {
         const number = String(ctx.flags.number);
         if (!/^[1-9][0-9]*$/.test(number))
           throw new CommandError(EXIT.USAGE, "--number must be a PR number");
-        const r = updateBranch(ctx.cwd, number, ctx.log);
+        const r = updateBranch(ctx.cwd, number, ctx.log, {
+          onlyIfRequired: ctx.flags.onlyIfRequired === true,
+        });
         if (r.out) ctx.emit(r.out);
         return r.code;
       },

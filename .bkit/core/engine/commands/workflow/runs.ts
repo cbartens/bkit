@@ -47,7 +47,14 @@ import { TIMEOUTS } from "../../shared/timeouts.js";
 import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } from "./fids.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { checkOnlyBookkeeping } from "./ledgers.js";
-import { closeTransportRow, crossCheckFile, prRepoSlug, probePr, type PrInfo } from "./prs.js";
+import {
+  closeTransportRow,
+  crossCheckFile,
+  devRequiresChecks,
+  prRepoSlug,
+  probePr,
+  type PrInfo,
+} from "./prs.js";
 import { resolveOwnerRepo, splitSlug } from "./repo.js";
 import { extraField, str } from "./status.js";
 import { writeStepRow } from "./steps.js";
@@ -1549,14 +1556,6 @@ function runGate(ctx: RunContext): number {
 // ---------------------------------------------------------------------------
 // revalidate
 // ---------------------------------------------------------------------------
-
-/** Whether dev demands status checks (ruleset or branch protection): CI must then pass at the PR head. */
-function devRequiresChecks(gh: Gh, repo: string): boolean {
-  const rules = gh(["api", `repos/${repo}/rules/branches/dev`]);
-  const list = rules.ok ? arr(jsonOrUndefined(rules.stdout)) : [];
-  if (list.some((r) => obj(r).type === "required_status_checks")) return true;
-  return gh(["api", `repos/${repo}/branches/dev/protection/required_status_checks`]).ok;
-}
 
 async function runRevalidate(ctx: RunContext): Promise<number> {
   const f = ctx.flags;

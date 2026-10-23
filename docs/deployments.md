@@ -272,7 +272,7 @@ Undocumented, and invisible to the toolchain, because the file stays valid YAML,
 
 ## Ship gate + bookkeeping
 
-`/bkit-ship` is keyed on `bkit branches sync --head=<PR head>`, which reports whether `origin/dev` is an ancestor of the PR head (`basePath`). **Path A** — `dev` has not moved — resumes read-only, no rebase, no bookkeeping commits, no push; merge. **Path B** — `dev` moved — integrates (B1 `gh pr update-branch`, or B2 worktree + `@bkit-ship-conflict-resolve` + `bkit branches push --mode=feature`, a `--force-with-lease` push), then re-validates unconditionally. Both paths end at the same gate: `bkit runs gate --head=<current>` exits 0 (capstone concluded `success`) at the **current** PR head.
+`/bkit-ship` is keyed on `bkit branches sync --head=<PR head>`, which reports whether `origin/dev` is an ancestor of the PR head (`basePath`). **Path A** — `dev` has not moved — resumes read-only, no rebase, no bookkeeping commits, no push; merge. **Path B** — `dev` moved — integrates (B1 `bkit prs update-branch --only-if-required`, which refreshes the head only when `dev` requires status checks, or B2 worktree + `@bkit-ship-conflict-resolve` + `bkit branches push --mode=feature`, a `--force-with-lease` push), then re-validates when the head moved. A B1 head left unchanged merges at the head CI passed at; the `dev` push run tests the merged result. Both paths end at the same gate: `bkit runs gate --head=<current>` exits 0 (capstone concluded `success`) at the **current** PR head.
 
 ### Consumer CI contract — `pull_request` resolves to `run_level=full`
 
