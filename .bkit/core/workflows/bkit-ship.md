@@ -191,7 +191,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
    Route:
    - **If** exit 0 → hold `worktreePath` as `{WORKTREE_PATH}`, `branch` as `{SHIP_BRANCH}`.
-   - **If** exit 7 (a ship of `dev` or `main`) → print the engine's refusal as the final message ("refusing to ship ...: /bkit-ship ships a feature branch into dev only ... releases stay manual. Name the feature branch to ship."), release the lock, then **STOP**; no book exists yet for a Failure Path to record in:
+   - **If** exit 7 (a ship of `dev` or `main`) → print the engine's refusal as the final message ("refusing to ship ...: /bkit-ship ships a feature branch into dev only ... releases stay manual. Name the feature branch to ship."), release the lock, then **STOP**; no book exists yet for a Failure Path to record in.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end -->
      ```bash
      "{BKIT}" locks release --kind=workflow --workflow=ship --fid="{FID}" --month="{YYYYMM}" --token="{LOCK_TOKEN}" >/dev/null
      ```

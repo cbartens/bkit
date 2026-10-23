@@ -23,6 +23,7 @@ Format: `## [version] — YYYY-MM-DD`
 
 - **The ship naming warning fires on a run with no issue.** A branch not named for the `FID` now warns when `ISSUE_ID` is empty; an empty id used to match every branch name. #650
 - **Build Step 18.9 and debug Step 11.9 kill-switch checks skip when `ISSUE_ID` is empty,** and ship Step 14.3's label calls skip on a merged run with no issue. #650
+- **The build boundary gate (Step 7) and the debug local test run (Step 3) can pass their own format check.** Both wrote their test log straight into `docs/plans/{YYYYMM}/logs/{FID}/`, where the gate's `prettier --check .` found the half-written log and failed. They now log to the outbox and copy the finished log in. The `.prettierignore` template gains three `docs/plans/*/logs/*/` lines (`run-tests-*.md`, `build-subplan-gate-*.md`, `context-tests-local-*.md`); templates are copy-and-own, so a consumer that already adopted `.prettierignore` adds the three lines by hand. #650
 
 ---
 

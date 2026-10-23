@@ -24,7 +24,7 @@ Debug Feature — Autonomous diagnosis and remediation
 > - **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); Close Workflow and Failure Path release it and exit non-zero while it is still present. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
 > - **Status branch:** status.jsonl committed on the adopted branch `{BRANCH}` (`{STATUS}`, held from Step 2); per-step commits, no pushes.
 > - **Worktrees:** Debug never creates a branch. Step 2 resumes `.worktrees/{FID}`; **Else** → adopts an existing `feat/{FID}` (local or origin, not the session's own branch) into it when the runtime mints worktrees; **Else** → adopts the session's current branch in place (`worktreePath` = main checkout); no `-b`. `main` is the one ineligible branch. cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
-> - **Foreign path:** Exit 10 (`EXIT_FOREIGN_PATH`) from `steps finish`, `workflows close` or `workflows commit` in a run in place on `dev`: a file the run commits was already modified before the run started, so nothing was written or committed → **STOP**, ask the human to commit or revert the named file, then re-run the block; this exit never takes the Failure Path.
+> - **Foreign path:** Exit 10 (`EXIT_FOREIGN_PATH`) from `steps finish` or `workflows close` in a run in place on `dev`: a file the run commits was already modified before the run started, so nothing was written or committed → **STOP**, ask the human to commit or revert the named file, then re-run the block; this exit never takes the Failure Path. Line 1 of the final message = the no-issue warning, when one was emitted.
 > - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls always stay on MCP; never invent `gh` read-paths for trackers.
 
 
@@ -536,7 +536,9 @@ Debug Feature — Autonomous diagnosis and remediation
    - **If** exit 80 → `list_pull_requests` (head `{BRANCH}`, state open) → found → `{PR_OPEN}` = 1, `PUSH_MODE` = PR with its `number` / `url`; none → `{PR_OPEN}` = 0, `PUSH_MODE` = LOCAL; record via `"{BKIT}" prs transport-row --file="{STATUS}" --kind=fallback --asserted-by=<re-read>`.
    - **Else** → **Failure Path**.
 2. Re-read labels, then record `PUSH_MODE`, strip `[verbose ci]` (with an optional `bkit ` prefix) from the PR title when `{PR_OPEN}` = 1, run the No-leak Assertion, mirror the roadmap row to `dev`, close the run (telemetry, report, artifact links) and commit it; a feature branch releases the lock and pushes with the HEAD-Subject Assertion, a run in place on `dev` pushes its own commits and keeps the lock until its CI run is gated (sub-step 8); `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry when `{PR_OPEN}` = 1 (the subject carries ` bkit [auto route]` on `bkit:auto`), else empty; `{PR_OPEN}` = 0 adds ` bkit [verbose ci]`:
+   
    **Skip if** `ISSUE_ID` empty. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`.
+
    ```bash
    PR_OPEN="{PR_OPEN}"
    "{BKIT}" status meta --file="{STATUS}" --workflow=debug --push-mode={PUSH_MODE} >/dev/null || exit 1
@@ -545,9 +547,15 @@ Debug Feature — Autonomous diagnosis and remediation
      echo "No-leak Assertion FAILED: [DEBUG-OBSERVE] instrumentation survived into the debug diff — soak did not strip it." >&2; exit 1
    fi
    "{BKIT}" roadmap mirror --workflow=debug --fid={FID} >/dev/null || exit 1
-   "{BKIT}" workflows close --workflow=debug --fid={FID} --month={YYYYMM} --file="{STATUS}" --owner-repo={OWNER_REPO} --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" --verbose-ci-local {LABEL_FLAGS} || exit 1
+   "{BKIT}" workflows close --workflow=debug --fid={FID} --month={YYYYMM} --file="{STATUS}" --owner-repo={OWNER_REPO} --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" --verbose-ci-local {LABEL_FLAGS} || exit $?
    ```
-   Hold the close's `parentSha` as `{CLOSE_PARENT}`. Then release and push:
+
+   Route:
+   - **If** exit 0 → hold the close's `parentSha` as `{CLOSE_PARENT}`.
+   - **If** exit 10 → **Foreign path**.
+   - **Else** → **Failure Path**.
+
+   Then release and push:
    - **If** `BRANCH` != `dev`:
      ```bash
      "{BKIT}" locks release --kind=workflow --workflow=debug --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || exit 1
@@ -561,6 +569,7 @@ Debug Feature — Autonomous diagnosis and remediation
      - **If** exit 0 and `skipped` null → hold `sha` as `{DEV_SHA}` (an own-commit push lands copies, so never the local HEAD); `BRANCH` = `dev` → `{CLOSE_PARENT}` = `{DEV_SHA}`.
      - **If** exit 8 (push failed or refused), exit 10 (fetch failed), exit 11 (replay conflict, the conflicting paths printed) or exit 20 (the run's record is gone, nothing pushed) → **Failure Path**.
      - **Else** → **Failure Path**.
+
 3. **If** `{PR_OPEN}` = 0 → record the close row and audit the landed commit; `{LIVE_SKIPPED}` = `--field="testsLiveSkipped=No live tests ran, runtime-only defects not gated (not declared or opted out)."` when `TEST_SCOPE` lacks `live`, else empty:
    ```bash
    "{BKIT}" steps done --file="{STATUS}" --workflow=debug --step=debug-close-workflow --parent-sha={CLOSE_PARENT} {LIVE_SKIPPED} --commit=none >/dev/null || exit 1
