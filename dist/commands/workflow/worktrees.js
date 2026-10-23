@@ -191,6 +191,15 @@ function rebaseInProgress(wt) {
     });
 }
 /**
+ * `git add -A` in `tree`, leaving out the `bkit.worktree.copy` entries setup
+ * copies in from the main checkout (`.env` and the like): no bkit commit may
+ * carry them, gitignored or not.
+ */
+export function addAllButCopied(tree, copied = readBkitConfig(tree).worktreeCopy) {
+    const keep = copied.map((e) => `:(exclude)${path.normalize(e)}`);
+    return runGit(tree, ["add", "-A", "--", ".", ...keep]);
+}
+/**
  * Commit what an earlier run left uncommitted in a resumed worktree, so the
  * resume rebase can start: a failed ship's flush lands its record on dev and
  * leaves the worktree as it was, for whatever runs next. An untracked file in a
@@ -217,8 +226,7 @@ function carryLeftovers(wt, o, log) {
     const what = prior === undefined
         ? "uncommitted work left in the worktree"
         : `the ${prior.status === "FAILED" ? "failed " : ""}${prior.workflow} record left uncommitted`;
-    const keep = o.copied.map((e) => `:(exclude)${path.normalize(e)}`);
-    runGit(wt, ["add", "-A", "--", ".", ...keep]);
+    addAllButCopied(wt, o.copied);
     const made = runGit(wt, ["commit", "-m", `chore(${o.fid}): carry ${what} bkit`]);
     if (!made.ok) {
         log(`could not commit what an earlier run left in ${wt}: ${made.stderr || made.stdout}`);

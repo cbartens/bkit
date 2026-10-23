@@ -755,6 +755,15 @@ describe("bkit workflows close — commit, outbox, comment", () => {
     expect(git(cwd, "status", "--porcelain")).toBe("");
   });
 
+  it("--message never commits the bkit.worktree.copy entries (.env)", async () => {
+    const cwd = started();
+    write(cwd, ".env", "SECRET=1\n");
+    write(cwd, "a.txt", "changed\n");
+    expect((await run(cwd, wf("close", "build", "--message=m"))).code).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).not.toContain(".env");
+    expect(git(cwd, "status", "--porcelain")).toBe("?? .env");
+  });
+
   it("an exact bkit:auto match only — a near-miss label leaves the subject alone", async () => {
     const cwd = started();
     await run(cwd, wf("close", "build", "--message=m", "--label=bkit:auto-paused"));
@@ -843,6 +852,18 @@ describe("bkit workflows handover", () => {
       ref: `feat/${FID}`,
       comment: null,
     });
+  });
+
+  it("--push never commits the bkit.worktree.copy entries (.env), gitignored or not", async () => {
+    const { cwd, remote } = withRemote();
+    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "build" }]));
+    write(cwd, ".env", "SECRET=1\n");
+    const r = await run(cwd, wf("handover", "build", `--month=${M}`, "--push", "--open-pr=none"));
+    expect(r.code).toBe(0);
+    expect(git(remote, "show", "--name-only", "--format=", `feat/${FID}`)).toBe(
+      `${REL}/status.jsonl`,
+    );
+    expect(git(cwd, "status", "--porcelain")).toBe("?? .env");
   });
 
   it("--push commits the aborted subject, pushes, and links the handover in the comment", async () => {

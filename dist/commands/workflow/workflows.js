@@ -34,7 +34,7 @@ import { mergePr, probePr } from "./prs.js";
 import { FEATURE_STATUS } from "./roadmap.js";
 import { EXIT_NO_STATUS, WORKFLOW_FLAG, positiveInt, readRuns, readStatusEvents, readStatusRows, str, } from "./status.js";
 import { EXIT_NO_RECORD, requireRecordOnShared, writeStepRow } from "./steps.js";
-import { removeWorktree } from "./worktrees.js";
+import { addAllButCopied, removeWorktree } from "./worktrees.js";
 /** Sentinels a workflow leaves in its logs folder; either one existing means a handover is due. */
 export const SENTINELS = [".rebase-failed", ".deferred-blocked"];
 /** Exit code (start --lock-held): the lock is missing or belongs to another owner. */
@@ -527,7 +527,7 @@ async function handoverVerb(ctx) {
         skipped = r.skipped;
     }
     else if (push) {
-        runGit(tree, ["add", "-A"]);
+        addAllButCopied(tree);
         const made = runGit(tree, ["commit", "-m", `docs(${fid}): ${workflow} aborted bkit [skip ci]`]);
         if (!made.ok)
             ctx.log(`abort commit: ${made.stderr || made.stdout}`);
@@ -704,7 +704,7 @@ function closeComment(cwd, outbox, o) {
  * Grade compliance, append the workflow-done row (and, with `recordStep`, the
  * close step's row first), the counter and outcome telemetry rows, and build the
  * report and artifact links; with `outbox`, write them for the close comment; with
- * `message`, commit everything (`git add -A`) in the tree, or, in an in-place run
+ * `message`, commit everything (`git add -A`, minus the `bkit.worktree.copy` entries) in the tree, or, in an in-place run
  * on a shared branch, only the run's own paths.
  */
 export function closeWorkflow(cwd, o, log) {
@@ -821,7 +821,7 @@ export function closeWorkflow(cwd, o, log) {
                 throw new CommandError(EXIT.NO, `close commit failed: ${made.error}`);
         }
         else {
-            const add = runGit(where.tree, ["add", "-A"]);
+            const add = addAllButCopied(where.tree);
             const made = add.ok ? runGit(where.tree, ["commit", "--allow-empty", "-m", message]) : add;
             if (!made.ok)
                 throw new CommandError(EXIT.NO, `close commit failed: ${made.stderr || made.stdout}`);
@@ -1283,7 +1283,7 @@ export const workflowsCommand = {
                 {
                     name: "push",
                     type: "boolean",
-                    help: "feature branch: git add -A, commit `docs({fid}): {workflow} aborted bkit [skip ci]`, push --mode=abort; dev / main / detached: lands like --flush, the checkout untouched",
+                    help: "feature branch: git add -A (minus bkit.worktree.copy entries), commit `docs({fid}): {workflow} aborted bkit [skip ci]`, push --mode=abort; dev / main / detached: lands like --flush, the checkout untouched",
                 },
                 {
                     name: "flush",
@@ -1354,7 +1354,7 @@ export const workflowsCommand = {
                 {
                     name: "message",
                     type: "string",
-                    help: "then git add -A and commit with this message in the tree",
+                    help: "then git add -A (minus bkit.worktree.copy entries) and commit with this message in the tree",
                 },
                 {
                     name: "label",
