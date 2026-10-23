@@ -491,15 +491,15 @@ Indented for readability — **on disk each row = single physical line** (§ Wri
   "step": "debug-diagnose",
   "subagent": "bkit-debug-failure-diagnose",
   "model": "claude-opus-4-8",
-  "key": "bkit-install-flips-core-bare",
+  "key": "hook-git-dir-leaks-into-temp-repo-tests",
   "category": "tooling",
-  "summary": "bkit install flips core.bare=true",
+  "summary": "Tests run from a git hook act on the real repo",
   "severity": "HIGH",
-  "description": "`pnpm bkit install` leaves git config core.bare=true, which breaks git checkout/status afterward",
-  "rootCause": "the install engine writes core.bare while staging and does not restore it on the success path",
-  "remediation": "run `git config core.bare false` after install",
+  "description": "after a pre-push run, git config core.bare=true on the main checkout, which breaks git checkout/status",
+  "rootCause": "git exports GIT_DIR to hooks; a test running `git init --bare` with no path in its temp folder re-initialises the real repo as bare",
+  "remediation": "delete every GIT_* variable in the test setup before any test spawns git",
   "status": "OPEN",
-  "references": ["176", "a1b2c3d", ".bkit/core/engine/commands/install/install.ts"]
+  "references": ["176", "a1b2c3d", "vitest.setup.ts"]
 }
 ```
 
