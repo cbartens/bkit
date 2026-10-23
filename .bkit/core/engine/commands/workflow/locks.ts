@@ -178,7 +178,7 @@ function liveReason(
  * Fold a status log for the lock cross-check. A missing or malformed log shows no
  * run: there is no evidence the holder is alive, so the lock is reclaimed.
  */
-function readRunsLenient(file: string): WorkflowRun[] {
+export function readRunsLenient(file: string): WorkflowRun[] {
   if (!fs.existsSync(file)) return [];
   const raw = fs.readFileSync(file, "utf-8").trim();
   const events: StatusEvent[] = [];
@@ -196,6 +196,18 @@ export function workflowLockLive(root: string, fid: string): boolean {
   return monthBuckets(root, fid).some((month) => {
     const holder = readHolder(workflowLockPath(root, month, fid));
     return holder !== undefined && "live" in liveReason(root, month, fid, holder, Date.now());
+  });
+}
+
+/**
+ * Whether `fid` has a workflow lock file younger than the idle limit, whatever
+ * its run's state: a run that has closed but not yet released its lock (it still
+ * pushes and waits for CI) still owns its checkout.
+ */
+export function workflowLockFresh(root: string, fid: string): boolean {
+  return monthBuckets(root, fid).some((month) => {
+    const stat = fs.statSync(workflowLockPath(root, month, fid), { throwIfNoEntry: false });
+    return stat !== undefined && (Date.now() - stat.mtimeMs) / 1000 < WORKFLOW_LOCK_IDLE_S;
   });
 }
 

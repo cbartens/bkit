@@ -333,6 +333,38 @@ describe("bkit worktrees setup — debug in place on dev shares the checkout", (
     expect(fs.existsSync(recordFile(cwd))).toBe(false);
   });
 
+  it("setup refuses with EXIT_SHARED_BUSY for a closed run that has not released its lock yet", async () => {
+    const cwd = shared();
+    writeRecord(cwd, newRecord(cwd, OTHER, "dev"));
+    await liveRun(cwd, OTHER);
+    // The run closed (it still pushes and waits for CI) but its lock file is fresh.
+    fs.appendFileSync(
+      path.join(cwd, "docs", "plans", MONTH, "logs", OTHER, "status.jsonl"),
+      `${JSON.stringify({ type: "workflow-done", workflow: "debug", at: new Date().toISOString() })}\n`,
+    );
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(13);
+    expect(r.err).toContain(OTHER);
+    expect(fs.existsSync(recordFile(cwd))).toBe(false);
+    expect(fs.existsSync(recordFile(cwd, OTHER))).toBe(true);
+  });
+
+  it("setup refuses while another setup holds the guard, and clears a stale guard", async () => {
+    const cwd = shared();
+    const guard = path.join(path.dirname(recordFile(cwd)), ".setup.lock");
+    fs.mkdirSync(path.dirname(guard), { recursive: true });
+    fs.writeFileSync(guard, "");
+    const busy = await setup(cwd, "debug");
+    expect(busy.code).toBe(13);
+    expect(fs.existsSync(recordFile(cwd))).toBe(false);
+    const old = new Date(Date.now() - 120_000);
+    fs.utimesSync(guard, old, old);
+    const ok = await setup(cwd, "debug");
+    expect(ok.code).toBe(0);
+    expect(fs.existsSync(recordFile(cwd))).toBe(true);
+    expect(fs.existsSync(guard)).toBe(false);
+  });
+
   it("a stale record without a lock is replaced", async () => {
     const cwd = shared();
     writeRecord(cwd, newRecord(cwd, OTHER, "dev"));

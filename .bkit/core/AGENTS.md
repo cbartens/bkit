@@ -30,7 +30,7 @@
 
 Set `LABELS`, `DESCRIPTION`, `COMMENTS` = empty.
 
-**If** no `ISSUE_ID` → keep it empty and route on: the workflow's Step 1 recovers it from a named `FID` / `feat/{FID}` branch, else emits the no-issue warning and runs issue-less.
+**If** no `ISSUE_ID` → keep it empty and route on: the workflow's Step 1 recovers it from a named `FID` / `feat/{FID}` branch (counted only when `.bkit/issues.jsonl` has a feature row for it), else emits the no-issue warning and runs issue-less; a branch suffix that is not a lowercase slug stops the run.
 
 ### Step 2 — Route from user message
 

@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
-import { readRecord } from "./ledgers";
+import { newRecord, readRecord, removeRecord, writeRecord } from "./ledgers";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -212,6 +212,81 @@ describe("the push of a debug run in place on dev sends only the run's commits",
     expect(r.json).toMatchObject({ pushed: true, replayed: false });
     expect(r.json.sha).toBe(git(cwd, "rev-parse", "HEAD"));
     expect(git(origin, "rev-parse", "dev")).toBe(git(cwd, "rev-parse", "HEAD"));
+  });
+});
+
+describe("the dev push lands on a moved origin and only with the run's own record", () => {
+  const remoteLog = (origin: string) => git(origin, "log", "--format=%s", "dev").split("\n");
+  const closeRun = (cwd: string) =>
+    bkit(
+      cwd,
+      "workflows",
+      "close",
+      "--workflow=debug",
+      `--fid=${FID}`,
+      `--month=${MONTH}`,
+      `--message=chore(${FID}): close`,
+    );
+
+  /** Another clone lands a commit on origin/dev, which this clone has not fetched. */
+  function moveOrigin(base: string, origin: string) {
+    const other = path.join(base, "other");
+    git(base, "clone", "-q", "-b", "dev", origin, other);
+    write(other, "elsewhere.txt", "elsewhere\n");
+    git(other, "add", "-A");
+    git(other, "commit", "-q", "-m", "someone else landed");
+    git(other, "push", "-q", "origin", "dev");
+  }
+
+  it("a local dev one remote commit behind origin/dev lands by replay, not a rejected push", async () => {
+    const { base, cwd, origin } = fixture({ ahead: false });
+    await startRun(cwd);
+    await step(cwd);
+    expect((await closeRun(cwd)).code).toBe(0);
+    moveOrigin(base, origin);
+    const r = await bkit(cwd, "branches", "push", "--mode=dev");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ pushed: true, ref: "dev", replayed: true });
+    const log = remoteLog(origin);
+    expect(log).toContain("someone else landed");
+    expect(log).toContain(`chore(${FID}): verify`);
+    expect(log).toContain(`chore(${FID}): close`);
+    expect(r.json.sha).toBe(git(origin, "rev-parse", "dev"));
+  });
+
+  it("with the record gone, the dev push refuses and the foreign commit stays local", async () => {
+    const { cwd, origin } = fixture();
+    await startRun(cwd);
+    await step(cwd);
+    foreignCommit(cwd, "foreign commit made mid-run");
+    expect((await closeRun(cwd)).code).toBe(0);
+    expect(removeRecord(cwd, FID)).toBe(true);
+    const before = git(origin, "rev-parse", "dev");
+    const plain = await bkit(cwd, "branches", "push", "--mode=dev");
+    expect(plain.code).toBe(20);
+    expect(plain.json).toMatchObject({ pushed: false });
+    const named = await bkit(cwd, "branches", "push", "--mode=dev", `--fid=${FID}`);
+    expect(named.code).toBe(20);
+    expect(git(origin, "rev-parse", "dev")).toBe(before);
+    expect(remoteLog(origin)).not.toContain("foreign commit made mid-run");
+    expect(remoteLog(origin)).not.toContain("foreign local commit");
+  });
+
+  it("two records on dev: each push selects its own FID's commits", async () => {
+    const { cwd, origin } = fixture();
+    await startRun(cwd);
+    await step(cwd);
+    expect((await closeRun(cwd)).code).toBe(0);
+    // Another run starts on the same checkout afterwards: its record is the newer one.
+    writeRecord(cwd, newRecord(cwd, "another-run", "dev"));
+    const r = await bkit(cwd, "branches", "push", "--mode=dev", `--fid=${FID}`);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ pushed: true, replayed: true });
+    const log = remoteLog(origin);
+    expect(log).toContain(`chore(${FID}): close`);
+    expect(log).not.toContain("foreign local commit");
+    expect(readRecord(cwd, "another-run")).not.toBeNull();
+    expect(readRecord(cwd, FID)).not.toBeNull();
   });
 });
 

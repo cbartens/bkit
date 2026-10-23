@@ -18,7 +18,7 @@ import { bodySkipToken, CommandError, DEV, EXIT, git, isSharedBranch, parseJson,
 import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 import { landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
-import { commitBookkeeping, markRecordPushed, recordOnBranch, } from "./ledgers.js";
+import { activeRecord, commitBookkeeping, markRecordPushed, recordOnBranch, } from "./ledgers.js";
 import { releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
 import { EXIT_BASE_NOT_DEV, closeTransportRow, crossCheckRows, mergePr, openPrFor, probePr, updateBranch, } from "./prs.js";
 import { appendFeature } from "./roadmap.js";
@@ -45,6 +45,7 @@ export const EXIT_INSTALL_FAILED = 16;
 export const EXIT_LAND_STOPPED = 17;
 export const EXIT_LANDED_UNVERIFIED = 18;
 export const EXIT_LOCK_LEFT = 19;
+export const EXIT_NO_RECORD = 20;
 // ---------------------------------------------------------------------------
 // Process helpers
 // ---------------------------------------------------------------------------
@@ -465,7 +466,16 @@ export async function pushBranch(cwd, o, log) {
         return notPushed(EXIT_NOT_DEV);
     }
     const shared = isSharedBranch(branch);
-    const rec = shared ? recordOnBranch(cwd, branch) : null;
+    const rec = !shared
+        ? null
+        : o.fid === undefined
+            ? recordOnBranch(cwd, branch)
+            : activeRecord(cwd, o.fid);
+    // Without the run's record the push would carry all of local dev, not the run's commits.
+    if (shared && rec === null && (mode === "dev" || o.fid !== undefined)) {
+        log(`no shared-checkout record${o.fid === undefined ? "" : ` for ${o.fid}`} on ${branch} — refusing to push: it would carry commits the run does not own`);
+        return notPushed(EXIT_NO_RECORD);
+    }
     if (o.requireCi === true) {
         // With a record, the commit that reaches the remote last is the run's own.
         const last = rec?.commits.at(-1) ?? "HEAD";
@@ -541,9 +551,10 @@ export function replayBuild(shas) {
 }
 /**
  * Push only the commits an in-place run on dev made (the record's `commits`).
- * Plain `git push origin dev` when they are exactly what local dev holds beyond
- * origin/dev; otherwise a foreign commit sits among them, so they are replayed
- * onto a fresh origin/dev in the throwaway checkout and pushed from there.
+ * Plain push of their tip SHA when origin/dev is an ancestor of local dev and they
+ * are exactly what local dev holds beyond it; otherwise (a foreign commit among
+ * them, origin/dev moved, or the plain push is rejected) they are replayed onto a
+ * fresh origin/dev in the throwaway checkout and pushed from there.
  */
 async function pushOwnCommits(cwd, rec, o, log, notPushed) {
     const gone = rec.commits.filter((c) => !runGit(cwd, ["merge-base", "--is-ancestor", c, "HEAD"]).ok);
@@ -575,26 +586,35 @@ async function pushOwnCommits(cwd, rec, o, log, notPushed) {
     const ahead = (git(cwd, ["rev-list", "--reverse", `${UPSTREAM}..HEAD`]) ?? "")
         .split("\n")
         .filter(Boolean);
-    if (ahead.length === pending.length && ahead.every((c, i) => c === pending[i])) {
-        const args = ["push", ...(o.setUpstream === true ? ["-u"] : []), REMOTE, rec.branch];
+    // Plain only when origin/dev is an ancestor of local dev (a fast-forward) and
+    // the run's commits are all local dev holds beyond it; the explicit SHA keeps
+    // a commit made after the check out of the push.
+    const fastForward = runGit(cwd, ["merge-base", "--is-ancestor", UPSTREAM, "HEAD"]).ok;
+    if (fastForward && ahead.length === pending.length && ahead.every((c, i) => c === pending[i])) {
+        const last = pending[pending.length - 1];
+        const args = [
+            "push",
+            ...(o.setUpstream === true ? ["-u"] : []),
+            REMOTE,
+            `${last}:refs/heads/${rec.branch}`,
+        ];
         const res = runGit(cwd, args);
-        if (!res.ok) {
-            log(`git ${args.join(" ")} failed: ${res.stderr}`);
-            return notPushed(EXIT_PUSH_FAILED);
+        if (res.ok) {
+            log(`pushed ${rec.branch}: the run's ${pending.length} commit(s) are all local dev holds`);
+            return {
+                code: EXIT.OK,
+                out: {
+                    pushed: true,
+                    ref: rec.branch,
+                    sha: last,
+                    forced: false,
+                    skipped: null,
+                    prNumber: null,
+                    replayed: false,
+                },
+            };
         }
-        log(`pushed ${rec.branch}: the run's ${pending.length} commit(s) are all local dev holds`);
-        return {
-            code: EXIT.OK,
-            out: {
-                pushed: true,
-                ref: rec.branch,
-                sha: git(cwd, ["rev-parse", "HEAD"]),
-                forced: false,
-                skipped: null,
-                prNumber: null,
-                replayed: false,
-            },
-        };
+        log(`git ${args.join(" ")} failed: ${res.stderr} — replaying onto a fresh ${UPSTREAM}`);
     }
     const root = repoRoot(cwd);
     let res;
@@ -655,6 +675,7 @@ async function pushVerb(ctx) {
         setUpstream: ctx.flags.setUpstream === true,
         requireCi: ctx.flags.requireCi === true,
         openPr: str(ctx.flags.openPr),
+        fid: str(ctx.flags.fid),
     }, ctx.log);
     // A detached HEAD and a wrong checkout print nothing, as the push never got to run.
     if (r.code !== EXIT_DETACHED && r.code !== EXIT_NOT_DEV)
@@ -1332,6 +1353,11 @@ export const branchesCommand = {
                     type: "string",
                     help: "--mode=abort: the open-PR answer from MCP (a number, or none) instead of asking gh",
                 },
+                {
+                    name: "fid",
+                    type: "string",
+                    help: "an in-place run on dev: its FID, which selects the run's shared-checkout record; with it a missing record refuses the push",
+                },
             ],
             output: {
                 pushed: "true when the push ran and succeeded",
@@ -1348,6 +1374,7 @@ export const branchesCommand = {
                 [EXIT_OPEN_PR]: "--mode=abort and the branch has an open PR: push skipped, remote HEAD kept",
                 [EXIT_PUSH_FAILED]: "git push failed, or dev refused a replayed push (in-place run on dev: the refusal is printed)",
                 [EXIT_NOT_DEV]: "--mode=dev and the checkout is not on dev",
+                [EXIT_NO_RECORD]: "--mode=dev, or --fid, on dev with no shared-checkout record for the run: nothing pushed",
                 [EXIT_FETCH_FAILED]: "in-place run on dev: fetching origin/dev failed",
                 [EXIT_MERGE_CONFLICT]: "in-place run on dev: a run commit does not apply onto origin/dev without the local commits it builds on; the conflicting paths are printed, nothing pushed",
             },

@@ -878,12 +878,37 @@ Extract from session prompt: `<id>{ID}</id>`, `<jira_issue>{ID}</jira_issue>`, `
 - workflow: repeatable
 
 ```text
-**If** no `ID` found → with a `FID` named in the session prompt or `BRANCH` = `feat/{FID}`, run `"{BKIT}" fids parse --branch="feat/{FID}"` → hold a non-null `issueId` as `ISSUE_ID`. **Else** → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
+**If** no `ID` found → recover the issue from the branch, which needs a `FID` named in the session prompt or `BRANCH` = `feat/{FID}` (neither → as exit 0 with `issueId` null):
 ```
 
 ```retired
+**If** no `ID` found → with a `FID` named in the session prompt or `BRANCH` = `feat/{FID}`, run `"{BKIT}" fids parse --branch="feat/{FID}"` → hold a non-null `issueId` as `ISSUE_ID`. **Else** → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
 **If** no `ID` found → log `No issue ID in the session prompt.` never create a tracker issue.
 **If** no `ID` found → log `No issue ID in the session prompt.` NEVER create a tracker issue.
+```
+
+### workflow-issue-id-parse-hit
+
+- workflow: where-used
+
+```text
+**If** exit 0 and `issueId` non-null → hold `issueId` as `ISSUE_ID`.
+```
+
+### workflow-issue-id-parse-none
+
+- workflow: where-used
+
+```text
+**If** exit 0 and `issueId` null → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
+```
+
+### workflow-issue-id-parse-slug
+
+- workflow: where-used
+
+```text
+**If** exit 3 → **STOP**, telling the user `BRANCH` is not a lowercase slug: rename it to `feat/{lowercase-slug}` or name an issue in the session prompt; nothing started, never the Failure Path.
 ```
 
 ### workflow-issue-id-none
@@ -984,7 +1009,7 @@ Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path unde
 - workflow: where-used
 
 ```text
-`BRANCH` = `feat/{FID}` → that `FID`.
+`BRANCH` = `feat/{FID}` → that `FID`; with `ISSUE_ID` non-empty, only when `FID` starts with `ISSUE_ID` (lowercased).
 ```
 
 ### workflow-fid-issue
@@ -1030,6 +1055,22 @@ Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 
 
 ```retired
 Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase.
+```
+
+### workflow-fid-free-gate
+
+- workflow: where-used
+
+```text
+**Run only if** sub-step 4 minted `FID` with `ISSUE_ID` empty — take the first name no finished run used:
+```
+
+### workflow-fid-free-reject
+
+- workflow: where-used
+
+```text
+**If** exit 1 → re-mint once with every all-digit word dropped and re-run this block, a second exit 1 → **Failure Path**.
 ```
 
 ### workflow-fid-unset

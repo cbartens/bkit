@@ -33,8 +33,15 @@ import {
   type CommandSpec,
 } from "../lib.js";
 import { ensureDiskSpace } from "./disk.js";
-import { listRecords, newRecord, readRecord, removeRecord, writeRecord } from "./ledgers.js";
-import { workflowLockLive } from "./locks.js";
+import {
+  listRecords,
+  newRecord,
+  readRecord,
+  removeRecord,
+  withSetupGuard,
+  writeRecord,
+} from "./ledgers.js";
+import { workflowLockFresh, workflowLockLive } from "./locks.js";
 import { detect } from "./runtime.js";
 import { WORKFLOW_FLAG, readRuns } from "./status.js";
 
@@ -123,24 +130,32 @@ function fetchBranch(cwd: string, branch: string): void {
  * `{logDir}/status.jsonl` is a resume and keeps its record; a new run rewrites it.
  */
 function openSharedRecord(root: string, fid: string, workflow: string, logDir: string) {
-  for (const other of listRecords(root)) {
-    if (other.fid === fid) continue;
-    if (workflowLockLive(root, other.fid)) {
-      throw new CommandError(
-        EXIT_SHARED_BUSY,
-        `${other.fid} is running in this checkout (workflow lock held) — wait for it to finish, then re-run`,
-      );
+  const busy = (other: string) =>
+    new CommandError(
+      EXIT_SHARED_BUSY,
+      `${other} is running in this checkout (workflow lock held) — wait for it to finish, then re-run`,
+    );
+  const guarded = withSetupGuard(root, () => {
+    for (const other of listRecords(root)) {
+      if (other.fid === fid) continue;
+      // A closed run that has not released its lock still pushes and waits for CI.
+      if (workflowLockLive(root, other.fid) || workflowLockFresh(root, other.fid)) {
+        throw busy(other.fid);
+      }
+      removeRecord(root, other.fid);
     }
-    removeRecord(root, other.fid);
-  }
-  const existing = readRecord(root, fid);
-  const statusFile = path.join(logDir, "status.jsonl");
-  const open =
-    fs.existsSync(statusFile) && lastRun(readRuns(statusFile), workflow)?.status === "IN_PROGRESS";
-  if (existing !== null && existing.branch === DEV && open) return existing;
-  const fresh = newRecord(root, fid, DEV);
-  writeRecord(root, fresh);
-  return fresh;
+    const existing = readRecord(root, fid);
+    const statusFile = path.join(logDir, "status.jsonl");
+    const open =
+      fs.existsSync(statusFile) &&
+      lastRun(readRuns(statusFile), workflow)?.status === "IN_PROGRESS";
+    if (existing !== null && existing.branch === DEV && open) return existing;
+    const fresh = newRecord(root, fid, DEV);
+    writeRecord(root, fresh);
+    return fresh;
+  });
+  if (guarded === null) throw busy("another run");
+  return guarded.value;
 }
 
 /** Ship's branch: the one the prompt names, else `feat/{fid}` when it exists, else the session's. */

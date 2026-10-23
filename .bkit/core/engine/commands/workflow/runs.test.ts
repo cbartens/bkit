@@ -1495,16 +1495,41 @@ describe("bkit runs dispatch on dev (a debug run in place)", { timeout: 30_000 }
     expect(gitIn(remote, "log", "-1", "--format=%s", "dev")).toBe(`chore(${FID}): re-trigger`);
   });
 
-  it("re-trigger on dev without a record stays a plain commit and a plain push", async () => {
+  it("re-trigger on dev without a record commits and pushes nothing, and hands off to the Failure Path", async () => {
     const { cwd, remoteTip, remoteLog } = devRepo({ record: false });
+    const headBefore = gitIn(cwd, "rev-parse", "HEAD");
+    const tipBefore = remoteTip();
     const r = await ciDispatchGate(gateBase(cwd), {
       gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
       ...quiet,
     });
-    expect(remoteTip()).toBe(gitIn(cwd, "rev-parse", "HEAD"));
-    expect(remoteLog()).toContain("foreign local commit");
-    expect(r.ciDispatch).toMatchObject({ outcome: "self-healed", head: remoteTip() });
+    expect(r).toMatchObject({ phase: "repoll", handoff: 6 });
+    expect(r.ciDispatch).not.toMatchObject({ outcome: "self-healed" });
+    expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(headBefore);
+    expect(remoteTip()).toBe(tipBefore);
+    expect(remoteLog()).not.toContain("foreign local commit");
   });
+
+  it("re-trigger on dev only uses the record of its own FID", async () => {
+    const { cwd, remoteTip, remoteLog } = devRepo({ record: true });
+    const tipBefore = remoteTip();
+    const r = await ciDispatchGate(
+      { ...gateBase(cwd), fid: "some-other-run" },
+      { gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh, ...quiet },
+    );
+    expect(r).toMatchObject({ handoff: 6 });
+    expect(remoteTip()).toBe(tipBefore);
+    expect(remoteLog()).not.toContain("some-other-run");
+  });
+
+  it.each(["abc1234", "0123456789abcdef0123456789abcdef0123456"])(
+    "dispatch --sha=%s is refused: the CI run is matched on the full 40-hex sha",
+    async (sha) => {
+      const { cwd } = devRepo({ record: true });
+      const r = await cli(cwd, ["dispatch", `--fid=${FID}`, `--sha=${sha}`]);
+      expect(r.code).toBe(2);
+    },
+  );
 });
 
 const ROLLUP_FOUND = JSON.stringify({

@@ -114,8 +114,8 @@ function refFlag(value, flag) {
 // ---------------------------------------------------------------------------
 /**
  * The PR-body marker line for this tracker (`.bkit/trackers.md` `pr-body-marker`). With
- * no issue the marker is FID-only (`<!-- bkit:fid={FID} -->`, the `none` shape), and the
- * FID must be an issue-less FID so it never reads as an issue id.
+ * no issue the marker is FID-only (`<!-- bkit:fid={FID} -->`, the `none` shape) and the
+ * FID any slug; with an issue, the FID must embed that same issue id.
  */
 export function prMarker(tracker, fid, issue) {
     const id = (issue ?? "").replace(/^#/, "");
@@ -157,7 +157,8 @@ export function openPrFor(cwd, o, log) {
         return { code: EXIT_SKIP_CI_TITLE, out: null };
     }
     const base = refFlag(o.base ?? DEV, "base");
-    if (base === MAIN) {
+    // `refs/heads/main`, `origin/main` and `heads/main` name the same branch for gh.
+    if (base.replace(/^(?:refs\/)?(?:heads\/|remotes\/)?(?:origin\/)?/, "") === MAIN) {
         log(`refusing to open a PR into ${MAIN}: bkit opens PRs into ${DEV} only, releases stay manual`);
         return { code: EXIT_BASE_MAIN, out: null };
     }
@@ -326,6 +327,12 @@ export function mergePr(cwd, o, log) {
     if (after.kind !== "ok") {
         log(after.message);
         return result(EXIT_GH_FAILED, undefined, false);
+    }
+    // A retarget between the base check and the merge is caught here, loudly.
+    if (after.pr?.state === "MERGED" && after.pr.baseRefName !== DEV) {
+        log(`INTEGRITY FAILURE: PR ${o.number} merged into ${after.pr.baseRefName ?? "an unknown base"}, not ${DEV} — its base changed after the check; revert the merge`);
+        const r = result(EXIT_BASE_NOT_DEV, after.pr, false);
+        return { ...r, out: { ...r.out, verdict: "FAIL", failures: 1 } };
     }
     return result(EXIT.OK, after.pr, false);
 }

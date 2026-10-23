@@ -276,6 +276,40 @@ export function writeRecord(cwd: string, rec: SharedCheckoutRecord): void {
   fs.writeFileSync(file, `${JSON.stringify(rec, null, 2)}\n`);
 }
 
+/** A setup guard older than this is a crashed setup's leftover. */
+const SETUP_GUARD_STALE_MS = 30_000;
+
+/**
+ * Run `fn` as the only record-setup in this clone: an exclusive-create guard file
+ * next to the records makes the busy check and the record write one step. Returns
+ * null, without running `fn`, when another setup holds a fresh guard.
+ */
+export function withSetupGuard<T>(cwd: string, fn: () => T): { value: T } | null {
+  const guard = recordPathOf(cwd, ".setup.lock");
+  if (guard === null) return { value: fn() };
+  fs.mkdirSync(path.dirname(guard), { recursive: true });
+  const take = (): boolean => {
+    try {
+      fs.closeSync(fs.openSync(guard, "wx"));
+      return true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
+      throw err;
+    }
+  };
+  if (!take()) {
+    const age = fs.existsSync(guard) ? Date.now() - fs.statSync(guard).mtimeMs : Infinity;
+    if (age < SETUP_GUARD_STALE_MS) return null;
+    fs.rmSync(guard, { force: true });
+    if (!take()) return null;
+  }
+  try {
+    return { value: fn() };
+  } finally {
+    fs.rmSync(guard, { force: true });
+  }
+}
+
 /** Remove the FID's record; false when there was none. */
 export function removeRecord(cwd: string, fid: string): boolean {
   const file = recordFile(cwd, fid);
@@ -409,7 +443,13 @@ export function ownSet(cwd: string, rec: SharedCheckoutRecord, among?: string[])
     const text = fs.readFileSync(path.join(top, rel), "utf-8");
     const lines = text.split("\n");
     const prefix = `${lines.slice(0, was.lines).join("\n")}\n`;
-    const prefixHash = gitRaw(top, ["hash-object", "--stdin"], {}, prefix).stdout.trim();
+    // `--path` applies the same clean / eol filters `hashOf` hashed the file with.
+    const prefixHash = gitRaw(
+      top,
+      ["hash-object", `--path=${rel}`, "--stdin"],
+      {},
+      prefix,
+    ).stdout.trim();
     if (was.lines > 0 && prefixHash !== was.hash) {
       foreign.push(rel);
       continue;
@@ -431,6 +471,32 @@ export function ownSet(cwd: string, rec: SharedCheckoutRecord, among?: string[])
 }
 
 export type OwnCommit = { ok: true; sha: string | null } | { ok: false; error: string };
+
+/**
+ * Rebuild the real index entry of a ledger the user staged before the run: the
+ * new HEAD blob plus the staged rows HEAD lacks, so the user's next plain commit
+ * keeps the run's committed rows.
+ */
+function restageLedger(top: string, rel: string): void {
+  const staged = gitRaw(top, ["show", `:${rel}`]);
+  const head = gitRaw(top, ["show", `HEAD:${rel}`]);
+  if (staged.status !== 0 || head.status !== 0) return;
+  const have = new Set(rowsOf(head.stdout).map((l) => l.trim()));
+  const theirs = rowsOf(staged.stdout).filter((l) => !have.has(l.trim()));
+  if (theirs.length === 0) {
+    gitRaw(top, ["reset", "-q", "--", rel]);
+    return;
+  }
+  const sep = head.stdout === "" || head.stdout.endsWith("\n") ? "" : "\n";
+  const blob = gitRaw(
+    top,
+    ["hash-object", "-w", "--stdin"],
+    {},
+    `${head.stdout}${sep}${theirs.join("\n")}\n`,
+  );
+  if (blob.status !== 0) return;
+  gitRaw(top, ["update-index", "--cacheinfo", `100644,${blob.stdout.trim()},${rel}`]);
+}
 
 /**
  * Commit `set` and nothing else: foreign index entries stay staged and foreign
@@ -511,6 +577,8 @@ export function commitOwnSet(
         if (reset.length > 0) {
           gitRaw(top, ["reset", "-q", `--pathspec-from-file=${list}`, "--pathspec-file-nul"]);
         }
+        // A ledger the user had staged keeps their rows in the index, on top of the new HEAD's.
+        for (const l of set.ledgers) if (stagedBefore.has(l.path)) restageLedger(top, l.path);
       }
     }
     if (made.status !== 0) {

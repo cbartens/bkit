@@ -958,17 +958,28 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
     expect(remoteSha(origin, "feat/1-x")).toBe(sha(clone));
   });
 
-  it("pushes dev plainly, so a non-fast-forward is refused rather than forced", async () => {
-    const { origin, clone } = withOrigin("push-dev");
+  it("refuses a dev push with no shared-checkout record (exit 20) and pushes nothing", async () => {
+    const { origin, clone } = withOrigin("push-dev-norecord");
+    const before = sha(origin, "dev");
     commit(clone, { "a.txt": "a\n" }, "docs: x");
     const r = await run(clone, ["push", "--mode=dev"]);
-    expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ pushed: true, ref: "dev", forced: false });
+    expect(r.code).toBe(20);
+    expect(r.json).toMatchObject({ pushed: false, ref: null });
+    expect(sha(origin, "dev")).toBe(before);
+    const named = await run(clone, ["push", "--mode=dev", "--fid=gone"]);
+    expect(named.code).toBe(20);
+    expect(sha(origin, "dev")).toBe(before);
+  });
+
+  it("a feature-mode push of an amended dev is refused rather than forced", async () => {
+    const { origin, clone } = withOrigin("push-dev-amended");
+    commit(clone, { "a.txt": "a\n" }, "docs: x");
+    git(clone, "push", "-q", "origin", "dev");
     git(clone, "commit", "-q", "--amend", "-m", "docs: rewritten");
     const again = await run(clone, ["push", "--mode=feature"]);
     expect(again.code).toBe(8);
     expect(again.json).toMatchObject({ pushed: false, ref: null });
-    expect(remoteSha(origin, "dev")).not.toBe(sha(clone));
+    expect(sha(origin, "dev")).not.toBe(sha(clone));
   });
 
   it("pushes when the pre-push hook prints more than Node's 1MB default", async () => {
@@ -1261,12 +1272,14 @@ describe(
       expect(sha(origin, "dev")).toBe(before);
     });
 
-    it("without a record the dev push is unchanged and replayed is false", async () => {
+    it("without a record the dev push is refused (exit 20), pushing nothing", async () => {
       const { origin, clone } = withOrigin("replay-none");
+      const before = sha(origin, "dev");
       commit(clone, { "a.txt": "a\n" }, "docs: x");
       const r = await run(clone, ["push", "--mode=dev"]);
-      expect(r.json).toMatchObject({ pushed: true, replayed: false, sha: sha(clone) });
-      expect(sha(origin, "dev")).toBe(sha(clone));
+      expect(r.code).toBe(20);
+      expect(r.json).toMatchObject({ pushed: false });
+      expect(sha(origin, "dev")).toBe(before);
     });
   },
 );

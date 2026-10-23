@@ -276,6 +276,17 @@ describe("bkit-debug.md — Step 11 on dev", () => {
     expect(at(/"\{BKIT\}" branches push --mode=dev\b/)).toBeGreaterThan(-1);
   });
 
+  it("debug Step 11 on dev pushes its own record and re-holds the dispatched head", () => {
+    // The push selects the run's record by FID, not by the branch (two runs can share `dev`).
+    expect(at(/"\{BKIT\}" branches push --mode=dev --require-ci --fid=\{FID\}/)).toBeGreaterThan(
+      -1,
+    );
+    expect(step11).toMatch(/exit 20 \(the run's record is gone, nothing pushed\)/);
+    // A re-trigger commit lands a new sha: the wait and gate follow the dispatch's printed head.
+    expect(step11).toContain("hold the printed `head` as `{DEV_SHA}`");
+    expect(step11).toContain('`--sha="{DEV_SHA}"` re-held from each printed `head`');
+  });
+
   it("debug Step 11 on dev releases the lock after the CI wait", () => {
     const push = at(/"\{BKIT\}" branches push --mode=dev\b/);
     const wait = at(/"\{BKIT\}" runs wait --head=/);

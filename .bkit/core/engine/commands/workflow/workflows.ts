@@ -71,6 +71,7 @@ import {
   activeRecord,
   commitBookkeeping,
   ownPathCommit,
+  ownSet,
   removeRecord,
   runRows,
   unionLedgers,
@@ -96,7 +97,7 @@ import {
   readStatusRows,
   str,
 } from "./status.js";
-import { writeStepRow } from "./steps.js";
+import { EXIT_NO_RECORD, requireRecordOnShared, writeStepRow } from "./steps.js";
 import { removeWorktree, type RemoveResult } from "./worktrees.js";
 
 /** Sentinels a workflow leaves in its logs folder; either one existing means a handover is due. */
@@ -884,6 +885,12 @@ export function closeWorkflow(
   if (o.squashSha !== undefined && !/^[0-9a-f]{7,40}$/.test(o.squashSha))
     throw new CommandError(EXIT.USAGE, `--squash-sha "${o.squashSha}" is not a commit sha`);
 
+  // An in-place run on a shared branch commits its own paths only; a refusal
+  // comes before any row is appended, so the re-run after the human's fix writes each row once.
+  const rec = o.message === undefined ? null : activeRecord(where.tree, o.fid);
+  if (o.message !== undefined) requireRecordOnShared(where.tree, workflow, rec);
+  if (rec !== null) ownSet(where.tree, rec);
+
   // Graded first, so the report below carries this run's grade.
   const violations = gradeCompliance(where.tree, workflow, log, o.squashSha);
 
@@ -1008,8 +1015,6 @@ export function closeWorkflow(
     )
       message += " bkit [verbose ci]";
     if ((o.labels ?? []).includes(AUTO_LABEL)) message += AUTO_ROUTE_SUFFIX;
-    // An in-place run on a shared branch commits its own paths only.
-    const rec = activeRecord(where.tree, o.fid);
     if (rec !== null) {
       const made = ownPathCommit(where.tree, rec, message, { allowEmpty: true });
       if (!made.ok) throw new CommandError(EXIT.NO, `close commit failed: ${made.error}`);
@@ -1644,9 +1649,11 @@ export const workflowsCommand: CommandSpec = {
         [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON (nothing written)",
         [EXIT_SPLIT_BUCKET]: "no --month and the feature has logs in more than one month bucket",
         [EXIT_PUSH_FAILED]:
-          "--flush: dev moved before every push, or the push failed without a server answer; the lock is kept",
+          "--flush: dev moved before every push, or the push failed without a server answer; the lock is kept. Without --flush, --message in an in-place run: a path that was dirty before the run changed during it (EXIT_FOREIGN_PATH) — no row written, nothing committed",
         [EXIT_FLUSH_FAILED]:
           "--flush: the dev fetch, the throwaway checkout or the close commit failed, the close PR could not be opened (the lock is kept), or the lock could not be removed",
+        [EXIT_NO_RECORD]:
+          "--message in a debug run on dev/main with no shared-checkout record: no row written, nothing committed",
       },
       run: async (ctx) => {
         const f = ctx.flags;

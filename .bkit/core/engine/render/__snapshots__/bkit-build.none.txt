@@ -76,7 +76,7 @@ _No tracker connected, skip step._
 4. _No tracker connected, skip step._
 5. Resolve `FID` — first match wins; never borrow another feature's `FID` from a leftover lock or the newest bucket:
    1. Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path under `docs/plans/{YYYYMM}/` (`{FID}-design.md`, `{FID}-plan.md`, `logs/{FID}/`).
-   2. `BRANCH` = `feat/{FID}` → that `FID`.
+   2. `BRANCH` = `feat/{FID}` → that `FID`; with `ISSUE_ID` non-empty, only when `FID` starts with `ISSUE_ID` (lowercased).
    3. `ISSUE_ID` non-empty → feature already logged for that issue:
       ```bash
       "{BKIT}" fids find --issue="{ISSUE_ID}"
@@ -87,6 +87,17 @@ _No tracker connected, skip step._
       - **Else** → next.
    4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**. Format `{ISSUE_ID}-{slug}`.
       `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
+
+   **Run only if** sub-step 4 minted `FID` with `ISSUE_ID` empty — take the first name no finished run used:
+
+   ```bash
+   "{BKIT}" fids free --fid="{FID}" --workflow=build
+   ```
+
+   Route:
+   - **If** exit 0 → `{FID}` = the printed `fid`.
+   - **If** exit 1 → re-mint once with every all-digit word dropped and re-run this block, a second exit 1 → **Failure Path**.
+   - **Else** → **Failure Path**.
 
    One `FID` for all artifacts once set. Check its format for the wired tracker:
 

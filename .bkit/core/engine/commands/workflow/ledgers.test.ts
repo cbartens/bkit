@@ -405,6 +405,42 @@ describe("bkit ledgers commit — a run in place on dev that shares its checkout
     );
   });
 
+  it("a ledger the user staged before the run keeps their rows in the index after the run's commit", async () => {
+    const r = shared();
+    git(r, "add", ".bkit/issues.jsonl");
+    add(r, ".bkit/issues.jsonl", row("run"));
+    const res = await run(r, commitArgs(r, ...base, "--mode=commit", "--message=book"));
+    expect(res.code).toBe(0);
+    expect(git(r, "show", "HEAD:.bkit/issues.jsonl")).toBe(`${row("base")}${row("run")}`.trimEnd());
+    // The index is HEAD's rows plus the user's staged row, so their next plain commit adds only that row.
+    expect(git(r, "show", ":.bkit/issues.jsonl")).toBe(
+      `${row("base")}${row("run")}${row("foreign")}`.trimEnd(),
+    );
+    expect(git(r, "diff", "--cached", "-U0", "--", ".bkit/issues.jsonl")).toContain(
+      `+${JSON.stringify({ id: "foreign" })}`,
+    );
+    expect(git(r, "diff", "--cached", "-U0", "--", ".bkit/issues.jsonl")).not.toContain("-{");
+  });
+
+  it("a recorded ledger under an eol attribute still commits only the run's rows", async () => {
+    const r = repo();
+    git(r, "switch", "-q", "-c", "dev");
+    put(r, ".gitattributes", ".bkit/issues.jsonl text eol=crlf\n");
+    put(r, "src/a.txt", "a\n");
+    put(r, ".bkit/issues.jsonl", `${row("base").trimEnd()}\r\n`);
+    put(r, `${LOGS}/status.jsonl`, "{}\n");
+    commitAll(r);
+    add(r, "src/a.txt", "foreign\n");
+    add(r, ".bkit/issues.jsonl", `${row("foreign").trimEnd()}\r\n`);
+    writeRecord(r, newRecord(r, FID, "dev"));
+    add(r, ".bkit/issues.jsonl", `${row("run").trimEnd()}\r\n`);
+    const res = await run(r, commitArgs(r, ...base, "--mode=commit", "--message=book"));
+    expect(res.code).toBe(0);
+    const inHead = git(r, "show", "HEAD:.bkit/issues.jsonl");
+    expect(inHead).toContain('"run"');
+    expect(inHead).not.toContain('"foreign"');
+  });
+
   it("commitBookkeeping refuses when a recorded path changed", async () => {
     const r = shared();
     const before = head(r);

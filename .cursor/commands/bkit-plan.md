@@ -71,12 +71,21 @@ Plan Feature — Autonomous plan generation
    Hold `bkit` as `{BKIT}`, `ownerRepo` as `{OWNER_REPO}`, `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as `{BRANCH}`, `repoRoot` as `{REPO_ROOT}`, `outboxRoot` as `{OUTBOX_ROOT}`, `bkitAdvisory` as `{BKIT_ADVISORY}`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-plan] {BKIT_ADVISORY}`.
    Hold `trackerTeam` as `{TRACKER_TEAM}`, `trackerProject` as `{TRACKER_PROJECT}`, `trackerSite` as `{TRACKER_SITE}`.
 2. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
-   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → with a `FID` named in the session prompt or `BRANCH` = `feat/{FID}`, run `"{BKIT}" fids parse --branch="feat/{FID}"` → hold a non-null `issueId` as `ISSUE_ID`. **Else** → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
+   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`.
+   **If** no `ID` found → recover the issue from the branch, which needs a `FID` named in the session prompt or `BRANCH` = `feat/{FID}` (neither → as exit 0 with `issueId` null):
+   ```bash
+   "{BKIT}" fids parse --branch="feat/{FID}"
+   ```
+   Route:
+   - **If** exit 0 and `issueId` non-null → hold `issueId` as `ISSUE_ID`.
+   - **If** exit 0 and `issueId` null → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
+   - **If** exit 3 → **STOP**, telling the user `BRANCH` is not a lowercase slug: rename it to `feat/{lowercase-slug}` or name an issue in the session prompt; nothing started, never the Failure Path.
+   - **Else** → **Failure Path**.
 3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
    **Skip if** `ISSUE_ID` empty. No issue named → `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; input artifact built from session prompt alone. **Else** `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`; `labels` → `LABELS`; `body` → `DESCRIPTION`; `title` → `TITLE`; `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
 4. Resolve `FID` — first match wins; never borrow another feature's `FID` from a leftover lock or the newest bucket:
    1. Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path under `docs/plans/{YYYYMM}/` (`{FID}-design.md`, `{FID}-plan.md`, `logs/{FID}/`).
-   2. `BRANCH` = `feat/{FID}` → that `FID`.
+   2. `BRANCH` = `feat/{FID}` → that `FID`; with `ISSUE_ID` non-empty, only when `FID` starts with `ISSUE_ID` (lowercased).
    3. `ISSUE_ID` non-empty → feature already logged for that issue:
       ```bash
       "{BKIT}" fids find --issue="{ISSUE_ID}"
@@ -86,6 +95,17 @@ Plan Feature — Autonomous plan generation
       - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
       - **Else** → next.
    4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**. Format `{ISSUE_ID}-{slug}`; `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
+
+   **Run only if** sub-step 4 minted `FID` with `ISSUE_ID` empty — take the first name no finished run used:
+
+   ```bash
+   "{BKIT}" fids free --fid="{FID}" --workflow=plan
+   ```
+
+   Route:
+   - **If** exit 0 → `{FID}` = the printed `fid`.
+   - **If** exit 1 → re-mint once with every all-digit word dropped and re-run this block, a second exit 1 → **Failure Path**.
+   - **Else** → **Failure Path**.
 
    One `FID` for all artifacts once set. Check its format for the wired tracker:
 
@@ -416,7 +436,7 @@ Plan Feature — Autonomous plan generation
    Route:
    - **If** exit 0 → hold `canonicalRef` as `{CANONICAL_REF}`.
    - **If** exit 80 at `stage` = open → `create_pull_request` with the printed `title` / `body` / `base` / `head` → re-run with `--pr=<number>`.
-   - **If** exit 80 at `stage` = merge → `merge_pull_request` with the printed `subject`, empty body → re-run with `--pr={prNumber} --merged-sha=<merge commit>`.
+   - **If** exit 80 at `stage` = merge → `pull_request_read` (`get`) and assert `base.ref` = `dev`, else **Failure Path** with nothing merged; then `merge_pull_request` with the printed `subject`, empty body → re-run with `--pr={prNumber} --merged-sha=<merge commit>`.
    - **Else** → **Failure Path**.
 3. **Skip if** `ISSUE_ID` empty. Compute the board move:
    ```bash

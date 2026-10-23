@@ -24,7 +24,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); Close Workflow and Failure Path release it and exit non-zero while it is still present. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
 > - **Status branch:** status.jsonl committed on the adopted branch `{BRANCH}` (`{STATUS}`, held from Step 2); per-step commits, no pushes.
 > - **Worktrees:** Debug never creates a branch. Step 2 resumes `.worktrees/{FID}`; **Else** → adopts an existing `feat/{FID}` (local or origin, not the session's own branch) into it when the runtime mints worktrees; **Else** → adopts the session's current branch in place (`worktreePath` = main checkout); no `-b`. `main` is the one ineligible branch. cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
-> - **Foreign path:** Exit 10 (`EXIT_FOREIGN_PATH`) from `steps finish`, `workflows close` or `workflows commit` in a run in place on `dev`: a file the run commits was already modified before the run started, so nothing was committed → **STOP**, ask the human to commit or revert the named file, then re-run the block; this exit never takes the Failure Path.
+> - **Foreign path:** Exit 10 (`EXIT_FOREIGN_PATH`) from `steps finish`, `workflows close` or `workflows commit` in a run in place on `dev`: a file the run commits was already modified before the run started, so nothing was written or committed → **STOP**, ask the human to commit or revert the named file, then re-run the block; this exit never takes the Failure Path.
 > - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls always stay on MCP; never invent `gh` read-paths for trackers.
 
 <!-- bkit:tracker github start -->
@@ -112,17 +112,28 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker true end -->
 2. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
    <!-- bkit:tracker github start -->
-   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → with a `FID` named in the session prompt or `BRANCH` = `feat/{FID}`, run `"{BKIT}" fids parse --branch="feat/{FID}"` → hold a non-null `issueId` as `ISSUE_ID`. **Else** → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
+   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   Extract from session prompt: `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or `[A-Z]+-\d+` → first match → `ISSUE_ID`. **If** no `ID` found → with a `FID` named in the session prompt or `BRANCH` = `feat/{FID}`, run `"{BKIT}" fids parse --branch="feat/{FID}"` → hold a non-null `issueId` as `ISSUE_ID`. **Else** → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
+   Extract from session prompt: `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or `[A-Z]+-\d+` → first match → `ISSUE_ID`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker jira start -->
-   Extract from session prompt: `<id>{ID}</id>`, `<jira_issue>{ID}</jira_issue>`, `Jira issue: {ID}`, `ISSUE-{ID}`, a `/browse/{ID}` link, or `[A-Z][A-Z0-9]+-\d+` → first match → `ISSUE_ID`. **If** no `ID` found → with a `FID` named in the session prompt or `BRANCH` = `feat/{FID}`, run `"{BKIT}" fids parse --branch="feat/{FID}"` → hold a non-null `issueId` as `ISSUE_ID`. **Else** → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
+   Extract from session prompt: `<id>{ID}</id>`, `<jira_issue>{ID}</jira_issue>`, `Jira issue: {ID}`, `ISSUE-{ID}`, a `/browse/{ID}` link, or `[A-Z][A-Z0-9]+-\d+` → first match → `ISSUE_ID`.
    <!-- bkit:tracker jira end -->
    <!-- bkit:tracker false start -->
    Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""`, log `Tracker not wired — proceeding without issue ID.`, continue with FID derived from branch name.
    <!-- bkit:tracker false end -->
+   <!-- bkit:tracker true start -->
+   **If** no `ID` found → recover the issue from the branch, which needs a `FID` named in the session prompt or `BRANCH` = `feat/{FID}` (neither → as exit 0 with `issueId` null):
+   ```bash
+   "{BKIT}" fids parse --branch="feat/{FID}"
+   ```
+   Route:
+   - **If** exit 0 and `issueId` non-null → hold `issueId` as `ISSUE_ID`.
+   - **If** exit 0 and `issueId` null → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
+   - **If** exit 3 → **STOP**, telling the user `BRANCH` is not a lowercase slug: rename it to `feat/{lowercase-slug}` or name an issue in the session prompt; nothing started, never the Failure Path.
+   - **Else** → **Failure Path**.
+   <!-- bkit:tracker true end -->
 3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
    <!-- bkit:tracker github start -->
    **Skip if** `ISSUE_ID` empty. No issue named → `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; input artifact built from session prompt alone. **Else** `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`; `labels` → `LABELS`; `body` → `DESCRIPTION`; `title` → `TITLE`; `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
@@ -138,7 +149,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker false end -->
 4. Resolve `FID` — first match wins; never borrow another feature's `FID` from a leftover lock or the newest bucket:
    1. Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path under `docs/plans/{YYYYMM}/` (`{FID}-design.md`, `{FID}-plan.md`, `logs/{FID}/`).
-   2. `BRANCH` = `feat/{FID}` → that `FID`.
+   2. `BRANCH` = `feat/{FID}` → that `FID`; with `ISSUE_ID` non-empty, only when `FID` starts with `ISSUE_ID` (lowercased).
    3. `ISSUE_ID` non-empty → feature already logged for that issue:
       ```bash
       "{BKIT}" fids find --issue="{ISSUE_ID}"
@@ -160,11 +171,26 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
       Lowercase `{ISSUE_ID}`. Format `{issue_id}-{slug}`.
       <!-- bkit:tracker jira end -->
       <!-- bkit:tracker true end -->
+
+   **Run only if** sub-step 4 minted `FID` with `ISSUE_ID` empty — take the first name no finished run used:
+
+   ```bash
+   "{BKIT}" fids free --fid="{FID}" --workflow=debug
+   ```
+
+   Route:
+   - **If** exit 0 → `{FID}` = the printed `fid`.
+   - **If** exit 1 → re-mint once with every all-digit word dropped and re-run this block, a second exit 1 → **Failure Path**.
+   - **Else** → **Failure Path**.
+
    One `FID` for all artifacts once set. Check its format for the wired tracker:
+
    ```bash
    "{BKIT}" fids check --fid="{FID}"<!-- bkit:tracker true start --> --issue="{ISSUE_ID}"<!-- bkit:tracker true end -->
    ```
+
    → hold `fid` as `{FID}`.
+
 5. Acquire concurrency lock:
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=debug --fid={FID}
@@ -639,11 +665,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      ```
    - **If** `BRANCH` = `dev` → push only the run's own commits; the lock stays held until sub-step 8:
      ```bash
-     "{BKIT}" branches push --mode=dev --require-ci
+     "{BKIT}" branches push --mode=dev --require-ci --fid={FID}
      ```
      Route:
      - **If** exit 0 and `skipped` null → hold `sha` as `{DEV_SHA}` (an own-commit push lands copies, so never the local HEAD); `BRANCH` = `dev` → `{CLOSE_PARENT}` = `{DEV_SHA}`.
-     - **If** exit 8 (push failed or refused), exit 10 (fetch failed) or exit 11 (replay conflict, the conflicting paths printed) → **Failure Path**.
+     - **If** exit 8 (push failed or refused), exit 10 (fetch failed), exit 11 (replay conflict, the conflicting paths printed) or exit 20 (the run's record is gone, nothing pushed) → **Failure Path**.
      - **Else** → **Failure Path**.
 3. **If** `{PR_OPEN}` = 0 → record the close row and audit the landed commit; `{LIVE_SKIPPED}` = `--field="testsLiveSkipped=No live tests ran, runtime-only defects not gated (not declared or opted out)."` when `TEST_SCOPE` lacks `live`, else empty:
    ```bash
@@ -696,8 +722,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```bash
    "{BKIT}" runs dispatch --sha="{DEV_SHA}" --fid={FID} {LABEL_FLAGS} --file="{STATUS}" --workflow=debug --step=debug-close-workflow {LIVE_SKIPPED} {CI_REENTRY}
    ```
-   - **If** exit 0 → wait below.
-   - **If** exit 81 or 80 → **CI wait turn-loop**, polling `runs wait --head="{DEV_SHA}" --branch=dev --once` in place of `--pr` → re-run this block with `{CI_REENTRY}`.
+   - **If** exit 0 → hold the printed `head` as `{DEV_SHA}` (a re-trigger commit lands a new sha) → wait below.
+   - **If** exit 81 or 80 → hold the printed `head` as `{DEV_SHA}` → **CI wait turn-loop**, polling `runs wait --head="{DEV_SHA}" --branch=dev --once` in place of `--pr` → re-run this block with `{CI_REENTRY}`, `--sha="{DEV_SHA}"` re-held from each printed `head` (after a `repoll` phase too).
    - **Else** → **Failure Path**.
 
    ```bash

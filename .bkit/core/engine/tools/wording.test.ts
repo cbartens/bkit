@@ -692,13 +692,38 @@ describe("sync", () => {
 
 describe("issue-less workflow clauses", () => {
   // A run with no issue warns and continues; the clauses carry that for all five workflows.
-  it("workflow-issue-id-missing has no STOP", () => {
+  it("workflow-issue-id-missing leads into the branch recovery without a STOP", () => {
     for (const text of clause("workflow-issue-id-missing").texts) {
       expect(text).not.toContain("STOP");
-      expect(text).toContain("fids parse");
-      expect(text).toContain('`ISSUE_ID=""`');
-      expect(text).toContain("never create a tracker issue");
+      expect(text).toContain("recover the issue from the branch");
+      expect(text).toContain("(neither → as exit 0 with `issueId` null)");
     }
+  });
+
+  it("the fids parse routes: hit, no issue, non-slug STOP", () => {
+    expect(clause("workflow-issue-id-parse-hit").texts[0]).toContain(
+      "hold `issueId` as `ISSUE_ID`",
+    );
+    const none = clause("workflow-issue-id-parse-none").texts[0];
+    expect(none).toContain('`ISSUE_ID=""`');
+    expect(none).toContain("never create a tracker issue");
+    expect(none).not.toContain("STOP");
+    const slug = clause("workflow-issue-id-parse-slug").texts[0];
+    expect(slug).toContain("**STOP**");
+    expect(slug).toContain("exit 3");
+    expect(slug).toContain("rename it");
+    expect(slug).toContain("never the Failure Path");
+  });
+
+  it("workflow-fid-branch compares a held issue to the FID prefix", () => {
+    const [text] = clause("workflow-fid-branch").texts;
+    expect(text).toContain("`ISSUE_ID` non-empty");
+    expect(text).toContain("starts with `ISSUE_ID`");
+  });
+
+  it("the repeated issue-less mint clauses route through fids free", () => {
+    expect(clause("workflow-fid-free-gate").texts[0]).toContain("first name no finished run used");
+    expect(clause("workflow-fid-free-reject").texts[0]).toContain("**Failure Path**");
   });
 
   it("changed issue clauses keep their old text in retired", () => {

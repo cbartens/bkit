@@ -815,11 +815,12 @@ describe("bkit steps gate — placeholders, FID, derived attempt", () => {
         ...extra,
       ]);
 
-    it('gate --issue="" fails the fid check for 123-fix under github', async () => {
-      const r = await gate(wired(), "123-fix", "--issue=");
-      expect(r.code).toBe(1);
-      expect(r.json.checks[0]).toMatchObject({ check: "fid 123-fix", ok: false });
-      expect(r.err).toContain("issue-less");
+    it('gate --issue="" fails the fid check for a non-slug FID and passes 123-fix under github', async () => {
+      const bad = await gate(wired(), "Fix_CI", "--issue=");
+      expect(bad.code).toBe(1);
+      expect(bad.json.checks[0]).toMatchObject({ check: "fid Fix_CI", ok: false });
+      expect(bad.err).toContain("not a slug");
+      expect((await gate(wired(), "123-fix", "--issue=")).code).toBe(0);
     });
 
     it('gate --issue="" passes the fid check for dev-ci-failures under github', async () => {
@@ -838,7 +839,15 @@ describe("bkit steps gate — placeholders, FID, derived attempt", () => {
     it("gate with --issue absent is unchanged: the tracker shape alone", async () => {
       expect((await gate(wired(), "650-x")).code).toBe(0);
       expect((await gate(wired(), "dev-ci-failures")).code).toBe(1);
-      expect((await gate(wired(), "123-fix", "--issue=")).code).toBe(1);
+      expect((await gate(wired(), "Fix_CI", "--issue=")).code).toBe(1);
+    });
+
+    it("gate --fid=123-foo --issue=456 fails: the FID embeds another issue", async () => {
+      const r = await gate(wired(), "123-foo", "--issue=456");
+      expect(r.code).toBe(1);
+      expect(r.json.checks[0]).toMatchObject({ check: "fid 123-foo", ok: false });
+      expect(r.err).toContain("embeds issue 123, not the run's issue 456");
+      expect((await gate(wired(), "123-foo", "--issue=123")).code).toBe(0);
     });
 
     it("gate --issue without --fid is a usage error", async () => {
@@ -939,6 +948,28 @@ describe("bkit steps done — a run in place on dev that shares its checkout", (
     expect(r.code).toBe(10);
     expect(r.err).toContain("src/a.txt");
     expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    // No row is written, so the re-run after the human's fix writes it once.
+    expect(fs.existsSync(path.join(cwd, LOGS, "status.jsonl"))).toBe(false);
+    write(cwd, "src/a.txt", "a\nforeign\n");
+    expect((await step(cwd)).code).toBe(0);
+    const rows = fs
+      .readFileSync(path.join(cwd, LOGS, "status.jsonl"), "utf-8")
+      .trim()
+      .split("\n");
+    expect(rows).toHaveLength(1);
+  });
+
+  it("writeStepRow exits 14 with no row and no commit when the run has no record on dev", async () => {
+    const cwd = shared();
+    fs.rmSync(
+      path.resolve(cwd, git(cwd, "rev-parse", "--git-path", `bkit/shared-checkout/${FID}.json`)),
+    );
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await step(cwd);
+    expect(r.code).toBe(14);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(fs.existsSync(path.join(cwd, LOGS, "status.jsonl"))).toBe(false);
+    expect(staged(cwd)).toBe("src/staged.txt");
   });
 
   it("writeStepRow appends its commit sha to the record", async () => {

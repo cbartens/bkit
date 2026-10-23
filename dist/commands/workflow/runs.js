@@ -28,7 +28,7 @@ import { TIMEOUTS } from "../../shared/timeouts.js";
 import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } from "./fids.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { pushBranch } from "./branches.js";
-import { checkOnlyBookkeeping, recordOnBranch, retriggerCommit } from "./ledgers.js";
+import { activeRecord, checkOnlyBookkeeping, retriggerCommit } from "./ledgers.js";
 import { closeTransportRow, crossCheckFile, prRepoSlug, probePr } from "./prs.js";
 import { resolveOwnerRepo, splitSlug } from "./repo.js";
 import { extraField, str } from "./status.js";
@@ -286,8 +286,15 @@ export async function ciDispatchGate(o, deps) {
             return verdict("unresolved", "timeout-dirty");
         }
         const message = `chore(${o.fid}): re-trigger${o.autoRouteSuffix}`;
-        // A run in place on a shared branch commits and pushes only its own work.
-        const rec = shared ? recordOnBranch(o.cwd, branch) : null;
+        // A run in place on a shared branch commits and pushes only its own work; with
+        // no record of the run there, nothing is committed or pushed.
+        const rec = shared ? activeRecord(o.cwd, o.fid) : null;
+        if (shared && rec === null) {
+            deps.log(`no shared-checkout record for ${o.fid} on ${branch} — refusing to re-trigger: a commit and push here would carry work the run does not own; route to the Failure Path`);
+            res.phase = "repoll";
+            res.handoff = EXIT_RETRIGGER_FAILED;
+            return res;
+        }
         let pushed;
         if (rec === null) {
             landed = null;
@@ -298,7 +305,9 @@ export async function ciDispatchGate(o, deps) {
             const made = retriggerCommit(o.cwd, rec, message);
             if (!made.ok)
                 deps.log(`re-trigger commit failed: ${made.error}`);
-            const out = made.ok ? await pushBranch(o.cwd, { mode: "feature" }, deps.log) : null;
+            const out = made.ok
+                ? await pushBranch(o.cwd, { mode: "feature", fid: o.fid }, deps.log)
+                : null;
             landed = out?.out.pushed === true ? out.out.sha : landed;
             pushed = out?.out.pushed === true && out.out.sha !== null;
             if (pushed)
@@ -915,8 +924,8 @@ async function runDispatch(ctx) {
         pr = found.pr;
     }
     const sha = str(f.sha);
-    if (sha !== undefined && !/^[0-9a-f]{7,40}$/i.test(sha)) {
-        throw new CommandError(EXIT.USAGE, "--sha must be a commit sha (7 to 40 hex digits)");
+    if (sha !== undefined && !/^[0-9a-f]{40}$/i.test(sha)) {
+        throw new CommandError(EXIT.USAGE, "--sha must be the full 40-hex-digit commit sha (the CI run is matched on the full sha)");
     }
     const onShared = isSharedBranch(git(ctx.cwd, ["branch", "--show-current"]) ?? "");
     if (sha !== undefined && (pr !== null || !onShared)) {
@@ -1536,7 +1545,7 @@ export const runsCommand = {
                 {
                     name: "sha",
                     type: "string",
-                    help: "a run in place on dev (no PR): the sha its push landed, which the CI run is looked up at (default: HEAD); an own-commit push lands copies, so pass the push's `sha`",
+                    help: "a run in place on dev (no PR): the full 40-hex sha its push landed, which the CI run is looked up at (default: HEAD); an own-commit push lands copies, so pass the push's `sha`",
                 },
                 {
                     name: "fid",

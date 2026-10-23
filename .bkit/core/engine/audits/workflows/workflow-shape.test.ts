@@ -599,23 +599,92 @@ describe("issue-less runs", () => {
     expect(failDisplay[0], `${name}: summary-FAIL display`).toContain(FINAL_FIRST_LINE);
   });
 
+  it.each(PHASES)("%s: the wired Extract lines leave the recovery to the true block", (name) => {
+    const step1 = section(workflow(name), /Step 1 — Start Workflow/).split("\n");
+    const extract = trackerBlocks(step1)
+      .filter((b) => ["github", "linear", "jira"].includes(b.kind))
+      .map((b) => step1.slice(b.start, b.end + 1).join("\n"))
+      .filter((t) => t.includes("Extract from session prompt"));
+    expect(extract, name).toHaveLength(3);
+    for (const t of extract) {
+      expect(t).not.toContain("fids parse");
+      expect(t).not.toContain("STOP");
+    }
+  });
+
   it.each(PHASES)(
-    "%s: Step 1 recovers ISSUE_ID from a named FID or feat branch before warning",
+    "%s: Step 1 recovers ISSUE_ID from the branch in the true block, with a Route for every exit",
     (name) => {
       const step1 = section(workflow(name), /Step 1 — Start Workflow/).split("\n");
-      const extract = trackerBlocks(step1)
-        .filter((b) => ["github", "linear", "jira"].includes(b.kind))
+      const recover = trackerBlocks(step1)
+        .filter((b) => b.kind === "true")
         .map((b) => step1.slice(b.start, b.end + 1).join("\n"))
-        .filter((t) => t.includes("Extract from session prompt"));
-      expect(extract, name).toHaveLength(3);
-      for (const t of extract) {
-        expect(t).toContain('"{BKIT}" fids parse --branch="feat/{FID}"');
-        expect(t).toContain('`ISSUE_ID=""`');
-        expect(t.indexOf("fids parse")).toBeLessThan(t.indexOf("no-issue warning"));
-        expect(t).toContain("never create a tracker issue");
-      }
+        .filter((t) => t.includes("fids parse"));
+      expect(recover, name).toHaveLength(1);
+      const t = recover[0]!;
+      expect(t).toContain('"{BKIT}" fids parse --branch="feat/{FID}"');
+      expect(t).toContain("**If** exit 0 and `issueId` non-null → hold `issueId` as `ISSUE_ID`");
+      expect(t).toContain('**If** exit 0 and `issueId` null → set `ISSUE_ID=""`');
+      expect(t).toContain("(neither → as exit 0 with `issueId` null)");
+      expect(t).toContain("never create a tracker issue");
+      expect(t.indexOf("fids parse")).toBeLessThan(t.indexOf("no-issue warning"));
+      // A branch suffix that is not a slug stops the run before anything starts.
+      const stop = t.split("\n").find((l) => l.includes("**If** exit 3"));
+      expect(stop, name).toContain("**STOP**");
+      expect(stop).toContain("rename it to `feat/{lowercase-slug}` or name an issue");
+      expect(stop).toContain("never the Failure Path");
+      // The route ends in a Failure Path for any other exit.
+      expect(t).toContain("**Else** → **Failure Path**");
     },
   );
+
+  it.each(PHASES)("%s: sub-step 5.2 compares a held ISSUE_ID to the branch FID", (name) => {
+    const line = workflow(name)
+      .split("\n")
+      .find((l) => l.includes("`BRANCH` = `feat/{FID}` → that `FID`"));
+    expect(line, name).toBeDefined();
+    expect(line).toContain("with `ISSUE_ID` non-empty, only when `FID` starts with `ISSUE_ID`");
+  });
+
+  it.each(PHASES)(
+    "%s: a minted issue-less FID goes through fids free, which re-mints on exit 1",
+    (name) => {
+      const step1 = section(workflow(name), /Step 1 — Start Workflow/);
+      const lines = step1.split("\n");
+      const at = lines.findIndex((l) => l.includes("fids free"));
+      expect(at, name).toBeGreaterThan(0);
+      expect(lines[at]).toContain(`--workflow=${name}`);
+      const block = lines.slice(at - 3, at + 8).join("\n");
+      expect(block).toContain("**Run only if** sub-step 4 minted `FID` with `ISSUE_ID` empty");
+      expect(block).toContain("`{FID}` = the printed `fid`");
+      expect(block).toContain("**If** exit 1 → re-mint once");
+      expect(block).toContain("**Failure Path**");
+      // The suffix check comes before the format check on the resolved FID.
+      expect(step1.indexOf("fids free")).toBeLessThan(step1.indexOf('"{BKIT}" fids check'));
+    },
+  );
+
+  it.each(["design", "plan"])(
+    "%s: the merge MCP fallback asserts base.ref = dev before merging",
+    (name) => {
+      const line = workflow(name)
+        .split("\n")
+        .find((l) => l.includes("**If** exit 80 at `stage` = merge"));
+      expect(line, name).toBeDefined();
+      expect(line!.indexOf("assert `base.ref` = `dev`")).toBeGreaterThan(0);
+      expect(line!.indexOf("assert `base.ref` = `dev`")).toBeLessThan(
+        line!.indexOf("merge_pull_request"),
+      );
+    },
+  );
+
+  it("ship's merge MCP fallback asserts base.ref = dev before merging", () => {
+    const line = workflow("ship")
+      .split("\n")
+      .find((l) => l.includes("`pull_request_read` (`get`) and assert `base.ref` = `dev`"));
+    expect(line).toBeDefined();
+    expect(line!.indexOf("assert")).toBeLessThan(line!.indexOf("merge_pull_request"));
+  });
 
   it.each(PHASES)("%s: Placeholders rule lets ISSUE_ID be empty in every workflow", (name) => {
     const rule = workflow(name)

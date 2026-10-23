@@ -26,6 +26,8 @@ import { getPromptsRoot } from "../../shared/package-roots.js";
 import {
   CommandError,
   EXIT,
+  git,
+  isSharedBranch,
   repoRoot,
   runGit,
   type CommandSpec,
@@ -35,7 +37,14 @@ import {
 } from "../lib.js";
 import { fidProblem, normaliseFid, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
-import { EXIT_FOREIGN_PATH, activeRecord, ownPathCommit, type OwnCommit } from "./ledgers.js";
+import {
+  EXIT_FOREIGN_PATH,
+  activeRecord,
+  ownPathCommit,
+  ownSet,
+  type OwnCommit,
+  type SharedCheckoutRecord,
+} from "./ledgers.js";
 import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import {
   EXIT_NO_STATUS,
@@ -372,6 +381,28 @@ export interface StepRow {
   message?: string;
 }
 
+/** Exit code: a debug run on a shared branch has no shared-checkout record, so nothing was written or committed. */
+export const EXIT_NO_RECORD = 14;
+
+/**
+ * A debug run on `dev` / `main` works in place, so its record must exist before
+ * it writes or commits (`git add -A` there would carry work the run does not own).
+ * Throws EXIT_NO_RECORD when the checkout is on a shared branch and `rec` is null.
+ */
+export function requireRecordOnShared(
+  cwd: string,
+  workflow: string,
+  rec: SharedCheckoutRecord | null,
+): void {
+  if (workflow !== "debug" || rec !== null) return;
+  const branch = git(cwd, ["branch", "--show-current"]) ?? "";
+  if (!isSharedBranch(branch)) return;
+  throw new CommandError(
+    EXIT_NO_RECORD,
+    `no shared-checkout record for this run on ${branch} — nothing written or committed (the record is gone or belongs to another run); a plain commit here would carry work the run does not own`,
+  );
+}
+
 /**
  * Append one `step-done` row, then commit (parentSha first, the row, then the
  * commit — the order the fold's de-dup relies on). Returns the row and the new
@@ -406,13 +437,24 @@ export function writeStepRow(
     ...(r.strategy === undefined ? {} : { strategy: r.strategy as Step["strategy"] }),
     ...(r.extras ?? {}),
   };
+  // An in-place run on a shared branch commits its own paths only; a refusal
+  // comes before the append, so a re-run after the human's fix writes the row once.
+  const fid = r.commit === "auto" ? fidOfStatusFile(r.file) : undefined;
+  const rec = fid === undefined ? null : activeRecord(cwd, fid);
+  if (r.commit === "auto") requireRecordOnShared(cwd, r.workflow, rec);
+  if (rec !== null) {
+    try {
+      ownSet(cwd, rec);
+    } catch (err) {
+      if (!(err instanceof CommandError) || err.code !== EXIT_FOREIGN_PATH) throw err;
+      log(`no row written to ${r.file}: the commit would be refused: ${err.message}`);
+      return { row, commit: null, code: EXIT_FOREIGN_PATH };
+    }
+  }
   fs.mkdirSync(path.dirname(r.file), { recursive: true });
   fs.appendFileSync(r.file, appendLine(row));
 
   if (r.commit === "none") return { row, commit: null, code: EXIT.OK };
-  // An in-place run on a shared branch commits its own paths only.
-  const fid = fidOfStatusFile(r.file);
-  const rec = fid === undefined ? null : activeRecord(cwd, fid);
   if (rec !== null) {
     let own: OwnCommit;
     try {
@@ -967,7 +1009,9 @@ export const stepsCommand: CommandSpec = {
         [EXIT_ARTIFACT]: "an --artifact is missing, empty, or outside the working directory",
         [EXIT_COMMIT]: "the row was written but the commit failed",
         [EXIT_FOREIGN_PATH]:
-          "the row was written but no commit was made: a path that was dirty before an in-place run changed during it",
+          "nothing written, nothing committed: a path that was dirty before an in-place run changed during it",
+        [EXIT_NO_RECORD]:
+          "a debug run on dev/main with no shared-checkout record: nothing written or committed",
       },
       run: (ctx) => {
         const f = ctx.flags;
@@ -1171,7 +1215,9 @@ export const stepsCommand: CommandSpec = {
           "an --artifact is missing, empty, or outside the working directory (nothing written)",
         [EXIT_COMMIT]: "the row was written but the commit failed",
         [EXIT_FOREIGN_PATH]:
-          "the row was written but no commit was made: a path that was dirty before an in-place run changed during it",
+          "nothing written, nothing committed: a path that was dirty before an in-place run changed during it",
+        [EXIT_NO_RECORD]:
+          "a debug run on dev/main with no shared-checkout record: nothing written or committed",
         [EXIT_OUTSIDE_DOCS]:
           "--docs-only and the step staged a file outside the artifact tree (nothing written)",
       },

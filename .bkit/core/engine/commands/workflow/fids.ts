@@ -9,16 +9,29 @@
 //   jira    {project}-{N}-{slug} ^[a-z][a-z0-9]+-[0-9]+-[a-z0-9-]+$  (issue key lowercased first)
 //   none    any slug             ^[a-z0-9][a-z0-9-]*$        (no tracker shape; still path-safe)
 //   any     any tracker's shape  ^([0-9]+|[a-z][a-z0-9]*-[0-9]+)-[a-z0-9-]+$  (auto's CI_DEV allowlist)
-// A run with no issue carries an issue-less FID under every tracker: a slug with no
-// all-digit word (`dev-ci-failures`), so it can never parse as an issue id.
+// A run with no issue carries an issue-less FID under every tracker. One minted from a
+// prompt is a slug with no all-digit word (`dev-ci-failures`), so it can never parse as an
+// issue id; one taken verbatim from the branch (`feat/upgrade-react-19`) or the prompt is
+// any slug.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { parseIssueTracker, type IssueTracker } from "../../install/manifest.js";
-import { CommandError, EXIT, git, repoRoot, type CommandSpec, type FlagSpec } from "../lib.js";
+import {
+  CommandError,
+  EXIT,
+  git,
+  parseJson,
+  repoRoot,
+  statusRelPath,
+  type CommandSpec,
+  type FlagSpec,
+} from "../lib.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { str } from "./status.js";
+import { lastRun } from "../../ledgers/status.js";
+import { monthBuckets, readRunsLenient } from "./locks.js";
+import { WORKFLOW_FLAG, str } from "./status.js";
 
 export type FidTracker = IssueTracker | "any";
 
@@ -51,9 +64,10 @@ export const ISSUE_ID_PATTERNS: Readonly<Record<Exclude<IssueTracker, "none">, R
 /**
  * The problem with a FID for the tracker and the run's issue, or undefined when it is valid.
  * `issue` absent: the tracker's FID shape alone. A non-empty `issue`: the issue id and the
- * FID both match the tracker. An empty `issue` (a run with no issue): the FID is an
- * issue-less FID, so it can never be misread as an issue id. The `none` tracker has no
- * issue-id shape, so `issue` is ignored.
+ * FID both match the tracker, and the issue id the FID embeds is that issue. An empty
+ * `issue` (a run with no issue): the FID is any slug (a minted one is held to
+ * `ISSUE_LESS_FID` by `fids free`). The `none` tracker has no issue-id shape, so `issue`
+ * is ignored.
  */
 export function fidProblem(fid: string, tracker: FidTracker, issue?: string): string | undefined {
   const shape = FID_PATTERNS[tracker];
@@ -62,22 +76,28 @@ export function fidProblem(fid: string, tracker: FidTracker, issue?: string): st
     : `FID "${fid}" does not match the ${tracker} shape ${shape.source}`;
   if (issue === undefined || tracker === "none") return shapeProblem;
   if (issue === "") {
-    return ISSUE_LESS_FID.test(fid)
+    return SLUG.test(fid)
       ? undefined
-      : `FID "${fid}" is not an issue-less FID (${ISSUE_LESS_FID.source}): a run with no issue needs a lowercase slug with no all-digit word`;
+      : `FID "${fid}" is not a slug (${SLUG.source}): a run with no issue needs a lowercase slug`;
   }
   const idShapes =
     tracker === "any" ? Object.values(ISSUE_ID_PATTERNS) : [ISSUE_ID_PATTERNS[tracker]];
   if (!idShapes.some((re) => re.test(issue))) {
     return `issue "${issue}" is not a ${tracker} issue id`;
   }
-  return shapeProblem;
+  if (shapeProblem !== undefined) return shapeProblem;
+  const embedded = issueIdOf(fid, tracker);
+  return embedded === issue
+    ? undefined
+    : `FID "${fid}" embeds issue ${embedded ?? "none"}, not the run's issue ${issue}`;
 }
 
 /** Exit code: no FID could be recovered from the marker or the branch. */
 export const EXIT_NO_FID = 3;
 /** Exit code (find): more than one feature is logged for the issue. */
 export const EXIT_SEVERAL = 4;
+/** Exit code (free): the minted name and every suffix of it are used. */
+export const EXIT_NO_FREE = 5;
 
 /**
  * Features already logged for an issue: every `docs/plans/{YYYYMM}/logs/{issue}-*`
@@ -96,6 +116,30 @@ export function logged(root: string, issue: string): string[] {
     }
   }
   return [...found].sort();
+}
+
+/** Suffixes tried after a minted name that an earlier run used: `-b` … `-z`. */
+const MINT_SUFFIXES = [..."bcdefghijklmnopqrstuvwxyz"];
+
+/**
+ * The FID a minted issue-less run takes: `fid` itself, or the first of `fid-b`, `fid-c`, ...
+ * that no earlier run used. A name is used when it has a log folder (any month bucket) in
+ * one of `roots` whose last `workflow` run is not IN_PROGRESS; an in-progress one is
+ * continued. null when every name is used.
+ */
+export function freeFid(roots: string[], fid: string, workflow: string): string | null {
+  for (const name of [fid, ...MINT_SUFFIXES.map((x) => `${fid}-${x}`)]) {
+    let used = false;
+    for (const root of roots) {
+      for (const month of monthBuckets(root, name)) {
+        const run = lastRun(readRunsLenient(path.join(root, statusRelPath(month, name))), workflow);
+        if (run?.status === "IN_PROGRESS") return name;
+        used = true;
+      }
+    }
+    if (!used) return name;
+  }
+  return null;
 }
 
 /**
@@ -196,18 +240,46 @@ export function fromMarker(text: string, tracker: IssueTracker): ParsedFid | nul
 }
 
 /**
+ * The issue ids a repo's feature rows in `.bkit/issues.jsonl` carry in their FID keys,
+ * per the tracker's FID shape (`650-x` -> `650`; linear and jira keys uppercased).
+ */
+export function featureIssueIds(root: string, tracker: IssueTracker): ReadonlySet<string> {
+  const file = path.join(root, ".bkit", "issues.jsonl");
+  const ids = new Set<string>();
+  if (tracker === "none" || !fs.existsSync(file) || !fs.statSync(file).isFile()) return ids;
+  for (const line of fs.readFileSync(file, "utf-8").split("\n")) {
+    if (line.trim() === "") continue;
+    const row = parseJson(line);
+    if (!row.ok || typeof row.value !== "object" || row.value === null) continue;
+    const { kind, key } = row.value as Record<string, unknown>;
+    if (kind !== "feature" || typeof key !== "string") continue;
+    const id = issueIdOf(key, tracker);
+    if (id !== null) ids.add(id);
+  }
+  return ids;
+}
+
+/**
  * FID from `feat/{FID}`; the slug check, then the issue id the tracker needs. A wired
  * tracker also accepts an issue-less FID (no issue id embedded, no all-digit word) as `issueId: null`.
+ * With `known` (the issue ids the repo's feature rows carry), the FID is the suffix verbatim
+ * for any slug: the issue id its shape embeds counts only when `known` holds it, else the
+ * run is issue-less (`issueId: null`).
  */
 export function fromBranch(
   branch: string,
   tracker: IssueTracker,
+  known?: ReadonlySet<string>,
 ): { ok: true; parsed: ParsedFid } | { ok: false; why: string } {
   if (!branch.startsWith("feat/"))
     return { ok: false, why: `branch "${branch}" is not feat/{FID}` };
   const fid = branch.slice("feat/".length);
   if (!SLUG.test(fid)) return { ok: false, why: `"${fid}" is not a slug (${SLUG.source})` };
   const issueId = issueIdOf(fid, tracker);
+  if (known !== undefined) {
+    const linked = issueId !== null && known.has(issueId) ? issueId : null;
+    return { ok: true, parsed: { fid, issueId: linked, source: "branch" } };
+  }
   if (tracker !== "none" && issueId === null && !ISSUE_LESS_FID.test(fid)) {
     return { ok: false, why: `"${fid}" embeds no ${tracker} issue id` };
   }
@@ -232,21 +304,21 @@ export const fidsCommand: CommandSpec = {
         {
           name: "issue",
           type: "string",
-          help: 'the run\'s issue id, or "" for a run with no issue (then the FID must be issue-less); absent = the tracker shape alone',
+          help: 'the run\'s issue id (the FID must embed it), or "" for a run with no issue (then the FID must be a slug); absent = the tracker shape alone',
         },
       ],
       output: {
         fid: "the FID as checked (linear, jira: lowercased)",
         tracker: "tracker the shape came from",
         valid: "true when the FID matches",
-        pattern: "the regex checked (the issue-less rule when --issue is empty)",
+        pattern: "the regex checked (the slug rule when --issue is empty)",
         issueId: "issue id the FID embeds (null under none, or when invalid)",
       },
       run: (ctx) => {
         const tracker = trackerFlag(str(ctx.flags.tracker), ctx.cwd, true);
         const fid = normaliseFid(String(ctx.flags.fid), tracker);
         const issue = str(ctx.flags.issue);
-        const pattern = issue === "" && tracker !== "none" ? ISSUE_LESS_FID : FID_PATTERNS[tracker];
+        const pattern = issue === "" && tracker !== "none" ? SLUG : FID_PATTERNS[tracker];
         const problem = fidProblem(fid, tracker, issue);
         const valid = problem === undefined;
         if (!valid) ctx.log(problem);
@@ -261,7 +333,8 @@ export const fidsCommand: CommandSpec = {
       },
     },
     parse: {
-      summary: "Recover FID and issue id: the PR-body marker first, then a feat/{FID} branch.",
+      summary:
+        "Recover FID and issue id: the PR-body marker first, then a feat/{FID} branch (any slug; its issue id counts only when .bkit/issues.jsonl has a feature row for it, else the run is issue-less).",
       flags: [
         {
           name: "marker",
@@ -273,11 +346,15 @@ export const fidsCommand: CommandSpec = {
       ],
       output: {
         fid: "the recovered FID",
-        issueId: "tracker issue id (null under none)",
+        issueId:
+          "tracker issue id; null under none, for a marker with none, and for a branch whose embedded issue id has no feature row (an issue-less run)",
         source: "marker | branch",
         tracker: "tracker the shapes came from",
       },
-      exitCodes: { [EXIT_NO_FID]: "neither the marker nor the branch yielded a valid FID" },
+      exitCodes: {
+        [EXIT_NO_FID]:
+          "neither the marker nor the branch yielded a FID (a branch that is not feat/ or whose suffix is not a slug)",
+      },
       run: (ctx) => {
         const marker = str(ctx.flags.marker);
         const branch = str(ctx.flags.branch);
@@ -293,12 +370,55 @@ export const fidsCommand: CommandSpec = {
         if (marker !== undefined)
           ctx.log(`no well-formed ${tracker} bkit:fid marker — trying the branch`);
         if (branch === undefined) return EXIT_NO_FID;
-        const viaBranch = fromBranch(branch, tracker);
+        const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+        const viaBranch = fromBranch(branch, tracker, featureIssueIds(top, tracker));
         if (!viaBranch.ok) {
           ctx.log(viaBranch.why);
           return EXIT_NO_FID;
         }
         ctx.emit({ ...viaBranch.parsed, tracker });
+        return EXIT.OK;
+      },
+    },
+    free: {
+      summary:
+        "The FID a minted issue-less run takes: the minted name, or the first free -b, -c, ... suffix when an earlier finished run used it (exit 0 free, exit 1 not an issue-less FID, exit 5 every name used).",
+      flags: [
+        {
+          name: "fid",
+          type: "string",
+          required: true,
+          help: "the minted issue-less FID: a lowercase slug with no all-digit word",
+        },
+        {
+          ...WORKFLOW_FLAG,
+          help: "the workflow starting; its last run in an existing log folder decides",
+        },
+      ],
+      output: {
+        fid: "the FID to use: the minted name, or the first free suffixed one",
+        requested: "the minted name that was asked about",
+        suffixed: "true when an earlier run used the minted name",
+      },
+      exitCodes: {
+        [EXIT_NO_FREE]: "the minted name and every -b … -z suffix of it are used by finished runs",
+      },
+      run: (ctx) => {
+        const requested = normaliseFid(String(ctx.flags.fid), "none");
+        if (!ISSUE_LESS_FID.test(requested)) {
+          ctx.log(
+            `FID "${requested}" is not an issue-less FID (${ISSUE_LESS_FID.source}): a minted FID for a run with no issue needs a lowercase slug with no all-digit word — re-mint with every all-digit word dropped`,
+          );
+          return EXIT.NO;
+        }
+        const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+        const roots = [...new Set([top, repoRoot(ctx.cwd)])];
+        const fid = freeFid(roots, requested, String(ctx.flags.workflow));
+        if (fid === null) {
+          ctx.log(`"${requested}" and every -b … -z suffix of it are used by finished runs`);
+          return EXIT_NO_FREE;
+        }
+        ctx.emit({ fid, requested, suffixed: fid !== requested });
         return EXIT.OK;
       },
     },

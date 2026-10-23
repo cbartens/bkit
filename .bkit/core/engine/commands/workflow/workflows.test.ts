@@ -692,14 +692,14 @@ describe("bkit workflows close — commit, outbox, comment", () => {
   });
 
   it("--verbose-ci-local appends the verbose marker only when the run's pushMode is LOCAL", async () => {
-    const cwd = started("debug");
+    const cwd = started("build");
     fs.appendFileSync(
       statusOf(cwd),
       jsonl([
-        { type: "workflow-meta", workflow: "debug", at: "2020-01-01T00:00:01Z", pushMode: "LOCAL" },
+        { type: "workflow-meta", workflow: "build", at: "2020-01-01T00:00:01Z", pushMode: "LOCAL" },
       ]),
     );
-    await run(cwd, wf("close", "debug", "--message=m", "--verbose-ci-local"));
+    await run(cwd, wf("close", "build", "--message=m", "--verbose-ci-local"));
     expect(git(cwd, "log", "-1", "--format=%s")).toBe("m bkit [verbose ci]");
   });
 
@@ -1357,6 +1357,44 @@ describe("bkit workflows close / handover — a debug run in place on dev that s
     expect(git(cwd, "status", "--porcelain", "--", "a.txt", "notes.md").split("\n")).toHaveLength(
       2,
     );
+  });
+
+  /** Bytes of the files a refused close must leave alone. */
+  const ledgerBytes = (cwd: string) =>
+    [`${REL}/status.jsonl`, ".bkit/stats.jsonl"].map((f) =>
+      fs.existsSync(path.join(cwd, f)) ? fs.readFileSync(path.join(cwd, f), "utf-8") : null,
+    );
+
+  it("close exits 10 when a recorded path changed during the run, writing no row and committing nothing", async () => {
+    const cwd = shared();
+    write(cwd, "a.txt", "base\nforeign\nedited mid-run\n");
+    const head = git(cwd, "rev-parse", "HEAD");
+    const before = ledgerBytes(cwd);
+    const r = await close(cwd);
+    expect(r.code).toBe(10);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(ledgerBytes(cwd)).toEqual(before);
+  });
+
+  it("close exits 14 when the run has no shared-checkout record, writing no row and committing nothing", async () => {
+    const cwd = shared();
+    fs.rmSync(recordAt(cwd));
+    const head = git(cwd, "rev-parse", "HEAD");
+    const before = ledgerBytes(cwd);
+    const r = await close(cwd);
+    expect(r.code).toBe(14);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(ledgerBytes(cwd)).toEqual(before);
+    expect(committed(cwd)).not.toContain("a.txt");
+  });
+
+  it("a second run's record does not let this FID's close commit", async () => {
+    const cwd = shared();
+    fs.rmSync(recordAt(cwd));
+    writeRecord(cwd, newRecord(cwd, "another-run", "dev"));
+    const head = git(cwd, "rev-parse", "HEAD");
+    expect((await close(cwd)).code).toBe(14);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
   });
 
   it("record is present after workflows close and before the push", async () => {
