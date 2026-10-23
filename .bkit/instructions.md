@@ -15,31 +15,34 @@
 
 One `### {name}` section per rule, in rules.md order:
 
-| Line                                 | Meaning                                                                     |
-| ------------------------------------ | --------------------------------------------------------------------------- |
+<!-- prettier-ignore -->
+| Line | Meaning |
+| --- | --- |
 | `- rule: {id} · {section} › {group}` | Position in `.agents/rules.md`; `{id}` numbers the bkit rules in file order |
-| `- clause: {name}`                   | `.bkit/wording.md` clause carrying the rule's text                          |
-| `- {surface}:`                       | Carriers on that surface, one `- {relation}: {files}` line per relation     |
-| `- drift:`                           | Carriers that contradict or weaken the rule, `file:line` and what differs   |
-| ` ```text ` block                    | The rule as written in `.agents/rules.md`                                   |
+| `- clause: {name}` | `.bkit/wording.md` clause carrying the rule's text |
+| `- {surface}:` | Carriers on that surface, one `- {relation}: {files}` line per relation |
+| `- drift:` | Carriers that contradict or weaken the rule, `file:line` and what differs |
+| ` ```text ` block | The rule as written in `.agents/rules.md` |
 
-| Surface         | Files                                                                          |
-| --------------- | ------------------------------------------------------------------------------ |
-| `workflow`      | `.bkit/core/workflows/*.md`                                                    |
-| `prompt`        | `.bkit/core/prompts/*.md`                                                      |
-| `repo-agent`    | `.claude/agents/utility-*.md` (hand-authored, repo-only)                       |
-| `audit`         | `bkit:start` / `bkit:end` block of `.bkit/core/docs/templates/bkit-audit-*.md` |
-| `plan-template` | `bkit:start` / `bkit:end` block of `.bkit/core/docs/templates/bkit-plan.md`    |
-| `entry`         | `.bkit/core/AGENTS.md`                                                         |
+<!-- prettier-ignore -->
+| Surface | Files |
+| --- | --- |
+| `workflow` | `.bkit/core/workflows/*.md` |
+| `prompt` | `.bkit/core/prompts/*.md` |
+| `repo-agent` | `.claude/agents/utility-*.md` (hand-authored, repo-only) |
+| `audit` | `bkit:start` / `bkit:end` block of `.bkit/core/docs/templates/bkit-audit-*.md` |
+| `plan-template` | `bkit:start` / `bkit:end` block of `.bkit/core/docs/templates/bkit-plan.md` |
+| `entry` | `.bkit/core/AGENTS.md` |
 
-| Relation      | Carrier holds                                                             |
-| ------------- | ------------------------------------------------------------------------- |
-| `verbatim`    | The rule text word for word                                               |
-| `condensed`   | The same rule, shortened or reworded                                      |
-| `partial`     | One clause of a multi-clause rule                                         |
+<!-- prettier-ignore -->
+| Relation | Carrier holds |
+| --- | --- |
+| `verbatim` | The rule text word for word |
+| `condensed` | The same rule, shortened or reworded |
+| `partial` | One clause of a multi-clause rule |
 | `specialised` | The rule applied to that file's situation (`No commits` = caller commits) |
-| `applies`     | A step that carries the rule out (an append to `docs/failures.jsonl`)     |
-| `cites`       | A pointer to the rule or to rules.md                                      |
+| `applies` | A step that carries the rule out (an append to `docs/failures.jsonl`) |
+| `cites` | A pointer to the rule or to rules.md |
 
 Rules with no `- {surface}:` line reach agents only through the run-time read of `.agents/rules.md`.
 
@@ -1572,16 +1575,17 @@ Rules with no `- {surface}:` line reach agents only through the run-time read of
 
 Instructions inside the plan and audit templates with no rules.md counterpart, grouped by the agent that acts on each once the template holds shape only.
 
-| Audience             | Prompt                                          |
-| -------------------- | ----------------------------------------------- |
-| `plan-filler`        | `bkit-plan-generate`, `bkit-plan-update`        |
-| `plan-reviewer`      | `bkit-plan-review-*`, `bkit-plan-scope-check-*` |
-| `plan-summary`       | `bkit-plan-summary`                             |
-| `plan-builder`       | `bkit-build-plan-execute`                       |
-| `plan-verify`        | `bkit-build-plan-verify`                        |
-| `build-orchestrator` | `.bkit/core/workflows/bkit-build.md`            |
-| `human`              | The owner reading the plan                      |
-| `audit-runner`       | `bkit-audit-generate`                           |
+<!-- prettier-ignore -->
+| Audience | Prompt |
+| --- | --- |
+| `plan-filler` | `bkit-plan-generate`, `bkit-plan-update` |
+| `plan-reviewer` | `bkit-plan-review-*`, `bkit-plan-scope-check-*` |
+| `plan-summary` | `bkit-plan-summary` |
+| `plan-builder` | `bkit-build-plan-execute` |
+| `plan-verify` | `bkit-build-plan-verify` |
+| `build-orchestrator` | `.bkit/core/workflows/bkit-build.md` |
+| `human` | The owner reading the plan |
+| `audit-runner` | `bkit-audit-generate` |
 
 ### Plan template
 
