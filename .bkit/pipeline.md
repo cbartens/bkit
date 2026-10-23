@@ -65,16 +65,17 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
   1. generate plan
   2. fetch context       (tracker: related issues; ledgers: prior deferrals,
                          prior failures, strongest term-overlap first, top 40
-                         → feeds all three reviewers below)
+                         → feeds all three reviewers below; engine lists
+                         loose Test first lines → feeds update plan)
   3. review × 3 (parallel, distinct lenses)
      • tightness + design-coverage  • dependency-correctness  • regression-risk
   4. update plan         (merge critiques, max-wins on CRITICAL)
   5. scope-check × 2 (parallel)
      • internal-completeness  • scope audit (cross-family)
   6. update plan         (merge scope findings)
-  7. complexity-check    (single vs split)
-  8. complexity-split    (only if SPLIT)
-  9. summary             (tracker-facing)
+  7. complexity-split    (only if the engine count says SPLIT: > 12 tasks,
+                         or a task over 10 tests / 3 test files)
+  8. summary             (tracker-facing)
 
 /bkit-build ─── output: code, PR to dev, CI takes over ──────────────────────
   1. plan-current        (plan still executable against code landed since it was written?)
@@ -193,7 +194,6 @@ Output: executable plan (`{FID}-plan.md`, split into `-plan-N.md` if too large).
 | `bkit-plan-scope-check-1` | Internal-completeness | Mechanical scope audit — verifies template structure and criteria slots. Parallel. |
 | `bkit-plan-scope-check-2` | Scope audit (cross-family) | Second scope audit in parallel for independent coverage. |
 | `bkit-plan-update` | Apply scope fixes | Second merge pass folding scope-check findings in. |
-| `bkit-plan-complexity-check` | Single → split classifier | Decides whether the plan is too big for one build and must be split. |
 | `bkit-plan-complexity-split` | Splitter | If SPLIT: divides the plan into sequenced sub-plans. |
 | `bkit-plan-summary` | Summarise | Tracker-facing summary. |
 

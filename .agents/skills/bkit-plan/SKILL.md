@@ -245,14 +245,21 @@ description: "Plan Feature — Autonomous plan generation"
    "{BKIT}" context ledger-scan --terms='{QUERY}' --source=docs/deferrals.jsonl --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md --fid={FID} --step=plan-fetch-context --reset-log || exit $?
    "{BKIT}" context ledger-scan --terms='{QUERY}' --source=docs/failures.jsonl --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-failures.md --fid={FID} --step=plan-fetch-context
    ```
-4. Finish:
+4. Find `Test first` lines outside every task bullet:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-fetch-context --attempt=1 --optional-artifact=docs/plans/{YYYYMM}/logs/{FID}/related-issues.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-failures.md --clamp-log=plan-fetch-context --message="chore({FID}): fetch-context" --number=4 --title="Fetch Context" --link-ref=dev
+   "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md --log=docs/plans/{YYYYMM}/logs/{FID}/plan-draft-check.md
+   ```
+   Route:
+   - **If** exit 0 or 1 → sub-step 5.
+   - **Else** → **Failure Path**.
+5. Finish:
+   ```bash
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-fetch-context --attempt=1 --optional-artifact=docs/plans/{YYYYMM}/logs/{FID}/related-issues.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-draft-check.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-failures.md --clamp-log=plan-fetch-context --message="chore({FID}): fetch-context" --number=4 --title="Fetch Context" --link-ref=dev
    ```
 
 ### 🔒 Gate 4 — Fetch Context
 
-- [ ] Mechanical checks passed (`steps finish` exit 0: `related-deferrals.md`, `related-failures.md`, `related-issues.md` when a tracker is connected; step `plan-fetch-context` recorded with `clamped`)
+- [ ] Mechanical checks passed (`steps finish` exit 0: `plan-draft-check.md`, `related-deferrals.md`, `related-failures.md`, `related-issues.md` when a tracker is connected; step `plan-fetch-context` recorded with `clamped`)
 
 
 - [ ] Related-issues search attempted (or `None` / `Search unavailable`; a hit whose comments do not parse skipped and named in `related-issues.md`)
@@ -290,8 +297,8 @@ description: "Plan Feature — Autonomous plan generation"
 ## 🧠 Step 6 — Apply Review
 
 1. **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
-   Context: You are a subagent in the Plan phase applying review critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`.
+   Context: You are a subagent in the Plan phase applying review critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings. From `plan-draft-check.md` apply only its `Unread` lines, each as a CRITICAL finding.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-draft-check.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
 2. Finish:
    ```bash
@@ -347,48 +354,52 @@ description: "Plan Feature — Autonomous plan generation"
 
 ---
 
-## 🧠 Step 9 — Complexity Check
+## 🧠 Step 9 — Complexity Split
 
-1. **Subagent:** Invoke `@bkit-plan-complexity-check` using `Agent` tool:
-   Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
-   Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md`.
-2. Finish — `verdict` `SINGLE` = no split, `SPLIT` = partition required:
+1. Count tasks and each task's `Test first` tests and test files against the caps:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-complexity-check --attempt=1 --agent=bkit-plan-complexity-check --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md --message="chore({FID}): complexity-check" --number=9 --title="Complexity Check"
+   "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md --log=docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md
    ```
    Hold `verdict` as `COMPLEXITY_VERDICT`.
-
-### 🔒 Gate 9 — Complexity Check
-
-- [ ] Subagent invoked (`@bkit-plan-complexity-check`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: `COMPLEXITY_VERDICT` in `SINGLE|SPLIT`)
-
----
-
-## 🧠 Step 10 — Complexity Split
-
-**Run only if** Step 9 `COMPLEXITY_VERDICT` = SPLIT.
-
-1. **Subagent:** Invoke `@bkit-plan-complexity-split` using `Agent` tool:
+   Route:
+   - **If** exit 0 → sub-step 2.
+   - **If** exit 1 → **Failure Path** naming each `Unread` line in the report.
+   - **Else** → **Failure Path**.
+2. Record the count — `verdict` `SINGLE` = no split, `SPLIT` = partition required:
+   ```bash
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-complexity-check --attempt=1 --verdict={COMPLEXITY_VERDICT} --allowed=SINGLE,SPLIT --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md --message="chore({FID}): complexity-check"
+   ```
+   **If** `COMPLEXITY_VERDICT` = SINGLE → Step 10.
+3. **Subagent:** Invoke `@bkit-plan-complexity-split` using `Agent` tool:
    Context: You are a subagent in the Plan phase. Single versioned output: parent in `plan-v4-split.md`, child sub-plans in `plan-v4-1.md`, `plan-v4-2.md`, ..., `plan-v4-N.md`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md` (parent index with verdict header), `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-1.md` ... `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-N.md` (children).
-2. Finish:
+4. Check every child fits:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-complexity-split --attempt=1 --agent=bkit-plan-complexity-split --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md --message="chore({FID}): complexity-split" --number=10 --title="Complexity Split" --link-ref=dev
+   "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v4.md --children --log=docs/plans/{YYYYMM}/logs/{FID}/plan-split-check.md
+   ```
+   Route:
+   - **If** exit 0 → sub-step 5.
+   - **If** exit 1 → invoke `@bkit-plan-complexity-split` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-split-check.md' names, in the children."` → re-run this sub-step; a second exit 1 → **Failure Path**.
+   - **Else** → **Failure Path**.
+5. Finish:
+   ```bash
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-complexity-split --attempt=1 --agent=bkit-plan-complexity-split --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md --message="chore({FID}): complexity-split" --number=9 --title="Complexity Split" --link-ref=dev
    ```
    **If** `verdict` = FAIL → **Failure Path**.
 
-### 🔒 Gate 10 — Complexity Split
+### 🔒 Gate 9 — Complexity Split
 
-- [ ] Subagent invoked (`@bkit-plan-complexity-split`, no inline work)
-- [ ] Children written (`plan-v4-1.md` ... `plan-v4-N.md`, non-empty)
+- [ ] Plan counted, every `Test first` line on a task bullet (`tests plan-check` exit 0, no inline counting)
+- [ ] Count recorded (`steps finish` exit 0: `COMPLEXITY_VERDICT` in `SINGLE|SPLIT`)
+- [ ] Subagent invoked (`@bkit-plan-complexity-split`, no inline work, if `SPLIT`)
+- [ ] Children written (`plan-v4-1.md` ... `plan-v4-N.md`, non-empty, if `SPLIT`)
+- [ ] Children within the caps (`tests plan-check --children` exit 0, if `SPLIT`)
 - [ ] Mechanical checks passed (`steps finish` exit 0)
 
 ---
 
-## 🧠 Step 11 — Summary
+## 🧠 Step 10 — Summary
 
 1. Resolve the highest plan version (sub-plan children excluded):
    ```bash
@@ -401,18 +412,18 @@ description: "Plan Feature — Autonomous plan generation"
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md`.
 3. Finish, then push the summary commit:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-summary --attempt=1 --agent=bkit-plan-summary --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md --message="chore({FID}): summary bkit [skip ci]" --number=11 --title=Summary --link-ref=dev --comment-body
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-summary --attempt=1 --agent=bkit-plan-summary --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md --message="chore({FID}): summary bkit [skip ci]" --number=10 --title=Summary --link-ref=dev --comment-body
    ```
    ```bash
    "{BKIT}" branches push --mode=feature
    ```
    Hold `verdict` as `SUMMARY_VERDICT`.
 4. Route:
-   - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 12.
+   - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
    - **If** `SUMMARY_VERDICT` = FAIL → display `plan-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
    - **Else** → **Failure Path**.
 
-### 🔒 Gate 11 — Summary
+### 🔒 Gate 10 — Summary
 
 - [ ] Plan final resolved (`PLAN_FINAL` = highest `plan-v*.md`, excluding child `plan-v4-N.md`)
 - [ ] Subagent invoked (`@bkit-plan-summary`, no inline work)
@@ -422,7 +433,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 ---
 
-## 🤖 Step 12 — Close Workflow
+## 🤖 Step 11 — Close Workflow
 
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
@@ -449,7 +460,7 @@ description: "Plan Feature — Autonomous plan generation"
    **Skip if** `ISSUE_ID` empty. **If** `BOARD` = null → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
 4. **Skip if** `ISSUE_ID` empty. Comment — artifact links on `dev`, close telemetry report:
    ```bash
-   "{BKIT}" workflows links --workflow=plan --fid={FID} --month={YYYYMM} --ref={CANONICAL_REF} --outbox="{OUTBOX}" --number=12 --title="Close Workflow"
+   "{BKIT}" workflows links --workflow=plan --fid={FID} --month={YYYYMM} --ref={CANONICAL_REF} --outbox="{OUTBOX}" --number=11 --title="Close Workflow"
    ```
 5. Collect setup tips:
    ```bash
@@ -466,7 +477,7 @@ description: "Plan Feature — Autonomous plan generation"
 7. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
 8. **If** user requests the open questions one by one → ask each `## Outstanding Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 
-### 🔒 Gate 12 — Close Workflow
+### 🔒 Gate 11 — Close Workflow
 
 ```bash
 "{BKIT}" steps gate --file="{REPO_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl" --ref=origin/dev --workflow=plan --step=plan-close-workflow
@@ -479,5 +490,5 @@ description: "Plan Feature — Autonomous plan generation"
 
 
 - [ ] Issue update attempted (status / state `In Review`, phase label `bkit:plan` unchanged; skipped when `ISSUE_ID` empty)
-- [ ] Artifact link list and telemetry report embedded in `Step 12` comment (skipped when `ISSUE_ID` empty)
+- [ ] Artifact link list and telemetry report embedded in `Step 11` comment (skipped when `ISSUE_ID` empty)
 

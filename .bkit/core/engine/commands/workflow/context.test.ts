@@ -12,6 +12,7 @@ import {
   contextCommand,
   fetchBlocks,
   humanBytes,
+  writeDiffArtifact,
 } from "./context";
 import { parseContextFetchStart } from "../../checks/before/context-fetch";
 
@@ -930,5 +931,166 @@ describe("bkit context run-block / finalise (#427 T4)", () => {
 
   it("finalise --record needs --file", async () => {
     expect((await run(["finalise", ...base, "--record", "--message=m"], workspace())).code).toBe(2);
+  });
+});
+
+describe("bkit context diff", () => {
+  const g = (dir: string, ...args: string[]) =>
+    spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+      cwd: dir,
+      encoding: "utf-8",
+    }).stdout.trim();
+  const put = (dir: string, file: string, content: string) => {
+    fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+    fs.writeFileSync(path.join(dir, file), content);
+  };
+  const commitAll = (dir: string, msg: string) => {
+    g(dir, "add", "-A");
+    g(dir, "commit", "-q", "-m", msg);
+    return g(dir, "rev-parse", "HEAD");
+  };
+  const numbered = (n: number, prefix: string) =>
+    Array.from({ length: n }, (_, i) => `${prefix} ${i + 1}`).join("\n") + "\n";
+  /** A repo on `dev` whose base commit is also `origin/dev`. */
+  function repo(name: string): string {
+    const dir = path.join(tmpDir, "diff", name);
+    fs.mkdirSync(dir, { recursive: true });
+    g(dir, "init", "-q", "-b", "dev");
+    put(dir, "src.txt", "a\nb\n");
+    put(dir, "docs/plans/202610/1-x-plan.md", "plan v1\n");
+    commitAll(dir, "base");
+    g(dir, "update-ref", "refs/remotes/origin/dev", "HEAD");
+    return dir;
+  }
+  const ARTIFACT = "docs/plans/202610/logs/1-x/build-diff-1.md";
+
+  it("writes origin/dev...HEAD without docs/plans/** and prints the numstat numbers", async () => {
+    const dir = repo("whole");
+    put(dir, "src.txt", "a\nb\nc\n");
+    put(dir, "new.txt", "one\ntwo\nthree\n");
+    put(dir, "docs/plans/202610/1-x-plan.md", "plan v2\nmore\n");
+    commitAll(dir, "work");
+    const r = await run(["diff", `--artifact=${ARTIFACT}`], dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      artifact: ARTIFACT,
+      base: "origin/dev",
+      range: "origin/dev...HEAD",
+      filesChanged: 2,
+      linesAdded: 4,
+      linesDeleted: 0,
+      linesChanged: 4,
+      partial: false,
+      clamp: { artifact: ARTIFACT, clamped: false, ceilingHit: false },
+    });
+    const body = read(path.join(dir, ARTIFACT));
+    expect(body).toContain("diff --git a/new.txt b/new.txt");
+    expect(body).toContain("+c\n");
+    expect(body).not.toContain("1-x-plan.md");
+    expect(r.json.diffLines).toBe(body.split("\n").length - 1);
+    expect(r.err).toBe("");
+  });
+
+  it("--base narrows the range to the commits after a group's start sha", async () => {
+    const dir = repo("base");
+    put(dir, "first.txt", "1\n");
+    const start = commitAll(dir, "group 1");
+    put(dir, "second.txt", "2\n2\n");
+    commitAll(dir, "group 2");
+    const r = await run(["diff", `--artifact=${ARTIFACT}`, `--base=${start}`], dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ base: start, filesChanged: 1, linesAdded: 2 });
+    const body = read(path.join(dir, ARTIFACT));
+    expect(body).toContain("second.txt");
+    expect(body).not.toContain("first.txt");
+  });
+
+  it("a base that is not a commit exits 5 and writes nothing", async () => {
+    const dir = repo("nobase");
+    const r = await run(["diff", `--artifact=${ARTIFACT}`, "--base=origin/nowhere"], dir);
+    expect(r.code).toBe(5);
+    expect(r.err).toContain("origin/nowhere does not name a commit");
+    expect(fs.existsSync(path.join(dir, ARTIFACT))).toBe(false);
+  });
+
+  it("an empty range writes a one-line note and zero numbers", async () => {
+    const dir = repo("empty");
+    put(dir, "docs/plans/202610/1-x-plan.md", "plan v2\n");
+    commitAll(dir, "plan only");
+    const r = await run(["diff", `--artifact=${ARTIFACT}`], dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      filesChanged: 0,
+      linesChanged: 0,
+      diffLines: 0,
+      partial: false,
+    });
+    expect(read(path.join(dir, ARTIFACT))).toBe(
+      "No changes in origin/dev...HEAD outside docs/plans/**.\n",
+    );
+  });
+
+  it("over the guard: the first line says so, then --stat, then the largest files first, each cut", async () => {
+    const dir = repo("guard");
+    put(dir, "big.txt", numbered(12000, "big"));
+    put(dir, "mid.txt", numbered(700, "mid"));
+    put(dir, "small.txt", "s1\ns2\n");
+    commitAll(dir, "large");
+    const r = await run(
+      ["diff", `--artifact=${ARTIFACT}`, "--fid=1-x", "--step=build-diff", "--attempt=1"],
+      dir,
+    );
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ filesChanged: 3, linesAdded: 12702, partial: true });
+    expect(r.json.diffLines).toBeGreaterThan(10000);
+    expect(r.json.clamp).toMatchObject({
+      clamped: true,
+      origLines: r.json.diffLines,
+      ceilingHit: false,
+    });
+    expect(r.json.clamp.keptLines).toBeLessThan(r.json.diffLines);
+    expect(r.err).toContain("over the 10000-line guard");
+    const body = read(path.join(dir, ARTIFACT));
+    const lines = body.split("\n");
+    expect(lines[0]).toMatch(
+      /^# partial diff coverage: origin\/dev\.\.\.HEAD has \d+ diff lines across 3 files; showing the 3 largest files, 500 lines each/,
+    );
+    expect(body).toContain(" 3 files changed, 12702 insertions(+)");
+    const order = ["### big.txt", "### mid.txt", "### small.txt"].map((h) => body.indexOf(h));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    const bigStart = lines.indexOf("### big.txt");
+    // big's kept lines, its "not shown" marker, a blank line, then the next heading.
+    const bigEnd = lines.indexOf("### mid.txt") - 2;
+    expect(bigEnd - bigStart - 1).toBe(500);
+    expect(lines[bigEnd]).toMatch(/^# \d+ more lines of big\.txt not shown$/);
+    expect(body).toContain("+s2\n");
+    expect(body).not.toContain("more lines of small.txt");
+    expect(r.json.clamp.keptLines).toBe(lines.length - 1);
+    const log = await run(["clamp-log", "--fid=1-x", "--step=build-diff", "--attempt=1"], dir);
+    expect(log.json.records).toEqual([r.json.clamp]);
+  });
+
+  it("the budget honours topFiles and totalLines and says when the ceiling cut a file", () => {
+    const dir = repo("ceiling");
+    put(dir, "a.txt", numbered(6, "a"));
+    put(dir, "b.txt", numbered(5, "b"));
+    put(dir, "c.txt", numbered(4, "c"));
+    commitAll(dir, "three files");
+    const out = path.join(dir, ARTIFACT);
+    const res = writeDiffArtifact(dir, out, ARTIFACT, "origin/dev...HEAD", {
+      fullLines: 5,
+      topFiles: 2,
+      perFileLines: 3,
+      totalLines: 12,
+    });
+    expect(res.partial).toBe(true);
+    expect(res.record.ceilingHit).toBe(true);
+    const body = read(out);
+    expect(body.match(/^### /gm)?.length).toBe(1);
+    expect(body).toContain("### a.txt");
+    expect(body).toContain("# total line budget reached; b.txt and smaller files not shown");
+    expect(body).not.toContain("c.txt\n###");
+    expect(res.record.keptLines).toBe(body.split("\n").length - 1);
   });
 });

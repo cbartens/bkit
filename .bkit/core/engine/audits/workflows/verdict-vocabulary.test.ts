@@ -39,6 +39,7 @@ const EXEMPT_COMPUTED = new Set([
   "TEST_VERDICT", // build/debug derive it from the test-run exit code
   "BOUNDARY_VERDICT", // build derives it from the sub-plan boundary gate's exit code
   "FETCH_VERDICT", // debug: `bkit context finalise` from context-fetch block outcomes
+  "COMPLEXITY_VERDICT", // plan: `bkit tests plan-check` from its task and test counts
   "DEBUG_MODE", // routing mode, not an artifact verdict
   "DIAGNOSE_MODE",
   "PUSH_MODE",

@@ -14,9 +14,14 @@ import {
   judgeRed,
   onlyAddsLines,
   parseJunit,
+  MAX_TASKS_PER_PLAN,
+  MAX_TEST_FILES_PER_TASK,
+  MAX_TESTS_PER_TASK,
   readTestFirst,
   resolveGate,
+  taskSizes,
   testsCommand,
+  unclaimedTestFirst,
   type JunitCase,
 } from "./tests";
 
@@ -366,6 +371,145 @@ describe("readTestFirst", () => {
   });
 });
 
+describe("readTestFirst — task line shapes", () => {
+  const TF = "**Test first:** `a.test.ts` `clamps low` fails on a low value passing through.";
+  it.each([
+    ["colon", "- [ ] **Task 7:** Add clamp."],
+    ["em dash, title inside the bold", "- [x] **Task 7 — Add clamp (D1; M1).**"],
+    ["en dash", "- [ ] **Task 7 – Add clamp.**"],
+    ["hyphen", "- [ ] **Task 7 - Add clamp.**"],
+    ["full stop", "- [ ] **Task 7.** Add clamp."],
+    ["bare bold", "- [ ] **Task 7** Add clamp."],
+  ])("reads a %s task line", (_shape, head) => {
+    expect(readTestFirst(`${head} **Done when:** passes. ${TF}`)).toEqual([
+      { task: 7, kind: "test", tests: [{ test: "a.test.ts", name: "clamps low" }] },
+    ]);
+  });
+
+  it("keeps a two-digit task number whole", () => {
+    expect(readTestFirst(`- [ ] **Task 12 — Add clamp.** ${TF}`)[0]).toMatchObject({ task: 12 });
+  });
+
+  it("does not read a word that only starts with Task", () => {
+    expect(readTestFirst(`- [ ] **Tasks 1-3** ${TF}`)).toEqual([]);
+  });
+});
+
+describe("unclaimedTestFirst", () => {
+  it("names Test first lines outside every task bullet, never prose in code", () => {
+    const plan = [
+      "# Plan", // 1
+      "Every task carries `**Test first:**` after Done when.", // 2: inline code
+      "```markdown", // 3
+      "- [ ] **Task 9:** X. **Test first:** n/a — example.", // 4: fenced
+      "```", // 5
+      "- [ ] **Task 1:** Read. **Test first:** `a.test.ts` `x` fails.", // 6: claimed
+      "  **Test first:** wrapped onto the task's own text.", // 7: claimed
+      "- [ ] **Task 2:** Sub-bullet.", // 8
+      "  - **Test first:** `b.test.ts` `y` fails.", // 9: its own bullet
+      "**Test first:** `c.test.ts` `z` fails.", // 10: loose
+    ].join("\n");
+    expect(unclaimedTestFirst(plan)).toEqual([9, 10]);
+  });
+});
+
+describe("taskSizes", () => {
+  it("counts tests and distinct test files per task; n/a, missing and malformed count 0", () => {
+    const plan = [
+      "- [ ] **Task 1:** X. **Test first:** `a.test.ts` `one` fails; `./a.test.ts` `two` fails; `b.test.ts` `three` fails.",
+      "- [ ] **Task 2:** Docs. **Test first:** n/a — docs.",
+      "- [ ] **Task 3:** None.",
+    ].join("\n");
+    expect(taskSizes(readTestFirst(plan))).toEqual([
+      { task: 1, tests: 3, files: 2 },
+      { task: 2, tests: 0, files: 0 },
+      { task: 3, tests: 0, files: 0 },
+    ]);
+  });
+});
+
+describe("bkit tests plan-check", () => {
+  const entries = (n: number, files: number) =>
+    Array.from({ length: n }, (_, k) => `\`t${k % files}.test.ts\` \`case ${k}\` fails`).join("; ");
+  const task = (n: number, tests = 1, files = 1) =>
+    `- [ ] **Task ${n}:** Do ${n}. **Done when:** done. **Test first:** ${entries(tests, files)}.`;
+  const write = (rel: string, ...tasks: string[]) => {
+    fs.mkdirSync(path.dirname(path.join(cwd, rel)), { recursive: true });
+    fs.writeFileSync(path.join(cwd, rel), `# Plan\n\n${tasks.join("\n")}\n`);
+  };
+  const check = (...extra: string[]) =>
+    run(
+      ["--plan=missing.md", "--plan=plan.md", "--log=logs/check.md", ...extra],
+      cwd,
+      "plan-check",
+    );
+  const report = () => fs.readFileSync(path.join(cwd, "logs/check.md"), "utf-8");
+
+  it("states the caps the template and workflows doc name", () => {
+    expect([MAX_TASKS_PER_PLAN, MAX_TESTS_PER_TASK, MAX_TEST_FILES_PER_TASK]).toEqual([12, 10, 3]);
+  });
+
+  it("SINGLE at the caps: 12 tasks, 10 tests across 3 files", async () => {
+    write("plan.md", task(1, 10, 3), ...Array.from({ length: 11 }, (_, k) => task(k + 2)));
+    const r = await check();
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ verdict: "SINGLE", unread: 0 });
+    expect(report()).toMatch(/^Verdict: SINGLE\nUnread: 0\n\n<!-- verdict:end -->/);
+    expect(report()).toContain("## Session Fit Estimate");
+  });
+
+  it("SPLIT over any cap, naming the task and the limit", async () => {
+    write("plan.md", task(1, 11, 1), task(2, 4, 4));
+    let r = await check();
+    expect(r.code).toBe(0);
+    expect(r.json.verdict).toBe("SPLIT");
+    expect(r.json.plans[0].overCap).toEqual([
+      { task: 1, tests: 11, files: 1 },
+      { task: 2, tests: 4, files: 4 },
+    ]);
+    expect(report()).toContain("Task 1 names 11 tests across 1 test files");
+    expect(report()).toContain("| 2 | 4 | 4 | files > 3 |");
+    write("plan.md", ...Array.from({ length: 13 }, (_, k) => task(k + 1)));
+    r = await check();
+    expect(r.json.verdict).toBe("SPLIT");
+    expect(report()).toContain("13 tasks");
+  });
+
+  it("exit 1 on a Test first line no task claims, naming file and line and quoting it", async () => {
+    write("plan.md", task(1), "## Notes", "**Test first:** `x.test.ts` `loose` fails.");
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.unread).toBe(1);
+    expect(report()).toContain("`plan.md:5`");
+    expect(report()).toContain("  > **Test first:** `x.test.ts` `loose` fails.");
+  });
+
+  it("--children checks each sibling sub-plan; exit 1 while one is still over a cap", async () => {
+    write("logs/plan-v4-split.md", "Parent index.");
+    write("logs/plan-v4-1.md", task(1, 2, 1));
+    write("logs/plan-v4-2.md", task(1, 12, 1));
+    write("logs/plan-v4-review.md", task(1, 30, 9));
+    const children = () =>
+      run(["--plan=logs/plan-v4.md", "--children", "--log=logs/check.md"], cwd, "plan-check");
+    let r = await children();
+    expect(r.code).toBe(1);
+    expect(r.json.plans.map((p: { plan: string }) => p.plan)).toEqual([
+      "logs/plan-v4-1.md",
+      "logs/plan-v4-2.md",
+    ]);
+    write("logs/plan-v4-2.md", task(1, 10, 1));
+    r = await children();
+    expect(r.code).toBe(0);
+    expect(r.json.verdict).toBe("SINGLE");
+  });
+
+  it("no plan or brief: nothing to check, SINGLE, exit 0", async () => {
+    const r = await run(["--plan=missing.md", "--log=logs/check.md"], cwd, "plan-check");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ verdict: "SINGLE", plans: [], unread: 0 });
+  });
+});
+
 describe("onlyAddsLines", () => {
   const before = "import { a } from 'a';\n\nit('x', () => {\n  expect(a()).toBe(1);\n});\n";
 
@@ -568,6 +712,48 @@ describe("bkit tests red / green", () => {
       "green",
     );
     expect(r.json.reason).toContain("the plan has no `Test first:` lines");
+  });
+
+  it("green: a plan writing `**Task N — title.**` is audited, not skipped as having no Test first lines", async () => {
+    writePlan(
+      `- [ ] **Task 1 — Add clamp.** **Done when:** test passes. **Test first:** \`${TEST}\` \`${NAME}\` fails on a low value passing through.`,
+    );
+    fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, STATUS), "");
+    vi.stubEnv("FAKE_EXIT", "0");
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+    const r = await green();
+    expect(r.code).toBe(1);
+    expect(r.json.enforced).toBe(true);
+    expect(r.json.gaps).toEqual([expect.objectContaining({ task: 1, kind: "no-red" })]);
+  });
+
+  it("green: a Test first line no task claims is a plan-level gap, and the rest is still audited", async () => {
+    writePlan(TASK_1, "  - **Test first:** `src/other.test.ts` `lost` fails.");
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    expect((await red()).code).toBe(0);
+    vi.stubEnv("FAKE_EXIT", "0");
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+    let r = await green();
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ enforced: true, testOrderOnly: false });
+    expect(r.json.gaps).toEqual([
+      expect.objectContaining({ task: null, kind: "test-first-unread" }),
+    ]);
+    expect(r.json.gaps[0].detail).toContain("`plan.md:4`");
+    expect(report()).toContain("- Plan `test-first-unread`");
+    writePlan(
+      "- [ ] **Task 1:** Old plan. **Done when:** done.",
+      "## Notes",
+      "**Test first:** `a` `b` fails.",
+    );
+    r = await green();
+    expect(r.json.enforced).toBe(true);
+    expect(r.json.gaps.map((g: { kind: string }) => g.kind)).toEqual([
+      "no-test-first",
+      "test-first-unread",
+    ]);
   });
 
   it("green: red recorded, test unchanged, named test passing -> no gaps", async () => {

@@ -226,9 +226,15 @@ export type TestFirst =
   | { task: number; kind: "na"; reason: string }
   | { task: number; kind: "missing" | "malformed" };
 
-const TASK_LINE = /^\s*- \[[ xX]\] \*\*Task (\d+):\*\*/;
+/** A runbook task's bullet: `**Task N:**`, `**Task N — {title}.**`, `**Task N.**` or `**Task N**`. */
+const TASK_LINE = /^\s*- \[[ xX]\] \*\*Task (\d+)(?=[\s:.*—–-])/;
 const TEST_FIRST = "**Test first:**";
 const TEST_ORDER_EXCEPTION = "**Test-order exception:**";
+
+/** Plan-time caps (`.bkit/workflows.md` § Test-first): over any one → the plan is split before build. */
+export const MAX_TASKS_PER_PLAN = 12;
+export const MAX_TESTS_PER_TASK = 10;
+export const MAX_TEST_FILES_PER_TASK = 3;
 
 /** Per `;`-separated entry, the backticked spans; an entry with two or more names a test. */
 const entrySpans = (text: string) =>
@@ -263,14 +269,9 @@ function splitEntries(text: string): string[] {
 export function readTestFirst(plan: string): TestFirst[] {
   const out: TestFirst[] = [];
   const lines = plan.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const head = TASK_LINE.exec(lines[i]!);
-    if (!head) continue;
-    let end = i + 1;
-    while (end < lines.length && !/^\s*(- |#)/.test(lines[end]!)) end++;
+  for (const { task, start: i, end } of taskSpans(lines)) {
     const own = lines.slice(i, end);
     const text = own.join(" ");
-    const task = Number(head[1]);
     const at = text.indexOf(TEST_FIRST);
     if (at < 0) {
       out.push({ task, kind: "missing" });
@@ -302,6 +303,58 @@ export function readTestFirst(plan: string): TestFirst[] {
   }
   return out;
 }
+
+/** Each task bullet's number and its 0-based line span: the bullet to the next bullet or heading. */
+function taskSpans(lines: string[]): Array<{ task: number; start: number; end: number }> {
+  const out: Array<{ task: number; start: number; end: number }> = [];
+  for (let i = 0; i < lines.length; i++) {
+    const head = TASK_LINE.exec(lines[i]!);
+    if (!head) continue;
+    let end = i + 1;
+    while (end < lines.length && !/^\s*(- |#)/.test(lines[end]!)) end++;
+    out.push({ task: Number(head[1]), start: i, end });
+  }
+  return out;
+}
+
+/**
+ * 1-based lines carrying `**Test first:**` that no task bullet claims, so `readTestFirst`
+ * never reads them. Mentions inside inline code or a fenced block are prose, not entries.
+ */
+export function unclaimedTestFirst(plan: string): number[] {
+  const lines = plan.split("\n");
+  const claimed = new Set(
+    taskSpans(lines).flatMap(({ start, end }) =>
+      Array.from({ length: end - start }, (_, k) => start + k),
+    ),
+  );
+  const out: number[] = [];
+  let fence: string | null = null;
+  for (const [i, line] of lines.entries()) {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    if (marker !== undefined && (fence === null || marker.startsWith(fence))) {
+      fence = fence === null ? marker : null;
+      continue;
+    }
+    if (fence !== null || claimed.has(i)) continue;
+    if (line.replace(/(`+)[\s\S]*?\1/g, "").includes(TEST_FIRST)) out.push(i + 1);
+  }
+  return out;
+}
+
+export interface TaskSize {
+  task: number;
+  tests: number;
+  files: number;
+}
+
+/** Per task, the planned tests and distinct test files it names (`n/a`, missing and malformed count 0). */
+export const taskSizes = (specs: TestFirst[]): TaskSize[] =>
+  specs.map((s) =>
+    s.kind === "test"
+      ? { task: s.task, tests: s.tests.length, files: new Set(s.tests.map((t) => t.test)).size }
+      : { task: s.task, tests: 0, files: 0 },
+  );
 
 /** True when `after` keeps every non-blank line of `before`, in order, ignoring whitespace: lines were only added. */
 export function onlyAddsLines(before: string, after: string): boolean {
@@ -355,7 +408,8 @@ const fenceFor = (text: string) =>
   "`".repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((m) => m[0].length + 1)));
 
 interface Gap {
-  task: number;
+  /** null for a plan-level gap (`test-first-unread`). */
+  task: number | null;
   kind: string;
   detail: string;
 }
@@ -496,7 +550,8 @@ function writeAuditReport(
   }
   out.push("## Gaps", "");
   if (o.gaps.length === 0) out.push("None.");
-  for (const g of o.gaps) out.push(`- Task ${g.task} \`${g.kind}\` — ${g.detail}`);
+  for (const g of o.gaps)
+    out.push(`- ${g.task === null ? "Plan" : `Task ${g.task}`} \`${g.kind}\` — ${g.detail}`);
   if (o.exceptions.length > 0) out.push("", "## Test-order exceptions", "");
   for (const e of o.exceptions)
     out.push(
@@ -767,7 +822,7 @@ export const testsCommand: CommandSpec = {
         enforced: "false when there is nothing to audit (reason says why)",
         reason: "why test-first is not enforced",
         plan: "the plan file audited (the brief when no plan file exists and it carries Test first lines)",
-        gaps: "[{task, kind, detail}]: no-test-first | test-first-malformed | no-red | late-red | red-mismatch | red-evidence-missing | test-changed | not-green",
+        gaps: "[{task, kind, detail}]: no-test-first | test-first-malformed | test-first-unread (task null) | no-red | late-red | red-mismatch | red-evidence-missing | test-changed | not-green",
         testOrderOnly:
           "true when there are gaps and every one is a test-order gap (no-red | late-red | red-mismatch | red-evidence-missing | test-changed)",
         lateRedUnchecked:
@@ -792,13 +847,15 @@ export const testsCommand: CommandSpec = {
             ? briefArg
             : undefined;
         const plan = planFile ?? brief;
-        const specs = plan
-          ? readTestFirst(fs.readFileSync(path.resolve(ctx.cwd, plan), "utf-8"))
-          : [];
+        const planText = plan ? fs.readFileSync(path.resolve(ctx.cwd, plan), "utf-8") : "";
+        const specs = readTestFirst(planText);
+        // A `Test first:` line no task bullet claims keeps the audit on: the plan has
+        // test-first entries this reader cannot place, never "nothing to audit".
+        const unread = unclaimedTestFirst(planText);
         const reason =
           plan === undefined
             ? "no plan file — the build runs from its brief"
-            : !specs.some((s) => s.kind !== "missing")
+            : !specs.some((s) => s.kind !== "missing") && unread.length === 0
               ? brief !== undefined
                 ? "no plan file, and the brief has no `**Task N:**` lines with `Test first:`"
                 : "the plan has no `Test first:` lines"
@@ -995,6 +1052,12 @@ export const testsCommand: CommandSpec = {
             }
           }
         }
+        for (const line of unread)
+          gaps.push({
+            task: null,
+            kind: "test-first-unread",
+            detail: `\`${plan}:${line}\` carries \`**Test first:**\` outside every task bullet (\`- [ ] **Task N:**\`), so its tests were not audited — the plan's task line needs fixing`,
+          });
         const testOrderOnly = gaps.length > 0 && gaps.every((g) => TEST_ORDER_GAPS.has(g.kind));
         writeAuditReport(log, {
           enforced: true,
@@ -1017,6 +1080,144 @@ export const testsCommand: CommandSpec = {
         });
         ctx.log(`test-first audit: ${gaps.length} gap(s) — report in ${logArg}`);
         return gaps.length === 0 ? EXIT.OK : EXIT.NO;
+      },
+    },
+    "plan-check": {
+      summary:
+        "Count a plan's tasks and each task's Test first tests and test files against the caps, and find Test first lines no task claims; prints SINGLE | SPLIT; exit 0 read, 1 unread lines (or, with --children, a sub-plan still over a cap).",
+      flags: [
+        {
+          name: "plan",
+          type: "string",
+          required: true,
+          repeatable: true,
+          help: "candidate plan file; the first that exists is checked",
+        },
+        {
+          name: "brief",
+          type: "string",
+          help: "the build input, checked when no plan file exists",
+        },
+        {
+          name: "children",
+          type: "boolean",
+          help: "check the sub-plans `{stem}-{N}.md` beside the first --plan `{stem}.md` instead (that file need not exist); each must fit (SINGLE)",
+        },
+        {
+          name: "log",
+          type: "string",
+          required: true,
+          help: "file the report is written to, `Verdict:` header first (directories are created)",
+        },
+      ],
+      output: {
+        verdict: `SPLIT when a plan has more than ${MAX_TASKS_PER_PLAN} tasks or a task names more than ${MAX_TESTS_PER_TASK} tests or ${MAX_TEST_FILES_PER_TASK} test files; else SINGLE`,
+        plans:
+          "[{plan, tasks, sizes: [{task, tests, files}], overCap: [{task, tests, files}], unread: [line], quotes: [line text]}]: every file checked; [] when none exists",
+        unread: "count of `**Test first:**` lines no task bullet claims, across every file",
+        log: "where the report was written (as given)",
+      },
+      run: (ctx) => {
+        const logArg = String(ctx.flags.log);
+        if (logArg === "") throw new CommandError(EXIT.USAGE, "--log must be non-empty");
+        const exists = (p: string) => fs.existsSync(path.resolve(ctx.cwd, p));
+        const briefArg = str(ctx.flags.brief);
+        const target =
+          (ctx.flags.plan as string[]).find(exists) ??
+          (briefArg !== undefined && exists(briefArg) ? briefArg : undefined);
+        const children = ctx.flags.children === true;
+        let files = target === undefined ? [] : [target];
+        if (children) {
+          const base = (ctx.flags.plan as string[])[0]!;
+          const dir = path.dirname(base);
+          const stem = path.basename(base, ".md");
+          const escaped = stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const child = new RegExp(`^${escaped}-(\\d+)\\.md$`);
+          const abs = path.resolve(ctx.cwd, dir);
+          files = (fs.existsSync(abs) ? fs.readdirSync(abs) : [])
+            .map((f) => child.exec(f))
+            .filter((m) => m !== null)
+            .sort((a, b) => Number(a[1]) - Number(b[1]))
+            .map((m) => path.posix.join(dir.split(path.sep).join("/"), m[0]));
+          if (files.length === 0)
+            throw new CommandError(EXIT.USAGE, `no sub-plans \`${stem}-{N}.md\` in ${dir}`);
+        }
+        const plans = files.map((plan) => {
+          const text = fs.readFileSync(path.resolve(ctx.cwd, plan), "utf-8");
+          const sizes = taskSizes(readTestFirst(text));
+          const overCap = sizes.filter(
+            (t) => t.tests > MAX_TESTS_PER_TASK || t.files > MAX_TEST_FILES_PER_TASK,
+          );
+          const unread = unclaimedTestFirst(text);
+          const lines = text.split("\n");
+          const quotes = unread.map((n) => lines[n - 1]!.trim());
+          return { plan, tasks: sizes.length, sizes, overCap, unread, quotes };
+        });
+        const tooBig = plans.filter((p) => p.tasks > MAX_TASKS_PER_PLAN || p.overCap.length > 0);
+        const verdict = tooBig.length > 0 ? "SPLIT" : "SINGLE";
+        const unread = plans.reduce((n, p) => n + p.unread.length, 0);
+
+        const caps = `${MAX_TASKS_PER_PLAN} tasks per plan, ${MAX_TESTS_PER_TASK} \`Test first\` tests and ${MAX_TEST_FILES_PER_TASK} test files per task`;
+        const why = (p: (typeof plans)[number]) => [
+          ...(p.tasks > MAX_TASKS_PER_PLAN ? [`${p.tasks} tasks`] : []),
+          ...p.overCap.map(
+            (t) => `Task ${t.task} names ${t.tests} tests across ${t.files} test files`,
+          ),
+        ];
+        const fit =
+          target === undefined
+            ? "No plan file or brief exists, so nothing was checked."
+            : tooBig.length === 0
+              ? `${plans.map((p) => `\`${p.plan}\`: ${p.tasks} tasks`).join("; ")}; every task within the caps (${caps}).`
+              : `Over the caps (${caps}): ${tooBig.map((p) => `\`${p.plan}\` — ${why(p).join("; ")}`).join(". ")}.`;
+        const out = [
+          `Verdict: ${verdict}`,
+          `Unread: ${unread}`,
+          "",
+          "<!-- verdict:end -->",
+          "",
+          "# Plan Check",
+          "",
+          "## Session Fit Estimate",
+          "",
+          fit,
+        ];
+        for (const p of plans) {
+          const { sizes } = p;
+          out.push("", `## Tasks — \`${p.plan}\``, "");
+          if (sizes.length === 0) out.push("No task bullets read.");
+          else {
+            out.push("| Task | Tests | Test files | Over cap |", "| --- | --- | --- | --- |");
+            for (const t of sizes) {
+              const over = [
+                ...(t.tests > MAX_TESTS_PER_TASK ? [`tests > ${MAX_TESTS_PER_TASK}`] : []),
+                ...(t.files > MAX_TEST_FILES_PER_TASK
+                  ? [`files > ${MAX_TEST_FILES_PER_TASK}`]
+                  : []),
+              ];
+              out.push(
+                `| ${t.task} | ${t.tests} | ${t.files} | ${over.length ? over.join(", ") : "no"} |`,
+              );
+            }
+          }
+        }
+        out.push("", "## Unread `Test first` lines", "");
+        if (unread === 0) out.push("None.");
+        for (const p of plans)
+          p.unread.forEach((line, i) =>
+            out.push(
+              `- \`${p.plan}:${line}\` — \`**Test first:**\` outside every task bullet; write the task as \`- [ ] **Task N:** … **Test first:** …\``,
+              `  > ${p.quotes[i]}`,
+            ),
+          );
+        const log = path.resolve(ctx.cwd, logArg);
+        fs.mkdirSync(path.dirname(log), { recursive: true });
+        fs.writeFileSync(log, `${out.join("\n")}\n`);
+        ctx.emit({ verdict, plans, unread, log: logArg });
+        ctx.log(
+          `plan check: ${verdict}, ${unread} unread \`Test first\` line(s) — report in ${logArg}`,
+        );
+        return unread > 0 || (children && verdict === "SPLIT") ? EXIT.NO : EXIT.OK;
       },
     },
   },

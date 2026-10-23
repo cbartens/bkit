@@ -1,5 +1,6 @@
-// bkit context clamp|clamp-log|ledger-scan|list-blocks|run-block|finalise —
-// size-bound context artifacts and fetch the consumer's evidence.
+// bkit context clamp|clamp-log|ledger-scan|diff|list-blocks|run-block|finalise —
+// size-bound context artifacts, write the run's diff, and fetch the consumer's
+// evidence.
 //
 // clamp is a runaway backstop, NOT a routine cap: a normal run never fires it.
 // Every removal is marked in place and footered. Profiles:
@@ -21,7 +22,7 @@ import { extractContextFetchProvisionRecipes } from "../../install/cloud-env.js"
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { lastRun } from "../../ledgers/status.js";
 import { CommandError, EXIT, git, } from "../lib.js";
-import { resolveRepoSlug } from "../../ledgers/telemetry.js";
+import { gitEnv, resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { buildComment } from "./issues.js";
 import { EXIT_NO_STATUS, positiveInt, readRuns, str } from "./status.js";
 import { EXIT_COMMIT, writeStepRow } from "./steps.js";
@@ -518,6 +519,122 @@ function asCaptured(out) {
     return Buffer.concat([bytes.subarray(0, end), Buffer.from("\n")]);
 }
 // ---------------------------------------------------------------------------
+// Diff artifact — the one definition of "the run's diff"
+//
+// Build briefs, the challenge size gate and per-group verify read the same range
+// the same way: `{base}...HEAD` with `docs/plans/**` excluded, written to one
+// file. Past the guard the file holds a per-file budget instead of the whole diff
+// (`--stat`, then the largest files first, each cut), and its first line says so.
+// ---------------------------------------------------------------------------
+/** Exit code: --base does not name a commit. */
+export const EXIT_BASE = 5;
+export const DIFF_BASE = "origin/dev";
+export const DIFF_EXCLUDES = ["docs/plans/**"];
+export const PARTIAL_MARK = "partial diff coverage";
+export const DIFF_GUARD = {
+    fullLines: 10000,
+    topFiles: 20,
+    perFileLines: 500,
+    totalLines: 50000,
+};
+/** git's stdout as bytes; empty when git fails (a range it rejects diffs as nothing). */
+function gitBytes(cwd, args) {
+    const res = spawnSync("git", args, { cwd, env: gitEnv(), maxBuffer: 1 << 29 });
+    return res.status === 0 ? (res.stdout ?? Buffer.alloc(0)) : Buffer.alloc(0);
+}
+const excludeSpec = () => ["--", ".", ...DIFF_EXCLUDES.map((e) => `:(exclude)${e}`)];
+/** Per-file `--numstat` rows over the range and excludes; a binary file counts with no lines. */
+export function diffNumstat(cwd, range) {
+    const files = [];
+    let linesAdded = 0;
+    let linesDeleted = 0;
+    const rows = gitBytes(cwd, ["diff", "--numstat", "--no-renames", range, ...excludeSpec()])
+        .toString("utf-8")
+        .split("\n");
+    for (const row of rows) {
+        if (row === "")
+            continue;
+        const [a, d, ...rest] = row.split("\t");
+        const added = Number(a) || 0;
+        const deleted = Number(d) || 0;
+        linesAdded += added;
+        linesDeleted += deleted;
+        files.push({ path: rest.join("\t"), lines: added + deleted });
+    }
+    return {
+        files,
+        stat: {
+            filesChanged: files.length,
+            linesAdded,
+            linesDeleted,
+            linesChanged: linesAdded + linesDeleted,
+        },
+    };
+}
+const joinLines = (lines) => lines.length === 0 ? Buffer.alloc(0) : Buffer.concat([...lines.flatMap((l) => [l, lineOf("")])]);
+/** Write the range's diff to `out`: whole under the guard, else a per-file budget; the record says which. */
+export function writeDiffArtifact(cwd, out, artifact, range, guard = DIFF_GUARD) {
+    const { files, stat } = diffNumstat(cwd, range);
+    const full = gitBytes(cwd, ["diff", range, ...excludeSpec()]);
+    const diffLines = records(full).length;
+    let content;
+    let partial = false;
+    let ceilingHit = false;
+    if (diffLines === 0) {
+        content = lineOf(`No changes in ${range} outside ${DIFF_EXCLUDES.join(", ")}.`);
+    }
+    else if (diffLines <= guard.fullLines) {
+        content = full;
+    }
+    else {
+        partial = true;
+        const shown = [...files]
+            .sort((a, b) => b.lines - a.lines || a.path.localeCompare(b.path))
+            .slice(0, guard.topFiles);
+        const parts = [];
+        let total = 0;
+        const push = (b) => {
+            parts.push(b);
+            total += records(b).length;
+        };
+        push(lineOf(`# ${PARTIAL_MARK}: ${range} has ${diffLines} diff lines across ${stat.filesChanged} files; showing the ${shown.length} largest files, ${guard.perFileLines} lines each, at most ${guard.totalLines} lines in all. Say "${PARTIAL_MARK}" in any verdict read from this file.`));
+        push(lineOf(""));
+        push(gitBytes(cwd, ["diff", "--stat", range, ...excludeSpec()]));
+        push(lineOf(""));
+        for (const f of shown) {
+            const room = Math.min(guard.perFileLines, guard.totalLines - total);
+            if (room <= 0) {
+                ceilingHit = true;
+                push(lineOf(`# total line budget reached; ${f.path} and smaller files not shown`));
+                break;
+            }
+            const lines = records(gitBytes(cwd, ["diff", range, "--", f.path]));
+            const kept = lines.slice(0, room);
+            if (kept.length < lines.length && room < guard.perFileLines)
+                ceilingHit = true;
+            push(lineOf(`### ${f.path}`));
+            push(joinLines(kept));
+            if (kept.length < lines.length)
+                push(lineOf(`# ${lines.length - kept.length} more lines of ${f.path} not shown`));
+            push(lineOf(""));
+        }
+        content = Buffer.concat(parts);
+    }
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, content);
+    const record = {
+        artifact,
+        clamped: partial,
+        origLines: diffLines,
+        keptLines: partial ? records(content).length : diffLines,
+        origBytes: full.length,
+        keptBytes: content.length,
+        lineCapped: 0,
+        ceilingHit,
+    };
+    return { range, stat, diffLines, partial, record };
+}
+// ---------------------------------------------------------------------------
 // Command
 // ---------------------------------------------------------------------------
 export const contextCommand = {
@@ -611,6 +728,64 @@ export const contextCommand = {
                     appendRecord(log, clamp);
                 ctx.log(`${artifact}: ${scan.total} matching line(s), ${scan.kept} kept`);
                 ctx.emit({ total: scan.total, kept: scan.kept, clamp });
+                return EXIT.OK;
+            },
+        },
+        diff: {
+            summary: "Write the run's diff ({base}...HEAD, docs/plans/** excluded) as one artifact — whole, or a per-file budget past the guard — and print its numbers.",
+            flags: [
+                { name: "artifact", type: "string", required: true, help: "file to write" },
+                {
+                    name: "base",
+                    type: "string",
+                    help: `merge base or a group's start commit (default ${DIFF_BASE})`,
+                },
+                ...LOG_FLAGS,
+            ],
+            output: {
+                artifact: "the artifact path as given",
+                base: "the base used",
+                range: "the range diffed ({base}...HEAD)",
+                filesChanged: "files in the diff (--numstat, same excludes)",
+                linesAdded: "lines added",
+                linesDeleted: "lines deleted",
+                linesChanged: "linesAdded + linesDeleted",
+                diffLines: "lines in the whole diff",
+                partial: `true when the diff exceeded ${DIFF_GUARD.fullLines} lines and the per-file budget (${DIFF_GUARD.topFiles} files, ${DIFF_GUARD.perFileLines} lines each, ${DIFF_GUARD.totalLines} in all) was written instead`,
+                clamp: "the clamp record (clamped = partial)",
+            },
+            exitCodes: {
+                [EXIT_BASE]: "--base does not name a commit",
+                [EXIT_ARTIFACT]: "the artifact could not be written",
+            },
+            run: (ctx) => {
+                const base = str(ctx.flags.base) ?? DIFF_BASE;
+                if (git(ctx.cwd, ["rev-parse", "-q", "--verify", `${base}^{commit}`]) === null) {
+                    throw new CommandError(EXIT_BASE, `--base ${base} does not name a commit (fetch origin, or pass the group's start sha)`);
+                }
+                const artifact = String(ctx.flags.artifact);
+                let result;
+                try {
+                    result = writeDiffArtifact(ctx.cwd, path.resolve(ctx.cwd, artifact), artifact, `${base}...HEAD`);
+                }
+                catch (e) {
+                    throw new CommandError(EXIT_ARTIFACT, `${artifact}: ${e.message}`);
+                }
+                const log = logPath(ctx);
+                if (log !== undefined)
+                    appendRecord(log, result.record);
+                if (result.partial) {
+                    ctx.log(`${artifact}: ${result.diffLines} diff lines, over the ${DIFF_GUARD.fullLines}-line guard — per-file budget written (${PARTIAL_MARK})`);
+                }
+                ctx.emit({
+                    artifact,
+                    base,
+                    range: result.range,
+                    ...result.stat,
+                    diffLines: result.diffLines,
+                    partial: result.partial,
+                    clamp: result.record,
+                });
                 return EXIT.OK;
             },
         },

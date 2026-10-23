@@ -4,7 +4,7 @@
 //   1. Counts/rates/elapsed-time over telemetry rows.
 //   2. Size↔outcome regression (logistic approximation: error ~ log(linesAdded)
 //      + filesChanged) over `kind:"outcome"` rows.
-//   3. Dispatch-size threshold computation for plan-complexity-check / plan-split.
+//   3. Dispatch-size threshold computation for plan-split.
 //   4. `counterSource` trust labelling: each outcome row is joined to its `counter` row
 //      (model-self-report pre-P3, shell-bus post-P3).
 //   5. Per-rule compliance rate over `kind:"compliance"` rows.

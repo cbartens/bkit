@@ -221,21 +221,17 @@ describe("bkit steps verdict", () => {
     ).toBe(6);
   });
 
-  it("takes the allowed values from the subagent's own prompt", async () => {
-    expect(promptVerdicts("bkit-plan-complexity-check")).toEqual(["SINGLE", "SPLIT"]);
+  it("takes the allowed values from the subagent's own prompt, or from --allowed", async () => {
     expect(promptVerdicts("bkit-build-plan-verify")).toEqual(["PASS", "CONCERNS", "FAIL"]);
     const cwd = repo();
     write(cwd, "logs/c.md", "Verdict: SPLIT\n<!-- verdict:end -->\n");
     expect((await run(cwd, ["steps", "verdict", "--file=logs/c.md"])).code).toBe(6);
     expect(
-      (
-        await run(cwd, [
-          "steps",
-          "verdict",
-          "--file=logs/c.md",
-          "--agent=bkit-plan-complexity-check",
-        ])
-      ).code,
+      (await run(cwd, ["steps", "verdict", "--file=logs/c.md", "--agent=bkit-build-plan-verify"]))
+        .code,
+    ).toBe(6);
+    expect(
+      (await run(cwd, ["steps", "verdict", "--file=logs/c.md", "--allowed=SINGLE,SPLIT"])).code,
     ).toBe(0);
   });
 
@@ -366,7 +362,7 @@ describe("status row field names", () => {
     expect((await run(cwd, doneArgs("--attempt=1.5"))).code).toBe(2);
   });
 
-  it("records the complexity verdict as `verdict`, from the agent's own verdict set", async () => {
+  it("records the complexity verdict as `verdict`, from the --allowed set", async () => {
     const cwd = repo();
     write(cwd, "logs/complexity.md", "Verdict: SPLIT\n\n<!-- verdict:end -->\n");
     const args = [
@@ -380,11 +376,11 @@ describe("status row field names", () => {
       "--artifact=logs/complexity.md",
       "--commit=none",
     ];
-    const r = await run(cwd, [...args, "--agent=bkit-plan-complexity-check"]);
+    const r = await run(cwd, [...args, "--allowed=SINGLE,SPLIT"]);
     expect(r.code).toBe(0);
     expect(r.json.row).toMatchObject({ verdict: "SPLIT" });
     expect(r.json.row).not.toHaveProperty("complexity");
-    // Without the agent the default PASS|CONCERNS|FAIL set refuses it.
+    // Without --allowed the default PASS|CONCERNS|FAIL set refuses it.
     expect((await run(cwd, args)).code).toBe(2);
     const g = await run(cwd, [
       "steps",
@@ -395,7 +391,7 @@ describe("status row field names", () => {
       "--attempt=1",
       "--artifact=logs/complexity.md",
       "--verdict-required",
-      "--agent=bkit-plan-complexity-check",
+      "--allowed=SINGLE,SPLIT",
     ]);
     expect(g.code).toBe(0);
   });

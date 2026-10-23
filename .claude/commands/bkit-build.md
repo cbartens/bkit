@@ -280,15 +280,27 @@ description: "Build Feature — Autonomous implementation"
 
 ## 🤖 Step 3 — Branch Sync
 
-1. Merge `origin/dev` when feature branch `docs/` is behind (conflicts: ledgers union, other `docs/` prefer `dev`), then finish:
+1. Merge `origin/dev` when feature branch `docs/` is behind (conflicts: ledgers union, other `docs/` prefer `dev`):
    ```bash
    "{BKIT}" branches sync --merge-docs || exit 1
-   "{BKIT}" steps finish --workflow=build --step=build-branch-sync --file="{STATUS}" --message="chore({FID}): branch-sync" --number=3 --title="Branch Sync" --tree={BRANCH}
+   ```
+2. Check every `Test first:` line sits on a task bullet:
+   ```bash
+   "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/{FID}-plan.md --brief=docs/plans/{YYYYMM}/logs/{FID}/build-input-{RUN}.md --log=docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md
+   ```
+   Route:
+   - **If** exit 0 → sub-step 3.
+   - **If** exit 1 → **Failure Path** naming each `Unread` line in the report.
+   - **Else** → **Failure Path**.
+3. Finish:
+   ```bash
+   "{BKIT}" steps finish --workflow=build --step=build-branch-sync --file="{STATUS}" --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md --message="chore({FID}): branch-sync" --number=3 --title="Branch Sync" --tree={BRANCH}
    ```
 
 ### 🔒 Gate 3 — Branch Sync
 
 - [ ] Docs not behind origin (`docs/` not behind `origin/dev`), on the worktree branch
+- [ ] Every `Test first` line on a task bullet (`tests plan-check` exit 0)
 - [ ] Mechanical checks passed (`steps finish` exit 0)
 
 ---

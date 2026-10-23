@@ -224,13 +224,16 @@ describe("verdict headers re-ask on PENDING (exit 5) as well as invalid (exit 6)
     expect(commandLines(workflow(name), "steps verdict"), name).toHaveLength(0);
   });
 
-  it("plan's complexity verdict is read from the agent's own set", () => {
+  it("plan's complexity verdict comes from the engine's plan-check count", () => {
     const plan = workflow("plan");
     const line = commandLines(plan, "steps finish").find((l) =>
       l.includes("--step=plan-complexity-check"),
     );
-    expect(line).toContain("--agent=bkit-plan-complexity-check");
-    expect(line).not.toContain("--verdict=");
+    expect(line).toContain("--verdict={COMPLEXITY_VERDICT}");
+    expect(line).toContain("--allowed=SINGLE,SPLIT");
+    expect(line).not.toContain("--agent=");
+    expect(commandLines(plan, "tests plan-check").length).toBeGreaterThan(0);
+    expect(plan).not.toContain("bkit-plan-complexity-check");
     expect(plan).not.toContain("--field=complexity=");
   });
 });

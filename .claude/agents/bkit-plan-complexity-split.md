@@ -39,7 +39,7 @@ maxTurns: 100
 1. Re-read all supplied inputs once at session start; do not trust session memory.
 2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 3. Treat proposed groupings in inputs as advisory only — verify independently.
-4. Split every task naming > 5 `Test first` tests into consecutive tasks of <= 5 in place; each `Test first` entry and the `Done when` checks it covers land verbatim in exactly one new task; renumber tasks.
+4. Split every task naming > 10 `Test first` tests or > 3 test files into consecutive tasks of <= 10 tests across <= 3 test files in place, grouped by test file; each `Test first` entry and the `Done when` checks it covers land verbatim in exactly one new task; renumber tasks.
 5. Count total tasks across the master plan. Target sub-plan count = `ceil(tasks / 12)`; each sub-plan <= 12 tasks.
 6. Partition tasks into sub-plans by domain (API / DB / web / mobile / infra) and dependency order. Each sub-plan <= 12 tasks. Order tasks so every sub-plan end leaves local gates green: add → switch → delete; signature change and all callers in one sub-plan; each task and its tests in one sub-plan. **If** no order keeps boundary green → merge adjacent sub-plans. **If** merged > 12 tasks → `FAIL`.
 7. Name: `{plan-name}-1.md`, `{plan-name}-2.md`, etc.
@@ -51,14 +51,14 @@ maxTurns: 100
     - Confirm every task and task-linked row appears in exactly one sub-plan; gate checkpoints and `Mandatory Tasks (Testing & Documentation)` in every sub-plan.
     - Confirm every original `Done when` check and `Test first` entry survived verbatim in exactly one task.
     - Confirm green boundaries: each task `Done when` tests in its own sub-plan; signature changes with all callers; no deletion before its replacement.
-    - Confirm each sub-plan's task count <= 12 and each task names <= 5 `Test first` tests.
+    - Confirm each sub-plan's task count <= 12 and each task names <= 10 `Test first` tests across <= 3 test files.
     - Confirm master is high-level index with correct bidirectional links.
     - Confirm each sub-plan references parent and is self-contained per `docs/templates/bkit-plan.md`.
 12. Once self-verify = `PASS` → remove all tasks, task-linked rows, gates from master.
 13. Master retains context / goals / patterns; replace `Agent Execution Runbook` with sub-plan index (relative paths).
 14. `Verdict` mapping:
-    - `PASS` = lossless split (task count, <= 12 cap, <= 5-test cap, green boundaries, and template invariants self-verified).
-    - `FAIL` = self-detected agent bug (task count mismatch, sub-plan > 12 tasks, task > 5 tests, red boundary, template violation) or failed self-verify.
+    - `PASS` = lossless split (task count, <= 12 cap, <= 10-test and <= 3-file caps, green boundaries, and template invariants self-verified).
+    - `FAIL` = self-detected agent bug (task count mismatch, sub-plan > 12 tasks, task > 10 tests or > 3 test files, red boundary, template violation) or failed self-verify.
 15. Produce **Create** output.
 
 **Output format:**

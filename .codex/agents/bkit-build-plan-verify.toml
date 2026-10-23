@@ -39,7 +39,7 @@ developer_instructions = """
    - Row `Changed since red` = `added lines only` → read its diff; any line added inside a planned test or in setup it runs (`beforeEach`, fixture, mock) → `test-changed` gap, `Fixable: false`; added lines only outside every planned test → no gap.
    - `red-mismatch` → recorded test is the planned one renamed or moved **and** passes now → no gap, nor for that test's `not-green`; else `Fixable: false`.
    - `no-red` on a task the plan-currency report classifies `Broken` with work already landed **and** the execute log records `DONE — already landed` → no gap.
-   - `no-red`, `late-red`, `no-test-first`, `test-first-malformed`, `red-evidence-missing` → `Fixable: false`.
+   - `no-red`, `late-red`, `no-test-first`, `test-first-malformed`, `test-first-unread`, `red-evidence-missing` → `Fixable: false`.
    - Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → log as ``Task {N}: `{test file}` `{test name}` — {kind} — Fixable: false``.
    - `Enforced: false` → reason in `Notes`; no gap.
    - `Late-red check` section → each task not checked in `Notes`; no gap.

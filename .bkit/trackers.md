@@ -106,7 +106,7 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 - Success Criteria: ≤5 observable outcome bullets.
 - Edge Cases: `| Scenario | Expected Behavior |`.
 - Derived Test Matrix: `| Test description | Type | Target file |`; Type = lowest tier that exercises it, named per `docs/testing.md`; every row covered by exactly one task.
-- Tasks, build order, one line each, 1-5 `Test first` tests per task; `n/a — {reason}` for docs, config, pure refactor, or E2E / @live only:
+- Tasks, build order, one line each, 1-10 `Test first` tests across <= 3 test files per task; `n/a — {reason}` for docs, config, pure refactor, or E2E / @live only:
 
   ```text
   - [ ] **Task N:** {change}. **Done when:** {verifiable check}. **Test first:** `{test file}` `{test name}` fails on {what goes wrong}.
