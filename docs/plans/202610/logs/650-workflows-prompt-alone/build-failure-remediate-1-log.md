@@ -1,4 +1,5 @@
 Verdict: PASS
+Strategy: STANDARD
 
 <!-- verdict:end -->
 
