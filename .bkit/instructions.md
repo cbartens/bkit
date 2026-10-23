@@ -4810,13 +4810,12 @@ Rules for editing prompts and workflows, copied whole from their catalog section
 ```text
 `.bkit/core/prompts/*.md` are AI-only execution surfaces. Every byte is paid on every run.
 
-- **These files are their own template:** always `grep .bkit/core/prompts/` for closest existing cases and copy shapes verbatim before inventing wording / formatting (phrasing, plurals, variables, operators, conditionals, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (contract clauses, process steps, output format blocks, verdict mappings). `→` is intentional process glyph, adopt do not convert.
+- **These files are their own template:** always `grep .bkit/core/prompts/` for closest existing cases and copy shapes verbatim before inventing wording / formatting (phrasing, variables, operators, conditionals, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (contract clauses, process steps, output format blocks, verdict mappings). `→` is intentional process glyph, adopt do not convert.
   - **Standalone-runnable:** Works outside any workflow. Inputs via orchestrator-supplied Read paths. Multi-agent coordination: `**Parallel:**` + `**Lens discipline:**` Contract clauses.
   - **Generic Role, specific Process:** `Role:` / `description:` anchor seniority titles ("Senior X", "Veteran X"). Lens behaviour in Process. Sibling lenses may name their lens in `Role:` / `description:`; siblings share seniority anchor. Same-audit diversity pairs (only model differs) → identical `Role:` lines.
   - **Bold in body:** Only the `**Create**` / `**Read**` / `**Update**` I/O markers and the conditional operators (`**If**`, `**Else**`, `**and**`, `**or**`); § `Notation` holds the bold rule. Contract clause labels (`- **Mandate:**`) are the sole addition; bold inside a code span is literal output, not formatting.
   - **Procedural conditionals:** Flow-gating conditional → bold `**If** {condition} → {action}.` (`**Else** → {action}.` for branches), any syntactic shape. Test: reordering reads as "If {X}, {Y}" naturally → it is one. Excludes inline qualifiers (`if any`, `if defined`), dispatch tables (`PASS = …`, `STANDARD → …`), iteration (`For each …`), bash in backticks.
   - **Slash separator:** Alternation slash always spaced — `task / gate`, `CRITICAL / HIGH`. Fixed abbreviations (`I/O`) and anything inside backticks (paths, commands, enum unions) keep the bare form.
-  - **Plural for general rules:** Statement covering every case → plural (`ALWAYS read files before edits`, `NEVER fix reported failures`). Singular only for one specific item already named (`write that test`, `each task`).
   - **ASCII operators:** ASCII comparison / logic only — `!=`, `>=`, `<=`, `=>` — and `x` for times / dimensions. never Unicode math glyphs. Flow-arrow `→` in procedural conditionals / dispatch tables is **sole intentional non-ASCII glyph** — uniform documented flow notation (clearer than `->`, overloaded as member-access). Do not convert `→`.
   - **Variable references:** One name, one marker — the marker says who resolves it, and when. `{VAR}` = orchestrator substitutes before the text is used (paths, JSON, commit msgs, Context payloads). `$VAR` = bash expands at run time; it must be assigned in the same fenced block (shell state does not persist between blocks). Model-held value needed inside bash → assign it once at the top of the block (`VERDICT="{VERDICT}"`), then use `$VERDICT` below. `{lower}` / `{plain words}` = free text the writing agent fills in — never asserted non-empty. `{lower.dotted}` = config key read from `package.json`. `{{VAR}}` = install-time token substituted by `bkit install` — distinct, do not unify. `<shape>` inside an output template describes the type of a value (`<integer >= 0>`), not a substitution. **Closed-vocabulary tokens are backticked in prose — names and values alike** (`` `severity` ``, `` `CRITICAL` ``, `` `PASS` ``, `` `DONE` ``): one question, answerable by lookup, not by judging whether a literal is "being compared". Enum sets are one tight backticked union in canonical order (`PASS|CONCERNS|FAIL`) — never spaced slashes or pipes; the spaced-slash rule does not apply inside backticks. Field labels match their own Output format block verbatim, lowercase. Emphasis words stay bare — they are prose, not vocabulary; § `Notation` sets their capitals. **Fenced output-format blocks stay literal** — they are the bytes the agent writes and the orchestrator greps; never add backticks inside them. Operators outside (`VERIFY_ATTEMPT` = 0). never `${VAR}` outside bash fences, except inline shell quoted as an instruction (`OWNER="${OWNER_REPO%/*}"`). Doc section citations name the title only (`docs/templates/bkit-plan.md` § `Open Questions & Assumptions`) — never carry the `##` heading marker.
   - **Output section shape** content drives format:
@@ -4861,6 +4860,8 @@ One job per mark; capitals and bold carry one meaning each. Binds `.bkit/core/pr
 **Reason clauses.** At most one short reason clause, and only on a hard limit whose boundary a model would otherwise misread or over-apply — the single exception to § `Dense instructions only`. Elsewhere write the rule plainly.
 
 **Bold.** Structure only, never emphasis: clause and field labels, conditional operators (`**If**`, `**Else**`, `**and**`, `**or**`), jump targets and terminal markers (`**STOP**`, `**Failure Path**`), and the prompt I/O markers (`**Create**`, `**Read**`, `**Update**`). No italics for emphasis. Bold and capitals together only on stop / route markers.
+
+**Grammar.** Write normal English sentences, with articles and singular or plural as the meaning needs. Keep text dense by cutting filler, reasons, repetition and restating, never by dropping grammar words. When the number of items matters, say `each {item}` or `one {thing} per {item}` (`append one row per flaky test`). A subject and its pronoun agree in number (`files … them`, `a file … it`).
 ```
 
 ### workflow-authoring-rules
@@ -6434,8 +6435,8 @@ L48 All normative rule words, capitalised hard limits (`NEVER`, `ALWAYS`, `MUST`
 L51 **If** target's wording is its content (style / tone / voice guide) **or** target is mostly code fences / examples → STOP and report reason; do not save.
 L58 never drop 🔒 Gates, ⛔ stops, `[!CAUTION]` / `[!NOTE]` blocks, or numbered steps.
 L63 Match good pairs; do not produce the bad pairs:
-L64 Good: `In order to verify the build, we will need to run the test suite and check the output for any failures.` → `Verify build: run test suite, check output for failures.`
-L65 Good: `Read the plan and update the checkboxes in the plan file.` → `Read plan, update checkboxes.`
+L64 Good: `In order to verify the build, we will need to run the test suite and check the output for any failures.` → `To verify the build, run the test suite and check the output for failures.`
+L65 Good: `Read the plan and update the checkboxes in the plan file.` → `Read the plan and update its checkboxes.`
 L66 Good: `[docs/security.md](../../docs/security.md)` → `docs/security.md`.
 L67 Bad: `` `pnpm bkit:gate:static-unit` `` → `run tests`.
 L68 Bad: `## Verification Record` → `## Verify`.
@@ -6445,7 +6446,7 @@ L72 Bad: `at the time of merge` → `at time of merge`.
 L73 Bad: `Append a row to the deferral ledger.` → `Append row to defer log.`
 L74 Bad: `Retry at most 3 times.` → `Retry a few times.`
 L78 Strip filler / hedging: "in order to" → "to"; "due to the fact that" → "because"; drop "very" / "really" / "simply" / "perhaps" / "it might be useful to".
-L79 Strip articles where dense imperative style works → `Read the plan` → `Read plan`; `Update the file` → `Update file`; keep articles in set phrases → `in the same directory`, `at the time of merge`.
+L79 Keep grammar words: articles, and singular or plural as the meaning needs; never strip them to save words.
 L80 Convert paragraphs → bullet points.
 L81 Convert multi-sentence run-ons → terse one-liners; preserve meaning.
 L82 Convert parallel content / labels → compact tables / value pairs / matrix-style enumerations; keep atomic instructions on one row, do not split across rows.

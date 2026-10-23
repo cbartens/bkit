@@ -60,8 +60,8 @@ tools:
    - never swap a term for a synonym or abbreviation; reuse the file's existing word for each concept; never coin abbreviations.
    - never trim either side of a Good / Bad example pair.
 6. Match good pairs; do not produce the bad pairs:
-   - Good: `In order to verify the build, we will need to run the test suite and check the output for any failures.` → `Verify build: run test suite, check output for failures.`
-   - Good: `Read the plan and update the checkboxes in the plan file.` → `Read plan, update checkboxes.`
+   - Good: `In order to verify the build, we will need to run the test suite and check the output for any failures.` → `To verify the build, run the test suite and check the output for failures.`
+   - Good: `Read the plan and update the checkboxes in the plan file.` → `Read the plan and update its checkboxes.`
    - Good: `[docs/security.md](../../docs/security.md)` → `docs/security.md`.
    - Bad: `` `pnpm bkit:gate:static-unit` `` → `run tests`.
    - Bad: `## Verification Record` → `## Verify`.
@@ -75,7 +75,7 @@ tools:
    - Dense token-efficient phrasing.
    - Strip redundant context already stated earlier.
    - Strip filler / hedging: "in order to" → "to"; "due to the fact that" → "because"; drop "very" / "really" / "simply" / "perhaps" / "it might be useful to".
-   - Strip articles where dense imperative style works → `Read the plan` → `Read plan`; `Update the file` → `Update file`; keep articles in set phrases → `in the same directory`, `at the time of merge`.
+   - Keep grammar words: articles, and singular or plural as the meaning needs; never strip them to save words.
    - Convert paragraphs → bullet points.
    - Convert multi-sentence run-ons → terse one-liners; preserve meaning.
    - Convert parallel content / labels → compact tables / value pairs / matrix-style enumerations; keep atomic instructions on one row, do not split across rows.
